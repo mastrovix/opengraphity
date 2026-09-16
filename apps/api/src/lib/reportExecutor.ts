@@ -1,6 +1,7 @@
 import { getSession, toNumber } from '@opengraphity/neo4j'
 import { buildReportQuery, assertChartType, type ChartType, type ReportSectionDef } from './reportQueryBuilder.js'
 import { getReportWhitelist } from './reportWhitelist.js'
+import { reportFieldLabels } from './reportFieldLabels.js'
 import { identityLabeler, loadReportValueLabeler, type ReportValueLabeler, type ReportValueSource } from './reportValueLabels.js'
 import type { Lingua } from './enumValueLabels.js'
 
@@ -87,7 +88,11 @@ export async function executeReportSection(
     // (GraphQL, dashboard widgets, scheduler, export) goes through here, so a
     // section persisted with a rogue label/field never reaches Neo4j.
     const whitelist = await getReportWhitelist(tenantId)
-    const { query, params, columns, groupSource } = buildReportQuery(section, tenantId, whitelist)
+    // Le etichette dei campi per le intestazioni delle colonne: dallo stesso
+    // metamodello che il costruttore di report mostra all'amministratore, così
+    // la colonna si chiama come la casella che ha spuntato.
+    const fieldLabels = await reportFieldLabels(tenantId)
+    const { query, params, columns, groupSource } = buildReportQuery(section, tenantId, whitelist, { fieldLabels })
     const chartType = assertChartType(section.chartType, `section ${JSON.stringify(section.id)}`)
 
     const session = getSession(undefined, 'READ')

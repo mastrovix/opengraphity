@@ -296,6 +296,7 @@ async function provisionNeo4j(a: Args): Promise<void> {
            t.max_service_maps  = $maxServiceMaps,
            t.max_form_fields   = $maxFormFields,
            t.max_form_fields_per_form = $maxFormFieldsPerForm,
+           t.max_form_table_rows = $maxFormTableRows,
            t.event_policy      = $eventPolicy,
            t.created_at        = $now
          RETURN (t.created_at = $now) AS wasCreated, t.plan AS plan, t.timezone AS timezone`,
@@ -308,6 +309,7 @@ async function provisionNeo4j(a: Args): Promise<void> {
           // numeri scritti sui tenant esistenti dalla 20261003_1020_catalog_form_limits
           maxFormFields: CATALOG_FORM_LIMIT_DEFAULTS.maxLibraryFields,
           maxFormFieldsPerForm: CATALOG_FORM_LIMIT_DEFAULTS.maxFieldsPerForm,
+          maxFormTableRows: CATALOG_FORM_LIMIT_DEFAULTS.maxTableRows,   // ondata 7: righe di una tabella
           eventPolicy: DEFAULT_EVENT_POLICY_JSON,   // Event Management: stessa policy iniziale della migrazione 20260909_1010_event_management_fixup
         },
       ),

@@ -28,6 +28,12 @@ export const CATALOG_FORM_LIMIT_DEFAULTS = {
   maxLibraryFields: 120,
   /** Campi in UN modulo: oltre la sessantina nessuno lo compila fino in fondo. */
   maxFieldsPerForm: 60,
+  /**
+   * Righe in UNA tabella di un modulo (ondata 7). Ogni riga è un nodo nel
+   * grafo: cento righe per ticket su diecimila ticket è un milione di nodi che
+   * nessuno ha chiesto. Chi ne ha bisogno di più alza il tetto sapendolo.
+   */
+  maxTableRows: 50,
 } as const
 
 /** Il minimo accettabile per un tetto: sotto 1 vorrebbe dire «nessun modulo». */
@@ -42,20 +48,32 @@ export const CATALOG_FORM_LIMIT_MAX = 1000
 export interface CatalogFormLimits {
   maxLibraryFields: number
   maxFieldsPerForm: number
+  /** Righe in una tabella di un modulo (ondata 7). */
+  maxTableRows: number
 }
 
 const LIMITS_QUERY = `
   MATCH (t:Tenant {id: $tenantId})
-  RETURN t.max_form_fields AS maxLibraryFields, t.max_form_fields_per_form AS maxFieldsPerForm`
+  RETURN t.max_form_fields AS maxLibraryFields, t.max_form_fields_per_form AS maxFieldsPerForm,
+         t.max_form_table_rows AS maxTableRows`
 
 /** I due tetti del tenant. Fail-loud: mai un numero inventato. */
 export async function catalogFormLimits(session: Queryable, tenantId: string): Promise<CatalogFormLimits> {
-  const row = await runQueryOne<{ maxLibraryFields: unknown; maxFieldsPerForm: unknown }>(session, LIMITS_QUERY, { tenantId })
+  const row = await runQueryOne<{ maxLibraryFields: unknown; maxFieldsPerForm: unknown; maxTableRows: unknown }>(session, LIMITS_QUERY, { tenantId })
   if (!row) throw new Error(`Tenant ${tenantId} has no :Tenant node: fix the tenant before using catalog forms`)
   if (row.maxLibraryFields == null || row.maxFieldsPerForm == null) {
     throw new Error(`Tenant ${tenantId} has no catalog form limits — run the 20261003_1020_catalog_form_limits migration`)
   }
-  return { maxLibraryFields: Number(row.maxLibraryFields), maxFieldsPerForm: Number(row.maxFieldsPerForm) }
+  // `max_form_table_rows` è dell'ondata 7: un tenant migrato fino all'ondata 4
+  // ce l'ha assente, e la sua migrazione lo scrive.
+  if (row.maxTableRows == null) {
+    throw new Error(`Tenant ${tenantId} has no max_form_table_rows — run the 20261004_1010_form_table_rows_limit migration`)
+  }
+  return {
+    maxLibraryFields: Number(row.maxLibraryFields),
+    maxFieldsPerForm: Number(row.maxFieldsPerForm),
+    maxTableRows: Number(row.maxTableRows),
+  }
 }
 
 /**

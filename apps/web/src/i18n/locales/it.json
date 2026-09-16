@@ -4164,6 +4164,21 @@
       "workflowNotFound": "Quel workflow qui non esiste, oppure è spento.",
       "workflowWrongType": "Il workflow «{{name}}» è per {{entityType}}, non per le richieste di servizio.",
       "workflowNoInitialStep": "Il workflow «{{name}}» non ha un passo iniziale: segnane uno nel disegnatore prima di usarlo qui."
+    },
+    "formTable": {
+      "noColumns": "La tabella «{{field}}» non ha colonne: aggiungine almeno una nella libreria dei campi.",
+      "duplicateColumn": "La tabella «{{field}}» ha due volte la colonna «{{column}}».",
+      "columnWithoutVocabulary": "La colonna «{{column}}» di «{{field}}» è una scelta ma non ha un vocabolario: non offrirebbe niente.",
+      "columnVocabularyNotAllowed": "La colonna «{{column}}» di «{{field}}» è di tipo {{fieldType}} e non vuole un vocabolario.",
+      "tooManyRows": "La tabella «{{field}}» accetta al massimo {{max}} righe, ne sono arrivate {{count}}. Alza il tetto nella pagina dei moduli.",
+      "unknownColumn": "La tabella «{{field}}» non ha la colonna «{{column}}».",
+      "cellRequired": "Riga {{row}} di «{{field}}»: la colonna «{{column}}» è obbligatoria.",
+      "cellNotNumber": "Riga {{row}} di «{{field}}»: «{{value}}» non è un numero per «{{column}}».",
+      "cellNotBoolean": "Riga {{row}} di «{{field}}»: «{{column}}» vuole sì o no, è arrivato «{{value}}».",
+      "cellNotDate": "Riga {{row}} di «{{field}}»: «{{value}}» non è una data per «{{column}}».",
+      "cellNotInVocabulary": "Riga {{row}} di «{{field}}»: «{{value}}» non è un valore di «{{column}}» (ammessi: {{allowed}}).",
+      "rowRequired": "La tabella «{{field}}» vuole almeno una riga.",
+      "notATable": "Un campo {{fieldType}} non vuole colonne: le ha solo un campo tabella."
     }
   },
   "errorBoundary": {

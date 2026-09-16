@@ -237,7 +237,16 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     ].join('\n'))
   })
 
-  it('table: aliases are generated (c0, c1…) and display names come from node labels', () => {
+  /**
+   * Le INTESTAZIONI si leggono (ondata 6, punto 3): l'etichetta del campo
+   * quando la conosciamo, il nome interno come ripiego, e l'etichetta
+   * dell'entità davanti SOLO con più di un'entità nella stessa tabella — qui
+   * ce ne sono due, quindi il prefisso serve a distinguere «Nome» da «Nome».
+   *
+   * Il testo dell'etichetta resta dato dell'utente e non entra MAI in Cypher:
+   * il `Team) RETURN 1 //` nel nome del nodo è lì per questo.
+   */
+  it('table: aliases are generated (c0, c1…) and display names come from the field labels', () => {
     const sec = section({
       chartType: 'table',
       nodes: [
@@ -246,7 +255,8 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
       ],
       edges: [edge({ id: 'e1', sourceNodeId: 'root', targetNodeId: 'team' })],
     })
-    const { query, columns } = buildReportQuery(sec, TENANT, whitelist)
+    const fieldLabels = new Map([['Incident.title', 'Titolo'], ['Team.name', 'Nome']])
+    const { query, columns } = buildReportQuery(sec, TENANT, whitelist, { fieldLabels })
     expect(query).toBe([
       'MATCH (n0:Incident {tenant_id: $tenantId})',
       'MATCH (n0)-[:ASSIGNED_TO_TEAM]->(n1:Team)',
@@ -256,10 +266,20 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     // The label text (which may contain anything) is UI-only, never in Cypher.
     expect(query).not.toContain('RETURN 1')
     expect(columns).toEqual([
-      { alias: 'c0', name: 'Incidenti_aperti_title', source: { neo4jLabel: 'Incident', field: 'title' } },
-      { alias: 'c1', name: 'Incidenti_aperti_createdAt', source: { neo4jLabel: 'Incident', field: 'createdAt' } },
-      { alias: 'c2', name: 'Team)_RETURN_1_//_name', source: { neo4jLabel: 'Team', field: 'name' } },
+      { alias: 'c0', name: 'Incidenti aperti · Titolo', source: { neo4jLabel: 'Incident', field: 'title' } },
+      // `createdAt` non è nella mappa: ripiego sul nome interno, non intestazione vuota.
+      { alias: 'c1', name: 'Incidenti aperti · createdAt', source: { neo4jLabel: 'Incident', field: 'createdAt' } },
+      { alias: 'c2', name: 'Team) RETURN 1 // · Nome', source: { neo4jLabel: 'Team', field: 'name' } },
     ])
+  })
+
+  it('table con UNA sola entità: nessun prefisso, il nome del campo basta', () => {
+    const sec = section({
+      chartType: 'table',
+      nodes: [node({ id: 'root', isRoot: true, isResult: true, label: 'Incidenti aperti', selectedFields: ['title'] })],
+    })
+    const { columns } = buildReportQuery(sec, TENANT, whitelist, { fieldLabels: new Map([['Incident.title', 'Titolo']]) })
+    expect(columns).toEqual([{ alias: 'c0', name: 'Titolo', source: { neo4jLabel: 'Incident', field: 'title' } }])
   })
 
   it('table with no selected fields is a validation error (no phantom id column) — C-11', () => {

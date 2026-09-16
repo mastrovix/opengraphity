@@ -518,3 +518,81 @@ describe('campi calcolati', () => {
       .rejects.toThrow(/required/)
   })
 })
+
+/**
+ * LA TABELLA RIPETIBILE (ondata 7). Le cose che, sbagliate, non si vedrebbero:
+ * una riga vuota che diventa un dato, una colonna sconosciuta accettata in
+ * silenzio, e l'ORDINE — che è l'unica cosa che distingue «la prima persona
+ * dell'elenco» da «una delle persone».
+ */
+describe('tabelle ripetibili', () => {
+  const session = {} as never
+  const colonne = {
+    version: 1,
+    columns: [
+      { name: 'persona', labels: { it: 'Persona' }, fieldType: 'text', required: true },
+      { name: 'ruolo', labels: { it: 'Ruolo' }, fieldType: 'enum', vocabulary: 'device_kind' },
+      { name: 'giorni', labels: { it: 'Giorni' }, fieldType: 'number' },
+    ],
+  }
+  const lib = new Map<string, never>([['persone', campo('persone', 'table', { tableDefinition: colonne })]])
+  const def: CatalogFormDefinition = {
+    version: 1, revision: 1,
+    sections: [{ id: 's1', title: [{ language: 'it', label: 'S' }], items: [{ field: 'persone' }] }],
+  }
+  const righe = (rows: Array<Record<string, string | null>>) => [{ name: 'persone', rows }]
+
+  it('le righe piene si scrivono nell\'ordine arrivato, le vuote si scartano', async () => {
+    const r = await resolveFormWrites(session, 't1', def, lib, righe([
+      { persona: 'Ada', ruolo: 'portatile', giorni: '3' },
+      { persona: '', ruolo: '', giorni: '' },
+      { persona: 'Grace', ruolo: 'fisso', giorni: '1' },
+    ]), { maxTableRows: 10 })
+    expect(r.tables).toHaveLength(1)
+    expect(r.tables[0]!.rows.map((x) => x['persona'])).toEqual(['Ada', 'Grace'])
+    // Una tabella NON diventa una proprietà del ticket: è il senso di tutto.
+    expect(r.props['persone']).toBeUndefined()
+  })
+
+  it('una colonna obbligatoria vuota ferma il salvataggio, e il messaggio dice QUALE RIGA', async () => {
+    await expect(resolveFormWrites(session, 't1', def, lib, righe([
+      { persona: 'Ada', ruolo: 'portatile', giorni: '1' },
+      { persona: '', ruolo: 'fisso', giorni: '2' },
+    ]), { maxTableRows: 10 })).rejects.toThrow(/Row 2 .*"Persona" is required/)
+  })
+
+  it('una colonna che la tabella non ha viene RIFIUTATA, non ignorata', async () => {
+    await expect(resolveFormWrites(session, 't1', def, lib, righe([{ persona: 'Ada', stipendio: '9000' }]), { maxTableRows: 10 }))
+      .rejects.toThrow(/has no column "stipendio"/)
+  })
+
+  it('le celle passano dal tipo della colonna: numero, data e vocabolario', async () => {
+    await expect(resolveFormWrites(session, 't1', def, lib, righe([{ persona: 'Ada', giorni: 'molti' }]), { maxTableRows: 10 }))
+      .rejects.toThrow(/"molti" is not a number/)
+    await expect(resolveFormWrites(session, 't1', def, lib, righe([{ persona: 'Ada', ruolo: 'imperatrice' }]), { maxTableRows: 10 }))
+      .rejects.toThrow(/is not a value of "Ruolo"/)
+  })
+
+  it('il tetto sulle righe conta solo quelle PIENE: dieci clic a vuoto non riempiono la tabella', async () => {
+    const vuote = Array.from({ length: 8 }, () => ({ persona: '', ruolo: '', giorni: '' }))
+    const r = await resolveFormWrites(session, 't1', def, lib, righe([...vuote, { persona: 'Ada' }]), { maxTableRows: 2 })
+    expect(r.tables[0]!.rows).toHaveLength(1)
+    await expect(resolveFormWrites(session, 't1', def, lib, righe([{ persona: 'a' }, { persona: 'b' }, { persona: 'c' }]), { maxTableRows: 2 }))
+      .rejects.toThrow(/at most 2 rows, 3 were sent/)
+  })
+
+  it('tabella OBBLIGATORIA senza righe piene: si ferma come un campo lasciato vuoto', async () => {
+    const obbligatoria: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 's1', title: [{ language: 'it', label: 'S' }], items: [{ field: 'persone', required: true }] }],
+    }
+    await expect(resolveFormWrites(session, 't1', obbligatoria, lib, righe([{ persona: '' }]), { maxTableRows: 10 }))
+      .rejects.toThrow(/needs at least one row/)
+  })
+
+  it('un campo tabella senza colonne è un errore di CONFIGURAZIONE, detto con il nome del campo', async () => {
+    const senzaColonne = new Map<string, never>([['persone', campo('persone', 'table')]])
+    await expect(resolveFormWrites(session, 't1', def, senzaColonne, righe([{ persona: 'Ada' }]), { maxTableRows: 10 }))
+      .rejects.toThrow(/is a table but has no columns/)
+  })
+})

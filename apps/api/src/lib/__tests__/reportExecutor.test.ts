@@ -16,6 +16,12 @@ vi.mock('../reportWhitelist.js', () => ({
 // basta sapere che l'esecutore chiede le sorgenti giuste e usa la risposta.
 const labeler = vi.fn((_source: unknown, value: unknown) => value)
 const loadReportValueLabeler = vi.fn(async () => labeler)
+/**
+ * Le etichette delle intestazioni (ondata 6, punto 3): qui si finge la mappa
+ * vuota, così questi test restano su quello che verificano — l'esecuzione — e
+ * le intestazioni ripiegano sul nome interno, come prima.
+ */
+vi.mock('../reportFieldLabels.js', () => ({ reportFieldLabels: vi.fn(async () => new Map<string, string>()) }))
 vi.mock('../reportValueLabels.js', () => ({
   identityLabeler: (_s: unknown, v: unknown) => v,
   loadReportValueLabeler: (...args: unknown[]) => loadReportValueLabeler(...(args as [])),
@@ -113,7 +119,9 @@ describe('executeReportSection', () => {
     sec.nodes[0]!.selectedFields = ['title']
     const res = await executeReportSection(sec, 't1')
     expect(res.error).toBeNull()
-    expect(JSON.parse(res.data)).toEqual({ columns: ['Incident_title'], rows: [['DB down']] })
+    // Intestazione col nome interno: la mappa delle etichette qui è vuota di
+    // proposito (ondata 6, punto 3), e senza etichetta il ripiego è il nome.
+    expect(JSON.parse(res.data)).toEqual({ columns: ['title'], rows: [['DB down']] })
   })
 
   it('i valori passano dalle etichette: raggruppamento e colonne con la loro sorgente', async () => {

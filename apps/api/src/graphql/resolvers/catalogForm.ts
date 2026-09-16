@@ -12,7 +12,7 @@ import { randomUUID } from 'crypto'
 import { GraphQLError } from 'graphql'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import {
-  canBeComputed, CATALOG_FORM_VERSION, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY,
+  canBeComputed, CATALOG_FORM_VERSION, formTableColumnLabel, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY, isFormTableType,
   FORM_FIELD_TYPES_WITHOUT_ANSWER, FORM_FIELD_TYPES_WITH_VOCABULARY,
   catalogFormFieldNames, emptyCatalogForm, isFormFieldType, serializeLocalizedLabels,
   type CatalogFormDefinition,
@@ -21,7 +21,9 @@ import type { GraphQLContext } from '../../context.js'
 import { ValidationError } from '../../lib/errors.js'
 import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { assertFormSize, assertLibraryRoom, assertLimitValue, CATALOG_FORM_LIMIT_MAX, CATALOG_FORM_LIMIT_MIN, catalogFormLimits as leggiTetti } from '../../lib/catalogFormLimits.js'
-import { etichetteDeiValori } from '../../lib/catalogForm.js'
+import { assertFormTable, etichetteDeiValori, parseFormTable } from '../../lib/catalogForm.js'
+import { labelFor, type EnumValueLabels } from '../../lib/enumValueLabels.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import {
   assertCatalogForm, assertFormFieldName, formAnswersOf, formFields, formFieldsByName, formFieldsCache,
@@ -66,7 +68,39 @@ async function usoDeiCampi(tenantId: string): Promise<Map<string, string[]>> {
 }
 
 function vistaCampo(d: FormFieldDef, usedBy: readonly string[]): Record<string, unknown> {
-  return { ...d, usedBy: [...usedBy] }
+  return {
+    ...d,
+    usedBy: [...usedBy],
+    // Le colonne viaggiano come JSON (come il documento del modulo): nel campo
+    // sono un oggetto, nello schema una stringa.
+    tableDefinition: d.tableDefinition ? JSON.stringify(d.tableDefinition) : null,
+  }
+}
+
+/**
+ * Le COLONNE si mettono solo su un campo TABELLA (ondata 7), e devono stare in
+ * piedi: almeno una colonna, nomi senza doppioni, una scelta con il suo
+ * vocabolario. Una tabella SENZA colonne non si salva — sarebbe un campo che
+ * non chiede niente, e chi compila vedrebbe una tabella vuota senza capire.
+ */
+function assertTabella(fieldType: string, raw: unknown, dove: string): string | null {
+  const testo = raw == null || String(raw).trim() === '' ? null : String(raw)
+  if (!isFormTableType(fieldType)) {
+    if (testo) {
+      throw new ValidationError(`A ${fieldType} field takes no table columns: only a table field does.`,
+        { key: 'errors.formTable.notATable', params: { fieldType } })
+    }
+    return null
+  }
+  if (!testo) {
+    throw new ValidationError(`The table "${dove}" has no columns: add at least one.`,
+      { key: 'errors.formTable.noColumns', params: { field: dove } })
+  }
+  const def = parseFormTable(testo, `FormField ${dove} (table)`)!
+  assertFormTable(def, dove)
+  // Si riscrive dal documento letto, non dal testo arrivato: così nel grafo
+  // finisce la forma che questa versione capisce, senza chiavi di troppo.
+  return JSON.stringify(def)
 }
 
 /**
@@ -229,7 +263,8 @@ export const catalogFormResolvers = {
             id: $id, tenant_id: $tenantId, name: $name, field_type: $fieldType,
             label: $label, labels: $labels, help: $help, helps: $helps,
             required: $required, vocabulary: $vocabulary, validation_script: $validationScript,
-            in_list: $inList, formula: $formula, created_at: $now, updated_at: $now
+            in_list: $inList, formula: $formula, table_definition: $tableDefinition,
+            created_at: $now, updated_at: $now
           })`, {
           id: randomUUID(), tenantId: ctx.tenantId, name, fieldType, label,
           labels: serializeLocalizedLabels(mappaTesti(input['labels'] as TestoPerLingua[] | null)),
@@ -240,6 +275,7 @@ export const catalogFormResolvers = {
           validationScript: (input['validationScript'] as string | null) ?? null,
           inList: assertColonnaPossibile(fieldType, input['inList'] === true),
           formula: assertFormulaPossibile(fieldType, input['formula']),
+          tableDefinition: assertTabella(fieldType, input['tableDefinition'], label || name),
           now,
         })
         // La leva del metamodello: la cache della libreria (che serve alle
@@ -277,6 +313,7 @@ export const catalogFormResolvers = {
               f.validation_script = CASE WHEN $scriptSet THEN $validationScript ELSE f.validation_script END,
               f.in_list = CASE WHEN $inListSet THEN $inList ELSE f.in_list END,
               f.formula = CASE WHEN $formulaSet THEN $formula ELSE f.formula END,
+              f.table_definition = CASE WHEN $tableSet THEN $tableDefinition ELSE f.table_definition END,
               f.updated_at = $now`, {
           id: args.id, tenantId: ctx.tenantId,
           label: input['label'] == null ? null : String(input['label']).trim(),
@@ -289,6 +326,12 @@ export const catalogFormResolvers = {
           // Il tipo non si cambia, quindi la guardia guarda quello che il campo È già.
           inListSet: 'inList' in input, inList: assertColonnaPossibile(corrente.fieldType, input['inList'] === true),
           formulaSet: 'formula' in input, formula: assertFormulaPossibile(corrente.fieldType, input['formula']),
+          // Le colonne si cambiano solo se arrivano: un aggiornamento che non le
+          // manda non le cancella (una tabella senza colonne non è salvabile).
+          tableSet: 'tableDefinition' in input,
+          tableDefinition: 'tableDefinition' in input
+            ? assertTabella(corrente.fieldType, input['tableDefinition'], corrente.label)
+            : null,
           now: new Date().toISOString(),
         })
         invalidateSchema(ctx.tenantId)
@@ -392,10 +435,36 @@ export const catalogFormResolvers = {
  * con cui la richiesta e stata compilata. Registrato in resolvers/service_request.ts
  * accanto agli altri campi del tipo.
  */
+/**
+ * Le risposte nella forma dello schema. Le RIGHE di una tabella (ondata 7)
+ * diventano celle in ORDINE DI COLONNA: nel grafo una riga è una mappa, e una
+ * mappa non ha ordine — l'ordine è quello che l'amministratore ha dato alle
+ * colonne, e va rimesso qui o la tabella si legge a caso.
+ */
+function vistaRisposta(
+  a: FormAnswerRead,
+  etichette: (colonna: string, valore: string) => string,
+): Record<string, unknown> {
+  return {
+    ...a,
+    rows: a.rows.map((riga) => ({
+      cells: a.tableColumns.map((c) => {
+        const valore = riga[c.name] ?? null
+        return { column: c.name, value: valore, displayValue: valore == null ? null : etichette(c.name, valore) }
+      }),
+    })),
+    tableColumns: a.tableColumns.map((c) => ({
+      name: c.name,
+      label: formTableColumnLabel(c, null),
+      fieldType: c.fieldType,
+    })),
+  }
+}
+
 export async function serviceRequestFormAnswers(
   parent: { id: string; catalogItemId?: string | null; formRevision?: number | null },
   _args: unknown, ctx: GraphQLContext,
-): Promise<FormAnswerRead[]> {
+): Promise<Array<Record<string, unknown>>> {
   if (!parent.catalogItemId || !parent.formRevision) return []
   const session = getSession(undefined, 'READ')
   try {
@@ -403,9 +472,26 @@ export async function serviceRequestFormAnswers(
       MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
       RETURN properties(r) AS props`, { id: parent.id, tenantId: ctx.tenantId })
     if (!row) return []
-    return await formAnswersOf(session, ctx.tenantId, {
+    const risposte = await formAnswersOf(session, ctx.tenantId, {
       id: parent.id, catalogItemId: parent.catalogItemId, formRevision: parent.formRevision, props: row.props,
     })
+    /**
+     * Le etichette dei valori delle celle: i vocabolari delle colonne, letti
+     * una volta ciascuno. Una colonna a scelta deve leggersi «Amministratore»
+     * come ovunque, non `admin`.
+     */
+    const vocabolariColonne = new Map<string, EnumValueLabels>()
+    const lingua = await languageFor(ctx.tenantId)
+    for (const a of risposte) {
+      for (const c of a.tableColumns) {
+        if (!c.vocabulary || vocabolariColonne.has(`${a.name}.${c.name}`)) continue
+        vocabolariColonne.set(`${a.name}.${c.name}`, (await loadVocabularyEntries(ctx.tenantId, c.vocabulary)).labels)
+      }
+    }
+    return risposte.map((a) => vistaRisposta(a, (colonna, valore) => {
+      const etichette = vocabolariColonne.get(`${a.name}.${colonna}`)
+      return etichette && etichette[valore] ? labelFor(valore, etichette, lingua, lingua) : valore
+    }))
   } finally { await session.close() }
 }
 
@@ -448,7 +534,7 @@ export const formFieldOptions = async (
 export async function serviceRequestFormFieldValues(
   parent: { id: string },
   _args: unknown, ctx: GraphQLContext,
-): Promise<Array<{ name: string; label: string; fieldType: string; value: string | null; values: string[]; displayValue: string | null; displayValues: string[]; references: never[]; files: never[] }>> {
+): Promise<Array<{ name: string; label: string; fieldType: string; value: string | null; values: string[]; displayValue: string | null; displayValues: string[]; references: never[]; files: never[]; rows: never[]; tableColumns: never[] }>> {
   const libreria = await formFieldsCache.get(ctx.tenantId)
   // Solo i campi che l'amministratore ha messo nelle liste: senza questo filtro
   // il ticket porterebbe TUTTA la libreria a ogni riga della lista.
@@ -478,6 +564,9 @@ export async function serviceRequestFormFieldValues(
           displayValue: valore == null ? null : comeSiLegge(valore),
           displayValues: lista.map(comeSiLegge),
           references: [] as never[], files: [] as never[],
+          // Liste vuote e non assenti: lo schema le vuole non-null, e una
+          // tabella non arriva qui (non è una proprietà) — ondata 7.
+          rows: [] as never[], tableColumns: [] as never[],
         }
       })
   } finally { await session.close() }

@@ -4164,6 +4164,21 @@
       "workflowNotFound": "That workflow does not exist here, or it is not active.",
       "workflowWrongType": "The workflow \"{{name}}\" is for {{entityType}}, not for service requests.",
       "workflowNoInitialStep": "The workflow \"{{name}}\" has no initial step: mark one in the designer before using it here."
+    },
+    "formTable": {
+      "noColumns": "The table \"{{field}}\" has no columns: add at least one in the field library.",
+      "duplicateColumn": "The table \"{{field}}\" has the column \"{{column}}\" twice.",
+      "columnWithoutVocabulary": "The column \"{{column}}\" of \"{{field}}\" is a choice but has no vocabulary: it would offer nothing.",
+      "columnVocabularyNotAllowed": "The column \"{{column}}\" of \"{{field}}\" is a {{fieldType}} and takes no vocabulary.",
+      "tooManyRows": "The table \"{{field}}\" takes at most {{max}} rows, {{count}} were sent. Raise the limit on the catalog forms page.",
+      "unknownColumn": "The table \"{{field}}\" has no column \"{{column}}\".",
+      "cellRequired": "Row {{row}} of \"{{field}}\": the column \"{{column}}\" is required.",
+      "cellNotNumber": "Row {{row}} of \"{{field}}\": \"{{value}}\" is not a number for \"{{column}}\".",
+      "cellNotBoolean": "Row {{row}} of \"{{field}}\": \"{{column}}\" takes yes or no, got \"{{value}}\".",
+      "cellNotDate": "Row {{row}} of \"{{field}}\": \"{{value}}\" is not a date for \"{{column}}\".",
+      "cellNotInVocabulary": "Row {{row}} of \"{{field}}\": \"{{value}}\" is not a value of \"{{column}}\" (allowed: {{allowed}}).",
+      "rowRequired": "The table \"{{field}}\" needs at least one row.",
+      "notATable": "A {{fieldType}} field takes no table columns: only a table field does."
     }
   },
   "errorBoundary": {

@@ -51,6 +51,14 @@ export function catalogFormSDL(): string {
     """
     formula:          String
     """
+    Le COLONNE, se il campo e' una tabella (ondata 7), come JSON:
+    «{version, columns: [{name, labels, fieldType, vocabulary, required}]}».
+    Viaggia come stringa per la stessa ragione del documento del modulo: e' dato
+    del cliente che cambia forma con le ondate, e tipizzarlo qui vorrebbe dire
+    ricostruire lo schema GraphQL a ogni modifica di una tabella.
+    """
+    tableDefinition:  String
+    """
     Se questo campo e' una COLONNA nelle liste delle richieste e
     nell'esportazione CSV (ondata 4). Spento per difetto: una libreria ricca ha
     decine di campi, e una colonna per ognuno renderebbe la lista illeggibile.
@@ -86,6 +94,8 @@ export function catalogFormSDL(): string {
     validationScript: String
     """La formula di un campo calcolato; assente o vuota = campo normale."""
     formula:          String
+    """Le colonne di una tabella, come JSON (solo per fieldType «table»)."""
+    tableDefinition:  String
     """Colonna nelle liste: spento se assente."""
     inList:           Boolean
   }
@@ -101,6 +111,8 @@ export function catalogFormSDL(): string {
     validationScript: String
     """La formula di un campo calcolato; stringa vuota = torna un campo normale."""
     formula:          String
+    """Le colonne di una tabella, come JSON."""
+    tableDefinition:  String
     """Colonna nelle liste."""
     inList:           Boolean
   }
@@ -149,6 +161,23 @@ export function catalogFormSDL(): string {
     values: [String!]
     """Per i campi di riferimento (CI, persona, squadra): l'id del nodo puntato."""
     refIds: [ID!]
+    """Per i campi TABELLA: le righe (ondata 7). Le righe vuote si scartano."""
+    rows:   [FormTableRowInput!]
+  }
+
+  """Una cella: il nome della colonna e il suo valore come testo."""
+  input FormTableCellInput {
+    column: String!
+    value:  String
+  }
+
+  """
+  Una riga di tabella. Celle per NOME e non un oggetto libero: un oggetto
+  libero in GraphQL vuol dire uno scalare JSON, e con quello si perde il
+  controllo dello schema su cosa arriva.
+  """
+  input FormTableRowInput {
+    cells: [FormTableCellInput!]!
   }
 
   """Il nodo puntato da un campo di riferimento."""
@@ -183,6 +212,28 @@ export function catalogFormSDL(): string {
     references: [FormAnswerReference!]!
     """Per i campi allegato: i file del ticket per questo campo (vuoto per gli altri)."""
     files:      [FormAnswerFile!]!
+    """Per i campi TABELLA: le righe, in ordine (vuoto per gli altri)."""
+    rows:        [FormAnswerTableRow!]!
+    """Le colonne della tabella con cui leggere le righe: nome, etichetta e tipo."""
+    tableColumns: [FormAnswerTableColumn!]!
+  }
+
+  """Una riga come si legge: una cella per colonna, nell'ordine delle colonne."""
+  type FormAnswerTableRow {
+    cells: [FormAnswerTableCell!]!
+  }
+
+  type FormAnswerTableCell {
+    column: String!
+    value:  String
+    """Il valore come si legge: l'etichetta del Dizionario per una colonna a scelta."""
+    displayValue: String
+  }
+
+  type FormAnswerTableColumn {
+    name:      String!
+    label:     String!
+    fieldType: String!
   }
   `
 }

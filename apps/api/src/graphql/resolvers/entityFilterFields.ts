@@ -11,7 +11,7 @@
  */
 import { GraphQLObjectType, getNamedType, isEnumType, isListType, isNonNullType, isScalarType, type GraphQLResolveInfo, type GraphQLOutputType } from 'graphql'
 import { ValidationError } from '../../lib/errors.js'
-import { FORM_FIELD_TYPES_MULTI, type TicketCustomFieldEntityType } from '@opengraphity/types'
+import { FORM_FIELD_TYPES_MULTI, isFormTableType, type TicketCustomFieldEntityType } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 import { requestCustomFieldDefs } from './ticketCustomFields.js'
 import { formFields } from '../../lib/catalogForm.js'
@@ -92,7 +92,10 @@ export const entityFilterFieldsResolvers = {
       const daModuli = entityType !== 'service_request' ? [] : await withSession(async (session) => {
         const libreria = await formFields(session, ctx.tenantId)
         return libreria
-          .filter((d) => d.fieldType !== 'note')
+          // Fuori le note (nessuna risposta) e le TABELLE (ondata 7): una
+          // tabella non è un valore, sono righe — si filtrerà per riga, con i
+          // suoi operatori, non come se fosse un testo.
+          .filter((d) => d.fieldType !== 'note' && !isFormTableType(d.fieldType))
           .filter((d) => !fields.some((f) => f.name === d.name) && !custom.some((f) => f.name === d.name))
           .map(async (d): Promise<EntityFilterField> => {
             // `multi`: la selezione multipla finisce sul nodo come lista, e un

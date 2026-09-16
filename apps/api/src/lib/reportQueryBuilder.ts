@@ -103,10 +103,35 @@ function toSnakeCase(s: string): string {
   return s.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '')
 }
 
-/** Display name of a table column (UI-facing; never interpolated into Cypher). */
-export function tableColumnName(node: ReportNodeDef, field: string): string {
-  return `${node.label.replace(/\s+/g, '_')}_${field}`
+/**
+ * Il NOME DI UNA COLONNA come si legge (mai interpolato in Cypher: quello è
+ * l'alias `c0`, `c1`, …).
+ *
+ * Prima era `${etichetta}_${nome interno}` e si leggeva
+ * «SERVICE_REQUEST_AMBIENTE_USO» in cima a una colonna che ovunque si chiama
+ * «Ambiente». Ora si usa l'etichetta del campo quando la conosciamo (la sa il
+ * metamodello, e per i campi dei moduli la libreria); il nome interno resta il
+ * ripiego, perché una colonna senza intestazione sarebbe peggio.
+ *
+ * L'etichetta del NODO davanti solo quando serve a distinguere: con due entità
+ * nella stessa tabella «Nome» e «Nome» sarebbero due colonne indistinguibili,
+ * con una sola entità il prefisso è rumore su ogni colonna.
+ */
+export function tableColumnName(
+  node: ReportNodeDef,
+  field: string,
+  labels?: ReportFieldLabels,
+  withNodePrefix = false,
+): string {
+  const etichetta = labels?.get(`${node.neo4jLabel}.${field}`) ?? field
+  return withNodePrefix ? `${node.label} · ${etichetta}` : etichetta
 }
+
+/**
+ * Le etichette dei campi, per `<etichetta Neo4j>.<campo>`. Le costruisce chi
+ * esegue il report dal metamodello del cliente: qui non si legge il grafo.
+ */
+export type ReportFieldLabels = ReadonlyMap<string, string>
 
 function parseFilters(filtersJson: string | null, what: string): FilterClause[] {
   if (!filtersJson) return []
@@ -262,6 +287,12 @@ export function buildReportQuery(
   section: ReportSectionDef,
   tenantId: string,
   whitelist: ReportWhitelist,
+  /**
+   * Le etichette dei campi, per le intestazioni delle colonne. Facoltative: chi
+   * non le passa (un test, una chiamata vecchia) ottiene i nomi interni, cioè
+   * quello che si vedeva prima.
+   */
+  opts: { fieldLabels?: ReportFieldLabels } = {},
 ): BuiltReportQuery {
   validateReportSection(section, whitelist)
 
@@ -370,12 +401,15 @@ export function buildReportQuery(
 
     case 'table': {
       const cols: string[] = []
-      for (const rn of nodes.filter(n => n.isResult)) {
+      const nodiRisultato = nodes.filter(n => n.isResult)
+      // Il prefisso con l'entità solo se ce n'è più di una: vedi `tableColumnName`.
+      const conPrefisso = nodiRisultato.length > 1
+      for (const rn of nodiRisultato) {
         const rv = v(rn.id)
         for (const sf of (rn.selectedFields ?? [])) {
           const snakeSf = assertFieldName(toSnakeCase(sf), `node ${rn.id} selectedFields`)
           const alias   = `c${columns.length}`
-          columns.push({ alias, name: tableColumnName(rn, sf), source: { neo4jLabel: rn.neo4jLabel, field: sf } })
+          columns.push({ alias, name: tableColumnName(rn, sf, opts.fieldLabels, conPrefisso), source: { neo4jLabel: rn.neo4jLabel, field: sf } })
           cols.push(`${rv}.${snakeSf} AS ${alias}`)
         }
       }

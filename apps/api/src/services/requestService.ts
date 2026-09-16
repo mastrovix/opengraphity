@@ -1,9 +1,11 @@
 import { v4 as uuidv4 } from 'uuid'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
 import {
-  claimDraftAttachments, formFieldsByName, parseCatalogForm, resolveFormWrites, writeFormReferences,
-  type FormAnswerInput, type FormReferenceWrite,
+  claimDraftAttachments, formFieldsByName, parseCatalogForm, resolveFormWrites,
+  writeFormReferences, writeFormTables,
+  type FormAnswerInput, type FormReferenceWrite, type FormTableWrite,
 } from '../lib/catalogForm.js'
+import { catalogFormLimits as leggiTetti } from '../lib/catalogFormLimits.js'
 import { catalogFormFieldNames } from '@opengraphity/types'
 import { creationStepContext } from '../lib/customFieldSteps.js'
 import { withTicketProps } from '../lib/ticketProps.js'
@@ -64,8 +66,8 @@ export async function createRequest(
    * Il ticket porta la revisione del modulo usato: se domani il modulo cambia,
    * queste risposte si rileggono ancora con la loro.
    */
-  const vuoto = { props: {} as Record<string, unknown>, revision: null as number | null, references: [] as FormReferenceWrite[] }
-  const { props: formProps, revision: formRevision, references: formReferences } = await withSession(async (session) => {
+  const vuoto = { props: {} as Record<string, unknown>, revision: null as number | null, references: [] as FormReferenceWrite[], tables: [] as FormTableWrite[] }
+  const { props: formProps, revision: formRevision, references: formReferences, tables: formTables } = await withSession(async (session) => {
     if (!input.catalogItemId) {
       if (input.formAnswers?.length) {
         throw new ValidationError('Form answers were sent without a catalog item: a form belongs to a catalog item.',
@@ -91,8 +93,11 @@ export async function createRequest(
       // il nome del campo; qui si conta, per l'obbligatorietà.
       draftId: input.formDraftId ?? null,
       userId: ctx.userId,
+      // Il tetto sulle righe di una tabella (ondata 7): tecnico e configurabile
+      // come gli altri, letto qui perché la validazione deve poterlo dire.
+      maxTableRows: (await leggiTetti(session, ctx.tenantId)).maxTableRows,
     })
-    return { props: esito.props, revision: def.revision, references: esito.references }
+    return { props: esito.props, revision: def.revision, references: esito.references, tables: esito.tables }
   })
   const id  = uuidv4()
   const now = new Date().toISOString()
@@ -190,6 +195,11 @@ export async function createRequest(
      */
     if (formReferences.length > 0) {
       await writeFormReferences(session, ctx.tenantId, true, id, formReferences)
+    }
+    // Le righe delle tabelle (ondata 7): nodi appesi al ticket, quindi dopo la
+    // CREATE e nella stessa sessione, per la stessa ragione dei riferimenti.
+    if (formTables.length > 0) {
+      await writeFormTables(session, ctx.tenantId, id, formTables)
     }
     if (input.formDraftId) {
       const reclamati = await claimDraftAttachments(session, ctx.tenantId, input.formDraftId, 'service_request', id, ctx.userId)

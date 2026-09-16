@@ -62,6 +62,8 @@ export const FORM_FIELD_TYPES = [
   'ref_ci',     // un CI della CMDB: la risposta è una relazione nel grafo
   'ref_user',   // una persona
   'ref_team',   // una squadra
+  // ── Ondata 7 ──────────────────────────────────────────────────────────────
+  'table',      // una TABELLA di righe: la risposta sono nodi :FormTableRow, non una proprietà
 ] as const
 export type FormFieldType = (typeof FORM_FIELD_TYPES)[number]
 
@@ -93,6 +95,20 @@ export const FORM_FIELD_TYPES_AS_PROPERTY: readonly FormFieldType[] =
   ['text', 'textarea', 'number', 'date', 'datetime', 'boolean', 'enum', 'multi_enum']
 export const FORM_FIELD_TYPES_AS_ATTACHMENT: readonly FormFieldType[] = ['attachment']
 export const FORM_FIELD_TYPES_AS_REFERENCE: readonly FormFieldType[] = ['ref_ci', 'ref_user', 'ref_team']
+/**
+ *  - `AS_ROWS`: una TABELLA (ondata 7). La risposta sono nodi `:FormTableRow`
+ *    appesi al ticket, uno per riga, con una proprietà per colonna. Non è una
+ *    proprietà del ticket e non può diventarlo: una proprietà è un valore, una
+ *    tabella è una lista di RECORD. Quindi non è una colonna nelle liste, non
+ *    è un widget e non è una colonna di report — si filtra però, per riga
+ *    («esiste una riga dove ruolo = amministratore»), che è la domanda che una
+ *    persona fa davvero.
+ */
+export const FORM_FIELD_TYPES_AS_ROWS: readonly FormFieldType[] = ['table']
+
+export function isFormTableType(t: string): boolean {
+  return (FORM_FIELD_TYPES_AS_ROWS as readonly string[]).includes(t)
+}
 
 /** L'etichetta Neo4j del nodo puntato da un campo di riferimento. */
 export const FORM_REFERENCE_LABELS: Readonly<Record<string, string>> = {
@@ -382,4 +398,71 @@ export function localizedText(text: LocalizedText | undefined, language: string 
   if (language && text[language]) return text[language]!
   const prima = Object.values(text).find((v) => v.trim() !== '')
   return prima ?? fallback
+}
+
+// ── La tabella ripetibile (ondata 7) ────────────────────────────────────────
+//
+// «Elenca le persone da abilitare: nome, ruolo, data di inizio» — tre righe
+// oggi, sette domani. È l'unico tipo che NON diventa una proprietà del ticket,
+// e per una ragione che vale la pena scrivere: una proprietà è un valore, una
+// tabella è una lista di record. Metterla in una proprietà vorrebbe dire un
+// JSON dentro il nodo, cioè esattamente il documento opaco che tutto questo
+// modulo evita: non si filtra, non si riporta, non si somma.
+//
+// Quindi le righe sono NODI (`:FormTableRow`), come gli allegati sono nodi e i
+// riferimenti sono relazioni. Si pagano due cose — una lettura in più per
+// mostrarle, e una sottoquery per filtrarle — e si guadagna che «esiste una
+// riga dove ruolo = amministratore» è una domanda che si può fare.
+
+/** I tipi che una COLONNA di tabella può avere: valori scalari, niente di annidato. */
+export const FORM_TABLE_COLUMN_TYPES = ['text', 'number', 'date', 'boolean', 'enum'] as const
+export type FormTableColumnType = (typeof FORM_TABLE_COLUMN_TYPES)[number]
+
+export function isFormTableColumnType(v: unknown): v is FormTableColumnType {
+  return typeof v === 'string' && (FORM_TABLE_COLUMN_TYPES as readonly string[]).includes(v)
+}
+
+export interface FormTableColumn {
+  /** Il nome della proprietà sulla riga: stesse regole del nome di un campo. */
+  readonly name: string
+  readonly labels: LocalizedText
+  readonly fieldType: FormTableColumnType
+  /** Il vocabolario del Dizionario, solo per `enum`. */
+  readonly vocabulary?: string | null
+  /** Obbligatoria: una riga senza questo valore non si salva. */
+  readonly required?: boolean
+}
+
+/**
+ * La definizione delle colonne, sul campo della libreria. Versionata come il
+ * documento del modulo (`CatalogFormDefinition`) e per lo stesso motivo: se un
+ * giorno la forma cambia, chi legge deve accorgersene invece di indovinare.
+ */
+export interface FormTableDefinition {
+  readonly version: number
+  readonly columns: readonly FormTableColumn[]
+}
+
+export const FORM_TABLE_VERSION = 1
+export const FORM_TABLE_V1_KEYS = ['version', 'columns'] as const
+
+/** Una riga come viaggia fra browser, API e grafo: valore per nome di colonna. */
+export type FormTableRow = Readonly<Record<string, string | null>>
+
+export function emptyFormTable(): FormTableDefinition {
+  return { version: FORM_TABLE_VERSION, columns: [] }
+}
+
+/** L'etichetta di una colonna nella lingua chiesta, col ripiego del nome. */
+export function formTableColumnLabel(column: FormTableColumn, language?: string | null): string {
+  return localizedText(column.labels, language, column.name)
+}
+
+/**
+ * Una riga è VUOTA quando nessuna cella ha un valore. Serve in un posto solo,
+ * ma è la regola che decide cosa si salva: una riga aggiunta e mai compilata
+ * non è un dato, è un clic — e salvarla darebbe righe fantasma nei report.
+ */
+export function isFormTableRowEmpty(row: FormTableRow): boolean {
+  return Object.values(row).every((v) => v == null || String(v).trim() === '')
 }

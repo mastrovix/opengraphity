@@ -30,11 +30,14 @@ import {
   FORM_FIELD_TYPES_WITHOUT_ANSWER, FORM_FIELD_TYPES_WITH_VOCABULARY, FORM_CONDITION_OPS,
   FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_DRAFT_ENTITY_TYPE, FORM_FIELD_TYPES_AS_PROPERTY,
   canBeConditionSubject, catalogFormConditionFieldNames, catalogFormFieldNames,
-  evaluateFormCondition, formulaInput,
+  evaluateFormCondition, formulaInput, isFormTableColumnType, isFormTableType,
+  FORM_TABLE_COLUMN_TYPES, FORM_TABLE_VERSION, FORM_TABLE_V1_KEYS,
   isFormAnswerEmpty, isFormAttachmentType, isFormConditionOp, isFormFieldType, isFormReferenceType,
+  isFormTableRowEmpty,
   parseLocalizedLabels,
   type CatalogFormDefinition, type CatalogFormItem, type CatalogFormSection,
   type FormAnswerValue, type FormAnswers, type FormCondition, type FormFieldType, type LocalizedLabel,
+  type FormTableColumn, type FormTableDefinition, type FormTableRow,
 } from '@opengraphity/types'
 import { ValidationError } from './errors.js'
 import { assertCustomFieldName } from './customFieldName.js'
@@ -67,6 +70,8 @@ export interface FormFieldDef {
    * lo decide il server al salvataggio, e il browser lo mostra intanto.
    */
   formula: string | null
+  /** Le colonne, se il campo è una TABELLA (ondata 7); null per tutti gli altri tipi. */
+  tableDefinition: FormTableDefinition | null
   /** Se diventa una colonna nelle liste e nell'esportazione (ondata 4). */
   inList: boolean
   createdAt: string | null
@@ -78,7 +83,8 @@ export interface FormFieldDef {
 const FIELD_RETURN = `
   f.id AS id, f.name AS name, f.field_type AS fieldType, f.label AS label, f.labels AS labels,
   f.help AS help, f.helps AS helps, f.required AS required, f.vocabulary AS vocabulary,
-  f.validation_script AS validationScript, f.formula AS formula, f.in_list AS inList,
+  f.validation_script AS validationScript, f.formula AS formula,
+  f.table_definition AS tableDefinition, f.in_list AS inList,
   f.created_at AS createdAt, f.updated_at AS updatedAt`
 
 function mapField(row: Record<string, unknown>): FormFieldDef {
@@ -100,6 +106,7 @@ function mapField(row: Record<string, unknown>): FormFieldDef {
     vocabulary: row['vocabulary'] == null || row['vocabulary'] === '' ? null : String(row['vocabulary']),
     validationScript: row['validationScript'] == null || row['validationScript'] === '' ? null : String(row['validationScript']),
     formula: row['formula'] == null || row['formula'] === '' ? null : String(row['formula']),
+    tableDefinition: parseFormTable(row['tableDefinition'], `FormField ${name} (table)`),
     // Assente sui campi nati prima dell'ondata 4: fuori dalle liste, che è la
     // scelta prudente — una colonna in più la si chiede, non la si subisce.
     inList: row['inList'] === true,
@@ -421,6 +428,8 @@ export interface FormAnswerInput {
   values?: readonly string[] | null
   /** Per i campi di riferimento: gli id dei nodi puntati (CI, persona, squadra). */
   refIds?: readonly string[] | null
+  /** Per i campi TABELLA: le righe, valore per nome di colonna (ondata 7). */
+  rows?: readonly FormTableRow[] | null
 }
 
 /** `[{name, value}]` → `{name: valore}`, la forma che il valutatore delle condizioni si aspetta. */
@@ -507,7 +516,7 @@ export async function resolveFormWrites(
   def: CatalogFormDefinition,
   library: ReadonlyMap<string, FormFieldDef>,
   inputs: readonly FormAnswerInput[] | null | undefined,
-  opts: { endUser?: boolean; draftId?: string | null; userId?: string | null } = {},
+  opts: { endUser?: boolean; draftId?: string | null; userId?: string | null; maxTableRows?: number } = {},
 ): Promise<FormWriteResult> {
   const answers = formAnswerMap(inputs)
   const visibili = visibleFormItems(def, answers, opts)
@@ -516,6 +525,7 @@ export async function resolveFormWrites(
 
   const out: Record<string, unknown> = {}
   const riferimenti: FormReferenceWrite[] = []
+  const tabelle: FormTableWrite[] = []
   const vocabolari = new Map<string, readonly string[]>()
   const vocabolarioDi = async (nome: string): Promise<readonly string[] | null> => {
     if (vocabolari.has(nome)) return vocabolari.get(nome)!
@@ -591,6 +601,19 @@ export async function resolveFormWrites(
      * creazione.
      */
     if (isFormAttachmentType(campo.fieldType)) continue
+
+    /**
+     * Una TABELLA non è una proprietà: sono righe (ondata 7). Si validano qui —
+     * colonne, tipi, obbligatorietà, tetto — e si scrivono alla creazione, come
+     * le relazioni dei riferimenti. Il controllo sta PRIMA del ripiego su
+     * `coerce` più sotto: senza, una tabella finirebbe stringata in una
+     * proprietà, che è il documento opaco che questo modulo evita.
+     */
+    if (isFormTableType(campo.fieldType)) {
+      const righe = await validaRigheTabella(campo, input.rows ?? [], vocabolarioDi, opts.maxTableRows ?? Number.POSITIVE_INFINITY)
+      if (righe.length > 0) tabelle.push({ field: campo.name, rows: righe })
+      continue
+    }
 
     const raw = input.value
     if (raw == null || String(raw).trim() === '') { out[input.name] = null; continue }
@@ -672,6 +695,16 @@ export async function resolveFormWrites(
       continue
     }
 
+    // Una TABELLA obbligatoria vuole almeno una riga piena: ogni genere di
+    // campo ha il suo modo di essere vuoto, e per una tabella è «zero righe».
+    if (isFormTableType(campo.fieldType)) {
+      if (obbligatorio && !tabelle.some((t) => t.field === campo.name && t.rows.length > 0)) {
+        throw new ValidationError(`The table "${campo.label}" needs at least one row.`,
+          { key: 'errors.formTable.rowRequired', params: { field: campo.label } })
+      }
+      continue
+    }
+
     if (!obbligatorio) continue
     const scritto = Object.prototype.hasOwnProperty.call(out, item.field) ? out[item.field] : undefined
     const vuoto = scritto === undefined
@@ -699,7 +732,264 @@ export async function resolveFormWrites(
     }
   }
 
-  return { props: out, references: riferimenti, attachmentFields: allegatiRichiesti }
+  return { props: out, references: riferimenti, attachmentFields: allegatiRichiesti, tables: tabelle }
+}
+
+// ── La tabella ripetibile: definizione, validazione, righe (ondata 7) ────────
+
+/**
+ * Legge la definizione delle colonne di un campo tabella. Fail-loud come per il
+ * documento del modulo: un JSON rotto o di una versione che non conosciamo è un
+ * errore, non «una tabella senza colonne» — che sembrerebbe una configurazione.
+ */
+export function parseFormTable(raw: unknown, where: string): FormTableDefinition | null {
+  if (raw == null || raw === '') return null
+  let parsed: unknown = raw
+  if (typeof raw === 'string') {
+    try { parsed = JSON.parse(raw) } catch (e) {
+      throw new Error(`${where}: table definition is not valid JSON (${e instanceof Error ? e.message : String(e)})`)
+    }
+  }
+  const o = oggetto(parsed, where)
+  const mancanti = FORM_TABLE_V1_KEYS.filter((k) => !(k in o))
+  if (mancanti.length > 0) {
+    throw new Error(`${where}: the table definition has no ${mancanti.join(', ')}: it was written by an older version of the product`)
+  }
+  const version = o['version']
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
+    throw new Error(`${where}: table version must be a positive integer, got ${JSON.stringify(version)}`)
+  }
+  if (version > FORM_TABLE_VERSION) {
+    throw new Error(`${where}: the table definition is version ${version}, this build understands up to ${FORM_TABLE_VERSION}: a newer version of the product wrote it`)
+  }
+  const columns = o['columns']
+  if (!Array.isArray(columns)) throw new Error(`${where}: table columns must be a list`)
+  return {
+    version,
+    columns: columns.map((c, i) => leggiColonna(c, `${where}: column #${i + 1}`)),
+  }
+}
+
+function leggiColonna(raw: unknown, where: string): FormTableColumn {
+  const o = oggetto(raw, where)
+  const name = o['name']
+  if (typeof name !== 'string' || !FORM_FIELD_NAME_RE.test(name)) {
+    throw new Error(`${where}: name must be lowercase letters, digits and underscores, got ${JSON.stringify(name)}`)
+  }
+  const fieldType = o['fieldType']
+  if (!isFormTableColumnType(fieldType)) {
+    throw new Error(`${where}: fieldType must be one of ${FORM_TABLE_COLUMN_TYPES.join(', ')}, got ${JSON.stringify(fieldType)}`)
+  }
+  const vocabulary = o['vocabulary']
+  if (vocabulary != null && typeof vocabulary !== 'string') throw new Error(`${where}: vocabulary must be a string`)
+  const labels = o['labels']
+  if (labels != null && (typeof labels !== 'object' || Array.isArray(labels))) {
+    throw new Error(`${where}: labels must be an object of language → text`)
+  }
+  return {
+    name,
+    labels: (labels ?? {}) as Record<string, string>,
+    fieldType,
+    vocabulary: typeof vocabulary === 'string' && vocabulary !== '' ? vocabulary : null,
+    required: o['required'] === true,
+  }
+}
+
+/**
+ * I controlli che il costruttore di una tabella deve passare per essere
+ * SALVATA. Separati dalla lettura perché sono un'altra domanda: la lettura
+ * chiede «questo documento lo capisco?», questi «questa tabella ha senso?».
+ */
+export function assertFormTable(def: FormTableDefinition, where: string): void {
+  if (def.columns.length === 0) {
+    throw new ValidationError(`${where}: a table needs at least one column.`,
+      { key: 'errors.formTable.noColumns', params: { field: where } })
+  }
+  const viste = new Set<string>()
+  for (const c of def.columns) {
+    if (viste.has(c.name)) {
+      throw new ValidationError(`${where}: the column "${c.name}" appears twice.`,
+        { key: 'errors.formTable.duplicateColumn', params: { field: where, column: c.name } })
+    }
+    viste.add(c.name)
+    // Un enum senza vocabolario non offrirebbe nessuna scelta: è la stessa
+    // regola di un campo enum della libreria, e vale detta qui perché una
+    // colonna non passa da `assertVocabolario`.
+    if (c.fieldType === 'enum' && !c.vocabulary) {
+      throw new ValidationError(`${where}: the column "${c.name}" is a choice but has no vocabulary: it would offer nothing.`,
+        { key: 'errors.formTable.columnWithoutVocabulary', params: { field: where, column: c.name } })
+    }
+    if (c.fieldType !== 'enum' && c.vocabulary) {
+      throw new ValidationError(`${where}: the column "${c.name}" is a ${c.fieldType} and takes no vocabulary.`,
+        { key: 'errors.formTable.columnVocabularyNotAllowed', params: { field: where, column: c.name, fieldType: c.fieldType } })
+    }
+  }
+}
+
+/**
+ * LE RIGHE DI UNA TABELLA sul ticket (ondata 7).
+ *
+ * Un nodo per riga, appeso al ticket con l'indice: l'ordine in cui le ha
+ * scritte chi compila è un dato (la prima persona dell'elenco è la prima), e
+ * senza indice tornerebbe in ordine di creazione, cioè per caso.
+ *
+ * Le proprietà della riga sono le COLONNE, con i nomi validati alla
+ * definizione: le stesse regole del nome di un campo, quindi nel Cypher
+ * generato non arriva mai un nome scritto dall'utente. La mappa si passa come
+ * PARAMETRO (`SET r += $valori`), non interpolata: le chiavi vengono da lì.
+ */
+export interface FormTableWrite {
+  field: string
+  rows: readonly FormTableRow[]
+}
+
+export async function writeFormTables(
+  session: Session, tenantId: string, entityId: string, tables: readonly FormTableWrite[],
+): Promise<void> {
+  for (const t of tables) {
+    for (const [indice, riga] of t.rows.entries()) {
+      await runQuery(session, `
+        MATCH (s:ServiceRequest {id: $entityId, tenant_id: $tenantId})
+        CREATE (s)-[:FORM_TABLE_ROW {field: $field, row_index: $index}]->(r:FormTableRow {tenant_id: $tenantId})
+        SET r += $values`,
+      { entityId, tenantId, field: t.field, index: indice, values: riga })
+    }
+  }
+}
+
+/**
+ * Le righe di TUTTE le tabelle di un ticket, per nome di campo e in ordine. Una
+ * query sola: leggerne una per campo vorrebbe dire una query per tabella su
+ * ogni apertura di ticket.
+ */
+export async function leggiRigheTabella(
+  session: Session, tenantId: string, entityId: string,
+): Promise<Map<string, FormTableRow[]>> {
+  const rows = await runQuery<{ field: string; values: Record<string, unknown> }>(session, `
+    MATCH (s:ServiceRequest {id: $entityId, tenant_id: $tenantId})-[rel:FORM_TABLE_ROW]->(r:FormTableRow)
+    RETURN rel.field AS field, properties(r) AS values
+    ORDER BY rel.field, rel.row_index`, { entityId, tenantId })
+  const out = new Map<string, FormTableRow[]>()
+  for (const r of rows) {
+    const elenco = out.get(r.field) ?? []
+    // `tenant_id` è nostro, non una colonna: non si restituisce come risposta.
+    const { tenant_id: _t, ...valori } = r.values
+    elenco.push(Object.fromEntries(Object.entries(valori).map(([k, v]) => [k, v == null ? null : String(v)])))
+    out.set(r.field, elenco)
+  }
+  return out
+}
+
+/**
+ * Le righe arrivate dal client, controllate contro le colonne. Restituisce le
+ * righe da scrivere, già convertite; lancia al primo problema, nominando la
+ * RIGA e la COLONNA — «la riga 3 non ha il ruolo» è un errore che si corregge,
+ * «dati non validi» no.
+ *
+ * Le righe VUOTE si scartano in silenzio, e qui il silenzio è giusto: una riga
+ * aggiunta e mai compilata è un clic, non un dato. Le altre mantengono il loro
+ * ordine, che è l'unica cosa che l'indice deve conservare.
+ */
+export async function validaRigheTabella(
+  campo: FormFieldDef,
+  righe: readonly FormTableRow[],
+  vocabolarioDi: (nome: string) => Promise<readonly string[] | null>,
+  maxRighe: number,
+): Promise<FormTableRow[]> {
+  const def = campo.tableDefinition
+  if (!def) {
+    throw new ValidationError(`The field "${campo.label}" is a table but has no columns: fix it in the field library.`,
+      { key: 'errors.formTable.noColumns', params: { field: campo.label } })
+  }
+  const perNome = new Map(def.columns.map((c) => [c.name, c]))
+  const piene = righe.filter((r) => !isFormTableRowEmpty(r))
+  if (piene.length > maxRighe) {
+    throw new ValidationError(`The table "${campo.label}" takes at most ${maxRighe} rows, ${piene.length} were sent.`,
+      { key: 'errors.formTable.tooManyRows', params: { field: campo.label, max: String(maxRighe), count: String(piene.length) } })
+  }
+
+  const out: FormTableRow[] = []
+  for (const [i, riga] of piene.entries()) {
+    const numero = String(i + 1)
+    const convertita: Record<string, string | null> = {}
+    for (const nome of Object.keys(riga)) {
+      if (!perNome.has(nome)) {
+        throw new ValidationError(`The table "${campo.label}" has no column "${nome}".`,
+          { key: 'errors.formTable.unknownColumn', params: { field: campo.label, column: nome } })
+      }
+    }
+    for (const colonna of def.columns) {
+      const grezzo = riga[colonna.name]
+      const vuoto = grezzo == null || String(grezzo).trim() === ''
+      if (vuoto) {
+        if (colonna.required) {
+          throw new ValidationError(`Row ${numero} of "${campo.label}": the column "${etichettaColonna(colonna)}" is required.`,
+            { key: 'errors.formTable.cellRequired', params: { field: campo.label, column: etichettaColonna(colonna), row: numero } })
+        }
+        convertita[colonna.name] = null
+        continue
+      }
+      const allowed = colonna.vocabulary ? await vocabolarioDi(colonna.vocabulary) : null
+      convertita[colonna.name] = String(convertiCella(campo, colonna, String(grezzo).trim(), allowed, numero))
+    }
+    out.push(convertita)
+  }
+  return out
+}
+
+/** L'etichetta di una colonna per un messaggio d'errore: la prima che c'è, o il nome. */
+function etichettaColonna(colonna: FormTableColumn): string {
+  const primo = Object.values(colonna.labels)[0]
+  return primo && primo.trim() !== '' ? primo : colonna.name
+}
+
+/**
+ * Una cella nel tipo della sua colonna. Le stesse regole di `coerce` per un
+ * campo — un numero deve essere un numero, una data una data, una scelta dentro
+ * il vocabolario — ma il messaggio dice anche QUALE RIGA, che è l'unica cosa in
+ * più che serve a chi sta compilando.
+ *
+ * Il valore torna come TESTO: sulla riga si scrive una stringa per ogni
+ * colonna, perché una riga è un record di celle e non una proprietà tipizzata
+ * del ticket. Il numero convertito serve a rifiutare «pippo», non a cambiare
+ * come si salva.
+ */
+function convertiCella(
+  campo: FormFieldDef, colonna: FormTableColumn, testo: string,
+  allowed: readonly string[] | null, riga: string,
+): string {
+  const dove = { field: campo.label, column: etichettaColonna(colonna), row: riga }
+  switch (colonna.fieldType) {
+    case 'number': {
+      const n = Number(testo)
+      if (!Number.isFinite(n)) {
+        throw new ValidationError(`Row ${riga} of "${campo.label}": "${testo}" is not a number for "${dove.column}".`,
+          { key: 'errors.formTable.cellNotNumber', params: { ...dove, value: testo } })
+      }
+      return String(n)
+    }
+    case 'boolean':
+      if (testo !== 'true' && testo !== 'false') {
+        throw new ValidationError(`Row ${riga} of "${campo.label}": "${dove.column}" takes true or false, got "${testo}".`,
+          { key: 'errors.formTable.cellNotBoolean', params: { ...dove, value: testo } })
+      }
+      return testo
+    case 'date': {
+      if (Number.isNaN(Date.parse(testo))) {
+        throw new ValidationError(`Row ${riga} of "${campo.label}": "${testo}" is not a date for "${dove.column}".`,
+          { key: 'errors.formTable.cellNotDate', params: { ...dove, value: testo } })
+      }
+      return testo
+    }
+    case 'enum':
+      if (allowed && allowed.length > 0 && !allowed.includes(testo)) {
+        throw new ValidationError(`Row ${riga} of "${campo.label}": "${testo}" is not a value of "${dove.column}" (allowed: ${allowed.join(', ')}).`,
+          { key: 'errors.formTable.cellNotInVocabulary', params: { ...dove, value: testo, allowed: allowed.join(', ') } })
+      }
+      return testo
+    case 'text':
+      return testo
+  }
 }
 
 // ── Le revisioni pubblicate ─────────────────────────────────────────────────
@@ -765,6 +1055,10 @@ export interface FormAnswerRead {
   references: Array<{ id: string; label: string }>
   /** Per i campi allegato: i file reclamati dal ticket per questo campo. */
   files: Array<{ id: string; filename: string; sizeBytes: number }>
+  /** Per i campi TABELLA: le righe, in ordine (ondata 7). */
+  rows: FormTableRow[]
+  /** Le colonne della tabella, per sapere cosa mostrare e in che ordine. */
+  tableColumns: readonly FormTableColumn[]
 }
 
 export async function formAnswersOf(
@@ -777,9 +1071,10 @@ export async function formAnswersOf(
   const nomi = catalogFormFieldNames(def)
   const library = await formFieldsByName(session, tenantId, nomi)
 
-  // Riferimenti e file si leggono in due query sole, non una per campo.
+  // Riferimenti, file e righe si leggono in tre query sole, non una per campo.
   const riferimenti = await leggiRiferimenti(session, tenantId, ticket.id)
   const file = await leggiFileDelModulo(session, tenantId, ticket.id)
+  const righe = await leggiRigheTabella(session, tenantId, ticket.id)
 
   // Le etichette dei vocabolari citati dal modulo: una lettura per vocabolario,
   // non una per risposta.
@@ -803,6 +1098,11 @@ export async function formAnswersOf(
       displayValues: lista.map(comeSiLegge),
       references: riferimenti.get(nome) ?? [],
       files: file.get(nome) ?? [],
+      // Le righe della tabella, nell'ordine in cui le ha scritte chi compila.
+      rows: righe.get(nome) ?? [],
+      // Le colonne di ALLORA le porta il campo: senza, una riga sarebbe una
+      // mappa di nomi interni e chi legge non saprebbe in che ordine mostrarla.
+      tableColumns: campo?.tableDefinition?.columns ?? [],
     })
   }
   return out
@@ -906,6 +1206,8 @@ export interface FormWriteResult {
   references: FormReferenceWrite[]
   /** I campi allegato visibili, col conto dei file sulla bozza. */
   attachmentFields: FormAttachmentField[]
+  /** Le righe delle tabelle (ondata 7): le scrive chi crea il ticket, come le relazioni. */
+  tables: FormTableWrite[]
 }
 
 /**

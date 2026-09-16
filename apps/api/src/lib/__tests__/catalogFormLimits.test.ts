@@ -30,6 +30,8 @@ describe('i valori con cui nasce un tenant', () => {
     expect(CATALOG_FORM_LIMIT_DEFAULTS.maxLibraryFields).toBeGreaterThan(CATALOG_FORM_LIMIT_DEFAULTS.maxFieldsPerForm)
     expect(CATALOG_FORM_LIMIT_DEFAULTS.maxLibraryFields).toBeLessThanOrEqual(CATALOG_FORM_LIMIT_MAX)
     expect(CATALOG_FORM_LIMIT_DEFAULTS.maxFieldsPerForm).toBeGreaterThanOrEqual(CATALOG_FORM_LIMIT_MIN)
+    expect(CATALOG_FORM_LIMIT_DEFAULTS.maxTableRows).toBeGreaterThanOrEqual(CATALOG_FORM_LIMIT_MIN)
+    expect(CATALOG_FORM_LIMIT_DEFAULTS.maxTableRows).toBeLessThanOrEqual(CATALOG_FORM_LIMIT_MAX)
   })
 })
 
@@ -43,8 +45,18 @@ describe('nessun limite inventato a runtime', () => {
   })
 
   it('tenant non migrato: errore che NOMINA la migrazione', async () => {
-    await expect(catalogFormLimits(sessioneChe({ maxLibraryFields: null, maxFieldsPerForm: null }) as never, 't'))
+    await expect(catalogFormLimits(sessioneChe({ maxLibraryFields: null, maxFieldsPerForm: null, maxTableRows: null }) as never, 't'))
       .rejects.toThrow(/20261003_1020_catalog_form_limits/)
+  })
+
+  /**
+   * Il tetto sulle RIGHE è dell'ondata 7: un tenant migrato fino all'ondata 4 ha
+   * i primi due e non il terzo, e deve sentirsi dire QUALE migrazione manca —
+   * non quella dei primi due, che ha già fatto.
+   */
+  it('tenant migrato a metà: l\'errore nomina la migrazione delle RIGHE, non quella dei campi', async () => {
+    await expect(catalogFormLimits(sessioneChe({ maxLibraryFields: 120, maxFieldsPerForm: 60, maxTableRows: null }) as never, 't'))
+      .rejects.toThrow(/20261004_1010_form_table_rows_limit/)
   })
 
   it('libreria piena: il rifiuto dice il tetto, quanti ce ne sono e dove alzarlo', async () => {
@@ -52,7 +64,7 @@ describe('nessun limite inventato a runtime', () => {
     const s = {
       run: async () => {
         chiamata++
-        const row = chiamata === 1 ? { maxLibraryFields: 3, maxFieldsPerForm: 10 } : { n: 3 }
+        const row = chiamata === 1 ? { maxLibraryFields: 3, maxFieldsPerForm: 10, maxTableRows: 50 } : { n: 3 }
         return { records: [{ get: (k: string) => (row as Record<string, unknown>)[k], keys: Object.keys(row), toObject: () => row }] }
       },
     }
