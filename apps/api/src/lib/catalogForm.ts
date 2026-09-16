@@ -29,7 +29,8 @@ import {
   CATALOG_FORM_VERSION, FORM_FIELD_NAME_RE, FORM_FIELD_TYPES, FORM_FIELD_TYPES_MULTI,
   FORM_FIELD_TYPES_WITHOUT_ANSWER, FORM_FIELD_TYPES_WITH_VOCABULARY, FORM_CONDITION_OPS,
   FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_DRAFT_ENTITY_TYPE, FORM_FIELD_TYPES_AS_PROPERTY,
-  canBeConditionSubject, catalogFormConditionFieldNames, catalogFormFieldNames, evaluateFormCondition,
+  canBeConditionSubject, catalogFormConditionFieldNames, catalogFormFieldNames,
+  evaluateFormCondition, formulaInput,
   isFormAnswerEmpty, isFormAttachmentType, isFormConditionOp, isFormFieldType, isFormReferenceType,
   parseLocalizedLabels,
   type CatalogFormDefinition, type CatalogFormItem, type CatalogFormSection,
@@ -38,7 +39,7 @@ import {
 import { ValidationError } from './errors.js'
 import { assertCustomFieldName } from './customFieldName.js'
 import { loadVocabularyEntries } from './vocabularyEntries.js'
-import { runValidationScript } from './metamodelScript.js'
+import { runFormulaScript, runValidationScript } from './metamodelScript.js'
 import { labelFor, type EnumValueLabels } from './enumValueLabels.js'
 import { languageFor } from './tenantLanguage.js'
 
@@ -59,6 +60,13 @@ export interface FormFieldDef {
   required: boolean
   vocabulary: string | null
   validationScript: string | null
+  /**
+   * LA FORMULA di un campo calcolato (ondata 6): JavaScript che riceve le
+   * risposte già date in `input` e RESTITUISCE il valore. Null = campo normale,
+   * lo compila una persona. Un campo con formula è in sola lettura: il valore
+   * lo decide il server al salvataggio, e il browser lo mostra intanto.
+   */
+  formula: string | null
   /** Se diventa una colonna nelle liste e nell'esportazione (ondata 4). */
   inList: boolean
   createdAt: string | null
@@ -70,7 +78,7 @@ export interface FormFieldDef {
 const FIELD_RETURN = `
   f.id AS id, f.name AS name, f.field_type AS fieldType, f.label AS label, f.labels AS labels,
   f.help AS help, f.helps AS helps, f.required AS required, f.vocabulary AS vocabulary,
-  f.validation_script AS validationScript, f.in_list AS inList,
+  f.validation_script AS validationScript, f.formula AS formula, f.in_list AS inList,
   f.created_at AS createdAt, f.updated_at AS updatedAt`
 
 function mapField(row: Record<string, unknown>): FormFieldDef {
@@ -91,6 +99,7 @@ function mapField(row: Record<string, unknown>): FormFieldDef {
     required: row['required'] === true,
     vocabulary: row['vocabulary'] == null || row['vocabulary'] === '' ? null : String(row['vocabulary']),
     validationScript: row['validationScript'] == null || row['validationScript'] === '' ? null : String(row['validationScript']),
+    formula: row['formula'] == null || row['formula'] === '' ? null : String(row['formula']),
     // Assente sui campi nati prima dell'ondata 4: fuori dalle liste, che è la
     // scelta prudente — una colonna in più la si chiede, non la si subisce.
     inList: row['inList'] === true,
@@ -513,6 +522,15 @@ export async function resolveFormWrites(
       throw new ValidationError(`The field "${input.name}" is a note: it carries no answer.`,
         { key: 'errors.catalogForm.answerNote', params: { field: input.name } })
     }
+    /**
+     * Un campo CALCOLATO non si riceve: lo calcola il server (ondata 6). Il
+     * rifiuto invece del silenzio perché un client che lo manda ha un difetto,
+     * e ignorarlo lascerebbe credere che il valore mandato conti qualcosa.
+     */
+    if (campo.formula) {
+      throw new ValidationError(`The field "${campo.label}" is computed: its value comes from its formula, it cannot be sent.`,
+        { key: 'errors.catalogForm.answerComputed', params: { field: campo.label } })
+    }
 
     const multi = FORM_FIELD_TYPES_MULTI.includes(campo.fieldType)
     if (multi) {
@@ -561,6 +579,41 @@ export async function resolveFormWrites(
     if (raw == null || String(raw).trim() === '') { out[input.name] = null; continue }
     const allowed = campo.vocabulary ? await vocabolarioDi(campo.vocabulary) : null
     out[input.name] = coerce(campo, String(raw), allowed)
+  }
+
+  /**
+   * I CAMPI CALCOLATI (ondata 6), prima dell'obbligatorietà: una formula che
+   * non produce niente su un campo obbligatorio deve far fallire il
+   * salvataggio come un campo lasciato vuoto.
+   *
+   * Solo i campi VISIBILI: se una condizione nasconde il campo, la domanda non
+   * è stata fatta e la formula non c'entra. E solo quelli del modulo: un campo
+   * calcolato della libreria che questo modulo non cita non si scrive.
+   *
+   * La formula vede le risposte già convertite dei campi NON calcolati
+   * (`formulaInput`): niente catene, quindi niente cicli da riconoscere.
+   */
+  const calcolati = new Set(visibili.map((i) => i.field).filter((n) => library.get(n)?.formula))
+  if (calcolati.size > 0) {
+    const perLaFormula = formulaInput(out, calcolati)
+    for (const item of visibili) {
+      const campo = library.get(item.field)!
+      if (!campo.formula) continue
+      const esito = await runFormulaScript(campo.formula, perLaFormula, campo.name, tenantId)
+      if (!esito.ok) {
+        // La scelta del proprietario: si RIFIUTA e si nomina la formula. Chi
+        // compila non può rimediare, ma nessun ticket nasce con un dato finto.
+        throw new ValidationError(`The formula of field "${campo.label}" failed: ${esito.error}`,
+          { key: 'errors.formField.formulaFailed', params: { field: campo.label, message: esito.error } })
+      }
+      const valore = esito.value
+      if (valore == null || String(valore).trim() === '') { out[campo.name] = null; continue }
+      const allowed = campo.vocabulary ? await vocabolarioDi(campo.vocabulary) : null
+      // Lo stesso `coerce` di un valore scritto a mano: una formula che
+      // restituisce «pippo» per un numero, o un valore fuori vocabolario,
+      // viene rifiutata dalle regole che valgono per tutti.
+      out[campo.name] = coerce(campo, String(valore), allowed)
+    }
   }
 
   /**

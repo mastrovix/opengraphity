@@ -12,7 +12,7 @@ import { randomUUID } from 'crypto'
 import { GraphQLError } from 'graphql'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import {
-  CATALOG_FORM_VERSION, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY,
+  canBeComputed, CATALOG_FORM_VERSION, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY,
   FORM_FIELD_TYPES_WITHOUT_ANSWER, FORM_FIELD_TYPES_WITH_VOCABULARY,
   catalogFormFieldNames, emptyCatalogForm, isFormFieldType, serializeLocalizedLabels,
   type CatalogFormDefinition,
@@ -67,6 +67,21 @@ async function usoDeiCampi(tenantId: string): Promise<Map<string, string[]>> {
 
 function vistaCampo(d: FormFieldDef, usedBy: readonly string[]): Record<string, unknown> {
   return { ...d, usedBy: [...usedBy] }
+}
+
+/**
+ * La FORMULA si può mettere solo su un campo che può essere calcolato (ondata
+ * 6): un valore singolo che diventa una proprietà. Rifiutare invece di
+ * ignorare — una formula salvata su una nota o su un allegato resterebbe lì a
+ * non fare niente, e chi l'ha scritta crederebbe il contrario.
+ */
+function assertFormulaPossibile(fieldType: string, formula: unknown): string | null {
+  const testo = formula == null || String(formula).trim() === '' ? null : String(formula)
+  if (testo && !canBeComputed(fieldType)) {
+    throw new ValidationError(`A ${fieldType} field cannot be computed: only single-value fields stored as a ticket property can have a formula.`,
+      { key: 'errors.formField.notComputable', params: { fieldType } })
+  }
+  return testo
 }
 
 /**
@@ -214,7 +229,7 @@ export const catalogFormResolvers = {
             id: $id, tenant_id: $tenantId, name: $name, field_type: $fieldType,
             label: $label, labels: $labels, help: $help, helps: $helps,
             required: $required, vocabulary: $vocabulary, validation_script: $validationScript,
-            in_list: $inList, created_at: $now, updated_at: $now
+            in_list: $inList, formula: $formula, created_at: $now, updated_at: $now
           })`, {
           id: randomUUID(), tenantId: ctx.tenantId, name, fieldType, label,
           labels: serializeLocalizedLabels(mappaTesti(input['labels'] as TestoPerLingua[] | null)),
@@ -224,6 +239,7 @@ export const catalogFormResolvers = {
           vocabulary,
           validationScript: (input['validationScript'] as string | null) ?? null,
           inList: assertColonnaPossibile(fieldType, input['inList'] === true),
+          formula: assertFormulaPossibile(fieldType, input['formula']),
           now,
         })
         // La leva del metamodello: la cache della libreria (che serve alle
@@ -260,6 +276,7 @@ export const catalogFormResolvers = {
               f.vocabulary = $vocabulary,
               f.validation_script = CASE WHEN $scriptSet THEN $validationScript ELSE f.validation_script END,
               f.in_list = CASE WHEN $inListSet THEN $inList ELSE f.in_list END,
+              f.formula = CASE WHEN $formulaSet THEN $formula ELSE f.formula END,
               f.updated_at = $now`, {
           id: args.id, tenantId: ctx.tenantId,
           label: input['label'] == null ? null : String(input['label']).trim(),
@@ -271,6 +288,7 @@ export const catalogFormResolvers = {
           scriptSet: 'validationScript' in input, validationScript: (input['validationScript'] as string | null) ?? null,
           // Il tipo non si cambia, quindi la guardia guarda quello che il campo È già.
           inListSet: 'inList' in input, inList: assertColonnaPossibile(corrente.fieldType, input['inList'] === true),
+          formulaSet: 'formula' in input, formula: assertFormulaPossibile(corrente.fieldType, input['formula']),
           now: new Date().toISOString(),
         })
         invalidateSchema(ctx.tenantId)

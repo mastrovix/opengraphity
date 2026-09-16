@@ -42,6 +42,15 @@ export function catalogFormSDL(): string {
     vocabulary:       String
     validationScript: String
     """
+    La FORMULA di un campo calcolato (ondata 6): JavaScript che riceve in
+    \`input\` le risposte dei campi non calcolati e RESTITUISCE il valore
+    (\`return input.costo * input.quantita\`). Assente = campo normale, lo
+    compila una persona. Un campo con formula e' in SOLA LETTURA: il valore lo
+    decide il server al salvataggio; il browser lo calcola intanto, solo per
+    mostrarlo. Solo sui tipi a valore singolo che diventano una proprieta'.
+    """
+    formula:          String
+    """
     Se questo campo e' una COLONNA nelle liste delle richieste e
     nell'esportazione CSV (ondata 4). Spento per difetto: una libreria ricca ha
     decine di campi, e una colonna per ognuno renderebbe la lista illeggibile.
@@ -75,6 +84,8 @@ export function catalogFormSDL(): string {
     required:         Boolean
     vocabulary:       String
     validationScript: String
+    """La formula di un campo calcolato; assente o vuota = campo normale."""
+    formula:          String
     """Colonna nelle liste: spento se assente."""
     inList:           Boolean
   }
@@ -88,6 +99,8 @@ export function catalogFormSDL(): string {
     required:         Boolean
     vocabulary:       String
     validationScript: String
+    """La formula di un campo calcolato; stringa vuota = torna un campo normale."""
+    formula:          String
     """Colonna nelle liste."""
     inList:           Boolean
   }

@@ -140,6 +140,49 @@ export function canBeConditionSubject(fieldType: string): boolean {
 }
 
 /**
+ * I CAMPI CALCOLATI (ondata 6). Un campo della libreria può portare una
+ * `formula`: un pezzo di JavaScript che riceve le risposte già date (`input`)
+ * e RESTITUISCE il valore. Lo stesso contratto dei default dei campi CI, e lo
+ * stesso pezzo di codice gira in due sandbox — QuickJS nel browser, mentre si
+ * compila, e isolated-vm sul server al salvataggio, che è quello di cui ci si
+ * fida.
+ *
+ * Quali tipi possono essere calcolati: quelli che diventano una proprietà
+ * SINGOLA. Fuori la selezione multipla (una formula che restituisce una lista
+ * è un altro lavoro: servirebbe validare ogni elemento e decidere l'ordine),
+ * fuori le note (non hanno risposta), fuori allegati e riferimenti (una
+ * formula non può creare un file né scegliere un nodo del grafo).
+ */
+export const FORM_FIELD_TYPES_COMPUTABLE: readonly FormFieldType[] =
+  ['text', 'textarea', 'number', 'date', 'datetime', 'boolean', 'enum']
+
+export function canBeComputed(fieldType: string): boolean {
+  return (FORM_FIELD_TYPES_COMPUTABLE as readonly string[]).includes(fieldType)
+}
+
+/**
+ * Cosa vede una formula: le risposte dei campi NON calcolati.
+ *
+ * Perché non tutte: una formula che leggesse un altro campo calcolato
+ * aprirebbe le catene, e con le catene i cicli (A guarda B, B guarda A) —
+ * che andrebbero riconosciuti e rifiutati. Togliendoli dal perimetro il
+ * problema non esiste: una formula guarda quello che ha scritto una persona.
+ * Se domani servirà l'ordinamento, si aggiungerà con il riconoscimento dei
+ * cicli, non di sfroso.
+ */
+export function formulaInput(
+  answers: Readonly<Record<string, unknown>>,
+  campiCalcolati: ReadonlySet<string>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [nome, valore] of Object.entries(answers)) {
+    if (campiCalcolati.has(nome)) continue
+    out[nome] = valore
+  }
+  return out
+}
+
+/**
  * L'`entity_type` degli allegati caricati su una BOZZA di modulo, prima che il
  * ticket esista.
  *

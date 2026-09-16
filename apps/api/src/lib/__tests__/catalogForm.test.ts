@@ -26,7 +26,23 @@ vi.mock('../vocabularyEntries.js', () => ({
     throw new Error(`Vocabulary "${name}" does not exist`)
   }),
 }))
-vi.mock('../metamodelScript.js', () => ({ runValidationScript: vi.fn(async () => null) }))
+/**
+ * Gli script del sandbox, finti: qui si fissa COSA SI FA del loro esito, non
+ * come gira isolated-vm (quello è dei test di `packages/scripting`). La formula
+ * finta calcola quello che le si dice, o fallisce se `formulaFallisce`.
+ */
+let formulaFallisce: string | null = null
+const formule: string[] = []
+vi.mock('../metamodelScript.js', () => ({
+  runValidationScript: vi.fn(async () => null),
+  runFormulaScript: vi.fn(async (code: string, input: Record<string, unknown>) => {
+    formule.push(code)
+    if (formulaFallisce) return { ok: false, error: formulaFallisce }
+    // La finta sa fare una cosa: il codice è il nome di un campo di `input`,
+    // così il test verifica COSA vede la formula.
+    return { ok: true, value: input[code.trim()] ?? null }
+  }),
+}))
 
 /**
  * Le due letture che l'ondata 2 fa sul grafo: l'esistenza del nodo puntato da
@@ -47,7 +63,7 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 
 const { parseCatalogForm, assertCatalogForm, resolveFormWrites, visibleFormItems } = await import('../catalogForm.js')
-const { runValidationScript } = await import('../metamodelScript.js')
+const { runValidationScript, runFormulaScript } = await import('../metamodelScript.js')
 
 const campo = (name: string, fieldType: string, extra: Record<string, unknown> = {}) => ({
   id: `id-${name}`, name, fieldType, label: name, labels: [], help: null, helps: [],
@@ -417,5 +433,88 @@ describe('ondata 2: riferimenti e allegati', () => {
     // Il valore viene ignorato: un allegato non è una proprietà.
     expect(esito.props).toEqual({})
     contaFileBozza = 0
+  })
+})
+
+/**
+ * I CAMPI CALCOLATI (ondata 6). Le tre cose che, sbagliate, non si vedrebbero:
+ * il valore lo decide il SERVER (non il client), la formula NON vede gli altri
+ * campi calcolati (così i cicli non esistono), e una formula che fallisce
+ * FERMA il salvataggio nominando il campo — la scelta del proprietario.
+ */
+describe('campi calcolati', () => {
+  // Nessuna lettura sul grafo in questi casi: la sessione non serve.
+  const session = {} as never
+  const definizione = (campi: string[]): CatalogFormDefinition => ({
+    version: 1, revision: 1,
+    sections: [{ id: 's1', title: [{ language: 'it', label: 'S' }], items: campi.map((f) => ({ field: f })) }],
+  })
+
+  // `clearAllMocks`: i conteggi delle chiamate sono per singolo caso, altrimenti
+  // «non è stata chiamata» conterebbe anche le chiamate dei casi precedenti.
+  beforeEach(() => { formulaFallisce = null; formule.length = 0; vi.clearAllMocks() })
+
+  const libreria = (over: Record<string, unknown> = {}) => new Map(Object.entries({
+    costo: campo('costo', 'number'),
+    totale: campo('totale', 'number', { formula: 'costo' }),
+    ...over,
+  }))
+
+  it('il valore viene dalla formula, non da chi compila: il client non lo manda affatto', async () => {
+    const def = definizione(['costo', 'totale'])
+    const r = await resolveFormWrites(session, 't1', def, libreria(), [{ name: 'costo', value: '120' }])
+    expect(r.props['totale']).toBe(120)
+    expect(runFormulaScript).toHaveBeenCalledTimes(1)
+  })
+
+  it('un client che manda un campo calcolato viene RIFIUTATO, non ignorato', async () => {
+    const def = definizione(['costo', 'totale'])
+    await expect(resolveFormWrites(session, 't1', def, libreria(), [
+      { name: 'costo', value: '120' }, { name: 'totale', value: '999' },
+    ])).rejects.toThrow(/is computed/)
+  })
+
+  it('la formula NON vede gli altri campi calcolati: niente catene, quindi niente cicli', async () => {
+    const lib = libreria({ secondo: campo('secondo', 'number', { formula: 'totale' }) })
+    const def = definizione(['costo', 'totale', 'secondo'])
+    const r = await resolveFormWrites(session, 't1', def, lib, [{ name: 'costo', value: '7' }])
+    expect(r.props['totale']).toBe(7)
+    // `secondo` chiede `totale`, che è calcolato: per la formula non esiste.
+    expect(r.props['secondo']).toBeNull()
+  })
+
+  it('formula che fallisce: il salvataggio si ferma e il messaggio nomina il campo', async () => {
+    formulaFallisce = 'ReferenceError: quantita is not defined'
+    const def = definizione(['costo', 'totale'])
+    await expect(resolveFormWrites(session, 't1', def, libreria(), [{ name: 'costo', value: '1' }]))
+      .rejects.toThrow(/formula of field "totale" failed: ReferenceError/)
+  })
+
+  it('il risultato passa dalle regole di tutti: un numero che non è un numero viene rifiutato', async () => {
+    const lib = libreria({ costo: campo('costo', 'text'), totale: campo('totale', 'number', { formula: 'costo' }) })
+    const def = definizione(['costo', 'totale'])
+    await expect(resolveFormWrites(session, 't1', def, lib, [{ name: 'costo', value: 'pippo' }]))
+      .rejects.toThrow(/is a number, "pippo" is not/)
+  })
+
+  it('un campo calcolato NASCOSTO da una condizione non si calcola: la domanda non è stata fatta', async () => {
+    const lib = libreria()
+    const def: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 's1', title: [{ language: 'it', label: 'S' }], items: [
+        { field: 'costo' },
+        { field: 'totale', visibleWhen: { logic: 'and', rules: [{ field: 'costo', op: 'gt', value: '1000' }] } },
+      ] }],
+    }
+    const r = await resolveFormWrites(session, 't1', def, lib, [{ name: 'costo', value: '10' }])
+    expect(r.props['totale']).toBeUndefined()
+    expect(runFormulaScript).not.toHaveBeenCalled()
+  })
+
+  it('calcolato e OBBLIGATORIO: se la formula non produce niente, il salvataggio si ferma come per un campo vuoto', async () => {
+    const lib = libreria({ totale: campo('totale', 'number', { formula: 'inesistente', required: true }) })
+    const def = definizione(['costo', 'totale'])
+    await expect(resolveFormWrites(session, 't1', def, lib, [{ name: 'costo', value: '5' }]))
+      .rejects.toThrow(/required/)
   })
 })

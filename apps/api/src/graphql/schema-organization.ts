@@ -115,6 +115,19 @@ export function organizationSDL(): string {
     attachmentPolicy: AttachmentPolicy!
     """Quali funzioni AI sono accese: lo leggono le pagine che le offrono."""
     aiSettings: AISettings!
+    """
+    Se gli script scritti dal cliente possono girare: validazione dei campi,
+    azione «esegui script», trasformazione dei webhook e le FORMULE dei campi
+    calcolati dei moduli (ondata 6). Era un limite di piano senza interruttore.
+    """
+    scriptingSettings: ScriptingSettings!
+  }
+
+  """L'interruttore degli script del cliente, e il piano con cui il tenant e' nato."""
+  type ScriptingSettings {
+    enabled: Boolean!
+    """Il piano: resta come informazione (decide il valore iniziale), non come divieto."""
+    plan:    String!
   }
 
   extend type Mutation {
@@ -125,6 +138,11 @@ export function organizationSDL(): string {
     setAttachmentPolicy(input: AttachmentPolicyInput!): AttachmentPolicy!
     """Una funzione spenta non chiama il modello."""
     setAISettings(input: AISettingsInput!): AISettings!
+    """
+    Accende o spegne gli script del cliente. Spenti, chi ne ha configurato uno
+    riceve un rifiuto che lo dice: nessuno script viene saltato in silenzio.
+    """
+    setScriptingEnabled(enabled: Boolean!): ScriptingSettings!
   }
   `
 }

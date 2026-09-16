@@ -3755,11 +3755,12 @@
       "staleInitialState": "The \"{{vocabulary}}\" dictionary declares \"{{declared}}\" as the initial state, but that value is not (any more) among its own ({{values}}): a new CI would be born with a state the Dictionary does not have. Choose the initial state among the current values."
     },
     "scripting": {
-      "planExcludesScripts": "{{what}}: the \"{{plan}}\" plan does not include scripts. Remove the script from the configuration, or move to a plan that includes them.",
+      "scriptsSwitchedOff": "{{what}}: scripts are switched off for this organization. Switch them on in Settings > Organization, or remove the script from the configuration.",
       "what": {
         "field": "The script of field \"{{field}}\"",
         "webhook": "The transform script of webhook {{hook}}",
-        "action": "The \"execute script\" action of \"{{source}}\""
+        "action": "The \"execute script\" action of \"{{source}}\"",
+        "formula": "The formula of field \"{{field}}\""
       }
     },
     "problem": {
@@ -4111,7 +4112,9 @@
       "fileRequired": "The field \"{{field}}\" needs at least one file.",
       "referenceNotFound": "The field \"{{field}}\" points to something that does not exist here.",
       "notAColumn": "A {{fieldType}} field cannot be a list column: only fields stored as a ticket property can.",
-      "libraryFull": "The field library is full: {{max}} fields is the limit and {{existing}} already exist. Raise the limit on the catalog forms page, or delete a field nobody uses."
+      "libraryFull": "The field library is full: {{max}} fields is the limit and {{existing}} already exist. Raise the limit on the catalog forms page, or delete a field nobody uses.",
+      "notComputable": "A {{fieldType}} field cannot be computed: only single-value fields stored as a ticket property can have a formula.",
+      "formulaFailed": "The formula of field \"{{field}}\" failed: {{message}}. Fix the formula in the field library."
     },
     "catalogForm": {
       "shape": "The form definition has the wrong shape at {{where}}.",
@@ -4138,7 +4141,8 @@
       "conditionFieldType": "A condition looks at the field \"{{field}}\", which is a {{fieldType}}: only fields stored as a property can be a condition subject.",
       "referenceEndUser": "The field \"{{field}}\" is a reference ({{fieldType}}): it cannot be offered in the portal, because choosing one means searching the CMDB or the staff list. Untick \"offer it in the portal\".",
       "tooManyFields": "This form has {{count}} fields: {{max}} is the limit. Raise the limit on the catalog forms page, or split the request into two catalog items.",
-      "limitOutOfRange": "A limit must be a whole number between {{min}} and {{max}}."
+      "limitOutOfRange": "A limit must be a whole number between {{min}} and {{max}}.",
+      "answerComputed": "The field \"{{field}}\" is computed: its value comes from its formula, it cannot be sent."
     },
     "serviceCatalog": {
       "workflowNotFound": "That workflow does not exist here, or it is not active.",

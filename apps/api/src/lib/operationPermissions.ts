@@ -175,9 +175,11 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   // ── Configurazione ─────────────────────────────────────────────────────────
   {
     anyOf: ['config.organization'],
-    query: ['tenantName', 'tenantBrandSettings', 'ticketNumbering', 'portalSeverityOptions'],
+    query: ['tenantName', 'tenantBrandSettings', 'ticketNumbering', 'portalSeverityOptions', 'scriptingSettings'],
     mutation: ['setTenantName', 'setTenantBrand', 'setTenantDefaultLanguage', 'setTenantTimezone', 'setTenantInAppRetentionDays',
       'setTicketNumbering', 'setAttachmentPolicy', 'setAISettings', 'setPortalSeverityOptions',
+      // L'interruttore degli script del cliente (moduli del catalogo, ondata 6).
+      'setScriptingEnabled',
       'createServiceCalendar', 'updateServiceCalendar', 'deleteServiceCalendar'],
   },
   {
