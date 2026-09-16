@@ -313,7 +313,8 @@ function buildApolloServer(schema: GraphQLSchema): ApolloServer<GraphQLContext> 
               handle.setAttribute('graphql.document', (ctx.request.query ?? '').slice(0, 200))
 
               // Also rename the active HTTP span (auto-instrumentation) as best-effort.
-              updateActiveSpanName(`${type}.${opName}`)
+              // Tipo e nome SEPARATI: il composto sta nel nome dello span.
+              updateActiveSpanName(opType, opName)
             },
 
             async willSendResponse() {

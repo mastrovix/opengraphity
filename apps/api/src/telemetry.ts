@@ -120,15 +120,25 @@ export function startGraphQLSpan(initialName: string): GraphQLSpanHandle {
 }
 
 /**
- * Rename the currently active HTTP span (from auto-instrumentation) to include
- * the GraphQL operation. No-op when OTEL is disabled.
+ * Rinomina lo span HTTP attivo (quello dell'auto-strumentazione) perche porti
+ * l'operazione GraphQL. Inerte quando OTEL e spento.
+ *
+ * `name` e SOLO il nome dell'operazione e `type` solo il tipo, come vogliono le
+ * convenzioni OpenTelemetry: il composto vive nel NOME dello span, non
+ * nell'attributo. Prima qui arrivava gia `Query.GetCITypes` e finiva in
+ * `graphql.operation.name`, sovrascrivendo il valore giusto messo dal plugin
+ * Apollo; poi il pannello delle tracce ci premetteva di nuovo il tipo e
+ * mostrava **`Query.Query.GetCITypes`**. Visto a schermo la prima volta che il
+ * tracciamento e stato accesso.
  */
-export function updateActiveSpanName(operationName: string): void {
+export function updateActiveSpanName(type: string, name: string): void {
   if (!_traceApi) return
   const span = _traceApi.getActiveSpan()
   if (!span) return
-  span.updateName(`GraphQL ${operationName}`)
-  span.setAttribute('graphql.operation.name', operationName)
+  const etichetta = type.charAt(0).toUpperCase() + type.slice(1)
+  span.updateName(`GraphQL ${etichetta}.${name}`)
+  span.setAttribute('graphql.operation.name', name)
+  span.setAttribute('graphql.operation.type', type)
 }
 
 /** Vero dopo la prima chiamata: il preload e `index.ts` chiamano entrambi. */

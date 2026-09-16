@@ -799,7 +799,8 @@
       "tracing": {
         "title": "OpenTelemetry Tracing",
         "enabled": "Abilitato",
-        "noTracing": "Tracing non attivo: OTEL_ENABLED è false. Scrivi OTEL_ENABLED=true in infra/.env e riavvia l'API (docker compose up -d api). Jaeger è già nello stack, non c'è niente da avviare: la sua interfaccia è su http://localhost:16686."
+        "noTracing": "Tracing non attivo: il processo API ha OTEL_ENABLED a false. Lo accende chi gestisce il deploy, e serve un collettore OpenTelemetry raggiungibile.",
+        "endpointWhenOff": "Le tracce andrebbero a: {{endpoint}}"
       },
       "process": {
         "title": "Processo",

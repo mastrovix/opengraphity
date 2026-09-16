@@ -362,7 +362,25 @@ export function MonitoringPage() {
             </>
           ) : (
             <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, padding: '12px 0' }}>
+              {/**
+                * Il messaggio dice il FATTO e chi lo cambia, non la ricetta del
+                * nostro stack locale. Prima diceva «avvia Jaeger», che nel
+                * compose gira da sempre; poi (colpa mia) «scrivi in
+                * infra/.env e fai docker compose up -d api», ed era l'unico
+                * punto di tutta l'interfaccia a nominare un file del NOSTRO
+                * repository, un comando docker e `localhost` — cioè la
+                * macchina di chi legge. Chi ha `admin.system` è
+                * l'amministratore del CLIENTE, e il suo OpenGrafo può girare
+                * come vuole. La ricetta sta in DEPLOY, dove il contesto è lo
+                * stack che documentiamo noi.
+                */}
               {t('pages.monitoring.tracing.noTracing')}
+              {/* L'endpoint configurato è un fatto del deploy di chi legge, e dice dove andrebbero le tracce. */}
+              {trace.endpoint && (
+                <div style={{ marginTop: 6, fontSize: 'var(--font-size-table)' }}>
+                  {t('pages.monitoring.tracing.endpointWhenOff', { endpoint: trace.endpoint })}
+                </div>
+              )}
             </div>
           )
         ) : null}

@@ -283,8 +283,20 @@ Per esporre la stack oltre `localhost` passare **solo** da nginx (o da
   persistite: si edita il JSON nel repo. **Gap noto**: gli errori per resolver
   non sono esportati verso Prometheus (esistono solo nel pannello admin
   GraphQL); il pannello "errori" usa gli HTTP 5xx.
-- **Tracce → Jaeger**: `OTEL_ENABLED=true` in `.env`; endpoint interno
-  `http://jaeger:4318/v1/traces`. L'SDK va avviato **prima** dell'app, con il
+- **Tracce → Jaeger**: `OTEL_ENABLED=true` in `infra/.env`, poi
+  `docker compose -f infra/docker-compose.yml up -d api`; endpoint interno
+  `http://jaeger:4318/v1/traces`, interfaccia di Jaeger su
+  `http://localhost:16686`. Jaeger è già nello stack: non c'è niente da
+  avviare a parte. Il riquadro «OpenTelemetry Tracing» del pannello admin dice
+  soltanto che la variabile è a false e mostra l'endpoint configurato — la
+  ricetta sta qui e non lì, perché chi ha `admin.system` è l'amministratore del
+  cliente e il suo OpenGrafo non gira necessariamente con questo compose.
+  **Prima di accenderlo**, sappi cosa cambia: con i valori predefiniti la
+  strumentazione GraphQL crea un'operazione per OGNI elemento di lista
+  (`incidents.items.0.slaStatus`, `items.1...`) e in pochi minuti Jaeger ne
+  raccoglie centinaia; per questo `telemetry.ts` passa `mergeItems` e
+  `ignoreTrivialResolveSpans` (misurato: da 398 operazioni con 303 indici a
+  135 senza nessun indice). L'SDK va avviato **prima** dell'app, con il
   preload `NODE_OPTIONS=--import=/app/dist/telemetry-register.js` (il compose lo
   imposta già): l'auto-strumentazione patcha solo i moduli caricati dopo
   l'avvio, quindi senza preload in Jaeger si vedono soltanto gli span
