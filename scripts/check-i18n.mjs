@@ -308,6 +308,21 @@ for (const k of [...defined].sort()) {
         .matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
       chiavi:  (v) => [`workflow.actions.${v}`],
     },
+    /**
+     * Le code dei job. Il nome di una coda (`events-maintenance`, `sla-jobs`)
+     * dice a chi l'ha scritta cosa fa, e a nessun altro: la pagina Code mostra
+     * sotto ogni nome la descrizione `pages.queueStats.queue.<nome>`. Il
+     * perimetro e il registro UNICO delle code dell'API, non un elenco copiato
+     * qui: una coda nuova la si dichiara in un posto solo e questo controllo
+     * pretende subito la sua descrizione, nelle due lingue.
+     */
+    {
+      nome:    'QUEUE_REGISTRY',
+      valori:  [...(leggi('apps/api/src/lib/queueRegistry.ts')
+        .match(/export const QUEUE_REGISTRY[^=]*= \[([\s\S]*?)\n\]/)?.[1] ?? '')
+        .matchAll(/(?:name: '([a-z-]+)'|consumerEntry\('([a-z-]+)')/g)].map((m) => m[1] ?? m[2]),
+      chiavi:  (v) => [`pages.queueStats.queue.${v}`],
+    },
   ]
   for (const ins of insiemi) {
     if (ins.valori.length === 0) {

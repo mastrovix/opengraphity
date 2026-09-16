@@ -234,15 +234,32 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
         <div style={{ color: 'var(--color-slate-light)', flexShrink: 0 }}>
           {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </div>
-        <div style={{ minWidth: 180, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'var(--font-mono)' }}>
-            {queue.name}
-          </span>
-          {!queue.retryable && (
-            <span title={t('pages.queueStats.notRetryable')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', padding: '1px 6px', background: colors.slateBg, borderRadius: 4, whiteSpace: 'nowrap' }}>
-              {t('pages.queueStats.notRetryable')}
+        {/**
+          * Il nome di una coda (`events-maintenance`, `sla-jobs`) dice a chi
+          * l'ha scritta cosa fa, e a nessun altro: sotto il nome c'e la
+          * descrizione, una frase per coda in `pages.queueStats.queue.<nome>`.
+          *
+          * Il perimetro NON e questa pagina: `scripts/check-i18n.mjs` legge i
+          * nomi da `apps/api/src/lib/queueRegistry.ts` e pretende la
+          * descrizione, nelle due lingue, per ognuno — una coda nuova senza
+          * descrizione fa fallire il guardiano. A schermo, una coda che il
+          * server dichiara e questo bundle non conosce lo DICE, invece di
+          * dipingere il nome della chiave o un vuoto che sembra normale.
+          */}
+        <div style={{ flex: '0 1 340px', minWidth: 240 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'var(--font-mono)' }}>
+              {queue.name}
             </span>
-          )}
+            {!queue.retryable && (
+              <span title={t('pages.queueStats.notRetryable')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', padding: '1px 6px', background: colors.slateBg, borderRadius: 4, whiteSpace: 'nowrap' }}>
+                {t('pages.queueStats.notRetryable')}
+              </span>
+            )}
+          </div>
+          <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', lineHeight: 1.4, fontWeight: 400 }}>
+            {t(`pages.queueStats.queue.${queue.name}`, { defaultValue: t('pages.queueStats.queueNoDescription') })}
+          </p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, flex: 1 }}>
           {COUNTER_ORDER.map((key) => {
