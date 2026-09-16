@@ -10,6 +10,7 @@ import { RETRY_QUEUE_JOB } from '@/graphql/mutations'
 import { alpha, colors, fontSize, fontWeight, layoutPalette, palette } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
 import { showError } from '@/lib/showError'
+import { motivoLeggibile } from '@/lib/failureReason'
 
 interface QueueJobCounts {
   waiting: number
@@ -131,7 +132,14 @@ function JobDetail({ job, retryable, onRetry, retrying }: { job: QueueJob; retry
             <AlertCircle size={13} color={palette.danger.base} />
             <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 700, color: 'var(--color-danger)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('pages.queueStats.error')}</span>
           </div>
-          <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', wordBreak: 'break-all' }}>{job.failedReason}</code>
+          {/**
+            * La stessa causa ripetuta per ogni passata si scioglie in lettura
+            * (lib/failureReason.ts): `failedReason` non cambia piu dopo il
+            * fallimento, quindi un job fallito prima del rimedio porta ancora
+            * il testo lungo. Il testo originale resta a portata di mano nel
+            * suggerimento: nulla viene buttato.
+            */}
+          <code title={job.failedReason} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', wordBreak: 'break-all' }}>{motivoLeggibile(job.failedReason)}</code>
         </div>
       )}
 
@@ -358,7 +366,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
                     title={job.failedReason}
                     style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', flex: '0 1 300px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                   >
-                    {job.failedReason}
+                    {motivoLeggibile(job.failedReason)}
                   </span>
                 )}
                 <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
