@@ -201,19 +201,31 @@ export async function workflowDefinitionById(
   })
 }
 
+/**
+ * Le definizioni del tenant. Per difetto SOLO quelle attive — è il
+ * comportamento storico e quello che serve a chi deve scegliere un iter da
+ * usare.
+ *
+ * `includeInactive` (moduli del catalogo, ondata 3) serve a un caso preciso: una
+ * copia appena duplicata nasce SPENTA di proposito, e senza questo parametro
+ * era invisibile a ogni pagina — quindi non c'era modo di finirla e metterla in
+ * servizio. Un vicolo cieco scoperto provando la duplicazione nel browser, non
+ * dai test.
+ */
 export async function workflowDefinitions(
   _: unknown,
-  { entityType }: { entityType?: string | null },
+  { entityType, includeInactive }: { entityType?: string | null; includeInactive?: boolean | null },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
     const defResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, active: true})
-        WHERE $entityType IS NULL OR wd.entity_type = $entityType
+        MATCH (wd:WorkflowDefinition {tenant_id: $tenantId})
+        WHERE ($entityType IS NULL OR wd.entity_type = $entityType)
+          AND ($includeInactive = true OR wd.active = true)
         MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
         RETURN wd, collect(s) AS steps
-      `, { tenantId: ctx.tenantId, entityType: entityType ?? null }),
+      `, { tenantId: ctx.tenantId, entityType: entityType ?? null, includeInactive: includeInactive === true }),
     )
 
     const results = []

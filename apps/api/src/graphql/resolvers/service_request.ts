@@ -9,6 +9,7 @@ import { TICKET_CI_RELATIONSHIP } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { assertCIsLinkable } from '../../lib/ticketCIExclusions.js'
 import { mapUser } from '../../lib/mappers.js'
+import type { Session } from 'neo4j-driver'
 import { buildAdvancedWhere, type RelationFieldDef } from '../../lib/filterBuilder.js'
 import {
   FORM_REFERENCE_LABELS, FORM_REFERENCE_REL_TYPES, FORM_REFERENCE_SEARCH_PROPS, isFormReferenceType,
@@ -164,13 +165,18 @@ async function createServiceRequest(
     // un'altra; l'utente del portale no — la priorità la decide la voce.
     let requiresApproval = false
     let category: string | null = null
+    // L'iter della voce (moduli del catalogo, ondata 3): lo decide la voce, non chi apre la richiesta.
+    let workflowDefinitionId: string | null = null
     let priority = args.input.priority ?? null
     if (args.input.catalogItemId) {
-      const item = await runQueryOne<{ requiresApproval: boolean; priority: string | null; name: string; category: string | null }>(session,
-        'MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId}) RETURN ci.requires_approval AS requiresApproval, ci.priority AS priority, ci.name AS name, ci.category AS category',
+      const item = await runQueryOne<{ requiresApproval: boolean; priority: string | null; name: string; category: string | null; workflowDefinitionId: string | null }>(session,
+        `MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId})
+         RETURN ci.requires_approval AS requiresApproval, ci.priority AS priority, ci.name AS name,
+                ci.category AS category, ci.workflow_definition_id AS workflowDefinitionId`,
         { id: args.input.catalogItemId, tenantId: ctx.tenantId })
       if (!item) throw new NotFoundError('ServiceCatalogItem', args.input.catalogItemId)
       requiresApproval = item.requiresApproval ?? false
+      workflowDefinitionId = item.workflowDefinitionId ?? null
       // La categoria della richiesta è quella della voce (ondata 2): le policy SLA per categoria la usano.
       category = item.category ?? null
       if (isPortalOnly(ctx) && priority !== null && priority !== item.priority) {
@@ -197,7 +203,12 @@ async function createServiceRequest(
     // Dal portale i campi del cliente passano sempre dal controllo (ondata 4): un
     // campo obbligatorio offerto all'utente finale va compilato.
     const customFields = isPortalOnly(ctx) ? (args.input.customFields ?? []) : args.input.customFields
-    const result = await requestService.createRequest({ ...args.input, customFields, priority, requiresApproval, ...(category ? { category } : {}) }, ctx, isPortalOnly(ctx) ? 'portal' : 'agent')
+    const result = await requestService.createRequest({
+      ...args.input, customFields, priority, requiresApproval,
+      ...(category ? { category } : {}),
+      // L'iter della voce: chi apre la richiesta non lo sceglie.
+      ...(workflowDefinitionId ? { workflowDefinitionId } : {}),
+    }, ctx, isPortalOnly(ctx) ? 'portal' : 'agent')
     void audit(ctx, 'request.created', 'ServiceRequest', result.id as string)
     return result
   })
@@ -343,6 +354,38 @@ function mapCatalogItem(props: Props) {
     priority:         (props['priority'] ?? null) as string | null,
     active:           (props['active'] ?? true) as boolean,
     createdAt:        props['created_at'] as string,
+    // L'iter di questa voce (moduli del catalogo, ondata 3): null = per categoria.
+    workflowDefinitionId: (props['workflow_definition_id'] ?? null) as string | null,
+    // Il nome lo risolve il field resolver `ServiceCatalogItem.workflowDefinitionName`.
+  }
+}
+
+/**
+ * La definizione indicata da una voce deve esistere, essere ATTIVA, essere del
+ * tipo `service_request` e avere un passo iniziale. Un iter scelto e poi
+ * disattivato (o senza passo iniziale) farebbe fallire la creazione di ogni
+ * richiesta di quella voce, e il messaggio arriverebbe a chi apre il ticket
+ * invece che a chi ha configurato.
+ */
+async function assertWorkflowDefinition(session: Session, tenantId: string, definitionId: string): Promise<void> {
+  const rows = await runQuery<{ name: string; entityType: string; iniziali: number }>(session, `
+    MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId, active: true})
+    OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
+      WHERE coalesce(s.is_initial, s.type = 'start')
+    RETURN wd.name AS name, wd.entity_type AS entityType, count(s) AS iniziali
+    LIMIT 1`, { definitionId, tenantId })
+  const row = rows[0]
+  if (!row) {
+    throw new ValidationError('That workflow does not exist here, or it is not active.',
+      { key: 'errors.serviceCatalog.workflowNotFound', params: {} })
+  }
+  if (row.entityType !== 'service_request') {
+    throw new ValidationError(`The workflow "${row.name}" is for ${row.entityType}, not for service requests.`,
+      { key: 'errors.serviceCatalog.workflowWrongType', params: { name: row.name, entityType: row.entityType } })
+  }
+  if (Number(row.iniziali) === 0) {
+    throw new ValidationError(`The workflow "${row.name}" has no initial step: mark one in the designer before using it here.`,
+      { key: 'errors.serviceCatalog.workflowNoInitialStep', params: { name: row.name } })
   }
 }
 
@@ -357,21 +400,24 @@ async function serviceCatalogItems(_: unknown, args: { activeOnly?: boolean }, c
   })
 }
 
-async function createServiceCatalogItem(_: unknown, args: { input: { name: string; description?: string; category?: string; requiresApproval?: boolean; priority: string } }, ctx: GraphQLContext) {
+async function createServiceCatalogItem(_: unknown, args: { input: { name: string; description?: string; category?: string; requiresApproval?: boolean; priority: string; workflowDefinitionId?: string | null } }, ctx: GraphQLContext) {
   requirePermission(ctx, 'config.catalog')
   const priority = await assertDomainValue(ctx.tenantId, 'priority', args.input.priority)
   // La categoria è un valore del Dizionario (ondata 2), non più testo libero: la eredita la richiesta.
   const category = args.input.category == null || args.input.category === '' ? null : await assertDomainValue(ctx.tenantId, 'category', args.input.category)
   const id = uuidv4(); const now = new Date().toISOString()
   return withSession(async (session) => {
+    if (args.input.workflowDefinitionId) await assertWorkflowDefinition(session, ctx.tenantId, args.input.workflowDefinitionId)
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (ci:ServiceCatalogItem {
         id: $id, tenant_id: $tenantId, name: $name, description: $description,
-        category: $category, requires_approval: $requiresApproval, priority: $priority, active: true, created_at: $now
+        category: $category, requires_approval: $requiresApproval, priority: $priority, active: true, created_at: $now,
+        workflow_definition_id: $workflowDefinitionId
       })
       RETURN properties(ci) AS props
     `, { id, tenantId: ctx.tenantId, name: args.input.name, description: args.input.description ?? null,
-         category, requiresApproval: args.input.requiresApproval ?? false, priority, now })
+         category, requiresApproval: args.input.requiresApproval ?? false, priority, now,
+         workflowDefinitionId: args.input.workflowDefinitionId ?? null })
     void audit(ctx, 'service_catalog_item.created', 'ServiceCatalogItem', id)
     return mapCatalogItem(rows[0]!.props)
   }, true)
@@ -379,7 +425,7 @@ async function createServiceCatalogItem(_: unknown, args: { input: { name: strin
 
 async function updateServiceCatalogItem(
   _: unknown,
-  args: { id: string; input: { name?: string; description?: string; category?: string; requiresApproval?: boolean; priority?: string | null; active?: boolean } },
+  args: { id: string; input: { name?: string; description?: string; category?: string; requiresApproval?: boolean; priority?: string | null; active?: boolean; workflowDefinitionId?: string | null } },
   ctx: GraphQLContext,
 ) {
   requirePermission(ctx, 'config.catalog')
@@ -396,6 +442,24 @@ async function updateServiceCatalogItem(
   }
   if (input.requiresApproval !== undefined) sets['requires_approval'] = input.requiresApproval
   if (input.active !== undefined)           sets['active']            = input.active
+  /**
+   * L'iter della voce (ondata 3). `null` esplicito lo TOGLIE e riporta alla
+   * scelta per categoria: è una scelta, non un valore mancante, e va distinta
+   * da «non l'ho mandato» (undefined).
+   */
+  if (input.workflowDefinitionId !== undefined) {
+    sets['workflow_definition_id'] = input.workflowDefinitionId === null || input.workflowDefinitionId === ''
+      ? null
+      : input.workflowDefinitionId
+  }
+  /**
+   * La validazione dell'iter serve ANCHE qui, non solo alla creazione della
+   * voce: provando dal browser ho assegnato un workflow SPENTO e la modifica
+   * l'ha accettato — da quel momento ogni richiesta di quella voce sarebbe
+   * fallita, e il messaggio sarebbe arrivato a chi apre il ticket invece che a
+   * chi ha configurato.
+   */
+  const iterDaValidare = sets['workflow_definition_id']
   // La priorità si cambia, non si toglie: senza, dalla voce non nasce nessuna richiesta.
   if (input.priority !== undefined) {
     if (input.priority === null || input.priority.trim() === '') {
@@ -407,6 +471,7 @@ async function updateServiceCatalogItem(
     throw new ValidationError('updateServiceCatalogItem: no field to update', { key: 'errors.nothingToUpdate' })
   }
   return withSession(async (session) => {
+    if (typeof iterDaValidare === 'string') await assertWorkflowDefinition(session, ctx.tenantId, iterDaValidare)
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId})
       SET ci += $sets
@@ -489,6 +554,23 @@ async function removeCIFromServiceRequest(_: unknown, args: { requestId: string;
 export const serviceRequestResolvers = {
   Query:    { serviceRequests, serviceRequest, serviceCatalogItems },
   Mutation: { createServiceRequest, updateServiceRequest, assignServiceRequestToUser, createServiceCatalogItem, updateServiceCatalogItem, addCIToServiceRequest, removeCIFromServiceRequest },
+  ServiceCatalogItem: {
+    /**
+     * Il nome dell'iter scelto, risolto qui e non nella lettura della voce:
+     * serve solo a chi mostra la voce, e una join su ogni elenco di catalogo la
+     * pagherebbero anche il portale e la creazione di una richiesta.
+     */
+    workflowDefinitionName: async (parent: { workflowDefinitionId?: string | null }, _a: unknown, ctx: GraphQLContext) => {
+      if (!parent.workflowDefinitionId) return null
+      return withSession(async (session) => {
+        const rows = await runQuery<{ name: string }>(session, `
+          MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+          RETURN wd.name AS name LIMIT 1`, { definitionId: parent.workflowDefinitionId, tenantId: ctx.tenantId })
+        return rows[0]?.name ?? null
+      })
+    },
+  },
+
   ServiceRequest: {
     affectedCIs: requestAffectedCIs,
     // Le risposte al modulo della voce di catalogo (moduli del catalogo, ondata 1).

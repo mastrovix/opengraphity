@@ -296,6 +296,7 @@ export async function runAction(
     }
 
     // ── New: create_approval_request ─────────────────────────────────────────
+    // (il lettore delle due forme di `approver_*_ids` è `approverIdList`, in fondo)
 
     case 'create_approval_request': {
       // Fail-loud: a missing approval request leaves the workflow waiting for
@@ -310,6 +311,10 @@ export async function runAction(
         entityType:   instance.entityType,
         title,
         approverRole: p.approver_role,
+        // Persone e squadre (moduli del catalogo, ondata 3): l'insieme degli
+        // approvatori e l'unione dei tre, senza ripetizioni.
+        approverUserIds: approverIdList(p.approver_user_ids),
+        approverTeamIds: approverIdList(p.approver_team_ids),
         approvalType: p.approval_type,
       })
       log.info({ approvalId, entityId: instance.entityId }, 'workflow-action: create_approval_request succeeded')
@@ -396,4 +401,18 @@ export async function runAction(
       // Unknown action type = corrupt/newer config this engine can't run.
       throw new Error(`Unknown workflow action type: ${String((action as WorkflowActionConfig).type)}`)
   }
+}
+
+
+/**
+ * Gli id degli approvatori, da una lista JSON o da una stringa separata da
+ * virgola. È l'UNICO posto che legge le due forme: il disegnatore scrive una
+ * stringa (il suo editor tiene i parametri come `Record<string, string>`),
+ * l'API può scrivere un array. Vuoto = nessun id indicato, che non è lo stesso
+ * di «nessun approvatore»: senza id vale il ruolo.
+ */
+export function approverIdList(raw: string[] | string | undefined): string[] {
+  if (raw == null) return []
+  const parti = Array.isArray(raw) ? raw : raw.split(',')
+  return [...new Set(parti.map((v) => String(v).trim()).filter((v) => v !== ''))]
 }

@@ -53,6 +53,14 @@ export function serviceRequestSDL(): string {
     priority: String
     active: Boolean!
     createdAt: String!
+    """
+    L'iter di QUESTA voce (moduli del catalogo, ondata 3): l'identificativo
+    della definizione di workflow da usare. Assente = si sceglie per categoria,
+    come prima. Il motore la preferisce alla categoria.
+    """
+    workflowDefinitionId: ID
+    """Il nome della definizione scelta, per mostrarlo senza una seconda query."""
+    workflowDefinitionName: String
   }
 
   input CreateServiceCatalogItemInput {
@@ -61,6 +69,8 @@ export function serviceRequestSDL(): string {
     category: String
     requiresApproval: Boolean
     priority: String!
+    """L'iter di questa voce: assente = si sceglie per categoria (moduli del catalogo, ondata 3)."""
+    workflowDefinitionId: ID
   }
 
   input UpdateServiceCatalogItemInput {
@@ -70,6 +80,8 @@ export function serviceRequestSDL(): string {
     requiresApproval: Boolean
     priority: String
     active: Boolean
+    """L'iter di questa voce: assente = si sceglie per categoria (moduli del catalogo, ondata 3)."""
+    workflowDefinitionId: ID
   }
 
   input CreateServiceRequestInput {

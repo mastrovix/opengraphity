@@ -158,7 +158,12 @@ export function buildBaseSDL(): string {
     incidentAvailableTransitions(incidentId: ID!): [WorkflowTransition!]!
     workflowDefinition(entityType: String!): WorkflowDefinition
     workflowDefinitionById(id: ID!): WorkflowDefinition
-    workflowDefinitions(entityType: String): [WorkflowDefinition!]!
+    """
+    Le definizioni del tenant. Per difetto solo quelle ATTIVE; «includeInactive»
+    mostra anche le spente — serve a finire una copia appena duplicata, che
+    nasce spenta (moduli del catalogo, ondata 3).
+    """
+    workflowDefinitions(entityType: String, includeInactive: Boolean): [WorkflowDefinition!]!
 
     # Enum Types
     enumTypes(scope: String): [EnumTypeDefinition!]!
@@ -516,6 +521,28 @@ export function buildBaseSDL(): string {
     # expectedVersion: optimistic lock — se la definizione ha una versione
     # diversa (salvata da un altro utente) la mutation fallisce con CONFLICT
     # invece di sovrascrivere. Null = nessun controllo (client legacy).
+    """
+    Duplica una definizione di workflow: passi, transizioni, azioni e posizioni.
+    Nasce DISATTIVATA e marcata come personalizzata — il seed di fabbrica non la
+    tocchera mai. Serve all'iter per voce di catalogo (moduli del catalogo,
+    ondata 3): prima si potevano solo modificare le definizioni seminate.
+    """
+    duplicateWorkflowDefinition(
+      definitionId: ID!
+      name:         String!
+      """La categoria della copia: assente = nessuna (la copia non e per una categoria)."""
+      category:     String
+    ): WorkflowDefinition!
+
+    """
+    Accende o spegne una definizione di workflow. Una definizione SPENTA non
+    entra nella scelta di nessun ticket nuovo; le istanze già create restano
+    dove sono. Serve per finire una copia prima di metterla in servizio
+    (moduli del catalogo, ondata 3): senza, un workflow duplicato era un
+    vicolo cieco — nato spento e senza modo di accenderlo.
+    """
+    setWorkflowDefinitionActive(definitionId: ID!, active: Boolean!): WorkflowDefinition!
+
     saveWorkflowChanges(
       definitionId:    ID!
       transitions:     [TransitionChangeInput!]!

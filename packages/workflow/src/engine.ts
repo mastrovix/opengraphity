@@ -136,55 +136,26 @@ export class WorkflowEngine {
     definitionId?: string,
     category?: string | null,
   ): Promise<WorkflowInstance> {
+    // La selezione della definizione e del passo iniziale sta in
+    // `initialStepSelection()`, esportata: l'API ne ha bisogno per scrivere
+    // `status` sul ticket PRIMA di creare l'istanza, e due copie della stessa
+    // priorità divergono — con il risultato che il ticket nasce con lo stato di
+    // una definizione e l'istanza su un'altra.
+
     const instanceId = uuidv4()
     const execId     = uuidv4()
     const now        = new Date().toISOString()
 
     const work = async (tx: ManagedTransaction): Promise<WorkflowInstance> => {
-      let defQuery: string
-      let defParams: Record<string, unknown>
-
-      // Il passo di partenza è quello che il DATO dichiara iniziale
-      // (`is_initial`), non quello che si chiama `type='start'`: il disegnatore
-      // sposta «Step iniziale» scrivendo `is_initial`, e senza questa lettura
-      // l'entità nasceva con `status` = passo marcato e `current_step` = vecchio
-      // `start` (B-8). `coalesce(is_initial, type='start')` è la stessa regola di
-      // `getInitialStepName` nell'API: una sorgente sola. Se per sbaglio ne
-      // risultano due, vince quello con `is_initial` esplicito.
-      const INITIAL_STEP = `
-          MATCH (wd)-[:HAS_STEP]->(startStep:WorkflowStep)
-          WHERE coalesce(startStep.is_initial, startStep.type = 'start')
-          WITH wd, startStep, CASE WHEN startStep.is_initial = true THEN 0 ELSE 1 END AS stepPriority`
-
-      if (definitionId) {
-        defQuery = `
-          MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId, active: true})
-          ${INITIAL_STEP}
-          RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName
-          ORDER BY stepPriority ASC, startStep.name ASC
-          LIMIT 1
-        `
-        defParams = { definitionId, tenantId }
-      } else {
-        // Category-aware selection: prefer category-specific, fallback to default (category IS NULL)
-        defQuery = `
-          MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
-          ${INITIAL_STEP},
-            CASE
-              WHEN wd.category IS NOT NULL AND wd.category = $category THEN 0
-              WHEN wd.category IS NULL THEN 1
-              ELSE 2
-            END AS priority
-          WHERE priority < 2
-          RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName, wd.category AS defCategory
-          ORDER BY priority ASC, wd.version DESC, stepPriority ASC, startStep.name ASC
-          LIMIT 1
-        `
-        defParams = { tenantId, entityType, category: category ?? null }
-      }
-
-      const defResult = await tx.run(defQuery, defParams)
-      if (defResult.records.length === 0) {
+      // La selezione sta in `initialStepSelection` (sopra), una sola volta:
+      // l'API la richiama per scrivere `status` sul ticket con la STESSA
+      // priorita, invece di una lettura sua che con le definizioni per
+      // categoria dava un altro passo.
+      const scelta = await initialStepSelection(tx, { tenantId, entityType, definitionId, category })
+      const defParams: Record<string, unknown> = definitionId
+        ? { definitionId, tenantId }
+        : { tenantId, entityType, category: category ?? null }
+      if (!scelta) {
         // Distinguere «non c'è definizione» da «c'è ma nessun passo è iniziale»:
         // il secondo caso è una definizione mal configurata dal disegnatore e
         // dirlo «non c'è nessuna definizione» manderebbe a cercare la cosa
@@ -228,10 +199,7 @@ export class WorkflowEngine {
         throw new Error(`No active workflow definition for "${entityType}" in tenant "${tenantId}"`)
       }
 
-      const rec      = defResult.records[0]
-      const defId    = rec.get('defId')    as string
-      const stepId   = rec.get('stepId')   as string
-      const stepName = rec.get('stepName') as string
+      const { definitionId: defId, stepId, stepName } = scelta
 
       // Variante per categoria (B-13): la scelta confronta `wd.category` con la
       // categoria dell'entità per UGUAGLIANZA, e ripiega sulla definizione
@@ -242,7 +210,7 @@ export class WorkflowEngine {
       // ticket di sicurezza seguivano il flusso base senza un solo avviso.
       // Non si può decidere al posto suo (la variante potrebbe essere stata
       // dismessa di proposito), ma si dice.
-      if (!definitionId && category != null && category !== '' && rec.get('defCategory') == null) {
+      if (!definitionId && category != null && category !== '' && scelta.definitionCategory == null) {
         const variants = await tx.run(`
           MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
           WHERE wd.category IS NOT NULL
@@ -841,6 +809,73 @@ export class WorkflowEngine {
 
     return result.records.map((r) => r.get('exec').properties as Record<string, unknown>)
   }
+}
+
+
+/**
+ * LA SELEZIONE DELLA DEFINIZIONE E DEL PASSO INIZIALE, in un posto solo.
+ *
+ * `createInstance` la usa per creare l'istanza; l'API la usa per scrivere
+ * `status` sul ticket nello stesso istante. Prima erano due letture diverse —
+ * `createInstance` con la priorità per categoria, `getInitialStepName` con un
+ * MATCH su TUTTE le definizioni del tipo — e finché ogni tipo aveva una sola
+ * definizione combaciavano per caso. Con una definizione per categoria (moduli
+ * del catalogo, ondata 3) il ticket nasceva con lo stato di una e l'istanza su
+ * un'altra.
+ *
+ * La priorità, nell'ordine: la definizione chiesta per id; poi quella della
+ * categoria; poi quella senza categoria (il difetto). Il passo iniziale è
+ * quello che il DATO dichiara tale (`is_initial`), non quello che si chiama
+ * `type='start'`.
+ */
+export const INITIAL_STEP_MATCH = `
+  MATCH (wd)-[:HAS_STEP]->(startStep:WorkflowStep)
+  WHERE coalesce(startStep.is_initial, startStep.type = 'start')
+  WITH wd, startStep, CASE WHEN startStep.is_initial = true THEN 0 ELSE 1 END AS stepPriority`
+
+export interface InitialStepSelection {
+  definitionId: string
+  stepId: string
+  stepName: string
+  /** La categoria della definizione scelta: `null` = quella senza categoria (il ripiego). */
+  definitionCategory: string | null
+}
+
+export async function initialStepSelection(
+  tx: ManagedTransaction,
+  opts: { tenantId: string; entityType: string; definitionId?: string | null; category?: string | null },
+): Promise<InitialStepSelection | null> {
+  const { tenantId, entityType, definitionId, category } = opts
+  if (definitionId) {
+    const res = await tx.run(`
+      MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId, active: true})
+      ${INITIAL_STEP_MATCH}
+      RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName, wd.category AS defCategory
+      ORDER BY stepPriority ASC, startStep.name ASC
+      LIMIT 1`, { definitionId, tenantId })
+    const r = res.records[0]
+    return r ? {
+      definitionId: r.get('defId') as string, stepId: r.get('stepId') as string,
+      stepName: r.get('stepName') as string, definitionCategory: (r.get('defCategory') ?? null) as string | null,
+    } : null
+  }
+  const res = await tx.run(`
+    MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
+    ${INITIAL_STEP_MATCH},
+      CASE
+        WHEN wd.category IS NOT NULL AND wd.category = $category THEN 0
+        WHEN wd.category IS NULL THEN 1
+        ELSE 2
+      END AS priority
+    WHERE priority < 2
+    RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName, wd.category AS defCategory
+    ORDER BY priority ASC, wd.version DESC, stepPriority ASC, startStep.name ASC
+    LIMIT 1`, { tenantId, entityType, category: category ?? null })
+  const r = res.records[0]
+  return r ? {
+    definitionId: r.get('defId') as string, stepId: r.get('stepId') as string,
+    stepName: r.get('stepName') as string, definitionCategory: (r.get('defCategory') ?? null) as string | null,
+  } : null
 }
 
 export const workflowEngine = new WorkflowEngine()

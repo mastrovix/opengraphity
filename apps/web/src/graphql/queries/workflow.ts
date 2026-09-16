@@ -1,8 +1,8 @@
 import { gql } from '@apollo/client'
 
 export const GET_WORKFLOW_LIST = gql`
-  query GetWorkflowList {
-    workflowDefinitions {
+  query GetWorkflowList($includeInactive: Boolean) {
+    workflowDefinitions(includeInactive: $includeInactive) {
       id name entityType category active version
       steps { name label type isInitial isTerminal isOpen category purpose order }
     }

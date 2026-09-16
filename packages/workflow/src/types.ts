@@ -100,9 +100,30 @@ export interface CallWebhookParams {
   payload_template?: string
 }
 
+/**
+ * Chi deve approvare. Prima c'era solo il RUOLO: «tutti gli admin», o tutti
+ * quelli di un ruolo — e per un catalogo servizi non basta, perché
+ * l'approvazione di una spesa è del responsabile di budget, non di chi
+ * amministra il prodotto (moduli del catalogo, ondata 3).
+ *
+ * I tre si possono combinare: l'insieme degli approvatori è l'UNIONE, senza
+ * ripetizioni. Se nessuno dei tre è indicato vale il ruolo `admin`, come
+ * prima.
+ */
 export interface CreateApprovalRequestParams {
   title_template: string
   approver_role?: string
+  /**
+   * Le persone che approvano, e le squadre (approvano i loro membri).
+   *
+   * DUE FORME, un solo lettore: una lista JSON quando i parametri li scrive
+   * l'API, una stringa di id separati da virgola quando li scrive il
+   * disegnatore — il suo editor tiene i parametri come `Record<string, string>`
+   * e non può produrre un array. `approverIdList()` è l'unico posto che le
+   * legge, così la differenza non si propaga.
+   */
+  approver_user_ids?: string[] | string
+  approver_team_ids?: string[] | string
   approval_type?: 'any' | 'all' | 'majority'
 }
 
@@ -148,6 +169,9 @@ export interface ActionContext {
     entityType:   string
     title:        string
     approverRole?: string
+    /** Persone e squadre che approvano (moduli del catalogo, ondata 3): l'insieme è l'unione. */
+    approverUserIds?: string[]
+    approverTeamIds?: string[]
     approvalType?: string
   }) => Promise<string>
 }

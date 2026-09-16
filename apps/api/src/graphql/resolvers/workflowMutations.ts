@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql'
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine, isWorkflowActionType, WORKFLOW_ACTION_TYPES } from '@opengraphity/workflow'
 import { parseLocalizedLabels } from '@opengraphity/types'
@@ -20,6 +20,7 @@ import { withSession } from './ci-utils.js'
 import { loadTransitionRows, mapWorkflowDefinition } from './workflowMapping.js'
 import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
 import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
 import { auditStepEntered} from '../../lib/stepEvent.js'
@@ -1010,21 +1011,62 @@ export async function executeWorkflowTransition(
         })
       },
 
-      createApprovalRequest: async ({ entityId, entityType, title, approverRole, approvalType }) => {
+      createApprovalRequest: async ({ entityId, entityType, title, approverRole, approverUserIds, approverTeamIds, approvalType }) => {
         const now = new Date().toISOString()
 
-        // Find approvers by role
-        const adminsRes = await session.executeRead((tx) =>
-          tx.run(
+        /**
+         * CHI APPROVA (moduli del catalogo, ondata 3).
+         *
+         * Prima solo il RUOLO: «tutti gli admin», o tutti quelli di un ruolo.
+         * Per un catalogo servizi non basta — l'approvazione di una spesa è del
+         * responsabile di budget, non di chi amministra il prodotto.
+         *
+         * Ora tre sorgenti che si UNISCONO senza ripetizioni: il ruolo, le
+         * persone indicate, i membri delle squadre indicate. Se non è indicato
+         * niente vale il ruolo `admin`, come prima.
+         *
+         * Le persone e i membri si verificano nel tenant: un id inventato non
+         * diventa un approvatore fantasma che blocca il ticket per sempre.
+         */
+        const perRuolo = approverUserIds?.length || approverTeamIds?.length
+          ? []
+          : (await session.executeRead((tx) => tx.run(
             `MATCH (u:User {tenant_id: $tenantId, role: $role}) RETURN u.id AS id`,
             { tenantId: ctx.tenantId, role: approverRole ?? 'admin' },
-          ),
-        )
-        const approverIds = adminsRes.records.map((r) => r.get('id') as string)
-        if (approverIds.length === 0) {
-          throw new GraphQLError(`No user with role "${approverRole ?? 'admin'}" configured to approve`, { extensions: { code: 'NO_APPROVER', i18n: { key: 'errors.workflow.noApprover', params: { role: approverRole ?? 'admin' } } } })
+          ))).records.map((r) => r.get('id') as string)
+
+        const perNome = approverUserIds?.length
+          ? (await session.executeRead((tx) => tx.run(
+            `MATCH (u:User {tenant_id: $tenantId}) WHERE u.id IN $ids AND coalesce(u.active, true) RETURN u.id AS id`,
+            { tenantId: ctx.tenantId, ids: approverUserIds },
+          ))).records.map((r) => r.get('id') as string)
+          : []
+
+        const perSquadra = approverTeamIds?.length
+          ? (await session.executeRead((tx) => tx.run(
+            `MATCH (t:Team {tenant_id: $tenantId})<-[:MEMBER_OF]-(u:User {tenant_id: $tenantId})
+             WHERE t.id IN $ids AND coalesce(u.active, true)
+             RETURN DISTINCT u.id AS id`,
+            { tenantId: ctx.tenantId, ids: approverTeamIds },
+          ))).records.map((r) => r.get('id') as string)
+          : []
+
+        const finalApprovers = [...new Set([...perRuolo, ...perNome, ...perSquadra])]
+        if (finalApprovers.length === 0) {
+          // Il messaggio dice QUALE delle tre sorgenti era stata chiesta: «nessun
+          // admin» e «la squadra indicata è vuota» si correggono in due posti diversi.
+          const chiesto = approverUserIds?.length || approverTeamIds?.length
+            ? `the people/teams configured to approve (users: ${(approverUserIds ?? []).length}, teams: ${(approverTeamIds ?? []).length}) have no active member in this organization`
+            : `no user with role "${approverRole ?? 'admin'}" configured to approve`
+          throw new GraphQLError(`Approval cannot start: ${chiesto}`, {
+            extensions: {
+              code: 'NO_APPROVER',
+              i18n: approverUserIds?.length || approverTeamIds?.length
+                ? { key: 'errors.workflow.noApproverTarget', params: {} }
+                : { key: 'errors.workflow.noApprover', params: { role: approverRole ?? 'admin' } },
+            },
+          })
         }
-        const finalApprovers = approverIds
 
         const approvalId = uuidv4()
         await session.executeWrite((tx) =>
@@ -1439,5 +1481,214 @@ export async function saveWorkflowChanges(
     // ReferenceError — «Salva modifiche» del disegnatore non salvava niente.
     const savedTransitions = await loadTransitionRows(session, definitionId, ctx.tenantId)
     return mapWorkflowDefinition(wd.saved, savedSteps, savedTransitions)
+  }, true)
+}
+
+/**
+ * DUPLICARE UNA DEFINIZIONE DI WORKFLOW (moduli del catalogo, ondata 3).
+ *
+ * Perché serve: il motore sa già scegliere l'iter per categoria o per
+ * identificativo, ma non c'era modo di CREARE una definizione nuova — si
+ * potevano solo modificare quelle seminate. Senza questa mutation «un iter per
+ * ogni voce di catalogo» resta una promessa: ogni richiesta segue lo stesso
+ * flusso.
+ *
+ * Come copia, e perché in tre passi:
+ *  1. la definizione, con `properties(src)` così nessun campo si perde per
+ *     strada quando ne aggiungeremo altri, poi le sovrascritture (id, nome,
+ *     categoria, versione, i marchi).
+ *  2. i passi, ognuno con un riferimento TEMPORANEO all'originale
+ *     (`copied_from`): serve solo a ricostruire le transizioni.
+ *  3. le transizioni, cercate fra le coppie di passi copiati grazie a quel
+ *     riferimento, e poi il riferimento si cancella — un dato di servizio che
+ *     resta nel grafo diventa un dato che qualcuno legge per sbaglio.
+ *
+ * La copia nasce SPENTA e marcata come personalizzata: spenta perché una
+ * definizione attiva senza categoria entrerebbe subito nella scelta di ogni
+ * ticket nuovo di quel tipo (il ripiego «senza categoria»), e nessuno se lo
+ * aspetta da un «duplica»; personalizzata perché il seed di fabbrica non deve
+ * mai sovrascriverla.
+ */
+export async function duplicateWorkflowDefinition(
+  _: unknown,
+  args: { definitionId: string; name: string; category?: string | null },
+  ctx: GraphQLContext,
+) {
+  requirePermission(ctx, 'config.workflow')
+  const nome = args.name.trim()
+  if (nome === '') {
+    throw new ValidationError('The copy needs a name.', { key: 'errors.workflow.copyNameRequired', params: {} })
+  }
+  const categoria = args.category == null || args.category.trim() === '' ? null : args.category.trim()
+  const nuovoId = uuidv4()
+  const now = new Date().toISOString()
+
+  return withSession(async (session) => {
+    const creata = await session.executeWrite(async (tx) => {
+      const sorgente = await tx.run(`
+        MATCH (src:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        RETURN src.entity_type AS entityType, src.name AS name`,
+      { definitionId: args.definitionId, tenantId: ctx.tenantId })
+      const srcRec = sorgente.records[0]
+      if (!srcRec) throw new NotFoundError('WorkflowDefinition', args.definitionId)
+      const entityType = srcRec.get('entityType') as string
+
+      // Il nome identifica una definizione per (tenant, tipo): `seedWorkflowDefinition`
+      // cerca proprio così, e due omonime renderebbero il seed imprevedibile.
+      const omonima = await tx.run(`
+        MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, name: $name})
+        RETURN wd.id AS id LIMIT 1`, { tenantId: ctx.tenantId, entityType, name: nome })
+      if (omonima.records.length > 0) {
+        throw new ValidationError(`A ${entityType} workflow called "${nome}" already exists.`,
+          { key: 'errors.workflow.copyNameTaken', params: { name: nome, entityType } })
+      }
+
+      /**
+       * La copia si scrive con una PROIEZIONE DI MAPPA (`src { .*, id: … }`),
+       * non con `SET dst = properties(src)` seguito dalle sovrascritture: quella
+       * forma scrive prima l'id ORIGINALE, e il vincolo di unicità su
+       * `WorkflowDefinition.id` scatta lì — non al commit. Il primo giro nel
+       * browser è finito esattamente così, con «Node already exists with
+       * property id». Qui le sovrascritture sono dentro la stessa SET, quindi
+       * il nodo nasce già con il suo id.
+       */
+      await tx.run(`
+        MATCH (src:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        CREATE (dst:WorkflowDefinition)
+        SET dst = src {
+          .*,
+          id: $newId,
+          name: $name,
+          category: $category,
+          version: 1,
+          active: false,
+          created_at: $now,
+          updated_at: $now,
+          customized_at: $now,
+          customized_by: $userId,
+          copied_from_id: $definitionId
+        }`,
+      { definitionId: args.definitionId, tenantId: ctx.tenantId, newId: nuovoId, name: nome, category: categoria, now, userId: ctx.userId })
+
+      await tx.run(`
+        MATCH (src:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep)
+        MATCH (dst:WorkflowDefinition {id: $newId, tenant_id: $tenantId})
+        CREATE (ns:WorkflowStep)
+        SET ns = s {
+          .*,
+          id: randomUUID(),
+          definition_id: $newId,
+          tenant_id: $tenantId,
+          copied_from: s.id
+        }
+        CREATE (dst)-[:HAS_STEP]->(ns)`,
+      { definitionId: args.definitionId, tenantId: ctx.tenantId, newId: nuovoId })
+
+      // I passi copiati sono limitati al tenant come tutto il resto: il
+      // `definition_id` basterebbe (è un uuid appena creato), ma una query di
+      // dominio senza `tenant_id` è una query che un domani qualcuno riusa
+      // altrove — e lì l'uuid non sarebbe più appena creato.
+      await tx.run(`
+        MATCH (a:WorkflowStep {definition_id: $newId, tenant_id: $tenantId})
+        MATCH (b:WorkflowStep {definition_id: $newId, tenant_id: $tenantId})
+        MATCH (oa:WorkflowStep {id: a.copied_from, tenant_id: $tenantId})-[t:TRANSITIONS_TO]->(ob:WorkflowStep {id: b.copied_from, tenant_id: $tenantId})
+        CREATE (a)-[nt:TRANSITIONS_TO]->(b)
+        SET nt = properties(t)`,
+      { newId: nuovoId, tenantId: ctx.tenantId })
+
+      // Il riferimento temporaneo se ne va: ha finito il suo lavoro.
+      await tx.run(`
+        MATCH (s:WorkflowStep {definition_id: $newId, tenant_id: $tenantId})
+        REMOVE s.copied_from`, { newId: nuovoId, tenantId: ctx.tenantId })
+
+      const dst = await tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $newId, tenant_id: $tenantId})
+        OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
+        RETURN properties(wd) AS props, collect(s) AS steps`, { newId: nuovoId, tenantId: ctx.tenantId })
+      const rec = dst.records[0]!
+      return {
+        props: rec.get('props') as Record<string, unknown>,
+        steps: (rec.get('steps') ?? []) as Array<{ properties: Record<string, unknown> }>,
+        entityType,
+      }
+    })
+
+    invalidateWorkflowCache(ctx.tenantId, creata.entityType)
+    void audit(ctx, 'workflow.duplicated', 'WorkflowDefinition', nuovoId, {
+      copiedFrom: args.definitionId, name: nome, category: categoria,
+    })
+    const transizioni = await loadTransitionRows(session, nuovoId, ctx.tenantId)
+    return mapWorkflowDefinition(creata.props, creata.steps, transizioni)
+  }, true)
+}
+
+/**
+ * ACCENDERE O SPEGNERE una definizione (moduli del catalogo, ondata 3).
+ *
+ * Senza questa, `duplicateWorkflowDefinition` era un vicolo cieco: la copia
+ * nasce spenta — di proposito, perché una definizione attiva senza categoria
+ * entra subito nel ripiego di ogni ticket nuovo di quel tipo — e non c'era
+ * modo di metterla in servizio.
+ *
+ * Spegnere NON tocca le istanze già create: un ticket a metà del suo iter
+ * resta dov'è. Toglie solo la definizione dalla SCELTA dei ticket nuovi, ed è
+ * il motivo per cui si può spegnere senza paura.
+ *
+ * Una cosa la si rifiuta: spegnere l'ULTIMA definizione attiva di un tipo
+ * senza categoria. Dopo quella non nasce più nessun ticket di quel tipo, e il
+ * messaggio arriverebbe a chi apre un incident invece che a chi ha configurato.
+ */
+export async function setWorkflowDefinitionActive(
+  _: unknown,
+  args: { definitionId: string; active: boolean },
+  ctx: GraphQLContext,
+) {
+  requirePermission(ctx, 'config.workflow')
+  return withSession(async (session) => {
+    const aggiornata = await session.executeWrite(async (tx) => {
+      const trovata = await tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        RETURN wd.entity_type AS entityType, wd.name AS name, wd.category AS category, wd.active AS active`,
+      { definitionId: args.definitionId, tenantId: ctx.tenantId })
+      const rec = trovata.records[0]
+      if (!rec) throw new NotFoundError('WorkflowDefinition', args.definitionId)
+      const entityType = rec.get('entityType') as string
+      const categoria = (rec.get('category') ?? null) as string | null
+
+      if (!args.active && categoria == null) {
+        const altre = await tx.run(`
+          MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
+          WHERE wd.id <> $definitionId AND wd.category IS NULL
+          RETURN count(wd) AS n`, { tenantId: ctx.tenantId, entityType, definitionId: args.definitionId })
+        if (Number(altre.records[0]?.get('n') ?? 0) === 0) {
+          throw new ValidationError(
+            `"${rec.get('name') as string}" is the last active ${entityType} workflow without a category: switching it off would stop every new ${entityType} from being created. Activate another one first.`,
+            { key: 'errors.workflow.lastActiveDefinition', params: { name: rec.get('name') as string, entityType } },
+          )
+        }
+      }
+
+      // `WITH` fra SET e MATCH: Cypher lo pretende, e senza si prende un
+      // «WITH is required between SET and MATCH» a runtime — che i test con il
+      // driver mockato non vedono. Trovato premendo l'interruttore nel browser.
+      const scritta = await tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        SET wd.active = $active, wd.updated_at = $now
+        WITH wd
+        OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
+        RETURN properties(wd) AS props, collect(s) AS steps`,
+      { definitionId: args.definitionId, tenantId: ctx.tenantId, active: args.active, now: new Date().toISOString() })
+      const out = scritta.records[0]!
+      return {
+        props: out.get('props') as Record<string, unknown>,
+        steps: (out.get('steps') ?? []) as Array<{ properties: Record<string, unknown> }>,
+        entityType,
+      }
+    })
+
+    invalidateWorkflowCache(ctx.tenantId, aggiornata.entityType)
+    void audit(ctx, args.active ? 'workflow.activated' : 'workflow.deactivated', 'WorkflowDefinition', args.definitionId)
+    const transizioni = await loadTransitionRows(session, args.definitionId, ctx.tenantId)
+    return mapWorkflowDefinition(aggiornata.props, aggiornata.steps, transizioni)
   }, true)
 }

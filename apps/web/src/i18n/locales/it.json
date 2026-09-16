@@ -2249,7 +2249,8 @@
       "intro": "Ogni voce di catalogo può chiedere quello che serve davvero a quella richiesta: sezioni, campi condizionali, il suo testo d'aiuto. I campi vengono dalla libreria, così la stessa domanda è una colonna sola in ogni report.",
       "tabs": {
         "forms": "Moduli",
-        "library": "Libreria dei campi"
+        "library": "Libreria dei campi",
+        "itinerary": "Iter"
       },
       "fieldType": {
         "text": "Testo",
@@ -2342,6 +2343,28 @@
         "searchReference": "Scrivi almeno due lettere…",
         "noResults": "Nessun risultato",
         "clearReference": "Togli la scelta"
+      },
+      "itinerary": {
+        "intro": "Ogni voce di catalogo può seguire il suo workflow. Lascia «per categoria» per tenere il comportamento che hai; scegline uno per dare a quella richiesta i suoi passi.",
+        "duplicateTitle": "Duplica un workflow",
+        "duplicateHelp": "Si copiano passi, transizioni, azioni e posizioni. La copia nasce SPENTA, così non entra nella scelta di ogni richiesta nuova prima che tu l'abbia finita — la accendi dal disegnatore.",
+        "duplicateFrom": "Copia da",
+        "copyName": "Nome della copia",
+        "copyNamePlaceholder": "Richiesta di nuovo accesso",
+        "duplicate": "Duplica",
+        "duplicated": "Workflow duplicato, spento",
+        "item": "Voce di catalogo",
+        "category": "Categoria",
+        "workflow": "Workflow",
+        "byCategory": "Per categoria (come prima)",
+        "inactive": "spento",
+        "saved": "Iter salvato",
+        "approversElsewhere": "Chi approva è una proprietà del workflow, non della voce: si indica sul passo di approvazione, nel",
+        "definitionsTitle": "Gli iter delle richieste",
+        "definitionsHelp": "Un iter spento non entra nella scelta di nessuna richiesta nuova; i ticket che ci sono già restano dove sono. Una copia nasce spenta, così la puoi finire prima.",
+        "active": "in servizio",
+        "activated": "Iter in servizio",
+        "deactivated": "Iter spento"
       }
     }
   },
@@ -2610,7 +2633,10 @@
         "any": "uno qualsiasi (basta un approvatore)",
         "all": "tutti (servono tutti gli approvatori)",
         "majority": "maggioranza"
-      }
+      },
+      "addApprover": "Aggiungi una persona…",
+      "addApproverTeam": "Aggiungi una squadra…",
+      "approverRoleIgnored": "Ci sono persone o squadre indicate, quindi il ruolo qui sopra viene ignorato."
     },
     "deadline": {
       "intro": "Per quanto tempo un ticket può restare in questo passo. Allo scadere il ticket si sposta da solo lungo uno degli archi che escono dal passo, e i campi che scegli vengono impostati.",
@@ -3596,7 +3622,11 @@
       "createChangeNeedsType": "{{field}}: un’azione che crea una change deve indicarne il tipo.",
       "badStepChannels": "{{field}}: i canali {{channels}} non sono consegnabili all'ingresso in un passo. Ammessi: {{allowed}}.",
       "duplicateTransition": "Una transizione {{trigger}} da «{{from}}» a «{{to}}» esiste già: due archi identici renderebbero l'esito dipendente da quale dei due sceglie il motore. Usa un innesco diverso.",
-      "onEnterFieldsEntity": "Il passo «{{step}}» scrive dei campi all'ingresso, ma «{{entityType}}» non è un'entità su cui il prodotto scrive: togli i campi o usa un workflow di ticket."
+      "onEnterFieldsEntity": "Il passo «{{step}}» scrive dei campi all'ingresso, ma «{{entityType}}» non è un'entità su cui il prodotto scrive: togli i campi o usa un workflow di ticket.",
+      "copyNameRequired": "La copia ha bisogno di un nome.",
+      "copyNameTaken": "Un workflow {{entityType}} chiamato «{{name}}» esiste già.",
+      "noApproverTarget": "L'approvazione non può partire: le persone o le squadre indicate non hanno nessun membro attivo in questa organizzazione.",
+      "lastActiveDefinition": "«{{name}}» è l'ultimo iter {{entityType}} attivo senza categoria: spegnendolo non nascerebbe più nessun {{entityType}}. Attivane un altro prima."
     },
     "channel": {
       "platform": "La piattaforma «{{platform}}» non è supportata. Ammesse: {{allowed}}."
@@ -4087,6 +4117,11 @@
       "noForm": "La voce di catalogo «{{item}}» non ha un modulo: non c'è niente da rispondere.",
       "conditionFieldType": "Una condizione guarda il campo «{{field}}», che è di tipo {{fieldType}}: solo i campi salvati come proprietà possono essere il soggetto di una condizione.",
       "referenceEndUser": "Il campo «{{field}}» è un riferimento ({{fieldType}}): non si può offrire nel portale, perché scegliere vuol dire cercare nella CMDB o nell'elenco del personale. Togli la spunta «Offrilo nel portale»."
+    },
+    "serviceCatalog": {
+      "workflowNotFound": "Quel workflow qui non esiste, oppure è spento.",
+      "workflowWrongType": "Il workflow «{{name}}» è per {{entityType}}, non per le richieste di servizio.",
+      "workflowNoInitialStep": "Il workflow «{{name}}» non ha un passo iniziale: segnane uno nel disegnatore prima di usarlo qui."
     }
   },
   "errorBoundary": {

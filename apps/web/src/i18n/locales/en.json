@@ -2249,7 +2249,8 @@
       "intro": "Each catalog item can ask for what that request actually needs: sections, conditional fields, its own help text. The fields come from the library, so the same question is one column in every report.",
       "tabs": {
         "forms": "Forms",
-        "library": "Field library"
+        "library": "Field library",
+        "itinerary": "Itinerary"
       },
       "fieldType": {
         "text": "Text",
@@ -2342,6 +2343,28 @@
         "searchReference": "Type at least two letters…",
         "noResults": "Nothing found",
         "clearReference": "Clear the choice"
+      },
+      "itinerary": {
+        "intro": "Each catalog item can follow its own workflow. Leave it on “by category” to keep the behaviour you have; pick one to give that request its own steps.",
+        "duplicateTitle": "Duplicate a workflow",
+        "duplicateHelp": "Steps, transitions, actions and positions are copied. The copy starts switched OFF, so it does not enter the choice for every new request before you have finished it — switch it on in the workflow designer.",
+        "duplicateFrom": "Copy from",
+        "copyName": "Name of the copy",
+        "copyNamePlaceholder": "New access request",
+        "duplicate": "Duplicate",
+        "duplicated": "Workflow duplicated, switched off",
+        "item": "Catalog item",
+        "category": "Category",
+        "workflow": "Workflow",
+        "byCategory": "By category (as before)",
+        "inactive": "off",
+        "saved": "Itinerary saved",
+        "approversElsewhere": "Who approves is a property of the workflow, not of the item: you set it on the approval step, in",
+        "definitionsTitle": "Request workflows",
+        "definitionsHelp": "A switched-off workflow does not enter the choice for any new request; the tickets already on it stay where they are. A copy starts switched off, so you can finish it first.",
+        "active": "in service",
+        "activated": "Workflow in service",
+        "deactivated": "Workflow switched off"
       }
     }
   },
@@ -2610,7 +2633,10 @@
         "any": "any (one approver is enough)",
         "all": "all (every approver is required)",
         "majority": "majority"
-      }
+      },
+      "addApprover": "Add a person…",
+      "addApproverTeam": "Add a team…",
+      "approverRoleIgnored": "People or teams are set, so the role above is ignored."
     },
     "deadline": {
       "intro": "How long a ticket can stay in this step. When the time is up the ticket moves on its own along one of the arcs that leave the step, and the fields you choose are set.",
@@ -3596,7 +3622,11 @@
       "createChangeNeedsType": "{{field}}: an action that creates a change must say its change type.",
       "badStepChannels": "{{field}}: the channels {{channels}} cannot be delivered when a step is entered. Allowed: {{allowed}}.",
       "duplicateTransition": "A {{trigger}} transition from «{{from}}» to «{{to}}» already exists: two identical arrows would make the outcome depend on which one the engine picks. Use a different trigger.",
-      "onEnterFieldsEntity": "The step «{{step}}» writes fields when entered, but «{{entityType}}» is not an entity this product can write: remove the fields or use a ticket workflow."
+      "onEnterFieldsEntity": "The step «{{step}}» writes fields when entered, but «{{entityType}}» is not an entity this product can write: remove the fields or use a ticket workflow.",
+      "copyNameRequired": "The copy needs a name.",
+      "copyNameTaken": "A {{entityType}} workflow called \"{{name}}\" already exists.",
+      "noApproverTarget": "Approval cannot start: the people or teams configured to approve have no active member in this organization.",
+      "lastActiveDefinition": "\"{{name}}\" is the last active {{entityType}} workflow without a category: switching it off would stop every new {{entityType}} from being created. Activate another one first."
     },
     "channel": {
       "platform": "Platform \"{{platform}}\" is not supported. Allowed: {{allowed}}."
@@ -4087,6 +4117,11 @@
       "noForm": "The catalog item \"{{item}}\" has no form: there is nothing to answer.",
       "conditionFieldType": "A condition looks at the field \"{{field}}\", which is a {{fieldType}}: only fields stored as a property can be a condition subject.",
       "referenceEndUser": "The field \"{{field}}\" is a reference ({{fieldType}}): it cannot be offered in the portal, because choosing one means searching the CMDB or the staff list. Untick \"offer it in the portal\"."
+    },
+    "serviceCatalog": {
+      "workflowNotFound": "That workflow does not exist here, or it is not active.",
+      "workflowWrongType": "The workflow \"{{name}}\" is for {{entityType}}, not for service requests.",
+      "workflowNoInitialStep": "The workflow \"{{name}}\" has no initial step: mark one in the designer before using it here."
     }
   },
   "errorBoundary": {

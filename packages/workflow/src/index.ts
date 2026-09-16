@@ -1,4 +1,9 @@
-export { WorkflowEngine, workflowEngine, ENTITY_LABELS, conditionFailureKey } from './engine.js'
+export {
+  WorkflowEngine, workflowEngine, ENTITY_LABELS, conditionFailureKey,
+  // La selezione della definizione e del passo iniziale, in un posto solo
+  // (moduli del catalogo, ondata 3): la usa `createInstance` e la usa l'API.
+  initialStepSelection, INITIAL_STEP_MATCH, type InitialStepSelection,
+} from './engine.js'
 export {
   seedWorkflowDefinition, CustomizedWorkflowError, computeSeedDiff, formatSeedDiff, seedDiffIsEmpty,
   type SeedableWorkflow, type SeedResult, type SeedOptions, type SeedDiff, type SeedSkipReason,

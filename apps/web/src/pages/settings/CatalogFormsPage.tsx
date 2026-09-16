@@ -4,6 +4,8 @@
  * Due schede, che sono i due strati del modello:
  *  - «Moduli»: il modulo di una voce di catalogo, con l'anteprima vera.
  *  - «Libreria dei campi»: i campi del tenant, definiti una volta e riusati.
+ *  - «Iter» (ondata 3): quale workflow segue ogni voce, e la duplicazione di
+ *    una definizione — un modulo ricco senza un iter proprio è mezzo lavoro.
  *
  * Perché in una pagina sola: sono due passaggi dello stesso lavoro, e chi
  * compone un modulo si accorge a metà che gli serve un campo nuovo. Restano
@@ -19,8 +21,9 @@ import { PageTitle } from '@/components/PageTitle'
 import { Tabs } from '@/components/ui/Tabs'
 import { FormBuilderPanel } from './catalogForm/FormBuilderPanel'
 import { FieldLibraryPanel } from './catalogForm/FieldLibraryPanel'
+import { ItineraryPanel } from './catalogForm/ItineraryPanel'
 
-type Scheda = 'forms' | 'library'
+type Scheda = 'forms' | 'library' | 'itinerary'
 
 export function CatalogFormsPage() {
   const { t } = useTranslation()
@@ -44,10 +47,11 @@ export function CatalogFormsPage() {
         items={[
           { key: 'forms', label: t('pages.catalogForms.tabs.forms') },
           { key: 'library', label: t('pages.catalogForms.tabs.library') },
+          { key: 'itinerary', label: t('pages.catalogForms.tabs.itinerary') },
         ]}
       />
 
-      {scheda === 'forms' ? <FormBuilderPanel /> : <FieldLibraryPanel />}
+      {scheda === 'forms' ? <FormBuilderPanel /> : scheda === 'library' ? <FieldLibraryPanel /> : <ItineraryPanel />}
     </PageContainer>
   )
 }

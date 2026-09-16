@@ -36,3 +36,29 @@ export const DELETE_ATTACHMENT = gql`
     deleteAttachment(id: $id)
   }
 `
+
+/**
+ * Duplica una definizione di workflow (moduli del catalogo, ondata 3): serve
+ * all'iter per voce, perché prima si potevano solo MODIFICARE le definizioni
+ * seminate. La copia nasce spenta: la si accende dopo averla sistemata.
+ */
+export const DUPLICATE_WORKFLOW_DEFINITION = gql`
+  mutation DuplicateWorkflowDefinition($definitionId: ID!, $name: String!, $category: String) {
+    duplicateWorkflowDefinition(definitionId: $definitionId, name: $name, category: $category) {
+      id name entityType category active version
+    }
+  }
+`
+
+/**
+ * Accende o spegne una definizione. Una copia nasce spenta di proposito
+ * (un'attiva senza categoria entra nel ripiego di ogni ticket nuovo): questa
+ * mutation è il modo di metterla in servizio quando è finita.
+ */
+export const SET_WORKFLOW_DEFINITION_ACTIVE = gql`
+  mutation SetWorkflowDefinitionActive($definitionId: ID!, $active: Boolean!) {
+    setWorkflowDefinitionActive(definitionId: $definitionId, active: $active) {
+      id name active category version
+    }
+  }
+`

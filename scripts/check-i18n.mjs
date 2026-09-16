@@ -352,6 +352,10 @@ for (const k of [...defined].sort()) {
 // quelli sono difetti veri (`Sync triggered`, `Heap Memory`, `Auto-refresh
 // 10s`, `External ID`): l'elenco puo solo accorciarsi.
 const IT_EN_IDENTICHE_ACCETTATE = new Set([
+  // «Workflow» è il nome della funzione del prodotto — il disegnatore si
+  // chiama così anche in italiano, e l'intestazione di questa colonna nomina
+  // lui (regola delle parole tecniche: resta inglese ciò che NOMINA).
+  'pages.catalogForms.itinerary.workflow',
   // «File» è la parola italiana per un file: «archivio» vuol dire un'altra
   // cosa e «documento» pure. È il tipo di campo del modulo, non una frase
   // (regola delle parole tecniche: resta inglese ciò che NOMINA).

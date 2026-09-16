@@ -137,8 +137,23 @@ export function paramsToRaw(type: string, params?: Record<string, unknown>): Rec
     title_template: String(params['title_template'] ?? ''),
     approver_role:  String(params['approver_role']  ?? 'admin'),
     approval_type:  String(params['approval_type']  ?? 'any'),
+    /**
+     * Persone e squadre che approvano (moduli del catalogo, ondata 3). Gli id
+     * arrivano come lista JSON o come stringa: qui diventano una stringa,
+     * perché l'editor tiene i parametri come testo. Li rilegge un solo posto,
+     * `approverIdList` in packages/workflow.
+     */
+    approver_user_ids: listaIdComeTesto(params['approver_user_ids']),
+    approver_team_ids: listaIdComeTesto(params['approver_team_ids']),
   }
   return {}
+}
+
+/** Una lista di id (JSON o stringa) come stringa separata da virgola, per l'editor. */
+function listaIdComeTesto(raw: unknown): string {
+  if (raw == null) return ''
+  const parti = Array.isArray(raw) ? raw : String(raw).split(',')
+  return parti.map((x) => String(x).trim()).filter(Boolean).join(',')
 }
 
 export function buildActionParams(type: string, raw: Record<string, string>): Record<string, unknown> {
@@ -173,11 +188,17 @@ export function buildActionParams(type: string, raw: Record<string, string>): Re
   }
   if (type === 'create_approval_request') {
     // packages/workflow CreateApprovalRequestParams: prima questo ramo mancava
-    // e l'azione veniva salvata con params {} (titolo/approvatori persi).
+    // e l'azione veniva salvata con params {} (titolo/approvatori persi). Le
+    // due chiavi nuove (ondata 3) si scrivono solo se hanno qualcosa: un
+    // parametro vuoto salvato è un parametro che sembra configurato.
+    const persone = (raw['approver_user_ids'] ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+    const squadre = (raw['approver_team_ids'] ?? '').split(',').map((x) => x.trim()).filter(Boolean)
     return {
       title_template: raw['title_template'] ?? '',
       approver_role:  raw['approver_role']  ?? 'admin',
       approval_type:  raw['approval_type']  ?? 'any',
+      ...(persone.length > 0 ? { approver_user_ids: persone } : {}),
+      ...(squadre.length > 0 ? { approver_team_ids: squadre } : {}),
     }
   }
   return {}

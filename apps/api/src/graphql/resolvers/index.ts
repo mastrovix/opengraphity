@@ -468,6 +468,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...ticketCustomFieldResolvers.Problem,
     },
     ProblemComment:     {},
+    // L'iter della voce di catalogo (moduli del catalogo, ondata 3).
+    ServiceCatalogItem: { ...serviceRequestResolvers.ServiceCatalogItem },
     ServiceRequest:     {
       ...serviceRequestResolvers.ServiceRequest,
       ...workflowResolvers.ServiceRequest,

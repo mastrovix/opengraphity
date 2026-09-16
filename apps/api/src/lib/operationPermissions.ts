@@ -200,7 +200,9 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   {
     anyOf: ['config.workflow'],
     mutation: ['addWorkflowStep', 'removeWorkflowStep', 'updateWorkflowStep', 'addWorkflowTransition', 'removeWorkflowTransition',
-      'updateWorkflowTransition', 'saveWorkflowLayout', 'saveWorkflowChanges'],
+      'updateWorkflowTransition', 'saveWorkflowLayout', 'saveWorkflowChanges',
+      // Duplicare una definizione e metterla in servizio (moduli del catalogo, ondata 3).
+      'duplicateWorkflowDefinition', 'setWorkflowDefinitionActive'],
   },
   {
     anyOf: ['config.sla'],

@@ -14,8 +14,7 @@ import type { ServiceCtx } from './incidentService.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { logger } from '../lib/logger.js'
 import { ValidationError } from '../lib/errors.js'
-import { getInitialStepName } from '../lib/workflowHelpers.js'
-import { workflowEngine } from '@opengraphity/workflow'
+import { initialStepSelection, workflowEngine } from '@opengraphity/workflow'
 
 type Props = Record<string, unknown>
 
@@ -46,7 +45,7 @@ export function mapRequest(props: Props) {
 }
 
 export async function createRequest(
-  input: { title: string; description?: string; priority: string; category?: string | null; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; formAnswers?: FormAnswerInput[] | null; formDraftId?: string | null },
+  input: { title: string; description?: string; priority: string; category?: string | null; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; formAnswers?: FormAnswerInput[] | null; formDraftId?: string | null; workflowDefinitionId?: string | null },
   ctx: ServiceCtx,
   channel: 'agent' | 'portal' = 'agent',
 ) {
@@ -102,8 +101,30 @@ export async function createRequest(
     // Formato del cliente (verifica «Cosa resta cablato», ondata 6), contatore del prodotto.
     const number = await nextTicketNumber(session, ctx.tenantId, 'service_request')
 
-    // Real lifecycle: start at the workflow's initial step, not a phantom 'open'.
-    const initialStatus = await getInitialStepName(session, ctx.tenantId, 'service_request')
+    /**
+     * Il passo iniziale viene dalla STESSA selezione che userà l'istanza
+     * (`initialStepSelection` di @opengraphity/workflow), con l'iter della voce
+     * di catalogo se c'è e la categoria altrimenti — moduli del catalogo,
+     * ondata 3.
+     *
+     * Prima erano due letture diverse: questa guardava TUTTE le definizioni del
+     * tipo e prendeva il primo passo iniziale che trovava. Con una sola
+     * definizione per tipo combaciavano per caso; con una definizione per voce
+     * il ticket sarebbe nato con lo stato di un iter e l'istanza su un altro.
+     */
+    const scelta = await session.executeRead((tx) => initialStepSelection(tx, {
+      tenantId: ctx.tenantId,
+      entityType: 'service_request',
+      definitionId: input.workflowDefinitionId ?? null,
+      category: input.category ?? null,
+    }))
+    if (!scelta) {
+      // Il messaggio dettagliato lo dà `createInstance`, che distingue i tre
+      // casi (nessuna definizione, nessun passo iniziale, categoria che non
+      // combacia): qui basta non creare un ticket con uno stato inventato.
+      throw new Error(`No usable service_request workflow for tenant "${ctx.tenantId}" (category ${input.category ?? 'none'})`)
+    }
+    const initialStatus = scelta.stepName
 
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (r:ServiceRequest {
@@ -175,7 +196,10 @@ export async function createRequest(
       if (reclamati > 0) logger.info({ tenantId: ctx.tenantId, requestId: id, draftId: input.formDraftId, reclamati }, 'Form draft attachments claimed')
     }
 
-    await workflowEngine.createInstance(session, ctx.tenantId, id, 'service_request')
+    await workflowEngine.createInstance(
+      session, ctx.tenantId, id, 'service_request',
+      input.workflowDefinitionId ?? undefined, input.category ?? null,
+    )
 
     return mapRequest(rows[0].props)
   }, true)

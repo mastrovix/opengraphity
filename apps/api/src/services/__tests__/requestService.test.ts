@@ -12,7 +12,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  session: { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn() },
+  // `executeRead` esegue davvero il callback: `initialStepSelection` (mockata)
+  // viene richiamata al suo interno.
+  session: {
+    executeRead: vi.fn(async (fn: (tx: unknown) => unknown) => fn({ run: vi.fn() })),
+    executeWrite: vi.fn(),
+    close: vi.fn(),
+  },
 }))
 
 // I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
@@ -27,6 +33,16 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: { createInstance: vi.fn(), transition: vi.fn(), registerCondition: vi.fn() },
+  /**
+   * Moduli del catalogo, ondata 3: il passo iniziale viene dalla STESSA
+   * selezione che usa l'istanza, con l'iter della voce di catalogo se c'è.
+   * Prima `requestService` faceva una lettura sua (`getInitialStepName`) che
+   * guardava tutte le definizioni del tipo: con una definizione per voce il
+   * ticket sarebbe nato con lo stato di un iter e l'istanza su un altro.
+   */
+  initialStepSelection: vi.fn(async () => ({
+    definitionId: 'def-sr', stepId: 'step-1', stepName: 'submitted', definitionCategory: null,
+  })),
 }))
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
   withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(h.session)),
@@ -142,7 +158,14 @@ describe('createRequest', () => {
     expect(cypher).toContain('OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})')
     expect(params).toMatchObject({ tenantId: 'tenant-1', userId: 'user-1' })
     expect(workflowEngine.createInstance).toHaveBeenCalledTimes(1)
-    expect(workflowEngine.createInstance).toHaveBeenCalledWith(h.session, 'tenant-1', expect.stringMatching(UUID_RE), 'service_request')
+    /**
+     * Moduli del catalogo, ondata 3: l'istanza nasce sull'ITER della voce di
+     * catalogo se c'è (`definitionId`) e sulla categoria altrimenti. Senza
+     * voce sono entrambi assenti, ed è la scelta per tipo di sempre.
+     */
+    expect(workflowEngine.createInstance).toHaveBeenCalledWith(
+      h.session, 'tenant-1', expect.stringMatching(UUID_RE), 'service_request', undefined, null,
+    )
   })
 
   it('pubblica request.created con tenant, attore e payload minimo', async () => {

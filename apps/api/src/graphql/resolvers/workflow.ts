@@ -36,6 +36,8 @@ import {
   removeWorkflowTransition,
   executeWorkflowTransition,
   saveWorkflowChanges,
+  duplicateWorkflowDefinition,
+  setWorkflowDefinitionActive,
   MARK_CUSTOMIZED,
   customizedParams,
 } from './workflowMutations.js'
@@ -355,6 +357,9 @@ export const workflowResolvers = {
     executeWorkflowTransition,
     saveWorkflowLayout,
     saveWorkflowChanges,
+    // Duplicare una definizione (moduli del catalogo, ondata 3).
+    duplicateWorkflowDefinition,
+    setWorkflowDefinitionActive,
   },
   WorkflowStep: {
     currentInstances: workflowStepCurrentInstances,

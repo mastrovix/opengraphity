@@ -290,6 +290,59 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
             { value: 'all',      label: t('workflow.actionParams.approvalType.all') },
             { value: 'majority', label: t('workflow.actionParams.approvalType.majority') },
           ], 'any')}
+          {/*
+            Persone e squadre che approvano (moduli del catalogo, ondata 3).
+            Il RUOLO non basta per un catalogo servizi: l'approvazione di una
+            spesa è del responsabile di budget, non di chi amministra il
+            prodotto. Le tre sorgenti si UNISCONO; indicando persone o squadre
+            il ruolo viene ignorato, e il pannello lo dice.
+            Gli id vanno come stringa separata da virgola perché questo editor
+            tiene i parametri come testo: a leggerli c'è un solo posto
+            (`approverIdList` in packages/workflow).
+          */}
+          <Labeled label="approver_user_ids">
+            <Select
+              style={{ ...selectS, flex: 1 }}
+              value=""
+              onChange={(e) => {
+                if (!e.target.value) return
+                const attuali = (params['approver_user_ids'] ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+                if (!attuali.includes(e.target.value)) onChange('approver_user_ids', [...attuali, e.target.value].join(','))
+              }}
+            >
+              <option value="">{t('workflow.actionParams.addApprover')}</option>
+              {(usersData?.users ?? []).map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
+            </Select>
+            <ElencoScelti
+              ids={params['approver_user_ids'] ?? ''}
+              nomeDi={(id) => (usersData?.users ?? []).find((u) => u.id === id)?.name ?? id}
+              onChange={(v) => onChange('approver_user_ids', v)}
+            />
+          </Labeled>
+          <Labeled label="approver_team_ids">
+            <Select
+              style={{ ...selectS, flex: 1 }}
+              value=""
+              onChange={(e) => {
+                if (!e.target.value) return
+                const attuali = (params['approver_team_ids'] ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+                if (!attuali.includes(e.target.value)) onChange('approver_team_ids', [...attuali, e.target.value].join(','))
+              }}
+            >
+              <option value="">{t('workflow.actionParams.addApproverTeam')}</option>
+              {(teamsData?.teams ?? []).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </Select>
+            <ElencoScelti
+              ids={params['approver_team_ids'] ?? ''}
+              nomeDi={(id) => (teamsData?.teams ?? []).find((x) => x.id === id)?.name ?? id}
+              onChange={(v) => onChange('approver_team_ids', v)}
+            />
+          </Labeled>
+          {(params['approver_user_ids'] || params['approver_team_ids']) && (
+            <p style={{ flexBasis: '100%', margin: 0, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+              {t('workflow.actionParams.approverRoleIgnored')}
+            </p>
+          )}
         </div>
       )
 
@@ -359,4 +412,31 @@ function renderFieldValue(
   }
 
   return <Input style={{ ...inputS, flex: 1 }} placeholder={t('automation.params.value')} value={value} onChange={e => onValue(e.target.value)} />
+}
+
+/**
+ * Gli id scelti, coi loro nomi e una × per toglierli. Gli id viaggiano come
+ * stringa separata da virgola (vedi il commento in `create_approval_request`):
+ * qui si mostrano come nomi, perché un elenco di identificativi non si rilegge.
+ */
+function ElencoScelti({ ids, nomeDi, onChange }: { ids: string; nomeDi: (id: string) => string; onChange: (v: string) => void }) {
+  const elenco = ids.split(',').map((x) => x.trim()).filter(Boolean)
+  if (elenco.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+      {elenco.map((id) => (
+        <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--color-slate-bg)', borderRadius: 4, padding: '1px 6px', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-dark)' }}>
+          {nomeDi(id)}
+          <button
+            type="button"
+            aria-label={`${nomeDi(id)} ×`}
+            onClick={() => onChange(elenco.filter((x) => x !== id).join(','))}
+            style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 0, lineHeight: 1 }}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+    </div>
+  )
 }

@@ -44,3 +44,13 @@ export const GET_CATALOG_FORM = gql`
     }
   }
 `
+
+/** Le voci del catalogo con il loro iter (moduli del catalogo, ondata 3). */
+export const GET_CATALOG_ITEMS_WITH_WORKFLOW = gql`
+  query GetCatalogItemsWithWorkflow {
+    serviceCatalogItems {
+      id name category active requiresApproval
+      workflowDefinitionId workflowDefinitionName
+    }
+  }
+`
