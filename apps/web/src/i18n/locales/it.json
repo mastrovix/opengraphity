@@ -1990,8 +1990,7 @@
     "reportsAI": {
       "newConversation": "Nuova conversazione",
       "send": "Invia",
-      "sendHint": "Invio per mandare · Maiusc+Invio per andare a capo",
-      "title": "Report"
+      "sendHint": "Invio per mandare · Maiusc+Invio per andare a capo"
     },
     "createRequest": {
       "titlePlaceholder": "Di cosa hai bisogno?",

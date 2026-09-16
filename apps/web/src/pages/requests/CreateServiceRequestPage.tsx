@@ -241,7 +241,18 @@ export function CreateServiceRequestPage() {
                 {t('pages.createRequest.priorityLabel')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
               </label>
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: styleOf('priority', priority).accent, pointerEvents: 'none', zIndex: 1 }} />
+                {/**
+                  * «Non ancora scelta» NON è un valore rotto (giro nel browser
+                  * di fine revisione): il pallino chiamava il Dizionario con la
+                  * priorità vuota, quindi ad ogni apertura del modulo la
+                  * console scriveva «"" is not in the vocabulary of this
+                  * tenant» e il pallino prendeva il colore dell'errore accanto
+                  * a un campo che nessuno aveva ancora toccato. Un guardiano
+                  * che grida al lupo sul caso normale è un guardiano che si
+                  * impara a ignorare. Le altre due pagine di creazione
+                  * (incident, problem) già distinguevano il vuoto: qui no.
+                  */}
+                <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: priority === '' ? 'var(--color-border)' : styleOf('priority', priority).accent, pointerEvents: 'none', zIndex: 1 }} />
                 <select id={ids.priority} value={priority} onChange={(e) => setPriority(e.target.value)} disabled={priorityLoading} style={{ ...selectBase, paddingLeft: 30 }} {...focusHandlers(false)}>
                   {priorityLoading
                     ? <option value="">{t('common.loading')}</option>

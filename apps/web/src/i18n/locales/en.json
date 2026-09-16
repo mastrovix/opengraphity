@@ -1990,8 +1990,7 @@
     "reportsAI": {
       "newConversation": "New conversation",
       "send": "Send",
-      "sendHint": "Enter to send · Shift+Enter for a new line",
-      "title": "Reports"
+      "sendHint": "Enter to send · Shift+Enter for a new line"
     },
     "createRequest": {
       "titlePlaceholder": "What do you need?",

@@ -4,6 +4,7 @@ import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
+import { PageTitle } from '@/components/PageTitle'
 import { apiUrl, authHeader } from '@/lib/apiBase'
 import { timeAgo } from '@/lib/datetime'
 import ReactMarkdown from 'react-markdown'
@@ -341,7 +342,19 @@ export default function ReportsPage() {
         borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column',
       }}>
         <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>{t('pages.reportsAI.title')}</span>
+          {/**
+            * L'INTESTAZIONE della pagina (giro nel browser di fine revisione).
+            *
+            * Era l'unica pagina dell'app senza nessun h1: il titolo del
+            * benvenuto era un `div` con la misura di un titolo — a schermo si
+            * vedeva, nella struttura della pagina non esisteva — e compariva
+            * solo finché non c'era una conversazione attiva. Chi naviga per
+            * intestazioni non trovava niente. Sta qui perché questo pannello
+            * c'è sempre, e porta il nome con cui si arriva dal menu.
+            */}
+          <PageTitle icon={<BrainCircuit />} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700 }}>
+            {t('sidebar.aiAnalysis')}
+          </PageTitle>
           <button
             type="button"
             onClick={handleNewConversation}
@@ -398,8 +411,13 @@ export default function ReportsPage() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, gap: 16 }}>
             <BarChart2 size={48} color={colors.slateLight} strokeWidth={1.5} />
             <div style={{ textAlign: 'center' }}>
+              {/**
+                * Stato VUOTO, non una sezione: resta un `div`, come
+                * `EmptyState`. Fosse un h2 ripeterebbe l'h1 del pannello, e
+                * l'elenco delle intestazioni direbbe due volte la stessa cosa.
+                */}
               <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                <BrainCircuit size={22} color="var(--color-icon-accent)" />
+                <BrainCircuit size={22} color="var(--color-icon-accent)" aria-hidden="true" />
                 {t('pages.aiAnalysis.title')}
               </div>
               <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('pages.aiAnalysis.subtitle')}</div>
