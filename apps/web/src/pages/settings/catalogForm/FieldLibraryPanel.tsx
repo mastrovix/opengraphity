@@ -70,6 +70,34 @@ interface Bozza {
 
 const BOZZA_VUOTA: Bozza = { name: '', fieldType: 'text', labelIt: '', labelEn: '', helpIt: '', helpEn: '', required: false, vocabulary: '', inList: false, formula: '', validationScript: '', tabella: emptyFormTable() }
 
+/** Un'etichetta o un aiuto come li manda l'API: un testo per lingua. */
+interface TestoPerLinguaLetto { language: string; label: string }
+
+/**
+ * IL TESTO DI UNA LINGUA quando si apre un campo per modificarlo, col ripiego
+ * sull'etichetta BASE.
+ *
+ * Il difetto che ha reso necessario questo ripiego (visto dal vivo, e
+ * causato da me): un campo può avere l'etichetta base in una lingua e
+ * `labels` in un'altra — `costo_stimato` aveva base «Costo stimato (EUR)» e
+ * `labels: {en: "Estimated cost (EUR)"}`. La casella italiana si apriva VUOTA,
+ * e al salvataggio l'etichetta base veniva riscritta da quello che c'era nelle
+ * caselle: l'italiano SPARIVA. Un modulo di modifica non deve perdere quello
+ * che non ha saputo caricare.
+ *
+ * Con il ripiego la casella mostra quello che quella lingua MOSTRA DAVVERO —
+ * il renderer fa lo stesso: se `labels` non ha la lingua, usa la base.
+ */
+function perLingua(
+  // Il tipo ha un NOME perché il guardiano i18n legge `ReadonlyArray<{ … }>`
+  // come un tag JSX e da lì prende per testo a schermo quello che segue.
+  testi: readonly TestoPerLinguaLetto[],
+  lingua: string,
+  base: string | null,
+): string {
+  return testi.find((l) => l.language === lingua)?.label ?? (base ?? '')
+}
+
 const th: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: `1px solid ${colors.border}` }
 const td: React.CSSProperties = { padding: '8px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', borderBottom: `1px solid ${colors.slateBg}`, verticalAlign: 'top' }
 
@@ -327,10 +355,11 @@ export function FieldLibraryPanel() {
                       setInModifica(c)
                       setBozza({
                         name: c.name, fieldType: c.fieldType,
-                        labelIt: c.labels.find((l) => l.language === 'it')?.label ?? '',
-                        labelEn: c.labels.find((l) => l.language === 'en')?.label ?? '',
-                        helpIt: c.helps.find((l) => l.language === 'it')?.label ?? '',
-                        helpEn: c.helps.find((l) => l.language === 'en')?.label ?? '',
+                        // Il ripiego sull'etichetta BASE non è un vezzo: vedi `perLingua`.
+                        labelIt: perLingua(c.labels, 'it', c.label),
+                        labelEn: perLingua(c.labels, 'en', c.label),
+                        helpIt: perLingua(c.helps, 'it', c.help),
+                        helpEn: perLingua(c.helps, 'en', c.help),
                         required: c.required, vocabulary: c.vocabulary ?? '', inList: c.inList,
                         formula: c.formula ?? '', validationScript: c.validationScript ?? '',
                         tabella: c.tableDefinition ? (JSON.parse(c.tableDefinition) as FormTableDefinition) : emptyFormTable(),
