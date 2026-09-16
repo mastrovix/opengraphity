@@ -5,6 +5,8 @@ import { getWorkflowSteps } from './workflowHelpers.js'
 import { logger } from './logger.js'
 import { enumScopeClause, loadTenantEnumOverrides, applyEnumOverrides } from './enumScope.js'
 import { loadITILTypes } from './itilTypes.js'
+import { formFields } from './catalogForm.js'
+import { FORM_FIELD_TYPES_AS_PROPERTY } from '@opengraphity/types'
 
 export interface NavigableField {
   name:       string
@@ -222,6 +224,14 @@ const withRelations = (e: NavigableEntity): NavigableEntity => ({ ...e, relation
  * B-11). Nessun ripiego sulla lista di fabbrica: se il cliente non ha un
  * workflow per quell'entità, `enumValues` resta vuoto e il costruttore offre
  * un campo di testo libero invece di valori che non esistono nel suo grafo.
+ *
+ * Alle RICHIESTE si aggiungono i campi della LIBRERIA dei moduli del catalogo
+ * (ondata 4). Sono proprietà del ticket come le altre — è il motivo per cui i
+ * moduli scrivono proprietà e non un documento — e senza di loro la promessa
+ * «la stessa domanda è una colonna sola in ogni report» non sarebbe vera: si
+ * potevano filtrare e mettere in colonna, ma non riportare. Qui c'è TUTTA la
+ * libreria, non solo i campi «nelle liste»: un report si compone scegliendo i
+ * campi uno per uno, quindi non c'è lo spazio a schermo da difendere.
  */
 async function ticketEntities(session: Session, tenantId: string): Promise<NavigableEntity[]> {
   const types = await loadITILTypes(session, tenantId)
@@ -255,6 +265,28 @@ async function ticketEntities(session: Session, tenantId: string): Promise<Navig
       })),
       relations: relationsOf(neo4jLabel),
     })
+  }
+  for (const entity of out) {
+    if (entity.neo4jLabel !== 'ServiceRequest') continue
+    const libreria = await formFields(session, tenantId)
+    for (const campo of libreria) {
+      // Solo i campi che diventano una proprietà: una nota non ha risposta, un
+      // allegato è un file e un riferimento è una relazione — nessuno dei tre
+      // è una colonna che un report possa leggere da `n.<nome>`.
+      if (!FORM_FIELD_TYPES_AS_PROPERTY.includes(campo.fieldType)) continue
+      if (entity.fields.some((f) => f.name === campo.name)) continue
+      entity.fields.push({
+        name:         campo.name,
+        // Etichetta del cliente: nessuna `labelKey`, come per i campi che ha
+        // creato lui nel disegnatore.
+        label:        campo.label,
+        fieldType:    campo.fieldType,
+        enumValues:   [],
+        // Il vocabolario: il costruttore legge da lì i valori con la loro
+        // etichetta, invece di offrire testo libero.
+        enumTypeName: campo.vocabulary,
+      })
+    }
   }
   return out
 }

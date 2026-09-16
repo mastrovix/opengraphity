@@ -12,7 +12,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const session = { close: vi.fn().mockResolvedValue(undefined), executeRead: vi.fn() }
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(() => session) }))
+// `runQuery`: da quando le richieste portano anche i campi della libreria dei
+// moduli (ondata 4), `getNavigableEntities` legge la libreria. La finta la
+// restituisce vuota per difetto — i test che la vogliono la impostano.
+const libreria = vi.fn<() => Promise<Array<Record<string, unknown>>>>(async () => [])
+vi.mock('@opengraphity/neo4j', () => ({
+  getSession: vi.fn(() => session),
+  runQuery: vi.fn(async () => await libreria()),
+}))
 vi.mock('@opengraphity/schema-generator', () => ({ toPascalCase: (s: string) => s.replace(/(^|_)(\w)/g, (_m, _u, c: string) => c.toUpperCase()) }))
 vi.mock('../logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
 vi.mock('../enumScope.js', () => ({
@@ -55,6 +62,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   // nessun tipo CI dal metamodello: interessano i ticket
   session.executeRead.mockResolvedValue({ records: [] })
+  libreria.mockResolvedValue([])
   steps.mockImplementation(async (_s, _t, entityType) => STEPS[entityType] ?? [])
 })
 
@@ -108,5 +116,38 @@ describe('getNavigableEntities — lo stato viene dal workflow del tenant', () =
       expect.objectContaining({ tenantId: 'c-three', entityType: 'Incident' }),
       expect.stringContaining('Nessun passo di workflow'),
     )
+  })
+})
+
+describe('i campi della libreria dei moduli (ondata 4)', () => {
+  const campo = (name: string, fieldType: string, extra: Record<string, unknown> = {}) => ({
+    id: name, name, fieldType, label: name.toUpperCase(), labels: null, help: null, helps: null,
+    required: false, vocabulary: null, validationScript: null, inList: false,
+    createdAt: null, updatedAt: null, ...extra,
+  })
+
+  it('si aggiungono alle RICHIESTE, con il loro vocabolario, e solo se diventano una proprietà', async () => {
+    libreria.mockResolvedValue([
+      campo('ambienti_coinvolti', 'multi_enum', { vocabulary: 'environment' }),
+      campo('istruzioni', 'note'),            // niente risposta
+      campo('preventivo', 'attachment'),      // un file, non una colonna
+      campo('per_chi', 'ref_user'),           // una relazione, non una colonna
+    ])
+    const entities = await load('t1')
+    const richiesta = entities.find((e) => e.entityType === 'ServiceRequest')!
+    const nomi = richiesta.fields.map((f) => f.name)
+    expect(nomi).toContain('ambienti_coinvolti')
+    expect(nomi).not.toContain('istruzioni')
+    expect(nomi).not.toContain('preventivo')
+    expect(nomi).not.toContain('per_chi')
+    expect(richiesta.fields.find((f) => f.name === 'ambienti_coinvolti')!.enumTypeName).toBe('environment')
+  })
+
+  it('agli ALTRI ticket non si aggiungono: i moduli del catalogo li compilano solo le richieste', async () => {
+    libreria.mockResolvedValue([campo('ambienti_coinvolti', 'multi_enum', { vocabulary: 'environment' })])
+    const entities = await load('t1')
+    for (const tipo of ['Incident', 'Change', 'Problem']) {
+      expect(entities.find((e) => e.entityType === tipo)!.fields.map((f) => f.name)).not.toContain('ambienti_coinvolti')
+    }
   })
 })
