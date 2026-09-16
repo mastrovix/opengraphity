@@ -11,6 +11,13 @@
  *   etichette per valore del vocabolario (quello del tenant vince);
  * - lo `status` di un ticket si legge con l'etichetta del PASSO del workflow,
  *   perché i suoi valori sono i nomi dei passi (`VOCABULARIES_WITHOUT_LABELS`);
+ * - un campo della LIBRERIA dei moduli del catalogo (`:FormField`) si legge con
+ *   il suo vocabolario, come gli altri (moduli del catalogo, ondata 5): sta su
+ *   un nodo diverso dal metamodello dei CI, quindi la query qui sotto non lo
+ *   trovava e una tabella diceva «development» dove la colonna della lista
+ *   delle richieste diceva «Sviluppo»;
+ * - una LISTA di valori (selezione multipla) si legge valore per valore: prima
+ *   usciva grezza perché il labeler guardava solo le stringhe;
  * - tutto il resto (testo, date, numeri, un valore che il vocabolario non
  *   conosce più) resta com'è: meglio il valore vero che un'etichetta inventata.
  */
@@ -33,6 +40,9 @@ export type ReportValueLabeler = (source: ReportValueSource | null, value: unkno
 export const identityLabeler: ReportValueLabeler = (_source, value) => value
 
 const snake = (s: string) => s.replace(/([A-Z])/g, '_$1').toLowerCase()
+
+/** L'unico nodo che porta le risposte di un modulo del catalogo. */
+const FORM_ANSWER_LABEL = 'ServiceRequest'
 const sourceKey = (s: ReportValueSource) => `${s.neo4jLabel}.${snake(s.field)}`
 
 export async function loadReportValueLabeler(
@@ -66,8 +76,29 @@ export async function loadReportValueLabeler(
   }))
 
   // sorgente → come si legge: i passi di un workflow o un vocabolario
+  /**
+   * I campi della libreria dei moduli, con il loro vocabolario. Solo se il
+   * report chiede almeno una colonna di una RICHIESTA: sono le sole che
+   * compilano un modulo, e su un report di incident sarebbe una lettura
+   * inutile a ogni esecuzione.
+   */
+  const moduli = new Map<string, string>()
+  if (wanted.some((s) => s.neo4jLabel === FORM_ANSWER_LABEL)) {
+    const f = await session.executeRead((tx) => tx.run(`
+      MATCH (f:FormField {tenant_id: $tenantId})
+      WHERE f.vocabulary IS NOT NULL AND f.vocabulary <> ''
+      RETURN f.name AS name, f.vocabulary AS vocabulary
+    `, { tenantId }))
+    for (const r of f.records) moduli.set(String(r.get('name')), String(r.get('vocabulary')))
+  }
+
   const readers = new Map<string, { kind: 'steps'; itilType: string } | { kind: 'vocabulary'; name: string }>()
   for (const s of wanted) {
+    // Prima la libreria dei moduli: il nome di un campo della libreria è unico
+    // fra le proprietà della richiesta (`assertFormFieldName` lo garantisce),
+    // quindi non può essere anche un campo del metamodello.
+    const daModulo = s.neo4jLabel === FORM_ANSWER_LABEL ? moduli.get(snake(s.field)) : undefined
+    if (daModulo) { readers.set(sourceKey(s), { kind: 'vocabulary', name: daModulo }); continue }
     const own = rows.find((r) => r.neo4jLabel === s.neo4jLabel && snake(r.field) === snake(s.field))
     // I campi di sistema dei CI (status, environment) stanno sul tipo `__base__`.
     const row = own ?? rows.find((r) => r.typeName === '__base__' && snake(r.field) === snake(s.field) && !rows.some((x) => x.neo4jLabel === s.neo4jLabel && x.scope === 'itil'))
@@ -107,12 +138,18 @@ export async function loadReportValueLabeler(
   }
 
   return (source, value) => {
-    if (source === null || typeof value !== 'string' || value === '') return value
+    if (source === null) return value
     const reader = readers.get(sourceKey(source))
     if (!reader) return value
-    if (reader.kind === 'steps') return stepLabels.get(reader.itilType)?.get(value) ?? value
-    const vocabulary = vocabularies.get(reader.name)
-    if (!vocabulary || !vocabulary.labels[value]) return value
-    return labelFor(value, vocabulary.labels, lingua, lingua)
+    const uno = (v: unknown): unknown => {
+      if (typeof v !== 'string' || v === '') return v
+      if (reader.kind === 'steps') return stepLabels.get(reader.itilType)?.get(v) ?? v
+      const vocabulary = vocabularies.get(reader.name)
+      if (!vocabulary || !vocabulary.labels[v]) return v
+      return labelFor(v, vocabulary.labels, lingua, lingua)
+    }
+    // Una LISTA si legge valore per valore (selezione multipla dei moduli):
+    // prima cadeva nel ramo «non è una stringa» e usciva grezza.
+    return Array.isArray(value) ? value.map(uno) : uno(value)
   }
 }

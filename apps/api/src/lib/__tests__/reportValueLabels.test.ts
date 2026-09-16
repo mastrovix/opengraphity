@@ -26,9 +26,17 @@ const VOCABULARIES = [
   { name: 'environment', tenant: 't1', labels: JSON.stringify({ production: { it: 'Prod (nostra)' } }) },
 ]
 
+/** I campi della LIBRERIA dei moduli del catalogo (ondata 5): stanno su :FormField. */
+const FORM_FIELDS = [
+  { name: 'ambiente_uso', vocabulary: 'environment' },
+  { name: 'ambienti_coinvolti', vocabulary: 'environment' },
+]
+
 function session() {
   const run = vi.fn(async (query: string) => ({
-    records: (query.includes('CITypeDefinition') ? FIELDS : VOCABULARIES).map(rec),
+    records: (query.includes('CITypeDefinition') ? FIELDS
+      : query.includes('FormField') ? FORM_FIELDS
+      : VOCABULARIES).map(rec),
   }))
   return { run, executeRead: vi.fn((fn: (tx: { run: typeof run }) => unknown) => fn({ run })) }
 }
@@ -76,5 +84,32 @@ describe('loadReportValueLabeler', () => {
     const label = await loadReportValueLabeler(session() as never, 't1', [{ neo4jLabel: 'Database', field: 'instance_type' }])
     expect(label({ neo4jLabel: 'Database', field: 'instanceType' }, 'x')).toBe('x')
     expect(languageFor).toHaveBeenCalledWith('t1')
+  })
+})
+
+/**
+ * I campi della libreria dei moduli del catalogo (ondata 5). Prima una tabella
+ * di report diceva «development» dove la colonna della lista delle richieste
+ * diceva «Sviluppo»: il labeler cercava il vocabolario solo nel metamodello
+ * dei CI, e un `:FormField` non è lì.
+ */
+describe('i campi dei moduli del catalogo', () => {
+  const sorgente = { neo4jLabel: 'ServiceRequest', field: 'ambiente_uso' }
+
+  it('si leggono con il loro vocabolario, come gli altri campi', async () => {
+    const label = await loadReportValueLabeler(session() as never, 't1', [sorgente])
+    expect(label(sorgente, 'production')).toBe('Prod (nostra)')
+  })
+
+  it('una LISTA si legge valore per valore: la selezione multipla non esce grezza', async () => {
+    const multi = { neo4jLabel: 'ServiceRequest', field: 'ambienti_coinvolti' }
+    const label = await loadReportValueLabeler(session() as never, 't1', [multi])
+    expect(label(multi, ['production', 'sconosciuto'])).toEqual(['Prod (nostra)', 'sconosciuto'])
+  })
+
+  it('la libreria NON si legge se il report non chiede colonne di una richiesta', async () => {
+    const s = session()
+    await loadReportValueLabeler(s as never, 't1', [{ neo4jLabel: 'Incident', field: 'severity' }])
+    expect(s.run.mock.calls.some(([q]) => String(q).includes('FormField'))).toBe(false)
   })
 })
