@@ -235,7 +235,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
           {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </div>
         <div style={{ minWidth: 180, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'monospace' }}>
+          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'var(--font-mono)' }}>
             {queue.name}
           </span>
           {!queue.retryable && (
@@ -317,10 +317,30 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
                 <div style={{ color: 'var(--color-slate-light)', flexShrink: 0 }}>
                   {expandedJob === job.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                 </div>
-                <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', minWidth: 120 }}>{job.id}</code>
-                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: colors.slateDark, flex: 1 }}>{job.name}</span>
+                {/**
+                  * TRE TESTI IN UNA RIGA, e uno e lungo: l'id di un job
+                  * ripetibile e `repeat:<32 esadecimali>:<millisecondi>`,
+                  * cinquanta caratteri senza spazi. L'id non aveva ne un tetto
+                  * ne il divieto di restringersi, il nome aveva `flex: 1` (che
+                  * con `min-width: auto` non scende sotto il contenuto) e il
+                  * motivo del fallimento un `maxWidth` fisso: la riga sforava
+                  * e i tre testi si SOVRAPPONEVANO a schermo.
+                  *
+                  * Ora ognuno ha il suo posto: l'id non supera un terzo della
+                  * riga e taglia con i puntini, il nome e il motivo possono
+                  * restringersi (`minWidth: 0`, che e cio che serve dentro un
+                  * flex), e niente esce dai bordi.
+                  */}
+                <code
+                  title={job.id}
+                  style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', flex: '0 1 auto', minWidth: 0, maxWidth: '33%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >{job.id}</code>
+                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: colors.slateDark, flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.name}</span>
                 {job.failedReason && (
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span
+                    title={job.failedReason}
+                    style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', flex: '0 1 300px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  >
                     {job.failedReason}
                   </span>
                 )}

@@ -111,7 +111,7 @@ function TextareaFileField({ id, fieldName, value, onChange, required }: Textare
       {mode === 'inline' ? (
         <textarea
           id={id}
-          style={{ ...inputStyle, height: 140, resize: 'vertical', fontFamily: 'monospace', fontSize: 'var(--font-size-body)' }}
+          style={{ ...inputStyle, height: 140, resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-body)' }}
           value={value}
           onChange={e => onChange(e.target.value)}
           required={required}

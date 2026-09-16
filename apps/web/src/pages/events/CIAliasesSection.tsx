@@ -103,7 +103,7 @@ export function CIAliasesSection({ ci, canEdit, variant }: Props) {
           {aliases.map((a) => (
             <li key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)' }}>
               <Pill bg={TINT_INFO.bg} color={TINT_INFO.color} style={{ fontSize: 'var(--font-size-label)' }}>{t(`events.aliases.kind.${a.kind}`)}</Pill>
-              <span style={{ fontFamily: 'monospace', color: colors.slateDark, wordBreak: 'break-all' }}>{a.value}</span>
+              <span style={{ fontFamily: 'var(--font-mono)', color: colors.slateDark, wordBreak: 'break-all' }}>{a.value}</span>
               {/* G-EVT-8: l'origine era stampata grezza («manual» in un'interfaccia italiana). */}
               <span
                 style={{ color: colors.slateLight, marginLeft: 'auto', whiteSpace: 'nowrap' }}

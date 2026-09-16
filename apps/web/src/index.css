@@ -448,7 +448,23 @@ table thead tr {
 
 /* ── Utility classes ───────────────────────────────────── */
 .font-mono {
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: var(--font-mono);
+}
+
+/*
+ * `code`, `pre`, `kbd`, `samp` seguono il TOKEN, non il browser.
+ *
+ * Senza questa regola quegli elementi prendono il monospace predefinito del
+ * browser — un carattere che non e del prodotto — e a schermo si vede, perche
+ * la riga accanto ne ha un altro. Si vedeva nella pagina delle code (l'id del
+ * job e un `code`) e vale anche per i `<code>` scritti dentro le frasi
+ * tradotte, che nessuna regola in un componente potrebbe raggiungere.
+ *
+ * Cambiare `--font-mono` qui sopra cambia ogni punto: oggi vale «Plus Jakarta
+ * Sans», cioe il prodotto ha un solo carattere.
+ */
+code, kbd, samp, pre {
+  font-family: var(--font-mono);
 }
 
 /* ── Typography system ─────────────────────────────────── */

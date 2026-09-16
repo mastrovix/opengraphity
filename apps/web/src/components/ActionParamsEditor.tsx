@@ -30,7 +30,7 @@ interface Props {
 }
 
 const textareaS: React.CSSProperties = { ...inputS, minHeight: 60, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }
-const monoS: React.CSSProperties     = { ...inputS, minHeight: 80, resize: 'vertical', fontFamily: 'monospace', fontSize: 'var(--font-size-body)', lineHeight: 1.5 }
+const monoS: React.CSSProperties     = { ...inputS, minHeight: 80, resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-body)', lineHeight: 1.5 }
 const labelS: React.CSSProperties    = { fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }
 
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) {

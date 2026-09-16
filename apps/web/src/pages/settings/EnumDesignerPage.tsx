@@ -828,7 +828,7 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
             <span style={{ fontSize: 'var(--font-size-body)', color: palette.warning.text }}>{t('pages.dictionary.replaceInUseIntro')}</span>
             {replaceFor.map((u) => (
               <label key={u.from} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)' }}>
-                <span style={{ fontFamily: 'monospace' }}>{u.from}</span>
+                <span style={{ fontFamily: 'var(--font-mono)' }}>{u.from}</span>
                 <span style={{ color: 'var(--color-slate-light)' }}>{t('pages.dictionary.replaceInUseCount', { count: u.total })}</span>
                 <span aria-hidden="true">→</span>
                 <Select

@@ -170,7 +170,7 @@ export function EventDetailPage() {
                 <tbody>
                   {labels.entries.map(([k, v]) => (
                     <tr key={k}>
-                      <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: colors.slate, borderBottom: '1px solid var(--color-border-light)', whiteSpace: 'nowrap' }}>{k}</td>
+                      <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)', color: colors.slate, borderBottom: '1px solid var(--color-border-light)', whiteSpace: 'nowrap' }}>{k}</td>
                       <td style={{ padding: '6px 8px', color: colors.slateDark, borderBottom: '1px solid var(--color-border-light)', wordBreak: 'break-all' }}>{v}</td>
                     </tr>
                   ))}

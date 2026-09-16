@@ -331,7 +331,7 @@ export function IntegrationsPage() {
         </Link>
       ) : (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{url}</span>
+          <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>{url}</span>
           <Button variant="ghost" size="xs" aria-label={t('admin.integrations.copyEndpoint')} title={t('admin.integrations.copyEndpoint')} onClick={() => copyText(url)} style={{ padding: 2, color: 'var(--color-slate)' }}>
             <Copy size={12} aria-hidden="true" />
           </Button>
@@ -351,7 +351,7 @@ export function IntegrationsPage() {
 
   const outboundColumns: ColumnDef<OutboundWebhook>[] = [
     { key: 'name', label: t('admin.integrations.columns.name'), sortable: true },
-    { key: 'url', label: t('admin.integrations.columns.url'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
+    { key: 'url', label: t('admin.integrations.columns.url'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'var(--font-mono)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
     { key: 'events', label: t('admin.integrations.columns.events'), sortable: true, render: (v) => {
       const events: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
       return <>{events.map(e => <Pill key={e} bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{e}</Pill>)}</>
@@ -374,7 +374,7 @@ export function IntegrationsPage() {
 
   const apiKeyColumns: ColumnDef<ApiKeyRow>[] = [
     { key: 'name', label: t('admin.integrations.columns.name'), sortable: true },
-    { key: 'keyPrefix', label: t('admin.integrations.columns.keyPrefix'), sortable: true, render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
+    { key: 'keyPrefix', label: t('admin.integrations.columns.keyPrefix'), sortable: true, render: (v) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
     { key: 'permissions', label: t('admin.integrations.columns.permissions'), sortable: true, render: (v) => {
       const perms: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
       return <>{perms.map(p => <Pill key={p} bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{p}</Pill>)}</>

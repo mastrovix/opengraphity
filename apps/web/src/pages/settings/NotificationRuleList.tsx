@@ -326,7 +326,7 @@ export function RuleRow({
             </span>
           )}
         </div>
-        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontFamily: 'monospace', marginTop: 1 }}>{rule.eventType}</div>
+        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>{rule.eventType}</div>
         {/* Restringimento della regola del passo: si imposta alla creazione ed
             è ciò che la rende riconoscibile senza nominare un passo. */}
         {(rule.stepPurpose || rule.stepCategory) && (
