@@ -645,9 +645,33 @@ export interface ProcessMetricsData {
 const slowQueryBuffer: SlowQueryEntry[] = []
 const MAX_SLOW_QUERIES = 20
 
+/**
+ * La query come la LEGGE chi guarda il pannello: senza i commenti del
+ * sorgente e su una riga.
+ *
+ * Prima si prendevano i primi 200 caratteri del testo cosi com'era, e le
+ * nostre query hanno spesso un commento in testa che spiega perche sono
+ * scritte cosi. Risultato, visto nel pannello «Query lente»: al posto della
+ * query si leggeva «// OGNI PARTE nella sua sottoquery (revisione totale ·
+ * E-36): i sette // OPTIONAL MATCH in fila prima del RETURN facevano il
+ * prodotto…», cioe la spiegazione e non la cosa da guardare. Con 200
+ * caratteri di budget, un commento lungo mangia tutta la query.
+ *
+ * Limite noto: un `//` dentro una stringa della query (un URL) taglierebbe il
+ * resto della riga. E' solo la vista del pannello, non la query eseguita, e
+ * nessuna query del prodotto contiene un URL.
+ */
+export function queryPerIlPannello(query: string): string {
+  return query
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .split('\n').map((riga) => riga.replace(/\/\/.*$/, '')).join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function recordSlowQuery(query: string, durationMs: number): void {
   slowQueryBuffer.push({
-    query: query.slice(0, 200),
+    query: queryPerIlPannello(query).slice(0, 200),
     durationMs,
     timestamp: new Date().toISOString(),
   })
