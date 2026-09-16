@@ -61,7 +61,14 @@ describe('policy ↔ schema', () => {
       'tenantBrand', 'tenantLanguageSettings', 'ticketCategories',
     ])
     // setMyLanguage: la lingua della persona, anche dal portale (secondo giro UI del 15 set 2026)
-    expect(m).toEqual(['addTicketComment', 'createServiceRequest', 'createTicket', 'deleteComment', 'rateKBArticle', 'reopenTicket', 'setMyLanguage', 'updateComment'])
+    expect(m).toEqual([
+      'addTicketComment', 'createServiceRequest', 'createTicket',
+      // Moduli del catalogo, ondata 2: chi compila un campo allegato dal
+      // portale deve poter togliere un file scelto per sbaglio PRIMA di
+      // inviare. Il resolver cancella solo cio che hai caricato tu.
+      'deleteAttachment',
+      'deleteComment', 'rateKBArticle', 'reopenTicket', 'setMyLanguage', 'updateComment',
+    ])
   })
 
   it('viewer non scrive tranne le azioni personali', () => {

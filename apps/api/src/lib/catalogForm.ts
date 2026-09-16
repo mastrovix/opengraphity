@@ -27,9 +27,10 @@ import { runQuery } from '@opengraphity/neo4j'
 import {
   CATALOG_FORM_VERSION, FORM_FIELD_NAME_RE, FORM_FIELD_TYPES, FORM_FIELD_TYPES_MULTI,
   FORM_FIELD_TYPES_WITHOUT_ANSWER, FORM_FIELD_TYPES_WITH_VOCABULARY, FORM_CONDITION_OPS,
-  FORM_CONDITION_OPS_WITHOUT_VALUE,
-  catalogFormConditionFieldNames, catalogFormFieldNames, evaluateFormCondition, isFormAnswerEmpty,
-  isFormConditionOp, isFormFieldType, parseLocalizedLabels,
+  FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_DRAFT_ENTITY_TYPE, FORM_FIELD_TYPES_AS_PROPERTY,
+  canBeConditionSubject, catalogFormConditionFieldNames, catalogFormFieldNames, evaluateFormCondition,
+  isFormAnswerEmpty, isFormAttachmentType, isFormConditionOp, isFormFieldType, isFormReferenceType,
+  parseLocalizedLabels,
   type CatalogFormDefinition, type CatalogFormItem, type CatalogFormSection,
   type FormAnswerValue, type FormAnswers, type FormCondition, type FormFieldType, type LocalizedLabel,
 } from '@opengraphity/types'
@@ -37,6 +38,8 @@ import { ValidationError } from './errors.js'
 import { assertCustomFieldName } from './customFieldName.js'
 import { loadVocabularyEntries } from './vocabularyEntries.js'
 import { runValidationScript } from './metamodelScript.js'
+
+export { FORM_DRAFT_ENTITY_TYPE }
 
 /** Chiavi attese nella versione 1 del documento: se mancano, è di una versione che non conosciamo. */
 export const CATALOG_FORM_V1_KEYS = ['version', 'revision', 'sections'] as const
@@ -319,29 +322,57 @@ export function assertCatalogForm(def: CatalogFormDefinition, library: ReadonlyM
     }
   }
 
-  // Una nota non porta risposta: non può essere obbligatoria né essere il
-  // soggetto di una condizione, perché non ha mai un valore.
   for (const s of def.sections) {
     for (const i of s.items) {
       const f = library.get(i.field)!
+      // Una nota non porta risposta: non può essere obbligatoria.
       if (FORM_FIELD_TYPES_WITHOUT_ANSWER.includes(f.fieldType) && i.required === true) {
         throw new ValidationError(`The field "${i.field}" is a note: it carries no answer, so it cannot be required.`,
           { key: 'errors.catalogForm.noteRequired', params: { field: i.field } })
       }
+      /**
+       * UN RIFERIMENTO NON SI OFFRE NEL PORTALE (ondata 2, limite dichiarato).
+       * Scegliere un CI, una persona o una squadra vuol dire cercarli, e un
+       * utente finale non naviga la CMDB né l'elenco del personale: non è una
+       * mancanza del renderer, è una decisione. Il campo resta compilabile
+       * dall'area di lavoro; il rifiuto lo dice qui, alla pubblicazione, invece
+       * di lasciare nel portale una casella che non trova niente.
+       */
+      if (isFormReferenceType(f.fieldType) && i.endUser !== false) {
+        throw new ValidationError(
+          `The field "${i.field}" is a reference (${f.fieldType}): it cannot be offered in the portal, because choosing one means searching the CMDB or the staff list. Untick "offer it in the portal".`,
+          { key: 'errors.catalogForm.referenceEndUser', params: { field: i.field, fieldType: f.fieldType } },
+        )
+      }
     }
   }
+  /**
+   * Una condizione può guardare SOLO un campo che diventa una proprietà. Un
+   * allegato o un riferimento andrebbero letti dal grafo per essere valutati, e
+   * il valutatore gira anche nel browser su quello che ha in mano: vietarlo qui
+   * è meglio che offrirlo e farlo sbagliare a metà.
+   */
   for (const nome of catalogFormConditionFieldNames(def)) {
     const f = library.get(nome)
-    if (f && FORM_FIELD_TYPES_WITHOUT_ANSWER.includes(f.fieldType)) {
-      throw new ValidationError(`A condition looks at the field "${nome}", which is a note and never has a value.`,
-        { key: 'errors.catalogForm.conditionFieldNote', params: { field: nome } })
+    if (!f) continue
+    if (!canBeConditionSubject(f.fieldType)) {
+      throw new ValidationError(
+        `A condition looks at the field "${nome}", which is a ${f.fieldType}: only fields stored as a property can be a condition subject (${FORM_FIELD_TYPES_AS_PROPERTY.join(', ')}).`,
+        { key: 'errors.catalogForm.conditionFieldType', params: { field: nome, fieldType: f.fieldType } },
+      )
     }
   }
 }
 
 // ── Le risposte ─────────────────────────────────────────────────────────────
 
-export interface FormAnswerInput { name: string; value?: string | null; values?: readonly string[] | null }
+export interface FormAnswerInput {
+  name: string
+  value?: string | null
+  values?: readonly string[] | null
+  /** Per i campi di riferimento: gli id dei nodi puntati (CI, persona, squadra). */
+  refIds?: readonly string[] | null
+}
 
 /** `[{name, value}]` → `{name: valore}`, la forma che il valutatore delle condizioni si aspetta. */
 export function formAnswerMap(inputs: readonly FormAnswerInput[] | null | undefined): FormAnswers {
@@ -427,14 +458,15 @@ export async function resolveFormWrites(
   def: CatalogFormDefinition,
   library: ReadonlyMap<string, FormFieldDef>,
   inputs: readonly FormAnswerInput[] | null | undefined,
-  opts: { endUser?: boolean } = {},
-): Promise<Record<string, unknown>> {
+  opts: { endUser?: boolean; draftId?: string | null; userId?: string | null } = {},
+): Promise<FormWriteResult> {
   const answers = formAnswerMap(inputs)
   const visibili = visibleFormItems(def, answers, opts)
   const perNome = new Map(visibili.map((i) => [i.field, i]))
   const nelModulo = new Set(catalogFormFieldNames(def))
 
   const out: Record<string, unknown> = {}
+  const riferimenti: FormReferenceWrite[] = []
   const vocabolari = new Map<string, readonly string[]>()
   const vocabolarioDi = async (nome: string): Promise<readonly string[] | null> => {
     if (vocabolari.has(nome)) return vocabolari.get(nome)!
@@ -474,17 +506,72 @@ export async function resolveFormWrites(
       continue
     }
 
+    /**
+     * Un RIFERIMENTO non diventa una proprietà: diventa una relazione. Qui si
+     * verifica solo che il nodo puntato esista NEL TENANT e con l'etichetta
+     * giusta — scrivere la relazione tocca a chi crea il ticket, nella sua
+     * transazione.
+     */
+    if (isFormReferenceType(campo.fieldType)) {
+      const ids = (input.refIds ?? []).map((v) => String(v).trim()).filter((v) => v !== '')
+      if (ids.length === 0) continue
+      if (ids.length > 1) {
+        // Un riferimento è uno solo, per ora: accettarne due qui e scriverne
+        // uno sarebbe una perdita silenziosa.
+        throw new ValidationError(`The field "${campo.label}" takes one reference, ${ids.length} were sent.`,
+          { key: 'errors.formField.oneReference', params: { field: campo.label, count: String(ids.length) } })
+      }
+      await assertRiferimentoEsiste(session, tenantId, campo, ids[0]!)
+      riferimenti.push({ field: campo.name, fieldType: campo.fieldType, ids })
+      continue
+    }
+
+    /**
+     * Un ALLEGATO non arriva come valore: i file sono già stati caricati sulla
+     * BOZZA (entity_type `form_draft`) e portano il nome del campo. Qui non c'è
+     * niente da scrivere: si conta, per l'obbligatorietà, e si reclama alla
+     * creazione.
+     */
+    if (isFormAttachmentType(campo.fieldType)) continue
+
     const raw = input.value
     if (raw == null || String(raw).trim() === '') { out[input.name] = null; continue }
     const allowed = campo.vocabulary ? await vocabolarioDi(campo.vocabulary) : null
     out[input.name] = coerce(campo, String(raw), allowed)
   }
 
-  // L'obbligatorietà: la sovrascrittura del modulo vince sulla libreria.
+  /**
+   * L'obbligatorietà, sui soli campi VISIBILI: la sovrascrittura del modulo
+   * vince sulla libreria. Ogni genere di campo ha il suo modo di essere vuoto —
+   * un allegato obbligatorio si conta sulla bozza, un riferimento sugli id
+   * arrivati, gli altri sul valore scritto.
+   */
+  const allegatiRichiesti: FormAttachmentField[] = []
   for (const item of visibili) {
     const campo = library.get(item.field)!
     if (FORM_FIELD_TYPES_WITHOUT_ANSWER.includes(campo.fieldType)) continue
     const obbligatorio = item.required ?? campo.required
+
+    if (isFormAttachmentType(campo.fieldType)) {
+      const quanti = opts.draftId
+        ? await contaAllegatiBozza(session, tenantId, opts.draftId, campo.name, opts.userId ?? null)
+        : 0
+      allegatiRichiesti.push({ field: campo.name, label: campo.label, required: obbligatorio, count: quanti })
+      if (obbligatorio && quanti === 0) {
+        throw new ValidationError(`The field "${campo.label}" needs at least one file.`,
+          { key: 'errors.formField.fileRequired', params: { field: campo.label } })
+      }
+      continue
+    }
+
+    if (isFormReferenceType(campo.fieldType)) {
+      if (obbligatorio && !riferimenti.some((r) => r.field === campo.name)) {
+        throw new ValidationError(`The field "${campo.label}" is required.`,
+          { key: 'errors.formField.required', params: { field: campo.label } })
+      }
+      continue
+    }
+
     if (!obbligatorio) continue
     const scritto = Object.prototype.hasOwnProperty.call(out, item.field) ? out[item.field] : undefined
     const vuoto = scritto === undefined
@@ -512,7 +599,7 @@ export async function resolveFormWrites(
     }
   }
 
-  return out
+  return { props: out, references: riferimenti, attachmentFields: allegatiRichiesti }
 }
 
 // ── Le revisioni pubblicate ─────────────────────────────────────────────────
@@ -558,16 +645,33 @@ export async function catalogFormRevision(
  * cancellato dalla libreria ripiega sul suo nome, così il valore resta
  * leggibile invece di sparire.
  */
+export interface FormAnswerRead {
+  name: string
+  label: string
+  fieldType: string
+  value: string | null
+  values: string[]
+  /** Per i campi di riferimento: i nodi puntati, col loro nome. */
+  references: Array<{ id: string; label: string }>
+  /** Per i campi allegato: i file reclamati dal ticket per questo campo. */
+  files: Array<{ id: string; filename: string; sizeBytes: number }>
+}
+
 export async function formAnswersOf(
   session: Session, tenantId: string,
-  ticket: { catalogItemId: string | null; formRevision: number | null; props: Record<string, unknown> },
-): Promise<Array<{ name: string; label: string; fieldType: string; value: string | null; values: string[] }>> {
+  ticket: { id: string; catalogItemId: string | null; formRevision: number | null; props: Record<string, unknown> },
+): Promise<FormAnswerRead[]> {
   if (!ticket.catalogItemId || !ticket.formRevision) return []
   const def = await catalogFormRevision(session, tenantId, ticket.catalogItemId, ticket.formRevision)
   if (!def) return []
   const nomi = catalogFormFieldNames(def)
   const library = await formFieldsByName(session, tenantId, nomi)
-  const out: Array<{ name: string; label: string; fieldType: string; value: string | null; values: string[] }> = []
+
+  // Riferimenti e file si leggono in due query sole, non una per campo.
+  const riferimenti = await leggiRiferimenti(session, tenantId, ticket.id)
+  const file = await leggiFileDelModulo(session, tenantId, ticket.id)
+
+  const out: FormAnswerRead[] = []
   for (const nome of nomi) {
     const campo = library.get(nome)
     if (campo && FORM_FIELD_TYPES_WITHOUT_ANSWER.includes(campo.fieldType)) continue
@@ -579,7 +683,193 @@ export async function formAnswersOf(
       fieldType: campo?.fieldType ?? 'text',
       value: Array.isArray(raw) || raw == null || raw === '' ? null : String(raw),
       values: lista,
+      references: riferimenti.get(nome) ?? [],
+      files: file.get(nome) ?? [],
     })
   }
   return out
+}
+
+/**
+ * I nodi puntati dai campi di riferimento, per nome di campo. Tre query
+ * scritte per intero (una per genere) invece di una con il tipo di relazione
+ * interpolato: il guardiano `check-cypher.mjs` deve poterle mandare in EXPLAIN.
+ */
+async function leggiRiferimenti(
+  session: Session, tenantId: string, entityId: string,
+): Promise<Map<string, Array<{ id: string; label: string }>>> {
+  const out = new Map<string, Array<{ id: string; label: string }>>()
+  const raccogli = async (query: string) => {
+    const rows = await runQuery<{ field: string; id: string; label: string }>(session, query, { entityId, tenantId })
+    for (const r of rows) {
+      const elenco = out.get(r.field) ?? []
+      elenco.push({ id: r.id, label: r.label })
+      out.set(r.field, elenco)
+    }
+  }
+  await raccogli(`
+    MATCH (t:ServiceRequest {id: $entityId, tenant_id: $tenantId})-[rel:FORM_REFERS_TO_CI]->(n:ConfigurationItem)
+    RETURN rel.field AS field, n.id AS id, coalesce(n.name, n.id) AS label`)
+  await raccogli(`
+    MATCH (t:ServiceRequest {id: $entityId, tenant_id: $tenantId})-[rel:FORM_REFERS_TO_USER]->(n:User)
+    RETURN rel.field AS field, n.id AS id, coalesce(n.name, n.email, n.id) AS label`)
+  await raccogli(`
+    MATCH (t:ServiceRequest {id: $entityId, tenant_id: $tenantId})-[rel:FORM_REFERS_TO_TEAM]->(n:Team)
+    RETURN rel.field AS field, n.id AS id, coalesce(n.name, n.id) AS label`)
+  return out
+}
+
+/** I file reclamati dal ticket, raggruppati per campo del modulo. */
+async function leggiFileDelModulo(
+  session: Session, tenantId: string, entityId: string,
+): Promise<Map<string, Array<{ id: string; filename: string; sizeBytes: number }>>> {
+  const rows = await runQuery<{ field: string; id: string; filename: string; sizeBytes: number }>(session, `
+    MATCH (a:Attachment {tenant_id: $tenantId, entity_type: 'service_request', entity_id: $entityId})
+    WHERE a.field_name IS NOT NULL
+    RETURN a.field_name AS field, a.id AS id, a.filename AS filename, a.size_bytes AS sizeBytes
+    ORDER BY a.uploaded_at`, { entityId, tenantId })
+  const out = new Map<string, Array<{ id: string; filename: string; sizeBytes: number }>>()
+  for (const r of rows) {
+    const elenco = out.get(r.field) ?? []
+    elenco.push({ id: r.id, filename: r.filename, sizeBytes: Number(r.sizeBytes ?? 0) })
+    out.set(r.field, elenco)
+  }
+  return out
+}
+
+// ── Ondata 2: riferimenti e allegati ────────────────────────────────────────
+
+/** Un riferimento da scrivere come relazione, dopo che il ticket esiste. */
+export interface FormReferenceWrite {
+  field: string
+  fieldType: string
+  ids: string[]
+}
+
+/** Un campo allegato del modulo, con quanti file porta la bozza. */
+export interface FormAttachmentField {
+  field: string
+  label: string
+  required: boolean
+  count: number
+}
+
+export interface FormWriteResult {
+  /** Le proprietà da scrivere sul ticket. */
+  props: Record<string, unknown>
+  /** Le relazioni da creare (chi crea il ticket le scrive nella sua transazione). */
+  references: FormReferenceWrite[]
+  /** I campi allegato visibili, col conto dei file sulla bozza. */
+  attachmentFields: FormAttachmentField[]
+}
+
+/**
+ * Il nodo puntato da un riferimento deve esistere NEL TENANT e portare
+ * l'etichetta giusta. Tre query scritte per intero, una per genere, invece di
+ * una con l'etichetta interpolata: così `scripts/check-cypher.mjs` le manda in
+ * EXPLAIN davvero, invece di lasciarle «fuori perimetro».
+ */
+async function assertRiferimentoEsiste(session: Session, tenantId: string, campo: FormFieldDef, id: string): Promise<void> {
+  const trovato = async (query: string): Promise<boolean> => {
+    const rows = await runQuery<{ id: string }>(session, query, { id, tenantId })
+    return rows.length > 0
+  }
+  let esiste = false
+  switch (campo.fieldType) {
+    case 'ref_ci':
+      esiste = await trovato('MATCH (n:ConfigurationItem {id: $id, tenant_id: $tenantId}) RETURN n.id AS id LIMIT 1')
+      break
+    case 'ref_user':
+      esiste = await trovato('MATCH (n:User {id: $id, tenant_id: $tenantId}) RETURN n.id AS id LIMIT 1')
+      break
+    case 'ref_team':
+      esiste = await trovato('MATCH (n:Team {id: $id, tenant_id: $tenantId}) RETURN n.id AS id LIMIT 1')
+      break
+    default:
+      throw new Error(`assertRiferimentoEsiste: ${campo.fieldType} is not a reference type`)
+  }
+  if (!esiste) {
+    throw new ValidationError(`The field "${campo.label}" points to something that does not exist here.`,
+      { key: 'errors.formField.referenceNotFound', params: { field: campo.label } })
+  }
+}
+
+/**
+ * Quanti file la bozza porta per questo campo. Filtra anche su chi ha caricato:
+ * una bozza è di chi la sta compilando, e reclamare i file di un altro sarebbe
+ * un varco (l'identificativo di bozza lo scegli tu, quindi indovinarlo è
+ * possibile).
+ */
+async function contaAllegatiBozza(
+  session: Session, tenantId: string, draftId: string, field: string, userId: string | null,
+): Promise<number> {
+  const rows = await runQuery<{ n: number }>(session, `
+    MATCH (a:Attachment {tenant_id: $tenantId, entity_type: $draftType, entity_id: $draftId, field_name: $field})
+    WHERE $userId IS NULL OR a.uploaded_by = $userId
+    RETURN count(a) AS n`,
+  { tenantId, draftType: FORM_DRAFT_ENTITY_TYPE, draftId, field, userId })
+  return Number(rows[0]?.n ?? 0)
+}
+
+/**
+ * Reclama i file della bozza per il ticket appena creato: gli stessi nodi
+ * `:Attachment`, con `entity_type`/`entity_id` che passano dalla bozza al
+ * ticket. Nessun file si muove sul disco — il percorso è già scritto in
+ * `storage_path` ed è opaco — quindi qui non c'è niente che possa fallire a
+ * metà lasciando un file orfano e un nodo giusto.
+ *
+ * Restituisce quanti ne ha reclamati: il chiamante lo registra.
+ */
+export async function claimDraftAttachments(
+  session: Session, tenantId: string, draftId: string, entityType: string, entityId: string, userId: string | null,
+): Promise<number> {
+  const rows = await runQuery<{ n: number }>(session, `
+    MATCH (a:Attachment {tenant_id: $tenantId, entity_type: $draftType, entity_id: $draftId})
+    WHERE $userId IS NULL OR a.uploaded_by = $userId
+    SET a.entity_type = $entityType, a.entity_id = $entityId, a.claimed_at = $now
+    RETURN count(a) AS n`,
+  { tenantId, draftType: FORM_DRAFT_ENTITY_TYPE, draftId, entityType, entityId, userId, now: new Date().toISOString() })
+  return Number(rows[0]?.n ?? 0)
+}
+
+/**
+ * Scrive le relazioni dei campi di riferimento. Tre query per intero, una per
+ * genere, per la stessa ragione di `assertRiferimentoEsiste`: il guardiano deve
+ * poterle mandare in EXPLAIN.
+ *
+ * `MERGE` sulla relazione col nome del campo: due volte lo stesso riferimento
+ * non fa due archi, e il campo resta leggibile da chi rilegge le risposte.
+ */
+export async function writeFormReferences(
+  session: Session, tenantId: string, entityLabelIsServiceRequest: true, entityId: string,
+  references: readonly FormReferenceWrite[],
+): Promise<void> {
+  void entityLabelIsServiceRequest
+  for (const r of references) {
+    for (const id of r.ids) {
+      const params = { entityId, id, tenantId, field: r.field }
+      switch (r.fieldType) {
+        case 'ref_ci':
+          await runQuery(session, `
+            MATCH (t:ServiceRequest {id: $entityId, tenant_id: $tenantId})
+            MATCH (n:ConfigurationItem {id: $id, tenant_id: $tenantId})
+            MERGE (t)-[rel:FORM_REFERS_TO_CI {field: $field}]->(n)`, params)
+          break
+        case 'ref_user':
+          await runQuery(session, `
+            MATCH (t:ServiceRequest {id: $entityId, tenant_id: $tenantId})
+            MATCH (n:User {id: $id, tenant_id: $tenantId})
+            MERGE (t)-[rel:FORM_REFERS_TO_USER {field: $field}]->(n)`, params)
+          break
+        case 'ref_team':
+          await runQuery(session, `
+            MATCH (t:ServiceRequest {id: $entityId, tenant_id: $tenantId})
+            MATCH (n:Team {id: $id, tenant_id: $tenantId})
+            MERGE (t)-[rel:FORM_REFERS_TO_TEAM {field: $field}]->(n)`, params)
+          break
+        default:
+          throw new Error(`writeFormReferences: ${r.fieldType} is not a reference type`)
+      }
+    }
+  }
 }

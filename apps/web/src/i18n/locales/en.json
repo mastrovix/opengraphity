@@ -2260,7 +2260,11 @@
         "boolean": "Yes/no",
         "enum": "One choice",
         "multi_enum": "Several choices",
-        "note": "Note (no answer)"
+        "note": "Note (no answer)",
+        "attachment": "File",
+        "ref_ci": "A configuration item",
+        "ref_user": "A person",
+        "ref_team": "A team"
       },
       "conditionOp": {
         "eq": "is",
@@ -2299,7 +2303,9 @@
         "preview": "Preview",
         "previewHelp": "The real form, rendered by the same component the workspace and the portal use: answer here to watch the conditional fields appear.",
         "noItems": "There is no active catalog item to build a form for. Add one in Admin → Service catalog.",
-        "libraryEmpty": "The field library is empty: open the other tab and define the first field."
+        "libraryEmpty": "The field library is empty: open the other tab and define the first field.",
+        "referenceStaffOnly": "Workspace only",
+        "referenceStaffOnlyWhy": "A reference cannot be offered in the portal: choosing one means searching the CMDB or the staff list, which an end user does not do. The field stays fillable from the workspace."
       },
       "library": {
         "intro": "A field is defined once and reused by every form. Its name becomes the property on the ticket, which is why it can be filtered and reported on — and why it cannot be renamed.",
@@ -2329,6 +2335,13 @@
         "deleteTitle": "Delete this field?",
         "deleteMessage": "“{{name}}” will disappear from the library. The answers already collected on tickets are kept.",
         "cannotDelete": "Used by the form of: {{forms}}. Remove it from those forms first."
+      },
+      "fill": {
+        "addFile": "Add a file",
+        "removeFile": "Remove",
+        "searchReference": "Type at least two letters…",
+        "noResults": "Nothing found",
+        "clearReference": "Clear the choice"
       }
     }
   },
@@ -4045,7 +4058,10 @@
       "notBoolean": "The field \"{{field}}\" is yes/no: use true or false.",
       "notDate": "The field \"{{field}}\" is a date, \"{{value}}\" is not.",
       "notInVocabulary": "\"{{value}}\" is not a value of \"{{field}}\". Allowed: {{allowed}}.",
-      "script": "The field \"{{field}}\" was refused: {{message}}"
+      "script": "The field \"{{field}}\" was refused: {{message}}",
+      "oneReference": "The field \"{{field}}\" takes one reference, {{count}} were sent.",
+      "fileRequired": "The field \"{{field}}\" needs at least one file.",
+      "referenceNotFound": "The field \"{{field}}\" points to something that does not exist here."
     },
     "catalogForm": {
       "shape": "The form definition has the wrong shape at {{where}}.",
@@ -4064,12 +4080,13 @@
       "conditionOp": "{{where}}: \"{{op}}\" is not a condition operator.",
       "conditionValue": "{{where}}: the operator \"{{op}}\" needs a value.",
       "conditionFieldMissing": "A condition looks at the field \"{{field}}\", which this form does not contain: the condition could never become true.",
-      "conditionFieldNote": "A condition looks at the field \"{{field}}\", which is a note and never has a value.",
       "answerUnknown": "\"{{field}}\" is not a field of this form.",
       "answerHidden": "The field \"{{field}}\" is not being asked with these answers: it is hidden by a condition, or not offered here.",
       "answerNote": "The field \"{{field}}\" is a note: it carries no answer.",
       "answersWithoutItem": "Form answers were sent without a catalog item: a form belongs to a catalog item.",
-      "noForm": "The catalog item \"{{item}}\" has no form: there is nothing to answer."
+      "noForm": "The catalog item \"{{item}}\" has no form: there is nothing to answer.",
+      "conditionFieldType": "A condition looks at the field \"{{field}}\", which is a {{fieldType}}: only fields stored as a property can be a condition subject.",
+      "referenceEndUser": "The field \"{{field}}\" is a reference ({{fieldType}}): it cannot be offered in the portal, because choosing one means searching the CMDB or the staff list. Untick \"offer it in the portal\"."
     }
   },
   "errorBoundary": {

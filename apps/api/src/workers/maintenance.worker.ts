@@ -47,7 +47,22 @@ export const REPEATABLE_JOBS: ReadonlyArray<{ name: string; pattern: string; des
   { name: 'purge_events',    pattern: '30 3 * * *', description: 'daily at 03:30' },
   // Revisione del 14 set 2026 · F10: le notifiche in-app salvate si puliscono per età.
   { name: 'purge_inapp_notifications', pattern: '45 3 * * *', description: 'daily at 03:45' },
+  /**
+   * Moduli del catalogo, ondata 2: le BOZZE mai reclamate. Un campo allegato
+   * si compila prima che la richiesta esista, quindi i file si caricano su una
+   * bozza; se chi compilava cambia idea e chiude la pagina, quei file restano.
+   * Senza questa passata crescerebbero per sempre — su disco e nel grafo.
+   */
+  { name: 'purge_form_drafts', pattern: '15 4 * * *', description: 'daily at 04:15' },
 ]
+
+/**
+ * Quanto si aspetta prima di cancellare una bozza mai reclamata. Un giorno: il
+ * tempo di compilare un modulo con calma, riaprire la pagina, finire domani
+ * mattina. Non è configurabile perché non è una scelta del cliente: è la
+ * durata di una sessione di compilazione.
+ */
+export const FORM_DRAFT_MAX_AGE_HOURS = 24
 
 // ── Retention: keep last N archives ──────────────────────────────────────────
 // `.partial` (unpublished) and `.invalid` (failed verification) archives are
@@ -142,6 +157,21 @@ async function processMaintenanceJob(job: Job): Promise<void> {
     case 'purge_events': {
       const r = await purgeResolvedEvents()
       maintenanceLogger.info({ tenants: r.tenants, purged: r.purged, perTenant: r.perTenant }, 'Resolved events purged (retention)')
+      break
+    }
+
+    case 'purge_form_drafts': {
+      const prima = new Date(Date.now() - FORM_DRAFT_MAX_AGE_HOURS * 3_600_000).toISOString()
+      const { purgeFormDrafts } = await import('../lib/formDraftPurge.js')
+      const r = await purgeFormDrafts(prima)
+      if (r.nodes > 0 || r.filesFailed > 0) {
+        maintenanceLogger.info({ ...r, olderThan: prima }, 'Unclaimed form draft attachments purged')
+      }
+      if (r.filesFailed > 0) {
+        // Il nodo è andato ma il file no: lo si dice, perché lo spazio non
+        // torna e nessun altro passerà da lì.
+        maintenanceLogger.warn({ filesFailed: r.filesFailed }, 'Some form draft files could not be deleted from disk')
+      }
       break
     }
 

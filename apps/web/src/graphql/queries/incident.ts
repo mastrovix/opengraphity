@@ -107,7 +107,7 @@ export const GET_SERVICE_REQUEST = gql`
       customFields { ...CustomFieldValueFields }
       affectedCIs { id name type status environment }
       formRevision
-      formAnswers { name label fieldType value values }
+      formAnswers { name label fieldType value values references { id label } files { id filename sizeBytes } }
     }
   }
   ${CUSTOM_FIELD_VALUE_FIELDS}

@@ -1,6 +1,9 @@
 import { v4 as uuidv4 } from 'uuid'
 import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
-import { formFieldsByName, parseCatalogForm, resolveFormWrites, type FormAnswerInput } from '../lib/catalogForm.js'
+import {
+  claimDraftAttachments, formFieldsByName, parseCatalogForm, resolveFormWrites, writeFormReferences,
+  type FormAnswerInput, type FormReferenceWrite,
+} from '../lib/catalogForm.js'
 import { catalogFormFieldNames } from '@opengraphity/types'
 import { creationStepContext } from '../lib/customFieldSteps.js'
 import { withTicketProps } from '../lib/ticketProps.js'
@@ -9,6 +12,7 @@ import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
 import { publishEvent } from '../lib/publishEvent.js'
+import { logger } from '../lib/logger.js'
 import { ValidationError } from '../lib/errors.js'
 import { getInitialStepName } from '../lib/workflowHelpers.js'
 import { workflowEngine } from '@opengraphity/workflow'
@@ -42,7 +46,7 @@ export function mapRequest(props: Props) {
 }
 
 export async function createRequest(
-  input: { title: string; description?: string; priority: string; category?: string | null; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; formAnswers?: FormAnswerInput[] | null },
+  input: { title: string; description?: string; priority: string; category?: string | null; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; formAnswers?: FormAnswerInput[] | null; formDraftId?: string | null },
   ctx: ServiceCtx,
   channel: 'agent' | 'portal' = 'agent',
 ) {
@@ -61,13 +65,14 @@ export async function createRequest(
    * Il ticket porta la revisione del modulo usato: se domani il modulo cambia,
    * queste risposte si rileggono ancora con la loro.
    */
-  const { props: formProps, revision: formRevision } = await withSession(async (session) => {
+  const vuoto = { props: {} as Record<string, unknown>, revision: null as number | null, references: [] as FormReferenceWrite[] }
+  const { props: formProps, revision: formRevision, references: formReferences } = await withSession(async (session) => {
     if (!input.catalogItemId) {
       if (input.formAnswers?.length) {
         throw new ValidationError('Form answers were sent without a catalog item: a form belongs to a catalog item.',
           { key: 'errors.catalogForm.answersWithoutItem', params: {} })
       }
-      return { props: {} as Record<string, unknown>, revision: null as number | null }
+      return vuoto
     }
     const row = await runQuery<{ form: string | null; name: string }>(session, `
       MATCH (i:ServiceCatalogItem {id: $itemId, tenant_id: $tenantId})
@@ -78,11 +83,17 @@ export async function createRequest(
         throw new ValidationError('This catalog item has no form: there is nothing to answer.',
           { key: 'errors.catalogForm.noForm', params: { item: row[0]?.name ?? input.catalogItemId } })
       }
-      return { props: {} as Record<string, unknown>, revision: null as number | null }
+      return vuoto
     }
     const library = await formFieldsByName(session, ctx.tenantId, catalogFormFieldNames(def))
-    const props = await resolveFormWrites(session, ctx.tenantId, def, library, input.formAnswers, { endUser: channel === 'portal' })
-    return { props, revision: def.revision }
+    const esito = await resolveFormWrites(session, ctx.tenantId, def, library, input.formAnswers, {
+      endUser: channel === 'portal',
+      // La bozza degli allegati (ondata 2): i file sono già caricati e portano
+      // il nome del campo; qui si conta, per l'obbligatorietà.
+      draftId: input.formDraftId ?? null,
+      userId: ctx.userId,
+    })
+    return { props: esito.props, revision: def.revision, references: esito.references }
   })
   const id  = uuidv4()
   const now = new Date().toISOString()
@@ -149,6 +160,20 @@ export async function createRequest(
           ON CREATE SET w.watched_at = $now
       )
     `, { id, tenantId: ctx.tenantId, userId: ctx.userId, now })
+
+    /**
+     * I riferimenti del modulo (ondata 2) diventano relazioni, e i file della
+     * bozza passano al ticket. Entrambi DOPO la CREATE e nella stessa sessione:
+     * il nodo deve esistere per essere agganciato, e un fallimento qui fa
+     * fallire la creazione invece di lasciare un ticket a metà.
+     */
+    if (formReferences.length > 0) {
+      await writeFormReferences(session, ctx.tenantId, true, id, formReferences)
+    }
+    if (input.formDraftId) {
+      const reclamati = await claimDraftAttachments(session, ctx.tenantId, input.formDraftId, 'service_request', id, ctx.userId)
+      if (reclamati > 0) logger.info({ tenantId: ctx.tenantId, requestId: id, draftId: input.formDraftId, reclamati }, 'Form draft attachments claimed')
+    }
 
     await workflowEngine.createInstance(session, ctx.tenantId, id, 'service_request')
 

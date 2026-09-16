@@ -21,6 +21,10 @@ export interface FormAnswer {
   fieldType: string
   value: string | null
   values: string[]
+  /** Per i campi di riferimento: i nodi puntati (ondata 2). */
+  references: Array<{ id: string; label: string }>
+  /** Per i campi allegato: i file del ticket per questo campo (ondata 2). */
+  files: Array<{ id: string; filename: string; sizeBytes: number }>
 }
 
 export function FormAnswersCard({ answers, revision }: { answers: readonly FormAnswer[]; revision: number | null }) {
@@ -40,7 +44,11 @@ export function FormAnswersCard({ answers, revision }: { answers: readonly FormA
           <div key={a.name} style={{ display: 'contents' }}>
             <dt style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{a.label}</dt>
             <dd style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', margin: 0, wordBreak: 'break-word' }}>
-              {a.values.length > 0
+              {a.references.length > 0
+                ? a.references.map((r) => r.label).join(', ')
+                : a.files.length > 0
+                  ? a.files.map((f) => f.filename).join(', ')
+                  : a.values.length > 0
                 ? a.values.join(', ')
                 : a.value != null && a.value !== ''
                   ? (a.fieldType === 'boolean' ? (a.value === 'true' ? t('common.yes') : t('common.no')) : a.value)

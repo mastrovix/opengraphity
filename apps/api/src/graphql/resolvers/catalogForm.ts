@@ -21,7 +21,7 @@ import { ValidationError } from '../../lib/errors.js'
 import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import {
   assertCatalogForm, assertFormFieldName, formAnswersOf, formFields, formFieldsByName, parseCatalogForm,
-  saveCatalogFormRevision, type FormFieldDef,
+  saveCatalogFormRevision, type FormAnswerRead, type FormFieldDef,
 } from '../../lib/catalogForm.js'
 
 interface TestoPerLingua { language: string; text: string }
@@ -312,7 +312,7 @@ export const catalogFormResolvers = {
 export async function serviceRequestFormAnswers(
   parent: { id: string; catalogItemId?: string | null; formRevision?: number | null },
   _args: unknown, ctx: GraphQLContext,
-): Promise<Array<Record<string, unknown>>> {
+): Promise<FormAnswerRead[]> {
   if (!parent.catalogItemId || !parent.formRevision) return []
   const session = getSession(undefined, 'READ')
   try {
@@ -321,7 +321,7 @@ export async function serviceRequestFormAnswers(
       RETURN properties(r) AS props`, { id: parent.id, tenantId: ctx.tenantId })
     if (!row) return []
     return await formAnswersOf(session, ctx.tenantId, {
-      catalogItemId: parent.catalogItemId, formRevision: parent.formRevision, props: row.props,
+      id: parent.id, catalogItemId: parent.catalogItemId, formRevision: parent.formRevision, props: row.props,
     })
   } finally { await session.close() }
 }

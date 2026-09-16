@@ -4,7 +4,12 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { GET_SERVICE_CATALOG } from '@/graphql/queries'
 import { GET_PORTAL_CATALOG_FORM } from '../graphql/queries'
-import { CatalogFormRenderer, catalogFormAnswersToSend, visibleCatalogFormItems, type CatalogFormFieldView } from '@opengraphity/web-core'
+import {
+  CatalogFormRenderer, catalogFormAnswersToSend, visibleCatalogFormItems,
+  type CatalogFormFieldView, type CatalogFormFile,
+} from '@opengraphity/web-core'
+import { isFormAttachmentType } from '@opengraphity/types'
+import { uploadFormDraftFile } from '../lib/formDraftUpload'
 import type { CatalogFormDefinition, FormAnswerValue, FormAnswers } from '@opengraphity/types'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
 import { notifyError } from '@/lib/notify'
@@ -55,6 +60,31 @@ export function ServiceCatalogPage() {
   }, [modulo])
   const [risposte, setRisposte] = useState<Record<string, FormAnswerValue>>({})
 
+  /**
+   * I file dei campi allegato (ondata 2). Si caricano su una BOZZA, perché la
+   * richiesta non esiste ancora: prima, dal portale, si poteva allegare solo
+   * DOPO la creazione — cioè mai, per un campo del modulo.
+   *
+   * I campi di RIFERIMENTO non arrivano fin qui: un modulo che li offre
+   * all'utente finale viene rifiutato alla pubblicazione, perché scegliere un
+   * CI vuol dire cercare nella CMDB.
+   */
+  const [bozzaId] = useState(() => crypto.randomUUID())
+  const [fileDelModulo, setFileDelModulo] = useState<Record<string, CatalogFormFile[]>>({})
+  const [inCaricamento, setInCaricamento] = useState<string | null>(null)
+
+  const caricaFile = async (campo: string, file: File) => {
+    setInCaricamento(campo)
+    try {
+      const caricato = await uploadFormDraftFile(bozzaId, campo, file)
+      setFileDelModulo((p) => ({ ...p, [campo]: [...(p[campo] ?? []), caricato] }))
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setInCaricamento(null)
+    }
+  }
+
   // Una condizione che si spegne fa dimenticare la risposta: il server
   // rifiuterebbe un campo nascosto che arriva comunque.
   const cambiaRisposta = (name: string, value: FormAnswerValue) => {
@@ -73,7 +103,7 @@ export function ServiceCatalogPage() {
       // Revisione totale · H-36: si apre la richiesta appena inviata, con la
       // conferma — prima si atterrava su «I miei ticket» con uno stato che
       // nessuno leggeva, e la richiesta non si vedeva nemmeno (H-2).
-      onCompleted: (d) => { setOpenItem(null); setDetails(''); setRisposte({}); navigate(`/tickets/${d.createServiceRequest.id}`, { state: { created: true } }) },
+      onCompleted: (d) => { setOpenItem(null); setDetails(''); setRisposte({}); setFileDelModulo({}); navigate(`/tickets/${d.createServiceRequest.id}`, { state: { created: true } }) },
       onError: (e) => notifyError(e.message),
     },
   )
@@ -111,7 +141,10 @@ export function ServiceCatalogPage() {
       // lavoro (solo i campi visibili, mai le note).
       formAnswers: definizione && modulo
         ? catalogFormAnswersToSend(definizione, modulo.fields, risposte as FormAnswers, true)
+          // Gli allegati non viaggiano come risposta: sono già sulla bozza.
+          .filter((a) => !isFormAttachmentType(modulo.fields.find((f) => f.name === a.name)?.fieldType ?? ''))
         : undefined,
+      formDraftId: Object.values(fileDelModulo).some((l) => l.length > 0) ? bozzaId : undefined,
     } } })
   }
 
@@ -171,6 +204,11 @@ export function ServiceCatalogPage() {
                   emptyChoiceLabel={t('common.select')}
                   yesLabel={t('common.yes')}
                   noLabel={t('common.no')}
+                  files={fileDelModulo}
+                  uploadingField={inCaricamento}
+                  onUploadFile={caricaFile}
+                  fileAddLabel={t('catalog.addFile')}
+                  fileRemoveLabel={t('catalog.removeFile')}
                 />
               </div>
             )}

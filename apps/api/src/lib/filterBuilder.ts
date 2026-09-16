@@ -19,6 +19,18 @@ export interface RelationFieldDef {
   relType:     string   // Neo4j relationship type, e.g. 'ASSIGNED_TO_TEAM'
   targetLabel: string   // Neo4j label of the target node, e.g. 'Team'
   searchProp:  string   // Property to match on, e.g. 'name'
+  /**
+   * Vincolo sulle PROPRIETÀ della relazione (moduli del catalogo, ondata 2).
+   *
+   * Serve quando lo stesso tipo di relazione porta più campi: due campi di un
+   * modulo che puntano entrambi a un CI usano `FORM_REFERS_TO_CI`, e si
+   * distinguono per `rel.field`. Senza questo vincolo un filtro su un campo
+   * troverebbe i riferimenti dell'ALTRO.
+   *
+   * Le chiavi vengono dal codice (mai dall'input) e i valori passano come
+   * parametri.
+   */
+  relProps?:   Readonly<Record<string, string>>
 }
 
 import { propertyForField } from './fieldProperty.js'
@@ -73,10 +85,23 @@ export function buildAdvancedWhere(
     const relDef = relationFields[rule.field]
     if (relDef) {
       const ta = `_af_t${i}`
+      // Il vincolo sulle proprietà della relazione: chiavi dal codice, valori
+      // come parametri (vedi RelationFieldDef.relProps).
+      let relPattern = ''
+      if (relDef.relProps && Object.keys(relDef.relProps).length > 0) {
+        const parti: string[] = []
+        for (const [chiave, valore] of Object.entries(relDef.relProps)) {
+          if (!FIELD_NAME_RE.test(chiave)) throw new Error(`Invalid relationship property name ${JSON.stringify(chiave)}`)
+          const rp = `${pk}_rel_${chiave}`
+          params[rp] = valore
+          parti.push(`${chiave}: $${rp}`)
+        }
+        relPattern = ` {${parti.join(', ')}}`
+      }
       if (rule.operator === 'is_empty') {
-        conditions.push(`NOT EXISTS { MATCH (${nodeAlias})-[:${relDef.relType}]->(:${relDef.targetLabel}) }`)
+        conditions.push(`NOT EXISTS { MATCH (${nodeAlias})-[:${relDef.relType}${relPattern}]->(:${relDef.targetLabel}) }`)
       } else if (rule.operator === 'is_not_empty') {
-        conditions.push(`EXISTS { MATCH (${nodeAlias})-[:${relDef.relType}]->(:${relDef.targetLabel}) }`)
+        conditions.push(`EXISTS { MATCH (${nodeAlias})-[:${relDef.relType}${relPattern}]->(:${relDef.targetLabel}) }`)
       } else if ((rule.operator === 'equals' || rule.operator === 'contains') && rule.value) {
         params[pk] = rule.operator === 'contains'
           ? (rule.value as string).toLowerCase()
@@ -84,7 +109,7 @@ export function buildAdvancedWhere(
         const cond = rule.operator === 'contains'
           ? `toLower(${ta}.${relDef.searchProp}) CONTAINS $${pk}`
           : `${ta}.${relDef.searchProp} = $${pk}`
-        conditions.push(`EXISTS { MATCH (${nodeAlias})-[:${relDef.relType}]->(${ta}:${relDef.targetLabel}) WHERE ${cond} }`)
+        conditions.push(`EXISTS { MATCH (${nodeAlias})-[:${relDef.relType}${relPattern}]->(${ta}:${relDef.targetLabel}) WHERE ${cond} }`)
       } else {
         // Unsupported operator on a relation field — refuse, don't silently drop.
         throw new Error(`Operator ${JSON.stringify(rule.operator)} not supported on relation field ${rule.field}`)

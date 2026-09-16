@@ -13,7 +13,15 @@ import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
-import { CatalogFormRenderer, catalogFormAnswersToSend, visibleCatalogFormItems, type CatalogFormFieldView } from '@opengraphity/web-core'
+import {
+  CatalogFormRenderer, catalogFormAnswersToSend, visibleCatalogFormItems,
+  type CatalogFormFieldView, type CatalogFormFile, type CatalogFormReference,
+} from '@opengraphity/web-core'
+import { isFormAttachmentType, isFormReferenceType } from '@opengraphity/types'
+import { uploadFormDraftFile } from '@/lib/formDraftUpload'
+import { DELETE_ATTACHMENT } from '@/graphql/mutations'
+import { GET_ALL_CIS, GET_TEAMS, GET_USERS } from '@/graphql/queries'
+import { useApolloClient } from '@apollo/client/react'
 import { GET_CATALOG_FORM_TO_FILL } from '@/graphql/queries'
 import type { CatalogFormDefinition, FormAnswerValue, FormAnswers } from '@opengraphity/types'
 import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
@@ -134,6 +142,69 @@ export function CreateServiceRequestPage() {
   const [erroriModulo, setErroriModulo] = useState<Record<string, string>>({})
 
   /**
+   * ALLEGATI E RIFERIMENTI (ondata 2).
+   *
+   * `bozzaId` nasce UNA volta con la pagina: i file di un campo allegato si
+   * caricano subito, su quella bozza, perché la richiesta non esiste ancora.
+   * Alla creazione i file passano dalla bozza al ticket; se questa pagina
+   * viene abbandonata, la manutenzione notturna li cancella.
+   */
+  const [bozzaId] = useState(() => crypto.randomUUID())
+  const [fileDelModulo, setFileDelModulo] = useState<Record<string, CatalogFormFile[]>>({})
+  const [inCaricamento, setInCaricamento] = useState<string | null>(null)
+  const [riferimenti, setRiferimenti] = useState<Record<string, CatalogFormReference[]>>({})
+  const [cancellaAllegato] = useMutation(DELETE_ATTACHMENT, { onError: (e) => showError(e) })
+  const apollo = useApolloClient()
+
+  const caricaFile = async (campo: string, file: File) => {
+    setInCaricamento(campo)
+    try {
+      const caricato = await uploadFormDraftFile(bozzaId, campo, file)
+      setFileDelModulo((p) => ({ ...p, [campo]: [...(p[campo] ?? []), caricato] }))
+      setErroriModulo((p) => { const n = { ...p }; delete n[campo]; return n })
+    } catch (err) {
+      showError(err, err instanceof Error ? err.message : undefined)
+    } finally {
+      setInCaricamento(null)
+    }
+  }
+
+  const togliFile = async (campo: string, id: string) => {
+    const r = await cancellaAllegato({ variables: { id } })
+    if (!r.data) return
+    setFileDelModulo((p) => ({ ...p, [campo]: (p[campo] ?? []).filter((f) => f.id !== id) }))
+  }
+
+  /**
+   * La ricerca dei candidati di un campo di riferimento. Query diverse per
+   * genere, ognuna quella che la pagina corrispondente usa già: qui non si
+   * inventa un endpoint nuovo.
+   */
+  const cercaRiferimento = async (_campo: string, fieldType: string, query: string): Promise<CatalogFormReference[]> => {
+    if (fieldType === 'ref_ci') {
+      const r = await apollo.query<{ allCIs: { items: Array<{ id: string; name: string }> } }>({
+        query: GET_ALL_CIS, variables: { limit: 20, offset: 0, search: query }, fetchPolicy: 'network-only',
+      })
+      return (r.data?.allCIs?.items ?? []).map((c) => ({ id: c.id, label: c.name }))
+    }
+    if (fieldType === 'ref_user') {
+      const r = await apollo.query<{ users: Array<{ id: string; name: string; email: string }> }>({
+        query: GET_USERS, fetchPolicy: 'cache-first',
+      })
+      const q = query.toLowerCase()
+      return (r.data?.users ?? [])
+        .filter((u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q))
+        .slice(0, 20)
+        .map((u) => ({ id: u.id, label: u.name || u.email }))
+    }
+    const r = await apollo.query<{ teams: Array<{ id: string; name: string }> }>({
+      query: GET_TEAMS, fetchPolicy: 'cache-first',
+    })
+    const q = query.toLowerCase()
+    return (r.data?.teams ?? []).filter((x) => x.name.toLowerCase().includes(q)).slice(0, 20).map((x) => ({ id: x.id, label: x.name }))
+  }
+
+  /**
    * Quando una condizione si spegne, la risposta del campo che non si vede più
    * va DIMENTICATA: il server la rifiuterebbe (un campo nascosto che arriva
    * comunque è un varco), e tenerla nello stato farebbe fallire l'invio per un
@@ -157,7 +228,20 @@ export function CreateServiceRequestPage() {
    */
   const risposteDaInviare = () => {
     if (!definizione || !modulo) return undefined
-    return catalogFormAnswersToSend(definizione, modulo.fields, risposte as FormAnswers)
+    const base = catalogFormAnswersToSend(definizione, modulo.fields, risposte as FormAnswers)
+    const tipoDi = new Map(modulo.fields.map((f) => [f.name, f.fieldType]))
+    /**
+     * I riferimenti viaggiano in `refIds`, non in `value`: il server verifica
+     * che il nodo esista nel tenant e poi scrive una relazione. Gli allegati
+     * non viaggiano affatto — sono già sulla bozza, e il server li reclama.
+     */
+    return base
+      .filter((a) => !isFormAttachmentType(tipoDi.get(a.name) ?? ''))
+      .map((a) => {
+        if (!isFormReferenceType(tipoDi.get(a.name) ?? '')) return a
+        const scelto = riferimenti[a.name]?.[0]
+        return { name: a.name, refIds: scelto ? [scelto.id] : [] }
+      })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -199,6 +283,8 @@ export function CreateServiceRequestPage() {
           customFields: customFieldsInput(customDefs, customValues),
           // Le risposte al modulo della voce (moduli del catalogo, ondata 1).
           formAnswers: risposteDaInviare(),
+          // La bozza su cui sono stati caricati i file dei campi allegato (ondata 2).
+          formDraftId: Object.values(fileDelModulo).some((l) => l.length > 0) ? bozzaId : undefined,
           ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
         },
       },
@@ -381,6 +467,18 @@ export function CreateServiceRequestPage() {
                 emptyChoiceLabel={t('common.select')}
                 yesLabel={t('common.yes')}
                 noLabel={t('common.no')}
+                files={fileDelModulo}
+                uploadingField={inCaricamento}
+                onUploadFile={caricaFile}
+                onRemoveFile={togliFile}
+                references={riferimenti}
+                onSearchReference={cercaRiferimento}
+                onPickReference={(campo, scelto) => setRiferimenti((p) => ({ ...p, [campo]: scelto ? [scelto] : [] }))}
+                fileAddLabel={t('pages.catalogForms.fill.addFile')}
+                fileRemoveLabel={t('pages.catalogForms.fill.removeFile')}
+                referenceSearchLabel={t('pages.catalogForms.fill.searchReference')}
+                referenceNoResultsLabel={t('pages.catalogForms.fill.noResults')}
+                referenceClearLabel={t('pages.catalogForms.fill.clearReference')}
               />
             </div>
           )}

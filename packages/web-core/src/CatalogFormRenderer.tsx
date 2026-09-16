@@ -24,9 +24,10 @@
  * browser lo nasconderebbe, il server lo accetterebbe, o viceversa un
  * obbligatorio invisibile bloccherebbe l'invio senza che si capisca perché.
  */
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
-  FORM_FIELD_TYPES_WITHOUT_ANSWER, evaluateFormCondition, localizedText,
+  FORM_FIELD_TYPES_WITHOUT_ANSWER, evaluateFormCondition, isFormAttachmentType, isFormReferenceType,
+  localizedText,
   type CatalogFormDefinition, type CatalogFormItem, type FormAnswerValue, type FormAnswers,
 } from '@opengraphity/types'
 
@@ -41,6 +42,19 @@ export interface CatalogFormFieldView {
   required: boolean
   vocabulary?: string | null
   options?: ReadonlyArray<{ value: string; label: string }>
+}
+
+/** Un file caricato su una bozza: lo stato è del chiamante, il renderer lo mostra. */
+export interface CatalogFormFile {
+  id: string
+  filename: string
+  sizeBytes: number
+}
+
+/** Un nodo scelto da un campo di riferimento. */
+export interface CatalogFormReference {
+  id: string
+  label: string
 }
 
 export interface CatalogFormRendererProps {
@@ -62,6 +76,35 @@ export interface CatalogFormRendererProps {
   /** Le due voci di un campo sì/no, nella lingua dell'app: qui non si scrive testo. */
   yesLabel?: string
   noLabel?: string
+
+  // ── Ondata 2: allegati e riferimenti ──────────────────────────────────────
+  //
+  // Il renderer non fa rete: mostra e chiede. Il caricamento e la ricerca li
+  // fa il chiamante, perché le due applicazioni hanno strumenti diversi — e
+  // perché nel portale la ricerca nella CMDB non deve esistere affatto.
+
+  /** I file già caricati, per campo. Lo stato è del chiamante: gli serve per sapere se un obbligatorio è soddisfatto. */
+  files?: Readonly<Record<string, readonly CatalogFormFile[]>>
+  /** Caricare un file su un campo allegato. Assente = il campo si mostra in sola lettura. */
+  onUploadFile?: (fieldName: string, file: File) => void | Promise<void>
+  /** Togliere un file già caricato. */
+  onRemoveFile?: (fieldName: string, fileId: string) => void | Promise<void>
+  /** Il campo su cui un caricamento è in corso (per disabilitare il controllo). */
+  uploadingField?: string | null
+
+  /** I nodi scelti dai campi di riferimento, per campo. */
+  references?: Readonly<Record<string, readonly CatalogFormReference[]>>
+  /** Cerca i candidati di un campo di riferimento. Assente = il campo dice che non si può scegliere qui. */
+  onSearchReference?: (fieldName: string, fieldType: string, query: string) => Promise<readonly CatalogFormReference[]>
+  /** Scegliere (o togliere, con `null`) il nodo puntato. */
+  onPickReference?: (fieldName: string, chosen: CatalogFormReference | null) => void
+  /** Testi dei due controlli nuovi, nella lingua dell'app. */
+  fileAddLabel?: string
+  fileRemoveLabel?: string
+  referenceSearchLabel?: string
+  referenceNoResultsLabel?: string
+  referenceClearLabel?: string
+  referenceUnavailableLabel?: string
 }
 
 /** L'etichetta di un campo nella lingua chiesta, con ripiego su quella di base. */
@@ -136,10 +179,11 @@ export function catalogFormAnswersToSend(
     })
 }
 
-export function CatalogFormRenderer({
-  definition, fields, answers, onChange, language, endUser, errors, disabled,
-  requiredLabel, emptyChoiceLabel, yesLabel, noLabel,
-}: CatalogFormRendererProps) {
+export function CatalogFormRenderer(props: CatalogFormRendererProps) {
+  const {
+    definition, fields, answers, onChange, language, endUser, errors, disabled,
+    requiredLabel, emptyChoiceLabel, yesLabel, noLabel,
+  } = props
   const perNome = useMemo(() => new Map(fields.map((f) => [f.name, f])), [fields])
 
   return (
@@ -186,6 +230,7 @@ export function CatalogFormRenderer({
                     yesLabel={yesLabel}
                     noLabel={noLabel}
                     onChange={onChange}
+                    extra={props}
                   />
                 )
               })}
@@ -209,9 +254,11 @@ interface CampoProps {
   yesLabel?: string
   noLabel?: string
   onChange: (name: string, value: FormAnswerValue) => void
+  /** Il resto delle props del renderer: allegati e riferimenti (ondata 2). */
+  extra: CatalogFormRendererProps
 }
 
-function CampoDelModulo({ campo, item, valore, errore, language, disabled, requiredLabel, emptyChoiceLabel, yesLabel, noLabel, onChange }: CampoProps) {
+function CampoDelModulo({ campo, item, valore, errore, language, disabled, requiredLabel, emptyChoiceLabel, yesLabel, noLabel, onChange, extra }: CampoProps) {
   const obbligatorio = item.required ?? campo.required
   const testo = etichetta(campo, language)
   const spiegazione = aiuto(campo, item, language)
@@ -246,6 +293,14 @@ function CampoDelModulo({ campo, item, valore, errore, language, disabled, requi
         {testo}
         {obbligatorio && <span className="og-form-required" aria-label={requiredLabel}>*</span>}
       </label>
+
+      {isFormAttachmentType(campo.fieldType) && (
+        <CampoAllegato campo={campo} disabled={disabled} extra={extra} />
+      )}
+
+      {isFormReferenceType(campo.fieldType) && (
+        <CampoRiferimento campo={campo} disabled={disabled} extra={extra} />
+      )}
 
       {campo.fieldType === 'textarea' && (
         <textarea {...comune} rows={4} value={testoDi(valore)} required={obbligatorio}
@@ -299,6 +354,129 @@ function CampoDelModulo({ campo, item, valore, errore, language, disabled, requi
 
       {spiegazione && <p id={idAiuto} className="og-form-help">{spiegazione}</p>}
       {errore && <p id={idErrore} className="og-form-error" role="alert">{errore}</p>}
+    </div>
+  )
+}
+
+/**
+ * UN CAMPO ALLEGATO. Il file si carica SUBITO, su una bozza, perché la
+ * richiesta non esiste ancora — nel portale prima si poteva allegare solo
+ * dopo la creazione. Lo stato dei file è del chiamante: gli serve per sapere
+ * se un campo obbligatorio è soddisfatto prima di inviare.
+ */
+function CampoAllegato({ campo, disabled, extra }: { campo: CatalogFormFieldView; disabled?: boolean; extra: CatalogFormRendererProps }) {
+  const caricati = extra.files?.[campo.name] ?? []
+  const inCorso = extra.uploadingField === campo.name
+  return (
+    <div className="og-form-files">
+      {caricati.length > 0 && (
+        <ul className="og-form-file-list">
+          {caricati.map((f) => (
+            <li key={f.id}>
+              <span className="og-form-file-name">{f.filename}</span>
+              <span className="og-form-file-size">{formatKb(f.sizeBytes)}</span>
+              {extra.onRemoveFile && !disabled && (
+                <button type="button" className="og-form-file-remove"
+                  aria-label={`${extra.fileRemoveLabel ?? 'remove'} ${f.filename}`}
+                  onClick={() => void extra.onRemoveFile?.(campo.name, f.id)}>
+                  ×
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {extra.onUploadFile && (
+        <label className="og-form-file-add">
+          <input
+            type="file"
+            disabled={disabled || inCorso}
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              // Il controllo si svuota SEMPRE: altrimenti ricaricare lo stesso
+              // file non emette un evento e sembra che non sia successo niente.
+              e.target.value = ''
+              if (file) void extra.onUploadFile?.(campo.name, file)
+            }}
+          />
+          <span>{inCorso ? '…' : (extra.fileAddLabel ?? '+')}</span>
+        </label>
+      )}
+    </div>
+  )
+}
+
+function formatKb(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} kB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/**
+ * UN CAMPO DI RIFERIMENTO (CI, persona, squadra). La ricerca la fa il
+ * chiamante: nel portale non c'è, e il campo lo DICE invece di mostrare una
+ * casella che non trova niente — un utente finale non naviga la CMDB.
+ */
+function CampoRiferimento({ campo, disabled, extra }: { campo: CatalogFormFieldView; disabled?: boolean; extra: CatalogFormRendererProps }) {
+  const scelti = extra.references?.[campo.name] ?? []
+  const [query, setQuery] = useState('')
+  const [risultati, setRisultati] = useState<readonly CatalogFormReference[] | null>(null)
+  const [cercando, setCercando] = useState(false)
+
+  if (!extra.onSearchReference || !extra.onPickReference) {
+    return <p className="og-form-help">{extra.referenceUnavailableLabel ?? ''}</p>
+  }
+
+  if (scelti.length > 0) {
+    return (
+      <div className="og-form-ref-chosen">
+        <span>{scelti[0]!.label}</span>
+        {!disabled && (
+          <button type="button" className="og-form-file-remove"
+            aria-label={extra.referenceClearLabel}
+            onClick={() => { extra.onPickReference?.(campo.name, null); setQuery(''); setRisultati(null) }}>
+            ×
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  const cerca = async (testo: string) => {
+    setQuery(testo)
+    if (testo.trim().length < 2) { setRisultati(null); return }
+    setCercando(true)
+    try {
+      setRisultati(await extra.onSearchReference!(campo.name, campo.fieldType, testo.trim()))
+    } finally {
+      setCercando(false)
+    }
+  }
+
+  return (
+    <div className="og-form-ref">
+      <input
+        className="og-form-input"
+        type="search"
+        value={query}
+        disabled={disabled}
+        placeholder={extra.referenceSearchLabel}
+        onChange={(e) => void cerca(e.target.value)}
+      />
+      {risultati && (
+        <ul className="og-form-ref-results">
+          {risultati.length === 0 && !cercando && (
+            <li className="og-form-ref-empty">{extra.referenceNoResultsLabel}</li>
+          )}
+          {risultati.map((r) => (
+            <li key={r.id}>
+              <button type="button" onClick={() => { extra.onPickReference?.(campo.name, r); setRisultati(null); setQuery('') }}>
+                {r.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

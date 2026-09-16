@@ -7,6 +7,16 @@ import type { ApiBase } from './apiBase.js'
  */
 export interface Attachments {
   uploadAttachment(entityType: string, entityId: string, file: File): Promise<void>
+  /**
+   * Il caricamento su una BOZZA di modulo (moduli del catalogo, ondata 2): il
+   * file va su un identificativo di bozza, non su un ticket che non esiste
+   * ancora, e porta il nome del campo a cui risponde. Alla creazione i file
+   * passano dalla bozza al ticket.
+   *
+   * Restituisce l'id del nodo `:Attachment`: serve a poterlo togliere prima di
+   * inviare, senza ricaricare la pagina.
+   */
+  uploadFormDraftFile(draftId: string, fieldName: string, file: File): Promise<{ id: string; filename: string; sizeBytes: number }>
   /** Fetches `downloadUrl` with the bearer and triggers a browser download named `filename`. */
   downloadAttachment(downloadUrl: string, filename: string): Promise<void>
 }
@@ -32,6 +42,26 @@ export function createAttachments(api: ApiBase): Attachments {
         body:    form,
       })
       if (!res.ok) throw new Error(await errorMessageOf(res))
+    },
+
+    async uploadFormDraftFile(draftId, fieldName, file) {
+      const form = new FormData()
+      // L'ordine conta: busboy legge i campi nell'ordine del flusso, e il
+      // backend usa entityId per costruire il percorso su disco.
+      form.append('entityType', 'form_draft')
+      form.append('entityId', draftId)
+      form.append('fieldName', fieldName)
+      form.append('file', file)
+
+      const res = await fetch(api.apiUrl('/api/attachments'), {
+        method:  'POST',
+        headers: api.authHeader(),
+        body:    form,
+      })
+      if (!res.ok) throw new Error(await errorMessageOf(res))
+      const body = await res.json() as { id?: string; filename?: string; sizeBytes?: number }
+      if (!body.id) throw new Error('The upload did not return the file id')
+      return { id: body.id, filename: body.filename ?? file.name, sizeBytes: Number(body.sizeBytes ?? file.size) }
     },
 
     async downloadAttachment(downloadUrl, filename) {

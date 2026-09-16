@@ -298,3 +298,51 @@ input, textarea, select {
   padding: 6px 10px;
   margin: 0;
 }
+
+/*
+  Ondata 2 — allegati e riferimenti. Stesse regole del blocco sopra: identico
+  nelle due applicazioni, misure a ripiego.
+*/
+.og-form-files { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.og-form-file-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.og-form-file-list li {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--color-slate-bg); border-radius: 5px; padding: 4px 8px;
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark);
+}
+.og-form-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
+.og-form-file-size { font-size: var(--font-size-table, 12.5px); color: var(--color-slate-light); white-space: nowrap; }
+.og-form-file-remove {
+  border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1;
+  font-size: 1.1em; color: var(--color-slate-light);
+}
+.og-form-file-remove:hover { color: var(--color-danger); }
+
+/* Il controllo di sistema è brutto e diverso in ogni browser: si nasconde e si veste l'etichetta. */
+.og-form-file-add input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.og-form-file-add {
+  display: inline-flex; align-items: center; gap: 6px; position: relative;
+  padding: 5px 12px; border: 1px dashed var(--color-border); border-radius: 6px;
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark); cursor: pointer;
+}
+.og-form-file-add:hover { border-color: var(--color-brand); color: var(--color-brand); }
+.og-form-file-add:focus-within { outline: 2px solid var(--color-brand); outline-offset: 1px; }
+
+.og-form-ref { position: relative; }
+.og-form-ref-results {
+  list-style: none; margin: 2px 0 0; padding: 4px; position: absolute; z-index: 20;
+  left: 0; right: 0; max-height: 200px; overflow-y: auto;
+  background: var(--color-white); border: 1px solid var(--color-border); border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.og-form-ref-results li button {
+  display: block; width: 100%; text-align: left; border: none; background: none; cursor: pointer;
+  padding: 5px 8px; border-radius: 4px; font-size: var(--font-size-body, 14px); color: var(--color-slate-dark);
+}
+.og-form-ref-results li button:hover { background: var(--color-slate-bg); }
+.og-form-ref-empty { padding: 5px 8px; font-size: var(--font-size-body, 14px); color: var(--color-slate-light); }
+.og-form-ref-chosen {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--color-slate-bg); border-radius: 5px; padding: 4px 8px;
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark);
+}

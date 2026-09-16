@@ -133,10 +133,16 @@ describe('startMaintenanceWorker', () => {
   it('ondata 4: registra anche purge_events alle 03:30 e rimuove le sue copie stantie', async () => {
     queue.getRepeatableJobs.mockResolvedValue([{ name: 'purge_events', key: 'stale-purge' }, { name: 'backup_database', key: 'stale-backup' }])
     await startMaintenanceWorker()
-    expect(REPEATABLE_JOBS.map((j) => [j.name, j.pattern])).toEqual([['backup_database', '0 0 * * *'], ['purge_events', '30 3 * * *'], ['purge_inapp_notifications', '45 3 * * *']])
+    expect(REPEATABLE_JOBS.map((j) => [j.name, j.pattern])).toEqual([
+      ['backup_database', '0 0 * * *'],
+      ['purge_events', '30 3 * * *'],
+      ['purge_inapp_notifications', '45 3 * * *'],
+      // Moduli del catalogo, ondata 2: le bozze di modulo mai reclamate.
+      ['purge_form_drafts', '15 4 * * *'],
+    ])
     expect(queue.removeRepeatableByKey.mock.calls.map((c) => c[0]).sort()).toEqual(['stale-backup', 'stale-purge'])
     expect(queue.add).toHaveBeenCalledWith('purge_events', {}, { repeat: { pattern: '30 3 * * *' } })
-    expect(queue.add).toHaveBeenCalledTimes(3)
+    expect(queue.add).toHaveBeenCalledTimes(4)
   })
 
   it('registrazione del repeatable che fallisce → errore di startup, nessun worker creato', async () => {

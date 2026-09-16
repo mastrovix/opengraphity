@@ -352,6 +352,10 @@ for (const k of [...defined].sort()) {
 // quelli sono difetti veri (`Sync triggered`, `Heap Memory`, `Auto-refresh
 // 10s`, `External ID`): l'elenco puo solo accorciarsi.
 const IT_EN_IDENTICHE_ACCETTATE = new Set([
+  // «File» è la parola italiana per un file: «archivio» vuol dire un'altra
+  // cosa e «documento» pure. È il tipo di campo del modulo, non una frase
+  // (regola delle parole tecniche: resta inglese ciò che NOMINA).
+  'pages.catalogForms.fieldType.attachment',
   // «discovery» e il nome della funzione che scopre i CI da sola: l'origine di
   // un alias si chiama cosi anche in italiano (regola delle parole tecniche).
   // L'altra origine, «manual», e invece tradotta in «a mano» (revisione

@@ -9,7 +9,10 @@ import { TICKET_CI_RELATIONSHIP } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { assertCIsLinkable } from '../../lib/ticketCIExclusions.js'
 import { mapUser } from '../../lib/mappers.js'
-import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { buildAdvancedWhere, type RelationFieldDef } from '../../lib/filterBuilder.js'
+import {
+  FORM_REFERENCE_LABELS, FORM_REFERENCE_REL_TYPES, FORM_REFERENCE_SEARCH_PROPS, isFormReferenceType,
+} from '@opengraphity/types'
 import { formFields } from '../../lib/catalogForm.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
 import * as requestService from '../../services/requestService.js'
@@ -73,12 +76,29 @@ async function serviceRequests(
      * E la ragione per cui le risposte non sono un documento JSON — se la lista
      * dei campi ammessi non le conoscesse, quella ragione sarebbe sulla carta.
      */
+    const libreria = await formFields(session, ctx.tenantId)
     const allowedFields = new Set([
       ...getScalarFields(info.schema, 'ServiceRequest'),
       ...(await requestCustomFieldDefs(ctx, 'service_request')).map((d) => d.name),
-      ...(await formFields(session, ctx.tenantId)).map((d) => d.name),
+      ...libreria.map((d) => d.name),
     ])
-    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r') : ''
+    /**
+     * I campi di RIFERIMENTO (ondata 2) non sono proprietà: sono relazioni.
+     * Il costruttore di filtri sa già interrogarle, e con `relProps` distingue
+     * due campi che usano lo stesso tipo di relazione (`rel.field`). Si filtra
+     * per NOME del nodo puntato — «assegnato a Mario Rossi» — che è ciò che una
+     * persona cerca, non un identificativo.
+     */
+    const relationFields: Record<string, RelationFieldDef> = {}
+    for (const campo of libreria) {
+      if (!isFormReferenceType(campo.fieldType)) continue
+      const relType = FORM_REFERENCE_REL_TYPES[campo.fieldType]
+      const targetLabel = FORM_REFERENCE_LABELS[campo.fieldType]
+      const searchProp = FORM_REFERENCE_SEARCH_PROPS[campo.fieldType]
+      if (!relType || !targetLabel || !searchProp) continue
+      relationFields[campo.name] = { relType, targetLabel, searchProp, relProps: { field: campo.name } }
+    }
+    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r', relationFields) : ''
     // A-22: un campo non ordinabile è un errore, non un ordine diverso in silenzio.
     const orderBy = orderByOrThrow(REQUEST_SORT_WHITELIST, args.sortField, args.sortDirection ?? 'desc', 'r.created_at DESC', 'serviceRequests(sortField)')
     // Revisione totale · B-1: `advWhere` è un'espressione nuda e va unita con

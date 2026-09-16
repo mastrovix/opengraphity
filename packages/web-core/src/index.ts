@@ -48,4 +48,6 @@ export {
   type CatalogFormAnswerToSend,
   type CatalogFormRendererProps,
   type CatalogFormFieldView,
+  type CatalogFormFile,
+  type CatalogFormReference,
 } from './CatalogFormRenderer.js'

@@ -18,6 +18,8 @@ import {
   resolveAttachmentPath,
   safeStoredFilename,
   validateAttachmentTarget,
+  validateAttachmentFieldName,
+  FORM_DRAFT_ENTITY_TYPE,
   type AttachmentTarget,
 } from '../lib/attachmentValidation.js'
 
@@ -76,6 +78,8 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
   let entityType    = ''
   let entityId      = ''
   let description   = ''
+  /** Il campo del modulo a cui il file risponde (solo per le bozze, ondata 2). */
+  let fieldName     = ''
   let target: AttachmentTarget | null = null
   let fileReceived  = false
   let fileId        = ''
@@ -84,6 +88,8 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
   let mimeType      = ''
   let sizeBytes     = 0
   let sizeLimitHit  = false
+  /** Assegnato dentro il callback del file, letto alla scrittura del nodo. */
+  let fieldNameOfUpload: string | null = null
   let rejected      = false
   let writeDone: Promise<void> = Promise.resolve()
 
@@ -101,6 +107,7 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
     if (name === 'entityType')  entityType  = val
     if (name === 'entityId')    entityId    = val
     if (name === 'description') description = val
+    if (name === 'fieldName')   fieldName   = val
   })
 
   busboy.on('file', (fieldname: string, fileStream: Readable, info: { filename: string; mimeType: string }) => {
@@ -110,15 +117,27 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
     mimeType     = info.mimeType
 
     // 1. Validate target and MIME synchronously, before touching the disk.
+    let campoDelModulo: string | null = null
     try {
       target = validateAttachmentTarget(entityType, entityId)
+      campoDelModulo = validateAttachmentFieldName(target.entityType, fieldName || undefined)
     } catch (err) {
       fileStream.resume()
       reject(400, err instanceof ValidationError ? err.message : 'Invalid entityType/entityId (send them before the file part)')
       return
     }
-    // Revisione totale · H-3: il portale allega solo ai propri ticket, lo staff secondo i permessi del tipo.
-    const condition = attachmentAccessCondition(attachmentAccess(permissions, target.entityType, 'write'))
+    fieldNameOfUpload = campoDelModulo
+    /**
+     * Revisione totale · H-3: il portale allega solo ai propri ticket, lo staff
+     * secondo i permessi del tipo.
+     *
+     * La BOZZA di un modulo (ondata 2) è l'eccezione, e la ragione è che non
+     * c'è ancora niente di cui essere proprietari: basta il permesso di
+     * caricare (già verificato sopra). La proprietà si verifica al momento di
+     * reclamare i file, dove si pretende `uploaded_by` = chi crea la richiesta.
+     */
+    const bozza = target.entityType === FORM_DRAFT_ENTITY_TYPE
+    const condition = bozza ? 'true' : attachmentAccessCondition(attachmentAccess(permissions, target.entityType, 'write'))
     if (condition === null) {
       fileStream.resume()
       reject(403, `Role '${role}' cannot attach files to a ${target.entityType}`)
@@ -146,7 +165,8 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
     const t = target
     const { dir, file } = resolved
     writeDone = (async () => {
-      const exists = await entityReachable(t, tenantId, userId, condition)
+      // Una bozza non ha un nodo da raggiungere: il controllo si salta.
+      const exists = t.entityType === FORM_DRAFT_ENTITY_TYPE || await entityReachable(t, tenantId, userId, condition)
       if (!exists) {
         fileStream.resume()
         reject(404, `${t.entityType} ${t.entityId} not found`)
@@ -212,7 +232,8 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
             storage_path: $storagePath,
             uploaded_by:  $uploadedBy,
             uploaded_at:  $uploadedAt,
-            description:  $description
+            description:  $description,
+            field_name:   $fieldName
           })
         `, {
           id:          fileId,
@@ -226,6 +247,7 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
           uploadedBy:  userId,
           uploadedAt:  now,
           description: description || null,
+          fieldName:   fieldNameOfUpload,
         }))
 
         logger.info({ fileId, tenantId, entityType: tgt.entityType, entityId: tgt.entityId, filename: originalName, sizeBytes }, '[attachment] uploaded')

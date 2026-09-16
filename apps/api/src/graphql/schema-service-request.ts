@@ -89,6 +89,13 @@ export function serviceRequestSDL(): string {
     acknowledgeNoSla: Boolean
     """Le risposte al modulo della voce di catalogo (moduli del catalogo, ondata 1)."""
     formAnswers: [FormAnswerInput!]
+    """
+    L'identificativo della BOZZA su cui sono stati caricati i file dei campi
+    allegato (ondata 2). Lo scegli il client PRIMA di caricare; alla creazione i
+    file passano dalla bozza al ticket. Le bozze mai reclamate le pulisce la
+    manutenzione notturna.
+    """
+    formDraftId: ID
   }
 
   input UpdateServiceRequestInput {

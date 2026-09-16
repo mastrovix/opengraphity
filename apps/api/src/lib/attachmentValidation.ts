@@ -4,7 +4,7 @@
  */
 import path from 'node:path'
 import { ValidationError } from './errors.js'
-import type { Permission } from '@opengraphity/types'
+import { FORM_DRAFT_ENTITY_TYPE, FORM_FIELD_NAME_RE, type Permission } from '@opengraphity/types'
 
 /**
  * entityType (client field) → Neo4j labels the target entity may carry.
@@ -30,6 +30,35 @@ export const ATTACHMENT_ENTITY_LABELS: Readonly<Record<string, readonly string[]
   ci:              ['ConfigurationItem'],
 }
 
+/**
+ * LA BOZZA DI UN MODULO (moduli del catalogo, ondata 2). È l'unico bersaglio
+ * senza un nodo: il file si carica mentre la richiesta non esiste ancora, con
+ * un identificativo di bozza scelto dal client.
+ *
+ * Non ha etichette, quindi il controllo di esistenza va SALTATO — e questo è
+ * il punto delicato, perché quel controllo è anche il controllo di accesso
+ * («questo ticket è tuo»). Qui non c'è niente di cui essere proprietari: la
+ * proprietà si verifica al momento di RECLAMARE i file, dove si pretende che
+ * `uploaded_by` sia chi sta creando la richiesta. Fino a lì un file caricato su
+ * una bozza è visibile solo a chi l'ha caricato, e se nessuno lo reclama la
+ * manutenzione notturna lo cancella.
+ */
+export { FORM_DRAFT_ENTITY_TYPE }
+
+/** Il nome del campo a cui il file risponde: obbligatorio per una bozza, vietato altrove. */
+export function validateAttachmentFieldName(entityType: string, fieldName: unknown): string | null {
+  if (entityType !== FORM_DRAFT_ENTITY_TYPE) {
+    if (typeof fieldName === 'string' && fieldName !== '') {
+      throw new ValidationError('fieldName is only for form draft uploads')
+    }
+    return null
+  }
+  if (typeof fieldName !== 'string' || !FORM_FIELD_NAME_RE.test(fieldName)) {
+    throw new ValidationError('fieldName is required for a form draft upload, and must be a field name')
+  }
+  return fieldName
+}
+
 /** RFC-4122 shape (8-4-4-4-12 hex). Rejects anything usable as a path segment attack. */
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -52,11 +81,15 @@ export function validateAttachmentTarget(entityType: unknown, entityId: unknown)
   if (typeof entityType !== 'string' || !entityType) {
     throw new ValidationError('entityType is required')
   }
-  const labels = Object.prototype.hasOwnProperty.call(ATTACHMENT_ENTITY_LABELS, entityType)
-    ? ATTACHMENT_ENTITY_LABELS[entityType]
-    : undefined
+  // La bozza di un modulo non ha un nodo, quindi non ha etichette: chi la
+  // riceve salta il controllo di esistenza (vedi FORM_DRAFT_ENTITY_TYPE).
+  const labels = entityType === FORM_DRAFT_ENTITY_TYPE
+    ? []
+    : Object.prototype.hasOwnProperty.call(ATTACHMENT_ENTITY_LABELS, entityType)
+      ? ATTACHMENT_ENTITY_LABELS[entityType]
+      : undefined
   if (!labels) {
-    throw new ValidationError(`entityType '${entityType}' is not allowed (expected one of: ${Object.keys(ATTACHMENT_ENTITY_LABELS).join(', ')})`)
+    throw new ValidationError(`entityType '${entityType}' is not allowed (expected one of: ${Object.keys(ATTACHMENT_ENTITY_LABELS).join(', ')}, ${FORM_DRAFT_ENTITY_TYPE})`)
   }
   if (typeof entityId !== 'string' || !UUID_RE.test(entityId)) {
     throw new ValidationError('entityId must be a UUID')

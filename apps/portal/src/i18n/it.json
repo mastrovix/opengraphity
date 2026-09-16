@@ -158,7 +158,9 @@
     "details": "Dettagli (opzionale)",
     "detailsPlaceholder": "Aggiungi dettagli utili per l'evasione…",
     "submit": "Invia richiesta",
-    "submitting": "Invio…"
+    "submitting": "Invio…",
+    "addFile": "Aggiungi un file",
+    "removeFile": "Togli"
   },
   "notFound": {
     "title": "Pagina non trovata",

@@ -39,11 +39,13 @@
 import { CUSTOM_FIELD_NAME_RE } from './ticketCustomFields.js'
 
 /**
- * I tipi di campo che l'ondata 1 SA RENDERE. L'elenco cresce quando cresce il
+ * I tipi di campo che il renderer SA RENDERE. L'elenco cresce quando cresce il
  * renderer, non prima: un tipo dichiarato e non reso sarebbe configurabile e
  * inerte, che è la famiglia di difetti peggiore (l'interfaccia promette).
  *
- * In arrivo nell'ondata 2: `attachment`, `ref_ci`, `ref_user`, `ref_team`.
+ * Resta fuori la TABELLA RIPETIBILE («elenca gli utenti da abilitare»): è
+ * l'unico tipo che non può essere una colonna, quindi uscirebbe da filtri,
+ * report e condizioni. Se servirà, sarà una scelta dichiarata, non una svista.
  */
 export const FORM_FIELD_TYPES = [
   'text',      // una riga
@@ -55,6 +57,11 @@ export const FORM_FIELD_TYPES = [
   'enum',      // una scelta da un vocabolario del Dizionario
   'multi_enum', // più scelte dallo stesso vocabolario
   'note',      // nessuna risposta: istruzioni per chi compila
+  // ── Ondata 2 ──────────────────────────────────────────────────────────────
+  'attachment', // uno o più file: la risposta sono nodi :Attachment, non una proprietà
+  'ref_ci',     // un CI della CMDB: la risposta è una relazione nel grafo
+  'ref_user',   // una persona
+  'ref_team',   // una squadra
 ] as const
 export type FormFieldType = (typeof FORM_FIELD_TYPES)[number]
 
@@ -64,10 +71,86 @@ export function isFormFieldType(v: unknown): v is FormFieldType {
 
 /** I tipi che hanno bisogno di un vocabolario del Dizionario. */
 export const FORM_FIELD_TYPES_WITH_VOCABULARY: readonly FormFieldType[] = ['enum', 'multi_enum']
-/** I tipi che NON portano una risposta (non diventano proprietà del ticket). */
+/** I tipi che NON portano una risposta: una nota è istruzione, non domanda. */
 export const FORM_FIELD_TYPES_WITHOUT_ANSWER: readonly FormFieldType[] = ['note']
 /** I tipi che portano più valori: la risposta è una lista. */
 export const FORM_FIELD_TYPES_MULTI: readonly FormFieldType[] = ['multi_enum']
+
+/**
+ * DOVE FINISCE LA RISPOSTA. Con l'ondata 2 non è più una cosa sola, e la
+ * distinzione va tenuta ferma perché decide cosa si può filtrare:
+ *
+ *  - `AS_PROPERTY`: una proprietà del nodo ticket. Filtrabile, riportabile,
+ *    leggibile dalle condizioni delle business rule. È il caso normale.
+ *  - `AS_ATTACHMENT`: nodi `:Attachment` agganciati al ticket e al campo. NON
+ *    è una proprietà, quindi NON si filtra — e la pagina lo dice.
+ *  - `AS_REFERENCE`: una relazione verso un CI, una persona o una squadra.
+ *    Non è una proprietà, ma si filtra per NOME del nodo puntato (il
+ *    costruttore di filtri sa già interrogare una relazione), che è ciò che
+ *    una persona cerca: «assegnato a Mario Rossi», non un identificativo.
+ */
+export const FORM_FIELD_TYPES_AS_PROPERTY: readonly FormFieldType[] =
+  ['text', 'textarea', 'number', 'date', 'datetime', 'boolean', 'enum', 'multi_enum']
+export const FORM_FIELD_TYPES_AS_ATTACHMENT: readonly FormFieldType[] = ['attachment']
+export const FORM_FIELD_TYPES_AS_REFERENCE: readonly FormFieldType[] = ['ref_ci', 'ref_user', 'ref_team']
+
+/** L'etichetta Neo4j del nodo puntato da un campo di riferimento. */
+export const FORM_REFERENCE_LABELS: Readonly<Record<string, string>> = {
+  ref_ci:   'ConfigurationItem',
+  ref_user: 'User',
+  ref_team: 'Team',
+}
+
+/**
+ * Il tipo di relazione, uno per genere di riferimento. NON è composto dal nome
+ * del campo — un tipo di relazione interpolato in Cypher esce dal perimetro
+ * del guardiano `check-cypher.mjs`, che non potrebbe più mandarlo in EXPLAIN.
+ * Quale campo lo ha creato sta nella proprietà `field` della relazione.
+ */
+export const FORM_REFERENCE_REL_TYPES: Readonly<Record<string, string>> = {
+  ref_ci:   'FORM_REFERS_TO_CI',
+  ref_user: 'FORM_REFERS_TO_USER',
+  ref_team: 'FORM_REFERS_TO_TEAM',
+}
+
+/** La proprietà del nodo puntato che si mostra e su cui si filtra. */
+export const FORM_REFERENCE_SEARCH_PROPS: Readonly<Record<string, string>> = {
+  ref_ci:   'name',
+  ref_user: 'name',
+  ref_team: 'name',
+}
+
+export function isFormReferenceType(t: string): boolean {
+  return (FORM_FIELD_TYPES_AS_REFERENCE as readonly string[]).includes(t)
+}
+
+export function isFormAttachmentType(t: string): boolean {
+  return (FORM_FIELD_TYPES_AS_ATTACHMENT as readonly string[]).includes(t)
+}
+
+/**
+ * I tipi che una CONDIZIONE può guardare: solo quelli che diventano una
+ * proprietà. Un allegato o un riferimento avrebbero bisogno di leggere nodi
+ * per essere valutati, e il valutatore delle condizioni gira anche nel browser
+ * su quello che ha in mano: meglio vietarlo nel costruttore che offrirlo e
+ * farlo sbagliare a metà.
+ */
+export function canBeConditionSubject(fieldType: string): boolean {
+  return (FORM_FIELD_TYPES_AS_PROPERTY as readonly string[]).includes(fieldType)
+}
+
+/**
+ * L'`entity_type` degli allegati caricati su una BOZZA di modulo, prima che il
+ * ticket esista.
+ *
+ * Il problema che risolve: un campo allegato si compila mentre la richiesta non
+ * c'è ancora, e nel portale il caricamento era possibile solo DOPO la
+ * creazione. Il file si carica subito con un identificativo di bozza scelto dal
+ * client; alla creazione i nodi `:Attachment` passano dalla bozza al ticket —
+ * nessun file si muove sul disco. Le bozze mai reclamate le pulisce la
+ * manutenzione notturna.
+ */
+export const FORM_DRAFT_ENTITY_TYPE = 'form_draft'
 
 /** Il nome di un campo della libreria è il nome della proprietà sul ticket: stesse regole dei campi personalizzati. */
 export const FORM_FIELD_NAME_RE = CUSTOM_FIELD_NAME_RE

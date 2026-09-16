@@ -28,6 +28,24 @@ vi.mock('../vocabularyEntries.js', () => ({
 }))
 vi.mock('../metamodelScript.js', () => ({ runValidationScript: vi.fn(async () => null) }))
 
+/**
+ * Le due letture che l'ondata 2 fa sul grafo: l'esistenza del nodo puntato da
+ * un riferimento e quanti file porta la bozza. Sono mockate qui perché il
+ * comportamento da fissare è la VALIDAZIONE, non il Cypher — quello lo verifica
+ * `scripts/check-cypher.mjs`, che manda ogni query in EXPLAIN.
+ */
+let contaFileBozza = 0
+const RIFERIMENTI_ESISTENTI = new Set(['ci-1', 'u-1', 'u-2', 'team-1'])
+vi.mock('@opengraphity/neo4j', () => ({
+  runQuery: vi.fn(async (_s: unknown, query: string, params: Record<string, unknown>) => {
+    if (query.includes('count(a) AS n')) return [{ n: contaFileBozza }]
+    if (query.includes('RETURN n.id AS id')) {
+      return RIFERIMENTI_ESISTENTI.has(String(params['id'])) ? [{ id: params['id'] }] : []
+    }
+    return []
+  }),
+}))
+
 const { parseCatalogForm, assertCatalogForm, resolveFormWrites, visibleFormItems } = await import('../catalogForm.js')
 const { runValidationScript } = await import('../metamodelScript.js')
 
@@ -46,6 +64,11 @@ const LIBRERIA = new Map<string, never>([
   ['sistemi',        campo('sistemi', 'multi_enum', { vocabulary: 'sistemi' })],
   ['istruzioni',     campo('istruzioni', 'note')],
   ['centro_di_costo', campo('centro_di_costo', 'text', { required: true })],
+  // Ondata 2
+  ['preventivo',      campo('preventivo', 'attachment')],
+  ['dispositivo',     campo('dispositivo', 'ref_ci')],
+  ['per_chi',         campo('per_chi', 'ref_user')],
+  ['squadra',         campo('squadra', 'ref_team')],
 ])
 
 /** Un modulo di prova: il costo si chiede solo se il tipo è «portatile». */
@@ -183,7 +206,7 @@ describe('assertCatalogForm', () => {
       version: 1, revision: 1,
       sections: [{ id: 'a', title: {}, items: [{ field: 'istruzioni' }, { field: 'modello', visibleWhen: { match: 'all', rules: [{ field: 'istruzioni', op: 'filled' }] } }] }],
     } as CatalogFormDefinition
-    expect(() => assertCatalogForm(soggetto, LIBRERIA)).toThrow(/never has a value/)
+    expect(() => assertCatalogForm(soggetto, LIBRERIA)).toThrow(/only fields stored as a property/)
   })
 
   it('due sezioni con lo stesso identificativo', () => {
@@ -216,10 +239,10 @@ describe('resolveFormWrites', () => {
   beforeEach(() => { vi.mocked(runValidationScript).mockClear() })
 
   it('converte i tipi e scrive le proprietà', async () => {
-    const out = await resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({
+    const out = (await resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({
       tipo_dispositivo: 'portatile', modello: 'MacBook Pro', costo: '1800',
       centro_di_costo: 'CC-12', urgente: 'true',
-    }))
+    }))).props
     expect(out).toEqual({
       tipo_dispositivo: 'portatile', modello: 'MacBook Pro', costo: 1800,
       centro_di_costo: 'CC-12', urgente: true,
@@ -246,7 +269,7 @@ describe('resolveFormWrites', () => {
   it('l\'obbligatorio si chiede solo se VISIBILE: il costo nascosto non si chiede, quello visibile sì', async () => {
     await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({
       tipo_dispositivo: 'fisso', centro_di_costo: 'CC-1',
-    }))).resolves.toMatchObject({ tipo_dispositivo: 'fisso' })
+    }))).resolves.toMatchObject({ props: { tipo_dispositivo: 'fisso' } })
 
     await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({
       tipo_dispositivo: 'portatile', centro_di_costo: 'CC-1',
@@ -271,7 +294,7 @@ describe('resolveFormWrites', () => {
     await expect(resolveFormWrites(session, 't1', conSistemi, LIBRERIA, risposte({ sistemi: ['posta', 'inventato'] })))
       .rejects.toThrow(/is not a value of/)
     await expect(resolveFormWrites(session, 't1', conSistemi, LIBRERIA, risposte({ sistemi: ['posta', 'crm', 'posta'] })))
-      .resolves.toEqual({ sistemi: ['posta', 'crm'] })
+      .resolves.toMatchObject({ props: { sistemi: ['posta', 'crm'] } })
   })
 
   it('un numero che non è un numero, una data che non è una data', async () => {
@@ -310,5 +333,89 @@ describe('resolveFormWrites', () => {
     expect(catalogFormFieldNames(moduloDiProva())).toEqual([
       'tipo_dispositivo', 'modello', 'costo', 'centro_di_costo', 'istruzioni', 'urgente',
     ])
+  })
+})
+
+// ── Ondata 2: allegati e riferimenti ────────────────────────────────────────
+
+describe('ondata 2: riferimenti e allegati', () => {
+  const session = {} as never
+  const moduloRif: CatalogFormDefinition = {
+    version: 1, revision: 1,
+    sections: [{ id: 'a', title: {}, items: [{ field: 'dispositivo', endUser: false }, { field: 'per_chi', endUser: false, required: true }] }],
+  }
+  const moduloFile: CatalogFormDefinition = {
+    version: 1, revision: 1,
+    sections: [{ id: 'a', title: {}, items: [{ field: 'preventivo', required: true }] }],
+  }
+
+  it('un riferimento NON si offre nel portale: il modulo che lo offre viene rifiutato alla pubblicazione', () => {
+    const offerto: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 'a', title: {}, items: [{ field: 'dispositivo' }] }],
+    }
+    expect(() => assertCatalogForm(offerto, LIBRERIA)).toThrow(/cannot be offered in the portal/)
+    // Con la spunta togliata passa.
+    expect(() => assertCatalogForm(moduloRif, LIBRERIA)).not.toThrow()
+  })
+
+  it('una condizione non può guardare un allegato né un riferimento', () => {
+    const suFile: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 'a', title: {}, items: [
+        { field: 'preventivo' },
+        { field: 'modello', visibleWhen: { match: 'all', rules: [{ field: 'preventivo', op: 'filled' }] } },
+      ] }],
+    }
+    expect(() => assertCatalogForm(suFile, LIBRERIA)).toThrow(/only fields stored as a property/)
+  })
+
+  it('un riferimento diventa una relazione, non una proprietà: nessun valore scritto sul ticket', async () => {
+    const esito = await resolveFormWrites(session, 't1', moduloRif, LIBRERIA,
+      [{ name: 'dispositivo', refIds: ['ci-1'] }, { name: 'per_chi', refIds: ['u-1'] }])
+    expect(esito.props).toEqual({})
+    expect(esito.references).toEqual([
+      { field: 'dispositivo', fieldType: 'ref_ci', ids: ['ci-1'] },
+      { field: 'per_chi', fieldType: 'ref_user', ids: ['u-1'] },
+    ])
+  })
+
+  it('un riferimento a qualcosa che non esiste nel tenant è rifiutato', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloRif, LIBRERIA,
+      [{ name: 'dispositivo', refIds: ['inventato'] }, { name: 'per_chi', refIds: ['u-1'] }]))
+      .rejects.toThrow(/does not exist here/)
+  })
+
+  it('un riferimento obbligatorio mancante è rifiutato; due id su un campo che ne prende uno pure', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloRif, LIBRERIA, [{ name: 'dispositivo', refIds: ['ci-1'] }]))
+      .rejects.toThrow(/is required/)
+    await expect(resolveFormWrites(session, 't1', moduloRif, LIBRERIA,
+      [{ name: 'per_chi', refIds: ['u-1', 'u-2'] }]))
+      .rejects.toThrow(/takes one reference/)
+  })
+
+  it('un allegato obbligatorio: senza file sulla bozza è rifiutato, con un file passa', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloFile, LIBRERIA, [], { draftId: 'd-1', userId: 'u-1' }))
+      .rejects.toThrow(/needs at least one file/)
+
+    contaFileBozza = 2
+    const esito = await resolveFormWrites(session, 't1', moduloFile, LIBRERIA, [], { draftId: 'd-1', userId: 'u-1' })
+    expect(esito.props).toEqual({})
+    expect(esito.attachmentFields).toEqual([{ field: 'preventivo', label: 'preventivo', required: true, count: 2 }])
+    contaFileBozza = 0
+  })
+
+  it('senza bozza un allegato obbligatorio è rifiutato: non si finge che i file ci siano', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloFile, LIBRERIA, []))
+      .rejects.toThrow(/needs at least one file/)
+  })
+
+  it('un allegato non accetta un valore di testo come risposta', async () => {
+    contaFileBozza = 1
+    const esito = await resolveFormWrites(session, 't1', moduloFile, LIBRERIA,
+      [{ name: 'preventivo', value: 'non-un-file' }], { draftId: 'd-1', userId: 'u-1' })
+    // Il valore viene ignorato: un allegato non è una proprietà.
+    expect(esito.props).toEqual({})
+    contaFileBozza = 0
   })
 })

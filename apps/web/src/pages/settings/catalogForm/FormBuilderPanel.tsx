@@ -22,7 +22,7 @@ import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   CATALOG_FORM_VERSION, FORM_CONDITION_OPS, FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_FIELD_TYPES_WITHOUT_ANSWER,
-  emptyCatalogForm, localizedText,
+  canBeConditionSubject, emptyCatalogForm, isFormReferenceType, localizedText,
   type CatalogFormDefinition, type CatalogFormItem, type CatalogFormSection,
   type FormAnswerValue, type FormAnswers, type FormCondition, type FormConditionOp,
 } from '@opengraphity/types'
@@ -105,10 +105,14 @@ export function FormBuilderPanel() {
 
   const usati = new Set(bozza.sections.flatMap((s) => s.items.map((i) => i.field)))
   const disponibili = libreria.filter((f) => !usati.has(f.name))
-  /** I campi che una condizione può guardare: quelli già nel modulo, escluse le note (non hanno valore). */
+  /**
+   * I campi che una condizione può guardare: quelli già nel modulo che
+   * diventano una PROPRIETÀ. Un allegato o un riferimento andrebbero letti dal
+   * grafo, e il valutatore gira anche nel browser su quello che ha in mano.
+   */
   const soggettiCondizione = [...usati].filter((n) => {
     const f = perNome.get(n)
-    return f && !(FORM_FIELD_TYPES_WITHOUT_ANSWER as readonly string[]).includes(f.fieldType)
+    return f != null && canBeConditionSubject(f.fieldType)
   })
 
   const salvaModulo = async () => {
@@ -214,11 +218,17 @@ export function FormBuilderPanel() {
                         onChange={(e) => sostituisciVoce(iSez, iVoce, { ...item, width: e.target.checked ? 'half' : 'full' })} />
                       {t('pages.catalogForms.builder.halfWidth')}
                     </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <input type="checkbox" checked={item.endUser !== false}
-                        onChange={(e) => sostituisciVoce(iSez, iVoce, { ...item, endUser: e.target.checked })} />
-                      {t('pages.catalogForms.builder.endUser')}
-                    </label>
+                    {campo && isFormReferenceType(campo.fieldType) ? (
+                      <span style={{ color: 'var(--color-slate-light)' }} title={t('pages.catalogForms.builder.referenceStaffOnlyWhy')}>
+                        {t('pages.catalogForms.builder.referenceStaffOnly')}
+                      </span>
+                    ) : (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <input type="checkbox" checked={item.endUser !== false}
+                          onChange={(e) => sostituisciVoce(iSez, iVoce, { ...item, endUser: e.target.checked })} />
+                        {t('pages.catalogForms.builder.endUser')}
+                      </label>
+                    )}
                   </div>
 
                   <EditorCondizione
@@ -236,7 +246,17 @@ export function FormBuilderPanel() {
                 <Select value="" aria-label={t('pages.catalogForms.builder.addField')}
                   onChange={(e) => {
                     if (!e.target.value) return
-                    sostituisciSezione(iSez, { ...sezione, items: [...sezione.items, { field: e.target.value }] })
+                    const scelto = perNome.get(e.target.value)
+                    /**
+                     * Un riferimento nasce NON offerto nel portale: scegliere un
+                     * CI o una persona vuol dire cercarli, e un utente finale
+                     * non naviga la CMDB. L'API rifiuta il modulo che lo offre,
+                     * quindi è giusto che il costruttore non ci arrivi nemmeno.
+                     */
+                    const voceNuova: CatalogFormItem = scelto && isFormReferenceType(scelto.fieldType)
+                      ? { field: e.target.value, endUser: false }
+                      : { field: e.target.value }
+                    sostituisciSezione(iSez, { ...sezione, items: [...sezione.items, voceNuova] })
                   }}>
                   <option value="">{t('pages.catalogForms.builder.addField')}</option>
                   {disponibili.map((f) => <option key={f.name} value={f.name}>{f.label}</option>)}

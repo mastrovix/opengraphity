@@ -158,7 +158,9 @@
     "details": "Details (optional)",
     "detailsPlaceholder": "Add any detail useful for fulfilment…",
     "submit": "Submit request",
-    "submitting": "Submitting…"
+    "submitting": "Submitting…",
+    "addFile": "Add a file",
+    "removeFile": "Remove"
   },
   "notFound": {
     "title": "Page not found",

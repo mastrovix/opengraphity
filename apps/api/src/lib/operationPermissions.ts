@@ -106,11 +106,18 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   { anyOf: TICKET_READ, query: ['comments', 'attachments'] },
   {
     anyOf: ['ticket.work'],
-    mutation: ['addComment', 'setTicketCustomFields', 'addAffectedCI', 'removeAffectedCI', 'deleteAttachment',
+    mutation: ['addComment', 'setTicketCustomFields', 'addAffectedCI', 'removeAffectedCI',
       'addWatcher', 'removeWatcher', 'linkRelatedTicket', 'unlinkRelatedTicket', 'linkResolvedTicket', 'unlinkResolvedTicket'],
   },
   // Il resolver limita la modifica ai commenti propri (e pubblici, dal portale).
   { anyOf: ['ticket.work', 'portal.submit'], mutation: ['updateComment', 'deleteComment'] },
+  /**
+   * `deleteAttachment` anche dal portale (moduli del catalogo, ondata 2): un
+   * campo allegato si compila caricando i file su una BOZZA, e chi compila deve
+   * poter togliere un file scelto per sbaglio prima di inviare. Il resolver
+   * resta il guardiano vero — cancella solo chi ha caricato, o chi modera.
+   */
+  { anyOf: ['ticket.work', 'portal.submit'], mutation: ['deleteAttachment'] },
   {
     anyOf: ['ticket.internalChat'],
     query: ['internalMessages'],

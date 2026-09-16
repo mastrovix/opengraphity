@@ -24,3 +24,15 @@ export const SAVE_CATALOG_FORM = gql`
     saveCatalogForm(itemId: $itemId, definition: $definition) { itemId itemName revision definition updatedAt }
   }
 `
+
+/**
+ * Togliere un file. Serve ai campi allegato di un modulo per rimuovere un file
+ * dalla BOZZA prima di inviare (ondata 2): il resolver permette la
+ * cancellazione a chi l'ha caricato, quindi non serve altro permesso.
+ * `AttachmentsSection` ne ha una copia locale, storica.
+ */
+export const DELETE_ATTACHMENT = gql`
+  mutation DeleteFormAttachment($id: ID!) {
+    deleteAttachment(id: $id)
+  }
+`

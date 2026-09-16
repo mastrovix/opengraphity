@@ -2260,7 +2260,11 @@
         "boolean": "Sì/no",
         "enum": "Una scelta",
         "multi_enum": "Più scelte",
-        "note": "Nota (senza risposta)"
+        "note": "Nota (senza risposta)",
+        "attachment": "File",
+        "ref_ci": "Un elemento della CMDB",
+        "ref_user": "Una persona",
+        "ref_team": "Una squadra"
       },
       "conditionOp": {
         "eq": "è",
@@ -2299,7 +2303,9 @@
         "preview": "Anteprima",
         "previewHelp": "Il modulo vero, reso dallo stesso componente che usano l'area di lavoro e il portale: rispondi qui e guarda comparire i campi condizionali.",
         "noItems": "Non c'è nessuna voce di catalogo attiva per cui disegnare un modulo. Aggiungila in Amministrazione → Catalogo servizi.",
-        "libraryEmpty": "La libreria dei campi è vuota: apri l'altra scheda e definisci il primo campo."
+        "libraryEmpty": "La libreria dei campi è vuota: apri l'altra scheda e definisci il primo campo.",
+        "referenceStaffOnly": "Solo area di lavoro",
+        "referenceStaffOnlyWhy": "Un riferimento non si può offrire nel portale: scegliere un CI o una persona vuol dire cercare nella CMDB o nell'elenco del personale, cosa che un utente finale non fa. Il campo resta compilabile dall'area di lavoro."
       },
       "library": {
         "intro": "Un campo si definisce una volta e lo riusano tutti i moduli. Il suo nome diventa la proprietà sul ticket — è il motivo per cui si può filtrare e riportare, e il motivo per cui non si può rinominare.",
@@ -2329,6 +2335,13 @@
         "deleteTitle": "Cancellare questo campo?",
         "deleteMessage": "«{{name}}» sparisce dalla libreria. Le risposte già raccolte sui ticket restano.",
         "cannotDelete": "Usato dal modulo di: {{forms}}. Togli prima il campo da quei moduli."
+      },
+      "fill": {
+        "addFile": "Aggiungi un file",
+        "removeFile": "Togli",
+        "searchReference": "Scrivi almeno due lettere…",
+        "noResults": "Nessun risultato",
+        "clearReference": "Togli la scelta"
       }
     }
   },
@@ -4045,7 +4058,10 @@
       "notBoolean": "Il campo «{{field}}» è sì/no: usa true o false.",
       "notDate": "Il campo «{{field}}» è una data, «{{value}}» no.",
       "notInVocabulary": "«{{value}}» non è un valore di «{{field}}». Ammessi: {{allowed}}.",
-      "script": "Il campo «{{field}}» è stato rifiutato: {{message}}"
+      "script": "Il campo «{{field}}» è stato rifiutato: {{message}}",
+      "oneReference": "Il campo «{{field}}» prende un riferimento, ne sono arrivati {{count}}.",
+      "fileRequired": "Il campo «{{field}}» ha bisogno di almeno un file.",
+      "referenceNotFound": "Il campo «{{field}}» punta a qualcosa che qui non esiste."
     },
     "catalogForm": {
       "shape": "La definizione del modulo ha una forma sbagliata in {{where}}.",
@@ -4064,12 +4080,13 @@
       "conditionOp": "{{where}}: «{{op}}» non è un operatore di condizione.",
       "conditionValue": "{{where}}: l'operatore «{{op}}» ha bisogno di un valore.",
       "conditionFieldMissing": "Una condizione guarda il campo «{{field}}», che questo modulo non contiene: non potrebbe mai diventare vera.",
-      "conditionFieldNote": "Una condizione guarda il campo «{{field}}», che è una nota e non ha mai un valore.",
       "answerUnknown": "«{{field}}» non è un campo di questo modulo.",
       "answerHidden": "Il campo «{{field}}» non viene chiesto con queste risposte: è nascosto da una condizione, oppure non è offerto qui.",
       "answerNote": "Il campo «{{field}}» è una nota: non porta una risposta.",
       "answersWithoutItem": "Sono arrivate risposte a un modulo senza voce di catalogo: un modulo appartiene a una voce.",
-      "noForm": "La voce di catalogo «{{item}}» non ha un modulo: non c'è niente da rispondere."
+      "noForm": "La voce di catalogo «{{item}}» non ha un modulo: non c'è niente da rispondere.",
+      "conditionFieldType": "Una condizione guarda il campo «{{field}}», che è di tipo {{fieldType}}: solo i campi salvati come proprietà possono essere il soggetto di una condizione.",
+      "referenceEndUser": "Il campo «{{field}}» è un riferimento ({{fieldType}}): non si può offrire nel portale, perché scegliere vuol dire cercare nella CMDB o nell'elenco del personale. Togli la spunta «Offrilo nel portale»."
     }
   },
   "errorBoundary": {

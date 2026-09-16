@@ -107,6 +107,21 @@ export function catalogFormSDL(): string {
     value:  String
     """Per la selezione multipla."""
     values: [String!]
+    """Per i campi di riferimento (CI, persona, squadra): l'id del nodo puntato."""
+    refIds: [ID!]
+  }
+
+  """Il nodo puntato da un campo di riferimento."""
+  type FormAnswerReference {
+    id:    ID!
+    label: String!
+  }
+
+  """Un file caricato per un campo allegato."""
+  type FormAnswerFile {
+    id:        ID!
+    filename:  String!
+    sizeBytes: Int!
   }
 
   """Una risposta come si legge sul ticket."""
@@ -116,6 +131,10 @@ export function catalogFormSDL(): string {
     fieldType: String!
     value:     String
     values:    [String!]!
+    """Per i campi di riferimento: i nodi puntati (vuoto per gli altri)."""
+    references: [FormAnswerReference!]!
+    """Per i campi allegato: i file del ticket per questo campo (vuoto per gli altri)."""
+    files:      [FormAnswerFile!]!
   }
   `
 }
