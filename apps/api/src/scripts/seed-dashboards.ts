@@ -7,8 +7,15 @@ import { v4 as uuidv4 } from 'uuid'
 import { resolveTenantArg } from './lib/scriptArgs.js'
 import { runScript } from './lib/runScript.js'
 
-// H-45: un solo modo di leggere il tenant (accetta --tenant, --tenant-id e --slug).
-const tenantId = resolveTenantArg()
+/**
+ * Il tenant si legge DENTRO `main` (H-45, corretto dopo il test di fumo).
+ *
+ * Messo a livello di modulo, un argomento mancante lanciava PRIMA che
+ * `runScript` potesse prenderlo: lo script moriva con uno stack trace grezzo
+ * invece della riga «Tenant mancante: passare --tenant=<slug>». Un solo modo
+ * di leggere il tenant (accetta --tenant, --tenant-id e --slug), ma dentro il
+ * runner, che è quello che trasforma l'errore in un messaggio.
+ */
 
 interface WidgetSpec {
   title:        string
@@ -85,6 +92,7 @@ const DASHBOARDS: DashboardSpec[] = [
 ]
 
 async function main() {
+  const tenantId = resolveTenantArg()
   const session = getSession()
   const now     = new Date().toISOString()
   let created = 0
