@@ -497,6 +497,13 @@ docker compose -f infra/docker-compose.yml config --quiet
 node scripts/check-env-example.mjs
 bash -n infra/start.sh
 
+# OGNI QUERY CYPHER SCRITTA PER INTERO E VALIDA (serve Neo4j in piedi).
+# Manda `EXPLAIN` a Neo4j, che analizza e pianifica senza eseguire: una query
+# che non si parsa non e mai stata eseguita, e nessun test la copre. Nato da un
+# `OR` penzolante che ha fermato il motore SLA per un giorno intero senza che
+# TypeScript, 7960 test o un giro nel browser se ne accorgessero.
+node scripts/check-cypher.mjs
+
 # nginx: config renderizzata dal template (server_name Tailscale, CSP)
 docker compose -f infra/docker-compose.yml exec nginx sh -c 'nginx -t && grep -n "server_name\|connect-src" /etc/nginx/conf.d/default.conf'
 

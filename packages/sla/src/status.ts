@@ -60,6 +60,17 @@ export interface SLAStatus {
  * evento e a ogni job SLA, perché senza etichetta nel pattern nessun indice è
  * utilizzabile. `(e:Incident|Problem|ServiceRequest {...})` dice la stessa
  * cosa e passa dagli indici per etichetta.
+ *
+ * ATTENZIONE, un difetto pagato caro: riscrivendo `getEntityScope` (che
+ * comprende anche `Change`) era rimasto un `OR e:Change` PENZOLANTE dopo il
+ * pattern — Cypher non valido. Il motore SLA lanciava a ogni
+ * `sla.response.start` e a ogni `ticket.team_assigned`, quindi da quel commit
+ * NESSUN ticket riceveva più uno SLA. Niente l'ha visto: i test di `engine`
+ * simulano `getEntityScope`, TypeScript non guarda dentro una stringa, e un
+ * giro nel browser che si limita ad APRIRE le pagine non esegue il consumer.
+ * L'ha trovato il primo giro che ha creato un ticket davvero. Le query di
+ * questo file ora hanno il loro test contro un Neo4j vero
+ * (`__tests__/statusCypher.test.ts`).
  */
 export const SLA_STATUS_PROJECTION = `
       s.id as id, s.tenant_id as tenant_id, s.entity_id as entity_id,
@@ -172,7 +183,7 @@ export async function getEntityScope(
   tenantId: string, entityId: string,
 ): Promise<{ category: string | null; teamId: string | null }> {
   const cypher = `
-    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId}) OR e:Change
+    MATCH (e:Incident|Problem|ServiceRequest|Change {id: $entityId, tenant_id: $tenantId})
     OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t:Team)
     RETURN e.category AS category, t.id AS teamId
   `
