@@ -241,7 +241,8 @@ export function SyncSourcesTab({
     }
   }
 
-  if (loading) return <div style={{ padding: 24, color: colors.slate }}>Loading...</div>
+  // G-18: era «Loading...» letterale, in inglese anche nel prodotto italiano.
+  if (loading) return <div style={{ padding: 24, color: colors.slate }}>{t('common.loading')}</div>
 
   return (
     <div>
@@ -280,7 +281,16 @@ export function SyncSourcesTab({
               <button type="button" onClick={() => onTestConnection(s.id)}  style={btnStyle(colors.white, palette.neutral.textMuted)}>{t('pages.notifications.test')}</button>
               <button type="button" onClick={() => openSchedule(s)}         style={btnStyle(colors.white, palette.purple.base)}><Clock size={12} />{t('pages.sync.schedule')}</button>
               <button type="button" onClick={() => onTriggerSync(s.id)}     style={btnStyle(colors.brand, colors.white)}><Play size={12} />{t('pages.sync.syncNow')}</button>
-              <button type="button" onClick={() => onDeleteSource(s.id)}    style={btnStyle(colors.white, 'var(--color-trigger-sla-breach)')}><Trash2 size={12} /></button>
+              {/* G-22: era la sola icona, che uno screen reader leggeva «pulsante». */}
+              <button
+                type="button"
+                onClick={() => onDeleteSource(s.id)}
+                aria-label={t('pages.sync.deleteSourceLabel', { name: s.name })}
+                title={t('common.delete')}
+                style={btnStyle(colors.white, 'var(--color-trigger-sla-breach)')}
+              >
+                <Trash2 size={12} aria-hidden="true" />
+              </button>
             </div>
           </div>
         ))}

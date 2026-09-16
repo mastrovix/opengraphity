@@ -3,6 +3,12 @@
  * G-08 — infra/.env.example must document exactly the environment variables
  * the runtime code reads.
  *
+ * Revisione totale · H-22: this guardian used to FAIL at HEAD
+ * (GRAPHQL_SCHEMA_CACHE_MAX, MAX_CI_TYPES_PER_TENANT,
+ * INAPP_NOTIFICATION_RETENTION_DAYS were read and undocumented). They are
+ * documented now — and a red guardian nobody fixes is a guardian nobody
+ * reads, which is why the third check below (H-10) exists at all.
+ *
  * Extracts every variable name from apps/api/src and packages/*\/src
  * (excluding tests and dist) in these forms:
  *   process.env['NAME']   process.env.NAME   env['NAME']

@@ -32,6 +32,17 @@ interface DashboardSpec {
   widgets:     WidgetSpec[]
 }
 
+/**
+ * I FILTRI dei widget di fabbrica nominano passi che esistono
+ * (revisione totale · H-42).
+ *
+ * «Change in Corso» filtrava `status = 'deploying'`, che nessun workflow
+ * change ha (il passo si chiama `deployment`): il widget mostrava 0 per
+ * sempre. E i due «Incident Aperti» filtravano `status = 'new'`, cioe il solo
+ * passo iniziale: il titolo diceva «aperti» e il numero erano i nuovi. Il
+ * filtro di un widget e `campo = valore` e non sa dire «aperti», quindi qui si
+ * e aggiustato il TITOLO a quello che il numero conta davvero.
+ */
 const DASHBOARDS: DashboardSpec[] = [
   {
     name:        'IT Manager Overview',
@@ -40,8 +51,8 @@ const DASHBOARDS: DashboardSpec[] = [
     isDefault:   true,
     isShared:    true,
     widgets: [
-      { title: 'Incident Aperti',       widgetType: 'counter',    entityType: 'incident', metric: 'count',          groupByField: null,       filterField: 'status', filterValue: 'new',      timeRange: null,  size: 'small',  color: '#ef4444' },
-      { title: 'Change in Corso',        widgetType: 'counter',    entityType: 'change',   metric: 'count',          groupByField: null,       filterField: 'status', filterValue: 'deploying',timeRange: null,  size: 'small',  color: '#f59e0b' },
+      { title: 'Incident nuovi',         widgetType: 'counter',    entityType: 'incident', metric: 'count',          groupByField: null,       filterField: 'status', filterValue: 'new',       timeRange: null,  size: 'small',  color: '#ef4444' },
+      { title: 'Change in rilascio',     widgetType: 'counter',    entityType: 'change',   metric: 'count',          groupByField: null,       filterField: 'status', filterValue: 'deployment',timeRange: null,  size: 'small',  color: '#f59e0b' },
       { title: 'Incident per Priority',  widgetType: 'chart_pie',  entityType: 'incident', metric: 'count_by_field', groupByField: 'priority', filterField: null,     filterValue: null,       timeRange: '30d', size: 'medium', color: '#8b5cf6' },
       { title: 'Trend Incident (30gg)',  widgetType: 'counter',    entityType: 'incident', metric: 'count',          groupByField: null,       filterField: null,     filterValue: null,       timeRange: '30d', size: 'medium', color: '#0EA5E9' },
       { title: 'Incident per Severity',  widgetType: 'chart_bar',  entityType: 'incident', metric: 'count_by_field', groupByField: 'severity', filterField: null,     filterValue: null,       timeRange: '7d',  size: 'medium', color: '#0EA5E9' },
@@ -54,8 +65,8 @@ const DASHBOARDS: DashboardSpec[] = [
     isDefault:   true,
     isShared:    true,
     widgets: [
-      { title: 'Incident Aperti',        widgetType: 'counter',   entityType: 'incident', metric: 'count',          groupByField: null,     filterField: 'status', filterValue: 'new',  timeRange: null, size: 'small',  color: '#ef4444' },
-      { title: 'Incident Non Assegnati', widgetType: 'counter',   entityType: 'incident', metric: 'count',          groupByField: null,     filterField: 'status', filterValue: 'new',  timeRange: '24h', size: 'small', color: '#f59e0b' },
+      { title: 'Incident nuovi',         widgetType: 'counter',   entityType: 'incident', metric: 'count',          groupByField: null,     filterField: 'status', filterValue: 'new',  timeRange: null, size: 'small',  color: '#ef4444' },
+      { title: 'Incident nuovi (24h)',   widgetType: 'counter',   entityType: 'incident', metric: 'count',          groupByField: null,     filterField: 'status', filterValue: 'new',  timeRange: '24h', size: 'small', color: '#f59e0b' },
       { title: 'Incident per Status',    widgetType: 'chart_bar', entityType: 'incident', metric: 'count_by_field', groupByField: 'status', filterField: null,     filterValue: null,   timeRange: '7d',  size: 'large',  color: '#10b981' },
     ],
   },

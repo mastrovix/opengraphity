@@ -51,6 +51,10 @@ async function seed(TENANT_ID: string) {
     const supportTeamId = pick(teamIds)
 
     const result = await session.run(
+      // H-4: la label GENERICA insieme a quella del tipo, come fa l'API
+      // (`ciMutations.ts`): senza `:ConfigurationItem` i CI dei seed erano
+      // invisibili alla ricerca globale, al riconoscimento del CI negli
+      // allarmi e ai vincoli generici (`packages/neo4j/src/init.ts`).
       `MERGE (c:ConfigurationItem:Server {name: $name, tenant_id: $tenantId})
        ON CREATE SET
          c.id          = $id,

@@ -681,7 +681,8 @@
         "placeholder": "es. 0 */4 * * *"
       },
       "scheduleTitle": "Pianificazione — {{name}}",
-      "conflictsShown": "Mostrati {{shown}} conflitti su {{total}}: risolvi questi e compaiono gli altri."
+      "conflictsShown": "Mostrati {{shown}} conflitti su {{total}}: risolvi questi e compaiono gli altri.",
+      "deleteSourceLabel": "Elimina la sorgente {{name}}"
     },
     "import": {
       "title": "Import dati storici",
@@ -4461,7 +4462,9 @@
       "advancedMatch_other": "{{count}} di {{total}} in questa pagina corrispondono al filtro avanzato",
       "advancedUrlInvalid": "Il filtro avanzato di questo collegamento non è leggibile: la tabella mostra tutte le righe della pagina. Ricostruiscilo con «Filtri avanzati».",
       "sortPageOnly": "Ordina la pagina corrente: il server non ordina gli allarmi, le altre pagine restano come sono",
-      "other": "Altro"
+      "other": "Altro",
+      "sourceGone": "La sorgente di questo collegamento non esiste più: il filtro è attivo ma non ha un nome. Togli il filtro per vedere tutti gli allarmi.",
+      "sourceGoneClear": "Sorgente non trovata"
     },
     "empty": {
       "title": "Nessun allarme",

@@ -188,7 +188,8 @@ async function myTickets(
   ctx: GraphQLContext,
 ) {
   /**
-   * Pagina e dimensione VALIDATE (revisione totale · B-24): `page: 0` dava uno
+   * Pagina e dimensione VALIDATE (revisione totale · B-24 e H-38, lo stesso
+   * difetto visto da due revisori): `page: 0` dava uno
    * SKIP negativo e un errore Cypher invece di un messaggio, e `pageSize` non
    * aveva tetto — una richiesta poteva chiedere tutto.
    */

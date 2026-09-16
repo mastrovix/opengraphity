@@ -681,7 +681,8 @@
         "placeholder": "e.g. 0 */4 * * *"
       },
       "scheduleTitle": "Schedule — {{name}}",
-      "conflictsShown": "Showing {{shown}} of {{total}} conflicts: resolve these, and the rest appears."
+      "conflictsShown": "Showing {{shown}} of {{total}} conflicts: resolve these, and the rest appears.",
+      "deleteSourceLabel": "Delete source {{name}}"
     },
     "import": {
       "title": "Historical data import",
@@ -4461,7 +4462,9 @@
       "advancedMatch_other": "{{count}} of {{total}} on this page match the advanced filter",
       "advancedUrlInvalid": "The advanced filter in this link cannot be read: the table shows every row on the page. Rebuild it with \"Advanced filters\".",
       "sortPageOnly": "Sorts the current page: the server does not sort alarms, the other pages stay as they are",
-      "other": "Other"
+      "other": "Other",
+      "sourceGone": "The source in this link no longer exists: the filter is on but has no name. Clear it to see every alarm.",
+      "sourceGoneClear": "Source not found"
     },
     "empty": {
       "title": "No alarms",

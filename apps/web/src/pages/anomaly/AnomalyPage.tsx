@@ -123,7 +123,8 @@ function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | nul
     return (
       <div style={{ textAlign: 'center', padding: '56px 24px' }}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-          <Radar size={44} color={colors.slateLight} />
+          {/* G-ANO-14: icona decorativa — il testo accanto dice tutto. */}
+          <Radar size={44} color={colors.slateLight} aria-hidden="true" />
         </div>
         <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slate, marginBottom: 6 }}>
           {t('pages.anomalies.noScanYet')}
@@ -139,7 +140,7 @@ function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | nul
   return (
     <div style={{ textAlign: 'center', padding: '56px 24px' }}>
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-        <ShieldCheck size={44} color={colors.success} />
+        <ShieldCheck size={44} color={colors.success} aria-hidden="true" />
       </div>
       <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slate, marginBottom: 6 }}>
         {t('pages.anomalies.noAnomalies')}
@@ -343,9 +344,15 @@ export function AnomalyPage() {
       const before = await refetchScan()
       const baseline = before.data?.anomalyScanStatus.totalScans ?? 0
       const res = await runScanner()
-      // L'API risponde false quando non riesce ad accodare il job (Redis giù):
-      // non è un successo silenzioso.
-      if (!res.data?.runAnomalyScanner) {
+      /**
+       * Il resolver o accoda e risponde `true`, o LANCIA (Redis giù, permesso
+       * mancante): l'errore arriva al `catch` qui sotto. Questo ramo copre il
+       * solo caso rimasto — una risposta senza dati e senza errore, cioè il
+       * contratto rotto — e lo dice invece di mostrare un'attesa che non
+       * finirà mai (revisione totale · G-ANO-12: il commento di prima diceva
+       * «l'API risponde false», che non è vero, e il ramo sembrava morto).
+       */
+      if (res.data?.runAnomalyScanner !== true) {
         toast.error(t('toast.anomaly.scanEnqueueFailed'))
         return
       }
@@ -360,7 +367,7 @@ export function AnomalyPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <PageTitle icon={<ShieldAlert size={22} color="var(--color-icon-accent)" />}>
+          <PageTitle icon={<ShieldAlert size={22} color="var(--color-icon-accent)" aria-hidden="true" />}>
             {t('pages.anomalies.title')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>

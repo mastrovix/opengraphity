@@ -96,7 +96,7 @@ export function DetailPanel({
           aria-label={t('common.close')}
           style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, color: colors.slateLight }}
         >
-          <X size={18} />
+          <X size={18} aria-hidden="true" />
         </button>
       </div>
 

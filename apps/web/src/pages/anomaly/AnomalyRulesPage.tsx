@@ -195,7 +195,7 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
 
         {rule.problem && (
           <div role="alert" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 6, background: 'var(--color-danger-bg)', color: 'var(--color-danger-text)', fontSize: 'var(--font-size-body)' }}>
-            <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+            <AlertTriangle size={16} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
             <span>
               {t('pages.anomalyRules.problemSaved')}{' '}
               {t(rule.problem.key, { defaultValue: rule.problem.message, ...Object.fromEntries(rule.problem.params.map((p) => [p.key, p.value])) })}
@@ -282,7 +282,7 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
               })}
               <div>
                 <Button variant="secondary" onClick={() => set({ forbidden: [...current.forbidden, { fromType: '', relation: '', toType: '' }] })}>
-                  <Plus size={14} /> {t('pages.anomalyRules.addForbidden')}
+                  <Plus size={14} aria-hidden="true" /> {t('pages.anomalyRules.addForbidden')}
                 </Button>
               </div>
             </div>
@@ -294,7 +294,7 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
             onClick={() => void save({ variables: { ruleKey: rule.ruleKey, settings: current } })}
             disabled={draft === null || problem !== null || saving}
           >
-            <Save size={14} /> {t('common.save')}
+            <Save size={14} aria-hidden="true" /> {t('common.save')}
           </Button>
           {draft !== null && (
             <Button variant="secondary" onClick={() => setDraft(null)}>{t('common.cancel')}</Button>
@@ -322,7 +322,7 @@ export function AnomalyRulesPage() {
         <Link to="/anomalies" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-label)', color: colors.brand, textDecoration: 'none', marginBottom: 8 }}>
           <ArrowLeft size={13} aria-hidden="true" /> {t('pages.anomalyRules.backToAnomalies')}
         </Link>
-        <PageTitle icon={<ShieldAlert size={22} color="var(--color-icon-accent)" />}>{t('pages.anomalyRules.title')}</PageTitle>
+        <PageTitle icon={<ShieldAlert size={22} color="var(--color-icon-accent)" aria-hidden="true" />}>{t('pages.anomalyRules.title')}</PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0, maxWidth: '80ch' }}>
           {t('pages.anomalyRules.subtitle')}
         </p>

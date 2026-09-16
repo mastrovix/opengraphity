@@ -68,7 +68,18 @@ export const SERVICE_REQUEST_WORKFLOW: SeedableWorkflow = {
     srStep('submitted',   ['Submitted', 'Inviata'],        'start',    1, { is_initial: true,  is_terminal: false, is_open: true,  category: 'active' }),
     srStep('approval',    ['Approval', 'Approvazione'],   'standard', 2, { is_initial: false, is_terminal: false, is_open: true,  category: 'waiting' }),
     srStep('in_progress', ['In Progress', 'In lavorazione'], 'standard', 3, { is_initial: false, is_terminal: false, is_open: true,  category: 'active' }),
-    srStep('fulfilled',   ['Fulfilled', 'Evasa'],          'standard', 4, { is_initial: false, is_terminal: false, is_open: true,  category: 'active' }),
+    /**
+     * «Evasa» e RISOLTA, non aperta (revisione totale · H-41).
+     *
+     * Era `category: 'active'` con `is_open: true`, quindi una richiesta
+     * evasa — il lavoro e fatto, resta solo la chiusura — contava come aperta
+     * per lo SLA, per i contatori e per la classe `open` del portale: la
+     * scheda «Aperti» la mostrava e il tempo di risoluzione continuava a
+     * correre. La categoria `resolved` e quella che ferma lo SLA
+     * (`stepStatusClasses`, `lib/workflowHelpers.ts`), come il passo
+     * «resolved» degli incident.
+     */
+    srStep('fulfilled',   ['Fulfilled', 'Evasa'],          'standard', 4, { is_initial: false, is_terminal: false, is_open: false, category: 'resolved' }),
     srStep('closed',      ['Closed', 'Chiusa'],         'end',      5, { is_initial: false, is_terminal: true,  is_open: false, category: 'closed' }),
     srStep('rejected',    ['Rejected', 'Rifiutata'],      'end',      6, { is_initial: false, is_terminal: true,  is_open: false, category: 'closed' }),
   ],

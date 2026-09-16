@@ -195,6 +195,13 @@ export function CreateServiceRequestPage() {
               {...focusHandlers(false)}
             >
               <option value="">{t('pages.createRequest.genericItem')}</option>
+              {/**
+                * F-38: ServiceCatalogItem.category E un valore del vocabolario
+                * `category` — lo dichiara lo schema, e la categoria scritta a
+                * mano prima del Dizionario vive a parte in `legacyCategory`.
+                * Quindi questo e il vocabolario giusto; il ripiego sul valore
+                * grezzo copre la sola voce vecchia mai sistemata.
+                */}
               {catalogItems.map((it) => (
                 <option key={it.id} value={it.id}>{it.category ? `${labelOf('category', it.category) ?? it.category} · ` : ''}{it.name}</option>
               ))}

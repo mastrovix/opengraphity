@@ -40,7 +40,8 @@ export function SyncConflictsTab({ conflicts, loading, onResolveConflict, total,
         ))}
       </div>
 
-      {loading && <div style={{ padding: 24, color: colors.slate }}>Loading...</div>}
+      {/* G-18: era «Loading...» letterale. */}
+      {loading && <div style={{ padding: 24, color: colors.slate }}>{t('common.loading')}</div>}
 
       {!loading && total > filtered.length && (
         <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-table)', color: colors.slate }}>

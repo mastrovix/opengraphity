@@ -34,7 +34,7 @@ browser ──► nginx :80 (front door, template envsubst)
               └─ qualunque altro Host                          → 404 (default_server, H-32)
 api :4000 (Express + Apollo, USER node) ── neo4j :7687 ── redis :6379 ── keycloak :8080
 worker        (stessa immagine dell'api, `dist/worker.js`: embedding ONNX off event-loop)
-events-worker (stessa immagine, WORKER_PROFILE=events: ingest allarmi, correlazione,
+events-worker (H-51 — stessa immagine, WORKER_PROFILE=events: ingest allarmi, correlazione,
                manutenzione eventi, valutazione delle mappe di servizio)
 prometheus ← api:/metrics, worker:/metrics, events-worker:/metrics
 promtail (docker socket) → loki ← grafana      jaeger (OTLP)
@@ -266,7 +266,8 @@ Per esporre la stack oltre `localhost` passare **solo** da nginx (o da
 - **Metriche → Prometheus**: scrape di **tre** target ogni 15 s —
   `api:4000`, `worker:4000` e `events-worker:4000`
   (`infra/prometheus/prometheus.yml`): le metriche della pipeline degli allarmi
-  vivono dove gira la pipeline. Retention
+  vivono dove gira la pipeline (revisione totale · H-51: §7 dichiarava un solo
+  target). Retention
   15 giorni (`prometheus_data`). Metriche disponibili
   (`apps/api/src/middleware/metrics.ts`): `http_requests_total`,
   `http_request_duration_seconds`, `graphql_resolver_duration_seconds`,

@@ -419,6 +419,12 @@ export function EventsPage() {
   const { data: sourcesData, error: sourcesError } = useQuery<{ monitoringSourceRefs: MonitoringSourceRef[] }>(GET_MONITORING_SOURCE_REFS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const sources = sourcesData?.monitoringSourceRefs ?? []
   const noSources = sourcesData !== undefined && sources.length === 0
+  /**
+   * G-EVT-6: il filtro punta a una sorgente che l'elenco non ha (eliminata, o
+   * un id scritto a mano). Si sa solo dopo che le sorgenti sono arrivate.
+   */
+  const sourceGone = filter.sourceId !== null && sourcesData !== undefined
+    && !sources.some((s) => s.id === filter.sourceId)
 
   // Policy di correlazione: serve solo al countdown "apertura tra N s" degli
   // eventi in attesa; se non arriva il chip dice comunque "In attesa".
@@ -549,6 +555,8 @@ export function EventsPage() {
           {filter.ciId       && <Chip label={t('monitoring.console.ciFilter')}    active onClick={() => updateFilter({ ciId: null })} />}
           {filter.incidentId && <Chip label={t('events.filters.incidentOnly')}   active onClick={() => updateFilter({ incidentId: null })} />}
           {filter.changeId   && <Chip label={t('events.filters.changeOnly')}     active onClick={() => updateFilter({ changeId: null })} />}
+          {/* G-EVT-6: il filtro su una sorgente che non esiste piu si toglie da qui. */}
+          {sourceGone        && <Chip label={t('events.filters.sourceGoneClear')} active onClick={() => updateFilter({ sourceId: null })} />}
         </FilterChipGroup>
         <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 4, marginLeft: 'auto' }}>
           <Select
@@ -559,7 +567,21 @@ export function EventsPage() {
           >
             <option value="">{t('monitoring.console.allSources')}</option>
             {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            {/**
+              * Una sorgente che non c'e piu resta nel menu come voce sua
+              * (revisione totale · G-EVT-6): `?sourceId=` non veniva
+              * confrontato con le sorgenti, quindi un link a una sorgente
+              * eliminata mostrava «Tutte le sorgenti» con il filtro ATTIVO —
+              * zero righe e nessuna spiegazione. Cosi si vede che c'e un
+              * filtro, e il chip qui sotto lo toglie.
+              */}
+            {sourceGone && <option value={filter.sourceId ?? ''}>{t('events.filters.sourceGoneClear')}</option>}
           </Select>
+          {sourceGone && (
+            <span role="alert" style={{ fontSize: 'var(--font-size-table)', color: colors.danger, maxWidth: 200 }}>
+              {t('events.filters.sourceGone')}
+            </span>
+          )}
           {sourcesError && (
             <span role="alert" style={{ fontSize: 'var(--font-size-table)', color: colors.danger, maxWidth: 200 }}>
               {t('events.filters.sourcesError', { error: sourcesError.message })}
