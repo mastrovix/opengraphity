@@ -8,6 +8,7 @@ import { logger as appLogger } from './logger.js'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import { getQueue } from './bullmq.js'
 import { createAutomationCache, evaluateRules } from './automationEngine.js'
+import { invalidateSchema } from './schemaInvalidator.js'
 import { parseConditions } from './conditionEvaluator.js'
 
 const WORKFLOW_JOBS_QUEUE = 'workflow-jobs'
@@ -151,7 +152,12 @@ function fieldsNamedBy(conditions: string | null): string[] {
   }
 }
 
-/** Invalidate the trigger cache for a tenant. */
+/**
+ * I trigger del tenant sono cambiati: svuota le cache di QUESTO processo e
+ * avvisa gli altri (revisione totale · C-23). Prima l'invalidazione era
+ * locale: il worker che esegue le automazioni teneva la regola vecchia fino
+ * alla scadenza del TTL, anche quando l'admin la spegneva per fermarla.
+ */
 export function invalidateTriggerCache(tenantId: string): void {
-  cache.invalidate(tenantId)
+  invalidateSchema(tenantId)
 }

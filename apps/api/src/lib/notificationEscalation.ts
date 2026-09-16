@@ -15,7 +15,7 @@
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { publishEvent } from './publishEvent.js'
 import { systemText } from './systemText.js'
-import { isEntityOpen } from './workflowHelpers.js'
+import { isEntityConcluded } from './workflowHelpers.js'
 
 export const ESCALATION_EVENT = 'incident.escalation'
 
@@ -48,7 +48,11 @@ export async function runEscalationCheck(tenantId: string, incidentId: string, r
       MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId}) RETURN i.title AS title, i.number AS number
     `, { incidentId, tenantId })
     if (!incident) return 'incident_gone'
-    if (!(await isEntityOpen(session, incidentId, tenantId))) return 'incident_closed'
+    // «Non risolto dopo N minuti» si misura sulla CLASSE del passo
+    // (`resolved`/`closed`), non sul flag «terminale» (revisione totale ·
+    // C-26): un cliente che toglie «terminale» al suo passo Risolto riceveva
+    // l'avviso «non risolto» su incident risolti da ore.
+    if (await isEntityConcluded(session, incidentId, tenantId)) return 'incident_closed'
     const message = rule.message && rule.message.trim()
       ? rule.message
       : await systemText(tenantId, 'notification.escalationDefault', { title: incident.title, minutes: Number(rule.delay) })

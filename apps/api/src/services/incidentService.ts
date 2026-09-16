@@ -12,10 +12,10 @@ import { NotFoundError, ValidationError } from '../lib/errors.js'
 import { validateStringLength } from '../lib/validation.js'
 import { enqueueEmbedding } from '../jobs/embeddingWorker.js'
 import { publishEvent } from '../lib/publishEvent.js'
+import { publishStepEnteredForEntity } from '../lib/stepEnteredPublisher.js'
 import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
 import { targetStepByCategory } from '../lib/workflowTargets.js'
-import { loadStepFacts } from '../lib/stepEvent.js'
-import { stepEnteredEventType, legacyStepEventType, TICKET_TEAM_ASSIGNED_EVENT, type TicketTeamAssignedPayload } from '@opengraphity/types'
+import { TICKET_TEAM_ASSIGNED_EVENT, type TicketTeamAssignedPayload } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from './ticketAssignment.js'
 import { systemText } from '../lib/systemText.js'
@@ -312,9 +312,14 @@ export async function createIncident(
     `, { userId: ctx.userId, tenantId: ctx.tenantId, entityId: id, now }))
   }, true)
 
+  // Il CI e l'assegnatario VERI nel payload (revisione totale · B-7): erano
+  // scritti a mano come «—», e una regola di notifica che mette il CI nel
+  // testo mostrava «—» anche su un incident con tre CI. Il payload si rilegge
+  // dal grafo, come fa `assignIncidentToUser`.
+  const createdPayload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
   await publishEvent('incident.created', ctx.tenantId, ctx.userId, {
-    id, title: input.title, severity: created.severity, status: created.status,
-    ciName: '—', assignedTo: '—', affected_ci_ids: input.affectedCIIds ?? [],
+    ...requirePayload(createdPayload, id),
+    affected_ci_ids: input.affectedCIIds ?? [],
   } satisfies IncidentEventPayload, now)
 
   // Trigger, Business Rule e trigger a tempo: li mette in moto `incident.created`
@@ -452,12 +457,12 @@ export async function assignIncidentToTeam(
     ))
     if (!r.records[0]) throw new NotFoundError('Incident', id)
     const assigned = mapIncident(r.records[0].get('props') as Props)
+    // B-7: il CI era «—» su «assegnato al team» e corretto su «assegnato a
+    // persona». Ora il payload è lo stesso, letto dal grafo; l'assegnatario è
+    // il gruppo, che è quello che è appena stato scelto.
+    const assignedPayload = await loadIncidentPayload(session, id, ctx.tenantId)
     await publishEvent('incident.assigned', ctx.tenantId, ctx.userId, {
-      id:         assigned.id,
-      title:      assigned.title,
-      severity:   assigned.severity,
-      status:     assigned.status,
-      ciName:     '—',
+      ...requirePayload(assignedPayload, id),
       assignedTo: teamName,
     } satisfies IncidentEventPayload, now)
     // SL-10: la policy SLA può dipendere dal gruppo appena assegnato.
@@ -619,21 +624,24 @@ export async function inProgressIncident(
  * Il dispatcher non consegna due volte: sull'evento stabile salta se esiste
  * già una regola per l'alias di quel passo (vedi packages/notifications).
  */
+/**
+ * Gli eventi di dominio della transizione di un incident si pubblicano
+ * dall'hook `onStepEntered` del motore, che vede TUTTI i cammini —
+ * manuali e automatici (revisione totale · C-1, `lib/stepEnteredPublisher.ts`).
+ * Questa funzione resta come punto di ingresso per chi deve pubblicarli
+ * SENZA passare dal motore (nessun chiamante oggi): pubblicare qui dopo una
+ * transizione del motore darebbe eventi doppi.
+ */
 export async function publishIncidentTransition(
   id: string,
   stepName: string,
   ctx: ServiceCtx,
 ) {
   const now = new Date().toISOString()
-  const { payload, facts } = await withSession(async (s) => ({
-    payload: await loadIncidentPayload(s, id, ctx.tenantId),
-    // Fail-loud: un passo che non esiste nel workflow attivo ferma l'evento
-    // (il job resta nella coda dei falliti) invece di inventare i suoi fatti.
-    facts:   await loadStepFacts(s, ctx.tenantId, 'incident', stepName),
-  }))
-  const body = { ...requirePayload(payload, id), ...facts }
-  await publishEvent(stepEnteredEventType('incident'), ctx.tenantId, ctx.userId, body, now)
-  await publishEvent(legacyStepEventType('incident', stepName), ctx.tenantId, ctx.userId, body, now)
+  await publishStepEnteredForEntity({
+    tenantId: ctx.tenantId, actorId: ctx.userId,
+    entityType: 'incident', entityId: id, stepName, enteredAt: now,
+  })
 }
 
 export async function closeIncident(

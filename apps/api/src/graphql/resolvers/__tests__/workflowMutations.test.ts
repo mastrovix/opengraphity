@@ -34,8 +34,14 @@ vi.mock('@opengraphity/workflow', () => ({
   isWorkflowActionType: (t: unknown) => typeof t === 'string' && (WORKFLOW_ACTION_TYPES_MOCK as readonly string[]).includes(t),
 }))
 
+// Il pacchetto delle notifiche non si importa per intero (apre Redis): qui
+// servono solo le due funzioni di instradamento, con la tabella vera dei
+// canali dei passi (revisione totale · G-8).
 vi.mock('@opengraphity/notifications', () => ({
   sseManager: { sendToUser: vi.fn() },
+  WORKFLOW_STEP_NOTIFY_EVENT: 'workflow.step.entered',
+  routableChannels: () => ['in_app', 'email'],
+  unroutableChannels: (_t: string, channels: readonly string[]) => channels.filter((c) => c !== 'in_app' && c !== 'email'),
 }))
 
 vi.mock('@opengraphity/neo4j', () => ({
@@ -216,6 +222,25 @@ describe('azioni dei passi: vocabolario imposto alla scrittura', () => {
     expect(() => assertStepActions(at('team_owner'), 'enter_actions')).not.toThrow()
     expect(() => assertStepActions(at('role:operator'), 'enter_actions')).not.toThrow()
     expect(() => assertStepActions(JSON.stringify([{ type: 'notify_rule', params: { title_key: 'k' } }]), 'enter_actions')).not.toThrow()
+  })
+
+  /**
+   * Revisione totale · G-8: la scheda «Notifiche» del passo offriva
+   * in_app/slack/teams/email, ma il dispatcher per `workflow.step.entered`
+   * instrada solo in_app ed email e LANCIA sugli altri. Un passo con Slack
+   * spuntato si salvava e generava un job fallito a ogni ingresso nel passo —
+   * visibile solo in Admin → Code — senza nessuna notifica.
+   */
+  it('assertStepActions: i canali di notify_rule sono quelli consegnabili all\'ingresso in un passo (G-8)', () => {
+    const at = (channels: string[]) => JSON.stringify([{ type: 'notify_rule', params: { title_key: 'k', channels, target: 'all' } }])
+    const err = (() => { try { assertStepActions(at(['in_app', 'slack']), 'enter_actions dello step "escalated"') } catch (e) { return e } })()
+    expect(err).toBeInstanceOf(GraphQLError)
+    expect((err as GraphQLError).extensions['code']).toBe('BAD_USER_INPUT')
+    expect((err as GraphQLError).message).toContain('enter_actions dello step "escalated"[0]')
+    expect((err as GraphQLError).message).toMatch(/channels \[slack\] cannot be delivered/)
+    expect((err as GraphQLError).message).toContain('in_app, email')
+    expect(() => assertStepActions(at(['teams']), 'enter_actions')).toThrow(/\[teams\]/)
+    expect(() => assertStepActions(at(['in_app', 'email']), 'enter_actions')).not.toThrow()
   })
 
   it('assertStepActions: JSON non valido e non-lista sono rifiutati', () => {

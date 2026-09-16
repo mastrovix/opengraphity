@@ -14,11 +14,10 @@ import {
   CHANGE_WINDOW_PURPOSES,
 } from '@opengraphity/types'
 import { publish } from '@opengraphity/events'
-import { sseManager } from '@opengraphity/notifications'
+import { sseManager, unroutableChannels, routableChannels, WORKFLOW_STEP_NOTIFY_EVENT } from '@opengraphity/notifications'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { loadTransitionRows, mapWorkflowDefinition } from './workflowMapping.js'
-import * as incidentService from '../../services/incidentService.js'
 import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
@@ -226,6 +225,23 @@ export function assertStepActions(raw: string | null | undefined, label: string)
       }
     }
     if (type === 'notify_rule') {
+      // I CANALI del passo: la scheda «Notifiche» del disegnatore offriva
+      // in_app/slack/teams/email, ma il dispatcher per `workflow.step.entered`
+      // instrada solo in_app ed email e LANCIA sugli altri — un passo con
+      // Slack spuntato si salvava e generava un job fallito a ogni ingresso
+      // nel passo, senza nessuna notifica (revisione totale · G-8). Qui si
+      // rifiuta al salvataggio, come fanno le regole di notifica.
+      const channels = (action as { params?: Record<string, unknown> }).params?.['channels']
+      if (Array.isArray(channels)) {
+        const bad = unroutableChannels(WORKFLOW_STEP_NOTIFY_EVENT, channels.filter((c): c is string => typeof c === 'string'))
+        if (bad.length > 0) {
+          const allowed = routableChannels(WORKFLOW_STEP_NOTIFY_EVENT).join(', ')
+          throw new GraphQLError(
+            `${label}[${i}]: channels [${bad.join(', ')}] cannot be delivered when a step is entered. Allowed: ${allowed}.`,
+            { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.badStepChannels', params: { field: `${label}[${i}]`, channels: bad.join(', '), allowed } } } },
+          )
+        }
+      }
       const target = (action as { params?: Record<string, unknown> }).params?.['target']
       if (target != null && target !== '') {
         const t = String(target)
@@ -1101,10 +1117,11 @@ export async function executeWorkflowTransition(
           CREATE (i)-[:HAS_COMMENT]->(c)
         `, { incidentId, tenantId, text: commentText, userId: ctx.userId, now }))
 
-        // Generic post-transition: publish an event named after the target
-        // step and audit. Field updates (resolved_at, assigned_at, etc.)
-        // are driven by the step's `on_enter_fields` metadata, applied below.
-        await post('publish incident transition', () => incidentService.publishIncidentTransition(incidentId, toStep, { tenantId, userId: ctx.userId }))
+        // L'evento di dominio dell'ingresso nel passo NON si pubblica qui: lo
+        // pubblica l'hook `onStepEntered` del motore, che vede anche i cammini
+        // automatici (revisione totale · C-1, lib/stepEnteredPublisher.ts).
+        // Pubblicarlo anche qui darebbe due eventi per ogni transizione
+        // manuale, cioè due notifiche e due webhook.
         // Azione di audit STABILE, passo nei dettagli (D-22): l'azione non è
         // più composta col nome del passo, che una rinomina cambiava spezzando
         // in due la storia dei filtri e dei report. Il taglio nel vocabolario è

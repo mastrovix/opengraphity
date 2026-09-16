@@ -48,7 +48,14 @@ import { formatNotificationDate, notificationText, type NotificationLocale, type
  */
 export type IncidentHeadline = NotificationEvent | 'created'
 
-export function formatSlackIncident(event: NotificationEvent, incident: IncidentData, locale: NotificationLocale, headline: IncidentHeadline = event): SlackBlock[] {
+/**
+ * `occurredAt` è l'istante DELL'EVENTO, non quello della consegna (revisione
+ * totale · E-16): la riga di contesto diceva quando il job è stato lavorato,
+ * quindi con una coda in ritardo di venti minuti Slack riportava un orario
+ * sbagliato di venti minuti. Omesso = adesso (chi non ha un istante, come un
+ * messaggio di prova).
+ */
+export function formatSlackIncident(event: NotificationEvent, incident: IncidentData, locale: NotificationLocale, headline: IncidentHeadline = event, occurredAt?: Date): SlackBlock[] {
   const emoji      = SEV_EMOJI[incident.severity] ?? '⚪'
   const ciName     = incident.ciNames?.[0] ?? '—'
   const assignedTo = incident.assigneeName ?? '—'
@@ -82,7 +89,7 @@ export function formatSlackIncident(event: NotificationEvent, incident: Incident
       elements: [
         {
           type: 'mrkdwn',
-          text: `${notificationText(locale, headline as NotificationTextKey)}  ·  ${formatNotificationDate(locale)}`,
+          text: `${notificationText(locale, headline as NotificationTextKey)}  ·  ${formatNotificationDate(locale, occurredAt)}`,
         },
       ],
     },
@@ -111,7 +118,7 @@ export function formatSlackIncident(event: NotificationEvent, incident: Incident
   return blocks
 }
 
-export function formatSlackChange(change: ChangeData, locale: NotificationLocale): SlackBlock[] {
+export function formatSlackChange(change: ChangeData, locale: NotificationLocale, occurredAt?: Date): SlackBlock[] {
   const ciName     = change.ciName ?? '—'
   const assignedTo = change.assigneeName ?? '—'
 
@@ -141,13 +148,13 @@ export function formatSlackChange(change: ChangeData, locale: NotificationLocale
     {
       type: 'context',
       elements: [
-        { type: 'mrkdwn', text: `${notificationText(locale, 'change_approved')}  ·  ${formatNotificationDate(locale)}` },
+        { type: 'mrkdwn', text: `${notificationText(locale, 'change_approved')}  ·  ${formatNotificationDate(locale, occurredAt)}` },
       ],
     },
   ]
 }
 
-export function formatSlackChangeTask(payload: ChangeTaskPayload, locale: NotificationLocale): SlackBlock[] {
+export function formatSlackChangeTask(payload: ChangeTaskPayload, locale: NotificationLocale, occurredAt?: Date): SlackBlock[] {
   return [
     {
       type: 'header',
@@ -173,7 +180,7 @@ export function formatSlackChangeTask(payload: ChangeTaskPayload, locale: Notifi
     {
       type: 'context',
       elements: [
-        { type: 'mrkdwn', text: `${notificationText(locale, 'change_task_assigned')}  ·  ${formatNotificationDate(locale)}` },
+        { type: 'mrkdwn', text: `${notificationText(locale, 'change_task_assigned')}  ·  ${formatNotificationDate(locale, occurredAt)}` },
       ],
     },
   ]
@@ -213,4 +220,50 @@ export function formatTeamsIncident(event: NotificationEvent, incident: Incident
   }
 
   return card
+}
+
+/**
+ * Change approvata, per un canale Teams (revisione totale · E-18): la pagina
+ * Canali offre l'evento «Change approvata» anche a un canale Teams, ma il
+ * dispatcher gestiva SOLO Slack e scartava quel canale in silenzio — l'admin
+ * non riceveva niente e nessun avviso lo diceva.
+ */
+export function formatTeamsChange(change: ChangeData, locale: NotificationLocale, occurredAt?: Date): TeamsAdaptiveCard {
+  return {
+    type: 'AdaptiveCard',
+    version: '1.4',
+    body: [
+      { type: 'TextBlock', text: `📋 ${change.title}`, weight: 'Bolder', size: 'Large', wrap: true },
+      { type: 'FactSet', facts: [
+        { title: notificationText(locale, 'type'),       value: change.type },
+        { title: notificationText(locale, 'status'),     value: change.status },
+        { title: notificationText(locale, 'ciAffected'), value: change.ciName ?? '—' },
+        { title: notificationText(locale, 'assignedTo'), value: change.assigneeName ?? '—' },
+      ] },
+      { type: 'TextBlock', text: `${notificationText(locale, 'change_approved')}  ·  ${formatNotificationDate(locale, occurredAt)}`, wrap: true, isSubtle: true },
+    ],
+    actions: [
+      { type: 'Action.OpenUrl', title: notificationText(locale, 'open'), url: `${appUrl()}/changes/${change.id}` },
+    ],
+  }
+}
+
+/** Attività di change assegnata, per un canale Teams (E-18). */
+export function formatTeamsChangeTask(payload: ChangeTaskPayload, locale: NotificationLocale, occurredAt?: Date): TeamsAdaptiveCard {
+  return {
+    type: 'AdaptiveCard',
+    version: '1.4',
+    body: [
+      { type: 'TextBlock', text: notificationText(locale, 'newAssessmentTask'), weight: 'Bolder', size: 'Large', wrap: true },
+      { type: 'FactSet', facts: [
+        { title: notificationText(locale, 'entity'),     value: payload.changeTitle },
+        { title: notificationText(locale, 'ciAffected'), value: payload.ciName },
+        { title: notificationText(locale, 'assignedTo'), value: payload.assignedTo },
+      ] },
+      { type: 'TextBlock', text: `${notificationText(locale, 'change_task_assigned')}  ·  ${formatNotificationDate(locale, occurredAt)}`, wrap: true, isSubtle: true },
+    ],
+    actions: [
+      { type: 'Action.OpenUrl', title: notificationText(locale, 'open'), url: `${appUrl()}/changes/${payload.changeId}` },
+    ],
+  }
 }

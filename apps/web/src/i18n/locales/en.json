@@ -2013,7 +2013,8 @@
         "review_completed": "review completed",
         "validation_completed": "validation completed",
         "task_reopened": "task reopened",
-        "transition": "moved to {{step}}"
+        "transition": "moved to {{step}}",
+        "transitionNoStep": "step change"
       }
     },
     "planModal": {
@@ -2859,7 +2860,8 @@
     "deleteCommentConfirm": "Delete this comment? It stays in the ticket as «deleted», and its text is kept in the Audit Log.",
     "editComment": "Edit comment",
     "commentDeletedBy": "Comment deleted by {{name}} · {{date}}",
-    "commentEditedBy": "Edited by {{name}} · {{date}}"
+    "commentEditedBy": "Edited by {{name}} · {{date}}",
+    "removeAssignment": "Remove the assignment"
   },
   "search": {
     "placeholder": "Search everywhere... (Ctrl+K)",
@@ -2995,6 +2997,9 @@
       },
       "closed": {
         "title": "Problem closed"
+      },
+      "assigned": {
+        "title": "Problem assigned"
       }
     },
     "sla": {
@@ -3561,7 +3566,8 @@
       "changeUsesChangeTransition": "A change moves through its own transitions (with the approval checks), not this generic one.",
       "unknownActionType": "Action type «{{type}}» does not exist. Available: {{allowed}}.",
       "updateFieldNeedsField": "The «update field» action needs the field to write.",
-      "createChangeNeedsType": "{{field}}: an action that creates a change must say its change type."
+      "createChangeNeedsType": "{{field}}: an action that creates a change must say its change type.",
+      "badStepChannels": "{{field}}: the channels {{channels}} cannot be delivered when a step is entered. Allowed: {{allowed}}."
     },
     "channel": {
       "platform": "Platform \"{{platform}}\" is not supported. Allowed: {{allowed}}."
@@ -6257,7 +6263,8 @@
     "planCompleted_one": "{{ci}}: plan completed ({{count}} step)",
     "planCompleted_other": "{{ci}}: plan completed ({{count}} steps)",
     "userUnassigned": "{{role}} · {{ci}}: assignment removed",
-    "planUserUnassigned": "Planning · {{ci}}: assignment removed"
+    "planUserUnassigned": "Planning · {{ci}}: assignment removed",
+    "stepEntered": "Moved to {{step}}{{notes}}"
   },
   "serviceTargets": {
     "timeCounting": "Time counts",

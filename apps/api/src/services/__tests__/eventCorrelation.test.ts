@@ -687,7 +687,10 @@ describe('raggruppamento per CI', () => {
       { userId: 'monitoring', notes: 'Allarme tornato: DiskFull (db-01)', entityData: {} },
     )
     expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-1', MON, 'Workflow: in_progress — Allarme tornato: DiskFull (db-01)')
-    expect(incidentService.publishIncidentTransition).toHaveBeenCalledWith('inc-1', 'in_progress', MON)
+    // Revisione totale · C-1: l'evento di dominio dell'ingresso nel passo lo
+    // pubblica l'hook `onStepEntered` del motore (che vede TUTTI i cammini),
+    // non più questo servizio: pubblicarlo anche qui lo darebbe due volte.
+    expect(incidentService.publishIncidentTransition).not.toHaveBeenCalled()
     expect(callMatching(Q.attach)!.params['incidentId']).toBe('inc-1')
     expect(callMatching(Q.setCorr)!.params['correlation']).toBe('reopened')
     expect(incidentService.createIncident).not.toHaveBeenCalled()
@@ -955,7 +958,8 @@ describe('chiusura automatica', () => {
     expect(workflowEngine.transition).toHaveBeenNthCalledWith(2, session,
       expect.objectContaining({ toStepName: 'in_progress', triggerType: 'manual', notes: 'Chiusura automatica dal monitoraggio: passaggio a In Lavorazione' }),
       expect.objectContaining({ userId: 'monitoring' }))
-    expect(vi.mocked(incidentService.publishIncidentTransition).mock.calls).toEqual([['inc-1', 'assigned', MON], ['inc-1', 'in_progress', MON]])
+    // C-1: gli eventi dei due passi li pubblica l'hook del motore.
+    expect(incidentService.publishIncidentTransition).not.toHaveBeenCalled()
     expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', MON, 'Allarme di monitoraggio rientrato: DiskFull')
     expect(publishEvent).toHaveBeenCalledWith('event.correlated', 't1', 'monitoring', expect.objectContaining({ outcome: 'auto_resolved', incident_id: 'inc-1' }), NOW)
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'monitoring' }), 'event.auto_resolved', 'Event', 'ev-1', expect.objectContaining({ incidentStep: 'new', path: ['assigned', 'in_progress'] }))
@@ -1003,7 +1007,7 @@ describe('chiusura automatica', () => {
     await expect(runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).rejects.toThrow(/Incident inc-1: auto-resolve transition to "in_progress" failed: Concurrent transition/)
     expect(workflowEngine.transition).toHaveBeenCalledTimes(2)
     // il primo passo (assigned) è persistito e ha i suoi side effect; il secondo no; nessun commento (arriva solo con la risoluzione)
-    expect(vi.mocked(incidentService.publishIncidentTransition).mock.calls).toEqual([['inc-1', 'assigned', MON]])
+    expect(incidentService.publishIncidentTransition).not.toHaveBeenCalled()   // C-1: lo fa l'hook del motore
     expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
     expect(incidentService.resolveIncident).not.toHaveBeenCalled()
     expect(publishEvent).not.toHaveBeenCalled()

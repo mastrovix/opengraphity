@@ -402,7 +402,8 @@ export function buildBaseSDL(): string {
     addCIToProblem(problemId: ID!, ciId: ID!): Problem!
     removeCIFromProblem(problemId: ID!, ciId: ID!): Problem!
     assignProblemToTeam(problemId: ID!, teamId: ID!): Problem!
-    assignProblemToUser(problemId: ID!, userId: ID!): Problem!
+    """userId null = togli l'assegnazione, come per l'incident (revisione totale · B-18)."""
+    assignProblemToUser(problemId: ID!, userId: ID): Problem!
     executeProblemTransition(problemId: ID!, toStep: String!, notes: String): Problem!
     addProblemComment(problemId: ID!, text: String!, isInternal: Boolean): ProblemComment!
 

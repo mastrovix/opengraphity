@@ -98,6 +98,19 @@ export class AutomationConsumer extends BaseConsumer<unknown> {
       return
     }
 
+    // PRIMA l'accodamento dei timer, POI le azioni (revisione totale · C-36).
+    // I job hanno un `jobId` deterministico, quindi accodarli due volte non
+    // ne crea due; le azioni delle regole invece NON sono idempotenti
+    // (commento, webhook, notifica, assegnazione). Con l'ordine inverso un
+    // errore dell'accodamento — Redis in affanno — faceva ritentare l'evento
+    // e rieseguire le azioni: due commenti identici e due webhook.
+    if (work.scheduleTimers) await scheduleTimerTriggers(event.tenant_id, work.entityType, work.entityId)
+    // Le regole di notifica «Escalation» partono dalla nascita dell'incident (NT-8).
+    if (work.scheduleTimers && work.entityType === 'incident') {
+      const { scheduleNotificationEscalations } = await import('../lib/notificationEscalation.js')
+      await scheduleNotificationEscalations(event.tenant_id, work.entityId)
+    }
+
     for (const eventType of events) {
       if (eventType === 'on_transition' || (eventType === 'on_create') || eventType === 'on_update') {
         // V-19: «è cambiato» legge i campi cambiati, che esistono solo per l'aggiornamento.
@@ -110,12 +123,6 @@ export class AutomationConsumer extends BaseConsumer<unknown> {
           eventType === 'on_field_change' || eventType === 'on_update' ? { changedFields: work.changedFields ?? [] } : undefined)
         for (const t of triggers) if (t.error) log.error({ tenantId: event.tenant_id, trigger: t.triggerName, entityId: work.entityId, error: t.error }, 'trigger failed')
       }
-    }
-    if (work.scheduleTimers) await scheduleTimerTriggers(event.tenant_id, work.entityType, work.entityId)
-    // Le regole di notifica «Escalation» partono dalla nascita dell'incident (NT-8).
-    if (work.scheduleTimers && work.entityType === 'incident') {
-      const { scheduleNotificationEscalations } = await import('../lib/notificationEscalation.js')
-      await scheduleNotificationEscalations(event.tenant_id, work.entityId)
     }
   }
 }

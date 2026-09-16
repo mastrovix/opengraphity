@@ -1,5 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// Revisione totale · E-3: la consegna è deduplicata per canale su Redis. Nei
+// test gli eventi riusano lo stesso id, quindi la deduplica va azzerata a
+// ogni caso: il contratto della deduplica è pinnato in deliveryDedup.test.ts.
+vi.mock('../deliveryDedup.js', () => ({
+  deliverOnce: async (_id: string | undefined, _ch: string, deliver: () => Promise<void> | void) => { await deliver(); return true },
+  alreadyDelivered: async () => false,
+  markDelivered: async () => {},
+  resetDeliveryDedup: () => {},
+}))
+
 // ── Mocks: no Neo4j, no Redis, no outbound HTTP ──────────────────────────────
 
 const runQueries: Array<{ cypher: string; params: Record<string, unknown> }> = []

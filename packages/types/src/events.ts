@@ -243,6 +243,9 @@ export interface SLAWarningPayload {
   /** Numero e titolo del ticket: il corpo della notifica dice di quale si tratta. */
   number: string
   title: string
+  /** Gravità e stato veri del ticket (E-8); facoltativi per gli eventi già in coda. */
+  severity?: string | null
+  status?: string | null
 }
 
 export interface SLABreachedPayload {
@@ -251,6 +254,14 @@ export interface SLABreachedPayload {
   number: string
   title: string
   breached_at: string
+  /**
+   * La gravità e lo stato VERI del ticket (revisione totale · E-8): la card
+   * Slack/Teams della violazione li scriveva cablati — «Severity: HIGH ·
+   * Status: open» per qualunque incident, anche un critical in escalation.
+   * Facoltativi: gli eventi già in coda prima del rimedio non li hanno.
+   */
+  severity?: string | null
+  status?: string | null
 }
 
 // --- Ingresso in un passo di workflow (ondata 4, D-22) ----------------------
@@ -279,13 +290,30 @@ export interface SLABreachedPayload {
  */
 export const STEP_ENTERED_SUFFIX = 'step_entered'
 
+/**
+ * L'evento generico del motore di workflow: un ingresso in un passo, con i
+ * fatti del passo e SENZA il ticket. Non è l'evento di dominio dell'entità
+ * (quello è `<entità>.step_entered`): le automazioni `on_transition` lo
+ * consumano, le regole di notifica no.
+ */
+
 /** Il tipo stabile per l'entità: `incident` → `incident.step_entered`. */
 export function stepEnteredEventType(entityType: string): string {
   return `${entityType}.${STEP_ENTERED_SUFFIX}`
 }
 
-/** Vero se il tipo è un ingresso-in-un-passo stabile (qualunque entità). */
+/**
+ * Vero se il tipo è un ingresso-in-un-passo stabile DI UN'ENTITÀ (qualunque).
+ *
+ * `workflow.step_entered` — l'evento generico del motore, che porta il passo e
+ * non il ticket — finisce con lo stesso suffisso ma NON è di un'entità: il
+ * dispatcher delle notifiche lo trattava come entità «workflow», cercava
+ * regole per `workflow.<passo>`, non le trovava e scriveva un avviso a OGNI
+ * transizione di qualunque ticket (revisione totale · C-3): rumore nei log e
+ * un messaggio che diceva il falso.
+ */
 export function isStepEnteredEventType(eventType: string): boolean {
+  if (eventType === WORKFLOW_STEP_ENTERED_EVENT) return false
   return eventType.endsWith(`.${STEP_ENTERED_SUFFIX}`)
 }
 

@@ -66,15 +66,22 @@ async function loadDueTemplates(now: Date): Promise<TemplateRow[]> {
         // tenant-ok: passata di manutenzione cross-tenant, sola lettura.
         MATCH (r:ReportTemplate)
         WHERE r.schedule_enabled = true AND r.schedule_cron IS NOT NULL
-        RETURN properties(r) AS props
+        // Il fuso del cliente viaggia con il template: il cron è orario di
+        // parete del cliente (revisione totale · C-6 — senza il fuso veniva
+        // valutato in quello del PROCESSO, UTC nel container, e un cron alle
+        // 8 partiva alle 10:00 italiane, 11:00 con l'ora legale).
+        OPTIONAL MATCH (t:Tenant {id: r.tenant_id})
+        RETURN properties(r) AS props, t.timezone AS timezone
       `),
     )
     const due: TemplateRow[] = []
     for (const rec of result.records) {
       const p = rec.get('props') as Props
+      const tzRaw = rec.get('timezone') as unknown
+      const tz = typeof tzRaw === 'string' && tzRaw.trim() !== '' ? tzRaw : undefined
       let dueAt: Date | null
       try {
-        dueAt = previousDueAt(p['schedule_cron'] as string, now)
+        dueAt = previousDueAt(p['schedule_cron'] as string, now, tz)
       } catch (err) {
         // One template's corrupt cron must not kill scheduling for every
         // other template — but it must be LOUD, not a silent disable.

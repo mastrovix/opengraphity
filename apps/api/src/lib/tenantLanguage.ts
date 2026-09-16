@@ -29,6 +29,7 @@
  */
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { NotFoundError, ValidationError } from './errors.js'
+import { registerMetamodelCacheClearer, invalidateSchema } from './schemaInvalidator.js'
 import { LINGUE, type Lingua } from './enumValueLabels.js'
 import { logger } from './logger.js'
 
@@ -50,6 +51,14 @@ export function invalidateTenantLanguageCache(tenantId?: string): void {
   if (tenantId === undefined) cache.clear()
   else cache.delete(tenantId)
 }
+
+/**
+ * La lingua del cliente passa dal canale fra processi (revisione totale ·
+ * A-15): l'invalidazione era locale, e un allarme arrivato subito dopo il
+ * cambio generava incident e notifiche ancora nella lingua vecchia nel
+ * processo `events-worker`.
+ */
+registerMetamodelCacheClearer('tenant-language', (tenantId: string) => { cache.delete(tenantId) })
 
 /**
  * La lingua di chi guarda, come la manda il client (`language`). Vuota o assente
@@ -136,7 +145,8 @@ export async function setTenantDefaultLanguage(tenantId: string, lingua: string)
   } finally {
     await session.close()
   }
-  invalidateTenantLanguageCache(tenantId)
+  // Il canale avvisa TUTTI i processi (A-15), non solo questo.
+  invalidateSchema(tenantId)
   // Le notifiche che escono (e-mail, Slack, Teams) tengono la loro copia: anche
   // lei. Import differito: questo modulo è letto ovunque, il dispatcher no.
   const { invalidateNotificationLocale } = await import('@opengraphity/notifications')

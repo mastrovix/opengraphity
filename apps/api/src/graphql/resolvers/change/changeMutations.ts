@@ -432,8 +432,17 @@ export async function executeChangeTransition(
     }
 
     await afterEnterStep(session, args.changeId, ctx.tenantId, args.toStep)
+    // Azione STABILE, passo nei dettagli (D-22, applicato a incident e problem
+    // e non alle change: `change_transition_<passo>` metteva il nome del passo
+    // nell'identità dell'azione, e una rinomina spezzava in due la storia dei
+    // filtri della timeline — revisione totale · B-19). Le voci storiche NON
+    // si riscrivono: il web sa ancora leggere il vecchio prefisso.
     await writeAudit(session, args.changeId, ctx.tenantId,
-      `change_transition_${args.toStep}`, ctx.userId, args.notes ?? null)
+      'change_step_entered', ctx.userId,
+      args.notes?.trim() ? `${args.toStep}: ${args.notes.trim()}` : args.toStep,
+      // `notes` porta già i due punti quando c'è: è punteggiatura, non lingua,
+      // e la frase resta una sola chiave per entrambi i casi.
+      { key: 'stepEntered', params: { step: args.toStep, notes: args.notes?.trim() ? `: ${args.notes.trim()}` : '' } })
 
     await evaluateAutoTransitions(session, args.changeId, ctx, afterEnterStep)
 

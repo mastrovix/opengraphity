@@ -9,12 +9,12 @@ import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
 import { ValidationError } from '../lib/errors.js'
 import { assertDomainValue } from '../lib/domainMatrix.js'
+import { publishStepEnteredForEntity } from '../lib/stepEnteredPublisher.js'
 import { validateStringLength } from '../lib/validation.js'
 import { logger } from '../lib/logger.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName } from '../lib/workflowHelpers.js'
-import { loadStepFacts } from '../lib/stepEvent.js'
-import { stepEnteredEventType, legacyStepEventType, type ProblemCreatedPayload } from '@opengraphity/types'
+import { type ProblemCreatedPayload } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
 
@@ -28,37 +28,15 @@ export type ProblemEventPayload = ProblemCreatedPayload
 
 type Props = Record<string, unknown>
 
-async function loadProblemPayload(
-  id: string,
-  tenantId: string,
-): Promise<ProblemEventPayload | null> {
-  return withSession(async (session) => {
-    const result = await session.executeRead((tx) => tx.run(`
-      MATCH (p:Problem {id: $id, tenant_id: $tenantId})
-      OPTIONAL MATCH (p)-[:ASSIGNED_TO]->(u:User)
-      OPTIONAL MATCH (p)-[:ASSIGNED_TO_TEAM]->(t:Team)
-      RETURN p.id AS id, p.title AS title, p.priority AS priority, p.status AS status,
-             u.name AS assignedTo, t.name AS teamName
-    `, { id, tenantId }))
-    if (!result.records.length) return null
-    const r = result.records[0]
-    return {
-      id:         r.get('id')                                                    as string,
-      title:      r.get('title')                                                 as string,
-      priority:   (r.get('priority') ?? 'medium')                               as string,
-      status:     r.get('status')                                                as string,
-      assignedTo: ((r.get('assignedTo') ?? r.get('teamName') ?? '—')            as string),
-    } satisfies ProblemEventPayload
-  })
-}
+/**
+ * Il payload del problem per gli eventi di dominio è costruito da
+ * `lib/stepEnteredPublisher.ts` (revisione totale · C-1), che serve tutte le
+ * entità e tutti i cammini. Qui restava una copia usata solo dalla
+ * pubblicazione della transizione, che ora passa da lì.
+ */
 
 // buildEvent removed — using shared publishEvent
 
-
-function requireProblemPayload<T>(payload: T | null, id: string): T {
-  if (!payload) throw new Error(`Problem ${id} not found while building event payload`)
-  return payload
-}
 
 // ── Public service operations ─────────────────────────────────────────────────
 
@@ -207,12 +185,15 @@ export async function createProblem(
  * `problem.<stepName>`, a cui restano agganciate le regole di fabbrica
  * (`problem.under_investigation`, `problem.deferred`, …) e quelle dei tenant.
  */
+/**
+ * Come per l'incident: gli eventi di dominio della transizione nascono
+ * dall'hook `onStepEntered` del motore, che vede tutti i cammini (revisione
+ * totale · C-1). Qui resta il solo punto d'ingresso per chi pubblica senza
+ * passare dal motore.
+ */
 export async function publishProblemTransition(id: string, stepName: string, ctx: ServiceCtx) {
-  // Prima il payload (un problem inesistente è l'errore da dire), poi i fatti
-  // del passo: l'ordine è quello dei messaggi, e non va invertito.
-  const payload = requireProblemPayload(await loadProblemPayload(id, ctx.tenantId), id)
-  const facts   = await withSession((s) => loadStepFacts(s, ctx.tenantId, 'problem', stepName))
-  const body    = { ...payload, ...facts }
-  await publishEvent(stepEnteredEventType('problem'), ctx.tenantId, ctx.userId, body)
-  await publishEvent(legacyStepEventType('problem', stepName), ctx.tenantId, ctx.userId, body)
+  await publishStepEnteredForEntity({
+    tenantId: ctx.tenantId, actorId: ctx.userId,
+    entityType: 'problem', entityId: id, stepName, enteredAt: new Date().toISOString(),
+  })
 }

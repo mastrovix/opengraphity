@@ -44,6 +44,10 @@ import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
 // Canale del metamodello (A-16): questo processo ha la SUA copia delle cache
 // derivate dal metamodello e prima non veniva mai avvisato dei cambiamenti.
 import { startMetamodelBus, stopMetamodelBus } from './lib/metamodelBus.js'
+// Import a effetto: registra sul canale il clearer delle cache del
+// dispatcher delle notifiche (regole, lingua e fuso) — revisione totale ·
+// E-20/A-15: erano invalidate solo nel processo che serviva la mutation.
+import './lib/notificationRuleCache.js'
 import { logger } from './lib/logger.js'
 import { assertMigrationsAppliedAtBoot } from './lib/migrationState.js'
 import { startInAppBus, stopInAppBus } from './lib/inAppBus.js'

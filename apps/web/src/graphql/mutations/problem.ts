@@ -64,8 +64,9 @@ export const ASSIGN_PROBLEM_TO_TEAM = gql`
   }
 `
 
+/** `userId: null` toglie l'assegnazione (revisione totale · B-18). */
 export const ASSIGN_PROBLEM_TO_USER = gql`
-  mutation AssignProblemToUser($problemId: ID!, $userId: ID!) {
+  mutation AssignProblemToUser($problemId: ID!, $userId: ID) {
     assignProblemToUser(problemId: $problemId, userId: $userId) {
       id assignee { id name email }
     }

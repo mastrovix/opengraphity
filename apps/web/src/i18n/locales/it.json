@@ -2013,7 +2013,8 @@
         "review_completed": "revisione completata",
         "validation_completed": "validazione completata",
         "task_reopened": "task riaperto",
-        "transition": "passata a {{step}}"
+        "transition": "passata a {{step}}",
+        "transitionNoStep": "cambio di fase"
       }
     },
     "planModal": {
@@ -2859,7 +2860,8 @@
     "deleteCommentConfirm": "Cancellare questo commento? Resta nel ticket come «cancellato», e il testo resta nell'Audit Log.",
     "editComment": "Modifica il commento",
     "commentDeletedBy": "Commento cancellato da {{name}} · {{date}}",
-    "commentEditedBy": "Modificato da {{name}} · {{date}}"
+    "commentEditedBy": "Modificato da {{name}} · {{date}}",
+    "removeAssignment": "Togli l'assegnazione"
   },
   "search": {
     "placeholder": "Cerca ovunque... (Ctrl+K)",
@@ -2995,6 +2997,9 @@
       },
       "closed": {
         "title": "Problem chiuso"
+      },
+      "assigned": {
+        "title": "Problem assegnato"
       }
     },
     "sla": {
@@ -3561,7 +3566,8 @@
       "changeUsesChangeTransition": "Una change si muove con le sue transizioni (con i controlli di approvazione), non con questa generica.",
       "unknownActionType": "Il tipo di azione «{{type}}» non esiste. Disponibili: {{allowed}}.",
       "updateFieldNeedsField": "L'azione «aggiorna campo» richiede il campo da scrivere.",
-      "createChangeNeedsType": "{{field}}: un’azione che crea una change deve indicarne il tipo."
+      "createChangeNeedsType": "{{field}}: un’azione che crea una change deve indicarne il tipo.",
+      "badStepChannels": "{{field}}: i canali {{channels}} non sono consegnabili all'ingresso in un passo. Ammessi: {{allowed}}."
     },
     "channel": {
       "platform": "La piattaforma «{{platform}}» non è supportata. Ammesse: {{allowed}}."
@@ -6257,7 +6263,8 @@
     "planCompleted_one": "{{ci}}: piano completato ({{count}} passo)",
     "planCompleted_other": "{{ci}}: piano completato ({{count}} passi)",
     "userUnassigned": "{{role}} · {{ci}}: assegnazione rimossa",
-    "planUserUnassigned": "Planning · {{ci}}: assegnazione rimossa"
+    "planUserUnassigned": "Planning · {{ci}}: assegnazione rimossa",
+    "stepEntered": "Passata a {{step}}{{notes}}"
   },
   "serviceTargets": {
     "timeCounting": "Il tempo conta",

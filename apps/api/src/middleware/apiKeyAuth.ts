@@ -14,6 +14,13 @@ export interface ApiKeyContext {
   tenantId:    string
   permissions: string[]
   rateLimit:   number
+  /**
+   * Il nome dato alla chiave in Integrazioni: è l'AUTORE di ciò che
+   * l'integrazione scrive (revisione totale · D-12 — un commento via REST
+   * appariva senza autore, perché `author_id` era l'id della chiave e
+   * `lib/commentAuthor.ts` non lo risolve).
+   */
+  name:        string
 }
 
 declare global {
@@ -72,6 +79,7 @@ export async function apiKeyAuth(req: Request, res: Response, next: NextFunction
       tenantId:    p['tenant_id'] as string,
       permissions,
       rateLimit,
+      name:        typeof p['name'] === 'string' && p['name'] ? p['name'] : 'API key',
     }
 
     // 2. Fire-and-forget write: update usage stats (non-blocking)

@@ -14,7 +14,10 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 vi.mock('../publishEvent.js', () => ({ publishEvent: vi.fn() }))
 vi.mock('../systemText.js', () => ({ systemText: vi.fn(async (_t: string, _k: string, p: Record<string, unknown>) => `${String(p['title'])} after ${String(p['minutes'])}`) }))
-vi.mock('../workflowHelpers.js', () => ({ isEntityOpen: vi.fn(async () => open) }))
+// Revisione totale · C-26: «non risolto» si misura sulla CLASSE del passo
+// (resolved/closed), non sul flag «terminale» — un cliente che toglie
+// «terminale» al suo Risolto riceveva l'avviso su incident risolti da ore.
+vi.mock('../workflowHelpers.js', () => ({ isEntityConcluded: vi.fn(async () => !open) }))
 const scheduleEscalationCheck = vi.fn()
 vi.mock('../../jobs/workflowJobWorker.js', () => ({ scheduleEscalationCheck: (...a: unknown[]) => scheduleEscalationCheck(...a) }))
 

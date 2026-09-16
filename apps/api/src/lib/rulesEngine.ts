@@ -5,6 +5,7 @@
 import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import { createAutomationCache, evaluateRules } from './automationEngine.js'
+import { invalidateSchema } from './schemaInvalidator.js'
 
 type RuleEventType = 'on_create' | 'on_update' | 'on_transition'
 
@@ -95,6 +96,7 @@ export async function evaluateBusinessRules(
 }
 
 /** Invalidate the rules cache for a tenant. */
+/** Vedi `invalidateTriggerCache`: l'invalidazione passa dal canale fra processi (C-23). */
 export function invalidateRulesCache(tenantId: string): void {
-  cache.invalidate(tenantId)
+  invalidateSchema(tenantId)
 }

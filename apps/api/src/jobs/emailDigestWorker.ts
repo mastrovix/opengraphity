@@ -112,14 +112,28 @@ export async function processDigestTick(now: Date = new Date()): Promise<{ sent:
       if (!tenant.digestTime) throw new Error(`digest.daily rule of tenant ${tenant.id} has no digest_time: set the time on the rule`)
       if (!digestDue(local, tenant.digestTime)) { skipped.push(tenant.id); continue }
 
-      const claimed = await getSharedRedis().set(digestMarkerKey(tenant.id, date), now.toISOString(), 'EX', MARKER_TTL_SECONDS, 'NX')
+      const marker = digestMarkerKey(tenant.id, date)
+      const claimed = await getSharedRedis().set(marker, now.toISOString(), 'EX', MARKER_TTL_SECONDS, 'NX')
       if (claimed !== 'OK') {
         log.info({ tenantId: tenant.id, date }, 'Daily digest already sent for this date — skipped (idempotency marker)')
         skipped.push(tenant.id)
         continue
       }
 
-      await sendDigestForTenant(tenant)
+      // Il marcatore serve a non mandarlo DUE volte, non a cancellare il
+      // tentativo fallito: se l'invio non riesce (SMTP giù, Neo4j in affanno)
+      // il marcatore va rimosso, altrimenti il digest di quel giorno è perso
+      // e i tick successivi lo saltano come «già inviato» (revisione totale ·
+      // C-9). Il prossimo tick riprova.
+      try {
+        await sendDigestForTenant(tenant)
+      } catch (err) {
+        await getSharedRedis().del(marker).catch((delErr: unknown) => {
+          log.error({ tenantId: tenant.id, date, err: delErr },
+            'Digest failed AND the idempotency marker could not be removed: no digest for this tenant today')
+        })
+        throw err
+      }
       sent.push(tenant.id)
     } catch (err) {
       failures++
@@ -156,7 +170,9 @@ async function sendDigestForTenant(tenant: TenantRow): Promise<void> {
       WITH openInc, count(r) AS resolvedToday
       OPTIONAL MATCH (c:Change {tenant_id: $t})-[:HAS_WORKFLOW]->(wi:WorkflowInstance) WHERE wi.current_step IN $changeOpen AND coalesce(c.deleted, false) = false
       WITH openInc, resolvedToday, count(c) AS ongoingChanges
-      OPTIONAL MATCH (s:SLAStatus {tenant_id: $t}) WHERE s.breached = true AND s.started_at >= $since
+      // Le violazioni AVVENUTE nelle ultime 24 ore (C-8): prima si contavano
+      // gli SLA *iniziati* nelle 24 ore che risultano violati.
+      OPTIONAL MATCH (s:SLAStatus {tenant_id: $t}) WHERE s.breached = true AND s.breached_at >= $since
       RETURN openInc, resolvedToday, ongoingChanges, count(s) AS slaBreaches
     `, { t: tenantId, since: yesterday, incidentOpen, changeOpen, resolvedStep })
 

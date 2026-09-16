@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { Queue, Worker, Job } from 'bullmq'
 import { publish, getRedisConnection } from '@opengraphity/events'
 import type { DomainEvent, SLAWarningPayload, SLABreachedPayload } from '@opengraphity/types'
-import { markBreached, getSLAStatus, ticketReference } from './status.js'
+import { markBreached, markResponseBreachNotified, getSLAStatus, ticketReference } from './status.js'
 import type { SLAStatus } from './status.js'
 
 // Redis options come from the shared parser in @opengraphity/events (D-14):
@@ -91,15 +91,21 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
 
   switch (job.name) {
     case 'sla.warning': {
-      if (!(await statusIfStillRelevant(job, 'resolve'))) break
+      const status = await statusIfStillRelevant(job, 'resolve')
+      if (!status) break
       const ref = await ticketReference(tenantId, entityId)
       if (!ref) { console.log(`[sla:scheduler] sla.warning for ${entityType} ${entityId} skipped: ticket gone`); break }
       const minutesRemaining = Math.round(
         (new Date(resolveDeadline).getTime() - Date.now()) / 60_000,
       )
+      // Id DETERMINISTICO per questo SLAStatus e questo preavviso (revisione
+      // totale · E-7): con `randomUUID()` un fallimento del fan-out (una sola
+      // `add` su cinque) faceva ritentare il job, che ripubblicava un evento
+      // NUOVO — e i consumatori, che deduplicano per id, mandavano due volte
+      // «SLA in scadenza».
       const event: DomainEvent<SLAWarningPayload> = {
         ...baseEvent,
-        id:      randomUUID(),
+        id:      `warning-${status.id}`,
         type:    'sla.warning',
         payload: { entity_id: entityId, entity_type: entityType, minutes_remaining: minutesRemaining, target: 'resolve', ...ref },
       }
@@ -142,6 +148,9 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
         payload: { entity_id: entityId, entity_type: entityType, minutes_remaining: 0, target: 'response', ...ref },
       }
       await publish(event)
+      // L'avviso è uscito: alla ripresa di una pausa non se ne manda un
+      // secondo identico (revisione totale · E-12).
+      await markResponseBreachNotified(tenantId, entityId, event.timestamp)
       console.log(`[sla:scheduler] Response breach fired for ${entityType} ${entityId}`)
       break
     }

@@ -28,11 +28,17 @@ export function isNotificationChannel(value: string): value is NotificationChann
   return (NOTIFICATION_CHANNELS as readonly string[]).includes(value)
 }
 
+/**
+ * Il tipo dell'evento con cui il motore chiede la notifica di un PASSO
+ * (`notify_rule` nelle azioni del passo). Nota i punti: non è
+ * `workflow.step_entered`, che è l'evento generico del motore.
+ */
+export const WORKFLOW_STEP_NOTIFY_EVENT = 'workflow.step.entered'
+
 /** Canali instradabili per qualunque tipo di evento che non ha una riga dedicata. */
 export const DEFAULT_ROUTABLE_CHANNELS: readonly NotificationChannel[] = ['in_app', 'email']
 
 const ITSM_FULL:  readonly NotificationChannel[] = ['in_app', 'email', 'slack', 'teams']
-const SLACK_ONLY: readonly NotificationChannel[] = ['in_app', 'email', 'slack']
 
 /**
  * Righe dedicate: SOLO i tipi per cui esiste un formatter Slack e/o Teams
@@ -47,11 +53,21 @@ export const ROUTABLE_CHANNELS_BY_EVENT: Readonly<Record<string, readonly Notifi
   // SLA violato: formatter incident (slack/teams) o carta Teams generica
   'sla.breached':        ITSM_FULL,
   // Change: solo Slack (formatSlackChange / formatSlackChangeTask)
-  'change.approved':     SLACK_ONLY,
-  'change.task_assigned': SLACK_ONLY,
+  // Change e attività di change: Slack (formatSlackChange/ChangeTask) e ora
+  // anche Teams (formatTeamsChange/ChangeTask — revisione totale · E-18: la
+  // pagina Canali offriva questi eventi a un canale Teams che non riceveva
+  // mai niente).
+  'change.approved':     ITSM_FULL,
+  'change.task_assigned': ITSM_FULL,
   // Il digest giornaliero è un'e-mail riassuntiva: nessun altro canale lo
   // consegna (NT-8, jobs/emailDigestWorker.ts in apps/api).
   'digest.daily':        ['email'],
+  // Le notifiche dei PASSI del workflow (`notify_rule` sul passo): il
+  // dispatcher consegna in-app ed e-mail e rifiuta gli altri. La riga è
+  // esplicita perché la validazione al salvataggio la legge (revisione totale
+  // · G-8): la scheda «Notifiche» del disegnatore offriva anche Slack e
+  // Teams, il passo si salvava e ogni ingresso generava un job fallito.
+  [WORKFLOW_STEP_NOTIFY_EVENT]: ['in_app', 'email'],
 })
 
 /** Canali che il dispatcher sa instradare per `eventType`. */

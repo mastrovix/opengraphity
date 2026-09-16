@@ -6,6 +6,7 @@ import type { Job } from 'bullmq'
 const publish     = vi.fn(async () => {})
 const getSLAStatus = vi.fn()
 const markBreached = vi.fn(async () => {})
+const markResponseBreachNotified = vi.fn(async () => {})
 const callOrder: string[] = []
 
 vi.mock('@opengraphity/events', () => ({
@@ -15,6 +16,9 @@ vi.mock('../status.js', () => ({
   ticketReference: vi.fn(async () => ({ number: 'INC00000012', title: 'Rete giù' })),
   getSLAStatus: (...args: unknown[]) => getSLAStatus(...(args as [])),
   markBreached: (...args: unknown[]) => { callOrder.push('markBreached'); return markBreached(...(args as [])) },
+  // E-12: l'avviso della presa in carico viene registrato, così la ripresa di
+  // una pausa non ne manda un secondo.
+  markResponseBreachNotified: (...args: unknown[]) => { callOrder.push('markResponseBreachNotified'); return markResponseBreachNotified(...(args as [])) },
 }))
 vi.mock('../olaBreach.js', () => ({ isEntityResolved: vi.fn(async () => false) }))
 

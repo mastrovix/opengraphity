@@ -12,6 +12,8 @@ import { sseManager } from '@opengraphity/notifications'
 import { GraphQLError } from 'graphql'
 import { COMMENTABLE_LABELS } from '../../lib/ticketComments.js'
 import { hasPermission, requirePermission } from '../../lib/permissions.js'
+import { roleHasPermission } from '../../lib/roles.js'
+import { TICKET_WORKER_PERMISSION } from '@opengraphity/types'
 
 type Props = Record<string, unknown>
 
@@ -100,16 +102,31 @@ const WATCHER_KEYS = {
   internal_chat: { text: 'watcherInternalChat', web: 'inApp.watcher.internalChat' },
 } as const
 
+/**
+ * `internal` = il contenuto è visibile SOLO a chi lavora i ticket (una nota
+ * interna, la chat interna). Chi apre un ticket dal portale diventa
+ * osservatore alla creazione, e riceveva l'avviso — in-app e per e-mail — di
+ * una nota che non può leggere, con il testo nel corpo dell'e-mail (revisione
+ * totale · M-16). Gli osservatori senza il permesso di lavorare i ticket non
+ * vengono avvisati del contenuto interno.
+ */
 async function notifyWatchers(
   tenantId: string, entityType: string, entityId: string,
-  event: WatcherEvent, excludeUserId?: string,
+  event: WatcherEvent, excludeUserId?: string, internal = false,
 ): Promise<void> {
   const watchers = await withSession(async (s) => {
-    const rows = await runQuery<{ userId: string }>(s, `
+    const rows = await runQuery<{ userId: string; role: string | null }>(s, `
       MATCH (u:User)-[:WATCHES]->(e {id: $entityId, tenant_id: $tenantId})
-      RETURN u.id AS userId
+      RETURN u.id AS userId, u.role AS role
     `, { entityId, tenantId })
-    return rows.map(r => r.userId)
+    if (!internal) return rows.map(r => r.userId)
+    const allowed: string[] = []
+    for (const r of rows) {
+      const role = r.role ?? ''
+      if (role && await roleHasPermission(tenantId, role, TICKET_WORKER_PERMISSION)) allowed.push(r.userId)
+      else logger.debug({ entityId, userId: r.userId, role }, '[collaboration] osservatore senza accesso al contenuto interno: non avvisato')
+    }
+    return allowed
   })
   const { loadNotificationLocale, notificationText } = await import('@opengraphity/notifications')
   const locale = await loadNotificationLocale(tenantId)
@@ -316,7 +333,7 @@ async function sendInternalMessage(
 
   // Notify watchers
   const title = await getEntityTitle(ctx.tenantId, args.entityId)
-  void notifyWatchers(ctx.tenantId, args.entityType, args.entityId, { kind: 'internal_chat', author: ctx.userEmail }, ctx.userId)
+  void notifyWatchers(ctx.tenantId, args.entityType, args.entityId, { kind: 'internal_chat', author: ctx.userEmail }, ctx.userId, true)
 
   // Notify mentions
   if (mentions.length > 0) {

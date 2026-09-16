@@ -442,31 +442,53 @@ async function assignProblemToTeam(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
-    await setTicketTeam(session, 'Problem', args.problemId, args.teamId, ctx.tenantId)
+    const { teamName } = await setTicketTeam(session, 'Problem', args.problemId, args.teamId, ctx.tenantId)
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
     `, { id: args.problemId, tenantId: ctx.tenantId })
     if (!row) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
     // SL-10: la policy SLA può dipendere dal gruppo appena assegnato.
     await publishEvent(TICKET_TEAM_ASSIGNED_EVENT, ctx.tenantId, ctx.userId, { entity_type: 'problem', entity_id: args.problemId, team_id: args.teamId })
+    // B-18: anche l'assegnazione a un gruppo è un'assegnazione, e va detta.
+    await publishEvent('problem.assigned', ctx.tenantId, ctx.userId, {
+      id:         args.problemId,
+      title:      (row.props['title'] ?? args.problemId) as string,
+      priority:   (row.props['priority'] ?? 'medium') as string,
+      status:     (row.props['status'] ?? '') as string,
+      assignedTo: teamName,
+    })
     return mapProblem(row.props)
   }, true)
 }
 
+/**
+ * `userId` null = togli l'assegnazione, come per l'incident (revisione totale
+ * · B-18: il problem non si poteva disassegnare). L'assegnazione pubblica
+ * `problem.assigned`: prima non esisteva nessun evento su cui agganciare una
+ * regola «problem assegnato → notifica all'assegnatario».
+ */
 async function assignProblemToUser(
   _: unknown,
-  args: { problemId: string; userId: string },
+  args: { problemId: string; userId?: string | null },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
     // Regola ITSM condivisa con l'incident (services/ticketAssignment.ts):
     // prima il gruppo, poi un utente di quel gruppo.
-    await assertUserInAssignedTeam(session, 'Problem', args.problemId, args.userId, ctx.tenantId)
-    await setTicketUser(session, 'Problem', args.problemId, args.userId, ctx.tenantId)
+    if (args.userId) await assertUserInAssignedTeam(session, 'Problem', args.problemId, args.userId, ctx.tenantId)
+    const { userName } = await setTicketUser(session, 'Problem', args.problemId, args.userId ?? null, ctx.tenantId)
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props
     `, { id: args.problemId, tenantId: ctx.tenantId })
     if (!row) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
+    await publishEvent('problem.assigned', ctx.tenantId, ctx.userId, {
+      id:         args.problemId,
+      title:      (row.props['title'] ?? args.problemId) as string,
+      priority:   (row.props['priority'] ?? 'medium') as string,
+      status:     (row.props['status'] ?? '') as string,
+      assignedTo: userName ?? '—',
+    })
+    void audit(ctx, args.userId ? 'problem.assigned_user' : 'problem.unassigned_user', 'Problem', args.problemId, { userId: args.userId ?? null })
     return mapProblem(row.props)
   }, true)
 }
@@ -498,12 +520,11 @@ async function executeProblemTransition(
         '[problem] transition persisted but step actions failed')
     }
 
-    // L'ingresso nel passo: evento con il tipo STABILE `problem.step_entered`
-    // (più l'alias storico `problem.<passo>` per le regole già agganciate) e
-    // azione di audit stabile con il passo nei dettagli (D-22). Né l'evento né
-    // l'audit hanno più il nome del passo nella loro identità.
-    const svcCtx = { tenantId: ctx.tenantId, userId: ctx.userId }
-    await problemService.publishProblemTransition(args.problemId, args.toStep, svcCtx)
+    // L'ingresso nel passo: l'evento con il tipo STABILE
+    // `problem.step_entered` (più l'alias storico `problem.<passo>`) lo
+    // pubblica l'hook `onStepEntered` del motore, che vede anche i cammini
+    // automatici (revisione totale · C-1); qui resta l'azione di audit
+    // stabile, con il passo nei dettagli (D-22).
     // ATTESA, non `void`: una sessione Neo4j non regge due operazioni in
     // parallelo. Lasciata partire e non attesa, la lettura dei fatti del passo
     // era ancora aperta quando partiva la query qui sotto, e il driver
@@ -544,7 +565,7 @@ async function addProblemComment(
     if (!row) throw new GraphQLError('Problem not found', { extensions: { code: 'NOT_FOUND' } })
     void audit(ctx, 'comment.added', 'Problem', args.problemId, { commentId: row.comment['id'], isInternal })
     // CO-3: stesse notifiche di ogni altro commento (osservatori, menzioni).
-    void notifyCommentAudience(ctx, 'problem', args.problemId, args.text)
+    void notifyCommentAudience(ctx, 'problem', args.problemId, args.text, isInternal)
     return mapProblemComment(row.comment, row.author)
   }, true)
 }

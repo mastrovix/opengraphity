@@ -8,8 +8,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { DomainEvent } from '@opengraphity/types'
 
-vi.mock('@opengraphity/events', () => ({ BaseConsumer: class { constructor(public queueName: string) {} } }))
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(() => ({ close: vi.fn() })) }))
+vi.mock('@opengraphity/events', () => ({
+  BaseConsumer: class { constructor(public queueName: string) {} },
+  getRedisConnection: () => ({ host: 'localhost', port: 6379 }),
+}))
+// C-36: per un incident si accodano anche le escalation delle notifiche.
+vi.mock('../../lib/notificationEscalation.js', () => ({ scheduleNotificationEscalations: vi.fn(async () => 0) }))
+vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(() => ({ close: vi.fn() })), runQuery: vi.fn(async () => []), runQueryOne: vi.fn(async () => null) }))
 vi.mock('../../lib/automationEntity.js', () => ({ loadAutomationEntity: vi.fn(async () => ({ id: 'e1', status: 'new' })) }))
 vi.mock('../../lib/triggerEngine.js', () => ({ evaluateTriggers: vi.fn(async () => []), scheduleTimerTriggers: vi.fn() }))
 vi.mock('../../lib/rulesEngine.js', () => ({ evaluateBusinessRules: vi.fn(async () => []) }))
@@ -73,5 +78,32 @@ describe('AutomationConsumer.process', () => {
     await new AutomationConsumer().process(ev('incident.created', { id: 'gone' }))
     expect(evaluateTriggers).not.toHaveBeenCalled()
     expect(scheduleTimerTriggers).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Revisione totale · C-36: le azioni delle regole (commento, webhook,
+ * notifica, assegnazione) NON sono idempotenti, e venivano eseguite PRIMA di
+ * accodare i timer. Se l'accodamento lanciava (Redis in affanno) il consumer
+ * rilanciava e l'evento veniva ritentato: due commenti identici e due
+ * webhook. I job dei timer hanno un `jobId` deterministico, quindi accodarli
+ * per primi non produce doppioni.
+ */
+describe('ordine: prima i timer, poi le azioni (C-36)', () => {
+  it('l\'accodamento dei timer precede la valutazione delle regole', async () => {
+    const order: string[] = []
+    vi.mocked(scheduleTimerTriggers).mockImplementation(async () => { order.push('timers') })
+    vi.mocked(evaluateBusinessRules).mockImplementation(async () => { order.push('rules'); return [] })
+    vi.mocked(evaluateTriggers).mockImplementation(async () => { order.push('triggers'); return [] })
+    await new AutomationConsumer().process(ev('incident.created', { id: 'inc-1' }))
+    expect(order[0]).toBe('timers')
+    expect(order).toContain('rules')
+  })
+
+  it('se l\'accodamento dei timer fallisce, nessuna azione è stata eseguita', async () => {
+    vi.mocked(scheduleTimerTriggers).mockRejectedValueOnce(new Error('redis in affanno'))
+    await expect(new AutomationConsumer().process(ev('incident.created', { id: 'inc-1' }))).rejects.toThrow('redis in affanno')
+    expect(evaluateBusinessRules).not.toHaveBeenCalled()
+    expect(evaluateTriggers).not.toHaveBeenCalled()
   })
 })

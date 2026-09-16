@@ -71,6 +71,7 @@ export const NOTIFICATION_TITLES: Readonly<Record<string, Texts>> = {
   'notification.kb.published.title':               { en: 'Article published', it: 'Articolo pubblicato' },
   'notification.ola.breached.title':               { en: 'OLA/UC breached', it: 'OLA/UC violato' },
   'notification.problem.closed.title':             { en: 'Problem closed', it: 'Problem chiuso' },
+  'notification.problem.assigned.title':           { en: 'Problem assigned', it: 'Problem assegnato' },
   'notification.problem.created.title':            { en: 'New problem', it: 'Nuovo problem' },
   'notification.problem.deferred.title':           { en: 'Problem deferred', it: 'Problem posticipato' },
   'notification.problem.investigating.title':      { en: 'Problem under investigation', it: 'Problem in analisi' },
@@ -84,7 +85,7 @@ export const NOTIFICATION_TITLES: Readonly<Record<string, Texts>> = {
   'notification.sync.failed.title':                { en: 'Synchronisation failed', it: 'Sincronizzazione fallita' },
 }
 
-const TEXTS = {
+export const TEXTS = {
   created:          { en: '🆕 New incident',       it: '🆕 Nuovo incident' },
   assigned:         { en: '👤 Assigned',            it: '👤 Assegnato' },
   escalation:       { en: '⚠️ Escalated',           it: '⚠️ In escalation' },
@@ -133,9 +134,24 @@ const TEXTS = {
   digestNoEvents:       { en: 'No recent events', it: 'Nessun evento recente' },
   goToDashboard:        { en: 'Go to the dashboard', it: 'Vai alla dashboard' },
   reportExecuted:       { en: 'Scheduled report "{name}" ran ({count} sections).', it: 'Il report schedulato «{name}» è stato eseguito ({count} sezioni).' },
+  /**
+   * I CORPI dei messaggi che escono (revisione totale · E-13): erano inglese
+   * fisso anche per un cliente con il prodotto in italiano — «29 min left
+   * before the SLA deadline», «412 alarms in 9 min». Le chiavi combaciano con
+   * quelle che il pannello usa (`message_key`), così il corpo dell'e-mail e
+   * quello in-app dicono la stessa cosa nella stessa lingua.
+   */
+  'inApp.sla.warning':          { en: '{number} — {title}: {minutes} min left before the SLA deadline', it: '{number} — {title}: {minutes} min alla scadenza dello SLA' },
+  'inApp.sla.responseElapsed':  { en: '{number} — {title}: the response time has elapsed', it: '{number} — {title}: il tempo di presa in carico è scaduto' },
+  'inApp.storm.ended':          { en: '{source} — {events} alarms in {minutes} min', it: '{source} — {events} allarmi in {minutes} min' },
 } as const satisfies Record<string, Texts>
 
 export type NotificationTextKey = keyof typeof TEXTS
+
+/** Vero se la chiave del corpo di una notifica ha una frase in questa tabella. */
+export function isNotificationTextKey(key: string): key is NotificationTextKey {
+  return Object.prototype.hasOwnProperty.call(TEXTS, key)
+}
 
 /** Un testo fisso delle notifiche, con i parametri `{nome}` sostituiti. */
 export function notificationText(locale: NotificationLocale, key: NotificationTextKey, params: Record<string, string> = {}): string {

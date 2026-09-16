@@ -99,32 +99,57 @@ class SseManager {
     this.transport = transport
   }
 
-  /** Consegna una notifica a una persona. */
+  /**
+   * Consegna una notifica a una persona, senza attendere. Per i cammini in cui
+   * il fallimento della scrittura non deve fare fallire l'operazione
+   * principale (una mutation che ha già avuto effetto): l'errore va nel log.
+   */
   sendToUser(tenantId: string, userId: string, event: InAppNotification): void {
-    this.deliver({ tenantId, userId, notification: event })
+    void this.deliver({ tenantId, userId, notification: event }).catch((err: unknown) => {
+      console.error(`[sse] in-app notification ${event.id} not delivered (tenant ${tenantId}): ${err instanceof Error ? err.message : String(err)}`)
+    })
   }
 
-  /** Consegna una notifica a tutto il tenant. */
+  /** Come sopra, a tutto il tenant. */
   sendToTenant(tenantId: string, event: InAppNotification): void {
-    this.deliver({ tenantId, userId: null, notification: event })
+    void this.deliver({ tenantId, userId: null, notification: event }).catch((err: unknown) => {
+      console.error(`[sse] in-app notification ${event.id} not delivered (tenant ${tenantId}): ${err instanceof Error ? err.message : String(err)}`)
+    })
   }
 
-  private deliver(delivery: InAppDelivery): void {
+  /**
+   * Consegna ATTESA: se la notifica non viene salvata, l'errore arriva a chi
+   * chiama (revisione totale · E-19). Il dispatcher la usa perché un in-app
+   * non salvato deve far fallire il job e farlo ritentare: prima la scrittura
+   * fallita lasciava solo una riga di log, il job risultava riuscito, la
+   * deduplica veniva impostata e la notifica spariva al ricaricamento della
+   * pagina.
+   */
+  deliverToUser(tenantId: string, userId: string, event: InAppNotification): Promise<void> {
+    return this.deliver({ tenantId, userId, notification: event })
+  }
+
+  /** Come sopra, a tutto il tenant. */
+  deliverToTenant(tenantId: string, event: InAppNotification): Promise<void> {
+    return this.deliver({ tenantId, userId: null, notification: event })
+  }
+
+  /**
+   * Salva e pubblica. La scrittura è la parte che non si può perdere: un suo
+   * errore si propaga. La pubblicazione sul canale fra processi no: se manca,
+   * i client di QUESTO processo ricevono comunque (writeLocal) e gli altri al
+   * prossimo ricaricamento, perché la notifica è salvata.
+   */
+  private async deliver(delivery: InAppDelivery): Promise<void> {
     const transport = this.transport
     if (!transport) { this.writeLocal(delivery); return }
-    void (async () => {
-      try {
-        await transport.persist(delivery)
-      } catch (err) {
-        console.error(`[sse] in-app notification ${delivery.notification.id} NOT persisted (tenant ${delivery.tenantId}): it will not survive a reload — ${err instanceof Error ? err.message : String(err)}`)
-      }
-      try {
-        await transport.publish(delivery)
-      } catch (err) {
-        console.error(`[sse] in-app notification ${delivery.notification.id} not published (tenant ${delivery.tenantId}): only the clients of THIS process receive it now, the others at the next reload — ${err instanceof Error ? err.message : String(err)}`)
-        this.writeLocal(delivery)
-      }
-    })()
+    await transport.persist(delivery)
+    try {
+      await transport.publish(delivery)
+    } catch (err) {
+      console.error(`[sse] in-app notification ${delivery.notification.id} not published (tenant ${delivery.tenantId}): only the clients of THIS process receive it now, the others at the next reload — ${err instanceof Error ? err.message : String(err)}`)
+      this.writeLocal(delivery)
+    }
   }
 
   /** Scrive la consegna ai client collegati a QUESTO processo. */

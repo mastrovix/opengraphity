@@ -123,11 +123,27 @@ describe('EscalationConsumer — sla.breached', () => {
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining({ reason: 'ola_breach' }) }))
   })
 
-  it('titolo/severity assenti → default nel payload dell\'evento (richiesti dal dispatcher notifiche)', async () => {
-    rows = [{ ...ESCALATABLE, title: null, severity: null }]
+  /**
+   * CONTRATTO RINEGOZIATO (revisione totale · C-16). L'alias pubblicato dopo
+   * l'escalation inventava `severity: 'high'` e `title: "<entità> <id>"` per
+   * entità che non hanno quei campi: la notifica mostrava una gravità che il
+   * dato non ha. Ora la gravità è quella vera (`severity` o `priority`), il
+   * titolo ripiega sul NUMERO del ticket, e dove non c'è nulla il ripiego si
+   * vede: `unknown`.
+   */
+  it('titolo assente → il numero del ticket; gravità assente → «unknown», non «high» (C-16)', async () => {
+    rows = [{ ...ESCALATABLE, title: null, severity: null, number: 'PRB00000007' }]
     await consumer.process(event('sla.breached', { entity_id: 'inc-1' }))
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({
-      payload: expect.objectContaining({ title: 'incident inc-1', severity: 'high' }),
+      payload: expect.objectContaining({ title: 'PRB00000007', severity: 'unknown' }),
+    }))
+  })
+
+  it('né titolo né numero → l\'id, dichiarato come tale', async () => {
+    rows = [{ ...ESCALATABLE, title: null, severity: null, number: null }]
+    await consumer.process(event('sla.breached', { entity_id: 'inc-1' }))
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ title: 'incident inc-1' }),
     }))
   })
 

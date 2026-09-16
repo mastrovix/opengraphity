@@ -125,7 +125,7 @@ export async function addComment(
     const created = mapComment(res.records[0])
     void audit(ctx, 'comment.added', args.entityType, args.entityId, { commentId: created.id, isInternal })
 
-    void notifyCommentAudience(ctx, args.entityType, args.entityId, args.body)
+    void notifyCommentAudience(ctx, args.entityType, args.entityId, args.body, isInternal)
     // Revisione del 14 set 2026 · CO-2/F10: qui partiva «nuovo commento» a
     // TUTTO il tenant per ogni risposta pubblica, in italiano. Chi deve saperlo
     // (osservatori e menzionati) lo sa da notifyCommentAudience.
@@ -233,12 +233,15 @@ export async function deleteComment(
  * funzione per tutte le porte da cui si commenta (CO-3: il dettaglio di
  * incident e problem non notificava nessuno).
  */
-export async function notifyCommentAudience(ctx: GraphQLContext, entityType: string, entityId: string, body: string): Promise<void> {
+export async function notifyCommentAudience(ctx: GraphQLContext, entityType: string, entityId: string, body: string, isInternal = false): Promise<void> {
   await autoWatch(ctx.tenantId, ctx.userId, entityId)
   const mentions = parseMentions(body)
   // Il titolo del ticket nella menzione: prima si passava l'id, e la frase diceva «in incident "3f2a…"».
   if (mentions.length > 0) await notifyMentions(ctx.tenantId, ctx.userEmail, entityType, entityId, await getEntityTitle(ctx.tenantId, entityId), mentions, 'comment', body.slice(0, 200))
-  await notifyWatchers(ctx.tenantId, entityType, entityId, { kind: 'comment', author: ctx.userEmail }, ctx.userId)
+  // `isInternal`: una nota interna non si annuncia a chi non può leggerla —
+  // l'utente del portale che ha aperto il ticket è osservatore (revisione
+  // totale · M-16).
+  await notifyWatchers(ctx.tenantId, entityType, entityId, { kind: 'comment', author: ctx.userEmail }, ctx.userId, isInternal)
 }
 
 export const commentResolvers = {

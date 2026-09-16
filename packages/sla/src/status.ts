@@ -28,6 +28,15 @@ export interface SLAStatus {
    */
   policy_id?: string
   policy_name?: string
+  /**
+   * Quando l'avviso «tempo di presa in carico scaduto» è già stato mandato
+   * (revisione totale · E-12). Alla ripresa di una pausa l'orologio della
+   * risposta veniva riprogrammato ogni volta che `response_met` era falso,
+   * senza sapere se l'avviso era già uscito: un incident non preso in carico
+   * che entrava in pausa dopo la scadenza riceveva un secondo avviso
+   * identico alla ripresa.
+   */
+  response_breach_notified_at?: string
   tier: SLATier
 }
 
@@ -44,7 +53,8 @@ export const SLA_STATUS_PROJECTION = `
       s.tier_resolve_minutes as tier_resolve_minutes,
       s.tier_business_hours as tier_business_hours,
       s.tier_warning_minutes as tier_warning_minutes,
-      s.policy_id as policy_id, s.policy_name as policy_name
+      s.policy_id as policy_id, s.policy_name as policy_name,
+      s.response_breach_notified_at as response_breach_notified_at
 `
 
 export type SLAPauseType = 'resolve' | 'response' | 'both'
@@ -282,17 +292,47 @@ export async function getSLAStatus(
  * browser del 14 set 2026 (#18): «SLA about to be breached» arrivava col
  * corpo «29» — i minuti e basta, senza dire di quale ticket.
  */
-export async function ticketReference(tenantId: string, entityId: string): Promise<{ number: string; title: string } | null> {
+/** Come il ticket compare nelle notifiche SLA: numero, titolo e i suoi valori veri. */
+export interface TicketReference {
+  number:   string
+  title:    string
+  severity: string | null
+  status:   string | null
+}
+
+export async function ticketReference(tenantId: string, entityId: string): Promise<TicketReference | null> {
   const session = readSession()
   try {
-    const row = await runQueryOne<{ number: string | null; title: string | null }>(session, `
+    const row = await runQueryOne<{ number: string | null; title: string | null; severity: string | null; status: string | null }>(session, `
       MATCH (e {id: $entityId, tenant_id: $tenantId})
       WHERE e:Incident OR e:Problem OR e:ServiceRequest
-      RETURN coalesce(e.number, e.code) AS number, e.title AS title
+      RETURN coalesce(e.number, e.code) AS number, e.title AS title,
+             coalesce(e.severity, e.priority) AS severity, e.status AS status
     `, { tenantId, entityId })
     if (!row) return null
     if (!row.number || !row.title) throw new Error(`[sla:status] ticket ${entityId} has no number or title: the SLA notification would not say which ticket`)
-    return { number: row.number, title: row.title }
+    // `severity` e `status` viaggiano con l'evento perché la card Slack/Teams
+    // della violazione li scriveva CABLATI («Severity: HIGH · Status: open»)
+    // per qualunque ticket, anche un critical in escalation (revisione totale
+    // · E-8). Sono facoltativi: un ticket senza priorità resta possibile.
+    return { number: row.number, title: row.title, severity: row.severity ?? null, status: row.status ?? null }
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * Registra che l'avviso di scadenza della presa in carico è stato mandato
+ * (E-12): alla ripresa di una pausa non se ne manda un secondo.
+ */
+export async function markResponseBreachNotified(tenantId: string, entityId: string, at: string = new Date().toISOString()): Promise<void> {
+  const session = writeSession()
+  try {
+    await runQuery(session, `
+      MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
+      WHERE e:Incident OR e:Problem OR e:ServiceRequest
+      SET s.response_breach_notified_at = coalesce(s.response_breach_notified_at, $at)
+    `, { tenantId, entityId, at })
   } finally {
     await session.close()
   }
@@ -535,15 +575,24 @@ export async function repolicySLA(tenantId: string, entityId: string, policy: SL
   }
 }
 
-export async function markBreached(tenantId: string, entityId: string): Promise<void> {
+/**
+ * Marca la violazione e QUANDO è avvenuta (revisione totale · C-8): senza
+ * `breached_at` il riquadro «SLA violati» del digest contava gli SLA
+ * *iniziati* nelle ultime 24 ore che risultano violati — un numero sbagliato
+ * in entrambe le direzioni (uno violato stanotte ma partito tre giorni fa non
+ * c'era; uno partito ieri e che violerà fra una settimana veniva contato solo
+ * se violava entro le 24 ore). L'istante non si sposta se la funzione viene
+ * ripetuta: la violazione è avvenuta una volta sola.
+ */
+export async function markBreached(tenantId: string, entityId: string, at: string = new Date().toISOString()): Promise<void> {
   const cypher = `
     MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     WHERE e:Incident OR e:Problem OR e:ServiceRequest
-    SET s.breached = true
+    SET s.breached = true, s.breached_at = coalesce(s.breached_at, $at)
   `
   const session = writeSession()
   try {
-    await runQuery(session, cypher, { tenantId, entityId })
+    await runQuery(session, cypher, { tenantId, entityId, at })
   } finally {
     await session.close()
   }

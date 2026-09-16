@@ -31,7 +31,13 @@ vi.mock('../../lib/ciLabelsForTenant.js', () => ({
 import { GraphQLError } from 'graphql'
 
 const h = vi.hoisted(() => ({
-  session: { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn() },
+  // B-7: `incident.created` rilegge il payload dal grafo (prima ciName e
+  // assignedTo erano «—» scritti a mano): la sessione deve rispondere.
+  session: {
+    executeRead: vi.fn(async () => ({ records: [{ get: (k: string) => (({ id: 'inc-1', title: 'T', severity: 'high', status: 'open', ciName: 'srv-1', assignedTo: '—' }) as Record<string, string>)[k] }] })),
+    executeWrite: vi.fn(),
+    close: vi.fn(),
+  },
 }))
 
 vi.mock('@opengraphity/neo4j', () => ({
@@ -138,10 +144,14 @@ describe('createIncident — priorità Impatto×Urgenza', () => {
     expect(await derivePriority(ctx.tenantId, iu.impact, iu.urgency)).toBe(severity)
   })
 
-  it('l\'evento incident.created porta la priorità derivata, non la severity dell\'input', async () => {
+  it('l\'evento incident.created porta la priorità derivata e il CI vero (B-7)', async () => {
+    // Il payload si rilegge dal grafo: la gravità è quella scritta
+    // sull'incident (la priorità derivata), il CI e l'assegnatario sono quelli
+    // veri — prima erano «—» scritti a mano nel payload.
+    h.session.executeRead.mockResolvedValue({ records: [{ get: (k: string) => (({ id: 'inc-1', title: 'T', severity: 'critical', status: 'open', ciName: 'srv-1', assignedTo: 'Mario' }) as Record<string, string>)[k] }] })
     await createIncident({ title: 'T', impact: 'high', urgency: 'high', severity: 'low', affectedCIIds: ['ci-1'] }, ctx)
     expect(publishEvent).toHaveBeenCalledWith('incident.created', 'tenant-1', 'user-1',
-      expect.objectContaining({ severity: 'critical', affected_ci_ids: ['ci-1'] }), expect.any(String))
+      expect.objectContaining({ severity: 'critical', ciName: 'srv-1', assignedTo: 'Mario', affected_ci_ids: ['ci-1'] }), expect.any(String))
   })
 })
 

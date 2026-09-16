@@ -246,8 +246,13 @@ describe('dispatchIncidentNotification — Slack blocks / Teams adaptive card pe
 
 // ── dispatchChangeNotification / dispatchChangeTaskNotification ─────────────
 
-describe('dispatchChangeNotification — Slack only, channels subscribed to change_approved', () => {
-  it('posts the change blocks to slack channels; teams channels are ignored (pinned: no Teams change card)', async () => {
+/**
+ * CONTRATTO RINEGOZIATO (revisione totale · E-18): un canale Teams abbonato a
+ * «Change approvata» veniva scartato in silenzio, benché la pagina Canali
+ * offra quell'evento anche a Teams. Ora riceve la sua card.
+ */
+describe('dispatchChangeNotification — canali abbonati a change_approved, Slack E Teams', () => {
+  it('manda i blocchi su Slack e la card su Teams (E-18)', async () => {
     channelRows = [slackChannel('s1', ['change_approved']), teamsChannel('t1', ['change_approved']), slackChannel('s2', ['assigned'])]
     changeRows = [{ ciNames: ['app-01'], assignedTo: null, teamName: 'Release' }]
     await dispatchChangeNotification('t1', { id: 'chg-1', title: 'Upgrade DB', type: 'normal', status: 'approved', tenantId: 't1' })
@@ -256,25 +261,30 @@ describe('dispatchChangeNotification — Slack only, channels subscribed to chan
     expect(enrich!.cypher).toContain('coalesce(c.deleted, false) = false')
     expect(enrich!.params).toEqual({ id: 'chg-1', tenantId: 't1' })
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock.mock.calls[0]![0]).toBe('https://hooks.slack.example/s1')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['https://hooks.slack.example/s1', 'https://teams.example/t1'])
     const text = JSON.stringify(bodyOf(0))
     expect(text).toContain('Upgrade DB')
     expect(text).toContain('*Affected CI:* app-01')
     expect(text).toContain('*Assigned to:* Release')
     expect(text).toContain('/changes/chg-1')
+    const card = JSON.stringify(bodyOf(1))
+    expect(card).toContain('AdaptiveCard')
+    expect(card).toContain('Upgrade DB')
+    expect(card).toContain('app-01')
   })
 })
 
-describe('dispatchChangeTaskNotification — Slack only, channels subscribed to change_task_assigned', () => {
-  it('posts to the subscribed slack channels only', async () => {
+describe('dispatchChangeTaskNotification — canali abbonati a change_task_assigned, Slack E Teams', () => {
+  it('manda ai canali abbonati di entrambe le piattaforme (E-18)', async () => {
     channelRows = [slackChannel('s1', ['change_task_assigned']), slackChannel('s2', ['change_approved']), teamsChannel('t1', ['change_task_assigned'])]
     await dispatchChangeTaskNotification('t1', {
       changeId: 'chg-1', changeTitle: 'Upgrade DB', taskId: 'task-1', ciName: 'db-01', teamName: 'DBA', assignedTo: 'Mario',
     })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock.mock.calls[0]![0]).toBe('https://hooks.slack.example/s1')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['https://hooks.slack.example/s1', 'https://teams.example/t1'])
     expect(JSON.stringify(bodyOf(0))).toContain('Upgrade DB')
+    expect(JSON.stringify(bodyOf(1))).toContain('AdaptiveCard')
   })
 
   it('no subscribed channel → nothing sent, no error', async () => {

@@ -52,6 +52,9 @@ export const DEFAULT_NOTIFICATION_RULES: readonly RuleDef[] = [
   { event_type: 'change.rejected',              severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.change.rejected.title'       },
   { event_type: 'change.task_assigned',         severity: 'info',    channels: ['in_app'],          target: 'assignee', title_key: 'notification.change.task_assigned.title'  },
   { event_type: 'problem.created',              severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.problem.created.title'       },
+  // B-18: l'assegnazione di un problem non produceva nessun evento, quindi
+  // non c'era niente su cui agganciare una regola «assegnato all'assegnatario».
+  { event_type: 'problem.assigned',             severity: 'info',    channels: ['in_app'],          target: 'assignee', title_key: 'notification.problem.assigned.title'      },
   { event_type: 'problem.under_investigation',  severity: 'info',    channels: ['in_app'],          target: 'all',      title_key: 'notification.problem.investigating.title' },
   { event_type: 'problem.deferred',             severity: 'warning', channels: ['in_app'],          target: 'all',      title_key: 'notification.problem.deferred.title'      },
   { event_type: 'problem.resolved',             severity: 'success', channels: ['in_app'],          target: 'all',      title_key: 'notification.problem.resolved.title'      },

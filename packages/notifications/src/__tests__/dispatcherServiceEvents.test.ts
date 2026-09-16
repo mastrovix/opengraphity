@@ -10,6 +10,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { DomainEvent } from '@opengraphity/types'
 
+// Revisione totale · E-3: la consegna è deduplicata per canale su Redis. Nei
+// test gli eventi riusano lo stesso id, quindi la deduplica va azzerata a
+// ogni caso: il contratto della deduplica è pinnato in deliveryDedup.test.ts.
+vi.mock('../deliveryDedup.js', () => ({
+  deliverOnce: async (_id: string | undefined, _ch: string, deliver: () => Promise<void> | void) => { await deliver(); return true },
+  alreadyDelivered: async () => false,
+  markDelivered: async () => {},
+  resetDeliveryDedup: () => {},
+}))
+
 let ruleRow: Record<string, unknown> | null = null
 
 vi.mock('../locale.js', () => ({ loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })), invalidateNotificationLocale: vi.fn() }))
@@ -34,7 +44,7 @@ vi.mock('../email.js', () => ({ sendEmail: vi.fn(async () => {}) }))
 const { NotificationDispatcher, invalidateRuleCache } = await import('../dispatcher.js')
 const { sseManager } = await import('../sse.js')
 
-const sent = vi.spyOn(sseManager, 'sendToTenant').mockImplementation(() => {})
+const sent = vi.spyOn(sseManager, 'deliverToTenant').mockResolvedValue(undefined)
 
 function event(type: string, payload: Record<string, unknown>): DomainEvent<unknown> {
   return { id: 'e1', type, tenant_id: 't1', timestamp: '2026-09-10T10:00:00.000Z', correlation_id: 'c', actor_id: 'monitoring', payload }

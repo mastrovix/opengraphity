@@ -323,7 +323,11 @@ export class SLAEngine extends BaseConsumer<unknown> {
     if (!resumed) return
     const pausedType = (resumed.paused_type ?? 'both') as SLAPauseType
     // Re-schedule only the clock(s) that were paused, skipping met targets.
-    if ((pausedType === 'response' || pausedType === 'both') && !resumed.response_met) {
+    // `response_breach_notified_at`: l'avviso della presa in carico è già
+    // uscito, e non se ne manda un secondo alla ripresa (revisione totale ·
+    // E-12 — `scheduleResponseCheck` con una scadenza passata usa
+    // `Math.max(delay, 0)`, quindi scattava subito).
+    if ((pausedType === 'response' || pausedType === 'both') && !resumed.response_met && !resumed.response_breach_notified_at) {
       await scheduleResponseCheck(resumed)
     }
     if ((pausedType === 'resolve' || pausedType === 'both') && !resumed.resolve_met) {

@@ -327,6 +327,29 @@ describe('SLAEngine — azioni di passo sla_start / sla_stop', () => {
     expect(createSLAStatus).not.toHaveBeenCalled()
   })
 
+  /**
+   * Revisione totale · E-12: alla ripresa di una pausa l'orologio della
+   * risposta veniva riprogrammato ogni volta che `response_met` era falso,
+   * senza sapere se l'avviso era già uscito — e `scheduleResponseCheck` con
+   * una scadenza passata usa `Math.max(delay, 0)`, quindi scattava subito: un
+   * secondo «tempo di presa in carico scaduto» identico.
+   */
+  it('ripresa dopo che l\'avviso della presa in carico è già uscito → nessun secondo avviso (E-12)', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, paused_at: '2026-05-01T11:00:00.000Z', paused_type: 'both' })
+    resumeSLA.mockResolvedValueOnce({ ...baseStatus, paused_type: 'both', response_breach_notified_at: '2026-05-01T10:00:00.000Z' })
+    await new SLAEngine().process(event('sla.response.start', { entity_id: 'inc-1', entity_type: 'incident', sla_type: 'response' }))
+    expect(scheduleResponseCheck).not.toHaveBeenCalled()
+    // l'orologio della risoluzione riparte comunque
+    expect(scheduleBreachCheck).toHaveBeenCalled()
+  })
+
+  it('ripresa senza avviso già uscito → l\'orologio della risposta riparte', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, paused_at: '2026-05-01T11:00:00.000Z', paused_type: 'both' })
+    resumeSLA.mockResolvedValueOnce({ ...baseStatus, paused_type: 'both' })
+    await new SLAEngine().process(event('sla.response.start', { entity_id: 'inc-1', entity_type: 'incident', sla_type: 'response' }))
+    expect(scheduleResponseCheck).toHaveBeenCalled()
+  })
+
   it('sla.response.start con uno SLA che corre → nulla', async () => {
     await new SLAEngine().process(event('sla.response.start', { entity_id: 'inc-1', entity_type: 'incident', sla_type: 'response' }))
     expect(createSLAStatus).not.toHaveBeenCalled()

@@ -124,7 +124,7 @@ describe('apiKeyAuth — chiave valida', () => {
     await apiKeyAuth(req, asRes(res), next as NextFunction)
 
     expect(next).toHaveBeenCalledOnce()
-    expect(req.apiKey).toEqual({ keyId: 'key-1', tenantId: 'tenant-1', permissions: ['incidents:read'], rateLimit: 5 })
+    expect(req.apiKey).toEqual({ keyId: 'key-1', tenantId: 'tenant-1', permissions: ['incidents:read'], rateLimit: 5, name: expect.any(String) })
     expect(res.statusCode).toBe(0)
   })
 
@@ -174,7 +174,7 @@ describe('apiKeyAuth — chiave valida', () => {
     runQueryOne.mockResolvedValueOnce(keyRow({ permissions: '["ci:read","kb:read"]' })).mockResolvedValueOnce(null)
     const req = makeReq({ 'x-api-key': 'k' })
     await apiKeyAuth(req, asRes(makeRes()), vi.fn() as NextFunction)
-    expect(req.apiKey).toEqual({ keyId: 'key-1', tenantId: 'tenant-1', permissions: ['ci:read', 'kb:read'], rateLimit: 5 })
+    expect(req.apiKey).toEqual({ keyId: 'key-1', tenantId: 'tenant-1', permissions: ['ci:read', 'kb:read'], rateLimit: 5, name: expect.any(String) })
   })
 
   it.each([undefined, null, 0, -1, 2.5, 'dieci'])('rate_limit non valido (%s) → 500 API_KEY_MISCONFIGURED, nessun limite inventato', async (rate) => {

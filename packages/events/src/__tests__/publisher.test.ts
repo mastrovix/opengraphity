@@ -60,7 +60,15 @@ describe('publish — fan-out to every consumer queue', () => {
     expect(openQueueCount()).toBe(5)
   })
 
-  it('adds the SAME event to each queue, job name = event type, retry policy attached, no explicit jobId (dedup is consumer-side by event.id)', async () => {
+  /**
+   * CONTRATTO RINEGOZIATO (revisione totale · E-7). Il fan-out sulle cinque
+   * code non è atomico: se una `add` falliva, le altre erano già accodate e
+   * chi ritentava ripubblicava l'evento — due notifiche, due volte lo stesso
+   * lavoro. Il `jobId` è l'id dell'evento: BullMQ rifiuta un secondo job con
+   * lo stesso id sulla stessa coda, quindi il ritentativo completa le code
+   * mancanti senza duplicare quelle già servite.
+   */
+  it('adds the SAME event to each queue, job name = event type, retry policy attached, jobId = event.id (E-7)', async () => {
     const e = event('change.approved')
     await publish(e)
     for (const q of fake.instances) {
@@ -68,8 +76,7 @@ describe('publish — fan-out to every consumer queue', () => {
       const [name, data, opts] = q.add.mock.calls[0]! as [string, unknown, Record<string, unknown>]
       expect(name).toBe('change.approved')
       expect(data).toBe(e)
-      expect(opts).toEqual({ attempts: 4, backoff: { type: 'custom' }, removeOnComplete: true, removeOnFail: 100 })
-      expect(opts).not.toHaveProperty('jobId')
+      expect(opts).toEqual({ attempts: 4, backoff: { type: 'custom' }, removeOnComplete: true, removeOnFail: 100, jobId: 'evt-1' })
     }
     expect(vi.mocked(console.log).mock.calls.some(c => String(c[0]).includes('Published: change.approved (id: evt-1)'))).toBe(true)
   })

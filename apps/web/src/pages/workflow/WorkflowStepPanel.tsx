@@ -29,7 +29,14 @@ import { StepDeadlineEditor, deadlineFromDraft, draftFromDeadline, draftProblem,
 
 const ACCENT_COLOR = colors.brand
 
-const NR_CHANNELS   = ['in_app', 'slack', 'teams', 'email'] as const
+/**
+ * I canali che una notifica di PASSO può davvero prendere: il dispatcher per
+ * `workflow.step.entered` consegna in-app ed e-mail e rifiuta gli altri
+ * (packages/notifications/src/routing.ts). Il pannello offriva anche Slack e
+ * Teams: il passo si salvava e ogni ingresso nel passo generava un job
+ * fallito, senza nessuna notifica (revisione totale · G-8).
+ */
+const NR_CHANNELS   = ['in_app', 'email'] as const
 const NR_SEVERITIES = ['info', 'success', 'warning', 'error'] as const
 
 /**

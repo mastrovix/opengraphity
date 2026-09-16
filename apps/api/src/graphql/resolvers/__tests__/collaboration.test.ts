@@ -15,6 +15,11 @@ vi.mock('../ci-utils.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// M-16: i permessi del ruolo vengono dai ruoli del tenant; qui quelli di fabbrica.
+vi.mock('../../../lib/roles.js', () => ({
+  roleHasPermission: async (_t: string, role: string, permission: string) =>
+    (perms(role as never) as ReadonlySet<string>).has(permission),
+}))
 vi.mock('../../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
@@ -36,7 +41,7 @@ vi.mock('../../../lib/emailTemplates.js', () => ({
   watcherNotification: vi.fn().mockReturnValue({ subject: 'Update', html: '<p/>', text: 'x' }),
 }))
 
-const { collaborationResolvers, notifyMentions } = await import('../collaboration.js')
+const { collaborationResolvers, notifyMentions, notifyWatchers } = await import('../collaboration.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { sseManager, sendEmail } = await import('@opengraphity/notifications')
 
@@ -212,5 +217,37 @@ describe('deleteInternalMessage — admin qualunque messaggio, operator solo i p
     expect(cypher).toContain('MATCH (m:InternalMessage {id: $id, tenant_id: $tenantId, author_id: $authorId})')
     expect(cypher).toContain('.minutes < 15')
     expect(params).toMatchObject({ id: 'm-1', tenantId: 'tenant-1', authorId: 'user-1', body: 'nuovo' })
+  })
+})
+
+/**
+ * Revisione totale · M-16: chi apre un ticket dal portale diventa osservatore
+ * alla creazione, e riceveva l'avviso — in-app e per e-mail, con il testo nel
+ * corpo — di una NOTA INTERNA che non può leggere. Gli osservatori senza il
+ * permesso di lavorare i ticket non vengono avvisati del contenuto interno.
+ */
+describe('notifyWatchers — il contenuto interno non esce dal perimetro dello staff (M-16)', () => {
+  const watchers = [
+    { userId: 'staff-1',  role: 'operator' },
+    { userId: 'utente-1', role: 'end_user' },
+  ]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(runQuery).mockImplementation(async (_s: unknown, cypher: string) =>
+      (cypher.includes('[:WATCHES]->') ? watchers : []) as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ email: 'x@y.z', notificationsEnabled: true, title: 'Rete giù' } as never)
+  })
+
+  it('contenuto interno: solo chi lavora i ticket viene avvisato', async () => {
+    await notifyWatchers('tenant-1', 'incident', 'inc-1', { kind: 'internal_chat', author: 'agent@test.io' }, undefined, true)
+    const notified = vi.mocked(sseManager.sendToUser).mock.calls.map((c) => c[1])
+    expect(notified).toEqual(['staff-1'])
+  })
+
+  it('commento pubblico: tutti gli osservatori, portale compreso', async () => {
+    await notifyWatchers('tenant-1', 'incident', 'inc-1', { kind: 'comment', author: 'agent@test.io' })
+    const notified = vi.mocked(sseManager.sendToUser).mock.calls.map((c) => c[1])
+    expect(notified).toEqual(['staff-1', 'utente-1'])
   })
 })

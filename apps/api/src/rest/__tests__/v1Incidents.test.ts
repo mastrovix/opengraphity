@@ -16,7 +16,7 @@ vi.mock('../../lib/ticketCustomFields.js', async (importOriginal) => ({ ...(awai
 const setTicketCustomFields = vi.fn(async () => [])
 vi.mock('../../graphql/resolvers/ticketCustomFields.js', () => ({ ticketCustomFieldResolvers: { Mutation: { setTicketCustomFields: (...a: unknown[]) => setTicketCustomFields(...a) } } }))
 vi.mock('../../lib/logger.js', () => ({
-  logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn(), child: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() }) },
 }))
 vi.mock('../../middleware/apiKeyAuth.js', () => ({
   requirePermission: () => (req: express.Request, _res: express.Response, next: express.NextFunction) => {

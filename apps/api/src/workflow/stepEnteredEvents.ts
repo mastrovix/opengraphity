@@ -10,6 +10,7 @@
 import { workflowEngine } from '@opengraphity/workflow'
 import { WORKFLOW_STEP_ENTERED_EVENT, type WorkflowStepEnteredPayload } from '@opengraphity/types'
 import { publishEvent } from '../lib/publishEvent.js'
+import { publishStepEnteredForEntity } from '../lib/stepEnteredPublisher.js'
 
 let registered = false
 
@@ -29,6 +30,19 @@ export function registerStepEnteredEvents(): void {
       trigger_type:  info.triggerType,
     }
     await publishEvent(WORKFLOW_STEP_ENTERED_EVENT, info.tenantId, info.actorId, payload, info.enteredAt)
+
+    // L'evento di DOMINIO dell'entità (`incident.step_entered` + l'alias
+    // `incident.<passo>`): da qui passano TUTTI i cammini, compresi quelli
+    // automatici, che prima muovevano il ticket senza far scattare nessuna
+    // regola di notifica né nessun webhook (revisione totale · C-1).
+    await publishStepEnteredForEntity({
+      tenantId:   info.tenantId,
+      actorId:    info.actorId,
+      entityType: info.entityType,
+      entityId:   info.entityId,
+      stepName:   info.toStep,
+      enteredAt:  info.enteredAt,
+    })
 
     // `incident.closed` (la regola di notifica «Incident chiuso») lo pubblicava
     // solo il job `auto_close`, cioè solo la chiusura automatica di fabbrica.

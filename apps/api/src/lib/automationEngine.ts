@@ -12,6 +12,7 @@ import { logger as appLogger } from './logger.js'
 import { CHANGED_FIELDS_KEY, evaluateConditions, parseConditions } from './conditionEvaluator.js'
 import { executeActions, parseActions, type ActionExecutionContext, type ActionResult } from './actionExecutor.js'
 import { audit } from './audit.js'
+import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
 
 const log = appLogger.child({ module: 'automation-engine' })
 
@@ -156,6 +157,17 @@ export interface AutomationCache<T> {
 export function createAutomationCache<T>(prefix: string, ttlMs = 60_000): AutomationCache<T> {
   const cache = new Map<string, { items: T[]; loadedAt: number }>()
   const key = (tenantId: string, entityType: string, eventType: string) => `${prefix}:${tenantId}:${entityType}:${eventType}`
+  const clear = (tenantId: string) => {
+    for (const k of cache.keys()) {
+      if (k.startsWith(`${prefix}:${tenantId}:`)) cache.delete(k)
+    }
+  }
+  // L'invalidazione passa dal canale fra processi (revisione totale · C-23):
+  // `invalidateTriggerCache`/`invalidateRulesCache` svuotavano solo il
+  // processo che aveva servito la mutation, e il worker che esegue le
+  // automazioni teneva la regola vecchia fino a 60 s — compreso il caso in cui
+  // l'admin la spegne perché sta facendo danni.
+  registerMetamodelCacheClearer(`automation:${prefix}`, clear)
   return {
     async get(tenantId, entityType, eventType, loader) {
       const k = key(tenantId, entityType, eventType)
@@ -165,10 +177,6 @@ export function createAutomationCache<T>(prefix: string, ttlMs = 60_000): Automa
       cache.set(k, { items, loadedAt: Date.now() })
       return items
     },
-    invalidate(tenantId) {
-      for (const k of cache.keys()) {
-        if (k.startsWith(`${prefix}:${tenantId}:`)) cache.delete(k)
-      }
-    },
+    invalidate: clear,
   }
 }

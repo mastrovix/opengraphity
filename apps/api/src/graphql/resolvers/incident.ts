@@ -322,7 +322,7 @@ async function addIncidentComment(
     if (!row) throw new NotFoundError('Incident', args.id)
     void audit(ctx, 'comment.added', 'Incident', args.id, { commentId: row.comment['id'], isInternal })
     // CO-3: stesse notifiche di ogni altro commento (osservatori, menzioni).
-    void notifyCommentAudience(ctx, 'incident', args.id, args.text)
+    void notifyCommentAudience(ctx, 'incident', args.id, args.text, isInternal)
     return mapComment(row.comment, row.author)
   }, true)
 }

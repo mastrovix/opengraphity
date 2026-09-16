@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { NOTIFICATION_LANGUAGES, NOTIFICATION_TITLES, formatNotificationDate, notificationText, notificationTitle } from '../texts.js'
+import { NOTIFICATION_LANGUAGES, NOTIFICATION_TITLES, TEXTS, formatNotificationDate, notificationText, notificationTitle } from '../texts.js'
 
 const root = fileURLToPath(new URL('../../../../', import.meta.url))
 const web = Object.fromEntries(NOTIFICATION_LANGUAGES.map((l) => [l, JSON.parse(readFileSync(`${root}apps/web/src/i18n/locales/${l}.json`, 'utf8')) as Record<string, unknown>]))
@@ -35,6 +35,24 @@ describe('titoli delle notifiche', () => {
     const keys = [...seed.matchAll(/title_key:\s*'([^']+)'/g)].map((m) => m[1]!)
     expect(keys.length).toBeGreaterThan(30)
     for (const k of keys) expect(NOTIFICATION_TITLES[k], k).toBeDefined()
+  })
+
+  /**
+   * Revisione totale · E-13: i CORPI dei messaggi che escono erano inglese
+   * fisso. Ora le frasi con parole hanno la loro chiave, la stessa che il
+   * pannello traduce: le due copie non possono divergere.
+   */
+  it('i corpi con parole (`inApp.*`) coincidono con i file del web, lingua per lingua', () => {
+    const keys = Object.keys(TEXTS).filter((k) => k.startsWith('inApp.'))
+    expect(keys.length).toBeGreaterThan(0)
+    for (const lang of NOTIFICATION_LANGUAGES) {
+      const fromWeb = flat(web[lang]!['inApp'], 'inApp.', {})
+      for (const key of keys) {
+        // Il web usa `{{nome}}` (i18next), il pacchetto `{nome}`.
+        expect(fromWeb[key], `${key} (${lang}) manca nei file del web`).toBeDefined()
+        expect(TEXTS[key as keyof typeof TEXTS][lang], `${key} (${lang})`).toBe(fromWeb[key]!.replace(/\{\{(\w+)\}\}/g, '{$1}'))
+      }
+    }
   })
 
   it('una chiave nota diventa la frase; un testo scritto nella regola resta com\'è', () => {

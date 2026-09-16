@@ -7,6 +7,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { DomainEvent } from '@opengraphity/types'
 
+// Revisione totale · E-3: la consegna è deduplicata per canale su Redis. Nei
+// test gli eventi riusano lo stesso id, quindi la deduplica va azzerata a
+// ogni caso: il contratto della deduplica è pinnato in deliveryDedup.test.ts.
+vi.mock('../deliveryDedup.js', () => ({
+  deliverOnce: async (_id: string | undefined, _ch: string, deliver: () => Promise<void> | void) => { await deliver(); return true },
+  alreadyDelivered: async () => false,
+  markDelivered: async () => {},
+  resetDeliveryDedup: () => {},
+}))
+
 vi.mock('../locale.js', () => ({ loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })), invalidateNotificationLocale: vi.fn() }))
 vi.mock('@opengraphity/events', () => ({ BaseConsumer: class { constructor(public queueName: string) {} async start() {} async stop() {} }, assertSafeOutboundUrl: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(() => ({ executeRead: vi.fn(async () => ({ records: [] })), close: vi.fn() })) }))
@@ -17,7 +27,14 @@ vi.mock('../recipients.js', () => ({
 }))
 const sendToUser = vi.fn()
 const sendToTenant = vi.fn()
-vi.mock('../sse.js', () => ({ sseManager: { sendToUser: (...a: unknown[]) => sendToUser(...a), sendToTenant: (...a: unknown[]) => sendToTenant(...a) } }))
+// E-19: il dispatcher usa le consegne ATTESE (un in-app non salvato deve far
+// fallire il job); i metodi sincroni restano per i cammini fire-and-forget.
+vi.mock('../sse.js', () => ({ sseManager: {
+  sendToUser: (...a: unknown[]) => sendToUser(...a),
+  sendToTenant: (...a: unknown[]) => sendToTenant(...a),
+  deliverToUser: async (...a: unknown[]) => sendToUser(...a),
+  deliverToTenant: async (...a: unknown[]) => sendToTenant(...a),
+} }))
 
 const { NotificationDispatcher } = await import('../dispatcher.js')
 const { resolveNotificationRecipients } = await import('../recipients.js')

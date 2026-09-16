@@ -436,6 +436,16 @@ export function ProblemDetailPage() {
                   <div>
                     <div style={{ fontWeight: 500 }}>{problem.assignee.name}</div>
                     <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)' }}>{problem.assignee.email}</div>
+                    {/* Togliere l'assegnazione: l'incident si poteva
+                        disassegnare, il problem no (revisione totale · B-18). */}
+                    <button
+                      type="button"
+                      disabled={assigningUser}
+                      onClick={() => void assignToUser({ variables: { problemId: problem.id, userId: null } })}
+                      style={{ marginTop: 6, padding: 0, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 'var(--font-size-body)', cursor: assigningUser ? 'not-allowed' : 'pointer', textDecoration: 'underline' }}
+                    >
+                      {t('detail.removeAssignment')}
+                    </button>
                   </div>
                 ) : !problem.assignedTeam ? (
                   <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-muted)', fontStyle: 'italic' }}>

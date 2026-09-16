@@ -21,6 +21,9 @@ import { asyncHandler } from '../errorHandler.js'
 import { apiCtx, apiKeyOf, optionalBodyString, optionalString, parsePagination, requiredString } from '../apiContext.js'
 import { customFieldDefs, parseRestCustomFields, restCustomFieldValues } from '../../lib/ticketCustomFields.js'
 import { ticketCustomFieldResolvers } from '../../graphql/resolvers/ticketCustomFields.js'
+import { writeTicketComment } from '../../lib/ticketComments.js'
+import { notifyCommentAudience } from '../../graphql/resolvers/comments.js'
+import { audit } from '../../lib/audit.js'
 
 const router: ExpressRouter = Router()
 
@@ -145,16 +148,22 @@ router.post('/:id/comments', requirePermission('incidents:write'), asyncHandler(
   }
   const isInternal = body['isInternal'] !== false
 
-  // Author is the API key (not a User node), so the GraphQL addIncidentComment
-  // (which joins the User) is not reusable here.
-  const rows = await withSession((session) => runQuery<{ id: string }>(session, `
-    MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-    CREATE (c:Comment {id: randomUUID(), tenant_id: $tenantId, text: $text, is_internal: $isInternal, author_id: $authorId, created_at: $now, updated_at: $now})
-    CREATE (i)-[:HAS_COMMENT]->(c)
-    RETURN c.id AS id
-  `, { incidentId: id, tenantId: key.tenantId, text, isInternal, authorId: key.keyId, now: new Date().toISOString() }), true)
-  if (!rows[0]) throw new NotFoundError('Incident', id)
-  res.status(201).json({ data: { id: rows[0].id, text, isInternal } })
+  // L'autore è la chiave API, non un nodo User: `author_label` porta il nome
+  // della chiave, che è ciò che la pagina mostra (revisione totale · D-12 —
+  // prima la rotta scriveva un `CREATE (:Comment)` proprio, senza autore
+  // leggibile, senza audit e senza le notifiche a chi osserva il ticket,
+  // quindi il richiedente non sapeva di aver ricevuto una risposta).
+  const ctx = apiCtx(req)
+  const written = await withSession((session) => writeTicketComment(session, {
+    entityType: 'incident', entityId: id, tenantId: key.tenantId,
+    text, authorId: key.keyId, authorLabel: key.name, isInternal,
+  }), true)
+  if (!written) throw new NotFoundError('Incident', id)
+  void audit(ctx, 'comment.added', 'Incident', id, { commentId: written.comment['id'], isInternal, via: 'api_key' })
+  // Le stesse notifiche di ogni altro commento: osservatori (una nota interna
+  // non esce dal perimetro dello staff, M-16) e menzioni.
+  void notifyCommentAudience(ctx, 'incident', id, text, isInternal)
+  res.status(201).json({ data: { id: written.comment['id'], text, isInternal } })
 }))
 
 export { router as incidentsRouter }

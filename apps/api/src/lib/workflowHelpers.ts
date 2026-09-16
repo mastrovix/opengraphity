@@ -173,6 +173,22 @@ export async function isEntityOpen(session: Session, entityId: string, tenantId:
   return !terminal
 }
 
+/**
+ * Il ticket è CONCLUSO: il suo passo ha categoria `resolved` o `closed`,
+ * oppure è terminale (revisione totale · C-26). È la nozione che serve a chi
+ * dice «non risolto dopo N minuti»: il flag «terminale» da solo non basta,
+ * perché un cliente può togliere «terminale» al suo passo Risolto — e
+ * l'escalation di notifica avvisava «non risolto» su incident risolti da ore.
+ * Senza istanza di workflow: non concluso.
+ */
+export async function isEntityConcluded(session: Session, entityId: string, tenantId: string): Promise<boolean> {
+  const res = await session.executeRead((tx) => tx.run(`
+    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
+    RETURN s.category IN ['resolved', 'closed'] OR coalesce(s.is_terminal, false) AS concluded
+  `, { entityId, tenantId }))
+  return res.records[0]?.get('concluded') === true
+}
+
 export async function getStepCategory(session: Session, tenantId: string, entityType: string, stepName: string): Promise<string | null> {
   const steps = await loadSteps(session, tenantId, entityType)
   return steps.find((s) => s.name === stepName)?.category ?? null

@@ -93,6 +93,7 @@ import { apiKeyExpiryRateLimit } from './20261001_1000_api_key_expiry_rate_limit
 import { userEmailLowercase } from './20261001_1010_user_email_lowercase.js'
 import { answerOptionTenant } from './20261001_1020_answer_option_tenant.js'
 import { requestCreatedBy } from './20261001_1030_request_created_by.js'
+import { slaBreachedAt } from './20261002_1000_sla_breached_at.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -184,4 +185,5 @@ export const MIGRATIONS: readonly Migration[] = [
   userEmailLowercase,
   answerOptionTenant,
   requestCreatedBy,
+  slaBreachedAt,
 ]

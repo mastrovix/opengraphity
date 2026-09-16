@@ -31,6 +31,10 @@ import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
 // tengono cache derivate dal metamodello; `startMetamodelBus()` apre la
 // sottoscrizione Redis e registra il publisher usato da invalidateSchema.
 import { startMetamodelBus, stopMetamodelBus } from './lib/metamodelBus.js'
+// Import a effetto: registra sul canale il clearer delle cache del
+// dispatcher delle notifiche (regole, lingua e fuso) — revisione totale ·
+// E-20/A-15: erano invalidate solo nel processo che serviva la mutation.
+import './lib/notificationRuleCache.js'
 
 // Instrument every Neo4j session.run() — covers all 400+ call sites
 registerSessionTracker((durationMs, query) => {

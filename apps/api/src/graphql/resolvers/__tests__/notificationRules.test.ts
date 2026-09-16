@@ -60,7 +60,8 @@ describe('Query.notificationRouting', () => {
     expect(out.defaultChannels).toEqual([...DEFAULT_ROUTABLE_CHANNELS])
     expect(out.byEventType).toEqual(Object.entries(ROUTABLE_CHANNELS_BY_EVENT).map(([eventType, channels]) => ({ eventType, channels: [...channels] })))
     expect(out.byEventType.find((e) => e.eventType === 'incident.created')!.channels).toEqual(['in_app', 'email', 'slack', 'teams'])
-    expect(out.byEventType.find((e) => e.eventType === 'change.approved')!.channels).toEqual(['in_app', 'email', 'slack'])
+    // Revisione totale · E-18: le change hanno anche la card Teams.
+    expect(out.byEventType.find((e) => e.eventType === 'change.approved')!.channels).toEqual(['in_app', 'email', 'slack', 'teams'])
     expect(out.byEventType.some((e) => e.eventType === 'event.storm_started')).toBe(false)
     // copie: chi legge non può mutare la tabella del pacchetto
     out.defaultChannels.push('sms')
@@ -146,11 +147,16 @@ describe('target — validato in scrittura contro NOTIFICATION_TARGETS', () => {
 })
 
 describe('updateNotificationRule — il tipo si legge dal nodo, poi i canali vengono verificati', () => {
-  it('teams su una regola change.approved → BAD_USER_INPUT, nessuna scrittura', async () => {
-    mockSession.executeRead.mockImplementationOnce(async () => ({ records: [{ get: () => 'change.approved' }] }))
+  /**
+   * Revisione totale · E-18: `teams` su una regola `change.approved` ORA è
+   * ammesso (la card Teams delle change esiste). Il rifiuto resta per i tipi
+   * che davvero non hanno un formatter, come `event.storm_started`.
+   */
+  it('slack su una regola event.storm_started → BAD_USER_INPUT, nessuna scrittura', async () => {
+    mockSession.executeRead.mockImplementationOnce(async () => ({ records: [{ get: () => 'event.storm_started' }] }))
     await expectBadInput(
-      notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { channels: ['in_app', 'teams'] } }, ctx),
-      /Channels \[teams\] cannot be routed for change\.approved/,
+      notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { channels: ['in_app', 'slack'] } }, ctx),
+      /Channels \[slack\] cannot be routed for event\.storm_started/,
     )
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })

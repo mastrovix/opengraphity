@@ -59,13 +59,40 @@ const KNOWN_ACTIONS = new Set([
   'deploy_plan_completed', 'deploy_plan_saved', 'deploy_plan_user_assigned', 'deployment_completed', 'review_completed',
   'validation_completed', 'task_reopened',
 ])
-function actionLabel(t: (key: string, opts?: Record<string, unknown>) => string, labelFor: (step: string) => string, action: string): string {
+/**
+ * L'azione dell'ingresso in un passo è STABILE (`change_step_entered`) e il
+ * passo sta nei dettagli (revisione totale · B-19). Il vecchio prefisso
+ * `change_transition_<passo>` resta leggibile: le voci già scritte non si
+ * riscrivono.
+ */
+const STEP_ENTERED_ACTION = 'change_step_entered'
+function actionLabel(
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  labelFor: (step: string) => string,
+  action: string,
+  step?: string,
+): string {
+  if (action === STEP_ENTERED_ACTION) {
+    return step
+      ? t('pages.auditTimeline.action.transition', { step: labelFor(step) })
+      : t('pages.auditTimeline.action.transitionNoStep')
+  }
   if (action.startsWith(TRANSITION_PREFIX)) return t('pages.auditTimeline.action.transition', { step: labelFor(action.slice(TRANSITION_PREFIX.length)) })
   return KNOWN_ACTIONS.has(action) ? t(`pages.auditTimeline.action.${action}`) : action.replace(/_/g, ' ')
 }
 
+/** Il passo dai dettagli della voce (per l'azione stabile). */
+function stepOf(e: ChangeAuditEntryData): string | undefined {
+  if (!e.detailParams) return undefined
+  try {
+    const p = JSON.parse(e.detailParams) as Record<string, unknown>
+    return typeof p['step'] === 'string' && p['step'] ? p['step'] : undefined
+  } catch { return undefined }
+}
+
 function categorizeAction(action: string): AuditCategory {
   const a = action.toLowerCase()
+  if (a === STEP_ENTERED_ACTION) return 'status'
   if (a.includes('phase') || a.includes('approv') || a.includes('reject') || a.includes('auto_approv') || a.includes('closed') || a.includes('advanced_to')) return 'status'
   if (a.includes('assessment') || a.includes('response') || a.includes('risk') || a.includes('deploy_plan')) return 'assessment'
   if (a.includes('assign') || a.includes('team')) return 'assignments'
@@ -110,7 +137,7 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
                 <div style={{ padding: '6px 10px', background: 'var(--color-slate-bg)', borderRadius: 6, border: '1px solid var(--color-border-light)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                     <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{fmtTS(e.timestamp)}</span>
-                    <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 5px', borderRadius: 4, backgroundColor: `${color}15`, color }}>{actionLabel(t, labelFor, e.action)}</span>
+                    <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 5px', borderRadius: 4, backgroundColor: `${color}15`, color }}>{actionLabel(t, labelFor, e.action, stepOf(e))}</span>
                     {e.actor && <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{e.actor.name}</span>}
                   </div>
                   {e.detail && <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-dark)', ...(isLong && !isExp ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : {}) }}>{detailText(t, e)}</div>}

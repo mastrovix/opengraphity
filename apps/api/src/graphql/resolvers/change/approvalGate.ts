@@ -88,11 +88,22 @@ export async function approveChangeApproval(_: unknown, args: { changeId: string
       // L'esito si scrive: prima `approval_status` restava null anche con tutti
       // i requisiti approvati (giro nel browser del 14 set 2026), e REST, PDF,
       // impatto e ticket collegati mostravano la change senza esito.
+      // `approval_at` e la relazione APPROVED_BY: nessuno le scriveva, quindi
+      // `Change.approvalAt` e `Change.approvalBy` erano SEMPRE null e il
+      // dettaglio diceva «Approvata da: —, il: —» su una change approvata
+      // (revisione totale · B-14). Chi chiude il varco è chi approva per
+      // ultimo: è lui che rende la change approvata.
       await runQueryOne(session, `
         MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
-        SET c.approval_status = 'approved', c.updated_at = $now
+        SET c.approval_status = 'approved', c.approval_at = $now, c.updated_at = $now
+        WITH c
+        OPTIONAL MATCH (c)-[old:APPROVED_BY]->(:User)
+        DELETE old
+        WITH c
+        MATCH (u:User {id: $userId, tenant_id: $tenantId})
+        MERGE (c)-[:APPROVED_BY]->(u)
         RETURN c.id AS id
-      `, { changeId: args.changeId, tenantId: ctx.tenantId, now })
+      `, { changeId: args.changeId, tenantId: ctx.tenantId, userId: ctx.userId, now })
       const instanceId = await getInstanceId(session, args.changeId, ctx.tenantId)
       // Il bersaglio è il passo di SCOPO `scheduled` del tenant, non il nome
       // `scheduled`: fra i candidati si preferisce quello davvero raggiungibile

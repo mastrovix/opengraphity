@@ -22,6 +22,12 @@ class FakeRedis {
     this.store.set(key, value)
     return 'OK'
   })
+  /**
+   * Revisione totale · C-9: un invio fallito TOGLIE il marcatore, altrimenti
+   * il digest di quel giorno è perso e i tick successivi lo saltano come «già
+   * inviato».
+   */
+  del = vi.fn(async (key: string): Promise<number> => (this.store.delete(key) ? 1 : 0))
 }
 const redis = new FakeRedis()
 
@@ -262,5 +268,32 @@ describe('processDigestTick — la regola decide', () => {
     await processDigestTick(AT_ROME_8)
     expect(queries.some((x) => x.q.includes('MATCH (u:User'))).toBe(false)
     expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'boss@rome.io' }))
+  })
+})
+
+/**
+ * Revisione totale · C-9: il marcatore di idempotenza veniva preso PRIMA
+ * dell'invio e restava anche quando l'invio falliva. Con Resend che non
+ * risponde alle 08:00, quel cliente non riceveva nessun digest fino al giorno
+ * dopo, nonostante i tick ogni cinque minuti.
+ */
+describe('marcatore di idempotenza e invii falliti (C-9)', () => {
+  it('invio riuscito: il marcatore resta e il tick successivo salta', async () => {
+    await processDigestTick(AT_ROME_8)
+    redis.set.mockClear()
+    const out = await processDigestTick(AT_ROME_8)
+    expect(out.skipped).toContain('rome')
+    expect(redis.del).not.toHaveBeenCalled()
+  })
+
+  it('invio fallito: il marcatore viene rimosso, il tick successivo riprova', async () => {
+    sendEmail.mockRejectedValue(new Error('smtp giù'))
+    await processDigestTick(AT_ROME_8).catch(() => undefined)
+    expect(redis.del).toHaveBeenCalled()
+
+    sendEmail.mockReset()
+    sendEmail.mockResolvedValue(undefined)
+    const out = await processDigestTick(AT_ROME_8)
+    expect(out.sent).toContain('rome')
   })
 })

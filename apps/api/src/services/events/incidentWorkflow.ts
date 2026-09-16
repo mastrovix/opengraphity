@@ -146,7 +146,7 @@ export async function runMonitoringTransition(session: Session, tenantId: string
     const stepLabel = (await loadStepFacts(session, tenantId, 'incident', toStep)).step_label
     await incidentService.addIncidentComment(incidentId, ctx, await systemText(tenantId, 'workflow.transitionCommentNotes', { step: stepLabel, notes }))
   }
-  await incidentService.publishIncidentTransition(incidentId, toStep, ctx)
+  // L'evento di dominio lo pubblica l'hook del motore (C-1): qui sarebbe doppio.
 }
 
 /**
