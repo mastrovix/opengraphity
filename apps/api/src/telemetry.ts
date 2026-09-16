@@ -251,6 +251,29 @@ export function initTelemetry(): void {
         ],
         instrumentations: [getNodeAutoInstrumentations({
           '@opentelemetry/instrumentation-fs': { enabled: false },
+          /**
+           * GraphQL: UN'OPERAZIONE PER CAMPO, non per elemento di lista.
+           *
+           * Acceso il tracciamento per la prima volta (fino a ora
+           * `OTEL_ENABLED` e sempre stato false, e nessuno aveva guardato
+           * dentro Jaeger), la strumentazione predefinita aveva gia prodotto
+           * **398 operazioni, 303 delle quali con un indice nel nome**:
+           * `graphql.resolve incidents.items.0.slaStatus.breached`,
+           * `…items.3.slaStatus.responseDeadline`, una per ogni riga di ogni
+           * lista. L'elenco delle operazioni cresce senza limite, la ricerca
+           * in Jaeger diventa inutilizzabile e l'indice paga per niente.
+           *
+           *  - `mergeItems`: gli elementi diventano `items.*.campo`, una
+           *    operazione sola per campo invece di una per riga;
+           *  - `ignoreTrivialResolveSpans`: niente span per il resolver
+           *    PREDEFINITO, quello che legge una proprieta dall'oggetto e non
+           *    fa altro — e la maggior parte di quelle 303. Gli span che
+           *    contano (i field resolver veri, che interrogano Neo4j) restano.
+           */
+          '@opentelemetry/instrumentation-graphql': {
+            mergeItems: true,
+            ignoreTrivialResolveSpans: true,
+          },
         })],
       })
 
