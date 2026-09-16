@@ -83,7 +83,7 @@ export const GET_SERVICE_REQUESTS = gql`
         status
         createdAt
         customFields { name value }
-        formFieldValues { name label fieldType value values }
+        formFieldValues { name label fieldType displayValue displayValues }
       }
       total
     }
@@ -110,7 +110,7 @@ export const GET_SERVICE_REQUEST = gql`
       customFields { ...CustomFieldValueFields }
       affectedCIs { id name type status environment }
       formRevision
-      formAnswers { name label fieldType value values references { id label } files { id filename sizeBytes } }
+      formAnswers { name label fieldType value values displayValue displayValues references { id label } files { id filename sizeBytes } }
     }
   }
   ${CUSTOM_FIELD_VALUE_FIELDS}
@@ -119,6 +119,6 @@ export const GET_SERVICE_REQUEST = gql`
 /** Campi filtrabili di un tipo (scalari/enum): sostituisce l'introspezione `__type`, spenta in produzione. */
 export const GET_ENTITY_FILTER_FIELDS = gql`
   query EntityFilterFields($typeName: String!) {
-    entityFilterFields(typeName: $typeName) { name kind scalarName enumValues label choices { value label } multi }
+    entityFilterFields(typeName: $typeName) { name kind scalarName enumValues label choices { value label } formFieldType vocabulary multi }
   }
 `

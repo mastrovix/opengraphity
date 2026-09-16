@@ -39,6 +39,8 @@ import { ValidationError } from './errors.js'
 import { assertCustomFieldName } from './customFieldName.js'
 import { loadVocabularyEntries } from './vocabularyEntries.js'
 import { runValidationScript } from './metamodelScript.js'
+import { labelFor, type EnumValueLabels } from './enumValueLabels.js'
+import { languageFor } from './tenantLanguage.js'
 
 export { FORM_DRAFT_ENTITY_TYPE }
 
@@ -672,6 +674,16 @@ export interface FormAnswerRead {
   fieldType: string
   value: string | null
   values: string[]
+  /**
+   * Il valore COME SI LEGGE (ondata 5): l'etichetta del Dizionario per un
+   * campo a vocabolario, il valore stesso per gli altri. Separato da `value`
+   * perché quello è il dato — lo leggono i filtri, i report e le condizioni —
+   * mentre questo è per gli occhi. Prima la scheda del ticket diceva
+   * «production» dove la colonna della lista diceva «Produzione».
+   */
+  displayValue: string | null
+  /** Gli stessi valori di `values`, come si leggono. */
+  displayValues: string[]
   /** Per i campi di riferimento: i nodi puntati, col loro nome. */
   references: Array<{ id: string; label: string }>
   /** Per i campi allegato: i file reclamati dal ticket per questo campo. */
@@ -692,23 +704,58 @@ export async function formAnswersOf(
   const riferimenti = await leggiRiferimenti(session, tenantId, ticket.id)
   const file = await leggiFileDelModulo(session, tenantId, ticket.id)
 
+  // Le etichette dei vocabolari citati dal modulo: una lettura per vocabolario,
+  // non una per risposta.
+  const leggibile = await etichetteDeiValori(tenantId, [...library.values()])
+
   const out: FormAnswerRead[] = []
   for (const nome of nomi) {
     const campo = library.get(nome)
     if (campo && FORM_FIELD_TYPES_WITHOUT_ANSWER.includes(campo.fieldType)) continue
     const raw = ticket.props[nome]
     const lista = Array.isArray(raw) ? raw.map((v) => String(v)) : []
+    const valore = Array.isArray(raw) || raw == null || raw === '' ? null : String(raw)
+    const comeSiLegge = leggibile(nome)
     out.push({
       name: nome,
       label: campo?.label ?? nome,
       fieldType: campo?.fieldType ?? 'text',
-      value: Array.isArray(raw) || raw == null || raw === '' ? null : String(raw),
+      value: valore,
       values: lista,
+      displayValue: valore == null ? null : comeSiLegge(valore),
+      displayValues: lista.map(comeSiLegge),
       references: riferimenti.get(nome) ?? [],
       files: file.get(nome) ?? [],
     })
   }
   return out
+}
+
+/**
+ * Per ogni campo, come si legge un suo valore (ondata 5). I vocabolari si
+ * leggono una volta ciascuno; un campo senza vocabolario e un valore che il
+ * vocabolario non conosce più restano com'erano — il dato vero, non
+ * un'etichetta inventata.
+ *
+ * La lingua è quella del tenant, come per le colonne delle liste e i report:
+ * le risposte di un ticket le legge lo staff nella lingua del prodotto.
+ */
+export async function etichetteDeiValori(
+  tenantId: string, campi: readonly FormFieldDef[],
+): Promise<(nomeCampo: string) => (valore: string) => string> {
+  const conVocabolario = campi.filter((c) => c.vocabulary)
+  if (conVocabolario.length === 0) return () => (v) => v
+  const lingua = await languageFor(tenantId)
+  const perVocabolario = new Map<string, EnumValueLabels>()
+  for (const nome of new Set(conVocabolario.map((c) => c.vocabulary!))) {
+    perVocabolario.set(nome, (await loadVocabularyEntries(tenantId, nome)).labels)
+  }
+  const perCampo = new Map(conVocabolario.map((c) => [c.name, perVocabolario.get(c.vocabulary!)!]))
+  return (nomeCampo) => {
+    const etichette = perCampo.get(nomeCampo)
+    if (!etichette) return (v) => v
+    return (v) => (etichette[v] ? labelFor(v, etichette, lingua, lingua) : v)
+  }
 }
 
 /**

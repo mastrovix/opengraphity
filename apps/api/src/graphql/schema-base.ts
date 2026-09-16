@@ -783,6 +783,16 @@ export function buildBaseSDL(): string {
     """
     choices:    [EntityFilterChoice!]!
     """
+    Il tipo del campo se viene da un MODULO del catalogo (\`text\`, \`number\`,
+    \`date\`, \`enum\`, \`multi_enum\`…), altrimenti null (ondata 5). Dice due cose
+    in una: che il campo viene dalla libreria dei moduli e non dallo schema o
+    dai campi personalizzati, e qual e' il suo tipo vero — che \`kind\` e
+    \`scalarName\` non sanno rendere (una data e una stringa, per loro).
+    """
+    formFieldType: String
+    """Il vocabolario del Dizionario da cui pesca le scelte, per leggerne le etichette; null se non ne ha uno."""
+    vocabulary: String
+    """
     Il valore sul nodo e' una LISTA, non un valore solo (selezione multipla dei
     moduli del catalogo, ondata 4). Cambia gli operatori: «contiene una di»,
     non «uguale a» — un uguale su una lista non trova mai niente.

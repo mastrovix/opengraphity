@@ -88,10 +88,69 @@ export function useEntityFieldMetas(entityType: string, { withVirtual = true }: 
   }, [isITIL, entityType, itilData, ciData, itilErr, ciErr, withVirtual, t])
 }
 
-/** Stessi campi, indicizzati per nome (anteprime/lookup). */
+/**
+ * Stessi campi, indicizzati per nome (anteprime/lookup) — più quelli dei
+ * moduli del catalogo (ondata 5). Servono anche qui: senza, l'anteprima di una
+ * regola diceva «ambienti_coinvolti contiene "production"» invece di «Ambienti
+ * coinvolti contiene "Produzione"», cioè leggeva il nome interno proprio nella
+ * frase che serve a capire se la regola è quella giusta.
+ */
 export function useEntityFieldLookup(entityType: string): Map<string, FieldMeta> {
   const { fields } = useEntityFieldMetas(entityType)
-  return useMemo(() => new Map(fields.map(f => [f.name, f])), [fields])
+  const daiModuli = useFormFieldMetas(entityType)
+  return useMemo(() => {
+    const m = new Map(fields.map(f => [f.name, f]))
+    for (const f of daiModuli) if (!m.has(f.name)) m.set(f.name, f)
+    return m
+  }, [fields, daiModuli])
+}
+
+/**
+ * I tipi di un campo di modulo nel vocabolario dell'automazione (ondata 5).
+ *
+ * Due vocabolari diversi: un modulo parla di `text`/`textarea`/`datetime`,
+ * l'editor delle condizioni di `string`/`date`. La conversione sta QUI, in un
+ * posto solo, e un tipo che non ha un corrispondente resta fuori invece di
+ * arrivare all'editor come «?tipo».
+ */
+const FORM_TYPE_TO_AUTOMATION: Readonly<Record<string, string>> = {
+  text: 'string', textarea: 'string', number: 'number',
+  date: 'date', datetime: 'date', boolean: 'boolean',
+  enum: 'enum', multi_enum: 'multi_enum',
+}
+
+/**
+ * I campi della LIBRERIA dei moduli del catalogo come `FieldMeta`, per gli
+ * editor delle automazioni (ondata 5).
+ *
+ * Perché esistono qui: una risposta di modulo è una proprietà del ticket, e il
+ * motore delle condizioni legge `properties(nodo)` — quindi una condizione su
+ * «Ambiente = produzione» FUNZIONAVA già, ma non si potevano scrivere: la
+ * tendina dei campi veniva dal solo metamodello. Si offrono solo per le
+ * RICHIESTE, le sole che compilano un modulo.
+ *
+ * La sorgente è `entityFilterFields` (dato di riferimento che ogni pagina può
+ * leggere), non la libreria dell'amministratore: chi scrive una regola non ha
+ * per forza i permessi della configurazione del catalogo.
+ */
+export function useFormFieldMetas(entityType: string): FieldMeta[] {
+  const richiesta = entityType === 'service_request'
+  const { data } = useQuery<{ entityFilterFields: EntityFilterField[] }>(
+    GET_ENTITY_FILTER_FIELDS,
+    { variables: { typeName: 'ServiceRequest' }, skip: !richiesta, fetchPolicy: METAMODEL_FETCH_POLICY },
+  )
+  const campi = data?.entityFilterFields
+  return useMemo(() => (campi ?? [])
+    .filter((f) => f.formFieldType != null && FORM_TYPE_TO_AUTOMATION[f.formFieldType] != null)
+    .map((f): FieldMeta => ({
+      name:         f.name,
+      label:        f.label ?? f.name,
+      fieldType:    FORM_TYPE_TO_AUTOMATION[f.formFieldType!],
+      enumValues:   f.enumValues ?? [],
+      // Il vocabolario: da lì l'editor legge l'etichetta di ogni valore, come
+      // fa per i campi del metamodello.
+      enumTypeName: f.vocabulary,
+    })), [campi])
 }
 
 // ── Campi filtrabili dal server (FilterBuilder) ──────────────────────────────
@@ -107,6 +166,10 @@ interface EntityFilterField {
   label:      string | null
   /** Le scelte con l'etichetta del Dizionario; vuota = valgono `enumValues`. */
   choices:    { value: string; label: string }[]
+  /** Il tipo del campo se viene da un modulo del catalogo; null altrimenti (ondata 5). */
+  formFieldType: string | null
+  /** Il vocabolario del Dizionario del campo, per leggerne le etichette. */
+  vocabulary: string | null
   /** Il valore sul nodo è una LISTA: vuole gli operatori di lista (ondata 4). */
   multi:      boolean
 }

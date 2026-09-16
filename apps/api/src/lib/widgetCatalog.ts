@@ -24,6 +24,14 @@
  *    aggregato della change, che è un campo calcolato dal prodotto.
  *
  * Il web legge lo stesso catalogo (`widgetCatalog`): non c'è più una copia.
+ *
+ * ## I campi dei moduli del catalogo (ondata 5)
+ * Alle RICHIESTE si aggiungono i campi della libreria dei moduli: sono
+ * proprietà del ticket come le altre, ed è il motivo per cui i moduli scrivono
+ * proprietà e non un documento. Senza di loro «quanti portatili per ambiente»
+ * non era un widget, pur essendo un filtro e una colonna. Non gli allegati e
+ * non i riferimenti: un file non si raggruppa e una relazione non è una
+ * proprietà del nodo.
  */
 import { getSession } from '@opengraphity/neo4j'
 import { loadMetamodel } from '@opengraphity/schema-generator'
@@ -31,6 +39,8 @@ import { ENUM_SCOPE } from './enumScope.js'
 import { loadITILTypes } from './itilTypes.js'
 import { createMetamodelCache } from './metamodelCache.js'
 import { propertyForField } from './fieldProperty.js'
+import { formFields, type FormFieldDef } from './catalogForm.js'
+import { FORM_FIELD_TYPES_AS_PROPERTY, FORM_FIELD_TYPES_MULTI } from '@opengraphity/types'
 
 export interface WidgetCatalogField {
   name:         string
@@ -94,14 +104,43 @@ function catalogField(neo4jLabel: string, f: RawField, custom: boolean): WidgetC
   }
 }
 
+/**
+ * I campi della libreria dei moduli, nella forma del catalogo. Raggruppabili
+ * quelli a vocabolario, il sì/no e il testo (è testo del cliente, non il
+ * titolo di un ticket); numerici i `number`. La selezione multipla NON è
+ * raggruppabile: il valore è una lista, e un `count by` su una lista
+ * conterebbe le liste, non le scelte — una risposta sbagliata che sembra
+ * giusta.
+ */
+function formFieldsForCatalog(defs: readonly FormFieldDef[]): WidgetCatalogField[] {
+  const out: WidgetCatalogField[] = []
+  for (const d of defs) {
+    if (!FORM_FIELD_TYPES_AS_PROPERTY.includes(d.fieldType)) continue
+    if (FORM_FIELD_TYPES_MULTI.includes(d.fieldType)) continue
+    if (!PROPERTY_RE.test(d.name)) continue
+    const groupable = d.fieldType === 'enum' || d.fieldType === 'boolean' || d.fieldType === 'text' || d.fieldType === 'textarea'
+    const numeric = d.fieldType === 'number'
+    if (!groupable && !numeric) continue
+    out.push({
+      name: d.name, label: d.label, fieldType: d.fieldType,
+      enumTypeName: d.vocabulary, enumValues: [],
+      property: d.name, groupable, numeric, custom: true,
+    })
+  }
+  return out
+}
+
 async function loadCatalog(tenantId: string): Promise<WidgetCatalogEntity[]> {
   const session = getSession(undefined, 'READ')
   let itil: Awaited<ReturnType<typeof loadITILTypes>>
+  let libreria: FormFieldDef[]
   try {
     itil = await loadITILTypes(session, tenantId)
+    libreria = await formFields(session, tenantId)
   } finally {
     await session.close()
   }
+  const daiModuli = formFieldsForCatalog(libreria)
   const ciTypes = await loadMetamodel(tenantId, ENUM_SCOPE)
 
   const tickets: WidgetCatalogEntity[] = itil
@@ -112,7 +151,11 @@ async function loadCatalog(tenantId: string): Promise<WidgetCatalogEntity[]> {
         .filter((f) => !unstored.includes(String(f.name)))
         .map((f) => catalogField(t.neo4jLabel!, f, f.isSystem !== true))
         .filter((f): f is WidgetCatalogField => f !== null)
-      return { entityType: t.name, label: t.label, neo4jLabel: t.neo4jLabel!, group: 'itsm' as const, fields: [...fields, ...(WIDGET_PRODUCT_FIELDS[t.name] ?? [])] }
+      // I campi dei moduli solo alle richieste: sono le sole che compilano un
+      // modulo del catalogo. Un nome già preso dal metamodello vince, perché è
+      // quello che il ticket scrive davvero.
+      const moduli = t.name === 'service_request' ? daiModuli.filter((m) => !fields.some((f) => f.name === m.name)) : []
+      return { entityType: t.name, label: t.label, neo4jLabel: t.neo4jLabel!, group: 'itsm' as const, fields: [...fields, ...(WIDGET_PRODUCT_FIELDS[t.name] ?? []), ...moduli] }
     })
 
   const cis: WidgetCatalogEntity[] = ciTypes

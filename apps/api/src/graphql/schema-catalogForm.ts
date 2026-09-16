@@ -158,6 +158,14 @@ export function catalogFormSDL(): string {
     fieldType: String!
     value:     String
     values:    [String!]!
+    """
+    Il valore COME SI LEGGE (ondata 5): l'etichetta del Dizionario per un campo
+    a vocabolario, il valore stesso per gli altri. \`value\` resta il dato — lo
+    leggono filtri, report e condizioni; questo e' per gli occhi.
+    """
+    displayValue:  String
+    """Gli stessi valori di \`values\`, come si leggono."""
+    displayValues: [String!]!
     """Per i campi di riferimento: i nodi puntati (vuoto per gli altri)."""
     references: [FormAnswerReference!]!
     """Per i campi allegato: i file del ticket per questo campo (vuoto per gli altri)."""

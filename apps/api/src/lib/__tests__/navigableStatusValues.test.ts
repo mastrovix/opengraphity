@@ -21,7 +21,10 @@ vi.mock('@opengraphity/neo4j', () => ({
   runQuery: vi.fn(async () => await libreria()),
 }))
 vi.mock('@opengraphity/schema-generator', () => ({ toPascalCase: (s: string) => s.replace(/(^|_)(\w)/g, (_m, _u, c: string) => c.toUpperCase()) }))
-vi.mock('../logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
+// `child`: la finta del logger serve anche ai moduli tirati dentro da
+// `catalogForm.ts` (la lingua del tenant), che si fanno un logger figlio.
+const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: vi.fn(() => log) }
+vi.mock('../logger.js', () => ({ logger: log }))
 vi.mock('../enumScope.js', () => ({
   enumScopeClause: () => '',
   loadTenantEnumOverrides: vi.fn().mockResolvedValue(new Map()),

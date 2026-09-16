@@ -6314,7 +6314,8 @@
       "boolean": "boolean",
       "enum": "enum",
       "user": "user",
-      "team": "team"
+      "team": "team",
+      "multiEnum": "Multiple choice"
     },
     "operator": {
       "equals": "=",
@@ -6326,7 +6327,8 @@
       "isNotNull": "is not null",
       "changed": "is changed",
       "after": "after",
-      "before": "before"
+      "before": "before",
+      "containsChoice": "includes"
     },
     "action": {
       "setField": "Set field",

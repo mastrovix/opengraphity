@@ -38,7 +38,15 @@ function evalCondition(c: Condition, entity: Record<string, unknown>): boolean {
     case 'is_not_null':  return actual != null && actual !== ''
     case 'greater_than': return Number(actual) > Number(c.value)
     case 'less_than':    return Number(actual) < Number(c.value)
-    case 'contains':     return typeof actual === 'string' && typeof c.value === 'string' && actual.includes(c.value)
+    /**
+     * «contiene»: dentro un testo, oppure dentro una LISTA (la selezione
+     * multipla di un modulo del catalogo, ondata 5). Prima una lista cadeva
+     * nel `typeof === 'string'` e la condizione era sempre falsa: una regola
+     * che non scattava mai, senza un errore che lo dicesse.
+     */
+    case 'contains':
+      if (Array.isArray(actual)) return actual.some((v) => v === c.value)
+      return typeof actual === 'string' && typeof c.value === 'string' && actual.includes(c.value)
     case 'changed': {
       const changed = entity[CHANGED_FIELDS_KEY]
       return Array.isArray(changed) && changed.includes(c.field)

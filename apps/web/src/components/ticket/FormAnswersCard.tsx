@@ -21,6 +21,9 @@ export interface FormAnswer {
   fieldType: string
   value: string | null
   values: string[]
+  /** Il valore come si legge (etichetta del Dizionario): lo decide l'API. */
+  displayValue: string | null
+  displayValues: string[]
   /** Per i campi di riferimento: i nodi puntati (ondata 2). */
   references: Array<{ id: string; label: string }>
   /** Per i campi allegato: i file del ticket per questo campo (ondata 2). */
@@ -44,14 +47,16 @@ export function FormAnswersCard({ answers, revision }: { answers: readonly FormA
           <div key={a.name} style={{ display: 'contents' }}>
             <dt style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{a.label}</dt>
             <dd style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', margin: 0, wordBreak: 'break-word' }}>
+              {/* `displayValue`/`displayValues`: il valore come si legge, deciso
+                  dall'API — «Produzione», non «production» (ondata 5). */}
               {a.references.length > 0
                 ? a.references.map((r) => r.label).join(', ')
                 : a.files.length > 0
                   ? a.files.map((f) => f.filename).join(', ')
-                  : a.values.length > 0
-                ? a.values.join(', ')
-                : a.value != null && a.value !== ''
-                  ? (a.fieldType === 'boolean' ? (a.value === 'true' ? t('common.yes') : t('common.no')) : a.value)
+                  : a.displayValues.length > 0
+                ? a.displayValues.join(', ')
+                : a.displayValue != null && a.displayValue !== ''
+                  ? (a.fieldType === 'boolean' ? (a.displayValue === 'true' ? t('common.yes') : t('common.no')) : a.displayValue)
                   : <span style={{ color: colors.slateLight }}>{t('detail.formAnswerEmpty')}</span>}
             </dd>
           </div>

@@ -21,6 +21,7 @@ import type { GraphQLContext } from '../../context.js'
 import { ValidationError } from '../../lib/errors.js'
 import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { assertFormSize, assertLibraryRoom, assertLimitValue, CATALOG_FORM_LIMIT_MAX, CATALOG_FORM_LIMIT_MIN, catalogFormLimits as leggiTetti } from '../../lib/catalogFormLimits.js'
+import { etichetteDeiValori } from '../../lib/catalogForm.js'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import {
   assertCatalogForm, assertFormFieldName, formAnswersOf, formFields, formFieldsByName, formFieldsCache,
@@ -429,7 +430,7 @@ export const formFieldOptions = async (
 export async function serviceRequestFormFieldValues(
   parent: { id: string },
   _args: unknown, ctx: GraphQLContext,
-): Promise<Array<{ name: string; label: string; fieldType: string; value: string | null; values: string[]; references: never[]; files: never[] }>> {
+): Promise<Array<{ name: string; label: string; fieldType: string; value: string | null; values: string[]; displayValue: string | null; displayValues: string[]; references: never[]; files: never[] }>> {
   const libreria = await formFieldsCache.get(ctx.tenantId)
   // Solo i campi che l'amministratore ha messo nelle liste: senza questo filtro
   // il ticket porterebbe TUTTA la libreria a ogni riga della lista.
@@ -442,15 +443,22 @@ export async function serviceRequestFormFieldValues(
       MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
       RETURN properties(r) AS props`, { id: parent.id, tenantId: ctx.tenantId })
     if (!row) return []
+    // Le etichette dei valori le mette l'API, come per le risposte del modulo e
+    // per i report: una sola verita su «come si legge production».
+    const leggibile = await etichetteDeiValori(ctx.tenantId, conRisposta)
     return conRisposta
       .filter((f) => row.props[f.name] != null && row.props[f.name] !== '')
       .map((f) => {
         const raw = row.props[f.name]
         const lista = Array.isArray(raw) ? raw.map((v) => String(v)) : []
+        const valore = Array.isArray(raw) ? null : String(raw)
+        const comeSiLegge = leggibile(f.name)
         return {
           name: f.name, label: f.label, fieldType: f.fieldType,
-          value: Array.isArray(raw) ? null : String(raw),
+          value: valore,
           values: lista,
+          displayValue: valore == null ? null : comeSiLegge(valore),
+          displayValues: lista.map(comeSiLegge),
           references: [] as never[], files: [] as never[],
         }
       })

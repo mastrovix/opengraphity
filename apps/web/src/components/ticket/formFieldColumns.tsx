@@ -16,9 +16,9 @@
  * dei campi spenti.
  *
  * Le ETICHETTE, non i valori: `production` sul nodo si legge «Produzione»,
- * come ovunque nel prodotto. Le scelte arrivano già tradotte dall'API
- * (`options(language:)`), quindi la traduzione avviene una volta sola e nella
- * lingua giusta anche per i vocabolari del cliente.
+ * come ovunque nel prodotto. La traduzione la fa l'API (`displayValue` /
+ * `displayValues`), la stessa che serve le risposte del ticket e i report:
+ * «come si legge production» è una verità sola, in un posto solo.
  *
  * Non ordinabili: l'ordinamento delle liste è del server, che ordina solo sui
  * campi del prodotto (la stessa ragione delle colonne `cf:`).
@@ -34,8 +34,9 @@ export interface FormFieldValue {
   name: string
   label: string
   fieldType: string
-  value: string | null
-  values: string[]
+  /** Il valore come si legge; `value`/`values` restano il dato. */
+  displayValue: string | null
+  displayValues: string[]
 }
 
 interface WithFormFieldValues { formFieldValues?: FormFieldValue[] | null }
@@ -44,7 +45,6 @@ interface CampoInLista {
   name: string
   label: string
   inList: boolean
-  options: Array<{ value: string; label: string }>
 }
 
 const cell = (name: string) => `ff:${name}`
@@ -68,9 +68,6 @@ export function useFormFieldColumns<T extends WithFormFieldValues>(): {
 
   return useMemo(() => {
     const inLista = (campi ?? []).filter((f) => f.inList)
-    /** Per ogni campo, il valore sul nodo → l'etichetta da leggere. */
-    const etichette = new Map(inLista.map((f) => [f.name, new Map(f.options.map((o) => [o.value, o.label]))]))
-    const leggibile = (campo: string, valore: string) => etichette.get(campo)?.get(valore) ?? valore
 
     const columns: ColumnDef<T>[] = inLista.map((f) => ({
       key:      cell(f.name) as keyof T,
@@ -88,9 +85,7 @@ export function useFormFieldColumns<T extends WithFormFieldValues>(): {
       (r.formFieldValues ?? []).map((f) => [
         cell(f.name),
         // La selezione multipla in una cella: le etichette separate da virgola.
-        f.values.length > 0
-          ? f.values.map((v) => leggibile(f.name, v)).join(', ')
-          : f.value == null ? null : leggibile(f.name, f.value),
+        f.displayValues.length > 0 ? f.displayValues.join(', ') : f.displayValue,
       ]),
     )))
 
