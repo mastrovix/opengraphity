@@ -10,6 +10,7 @@ import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { assertCIsLinkable } from '../../lib/ticketCIExclusions.js'
 import { mapUser } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { formFields } from '../../lib/catalogForm.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
 import * as requestService from '../../services/requestService.js'
 import { audit } from '../../lib/audit.js'
@@ -23,6 +24,7 @@ type Props = Record<string, unknown>
 // requiresApproval: dichiarati nello schema ma sempre null in lettura).
 import { mapRequest } from '../../services/requestService.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
+import { serviceRequestFormAnswers } from './catalogForm.js'
 import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
 import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
 import { assertDomainValue } from '../../lib/domainMatrix.js'
@@ -64,8 +66,18 @@ async function serviceRequests(
       offset,
       limit,
     }
-    // I campi del cliente si filtrano come quelli del prodotto (ondata 4).
-    const allowedFields = new Set([...getScalarFields(info.schema, 'ServiceRequest'), ...(await requestCustomFieldDefs(ctx, 'service_request')).map((d) => d.name)])
+    /**
+     * I campi del cliente si filtrano come quelli del prodotto (ondata 4), e
+     * dai moduli del catalogo (ondata 1) vale anche per i campi della LIBRERIA:
+     * una risposta a un modulo e una proprieta del ticket, quindi filtrabile.
+     * E la ragione per cui le risposte non sono un documento JSON — se la lista
+     * dei campi ammessi non le conoscesse, quella ragione sarebbe sulla carta.
+     */
+    const allowedFields = new Set([
+      ...getScalarFields(info.schema, 'ServiceRequest'),
+      ...(await requestCustomFieldDefs(ctx, 'service_request')).map((d) => d.name),
+      ...(await formFields(session, ctx.tenantId)).map((d) => d.name),
+    ])
     const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r') : ''
     // A-22: un campo non ordinabile è un errore, non un ordine diverso in silenzio.
     const orderBy = orderByOrThrow(REQUEST_SORT_WHITELIST, args.sortField, args.sortDirection ?? 'desc', 'r.created_at DESC', 'serviceRequests(sortField)')
@@ -459,6 +471,8 @@ export const serviceRequestResolvers = {
   Mutation: { createServiceRequest, updateServiceRequest, assignServiceRequestToUser, createServiceCatalogItem, updateServiceCatalogItem, addCIToServiceRequest, removeCIFromServiceRequest },
   ServiceRequest: {
     affectedCIs: requestAffectedCIs,
+    // Le risposte al modulo della voce di catalogo (moduli del catalogo, ondata 1).
+    formAnswers: serviceRequestFormAnswers,
     requestedBy: requestRequestedBy,
     assignee:    requestAssignee,
     slaStatus:   ticketSlaStatusResolver('ServiceRequest'),

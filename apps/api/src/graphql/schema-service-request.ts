@@ -30,6 +30,10 @@ export function serviceRequestSDL(): string {
     slaStatus: SLAStatusInfo
     """I CI che la richiesta riguarda (revisione del 15 set 2026 · CM-8)."""
     affectedCIs: [CIBase!]!
+    """La revisione del modulo con cui e stata compilata: 0 o null = nessun modulo (moduli del catalogo, ondata 1)."""
+    formRevision: Int
+    """Le risposte del modulo, nell'ordine del modulo con cui e stata compilata."""
+    formAnswers: [FormAnswer!]!
   }
 
   type ServiceCatalogItem {
@@ -83,6 +87,8 @@ export function serviceRequestSDL(): string {
     senza SLA: la diagnostica di configurazione non lo conta.
     """
     acknowledgeNoSla: Boolean
+    """Le risposte al modulo della voce di catalogo (moduli del catalogo, ondata 1)."""
+    formAnswers: [FormAnswerInput!]
   }
 
   input UpdateServiceRequestInput {

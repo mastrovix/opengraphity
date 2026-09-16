@@ -14,6 +14,9 @@ import { ValidationError } from '../../lib/errors.js'
 import type { TicketCustomFieldEntityType } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 import { requestCustomFieldDefs } from './ticketCustomFields.js'
+import { formFields } from '../../lib/catalogForm.js'
+import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
+import { withSession } from './ci-utils.js'
 
 export interface EntityFilterField {
   name:       string
@@ -61,7 +64,22 @@ export const entityFilterFieldsResolvers = {
         .map((d): EntityFilterField => d.fieldType === 'enum'
           ? { name: d.name, kind: 'ENUM', scalarName: null, enumValues: d.enumValues }
           : { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null })
-      return [...fields, ...custom]
+      /**
+       * I campi della LIBRERIA dei moduli del catalogo (ondata 1): sono
+       * proprieta dei ticket come gli altri, quindi vanno OFFERTI nel
+       * selettore, non solo ammessi dal filtro. Solo per le richieste: sono i
+       * moduli del catalogo a scriverli.
+       */
+      const daModuli = entityType !== 'service_request' ? [] : await withSession(async (session) => {
+        const libreria = await formFields(session, ctx.tenantId)
+        return libreria
+          .filter((d) => d.fieldType !== 'note')
+          .filter((d) => !fields.some((f) => f.name === d.name) && !custom.some((f) => f.name === d.name))
+          .map(async (d): Promise<EntityFilterField> => d.vocabulary
+            ? { name: d.name, kind: 'ENUM', scalarName: null, enumValues: (await loadVocabularyEntries(ctx.tenantId, d.vocabulary)).values as string[] }
+            : { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null })
+      }).then((p) => Promise.all(p))
+      return [...fields, ...custom, ...daModuli]
     },
   },
 }

@@ -53,6 +53,7 @@ import { knowledgeBaseResolvers } from './knowledgeBase.js'
 import { reportExportResolvers } from './reportExport.js'
 import { portalResolvers } from './portal.js'
 import { fieldRulesResolvers } from './fieldRules.js'
+import { catalogFormResolvers } from './catalogForm.js'
 import { ticketCIExclusionResolvers } from './ticketCIExclusions.js'
 import { customWidgetResolvers } from './customWidget.js'
 import { automationResolvers } from './automation.js'
@@ -335,6 +336,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...knowledgeBaseResolvers.Query,
       ...portalResolvers.Query,
       ...fieldRulesResolvers.Query,
+      ...catalogFormResolvers.Query,
       ...ticketCIExclusionResolvers.Query,
       ...customWidgetResolvers.Query,
       ...automationResolvers.Query,
@@ -401,6 +403,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...reportExportResolvers.Mutation,
       ...portalResolvers.Mutation,
       ...fieldRulesResolvers.Mutation,
+      ...catalogFormResolvers.Mutation,
       ...ticketCIExclusionResolvers.Mutation,
       ...customWidgetResolvers.Mutation,
       ...automationResolvers.Mutation,

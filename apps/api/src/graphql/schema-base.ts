@@ -28,6 +28,7 @@ import { customFieldsSDL } from './schema-customFields.js'
 import { knowledgeBaseSDL } from './schema-kb.js'
 import { portalSDL } from './schema-portal.js'
 import { fieldRulesSDL } from './schema-fieldRules.js'
+import { catalogFormSDL } from './schema-catalogForm.js'
 import { automationSchema } from './schema-automation.js'
 import { integrationsSchema } from './schema-integrations.js'
 import { collaborationSchema } from './schema-collaboration.js'
@@ -53,6 +54,12 @@ export function buildBaseSDL(): string {
     serviceRequests(status: String, priority: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): ServiceRequestsResult!
     serviceRequest(id: ID!): ServiceRequest
     serviceCatalogItems(activeOnly: Boolean): [ServiceCatalogItem!]!
+    """La libreria dei campi dei moduli (ondata 1 dei moduli del catalogo)."""
+    formFields: [FormField!]!
+    """Il modulo di una voce, per il costruttore."""
+    catalogForm(itemId: ID!): CatalogForm!
+    """Il modulo pronto da compilare: web e portale leggono questo. «endUser» limita ai campi offerti agli utenti finali."""
+    catalogFormToFill(itemId: ID!, endUser: Boolean): CatalogFormToFill
 
     # CMDB — generic queries (typed CI queries come from dynamic schema)
     allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String, ciTypes: [String], excludeCiTypes: [String], filters: String, sortField: String, sortDirection: String): AllCIsResult!
@@ -419,6 +426,11 @@ export function buildBaseSDL(): string {
     """Collega un CI alla richiesta (CM-8). Rifiutato se il tipo del CI è escluso per le richieste."""
     addCIToServiceRequest(requestId: ID!, ciId: ID!): ServiceRequest!
     removeCIFromServiceRequest(requestId: ID!, ciId: ID!): ServiceRequest!
+    createFormField(input: CreateFormFieldInput!): FormField!
+    updateFormField(id: ID!, input: UpdateFormFieldInput!): FormField!
+    deleteFormField(id: ID!): Boolean!
+    """Salva E pubblica il modulo della voce: la revision sale di uno."""
+    saveCatalogForm(itemId: ID!, definition: String!): CatalogForm!
     createServiceCatalogItem(input: CreateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceCatalogItem(id: ID!, input: UpdateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceRequest(id: ID!, input: UpdateServiceRequestInput!): ServiceRequest!
@@ -741,6 +753,7 @@ export function buildBaseSDL(): string {
   ${knowledgeBaseSDL()}
   ${portalSDL()}
   ${fieldRulesSDL()}
+  ${catalogFormSDL()}
   ${automationSchema}
   ${integrationsSchema}
   ${collaborationSchema}

@@ -1,0 +1,314 @@
+/**
+ * Moduli del catalogo servizi, ondata 1.
+ *
+ * Tre cose sono pinnate qui, e sono quelle che, sbagliate, non si vedrebbero:
+ *
+ *  1. IL VALUTATORE DELLE CONDIZIONI (@opengraphity/types): lo usano il browser
+ *     per mostrare e il server per accettare. Se i due divergessero, un campo
+ *     nascosto diventerebbe un varco — quindi il valutatore è uno e i suoi casi
+ *     limite sono fissati: risposta vuota, liste, confronti numerici e di data.
+ *  2. LA LETTURA DELLA DEFINIZIONE: un documento corrotto o di una versione
+ *     sconosciuta deve essere un ERRORE, non un modulo vuoto (che sembrerebbe
+ *     una configurazione).
+ *  3. LA SCRITTURA DELLE RISPOSTE: un campo nascosto da una condizione che
+ *     arriva comunque va rifiutato, e un obbligatorio nascosto non va chiesto.
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import {
+  evaluateFormCondition, evaluateFormRule, emptyCatalogForm, catalogFormFieldNames,
+  type CatalogFormDefinition, type FormCondition,
+} from '@opengraphity/types'
+
+vi.mock('../vocabularyEntries.js', () => ({
+  loadVocabularyEntries: vi.fn(async (_t: string, name: string) => {
+    if (name === 'device_kind') return { values: ['portatile', 'fisso', 'tablet'], labels: {}, colors: {} }
+    if (name === 'sistemi')     return { values: ['posta', 'crm', 'erp'], labels: {}, colors: {} }
+    throw new Error(`Vocabulary "${name}" does not exist`)
+  }),
+}))
+vi.mock('../metamodelScript.js', () => ({ runValidationScript: vi.fn(async () => null) }))
+
+const { parseCatalogForm, assertCatalogForm, resolveFormWrites, visibleFormItems } = await import('../catalogForm.js')
+const { runValidationScript } = await import('../metamodelScript.js')
+
+const campo = (name: string, fieldType: string, extra: Record<string, unknown> = {}) => ({
+  id: `id-${name}`, name, fieldType, label: name, labels: [], help: null, helps: [],
+  required: false, vocabulary: null, validationScript: null, createdAt: null, updatedAt: null,
+  ...extra,
+}) as never
+
+const LIBRERIA = new Map<string, never>([
+  ['modello',        campo('modello', 'text')],
+  ['costo',          campo('costo', 'number')],
+  ['urgente',        campo('urgente', 'boolean')],
+  ['data_inizio',    campo('data_inizio', 'date')],
+  ['tipo_dispositivo', campo('tipo_dispositivo', 'enum', { vocabulary: 'device_kind' })],
+  ['sistemi',        campo('sistemi', 'multi_enum', { vocabulary: 'sistemi' })],
+  ['istruzioni',     campo('istruzioni', 'note')],
+  ['centro_di_costo', campo('centro_di_costo', 'text', { required: true })],
+])
+
+/** Un modulo di prova: il costo si chiede solo se il tipo è «portatile». */
+function moduloDiProva(): CatalogFormDefinition {
+  return {
+    version: 1,
+    revision: 3,
+    sections: [
+      {
+        id: 'dispositivo',
+        title: { it: 'Dispositivo', en: 'Device' },
+        items: [
+          { field: 'tipo_dispositivo', required: true },
+          { field: 'modello' },
+          { field: 'costo', visibleWhen: { match: 'all', rules: [{ field: 'tipo_dispositivo', op: 'eq', value: 'portatile' }] }, required: true },
+        ],
+      },
+      {
+        id: 'amministrativo',
+        title: { it: 'Amministrativo' },
+        items: [
+          { field: 'centro_di_costo' },
+          { field: 'istruzioni' },
+          { field: 'urgente', endUser: false },
+        ],
+      },
+    ],
+  }
+}
+
+describe('il valutatore delle condizioni (browser e server, lo stesso)', () => {
+  it('una risposta vuota fa fallire ogni regola tranne «vuoto»', () => {
+    for (const vuoto of [undefined, null, '', '   ', []]) {
+      const answers = { x: vuoto as never }
+      expect(evaluateFormRule({ field: 'x', op: 'eq', value: 'a' }, answers)).toBe(false)
+      expect(evaluateFormRule({ field: 'x', op: 'ne', value: 'a' }, answers)).toBe(false)
+      expect(evaluateFormRule({ field: 'x', op: 'gt', value: '0' }, answers)).toBe(false)
+      expect(evaluateFormRule({ field: 'x', op: 'filled' }, answers)).toBe(false)
+      expect(evaluateFormRule({ field: 'x', op: 'empty' }, answers)).toBe(true)
+    }
+  })
+
+  it('i confronti d\'ordine sono numerici fra numeri e alfabetici fra testi (le date ISO si ordinano come testo)', () => {
+    expect(evaluateFormRule({ field: 'c', op: 'gt', value: '1000' }, { c: '900' })).toBe(false)
+    expect(evaluateFormRule({ field: 'c', op: 'gt', value: '1000' }, { c: 2000 })).toBe(true)
+    // «900» > «1000» alfabeticamente: il confronto numerico evita il difetto classico.
+    expect(evaluateFormRule({ field: 'c', op: 'gte', value: '1000' }, { c: '1000' })).toBe(true)
+    expect(evaluateFormRule({ field: 'd', op: 'gte', value: '2026-01-01' }, { d: '2026-03-04' })).toBe(true)
+    expect(evaluateFormRule({ field: 'd', op: 'lt', value: '2026-01-01' }, { d: '2025-12-31' })).toBe(true)
+  })
+
+  it('su una lista «uguale» e «contiene» vogliono dire appartenenza; i confronti d\'ordine no', () => {
+    const a = { s: ['posta', 'crm'] }
+    expect(evaluateFormRule({ field: 's', op: 'eq', value: 'crm' }, a)).toBe(true)
+    expect(evaluateFormRule({ field: 's', op: 'contains', value: 'crm' }, a)).toBe(true)
+    expect(evaluateFormRule({ field: 's', op: 'ne', value: 'erp' }, a)).toBe(true)
+    expect(evaluateFormRule({ field: 's', op: 'gt', value: 'a' }, a)).toBe(false)
+  })
+
+  it('il sì/no si confronta come «true»/«false», e «contiene» ignora le maiuscole', () => {
+    expect(evaluateFormRule({ field: 'u', op: 'eq', value: 'true' }, { u: true })).toBe(true)
+    expect(evaluateFormRule({ field: 'm', op: 'contains', value: 'PRO' }, { m: 'MacBook Pro' })).toBe(true)
+  })
+
+  it('«tutte» e «almeno una»; nessuna condizione = visibile', () => {
+    const answers = { a: '1', b: '2' }
+    const tutte: FormCondition = { match: 'all', rules: [{ field: 'a', op: 'eq', value: '1' }, { field: 'b', op: 'eq', value: '9' }] }
+    const almeno: FormCondition = { match: 'any', rules: [{ field: 'a', op: 'eq', value: '1' }, { field: 'b', op: 'eq', value: '9' }] }
+    expect(evaluateFormCondition(tutte, answers)).toBe(false)
+    expect(evaluateFormCondition(almeno, answers)).toBe(true)
+    expect(evaluateFormCondition(undefined, answers)).toBe(true)
+  })
+})
+
+describe('parseCatalogForm', () => {
+  it('assente o vuoto = nessun modulo (non un errore)', () => {
+    expect(parseCatalogForm(null, 'x')).toBeNull()
+    expect(parseCatalogForm('', 'x')).toBeNull()
+  })
+
+  it('un modulo appena creato si rilegge identico', () => {
+    const vuoto = emptyCatalogForm()
+    expect(parseCatalogForm(JSON.stringify(vuoto), 'x')).toEqual(vuoto)
+  })
+
+  it('JSON corrotto, chiavi mancanti o versione dal futuro: errore, mai un modulo vuoto', () => {
+    expect(() => parseCatalogForm('{non json', 'x')).toThrow(/not valid JSON/)
+    expect(() => parseCatalogForm(JSON.stringify({ version: 1, sections: [] }), 'x')).toThrow(/has no revision/)
+    expect(() => parseCatalogForm(JSON.stringify({ version: 99, revision: 1, sections: [] }), 'x')).toThrow(/version 99/)
+    expect(() => parseCatalogForm(JSON.stringify({ version: 1, revision: -1, sections: [] }), 'x')).toThrow(/revision must be/)
+  })
+
+  it('una condizione senza regole è rifiutata: «sempre» e «mai» sarebbero indistinguibili', () => {
+    const def = { version: 1, revision: 1, sections: [{ id: 'a', title: {}, items: [{ field: 'modello', visibleWhen: { match: 'all', rules: [] } }] }] }
+    expect(() => parseCatalogForm(JSON.stringify(def), 'x')).toThrow(/at least one rule/)
+  })
+
+  it('operatore sconosciuto, valore mancante, id di sezione sbagliato', () => {
+    const conRegola = (rule: unknown) => JSON.stringify({ version: 1, revision: 1, sections: [{ id: 'a', title: {}, items: [{ field: 'modello', visibleWhen: { match: 'all', rules: [rule] } }] }] })
+    expect(() => parseCatalogForm(conRegola({ field: 'costo', op: 'maggiore', value: '1' }), 'x')).toThrow(/unknown operator/)
+    expect(() => parseCatalogForm(conRegola({ field: 'costo', op: 'eq' }), 'x')).toThrow(/needs a value/)
+    // `filled` non vuole un valore: passa.
+    expect(() => parseCatalogForm(conRegola({ field: 'costo', op: 'filled' }), 'x')).not.toThrow()
+    expect(() => parseCatalogForm(JSON.stringify({ version: 1, revision: 1, sections: [{ id: 'Sezione 1', title: {}, items: [] }] }), 'x')).toThrow(/section id/)
+  })
+})
+
+describe('assertCatalogForm', () => {
+  it('il modulo di prova è valido', () => {
+    expect(() => assertCatalogForm(moduloDiProva(), LIBRERIA)).not.toThrow()
+  })
+
+  it('un campo che non è in libreria', () => {
+    const def = { ...moduloDiProva(), sections: [{ id: 'a', title: {}, items: [{ field: 'inventato' }] }] }
+    expect(() => assertCatalogForm(def, LIBRERIA)).toThrow(/not in the field library/)
+  })
+
+  it('lo stesso campo due volte scriverebbe due volte la stessa proprietà', () => {
+    const def = { ...moduloDiProva(), sections: [{ id: 'a', title: {}, items: [{ field: 'modello' }, { field: 'modello' }] }] }
+    expect(() => assertCatalogForm(def, LIBRERIA)).toThrow(/appears twice/)
+  })
+
+  it('una condizione che guarda un campo non presente nel modulo non potrebbe mai diventare vera', () => {
+    const def = {
+      version: 1, revision: 1,
+      sections: [{ id: 'a', title: {}, items: [{ field: 'modello', visibleWhen: { match: 'all', rules: [{ field: 'costo', op: 'gt', value: '10' }] } }] }],
+    } as CatalogFormDefinition
+    expect(() => assertCatalogForm(def, LIBRERIA)).toThrow(/could never become true/)
+  })
+
+  it('una nota non porta risposta: non può essere obbligatoria né essere il soggetto di una condizione', () => {
+    const obbligatoria = { version: 1, revision: 1, sections: [{ id: 'a', title: {}, items: [{ field: 'istruzioni', required: true }] }] } as CatalogFormDefinition
+    expect(() => assertCatalogForm(obbligatoria, LIBRERIA)).toThrow(/carries no answer/)
+    const soggetto = {
+      version: 1, revision: 1,
+      sections: [{ id: 'a', title: {}, items: [{ field: 'istruzioni' }, { field: 'modello', visibleWhen: { match: 'all', rules: [{ field: 'istruzioni', op: 'filled' }] } }] }],
+    } as CatalogFormDefinition
+    expect(() => assertCatalogForm(soggetto, LIBRERIA)).toThrow(/never has a value/)
+  })
+
+  it('due sezioni con lo stesso identificativo', () => {
+    const def = { version: 1, revision: 1, sections: [{ id: 'a', title: {}, items: [] }, { id: 'a', title: {}, items: [] }] } as CatalogFormDefinition
+    expect(() => assertCatalogForm(def, LIBRERIA)).toThrow(/have the id/)
+  })
+})
+
+describe('visibleFormItems', () => {
+  it('il campo condizionato compare solo con la risposta che lo accende', () => {
+    const def = moduloDiProva()
+    const senza = visibleFormItems(def, { tipo_dispositivo: 'fisso' }).map((i) => i.field)
+    expect(senza).not.toContain('costo')
+    const con = visibleFormItems(def, { tipo_dispositivo: 'portatile' }).map((i) => i.field)
+    expect(con).toContain('costo')
+  })
+
+  it('dal portale i campi non offerti agli utenti finali non ci sono', () => {
+    const def = moduloDiProva()
+    expect(visibleFormItems(def, {}).map((i) => i.field)).toContain('urgente')
+    expect(visibleFormItems(def, {}, { endUser: true }).map((i) => i.field)).not.toContain('urgente')
+  })
+})
+
+describe('resolveFormWrites', () => {
+  const session = {} as never
+  const risposte = (m: Record<string, string | string[]>) =>
+    Object.entries(m).map(([name, v]) => (Array.isArray(v) ? { name, values: v } : { name, value: v }))
+
+  beforeEach(() => { vi.mocked(runValidationScript).mockClear() })
+
+  it('converte i tipi e scrive le proprietà', async () => {
+    const out = await resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({
+      tipo_dispositivo: 'portatile', modello: 'MacBook Pro', costo: '1800',
+      centro_di_costo: 'CC-12', urgente: 'true',
+    }))
+    expect(out).toEqual({
+      tipo_dispositivo: 'portatile', modello: 'MacBook Pro', costo: 1800,
+      centro_di_costo: 'CC-12', urgente: true,
+    })
+  })
+
+  it('SICUREZZA: un campo nascosto da una condizione che arriva comunque è rifiutato', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({
+      tipo_dispositivo: 'fisso', centro_di_costo: 'CC-1', costo: '5000',
+    }))).rejects.toThrow(/hidden by a condition/)
+  })
+
+  it('SICUREZZA: dal portale un campo non offerto agli utenti finali è rifiutato', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({
+      tipo_dispositivo: 'fisso', centro_di_costo: 'CC-1', urgente: 'true',
+    }), { endUser: true })).rejects.toThrow(/hidden by a condition|not offered here/)
+  })
+
+  it('un campo che non appartiene al modulo non può scrivere una proprietà del ticket', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, [{ name: 'priority', value: 'P1' }]))
+      .rejects.toThrow(/not a field of this form/)
+  })
+
+  it('l\'obbligatorio si chiede solo se VISIBILE: il costo nascosto non si chiede, quello visibile sì', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({
+      tipo_dispositivo: 'fisso', centro_di_costo: 'CC-1',
+    }))).resolves.toMatchObject({ tipo_dispositivo: 'fisso' })
+
+    await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({
+      tipo_dispositivo: 'portatile', centro_di_costo: 'CC-1',
+    }))).rejects.toThrow(/is required/)
+  })
+
+  it('l\'obbligatorietà della libreria vale anche senza sovrascrittura del modulo', async () => {
+    // `centro_di_costo` è obbligatorio in libreria e il modulo non dice niente.
+    await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({ tipo_dispositivo: 'fisso' })))
+      .rejects.toThrow(/is required/)
+  })
+
+  it('il vocabolario è verificato, per la scelta singola e per quella multipla', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({
+      tipo_dispositivo: 'astronave', centro_di_costo: 'CC-1',
+    }))).rejects.toThrow(/is not a value of/)
+
+    const conSistemi: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 'a', title: {}, items: [{ field: 'sistemi' }] }],
+    }
+    await expect(resolveFormWrites(session, 't1', conSistemi, LIBRERIA, risposte({ sistemi: ['posta', 'inventato'] })))
+      .rejects.toThrow(/is not a value of/)
+    await expect(resolveFormWrites(session, 't1', conSistemi, LIBRERIA, risposte({ sistemi: ['posta', 'crm', 'posta'] })))
+      .resolves.toEqual({ sistemi: ['posta', 'crm'] })
+  })
+
+  it('un numero che non è un numero, una data che non è una data', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({
+      tipo_dispositivo: 'portatile', centro_di_costo: 'CC-1', costo: 'tanto',
+    }))).rejects.toThrow(/is a number/)
+
+    const conData: CatalogFormDefinition = { version: 1, revision: 1, sections: [{ id: 'a', title: {}, items: [{ field: 'data_inizio' }] }] }
+    await expect(resolveFormWrites(session, 't1', conData, LIBRERIA, risposte({ data_inizio: 'domani' })))
+      .rejects.toThrow(/is a date/)
+  })
+
+  it('lo script di validazione gira sui soli campi visibili e compilati, e il suo rifiuto arriva a chi compila', async () => {
+    const libreriaConScript = new Map(LIBRERIA)
+    libreriaConScript.set('costo', campo('costo', 'number', { validationScript: 'if (value > 5000) throw new Error("troppo")' }))
+    vi.mocked(runValidationScript).mockResolvedValueOnce('troppo')
+    await expect(resolveFormWrites(session, 't1', moduloDiProva(), libreriaConScript, risposte({
+      tipo_dispositivo: 'portatile', centro_di_costo: 'CC-1', costo: '9000',
+    }))).rejects.toThrow(/was refused: troppo/)
+
+    // Con il costo nascosto lo script non viene nemmeno chiamato.
+    vi.mocked(runValidationScript).mockClear()
+    await resolveFormWrites(session, 't1', moduloDiProva(), libreriaConScript, risposte({
+      tipo_dispositivo: 'fisso', centro_di_costo: 'CC-1',
+    }))
+    expect(runValidationScript).not.toHaveBeenCalled()
+  })
+
+  it('una nota non accetta risposte', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({
+      tipo_dispositivo: 'fisso', centro_di_costo: 'CC-1', istruzioni: 'ciao',
+    }))).rejects.toThrow(/carries no answer/)
+  })
+
+  it('catalogFormFieldNames elenca i campi nell\'ordine del modulo', () => {
+    expect(catalogFormFieldNames(moduloDiProva())).toEqual([
+      'tipo_dispositivo', 'modello', 'costo', 'centro_di_costo', 'istruzioni', 'urgente',
+    ])
+  })
+})

@@ -230,6 +230,11 @@ const CONSTRAINTS: SchemaStatement[] = [
     cypher: 'DROP INDEX enum_type_definition_tenant_name IF EXISTS',
   },
   { label: 'EnumTypeDefinition(tenant_id, name)', cypher: 'CREATE CONSTRAINT enum_type_definition_tenant_name_unique IF NOT EXISTS FOR (n:EnumTypeDefinition) REQUIRE (n.tenant_id, n.name) IS UNIQUE' },
+  // Moduli del catalogo (ondata 1): il nome di un campo della libreria e il
+  // nome della proprieta sul ticket, quindi due campi con lo stesso nome nello
+  // stesso tenant scriverebbero sullo stesso dato.
+  { label: 'FormField(tenant_id, name)', cypher: 'CREATE CONSTRAINT form_field_tenant_name_unique IF NOT EXISTS FOR (n:FormField) REQUIRE (n.tenant_id, n.name) IS UNIQUE' },
+  { label: 'CatalogFormRevision(tenant_id, item_id, revision)', cypher: 'CREATE CONSTRAINT catalog_form_revision_unique IF NOT EXISTS FOR (n:CatalogFormRevision) REQUIRE (n.tenant_id, n.item_id, n.revision) IS UNIQUE' },
   { label: 'CIFieldDefinition.id', cypher: 'CREATE CONSTRAINT ci_field_definition_id_unique IF NOT EXISTS FOR (n:CIFieldDefinition) REQUIRE n.id IS UNIQUE' },
   { label: 'CIRelationDefinition.id', cypher: 'CREATE CONSTRAINT ci_relation_definition_id_unique IF NOT EXISTS FOR (n:CIRelationDefinition) REQUIRE n.id IS UNIQUE' },
   { label: 'CISystemRelationDefinition.id', cypher: 'CREATE CONSTRAINT ci_system_relation_definition_id_unique IF NOT EXISTS FOR (n:CISystemRelationDefinition) REQUIRE n.id IS UNIQUE' },  // Revisione totale · E-24: questi cinque vincoli stavano nell'elenco degli
@@ -354,6 +359,8 @@ const INDEXES: SchemaStatement[] = [
   { label: 'SyncConflict(source_id)',                   cypher: 'CREATE INDEX sync_conflict_source IF NOT EXISTS FOR (n:SyncConflict) ON (n.source_id)' },
   { label: 'SyncConflict(tenant_id, status)',           cypher: 'CREATE INDEX sync_conflict_status IF NOT EXISTS FOR (n:SyncConflict) ON (n.tenant_id, n.status)' },
   { label: 'ServiceCatalogItem(tenant_id)', cypher: 'CREATE INDEX service_catalog_tenant IF NOT EXISTS FOR (n:ServiceCatalogItem) ON (n.tenant_id)' },
+  { label: 'FormField(tenant_id)', cypher: 'CREATE INDEX form_field_tenant IF NOT EXISTS FOR (n:FormField) ON (n.tenant_id)' },
+  { label: 'CatalogFormRevision(tenant_id, item_id)', cypher: 'CREATE INDEX catalog_form_revision_item IF NOT EXISTS FOR (n:CatalogFormRevision) ON (n.tenant_id, n.item_id)' },
   // Discovery reconciliation lookups by (tenant_id, source, external_id) are
   // served by the ci_discovery_key_unique constraint's backing index (CONSTRAINTS).
   // Fulltext for the command-palette global search (CONTAINS cannot use range indexes).

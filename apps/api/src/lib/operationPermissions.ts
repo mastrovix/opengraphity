@@ -98,7 +98,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   { anyOf: ['change.delete'], mutation: ['deleteChange'] },
   { anyOf: ['request.read'], query: ['serviceRequests', 'serviceRequest', 'ciServiceRequests'] },
   { anyOf: ['request.write'], mutation: ['addCIToServiceRequest', 'removeCIFromServiceRequest'] },
-  { anyOf: ['request.read', 'portal.read'], query: ['serviceCatalogItems'] },
+  { anyOf: ['request.read', 'portal.read'], query: ['serviceCatalogItems', 'catalogFormToFill'] },
   { anyOf: ['request.write'], mutation: ['updateServiceRequest', 'assignServiceRequestToUser'] },
   { anyOf: ['request.write', 'portal.submit'], mutation: ['createServiceRequest'] },
   // Il passo di workflow per id d'istanza: vale per incident, richieste e articoli.
@@ -183,6 +183,11 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
       'adoptShippedValues', 'acknowledgeShippedValues',
       'updateDomainMatrix', 'updatePreApprovedChangeTypes', 'updateRiskBandThresholds', 'updateChangeEnvironmentWeight', 'updateImpactAnalysisWeights',
       'createFieldVisibilityRule', 'updateFieldVisibilityRule', 'deleteFieldVisibilityRule', 'setFieldRequirement', 'deleteFieldRequirement',
+      // La libreria dei campi dei moduli (moduli del catalogo, ondata 1):
+      // definisce PROPRIETA dei ticket, quindi sta col metamodello e non col
+      // catalogo — chi compone un modulo (config.catalog) sceglie fra i campi
+      // che esistono, chi ne crea uno nuovo tocca la forma dei dati.
+      'createFormField', 'updateFormField', 'deleteFormField',
     ],
   },
   {
@@ -208,8 +213,9 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   {
     anyOf: ['config.catalog'],
-    query: ['assessmentQuestionsAdmin', 'questionCITypeAssignments'],
-    mutation: ['createServiceCatalogItem', 'updateServiceCatalogItem', 'createAssessmentQuestion', 'updateAssessmentQuestion',
+    query: ['assessmentQuestionsAdmin', 'questionCITypeAssignments', 'formFields', 'catalogForm'],
+    mutation: ['saveCatalogForm',
+      'createServiceCatalogItem', 'updateServiceCatalogItem', 'createAssessmentQuestion', 'updateAssessmentQuestion',
       'deleteAssessmentQuestion', 'assignQuestionToCIType', 'removeQuestionFromCIType', 'setQuestionCore'],
   },
   {

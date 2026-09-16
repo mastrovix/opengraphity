@@ -114,6 +114,7 @@ import { serviceCalendarNameKey } from './20261002_1040_service_calendar_name_ke
 import { eventPolicyHighImpact } from './20261002_1050_event_policy_high_impact.js'
 import { slaNullResolveOutcome } from './20261002_1060_sla_null_resolve_outcome.js'
 import { removeCiLabelFromTickets } from './20261002_1070_remove_ci_label_from_tickets.js'
+import { catalogFormSchema } from './20261003_1010_catalog_form_schema.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -213,4 +214,5 @@ export const MIGRATIONS: readonly Migration[] = [
   eventPolicyHighImpact,
   slaNullResolveOutcome,
   removeCiLabelFromTickets,
+  catalogFormSchema,
 ]

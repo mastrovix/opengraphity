@@ -52,7 +52,11 @@ describe('policy ↔ schema', () => {
     const q = queryFields.filter((f) => allowedRoles('Query', f).includes('end_user')).sort()
     const m = mutationFields.filter((f) => allowedRoles('Mutation', f).includes('end_user')).sort()
     expect(q).toEqual([
-      'attachmentPolicy', 'fieldRequirementRules', 'fieldVisibilityRules', 'kbArticle', 'kbArticleBySlug', 'kbArticles', 'kbCategories',
+      'attachmentPolicy',
+      // Moduli del catalogo (ondata 1): il portale legge il modulo della voce
+      // che l'utente ha scelto, quindi la query entra nella sua superficie.
+      'catalogFormToFill',
+      'fieldRequirementRules', 'fieldVisibilityRules', 'kbArticle', 'kbArticleBySlug', 'kbArticles', 'kbCategories',
       'me', 'myTicket', 'myTicketStats', 'myTickets', 'portalCustomFields', 'portalSeverityChoices', 'serviceCatalogItems',
       'tenantBrand', 'tenantLanguageSettings', 'ticketCategories',
     ])
