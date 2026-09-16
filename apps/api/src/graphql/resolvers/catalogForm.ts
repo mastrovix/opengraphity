@@ -12,16 +12,19 @@ import { randomUUID } from 'crypto'
 import { GraphQLError } from 'graphql'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import {
-  CATALOG_FORM_VERSION, FORM_FIELD_TYPES, FORM_FIELD_TYPES_WITH_VOCABULARY,
+  CATALOG_FORM_VERSION, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY,
+  FORM_FIELD_TYPES_WITHOUT_ANSWER, FORM_FIELD_TYPES_WITH_VOCABULARY,
   catalogFormFieldNames, emptyCatalogForm, isFormFieldType, serializeLocalizedLabels,
   type CatalogFormDefinition,
 } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 import { ValidationError } from '../../lib/errors.js'
 import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
+import { assertFormSize, assertLibraryRoom, assertLimitValue, CATALOG_FORM_LIMIT_MAX, CATALOG_FORM_LIMIT_MIN, catalogFormLimits as leggiTetti } from '../../lib/catalogFormLimits.js'
+import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import {
-  assertCatalogForm, assertFormFieldName, formAnswersOf, formFields, formFieldsByName, parseCatalogForm,
-  saveCatalogFormRevision, type FormAnswerRead, type FormFieldDef,
+  assertCatalogForm, assertFormFieldName, formAnswersOf, formFields, formFieldsByName, formFieldsCache,
+  parseCatalogForm, saveCatalogFormRevision, type FormAnswerRead, type FormFieldDef,
 } from '../../lib/catalogForm.js'
 
 interface TestoPerLingua { language: string; text: string }
@@ -63,6 +66,21 @@ async function usoDeiCampi(tenantId: string): Promise<Map<string, string[]>> {
 
 function vistaCampo(d: FormFieldDef, usedBy: readonly string[]): Record<string, unknown> {
   return { ...d, usedBy: [...usedBy] }
+}
+
+/**
+ * Colonna nelle liste: solo i campi che diventano una PROPRIETÀ del ticket
+ * (ondata 4). Una nota non ha risposta, un allegato è un file e un riferimento
+ * è una relazione: nessuno dei tre è un valore che una cella possa mostrare, e
+ * `formFieldValues` non li restituisce affatto. Rifiutare qui invece di
+ * ignorare, perché una spunta che resta accesa senza effetto è una bugia.
+ */
+function assertColonnaPossibile(fieldType: string, inList: boolean): boolean {
+  if (inList && !FORM_FIELD_TYPES_AS_PROPERTY.includes(fieldType as never)) {
+    throw new ValidationError(`A ${fieldType} field cannot be a list column: only fields stored as a ticket property can.`,
+      { key: 'errors.formField.notAColumn', params: { fieldType } })
+  }
+  return inList
 }
 
 /** Il vocabolario deve esistere per i tipi che pescano le scelte da lì, e solo per quelli. */
@@ -113,6 +131,16 @@ export const catalogFormResolvers = {
       try {
         const [defs, uso] = await Promise.all([formFields(session, ctx.tenantId), usoDeiCampi(ctx.tenantId)])
         return defs.map((d) => vistaCampo(d, uso.get(d.name) ?? []))
+      } finally { await session.close() }
+    },
+
+    catalogFormLimits: async (_: unknown, _args: unknown, ctx: GraphQLContext) => {
+      const session = getSession(undefined, 'READ')
+      try {
+        const tetti = await leggiTetti(session, ctx.tenantId)
+        const row = await runQueryOne<{ n: unknown }>(session, `
+          MATCH (f:FormField {tenant_id: $tenantId}) RETURN count(f) AS n`, { tenantId: ctx.tenantId })
+        return { ...tetti, libraryFieldsUsed: Number(row?.n ?? 0), min: CATALOG_FORM_LIMIT_MIN, max: CATALOG_FORM_LIMIT_MAX }
       } finally { await session.close() }
     },
 
@@ -169,6 +197,8 @@ export const catalogFormResolvers = {
 
       const write = getSession(undefined, 'WRITE')
       try {
+        // Il tetto PRIMA di tutto: inutile validare un campo che non ci sta.
+        await assertLibraryRoom(write, ctx.tenantId)
         await assertFormFieldName(write, ctx.tenantId, name)
         const vocabulary = await assertVocabolario(ctx.tenantId, fieldType, input['vocabulary'] as string | null)
         const esiste = await runQueryOne<{ n: number }>(write, `
@@ -183,7 +213,7 @@ export const catalogFormResolvers = {
             id: $id, tenant_id: $tenantId, name: $name, field_type: $fieldType,
             label: $label, labels: $labels, help: $help, helps: $helps,
             required: $required, vocabulary: $vocabulary, validation_script: $validationScript,
-            created_at: $now, updated_at: $now
+            in_list: $inList, created_at: $now, updated_at: $now
           })`, {
           id: randomUUID(), tenantId: ctx.tenantId, name, fieldType, label,
           labels: serializeLocalizedLabels(mappaTesti(input['labels'] as TestoPerLingua[] | null)),
@@ -192,8 +222,12 @@ export const catalogFormResolvers = {
           required: input['required'] === true,
           vocabulary,
           validationScript: (input['validationScript'] as string | null) ?? null,
+          inList: assertColonnaPossibile(fieldType, input['inList'] === true),
           now,
         })
+        // La leva del metamodello: la cache della libreria (che serve alle
+        // colonne delle liste) deve dimenticare subito, in ogni processo.
+        invalidateSchema(ctx.tenantId)
         const creato = (await formFields(write, ctx.tenantId)).find((f) => f.name === name)!
         return vistaCampo(creato, [])
       } finally { await write.close() }
@@ -224,6 +258,7 @@ export const catalogFormResolvers = {
               f.required = CASE WHEN $requiredSet THEN $required ELSE f.required END,
               f.vocabulary = $vocabulary,
               f.validation_script = CASE WHEN $scriptSet THEN $validationScript ELSE f.validation_script END,
+              f.in_list = CASE WHEN $inListSet THEN $inList ELSE f.in_list END,
               f.updated_at = $now`, {
           id: args.id, tenantId: ctx.tenantId,
           label: input['label'] == null ? null : String(input['label']).trim(),
@@ -233,8 +268,11 @@ export const catalogFormResolvers = {
           requiredSet: 'required' in input, required: input['required'] === true,
           vocabulary,
           scriptSet: 'validationScript' in input, validationScript: (input['validationScript'] as string | null) ?? null,
+          // Il tipo non si cambia, quindi la guardia guarda quello che il campo È già.
+          inListSet: 'inList' in input, inList: assertColonnaPossibile(corrente.fieldType, input['inList'] === true),
           now: new Date().toISOString(),
         })
+        invalidateSchema(ctx.tenantId)
         const aggiornato = await campoPerId(ctx.tenantId, args.id)
         const uso = await usoDeiCampi(ctx.tenantId)
         return vistaCampo(aggiornato, uso.get(aggiornato.name) ?? [])
@@ -263,6 +301,7 @@ export const catalogFormResolvers = {
       try {
         await runQuery(write, `MATCH (f:FormField {id: $id, tenant_id: $tenantId}) DETACH DELETE f`,
           { id: args.id, tenantId: ctx.tenantId })
+        invalidateSchema(ctx.tenantId)
         return true
       } finally { await write.close() }
     },
@@ -272,6 +311,29 @@ export const catalogFormResolvers = {
      * (il costruttore ha l'anteprima); i ticket già compilati portano la loro
      * revisione e non cambiano.
      */
+    /**
+     * Il tetto lo cambia l'amministratore, non il piano (ondata 4). Non tocca
+     * nulla di gia scritto: una libreria gia oltre il nuovo tetto resta dov'e,
+     * semplicemente non cresce piu. Cancellare campi per far tornare i conti
+     * sarebbe perdere dati per rispettare un numero.
+     */
+    setCatalogFormLimits: async (_: unknown, args: { maxLibraryFields: number; maxFieldsPerForm: number }, ctx: GraphQLContext) => {
+      const maxLibraryFields = assertLimitValue('The library limit', args.maxLibraryFields)
+      const maxFieldsPerForm = assertLimitValue('The per-form limit', args.maxFieldsPerForm)
+      const write = getSession(undefined, 'WRITE')
+      try {
+        const row = await runQueryOne<{ n: unknown }>(write, `
+          MATCH (t:Tenant {id: $tenantId})
+          SET t.max_form_fields = toInteger($maxLibraryFields),
+              t.max_form_fields_per_form = toInteger($maxFieldsPerForm)
+          WITH t
+          OPTIONAL MATCH (f:FormField {tenant_id: $tenantId})
+          RETURN count(f) AS n`, { tenantId: ctx.tenantId, maxLibraryFields, maxFieldsPerForm })
+        if (!row) throw new Error(`Tenant ${ctx.tenantId} has no :Tenant node: fix the tenant before changing the catalog form limits`)
+        return { maxLibraryFields, maxFieldsPerForm, libraryFieldsUsed: Number(row.n ?? 0), min: CATALOG_FORM_LIMIT_MIN, max: CATALOG_FORM_LIMIT_MAX }
+      } finally { await write.close() }
+    },
+
     saveCatalogForm: async (_: unknown, args: { itemId: string; definition: string }, ctx: GraphQLContext) => {
       const voce = await vocePerId(ctx.tenantId, args.itemId)
       const precedente = parseCatalogForm(voce.form, `ServiceCatalogItem ${voce.name}`)
@@ -280,7 +342,9 @@ export const catalogFormResolvers = {
 
       const session = getSession(undefined, 'WRITE')
       try {
-        const library = await formFieldsByName(session, ctx.tenantId, catalogFormFieldNames(inviata))
+        const nomi = catalogFormFieldNames(inviata)
+        await assertFormSize(session, ctx.tenantId, nomi.length)
+        const library = await formFieldsByName(session, ctx.tenantId, nomi)
         assertCatalogForm(inviata, library)
 
         const salvata: CatalogFormDefinition = {
@@ -346,4 +410,49 @@ export const formFieldOptions = async (
   const lingua = isLingua(args.language) ? args.language : ripiego
   const v = await loadVocabularyEntries(ctx.tenantId, parent.vocabulary)
   return v.values.map((valore) => ({ value: valore, label: labelFor(valore, v.labels, lingua, ripiego) }))
+}
+
+/**
+ * `ServiceRequest.formFieldValues` (ondata 4): i valori dei campi della
+ * libreria presenti su QUESTO ticket.
+ *
+ * Perché non riusa `formAnswers`: quello ricostruisce il modulo della revisione
+ * con cui il ticket è stato compilato — le domande come sono state fatte — e
+ * per una colonna di lista è troppo (una lettura della revisione per riga) e
+ * troppo poco (un ticket senza modulo non avrebbe colonne, anche se un campo
+ * della libreria ha un valore, per esempio da un import).
+ *
+ * La libreria si legge dalla CACHE del metamodello: una volta per pagina invece
+ * di una per riga. Le mutation della libreria tirano la leva, quindi un campo
+ * nuovo compare subito.
+ */
+export async function serviceRequestFormFieldValues(
+  parent: { id: string },
+  _args: unknown, ctx: GraphQLContext,
+): Promise<Array<{ name: string; label: string; fieldType: string; value: string | null; values: string[]; references: never[]; files: never[] }>> {
+  const libreria = await formFieldsCache.get(ctx.tenantId)
+  // Solo i campi che l'amministratore ha messo nelle liste: senza questo filtro
+  // il ticket porterebbe TUTTA la libreria a ogni riga della lista.
+  const conRisposta = libreria.filter((f) => f.inList
+    && !FORM_FIELD_TYPES_WITHOUT_ANSWER.includes(f.fieldType) && FORM_FIELD_TYPES_AS_PROPERTY.includes(f.fieldType))
+  if (conRisposta.length === 0) return []
+  const session = getSession(undefined, 'READ')
+  try {
+    const row = await runQueryOne<{ props: Record<string, unknown> }>(session, `
+      MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
+      RETURN properties(r) AS props`, { id: parent.id, tenantId: ctx.tenantId })
+    if (!row) return []
+    return conRisposta
+      .filter((f) => row.props[f.name] != null && row.props[f.name] !== '')
+      .map((f) => {
+        const raw = row.props[f.name]
+        const lista = Array.isArray(raw) ? raw.map((v) => String(v)) : []
+        return {
+          name: f.name, label: f.label, fieldType: f.fieldType,
+          value: Array.isArray(raw) ? null : String(raw),
+          values: lista,
+          references: [] as never[], files: [] as never[],
+        }
+      })
+  } finally { await session.close() }
 }

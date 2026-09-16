@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { pausedWhenHidden } from '@/lib/polling'
 import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
+import { useFormFieldColumns, type FormFieldValue } from '@/components/ticket/formFieldColumns'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
@@ -23,6 +24,7 @@ import { Pagination } from '@/components/ui/Pagination'
 
 interface ServiceRequest {
   customFields?: { name: string; value: string | null }[]
+  formFieldValues?: FormFieldValue[]
   id:        string
   number:    string
   title:     string
@@ -47,6 +49,9 @@ export function RequestListPage() {
 
   // Campi del cliente (verifica «Cosa resta cablato», ondata 4): una colonna per campo.
   const customColumns = useCustomFieldColumns<ServiceRequest>('service_request')
+  // Le colonne dei campi della libreria dei moduli (ondata 4): stesso stampo,
+  // insieme diverso — questi vengono dai moduli del catalogo.
+  const { columns: formColumns, withCells: withFormFieldCells } = useFormFieldColumns<ServiceRequest>()
   const baseColumns: ColumnDef<ServiceRequest>[] = [
     // Intestazione TRADOTTA (revisione totale · i 29 warning): era la stringa
     // inglese «Number» scritta nel codice, in mezzo a colonne che passano da
@@ -81,7 +86,7 @@ export function RequestListPage() {
       ),
     },
   ]
-  const columns = [...baseColumns, ...customColumns]
+  const columns = [...baseColumns, ...customColumns, ...formColumns]
 
 
   const filtersJson = filterGroup ? JSON.stringify(filterGroup) : undefined
@@ -123,7 +128,7 @@ export function RequestListPage() {
           />
         </div>
         <ExportCsvButton
-          onExport={async () => { exportToCsv('service-requests', columns, withCustomFieldCells(items)) }}
+          onExport={async () => { exportToCsv('service-requests', columns, withFormFieldCells(withCustomFieldCells(items))) }}
         />
       </div>
 
@@ -133,7 +138,7 @@ export function RequestListPage() {
         <>
           <SortableFilterTable<ServiceRequest>
             columns={columns}
-            data={withCustomFieldCells(items)}
+            data={withFormFieldCells(withCustomFieldCells(items))}
             loading={loading}
             onSort={handleSort}
             sortField={sortField}

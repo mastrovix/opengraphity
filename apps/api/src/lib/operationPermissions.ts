@@ -195,6 +195,9 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
       // catalogo — chi compone un modulo (config.catalog) sceglie fra i campi
       // che esistono, chi ne crea uno nuovo tocca la forma dei dati.
       'createFormField', 'updateFormField', 'deleteFormField',
+      // Il tetto tecnico sulla libreria e sui moduli (ondata 4): sta con chi
+      // puo' creare i campi, perche' alzarlo vuol dire poterne creare altri.
+      'setCatalogFormLimits',
     ],
   },
   {
@@ -222,7 +225,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   {
     anyOf: ['config.catalog'],
-    query: ['assessmentQuestionsAdmin', 'questionCITypeAssignments', 'formFields', 'catalogForm'],
+    query: ['assessmentQuestionsAdmin', 'questionCITypeAssignments', 'formFields', 'catalogForm', 'catalogFormLimits'],
     mutation: ['saveCatalogForm',
       'createServiceCatalogItem', 'updateServiceCatalogItem', 'createAssessmentQuestion', 'updateAssessmentQuestion',
       'deleteAssessmentQuestion', 'assignQuestionToCIType', 'removeQuestionFromCIType', 'setQuestionCore'],

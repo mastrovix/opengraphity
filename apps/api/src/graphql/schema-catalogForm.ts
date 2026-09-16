@@ -42,6 +42,13 @@ export function catalogFormSDL(): string {
     vocabulary:       String
     validationScript: String
     """
+    Se questo campo e' una COLONNA nelle liste delle richieste e
+    nell'esportazione CSV (ondata 4). Spento per difetto: una libreria ricca ha
+    decine di campi, e una colonna per ognuno renderebbe la lista illeggibile.
+    Solo i campi che diventano una proprieta' del ticket possono accenderlo.
+    """
+    inList:           Boolean!
+    """
     Le scelte del vocabolario, con l'etichetta nella lingua chiesta: vuote per i
     tipi che non pescano dal Dizionario. Risolte qui perche' le rende sia il web
     sia il portale, e il portale non ha accesso al Dizionario.
@@ -68,6 +75,8 @@ export function catalogFormSDL(): string {
     required:         Boolean
     vocabulary:       String
     validationScript: String
+    """Colonna nelle liste: spento se assente."""
+    inList:           Boolean
   }
 
   """Nome e tipo non si cambiano: il nome è la proprietà sul ticket e cambiarlo perderebbe i dati già raccolti."""
@@ -79,6 +88,24 @@ export function catalogFormSDL(): string {
     required:         Boolean
     vocabulary:       String
     validationScript: String
+    """Colonna nelle liste."""
+    inList:           Boolean
+  }
+
+  """
+  Il TETTO sui moduli (ondata 4). Tecnico, non commerciale: lo stesso per ogni
+  piano, e l'amministratore lo cambia da qui. Vedi lib/catalogFormLimits.ts.
+  """
+  type CatalogFormLimits {
+    """Quanti campi puo' avere la libreria."""
+    maxLibraryFields:  Int!
+    """Quanti campi puo' citare UN modulo."""
+    maxFieldsPerForm:  Int!
+    """Quanti campi ci sono adesso nella libreria: per dire quanto manca al tetto."""
+    libraryFieldsUsed: Int!
+    """I binari entro cui si puo' scrivere un tetto, per non doverli ripetere nel client."""
+    min:               Int!
+    max:               Int!
   }
 
   # ── Il modulo di una voce di catalogo ─────────────────────────────────────

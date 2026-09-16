@@ -58,6 +58,8 @@ export function buildBaseSDL(): string {
     formFields: [FormField!]!
     """Il modulo di una voce, per il costruttore."""
     catalogForm(itemId: ID!): CatalogForm!
+    """Il tetto tecnico sui moduli e quanto ne e' gia' occupato (ondata 4)."""
+    catalogFormLimits: CatalogFormLimits!
     """Il modulo pronto da compilare: web e portale leggono questo. «endUser» limita ai campi offerti agli utenti finali."""
     catalogFormToFill(itemId: ID!, endUser: Boolean): CatalogFormToFill
 
@@ -436,6 +438,11 @@ export function buildBaseSDL(): string {
     deleteFormField(id: ID!): Boolean!
     """Salva E pubblica il modulo della voce: la revision sale di uno."""
     saveCatalogForm(itemId: ID!, definition: String!): CatalogForm!
+    """
+    Cambia il tetto tecnico sui moduli. Non abbassa nulla di gia' scritto: una
+    libreria gia' oltre il nuovo tetto resta, ma non cresce piu'.
+    """
+    setCatalogFormLimits(maxLibraryFields: Int!, maxFieldsPerForm: Int!): CatalogFormLimits!
     createServiceCatalogItem(input: CreateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceCatalogItem(id: ID!, input: UpdateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceRequest(id: ID!, input: UpdateServiceRequestInput!): ServiceRequest!
@@ -751,11 +758,36 @@ export function buildBaseSDL(): string {
   ${commentsSDL()}
   ${customFieldsSDL()}
 
+  """Una scelta di un campo filtrabile: il valore sul nodo e l'etichetta che si legge."""
+  type EntityFilterChoice {
+    value: String!
+    label: String!
+  }
+
   type EntityFilterField {
     name:       String!
     kind:       String!
     scalarName: String
     enumValues: [String!]
+    """
+    L'etichetta del campo, quando il server ne conosce una migliore del nome —
+    i campi dei moduli del catalogo ce l'hanno, e nella lingua giusta (ondata
+    4). Assente: la compone il client dal nome, come prima.
+    """
+    label:      String
+    """
+    Le scelte CON la loro etichetta del Dizionario (ondata 4). Vuota per i campi
+    che non pescano da un vocabolario: allora valgono \`enumValues\`, che sono
+    valori senza etichetta. Serve perche' un filtro che dice «Production» dove
+    la colonna accanto dice «Produzione» sono due nomi per la stessa cosa.
+    """
+    choices:    [EntityFilterChoice!]!
+    """
+    Il valore sul nodo e' una LISTA, non un valore solo (selezione multipla dei
+    moduli del catalogo, ondata 4). Cambia gli operatori: «contiene una di»,
+    non «uguale a» — un uguale su una lista non trova mai niente.
+    """
+    multi:      Boolean!
   }
 
   type GlobalSearchResults {

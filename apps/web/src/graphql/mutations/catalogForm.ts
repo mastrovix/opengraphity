@@ -4,13 +4,13 @@ import { gql } from '@apollo/client'
 
 export const CREATE_FORM_FIELD = gql`
   mutation CreateFormField($input: CreateFormFieldInput!) {
-    createFormField(input: $input) { id name fieldType label required vocabulary help usedBy }
+    createFormField(input: $input) { id name fieldType label required vocabulary help inList usedBy }
   }
 `
 
 export const UPDATE_FORM_FIELD = gql`
   mutation UpdateFormField($id: ID!, $input: UpdateFormFieldInput!) {
-    updateFormField(id: $id, input: $input) { id name fieldType label required vocabulary help usedBy }
+    updateFormField(id: $id, input: $input) { id name fieldType label required vocabulary help inList usedBy }
   }
 `
 
@@ -59,6 +59,15 @@ export const SET_WORKFLOW_DEFINITION_ACTIVE = gql`
   mutation SetWorkflowDefinitionActive($definitionId: ID!, $active: Boolean!) {
     setWorkflowDefinitionActive(definitionId: $definitionId, active: $active) {
       id name active category version
+    }
+  }
+`
+
+/** Cambia il tetto tecnico sui moduli: non tocca nulla di già scritto (ondata 4). */
+export const SET_CATALOG_FORM_LIMITS = gql`
+  mutation SetCatalogFormLimits($maxLibraryFields: Int!, $maxFieldsPerForm: Int!) {
+    setCatalogFormLimits(maxLibraryFields: $maxLibraryFields, maxFieldsPerForm: $maxFieldsPerForm) {
+      maxLibraryFields maxFieldsPerForm libraryFieldsUsed min max
     }
   }
 `

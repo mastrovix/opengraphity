@@ -28,7 +28,7 @@ export const GET_CATALOG_FORM_TO_FILL = gql`
 export const GET_FORM_FIELDS = gql`
   query GetFormFields($language: String) {
     formFields {
-      id name fieldType label required vocabulary help validationScript usedBy createdAt updatedAt
+      id name fieldType label required vocabulary help validationScript inList usedBy createdAt updatedAt
       labels { language label }
       helps { language label }
       options(language: $language) { value label }
@@ -52,5 +52,12 @@ export const GET_CATALOG_ITEMS_WITH_WORKFLOW = gql`
       id name category active requiresApproval
       workflowDefinitionId workflowDefinitionName
     }
+  }
+`
+
+/** Il tetto tecnico sui moduli e quanto ne è occupato (ondata 4). */
+export const GET_CATALOG_FORM_LIMITS = gql`
+  query GetCatalogFormLimits {
+    catalogFormLimits { maxLibraryFields maxFieldsPerForm libraryFieldsUsed min max }
   }
 `

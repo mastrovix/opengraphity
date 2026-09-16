@@ -28,7 +28,7 @@ type Props = Record<string, unknown>
 // requiresApproval: dichiarati nello schema ma sempre null in lettura).
 import { mapRequest } from '../../services/requestService.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
-import { serviceRequestFormAnswers } from './catalogForm.js'
+import { serviceRequestFormAnswers, serviceRequestFormFieldValues } from './catalogForm.js'
 import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
 import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
 import { assertDomainValue } from '../../lib/domainMatrix.js'
@@ -575,6 +575,8 @@ export const serviceRequestResolvers = {
     affectedCIs: requestAffectedCIs,
     // Le risposte al modulo della voce di catalogo (moduli del catalogo, ondata 1).
     formAnswers: serviceRequestFormAnswers,
+    // I valori dei campi della libreria, per le colonne delle liste (ondata 4).
+    formFieldValues: serviceRequestFormFieldValues,
     requestedBy: requestRequestedBy,
     assignee:    requestAssignee,
     slaStatus:   ticketSlaStatusResolver('ServiceRequest'),

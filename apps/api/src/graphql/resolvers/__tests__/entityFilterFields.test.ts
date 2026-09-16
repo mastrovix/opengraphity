@@ -9,7 +9,10 @@ describe('entityFilterFields (sostituto dell\'introspezione per il FilterBuilder
   it('Incident: scalari ed enum inclusi, liste e oggetti esclusi', () => {
     const fields = entityFilterFieldsFromSchema(schema, 'Incident')
     const byName = new Map(fields.map((f) => [f.name, f]))
-    expect(byName.get('title')).toEqual({ name: 'title', kind: 'SCALAR', scalarName: 'String', enumValues: null })
+    // `multi: false`: un campo dello schema non e mai una lista (le liste sono
+    // escluse a monte), ma il campo esiste su tutti — la selezione multipla dei
+    // moduli lo accende (ondata 4).
+    expect(byName.get('title')).toEqual({ name: 'title', kind: 'SCALAR', scalarName: 'String', enumValues: null, label: null, choices: [], multi: false })
     expect(byName.get('createdAt')?.kind).toBe('SCALAR')
     expect(byName.has('affectedCIs')).toBe(false)   // lista
     expect(byName.has('assignee')).toBe(false)      // oggetto

@@ -40,6 +40,7 @@ import { seedSystemEnumTypes } from '../lib/seedEnumTypes.js'
 import { provisionTenantData } from '../lib/provisionTenantData.js'
 import { DEFAULT_EVENT_POLICY_JSON } from '../lib/eventPolicy.js'
 import { DEFAULT_TENANT_PLAN, DEFAULT_TENANT_TIMEZONE, PLAN_SETTINGS } from '../lib/tenantPlans.js'
+import { CATALOG_FORM_LIMIT_DEFAULTS } from '../lib/catalogFormLimits.js'
 import { ScriptArgError } from './lib/scriptArgs.js'
 import { runScript } from './lib/runScript.js'
 import { createKeycloakAdmin, findUserIdByEmail, keycloakConfigFromEnv, type KeycloakAdmin } from './lib/keycloakAdmin.js'
@@ -293,6 +294,8 @@ async function provisionNeo4j(a: Args): Promise<void> {
            t.max_users         = $maxUsers,
            t.max_ci            = $maxCi,
            t.max_service_maps  = $maxServiceMaps,
+           t.max_form_fields   = $maxFormFields,
+           t.max_form_fields_per_form = $maxFormFieldsPerForm,
            t.event_policy      = $eventPolicy,
            t.created_at        = $now
          RETURN (t.created_at = $now) AS wasCreated, t.plan AS plan, t.timezone AS timezone`,
@@ -301,6 +304,10 @@ async function provisionNeo4j(a: Args): Promise<void> {
           slaEnabled: settings.sla_enabled, scriptingEnabled: settings.scripting_enabled,
           maxUsers: settings.max_users, maxCi: settings.max_ci,
           maxServiceMaps: settings.max_service_maps,   // Servizi monitorati: stesso limite scritto sui tenant esistenti dalla 20260910_1100_service_map_plan_limit
+          // Moduli del catalogo: tetto TECNICO, uguale per ogni piano — stessi
+          // numeri scritti sui tenant esistenti dalla 20261003_1020_catalog_form_limits
+          maxFormFields: CATALOG_FORM_LIMIT_DEFAULTS.maxLibraryFields,
+          maxFormFieldsPerForm: CATALOG_FORM_LIMIT_DEFAULTS.maxFieldsPerForm,
           eventPolicy: DEFAULT_EVENT_POLICY_JSON,   // Event Management: stessa policy iniziale della migrazione 20260909_1010_event_management_fixup
         },
       ),

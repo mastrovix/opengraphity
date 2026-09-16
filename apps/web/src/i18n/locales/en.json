@@ -2327,6 +2327,9 @@
         "vocabulary": "Vocabulary",
         "vocabularyHelp": "The Dictionary vocabulary the choices come from: labels and colours come with it.",
         "requiredByDefault": "Required by default (each form can override it)",
+        "inList": "Show as a column in the request lists",
+        "inListHelp": "The value appears in the list of requests and in the CSV export. Off by default: a column for every field would make the list unreadable.",
+        "inListShort": "In lists",
         "usedBy": "Used by",
         "usedByNone": "no form",
         "empty": "No fields yet. The first one you add can be used by every form.",
@@ -2336,6 +2339,18 @@
         "deleteTitle": "Delete this field?",
         "deleteMessage": "“{{name}}” will disappear from the library. The answers already collected on tickets are kept.",
         "cannotDelete": "Used by the form of: {{forms}}. Remove it from those forms first."
+      },
+      "limits": {
+        "title": "Limits",
+        "help": "A technical ceiling, the same for every plan: every library field becomes a property on the tickets and an entry in the filters, and every field on a form is one more question to answer. Raise it if you need to — knowing what it costs.",
+        "change": "Change the limits",
+        "used": "{{used}} of {{max}} library fields",
+        "perForm": "up to {{max}} fields per form",
+        "libraryLabel": "Fields in the library",
+        "perFormLabel": "Fields in one form",
+        "range": "A whole number between {{min}} and {{max}}. Lowering a limit never deletes anything: what is already there stays, it just stops growing.",
+        "outOfRange": "A limit is a whole number between {{min}} and {{max}}.",
+        "saved": "Limits saved"
       },
       "fill": {
         "addFile": "Add a file",
@@ -2396,7 +2411,10 @@
     "betweenAnd": "and",
     "valueFromAria": "Start of condition {{n}}",
     "valueToAria": "End of condition {{n}}",
-    "removeAria": "Remove condition {{n}}"
+    "removeAria": "Remove condition {{n}}",
+    "hasAny": "has any of",
+    "hasAll": "has all of",
+    "hasNone": "has none of"
   },
   "auth": {
     "logout": "Logout",
@@ -4091,7 +4109,9 @@
       "script": "The field \"{{field}}\" was refused: {{message}}",
       "oneReference": "The field \"{{field}}\" takes one reference, {{count}} were sent.",
       "fileRequired": "The field \"{{field}}\" needs at least one file.",
-      "referenceNotFound": "The field \"{{field}}\" points to something that does not exist here."
+      "referenceNotFound": "The field \"{{field}}\" points to something that does not exist here.",
+      "notAColumn": "A {{fieldType}} field cannot be a list column: only fields stored as a ticket property can.",
+      "libraryFull": "The field library is full: {{max}} fields is the limit and {{existing}} already exist. Raise the limit on the catalog forms page, or delete a field nobody uses."
     },
     "catalogForm": {
       "shape": "The form definition has the wrong shape at {{where}}.",
@@ -4116,7 +4136,9 @@
       "answersWithoutItem": "Form answers were sent without a catalog item: a form belongs to a catalog item.",
       "noForm": "The catalog item \"{{item}}\" has no form: there is nothing to answer.",
       "conditionFieldType": "A condition looks at the field \"{{field}}\", which is a {{fieldType}}: only fields stored as a property can be a condition subject.",
-      "referenceEndUser": "The field \"{{field}}\" is a reference ({{fieldType}}): it cannot be offered in the portal, because choosing one means searching the CMDB or the staff list. Untick \"offer it in the portal\"."
+      "referenceEndUser": "The field \"{{field}}\" is a reference ({{fieldType}}): it cannot be offered in the portal, because choosing one means searching the CMDB or the staff list. Untick \"offer it in the portal\".",
+      "tooManyFields": "This form has {{count}} fields: {{max}} is the limit. Raise the limit on the catalog forms page, or split the request into two catalog items.",
+      "limitOutOfRange": "A limit must be a whole number between {{min}} and {{max}}."
     },
     "serviceCatalog": {
       "workflowNotFound": "That workflow does not exist here, or it is not active.",

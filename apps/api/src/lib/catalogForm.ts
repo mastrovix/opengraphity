@@ -23,7 +23,8 @@
  * doveva comparire.
  */
 import type { Session } from 'neo4j-driver'
-import { runQuery } from '@opengraphity/neo4j'
+import { getSession, runQuery } from '@opengraphity/neo4j'
+import { createMetamodelCache } from './metamodelCache.js'
 import {
   CATALOG_FORM_VERSION, FORM_FIELD_NAME_RE, FORM_FIELD_TYPES, FORM_FIELD_TYPES_MULTI,
   FORM_FIELD_TYPES_WITHOUT_ANSWER, FORM_FIELD_TYPES_WITH_VOCABULARY, FORM_CONDITION_OPS,
@@ -56,6 +57,8 @@ export interface FormFieldDef {
   required: boolean
   vocabulary: string | null
   validationScript: string | null
+  /** Se diventa una colonna nelle liste e nell'esportazione (ondata 4). */
+  inList: boolean
   createdAt: string | null
   updatedAt: string | null
 }
@@ -65,7 +68,8 @@ export interface FormFieldDef {
 const FIELD_RETURN = `
   f.id AS id, f.name AS name, f.field_type AS fieldType, f.label AS label, f.labels AS labels,
   f.help AS help, f.helps AS helps, f.required AS required, f.vocabulary AS vocabulary,
-  f.validation_script AS validationScript, f.created_at AS createdAt, f.updated_at AS updatedAt`
+  f.validation_script AS validationScript, f.in_list AS inList,
+  f.created_at AS createdAt, f.updated_at AS updatedAt`
 
 function mapField(row: Record<string, unknown>): FormFieldDef {
   const name = String(row['name'])
@@ -85,10 +89,27 @@ function mapField(row: Record<string, unknown>): FormFieldDef {
     required: row['required'] === true,
     vocabulary: row['vocabulary'] == null || row['vocabulary'] === '' ? null : String(row['vocabulary']),
     validationScript: row['validationScript'] == null || row['validationScript'] === '' ? null : String(row['validationScript']),
+    // Assente sui campi nati prima dell'ondata 4: fuori dalle liste, che è la
+    // scelta prudente — una colonna in più la si chiede, non la si subisce.
+    inList: row['inList'] === true,
     createdAt: row['createdAt'] == null ? null : String(row['createdAt']),
     updatedAt: row['updatedAt'] == null ? null : String(row['updatedAt']),
   }
 }
+
+/**
+ * La libreria con una cache, per le LISTE (ondata 4). Una colonna per campo su
+ * venti righe vorrebbe dire venti letture della libreria: qui è una, e la
+ * scadenza è la rete di sicurezza — la via normale è il canale del metamodello,
+ * che le mutation della libreria tirano a ogni modifica.
+ */
+export const formFieldsCache = createMetamodelCache<FormFieldDef[]>({
+  name: 'formFields',
+  load: async (tenantId) => {
+    const session = getSession(undefined, 'READ')
+    try { return await formFields(session, tenantId) } finally { await session.close() }
+  },
+})
 
 /** Tutta la libreria del tenant, in ordine alfabetico di etichetta. */
 export async function formFields(session: Session, tenantId: string): Promise<FormFieldDef[]> {

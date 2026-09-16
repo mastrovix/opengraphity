@@ -103,6 +103,12 @@ interface EntityFilterField {
   kind:       'SCALAR' | 'ENUM'
   scalarName: string | null
   enumValues: string[] | null
+  /** L'etichetta decisa dal server (campi dei moduli); null = la componiamo dal nome. */
+  label:      string | null
+  /** Le scelte con l'etichetta del Dizionario; vuota = valgono `enumValues`. */
+  choices:    { value: string; label: string }[]
+  /** Il valore sul nodo è una LISTA: vuole gli operatori di lista (ondata 4). */
+  multi:      boolean
 }
 
 // ── Fields to always skip ─────────────────────────────────────────────────────
@@ -156,15 +162,22 @@ export function useEntityFields(typeName: string): { fields: FieldConfig[]; erro
     if (SKIP_FIELDS.has(f.name)) continue
 
     const meta = metaOf(f.name)
-    const label = meta?.label ?? camelToLabel(f.name)
+    // L'ordine conta: l'etichetta del server (campi dei moduli, nella lingua
+    // del tenant), poi quella del metamodello, e solo alla fine il nome
+    // ripulito — che è un ripiego, non una traduzione.
+    const label = f.label ?? meta?.label ?? camelToLabel(f.name)
 
     // GraphQL enum — values and labels come directly from the schema
     if (f.kind === 'ENUM') {
       result.push({
         key:     f.name,
         label,
-        type:    'enum',
-        options: (f.enumValues ?? []).map((v) => ({ value: v, label: enumLabel(v) })),
+        type:    f.multi ? 'multi_enum' : 'enum',
+        // Le scelte con l'etichetta del Dizionario quando il server le manda;
+        // altrimenti il valore ripulito, che è quello che si faceva prima.
+        options: f.choices.length > 0
+          ? f.choices
+          : (f.enumValues ?? []).map((v) => ({ value: v, label: enumLabel(v) })),
       })
       continue
     }
@@ -191,7 +204,9 @@ export function useEntityFields(typeName: string): { fields: FieldConfig[]; erro
       continue
     }
 
-    result.push({ key: f.name, label, type: 'text' })
+    // Una lista senza vocabolario non ha scelte da offrire, ma resta una lista:
+    // gli operatori di testo su di essa non troverebbero niente.
+    result.push({ key: f.name, label, type: f.multi ? 'multi_enum' : 'text' })
   }
 
   return { fields: result, error: error ?? null }

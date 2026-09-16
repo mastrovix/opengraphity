@@ -18,10 +18,11 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { Plus, Trash2, Pencil, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { FORM_FIELD_TYPES, FORM_FIELD_TYPES_WITH_VOCABULARY } from '@opengraphity/types'
-import { GET_ENUM_TYPES, GET_FORM_FIELDS } from '@/graphql/queries'
+import { FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY, FORM_FIELD_TYPES_WITH_VOCABULARY } from '@opengraphity/types'
+import { GET_CATALOG_FORM_LIMITS, GET_ENUM_TYPES, GET_FORM_FIELDS } from '@/graphql/queries'
 import { CREATE_FORM_FIELD, DELETE_FORM_FIELD, UPDATE_FORM_FIELD } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
+import { LimitsCard } from './LimitsCard'
 import { colors, fontWeight } from '@/lib/tokens'
 import { Input, Select, LabelledField } from '@/components/ui/FormControls'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
@@ -36,6 +37,7 @@ export interface FormFieldRow {
   helps: Array<{ language: string; label: string }>
   required: boolean
   vocabulary: string | null
+  inList: boolean
   usedBy: string[]
   options: Array<{ value: string; label: string }>
 }
@@ -49,9 +51,10 @@ interface Bozza {
   helpEn: string
   required: boolean
   vocabulary: string
+  inList: boolean
 }
 
-const BOZZA_VUOTA: Bozza = { name: '', fieldType: 'text', labelIt: '', labelEn: '', helpIt: '', helpEn: '', required: false, vocabulary: '' }
+const BOZZA_VUOTA: Bozza = { name: '', fieldType: 'text', labelIt: '', labelEn: '', helpIt: '', helpEn: '', required: false, vocabulary: '', inList: false }
 
 const th: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: `1px solid ${colors.border}` }
 const td: React.CSSProperties = { padding: '8px 10px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', borderBottom: `1px solid ${colors.slateBg}`, verticalAlign: 'top' }
@@ -68,9 +71,12 @@ export function FieldLibraryPanel() {
   const [inModifica, setInModifica] = useState<FormFieldRow | null>(null)
   const [daCancellare, setDaCancellare] = useState<FormFieldRow | null>(null)
 
-  const [crea] = useMutation(CREATE_FORM_FIELD, { onError: (e) => showError(e) })
+  // `refetchQueries`: creare e cancellare cambiano il CONTEGGIO dei campi, che
+  // la card dei tetti mostra con la sua query — senza questo direbbe «8 su 120»
+  // con nove campi nella tabella sotto.
+  const [crea] = useMutation(CREATE_FORM_FIELD, { onError: (e) => showError(e), refetchQueries: [GET_CATALOG_FORM_LIMITS] })
   const [aggiorna] = useMutation(UPDATE_FORM_FIELD, { onError: (e) => showError(e) })
-  const [cancella] = useMutation(DELETE_FORM_FIELD, { onError: (e) => showError(e) })
+  const [cancella] = useMutation(DELETE_FORM_FIELD, { onError: (e) => showError(e), refetchQueries: [GET_CATALOG_FORM_LIMITS] })
 
   const chiudi = () => { setBozza(null); setInModifica(null) }
 
@@ -88,6 +94,7 @@ export function FieldLibraryPanel() {
       label: etichetta,
       labels, helps,
       required: bozza.required,
+      inList: bozza.inList,
       vocabulary: bozza.vocabulary || null,
       help: bozza.helpIt.trim() || bozza.helpEn.trim() || null,
     }
@@ -104,6 +111,12 @@ export function FieldLibraryPanel() {
     void refetch()
   }
 
+  /** I tipi che finiscono in una proprietà del ticket: gli unici che possono essere una colonna. */
+  function comeProprieta(tipo: string): boolean {
+    const proprieta: readonly string[] = FORM_FIELD_TYPES_AS_PROPERTY
+    return proprieta.includes(tipo)
+  }
+
   function conVocabolario(tipo: string): boolean {
     const conScelte: readonly string[] = FORM_FIELD_TYPES_WITH_VOCABULARY
     return conScelte.includes(tipo)
@@ -111,6 +124,8 @@ export function FieldLibraryPanel() {
 
   return (
     <div>
+      <LimitsCard />
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12, gap: 16, flexWrap: 'wrap' }}>
         <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', maxWidth: '60ch' }}>
           {t('pages.catalogForms.library.intro')}
@@ -201,6 +216,21 @@ export function FieldLibraryPanel() {
             {t('pages.catalogForms.library.requiredByDefault')}
           </label>
 
+          {/* Colonna nelle liste (ondata 4): la offriamo solo ai tipi che diventano
+              una proprietà del ticket — l'API rifiuta gli altri, e una spunta che
+              si può accendere per poi sentirsi dire no è una trappola. */}
+          {comeProprieta(bozza.fieldType) && (
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 10, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
+              <input type="checkbox" checked={bozza.inList} onChange={(e) => setBozza({ ...bozza, inList: e.target.checked })} style={{ marginTop: 3 }} />
+              <span>
+                {t('pages.catalogForms.library.inList')}
+                <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+                  {t('pages.catalogForms.library.inListHelp')}
+                </span>
+              </span>
+            </label>
+          )}
+
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <button type="button" onClick={() => void salva()}
               style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium, cursor: 'pointer' }}>
@@ -221,6 +251,7 @@ export function FieldLibraryPanel() {
               <th style={th}>{t('pages.catalogForms.library.label')}</th>
               <th style={th}>{t('pages.catalogForms.library.name')}</th>
               <th style={th}>{t('pages.catalogForms.library.type')}</th>
+              <th style={th}>{t('pages.catalogForms.library.inListShort')}</th>
               <th style={th}>{t('pages.catalogForms.library.usedBy')}</th>
               <th style={th} aria-label={t('common.actions')} />
             </tr>
@@ -238,6 +269,9 @@ export function FieldLibraryPanel() {
                   {t(`pages.catalogForms.fieldType.${c.fieldType}`)}
                   {c.vocabulary && <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{c.vocabulary}</div>}
                 </td>
+                <td style={{ ...td, color: c.inList ? 'var(--color-slate-dark)' : 'var(--color-slate-light)' }}>
+                  {c.inList ? t('common.yes') : t('common.no')}
+                </td>
                 <td style={td}>
                   {c.usedBy.length === 0
                     ? <span style={{ color: 'var(--color-slate-light)' }}>{t('pages.catalogForms.library.usedByNone')}</span>
@@ -253,7 +287,7 @@ export function FieldLibraryPanel() {
                         labelEn: c.labels.find((l) => l.language === 'en')?.label ?? '',
                         helpIt: c.helps.find((l) => l.language === 'it')?.label ?? '',
                         helpEn: c.helps.find((l) => l.language === 'en')?.label ?? '',
-                        required: c.required, vocabulary: c.vocabulary ?? '',
+                        required: c.required, vocabulary: c.vocabulary ?? '', inList: c.inList,
                       })
                     }}
                     aria-label={t('common.edit')}
@@ -272,7 +306,7 @@ export function FieldLibraryPanel() {
               </tr>
             ))}
             {!loading && campi.length === 0 && (
-              <tr><td style={{ ...td, color: 'var(--color-slate-light)', textAlign: 'center', padding: 28 }} colSpan={5}>{t('pages.catalogForms.library.empty')}</td></tr>
+              <tr><td style={{ ...td, color: 'var(--color-slate-light)', textAlign: 'center', padding: 28 }} colSpan={6}>{t('pages.catalogForms.library.empty')}</td></tr>
             )}
           </tbody>
         </table>

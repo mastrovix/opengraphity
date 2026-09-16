@@ -11,26 +11,36 @@
  */
 import { GraphQLObjectType, getNamedType, isEnumType, isListType, isNonNullType, isScalarType, type GraphQLResolveInfo, type GraphQLOutputType } from 'graphql'
 import { ValidationError } from '../../lib/errors.js'
-import type { TicketCustomFieldEntityType } from '@opengraphity/types'
+import { FORM_FIELD_TYPES_MULTI, type TicketCustomFieldEntityType } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 import { requestCustomFieldDefs } from './ticketCustomFields.js'
 import { formFields } from '../../lib/catalogForm.js'
 import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { withSession } from './ci-utils.js'
+import { labelFor } from '../../lib/enumValueLabels.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
+
+export interface EntityFilterChoice { value: string; label: string }
 
 export interface EntityFilterField {
   name:       string
   kind:       'SCALAR' | 'ENUM'
   scalarName: string | null
   enumValues: string[] | null
+  /** L'etichetta del campo quando il server ne conosce una (campi dei moduli); altrimenti null. */
+  label:      string | null
+  /** Le scelte con l'etichetta del Dizionario; vuota per i campi senza vocabolario. */
+  choices:    EntityFilterChoice[]
+  /** Il valore sul nodo è una lista (selezione multipla): serve un operatore di lista. */
+  multi:      boolean
 }
 
 function classify(type: GraphQLOutputType): EntityFilterField | null {
   const inner = isNonNullType(type) ? type.ofType : type
   if (isListType(inner)) return null                       // liste = relazioni/array
   const named = getNamedType(inner)
-  if (isScalarType(named)) return { name: '', kind: 'SCALAR', scalarName: named.name, enumValues: null }
-  if (isEnumType(named))   return { name: '', kind: 'ENUM', scalarName: null, enumValues: named.getValues().map((v) => v.name) }
+  if (isScalarType(named)) return { name: '', kind: 'SCALAR', scalarName: named.name, enumValues: null, label: null, choices: [], multi: false }
+  if (isEnumType(named))   return { name: '', kind: 'ENUM', scalarName: null, enumValues: named.getValues().map((v) => v.name), label: null, choices: [], multi: false }
   return null                                              // object/interface/union
 }
 
@@ -62,22 +72,42 @@ export const entityFilterFieldsResolvers = {
       const custom = (await requestCustomFieldDefs(ctx, entityType))
         .filter((d) => !fields.some((f) => f.name === d.name))
         .map((d): EntityFilterField => d.fieldType === 'enum'
-          ? { name: d.name, kind: 'ENUM', scalarName: null, enumValues: d.enumValues }
-          : { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null })
+          ? { name: d.name, kind: 'ENUM', scalarName: null, enumValues: d.enumValues, label: null, choices: [], multi: false }
+          : { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null, label: null, choices: [], multi: false })
       /**
        * I campi della LIBRERIA dei moduli del catalogo (ondata 1): sono
        * proprieta dei ticket come gli altri, quindi vanno OFFERTI nel
        * selettore, non solo ammessi dal filtro. Solo per le richieste: sono i
        * moduli del catalogo a scriverli.
        */
+      // La lingua: quella del tenant, con lo stesso ripiego del resto del
+      // prodotto (`labelFor`). Il filtro non chiede una lingua perche' la
+      // chiede la pagina, e la pagina è già nella lingua del tenant.
+      const ripiego = await languageFor(ctx.tenantId)
+      const lingua = ripiego
       const daModuli = entityType !== 'service_request' ? [] : await withSession(async (session) => {
         const libreria = await formFields(session, ctx.tenantId)
         return libreria
           .filter((d) => d.fieldType !== 'note')
           .filter((d) => !fields.some((f) => f.name === d.name) && !custom.some((f) => f.name === d.name))
-          .map(async (d): Promise<EntityFilterField> => d.vocabulary
-            ? { name: d.name, kind: 'ENUM', scalarName: null, enumValues: (await loadVocabularyEntries(ctx.tenantId, d.vocabulary)).values as string[] }
-            : { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null })
+          .map(async (d): Promise<EntityFilterField> => {
+            // `multi`: la selezione multipla finisce sul nodo come lista, e un
+            // «uguale a» su una lista non trova mai niente (ondata 4).
+            const multi = FORM_FIELD_TYPES_MULTI.includes(d.fieldType)
+            // Etichetta del campo e delle scelte: le stesse che si leggono
+            // nella colonna e nel modulo. Senza, il filtro direbbe
+            // «Ambienti_coinvolti / Production» dove tutto il resto del
+            // prodotto dice «Ambienti coinvolti / Produzione».
+            if (!d.vocabulary) {
+              return { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null, label: d.label, choices: [], multi }
+            }
+            const v = await loadVocabularyEntries(ctx.tenantId, d.vocabulary)
+            return {
+              name: d.name, kind: 'ENUM', scalarName: null, enumValues: v.values as string[], label: d.label,
+              choices: (v.values as string[]).map((valore) => ({ value: valore, label: labelFor(valore, v.labels, lingua, ripiego) })),
+              multi,
+            }
+          })
       }).then((p) => Promise.all(p))
       return [...fields, ...custom, ...daModuli]
     },

@@ -70,6 +70,8 @@ export const GET_INCIDENT = gql`
   ${CUSTOM_FIELD_VALUE_FIELDS}
 `
 
+// `formFieldValues`: i campi della libreria dei moduli messi «nelle liste»,
+// per le colonne e per l'esportazione (moduli del catalogo, ondata 4).
 export const GET_SERVICE_REQUESTS = gql`
   query GetServiceRequests($status: String, $priority: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
     serviceRequests(status: $status, priority: $priority, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
@@ -81,6 +83,7 @@ export const GET_SERVICE_REQUESTS = gql`
         status
         createdAt
         customFields { name value }
+        formFieldValues { name label fieldType value values }
       }
       total
     }
@@ -116,6 +119,6 @@ export const GET_SERVICE_REQUEST = gql`
 /** Campi filtrabili di un tipo (scalari/enum): sostituisce l'introspezione `__type`, spenta in produzione. */
 export const GET_ENTITY_FILTER_FIELDS = gql`
   query EntityFilterFields($typeName: String!) {
-    entityFilterFields(typeName: $typeName) { name kind scalarName enumValues }
+    entityFilterFields(typeName: $typeName) { name kind scalarName enumValues label choices { value label } multi }
   }
 `

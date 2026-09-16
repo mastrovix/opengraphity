@@ -172,6 +172,37 @@ export function buildAdvancedWhere(
         params[pk] = rule.value
         conditions.push(`${prop} IN $${pk}`)
         break
+      /**
+       * GLI OPERATORI DI LISTA (selezione multipla dei moduli, ondata 4).
+       *
+       * Un campo `multi_enum` sta sul nodo come LISTA di stringhe. Gli
+       * operatori scalari qui sopra su una lista non sbagliano: non trovano
+       * MAI niente (`['a','b'] = 'a'` è falso, e `CONTAINS` su una lista è un
+       * errore di tipo in Cypher). Quindi servono i loro.
+       *
+       * `rule.value` è la lista dei valori scelti; il confronto è sull'insieme,
+       * non sull'ordine.
+       */
+      case 'has_any':
+        params[pk] = rule.value
+        conditions.push(`(${prop} IS NOT NULL AND ANY(_v IN $${pk} WHERE _v IN ${prop}))`)
+        break
+      case 'has_all':
+        params[pk] = rule.value
+        conditions.push(`(${prop} IS NOT NULL AND ALL(_v IN $${pk} WHERE _v IN ${prop}))`)
+        break
+      case 'has_none':
+        params[pk] = rule.value
+        // Un campo mai compilato NON contiene nessuno dei valori: `IS NULL` è
+        // parte della risposta giusta, non un caso da scartare.
+        conditions.push(`(${prop} IS NULL OR NONE(_v IN $${pk} WHERE _v IN ${prop}))`)
+        break
+      case 'list_is_empty':
+        conditions.push(`(${prop} IS NULL OR size(${prop}) = 0)`)
+        break
+      case 'list_is_not_empty':
+        conditions.push(`(${prop} IS NOT NULL AND size(${prop}) > 0)`)
+        break
       case 'not_in':
         params[pk] = rule.value
         conditions.push(`NOT ${prop} IN $${pk}`)

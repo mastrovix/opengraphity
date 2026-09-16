@@ -34,6 +34,14 @@ export function serviceRequestSDL(): string {
     formRevision: Int
     """Le risposte del modulo, nell'ordine del modulo con cui e stata compilata."""
     formAnswers: [FormAnswer!]!
+    """
+    I valori dei campi della LIBRERIA messi «nelle liste», per le colonne e per
+    l'esportazione (moduli del catalogo, ondata 4). Diverso da \`formAnswers\`:
+    quello racconta il modulo di allora, con le domande nel loro ordine; questo
+    dice solo cosa c'e scritto adesso, e non ha bisogno della revisione — quindi
+    funziona anche sui ticket che non nascono da un modulo.
+    """
+    formFieldValues: [FormAnswer!]!
   }
 
   type ServiceCatalogItem {
