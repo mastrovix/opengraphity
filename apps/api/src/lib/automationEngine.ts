@@ -114,15 +114,28 @@ export async function evaluateRules(opts: EvaluateRulesOptions): Promise<Automat
       // parseActions throws on corrupt JSON — handled below like any action failure
       const actions = parseActions(record.actions)
       const actionResults = await executeActions(actions, execCtx)
-      await opts.afterExecute?.(record, actionResults)
+      const actionsRun = actionResults.filter((r) => r.success).length
+      /**
+       * Il contatore del trigger NON fa risultare la regola non eseguita
+       * (revisione totale · C-22): `afterExecute` stava dentro il try, quindi
+       * un suo errore — un blip sul contatore — portava l'esecuzione nel ramo
+       * `catch`, che riportava «matched: true, actionsRun: 0» su una regola che
+       * aveva appena riassegnato il ticket. E l'audit contava le azioni
+       * TENTATE, non quelle riuscite.
+       */
+      try {
+        await opts.afterExecute?.(record, actionResults)
+      } catch (err) {
+        log.error({ kind: opts.kind, id: record.id, name: record.name, entityId, err },
+          `${spec.label}: azioni eseguite, contatore non aggiornato`)
+      }
 
       void audit(
         { tenantId: opts.tenantId, userId: opts.userId, userEmail: 'system', role: 'system' } as never,
         spec.auditAction, spec.auditEntity, record.id,
-        { [spec.nameKey]: record.name, entityId, actionsRun: actionResults.length },
+        { [spec.nameKey]: record.name, entityId, actionsRun, actionsAttempted: actionResults.length },
       )
 
-      const actionsRun = actionResults.filter((r) => r.success).length
       const failed = actionResults.find((r) => !r.success)
       const stopped = record.stopOnMatch
       if (failed) {

@@ -11,7 +11,7 @@ import '@xyflow/react/dist/style.css'
 import { Star, X, Check, ChevronLeft, ChevronRight } from 'lucide-react'
 import { GET_NAVIGABLE_ENTITIES, GET_REACHABLE_ENTITIES, PREVIEW_REPORT_SECTION } from '@/graphql/queries'
 import {
-  nodeTypes, edgeTypes,
+  nodeTypes, edgeTypes, navigableLabel,
   type FilterState, type NodeData, type NavigableEntity, type ReachableEntity, type NavigableField,
 } from './ReportFlowNodes'
 import { ReportPreview, type SectionResult } from './ReportPreview'
@@ -232,7 +232,8 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     setEdges([])
     setNodeDataMap({})
     setTimeout(() => {
-      addNode(entity.entityType, entity.neo4jLabel, entity.label, getNodeFields(entity.neo4jLabel), true, { x: 300, y: 80 })
+      // C-18: l'etichetta mostrata è quella tradotta quando è del prodotto.
+      addNode(entity.entityType, entity.neo4jLabel, navigableLabel(t, entity), getNodeFields(entity.neo4jLabel), true, { x: 300, y: 80 })
     }, 0)
   }, [addNode, getNodeFields]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -282,7 +283,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     if (!connectingNodeId) return
     const sourceNode = nodes.find(n => n.id === connectingNodeId)
     const newPos = { x: (sourceNode?.position.x ?? 300) + (Math.random() * 200 - 100), y: (sourceNode?.position.y ?? 100) + 200 }
-    const newNodeId = addNode(re.entityType, re.neo4jLabel, re.label, getNodeFields(re.neo4jLabel), false, newPos)
+    const newNodeId = addNode(re.entityType, re.neo4jLabel, navigableLabel(t, re), getNodeFields(re.neo4jLabel), false, newPos)
     setEdges(prev => [...prev, {
       id: `edge_${Date.now()}`, type: 'reportEdge',
       source: re.direction === 'outgoing' ? connectingNodeId : newNodeId,
@@ -482,7 +483,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                   onMouseLeave={e => { e.currentTarget.style.background = palette.neutral.surface1 }}
                 >
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{re.label}</div>
+                    <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{navigableLabel(t, re)}</div>
                     <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{re.direction === 'outgoing' ? '→' : '←'} {re.relationshipType}</div>
                   </div>
                   <div style={{ fontSize: 'var(--font-size-body)', color: palette.purple.light }}>{re.count}</div>

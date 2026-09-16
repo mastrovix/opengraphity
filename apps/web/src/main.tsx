@@ -69,6 +69,7 @@ import { ApprovalsPage } from '@/pages/approvals/ApprovalsPage'
 import { KnowledgeBasePage } from '@/pages/knowledge-base/KnowledgeBasePage'
 import { AssistantPage } from '@/pages/assistant/AssistantPage'
 import { KBArticlePage } from '@/pages/knowledge-base/KBArticlePage'
+import { KBArticleByIdRedirect } from '@/pages/knowledge-base/KBArticleByIdRedirect'
 import { KBAdminPage } from '@/pages/admin/KBAdminPage'
 import { AutoTriggersPage } from '@/pages/admin/AutoTriggersPage'
 import { BusinessRulesPage } from '@/pages/admin/BusinessRulesPage'
@@ -246,6 +247,8 @@ const router = createBrowserRouter([
       guarded('knowledge-base', <KnowledgeBasePage />),
       guarded('assistant', <AssistantPage />),
       guarded('knowledge-base/:slug', <Keyed Page={KBArticlePage} />),
+      // B-21: le notifiche di un articolo portano l'id, la pagina vuole lo slug.
+      guarded('kb-articles/:id', <Keyed Page={KBArticleByIdRedirect} />),
     ],
   },
 ])

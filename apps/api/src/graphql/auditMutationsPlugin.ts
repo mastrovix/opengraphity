@@ -139,6 +139,9 @@ export function auditMutationsPlugin(): ApolloServerPlugin<GraphQLContext> {
                   log.error({ mutation: info.fieldName, tenantId: contextValue.tenantId }, 'Audit registry: the request has no audit scope, the mutation could not be checked for an audit entry')
                   return
                 }
+                // A-12: una scrittura d'audit fallita riporta il conto indietro,
+                // quindi `after === before` e la voce generica si scrive: la
+                // mutation non resta senza traccia.
                 if (after > before) return
                 void audit(contextValue, `mutation.${info.fieldName}`, auditEntityType(info.fieldName, info.returnType, args), auditEntityId(args, result, info.fieldName), {
                   args: auditableArgs(args),

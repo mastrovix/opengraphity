@@ -179,6 +179,9 @@
     },
     "comment": {
       "ticketClosed": "Il ticket è chiuso: la conversazione non si può più modificare. Apri un nuovo ticket."
+    },
+    "list": {
+      "page": "Il numero di pagina deve essere un intero maggiore o uguale a 1 (ricevuto {{got}})."
     }
   },
   "auth": {

@@ -15,7 +15,16 @@
 import type { Tenant } from '@opengraphity/types'
 
 export const DEFAULT_TENANT_PLAN: Tenant['plan'] = 'starter'
-export const DEFAULT_TENANT_TIMEZONE = 'Europe/Rome'
+/**
+ * UTC, non Europe/Rome (revisione totale · C-27).
+ *
+ * Il prodotto è «inglese per default» e il fuso decide le scadenze SLA, l'ora
+ * del digest e le passate OLA: un cliente irlandese onboardato senza
+ * `--timezone` si ritrovava le scadenze calcolate sull'ora di Roma. UTC non è
+ * la scelta di nessuno in particolare, quindi non finge di essere giusta: lo
+ * script di onboarding lo scrive a schermo quando usa il default.
+ */
+export const DEFAULT_TENANT_TIMEZONE = 'UTC'
 
 export const PLAN_SETTINGS: Record<Tenant['plan'], Tenant['settings']> = {
   starter:    { sla_enabled: true, scripting_enabled: false, max_users: 25,   max_ci: 500,     max_service_maps: 5 },

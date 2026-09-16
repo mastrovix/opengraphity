@@ -4,6 +4,7 @@ import { customFieldDefs, customFieldValues, type CustomFieldInput } from '../..
 import type { Session } from 'neo4j-driver'
 import { withSession } from './ci-utils.js'
 import { ForbiddenError, ValidationError } from '../../lib/errors.js'
+import { listPage } from '../../lib/listLimit.js'
 import { audit } from '../../lib/audit.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { workflowEngine } from '@opengraphity/workflow'
@@ -186,7 +187,18 @@ async function myTickets(
   { status, page = 1, pageSize = 20, language }: { status?: string | null; page?: number; pageSize?: number; language?: string | null },
   ctx: GraphQLContext,
 ) {
-  const offset = (page - 1) * pageSize
+  /**
+   * Pagina e dimensione VALIDATE (revisione totale · B-24): `page: 0` dava uno
+   * SKIP negativo e un errore Cypher invece di un messaggio, e `pageSize` non
+   * aveva tetto — una richiesta poteva chiedere tutto.
+   */
+  const { limit: safePageSize, offset } = listPage(
+    { limit: pageSize, offset: (Math.max(1, Math.trunc(page)) - 1) * Math.max(1, Math.trunc(pageSize)) },
+    20,
+  )
+  if (!Number.isInteger(page) || page < 1) {
+    throw new ValidationError(`page must be an integer >= 1 (got ${String(page)})`, { key: 'errors.list.page', params: { got: String(page) } })
+  }
 
   return withSession(async (session) => {
     // Una classe di stato vale per entrambi i workflow: i passi si risolvono
@@ -195,7 +207,7 @@ async function myTickets(
       ? { incident: await resolveStatusClass(session, ctx.tenantId, status, 'incident'), service_request: await resolveStatusClass(session, ctx.tenantId, status, 'service_request') }
       : null
     const params = {
-      tenantId: ctx.tenantId, userId: ctx.userId, offset, limit: pageSize,
+      tenantId: ctx.tenantId, userId: ctx.userId, offset, limit: safePageSize,
       incidentStatuses: statuses?.incident ?? null, requestStatuses: statuses?.service_request ?? null,
     }
     const whereClause = `

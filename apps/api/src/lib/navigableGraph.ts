@@ -9,6 +9,15 @@ import { loadITILTypes } from './itilTypes.js'
 export interface NavigableField {
   name:       string
   label:      string
+  /**
+   * La chiave i18n dell'etichetta, quando l'etichetta è del PRODOTTO e non del
+   * metamodello del cliente (revisione totale · C-18): «Name», «Assigned
+   * team», «Member» erano letterali inglesi che arrivavano nel costruttore dei
+   * report anche a chi usa il prodotto in italiano. Dove il nome è del cliente
+   * (un campo o un tipo che ha creato lui) la chiave è assente e vale
+   * l'etichetta, che è già la sua.
+   */
+  labelKey?:  string
   fieldType:  string
   enumValues: string[]
   /** Il vocabolario del campo (`USES_ENUM`), per leggere i valori con la loro etichetta. */
@@ -19,6 +28,9 @@ export interface NavigableRelation {
   relationshipType:  string
   direction:         string
   label:             string
+  /** Chiave i18n dell'etichetta del prodotto (C-18). */
+  labelKey?:         string
+  targetLabelKey?:   string
   targetEntityType:  string
   targetLabel:       string
   targetNeo4jLabel:  string
@@ -30,6 +42,8 @@ export type NavigableGroup = 'itsm' | 'organization' | 'cmdb'
 export interface NavigableEntity {
   entityType:  string
   label:       string
+  /** Chiave i18n dell'etichetta del prodotto (C-18). */
+  labelKey?:   string
   neo4jLabel:  string
   group:       NavigableGroup
   fields:      NavigableField[]
@@ -42,23 +56,25 @@ const ORGANIZATION_ENTITIES: NavigableEntity[] = [
   {
     entityType: 'Team',
     label:      'Team',
+    labelKey:   'reportBuilder.entity.team',
     neo4jLabel: 'Team',
     group:      'organization',
     fields: [
-      { name: 'name', label: 'Name', fieldType: 'string', enumValues: [], enumTypeName: null },
-      { name: 'type', label: 'Type', fieldType: 'string', enumValues: [], enumTypeName: null },
+      { name: 'name', label: 'Name', labelKey: 'reportBuilder.field.name', fieldType: 'string', enumValues: [], enumTypeName: null },
+      { name: 'type', label: 'Type', labelKey: 'reportBuilder.field.type', fieldType: 'string', enumValues: [], enumTypeName: null },
     ],
     relations: [],
   },
   {
     entityType: 'User',
     label:      'User',
+    labelKey:   'reportBuilder.entity.user',
     neo4jLabel: 'User',
     group:      'organization',
     fields: [
-      { name: 'name',  label: 'Name',  fieldType: 'string', enumValues: [], enumTypeName: null },
-      { name: 'email', label: 'Email', fieldType: 'string', enumValues: [], enumTypeName: null },
-      { name: 'role',  label: 'Role',  fieldType: 'string', enumValues: [], enumTypeName: null },
+      { name: 'name',  label: 'Name',  labelKey: 'reportBuilder.field.name',  fieldType: 'string', enumValues: [], enumTypeName: null },
+      { name: 'email', label: 'Email', labelKey: 'reportBuilder.field.email', fieldType: 'string', enumValues: [], enumTypeName: null },
+      { name: 'role',  label: 'Role',  labelKey: 'reportBuilder.field.role',  fieldType: 'string', enumValues: [], enumTypeName: null },
     ],
     relations: [],
   },
@@ -73,21 +89,21 @@ const ORGANIZATION_ENTITIES: NavigableEntity[] = [
  * `AFFECTS_CI`: un report «incident per CI» tornava sempre vuoto.
  */
 const TICKET_RELATIONS: Array<NavigableRelation & { sourceEntityType: string }> = [
-  { sourceEntityType: 'Incident', relationshipType: 'AFFECTED_BY', direction: 'outgoing', label: 'Affected CI', targetEntityType: 'CI', targetLabel: 'CI', targetNeo4jLabel: 'ConfigurationItem' },
-  { sourceEntityType: 'Incident', relationshipType: 'ASSIGNED_TO_TEAM', direction: 'outgoing', label: 'Assigned team', targetEntityType: 'Team', targetLabel: 'Team', targetNeo4jLabel: 'Team' },
-  { sourceEntityType: 'Incident', relationshipType: 'ASSIGNED_TO', direction: 'outgoing', label: 'Assigned user', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
-  { sourceEntityType: 'Incident', relationshipType: 'RESOLVED_BY', direction: 'outgoing', label: 'Resolved by change', targetEntityType: 'Change', targetLabel: 'Change', targetNeo4jLabel: 'Change' },
-  { sourceEntityType: 'Problem', relationshipType: 'AFFECTS', direction: 'outgoing', label: 'Affected CI', targetEntityType: 'CI', targetLabel: 'CI', targetNeo4jLabel: 'ConfigurationItem' },
-  { sourceEntityType: 'Problem', relationshipType: 'ASSIGNED_TO_TEAM', direction: 'outgoing', label: 'Assigned team', targetEntityType: 'Team', targetLabel: 'Team', targetNeo4jLabel: 'Team' },
-  { sourceEntityType: 'Problem', relationshipType: 'ASSIGNED_TO', direction: 'outgoing', label: 'Assigned user', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
-  { sourceEntityType: 'Problem', relationshipType: 'CAUSED_BY', direction: 'outgoing', label: 'Related incident', targetEntityType: 'Incident', targetLabel: 'Incident', targetNeo4jLabel: 'Incident' },
-  { sourceEntityType: 'Problem', relationshipType: 'RESOLVED_BY', direction: 'outgoing', label: 'Resolved by change', targetEntityType: 'Change', targetLabel: 'Change', targetNeo4jLabel: 'Change' },
-  { sourceEntityType: 'Change', relationshipType: 'AFFECTS_CI', direction: 'outgoing', label: 'Affected CI', targetEntityType: 'CI', targetLabel: 'CI', targetNeo4jLabel: 'ConfigurationItem' },
-  { sourceEntityType: 'Change', relationshipType: 'REQUESTED_BY', direction: 'outgoing', label: 'Requested by', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
-  { sourceEntityType: 'Change', relationshipType: 'OWNED_BY', direction: 'outgoing', label: 'Owner', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
-  { sourceEntityType: 'ServiceRequest', relationshipType: 'REQUESTED_BY', direction: 'outgoing', label: 'Requested by', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
-  { sourceEntityType: 'ServiceRequest', relationshipType: 'ASSIGNED_TO', direction: 'outgoing', label: 'Assigned user', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
-  { sourceEntityType: 'Team', relationshipType: 'MEMBER_OF', direction: 'incoming', label: 'Member', targetEntityType: 'User', targetLabel: 'User', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'Incident', relationshipType: 'AFFECTED_BY', direction: 'outgoing', label: 'Affected CI', labelKey: 'reportBuilder.relation.affectedCI', targetEntityType: 'CI', targetLabel: 'CI', targetLabelKey: 'reportBuilder.entity.ci', targetNeo4jLabel: 'ConfigurationItem' },
+  { sourceEntityType: 'Incident', relationshipType: 'ASSIGNED_TO_TEAM', direction: 'outgoing', label: 'Assigned team', labelKey: 'reportBuilder.relation.assignedTeam', targetEntityType: 'Team', targetLabel: 'Team', targetLabelKey: 'reportBuilder.entity.team', targetNeo4jLabel: 'Team' },
+  { sourceEntityType: 'Incident', relationshipType: 'ASSIGNED_TO', direction: 'outgoing', label: 'Assigned user', labelKey: 'reportBuilder.relation.assignedUser', targetEntityType: 'User', targetLabel: 'User', targetLabelKey: 'reportBuilder.entity.user', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'Incident', relationshipType: 'RESOLVED_BY', direction: 'outgoing', label: 'Resolved by change', labelKey: 'reportBuilder.relation.resolvedByChange', targetEntityType: 'Change', targetLabel: 'Change', targetLabelKey: 'reportBuilder.entity.change', targetNeo4jLabel: 'Change' },
+  { sourceEntityType: 'Problem', relationshipType: 'AFFECTS', direction: 'outgoing', label: 'Affected CI', labelKey: 'reportBuilder.relation.affectedCI', targetEntityType: 'CI', targetLabel: 'CI', targetLabelKey: 'reportBuilder.entity.ci', targetNeo4jLabel: 'ConfigurationItem' },
+  { sourceEntityType: 'Problem', relationshipType: 'ASSIGNED_TO_TEAM', direction: 'outgoing', label: 'Assigned team', labelKey: 'reportBuilder.relation.assignedTeam', targetEntityType: 'Team', targetLabel: 'Team', targetLabelKey: 'reportBuilder.entity.team', targetNeo4jLabel: 'Team' },
+  { sourceEntityType: 'Problem', relationshipType: 'ASSIGNED_TO', direction: 'outgoing', label: 'Assigned user', labelKey: 'reportBuilder.relation.assignedUser', targetEntityType: 'User', targetLabel: 'User', targetLabelKey: 'reportBuilder.entity.user', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'Problem', relationshipType: 'CAUSED_BY', direction: 'outgoing', label: 'Related incident', labelKey: 'reportBuilder.relation.relatedIncident', targetEntityType: 'Incident', targetLabel: 'Incident', targetLabelKey: 'reportBuilder.entity.incident', targetNeo4jLabel: 'Incident' },
+  { sourceEntityType: 'Problem', relationshipType: 'RESOLVED_BY', direction: 'outgoing', label: 'Resolved by change', labelKey: 'reportBuilder.relation.resolvedByChange', targetEntityType: 'Change', targetLabel: 'Change', targetLabelKey: 'reportBuilder.entity.change', targetNeo4jLabel: 'Change' },
+  { sourceEntityType: 'Change', relationshipType: 'AFFECTS_CI', direction: 'outgoing', label: 'Affected CI', labelKey: 'reportBuilder.relation.affectedCI', targetEntityType: 'CI', targetLabel: 'CI', targetLabelKey: 'reportBuilder.entity.ci', targetNeo4jLabel: 'ConfigurationItem' },
+  { sourceEntityType: 'Change', relationshipType: 'REQUESTED_BY', direction: 'outgoing', label: 'Requested by', labelKey: 'reportBuilder.relation.requestedBy', targetEntityType: 'User', targetLabel: 'User', targetLabelKey: 'reportBuilder.entity.user', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'Change', relationshipType: 'OWNED_BY', direction: 'outgoing', label: 'Owner', labelKey: 'reportBuilder.relation.owner', targetEntityType: 'User', targetLabel: 'User', targetLabelKey: 'reportBuilder.entity.user', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'ServiceRequest', relationshipType: 'REQUESTED_BY', direction: 'outgoing', label: 'Requested by', labelKey: 'reportBuilder.relation.requestedBy', targetEntityType: 'User', targetLabel: 'User', targetLabelKey: 'reportBuilder.entity.user', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'ServiceRequest', relationshipType: 'ASSIGNED_TO', direction: 'outgoing', label: 'Assigned user', labelKey: 'reportBuilder.relation.assignedUser', targetEntityType: 'User', targetLabel: 'User', targetLabelKey: 'reportBuilder.entity.user', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'Team', relationshipType: 'MEMBER_OF', direction: 'incoming', label: 'Member', labelKey: 'reportBuilder.relation.member', targetEntityType: 'User', targetLabel: 'User', targetLabelKey: 'reportBuilder.entity.user', targetNeo4jLabel: 'User' },
 ]
 
 const relationsOf = (entityType: string): NavigableRelation[] =>
@@ -182,7 +198,11 @@ export async function getNavigableEntities(tenantId: string): Promise<NavigableE
 function enumValuesOf(raw: string[] | string | null | undefined): string[] {
   if (Array.isArray(raw)) return raw
   if (typeof raw === 'string' && raw !== '') {
-    const parsed: unknown = JSON.parse(raw)
+    // C-28: il messaggio dice che è un JSON corrotto, non un SyntaxError nudo.
+    let parsed: unknown
+    try { parsed = JSON.parse(raw) } catch (e) {
+      throw new Error(`enum values are not valid JSON (${e instanceof Error ? e.message : String(e)}): ${raw.slice(0, 80)}`)
+    }
     if (!Array.isArray(parsed)) throw new Error(`enum values are not a JSON array: ${raw.slice(0, 80)}`)
     return parsed as string[]
   }

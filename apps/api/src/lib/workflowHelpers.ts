@@ -89,6 +89,14 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
     }))
   })
   stepsCache.set(key, promise)
+  /**
+   * Una lettura FALLITA non resta in cache (revisione totale · C-15): la cache
+   * memorizza la promessa, quindi un solo timeout del database veniva
+   * rigiocato a ogni chiamante — liste, transizioni, notifiche — per i
+   * trenta secondi successivi, su tutto il tenant. Ora l'errore si propaga a
+   * chi ha chiesto, e il tentativo dopo riparte pulito.
+   */
+  promise.catch(() => { if (stepsCache.get(key) === promise) stepsCache.delete(key) })
   // Auto-expire after 30s to keep long-lived processes in sync with designer edits.
   setTimeout(() => { stepsCache.delete(key) }, 30_000).unref?.()
   return promise

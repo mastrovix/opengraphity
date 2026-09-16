@@ -739,7 +739,8 @@
         "customFieldInvalid": "column «{{field}}»: {{error}}",
         "columnRequired": "{{column}} is required",
         "vocabularyUnknown": "{{column}} «{{value}}» is not in the dictionary of this organization ({{allowed}})",
-        "integerOutOfRange": "{{column}} «{{value}}» must be an integer between {{min}} and {{max}}"
+        "integerOutOfRange": "{{column}} «{{value}}» must be an integer between {{min}} and {{max}}",
+        "commentInternalNotBoolean": "comments[{{index}}]: «internal» must be true or false (false = a reply the requester sees in the portal)."
       },
       "columnsProblems": "external_id*, title*, priority*, impact, urgency, description, workaround, root_cause, status, number, created_at, updated_at, resolved_at, assignee_email, team_name, comments",
       "columnsChanges": "external_id*, title*, change_type*, priority, why, what, aggregate_risk_score, status, number, created_at, updated_at, completed_at, comments",
@@ -857,7 +858,10 @@
       "resultsFor_other": "{{count}} results for \"{{query}}\"",
       "views_one": "{{count}} view",
       "views_other": "{{count}} views",
-      "newArticle": "New article"
+      "newArticle": "New article",
+      "notFound": "Article not found",
+      "notFoundHint": "The article {{id}} no longer exists, or it was never published.",
+      "backToKb": "Back to the knowledge base"
     },
     "kbAdmin": {
       "title": "Knowledge Base Admin",
@@ -3474,7 +3478,8 @@
     "incident": {
       "needsCI": "An incident must have at least one impacted CI.",
       "ciMissing": "Incident not created: {{missing}} of the {{total}} impacted CIs do not exist in this tenant, or are not Configuration Items ({{ids}}).",
-      "assignedButNotAdvanced": "The assignment was saved, but the incident did not move to «{{step}}»: {{reason}}"
+      "assignedButNotAdvanced": "The assignment was saved, but the incident did not move to «{{step}}»: {{reason}}",
+      "workflowInstance": "The incident was not created: its workflow could not be started ({{reason}}). Check the incident workflow of this category in the designer: it needs exactly one initial step."
     },
     "change": {
       "needsCI": "A change must have at least one impacted CI.",
@@ -3698,7 +3703,8 @@
     },
     "problem": {
       "ciMissing": "Problem created, but {{missing}} of the {{total}} given CIs do not exist in this tenant, or are not Configuration Items ({{ids}}).",
-      "noKnownErrorStep": "No step of the problem workflow declares the «Documented known error» purpose, so the Known Error Database has nothing to list. Assign that purpose to the step where problems are documented as known errors, in the workflow designer."
+      "noKnownErrorStep": "No step of the problem workflow declares the «Documented known error» purpose, so the Known Error Database has nothing to list. Assign that purpose to the step where problems are documented as known errors, in the workflow designer.",
+      "workflowInstance": "The problem was not created: its workflow could not be started ({{reason}}). Check the problem workflow of this category in the designer: it needs exactly one initial step."
     },
     "itilType": {
       "shippedField": "Field \"{{name}}\" ships with the product: it is the same for every tenant and cannot be changed, not even the label, the order or the scripts. Add a field of your own on the type.",
@@ -3838,7 +3844,8 @@
     },
     "list": {
       "limit": "A list can show between 1 and {{max}} rows (asked: {{got}}).",
-      "offset": "The list position must be zero or more (got: {{got}})."
+      "offset": "The list position must be zero or more (got: {{got}}).",
+      "page": "The page number must be a whole number of at least 1 (received {{got}})."
     },
     "fields": {
       "required": "Required fields are missing: {{fields}}.",
@@ -3910,7 +3917,8 @@
       "stepRulesShape": "{{where}}: the step rules of the field are not valid.",
       "unknownSteps": "Field «{{field}}»: the workflow has no step {{steps}} (steps: {{known}}).",
       "notEditableInStep": "The field «{{field}}» cannot be changed in step «{{step}}».",
-      "notInStep": "The field «{{field}}» is not part of step «{{step}}»."
+      "notInStep": "The field «{{field}}» is not part of step «{{step}}».",
+      "stepRulesJson": "The step rules saved for {{where}} are not valid JSON: open the field in the designer and set them again."
     },
     "impactWeights": {
       "shape": "The impact weights must be an object.",
@@ -5958,7 +5966,30 @@
     "environment": "Environment",
     "next": "Next",
     "addFilter": "+ filter",
-    "groupOrganization": "Organization"
+    "groupOrganization": "Organization",
+    "entity": {
+      "team": "Team",
+      "user": "User",
+      "ci": "CI",
+      "incident": "Incident",
+      "change": "Change"
+    },
+    "field": {
+      "name": "Name",
+      "type": "Type",
+      "email": "Email",
+      "role": "Role"
+    },
+    "relation": {
+      "affectedCI": "Affected CI",
+      "assignedTeam": "Assigned team",
+      "assignedUser": "Assigned user",
+      "resolvedByChange": "Resolved by change",
+      "relatedIncident": "Related incident",
+      "requestedBy": "Requested by",
+      "owner": "Owner",
+      "member": "Member"
+    }
   },
   "reportChart": {
     "chartType": "Chart type",

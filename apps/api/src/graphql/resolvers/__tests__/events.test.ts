@@ -26,6 +26,15 @@ vi.mock('@opengraphity/neo4j', () => ({
   toNumber: (v: unknown) => (v == null ? 0 : Number(v)),
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+/**
+ * D-19: i dipendenti nella panoramica della salute si contano lungo le
+ * relazioni del CLIENTE (`impactRelPatternForTenant`), non su un `DEPENDS_ON`
+ * cablato. Qui il pattern è finto e i test ne verificano l'uso.
+ */
+vi.mock('../../../lib/ciMetamodelForTenant.js', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  impactRelPatternForTenant: vi.fn(async () => 'DEPENDS_ON|RUNS_ON'),
+}))
 // Revisione delle otto ondate · C·N-4: impatto e urgenza della `severity_map`
 // si validano contro il vocabolario DEL CLIENTE, non contro una costante del
 // codice — prima chi rinominava `impact` non poteva più salvare la policy,
@@ -891,7 +900,16 @@ describe('monitoringSources / ciHealth', () => {
 describe('previewInboundEvents', () => {
   const generic = { connectorKind: 'generic', payload: JSON.stringify(SAMPLE_PAYLOADS.generic), fieldMapping: JSON.stringify(GENERIC_SAMPLE_CONFIG.fieldMapping), defaultValues: JSON.stringify(GENERIC_SAMPLE_CONFIG.defaultValues), valueMapping: JSON.stringify(GENERIC_SAMPLE_CONFIG.valueMapping) }
 
-  it('generic con la config di esempio → anteprima normalizzata, labels JSON; nessuna query, nessuna coda, nessun audit', async () => {
+  it('generic con la config di esempio → anteprima normalizzata, labels JSON; UNA lettura (il fuso), nessuna coda, nessun audit', async () => {
+    /**
+     * CONTRATTO RINEGOZIATO (revisione totale · D-25): l'anteprima normalizza
+     * col FUSO del cliente, come fanno il webhook e la prova della sorgente —
+     * prima no, quindi lo stesso payload Zabbix mostrava `startsAt` vuoto
+     * nell'anteprima e valorizzato dal vivo, e l'admin tarava la mappatura su
+     * un comportamento che non era quello vero. La lettura è una sola: il
+     * fuso. Scritture, coda e audit restano zero.
+     */
+    vi.mocked(runQueryOne).mockResolvedValue({ timezone: 'Europe/Rome' } as never)
     const out = await eventResolvers.Mutation.previewInboundEvents(null, { input: generic }, admin)
     expect(out).toEqual([{
       externalId: 'EVT-100234', resourceExternalId: null, status: 'firing', severity: 'warning', title: 'CheckoutErrorRate',
@@ -901,9 +919,10 @@ describe('previewInboundEvents', () => {
     // M2: il connettore che porta l'id della risorsa lo espone nell'anteprima
     const dt = await eventResolvers.Mutation.previewInboundEvents(null, { input: { connectorKind: 'dynatrace', payload: JSON.stringify(SAMPLE_PAYLOADS.dynatrace) } }, admin)
     expect(dt[0]).toMatchObject({ resourceExternalId: 'HOST-1A2B3C4D5E6F7A8B', resourceKind: 'hostname' })
-    expect(getSession).not.toHaveBeenCalled()
     expect(enqueueEvents).not.toHaveBeenCalled()
     expect(audit).not.toHaveBeenCalled()
+    // D-25: la sola lettura è il fuso dell'organizzazione.
+    expect(vi.mocked(runQueryOne).mock.calls.every(([, q]) => String(q).includes('t.timezone AS timezone'))).toBe(true)
   })
 
   it.each(['alertmanager', 'grafana', 'zabbix', 'datadog', 'dynatrace'] as const)('%s: il campione del connettore produce un evento firing su hostname', async (kind) => {
@@ -1100,12 +1119,13 @@ describe('ciHealthOverview', () => {
     expect(q.cypher).toMatch(/CALL \{\s+MATCH \(ci:ConfigurationItem \{tenant_id: \$tenantId\}\)\s+RETURN\s+count\(CASE WHEN ci\.health = 'down'/)
     expect(q.cypher).toContain('count(CASE WHEN ci.health IS NULL         THEN 1 END) AS unmonitored')
     // D·2.6: impatto aggregato per stato su tutto il tenant, nello stesso CALL dei contatori (sum di un COUNT { } pigro, non un OPTIONAL MATCH)
-    expect(q.cypher).toContain("sum(CASE WHEN ci.health = 'down'     THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci) } ELSE 0 END) AS downDependents")
-    expect(q.cypher).toContain("sum(CASE WHEN ci.health = 'degraded' THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci) } ELSE 0 END) AS degradedDependents")
+    expect(q.cypher).toContain("sum(CASE WHEN ci.health = 'down'     THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON|RUNS_ON]->(ci) } ELSE 0 END) AS downDependents")
+    expect(q.cypher).toContain("sum(CASE WHEN ci.health = 'degraded' THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON|RUNS_ON]->(ci) } ELSE 0 END) AS degradedDependents")
     expect(q.cypher.indexOf('AS degradedDependents')).toBeLessThan(q.cypher.indexOf('AS total'))
     // total e pagina con lo stesso WHERE, salute prima di ogni conteggio
     expect(q.cypher).toMatch(/MATCH \(ci:ConfigurationItem \{tenant_id: \$tenantId\}\)\s+WHERE ci\.health IS NOT NULL\s+RETURN count\(ci\) AS total/)
-    expect(q.cypher).toMatch(/WHERE ci\.health IS NOT NULL\s+WITH ci, COUNT \{ \(:ConfigurationItem \{tenant_id: \$tenantId\}\)-\[:DEPENDS_ON\]->\(ci\) \} AS dependents\s+ORDER BY CASE ci\.health WHEN 'down' THEN 0 WHEN 'degraded' THEN 1 ELSE 2 END, dependents DESC, ci\.name\s+SKIP toInteger\(\$offset\) LIMIT toInteger\(\$limit\)/)
+    // D-19: anche qui le relazioni del cliente, non DEPENDS_ON cablato.
+    expect(q.cypher).toMatch(/WHERE ci\.health IS NOT NULL\s+WITH ci, COUNT \{ \(:ConfigurationItem \{tenant_id: \$tenantId\}\)-\[:DEPENDS_ON\|RUNS_ON\]->\(ci\) \} AS dependents\s+ORDER BY CASE ci\.health WHEN 'down' THEN 0 WHEN 'degraded' THEN 1 ELSE 2 END, dependents DESC, ci\.name\s+SKIP toInteger\(\$offset\) LIMIT toInteger\(\$limit\)/)
     // firing e team solo sulle righe della pagina (dopo SKIP/LIMIT), non moltiplicativi
     expect(q.cypher).toMatch(/LIMIT toInteger\(\$limit\)\s+RETURN collect\(\{[\s\S]*firingEvents: COUNT \{ \(:Event \{tenant_id: \$tenantId, status: 'firing'\}\)-\[:RAISED_ON\]->\(ci\) \}/)
     expect(q.cypher).toContain('ownerTeam: head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name])')

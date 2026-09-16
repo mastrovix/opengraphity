@@ -97,6 +97,7 @@ import { slaBreachedAt } from './20261002_1000_sla_breached_at.js'
 import { changeTaskKeys } from './20261002_1010_change_task_keys.js'
 import { slaWarningRepair } from './20261002_1020_sla_warning_repair.js'
 import { stepDeadlineCalendar } from './20261002_1030_step_deadline_calendar.js'
+import { serviceCalendarNameKey } from './20261002_1040_service_calendar_name_key.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -192,4 +193,5 @@ export const MIGRATIONS: readonly Migration[] = [
   changeTaskKeys,
   slaWarningRepair,
   stepDeadlineCalendar,
+  serviceCalendarNameKey,
 ]

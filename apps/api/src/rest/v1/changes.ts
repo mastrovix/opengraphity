@@ -242,7 +242,8 @@ router.get('/:id/tasks', requirePermission('changes:read'), asyncHandler(async (
       }>(session, `
         MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:${src.rel}]->(t:${src.label})
         WHERE coalesce(c.deleted, false) = false
-        OPTIONAL MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
+        // D-29: l'etichetta ConfigurationItem, altrimenti è una scansione per ogni task.
+        OPTIONAL MATCH (ci:ConfigurationItem {id: t.ci_id, tenant_id: $tenantId})
         OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
         OPTIONAL MATCH (t)-[:${src.byRel}]->(u:User)
         RETURN properties(t) AS props, ci.id AS ciId, coalesce(ci.name, ci.id) AS ciName,

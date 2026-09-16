@@ -1327,7 +1327,14 @@ describe('ingestEvent', () => {
     const out = await ingestEvent({ tenantId: 't1', sourceId: 'hook-1', ev: { ...EV, status: 'resolved', startsAt: '2026-09-09T12:00:00+02:00' }, receivedAt: 'NOW' })
     expect(out).toMatchObject({ created: true, outcome: 'created' })
     expect(callMatching(MERGE_RE)!.params).toMatchObject({ status: 'resolved', firstSeenAt: '2026-09-09T10:00:00.000Z', now: 'NOW' })
-    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ mode: 'ingest', opensCycle: true }))
+    /**
+     * CONTRATTO RINEGOZIATO (revisione totale · D-4): un allarme che arriva
+     * già rientrato NON apre un ciclo. Prima `opensCycle` era vero (per il
+     * caso B5 `first_seen_at` è l'istante del payload), quindi una sorgente
+     * nuova che manda una raffica di `resolved` arretrati alzava il contatore
+     * di tempesta e poteva far scattare una tempesta mai esistita.
+     */
+    expect(runEventPipeline).toHaveBeenCalledWith(expect.objectContaining({ mode: 'ingest', opensCycle: false }))
     expect(publishEvent).not.toHaveBeenCalled()
     expect(metrics.eventsResolvedUnknownTotal.inc).toHaveBeenCalledWith({ connector: 'alertmanager' })
     expect(metrics.eventsReceivedTotal.inc).toHaveBeenCalledWith({ connector: 'alertmanager' })

@@ -141,13 +141,14 @@ function renderDossier(doc: Doc, data: ProblemDossier, locale: PdfLocale): void 
   const pr = data.problem
 
   renderTicketDossier(doc, {
-    reportTitle: 'Problem Audit Report',
+    reportTitle: pdfText(locale, 'reportProblem'),
     entityTitle: `${pr.number || pr.id} ${DASH} ${pr.title}`,
     badges: (doc, x, y) => {
       let bx = x
-      bx += badge(doc, bx, y, `PRIORITY: ${(pr.priority || pdfText(locale, 'notAvailable')).toUpperCase()}`,
+      // C-18: etichette dei badge tradotte.
+      bx += badge(doc, bx, y, `${pdfText(locale, 'badgePriority')}: ${(pr.priority || pdfText(locale, 'notAvailable')).toUpperCase()}`,
         valueColorInk(pr.priorityColor)) + 6
-      badge(doc, bx, y, `STATUS: ${(pr.status || pdfText(locale, 'notAvailable')).toUpperCase().replace(/_/g, ' ')}`, COLOR.brand)
+      badge(doc, bx, y, `${pdfText(locale, 'badgeStatus')}: ${(pr.status || pdfText(locale, 'notAvailable')).toUpperCase().replace(/_/g, ' ')}`, COLOR.brand)
     },
     sections: [
       detailsSection(data, locale),
@@ -167,8 +168,8 @@ function detailsSection(data: ProblemDossier, locale: PdfLocale) {
   return (doc: Doc): void => {
     sectionHeading(doc, pdfText(locale, 'details'))
     keyValue(doc, pdfText(locale, 'description'), orDash(pr.description))
-    keyValue(doc, 'Root cause', orDash(pr.rootCause))
-    keyValue(doc, 'Workaround', orDash(pr.workaround))
+    keyValue(doc, pdfText(locale, 'rootCause'), orDash(pr.rootCause))
+    keyValue(doc, pdfText(locale, 'workaround'), orDash(pr.workaround))
     keyValue(doc, pdfText(locale, 'affectedUsers'), pr.affectedUsers != null ? String(pr.affectedUsers) : DASH)
     keyValue(doc, pdfText(locale, 'createdBy'), data.createdBy
       ? `${data.createdBy.name} <${data.createdBy.email}>`
@@ -176,7 +177,7 @@ function detailsSection(data: ProblemDossier, locale: PdfLocale) {
     keyValue(doc, pdfText(locale, 'assignee'), data.assignee
       ? `${data.assignee.name} <${data.assignee.email}>`
       : DASH)
-    keyValue(doc, 'Team', data.team ? data.team.name : DASH)
+    keyValue(doc, pdfText(locale, 'team'), data.team ? data.team.name : DASH)
     keyValue(doc, pdfText(locale, 'createdAt'), fmtDate(pr.createdAt, locale))
     keyValue(doc, pdfText(locale, 'updatedAt'), fmtDate(pr.updatedAt, locale))
     keyValue(doc, pdfText(locale, 'resolvedAt'), fmtDate(pr.resolvedAt, locale))

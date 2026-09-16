@@ -182,11 +182,14 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
         WHERE $seeIncidents AND NOT inc.status IN $incidentConcluded
         WITH ci, dipendenti_diretti, dipendenti_secondo_livello, business_capability,
              collect(DISTINCT inc.number) AS incident_aperti
-        OPTIONAL MATCH (ch:Change {tenant_id: $tenantId})-[:AFFECTS]->(ci)
+        // La relazione delle CHANGE è AFFECTS_CI (revisione totale · D-10):
+        // AFFECTS lega i PROBLEM ai CI, quindi «change in corso su questo CI»
+        // era sempre vuoto — e all'assistente sembrava che non ce ne fossero.
+        OPTIONAL MATCH (ch:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(ci)
         WHERE $seeChanges AND NOT ch.status IN $changeConcluded AND coalesce(ch.deleted, false) = false
         RETURN ci.name AS nome, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS tipo, ci.environment AS ambiente,
                dipendenti_diretti, dipendenti_secondo_livello, business_capability,
-               incident_aperti, collect(DISTINCT ch.number) AS change_in_corso
+               incident_aperti, collect(DISTINCT coalesce(ch.number, ch.code)) AS change_in_corso
       `, {
         tenantId, labels: await ciLabelsForTenant(tenantId), key: ci_id_o_nome,
         incidentConcluded: await concludedStatusNames(tenantId, 'incident'),
@@ -257,11 +260,15 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
       const rows = await readQuery(`
         MATCH (ch:Change {tenant_id: $tenantId})
         WHERE NOT ch.status IN $concluded AND coalesce(ch.deleted, false) = false
-        OPTIONAL MATCH (ch)-[:AFFECTS]->(ci)
+        // D-10: AFFECTS_CI, e i campi che una change ha DAVVERO: risk_level e
+        // planned_start non esistono sul nodo (il rischio sta in
+        // aggregate_risk_score), quindi l'assistente rispondeva «rischio:
+        // null» su ogni change.
+        OPTIONAL MATCH (ch)-[:AFFECTS_CI]->(ci)
         WITH ch, collect(DISTINCT ci.name) AS cis
-        RETURN ch.number AS numero, ch.title AS titolo, ch.status AS stato,
-               ch.change_type AS tipo, ch.risk_level AS rischio,
-               ch.planned_start AS inizio_pianificato, cis AS ci_toccati
+        RETURN coalesce(ch.number, ch.code) AS numero, ch.title AS titolo, ch.status AS stato,
+               ch.change_type AS tipo, ch.aggregate_risk_score AS punteggio_rischio,
+               ch.priority AS priorita, cis AS ci_toccati
         ORDER BY ch.created_at DESC
         LIMIT ${clampLimit(limit, 10, 25)}
       `, { tenantId, concluded: await concludedStatusNames(tenantId, 'change') })

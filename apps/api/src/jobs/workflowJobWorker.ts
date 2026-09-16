@@ -129,6 +129,8 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
           body:    d.method !== 'GET' ? d.payload : undefined,
           signal:  controller.signal,
         })
+        // C-29: corpo della risposta scartato (connessione rilasciata subito).
+        await res.body?.cancel().catch(() => undefined)
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`)
         }
@@ -281,7 +283,33 @@ async function processNotificationJob(job: Job): Promise<void> {
           const allowed = await automaticTransitionAllowed(session, {
             tenantId, changeId, changeType: changeType ?? '', currentStep, toStep,
           }, 'timer_job')
-          if (!allowed) break
+          if (!allowed) {
+            /**
+             * Un'attesa RIFIUTATA dal varco lascia una traccia visibile
+             * (revisione totale · C-30): il job risultava completato, la
+             * change restava nell'attesa per sempre e solo un log e un
+             * contatore lo dicevano. Ora l'esito si scrive sull'esecuzione del
+             * passo, esattamente come fanno le scadenze, quindi la
+             * diagnostica lo elenca fra i ticket bloccati e l'admin lo vede.
+             */
+            await runQuery(session, `
+              MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})-[:STEP_HISTORY]->(ex:WorkflowStepExecution)
+              WHERE ex.exited_at IS NULL
+              SET ex.deadline_outcome    = 'refused',
+                  ex.deadline_reason     = 'approval_gate',
+                  ex.deadline_detail     = $detail,
+                  ex.deadline_to_step    = $toStep,
+                  ex.deadline_checked_at = $now
+            `, {
+              instanceId, tenantId, toStep,
+              // Il dettaglio finisce sul nodo e lo legge la diagnostica: inglese, come tutti i testi dell'API.
+              detail: `timer_wait: the approval gate does not allow the automatic transition to "${toStep}"`,
+              now: new Date().toISOString(),
+            })
+            logger.warn({ instanceId, currentStep, toStep, changeId },
+              '[notification-jobs] timer_wait rifiutato dal varco delle approvazioni: la change resta nell-attesa (visibile nella diagnostica)')
+            break
+          }
         }
         const result = await workflowEngine.transition(
           session,

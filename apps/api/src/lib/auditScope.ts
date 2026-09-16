@@ -11,13 +11,13 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
 
-interface AuditScope { written: number }
+interface AuditScope { written: number; failed: number }
 
 const storage = new AsyncLocalStorage<AuditScope>()
 
 /** Esegue `fn` (la gestione di una richiesta GraphQL) con un contatore suo. */
 export function runInAuditScope<T>(fn: () => T): T {
-  return storage.run({ written: 0 }, fn)
+  return storage.run({ written: 0, failed: 0 }, fn)
 }
 
 /** Lo chiama `audit()`, in modo sincrono, prima di scrivere. Fuori da una richiesta non fa nulla. */
@@ -26,7 +26,25 @@ export function noteAuditWritten(): void {
   if (scope) scope.written++
 }
 
+/**
+ * Lo chiama `audit()` quando la scrittura NON è riuscita (revisione totale ·
+ * A-12): il contatore si muove prima della scrittura — deve, perché molte
+ * chiamate sono `void audit(...)` e il registro legge alla fine del resolver —
+ * quindi un errore del database lasciava la mutation senza nessuna traccia,
+ * né la sua voce né quella generica. Segnare il fallimento fa scrivere al
+ * registro la voce generica, che è meglio del silenzio.
+ */
+export function noteAuditFailed(): void {
+  const scope = storage.getStore()
+  if (scope) { scope.failed++; if (scope.written > 0) scope.written-- }
+}
+
 /** Le voci scritte finora nella richiesta; `null` fuori da una richiesta GraphQL. */
 export function auditsWrittenInScope(): number | null {
   return storage.getStore()?.written ?? null
+}
+
+/** Le scritture d'audit FALLITE nella richiesta; `null` fuori da una richiesta GraphQL. */
+export function auditsFailedInScope(): number | null {
+  return storage.getStore()?.failed ?? null
 }

@@ -35,6 +35,8 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, readonly Permission[]>> 
 
   'knowledge-base':                ['kb.read'],
   'knowledge-base/:slug':          ['kb.read'],
+  // B-21: apre l'articolo dal suo id (le notifiche portano l'id, non lo slug).
+  'kb-articles/:id':               ['kb.read'],
   'admin/knowledge-base':          ['kb.write'],
 
   'cmdb':                          ['cmdb.read'],

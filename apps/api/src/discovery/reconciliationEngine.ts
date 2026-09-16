@@ -31,6 +31,13 @@ export interface ReconciliationStats {
 /** Tipo di conflitto su `SyncConflict.conflict_kind` (ondata 6 · A-11). */
 export const CONFLICT_LOCKED_FIELDS = 'locked_fields'
 export const CONFLICT_UNKNOWN_CI_TYPE = 'unknown_ci_type'
+/**
+ * Il CI scoperto non è scrivibile così com'è (revisione totale · D-20): una
+ * chiave di proprietà fuori forma, o un valore che non è un tipo primitivo.
+ * Prima l'errore faceva cadere l'INTERO run con un messaggio che non nominava
+ * il CI; ora è un conflitto come gli altri, e il resto del run continua.
+ */
+export const CONFLICT_INVALID_PROPERTIES = 'invalid_properties'
 
 interface ExistingCI {
   id:            string
@@ -70,7 +77,20 @@ export async function reconcileBatch(
     const ciTypes = await CITypeResolver.forSource(tenantId, source)
     for (const raw of batch) {
       const ci = applyMappingRules(raw, source.mapping_rules ?? [])
-      await reconcileOne(ci, source, runId, tenantId, stats, session, touched, ciTypes)
+      try {
+        await reconcileOne(ci, source, runId, tenantId, stats, session, touched, ciTypes)
+      } catch (err) {
+        /**
+         * Un CI che non si può scrivere è UN conflitto, non la fine del run
+         * (revisione totale · D-20). Vale per gli errori di forma del CI
+         * scoperto (proprietà non primitive, chiavi fuori forma): un errore
+         * del database o del metamodello riguarda tutto il lotto e continua a
+         * propagarsi, perché ritentare ha senso solo per quello.
+         */
+        if (!(err instanceof ValidationError)) throw err
+        await createInvalidPropertiesConflict(session, ci, err.message, source, runId, tenantId, new Date().toISOString())
+        stats.ciConflicts++
+      }
     }
   } finally {
     await session.close()
@@ -172,6 +192,25 @@ export function assertDiscoveredPropertyKeys(props: Record<string, unknown>, ext
     throw new ValidationError(
       `[reconcile] CI ${externalId}: property keys must match ${FIELD_NAME_RE.source} — ` +
       `invalid: ${bad.map(k => JSON.stringify(k.slice(0, 60))).join(', ')} (normalize them in the connector mapping)`,
+    )
+  }
+  /**
+   * Anche i VALORI (revisione totale · D-20): il controllo guardava solo le
+   * chiavi, quindi un oggetto o un array di oggetti in una proprietà del JSON
+   * arrivava fino a `SET ci += $props` e Neo4j lo rifiutava («Property values
+   * can only be of primitive types») — l'INTERO run di discovery cadeva con un
+   * errore che non nominava né il CI né la proprietà. Ora il CI si ferma da
+   * solo, con il nome della proprietà, e il resto del run continua.
+   */
+  const notPrimitive = Object.entries(props).filter(([, v]) => {
+    if (v === null || v === undefined) return false
+    if (Array.isArray(v)) return v.some((x) => x !== null && typeof x === 'object')
+    return typeof v === 'object'
+  }).map(([k]) => k)
+  if (notPrimitive.length) {
+    throw new ValidationError(
+      `[reconcile] CI ${externalId}: these properties are not primitive values (Neo4j stores strings, numbers, booleans, `
+      + `or lists of those): ${notPrimitive.join(', ')}. Map them to single fields in the connector mapping, or drop them.`,
     )
   }
 }
@@ -463,6 +502,38 @@ async function createUnknownTypeConflict(
   ))
   logger.warn({ externalId: discovered.external_id, ciType: rawType, sourceId: source.id, runId, tenantId, reason },
     '[reconcile] CI non creato: il ci_type non esiste nel metamodello del cliente')
+}
+
+/** D-20: il CI scoperto non è scrivibile (proprietà non primitive, chiavi fuori forma). */
+async function createInvalidPropertiesConflict(
+  session:    Session,
+  discovered: DiscoveredCI,
+  reason:     string,
+  source:     SyncSourceConfig,
+  runId:      string,
+  tenantId:   string,
+  now:        string,
+): Promise<void> {
+  const id = randomUUID()
+  await session.executeWrite(tx => tx.run(
+    `MERGE (c:SyncConflict {tenant_id: $tenantId, source_id: $sourceId, run_id: $runId, external_id: $externalId, conflict_kind: '${CONFLICT_INVALID_PROPERTIES}'})
+     ON CREATE SET
+       c.id = $id, c.ci_type = $ciType, c.conflict_fields = $conflictFields, c.status = 'open',
+       c.discovered_ci = $discoveredCi, c.existing_ci_id = '', c.match_reason = 'properties',
+       c.message = $message, c.created_at = $now
+     ON MATCH SET c.message = $message, c.discovered_ci = $discoveredCi`,
+    {
+      id, tenantId, sourceId: source.id, runId,
+      externalId:     discovered.external_id,
+      ciType:         discovered.ci_type ?? '',
+      conflictFields: JSON.stringify(['properties']),
+      discoveredCi:   JSON.stringify(discovered),
+      message:        reason,
+      now,
+    },
+  ))
+  logger.warn({ externalId: discovered.external_id, sourceId: source.id, runId, tenantId, reason },
+    '[reconcile] CI non scritto: le proprietà scoperte non sono scrivibili nel grafo')
 }
 
 async function syncRelations(

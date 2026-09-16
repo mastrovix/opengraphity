@@ -739,7 +739,8 @@
         "customFieldInvalid": "colonna «{{field}}»: {{error}}",
         "columnRequired": "{{column}} è obbligatorio",
         "vocabularyUnknown": "{{column}} «{{value}}» non è nel dizionario di questa organizzazione ({{allowed}})",
-        "integerOutOfRange": "{{column}} «{{value}}» deve essere un intero fra {{min}} e {{max}}"
+        "integerOutOfRange": "{{column}} «{{value}}» deve essere un intero fra {{min}} e {{max}}",
+        "commentInternalNotBoolean": "comments[{{index}}]: «internal» deve essere true o false (false = una risposta che il richiedente vede nel portale)."
       },
       "columnsProblems": "external_id*, title*, priority*, impact, urgency, description, workaround, root_cause, status, number, created_at, updated_at, resolved_at, assignee_email, team_name, comments",
       "columnsChanges": "external_id*, title*, change_type*, priority, why, what, aggregate_risk_score, status, number, created_at, updated_at, completed_at, comments",
@@ -842,7 +843,7 @@
       "category": "Categoria",
       "noArticles": "Nessun articolo trovato",
       "articleNotFound": "Articolo non trovato",
-      "backToList": "Torna alla lista",
+      "backToList": "Torna all'elenco",
       "wasHelpful": "Questo articolo ti è stato utile?",
       "yes": "Sì",
       "no": "No",
@@ -857,7 +858,10 @@
       "resultsFor_other": "{{count}} risultati per «{{query}}»",
       "views_one": "{{count}} visualizzazione",
       "views_other": "{{count}} visualizzazioni",
-      "newArticle": "Nuovo articolo"
+      "newArticle": "Nuovo articolo",
+      "notFound": "Articolo non trovato",
+      "notFoundHint": "L'articolo {{id}} non esiste più, oppure non è mai stato pubblicato.",
+      "backToKb": "Torna alla knowledge base"
     },
     "kbAdmin": {
       "title": "Knowledge Base Admin",
@@ -3474,7 +3478,8 @@
     "incident": {
       "needsCI": "Un incident deve avere almeno un CI impattato.",
       "ciMissing": "Incident non creato: {{missing}} dei {{total}} CI impattati non esistono in questo cliente, o non sono Configuration Item ({{ids}}).",
-      "assignedButNotAdvanced": "L'assegnazione è stata salvata, ma l'incident non è passato a «{{step}}»: {{reason}}"
+      "assignedButNotAdvanced": "L'assegnazione è stata salvata, ma l'incident non è passato a «{{step}}»: {{reason}}",
+      "workflowInstance": "L'incident non è stato creato: il suo workflow non è partito ({{reason}}). Controlla nel disegnatore il workflow incident di questa categoria: serve esattamente un passo iniziale."
     },
     "change": {
       "needsCI": "Una change deve avere almeno un CI impattato.",
@@ -3698,7 +3703,8 @@
     },
     "problem": {
       "ciMissing": "Problem creato, ma {{missing}} dei {{total}} CI indicati non esistono in questo cliente, o non sono Configuration Item ({{ids}}).",
-      "noKnownErrorStep": "Nessun passo del workflow dei problem dichiara lo scopo «Errore noto documentato», quindi la Known Error Database non ha niente da elencare. Assegna lo scopo al passo in cui i problem vengono documentati come errori noti, nel disegnatore del workflow."
+      "noKnownErrorStep": "Nessun passo del workflow dei problem dichiara lo scopo «Errore noto documentato», quindi la Known Error Database non ha niente da elencare. Assegna lo scopo al passo in cui i problem vengono documentati come errori noti, nel disegnatore del workflow.",
+      "workflowInstance": "Il problem non è stato creato: il suo workflow non è partito ({{reason}}). Controlla nel disegnatore il workflow problem di questa categoria: serve esattamente un passo iniziale."
     },
     "itilType": {
       "shippedField": "Il campo «{{name}}» è spedito col prodotto: è lo stesso per tutti i clienti e non si modifica, nemmeno l'etichetta, l'ordine o gli script. Aggiungi un campo tuo sul tipo.",
@@ -3838,7 +3844,8 @@
     },
     "list": {
       "limit": "Una lista può mostrare fra 1 e {{max}} righe (richieste: {{got}}).",
-      "offset": "La posizione nella lista deve essere zero o più (ricevuta: {{got}})."
+      "offset": "La posizione nella lista deve essere zero o più (ricevuta: {{got}}).",
+      "page": "Il numero di pagina deve essere un intero maggiore o uguale a 1 (ricevuto {{got}})."
     },
     "fields": {
       "required": "Mancano campi obbligatori: {{fields}}.",
@@ -3910,7 +3917,8 @@
       "stepRulesShape": "{{where}}: le regole di fase del campo non sono valide.",
       "unknownSteps": "Campo «{{field}}»: il workflow non ha la fase {{steps}} (fasi: {{known}}).",
       "notEditableInStep": "Il campo «{{field}}» non si modifica nella fase «{{step}}».",
-      "notInStep": "Il campo «{{field}}» non fa parte della fase «{{step}}»."
+      "notInStep": "Il campo «{{field}}» non fa parte della fase «{{step}}».",
+      "stepRulesJson": "Le regole per fase salvate su {{where}} non sono JSON valido: riapri il campo nel disegnatore e reimpostale."
     },
     "impactWeights": {
       "shape": "I pesi dell'impatto devono essere un oggetto.",
@@ -5958,7 +5966,30 @@
     "environment": "Ambiente",
     "next": "Avanti",
     "addFilter": "+ filtro",
-    "groupOrganization": "Organizzazione"
+    "groupOrganization": "Organizzazione",
+    "entity": {
+      "team": "Team",
+      "user": "Utente",
+      "ci": "CI",
+      "incident": "Incident",
+      "change": "Change"
+    },
+    "field": {
+      "name": "Nome",
+      "type": "Tipo",
+      "email": "E-mail",
+      "role": "Ruolo"
+    },
+    "relation": {
+      "affectedCI": "CI impattato",
+      "assignedTeam": "Team assegnato",
+      "assignedUser": "Assegnatario",
+      "resolvedByChange": "Risolto dalla change",
+      "relatedIncident": "Incident correlato",
+      "requestedBy": "Richiesto da",
+      "owner": "Responsabile",
+      "member": "Membro"
+    }
   },
   "reportChart": {
     "chartType": "Tipo di visualizzazione",

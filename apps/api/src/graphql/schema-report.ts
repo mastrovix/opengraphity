@@ -61,6 +61,12 @@ export function reportSDL(): string {
   type NavigableEntity {
     entityType: String!
     label: String!
+    """
+    Chiave i18n quando l'etichetta è del PRODOTTO (revisione totale · C-18):
+    il web la traduce, con «label» come ripiego. Assente per i tipi e i campi
+    creati dal cliente, la cui etichetta è già la sua.
+    """
+    labelKey: String
     neo4jLabel: String!
     # itsm | organization | cmdb: dove il costruttore la mostra
     group: String!
@@ -71,6 +77,7 @@ export function reportSDL(): string {
   type NavigableField {
     name: String!
     label: String!
+    labelKey: String
     fieldType: String!
     enumValues: [String!]!
     enumTypeName: String
@@ -80,14 +87,17 @@ export function reportSDL(): string {
     relationshipType: String!
     direction: String!
     label: String!
+    labelKey: String
     targetEntityType: String!
     targetLabel: String!
+    targetLabelKey: String
     targetNeo4jLabel: String!
   }
 
   type ReachableEntity {
     entityType: String!
     label: String!
+    labelKey: String
     neo4jLabel: String!
     relationshipType: String!
     direction: String!

@@ -299,9 +299,30 @@ export async function createIncident(
     }
   }
 
-  await withSession(async (session) => {
-    await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident', undefined, input.category ?? null)
-  }, true)
+  /**
+   * Un incident SENZA workflow non deve restare nel grafo (revisione totale ·
+   * B-6): la creazione passa da più transazioni, e se `createInstance`
+   * falliva — un workflow di categoria senza passo iniziale, due passi
+   * marcati iniziali, un errore transiente — l'incident era già committato,
+   * numerato e collegato ai CI, ma senza istanza: non si poteva transizionare
+   * né chiudere, e l'unico rimedio era il database. Si annulla come per i CI
+   * mancanti, e si dice perché.
+   */
+  try {
+    await withSession(async (session) => {
+      await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident', undefined, input.category ?? null)
+    }, true)
+  } catch (err) {
+    await withSession(async (session) => {
+      await runQuery(session, 'MATCH (i:Incident {id: $id, tenant_id: $tenantId}) DETACH DELETE i', { id, tenantId: ctx.tenantId })
+    }, true)
+    logger.error({ err, incidentId: id, tenantId: ctx.tenantId, number: created.number, category: input.category ?? null },
+      '[incidentService] istanza di workflow non creata: incident annullato (resterebbe senza workflow)')
+    throw new ValidationError(
+      `Incident not created: its workflow instance could not be started (${err instanceof Error ? err.message : String(err)})`,
+      { key: 'errors.incident.workflowInstance', params: { reason: err instanceof Error ? err.message : String(err) } },
+    )
+  }
 
   // Auto-watch: creator becomes watcher
   await withSession(async (session) => {

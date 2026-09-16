@@ -112,8 +112,11 @@ export async function createServiceCalendar(tenantId: string, input: { name: unk
   const id = uuidv4()
   const session = getSession(undefined, 'WRITE')
   try {
+    // C-34: `name_key` è la chiave del vincolo di unicità (init.ts). La
+    // lettura qui sopra dà il messaggio buono; il vincolo chiude la corsa fra
+    // due salvataggi simultanei.
     await runQuery(session, `
-      CREATE (c:ServiceCalendar {id: $id, tenant_id: $tenantId, name: $name, days: $days, start: $start, end: $end, holidays: $holidays, created_at: $now, updated_at: $now})
+      CREATE (c:ServiceCalendar {id: $id, tenant_id: $tenantId, name: $name, name_key: toLower($name), days: $days, start: $start, end: $end, holidays: $holidays, created_at: $now, updated_at: $now})
     `, { id, tenantId, name, ...calendar, now: new Date().toISOString() })
   } finally {
     await session.close()
@@ -125,6 +128,8 @@ export async function updateServiceCalendar(tenantId: string, id: string, input:
   const sets: Record<string, unknown> = {}
   if (input.name !== undefined) {
     sets['name'] = assertName(input.name)
+    // C-34: la chiave del vincolo di unicità segue il nome.
+    sets['name_key'] = (sets['name'] as string).toLowerCase()
     await assertUniqueName(tenantId, sets['name'] as string, id)
   }
   if (input.calendar !== undefined) Object.assign(sets, toCalendar(input.calendar))

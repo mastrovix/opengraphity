@@ -77,6 +77,7 @@ const IMPORT_MESSAGES = {
   commentTextRequired:    (p: Record<string, string>) => `comments[${p['index']}]: text is required`,
   commentInvalidDate:     (p: Record<string, string>) => `comments[${p['index']}]: created_at is not a valid ISO date`,
   commentAuthorNotFound:  (p: Record<string, string>) => `comments[${p['index']}]: author_email "${p['email']}" not found`,
+  commentInternalNotBoolean: (p: Record<string, string>) => `comments[${p['index']}]: internal must be true or false`,
   kbCategoryUnknown:      (p: Record<string, string>) => `category "${p['category']}" is not one of the KB categories in the Dictionary (${p['allowed']})`,
   kbNoPublishedStep:      (p: Record<string, string>) => `the kb_article workflow has no "published" step — the article stays in the initial step "${p['step']}"`,
   kbNoWorkflow:           () => 'no active workflow definition for "kb_article" — article imported without a workflow instance',
@@ -347,6 +348,14 @@ interface TicketComment {
   authorEmail: string | null
   authorId:    string | null
   createdAt:   string
+  /**
+   * Nota interna (staff) o risposta visibile al richiedente (revisione totale
+   * · D-26). I commenti importati nascevano TUTTI interni: lo storico migrato
+   * da un altro strumento perdeva le risposte date al richiedente, che dal
+   * portale non le vedeva più — e non c'era modo di dirlo nel CSV.
+   * `internal` nel JSON del commento; assente = interno, come prima.
+   */
+  isInternal:  boolean
 }
 
 interface TicketPlan {
@@ -602,7 +611,7 @@ export async function importTickets(
         if (!Array.isArray(parsed)) { fail('commentsNotArray'); return }
         comments = []
         for (const [ci, c] of (parsed as unknown[]).entries()) {
-          const obj = (c ?? {}) as { text?: unknown; author_email?: unknown; created_at?: unknown }
+          const obj = (c ?? {}) as { text?: unknown; author_email?: unknown; created_at?: unknown; internal?: unknown }
           const text = typeof obj.text === 'string' ? obj.text.trim() : ''
           if (!text) { fail('commentTextRequired', { index: String(ci) }); return }
           let createdAt = now
@@ -618,7 +627,16 @@ export async function importTickets(
             authorId = usersByEmail.get(authorEmail.toLowerCase()) ?? null
             if (!authorId) warn('commentAuthorNotFound', { index: String(ci), email: authorEmail })
           }
-          comments.push({ text, authorEmail, authorId, createdAt })
+          /**
+           * D-26: `internal: false` nel JSON del commento importato = risposta
+           * visibile al richiedente dal portale. Un valore che non è booleano
+           * è un errore, non un default silenzioso; assente resta interno.
+           */
+          if (obj.internal !== undefined && typeof obj.internal !== 'boolean') {
+            fail('commentInternalNotBoolean', { index: String(ci) }); return
+          }
+          const isInternal = obj.internal === undefined ? true : obj.internal
+          comments.push({ text, authorEmail, authorId, createdAt, isInternal })
         }
       }
 
@@ -788,7 +806,8 @@ async function writeTicketRow(session: Session, kind: TicketImportKind, p: Ticke
           id:                 randomUUID(),
           tenant_id:          $tenantId,
           text:               cm.text,
-          is_internal:        true,
+          // D-26: quello che dice il CSV (assente = interno).
+          is_internal:        cm.isInternal,
           author_id:          cm.authorId,
           author_email:       cm.authorEmail,
           created_at:         cm.createdAt,

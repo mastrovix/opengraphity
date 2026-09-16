@@ -158,17 +158,36 @@ export async function enqueueEvents(
 ): Promise<number> {
   if (events.length === 0) return 0
   const queue = getQueue<EventIngestJobData>(EVENT_INGEST_QUEUE)
-  await queue.addBulk(events.map((ev) => ({
+  /**
+   * Due allarmi dello STESSO batch con la stessa impronta sono due allarmi
+   * (revisione totale · D-28): l'id del job era
+   * `<tenant>-<impronta>-<istante>`, e con Grafana senza `fingerprint` (stesso
+   * alertname + instance + labels) il secondo veniva scartato in silenzio da
+   * BullMQ — `count` non saliva e, se i due differivano per severità,
+   * l'ultima non veniva applicata. La posizione nel batch entra nell'id: la
+   * deduplica fra RICHIESTE diverse (i retry dello stesso payload) resta,
+   * perché `receivedAt` è lo stesso per tutta la richiesta.
+   */
+  const perFingerprint = new Map<string, number>()
+  await queue.addBulk(events.map((ev) => {
+    const fingerprint = fingerprintOf(sourceId, ev)
+    const seen = perFingerprint.get(fingerprint) ?? 0
+    perFingerprint.set(fingerprint, seen + 1)
+    const jobId = seen === 0
+      ? eventJobId(tenantId, fingerprint, receivedAt)
+      : `${eventJobId(tenantId, fingerprint, receivedAt)}-${String(seen)}`
+    return {
     name: 'ingest',
     data: { tenantId, sourceId, ev, receivedAt } satisfies EventIngestJobData,
     opts: {
-      jobId: eventJobId(tenantId, fingerprintOf(sourceId, ev), receivedAt),
+      jobId,
       attempts: EVENT_INGEST_ATTEMPTS,
       backoff:  { type: 'custom' },
       removeOnComplete: { age: 3600, count: 10_000 },
       removeOnFail:     { age: 7 * 24 * 3600 },
     },
-  })))
+    }
+  }))
   log.info({ tenantId, sourceId, count: events.length }, 'Event ingest jobs enqueued')
   return events.length
 }

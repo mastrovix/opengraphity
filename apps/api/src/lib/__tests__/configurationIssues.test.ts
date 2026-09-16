@@ -117,7 +117,19 @@ vi.mock('../domainMatrix.js', async (importOriginal) => {
   }
 })
 
-const { configurationIssues } = await import('../configurationIssues.js')
+const { configurationIssues: configurationIssuesCached, invalidateConfigurationIssues } = await import('../configurationIssues.js')
+
+/**
+ * CONTRATTO RINEGOZIATO (revisione totale · C-33): i rilievi stanno in cache
+ * per un minuto — il banner li chiedeva a ogni apertura di pagina e i
+ * ventitré controlli fanno scansioni vere. Questi test cambiano la
+ * configurazione a metà e richiedono i rilievi di nuovo: qui si rilegge
+ * sempre fresco, che è quello che vogliono verificare.
+ */
+const configurationIssues = async (tenantId: string) => {
+  invalidateConfigurationIssues()
+  return configurationIssuesCached(tenantId)
+}
 type Issue = Awaited<ReturnType<typeof configurationIssues>>[number]
 /**
  * I PARAMETRI, non la frase.
@@ -172,7 +184,7 @@ function healthy(): void {
   }))
 }
 
-beforeEach(() => { healthy() })
+beforeEach(() => { healthy(); invalidateConfigurationIssues() })
 
 describe('configurationIssues', () => {
   it('niente da sistemare → lista vuota (un banner che compare sempre diventa invisibile)', async () => {

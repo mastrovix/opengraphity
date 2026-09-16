@@ -514,6 +514,10 @@ export class WorkflowEngine {
             tenant_id:    $tenantId,
             instance_id:  $instanceId,
             step_name:    $nextStepName,
+            // Da QUALE passo si arriva (revisione totale · B-13): la storia
+            // del portale leggeva from_step e nessuno l'ha mai scritto,
+            // quindi ogni riga diceva «start → …», anche la decima.
+            from_step:    $currentStepName,
             entered_at:   $now,
             exited_at:    null,
             duration_ms:  null,
@@ -525,6 +529,7 @@ export class WorkflowEngine {
         `, {
           instanceId:   input.instanceId,
           currentStepId,
+          currentStepName,
           now,
           durationMs,
           nextStepId,
@@ -714,6 +719,9 @@ export class WorkflowEngine {
             category:    nextStepCategory,
             terminal:    nextStepTerminal,
             enteredAt:   now,
+            // B-4: le note viaggiano con l'evento, così la nota sul ticket la
+            // scrive un punto solo per tutti i cammini.
+            notes:       input.notes ?? null,
             actorId:     context.userId,
             triggerType: input.triggerType,
           })

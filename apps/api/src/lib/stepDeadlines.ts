@@ -133,8 +133,17 @@ export async function runStepDeadlineSweep(now = new Date()): Promise<SweepSumma
         const key = `${c.tenantId}/${deadline.calendar_id}`
         if (!calendars.has(key)) calendars.set(key, getServiceCalendarById(c.tenantId, deadline.calendar_id))
         if (!timezones.has(c.tenantId)) timezones.set(c.tenantId, getTenantTimezone(c.tenantId))
-        calendar = await calendars.get(key)!
-        timezone = await timezones.get(c.tenantId)!
+        /**
+         * Entrambe le promesse si attendono INSIEME (revisione totale · C-14):
+         * prima si attendeva la prima e poi la seconda, quindi se la prima
+         * rifiutava la seconda restava senza gestore — `unhandledRejection`,
+         * che da Node 15 termina il processo. Un Neo4j in pausa durante una
+         * passata con scadenze a calendario faceva cadere il worker invece di
+         * contare la scadenza come «failed».
+         */
+        const [cal, tz] = await Promise.all([calendars.get(key)!, timezones.get(c.tenantId)!])
+        calendar = cal
+        timezone = tz
       }
       due = stepDeadlineDueAt(new Date(c.enteredAt), deadline, timezone, calendar)
     } catch (e) {

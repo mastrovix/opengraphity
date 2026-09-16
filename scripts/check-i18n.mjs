@@ -282,6 +282,15 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // uguali nelle due lingue; i giorni invece no («d» / «gg»).
   'time.short.minutes',
   'time.short.hoursMinutes',
+  // Nomi delle ENTITÀ nel costruttore dei report (revisione totale · C-18):
+  // «Team», «CI», «Incident» e «Change» sono i nomi che il prodotto usa in
+  // italiano, come in tutto il resto dell'interfaccia (regola delle parole
+  // tecniche). Gli altri nomi dello stesso gruppo sono tradotti («Utente»,
+  // «CI impattato», «Team assegnato»…), quindi non è una lista non tradotta.
+  'reportBuilder.entity.team',
+  'reportBuilder.entity.ci',
+  'reportBuilder.entity.incident',
+  'reportBuilder.entity.change',
   // «OLA / UC» sono due sigle ITIL: la stessa cosa nelle due lingue.
   'pages.slaReport.contracts',
   'sidebar.olaContracts',

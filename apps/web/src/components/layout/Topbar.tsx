@@ -25,6 +25,9 @@ const FIRST_SEGMENT_PAGE: Readonly<Record<string, string>> = {
   ci:       '/cmdb',
   cis:      '/cmdb',
   tasks:    '/my-tasks',
+  // B-21: `/kb-articles/<id>` è solo la strada che risolve lo slug di un
+  // articolo; la pagina è la knowledge base.
+  'kb-articles': '/knowledge-base',
   settings: '',
 }
 
@@ -45,6 +48,7 @@ export function Breadcrumb() {
     'custom-reports':   t('sidebar.reportBuilder'),
     cmdb:               t('sidebar.cmdb'),
     ci:                 t('sidebar.cmdb'),
+    'kb-articles':      t('sidebar.knowledgeBase'),
     teams:              t('sidebar.teams'),
     users:              t('sidebar.users'),
     logs:               t('sidebar.logs'),

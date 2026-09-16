@@ -305,6 +305,13 @@ export interface StepEnteredInfo {
   enteredAt:   string
   actorId:     string
   triggerType: string
+  /**
+   * Le note della transizione, se chi l'ha chiesta ne ha messe. Servono a chi
+   * scrive la nota interna sul ticket: era scritta solo dalla transizione
+   * manuale dell'incident, quindi le transizioni automatiche non lasciavano
+   * traccia nella storia (revisione totale · B-4).
+   */
+  notes?:      string | null
 }
 
 export type StepEnteredListener = (info: StepEnteredInfo) => Promise<void>

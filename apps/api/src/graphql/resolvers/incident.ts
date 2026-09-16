@@ -427,10 +427,24 @@ async function incidentImpactedApplications(
     // CM-3: le relazioni dei servizi del tenant (anche INSTALLED_ON,
     // USES_CERTIFICATE e quelle del cliente), non due scritte qui.
     const relPattern = await serviceRelPatternForTenant(ctx.tenantId)
+    /**
+     * Le CANDIDATE prima dei cammini (revisione totale · B-34): la query
+     * partiva da OGNI applicazione del cliente e cercava il cammino più breve
+     * verso ogni CI colpito — un prodotto cartesiano (500 applicazioni × 5 CI
+     * = 2.500 `shortestPath` a ogni apertura del dettaglio). Ora si risale
+     * dai CI colpiti, che sono pochi, per trovare le applicazioni davvero
+     * collegate; il cammino più breve si calcola solo per quelle.
+     */
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:AFFECTED_BY]->(affected)
       WHERE affected.tenant_id = $tenantId
-      MATCH (app) WHERE app.tenant_id = $tenantId AND 'Application' IN labels(app)
+      WITH collect(DISTINCT affected) AS targets
+      UNWIND targets AS target
+      MATCH (candidate)-[:${relPattern}*0..5]->(target)
+      WHERE candidate.tenant_id = $tenantId AND 'Application' IN labels(candidate)
+      WITH targets, collect(DISTINCT candidate) AS apps
+      UNWIND apps AS app
+      UNWIND targets AS affected
       MATCH p = shortestPath( (app)-[:${relPattern}*0..5]->(affected) )
       WITH app, affected, p
       ORDER BY length(p) ASC

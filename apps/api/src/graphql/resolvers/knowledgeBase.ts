@@ -469,8 +469,33 @@ export async function deleteKBArticle(
       throw new GraphQLError('Article not found', { extensions: { code: 'NOT_FOUND' } })
     }
 
+    /**
+     * Via anche ciò che vive SOLO per questo articolo (revisione totale ·
+     * B-21): prima era un `DETACH DELETE a` e basta, e restavano nel grafo
+     * l'istanza di workflow con la sua storia, le versioni, i commenti e —
+     * peggio — le richieste di approvazione pendenti, che continuavano a
+     * comparire in «Le mie approvazioni» e si potevano approvare, per un
+     * articolo che non esiste più.
+     */
     await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
+      OPTIONAL MATCH (a)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+      OPTIONAL MATCH (wi)-[:STEP_HISTORY]->(e:WorkflowStepExecution)
+      OPTIONAL MATCH (a)-[:HAS_VERSION]->(v:KBArticleVersion)
+      OPTIONAL MATCH (a)-[:HAS_COMMENT]->(c:Comment)
+      WITH a, collect(DISTINCT wi) AS wis, collect(DISTINCT e) AS execs,
+           collect(DISTINCT v) AS versions, collect(DISTINCT c) AS comments
+      // Legati per proprietà, non per relazione: l'approvazione della pubblicazione.
+      CALL {
+        WITH a
+        MATCH (r:ApprovalRequest {tenant_id: a.tenant_id, entity_type: 'kb_article', entity_id: a.id})
+        RETURN collect(r) AS approvals
+      }
+      FOREACH (x IN execs     | DETACH DELETE x)
+      FOREACH (x IN wis       | DETACH DELETE x)
+      FOREACH (x IN versions  | DETACH DELETE x)
+      FOREACH (x IN comments  | DETACH DELETE x)
+      FOREACH (x IN approvals | DETACH DELETE x)
       DETACH DELETE a
     `, { id: args.id, tenantId: ctx.tenantId }))
 

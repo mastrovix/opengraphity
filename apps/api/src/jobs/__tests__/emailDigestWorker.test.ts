@@ -113,11 +113,17 @@ describe('processDigestTick — fuso del tenant', () => {
     expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'c@ny.io' }))
   })
 
-  it('tenant senza timezone → UTC (08:00Z)', async () => {
-    tenants = [{ id: 'utc-tenant', timezone: null }]
+  it('tenant senza timezone → il suo digest FALLISCE, non parte a un\'ora inventata (C-10)', async () => {
+    /**
+     * CONTRATTO RINEGOZIATO (revisione totale · C-10): il ripiego su UTC
+     * mandava il digest all'ora sbagliata con un solo avviso per processo, e
+     * il cliente non aveva modo di accorgersene. Ora quel tenant fallisce (e
+     * il tick rigetta, come per un fuso non valido): gli altri sono serviti.
+     */
+    tenants = [{ id: 'utc-tenant', timezone: null }, { id: 'rome', timezone: 'Europe/Rome' }]
     recipients = { 'utc-tenant': [{ email: 'u@x.io' }] }
-    await expect(processDigestTick(new Date('2026-09-08T08:30:00.000Z'))).resolves.toEqual({ sent: ['utc-tenant'], skipped: [] })
-    await expect(processDigestTick(new Date('2026-09-09T06:30:00.000Z'))).resolves.toEqual({ sent: [], skipped: ['utc-tenant'] })
+    await expect(processDigestTick(AT_ROME_8)).rejects.toThrow('[email-digest] digest failed for 1 tenant(s) — see log')
+    expect(sendEmail).not.toHaveBeenCalledWith(expect.objectContaining({ to: 'u@x.io' }))
   })
 
   it('timezone non valida su un tenant → quel tenant fallisce, gli altri vengono serviti, poi il tick rigetta', async () => {

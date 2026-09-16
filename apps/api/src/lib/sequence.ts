@@ -7,8 +7,8 @@ import { toNumber } from '@opengraphity/neo4j'
  * (INC/PRB/REQ/CHG/TASK…).
  *
  * The old `count()+1` / `max()+1` pattern is a race: two concurrent creates read
- * the same value and mint the same number. A `MERGE (c:Counter{...}) SET c.value
- * = c.value + N` takes a write lock on the single Counter node, so concurrent
+ * the same value and mint the same number. Merging the per-tenant Counter node
+ * and setting `value = value + N` takes a write lock on it, so concurrent
  * increments serialise and every caller gets a distinct value. The uniqueness
  * constraints on (tenant_id, number)/(tenant_id, code) remain the safety net.
  *

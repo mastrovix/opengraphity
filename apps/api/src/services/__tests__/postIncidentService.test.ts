@@ -223,7 +223,12 @@ describe('problemCandidates', () => {
     const list = calls[0]!
     // I passi della classe «chiuso» del workflow del cliente, non il letterale.
     expect(list[1]).toContain('NOT i.status IN $closedSteps AND i.embedding IS NOT NULL')
-    expect(list[2]).toEqual({ tenantId: TENANT, closedSteps: ['archiviato'] })
+    // CONTRATTO RINEGOZIATO (revisione totale · D-22): la lettura ha un TETTO
+    // di incident (una query vettoriale per incident dentro una richiesta
+    // dell'interfaccia: su migliaia di incident aperti la pagina andava in
+    // timeout). Si guardano i più recenti, e quando il tetto è pieno lo si dice.
+    expect(list[1]).toContain('LIMIT toInteger($maxIncidents)')
+    expect(list[2]).toEqual({ tenantId: TENANT, closedSteps: ['archiviato'], maxIncidents: 300 })
     const peers = calls[1]!
     // Ondata 6 di «Nulla cablato»: la soglia è dell'organizzazione e arriva come parametro.
     expect(peers[1]).toContain('score >= $minSimilarity')

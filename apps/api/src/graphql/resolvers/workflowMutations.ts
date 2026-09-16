@@ -22,7 +22,7 @@ import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
 import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
-import { auditStepEntered, loadStepFacts } from '../../lib/stepEvent.js'
+import { auditStepEntered} from '../../lib/stepEvent.js'
 import { systemText } from '../../lib/systemText.js'
 import { requestApprovalWouldBeSkipped } from '../../lib/requestApproval.js'
 import { transitionErrorFields } from '../../lib/transitionError.js'
@@ -1153,38 +1153,21 @@ export async function executeWorkflowTransition(
         const tenantId = r.get('tenantId') as string
         const incidentId = r.get('id') as string
 
-        // Add automatic comment for every incident workflow transition
-        // Il nome del passo nella sua etichetta, e il testo nella lingua del cliente.
-        const stepLabel = (await loadStepFacts(session, tenantId, 'incident', toStep)).step_label
-        const commentText = notes
-          ? await systemText(tenantId, 'workflow.transitionCommentNotes', { step: stepLabel, notes })
-          : await systemText(tenantId, 'workflow.transitionComment', { step: stepLabel })
-        const now = new Date().toISOString()
-        await session.executeWrite((tx) => tx.run(`
-          MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-          CREATE (c:Comment {
-            id:         randomUUID(),
-            tenant_id:  $tenantId,
-            text:       $text,
-            // Nota di transizione: interna (lib/ticketComments.ts).
-            is_internal: true,
-            author_id:  $userId,
-            created_at: $now,
-            updated_at: $now
-          })
-          CREATE (i)-[:HAS_COMMENT]->(c)
-        `, { incidentId, tenantId, text: commentText, userId: ctx.userId, now }))
+        // La NOTA di transizione non si scrive più qui: la scrive l'hook
+        // `onStepEntered` (lib/stepEnteredPublisher.ts), che vede anche i
+        // cammini automatici — prima un incident risolto in blocco o chiuso
+        // da una change non lasciava traccia nella storia (revisione totale ·
+        // B-4). Scriverla anche qui darebbe due note per ogni transizione
+        // manuale.
 
         // L'evento di dominio dell'ingresso nel passo NON si pubblica qui: lo
         // pubblica l'hook `onStepEntered` del motore, che vede anche i cammini
         // automatici (revisione totale · C-1, lib/stepEnteredPublisher.ts).
         // Pubblicarlo anche qui darebbe due eventi per ogni transizione
         // manuale, cioè due notifiche e due webhook.
-        // Azione di audit STABILE, passo nei dettagli (D-22): l'azione non è
-        // più composta col nome del passo, che una rinomina cambiava spezzando
-        // in due la storia dei filtri e dei report. Il taglio nel vocabolario è
-        // dichiarato (vedi auditStepEntered): le voci storiche NON si riscrivono.
-        await post('audit step entered', () => auditStepEntered(session, ctx, 'incident', 'Incident', incidentId, toStep))
+        // Anche la voce di AUDIT dell'ingresso nel passo viene dall'hook
+        // (B-4): l'azione è stabile e il passo sta nei dettagli (D-22), e ora
+        // la scrivono TUTTI i cammini, non solo questo.
 
         await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes, ctx.tenantId))
 

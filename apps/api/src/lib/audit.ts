@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../context.js'
 import { logger } from './logger.js'
-import { noteAuditWritten } from './auditScope.js'
+import { noteAuditWritten, noteAuditFailed } from './auditScope.js'
 
 export async function audit(
   ctx: GraphQLContext,
@@ -48,8 +48,15 @@ export async function audit(
     )
     logger.debug({ action, entityType, entityId }, '[audit] entry written OK')
   } catch (err) {
-    // Audit failure MUST NOT propagate to the caller
-    logger.warn({ err, action, entityType, entityId, tenantId: ctx.tenantId }, '[audit] write failed')
+    /**
+     * Un audit che non si scrive NON fa fallire il chiamante, ma non è una
+     * cosa da `warn` (revisione totale · A-12): la mutation è riuscita e il
+     * registro non ne ha traccia. Si segna nel perimetro della richiesta, così
+     * il registro delle mutation scrive almeno la voce generica, e si logga al
+     * livello di un difetto — un buco nell'Audit Log è un difetto.
+     */
+    noteAuditFailed()
+    logger.error({ err, action, entityType, entityId, tenantId: ctx.tenantId }, '[audit] write failed: this action has no entry in the Audit Log')
   } finally {
     await session.close()
   }

@@ -50,10 +50,28 @@ function stepList(v: unknown, where: string): string[] {
   return [...new Set((v as string[]).map((s) => s.trim()))]
 }
 
+/**
+ * Il JSON salvato, o un errore che dice DOVE (revisione totale · C-28): un
+ * `JSON.parse` nudo su un valore corrotto dava un `SyntaxError` generico —
+ * 500 senza chiave i18n — mentre questo modulo dichiara «fail-loud con la
+ * chiave». Un solo `step_visibility` malformato bloccava così l'intero
+ * metamodello del cliente, e il messaggio non diceva quale campo.
+ */
+function parseRuleJson(raw: string, where: string): Record<string, unknown> {
+  try {
+    return JSON.parse(raw) as Record<string, unknown>
+  } catch (e) {
+    throw new ValidationError(
+      `${where}: the saved step rules are not valid JSON (${e instanceof Error ? e.message : String(e)}). Rewrite them from the field designer.`,
+      { key: 'errors.customField.stepRulesJson', params: { where } },
+    )
+  }
+}
+
 /** Da quello che è salvato (JSON) o arriva dall'input: fail-loud su una forma che non si capisce. */
 export function parseStepVisibility(raw: unknown, where: string): StepVisibility {
   if (raw == null || raw === '') return ALWAYS_VISIBLE
-  const v = typeof raw === 'string' ? JSON.parse(raw) as Record<string, unknown> : raw as Record<string, unknown>
+  const v = typeof raw === 'string' ? parseRuleJson(raw, where) : raw as Record<string, unknown>
   switch (v['mode']) {
     case 'always': return ALWAYS_VISIBLE
     case 'steps':  return { mode: 'steps', steps: stepList(v['steps'], where) }
@@ -71,7 +89,7 @@ export function parseStepVisibility(raw: unknown, where: string): StepVisibility
 
 export function parseStepEditability(raw: unknown, where: string): StepEditability {
   if (raw == null || raw === '') return EDITABLE_WHERE_VISIBLE
-  const v = typeof raw === 'string' ? JSON.parse(raw) as Record<string, unknown> : raw as Record<string, unknown>
+  const v = typeof raw === 'string' ? parseRuleJson(raw, where) : raw as Record<string, unknown>
   switch (v['mode']) {
     case 'visible': return EDITABLE_WHERE_VISIBLE
     case 'steps':   return { mode: 'steps', steps: stepList(v['steps'], where) }

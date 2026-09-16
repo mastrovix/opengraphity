@@ -12,7 +12,7 @@ import { getScalarFields } from '../../lib/schemaFields.js'
 import { assertDomainValue } from '../../lib/domainMatrix.js'
 import { audit } from '../../lib/audit.js'
 import { ValidationError } from '../../lib/errors.js'
-import { auditStepEntered } from '../../lib/stepEvent.js'
+import {} from '../../lib/stepEvent.js'
 import { logger } from '../../lib/logger.js'
 import { requirePermission } from '../../lib/permissions.js'
 import { publishEvent } from '../../lib/publishEvent.js'
@@ -313,8 +313,13 @@ async function deleteProblem(
       OPTIONAL MATCH (wi)-[:STEP_HISTORY]->(e:WorkflowStepExecution)
       OPTIONAL MATCH (p)-[:HAS_COMMENT]->(c)
       OPTIONAL MATCH (p)-[:HAS_SLA]->(sla:SLAStatus)
+      // I segmenti della storia dei team vivono SOLO per questo problem
+      // (revisione totale · B-20): il DETACH toglieva la relazione e lasciava
+      // i nodi nel grafo, con il loro tenant_id, per sempre.
+      OPTIONAL MATCH (p)-[:TEAM_SEGMENT]->(seg:TicketTeamSegment)
       WITH p, collect(DISTINCT wi) AS wis, collect(DISTINCT e) AS execs,
-           collect(DISTINCT c) AS comments, collect(DISTINCT sla) AS slas
+           collect(DISTINCT c) AS comments, collect(DISTINCT sla) AS slas,
+           collect(DISTINCT seg) AS segments
       // Nodi legati per proprietà (entity_type/entity_id), non per relazione.
       // Aggregato dentro la subquery: una riga sempre, anche senza nodi legati
       // (una CALL senza righe toglierebbe la riga del problem).
@@ -326,12 +331,13 @@ async function deleteProblem(
         }
         RETURN collect(x) AS linkedNodes
       }
-      WITH p, wis, execs, comments, slas, linkedNodes,
+      WITH p, wis, execs, comments, slas, segments, linkedNodes,
            [n IN linkedNodes WHERE n:Attachment | n.storage_path] AS files
       FOREACH (x IN execs       | DETACH DELETE x)
       FOREACH (x IN wis         | DETACH DELETE x)
       FOREACH (x IN comments    | DETACH DELETE x)
       FOREACH (x IN slas        | DETACH DELETE x)
+      FOREACH (x IN segments    | DETACH DELETE x)
       FOREACH (x IN linkedNodes | DETACH DELETE x)
       DETACH DELETE p
       RETURN files
@@ -547,11 +553,10 @@ async function executeProblemTransition(
     // che era fallita. Trovato dal browser su un problem vero (terza
     // revisione). L'audit non deve far fallire la mutazione: il suo errore si
     // registra e si va avanti — ma in fila, non in parallelo.
-    await auditStepEntered(session, ctx, 'problem', 'Problem', args.problemId, args.toStep)
-      .catch((err: unknown) => {
-        logger.error({ err, problemId: args.problemId, toStep: args.toStep },
-          '[problem] transizione avvenuta, voce di audit NON scritta')
-      })
+    // La voce di audit la scrive l'hook `onStepEntered` per TUTTI i cammini
+    // (revisione totale · B-5): le transizioni del problem guidate dalla sua
+    // change non la scrivevano, e la storia del problem aveva dei buchi.
+    // Scriverla anche qui la sdoppierebbe sulla transizione manuale.
 
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props

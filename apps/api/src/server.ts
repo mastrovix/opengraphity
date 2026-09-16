@@ -9,7 +9,8 @@ import { rateLimit } from 'express-rate-limit'
 import { config } from './lib/config.js'
 import { ApolloServer } from '@apollo/server'
 import type { GraphQLSchema } from 'graphql'
-import { ApolloServerPluginLandingPageLocalDefault, ApolloServerPluginLandingPageProductionDefault } from '@apollo/server/plugin/landingPage/default'
+import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin/landingPage/default'
+import { ApolloServerPluginLandingPageDisabled } from '@apollo/server/plugin/disabled'
 import { expressMiddleware } from '@apollo/server/express4'
 import type { GraphQLRequestContextDidEncounterErrors } from '@apollo/server'
 import type { ValidationRule } from 'graphql'
@@ -153,16 +154,26 @@ const LOCALHOST_ORIGIN_RE = /^https?:\/\/([a-z0-9-]+\.)*localhost(:\d+)?$/
 function buildCorsOrigin(
   envOrigin: string | undefined,
 ): (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => void {
-  const explicit = envOrigin
-    ? new Set(
-        envOrigin.split(',')
-          .map((s) => s.trim())
-          .filter((s) => s && !s.includes('*')),  // skip wildcard placeholders
-      )
-    : new Set<string>()
+  const entries  = (envOrigin ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+  const explicit = new Set(entries.filter((s) => !s.includes('*')))
+  /**
+   * `https://*.esempio.com` vale per UNA etichetta (revisione totale · A-11):
+   * l'esempio spedito documenta il carattere jolly e questo codice lo
+   * SCARTAVA in silenzio, senza errore né log. Con host per tenant la scrittura
+   * con il jolly è quella ovvia, e il risultato era un insieme vuoto: avvio
+   * riuscito, e ogni richiesta del browser respinta per CORS senza una riga
+   * nei log che lo spiegasse.
+   */
+  const wildcards = entries.filter((s) => s.includes('*')).map((pattern) => {
+    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^.]+')
+    return new RegExp(`^${escaped}$`)
+  })
+  if (entries.length > 0) {
+    logger.info({ exact: explicit.size, wildcards: wildcards.length }, 'CORS origins configured')
+  }
 
   return (origin, callback) => {
-    if (!origin || LOCALHOST_ORIGIN_RE.test(origin) || explicit.has(origin)) {
+    if (!origin || LOCALHOST_ORIGIN_RE.test(origin) || explicit.has(origin) || wildcards.some((re) => re.test(origin))) {
       callback(null, true)
     } else {
       callback(new Error(`CORS: origin ${origin} not allowed`))
@@ -191,6 +202,30 @@ const WEBHOOK_INBOUND_PATH = '/api/webhooks/inbound'
 // (256 kB, resolvers/events.ts) più la query GraphQL che li avvolge.
 const jsonBody = express.json({ limit: '512kb' })
 app.use((req, res, next) => (req.path.startsWith(WEBHOOK_INBOUND_PATH) ? next() : jsonBody(req, res, next)))
+
+/**
+ * Un errore del PARSER resta JSON (revisione totale · A-9). Il parser è a
+ * livello di applicazione, quindi un corpo malformato o troppo grande nasceva
+ * prima dei router: in Express 4 quell'errore salta i gestori dei router
+ * (arità 3) e finisce nel gestore predefinito, che risponde **HTML**. Un
+ * client REST che parsava JSON riceveva `<pre>Unexpected token…</pre>`, e il
+ * contratto `{error:{code,message}}` documentato in docs/API.md non valeva
+ * proprio per gli errori più probabili di un'integrazione.
+ */
+app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
+  const e = err as { type?: string; status?: number; statusCode?: number; message?: string } | null
+  const status = e?.status ?? e?.statusCode
+  const isBodyError = e != null && typeof e.type === 'string' && status !== undefined && status < 500
+  if (!isBodyError) return next(err)
+  const tooLarge = e.type === 'entity.too.large'
+  httpLogger.warn({ url: req.path, type: e.type, status }, 'Request body rejected')
+  res.status(tooLarge ? 413 : 400).json({
+    error: {
+      code:    tooLarge ? 'PAYLOAD_TOO_LARGE' : 'INVALID_JSON',
+      message: tooLarge ? 'Request body is too large' : `Request body is not valid JSON: ${e.message ?? 'parse error'}`,
+    },
+  })
+})
 
 // ── HTTP request logging ───────────────────────────────────────────────────
 
@@ -222,8 +257,15 @@ app.post('/api/slack/actions',
 
 app.set('trust proxy', 1)
 
+/**
+ * La FINESTRA del limite è configurata, non nascosta nel codice (revisione
+ * totale · A-10): la documentazione di `RATE_LIMIT_MAX` diceva «richieste al
+ * minuto» e qui la finestra era di quindici minuti, quindi chi scriveva 300
+ * credendo «300 al minuto» otteneva 20 al minuto — e un ufficio dietro NAT,
+ * che condivide l'IP, li consumava in pochi minuti di uso normale.
+ */
 app.use(rateLimit({
-  windowMs: 15 * 60 * 1_000,
+  windowMs: config.rateLimitWindowMinutes * 60 * 1_000,
   max:      config.isProduction ? config.rateLimitMax : 1000,
   skip:     (req) => req.path === '/api/sse',
   standardHeaders: true,
@@ -253,6 +295,20 @@ app.use('/api', reportsRouter)
 // ── startServer ───────────────────────────────────────────────────────────────
 
 /**
+ * Gli errori che sono del CLIENTE, non del prodotto (revisione totale · A-16):
+ * un permesso che manca, un input non valido, una cosa che non esiste, un
+ * limite superato. Vanno nella risposta, non nel registro degli errori: prima
+ * ognuno di questi scriveva DUE righe `error` per richiesta.
+ */
+const EXPECTED_CLIENT_ERROR_CODES: ReadonlySet<string> = new Set([
+  'UNAUTHORIZED', 'FORBIDDEN', 'BAD_USER_INPUT', 'NOT_FOUND', 'CONFLICT', 'RATE_LIMITED', 'BAD_REQUEST',
+])
+
+function isExpectedClientError(code: unknown): boolean {
+  return typeof code === 'string' && EXPECTED_CLIENT_ERROR_CODES.has(code)
+}
+
+/**
  * Un'istanza Apollo per uno schema. Ondata 5 (A-1): lo schema non è più uno
  * solo, quindi la costruzione — plugin, regole di validazione, formato degli
  * errori, tracciamento — diventa una fabbrica che si chiama una volta per
@@ -266,7 +322,12 @@ function buildApolloServer(schema: GraphQLSchema): ApolloServer<GraphQLContext> 
     introspection: config.graphqlIntrospection || !config.isProduction,
     validationRules: [depthLimit(10), fieldCountLimit(2000)],
     formatError: (formattedError, error) => {
-      if (formattedError.extensions?.['code'] !== 'UNAUTHORIZED') {
+      // Gli errori ATTESI del client non sono errori del prodotto (revisione
+      // totale · A-16): un viewer che apre una pagina non permessa scriveva
+      // due righe `error` nel log (qui e in `didEncounterErrors`) a ogni
+      // richiesta, e gli errori veri ci affogavano. Qui resta una riga sola,
+      // al livello giusto.
+      if (!isExpectedClientError(formattedError.extensions?.['code'])) {
         graphqlLogger.error({
           message:   formattedError.message,
           code:      formattedError.extensions?.['code'],
@@ -277,9 +338,17 @@ function buildApolloServer(schema: GraphQLSchema): ApolloServer<GraphQLContext> 
       return maskDriverError(formattedError, error, ({ ref, message }) => graphqlLogger.error({ ref, message }, 'Database driver error masked for the client'))
     },
     plugins: [
+      /**
+       * In produzione NESSUNA landing page (revisione totale · A-17): quella
+       * di Apollo carica script inline e da CDN, che la CSP di helmet
+       * (`script-src 'self'`) blocca — chi apriva `/graphql` per controllare
+       * che l'API rispondesse vedeva una pagina bianca e la console piena di
+       * violazioni. Disabilitata, `GET /graphql` risponde con un messaggio
+       * chiaro. La Sandbox resta in sviluppo.
+       */
       !config.isProduction
         ? ApolloServerPluginLandingPageLocalDefault({ embed: true })
-        : ApolloServerPluginLandingPageProductionDefault(),
+        : ApolloServerPluginLandingPageDisabled(),
       graphqlMetricsPlugin,
       graphqlRateLimiterPlugin,
       // Giro UI del 15 set · U-25: ogni mutation riuscita senza una voce sua va nell'Audit Log.
@@ -320,13 +389,11 @@ function buildApolloServer(schema: GraphQLSchema): ApolloServer<GraphQLContext> 
             async didEncounterErrors(ctx: GraphQLRequestContextDidEncounterErrors<GraphQLContext>) {
               ctx.errors.forEach((err) => {
                 const e = err as { extensions?: { code?: string }; message?: string; path?: unknown }
-                if (e.extensions?.['code'] !== 'UNAUTHORIZED') {
+                // A-16: lo span porta l'errore solo se è del prodotto; per un
+                // errore atteso del client resta una riga di debug (già
+                // scritta da `formatError`), non un secondo `error`.
+                if (!isExpectedClientError(e.extensions?.['code'])) {
                   handle.setError(e.message ?? 'GraphQL error')
-                  graphqlLogger.error({
-                    operation: ctx.operation?.operation,
-                    message:   e.message,
-                    path:      e.path,
-                  }, 'GraphQL operation error')
                 }
               })
             },
@@ -376,8 +443,18 @@ async function apolloFor(tenantId: string, schema: GraphQLSchema): Promise<Tenan
     apolloByTenant.set(tenantId, live)
     return live
   }
+  /**
+   * Una costruzione in volo si riusa solo se è per lo STESSO schema (revisione
+   * totale · A-18): prima si restituiva qualunque costruzione in corso, quindi
+   * un'invalidazione del metamodello arrivata nel mezzo lasciava le richieste
+   * successive legate allo schema vecchio («Cannot query field» una tantum).
+   */
   const running = apolloInFlight.get(tenantId)
-  if (running) return running
+  if (running) {
+    const entry = await running
+    if (entry.schema === schema) return entry
+    return apolloFor(tenantId, schema)
+  }
 
   const start = (async (): Promise<TenantApollo> => {
     const server = buildApolloServer(schema)
@@ -440,12 +517,28 @@ async function apolloFor(tenantId: string, schema: GraphQLSchema): Promise<Tenan
  */
 function respondAuthError(res: express.Response, err: unknown): void {
   const e = err as { message?: string; extensions?: Record<string, unknown> }
-  res.status(401)
+  /**
+   * 401 SOLO quando è davvero un problema di autenticazione (revisione totale
+   * · A-4). Prima ogni eccezione di `buildContext` diventava 401: un Neo4j
+   * irraggiungibile faceva rispondere «UNAUTHORIZED» a tutte le richieste, il
+   * web rinfrescava il token, ritentava e finiva per riportare l'utente alla
+   * pagina di accesso — e il monitoraggio contava 401, non 5xx, quindi
+   * nessun allarme. `resolveAuth` marca già con INTERNAL_SERVER_ERROR i casi
+   * che non sono dell'utente (ruolo non valido, più nodi User).
+   */
+  const code   = typeof e?.extensions?.['code'] === 'string' ? (e.extensions['code'] as string) : null
+  const isAuth = code === 'UNAUTHORIZED' || code === 'FORBIDDEN'
+  const status = isAuth ? 401 : 500
+  if (!isAuth) {
+    graphqlLogger.error({ code, message: e?.message }, 'GraphQL context build failed: answering 500, not 401')
+  }
+  res.status(status)
     .type('application/graphql-response+json')
     .send(JSON.stringify({
       errors: [{
-        message:    e?.message ?? 'Unauthorized',
-        extensions: e?.extensions ?? { code: 'UNAUTHORIZED' },
+        // Un guasto del server non racconta al client cosa è andato storto.
+        message:    isAuth ? (e?.message ?? 'Unauthorized') : 'Internal server error',
+        extensions: isAuth ? (e?.extensions ?? { code: 'UNAUTHORIZED' }) : { code: 'INTERNAL_SERVER_ERROR' },
       }],
     }))
 }

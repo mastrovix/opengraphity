@@ -30,4 +30,20 @@ export const DOMAIN_LABELS = [
   'FieldVisibilityRule', 'FieldRequirementRule', 'TicketCIExclusion', 'ServiceCatalogItem', 'AssessmentQuestion',
   'Event', 'CIAlias', 'EventHistoryEntry',
   'ServiceMap', 'ServiceHealthEntry',
+  /**
+   * Le label trovate DAL VIVO sul grafo con `tenant_id` e non ancora
+   * nell'elenco (revisione totale · A-20): nessuna verifica meccanica le
+   * copriva, quindi un MATCH senza tenant su una di queste passava il lint.
+   * Ricavate con `CALL db.labels()` + `n.tenant_id IS NOT NULL` su c-test.
+   * I tipi CI concreti (Server, Database, Application…) NON stanno qui:
+   * portano tutti `:ConfigurationItem`, che è già in elenco.
+   */
+  'ServiceCalendar', 'DomainMatrix', 'BusinessApplication', 'BusinessCapability',
+  'AnomalyRuleConfig', 'AnswerOption', 'AssessmentResponse', 'ChangeAuditEntry',
+  'ChangeCatalogCategory', 'StandardChangeCatalogEntry', 'KBArticleVersion',
+  'ReportNode', 'ReportMessage', 'InAppNotification', 'TicketTeamSegment',
+  'LogEntry', 'Counter',
+  // Il conflitto della sincronizzazione e i record di cambiamento: il giro a
+  // mano li aveva visti fuori elenco.
+  'SyncConflict', 'SyncChangeRecord',
 ] as const

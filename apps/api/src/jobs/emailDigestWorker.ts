@@ -37,9 +37,15 @@ const MARKER_TTL_SECONDS  = 36 * 3600
 
 interface TenantRow { id: string; timezone: string | null; digestTime: string | null; target: string | null; recipients: string[] | null }
 
-const warnedNoTimezone = new Set<string>()
-
-/** Resolves the tenant's timezone; falls back to UTC with ONE warning per tenant per process. */
+/**
+ * Il fuso dell'organizzazione, o un ERRORE (revisione totale · C-10).
+ *
+ * Prima si ripiegava su UTC con un avviso solo per processo: il digest
+ * quotidiano partiva all'ora sbagliata e il cliente non aveva modo di
+ * accorgersene. Ovunque altrove (`getTenantTimezone`, la passata OLA, le
+ * scadenze dei passi) un tenant senza fuso è un errore, e la diagnostica lo
+ * classifica come tale: qui era l'unica eccezione.
+ */
 export function resolveTenantTimezone(tenant: TenantRow): string {
   if (tenant.timezone) {
     try {
@@ -51,11 +57,10 @@ export function resolveTenantTimezone(tenant: TenantRow): string {
       throw new Error(`Tenant ${tenant.id} has an invalid timezone "${tenant.timezone}": ${err instanceof Error ? err.message : String(err)}`)
     }
   }
-  if (!warnedNoTimezone.has(tenant.id)) {
-    warnedNoTimezone.add(tenant.id)
-    log.warn({ tenantId: tenant.id }, 'Tenant has no timezone property — daily digest uses UTC')
-  }
-  return 'UTC'
+  throw new Error(
+    `Tenant ${tenant.id} has no timezone: the daily digest cannot be sent at the right local hour. `
+    + 'Set it in Settings → Organization.',
+  )
 }
 
 /** Local hour (0-23), minute and calendar date (YYYY-MM-DD) of `at` in `timeZone`. */
@@ -160,13 +165,22 @@ async function sendDigestForTenant(tenant: TenantRow): Promise<void> {
     const incidentOpen = await getOpenStepNames(session, tenantId, 'incident')
     const changeOpen   = await getOpenStepNames(session, tenantId, 'change')
     const incidentSteps = await getWorkflowSteps(session, tenantId, 'incident')
-    const resolvedStep = (incidentSteps.find(s => s.category === 'resolved') ?? incidentSteps.find(s => s.isTerminal))?.name ?? null
+    /**
+     * TUTTI i passi risolutivi, non il primo (revisione totale · C-24): con
+     * due passi di categoria «resolved» — o due definizioni attive, come su
+     * c-one — «risolti oggi» contava solo quelli del primo e il numero del
+     * digest era più basso del vero, senza che si capisse perché.
+     */
+    const resolvedSteps = incidentSteps.filter((s) => s.category === 'resolved').map((s) => s.name)
+    const resolvedStepNames = resolvedSteps.length > 0
+      ? resolvedSteps
+      : incidentSteps.filter((s) => s.isTerminal).map((s) => s.name)
 
     // Stats
     const stats = await runQuery<Record<string, unknown>>(session, `
       OPTIONAL MATCH (i:Incident {tenant_id: $t}) WHERE i.status IN $incidentOpen
       WITH count(i) AS openInc
-      OPTIONAL MATCH (r:Incident {tenant_id: $t}) WHERE r.status = $resolvedStep AND r.resolved_at >= $since
+      OPTIONAL MATCH (r:Incident {tenant_id: $t}) WHERE r.status IN $resolvedStepNames AND r.resolved_at >= $since
       WITH openInc, count(r) AS resolvedToday
       OPTIONAL MATCH (c:Change {tenant_id: $t})-[:HAS_WORKFLOW]->(wi:WorkflowInstance) WHERE wi.current_step IN $changeOpen AND coalesce(c.deleted, false) = false
       WITH openInc, resolvedToday, count(c) AS ongoingChanges
@@ -174,7 +188,7 @@ async function sendDigestForTenant(tenant: TenantRow): Promise<void> {
       // gli SLA *iniziati* nelle 24 ore che risultano violati.
       OPTIONAL MATCH (s:SLAStatus {tenant_id: $t}) WHERE s.breached = true AND s.breached_at >= $since
       RETURN openInc, resolvedToday, ongoingChanges, count(s) AS slaBreaches
-    `, { t: tenantId, since: yesterday, incidentOpen, changeOpen, resolvedStep })
+    `, { t: tenantId, since: yesterday, incidentOpen, changeOpen, resolvedStepNames })
 
     const s = stats[0] ?? {}
     const digestStats = {

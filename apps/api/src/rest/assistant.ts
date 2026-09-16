@@ -9,8 +9,20 @@
 import { Router, type Router as ExpressRouter, type Request, type Response } from 'express'
 import { authMiddleware } from '../middleware/auth.js'
 import { streamAssistantChat, type AssistantMessage } from '../services/assistantService.js'
+import { consumeMinuteRate } from '../lib/webhookRateLimit.js'
 
 const router: ExpressRouter = Router()
+
+/**
+ * Richieste all'assistente per persona e per minuto (D-27). Una conversazione
+ * umana ne fa due o tre; un ciclo ne fa centinaia.
+ */
+const ASSISTANT_REQUESTS_PER_MINUTE = 20
+
+/** La chiave del minuto, per persona (stessa forma del limite dei webhook). */
+export function assistantRateKey(tenantId: string, userId: string): string {
+  return `og:assistant:rate:${tenantId}:${userId}`
+}
 
 router.post('/assistant/stream', authMiddleware, (req: Request, res: Response) => {
   void handleAssistantStream(req, res)
@@ -41,6 +53,23 @@ async function handleAssistantStream(req: Request, res: Response): Promise<void>
       res.status(400).json({ error: 'message too long (max 8000 chars)' })
       return
     }
+  }
+
+  /**
+   * UN TETTO per persona (revisione totale · D-27): `assistant.use` è anche
+   * del ruolo viewer e ogni richiesta rimanda l'intera conversazione al
+   * modello, quindi la spesa non aveva nessun limite — né per utente né per
+   * organizzazione. Finestra al minuto, la stessa forma del limite dei
+   * webhook (Redis, condiviso fra le repliche): non ferma un uso normale e
+   * ferma un ciclo. Redis irraggiungibile è un errore, non «limite spento».
+   */
+  const decision = await consumeMinuteRate(assistantRateKey(tenantId, req.user!.userId), ASSISTANT_REQUESTS_PER_MINUTE)
+  if (!decision.allowed) {
+    res.set('Retry-After', String(decision.retryAfterSeconds))
+    res.status(429).json({
+      error: { code: 'RATE_LIMITED', message: `Assistant limit reached (${ASSISTANT_REQUESTS_PER_MINUTE} requests/min): try again in a moment`, retry_after: decision.retryAfterSeconds },
+    })
+    return
   }
 
   res.setHeader('Content-Type', 'text/event-stream')

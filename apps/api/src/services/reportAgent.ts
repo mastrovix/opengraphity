@@ -38,24 +38,40 @@ const MAX_TOKENS_PER_TURN = 4096
 
 const schemaCache = new Map<string, { schema: string; expiresAt: number }>()
 
+/**
+ * Quanti nodi e quante relazioni si guardano per ricavare FORMA del grafo
+ * (revisione totale · D-23).
+ *
+ * Le due letture che elencano proprietà e relazioni erano `MATCH (n)` e
+ * `MATCH (a)-[r]->(b)` senza etichetta: una scansione di tutti i nodi e di
+ * tutte le relazioni del database, alla prima domanda di ogni cinque minuti.
+ * Per sapere «quali proprietà ha un Incident» non serve leggerli tutti: un
+ * campione basta, e i CONTEGGI (che devono essere esatti, perché finiscono
+ * nella risposta) restano un'aggregazione a parte.
+ */
+const SCHEMA_NODE_SAMPLE = 20_000
+const SCHEMA_REL_SAMPLE  = 20_000
+
 async function buildSchemaContext(session: ReturnType<typeof getSession>, tenantId: string): Promise<string> {
   const nodesResult = await session.executeRead((tx) => tx.run(`
     MATCH (n)
     WHERE n.tenant_id = $tenantId
+    WITH n LIMIT toInteger($nodeSample)
     WITH head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label, keys(n) AS props
     WITH label, [p IN props WHERE p <> 'tenant_id'] AS props
     RETURN DISTINCT label, props
     ORDER BY label
-  `, { tenantId }))
+  `, { tenantId, nodeSample: SCHEMA_NODE_SAMPLE }))
   const relsResult = await session.executeRead((tx) => tx.run(`
     MATCH (a)-[r]->(b)
     WHERE a.tenant_id = $tenantId
+    WITH a, r, b LIMIT toInteger($relSample)
     RETURN DISTINCT
       head([l IN labels(a) WHERE l <> 'ConfigurationItem']) AS from,
       type(r) AS rel,
       head([l IN labels(b) WHERE l <> 'ConfigurationItem']) AS to
     ORDER BY from, rel
-  `, { tenantId }))
+  `, { tenantId, relSample: SCHEMA_REL_SAMPLE }))
   const countsResult = await session.executeRead((tx) => tx.run(`
     MATCH (n)
     WHERE n.tenant_id = $tenantId

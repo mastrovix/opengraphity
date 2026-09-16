@@ -265,7 +265,12 @@ Per esporre la stack oltre `localhost` passare **solo** da nginx (o da
   non sono esportati verso Prometheus (esistono solo nel pannello admin
   GraphQL); il pannello "errori" usa gli HTTP 5xx.
 - **Tracce → Jaeger**: `OTEL_ENABLED=true` in `.env`; endpoint interno
-  `http://jaeger:4318/v1/traces`.
+  `http://jaeger:4318/v1/traces`. L'SDK va avviato **prima** dell'app, con il
+  preload `NODE_OPTIONS=--import=/app/dist/telemetry-register.js` (il compose lo
+  imposta già): l'auto-strumentazione patcha solo i moduli caricati dopo
+  l'avvio, quindi senza preload in Jaeger si vedono soltanto gli span
+  `GraphQL <Operazione>` e mancano quelli di HTTP, Neo4j e Redis. Se il preload
+  non c'è, l'avvio dell'API lo scrive nei log.
 - **Healthcheck**: tutti i servizi ne hanno uno. Il `worker` non espone HTTP:
   il probe (`worker-healthcheck.mjs`, generato nell'immagine) chiede a Redis se
   un worker BullMQ della coda `embeddings` è connesso (`CLIENT LIST` via

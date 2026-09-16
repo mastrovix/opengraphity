@@ -117,6 +117,27 @@ export async function provisionTenantData(
     workflows.push({ name: def.name, created: res.created })
   }
 
+  /**
+   * ALLA FINE si CONTROLLA che il tenant sia davvero completo (revisione
+   * totale · C-21).
+   *
+   * Il provisioning non è atomico e non può esserlo com'è scritto: i seeder
+   * dei workflow aprono sessioni proprie, quindi dentro la transazione di una
+   * migrazione un'interruzione a metà lasciava il tenant con ruoli, dashboard
+   * e regole ma senza workflow — e nessuno lo diceva: la migrazione risultava
+   * non applicata, mentre `createIncident` cominciava a fallire. Non lo
+   * rendiamo atomico (sarebbe un rifacimento dei seeder), lo rendiamo
+   * VISIBILE: se manca qualcosa il chiamante lo sa subito, con la lista, e
+   * rilanciare completa (il provisioning è idempotente).
+   */
+  const gaps = await tenantProvisioningGaps(session, tenantId)
+  if (gaps.length > 0) {
+    throw new Error(
+      `Tenant ${tenantId} provisioned only in part: ${gaps.map((g) => formatGap(g)).join('; ')}. `
+      + 'The provisioning is idempotent: run it again to complete it.',
+    )
+  }
+
   return {
     rolesCreated,
     dashboardCreated,

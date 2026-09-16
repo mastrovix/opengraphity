@@ -242,8 +242,11 @@ export async function createSectionWithNodesEdges(
   // Create edges
   for (const edge of input.edges) {
     await write(runner, `
-      MATCH (src:ReportNode {temp_id: $sourceTempId, section_id: $sectionId})
-      MATCH (tgt:ReportNode {temp_id: $targetTempId, section_id: $sectionId})
+      // Gli archi sono fra nodi di QUESTO cliente (revisione totale · A-20):
+      // section_id non basta da solo, e ora che ReportNode è nell'elenco
+      // delle label di dominio il lint lo controlla.
+      MATCH (src:ReportNode {temp_id: $sourceTempId, section_id: $sectionId, tenant_id: $tenantId})
+      MATCH (tgt:ReportNode {temp_id: $targetTempId, section_id: $sectionId, tenant_id: $tenantId})
       CREATE (src)-[:REPORT_EDGE {
         id: randomUUID(),
         relationship_type: $relType,
@@ -251,7 +254,7 @@ export async function createSectionWithNodesEdges(
         label: $label
       }]->(tgt)
     `, {
-      sectionId,
+      sectionId, tenantId,
       sourceTempId: edge.sourceNodeId,
       targetTempId: edge.targetNodeId,
       relType: edge.relationshipType,

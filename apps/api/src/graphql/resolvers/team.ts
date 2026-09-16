@@ -8,7 +8,7 @@ import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import type { GraphQLContext } from '../../context.js'
-import { mapTeam } from '../../lib/mappers.js'
+import { mapTeam, mapUser } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { orderByOrThrow } from '../../lib/sortField.js'
 import { audit } from '../../lib/audit.js'
@@ -266,7 +266,11 @@ async function teamMembers(parent: { id: string; _members?: Props[] }, _: unknow
       ORDER BY u.name
     `
     const rows = await runQuery<{ props: Props }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
-    return rows.map((r) => r.props)
+    // `mapUser`, non le proprietà grezze (revisione totale · B-22): il tipo
+    // `User` ha `tenantId` e `createdAt` non nullabili e le proprietà del nodo
+    // sono snake_case, quindi chi chiedeva `members { tenantId createdAt }`
+    // riceveva un errore non-null.
+    return rows.map((r) => mapUser(r.props))
   })
 }
 
@@ -311,7 +315,8 @@ async function teamManager(parent: { id: string; _manager?: Props | null }, _: u
       MATCH (t:Team {id: $id, tenant_id: $tenantId})-[:MANAGED_BY]->(u:User)
       RETURN properties(u) AS props
     `, { id: parent.id, tenantId: ctx.tenantId })
-    return row ? row.props : null
+    // B-22: come per i membri, il mapper del tipo `User`.
+    return row ? mapUser(row.props) : null
   })
 }
 

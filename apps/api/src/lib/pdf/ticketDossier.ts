@@ -247,8 +247,8 @@ export function affectedCIsSection(cis: AffectedCI[], locale: PdfLocale): Sectio
       [
         { header: pdfText(locale, 'colName'), width: 190 },
         { header: pdfText(locale, 'colType'), width: 120 },
-        { header: 'Environment', width: 95 },
-        { header: 'Status',      width: 90 },
+        { header: pdfText(locale, 'colEnvironment'), width: 95 },
+        { header: pdfText(locale, 'colStatus'),      width: 90 },
       ],
       cis.map((ci) => [ci.name, ci.type, orDash(ci.environment), orDash(ci.status)]),
     )
@@ -266,7 +266,7 @@ export function workflowHistorySection(history: WorkflowHistoryEntry[], locale: 
         { header: pdfText(locale, 'colExited'),   width: 82 },
         { header: pdfText(locale, 'colDuration'), width: 50 },
         { header: pdfText(locale, 'colActor'),    width: 78 },
-        { header: 'Trigger',    width: 48 },
+        { header: pdfText(locale, 'colTrigger'),    width: 48 },
         { header: pdfText(locale, 'colNotes'),    width: 80 },
       ],
       history.map((h) => [
@@ -308,7 +308,7 @@ export function attachmentsSection(attachments: AttachmentEntry[], locale: PdfLo
     if (!attachments.length) { emptyLine(doc, pdfText(locale, 'noAttachments')); return }
     drawTable(doc,
       [
-        { header: 'Filename',    width: 210 },
+        { header: pdfText(locale, 'colFilename'),    width: 210 },
         { header: pdfText(locale, 'colSize'),       width: 70 },
         { header: pdfText(locale, 'colUploadedBy'), width: 120 },
         { header: pdfText(locale, 'colUploadedAt'), width: 95 },

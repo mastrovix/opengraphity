@@ -131,8 +131,29 @@ export function updateActiveSpanName(operationName: string): void {
   span.setAttribute('graphql.operation.name', operationName)
 }
 
+/** Vero dopo la prima chiamata: il preload e `index.ts` chiamano entrambi. */
+let initStarted = false
+
 export function initTelemetry(): void {
   if (!config.otelEnabled) return
+  /**
+   * Idempotente e consapevole di essere partita TARDI (revisione totale ·
+   * A-23). L'auto-strumentazione patcha i moduli caricati dopo `sdk.start()`:
+   * chiamata da `index.ts` — dove gli import statici di express, http, del
+   * driver Neo4j e di ioredis sono già valutati — non li vede, e in Jaeger
+   * restano solo gli span dell'operazione GraphQL. Il preload
+   * `telemetry-register.ts` (`node --import ./dist/telemetry-register.js`)
+   * risolve; senza, lo si dice invece di lasciar credere a un guasto del
+   * collettore.
+   */
+  if (initStarted) return
+  initStarted = true
+  const late = Boolean((globalThis as { __OG_TELEMETRY_PRELOADED__?: boolean }).__OG_TELEMETRY_PRELOADED__) === false
+  if (late) {
+    logger.warn({ module: 'telemetry' },
+      'OTEL started from the application: HTTP and database spans will be missing because those modules are already loaded. '
+      + 'Preload it instead: node --import ./dist/telemetry-register.js --no-node-snapshot dist/index.js')
+  }
 
   otelEnabled  = true
   otelEndpoint = config.otelEndpoint

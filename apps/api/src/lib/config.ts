@@ -136,8 +136,19 @@ const readers = {
   // HTTP
   /** Undefined → server.ts refuses to start in production, allows everything in dev. */
   corsOrigin:           (): string | undefined => optionalEnv('CORS_ORIGIN'),
-  /** Requests/min per client for the GraphQL rate limiter (production only). */
+  /**
+   * Richieste per FINESTRA e per client (IP) del limitatore HTTP, in
+   * produzione. La finestra è `RATE_LIMIT_WINDOW_MINUTES` — prima era un
+   * quarto d'ora scritto nel codice mentre questo commento diceva «al
+   * minuto» (revisione totale · A-10).
+   */
   rateLimitMax:         (): number  => intEnv('RATE_LIMIT_MAX', 1000),
+  /** La finestra del limitatore, in minuti (default: 1 → «al minuto»). */
+  rateLimitWindowMinutes: (): number => {
+    const n = intEnv('RATE_LIMIT_WINDOW_MINUTES', 1)
+    if (!Number.isInteger(n) || n < 1) throw new Error(`RATE_LIMIT_WINDOW_MINUTES must be a whole number of minutes >= 1 (got "${String(n)}")`)
+    return n
+  },
   /** Apollo introspection in production (off by default; always on outside). */
   graphqlIntrospection: (): boolean => boolEnv('GRAPHQL_INTROSPECTION', false),
   /**
@@ -293,7 +304,7 @@ export const CONFIG_PROFILES = {
     'nodeEnv', 'port', 'logLevel', 'workerProfile', 'requireAppliedMigrations',
     'neo4jUri', 'neo4jUser', 'neo4jPassword', 'neo4jMaxPoolSize',
     'keycloakUrl', 'keycloakPublicUrls', 'keycloakAppClientIds', 'keycloakAdminUser',
-    'allowLegacyJwt', 'corsOrigin', 'rateLimitMax', 'graphqlIntrospection', 'graphqlSchemaCacheMax', 'maxCITypesPerTenant', 'metricsToken', 'appUrl',
+    'allowLegacyJwt', 'corsOrigin', 'rateLimitMax', 'rateLimitWindowMinutes', 'graphqlIntrospection', 'graphqlSchemaCacheMax', 'maxCITypesPerTenant', 'metricsToken', 'appUrl',
     'attachmentDir', 'backupDir', 'reportDir',
     'embeddingsProvider', 'transformersCache', 'embeddingWorkerExternal',
     'emailFrom', 'otelEnabled', 'otelEndpoint',

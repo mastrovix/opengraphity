@@ -120,6 +120,13 @@ export interface ProblemCandidate {
   incidents: Array<{ id: string; number: string | null; title: string; status: string; severity: string }>
 }
 
+/**
+ * Quanti incident aperti entrano nella ricerca dei cluster (D-22): oltre
+ * questo numero la ricerca costerebbe più di quanto vale, perché è una query
+ * vettoriale per incident dentro una richiesta dell'interfaccia.
+ */
+const CLUSTER_MAX_INCIDENTS = 300
+
 export async function problemCandidates(tenantId: string): Promise<ProblemCandidate[]> {
   // Il raggruppamento usa gli embedding e il modello: servono entrambe le funzioni.
   await assertAIFeature(tenantId, 'postIncident')
@@ -130,12 +137,26 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
   // candidato: il cluster serve a capire se il problema si ripete). «Chiuso» è
   // la classe di stato del workflow del cliente, non il nome `closed`.
   const closedSteps = await statusNamesForClasses(tenantId, 'incident', ['closed'])
+  /**
+   * Un TETTO agli incident esaminati (revisione totale · D-22): la ricerca dei
+   * cluster fa una query vettoriale PER incident, dentro una richiesta
+   * GraphQL. Su un cliente con migliaia di incident aperti erano migliaia di
+   * query e la pagina andava in timeout. Si guardano i più RECENTI, che sono
+   * quelli su cui un problem ha senso, e quando il tetto è pieno lo si dice —
+   * l'analisi non finge di aver guardato tutto.
+   */
   const incidents = await readQuery<{ id: string; number: string | null; title: string; status: string; severity: string; embedding: number[] }>(`
     MATCH (i:Incident {tenant_id: $tenantId})
     WHERE NOT i.status IN $closedSteps AND i.embedding IS NOT NULL
     RETURN i.id AS id, i.number AS number, i.title AS title,
            i.status AS status, i.severity AS severity, i.embedding AS embedding
-  `, { tenantId, closedSteps })
+    ORDER BY i.created_at DESC
+    LIMIT toInteger($maxIncidents)
+  `, { tenantId, closedSteps, maxIncidents: CLUSTER_MAX_INCIDENTS })
+  if (incidents.length === CLUSTER_MAX_INCIDENTS) {
+    log.warn({ tenantId, maxIncidents: CLUSTER_MAX_INCIDENTS },
+      'Cluster dei problem candidati: raggiunto il tetto degli incident esaminati, l-analisi guarda i più recenti')
+  }
 
   // Cluster: for each incident query its similar peers above threshold, then union-find
   const parent = new Map<string, string>()

@@ -317,6 +317,14 @@ export function evaluationWriteCypher(): string {
   return `
       MATCH (m:ServiceMap {id: $mapId, tenant_id: $tenantId})
       WHERE m.version = toInteger($version)
+      // IL LOCK PRIMA DELLA LETTURA (revisione totale · D-16): la salute
+      // precedente si leggeva nel WITH e il lock arrivava solo al SET, quindi
+      // due valutazioni concorrenti della stessa mappa (il worker ha
+      // concorrenza 2, e «rivaluta» si somma al cambio di stato) leggevano
+      // entrambe la salute vecchia: due voci di cronologia e due
+      // service.health_changed, cioè due notifiche per un cambio solo.
+      // Questo SET prende il lock sul nodo; il WITH dopo legge già serializzato.
+      SET m.evaluated_at = $now
       WITH m, m.health AS previous, coalesce(m.stale, false) AS wasStale,
            coalesce(m.stale_reason = '${SERVICE_STALE_OVER_LIMIT}', false) AS overLimit
       WITH m, previous, wasStale, overLimit,

@@ -13,6 +13,9 @@ import { ValidationError } from './errors.js'
 import { assertSafeOutboundUrl, loggableUrl } from './safeUrl.js'
 import { assertScriptingEnabled } from './scriptingPlan.js'
 
+/** I metodi che un webhook di regola può usare (C-29). */
+const WEBHOOK_METHODS: readonly string[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+
 const log = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'action-executor' })
 
 // ── set_field guard ──────────────────────────────────────────────────────────
@@ -351,9 +354,17 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
 
     case 'call_webhook': {
       const url     = String(p['url'] ?? '')
-      const method  = String(p['method'] ?? 'POST')
+      const method  = String(p['method'] ?? 'POST').toUpperCase()
       const headers = (p['headers'] ?? {}) as Record<string, string>
       if (!url) throw new Error('call_webhook: url is required')
+      /**
+       * Il METODO è uno di quelli ammessi (revisione totale · C-29): era una
+       * stringa qualunque presa dalla regola, e `fetch` con un metodo
+       * inventato falliva con un errore che non diceva perché.
+       */
+      if (!WEBHOOK_METHODS.includes(method)) {
+        throw new Error(`call_webhook: method "${method}" is not allowed (${WEBHOOK_METHODS.join(', ')})`)
+      }
       // SSRF guard + https-only outside development (policy in safeUrl) —
       // the full entity is posted to this URL, so an internal target would
       // both hit internal services and exfiltrate data.
@@ -368,6 +379,14 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
           body:    method !== 'GET' ? payload : undefined,
           signal:  controller.signal,
         })
+        /**
+         * Il CORPO della risposta si consuma sempre (revisione totale ·
+         * C-29): senza, undici tiene aperta la connessione finché non passa
+         * il garbage collector — un endpoint che risponde corpi grandi
+         * tratteneva connessioni e memoria nel processo. Il contenuto non
+         * serve: lo si scarta, e basta.
+         */
+        await res.body?.cancel().catch(() => undefined)
         if (!res.ok) throw new Error(`Webhook ${loggableUrl(url)} returned ${res.status}`)
       } finally {
         clearTimeout(timer)

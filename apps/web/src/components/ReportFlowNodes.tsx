@@ -8,10 +8,26 @@ import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
-export interface NavigableField    { name: string; label: string; fieldType: string; enumValues: string[]; enumTypeName?: string | null }
-export interface NavigableRelation { relationshipType: string; direction: string; label: string; targetEntityType: string; targetLabel: string; targetNeo4jLabel: string }
-export interface NavigableEntity   { entityType: string; label: string; neo4jLabel: string; group?: 'itsm' | 'organization' | 'cmdb'; icon?: string; color?: string; fields: NavigableField[]; relations: NavigableRelation[] }
-export interface ReachableEntity   { entityType: string; label: string; neo4jLabel: string; relationshipType: string; direction: string; count: number; fields: NavigableField[] }
+export interface NavigableField    { name: string; label: string; labelKey?: string | null; fieldType: string; enumValues: string[]; enumTypeName?: string | null }
+export interface NavigableRelation { relationshipType: string; direction: string; label: string; labelKey?: string | null; targetEntityType: string; targetLabel: string; targetLabelKey?: string | null; targetNeo4jLabel: string }
+export interface NavigableEntity   { entityType: string; label: string; labelKey?: string | null; neo4jLabel: string; group?: 'itsm' | 'organization' | 'cmdb'; icon?: string; color?: string; fields: NavigableField[]; relations: NavigableRelation[] }
+export interface ReachableEntity   { entityType: string; label: string; labelKey?: string | null; neo4jLabel: string; relationshipType: string; direction: string; count: number; fields: NavigableField[] }
+
+/**
+ * L'etichetta di un'entità/campo/relazione del costruttore di report.
+ *
+ * Revisione totale · C-18: le etichette del PRODOTTO («Name», «Assigned
+ * team», «Member») erano letterali inglesi nell'API e arrivavano così anche a
+ * chi usa OpenGrafo in italiano. Ora l'API manda anche la chiave i18n quando
+ * l'etichetta è sua; dove il nome è del CLIENTE (un tipo o un campo che ha
+ * creato lui) la chiave non c'è e vale la sua etichetta, che è già giusta.
+ */
+export function navigableLabel(
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  item: { label: string; labelKey?: string | null },
+): string {
+  return item.labelKey ? t(item.labelKey, { defaultValue: item.label }) : item.label
+}
 
 export interface FilterState { field: string; operator: string; value: string }
 
@@ -104,7 +120,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
                 >
                   <option value="">{t('automation.params.selectFieldOption')}</option>
                   {(d.fields as NavigableField[]).filter(fld => fld.fieldType === 'enum' || fld.fieldType === 'date').map(fld => (
-                    <option key={fld.name} value={fld.name}>{fld.label}</option>
+                    <option key={fld.name} value={fld.name}>{navigableLabel(t, fld)}</option>
                   ))}
                 </select>
                 {(d.fields as NavigableField[]).find(fld => fld.name === f.field)?.fieldType === 'enum' ? (

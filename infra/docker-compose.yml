@@ -352,7 +352,11 @@ services:
       # CORS — allow web and portal origins (subdomain routing + direct port access)
       CORS_ORIGIN: ${CORS_ORIGIN:-http://*.localhost,http://localhost:5173,http://localhost:5174,http://localhost}
 
-      # Observability
+      # Observability. Il preload fa partire OTEL PRIMA dell'app: senza,
+      # l'auto-strumentazione non patcha express/neo4j/ioredis (già caricati) e
+      # in Jaeger restano solo gli span dell'operazione GraphQL — revisione
+      # totale · A-23. È inerte con OTEL_ENABLED=false.
+      NODE_OPTIONS: --import=/app/dist/telemetry-register.js
       OTEL_ENABLED: ${OTEL_ENABLED:-false}
       OTEL_ENDPOINT: http://jaeger:4318/v1/traces
 

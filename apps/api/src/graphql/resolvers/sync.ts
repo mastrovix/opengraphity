@@ -180,6 +180,7 @@ export const syncResolvers = {
 
         type Row = { p: Props; total: unknown }
         const rows = await runQuery<Row>(session,
+          // tenant-ok: `filters` parte da `n.tenant_id = $tenantId` (riga sopra)
           `MATCH (n:SyncConflict) WHERE ${filters.join(' AND ')}
            WITH count(n) AS total, collect(n) AS all
            UNWIND all AS n
@@ -408,6 +409,17 @@ export const syncResolvers = {
       const syncType = args.syncType ?? 'manual'
 
       return withSession(async (session) => {
+        /**
+         * La sorgente deve ESISTERE nel tenant (revisione totale · D-17):
+         * senza controllo si creava una run `queued` e si accodava il job, che
+         * poi falliva prima di aggiornare lo stato — la run restava «in coda»
+         * per sempre nell'elenco, e l'admin non capiva cosa aspettasse.
+         */
+        const source = await runQueryOne<{ id: string }>(session,
+          'MATCH (n:SyncSource {id: $sourceId, tenant_id: $tenantId}) RETURN n.id AS id',
+          { sourceId: args.sourceId, tenantId: ctx.tenantId })
+        if (!source) throw new NotFoundError('SyncSource', args.sourceId)
+
         await session.executeWrite(tx => tx.run(
           `CREATE (r:SyncRun {
             id: $runId, source_id: $sourceId, tenant_id: $tenantId,

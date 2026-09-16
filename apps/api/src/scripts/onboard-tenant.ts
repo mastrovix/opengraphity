@@ -11,7 +11,7 @@
  *     [--password-stdin]
  *     [--name "ACME S.p.A."]           (default: slug)
  *     [--plan starter|pro|enterprise]  (default: starter)
- *     [--timezone Europe/Rome]         (default: Europe/Rome — must be a valid IANA zone)
+ *     [--timezone Europe/Rome]         (default: UTC — must be a valid IANA zone; C-27)
  *     [--domain opengrafo.com]
  *     [--pi-ip 192.168.1.119]
  *
@@ -120,6 +120,14 @@ function parseCliArgs(argv: readonly string[]): Args {
     throw new ScriptArgError(`--plan deve essere uno di: ${ALLOWED_PLANS.join(', ')}`)
   }
   const timezone = args['timezone']!
+  /**
+   * C-27: il default è UTC e lo si DICE. Il fuso decide le scadenze SLA, l'ora
+   * del digest e le passate OLA: chi onboarda un cliente in un altro paese
+   * deve accorgersi di non averlo scelto, invece di scoprirlo dalle scadenze.
+   */
+  if (timezone === DEFAULT_TENANT_TIMEZONE && !process.argv.some((a) => a.startsWith('--timezone'))) {
+    console.log(`[onboard] nessun --timezone: il tenant nasce su ${DEFAULT_TENANT_TIMEZONE}. Le scadenze SLA, il digest e gli OLA useranno quest'ora — cambiala in Impostazioni → Organizzazione se il cliente è altrove.`)
+  }
   // emailDigestWorker fails loud on an invalid Tenant.timezone: reject it here.
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: timezone })

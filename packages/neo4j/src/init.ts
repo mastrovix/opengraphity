@@ -128,6 +128,18 @@ const CONSTRAINTS: SchemaStatement[] = [
     label: 'Change(tenant_id, code)',
     cypher: 'CREATE CONSTRAINT change_code_unique IF NOT EXISTS FOR (n:Change) REQUIRE (n.tenant_id, n.code) IS UNIQUE',
   },
+  /**
+   * Il nome di un calendario di servizio è unico DAVVERO (revisione totale ·
+   * C-34): l'unicità era controllata da una lettura fuori dalla transazione di
+   * creazione, quindi due admin che salvavano «Ufficio» nello stesso istante
+   * passavano entrambi e la tendina mostrava due calendari omonimi. La chiave
+   * è `name_key` = toLower(name), come per i CI: il confronto del prodotto non
+   * distingue le maiuscole.
+   */
+  {
+    label: 'ServiceCalendar(tenant_id, name_key)',
+    cypher: 'CREATE CONSTRAINT service_calendar_name_unique IF NOT EXISTS FOR (n:ServiceCalendar) REQUIRE (n.tenant_id, n.name_key) IS UNIQUE',
+  },
   {
     // F18: `number` sulle change come sugli altri ticket (stesso valore di `code`).
     label: 'Change(tenant_id, number)',

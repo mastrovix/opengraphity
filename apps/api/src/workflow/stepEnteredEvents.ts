@@ -42,6 +42,9 @@ export function registerStepEnteredEvents(): void {
       entityId:   info.entityId,
       stepName:   info.toStep,
       enteredAt:  info.enteredAt,
+      // B-4: le note della transizione finiscono nella nota interna sul ticket.
+      notes:      info.notes ?? null,
+      fromStep:   info.fromStep,
     })
 
     // `incident.closed` (la regola di notifica «Incident chiuso») lo pubblicava

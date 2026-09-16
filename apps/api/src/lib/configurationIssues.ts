@@ -65,6 +65,7 @@ import { customFieldDefs } from './ticketCustomFields.js'
 import { stepsNamedBy, workflowStepsByDefinition } from './customFieldSteps.js'
 import { olaContractsMeasurability } from './olaMeasurability.js'
 import { TICKET_CUSTOM_FIELD_ENTITY_TYPES } from '@opengraphity/types'
+import { createMetamodelCache } from './metamodelCache.js'
 
 const log = logger.child({ module: 'configuration-issues' })
 
@@ -122,7 +123,36 @@ export interface ConfigurationIssue {
   where: string | null
 }
 
+/**
+ * I RILIEVI in cache per un minuto (revisione totale · C-33).
+ *
+ * I ventitré controlli girano in serie e alcuni sono scansioni vere — tutti i
+ * ticket aperti, i conteggi per tipo per ogni contratto OLA — e il banner
+ * della diagnostica li chiedeva a OGNI apertura di pagina. Su un cliente con
+ * centomila ticket erano decine di query pesanti per un banner che cambia una
+ * volta al giorno. Un minuto è abbastanza per non farne due nella stessa
+ * navigazione e poco per non nascondere un rimedio appena fatto; la cache
+ * passa dal canale del metamodello, quindi una modifica alla configurazione
+ * la svuota subito.
+ */
+const CONFIGURATION_ISSUES_TTL_MS = 60_000
+
+const issuesCache = createMetamodelCache<ConfigurationIssue[]>({
+  name:  'configuration-issues',
+  ttlMs: CONFIGURATION_ISSUES_TTL_MS,
+  load:  (tenantId) => computeConfigurationIssues(tenantId),
+})
+
+export function invalidateConfigurationIssues(tenantId?: string): void {
+  if (tenantId) issuesCache.invalidate(tenantId)
+  else issuesCache.clear()
+}
+
 export async function configurationIssues(tenantId: string): Promise<ConfigurationIssue[]> {
+  return issuesCache.get(tenantId)
+}
+
+async function computeConfigurationIssues(tenantId: string): Promise<ConfigurationIssue[]> {
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {

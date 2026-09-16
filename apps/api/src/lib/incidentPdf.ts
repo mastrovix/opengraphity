@@ -139,15 +139,16 @@ function renderDossier(doc: Doc, data: IncidentDossier, locale: PdfLocale): void
   const inc = data.incident
 
   renderTicketDossier(doc, {
-    reportTitle: 'Incident Audit Report',
+    reportTitle: pdfText(locale, 'reportIncident'),
     entityTitle: `${inc.number || inc.id} ${DASH} ${inc.title}`,
     badges: (doc, x, y) => {
       let bx = x
-      bx += badge(doc, bx, y, `SEVERITY: ${(inc.severity || pdfText(locale, 'notAvailable')).toUpperCase()}`,
+      // C-18: etichette dei badge tradotte.
+      bx += badge(doc, bx, y, `${pdfText(locale, 'badgeSeverity')}: ${(inc.severity || pdfText(locale, 'notAvailable')).toUpperCase()}`,
         valueColorInk(inc.severityColor)) + 6
-      bx += badge(doc, bx, y, `STATUS: ${(inc.status || pdfText(locale, 'notAvailable')).toUpperCase()}`, COLOR.brand) + 6
+      bx += badge(doc, bx, y, `${pdfText(locale, 'badgeStatus')}: ${(inc.status || pdfText(locale, 'notAvailable')).toUpperCase()}`, COLOR.brand) + 6
       if (data.slaStatus) {
-        badge(doc, bx, y, data.slaStatus.breached ? 'SLA: BREACHED' : 'SLA: OK',
+        badge(doc, bx, y, `${pdfText(locale, 'badgeSla')}: ${data.slaStatus.breached ? pdfText(locale, 'slaBreached') : pdfText(locale, 'slaOk')}`,
           data.slaStatus.breached ? '#dc2626' : '#16a34a')
       }
     },
@@ -186,12 +187,12 @@ function detailsSection(data: IncidentDossier, locale: PdfLocale) {
     keyValue(doc, pdfText(locale, 'createdAt'), fmtDate(inc.createdAt, locale))
     keyValue(doc, pdfText(locale, 'updatedAt'), fmtDate(inc.updatedAt, locale))
     keyValue(doc, pdfText(locale, 'resolvedAt'), fmtDate(inc.resolvedAt, locale))
-    keyValue(doc, 'Root cause', orDash(inc.rootCause))
+    keyValue(doc, pdfText(locale, 'rootCause'), orDash(inc.rootCause))
     keyValue(doc, pdfText(locale, 'assignee'), data.assignee
       ? `${data.assignee.name} <${data.assignee.email}>`
       : DASH)
-    keyValue(doc, 'Team', data.team ? data.team.name : DASH)
-    keyValue(doc, 'Watcher', data.watchers.length
+    keyValue(doc, pdfText(locale, 'team'), data.team ? data.team.name : DASH)
+    keyValue(doc, pdfText(locale, 'watchers'), data.watchers.length
       ? data.watchers.map((w) => w.name || w.email).join(', ')
       : DASH)
   }

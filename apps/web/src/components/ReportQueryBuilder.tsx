@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, GitPullRequest, Users, User, Box, Bug, ClipboardList } from 'lucide-react'
 import type { Node } from '@xyflow/react'
-import type { NavigableEntity } from './ReportFlowNodes'
+import { navigableLabel, type NavigableEntity } from './ReportFlowNodes'
 import { colors, palette } from '@/lib/tokens'
 
 interface NodeDataEntry {
@@ -62,7 +62,7 @@ export function ReportQueryBuilder({ entities, nodes, nodeDataMap, onSelectRoot 
               >
                 {getEntityIcon(e.entityType, 28)}
                 <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate)' }}>
-                  {e.label}
+                  {navigableLabel(t, e)}
                 </span>
               </button>
             )

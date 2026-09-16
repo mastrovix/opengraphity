@@ -43,11 +43,11 @@ export const GET_REPORT_TEMPLATE = gql`
 export const GET_NAVIGABLE_ENTITIES = gql`
   query GetNavigableEntities {
     navigableEntities {
-      entityType label neo4jLabel group
-      fields { name label fieldType enumValues enumTypeName }
+      entityType label labelKey neo4jLabel group
+      fields { name label labelKey fieldType enumValues enumTypeName }
       relations {
-        relationshipType direction label
-        targetEntityType targetLabel targetNeo4jLabel
+        relationshipType direction label labelKey
+        targetEntityType targetLabel targetLabelKey targetNeo4jLabel
       }
     }
   }

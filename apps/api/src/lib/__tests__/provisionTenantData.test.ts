@@ -36,9 +36,35 @@ vi.mock('../domainMatrixSeed.js', () => ({
 const { provisionTenantData, tenantProvisioningGaps, formatGap, REQUIRED_WORKFLOW_ENTITY_TYPES } = await import('../provisionTenantData.js')
 
 interface Row { get: (k: string) => unknown }
+
+/**
+ * Il tenant COMPLETO, come lo vede `tenantProvisioningGaps`: dalla revisione
+ * totale (C-21) il provisioning si RILEGGE alla fine e fallisce se manca un
+ * pezzo — non essendo atomico, un'interruzione a metà lasciava un tenant
+ * mezzo fatto in silenzio. Il finto database deve quindi saper rispondere
+ * anche a quella lettura.
+ */
+const COMPLETE_TENANT: Record<string, unknown> = {
+  roleKeys:       ['admin', 'operator', 'viewer', 'end_user'],
+  userRoles:      ['admin'],
+  dashboards:     1,
+  rules:          35,
+  matrices:       2,
+  questions:      4,
+  teams:          2,
+  changeManagers: 1,
+  entityTypes:    ['incident', 'problem', 'kb_article', 'change', 'service_request'],
+}
+
 function session(rows: Row[] = []) {
-  const run = vi.fn().mockResolvedValue({ records: rows })
-  return { run, calls: () => run.mock.calls as Array<[string, Record<string, unknown>]> }
+  // La riga del tenant completo si usa solo se il test non ne ha dato una sua
+  // (i test di `tenantProvisioningGaps` descrivono tenant INCOMPLETI).
+  const run = vi.fn(async (cypher: string) => {
+    const isGapQuery = cypher.includes('collect(ro.key) AS roleKeys')
+    const givenByTest = rows.some((r) => r.get('roleKeys') !== undefined)
+    return isGapQuery && !givenByTest ? { records: [row(COMPLETE_TENANT)] } : { records: rows }
+  })
+  return { run, calls: () => run.mock.calls as unknown as Array<[string, Record<string, unknown>]> }
 }
 const row = (m: Record<string, unknown>) => ({ get: (k: string) => m[k] })
 
@@ -136,8 +162,10 @@ describe('tenantProvisioningGaps — dire cosa manca, invece di scoprirlo al pri
   })
 
   it('nessuna riga = il tenant non esiste, e lo dice', async () => {
-    const s = session([])
-    await expect(tenantProvisioningGaps(s as never, 'fantasma')).resolves.toEqual([{ kind: 'tenant_missing' }])
+    // Sessione nuda: qui NON vale il tenant completo del mock condiviso, la
+    // domanda del test è proprio «cosa risponde senza righe».
+    const bare = { run: vi.fn().mockResolvedValue({ records: [] }) }
+    await expect(tenantProvisioningGaps(bare as never, 'fantasma')).resolves.toEqual([{ kind: 'tenant_missing' }])
   })
 })
 
