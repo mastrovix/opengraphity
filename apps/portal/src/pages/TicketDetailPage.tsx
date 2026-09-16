@@ -26,6 +26,7 @@ interface Ticket {
   id: string; number: string; title: string; description: string | null; status: string
   /** Categoria ed etichetta del passo nel workflow del cliente (ondata 7 · D-15). */
   statusCategory: string | null; statusLabel: string | null
+  type: string
   priority: string; category: string | null; createdAt: string; updatedAt: string
   assignedTeam: string | null
   comments:    EntityComment[]

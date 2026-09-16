@@ -17,6 +17,8 @@ import { formatDateTime } from '@/lib/datetime'
 import { ciTypeLabelKey } from '@/lib/ciEnums'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
+import { QueryError } from '@/components/QueryError'
+import { EmptyState } from '@/components/EmptyState'
 import { DetailPanel } from './AnomalyDetail'
 import type { Anomaly, AnomalyStats, AnomalyScanStatus } from '@/types/anomaly'
 import { StatTile, StatTileGrid } from '@/components/ui/StatTile'
@@ -244,7 +246,7 @@ export function AnomalyPage() {
   const { data: scanData, refetch: refetchScan } = useQuery<{ anomalyScanStatus: AnomalyScanStatus }>(
     GET_ANOMALY_SCAN_STATUS,
   )
-  const { data, loading, refetch } = useQuery<{ anomalies: { items: Anomaly[]; total: number } }>(
+  const { data, loading, error, refetch } = useQuery<{ anomalies: { items: Anomaly[]; total: number } }>(
     GET_ANOMALIES,
     {
       variables: {
@@ -298,7 +300,11 @@ export function AnomalyPage() {
   const scanStatus = scanData?.anomalyScanStatus
   const anomalies  = data?.anomalies?.items ?? []
   const total      = data?.anomalies?.total ?? 0
-  const totalPages = Math.ceil(total / PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  // Revisione totale · G-ANO-4: risolvendo l'ultima anomalia di una pagina la
+  // pagina corrente restava fuori intervallo («3 / 2», tabella vuota e il
+  // messaggio «CMDB sana» sotto «Aperte: 12»).
+  useEffect(() => { if (page > 0 && page >= totalPages) setPage(totalPages - 1) }, [page, totalPages])
 
 
   async function handleResolve(id: string, resolutionStatus: string, note: string) {
@@ -406,8 +412,15 @@ export function AnomalyPage() {
 
       {/* Table */}
       <div className="card-border" style={{ overflow: 'hidden' }}>
-        {!loading && anomalies.length === 0 ? (
-          <AnomalyEmptyState scanStatus={scanStatus} />
+        {error && !data ? (
+          /* Revisione totale · G-ANO-2: un errore non è una CMDB sana. */
+          <div style={{ padding: 24 }}><QueryError message={error.message} onRetry={() => void refetch()} /></div>
+        ) : !loading && anomalies.length === 0 ? (
+          /* G-ANO-3: «nessuna anomalia» solo senza filtri; con un filtro attivo
+             il vuoto è del filtro, non della CMDB. */
+          filterGroup
+            ? <EmptyState icon={<SlidersHorizontal size={32} color={colors.slateLight} />} title={t('pages.anomalies.noResults')} description={t('pages.anomalies.noResultsDesc')} />
+            : <AnomalyEmptyState scanStatus={scanStatus} />
         ) : (
           <SortableFilterTable<Anomaly>
             data={anomalies}

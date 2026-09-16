@@ -1,6 +1,6 @@
 import type { Worker, Job } from 'bullmq'
 import { config } from '../lib/config.js'
-import { getSession, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import {
   decryptCredentials,
   getConnector,
@@ -34,10 +34,18 @@ export const syncQueue = getQueue<SyncJobPayload>('discovery-sync')
 // ── Processor ─────────────────────────────────────────────────────────────────
 
 async function processSyncJob(job: Job<SyncJobPayload>): Promise<void> {
-  const { runId, sourceId, tenantId } = job.data
+  const { sourceId, tenantId } = job.data
   const startedAt = Date.now()
+  // Revisione totale · D-5: un'esecuzione = un `SyncRun`. I job del cron
+  // portavano un runId fisso (`scheduled-<id>`) senza nodo, quindi
+  // `updateRunStatus` non scriveva niente: la pagina «Esecuzioni» non mostrava
+  // nessuna sincronizzazione automatica, le statistiche le ignoravano e un
+  // fallimento notturno non lasciava né errore né numeri. Ogni job crea il suo
+  // nodo se non ce l'ha (quello manuale lo crea la mutation, con lo stato
+  // `queued`).
+  const runId = await ensureRun(job.data, startedAt)
 
-  logger.info({ runId, sourceId, tenantId }, '[sync] Starting sync job')
+  logger.info({ runId, sourceId, tenantId, jobId: job.id }, '[sync] Starting sync job')
 
   // ── Load source config from Neo4j ─────────────────────────────────────────
   const session = getSession()
@@ -149,6 +157,34 @@ async function processSyncJob(job: Job<SyncJobPayload>): Promise<void> {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Il nodo `SyncRun` dell'esecuzione. Il job manuale ne porta uno già creato
+ * dalla mutation; quello del cron no, e ne nasce uno per ogni scatto (D-5).
+ */
+async function ensureRun(data: SyncJobPayload, startedAtMs: number): Promise<string> {
+  const { runId, sourceId, tenantId, syncType } = data
+  const now = new Date(startedAtMs).toISOString()
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const existing = await runQueryOne<{ id: string }>(session,
+      'MATCH (r:SyncRun {id: $runId, tenant_id: $tenantId}) RETURN r.id AS id', { runId, tenantId })
+    if (existing) return runId
+    const id = `${runId}-${String(startedAtMs)}`
+    await runQuery(session, `
+      CREATE (r:SyncRun {
+        id: $id, source_id: $sourceId, tenant_id: $tenantId,
+        sync_type: $syncType, status: 'running',
+        ci_created: 0, ci_updated: 0, ci_unchanged: 0, ci_stale: 0, ci_conflicts: 0,
+        relations_created: 0, relations_removed: 0,
+        started_at: $now, updated_at: $now
+      })
+    `, { id, sourceId, tenantId, syncType: syncType ?? 'scheduled', now })
+    return id
+  } finally {
+    await session.close()
+  }
+}
+
 async function updateRunStatus(
   runId:      string,
   tenantId:   string,
@@ -247,6 +283,38 @@ export function startSyncWorker(): Worker<SyncJobPayload> {
 
 // ── Scheduled sync loader ─────────────────────────────────────────────────────
 
+/** Il nome del repeat job di una sorgente: uno solo per sorgente. */
+export function scheduledSyncJobId(sourceId: string): string {
+  return `sync-scheduled-${sourceId}`
+}
+
+/**
+ * Registra (o rimuove) il cron di UNA sorgente (revisione totale · D-6/D-7).
+ * Prima `deleteSyncSource` e `updateSyncSource` non toccavano il repeat job:
+ * un cron cancellato continuava a scattare per sempre (i repeatable vivono in
+ * Redis, anche dopo un riavvio) e ogni scatto falliva con «SyncSource not
+ * found»; cambiando il cron, dopo un riavvio giravano ENTRAMBI.
+ */
+export async function scheduleSourceSync(source: { id: string; tenantId: string; cron: string | null; enabled: boolean }): Promise<void> {
+  const jobId = scheduledSyncJobId(source.id)
+  // Il repeatable si toglie sempre: così un cron cambiato non lascia in piedi il vecchio.
+  for (const job of await syncQueue.getRepeatableJobs()) {
+    if (job.name === 'sync' && (job.id === jobId || job.key.includes(jobId))) {
+      await syncQueue.removeRepeatableByKey(job.key)
+    }
+  }
+  if (!source.enabled || !source.cron) {
+    logger.info({ sourceId: source.id }, '[sync] scheduled sync removed (source disabled or without cron)')
+    return
+  }
+  await syncQueue.add(
+    'sync',
+    { runId: `scheduled-${source.id}`, sourceId: source.id, tenantId: source.tenantId, syncType: 'scheduled' },
+    { repeat: { pattern: source.cron }, jobId, removeOnComplete: 50, removeOnFail: 20 },
+  )
+  logger.info({ sourceId: source.id, cron: source.cron }, '[sync] scheduled sync registered')
+}
+
 export async function loadScheduledSyncs(): Promise<void> {
   const session = getSession()
   try {
@@ -260,18 +328,13 @@ export async function loadScheduledSyncs(): Promise<void> {
       const tenantId  = r.get('tenantId') as string
       const cron      = r.get('cron')     as string
 
-      await syncQueue.add(
-        'sync',
-        { runId: `scheduled-${sourceId}`, sourceId, tenantId, syncType: 'scheduled' },
-        {
-          repeat:  { pattern: cron },
-          jobId:   `sync-scheduled-${sourceId}`,
-          removeOnComplete: 50,
-          removeOnFail:     20,
-        },
-      )
-
-      logger.debug({ sourceId, cron }, '[sync] Scheduled sync registered')
+      // Un cron corrotto non deve impedire l'avvio dell'API (D-7): si dice
+      // nel log e le altre sorgenti partono comunque.
+      try {
+        await scheduleSourceSync({ id: sourceId, tenantId, cron, enabled: true })
+      } catch (err) {
+        logger.error({ err, sourceId, cron }, '[sync] scheduled sync NOT registered: fix the cron of this source')
+      }
     }
 
     logger.info({ count: result.records.length }, '[sync] Scheduled syncs loaded')

@@ -41,18 +41,26 @@ export async function selectSLAForEntity(
       tx.run(`
         MATCH (p:SLAPolicyNode {tenant_id: $tenantId, entity_type: $entityType, enabled: true})
         OPTIONAL MATCH (t:Tenant {id: $tenantId})
+        // QUANTI criteri la policy fissa, non QUALI (revisione totale · E-1).
+        // Prima il CASE elencava cinque combinazioni e tutto il resto cadeva in
+        // un ramo di scarto, escluso dal WHERE: una policy «priorità + team» o «solo
+        // team» — che la pagina SLA Policies e createSLAPolicy accettano — non
+        // veniva MAI scelta, e il ticket riceveva la policy generica (o nessuno
+        // SLA) senza un avviso. Ogni criterio dichiarato deve combaciare;
+        // vince chi ne dichiara di più, e a pari numero l'ordine è
+        // priorità → categoria → team (la priorità è il criterio più forte).
         WITH p, t.timezone AS tenantTimezone,
-          CASE
-            WHEN p.priority = $priority AND p.category = $category AND p.team_id = $teamId THEN 0
-            WHEN p.priority = $priority AND p.category = $category AND p.team_id IS NULL    THEN 1
-            WHEN p.priority = $priority AND p.category IS NULL     AND p.team_id IS NULL    THEN 2
-            WHEN p.priority IS NULL     AND p.category = $category AND p.team_id IS NULL    THEN 3
-            WHEN p.priority IS NULL     AND p.category IS NULL     AND p.team_id IS NULL    THEN 4
-            ELSE 99
-          END AS specificity
-        WHERE specificity < 99
-        RETURN p, specificity, tenantTimezone
-        ORDER BY specificity ASC
+          (CASE WHEN p.priority IS NULL THEN 0 ELSE 1 END)
+          + (CASE WHEN p.category IS NULL THEN 0 ELSE 1 END)
+          + (CASE WHEN p.team_id  IS NULL THEN 0 ELSE 1 END) AS criteria,
+          (CASE WHEN p.priority IS NULL THEN 0 ELSE 4 END)
+          + (CASE WHEN p.category IS NULL THEN 0 ELSE 2 END)
+          + (CASE WHEN p.team_id  IS NULL THEN 0 ELSE 1 END) AS weight
+        WHERE (p.priority IS NULL OR p.priority = $priority)
+          AND (p.category IS NULL OR p.category = $category)
+          AND (p.team_id  IS NULL OR p.team_id  = $teamId)
+        RETURN p, criteria, weight, tenantTimezone
+        ORDER BY criteria DESC, weight DESC
         LIMIT 1
       `, {
         tenantId,

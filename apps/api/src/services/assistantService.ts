@@ -10,6 +10,7 @@
  * as explicit SSE error events.
  */
 import { kbArticlePublishedCypher } from '../lib/kbPublished.js'
+import { vectorSearchForTenant } from '../lib/vectorSearch.js'
 import Anthropic from '@anthropic-ai/sdk'
 import type { Permission } from '@opengraphity/types'
 
@@ -47,6 +48,19 @@ async function readQuery<T>(cypher: string, params: Record<string, unknown>): Pr
   }
 }
 
+/** Quanti articoli propone la ricerca semantica nella KB. */
+const KB_SEARCH_LIMIT = 5
+
+/** Ricerca vettoriale del tenant su una sessione di sola lettura (B-12). */
+async function vectorSearch<T>(tenantId: string, opts: Omit<Parameters<typeof vectorSearchForTenant>[1], 'tenantId'>): Promise<T[]> {
+  const session = getSession(undefined, 'READ')
+  try {
+    return await vectorSearchForTenant<T>(session, { ...opts, tenantId })
+  } finally {
+    await session.close()
+  }
+}
+
 function j(value: unknown): string {
   // Neo4j Integer objects serialize as {low, high} — normalize first.
   return JSON.stringify(value, (_k, v: unknown) =>
@@ -78,17 +92,18 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
       const { query, limit } = input as { query: string; limit?: number }
       if (!(await aiFeatureEnabled(tenantId, 'embeddings'))) return SEMANTIC_SEARCH_OFF
       const [embedding] = await getEmbedder().embed([query])
-      const rows = await readQuery(`
-        CALL db.index.vector.queryNodes($index, 30, $embedding)
-        YIELD node, score
-        WHERE node.tenant_id = $tenantId
-        OPTIONAL MATCH (node)-[:ASSIGNED_TO_TEAM]->(team:Team)
-        RETURN node.number AS numero, node.title AS titolo, node.status AS stato,
+      // K cresce finché i risultati DEL TENANT bastano: l'indice vettoriale è
+      // cross-tenant (revisione totale · B-12).
+      const rows = await vectorSearch(tenantId, {
+        index: vectorIndexName('Incident'),
+        embedding,
+        limit: clampLimit(limit, 5, 15),
+        extra: 'OPTIONAL MATCH (node)-[:ASSIGNED_TO_TEAM]->(team:Team)',
+        returns: `node.number AS numero, node.title AS titolo, node.status AS stato,
                node.severity AS severity, node.category AS categoria,
-               team.name AS team, round(score, 2) AS similarita, node.id AS id
-        ORDER BY score DESC
-        LIMIT ${clampLimit(limit, 5, 15)}
-      `, { index: vectorIndexName('Incident'), embedding, tenantId })
+               team.name AS team, round(score, 2) AS similarita, node.id AS id`,
+        what: 'assistant.cerca_incident',
+      })
       return j(rows)
     },
   })
@@ -266,15 +281,15 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
       const { query } = input as { query: string }
       if (!(await aiFeatureEnabled(tenantId, 'embeddings'))) return SEMANTIC_SEARCH_OFF
       const [embedding] = await getEmbedder().embed([query])
-      const rows = await readQuery(`
-        CALL db.index.vector.queryNodes($index, 15, $embedding)
-        YIELD node, score
-        WHERE node.tenant_id = $tenantId AND ${kbArticlePublishedCypher('node')}
-        RETURN node.title AS titolo, node.category AS categoria,
-               node.slug AS slug, round(score, 2) AS similarita
-        ORDER BY score DESC
-        LIMIT 5
-      `, { index: vectorIndexName('KBArticle'), embedding, tenantId })
+      const rows = await vectorSearch(tenantId, {
+        index: vectorIndexName('KBArticle'),
+        embedding,
+        limit: KB_SEARCH_LIMIT,
+        where: kbArticlePublishedCypher('node'),
+        returns: `node.title AS titolo, node.category AS categoria,
+               node.slug AS slug, round(score, 2) AS similarita`,
+        what: 'assistant.cerca_kb',
+      })
       return j(rows)
     },
   })

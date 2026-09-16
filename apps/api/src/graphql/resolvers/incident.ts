@@ -33,7 +33,15 @@ type Props = Record<string, unknown>
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
-const INCIDENT_SORT_WHITELIST: Record<string, string> = {
+/**
+ * `number` c'è perché la colonna del web è ordinabile (revisione totale · B-9):
+ * mancava, il resolver ricadeva su `created_at DESC` e la tabella mostrava la
+ * freccia su una colonna che non ordinava. Il numero è una stringa con lo
+ * stesso prefisso e lo stesso numero di cifre, quindi l'ordine lessicale è
+ * quello cronologico.
+ */
+export const INCIDENT_SORT_WHITELIST: Record<string, string> = {
+  number:    'number',
   title:     'title',
   severity:  'severity',
   status:    'status',

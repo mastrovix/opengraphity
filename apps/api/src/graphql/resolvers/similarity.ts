@@ -7,7 +7,8 @@
  */
 import { kbArticlePublishedCypher } from '../../lib/kbPublished.js'
 import { NotFoundError } from '../../lib/errors.js'
-import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
+import { getSession, runQueryOne, toNumber } from '@opengraphity/neo4j'
+import { vectorSearchForTenant } from '../../lib/vectorSearch.js'
 import type { GraphQLContext } from '../../context.js'
 import { vectorIndexName } from '../../services/embeddings.js'
 import { aiFeatureEnabled } from '../../lib/aiSettings.js'
@@ -47,26 +48,23 @@ async function similarIncidents(
 
   const session = getSession(undefined, 'READ')
   try {
-    // Over-fetch: the index is cross-tenant and includes the source incident,
-    // both filtered out below.
-    const rows = await runQuery<{
+    // L'indice è cross-tenant e contiene l'incident di partenza: K cresce
+    // finché i vicini DEL TENANT bastano (revisione totale · B-12).
+    const rows = await vectorSearchForTenant<{
       id: string; number: string | null; title: string; status: string
       severity: string; createdAt: string | null; resolvedAt: string | null; score: number
-    }>(session, `
-      CALL db.index.vector.queryNodes($index, ${limit * 4 + 10}, $embedding)
-      YIELD node, score
-      WHERE node.tenant_id = $tenantId AND node.id <> $incidentId
-      RETURN node.id AS id, node.number AS number, node.title AS title,
-             node.status AS status, node.severity AS severity,
-             node.created_at AS createdAt, node.resolved_at AS resolvedAt,
-             score
-      ORDER BY score DESC
-      LIMIT ${limit}
-    `, {
+    }>(session, {
       index: vectorIndexName('Incident'),
       embedding,
       tenantId: ctx.tenantId,
-      incidentId: args.incidentId,
+      limit,
+      where: 'node.id <> $incidentId',
+      returns: `node.id AS id, node.number AS number, node.title AS title,
+             node.status AS status, node.severity AS severity,
+             node.created_at AS createdAt, node.resolved_at AS resolvedAt,
+             score`,
+      params: { incidentId: args.incidentId },
+      what: 'similarIncidents',
     })
     return { ready: true, disabled: false, items: rows.map(r => ({ ...r, score: num(r.score) })) }
   } finally {
@@ -86,20 +84,17 @@ async function suggestedArticles(
 
   const session = getSession(undefined, 'READ')
   try {
-    const rows = await runQuery<{
+    const rows = await vectorSearchForTenant<{
       id: string; title: string; slug: string | null; category: string | null; score: number
-    }>(session, `
-      CALL db.index.vector.queryNodes($index, ${limit * 4 + 10}, $embedding)
-      YIELD node, score
-      WHERE node.tenant_id = $tenantId AND ${kbArticlePublishedCypher('node')}
-      RETURN node.id AS id, node.title AS title, node.slug AS slug,
-             node.category AS category, score
-      ORDER BY score DESC
-      LIMIT ${limit}
-    `, {
+    }>(session, {
       index: vectorIndexName('KBArticle'),
       embedding,
       tenantId: ctx.tenantId,
+      limit,
+      where: kbArticlePublishedCypher('node'),
+      returns: `node.id AS id, node.title AS title, node.slug AS slug,
+             node.category AS category, score`,
+      what: 'suggestedArticles',
     })
     return { ready: true, disabled: false, items: rows.map(r => ({ ...r, score: num(r.score) })) }
   } finally {

@@ -197,8 +197,11 @@ async function loadSlackWebhookForTenant(tenantId: string): Promise<string | nul
   try {
     const res = await session.executeRead(tx =>
       tx.run(`
-        MATCH (t:Tenant {id: $tenantId})-[:HAS_CHANNEL]->(c:NotificationChannel)
-        WHERE c.platform = 'slack' AND c.active = true AND c.tenant_id = $tenantId
+        // Revisione totale · D-11: i canali sono nodi del tenant, non appesi al
+        // nodo Tenant con una relazione HAS_CHANNEL che non esiste in nessun
+        // punto del prodotto — la notifica non partiva mai, e in silenzio.
+        MATCH (c:NotificationChannel {tenant_id: $tenantId})
+        WHERE c.platform = 'slack' AND c.active = true
         RETURN c.webhook_url AS webhookUrl LIMIT 1
       `, { tenantId }),
     )

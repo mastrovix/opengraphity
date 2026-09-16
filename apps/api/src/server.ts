@@ -344,6 +344,18 @@ interface TenantApollo {
   handler: express.RequestHandler
 }
 
+/** Il tenant «condiviso»: la sua istanza serve la Sandbox su GET /graphql e non si sfratta (A-5). */
+export const SYSTEM_TENANT = 'system'
+
+/**
+ * Quale istanza Apollo fermare quando la cache supera il limite: la meno usata
+ * di recente (le chiavi della Map sono in ordine d'uso), mai quella appena
+ * costruita né quella di sistema. `undefined` = non c'è nulla da sfrattare.
+ */
+export function apolloEvictionVictim(keys: readonly string[], current: string): string | undefined {
+  return keys.find((k) => k !== current && k !== SYSTEM_TENANT)
+}
+
 const apolloByTenant = new Map<string, TenantApollo>()
 const apolloInFlight = new Map<string, Promise<TenantApollo>>()
 
@@ -383,13 +395,19 @@ async function apolloFor(tenantId: string, schema: GraphQLSchema): Promise<Tenan
     apolloByTenant.set(tenantId, entry)
     if (previous) void previous.server.stop().catch((e: unknown) => graphqlLogger.warn({ tenantId, err: String(e) }, 'Previous Apollo instance did not stop'))
     // Lo stesso limite degli schemi: un'istanza per schema in memoria.
+    // L'istanza di `'system'` non si sfratta MAI (revisione totale · A-5): è
+    // inserita per prima all'avvio, la rotta GET la legge senza riordinarla e
+    // quindi era sempre la prima candidata; sfrattarla rendeva
+    // `GET /graphql` un 500 («System Apollo instance not ready») dopo
+    // GRAPHQL_SCHEMA_CACHE_MAX tenant serviti. È la stessa protezione che la
+    // cache degli schemi ha già (NEVER_EVICTED in lib/schemaCache.ts).
     while (apolloByTenant.size > Math.max(1, config.graphqlSchemaCacheMax)) {
-      const oldest = apolloByTenant.keys().next()
-      if (oldest.done || oldest.value === tenantId) break
-      const victim = apolloByTenant.get(oldest.value)!
-      apolloByTenant.delete(oldest.value)
+      const oldest = apolloEvictionVictim([...apolloByTenant.keys()], tenantId)
+      if (oldest === undefined) break
+      const victim = apolloByTenant.get(oldest)!
+      apolloByTenant.delete(oldest)
       void victim.server.stop().catch(() => undefined)
-      logger.info({ tenantId: oldest.value }, 'Istanza Apollo del tenant fermata (limite di cache raggiunto)')
+      logger.info({ tenantId: oldest }, 'Istanza Apollo del tenant fermata (limite di cache raggiunto)')
     }
     return entry
   })().finally(() => apolloInFlight.delete(tenantId))
@@ -436,8 +454,8 @@ export async function startServer(): Promise<http.Server> {
   // Lo schema di sistema si costruisce all'avvio: se la parte base non
   // assembla, l'API non deve partire (fail-fast), e serve alle richieste che
   // non hanno un tenant (la pagina di Apollo Sandbox in sviluppo).
-  const systemSchema = await getSchemaForTenant('system')
-  await apolloFor('system', systemSchema)
+  const systemSchema = await getSchemaForTenant(SYSTEM_TENANT)
+  await apolloFor(SYSTEM_TENANT, systemSchema)
 
   /**
    * Una rotta sola, che sceglie lo schema del tenant: autentica (una volta),
@@ -449,7 +467,7 @@ export async function startServer(): Promise<http.Server> {
     // GET = pagina di Apollo Sandbox (in sviluppo) e richieste senza corpo:
     // non hanno un tenant e passano dallo schema di sistema, come prima.
     if (req.method !== 'POST') {
-      const system = apolloByTenant.get('system')
+      const system = apolloByTenant.get(SYSTEM_TENANT)
       if (!system) { next(new Error('System Apollo instance not ready')); return }
       system.handler(req, res, next); return
     }

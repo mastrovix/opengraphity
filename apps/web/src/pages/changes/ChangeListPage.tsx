@@ -80,8 +80,16 @@ export function ChangeListPage() {
       ] },
   ]
 
+  // Ordinamento sul server: le colonne erano dichiarate ordinabili e il clic
+  // non faceva nulla, perché `onSort` non arrivava alla tabella e la query non
+  // aveva l'ordinamento (revisione totale · F-24). Ordinare solo la pagina
+  // corrente sarebbe stato peggio: la lista è paginata dall'API.
+  const [sortField, setSortField] = useState<string | null>(null)
+  const [sortDir, setSortDir]     = useState<'asc' | 'desc'>('desc')
+  const handleSort = (field: string, dir: 'asc' | 'desc') => { setSortField(field); setSortDir(dir); setPage(0) }
+
   const { data, loading, error, refetch } = useQuery<{ changes: { items: ChangeRow[]; total: number } }>(GET_CHANGES, {
-    variables: { currentStep, priority: priorityFilter, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+    variables: { currentStep, priority: priorityFilter, limit: PAGE_SIZE, offset: page * PAGE_SIZE, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
     pollInterval: 30_000,   // keep the list fresh without manual reload
   })
@@ -221,6 +229,9 @@ export function ChangeListPage() {
             loading={loading}
             emptyComponent={<EmptyState icon={<GitPullRequest size={32} />} title={t('pages.changes.noResults')} description={t('pages.changes.noResultsDesc')} />}
             onRowClick={(row) => navigate(`/changes/${row.id}`)}
+            onSort={handleSort}
+            sortField={sortField}
+            sortDir={sortDir}
           />
 
           <Pagination

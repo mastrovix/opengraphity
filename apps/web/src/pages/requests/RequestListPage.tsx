@@ -18,6 +18,7 @@ import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
 import { formatDate } from '@/lib/datetime'
+import { Pagination } from '@/components/ui/Pagination'
 
 interface ServiceRequest {
   customFields?: { name: string; value: string | null }[]
@@ -29,9 +30,14 @@ interface ServiceRequest {
   createdAt: string
 }
 
+const PAGE_SIZE = 50
+
 export function RequestListPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  // Revisione totale · B-32/F-1: la lista era senza paginazione e l'API ne dava
+  // 20; il contatore diceva «20 richieste» e le altre non si raggiungevano.
+  const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
   const [sortField, setSortField] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -74,14 +80,16 @@ export function RequestListPage() {
 
   const filtersJson = filterGroup ? JSON.stringify(filterGroup) : undefined
 
-  const { data, loading, error, refetch } = useQuery<{ serviceRequests: ServiceRequest[] }>(GET_SERVICE_REQUESTS, {
-    variables: { filters: filtersJson, sortField, sortDirection: sortDir },
+  const { data, loading, error, refetch } = useQuery<{ serviceRequests: { items: ServiceRequest[]; total: number } }>(GET_SERVICE_REQUESTS, {
+    variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filtersJson, sortField, sortDirection: sortDir },
     pollInterval: 30_000,   // keep the list fresh without manual reload
   })
 
-  function handleSort(field: string, direction: 'asc' | 'desc') { setSortField(field); setSortDir(direction) }
+  function handleSort(field: string, direction: 'asc' | 'desc') { setSortField(field); setSortDir(direction); setPage(0) }
 
-  const items = data?.serviceRequests ?? []
+  const items = data?.serviceRequests.items ?? []
+  const total = data?.serviceRequests.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
     <PageContainer>
@@ -90,7 +98,7 @@ export function RequestListPage() {
         title={t('pages.requests.title')}
         subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : t('pages.requests.count', { count: items.length })}
+            {loading ? '—' : t('pages.requests.count', { count: total })}
           </p>
         }
         actions={
@@ -104,7 +112,7 @@ export function RequestListPage() {
         <div style={{ flex: 1 }}>
           <FilterBuilder
             fields={filterFields}
-            onApply={(group) => { setFilterGroup(group) }}
+            onApply={(group) => { setFilterGroup(group); setPage(0) }}
           />
         </div>
         <ExportCsvButton
@@ -126,6 +134,8 @@ export function RequestListPage() {
             onRowClick={(row) => navigate(`/requests/${row.id}`)}
             emptyComponent={<EmptyState icon={<Inbox size={32} />} title={t('pages.requests.noResults')} description={t('pages.requests.noResultsDesc')} />}
           />
+
+          <Pagination currentPage={page + 1} totalPages={totalPages} onPrev={() => setPage((p) => p - 1)} onNext={() => setPage((p) => p + 1)} />
         </>
       )}
     </PageContainer>

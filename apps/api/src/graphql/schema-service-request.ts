@@ -2,6 +2,11 @@ export function serviceRequestSDL(): string {
   return `
   # ── Service Request ───────────────────────────────────────────────────────────
 
+  type ServiceRequestsResult {
+    items: [ServiceRequest!]!
+    total: Int!
+  }
+
   type ServiceRequest {
     id: ID!
     number: String!
@@ -15,6 +20,8 @@ export function serviceRequestSDL(): string {
     updatedAt: String!
     completedAt: String
     catalogItemId: String
+    """La categoria ereditata dalla voce di catalogo: la leggono le policy SLA per categoria (revisione totale · B-32)."""
+    category: String
     requiresApproval: Boolean
     workflowInstance: WorkflowInstance
     availableTransitions: [WorkflowTransition!]!

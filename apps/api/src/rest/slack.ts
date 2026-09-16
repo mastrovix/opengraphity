@@ -216,27 +216,41 @@ export async function handleSlackActions(req: Request, res: Response): Promise<v
       const u        = userResult.records[0]!.get('u').properties as Record<string, unknown>
       const userId   = u['id']        as string
       const tenantId = installation.tenantId
-      const now      = new Date().toISOString()
-      if (actionType === 'assign_me') {
-        await session.executeWrite((tx) =>
-          tx.run(
-            'MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId}) SET i.assignee_id = $userId, i.updated_at = $now',
-            { incidentId, tenantId, userId, now },
-          ),
-        )
-      } else if (actionType === 'resolve') {
-        const { resolveIncident } = await import('../services/incidentService.js')
-        await resolveIncident(incidentId, { tenantId, userId })
-      } else if (actionType === 'escalate') {
-        const { escalateIncident } = await import('../services/incidentService.js')
-        await escalateIncident(incidentId, { tenantId, userId })
+      // Revisione totale · D-13: le azioni di Slack passano dalle stesse
+      // strade dell'app. Prima «Assegnami» scriveva la proprietà
+      // `i.assignee_id`, che nessuna pagina legge (l'assegnatario è la
+      // relazione ASSIGNED_TO): l'operatore leggeva «✅ fatto» e l'incident
+      // restava non assegnato, senza audit, evento né regola del team. E
+      // «Risolvi» senza causa veniva rifiutato dalla guardia del workflow, con
+      // un 200 muto.
+      let outcome = `✅ Action *${actionType}* done on incident \`${incidentId}\`.`
+      try {
+        if (actionType === 'assign_me') {
+          const { assignIncidentToUser } = await import('../services/incidentService.js')
+          await assignIncidentToUser(incidentId, userId, { tenantId, userId })
+        } else if (actionType === 'resolve') {
+          const { resolveIncident } = await import('../services/incidentService.js')
+          await resolveIncident(incidentId, { tenantId, userId })
+        } else if (actionType === 'escalate') {
+          const { escalateIncident } = await import('../services/incidentService.js')
+          await escalateIncident(incidentId, { tenantId, userId })
+        } else {
+          outcome = `⚠️ Action *${actionType}* is not one this app performs.`
+        }
+      } catch (err) {
+        // Il motivo del rifiuto arriva a chi ha premuto il pulsante: una
+        // guardia del workflow («serve la causa»), l'assegnatario fuori dal
+        // team, un ticket già chiuso.
+        const reason = err instanceof Error ? err.message : String(err)
+        logger.warn({ err, incidentId, tenantId, actionType }, '[slack] action refused')
+        outcome = `⚠️ ${reason}`
       }
 
       if (responseUrl) {
         await fetch(responseUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: `✅ Action *${actionType}* done on incident \`${incidentId}\`.` }),
+          body: JSON.stringify({ response_type: 'ephemeral', text: outcome }),
         })
       }
     } finally {

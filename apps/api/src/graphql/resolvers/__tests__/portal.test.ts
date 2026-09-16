@@ -86,7 +86,8 @@ const addTicketComment = portalResolvers.Mutation.addTicketComment
 const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'end_user', permissions: perms('end_user') }
 
 const makeRecord = (map: Record<string, unknown>) => ({
-  get: (key: string) => (key in map ? map[key] : null),
+  // `labels`: il portale legge incident E richieste (revisione totale · H-2).
+  get: (key: string) => (key in map ? map[key] : key === 'labels' ? ['Incident'] : null),
 })
 
 const expectForbidden = async (promise: Promise<unknown>, message: string) => {

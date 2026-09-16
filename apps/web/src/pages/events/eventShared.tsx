@@ -133,7 +133,29 @@ export function parseLabels(raw: string | null, t: TFunction): { entries: [strin
   }
 }
 
-/** L'evento è ancora "vivo": accetta presa in carico e risoluzione manuale. */
-export function isActiveEvent(ev: Pick<MonitoringEvent, 'status'>): boolean {
-  return ev.status === 'firing' || ev.status === 'flapping'
+/**
+ * Che cosa l'API accetta su un evento, per stato (revisione totale · G-EVT-1 e
+ * G-EVT-10). Le tre liste sono la copia di quelle dei resolver: la pagina
+ * mostrava «Prendi in carico» e «Risolvi» solo su firing/flapping (un evento
+ * `suppressed` non si poteva più toccare, benché `resolveEvent` lo accetti) e
+ * mostrava «Apri incident» su qualunque stato, mentre
+ * `createIncidentFromEvent` accetta solo `firing` e rispondeva con un errore.
+ */
+const ACKNOWLEDGEABLE_STATUSES  = ['firing', 'suppressed', 'flapping'] as const
+const RESOLVABLE_STATUSES       = ['firing', 'suppressed', 'flapping'] as const
+const INCIDENT_OPEN_STATUSES    = ['firing'] as const
+
+/** L'evento accetta la presa in carico (`acknowledgeEvent`: tutto ciò che non è risolto). */
+export function canAcknowledgeEvent(ev: Pick<MonitoringEvent, 'status'>): boolean {
+  return (ACKNOWLEDGEABLE_STATUSES as readonly string[]).includes(ev.status)
+}
+
+/** L'evento accetta la risoluzione manuale (`resolveEvent`). */
+export function canResolveEvent(ev: Pick<MonitoringEvent, 'status'>): boolean {
+  return (RESOLVABLE_STATUSES as readonly string[]).includes(ev.status)
+}
+
+/** Da questo stato si può aprire un incident a mano (`createIncidentFromEvent`). */
+export function canOpenIncidentFromEvent(ev: Pick<MonitoringEvent, 'status'>): boolean {
+  return (INCIDENT_OPEN_STATUSES as readonly string[]).includes(ev.status)
 }

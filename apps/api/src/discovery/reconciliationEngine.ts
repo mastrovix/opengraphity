@@ -126,6 +126,14 @@ async function reconcileOne(
     const conflicts = detectConflicts(discovered, existing)
     if (conflicts.length > 0) {
       await createConflict(session, discovered, existing, conflicts, source, runId, tenantId, now)
+      // Il CI è stato VISTO: i marcatori della discovery si scrivono comunque
+      // (D-8), altrimenti un conflitto su un campo bloccato lo faceva sembrare
+      // sparito (`stale`) alla passata successiva.
+      await session.executeWrite(tx => tx.run(
+        `MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId})
+         SET ci.discovery_last_seen = $now, ci.discovery_status = 'active', ci.discovery_stale_since = null`,
+        { id: existing.id, tenantId, now },
+      ))
       stats.ciConflicts++
       return
     }
@@ -319,18 +327,36 @@ async function updateCI(
     }
   }
 
+  // Il nome e i marcatori della discovery si scrivono SEMPRE (revisione totale
+  // · D-2): l'uscita anticipata stava prima di questa scrittura, quindi un CI
+  // rinominato alla sorgente non veniva mai rinominato, uno marcato `stale` che
+  // riappariva identico restava «sparito» per sempre, e `discovery_last_seen`
+  // non avanzava mai per i CI stabili. Il nome cambiato è una modifica come le
+  // altre, e come tale entra nella storia della sincronizzazione.
+  if (String(existing.props['name'] ?? '') !== ci.name) {
+    changedFields.push('name')
+    oldValues['name'] = existing.props['name'] ?? null
+    newValues['name'] = ci.name
+  }
+  const wasStale = existing.props['discovery_status'] !== 'active'
   updates['name']                 = ci.name
   updates['name_key']             = ciNameKey(ci.name)
   updates['discovery_last_seen']  = now
   updates['discovery_status']     = 'active'
+  updates['discovery_stale_since'] = null
   updates['updated_at']           = now
-
-  if (changedFields.length === 0) return false
 
   await session.executeWrite(tx => tx.run(
     `MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId}) SET ci += $updates`,
     { id: existing.id, tenantId, updates },
   ))
+
+  // Niente da raccontare: il CI è stato rivisto uguale a com'era. Le proprietà
+  // di servizio sono già scritte qui sopra.
+  if (changedFields.length === 0) {
+    if (wasStale) logger.info({ ciId: existing.id, externalId: ci.external_id }, '[reconcile] CI seen again: no longer stale')
+    return false
+  }
 
   // Record the change for sync history
   const changeId = randomUUID()
@@ -371,18 +397,19 @@ async function createConflict(
   now:        string,
 ): Promise<void> {
   const id = randomUUID()
+  // Un conflitto APERTO per (sorgente, external_id, campi bloccati) — revisione
+  // totale · D-8: con un CREATE a ogni run un cron orario ne creava 24 al
+  // giorno per lo stesso campo, la pagina Conflitti si riempiva e risolverne
+  // uno lasciava gli altri aperti. Il conflitto si aggiorna col valore visto
+  // ora (`discovered_ci`, `run_id`, `last_seen_at`) e ne resta uno.
   await session.executeWrite(tx => tx.run(
-    `CREATE (c:SyncConflict {
-       id: $id, source_id: $sourceId, tenant_id: $tenantId, run_id: $runId,
-       external_id: $externalId, ci_type: $ciType,
-       conflict_fields: $conflictFields,
-       conflict_kind: '${CONFLICT_LOCKED_FIELDS}',
-       status: 'open',
-       discovered_ci: $discoveredCi,
-       existing_ci_id: $existingCiId,
-       match_reason: 'external_id',
-       created_at: $now
-     })`,
+    `MERGE (c:SyncConflict {
+       source_id: $sourceId, tenant_id: $tenantId, external_id: $externalId,
+       conflict_fields: $conflictFields, conflict_kind: '${CONFLICT_LOCKED_FIELDS}', status: 'open'
+     })
+     ON CREATE SET c.id = $id, c.created_at = $now, c.match_reason = 'external_id'
+     SET c.run_id = $runId, c.ci_type = $ciType, c.discovered_ci = $discoveredCi,
+         c.existing_ci_id = $existingCiId, c.last_seen_at = $now`,
     {
       id,
       sourceId:       source.id,
@@ -446,7 +473,9 @@ async function syncRelations(
   touched:    Set<string>,
 ): Promise<{ created: number; removed: number }> {
   let created = 0
-  const removed = 0
+  let removed = 0
+  /** Le relazioni che la sorgente riporta ora: quelle del suo marcatore che non ci sono più vanno via (D-9). */
+  const reported: Array<{ toId: string; relType: string; direction: string }> = []
 
   const ciResult = await session.executeRead(tx => tx.run(
     `MATCH (ci:ConfigurationItem {discovery_external_id: $externalId, discovery_source_id: $sourceId, tenant_id: $tenantId})
@@ -474,25 +503,48 @@ async function syncRelations(
         `MATCH (a:ConfigurationItem {id: $fromId}), (b:ConfigurationItem {id: $toId})
          MERGE (a)-[r:${relType}]->(b)
          ON CREATE SET r.created_at = $now, r.discovery_source_id = $sourceId
-         RETURN r.created_at AS createdAt`,
+         RETURN r.created_at = $now AS isNew`,
         { fromId, toId, now: new Date().toISOString(), sourceId: source.id },
       ))
-      if (r.records.length) created++
+      // Creata ora, non «ritrovata»: prima ogni riga contava come creazione, e
+      // `relations_created` diceva il totale delle relazioni a ogni run (D-9).
+      if (r.records[0]?.get('isNew') === true) created++
     } else {
       const r = await session.executeWrite(tx => tx.run(
         // tenant-ok: id dei CI riconciliati in questo run (stesso tenant della sorgente)
         `MATCH (a:ConfigurationItem {id: $toId}), (b:ConfigurationItem {id: $fromId})
          MERGE (a)-[r:${relType}]->(b)
          ON CREATE SET r.created_at = $now, r.discovery_source_id = $sourceId
-         RETURN r.created_at AS createdAt`,
+         RETURN r.created_at = $now AS isNew`,
         { fromId, toId, now: new Date().toISOString(), sourceId: source.id },
       ))
-      if (r.records.length) created++
+      if (r.records[0]?.get('isNew') === true) created++
     }
     // Entrambi i capi: la mappa può includere l'uno o l'altro.
     touched.add(fromId)
     touched.add(toId)
+    reported.push({ toId, relType, direction: rel.direction })
   }
+
+  // Le relazioni che QUESTA sorgente aveva creato da questo CI e che ora non
+  // riporta più si rimuovono (revisione totale · D-9): prima `removed` era
+  // sempre 0 e una `DEPENDS_ON` verso un target togliato dall'ELB restava per
+  // sempre, seguita da mappe dei servizi e soppressione degli allarmi. Si
+  // toccano solo le relazioni con il marcatore della sorgente: quelle scritte a
+  // mano nella CMDB non si cancellano.
+  const removeResult = await session.executeWrite(tx => tx.run(
+    // tenant-ok: id del CI riconciliato in questo run (stesso tenant della sorgente)
+    `MATCH (a:ConfigurationItem {id: $fromId})-[r]-(b:ConfigurationItem)
+     WHERE r.discovery_source_id = $sourceId
+       AND NOT [type(r), b.id, CASE WHEN startNode(r).id = $fromId THEN 'outgoing' ELSE 'incoming' END] IN $reported
+     DELETE r
+     RETURN count(r) AS n`,
+    {
+      fromId, sourceId: source.id,
+      reported: reported.map((x) => [x.relType, x.toId, x.direction]),
+    },
+  ))
+  removed += toNum(removeResult.records[0]?.get('n')) ?? 0
 
   return { created, removed }
 }

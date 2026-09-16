@@ -33,7 +33,7 @@ import { useDebounced } from '@/hooks/useDebounced'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { GET_ALL_CIS } from '@/graphql/queries'
 import { ACKNOWLEDGE_EVENT, RESOLVE_EVENT, LINK_EVENT_TO_CI, CREATE_INCIDENT_FROM_EVENT, REEVALUATE_EVENT } from '@/graphql/mutations'
-import { isActiveEvent, resourceKindLabel } from './eventShared'
+import { canAcknowledgeEvent, canResolveEvent, canOpenIncidentFromEvent, resourceKindLabel } from './eventShared'
 import { canReevaluate, isSuppressed } from './eventCorrelation'
 import type { EventRow, MonitoringEvent } from '@/types/events'
 import { showError } from '@/lib/showError'
@@ -73,11 +73,13 @@ export function EventActions({ event, onChanged, size = 'xs', only, exclude, com
 
   const shown = (kind: EventActionKind) => (!only || only.includes(kind)) && !exclude?.includes(kind)
 
-  const active = isActiveEvent(event)
-  const canAck        = shown('acknowledge')  && active && !event.acknowledgedAt
-  const canResolve    = shown('resolve')      && active
+  // Le condizioni ricalcano quelle dei resolver (eventShared): un'azione
+  // mostrata e poi rifiutata dall'API, o nascosta benché accettata, era il
+  // difetto G-EVT-1/G-EVT-10 della revisione totale.
+  const canAck        = shown('acknowledge')  && canAcknowledgeEvent(event) && !event.acknowledgedAt
+  const canResolve    = shown('resolve')      && canResolveEvent(event)
   // Un evento silenziato da una change non apre incident nemmeno a mano: prima si rivaluta.
-  const canOpen       = shown('openIncident') && !event.incident && !isSuppressed(event)
+  const canOpen       = shown('openIncident') && canOpenIncidentFromEvent(event) && !event.incident && !isSuppressed(event)
   const canLink       = shown('linkCI')       && !event.ci
   const canReeval     = shown('reevaluate')   && canReevaluate(event)
 

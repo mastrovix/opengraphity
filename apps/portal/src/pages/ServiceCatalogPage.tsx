@@ -37,7 +37,10 @@ export function ServiceCatalogPage() {
   const [createRequest, { loading: submitting }] = useMutation<{ createServiceRequest: { id: string; number: string } }>(
     CREATE_SERVICE_REQUEST,
     {
-      onCompleted: (d) => { setOpenItem(null); setDetails(''); navigate(`/tickets`, { state: { created: d.createServiceRequest.number } }) },
+      // Revisione totale · H-36: si apre la richiesta appena inviata, con la
+      // conferma — prima si atterrava su «I miei ticket» con uno stato che
+      // nessuno leggeva, e la richiesta non si vedeva nemmeno (H-2).
+      onCompleted: (d) => { setOpenItem(null); setDetails(''); navigate(`/tickets/${d.createServiceRequest.id}`, { state: { created: true } }) },
       onError: (e) => notifyError(e.message),
     },
   )

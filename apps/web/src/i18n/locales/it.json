@@ -312,7 +312,9 @@
       },
       "configureRules": "Configura le regole",
       "resolvedReason": "Chiusa perché",
-      "resolvedByRuleDisabled": "La regola è stata spenta"
+      "resolvedByRuleDisabled": "La regola è stata spenta",
+      "noResults": "Nessuna anomalia corrisponde ai filtri",
+      "noResultsDesc": "Cambia o azzera i filtri per vedere le altre."
     },
     "topology": {
       "title": "Mappa Topologica",
@@ -345,7 +347,8 @@
       "comboShown": "Mostrati {{shown}} di {{total}} — affina la ricerca per trovare gli altri",
       "highlightHealth": "Evidenzia salute",
       "chooseCIHint": "Scegli un tipo di CI e un CI nella barra qui sopra per vederne le relazioni.",
-      "noRelations": "Questo CI non ha relazioni entro la profondità scelta."
+      "noRelations": "Questo CI non ha relazioni entro la profondità scelta.",
+      "openCIForTickets": "Apri il CI: i suoi incident e le sue change sono elencati lì"
     },
     "teams": {
       "title": "Team",
@@ -2372,6 +2375,15 @@
       "isolated_cluster": "CI in un cluster isolato: raggiunge solo {{count}} altri CI",
       "risk_concentration": "CI con {{count}} incident critici aperti",
       "unauthorized_relation_legacy": "DEPENDS_ON rovesciata: Server → Application ({{application}})"
+    },
+    "suggestions": {
+      "orphan_ci": "Collegalo a ciò da cui dipende (o a ciò che dipende da lui), oppure mettilo fuori servizio se non serve più.",
+      "spof": "Tutto passa da un solo componente: aggiungi ridondanza, oppure scrivi che il rischio è accettato.",
+      "dependency_cycle": "Le dipendenze formano un anello: una di esse è al contrario. Correggi la direzione della relazione che chiude il cerchio.",
+      "missing_owner": "Dagli un team proprietario: senza, nessuno riceve i suoi ticket né i suoi allarmi.",
+      "unauthorized_relation": "Questa relazione non è ammessa fra questi due tipi: togliala, oppure ammettila nel disegnatore dei tipi CI.",
+      "isolated_cluster": "Questo gruppo di CI è staccato dal resto della CMDB: collegalo all'applicazione o all'infrastruttura di cui fa parte.",
+      "risk_concentration": "Troppi incident su un solo CI: guarda la causa profonda (un problem), non un ticket per volta."
     }
   },
   "notifications": {
@@ -3944,7 +3956,8 @@
       "badToken": "Il token del bot di un'app Slack comincia con xoxb-.",
       "badSigningSecret": "Il segreto di firma di un'app Slack è di 32 caratteri esadecimali.",
       "tokenRefused": "Slack non ha accettato il token: {{error}}.",
-      "badReturnTo": "La pagina di ritorno deve essere di questa organizzazione."
+      "badReturnTo": "La pagina di ritorno deve essere di questa organizzazione.",
+      "idTaken": "Questo account Slack è già collegato a {{user}}"
     },
     "login": {
       "rule": {
@@ -5070,12 +5083,12 @@
       "notFound": "Sorgente non trovata",
       "tool": "Strumento",
       "presetRulesTitle": "Regole",
-      "presetConfigError": "La configurazione salvata non è modificabile da questa pagina (salvataggio disabilitato per non perderla): {{error}}",
       "enabled": "Sorgente attiva",
       "mappingTitle": "Mappatura dei campi",
       "tokenTitle": "Token",
       "tokenHint": "Il token non viene più mostrato dopo la creazione. Se l'hai perso, rigeneralo: quello vecchio smette di funzionare subito.",
-      "droppedFields": "Regole salvate fuori da questo editor verranno perse al salvataggio: {{fields}}"
+      "droppedFields": "Regole salvate fuori da questo editor verranno perse al salvataggio: {{fields}}",
+      "configNotEditable": "La configurazione salvata non è modificabile da questa pagina: il salvataggio la lascia intatta e aggiorna solo nome, stato e limite. {{error}}"
     },
     "ciHealth": {
       "title": "Salute",
@@ -6242,7 +6255,9 @@
     "planSaved_one": "{{ci}}: {{count}} passo — {{steps}}",
     "planSaved_other": "{{ci}}: {{count}} passi — {{steps}}",
     "planCompleted_one": "{{ci}}: piano completato ({{count}} passo)",
-    "planCompleted_other": "{{ci}}: piano completato ({{count}} passi)"
+    "planCompleted_other": "{{ci}}: piano completato ({{count}} passi)",
+    "userUnassigned": "{{role}} · {{ci}}: assegnazione rimossa",
+    "planUserUnassigned": "Planning · {{ci}}: assegnazione rimossa"
   },
   "serviceTargets": {
     "timeCounting": "Il tempo conta",

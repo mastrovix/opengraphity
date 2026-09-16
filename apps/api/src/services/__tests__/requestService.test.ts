@@ -166,7 +166,7 @@ describe('mapRequest', () => {
   it('espone catalogItemId/requiresApproval (la copia del resolver li perdeva) con default null/false', () => {
     expect(mapRequest({ id: 'r', tenant_id: 't', title: 'T', status: 's', priority: 'p', created_at: 'c', updated_at: 'u' }))
       .toEqual({ id: 'r', number: '', tenantId: 't', title: 'T', description: undefined, status: 's', priority: 'p', dueDate: undefined,
-        completedAt: undefined, catalogItemId: null, requiresApproval: false, createdAt: 'c', updatedAt: 'u', requestedBy: null, assignee: null })
+        completedAt: undefined, catalogItemId: null, category: null, requiresApproval: false, createdAt: 'c', updatedAt: 'u', requestedBy: null, assignee: null })
     expect(mapRequest({ catalog_item_id: 'cat', requires_approval: true, number: 'REQ00000001' }))
       .toMatchObject({ catalogItemId: 'cat', requiresApproval: true, number: 'REQ00000001' })
   })

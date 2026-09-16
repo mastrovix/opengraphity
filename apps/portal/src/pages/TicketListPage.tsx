@@ -33,6 +33,8 @@ const FILTER_CLASS: Record<FilterKey, string | null> = {
 
 interface Ticket {
   id: string; number: string
+  /** `incident` o `service_request`: il portale apre entrambi (revisione totale · H-2). */
+  type: string
   title: string; status: string; priority: string; priorityLabel: string; priorityColor: string | null
   /** Categoria ed etichetta del passo nel workflow del cliente (ondata 7 · D-15). */
   statusCategory: string | null; statusLabel: string | null
@@ -173,6 +175,8 @@ export function TicketListPage() {
                 </div>
                 <div style={{ display: 'flex', gap: 12, fontSize: 10, color: colors.slateLight, flexWrap: 'wrap' }}>
                   <span style={{ fontWeight: 600 }}>{ticket.number}</span>
+                  {/* Di che ticket si tratta: incident o richiesta dal catalogo (H-2). */}
+                  <span style={{ padding: '1px 6px', borderRadius: 100, backgroundColor: colors.slateBg }}>{t(`ticket.kind.${ticket.type}`)}</span>
                   {ticket.category && <span>{categoryLabel(ticket.category)}</span>}
                   <span>{t('ticket.openedOn', { date: fmtDate(ticket.createdAt) })}</span>
                   <span>{t('ticket.updatedOn', { date: fmtDate(ticket.updatedAt) })}</span>

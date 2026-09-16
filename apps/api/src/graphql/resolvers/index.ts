@@ -93,13 +93,20 @@ function mapUser(props: Record<string, unknown>) {
   }
 }
 
+/** Le colonne su cui l'elenco delle persone ordina (guardiano: sortWhitelists.test.ts). */
+export const USER_SORT_WHITELIST: Record<string, string> = {
+  name:      'u.name',
+  email:     'u.email',
+  role:      'u.role',
+  createdAt: 'u.created_at',
+}
+
 const meStub = {
   me: meResolvers.Query.me,
   users: async (_: unknown, args: { sortField?: string; sortDirection?: string }, ctx: GraphQLContext) => {
     const session = getSession()
     try {
-      const sortMap: Record<string, string> = { name: 'u.name', email: 'u.email', role: 'u.role', createdAt: 'u.created_at' }
-      const orderBy = sortMap[args.sortField ?? ''] ?? 'u.name'
+      const orderBy = USER_SORT_WHITELIST[args.sortField ?? ''] ?? 'u.name'
       const orderDir = args.sortDirection === 'desc' ? 'DESC' : 'ASC'
       type Row = { props: Record<string, unknown>; teamId: string | null }
       const rows = await runQuery<Row>(session, `

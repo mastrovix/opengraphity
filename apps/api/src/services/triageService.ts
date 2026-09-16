@@ -16,6 +16,7 @@ import { config } from '../lib/config.js'
 import { GraphQLError } from 'graphql'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
+import { vectorSearchForTenant } from '../lib/vectorSearch.js'
 import { aiFeatureEnabled, assertAIFeature } from '../lib/aiSettings.js'
 import { logger } from '../lib/logger.js'
 import { enumScopeClause, loadTenantEnumOverrides, applyEnumOverride } from '../lib/enumScope.js'
@@ -82,20 +83,25 @@ async function loadEnumValues(field: 'severity' | 'category', tenantId: string):
   }
 }
 
+/** Quanti incident simili guarda il triage per proporre team/categoria/severità. */
+const TRIAGE_SIMILAR_LIMIT = 6
+
 async function findSimilar(tenantId: string, embedding: number[]): Promise<SimilarForTriage[]> {
   const session = getSession(undefined, 'READ')
   try {
-    return await runQuery<SimilarForTriage>(session, `
-      CALL db.index.vector.queryNodes($index, 30, $embedding)
-      YIELD node, score
-      WHERE node.tenant_id = $tenantId
-      OPTIONAL MATCH (node)-[:ASSIGNED_TO_TEAM]->(team:Team)
-      RETURN node.id AS id, node.number AS number, node.title AS title,
+    // K cresce finché i simili DEL TENANT bastano: l'indice è cross-tenant
+    // (revisione totale · B-12).
+    return await vectorSearchForTenant<SimilarForTriage>(session, {
+      index: vectorIndexName('Incident'),
+      embedding,
+      tenantId,
+      limit: TRIAGE_SIMILAR_LIMIT,
+      extra: 'OPTIONAL MATCH (node)-[:ASSIGNED_TO_TEAM]->(team:Team)',
+      returns: `node.id AS id, node.number AS number, node.title AS title,
              node.severity AS severity, node.category AS category,
-             node.status AS status, team.name AS teamName, score
-      ORDER BY score DESC
-      LIMIT 6
-    `, { index: vectorIndexName('Incident'), embedding, tenantId })
+             node.status AS status, team.name AS teamName, score`,
+      what: 'triage.findSimilar',
+    })
   } finally {
     await session.close()
   }

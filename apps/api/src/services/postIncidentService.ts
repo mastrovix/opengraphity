@@ -14,6 +14,7 @@ import { GraphQLError } from 'graphql'
 import { NotFoundError } from '../lib/errors.js'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { vectorIndexName } from './embeddings.js'
+import { vectorSearchForTenant } from '../lib/vectorSearch.js'
 import { logger } from '../lib/logger.js'
 // I passi conclusivi (risolti/terminali) vengono dal workflow di QUESTO cliente
 // e non da `['closed']`/`['resolved','closed']` (ondata 8 · B-22).
@@ -146,15 +147,27 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
   const union = (a: string, b: string) => { parent.set(find(a), find(b)) }
   for (const i of incidents) parent.set(i.id, i.id)
 
+  // Quanti vicini per incident guarda la ricerca dei cluster.
+  const CLUSTER_PEERS_LIMIT = 15
   const index = vectorIndexName('Incident')
   for (const i of incidents) {
-    const peers = await readQuery<{ id: string; score: number }>(`
-      CALL db.index.vector.queryNodes($index, 15, $embedding)
-      YIELD node, score
-      WHERE node.tenant_id = $tenantId AND node.id <> $selfId
-        AND NOT node.status IN $closedSteps AND score >= $minSimilarity
-      RETURN node.id AS id, score
-    `, { index, embedding: i.embedding, tenantId, selfId: i.id, closedSteps, minSimilarity: clusterMinSimilarity })
+    // K cresce finché i vicini DEL TENANT bastano: l'indice è cross-tenant e
+    // i 15 globali di un'installazione con clienti grandi non contengono
+    // nessun incident di questo cliente (revisione totale · B-12).
+    const session = getSession(undefined, 'READ')
+    let peers: { id: string; score: number }[]
+    try {
+      peers = await vectorSearchForTenant<{ id: string; score: number }>(session, {
+        index,
+        embedding: i.embedding,
+        tenantId,
+        limit: CLUSTER_PEERS_LIMIT,
+        where: 'node.id <> $selfId AND NOT node.status IN $closedSteps AND score >= $minSimilarity',
+        returns: 'node.id AS id, score',
+        params: { selfId: i.id, closedSteps, minSimilarity: clusterMinSimilarity },
+        what: 'postIncident.problemCandidates',
+      })
+    } finally { await session.close() }
     for (const p of peers) if (parent.has(p.id)) union(i.id, p.id)
   }
 

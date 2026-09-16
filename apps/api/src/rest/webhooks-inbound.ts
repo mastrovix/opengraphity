@@ -21,6 +21,8 @@ import * as problemService from '../services/problemService.js'
 import { sourceConfigOf, normalizeBatchWithConfig, rejectionSummary } from '../services/eventService.js'
 import { enqueueEvents } from '../jobs/eventIngestWorker.js'
 import { assertInboundTicketTargets } from '../lib/inboundTicketTargets.js'
+import { INBOUND_AFFECTED_CI_FIELD } from '@opengraphity/types'
+import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 
 const log = logger.child({ module: 'webhook-inbound' })
 const router: ExpressRouter = Router()
@@ -43,6 +45,24 @@ export const transformScriptSemaphore = new Semaphore({
   waitMs: TRANSFORM_SCRIPT_MAX_WAIT_MS,
   retryAfterSeconds: TRANSFORM_SCRIPT_RETRY_AFTER_SECONDS,
 })
+
+/**
+ * Il CI impattato nominato dal webhook: l'id, oppure il nome esatto (senza
+ * distinzione di maiuscole), come fa il comando Slack. Un nome che non esiste o
+ * che è di due CI è un errore della consegna, non un incident senza CI: finisce
+ * in `last_error` sulla sorgente e il mittente riceve un 400 che lo spiega.
+ */
+async function resolveInboundCI(session: Parameters<typeof runQuery>[0], tenantId: string, ref: string): Promise<string> {
+  const predicate = await ciLabelPredicateForTenant('ci', tenantId)
+  const rows = await runQuery<{ id: string; name: string }>(session, `
+    MATCH (ci {tenant_id: $tenantId})
+    WHERE ${predicate} AND (ci.id = $ref OR toLower(ci.name) = toLower($ref))
+    RETURN ci.id AS id, ci.name AS name LIMIT 2
+  `, { tenantId, ref: ref.trim() })
+  if (rows.length === 0) throw new ValidationError(`Impacted CI "${ref}" not found in this organization: map an id, or the exact name of a CI`)
+  if (rows.length > 1) throw new ValidationError(`Impacted CI "${ref}" is ambiguous (more than one CI has this name): map the id`)
+  return rows[0]!.id
+}
 
 /** Constant-time comparison of the presented token's sha256 against the stored hash. */
 export function tokenMatches(token: string, storedHashHex: string): boolean {
@@ -232,11 +252,19 @@ router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), as
         if (!mapped['severity']) {
           throw new ValidationError('Mapped payload has no severity — set it via field_mapping or default_values')
         }
+        // Revisione totale · M-18: il CI impattato è obbligatorio per un
+        // incident, e il webhook lo nomina (`affectedCI`, per id o per nome).
+        const ciRef = mapped[INBOUND_AFFECTED_CI_FIELD]
+        if (ciRef === undefined || ciRef === null || String(ciRef).trim() === '') {
+          throw new ValidationError(`Mapped payload has no ${INBOUND_AFFECTED_CI_FIELD} — an incident needs the impacted CI: map it (id or exact name) or set it in default_values`)
+        }
+        const ciId = await resolveInboundCI(session, tenantId, String(ciRef))
         const result = await incidentService.createIncident({
           title:       String(mapped['title']),
           description: mapped['description'] ? String(mapped['description']) : undefined,
           severity:    String(mapped['severity']),
           category:    mapped['category'] ? String(mapped['category']) : undefined,
+          affectedCIIds: [ciId],
         }, ctx)
         entityId = result.id as string
         break

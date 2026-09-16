@@ -218,13 +218,33 @@ describe('createProblem — numero, workflow, evento e link', () => {
   })
 
   it('crea l\'istanza di workflow "problem" con la categoria (o null)', async () => {
-    await createProblem({ title: 'P', priority: 'high', category: 'storage' }, ctx)
+    await createProblem({ title: 'P', priority: 'high', category: 'network' }, ctx)
     expect(workflowEngine.createInstance).toHaveBeenCalledTimes(1)
-    expect(workflowEngine.createInstance).toHaveBeenCalledWith(h.session, 'tenant-1', expect.stringMatching(UUID_RE), 'problem', undefined, 'storage')
+    expect(workflowEngine.createInstance).toHaveBeenCalledWith(h.session, 'tenant-1', expect.stringMatching(UUID_RE), 'problem', undefined, 'network')
 
     vi.clearAllMocks()
     await createProblem({ title: 'P', priority: 'high' }, ctx)
     expect(workflowEngine.createInstance).toHaveBeenCalledWith(h.session, 'tenant-1', expect.any(String), 'problem', undefined, null)
+  })
+
+  /**
+   * Revisione totale · B-3: la categoria sceglieva il workflow e poi spariva —
+   * il CREATE non la scriveva, il tipo non la esponeva, e una policy SLA
+   * «problem, categoria X» non sceglieva mai nessun problem (il motore legge
+   * `e.category` dal nodo).
+   */
+  it('la categoria resta sul nodo, ed è un valore del vocabolario del cliente', async () => {
+    await createProblem({ title: 'P', priority: 'high', category: 'network' }, ctx)
+    const [[cypher, params]] = queriesWith('CREATE (p:Problem')
+    expect(cypher).toContain('category:    $category')
+    expect(params).toMatchObject({ category: 'network' })
+
+    vi.clearAllMocks()
+    await createProblem({ title: 'P', priority: 'high' }, ctx)
+    expect(queriesWith('CREATE (p:Problem')[0]![1]).toMatchObject({ category: null })
+
+    await expect(createProblem({ title: 'P', priority: 'high', category: 'storage' }, ctx))
+      .rejects.toThrow(/category: "storage" is not in the dictionary/)
   })
 
   it('pubblica problem.created con tenant, attore e payload (priorità derivata, stato iniziale)', async () => {
@@ -239,7 +259,7 @@ describe('createProblem — numero, workflow, evento e link', () => {
   // dentro, ma dal consumatore di `problem.created` (consumers/automationConsumer.ts),
   // come per ogni ticket e ogni evento.
   it('non valuta trigger né regole in linea: li mette in moto problem.created', async () => {
-    await createProblem({ title: 'P', priority: 'medium', category: 'net' }, ctx)
+    await createProblem({ title: 'P', priority: 'medium', category: 'network' }, ctx)
     expect(evaluateTriggers).not.toHaveBeenCalled()
   })
 

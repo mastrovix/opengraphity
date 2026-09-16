@@ -126,7 +126,10 @@ export function CMDBPage() {
     setSortField(field); setSortDir(dir); setPage(0)
   }
 
-  const { data, loading } = useQuery<{
+  // `error` va letto: senza, un filtro rifiutato dall'API lasciava la pagina a
+  // «nessun CI» e l'utente credeva che il filtro non avesse risultati
+  // (revisione totale · F-11).
+  const { data, loading, error, refetch } = useQuery<{
     allCIs: { items: CI[]; total: number }
   }>(GET_ALL_CIS, {
     variables: {
@@ -169,6 +172,7 @@ export function CMDBPage() {
       </div>
 
       {baseEnums.error && <QueryError message={`${t('pages.cmdb.baseEnumsUnavailable')}: ${baseEnums.error}`} />}
+      {error && <QueryError message={error.message} onRetry={() => void refetch()} />}
 
       <FilterBuilder
         fields={FILTER_FIELDS}

@@ -10,6 +10,13 @@ export function problemSDL(): string {
     priority: String!
     impact: String
     urgency: String
+    """
+    La categoria del problem (vocabolario del cliente). Il nodo non la scriveva
+    affatto: le policy SLA «problem, categoria X» erano ammesse e non
+    sceglievano mai nessun problem, e il valore passato via REST spariva
+    (revisione totale · B-3).
+    """
+    category: String
     status: String!
     rootCause: String
     workaround: String
@@ -68,6 +75,8 @@ export function problemSDL(): string {
     priority: String
     impact: String
     urgency: String
+    """Categoria del vocabolario del cliente: sceglie il workflow E resta sul nodo (B-3)."""
+    category: String
     affectedCIs: [ID!]
     relatedIncidents: [ID!]
     workaround: String
@@ -81,6 +90,8 @@ export function problemSDL(): string {
   input UpdateProblemInput {
     title: String
     description: String
+    """Categoria del vocabolario del cliente (B-3)."""
+    category: String
     # Priorità = Impatto × Urgenza (ITIL). Se passi impact/urgency la priorità è
     # ricalcolata; se passi solo priority, impact/urgency vengono riallineati.
     priority: String

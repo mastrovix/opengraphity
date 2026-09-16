@@ -16,8 +16,36 @@ export const ALL_CIS_ALLOWED_FIELDS = new Set(['name', 'status', 'environment', 
 
 // ── Sort whitelist ────────────────────────────────────────────────────────────
 
+/**
+ * Elenco di UN tipo di CI (`dynamic-ci.ts`, pagina di tipo): la query lega
+ * `og` (gruppo proprietario) con un OPTIONAL MATCH, quindi `ownerGroup` si
+ * ordina davvero. La colonna era ordinabile nel web e ignorata qui
+ * (revisione totale · B-9, stessa famiglia di `number` sugli incident).
+ */
 export const CI_SORT_WHITELIST: Record<string, string> = {
   name: 'n.name', status: 'n.status', environment: 'n.environment', createdAt: 'n.created_at',
+  ownerGroup: 'og.name',
+}
+
+/** Il tipo di un CI è la sua label di dominio: non è una proprietà del nodo. */
+export const CI_TYPE_ORDER_EXPR = "head([l IN labels(n) WHERE l <> 'ConfigurationItem'])"
+
+/**
+ * CMDB (`allCIs`, tutti i tipi insieme): `sortField`/`sortDirection` erano
+ * dichiarati nello schema e il resolver NON li leggeva affatto — ogni clic su
+ * un'intestazione della CMDB mostrava la freccia e lasciava l'ordine per nome
+ * (revisione totale · B-9). Qui `og` non è legato, quindi il gruppo non è
+ * ordinabile e la colonna del web non lo dichiara.
+ */
+export const ALL_CIS_SORT_WHITELIST: Record<string, string> = {
+  name: 'n.name', status: 'n.status', environment: 'n.environment', createdAt: 'n.created_at',
+  type: CI_TYPE_ORDER_EXPR,
+}
+
+export function allCIsOrderBy(sortField?: string | null, sortDirection?: string | null): string {
+  const col = sortField ? ALL_CIS_SORT_WHITELIST[sortField] : undefined
+  const dir = sortDirection?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
+  return col ? `${col} ${dir}` : 'n.name ASC'
 }
 
 // ── ciOrderBy ─────────────────────────────────────────────────────────────────

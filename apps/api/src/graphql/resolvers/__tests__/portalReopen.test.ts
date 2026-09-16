@@ -62,8 +62,8 @@ describe('reopenTicket', () => {
     mockSession.executeRead.mockReset()
     vi.mocked(getWorkflowSteps).mockResolvedValue(STEPS)
     mockSession.executeRead
-      .mockResolvedValueOnce({ records: [rec({ createdBy: 'user-1', status: 'resolved', instanceId: 'wi-1' })] })
-      .mockResolvedValueOnce({ records: [rec({ props: ticketProps })] })
+      .mockResolvedValueOnce({ records: [rec({ createdBy: 'user-1', status: 'resolved', instanceId: 'wi-1', labels: ['Incident'] })] })
+      .mockResolvedValueOnce({ records: [rec({ props: ticketProps, labels: ['Incident'] })] })
   })
 
   it('transitions via the engine to an open step the workflow allows (prefers non-initial active)', async () => {
@@ -110,7 +110,7 @@ describe('reopenTicket', () => {
 
   it('ticket without workflow instance → ValidationError (never a bare status write)', async () => {
     mockSession.executeRead.mockReset()
-    mockSession.executeRead.mockResolvedValueOnce({ records: [rec({ createdBy: 'user-1', status: 'resolved', instanceId: null })] })
+    mockSession.executeRead.mockResolvedValueOnce({ records: [rec({ createdBy: 'user-1', status: 'resolved', instanceId: null, labels: ['Incident'] })] })
 
     await expect(portalResolvers.Mutation.reopenTicket(null, { ticketId: 'inc-1' }, ctx)).rejects.toThrow(/no workflow instance/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
@@ -118,7 +118,7 @@ describe('reopenTicket', () => {
 
   it('not resolved → CONFLICT', async () => {
     mockSession.executeRead.mockReset()
-    mockSession.executeRead.mockResolvedValueOnce({ records: [rec({ createdBy: 'user-1', status: 'in_progress', instanceId: 'wi-1' })] })
+    mockSession.executeRead.mockResolvedValueOnce({ records: [rec({ createdBy: 'user-1', status: 'in_progress', instanceId: 'wi-1', labels: ['Incident'] })] })
     const err = await portalResolvers.Mutation.reopenTicket(null, { ticketId: 'inc-1' }, ctx).then(() => null, (e: unknown) => e)
     expect((err as GraphQLError).extensions['code']).toBe('CONFLICT')
   })
@@ -132,14 +132,14 @@ describe('mapTicket — no invented defaults (A-19)', () => {
   it('a node without category reports null, not "other"', async () => {
     mockSession.executeRead.mockResolvedValue({ records: [] })
     mockSession.executeRead.mockResolvedValueOnce({
-      records: [rec({ props: { ...ticketProps, category: undefined }, assignedTeam: null })],
+      records: [rec({ props: { ...ticketProps, category: undefined }, assignedTeam: null, labels: ['Incident'] })],
     })
     await expect(portalResolvers.Query.myTicket(null, { id: 'inc-1' }, ctx)).resolves.toMatchObject({ category: null })
   })
 
   it('a node without severity still fails loud instead of reporting "medium"', async () => {
     mockSession.executeRead.mockResolvedValueOnce({
-      records: [rec({ props: { ...ticketProps, severity: undefined }, assignedTeam: null })],
+      records: [rec({ props: { ...ticketProps, severity: undefined }, assignedTeam: null, labels: ['Incident'] })],
     })
     await expect(portalResolvers.Query.myTicket(null, { id: 'inc-1' }, ctx)).rejects.toThrow(/missing required property 'severity'/)
   })

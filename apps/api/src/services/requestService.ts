@@ -25,6 +25,7 @@ export function mapRequest(props: Props) {
     dueDate:     props['due_date']     as string | undefined,
     completedAt: props['completed_at'] as string | undefined,
     catalogItemId: (props['catalog_item_id'] ?? null) as string | null,
+    category:      (props['category'] ?? null) as string | null,
     requiresApproval: (props['requires_approval'] ?? false) as boolean,
     createdAt:   props['created_at']   as string,
     updatedAt:   props['updated_at']   as string,
@@ -63,6 +64,10 @@ export async function createRequest(
         category:          $category,
         due_date:          $dueDate,
         catalog_item_id:   $catalogItemId,
+        // Chi l'ha aperta, come per gli incident: il portale elenca i propri
+        // ticket da qui (revisione totale · H-2) e la regola degli allegati
+        // riconosce «il mio» da questa proprietà.
+        created_by:        $userId,
         requires_approval: $requiresApproval,
         created_at:        $now,
         updated_at:        $now,
@@ -74,7 +79,7 @@ export async function createRequest(
       SET r += $customProps
       RETURN properties(r) as props
     `, {
-      id, tenantId: ctx.tenantId, number, status: initialStatus,
+      id, tenantId: ctx.tenantId, number, status: initialStatus, userId: ctx.userId,
       title: input.title, description: input.description ?? null,
       priority: input.priority, dueDate: input.dueDate ?? null,
       // La categoria arriva dalla voce del catalogo (verifica «Cosa resta cablato», ondata 2): serve alle policy SLA per categoria.

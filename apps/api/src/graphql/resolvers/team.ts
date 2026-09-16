@@ -25,12 +25,19 @@ type Props = Record<string, unknown>
 // non filtrava niente. E' un valore del vocabolario `team_type`.
 const TEAM_ALLOWED_FIELDS = new Set(['name', 'type', 'sourcing', 'createdAt'])
 
+/** Le colonne su cui l'elenco dei team ordina (guardiano: sortWhitelists.test.ts). */
+export const TEAM_SORT_WHITELIST: Record<string, string> = {
+  name:      't.name',
+  type:      't.type',
+  sourcing:  't.sourcing',
+  createdAt: 't.created_at',
+}
+
 async function teams(_: unknown, args: { filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const params: Record<string, unknown> = { tenantId: ctx.tenantId }
     const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, TEAM_ALLOWED_FIELDS, 't') : ''
-    const sortMap: Record<string, string> = { name: 't.name', type: 't.type', createdAt: 't.created_at' }
-    const orderBy = sortMap[args.sortField ?? ''] ?? 't.name'
+    const orderBy = TEAM_SORT_WHITELIST[args.sortField ?? ''] ?? 't.name'
     const orderDir = args.sortDirection === 'desc' ? 'DESC' : 'ASC'
     // Prefetch members / owned+supported CIs / manager with pattern
     // comprehensions: one query, no per-team N+1 and no cartesian blow-up

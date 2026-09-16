@@ -47,7 +47,8 @@ export function fieldToForm(f: CIFieldDef): FieldForm {
     label:            f.label,
     fieldType:        f.fieldType,
     required:         f.required,
-    defaultValue:     '',
+    // Revisione totale · G-3: il valore predefinito del campo, non una stringa vuota.
+    defaultValue:     (f as unknown as { defaultValue?: string | null }).defaultValue ?? '',
     enumTypeId:       (f as unknown as { enumTypeId?: string | null }).enumTypeId ?? null,
     validationScript: f.validationScript ?? '',
     visibilityScript: f.visibilityScript ?? '',
@@ -68,7 +69,17 @@ interface FieldModalProps {
 
 export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }: FieldModalProps) {
   const { t } = useTranslation()
+  // Revisione totale · G-4: il modale è montato sempre, quindi `useState` si
+  // valutava una volta sola (con `initial` a null): «Modifica» su un campo base
+  // mostrava un form vuoto — o l'ultimo digitato — e salvava come «aggiungi».
+  // La chiave riporta il form al campo scelto ogni volta che si apre.
+  const formKey = `${open ? 'open' : 'closed'}:${initial?.name ?? 'new'}`
   const [form, setForm] = useState<FieldForm>(initial ?? { ...emptyFieldForm(), order: existingCount })
+  const [loadedFor, setLoadedFor] = useState(formKey)
+  if (loadedFor !== formKey) {
+    setLoadedFor(formKey)
+    setForm(initial ?? { ...emptyFieldForm(), order: existingCount })
+  }
   const [saving, setSaving] = useState(false)
   const [scriptTab, setScriptTab] = useState<'validation' | 'visibility' | 'default'>('validation')
 

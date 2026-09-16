@@ -162,7 +162,12 @@ function buildWhereClause(
         break
       case 'last_n_days':
         params[paramKey] = Number(f.value)
-        parts.push(`${nodeVar}.${field} > datetime() - duration({days: $${paramKey}})`)
+        // Le date dei ticket sono stringhe ISO sul nodo: confrontare una
+        // stringa con un DateTime dà NULL in Cypher, cioè NESSUNA riga, e in
+        // silenzio — «incident degli ultimi 7 giorni» tornava sempre vuoto
+        // (revisione totale · C-7, verificato sul database). La stringa va
+        // convertita, come fa già lib/filterBuilder.ts.
+        parts.push(`datetime(${nodeVar}.${field}) > datetime() - duration({days: $${paramKey}})`)
         break
       case 'is_null':
         parts.push(`${nodeVar}.${field} IS NULL`)
@@ -355,7 +360,9 @@ export function buildReportQuery(
     case 'area': {
       const field = groupField ?? 'created_at'
       returnClause = [
-        `RETURN date(${groupVar}.${field}) AS label, count(${rootVar}) AS value`,
+        // `date('2026-09-09T10:00:00Z')` non si parsa («Text cannot be parsed
+        // to a Date»): la data va estratta dal datetime (C-7).
+        `RETURN date(datetime(${groupVar}.${field})) AS label, count(${rootVar}) AS value`,
         `ORDER BY label ASC`,
       ].join('\n')
       break

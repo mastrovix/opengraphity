@@ -87,17 +87,25 @@ export function EditSourcePage() {
   const isGeneric = source?.connectorKind === 'generic'
   // Connettore preset (forma nota): null per generic e per i webhook senza connectorKind (trattati come generic dall'API).
   const presetKind: PresetConnectorKind | null = source?.connectorKind && source.connectorKind !== 'generic' ? source.connectorKind : null
-  // Una configurazione che l'editor non sa rappresentare (configError) non si salva: si perderebbero regole in silenzio.
+  /**
+   * Una configurazione che l'editor non sa rappresentare (configError) NON
+   * viene riscritta: il salvataggio manda solo nome, stato e limite, e la
+   * mappatura salvata resta com'è (revisione totale · G-MON-2 — prima per una
+   * sorgente «generic» l'errore non fermava nulla e `buildSourceConfig`
+   * sovrascriveva l'intera configurazione, perdendo labels, severità
+   * predefinita e traduzioni senza dirlo).
+   */
+  const configLocked = configError !== null
   const canSave = name.trim() !== '' && rateLimit !== null
-    && (!isGeneric || isMappingComplete(mapping))
-    && (!presetKind || (configError === null && isPresetRulesComplete(presetRules)))
+    && (!isGeneric  || configLocked || isMappingComplete(mapping))
+    && (!presetKind || configLocked || isPresetRulesComplete(presetRules))
   const endpoint = useMemo(() => (source ? sourceEndpointUrl(source.id) : ''), [source])
 
   async function handleSave() {
     if (!source || rateLimit === null) return
     const input: Record<string, unknown> = { name: name.trim(), enabled, rateLimitPerMinute: rateLimit }
-    if (isGeneric) Object.assign(input, buildSourceConfig(mapping))
-    if (presetKind) Object.assign(input, buildPresetConfig(presetKind, presetRules))
+    if (!configLocked && isGeneric)  Object.assign(input, buildSourceConfig(mapping))
+    if (!configLocked && presetKind) Object.assign(input, buildPresetConfig(presetKind, presetRules))
     try {
       await updateSource({ variables: { id: source.id, input } })
       toast.success(t('toast.monitoring.sourceUpdated'))
@@ -174,7 +182,7 @@ export function EditSourcePage() {
 
       {isGeneric && (
         <SectionCard title={t('monitoring.edit.mappingTitle')} defaultOpen>
-          {configError && <p role="alert" style={{ ...hintStyle, color: colors.danger }}>{t('monitoring.mapper.keysError', { error: configError })}</p>}
+          {configError && <p role="alert" style={{ ...hintStyle, color: colors.danger }}>{t('monitoring.edit.configNotEditable', { error: configError })}</p>}
           {dropped.length > 0 && <p style={{ ...hintStyle, color: palette.warning.text }}>{t('monitoring.edit.droppedFields', { fields: dropped.join(', ') })}</p>}
           <GenericMapper mapping={mapping} onChange={setMapping} payload={payload} onPayloadChange={setPayload} />
         </SectionCard>
@@ -182,7 +190,7 @@ export function EditSourcePage() {
 
       {presetKind && (
         <SectionCard title={t('monitoring.edit.presetRulesTitle')} defaultOpen>
-          {configError && <p role="alert" style={{ ...hintStyle, color: colors.danger }}>{t('monitoring.edit.presetConfigError', { error: configError })}</p>}
+          {configError && <p role="alert" style={{ ...hintStyle, color: colors.danger }}>{t('monitoring.edit.configNotEditable', { error: configError })}</p>}
           <PresetRulesEditor kind={presetKind} rules={presetRules} onChange={setPresetRules} />
         </SectionCard>
       )}

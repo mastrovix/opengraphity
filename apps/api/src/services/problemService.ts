@@ -8,6 +8,7 @@ import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
 import { ValidationError } from '../lib/errors.js'
+import { assertDomainValue } from '../lib/domainMatrix.js'
 import { validateStringLength } from '../lib/validation.js'
 import { logger } from '../lib/logger.js'
 import { publishEvent } from '../lib/publishEvent.js'
@@ -66,6 +67,9 @@ export async function createProblem(
   ctx: ServiceCtx,
 ) {
   validateStringLength(input.title, 'title', 1, 500)
+  // B-3: la categoria è un valore del vocabolario del cliente, come per gli
+  // incident. Prima veniva usata per scegliere il workflow e poi scartata.
+  if (input.category != null) await assertDomainValue(ctx.tenantId, 'category', input.category)
   // CM-8: i tipi di CI esclusi per i problem, prima di scrivere.
   await assertCIsLinkable(ctx.tenantId, 'problem', input.affectedCIs ?? [])
   // ITIL: Priority = f(Impact, Urgency). Impatto+urgenza vincono. Ondata 7
@@ -96,6 +100,9 @@ export async function createProblem(
         priority:    $priority,
         impact:      $impact,
         urgency:     $urgency,
+        // B-3: la categoria scelta resta sul nodo — sceglie il workflow E le
+        // policy SLA per categoria la leggono da qui (packages/sla/status.ts).
+        category:    $category,
         status:      $status,
         workaround:  $workaround,
         created_at:  $now,
@@ -111,6 +118,7 @@ export async function createProblem(
       id, tenantId: ctx.tenantId, number,
       title: input.title, description: input.description ?? null,
       priority, impact, urgency,
+      category: input.category ?? null,
       workaround: input.workaround ?? null,
       status: initialStatus, now,
       ackAt: input.acknowledgeNoSla === true ? now : null,

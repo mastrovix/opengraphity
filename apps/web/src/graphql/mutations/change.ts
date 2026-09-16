@@ -66,7 +66,7 @@ export const ASSIGN_ASSESSMENT_TASK_TO_TEAM = gql`
 `
 
 export const ASSIGN_ASSESSMENT_TASK_TO_USER = gql`
-  mutation AssignAssessmentTaskToUser($taskId: ID!, $userId: ID!) {
+  mutation AssignAssessmentTaskToUser($taskId: ID!, $userId: ID) {
     assignAssessmentTaskToUser(taskId: $taskId, userId: $userId) {
       id
       assignee { id name }
@@ -75,7 +75,7 @@ export const ASSIGN_ASSESSMENT_TASK_TO_USER = gql`
 `
 
 export const ASSIGN_DEPLOY_PLAN_TASK_TO_USER = gql`
-  mutation AssignDeployPlanTaskToUser($taskId: ID!, $userId: ID!) {
+  mutation AssignDeployPlanTaskToUser($taskId: ID!, $userId: ID) {
     assignDeployPlanTaskToUser(taskId: $taskId, userId: $userId) {
       id
       assignee { id name }

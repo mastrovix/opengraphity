@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../config.js', () => ({ config: { keycloakUrl: 'http://kc', keycloakAdminUser: 'admin', keycloakAdminPassword: 'x' } }))
+vi.mock('../logger.js', () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } }))
 
 const { normalizeEmail, createRealmUser, setRealmUserEnabled, setUsersKeycloakAdminForTests } = await import('../tenantUsers.js')
 

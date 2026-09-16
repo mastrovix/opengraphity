@@ -82,23 +82,26 @@ function primeSession(steps: Step[], counts: Record<string, number> = {}) {
           stepOrder:  null,
         })) }
       }
-      if (cypher.includes('count(i) AS total')) {
-        const statuses = params['statuses'] as string[] | null
+      if (cypher.includes('count(e) AS total')) {
+        // Revisione totale · H-2: incident e richieste nella stessa lista, con
+        // i passi del rispettivo workflow (`incidentStatuses`).
+        const statuses = params['incidentStatuses'] as string[] | null
         const total = Object.entries(counts)
           .filter(([status]) => !statuses || statuses.includes(status))
           .reduce((acc, [, n]) => acc + n, 0)
         return { records: [rec({ total })] }
       }
-      if (cypher.includes('RETURN i.status AS status, count(i) AS cnt')) {
-        return { records: Object.entries(counts).map(([status, cnt]) => rec({ status, cnt })) }
+      if (cypher.includes('RETURN e.status AS status')) {
+        return { records: Object.entries(counts).map(([status, cnt]) => rec({ status, cnt, label: 'Incident' })) }
       }
       // lista dei ticket
-      const statuses = params['statuses'] as string[] | null
+      const statuses = params['incidentStatuses'] as string[] | null
       const rows = Object.entries(counts)
         .filter(([status]) => !statuses || statuses.includes(status))
         .flatMap(([status, n]) => Array.from({ length: n }, (_v, i) => rec({
           props: { id: `${status}-${i}`, number: `INC-${i}`, title: 't', status, severity: 'high', category: 'other', created_at: 'c', updated_at: 'u' },
           assignedTeam: null,
+          labels: ['Incident'],
         })))
       return { records: rows }
     }),
@@ -154,9 +157,9 @@ describe('myTickets — status è una classe, tradotta nei passi del tenant', ()
     const out = await myTickets(null, { status: 'open' }, ctxFor('tenant-open'))
 
     const list = calls.find((c) => c.cypher.includes('SKIP toInteger($offset)'))!
-    expect(list.cypher).toContain('i.status IN $statuses')
+    expect(list.cypher).toContain('e.status IN $incidentStatuses')
     expect(list.cypher).not.toContain("i.status = $status")
-    expect(list.params['statuses']).toEqual(['new', 'assigned', 'in_progress', 'pending', 'escalated'])
+    expect(list.params['incidentStatuses']).toEqual(['new', 'assigned', 'in_progress', 'pending', 'escalated'])
     // 3 in `new` + 2 in `assigned`: la scheda NON è più vuota
     expect(out.total).toBe(5)
     expect(out.items).toHaveLength(5)
@@ -165,18 +168,18 @@ describe('myTickets — status è una classe, tradotta nei passi del tenant', ()
   it('«In corso» esclude il passo iniziale; «Chiusi» è il terminale non risolto', async () => {
     const p1 = primeSession(FACTORY_STEPS, { new: 3, assigned: 2 })
     await myTickets(null, { status: 'in_progress' }, ctxFor('tenant-prog'))
-    expect(p1.calls.find((c) => c.cypher.includes('SKIP'))!.params['statuses'])
+    expect(p1.calls.find((c) => c.cypher.includes('SKIP'))!.params['incidentStatuses'])
       .toEqual(['assigned', 'in_progress', 'pending', 'escalated'])
 
     const p2 = primeSession(FACTORY_STEPS, { closed: 4 })
     await myTickets(null, { status: 'closed' }, ctxFor('tenant-closed'))
-    expect(p2.calls.find((c) => c.cypher.includes('SKIP'))!.params['statuses']).toEqual(['closed'])
+    expect(p2.calls.find((c) => c.cypher.includes('SKIP'))!.params['incidentStatuses']).toEqual(['closed'])
   })
 
   it('senza status nessun filtro (statuses = null)', async () => {
     const { calls } = primeSession(FACTORY_STEPS, { new: 1, closed: 1 })
     const out = await myTickets(null, {}, ctxFor('tenant-all'))
-    expect(calls.find((c) => c.cypher.includes('SKIP'))!.params['statuses']).toBeNull()
+    expect(calls.find((c) => c.cypher.includes('SKIP'))!.params['incidentStatuses']).toBeNull()
     expect(out.total).toBe(2)
   })
 

@@ -20,7 +20,7 @@ export const GET_PROBLEMS = gql`
 export const GET_PROBLEM = gql`
   query GetProblem($id: ID!) {
     problem(id: $id) {
-      id number title description priority status
+      id number title description priority category status
       rootCause workaround affectedUsers
       createdAt updatedAt resolvedAt
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }

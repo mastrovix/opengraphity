@@ -2,8 +2,8 @@ import { gql } from '@apollo/client'
 import { EVENT_ROW_FIELDS, CUSTOM_FIELD_VALUE_FIELDS } from '../fragments'
 
 export const GET_CHANGES = gql`
-  query GetChanges($currentStep: String, $priority: String, $limit: Int, $offset: Int) {
-    changes(currentStep: $currentStep, priority: $priority, limit: $limit, offset: $offset) {
+  query GetChanges($currentStep: String, $priority: String, $limit: Int, $offset: Int, $sortField: String, $sortDirection: String) {
+    changes(currentStep: $currentStep, priority: $priority, limit: $limit, offset: $offset, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
         id

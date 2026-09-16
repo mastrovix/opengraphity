@@ -120,8 +120,26 @@ async function loadAssignmentsForTasks(session: Session, taskIds: string[]): Pro
   return { teams, users }
 }
 
-export async function changes(_: unknown, args: { currentStep?: string; priority?: string; limit?: number; offset?: number }, ctx: GraphQLContext) {
+/**
+ * Le colonne su cui la lista delle change ordina. Erano dichiarate
+ * `sortable: true` nel web e il resolver non aveva affatto l'ordinamento: il
+ * clic sull'intestazione non faceva nulla (revisione totale · F-24). Il
+ * guardiano `sortWhitelists.test.ts` confronta questa mappa con le colonne
+ * della pagina.
+ */
+export const CHANGE_SORT_WHITELIST: Record<string, string> = {
+  code:               'c.code',
+  title:              'c.title',
+  priority:           'c.priority',
+  aggregateRiskScore: 'c.aggregate_risk_score',
+  createdAt:          'c.created_at',
+}
+
+export async function changes(_: unknown, args: { currentStep?: string; priority?: string; limit?: number; offset?: number; sortField?: string | null; sortDirection?: string | null }, ctx: GraphQLContext) {
   const { limit, offset } = listPage(args, 50)
+  const sortCol = args.sortField ? CHANGE_SORT_WHITELIST[args.sortField] : undefined
+  const sortDir = args.sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
+  const orderBy = sortCol ? `${sortCol} ${sortDir}` : 'c.created_at DESC'
   return withSession(async (session) => {
     const joinWF = args.currentStep
       ? 'MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {current_step: $currentStep})'
@@ -145,7 +163,7 @@ export async function changes(_: unknown, args: { currentStep?: string; priority
              properties(req)   AS reqUser,
              properties(owner) AS ownerUser,
              properties(app)   AS appUser
-      ORDER BY c.created_at DESC
+      ORDER BY ${orderBy}
       SKIP toInteger($offset) LIMIT toInteger($limit)
     `, { tenantId: ctx.tenantId, currentStep: args.currentStep ?? null, priority: args.priority ?? null, limit, offset })
 

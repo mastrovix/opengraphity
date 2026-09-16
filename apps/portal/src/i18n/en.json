@@ -101,7 +101,11 @@
     "replyEdited": "Edited by {{name}} · {{date}}",
     "replyDeleted": "Reply deleted by {{name}} · {{date}}",
     "cancel": "Cancel",
-    "save": "Save"
+    "save": "Save",
+    "kind": {
+      "incident": "Incident",
+      "service_request": "Request"
+    }
   },
   "kb": {
     "title": "Knowledge Base",

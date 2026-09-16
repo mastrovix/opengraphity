@@ -67,8 +67,12 @@ function createMock(seen: CreateInput[], over: Partial<{ id: string; name: strin
   }
 }
 
-const sendSampleMock = (sourceId = 'src-new'): GqlMock => ({
-  request: { query: SEND_SAMPLE_EVENT, variables: { sourceId } },
+/**
+ * Revisione totale · G-MON-1: per una sorgente «generic» la prova manda
+ * l'esempio incollato dall'admin, non il campione fisso del connettore.
+ */
+const sendSampleMock = (sourceId = 'src-new', payload: string | null = null): GqlMock => ({
+  request: { query: SEND_SAMPLE_EVENT, variables: { sourceId, payload } },
   result: { data: { sendSampleEvent: 1 } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
@@ -110,7 +114,7 @@ describe('NewSourceWizard — percorso generico', () => {
     const creates: CreateInput[] = []
     const { user } = renderWithProviders(<NewSourceWizard sampleCheckDelayMs={0} />, {
       route: '/monitoring/sources/new',
-      mocks: [sampleMock, keysMock, previewMock(previews), createMock(creates), sendSampleMock(), sourcesMock({ id: 'src-new', lastReceivedAt: '2026-09-09T10:16:00Z', receiveCount: 1 })],
+      mocks: [sampleMock, keysMock, previewMock(previews), createMock(creates), sendSampleMock('src-new', SAMPLE_TEXT), sourcesMock({ id: 'src-new', lastReceivedAt: '2026-09-09T10:16:00Z', receiveCount: 1 })],
     })
 
     // Passo 1: scelta esclusiva (radiogroup, D·3.4); senza strumento non si avanza e il motivo è annunciato (role=status)

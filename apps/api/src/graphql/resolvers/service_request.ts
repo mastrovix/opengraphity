@@ -33,6 +33,20 @@ import { roleHasPermission } from '../../lib/roles.js'
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
+/**
+ * Le colonne su cui l'elenco delle richieste ordina. `number` c'è perché la
+ * colonna del web è ordinabile (revisione totale · B-9): mancava, e il clic
+ * mostrava la freccia senza cambiare l'ordine. Il test
+ * `sortWhitelists.test.ts` confronta questa mappa con le colonne del web.
+ */
+export const REQUEST_SORT_WHITELIST: Record<string, string> = {
+  number:    'r.number',
+  title:     'r.title',
+  status:    'r.status',
+  priority:  'r.priority',
+  createdAt: 'r.created_at',
+}
+
 async function serviceRequests(
   _: unknown,
   args: { status?: string; priority?: string; limit?: number; offset?: number; filters?: string; sortField?: string; sortDirection?: string },
@@ -52,20 +66,31 @@ async function serviceRequests(
     // I campi del cliente si filtrano come quelli del prodotto (ondata 4).
     const allowedFields = new Set([...getScalarFields(info.schema, 'ServiceRequest'), ...(await requestCustomFieldDefs(ctx, 'service_request')).map((d) => d.name)])
     const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r') : ''
-    const sortMap: Record<string, string> = { title: 'r.title', status: 'r.status', priority: 'r.priority', createdAt: 'r.created_at' }
-    const orderBy = sortMap[args.sortField ?? ''] ?? 'r.created_at'
+    const orderBy = REQUEST_SORT_WHITELIST[args.sortField ?? ''] ?? 'r.created_at'
     const orderDir = args.sortDirection === 'asc' ? 'ASC' : 'DESC'
-    const cypher = `
-      MATCH (r:ServiceRequest {tenant_id: $tenantId})
+    // Revisione totale · B-1: `advWhere` è un'espressione nuda e va unita con
+    // AND — interpolata così com'era rendeva il Cypher invalido, quindi QUALUNQUE
+    // filtro della pagina Richieste faceva fallire l'elenco (riprodotto su c-test).
+    const whereClause = `
       WHERE ($status   IS NULL OR r.status   = $status)
         AND ($priority IS NULL OR r.priority = $priority)
-        ${advWhere}
+        ${advWhere ? `AND (${advWhere})` : ''}
+    `
+    const rows = await runQuery<{ props: Props }>(session, `
+      MATCH (r:ServiceRequest {tenant_id: $tenantId})
+      ${whereClause}
       WITH r ORDER BY ${orderBy} ${orderDir}
       SKIP toInteger($offset) LIMIT toInteger($limit)
       RETURN properties(r) as props
-    `
-    const rows = await runQuery<{ props: Props }>(session, cypher, params)
-    return rows.map((r) => mapRequest(r.props))
+    `, params)
+    // B-32: quante sono in tutto, come per incident e problem: senza `total` la
+    // pagina si fermava alle prime 20 senza dirlo.
+    const countRows = await runQuery<{ total: unknown }>(session, `
+      MATCH (r:ServiceRequest {tenant_id: $tenantId})
+      ${whereClause}
+      RETURN count(r) AS total
+    `, params)
+    return { items: rows.map((r) => mapRequest(r.props)), total: Number(countRows[0]?.total ?? 0) }
   })
 }
 

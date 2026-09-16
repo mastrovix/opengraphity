@@ -23,7 +23,11 @@ vi.mock('@opengraphity/discovery', () => ({
   getAllConnectors:   vi.fn().mockReturnValue([]),
   getConnector:       vi.fn(),
 }))
-vi.mock('../../../discovery/syncWorker.js', () => ({ syncQueue: { add: vi.fn().mockResolvedValue({ id: 'job-1' }) } }))
+// `scheduleSourceSync`: il cron in Redis segue la sorgente (revisione totale · D-6).
+vi.mock('../../../discovery/syncWorker.js', () => ({
+  syncQueue: { add: vi.fn().mockResolvedValue({ id: 'job-1' }) },
+  scheduleSourceSync: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 
 const { syncResolvers } = await import('../sync.js')

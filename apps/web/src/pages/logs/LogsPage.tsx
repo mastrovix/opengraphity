@@ -9,6 +9,7 @@ import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilter
 import { ScrollText } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { Pagination } from '@/components/ui/Pagination'
+import { QueryError } from '@/components/QueryError'
 import { Pill } from '@/components/ui/Pill'
 
 const GET_LOGS = gql`
@@ -147,7 +148,9 @@ export function LogsPage() {
   const [sortField,   setSortField]   = useState<string | null>(null)
   const [sortDir,     setSortDir]     = useState<'asc' | 'desc'>('desc')
 
-  const { data, loading, refetch } = useQuery<{ logs: { entries: LogEntry[]; total: number } }>(GET_LOGS, {
+  // `error` va letto: un filtro rifiutato lasciava la pagina vuota senza dire
+  // niente (revisione totale · F-11).
+  const { data, loading, error, refetch } = useQuery<{ logs: { entries: LogEntry[]; total: number } }>(GET_LOGS, {
     variables: {
       limit:   PAGE_SIZE,
       offset,
@@ -214,6 +217,8 @@ export function LogsPage() {
           </label>
         </div>
       </div>
+
+      {error && <QueryError message={error.message} onRetry={() => void refetch()} />}
 
       {/* Table */}
       <SortableFilterTable<LogEntry>

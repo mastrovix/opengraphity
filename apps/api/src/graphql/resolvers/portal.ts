@@ -38,12 +38,42 @@ import { notifyWatchers } from './collaboration.js'
  * like every other channel. `type` is structural (the portal only exposes
  * Incidents), not read from the node.
  */
-function requireProp(p: Record<string, unknown>, key: string): string {
+function requireProp(p: Record<string, unknown>, key: string, what = 'Ticket'): string {
   const v = p[key]
   if (typeof v !== 'string' || v === '') {
-    throw new Error(`Incident ${String(p['id'])}: missing required property '${key}'`)
+    throw new Error(`${what} ${String(p['id'])}: missing required property '${key}'`)
   }
   return v
+}
+
+/**
+ * I DUE TIPI DI TICKET CHE L'UTENTE FINALE APRE (revisione totale · H-2, scelta
+ * del proprietario del 16 set 2026).
+ *
+ * Il portale permette di aprire un incident («il gestionale non si apre») e una
+ * richiesta dal catalogo («mi serve un portatile»), ma ogni lettura leggeva solo
+ * `:Incident`: dopo l'invio la richiesta non compariva da nessuna parte — non si
+ * poteva seguirla, commentarla, né vedere l'approvazione. Ora incident e
+ * richieste stanno nella STESSA lista, ognuno col suo tipo, e il dettaglio
+ * funziona per entrambi.
+ *
+ * Le due entità differiscono in tre punti, ed è tutto qui: l'etichetta Neo4j, il
+ * campo della priorità (`severity` per l'incident, `priority` per la richiesta) e
+ * il tipo di entità con cui si leggono workflow e campi personalizzati.
+ */
+export const PORTAL_TICKET_KINDS = ['incident', 'service_request'] as const
+export type PortalTicketKind = (typeof PORTAL_TICKET_KINDS)[number]
+
+const PORTAL_TICKET_SHAPE: Readonly<Record<PortalTicketKind, { label: string; priorityProp: string }>> = {
+  incident:        { label: 'Incident',       priorityProp: 'severity' },
+  service_request: { label: 'ServiceRequest', priorityProp: 'priority' },
+}
+
+/** Il tipo di un nodo dalle sue etichette: nient'altro entra in questi elenchi. */
+function kindOfLabels(labels: readonly string[], id: string): PortalTicketKind {
+  const kind = PORTAL_TICKET_KINDS.find((k) => labels.includes(PORTAL_TICKET_SHAPE[k].label))
+  if (!kind) throw new Error(`Portal ticket ${id} has none of the labels ${PORTAL_TICKET_KINDS.map((k) => PORTAL_TICKET_SHAPE[k].label).join(', ')}`)
+  return kind
 }
 
 /**
@@ -56,11 +86,16 @@ function requireProp(p: Record<string, unknown>, key: string): string {
  * Una sola lettura dei passi per richiesta, riusata per tutti i ticket
  * dell'elenco (`loadSteps` ha già la sua cache).
  */
-async function stepMeta(session: Session, tenantId: string, language: Lingua): Promise<(status: string) => { statusCategory: string | null; statusLabel: string | null }> {
-  const steps = await getWorkflowSteps(session, tenantId, 'incident')
-  const byName = new Map(steps.map((s) => [s.name, s]))
-  return (status: string) => {
-    const step = byName.get(status)
+async function stepMeta(session: Session, tenantId: string, language: Lingua): Promise<(status: string, kind?: PortalTicketKind) => { statusCategory: string | null; statusLabel: string | null }> {
+  // Un workflow per tipo di ticket (H-2): l'etichetta e la categoria del passo
+  // di una richiesta vengono dal SUO workflow, non da quello degli incident.
+  const byKind = new Map<PortalTicketKind, Map<string, Awaited<ReturnType<typeof getWorkflowSteps>>[number]>>()
+  for (const kind of PORTAL_TICKET_KINDS) {
+    const steps = await getWorkflowSteps(session, tenantId, kind)
+    byKind.set(kind, new Map(steps.map((s) => [s.name, s])))
+  }
+  return (status: string, kind: PortalTicketKind = 'incident') => {
+    const step = byKind.get(kind)?.get(status)
     // Passo che il workflow non ha (più): `null`, non un'etichetta inventata.
     // Il portale mostra allora il valore grezzo e lo stile neutro.
     // L'etichetta nella lingua di chi guarda (giro del 14 set 2026, #22).
@@ -93,21 +128,22 @@ async function severityMeta(tenantId: string, language: Lingua): Promise<(value:
   })
 }
 
-function mapTicket(p: Record<string, unknown>) {
+function mapTicket(p: Record<string, unknown>, kind: PortalTicketKind = 'incident') {
+  const shape = PORTAL_TICKET_SHAPE[kind]
   return {
-    id:           requireProp(p, 'id'),
+    id:           requireProp(p, 'id', shape.label),
     // Il numero che l'operatore vede e che si cita al telefono (giro del 14 set 2026).
-    number:       requireProp(p, 'number'),
-    type:         'incident',
-    title:        requireProp(p, 'title'),
+    number:       requireProp(p, 'number', shape.label),
+    type:         kind,
+    title:        requireProp(p, 'title', shape.label),
     description:  (p['description']  ?? null)       as string | null,
-    status:       requireProp(p, 'status'),
-    priority:     requireProp(p, 'severity'),
+    status:       requireProp(p, 'status', shape.label),
+    priority:     requireProp(p, shape.priorityProp, shape.label),
     // Facoltativa: un incident aperto da un allarme non ha categoria, e un
     // ticket così faceva fallire tutto «My tickets» (giro nel browser del 14 set 2026).
     category:     (typeof p['category'] === 'string' && p['category'] !== '' ? p['category'] : null) as string | null,
-    createdAt:    requireProp(p, 'created_at'),
-    updatedAt:    requireProp(p, 'updated_at'),
+    createdAt:    requireProp(p, 'created_at', shape.label),
+    updatedAt:    requireProp(p, 'updated_at', shape.label),
     assignedTeam: (p['assigned_team'] ?? null)      as string | null,
   }
 }
@@ -132,14 +168,15 @@ async function resolveStatusClass(
   session: Session,
   tenantId: string,
   statusClass: string,
+  kind: PortalTicketKind = 'incident',
 ): Promise<string[]> {
   if (!(TICKET_STATUS_CLASSES as readonly string[]).includes(statusClass)) {
     throw new ValidationError(`status must be one of ${TICKET_STATUS_CLASSES.join(', ')} (it is a class, not a workflow step name). Got: ${JSON.stringify(statusClass)}`)
   }
-  const byClass = await getStepNamesByClass(session, tenantId, 'incident')
+  const byClass = await getStepNamesByClass(session, tenantId, kind)
   const names = byClass[statusClass as TicketStatusClass]
   if (names.length === 0) {
-    throw new ValidationError(`The incident workflow of tenant "${tenantId}" declares no step in the "${statusClass}" class: the portal cannot list those tickets. Fix the workflow steps (is_open / is_terminal / category) in the designer.`)
+    throw new ValidationError(`The ${kind} workflow of tenant "${tenantId}" declares no step in the "${statusClass}" class: the portal cannot list those tickets. Fix the workflow steps (is_open / is_terminal / category) in the designer.`)
   }
   return names
 }
@@ -152,34 +189,51 @@ async function myTickets(
   const offset = (page - 1) * pageSize
 
   return withSession(async (session) => {
-    const statuses = status ? await resolveStatusClass(session, ctx.tenantId, status) : null
+    // Una classe di stato vale per entrambi i workflow: i passi si risolvono
+    // per tipo, e il filtro confronta ogni ticket coi passi del SUO tipo (H-2).
+    const statuses = status
+      ? { incident: await resolveStatusClass(session, ctx.tenantId, status, 'incident'), service_request: await resolveStatusClass(session, ctx.tenantId, status, 'service_request') }
+      : null
+    const params = {
+      tenantId: ctx.tenantId, userId: ctx.userId, offset, limit: pageSize,
+      incidentStatuses: statuses?.incident ?? null, requestStatuses: statuses?.service_request ?? null,
+    }
+    const whereClause = `
+      WHERE ($incidentStatuses IS NULL
+             OR (e:Incident       AND e.status IN $incidentStatuses)
+             OR (e:ServiceRequest AND e.status IN $requestStatuses))
+    `
 
     const result = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (i:Incident {tenant_id: $tenantId, created_by: $userId})
-        WHERE ($statuses IS NULL OR i.status IN $statuses)
-        OPTIONAL MATCH (i)-[:ASSIGNED_TO_TEAM]->(t:Team)
-        WITH i, t
-        ORDER BY i.updated_at DESC
+        MATCH (e {tenant_id: $tenantId, created_by: $userId})
+        WHERE (e:Incident OR e:ServiceRequest)
+        ${whereClause.replace('WHERE', 'AND')}
+        OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t:Team)
+        WITH e, t
+        ORDER BY e.updated_at DESC
         SKIP toInteger($offset) LIMIT toInteger($limit)
-        RETURN properties(i) AS props, t.name AS assignedTeam
-      `, { tenantId: ctx.tenantId, userId: ctx.userId, statuses, offset, limit: pageSize }),
+        RETURN properties(e) AS props, labels(e) AS labels, t.name AS assignedTeam
+      `, params),
     )
 
     const countResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (i:Incident {tenant_id: $tenantId, created_by: $userId})
-        WHERE ($statuses IS NULL OR i.status IN $statuses)
-        RETURN count(i) AS total
-      `, { tenantId: ctx.tenantId, userId: ctx.userId, statuses }),
+        MATCH (e {tenant_id: $tenantId, created_by: $userId})
+        WHERE (e:Incident OR e:ServiceRequest)
+        ${whereClause.replace('WHERE', 'AND')}
+        RETURN count(e) AS total
+      `, params),
     )
 
     const total = toNumber(countResult.records[0]?.get('total'))
     const lingua = await requestedLanguage(ctx.tenantId, language)
     const [meta, severity] = await Promise.all([stepMeta(session, ctx.tenantId, lingua), severityMeta(ctx.tenantId, lingua)])
     const items = result.records.map((r) => {
-      const t = mapTicket(r.get('props') as Record<string, unknown>)
-      return { ...t, ...meta(t.status), ...severity(t.priority), assignedTeam: (r.get('assignedTeam') ?? null) as string | null }
+      const props = r.get('props') as Record<string, unknown>
+      const kind = kindOfLabels(r.get('labels') as string[], String(props['id']))
+      const t = mapTicket(props, kind)
+      return { ...t, ...meta(t.status, kind), ...severity(t.priority), assignedTeam: (r.get('assignedTeam') ?? null) as string | null }
     })
 
     return { items, total }
@@ -195,11 +249,13 @@ async function myTicket(
 ) {
   const lingua = await requestedLanguage(ctx.tenantId, language)
   return withSession(async (session) => {
+    // Incident o richiesta: il portale apre entrambi (H-2).
     const ticketResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-        OPTIONAL MATCH (i)-[:ASSIGNED_TO_TEAM]->(t:Team)
-        RETURN properties(i) AS props, t.name AS assignedTeam
+        MATCH (e {id: $id, tenant_id: $tenantId})
+        WHERE e:Incident OR e:ServiceRequest
+        OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t:Team)
+        RETURN properties(e) AS props, labels(e) AS labels, t.name AS assignedTeam
       `, { id, tenantId: ctx.tenantId }),
     )
 
@@ -207,11 +263,12 @@ async function myTicket(
 
     const props = ticketResult.records[0].get('props') as Record<string, unknown>
     if (props['created_by'] !== ctx.userId) throw new ForbiddenError('Access denied')
+    const kind = kindOfLabels(ticketResult.records[0].get('labels') as string[], id)
 
-    const mapped = mapTicket(props)
+    const mapped = mapTicket(props, kind)
     const ticket = {
       ...mapped,
-      ...(await stepMeta(session, ctx.tenantId, lingua))(mapped.status),
+      ...(await stepMeta(session, ctx.tenantId, lingua))(mapped.status, kind),
       ...(await severityMeta(ctx.tenantId, lingua))(mapped.priority),
       assignedTeam: (ticketResult.records[0].get('assignedTeam') ?? null) as string | null,
     }
@@ -222,7 +279,7 @@ async function myTicket(
     // restano allo staff: passa solo `is_internal = false`, esplicito.
     const commentsResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_COMMENT]->(c:Comment)
+        MATCH (e {id: $id, tenant_id: $tenantId})-[:HAS_COMMENT]->(c:Comment)
         WHERE c.is_internal = false
         OPTIONAL MATCH (u:User {id: c.author_id, tenant_id: $tenantId})
         RETURN c.id AS id, c.text AS body, c.author_id AS authorId,
@@ -255,12 +312,12 @@ async function myTicket(
     // entity_type/entity_id properties, not a HAS_ATTACHMENT relationship
     const attachmentsResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (a:Attachment {tenant_id: $tenantId, entity_type: 'incident', entity_id: $id})
+        MATCH (a:Attachment {tenant_id: $tenantId, entity_type: $entityType, entity_id: $id})
         RETURN a.id AS id, a.filename AS filename, a.mime_type AS mimeType,
                a.size_bytes AS sizeBytes, a.uploaded_by AS uploadedBy,
                a.uploaded_at AS uploadedAt, a.description AS description
         ORDER BY a.uploaded_at ASC
-      `, { id, tenantId: ctx.tenantId }),
+      `, { id, tenantId: ctx.tenantId, entityType: kind }),
     )
 
     const attachments = attachmentsResult.records.map((r) => ({
@@ -277,7 +334,7 @@ async function myTicket(
     // Load workflow history
     const historyResult = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+        MATCH (e {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
               -[:STEP_HISTORY]->(exec:WorkflowStepExecution)
         RETURN exec.from_step AS fromStep, exec.step_name AS toStep,
                exec.entered_at AS triggeredAt, exec.triggered_by AS triggeredBy
@@ -292,8 +349,8 @@ async function myTicket(
     const history = historyResult.records.map((r) => ({
       fromStep:    (r.get('fromStep')    ?? 'start') as string,
       toStep:      r.get('toStep')      as string,
-      fromLabel:   r.get('fromStep') == null ? null : stepLabel(r.get('fromStep') as string).statusLabel,
-      toLabel:     stepLabel(r.get('toStep') as string).statusLabel,
+      fromLabel:   r.get('fromStep') == null ? null : stepLabel(r.get('fromStep') as string, kind).statusLabel,
+      toLabel:     stepLabel(r.get('toStep') as string, kind).statusLabel,
       label:       null,
       triggeredAt: r.get('triggeredAt') as string,
       triggeredBy: (r.get('triggeredBy') ?? '') as string,
@@ -301,7 +358,7 @@ async function myTicket(
 
     // I campi del cliente che l'amministratore offre all'utente finale (ondata 4).
     // Solo quelli che nella fase del ticket si vedono (secondo giro UI del 15 set 2026).
-    const customFields = customFieldValues(await customFieldDefs(session, ctx.tenantId, 'incident'), props, { onlyVisibleToEndUser: true, stepContext: await ticketStepContext(session, ctx.tenantId, id) })
+    const customFields = customFieldValues(await customFieldDefs(session, ctx.tenantId, kind), props, { onlyVisibleToEndUser: true, stepContext: await ticketStepContext(session, ctx.tenantId, id) })
       .filter((f) => f.visible)
 
     return { ...ticket, comments, attachments, history, customFields }
@@ -335,13 +392,18 @@ async function myTicketStats(
     // STESSA classificazione della scheda del portale (B0-3): `open` qui e
     // «Aperti» là sono lo stesso insieme di passi, quindi lo stesso numero.
     // `resolved` resta «risolti o chiusi», come prima.
-    const byClass = await getStepNamesByClass(session, ctx.tenantId, 'incident')
-    const inClass = (cls: TicketStatusClass, status: string) => byClass[cls].includes(status)
+    // Un workflow per tipo (H-2): un passo si classifica con quello del suo tipo.
+    const byKind: Record<PortalTicketKind, Awaited<ReturnType<typeof getStepNamesByClass>>> = {
+      incident:        await getStepNamesByClass(session, ctx.tenantId, 'incident'),
+      service_request: await getStepNamesByClass(session, ctx.tenantId, 'service_request'),
+    }
+    const inClass = (cls: TicketStatusClass, status: string, kind: PortalTicketKind) => byKind[kind][cls].includes(status)
 
     const result = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (i:Incident {tenant_id: $tenantId, created_by: $userId})
-        RETURN i.status AS status, count(i) AS cnt
+        MATCH (e {tenant_id: $tenantId, created_by: $userId})
+        WHERE e:Incident OR e:ServiceRequest
+        RETURN e.status AS status, head([l IN labels(e) WHERE l IN ['Incident', 'ServiceRequest']]) AS label, count(e) AS cnt
       `, { tenantId: ctx.tenantId, userId: ctx.userId }),
     )
 
@@ -349,15 +411,16 @@ async function myTicketStats(
     const unclassified: string[] = []
     for (const r of result.records) {
       const status = r.get('status') as string
+      const kind   = kindOfLabels([r.get('label') as string], status)
       const cnt    = toNumber(r.get('cnt'))
       total += cnt
-      const isOpen     = inClass('open', status)
-      const isProgress = inClass('in_progress', status)
-      const isDone     = inClass('resolved', status) || inClass('closed', status)
+      const isOpen     = inClass('open', status, kind)
+      const isProgress = inClass('in_progress', status, kind)
+      const isDone     = inClass('resolved', status, kind) || inClass('closed', status, kind)
       if (isOpen)     open       += cnt
       if (isProgress) inProgress += cnt
       if (isDone)     resolved   += cnt
-      if (!isOpen && !isProgress && !isDone) unclassified.push(`${status} (${cnt})`)
+      if (!isOpen && !isProgress && !isDone) unclassified.push(`${kind}:${status} (${cnt})`)
     }
 
     // Fail-loud: un ticket in un passo che nessuna definizione attiva del
@@ -488,12 +551,14 @@ async function addTicketComment(
   const comment = await withSession(async (session) => {
     const check = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (i:Incident {id: $ticketId, tenant_id: $tenantId})
-        RETURN i.created_by AS createdBy
+        MATCH (e {id: $ticketId, tenant_id: $tenantId})
+        WHERE e:Incident OR e:ServiceRequest
+        RETURN e.created_by AS createdBy, labels(e) AS labels
       `, { ticketId, tenantId: ctx.tenantId }),
     )
 
     if (!check.records.length) throw new ForbiddenError('Ticket not found')
+    const kind = kindOfLabels(check.records[0].get('labels') as string[], ticketId)
     if (check.records[0].get('createdBy') !== ctx.userId) throw new ForbiddenError('Access denied')
     if (await isEntityClosed(session, ticketId, ctx.tenantId)) {
       throw new ValidationError('The ticket is closed: open a new one', { key: 'errors.comment.ticketClosed' })
@@ -502,7 +567,7 @@ async function addTicketComment(
     // Un modello solo (F1): lo staff vede questo commento nel dettaglio
     // dell'incident, e la sua risposta pubblica torna qui.
     const row = await writeTicketComment(session, {
-      entityType: 'incident', entityId: ticketId, tenantId: ctx.tenantId,
+      entityType: kind, entityId: ticketId, tenantId: ctx.tenantId,
       text: body, authorId: ctx.userId, isInternal: false,
     })
     if (!row) throw new ForbiddenError('Ticket not found')
@@ -515,12 +580,14 @@ async function addTicketComment(
       authorEmail: (row.author?.['email'] ?? ctx.userEmail) as string,
       createdAt:   row.comment['created_at'] as string,
       updatedAt:   row.comment['updated_at'] as string,
+      entityKind:  kind,
+      entityLabel: PORTAL_TICKET_SHAPE[kind].label,
     }
   }, true)
 
-  void audit(ctx, 'portal.comment.added', 'Incident', ticketId)
+  void audit(ctx, 'portal.comment.added', comment.entityLabel, ticketId)
   // Chi segue il ticket (lo staff che ci lavora) deve sapere che l'utente ha scritto.
-  void notifyWatchers(ctx.tenantId, 'incident', ticketId, { kind: 'text', text: comment.body.slice(0, 100) }, ctx.userId)
+  void notifyWatchers(ctx.tenantId, comment.entityKind, ticketId, { kind: 'text', text: comment.body.slice(0, 100) }, ctx.userId)
   return comment
 }
 
@@ -542,9 +609,10 @@ async function reopenTicket(
   return withSession(async (session) => {
     const check = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (i:Incident {id: $ticketId, tenant_id: $tenantId})
-        OPTIONAL MATCH (i)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
-        RETURN i.created_by AS createdBy, i.status AS status, wi.id AS instanceId
+        MATCH (e {id: $ticketId, tenant_id: $tenantId})
+        WHERE e:Incident OR e:ServiceRequest
+        OPTIONAL MATCH (e)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+        RETURN e.created_by AS createdBy, e.status AS status, wi.id AS instanceId, labels(e) AS labels
       `, { ticketId, tenantId: ctx.tenantId }),
     )
 
@@ -558,10 +626,13 @@ async function reopenTicket(
     if (createdBy !== ctx.userId) throw new ForbiddenError('Access denied')
     if (!instanceId) throw new ValidationError(`Ticket ${ticketId} has no workflow instance and cannot be reopened`)
 
+    const kind = kindOfLabels(r.get('labels') as string[], ticketId)
     const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
-    const steps = await getWorkflowSteps(session, ctx.tenantId, 'incident')
-    const resolvedStep = steps.find((s) => s.category === 'resolved')
-    if (!resolvedStep || status !== resolvedStep.name) {
+    const steps = await getWorkflowSteps(session, ctx.tenantId, kind)
+    // Revisione totale · H-12: si riapre da QUALUNQUE passo di categoria
+    // `resolved`, non solo dal primo che il workflow dichiara — il portale
+    // offre «Riapri» su tutti, e sul secondo l'API rispondeva CONFLICT.
+    if (!steps.some((s) => s.category === 'resolved' && s.name === status)) {
       throw new GraphQLError('Only resolved tickets can be reopened', { extensions: { code: 'CONFLICT' } })
     }
 
@@ -578,7 +649,7 @@ async function reopenTicket(
       openTargets[0]
     if (!reopenTo) {
       throw new ValidationError(
-        `The incident workflow defines no transition from "${status}" back to an open step: reopening is not allowed`,
+        `The ${kind} workflow defines no transition from "${status}" back to an open step: reopening is not allowed`,
       )
     }
 
@@ -591,17 +662,18 @@ async function reopenTicket(
       throw new ValidationError(`Reopen failed: ${result.error ?? 'transition rejected by the workflow'}`, transitionErrorI18n(result))
     }
 
-    void audit(ctx, 'portal.ticket.reopened', 'Incident', ticketId, { fromStep: status, toStep: reopenTo.name })
+    void audit(ctx, 'portal.ticket.reopened', PORTAL_TICKET_SHAPE[kind].label, ticketId, { fromStep: status, toStep: reopenTo.name })
 
     const updated = await session.executeRead((tx) =>
       tx.run(`
-        MATCH (i:Incident {id: $ticketId, tenant_id: $tenantId})
-        RETURN properties(i) AS props
+        MATCH (e {id: $ticketId, tenant_id: $tenantId})
+        WHERE e:Incident OR e:ServiceRequest
+        RETURN properties(e) AS props
       `, { ticketId, tenantId: ctx.tenantId }),
     )
     const props = updated.records[0]?.get('props') as Record<string, unknown> | undefined
-    if (!props) throw new Error(`Incident ${ticketId} vanished after reopen transition`)
-    const mapped = mapTicket(props)
+    if (!props) throw new Error(`${PORTAL_TICKET_SHAPE[kind].label} ${ticketId} vanished after reopen transition`)
+    const mapped = mapTicket(props, kind)
     return { ...mapped, ...(await severityMeta(ctx.tenantId, await languageFor(ctx.tenantId)))(mapped.priority) }
   }, true)
 }

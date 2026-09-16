@@ -6,7 +6,7 @@ import { toPascalCase, pluralize } from '@opengraphity/schema-generator'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 import type { GraphQLContext } from '../../context.js'
 import { cache } from '../../lib/cache.js'
-import { ALLOWED_BASE_FIELDS, ALL_CIS_ALLOWED_FIELDS, ciOrderBy, buildBaseWhere, buildAdvancedWhere } from './buildCIQuery.js'
+import { ALLOWED_BASE_FIELDS, ALL_CIS_ALLOWED_FIELDS, ciOrderBy, allCIsOrderBy, CI_TYPE_ORDER_EXPR, buildBaseWhere, buildAdvancedWhere } from './buildCIQuery.js'
 import { buildFieldResolvers, mapTeamProps } from './ciFieldResolvers.js'
 import { buildCreateMutation, buildUpdateMutation, buildDeleteMutation } from './ciMutations.js'
 import { mapITILField, fetchITILTypeById, buildITILTypesResolver, buildITILTypeFieldsResolver, buildITILFieldValueCountResolver, buildITILMutations } from './itilTypeResolvers.js'
@@ -76,7 +76,7 @@ function matchTypes(types: CITypeWithDefinitions[], names: (string | null)[] | n
 function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
   return async (
     _: unknown,
-    args: { limit?: number; offset?: number; type?: string; status?: string; environment?: string; search?: string; filters?: string; ciTypes?: (string | null)[] | null; excludeCiTypes?: (string | null)[] | null },
+    args: { limit?: number; offset?: number; type?: string; status?: string; environment?: string; search?: string; filters?: string; ciTypes?: (string | null)[] | null; excludeCiTypes?: (string | null)[] | null; sortField?: string | null; sortDirection?: string | null },
     ctx: GraphQLContext,
   ) => {
     const { limit = 50, offset = 0, type, status, environment, search, filters } = args
@@ -101,6 +101,8 @@ function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
       offset,
     }
     const advWhere = filters ? buildAdvancedWhere(filters, params, ALL_CIS_ALLOWED_FIELDS, 'n') : ''
+    // B-9: l'ordinamento chiesto dalla CMDB veniva ignorato.
+    const orderBy = allCIsOrderBy(args.sortField, args.sortDirection)
     const baseFilter = `(${labelFilter}) AND n.tenant_id = $tenantId
            AND ($status IS NULL OR n.status = $status)
            AND ($environment IS NULL OR n.environment = $environment)
@@ -113,8 +115,8 @@ function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
       const [itemsResult, countResult] = await Promise.all([
         s1.executeRead(tx => tx.run(
           `MATCH (n) WHERE ${baseFilter}
-           RETURN properties(n) AS props, head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label
-           ORDER BY n.name ASC SKIP toInteger($offset) LIMIT toInteger($limit)`,
+           RETURN properties(n) AS props, ${CI_TYPE_ORDER_EXPR} AS label
+           ORDER BY ${orderBy} SKIP toInteger($offset) LIMIT toInteger($limit)`,
           params,
         )),
         s2.executeRead(tx => tx.run(

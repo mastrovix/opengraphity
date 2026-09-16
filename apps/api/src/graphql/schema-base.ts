@@ -50,7 +50,7 @@ export function buildBaseSDL(): string {
     knownErrors(search: String): [Problem!]!
 
     # Service Requests
-    serviceRequests(status: String, priority: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): [ServiceRequest!]!
+    serviceRequests(status: String, priority: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): ServiceRequestsResult!
     serviceRequest(id: ID!): ServiceRequest
     serviceCatalogItems(activeOnly: Boolean): [ServiceCatalogItem!]!
 
@@ -521,7 +521,8 @@ export function buildBaseSDL(): string {
     testNotificationChannel(id: ID!): Boolean!
 
     # Slack account linking
-    linkSlackAccount(slackId: String!): User!
+    """slackId null = scollega l'account Slack di chi chiama; una stringa vuota è rifiutata (revisione totale · F-20)."""
+    linkSlackAccount(slackId: String): User!
     """La propria scelta di ricevere le e-mail di notifica (menzioni, osservazione, regole, digest)."""
     setMyEmailNotifications(enabled: Boolean!): User!
     """La lingua della persona, per web e portale; null = torna a quella dell'organizzazione. Una lingua che il prodotto non ha è rifiutata."""

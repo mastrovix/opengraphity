@@ -67,6 +67,12 @@ export const GET_CI_INCIDENTS = gql`
   }
 `
 
+/**
+ * `defaultValue` ed `enumTypeId` vanno chiesti: la modifica di un campo li
+ * rimandava come null e l'API li sovrascriveva, quindi ogni «Modifica»
+ * azzerava il valore predefinito e la tendina del vocabolario appariva vuota
+ * (revisione totale · G-3).
+ */
 export const GET_BASE_CI_TYPE = gql`
   query GetBaseCIType {
     baseCIType {
@@ -75,7 +81,7 @@ export const GET_BASE_CI_TYPE = gql`
       validationScript
       fields {
         id name label fieldType
-        required enumValues order enumTypeName
+        required defaultValue enumTypeId enumValues order enumTypeName
         isSystem
         validationScript
         visibilityScript
@@ -87,6 +93,7 @@ export const GET_BASE_CI_TYPE = gql`
   }
 `
 
+/** `defaultValue` ed `enumTypeId`: vedi GET_BASE_CI_TYPE (revisione totale · G-3). */
 export const GET_CI_TYPES = gql`
   query GetCITypes {
     ciTypes {
@@ -95,7 +102,7 @@ export const GET_CI_TYPES = gql`
       validationScript chainFamilies serviceRole
       fields {
         id name label fieldType
-        required enumValues order enumTypeName
+        required defaultValue enumTypeId enumValues order enumTypeName
         isSystem
         validationScript
         visibilityScript

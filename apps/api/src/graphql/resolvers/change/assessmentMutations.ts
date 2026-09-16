@@ -31,6 +31,50 @@ import {
 } from './helpers.js'
 import { toNumber } from '@opengraphity/neo4j'
 
+// ── Togliere l'assegnazione (F-4) ─────────────────────────────────────────────
+
+interface UnassignOptions {
+  changeId:    string
+  ciId:        string
+  /** Azione dell'audit: la stessa dell'assegnazione, il dettaglio dice cosa è successo. */
+  action:      string
+  /** Prefisso del dettaglio in inglese (il ruolo per l'assessment, «Planning» per il piano). */
+  prefix:      string
+  /** Chiave i18n del dettaglio per la timeline. */
+  key:         string
+  extraParams: Record<string, string>
+  map:         (props: Props) => unknown
+}
+
+/**
+ * Stacca la persona dall'attività e lascia il team. Usata quando la tendina
+ * dell'assegnatario torna su «Non assegnato» (revisione totale · F-4): prima
+ * quell'opzione non faceva nulla.
+ */
+async function unassignTask(
+  session: Session,
+  label: 'AssessmentTask' | 'DeployPlanTask',
+  taskId: string,
+  ctx: GraphQLContext,
+  opts: UnassignOptions,
+) {
+  await session.executeWrite((tx) => tx.run(`
+    MATCH (t:${label} {id: $taskId, tenant_id: $tenantId})
+    OPTIONAL MATCH (t)-[old:ASSIGNED_TO]->(:User)
+    DELETE old
+  `, { taskId, tenantId: ctx.tenantId }))
+
+  const ciName = await getCIName(session, opts.ciId, ctx.tenantId)
+  await writeAudit(session, opts.changeId, ctx.tenantId, opts.action, ctx.userId,
+    `${opts.prefix} · ${ciName}: assignment removed`,
+    { key: opts.key, params: { ci: ciName, ...opts.extraParams } })
+
+  const updated = await runQueryOne<{ props: Props }>(session, `
+    MATCH (t:${label} {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
+  `, { taskId, tenantId: ctx.tenantId })
+  return updated ? opts.map(updated.props) : null
+}
+
 // ── submitAssessmentResponse ──────────────────────────────────────────────────
 
 export async function submitAssessmentResponse(
@@ -262,9 +306,15 @@ export async function assignAssessmentTaskToTeam(
   }, true)
 }
 
+/**
+ * `userId` null = togli l'assegnazione (revisione totale · F-4): la tendina
+ * dell'attività offriva «Non assegnato» e l'handler non chiamava niente,
+ * perché la mutation esigeva un id. Togliere l'assegnazione lascia l'attività
+ * al team, che è lo stato in cui nasce.
+ */
 export async function assignAssessmentTaskToUser(
   _: unknown,
-  args: { taskId: string; userId: string },
+  args: { taskId: string; userId?: string | null },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -272,6 +322,13 @@ export async function assignAssessmentTaskToUser(
     if (!tctx) throw new NotFoundError('AssessmentTask', args.taskId)
     const role = tctx.role === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, role)
+
+    if (!args.userId) return unassignTask(session, 'AssessmentTask', args.taskId, ctx, {
+      changeId: tctx.changeId, ciId: tctx.ciId,
+      action: 'assessment_user_assigned', prefix: ROLE_LABEL[role] ?? role,
+      key: 'userUnassigned', extraParams: { role: ROLE_LABEL[role] ?? role },
+      map: mapAssessmentTask,
+    })
 
     const check = await runQueryOne<{ isMember: boolean }>(session, `
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM]->(tm:Team)
@@ -315,9 +372,10 @@ export async function assignAssessmentTaskToUser(
  * team is the CI's SUPPORT group. The UI used the assessment mutation for both,
  * which failed on deploy-plan ids ("AssessmentTask non trovata").
  */
+/** `userId` null = togli l'assegnazione (revisione totale · F-4). */
 export async function assignDeployPlanTaskToUser(
   _: unknown,
-  args: { taskId: string; userId: string },
+  args: { taskId: string; userId?: string | null },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -328,6 +386,13 @@ export async function assignDeployPlanTaskToUser(
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!tctx) throw new NotFoundError('DeployPlanTask', args.taskId)
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
+
+    if (!args.userId) return unassignTask(session, 'DeployPlanTask', args.taskId, ctx, {
+      changeId: tctx.changeId, ciId: tctx.ciId,
+      action: 'deploy_plan_user_assigned', prefix: 'Planning',
+      key: 'planUserUnassigned', extraParams: {},
+      map: mapDeployPlanTask,
+    })
 
     const check = await runQueryOne<{ isMember: boolean }>(session, `
       MATCH (t:DeployPlanTask {id: $taskId, tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM]->(tm:Team)

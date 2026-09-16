@@ -32,9 +32,14 @@ const LINK_SLACK = gql`
   }
 `
 
+/**
+ * Scollegare è `slackId: null`, non la stringa vuota (revisione totale ·
+ * F-20): con la stringa vuota il nodo restava con un id vuoto, uguale per
+ * tutti gli «scollegati».
+ */
 const UNLINK_SLACK = gql`
   mutation UnlinkSlack {
-    linkSlackAccount(slackId: "") { id slackId }
+    linkSlackAccount(slackId: null) { id slackId }
   }
 `
 

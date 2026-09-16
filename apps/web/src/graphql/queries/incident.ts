@@ -72,13 +72,16 @@ export const GET_INCIDENT = gql`
 export const GET_SERVICE_REQUESTS = gql`
   query GetServiceRequests($status: String, $priority: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
     serviceRequests(status: $status, priority: $priority, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
-      id
-      number
-      title
-      priority
-      status
-      createdAt
-      customFields { name value }
+      items {
+        id
+        number
+        title
+        priority
+        status
+        createdAt
+        customFields { name value }
+      }
+      total
     }
   }
 `

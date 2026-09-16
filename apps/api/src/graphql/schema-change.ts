@@ -288,7 +288,7 @@ export function changeSDL(): string {
   }
 
   extend type Query {
-    changes(currentStep: String, priority: String, limit: Int, offset: Int): ChangeList!
+    changes(currentStep: String, priority: String, limit: Int, offset: Int, sortField: String, sortDirection: String): ChangeList!
     change(id: ID!): Change
     changeAffectedCIs(changeId: ID!): [ChangeAffectedCI!]!
     changeAuditTrail(changeId: ID!): [ChangeAuditEntry!]!
@@ -310,8 +310,10 @@ export function changeSDL(): string {
     submitAssessmentResponse(taskId: ID!, questionId: ID!, optionId: ID!): AssessmentTask!
     completeAssessmentTask(taskId: ID!): AssessmentTask!
     assignAssessmentTaskToTeam(taskId: ID!, teamId: ID!): AssessmentTask!
-    assignAssessmentTaskToUser(taskId: ID!, userId: ID!): AssessmentTask!
-    assignDeployPlanTaskToUser(taskId: ID!, userId: ID!): DeployPlanTask!
+    """userId null = togli l'assegnazione: l'attività torna al solo team (revisione totale · F-4)."""
+    assignAssessmentTaskToUser(taskId: ID!, userId: ID): AssessmentTask!
+    """userId null = togli l'assegnazione (revisione totale · F-4)."""
+    assignDeployPlanTaskToUser(taskId: ID!, userId: ID): DeployPlanTask!
     saveDeployPlan(taskId: ID!, steps: [DeployStepInput!]!): DeployPlanTask!
     completeDeployPlanTask(taskId: ID!): DeployPlanTask!
     executeChangeTransition(changeId: ID!, toStep: String!, notes: String): Change!

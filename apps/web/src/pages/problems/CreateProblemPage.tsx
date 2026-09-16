@@ -17,6 +17,7 @@ import { useValueStyle } from '@/hooks/useValueStyle'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
 import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { showError } from '@/lib/showError'
+import { useEnumValues } from '@/hooks/useEnumValues'
 import { useCILabels } from '@/hooks/useCILabels'
 import { CIExclusionHint } from '@/components/ticket/CIExclusionHint'
 
@@ -43,7 +44,7 @@ export function CreateProblemPage() {
   // F9: il colore della priorità derivata è quello del Dizionario.
   const styleOf = useValueStyle()
   const navigate = useNavigate()
-  const ids = { title: useId(), description: useId(), ciSearch: useId(), teamSearch: useId(), levels: useId() }
+  const ids = { title: useId(), description: useId(), category: useId(), ciSearch: useId(), teamSearch: useId(), levels: useId() }
 
   const [title,       setTitle]       = useState('')
   // Dalla matrice DEL CLIENTE, non da una copia nel web (revisione · C·N-3).
@@ -57,13 +58,21 @@ export function CreateProblemPage() {
   }, [matrix])
   const priority = derivePriority(matrix, impact, urgency) ?? ''
   const [description, setDescription] = useState('')
+  /**
+   * La categoria (vocabolario del cliente). Il problem non l'aveva affatto:
+   * il nodo non la scriveva, quindi le policy SLA per categoria non ne
+   * sceglievano mai uno e il workflow per categoria non era scegliibile da
+   * qui (revisione totale · B-3). Facoltativa, come nel vocabolario.
+   */
+  const [category, setCategory] = useState('')
+  const { values: categoryValues, loading: categoryLoading } = useEnumValues('problem', 'category')
   const [selectedTeam,     setSelectedTeam]     = useState<Team | null>(null)
   const [teamSearch,       setTeamSearch]       = useState('')
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false)
   const [ciSearch,    setCiSearch]    = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
   // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
-  const { defs: customDefs } = useCreationCustomFieldDefs('problem')
+  const { defs: customDefs } = useCreationCustomFieldDefs('problem', category || undefined)
   const [customValues, setCustomValues] = useState<Record<string, string>>({})
   const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
 
@@ -120,7 +129,7 @@ export function CreateProblemPage() {
     void checkSlaCoverage({
       entityType: 'problem',
       priority, priorityLabel: labelOf('priority', priority) ?? priority,
-      category: null, categoryLabel: null,
+      category: category || null, categoryLabel: category ? (labelOf('category', category) ?? category) : null,
       teamId: selectedTeam?.id ?? null, teamName: selectedTeam?.name ?? null,
     }).then((decisione) => {
       if (decisione === 'cancelled') return
@@ -130,6 +139,7 @@ export function CreateProblemPage() {
             title:           title.trim(),
             impact,
             urgency,
+            ...(category ? { category } : {}),
             description:     description.trim() || undefined,
             affectedCIs:     selectedCIs.map(ci => ci.id),
             customFields:    customFieldsInput(customDefs, customValues),
@@ -182,6 +192,22 @@ export function CreateProblemPage() {
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
               onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
             />
+          </div>
+
+          {/* CATEGORIA (facoltativa): sceglie il workflow del problem e le
+              policy SLA per categoria (revisione totale · B-3). */}
+          <div style={{ marginBottom: 20 }}>
+            <label htmlFor={ids.category} style={fieldLabel}>{t('pages.kb.category')}</label>
+            {categoryLoading ? (
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</span>
+            ) : (
+              <select id={ids.category} value={category} onChange={e => setCategory(e.target.value)} style={inputBase}>
+                <option value="">{t('pages.createIncident.selectCategory')}</option>
+                {categoryValues.map(c => (
+                  <option key={c} value={c}>{labelOf('category', c) ?? c}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* IMPATTO × URGENZA → PRIORITÀ */}

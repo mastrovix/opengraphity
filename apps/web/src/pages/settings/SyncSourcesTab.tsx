@@ -195,7 +195,10 @@ export function SyncSourcesTab({
     e.preventDefault()
     const config: Record<string, string> = {}
     for (const f of selectedConnector?.configFields ?? []) {
-      if (form[f.name]) config[f.name] = form[f.name]!
+      // Revisione totale · G-7: i campi con un valore predefinito lo mostravano
+      // ma non lo mettevano nella configurazione, perché `form` era vuoto.
+      const value = form[f.name] ?? (f.defaultValue != null ? String(f.defaultValue) : '')
+      if (value !== '') config[f.name] = value
     }
     try {
       await onCreateSource({
@@ -203,6 +206,9 @@ export function SyncSourcesTab({
         connectorType: selectedType,
         credentials: credForm,
         config,
+        // G-7: la pianificazione digitata qui si perdeva in silenzio — la
+        // sincronizzazione non partiva mai finché non si riapriva il dialogo.
+        ...(form['scheduleCron']?.trim() ? { scheduleCron: form['scheduleCron'].trim() } : {}),
       })
       setShowCreate(false)
       setForm({}); setCredForm({}); setSelectedType('')

@@ -90,7 +90,6 @@ export function TaskViewPage() {
   // Chi agisce per qualunque team (approval.override, ondata 7; prima «admin»).
   const actsForAnyTeam = can('approval.override')
   const userTeamIds = new Set((meData?.me?.teams ?? []).map(t => t.id))
-  const currentUserId = meData?.me?.id ?? null
 
   // Team assegnatario del task assegnabile (assessment/deploy-plan): si caricano solo i suoi membri,
   // non l'intera anagrafica utenti.
@@ -224,10 +223,11 @@ export function TaskViewPage() {
           disabled={!canAssign}
           value={tsk.assignee?.id ?? ''}
           onChange={(e) => {
-            if (e.target.value && currentUserId) {
-              const assign = task.kind === 'deploy-plan' ? assignPlanUser : assignUser
-              void assign({ variables: { taskId: tsk.id, userId: e.target.value } })
-            }
+            // «Non assegnato» (valore vuoto) manda userId null e TOGLIE
+            // l'assegnazione: prima l'opzione c'era e non faceva nulla
+            // (revisione totale · F-4).
+            const assign = task.kind === 'deploy-plan' ? assignPlanUser : assignUser
+            void assign({ variables: { taskId: tsk.id, userId: e.target.value || null } })
           }}
           style={{ ...inputStyle, flex: 1, maxWidth: 250 }}
         >

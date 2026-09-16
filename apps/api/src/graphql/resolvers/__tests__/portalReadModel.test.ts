@@ -18,11 +18,14 @@ const ticketProps = {
   created_by: 'user-1', created_at: 'a', updated_at: 'b',
 }
 
+// Revisione totale · H-2: il portale legge incident E richieste, quindi le
+// query non nominano più `i:Incident` ma `e` con le due etichette, e ogni riga
+// porta `labels`.
 function answer(cypher: string) {
-  if (cypher.includes('count(i) AS total')) return [{ get: () => 1 }]
+  if (cypher.includes('count(e) AS total')) return [{ get: () => 1 }]
   if (cypher.includes('STEP_HISTORY')) return [{ get: (k: string) => ({ fromStep: null, toStep: 'new', triggeredAt: 't', triggeredBy: 'user-1' } as Record<string, unknown>)[k] }]
-  if (cypher.includes('RETURN properties(i) AS props')) {
-    return [{ get: (k: string) => (k === 'props' ? ticketProps : k === 'assignedTeam' ? 'Service Desk' : null) }]
+  if (cypher.includes('RETURN properties(e) AS props')) {
+    return [{ get: (k: string) => (k === 'props' ? ticketProps : k === 'assignedTeam' ? 'Service Desk' : k === 'labels' ? ['Incident'] : null) }]
   }
   return []
 }

@@ -312,7 +312,9 @@
       },
       "configureRules": "Configure rules",
       "resolvedReason": "Closed because",
-      "resolvedByRuleDisabled": "The rule was switched off"
+      "resolvedByRuleDisabled": "The rule was switched off",
+      "noResults": "No anomaly matches the filters",
+      "noResultsDesc": "Change or clear the filters to see the others."
     },
     "topology": {
       "title": "Topology Map",
@@ -345,7 +347,8 @@
       "comboShown": "Showing {{shown}} of {{total}} — refine the search to find the others",
       "highlightHealth": "Highlight health",
       "chooseCIHint": "Choose a CI type and a CI in the bar above to see its relationships.",
-      "noRelations": "This CI has no relationship within the chosen depth."
+      "noRelations": "This CI has no relationship within the chosen depth.",
+      "openCIForTickets": "Open the CI: its incidents and changes are listed there"
     },
     "teams": {
       "title": "Teams",
@@ -2372,6 +2375,15 @@
       "isolated_cluster": "CI in an isolated cluster: it reaches only {{count}} other CIs",
       "risk_concentration": "CI with {{count}} open critical incidents",
       "unauthorized_relation_legacy": "Reversed DEPENDS_ON: Server → Application ({{application}})"
+    },
+    "suggestions": {
+      "orphan_ci": "Link it to what it depends on (or what depends on it), or retire it if it is no longer in service.",
+      "spof": "Everything here goes through one component: add redundancy, or write down that the risk is accepted.",
+      "dependency_cycle": "Dependencies form a loop: one of them is the wrong way round. Fix the direction of the relation that closes the circle.",
+      "missing_owner": "Give it an owner team: without one nobody receives its tickets or its alarms.",
+      "unauthorized_relation": "This relation is not allowed between these two types: remove it, or allow it in the CI type designer.",
+      "isolated_cluster": "This group of CIs is cut off from the rest of the CMDB: connect it to the application or the infrastructure it belongs to.",
+      "risk_concentration": "Too many incidents on one CI: look at the root cause (a problem record), not one ticket at a time."
     }
   },
   "notifications": {
@@ -3944,7 +3956,8 @@
       "badToken": "The bot token of a Slack app starts with xoxb-.",
       "badSigningSecret": "The signing secret of a Slack app is 32 hexadecimal characters.",
       "tokenRefused": "Slack did not accept the token: {{error}}.",
-      "badReturnTo": "The return page must belong to this organization."
+      "badReturnTo": "The return page must belong to this organization.",
+      "idTaken": "This Slack account is already linked to {{user}}"
     },
     "login": {
       "rule": {
@@ -5070,12 +5083,12 @@
       "notFound": "Source not found",
       "tool": "Tool",
       "presetRulesTitle": "Rules",
-      "presetConfigError": "The saved configuration cannot be edited from this page (saving disabled so it is not lost): {{error}}",
       "enabled": "Source active",
       "mappingTitle": "Field mapping",
       "tokenTitle": "Token",
       "tokenHint": "The token is never shown again after creation. If you lost it, regenerate it: the old one stops working immediately.",
-      "droppedFields": "Rules saved outside this editor will be dropped on save: {{fields}}"
+      "droppedFields": "Rules saved outside this editor will be dropped on save: {{fields}}",
+      "configNotEditable": "The saved configuration cannot be edited from this page: saving leaves it untouched and only updates name, status and rate limit. {{error}}"
     },
     "ciHealth": {
       "title": "Health",
@@ -6242,7 +6255,9 @@
     "planSaved_one": "{{ci}}: {{count}} step — {{steps}}",
     "planSaved_other": "{{ci}}: {{count}} steps — {{steps}}",
     "planCompleted_one": "{{ci}}: plan completed ({{count}} step)",
-    "planCompleted_other": "{{ci}}: plan completed ({{count}} steps)"
+    "planCompleted_other": "{{ci}}: plan completed ({{count}} steps)",
+    "userUnassigned": "{{role}} · {{ci}}: assignment removed",
+    "planUserUnassigned": "Planning · {{ci}}: assignment removed"
   },
   "serviceTargets": {
     "timeCounting": "Time counts",

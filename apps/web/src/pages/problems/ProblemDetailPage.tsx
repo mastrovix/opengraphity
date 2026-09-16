@@ -108,6 +108,8 @@ interface Problem {
   title:                string
   description:          string | null
   priority:             string
+  /** Categoria del vocabolario del cliente (revisione totale · B-3). */
+  category:             string | null
   status:               string
   rootCause:            string | null
   workaround:           string | null
@@ -376,6 +378,13 @@ export function ProblemDetailPage() {
               } />
               <DetailField label={t('detail.priority')} value={
                 <span style={{ fontWeight: 600, color: styleOf('priority', problem.priority).color }} title={problem.priority}>{labelOf('priority', problem.priority) ?? problem.priority}</span>
+              } />
+              {/* La categoria: sceglie il workflow e le policy SLA per
+                  categoria, e prima non era né salvata né mostrata (B-3). */}
+              <DetailField label={t('pages.kb.category')} value={
+                problem.category
+                  ? <span title={problem.category}>{labelOf('category', problem.category) ?? problem.category}</span>
+                  : <span style={{ color: 'var(--text-muted)' }}>—</span>
               } />
               {/*
                 Lo SLA del problem. Mancava: il motore non lo creava (leggeva

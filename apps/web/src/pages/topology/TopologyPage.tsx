@@ -418,12 +418,16 @@ export function TopologyPage() {
                 </DetailField>
               )}
 
-              {/* Incident count */}
+              {/* Incident count — porta al CI, che elenca i SUOI ticket
+                  (revisione totale · F-10): `/incidents?ci=<id>` non esisteva
+                  come filtro e la lista si apriva con TUTTI gli incident del
+                  cliente, facendo credere che fossero quelli del CI. */}
               <DetailField label={t('pages.topology.openIncidents')}>
                 {selectedNode.incidentCount > 0 ? (
                   <button
                     type="button"
-                    onClick={() => navigate(`/incidents?ci=${selectedNode.id}`)}
+                    title={t('pages.topology.openCIForTickets')}
+                    onClick={() => navigate(`/cis/${selectedNode.id}`)}
                     style={{
                       fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-trigger-sla-breach)',
                       background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline',
@@ -436,12 +440,13 @@ export function TopologyPage() {
                 )}
               </DetailField>
 
-              {/* Change count */}
+              {/* Change count — vedi F-10 sopra. */}
               <DetailField label={t('pages.topology.changeInProgress')}>
                 {selectedNode.changeCount > 0 ? (
                   <button
                     type="button"
-                    onClick={() => navigate(`/changes?ci=${selectedNode.id}`)}
+                    title={t('pages.topology.openCIForTickets')}
+                    onClick={() => navigate(`/cis/${selectedNode.id}`)}
                     style={{
                       fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: palette.orange.base,
                       background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline',

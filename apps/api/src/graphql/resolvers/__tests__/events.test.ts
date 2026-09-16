@@ -954,14 +954,33 @@ describe('sendSampleEvent', () => {
     // P-6: la sessione di lettura è chiusa prima dell'enqueue su Redis, quella di scrittura aperta dopo
     expect(vi.mocked(getSession).mock.calls).toEqual([[], [undefined, 'WRITE']])
     expect(session.close).toHaveBeenCalledTimes(2)
-    expect(audit).toHaveBeenCalledWith(admin, 'event_source.sample_sent', 'InboundWebhook', 'src-1', { connectorKind: 'datadog', accepted: 1 })
+    expect(audit).toHaveBeenCalledWith(admin, 'event_source.sample_sent', 'InboundWebhook', 'src-1', { connectorKind: 'datadog', accepted: 1, ownPayload: false })
   })
 
-  it('sorgente generic: applica field_mapping / default_values / value_mapping salvati sul webhook', async () => {
+  /**
+   * Revisione totale · G-MON-1: per una sorgente «generic» il campione non è
+   * più quello fisso del connettore (che ha i percorsi dell'esempio: una
+   * sorgente che mappa altrove non li ha e la prova falliva sempre), ma un
+   * payload costruito SULLA mappatura della sorgente.
+   */
+  it('sorgente generic: il campione è costruito sui percorsi mappati dalla sorgente, tradotto col suo value_mapping', async () => {
+    vi.mocked(enqueueEvents).mockResolvedValueOnce(1)
+    onCypher([[/RETURN properties\(w\)/, source({ connector_kind: 'generic', field_mapping: JSON.stringify({ title: 'event.summary', severity: 'event.level', resource: 'event.host' }), default_values: JSON.stringify({ resourceKind: 'fqdn' }), value_mapping: JSON.stringify({ severity: { sev1: 'critical' } }) })], [/SET w\.receive_count/, null]])
+    await eventResolvers.Mutation.sendSampleEvent(null, { sourceId: 'src-1' }, admin)
+    expect(vi.mocked(enqueueEvents).mock.calls[0]![2][0]).toMatchObject({ severity: 'critical', status: 'firing', resourceKind: 'fqdn', title: expect.stringContaining('Sample') })
+  })
+
+  it('sorgente generic con un payload proprio: usa quello, e l\'audit lo dice', async () => {
     vi.mocked(enqueueEvents).mockResolvedValueOnce(1)
     onCypher([[/RETURN properties\(w\)/, source({ connector_kind: 'generic', field_mapping: JSON.stringify(GENERIC_SAMPLE_CONFIG.fieldMapping), default_values: JSON.stringify({ resourceKind: 'fqdn' }), value_mapping: JSON.stringify(GENERIC_SAMPLE_CONFIG.valueMapping) })], [/SET w\.receive_count/, null]])
-    await eventResolvers.Mutation.sendSampleEvent(null, { sourceId: 'src-1' }, admin)
+    await eventResolvers.Mutation.sendSampleEvent(null, { sourceId: 'src-1', payload: JSON.stringify(SAMPLE_PAYLOADS.generic) }, admin)
     expect(vi.mocked(enqueueEvents).mock.calls[0]![2][0]).toMatchObject({ title: 'CheckoutErrorRate', severity: 'warning', status: 'firing', resource: 'api-03.example.local', resourceKind: 'fqdn' })
+    expect(audit).toHaveBeenCalledWith(admin, 'event_source.sample_sent', 'InboundWebhook', 'src-1', { connectorKind: 'generic', accepted: 1, ownPayload: true })
+  })
+
+  it('payload proprio non JSON o troppo lungo → BAD_USER_INPUT prima di qualunque lettura', async () => {
+    await expectCode(eventResolvers.Mutation.sendSampleEvent(null, { sourceId: 'src-1', payload: '{oops' }, admin), 'BAD_USER_INPUT', /payload is not valid JSON/)
+    await expectCode(eventResolvers.Mutation.sendSampleEvent(null, { sourceId: 'src-1', payload: 'x'.repeat(PAYLOAD_MAX_CHARS + 1) }, admin), 'BAD_USER_INPUT', /payload must be at most/)
   })
 
   it('sorgente zabbix: il fuso del tenant converte event_date/event_time del campione in startsAt ISO come fa il webhook; senza fuso startsAt resta vuoto e il grezzo va in labels.event_time', async () => {

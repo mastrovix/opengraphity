@@ -46,3 +46,31 @@ describe('selectSLAForEntity — fuso', () => {
     await expect(selectSLAForEntity('t1', 'incident', 'high', null, null)).rejects.toThrow(/time ?zone/i)
   })
 })
+
+/**
+ * Revisione totale del 16 set 2026 · E-1: la specificità conta i criteri che la
+ * policy fissa, non elenca cinque combinazioni. Prima una policy «priorità +
+ * team» o «solo team» cadeva in ELSE 99 ed era esclusa: non veniva scelta mai,
+ * e il ticket riceveva la policy generica senza un avviso.
+ */
+describe('selectSLAForEntity — specificità per numero di criteri (E-1)', () => {
+  beforeEach(() => { run.mockReset() })
+
+  it('la query non esclude nessuna combinazione e ordina per numero di criteri', async () => {
+    run.mockResolvedValueOnce({ records: [] })
+    await selectSLAForEntity('t1', 'incident', 'critical', 'network', 'team-rete').catch(() => null)
+    const cypher = run.mock.calls[0]![0] as string
+    expect(cypher).not.toContain('ELSE 99')
+    expect(cypher).toContain('ORDER BY criteria DESC, weight DESC')
+    // Ogni criterio dichiarato deve combaciare; quelli non dichiarati non vincolano.
+    expect(cypher).toContain('p.priority IS NULL OR p.priority = $priority')
+    expect(cypher).toContain('p.category IS NULL OR p.category = $category')
+    expect(cypher).toContain('p.team_id  IS NULL OR p.team_id  = $teamId')
+  })
+
+  it('una policy «priorità + team» (senza categoria) è ammessa dalla query e scelta', async () => {
+    run.mockResolvedValueOnce(rows({ ...base, name: 'P1 del team Rete', priority: 'critical', team_id: 'team-rete' }, 'Europe/Rome'))
+    const policy = await selectSLAForEntity('t1', 'incident', 'critical', null, 'team-rete')
+    expect(policy?.name).toBe('P1 del team Rete')
+  })
+})

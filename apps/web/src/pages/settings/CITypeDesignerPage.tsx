@@ -586,12 +586,15 @@ export function CITypeDesignerPage() {
       />
 
       {/* Modal only for base type fields */}
+      {/* Revisione totale · G-4: «Modifica» di un campo base salvava sempre
+          come «aggiungi» (l'id del campo non arrivava a handleSaveField) e il
+          form partiva vuoto. */}
       <CIFieldEditor
         open={showBaseFieldModal}
-        onClose={() => setShowBaseFieldModal(false)}
+        onClose={() => { setShowBaseFieldModal(false); setEditingBaseField(null) }}
         initial={editingBaseField ? fieldToForm(editingBaseField) : null}
         existingCount={baseType?.fields.length ?? 0}
-        onSave={handleSaveField}
+        onSave={async (form) => { await handleSaveField(form, editingBaseField?.id) }}
       />
 
       <CIRelationEditor

@@ -104,7 +104,14 @@ async function toolsFor(tenantId: string, permissions: ReadonlySet<string> = per
 }
 
 const queries = () => vi.mocked(runQuery).mock.calls.map(c => ({ cypher: c[1] as string, params: c[2] as Record<string, unknown> }))
-const limitOf = (cypher: string): string => /LIMIT (\S+)/.exec(cypher)?.[1] ?? /tutti\[\.\.(\S+?)\]/.exec(cypher)?.[1] ?? 'NONE'
+/**
+ * Il limite della query: un letterale nel Cypher, oppure il parametro
+ * `vectorLimit` per le ricerche vettoriali, che dalla revisione totale (B-12)
+ * passano da `lib/vectorSearch.ts` e mandano il limite come parametro.
+ */
+const limitOf = (q: { cypher: string; params: Record<string, unknown> }): string =>
+  q.params['vectorLimit'] !== undefined ? String(q.params['vectorLimit'])
+  : /LIMIT (\S+)/.exec(q.cypher)?.[1] ?? /tutti\[\.\.(\S+?)\]/.exec(q.cypher)?.[1] ?? 'NONE'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -317,7 +324,7 @@ describe('tool dell\'assistente — clamp di limit', () => {
     const run = async (extra: Record<string, unknown>) => {
       vi.mocked(runQuery).mockClear()
       await tools.get(name)!.run({ ...input, ...extra })
-      return limitOf(queries()[0]!.cypher)
+      return limitOf(queries()[0]!)
     }
     expect(await run({})).toBe(def)
     expect(await run({ limit: 999_999 })).toBe(max)
@@ -330,7 +337,7 @@ describe('tool dell\'assistente — clamp di limit', () => {
     const tools = await toolsFor(TENANT)
     vi.mocked(runQuery).mockClear()
     await tools.get('cerca_kb')!.run({ query: 'x', limit: 999 })
-    expect(limitOf(queries()[0]!.cypher)).toBe('5')
+    expect(limitOf(queries()[0]!)).toBe('5')
   })
 
   it('limit negativo → clampato a un minimo ≥ 1 — BUG: assistantService.ts:66/115/174/216 usano solo Math.min (LIMIT -3 → Cypher invalido)', async () => {
@@ -338,7 +345,7 @@ describe('tool dell\'assistente — clamp di limit', () => {
     for (const [name, input] of CASES) {
       vi.mocked(runQuery).mockClear()
       await tools.get(name)!.run({ ...input, limit: -3 })
-      expect(Number(limitOf(queries()[0]!.cypher)), name).toBeGreaterThanOrEqual(1)
+      expect(Number(limitOf(queries()[0]!)), name).toBeGreaterThanOrEqual(1)
     }
   })
 
@@ -347,7 +354,7 @@ describe('tool dell\'assistente — clamp di limit', () => {
     for (const [name, input, def] of CASES) {
       vi.mocked(runQuery).mockClear()
       await tools.get(name)!.run({ ...input, limit: Number.NaN })
-      expect(limitOf(queries()[0]!.cypher), name).toBe(def)
+      expect(limitOf(queries()[0]!), name).toBe(def)
     }
   })
 })

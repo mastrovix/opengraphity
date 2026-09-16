@@ -423,8 +423,14 @@ export function eventsSDL(): string {
     la salute e aprire un incident. Non azzera lastError della sorgente (è la
     diagnosi dell'ultimo payload reale rifiutato). Restituisce il numero di
     eventi accodati.
+
+    Il parametro payload (facoltativo) è il documento JSON da usare al posto
+    del campione del connettore: serve alle sorgenti generic, il cui campione
+    fisso non ha i percorsi che l'admin ha mappato (revisione totale · G-MON-1).
+    Omesso, per una sorgente generic il campione viene costruito SULLA
+    mappatura della sorgente; per i preset è quello del connettore.
     """
-    sendSampleEvent(sourceId: ID!): Int!
+    sendSampleEvent(sourceId: ID!, payload: String): Int!
     """Forza la salute a mano (health_source = manual); null toglie la forzatura e ricalcola dal monitoraggio."""
     setCIHealthOverride(ciId: ID!, health: CIHealth): CIHealthInfo!
     """Presa in carico. Rifiutata (BAD_USER_INPUT) su un evento risolto o già preso in carico da un altro utente; ripetuta dallo stesso utente aggiorna l'istante."""

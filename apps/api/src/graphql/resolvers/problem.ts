@@ -9,6 +9,7 @@ import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import { mapUser, mapTeam } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
+import { assertDomainValue } from '../../lib/domainMatrix.js'
 import { audit } from '../../lib/audit.js'
 import { ValidationError } from '../../lib/errors.js'
 import { auditStepEntered } from '../../lib/stepEvent.js'
@@ -44,6 +45,8 @@ export function mapProblem(props: Props) {
     priority:      (props['priority']     ?? 'medium') as string,
     impact:        (props['impact']       ?? null) as string | null,
     urgency:       (props['urgency']      ?? null) as string | null,
+    // B-3: la categoria è sul nodo e va esposta (le policy SLA la leggono).
+    category:      (props['category']     ?? null) as string | null,
     status:        props['status']        as string,
     rootCause:     (props['root_cause']   ?? null) as string | null,
     workaround:    (props['workaround']   ?? null) as string | null,
@@ -82,7 +85,9 @@ function mapProblemComment(props: Props, authorProps: Props | null) {
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
-const PROBLEM_SORT_WHITELIST: Record<string, string> = {
+/** `number`: vedi INCIDENT_SORT_WHITELIST (revisione totale · B-9). */
+export const PROBLEM_SORT_WHITELIST: Record<string, string> = {
+  number:    'number',
   title:     'title',
   priority:  'priority',
   status:    'status',
@@ -202,7 +207,7 @@ async function createProblem(
 
 async function updateProblem(
   _: unknown,
-  args: { id: string; input: { title?: string; description?: string; priority?: string; impact?: string; urgency?: string; rootCause?: string; workaround?: string; affectedUsers?: number } },
+  args: { id: string; input: { title?: string; description?: string; priority?: string; impact?: string; urgency?: string; category?: string; rootCause?: string; workaround?: string; affectedUsers?: number } },
   ctx: GraphQLContext,
 ) {
   const { id, input } = args
@@ -221,6 +226,9 @@ async function updateProblem(
       fieldValues: { ...propsToFieldValues(current.props), ...(input as Record<string, unknown>) },
       tenantId:    ctx.tenantId,
     })
+    // B-3: la categoria è un valore del vocabolario del cliente, come per gli
+    // incident; prima il problem non la teneva affatto.
+    if (input.category !== undefined) await assertDomainValue(ctx.tenantId, 'category', input.category)
     const prio = await resolvePriorityPatch(
       ctx.tenantId,
       { impact: current.props['impact'] as string | null, urgency: current.props['urgency'] as string | null },
@@ -234,6 +242,7 @@ async function updateProblem(
         priority:       coalesce($priority,     p.priority),
         impact:         coalesce($impact,       p.impact),
         urgency:        coalesce($urgency,      p.urgency),
+        category:       coalesce($category,     p.category),
         root_cause:     coalesce($rootCause,    p.root_cause),
         workaround:     coalesce($workaround,   p.workaround),
         affected_users: coalesce($affectedUsers, p.affected_users),
@@ -248,6 +257,7 @@ async function updateProblem(
       priority:      prio.severity,
       impact:        prio.impact,
       urgency:       prio.urgency,
+      category:      input.category      ?? null,
       rootCause:     input.rootCause     ?? null,
       workaround:    input.workaround    ?? null,
       affectedUsers: input.affectedUsers ?? null,

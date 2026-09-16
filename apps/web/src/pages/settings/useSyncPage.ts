@@ -211,6 +211,8 @@ export function useSyncPage(): UseSyncPageReturn {
             connectorType: input.connectorType,
             credentials: JSON.stringify(input.credentials),
             config: JSON.stringify(input.config),
+            // G-7: il cron scelto alla creazione non arrivava alla mutation.
+            ...(input.scheduleCron ? { scheduleCron: input.scheduleCron } : {}),
             enabled: true,
           },
         },

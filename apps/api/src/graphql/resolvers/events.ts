@@ -58,7 +58,7 @@ import { GROUP_LOCK_OPTS, groupIdOf, groupLockKey, openIncidentFromEvent, runEve
 import { EVENT_HISTORY_MAX, appendEventHistory, historyParams, historyWriteCypher } from '../../services/events/history.js'
 import { listStormSources } from '../../services/eventStorm.js'
 import { enqueueEvents } from '../../jobs/eventIngestWorker.js'
-import { sampleInboundPayload as samplePayloadOf } from '../../lib/eventSamples.js'
+import { sampleInboundPayload as samplePayloadOf, genericSamplePayload } from '../../lib/eventSamples.js'
 import { mapInbound } from './integrations.js'
 import { change as loadChange } from './change/queries.js'
 import type { CIHealthChangedPayload } from '@opengraphity/types'
@@ -716,8 +716,18 @@ export const SAMPLE_LABEL = 'sample'
  * (rest/webhooks-inbound.ts): il campione Zabbix ha `event_date`/`event_time`
  * in ora locale e senza fuso `startsAt` resterebbe vuoto.
  */
-async function sendSampleEvent(_: unknown, args: { sourceId: string }, ctx: GraphQLContext) {
+async function sendSampleEvent(_: unknown, args: { sourceId: string; payload?: string | null }, ctx: GraphQLContext) {
   requirePermission(ctx, 'config.monitoring')
+  // Revisione totale · G-MON-1: il campione fisso del connettore non ha i
+  // percorsi che l'admin ha mappato a mano su una sorgente «generic», e la
+  // prova finiva sempre con «field_mapping.title (…) is missing». Con
+  // `payload` la prova usa lo stesso esempio su cui l'anteprima era verde.
+  let ownPayload: unknown = null
+  if (args.payload != null) {
+    validateStringLength(args.payload, 'payload', 1, PAYLOAD_MAX_CHARS)
+    try { ownPayload = JSON.parse(args.payload) }
+    catch (e) { throw new ValidationError(`payload is not valid JSON: ${e instanceof Error ? e.message : String(e)}`) }
+  }
   let wh: Props
   let timezone: string | null
   const read = getSession()
@@ -735,7 +745,15 @@ async function sendSampleEvent(_: unknown, args: { sourceId: string }, ctx: Grap
     throw new ValidationError(`Inbound webhook ${args.sourceId} is not a monitoring source (entityType ${JSON.stringify(wh['entity_type'])})`)
   }
   const config = sourceConfigOf(wh)
-  const events: NormalizedEvent[] = normalizeWithConfig(config, samplePayloadOf(config.connectorKind), { timezone })
+  // Senza payload: per i preset il campione del connettore, per «generic» un
+  // campione costruito sulla mappatura della sorgente (il campione fisso ha i
+  // percorsi dell'esempio, non i suoi → la prova falliva sempre · G-MON-1).
+  const sample = args.payload != null
+    ? ownPayload
+    : config.connectorKind === 'generic'
+      ? genericSamplePayload(config.fieldMapping, config.valueMapping, config.defaults)
+      : samplePayloadOf(config.connectorKind)
+  const events: NormalizedEvent[] = normalizeWithConfig(config, sample, { timezone })
     .map((ev) => ({ ...ev, labels: { ...ev.labels, [SAMPLE_LABEL]: 'true' } }))
   const receivedAt = new Date().toISOString()
   const accepted = await enqueueEvents(ctx.tenantId, args.sourceId, events, receivedAt)
@@ -748,7 +766,7 @@ async function sendSampleEvent(_: unknown, args: { sourceId: string }, ctx: Grap
           w.last_received_at = $now
     `, { id: args.sourceId, tenantId: ctx.tenantId, n: accepted, now: receivedAt })
   } finally { await write.close() }
-  void audit(ctx, 'event_source.sample_sent', 'InboundWebhook', args.sourceId, { connectorKind: config.connectorKind, accepted })
+  void audit(ctx, 'event_source.sample_sent', 'InboundWebhook', args.sourceId, { connectorKind: config.connectorKind, accepted, ownPayload: args.payload != null })
   return accepted
 }
 

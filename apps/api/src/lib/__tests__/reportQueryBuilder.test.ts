@@ -195,7 +195,7 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     const { query, params } = buildReportQuery(sec, TENANT, whitelist)
     expect(query).toBe([
       'MATCH (n0:Incident {tenant_id: $tenantId})',
-      'WHERE n0.status IN $n0_f0 AND n0.created_at > datetime() - duration({days: $n0_f1}) AND toLower(n0.title) CONTAINS toLower($n0_f2) AND n0.resolved_at IS NULL',
+      'WHERE n0.status IN $n0_f0 AND datetime(n0.created_at) > datetime() - duration({days: $n0_f1}) AND toLower(n0.title) CONTAINS toLower($n0_f2) AND n0.resolved_at IS NULL',
       'MATCH (n0)-[:ASSIGNED_TO_TEAM]->(n1:Team)',
       'RETURN n1.name AS label, count(n0) AS value',
       'ORDER BY value ASC',
@@ -232,7 +232,7 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     const { query } = buildReportQuery(section({ chartType: 'line' }), TENANT, whitelist)
     expect(query).toBe([
       'MATCH (n0:Incident {tenant_id: $tenantId})',
-      'RETURN date(n0.created_at) AS label, count(n0) AS value',
+      'RETURN date(datetime(n0.created_at)) AS label, count(n0) AS value',
       'ORDER BY label ASC',
     ].join('\n'))
   })
@@ -279,8 +279,8 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     bar:            ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
     bar_horizontal: ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
     top_n:          ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
-    line:           ['RETURN date(n0.created_at) AS label, count(n0) AS value', 'ORDER BY label ASC'],
-    area:           ['RETURN date(n0.created_at) AS label, count(n0) AS value', 'ORDER BY label ASC'],
+    line:           ['RETURN date(datetime(n0.created_at)) AS label, count(n0) AS value', 'ORDER BY label ASC'],
+    area:           ['RETURN date(datetime(n0.created_at)) AS label, count(n0) AS value', 'ORDER BY label ASC'],
     table:          ['RETURN n0.title AS c0', 'LIMIT toInteger($limit)'],
   }
 

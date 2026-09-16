@@ -29,12 +29,12 @@ const slack = vi.hoisted(() => ({
 vi.mock('@opengraphity/notifications', () => ({
   loadSlackInstallationByTeam: vi.fn(async (teamId: string) => (slack.installation && slack.installation.teamId === teamId ? slack.installation : null)),
 }))
-vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn(), resolveIncident: vi.fn(), escalateIncident: vi.fn() }))
+vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn(), resolveIncident: vi.fn(), escalateIncident: vi.fn(), assignIncidentToUser: vi.fn() }))
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
 vi.mock('../../lib/domainMatrix.js', () => ({ domainVocabulary: vi.fn(async () => ['critical', 'high', 'medium', 'low']) }))
 
 const { getSession } = await import('@opengraphity/neo4j')
-const { createIncident, resolveIncident, escalateIncident } = await import('../../services/incidentService.js')
+const { createIncident, resolveIncident, escalateIncident, assignIncidentToUser } = await import('../../services/incidentService.js')
 const { logger } = await import('../../lib/logger.js')
 const { resetConfigCache } = await import('../../lib/config.js')
 const { handleSlackCommands, handleSlackActions } = await import('../slack.js')
@@ -281,7 +281,7 @@ describe('handleSlackActions', () => {
     expect(getSession).not.toHaveBeenCalled()
   })
 
-  it('assign_me → tenant-scoped SET assignee_id, confirmation posted to response_url', async () => {
+  it('assign_me passa dal servizio (revisione totale · D-13: prima scriveva assignee_id, che l\'app non legge)', async () => {
     const { session, writes } = sessionWith([[userRow]])
     vi.mocked(getSession).mockReturnValue(session as never)
     const fetchMock = vi.fn().mockResolvedValue(new Response('ok'))
@@ -291,13 +291,26 @@ describe('handleSlackActions', () => {
     await handleSlackActions(actionReq({ action: 'assign_me', incidentId: 'inc-1' }, { user: { id: 'U123' }, response_url: 'https://hooks.slack.test/r' }), asRes(res))
 
     expect(res.sent).toBe(200)
-    expect(writes).toHaveLength(1)
-    expect(writes[0]!.q).toMatch(/Incident \{id: \$incidentId, tenant_id: \$tenantId\}/)
-    expect(writes[0]!.p).toMatchObject({ incidentId: 'inc-1', tenantId: 'tenant-1', userId: 'user-1' })
+    expect(assignIncidentToUser).toHaveBeenCalledWith('inc-1', 'user-1', { tenantId: 'tenant-1', userId: 'user-1' })
+    // Nessuna scrittura a mano sul nodo: l'assegnatario è la relazione ASSIGNED_TO.
+    expect(writes.filter((w) => w.q.includes('assignee_id'))).toHaveLength(0)
     expect(fetchMock).toHaveBeenCalledWith('https://hooks.slack.test/r', expect.objectContaining({ method: 'POST' }))
     const posted = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body) as { text: string }
     expect(posted.text).toMatch(/assign_me/)
     expect(session.close).toHaveBeenCalled()
+  })
+
+  it('un\'azione rifiutata (guardia del workflow) lo dice a chi ha premuto il pulsante (D-13)', async () => {
+    vi.mocked(getSession).mockReturnValue(sessionWith([[userRow]]).session as never)
+    vi.mocked(resolveIncident).mockRejectedValueOnce(new Error('Root cause is required'))
+    const fetchMock = vi.fn().mockResolvedValue(new Response('ok'))
+    vi.stubGlobal('fetch', fetchMock)
+    const res = fakeRes()
+    await handleSlackActions(actionReq({ action: 'resolve', incidentId: 'inc-1' }, { user: { id: 'U123' }, response_url: 'https://hooks.slack.test/r' }), asRes(res))
+    expect(res.sent).toBe(200)
+    const posted = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body) as { text: string; response_type: string }
+    expect(posted.text).toMatch(/Root cause is required/)
+    expect(posted.response_type).toBe('ephemeral')
   })
 
   it('resolve / escalate delegate to incidentService with the user context', async () => {
@@ -329,6 +342,8 @@ describe('handleSlackActions', () => {
     const res = fakeRes()
     await handleSlackActions(actionReq({ action: 'resolve', incidentId: 'inc-1' }), asRes(res))
     expect(res.sent).toBe(200)
-    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ err: expect.any(Error) }), 'slack actions error')
+    // Revisione totale · D-13: il rifiuto si logga come warn (con il motivo, che
+    // ora arriva a chi ha premuto il pulsante) e la richiesta resta un 200.
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ err: expect.any(Error), actionType: 'resolve' }), '[slack] action refused')
   })
 })

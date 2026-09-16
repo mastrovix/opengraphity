@@ -143,7 +143,11 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
   async function handleSample() {
     if (!created) return
     try {
-      const res = await sendSample({ variables: { sourceId: created.id } })
+      // Revisione totale · G-MON-1: per una sorgente «generic» la prova usa
+      // l'esempio su cui il passo 2 ha preteso l'anteprima verde, non il
+      // campione fisso del connettore (che non ha i percorsi mappati).
+      const ownPayload = isGeneric && payload.trim() ? payload : null
+      const res = await sendSample({ variables: { sourceId: created.id, payload: ownPayload } })
       const n = res.data?.sendSampleEvent
       if (typeof n !== 'number') throw new Error(t('monitoring.errors.emptyResponse', { operation: 'sendSampleEvent' }))
       setSampleCount(n)
