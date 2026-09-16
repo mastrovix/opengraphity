@@ -79,7 +79,7 @@ describe('setTicketTeam', () => {
 
   it('sostituisce il gruppo (DELETE del vecchio, CREATE del nuovo), aggiorna updated_at, ritorna il nome', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ teamName: 'DBA' })
-    await expect(setTicketTeam(session, 'Problem', 'prb-1', 'team-2', 't-1')).resolves.toEqual({ teamName: 'DBA' })
+    await expect(setTicketTeam(session, 'Problem', 'prb-1', 'team-2', 't-1')).resolves.toEqual({ teamName: 'DBA', unassignedUserName: null })
     const { cypher, params } = lastQuery()
     expect(cypher).toContain('MATCH (e:Problem {id: $id, tenant_id: $tenantId})')
     expect(cypher).toContain('MATCH (t:Team {id: $teamId, tenant_id: $tenantId})')
@@ -91,6 +91,22 @@ describe('setTicketTeam', () => {
     expect(cypher).toContain('SET e.updated_at = $now')
     expect(params).toMatchObject({ id: 'prb-1', teamId: 'team-2', tenantId: 't-1' })
     expect(params['now']).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+  })
+
+  /**
+   * Revisione totale · M-10: la regola ITSM «prima il gruppo, poi una persona
+   * di quel gruppo» (imposta da `assertUserInAssignedTeam`) veniva violata
+   * subito dopo ogni cambio di gruppo: il ticket restava assegnato a qualcuno
+   * che nel gruppo nuovo non c'è.
+   */
+  it('l\'assegnatario che non è nel gruppo nuovo viene staccato, e si dice chi era (M-10)', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ teamName: 'DBA', unassignedUserName: 'Mario' })
+    await expect(setTicketTeam(session, 'Incident', 'inc-1', 'team-2', 't-1'))
+      .resolves.toEqual({ teamName: 'DBA', unassignedUserName: 'Mario' })
+    const { cypher } = lastQuery()
+    expect(cypher).toContain('OPTIONAL MATCH (e)-[__assignee:ASSIGNED_TO]->(u:User)')
+    expect(cypher).toContain('WHERE NOT exists((u)-[:MEMBER_OF]->(t))')
+    expect(cypher).toContain('DELETE __assignee')
   })
 })
 

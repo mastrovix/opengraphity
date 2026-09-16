@@ -444,7 +444,7 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
       const instanceId = await getInstanceId(session as Session, changeId, tenantId)
       const toStep = await targetStepByPurpose(session as Session, tenantId, 'change', ['scheduled'],
         'pre-approval of a standard change')
-      const res = await workflowEngine.transition(session as Session, { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: await systemText(tenantId, 'change.preApproved') }, { userId: 'system', entityData: {} })
+      const res = await workflowEngine.transition(session as Session, { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: await systemText(tenantId, 'change.preApproved'), tenantId }, { userId: 'system', entityData: {} })
       // Fail-loud: una pre-approvata ferma in approvazione senza requisiti non
       // si sbloccherebbe mai (nessun record da approvare).
       if (!res.success) {

@@ -294,7 +294,8 @@ describe('notification-jobs', () => {
     expect(s.reads[0]!.q).toContain("tr.trigger IN ['automatic', 'timer']")
     expect(transition).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'WRITE' }),
-      { instanceId: 'wi-2', toStepName: 'closed', triggeredBy: 'timer', triggerType: 'automatic' },
+      // CONTRATTO RINEGOZIATO (revisione totale · E-31): il tenant è obbligatorio.
+      { instanceId: 'wi-2', toStepName: 'closed', triggeredBy: 'timer', triggerType: 'automatic', tenantId: 't1' },
       { userId: 'system', entityData: {} },
     )
   })

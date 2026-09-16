@@ -57,8 +57,10 @@ export function CIListPage() {
   }
 
   const ciType = typeName ? getCIType(typeName) : undefined
+  // F-22: l'etichetta scritta nel disegnatore vince sulla chiave i18n dei tipi
+  // spediti, che resta il ripiego per chi non l'ha cambiata.
   const labelKey = ciTypeLabelKey(typeName)
-  const ciTypeLabel = labelKey ? t(labelKey) : (ciType?.label ?? '')
+  const ciTypeLabel = ciType?.label || (labelKey ? t(labelKey) : (typeName ?? ''))
   const baseEnums = useCIBaseEnums()
   const newLabel = i18n.language.startsWith('it') && ciTypeLabel.match(/[aA]$/)
     ? t('pages.cmdb.newFeminine', { type: ciTypeLabel })

@@ -620,11 +620,16 @@ export const syncResolvers = {
           { id: args.conflictId, tenantId: ctx.tenantId, resolution: args.resolution, now },
         ))
 
+        // La rilettura è SCOPATA al tenant come tutte le altre (revisione
+        // totale · B-31): era l'unica query del file che leggeva un conflitto
+        // per solo id.
         const row = await runQueryOne<{ p: Props }>(session,
-          `MATCH (c:SyncConflict {id: $id}) RETURN properties(c) AS p`, { id: args.conflictId },
+          `MATCH (c:SyncConflict {id: $id, tenant_id: $tenantId}) RETURN properties(c) AS p`,
+          { id: args.conflictId, tenantId: ctx.tenantId },
         )
+        if (!row) throw new NotFoundError('SyncConflict', args.conflictId)
         void audit(ctx, 'sync_conflict.resolved', 'SyncConflict', args.conflictId, { resolution: args.resolution })
-        return mapConflict(row!.p)
+        return mapConflict(row.p)
       }, true)
     },
 

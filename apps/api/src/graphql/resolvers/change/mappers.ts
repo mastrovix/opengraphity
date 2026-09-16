@@ -10,7 +10,10 @@ export { mapCI, mapUser, mapTeam }
 
 export function mapChange(props: Props) {
   const aggregateRiskScore = props['aggregate_risk_score'] != null ? toNumber(props['aggregate_risk_score']) : null
-  const changeType = (props['change_type'] ?? 'normal') as string
+  // B-25: una change senza tipo si mostra senza tipo (il campo SDL è
+  // nullabile e il web rende «—»), non come se fosse «normal»: il cliente che
+  // ha rinominato i suoi tipi vedeva un tipo che non esiste.
+  const changeType = (props['change_type'] ?? null) as string | null
   return withTicketProps({
     id:                 props['id']                  as string,
     tenantId:           props['tenant_id']           as string,

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
@@ -47,7 +47,14 @@ interface UserRow {
   createdAt: string | null
 }
 
-const EMPTY_FORM = { email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] as string[] }
+/**
+ * Il ruolo NON ha un default cablato (revisione totale · F-29): `operator` era
+ * scritto qui, e un'organizzazione che l'ha cancellato dai suoi ruoli apriva
+ * il form di creazione già su un ruolo inesistente — l'API rifiutava il
+ * salvataggio e non si capiva perché. Il default è il primo ruolo
+ * dell'organizzazione, scelto quando i ruoli sono arrivati.
+ */
+const EMPTY_FORM = { email: '', firstName: '', lastName: '', password: '', role: '', teamIds: [] as string[] }
 
 const REQUIRED = <span aria-hidden="true" style={{ color: 'var(--color-danger)' }}>*</span>
 
@@ -89,6 +96,10 @@ export function UsersPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState(EMPTY_FORM)
   const [teamSearch, setTeamSearch] = useState('')
+  // F-29: appena i ruoli ci sono, il form parte dal primo dell'organizzazione.
+  useEffect(() => {
+    if (form.role === '' && roles.length > 0) setForm((f) => (f.role === '' ? { ...f, role: roles[0]!.key } : f))
+  }, [roles, form.role])
 
   // `users(sortField, sortDirection)` has no `filters` argument (see below).
   const { data, loading, error, refetch } = useQuery<{ users: UserRow[] }>(GET_USERS, {
@@ -194,6 +205,10 @@ export function UsersPage() {
             <div><label style={labelS}>{t('pages.users.password')} {REQUIRED}</label><Input type="password" required value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={t('pages.users.passwordHint')} /></div>
             <div><label style={labelS}>{t('pages.users.role')} {REQUIRED}</label>
               <Select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+                {/* F-29: nessun ruolo cablato. Finché i ruoli non sono arrivati
+                    la tendina non offre niente, invece di offrire un ruolo che
+                    l'organizzazione potrebbe non avere. */}
+                {roles.length === 0 && <option value="">{t('common.loading')}</option>}
                 {roles.map((r) => <option key={r.key} value={r.key}>{roleLabel(r.key)}</option>)}
               </Select>
             </div>

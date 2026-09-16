@@ -37,7 +37,7 @@ import type { Session } from 'neo4j-driver'
 import { logger } from '../../../lib/logger.js'
 import { requirePermission } from '../../../lib/permissions.js'
 import { isPreApprovedChangeType } from '../../../lib/changePolicy.js'
-import { getStepPurpose, getStepNamesByPurpose } from '../../../lib/workflowHelpers.js'
+import { getStepPurpose, getStepRow, getStepNamesByPurpose } from '../../../lib/workflowHelpers.js'
 import { assertAllApprovalsSatisfied, areAllApprovalsSatisfied } from './approvalCreation.js'
 import { areAllAssessmentsComplete } from '../../../lib/changeAssessments.js'
 import { changeWindowGateBlockedTotal } from '../../../middleware/metrics.js'
@@ -88,10 +88,25 @@ export type ChangeGateOutcome =
  * aggiungere una lettura a ogni transizione di ogni workflow.
  */
 export async function changeGateOutcome(session: Session, input: ChangeGateInput): Promise<ChangeGateOutcome> {
-  const [currentPurpose, targetPurpose] = await Promise.all([
+  const [currentPurpose, target] = await Promise.all([
     getStepPurpose(session, input.tenantId, 'change', input.currentStep),
-    getStepPurpose(session, input.tenantId, 'change', input.toStep),
+    getStepRow(session, input.tenantId, 'change', input.toStep),
   ])
+  const targetPurpose = target?.purpose ?? null
+
+  /**
+   * ABBANDONARE la change non è entrare nella finestra di rilascio (revisione
+   * totale · B-11). Il varco esiste per impedire che una change non approvata
+   * vada in produzione; un passo TERMINALE che non è un passo della finestra
+   * («Annullata», «Ritirata», aggiunti dal cliente — il workflow di fabbrica
+   * non ne ha) è un'uscita, e pretendere prima tutte le approvazioni o tutte
+   * le valutazioni significava che una change da buttare non si poteva
+   * buttare. La transizione deve comunque esistere nel workflow: qui si
+   * percorre un arco che il cliente ha disegnato.
+   */
+  const abandons = target?.isTerminal === true
+    && (targetPurpose == null || !(CHANGE_WINDOW_PURPOSES as readonly string[]).includes(targetPurpose))
+  if (abandons) return { kind: 'open' }
 
   // Uscire dall'analisi (verso qualunque passo, per qualunque tipo) chiede
   // valutazioni e piano completi. Il ritorno all'analisi resta libero.

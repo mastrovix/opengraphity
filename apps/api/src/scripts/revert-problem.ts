@@ -43,7 +43,7 @@ async function main(): Promise<void> {
       'problem return to investigation (revert-problem)')
     const t = await workflowEngine.transition(
       session,
-      { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: 'Change risolutiva scollegata (fix retroattivo)' },
+      { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: 'Change risolutiva scollegata (fix retroattivo)', tenantId: TENANT },
       { userId: 'system', entityData: {} },
     )
     if (!t.success) throw new Error(`[revert] fallito: ${t.error}`)

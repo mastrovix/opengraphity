@@ -46,7 +46,11 @@ vi.mock('../helpers.js', () => ({
   })),
 }))
 vi.mock('../../../../services/changeCreationService.js', () => ({ createChangeRFC: vi.fn() }))
-vi.mock('../../../../lib/workflowHelpers.js', () => ({ getStepPurpose: vi.fn(async () => 'assessment') }))
+vi.mock('../../../../lib/workflowHelpers.js', () => ({
+  getStepPurpose: vi.fn(async () => 'assessment'),
+  // B-11: nessun passo terminale in questa scena.
+  getStepRow: vi.fn(async (_s: unknown, _t: string, _e: string, step: string) => ({ name: step, purpose: 'assessment', isTerminal: false, category: 'active' })),
+}))
 vi.mock('../../../../lib/workflowTargets.js', () => ({ stepNamesByPurposeOrdered: vi.fn(async () => []) }))
 vi.mock('../../../../lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },

@@ -1,4 +1,5 @@
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { orderByOrThrow } from '../../lib/sortField.js'
 
 export { buildAdvancedWhere }
 
@@ -43,17 +44,14 @@ export const ALL_CIS_SORT_WHITELIST: Record<string, string> = {
 }
 
 export function allCIsOrderBy(sortField?: string | null, sortDirection?: string | null): string {
-  const col = sortField ? ALL_CIS_SORT_WHITELIST[sortField] : undefined
-  const dir = sortDirection?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
-  return col ? `${col} ${dir}` : 'n.name ASC'
+  return orderByOrThrow(ALL_CIS_SORT_WHITELIST, sortField, sortDirection, 'n.name ASC', 'allCIs(sortField)')
 }
 
 // ── ciOrderBy ─────────────────────────────────────────────────────────────────
 
 export function ciOrderBy(sortField?: string, sortDirection?: string): string {
-  const sortCol = sortField && CI_SORT_WHITELIST[sortField]
-  const sortDir = sortDirection?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
-  return sortCol ? `${sortCol} ${sortDir}` : 'n.name ASC'
+  // A-22: nessun ordine diverso in silenzio.
+  return orderByOrThrow(CI_SORT_WHITELIST, sortField, sortDirection, 'n.name ASC', 'sortField')
 }
 
 // ── buildBaseWhere ────────────────────────────────────────────────────────────

@@ -358,7 +358,7 @@ export async function resolveIncident(
     const result = await workflowEngine.transition(
       session,
       { instanceId: instanceRow.instanceId, toStepName: resolvedStep.name,
-        triggeredBy: ctx.userId, triggerType: 'manual', notes: notes ?? undefined },
+        triggeredBy: ctx.userId, triggerType: 'manual', notes: notes ?? undefined, tenantId: ctx.tenantId },
       { userId: ctx.userId, notes, entityData: {} },
     )
     // Revisione del 14 set 2026 · IT-2: l'esito era ignorato. Un rifiuto del
@@ -403,8 +403,16 @@ export async function assignIncidentToTeam(
   // dice che il ticket non è avanzato e perché.
   let advanceRefused: { result: Awaited<ReturnType<typeof workflowEngine.transition>>; toStep: string } | null = null
   const assigned = await withSession(async (session) => {
-    const { teamName } = await setTicketTeam(session, 'Incident', id, teamId, ctx.tenantId)
+    const { teamName, unassignedUserName } = await setTicketTeam(session, 'Incident', id, teamId, ctx.tenantId)
     const transitionNotes = await systemText(ctx.tenantId, 'incident.reassignedTeam', { team: teamName })
+    // M-10: l'assegnatario che non è nel gruppo nuovo è stato staccato. Non è
+    // un dettaglio tecnico: chi guarda il ticket deve sapere che non ha più un
+    // assegnatario, e perché.
+    if (unassignedUserName) {
+      await createTransitionComment(session, id, ctx.tenantId, ctx.userId,
+        await systemText(ctx.tenantId, 'incident.unassignedOnTeamChange', { user: unassignedUserName, team: teamName }),
+        ctx.actorLabel ?? null)
+    }
 
     const wiResult = await session.executeRead((tx) => tx.run(`
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
@@ -424,7 +432,7 @@ export async function assignIncidentToTeam(
         if (next) {
           const result = await workflowEngine.transition(
             session,
-            { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes },
+            { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes, tenantId: ctx.tenantId },
             { userId: ctx.userId, entityData: {} },
           )
           if (!result.success) advanceRefused = { result, toStep: next.toStep }
@@ -553,7 +561,7 @@ export async function assignIncidentToUser(
       if (currentStep === initialStep && next) {
         const result = await workflowEngine.transition(
           session,
-          { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: assignedNote },
+          { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: assignedNote, tenantId: ctx.tenantId },
           { userId: ctx.userId, entityData: {} },
         )
         if (!result.success) advanceRefused = { result, toStep: next.toStep }
@@ -675,7 +683,7 @@ export async function escalateIncident(
     const result = await workflowEngine.transition(
       session,
       { instanceId: instanceRow.instanceId, toStepName: target,
-        triggeredBy: ctx.userId, triggerType: 'manual' },
+        triggeredBy: ctx.userId, triggerType: 'manual', tenantId: ctx.tenantId },
       { userId: ctx.userId, entityData: {} },
     )
     // IT-2: senza questo controllo `incident.escalated` partiva anche quando

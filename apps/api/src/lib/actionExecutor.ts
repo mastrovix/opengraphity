@@ -270,6 +270,7 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
           instanceId, toStepName: toStep,
           triggeredBy: 'system', triggerType: 'automatic',
           notes: `Auto: ${ctx.sourceName}`,
+          tenantId: ctx.tenantId,
         }, { userId: ctx.userId, entityData: ctx.entity })
         // B-18: l'esito del motore era IGNORATO. Un `to_step` che non esiste
         // più (passo rinominato o tolto dal disegnatore), o un arco non

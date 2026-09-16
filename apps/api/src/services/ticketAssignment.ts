@@ -45,18 +45,35 @@ export async function assertUserInAssignedTeam(
   return { teamId: check.teamId, teamName: check.teamName }
 }
 
-/** Sostituisce il gruppo assegnatario; NOT_FOUND se ticket o team non esistono nel tenant. */
-export async function setTicketTeam(session: Session, label: TicketLabel, id: string, teamId: string, tenantId: string): Promise<{ teamName: string }> {
+/**
+ * Sostituisce il gruppo assegnatario; NOT_FOUND se ticket o team non esistono
+ * nel tenant.
+ *
+ * Se l'assegnatario attuale NON è membro del gruppo nuovo, l'assegnazione alla
+ * persona cade (revisione totale · M-10): la regola ITSM «prima il gruppo, poi
+ * una persona di quel gruppo» è imposta da `assertUserInAssignedTeam`, e ogni
+ * cambio di gruppo la violava subito dopo — il ticket restava assegnato a
+ * qualcuno che in quel gruppo non c'è. Chi resta membro (un team allargato)
+ * non viene toccato. `unassigned` dice se è caduta, così chi chiama lo può
+ * scrivere in timeline.
+ */
+export async function setTicketTeam(session: Session, label: TicketLabel, id: string, teamId: string, tenantId: string): Promise<{ teamName: string; unassignedUserName: string | null }> {
   const now = new Date().toISOString()
-  const row = await runQueryOne<{ teamName: string }>(session, `
+  const row = await runQueryOne<{ teamName: string; unassignedUserName: string | null }>(session, `
     MATCH (e:${label} {id: $id, tenant_id: $tenantId})
     MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
     ${assignTeamCypher('e', 't')}
+    // L'assegnatario che non è nel gruppo nuovo: si stacca, e si dice chi era.
+    OPTIONAL MATCH (e)-[__assignee:ASSIGNED_TO]->(u:User)
+      WHERE NOT exists((u)-[:MEMBER_OF]->(t))
+    WITH e, t, u.name AS unassignedUserName, __assignee
+    DELETE __assignee
+    WITH e, t, unassignedUserName
     SET e.updated_at = $now
-    RETURN t.name AS teamName
+    RETURN t.name AS teamName, unassignedUserName
   `, { id, teamId, tenantId, now, [TEAM_NOW_PARAM]: now })
   if (!row) throw new NotFoundError(`${label} o Team`, `${id} / ${teamId}`)
-  return { teamName: row.teamName }
+  return { teamName: row.teamName, unassignedUserName: row.unassignedUserName ?? null }
 }
 
 /** Sostituisce (o rimuove, con userId null) l'assegnatario; NOT_FOUND se ticket o utente non esistono. */

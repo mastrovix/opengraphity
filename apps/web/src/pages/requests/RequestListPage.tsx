@@ -54,7 +54,8 @@ export function RequestListPage() {
       label:    t('pages.requests.priority'),
       width:    '130px',
       sortable: true,
-      render:   (v) => <SeverityBadge value={String(v)} />,
+      // F-5: vocabolario `priority`, non `severity`.
+      render:   (v) => <SeverityBadge value={String(v)} vocabulary="priority" />,
     },
     {
       key:      'status',

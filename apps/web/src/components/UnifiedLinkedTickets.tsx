@@ -22,6 +22,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { Input } from '@/components/ui/FormControls'
 import { GET_INCIDENTS, GET_PROBLEMS, GET_CHANGES } from '@/graphql/queries'
 import { colors, palette } from '@/lib/tokens'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 
 export interface LinkedTicketItem { id: string; number: string; title: string; status: string; removable?: boolean | null }
 
@@ -40,6 +41,26 @@ const BADGE: Record<LinkedKind, string> = {
   INCIDENT: 'var(--color-trigger-sla-breach)',
   PROBLEM:  'var(--color-slate)',
   CHANGE:   'var(--color-brand)',
+}
+
+/** Il tipo di entità del workflow, per tradurre il nome del passo (F-33). */
+const ENTITY_TYPE: Record<LinkedKind, string> = {
+  INCIDENT: 'incident',
+  PROBLEM:  'problem',
+  CHANGE:   'change',
+}
+
+/**
+ * La FASE di un ticket collegato con l'etichetta del workflow, non il nome
+ * tecnico con i trattini bassi tolti (revisione totale · F-33): un passo
+ * rinominato dal cliente si leggeva «in progress» invece di «In lavorazione».
+ */
+function StepCell({ kind, status }: { kind: LinkedKind; status: string }) {
+  const { labelFor } = useWorkflowSteps(ENTITY_TYPE[kind])
+  const label = status ? (labelFor(status) || status.replace(/_/g, ' ')) : '—'
+  return (
+    <span style={{ width: 120, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{label}</span>
+  )
 }
 
 /** Risultati di ricerca per il tipo attivo: query lazy (skip quando il tab non è attivo). */
@@ -130,7 +151,7 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
               <div key={`${g.kind}-${r.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: `1px solid ${palette.neutral.borderLight}`, fontSize: 'var(--font-size-body)' }}>
                 <span style={{ width: 130 }}><Link to={`${g.routeBase}/${r.id}`} style={{ fontWeight: 600, color: 'var(--color-brand)', textDecoration: 'none' }}>{r.number}</Link></span>
                 <span style={{ flex: 1, color: 'var(--color-slate-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
-                <span style={{ width: 120, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>{(r.status || '—').replace(/_/g, ' ')}</span>
+                <StepCell kind={g.kind} status={r.status} />
                 <span style={{ width: 30, display: 'flex', justifyContent: 'flex-end' }}>
                   {r.removable === false ? (
                     <span title={t('components.linkedTickets.automatic')} style={{ padding: 2, color: 'var(--color-slate-light)', display: 'inline-flex' }}>

@@ -602,7 +602,12 @@
       "renameUsageMatrix": "the {{name}} matrix",
       "renameUsagePolicy": "the alarm policy ({{list}})",
       "renameConfirmButton": "Rename",
-      "renameUsageFailed": "What uses the value could not be counted: {{error}}"
+      "renameUsageFailed": "What uses the value could not be counted: {{error}}",
+      "saveValuesFirst": "Save or cancel the changes to the values first: labels, colours and order apply to the saved values.",
+      "replaceInUseIntro": "These values are removed but still used by records: choose which value they become. The records are rewritten with the dictionary, in one transaction.",
+      "replaceInUseLabel": "Value that replaces {{value}}",
+      "replaceInUseCount_one": "{{count}} record",
+      "replaceInUseCount_other": "{{count}} records"
     },
     "sync": {
       "sourceCreated": "Sync source created",
@@ -2199,7 +2204,9 @@
         "unauthorized_relation": "A relation you declared as not allowed between two CI types.",
         "isolated_cluster": "A small group of CIs connected to each other but cut off from the rest of the graph (searched up to 6 steps away).",
         "risk_concentration": "A CI with many open incidents of the severities you count as critical."
-      }
+      },
+      "orphanChip": "{{value}} (no longer exists)",
+      "orphanValue": "«{{value}}» is saved in this rule but is no longer among this organization's values: click to remove it, otherwise saving will be refused."
     },
     "roles": {
       "title": "Roles",
@@ -2266,7 +2273,8 @@
         "lockoutTemporary": "The block is always temporary: nobody, administrators included, stays locked out for good.",
         "outOfRange": "A value is outside its allowed range.",
         "tooManyRequired": "The required characters do not fit in the minimum length.",
-        "saved": "Password rules saved"
+        "saved": "Password rules saved",
+        "realmOutOfRange": "Keycloak has «{{rule}}» at {{value}}, outside the range this page manages ({{min}}–{{max}}). Leave it as it is and the rest still saves; to change it, use a value within the range."
       },
       "providers": {
         "title": "Sign in with a company account",
@@ -3485,7 +3493,8 @@
       "chooseAssessmentsToReopen": "Choose which assessments to reopen, or choose «all».",
       "onlyInInitialStep": "This can be done only in the initial step; the change is in «{{current}}».",
       "rejectViaApproval": "To reject the change, use «Reject» in the Approval section: it reopens the assessments.",
-      "typeRequired": "The change type is required: choose a value of the change_type vocabulary."
+      "typeRequired": "The change type is required: choose a value of the change_type vocabulary.",
+      "noChangeType": "The change {{change}} has no change type: the approval gate cannot be evaluated. Set the type on the change."
     },
     "import": {
       "tenantRequired": "The tenant is missing: the import does not know where to write.",
@@ -3567,7 +3576,9 @@
       "unknownActionType": "Action type «{{type}}» does not exist. Available: {{allowed}}.",
       "updateFieldNeedsField": "The «update field» action needs the field to write.",
       "createChangeNeedsType": "{{field}}: an action that creates a change must say its change type.",
-      "badStepChannels": "{{field}}: the channels {{channels}} cannot be delivered when a step is entered. Allowed: {{allowed}}."
+      "badStepChannels": "{{field}}: the channels {{channels}} cannot be delivered when a step is entered. Allowed: {{allowed}}.",
+      "duplicateTransition": "A {{trigger}} transition from «{{from}}» to «{{to}}» already exists: two identical arrows would make the outcome depend on which one the engine picks. Use a different trigger.",
+      "onEnterFieldsEntity": "The step «{{step}}» writes fields when entered, but «{{entityType}}» is not an entity this product can write: remove the fields or use a ticket workflow."
     },
     "channel": {
       "platform": "Platform \"{{platform}}\" is not supported. Allowed: {{allowed}}."
@@ -3585,7 +3596,8 @@
       "eventNotSupported": "The event «{{event}}» does not run for «{{entityType}}»: it runs for {{supported}}.",
       "changePriorityDerived": "A change's priority is derived from its type and risk: an automation cannot set «{{field}}».",
       "fieldNotOnEntity": "The ticket type «{{entityType}}» has no «{{field}}» field.",
-      "entityNotWritable": "Automations cannot write fields of «{{entityType}}»."
+      "entityNotWritable": "Automations cannot write fields of «{{entityType}}».",
+      "fieldRequired": "{{field}} ({{type}}): the field name is required."
     },
     "matrix": {
       "cellOutOfVocabulary": "Matrix \"{{matrix}}\", cell \"{{cell}}\": \"{{value}}\" is not in this tenant's \"{{vocabulary}}\" dictionary. Allowed: {{allowed}}.",
@@ -3651,7 +3663,8 @@
       "customFieldsNotJson": "The fields of the CI are not valid JSON.",
       "customFieldsNotObject": "The fields of the CI must be a list of name → value.",
       "unknownField": "«{{field}}» is not a field of the type {{type}}.",
-      "requiredGroup": "{{group}} is required for CIs of type {{type}}: it can be changed, not removed."
+      "requiredGroup": "{{group}} is required for CIs of type {{type}}: it can be changed, not removed.",
+      "ambiguousType": "The CI {{ci}} matches more than one CI type ({{types}}): the assessment questions would be arbitrary. Leave one active type for these labels."
     },
     "portal": {
       "unclassifiedStates": "{{count}} ticket states belong to no class of the active incident workflow ({{states}}): the portal counters would not count them. Fix the steps (initial / terminal / category) in the designer.",
@@ -3724,7 +3737,8 @@
       "missingChangeManagerRequirement": "The Change Manager requirement is missing: designate a Change Manager team (Teams and Users) before approving.",
       "noChangeManagerTeam": "No team is designated Change Manager: configure one (Teams and Users) before sending the change to approval.",
       "incomplete_one": "The approval is incomplete: {{count}} requirement is still pending.",
-      "incomplete_other": "The approval is incomplete: {{count}} requirements are still pending."
+      "incomplete_other": "The approval is incomplete: {{count}} requirements are still pending.",
+      "noPublishedStep": "The knowledge base workflow has no arrow from here to a published step: the approval cannot publish the article. Add it in the workflow designer."
     },
     "fieldRule": {
       "sameField": "The field that triggers the rule and the field it acts on cannot be the same.",
@@ -4006,6 +4020,9 @@
       "nameRequired": "The person needs a name.",
       "keycloakRefused": "The login server refused the new account: {{reason}}",
       "deactivateSelf": "You cannot deactivate yourself."
+    },
+    "sort": {
+      "unknownField": "{{what}}: \"{{field}}\" is not a sortable field. Sortable: {{allowed}}."
     }
   },
   "errorBoundary": {
@@ -4644,7 +4661,8 @@
       "map": {
         "severity": "Severity",
         "impact": "Impact",
-        "urgency": "Urgency"
+        "urgency": "Urgency",
+        "chooseValue": "Choose a value…"
       },
       "howItWorks": {
         "title": "How it works",

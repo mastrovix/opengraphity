@@ -197,9 +197,14 @@ export function IncidentDetailPage() {
   const [ciSearch,      setCiSearch]      = useState('')
   const [timelineOpen, setTimelineOpen] = useState(true)
 
-  const { role: myRole } = useMe()
+  const { can } = useMe()
   // Chi legge e basta non modifica: la stessa regola dell'API (viewer).
-  const canEditCustomFields = myRole === 'admin' || myRole === 'operator'
+  // Il permesso, non il NOME del ruolo (revisione totale · F-2): dall'ondata
+  // «Nulla cablato» i ruoli sono del cliente, e l'API concede
+  // `setTicketCustomFields` a `ticket.work`. Col confronto sul nome un ruolo
+  // «tecnico L2» con quel permesso vedeva i campi in sola lettura, e un ruolo
+  // chiamato «operator» SENZA il permesso vedeva il form e prendeva un 403.
+  const canEditCustomFields = can('ticket.work')
   const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ incident: Incident | null }>(
     GET_INCIDENT,
     { variables: { id }, skip: !id },
@@ -250,7 +255,14 @@ export function IncidentDetailPage() {
 
   const [editOpen, setEditOpen] = useState(false)
   const [pathModal, setPathModal] = useState<ImpactedApp | null>(null)
-  const [editForm, setEditForm] = useState({ title: '', description: '', impact: 'medium', urgency: 'medium' })
+  /**
+   * Nessun valore cablato per impatto e urgenza (revisione totale · F-30):
+   * `medium` era scritto qui, e su un'organizzazione con impatti `1..4` il
+   * form partiva da un valore fuori vocabolario — la tendina si vedeva vuota
+   * e il salvataggio mandava comunque `medium`. Il valore iniziale è quello
+   * dell'incident; se non l'ha, il primo della matrice del cliente.
+   */
+  const [editForm, setEditForm] = useState({ title: '', description: '', impact: '', urgency: '' })
   const [updateIncident, { loading: savingEdit }] = useMutation(UPDATE_INCIDENT, {
     onCompleted: () => { setEditOpen(false); toast.success(t('toast.incident.updated')) },
     onError: (e) => showError(e),
@@ -443,7 +455,9 @@ export function IncidentDetailPage() {
           onClick={() => {
             setEditForm({
               title: incident.title, description: incident.description ?? '',
-              impact: incident.impact ?? 'medium', urgency: incident.urgency ?? 'medium',
+              // F-30: il primo valore della matrice del cliente, non «medium».
+              impact:  incident.impact  ?? matrix?.impacts[0]   ?? '',
+              urgency: incident.urgency ?? matrix?.urgencies[0] ?? '',
             })
             setEditOpen(true)
           }}
@@ -572,7 +586,7 @@ export function IncidentDetailPage() {
                 } />
               </div>
               <div className="og-pair" style={{ marginBottom: 16 }}>
-                  <DetailField label={t('detail.priority')} value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(matrix?.priorities ?? [], incident.priority)}</b><SeverityBadge value={incident.priority} /></span>} />
+                  <DetailField label={t('detail.priority')} value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(matrix?.priorities ?? [], incident.priority)}</b><SeverityBadge value={incident.priority} vocabulary="priority" /></span>} />
                   {incident.impact && incident.urgency && (
                     <DetailField label={t('detail.impactUrgency')} value={
                       /*
@@ -790,7 +804,10 @@ export function IncidentDetailPage() {
                     </div>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
                       {a.ci.environment && <Pill bg="var(--surface-2)" color="var(--text-muted)" radius={100} style={{ fontSize: 'var(--font-size-caption)' }}>{ciLabels.environmentLabel(a.ci.environment)}</Pill>}
-                      {a.ci.status && <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-caption)', textTransform: 'capitalize' }}>{a.ci.status}</Pill>}
+                      {/* L'etichetta del Dizionario, non il valore grezzo (revisione
+                          totale · F-33): con un `ci_status` in italiano la card dei CI
+                          colpiti mostrava ancora «in_service». */}
+                      {a.ci.status && <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-caption)' }}>{ciLabels.statusLabel(a.ci.status)}</Pill>}
                       <button
                         type="button"
                         onClick={() => setPathModal(a)}
@@ -959,7 +976,9 @@ export function IncidentDetailPage() {
                 return (
                   <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Link
-                      to={`/ci/${(n.type || 'application').toLowerCase()}/${n.id}`}
+                      // F-32: senza tipo si passa dalla rotta che lo risolve dal
+                      // grafo, invece di ripiegare in silenzio su «application».
+                      to={ciPath(n)}
                       style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, minWidth: 96, padding: '8px 10px', border: `1.5px solid ${border}`, borderRadius: 8, background: 'var(--surface-1)', textDecoration: 'none', textAlign: 'center' }}
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--text-primary)' }}>{n.name}</span>

@@ -23,7 +23,8 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { Toggle } from '@/components/ui/Toggle'
 import { Button } from '@/components/Button'
 import { Select, Input, LabelledField } from '@/components/ui/FormControls'
-import { SeverityBadge } from '@/components/SeverityBadge'
+// G-ANO-6: la severità delle anomalie è una scala del prodotto, non il vocabolario del cliente.
+import { AnomalySeverityBadge } from '@/components/ui/badges'
 import { GET_ANOMALY_RULES, UPDATE_ANOMALY_RULE } from '@/graphql/queries'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { ciTypeLabelKey } from '@/lib/ciEnums'
@@ -94,22 +95,33 @@ function Chips({ values, selected, labelOf, onChange, label }: {
   values: readonly string[]; selected: readonly string[]; labelOf: (v: string) => string
   onChange: (next: string[]) => void; label: string
 }) {
+  const { t } = useTranslation()
+  /**
+   * Anche i valori SALVATI che non sono (più) fra le opzioni (revisione totale
+   * · G-ANO-5): prima si disegnavano solo le opzioni, quindi un tipo di CI
+   * cancellato restava nella regola — invisibile, non deselezionabile, e
+   * spedito a ogni salvataggio, che l'API rifiutava: la regola non era più
+   * riparabile dall'interfaccia.
+   */
+  const orphans = selected.filter((v) => !values.includes(v))
   return (
     <div role="group" aria-label={label} style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-      {values.map((v) => {
+      {[...values, ...orphans].map((v) => {
         const on = selected.includes(v)
+        const orphan = orphans.includes(v)
         return (
           <button
             key={v} type="button" aria-pressed={on}
+            title={orphan ? t('pages.anomalyRules.orphanValue', { value: v }) : undefined}
             onClick={() => onChange(on ? selected.filter((x) => x !== v) : [...selected, v])}
             style={{
               font: 'inherit', fontSize: 'var(--font-size-body)', cursor: 'pointer', padding: '4px 10px', borderRadius: 999,
-              border: `1px solid ${on ? colors.brand : colors.border}`,
-              background: on ? 'var(--color-brand-light)' : 'var(--surface)',
-              color: on ? colors.brandHover : colors.slate, fontWeight: on ? 600 : 400,
+              border: `1px solid ${orphan ? 'var(--color-danger-text)' : on ? colors.brand : colors.border}`,
+              background: orphan ? 'var(--color-danger-bg)' : on ? 'var(--color-brand-light)' : 'var(--surface)',
+              color: orphan ? 'var(--color-danger-text)' : on ? colors.brandHover : colors.slate, fontWeight: on ? 600 : 400,
             }}
           >
-            {labelOf(v)}
+            {orphan ? t('pages.anomalyRules.orphanChip', { value: v }) : labelOf(v)}
           </button>
         )
       })}
@@ -144,7 +156,8 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
 
   const typeLabel = useMemo(() => {
     const byName = new Map(options.ciTypes.map((c) => [c.name, c.label]))
-    return (name: string) => { const key = ciTypeLabelKey(name); return key ? t(key) : (byName.get(name) ?? name) }
+    // F-22: prima l'etichetta del cliente, poi la chiave dei tipi spediti.
+    return (name: string) => { const key = ciTypeLabelKey(name); return byName.get(name) || (key ? t(key) : name) }
   }, [options.ciTypes, t])
   const title = t(RULE_LABEL_KEYS[rule.ruleKey] ?? rule.ruleKey)
   const thresholdId = `anomaly-threshold-${rule.ruleKey}`
@@ -160,7 +173,7 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
           <span style={{ color: rule.enabled ? colors.success : colors.slateLight, fontWeight: 600 }}>
             {rule.enabled ? t('pages.anomalyRules.on') : t('pages.anomalyRules.off')}
           </span>
-          <SeverityBadge value={rule.severity} />
+          <AnomalySeverityBadge value={rule.severity} />
           <span style={{ color: colors.slateLight }}>{t('pages.anomalyRules.openCount', { count: rule.openCount })}</span>
         </span>
       )}

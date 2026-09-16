@@ -9,6 +9,7 @@
  * si legge mai — va riscritto per attivarlo.
  */
 import { useEffect, useId, useState } from 'react'
+import { PASSWORD_RULE_RANGES } from '@opengraphity/types'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle2, Copy, FlaskConical, KeyRound, Power, Save, ShieldCheck, Trash2, XCircle } from 'lucide-react'
@@ -41,11 +42,14 @@ interface Addresses { kind: ProviderKind; redirectUri: string; samlSpMetadataUrl
 
 const KINDS: readonly ProviderKind[] = ['microsoft', 'google', 'saml']
 
-/** Gli stessi intervalli dell'API (lib/tenantLogin.ts `PASSWORD_RULE_RANGES`). */
-export const RULE_RANGES: Record<Exclude<keyof PasswordRules, 'notUsername' | 'notEmail' | 'lockoutEnabled'>, readonly [number, number]> = {
-  minLength: [6, 128], uppercase: [0, 10], lowercase: [0, 10], digits: [0, 10], special: [0, 10],
-  history: [0, 24], expireDays: [0, 3650], lockoutFailures: [3, 30], lockoutMinutes: [1, 1440],
-}
+/** Una regola che il realm porta fuori dagli intervalli del prodotto (A-19). */
+interface OutOfRange { rule: string; value: number; min: number; max: number }
+
+/**
+ * Gli intervalli vengono da @opengraphity/types, la stessa sorgente che l'API
+ * usa per validarli (revisione totale · G-25): erano copiati a mano.
+ */
+export const RULE_RANGES: Record<Exclude<keyof PasswordRules, 'notUsername' | 'notEmail' | 'lockoutEnabled'>, readonly [number, number]> = PASSWORD_RULE_RANGES
 
 /** Il motivo per cui le regole non si possono salvare (chiave i18n), o null. */
 export function rulesProblem(r: PasswordRules): string | null {
@@ -73,7 +77,7 @@ function NumberField({ id, label, hint, value, onChange, range }: { id: string; 
   )
 }
 
-function PasswordRulesSection({ saved, loading, error, onRetry }: { saved: PasswordRules | undefined; loading: boolean; error: { message: string } | null; onRetry: () => void }) {
+function PasswordRulesSection({ saved, outOfRange, loading, error, onRetry }: { saved: PasswordRules | undefined; outOfRange: OutOfRange[]; loading: boolean; error: { message: string } | null; onRetry: () => void }) {
   const { t } = useTranslation()
   const uid = useId()
   const [draft, setDraft] = useState<PasswordRules | null>(null)
@@ -127,6 +131,19 @@ function PasswordRulesSection({ saved, loading, error, onRetry }: { saved: Passw
             </div>
           )}
           <Hint>{t('pages.loginSecurity.rules.lockoutTemporary')}</Hint>
+          {/*
+            A-19: il realm può portare un valore fuori dagli intervalli che
+            questa pagina governa (configurato dalla console di Keycloak). Si
+            dice quale e perché, invece di mostrarlo e poi rifiutare ogni
+            salvataggio. Chi non lo tocca può salvare il resto.
+          */}
+          {outOfRange.map((o) => (
+            <Hint key={o.rule} tone="warning">
+              {t('pages.loginSecurity.rules.realmOutOfRange', {
+                rule: t(`pages.loginSecurity.rules.${o.rule}`), value: o.value, min: o.min, max: o.max,
+              })}
+            </Hint>
+          ))}
           {problem && dirty && <Hint tone="danger">{t(problem)}</Hint>}
           <div>
             <Button icon={<Save size={14} aria-hidden="true" />} disabled={!dirty || problem !== null || saving} onClick={() => void onSave()}>{t('common.save')}</Button>
@@ -251,7 +268,7 @@ function ProviderCard({ kind, provider, addresses }: { kind: ProviderKind; provi
 
 export function LoginSecurityPage() {
   const { t } = useTranslation()
-  const { data, loading, error, refetch } = useQuery<{ loginSettings: { passwordRules: PasswordRules; providers: Provider[]; addresses: Addresses[] } }>(GET_LOGIN_SETTINGS, { fetchPolicy: 'cache-and-network' })
+  const { data, loading, error, refetch } = useQuery<{ loginSettings: { passwordRules: PasswordRules; passwordRulesOutOfRange: OutOfRange[]; providers: Provider[]; addresses: Addresses[] } }>(GET_LOGIN_SETTINGS, { fetchPolicy: 'cache-and-network' })
   const s = data?.loginSettings
   return (
     <PageContainer style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -259,7 +276,7 @@ export function LoginSecurityPage() {
         <PageTitle icon={<ShieldCheck size={22} color="var(--color-icon-accent)" />}>{t('pages.loginSecurity.title')}</PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', margin: '4px 0 0', maxWidth: '80ch' }}>{t('pages.loginSecurity.subtitle')}</p>
       </div>
-      <PasswordRulesSection saved={s?.passwordRules} loading={!s && loading} error={error && !s ? error : null} onRetry={() => void refetch()} />
+      <PasswordRulesSection saved={s?.passwordRules} outOfRange={s?.passwordRulesOutOfRange ?? []} loading={!s && loading} error={error && !s ? error : null} onRetry={() => void refetch()} />
       <OrgSection title={t('pages.loginSecurity.providers.title')} description={t('pages.loginSecurity.providers.description')} loading={!s && loading} error={null}>
         {s && (
           <>

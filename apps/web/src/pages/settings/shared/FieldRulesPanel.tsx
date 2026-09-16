@@ -46,10 +46,20 @@ interface RequirementRule {
   workflowStep: string | null
 }
 
+/**
+ * Una fase offerta dalle regole: nome tecnico ed ETICHETTA tradotta
+ * (revisione totale · G-10). Prima le colonne portavano il nome tecnico
+ * (`in_progress`) e l'elenco veniva dai soli workflow SENZA categoria: un
+ * passo che esiste solo in un workflow di categoria — su c-test gli incident
+ * ne hanno due — non era selezionabile, quindi la regola «root_cause
+ * obbligatorio entrando in containment» non si poteva creare.
+ */
+export interface StepOption { name: string; label: string }
+
 interface Props {
   entityType:    string
   fields:        FieldDef[]
-  workflowSteps: string[]   // e.g. ['new','assigned','in_progress','resolved','closed']
+  workflowSteps: StepOption[]
   flat?:         boolean    // when true, renders without the outer card wrapper (for use inside tabs)
 }
 
@@ -236,7 +246,7 @@ function VisibilityRuleForm({ form, fields, isEnumTrigger, triggerField, onChang
 
 // ── Requirement Rules Section ─────────────────────────────────────────────────
 
-function RequirementRulesSection({ entityType, fields, workflowSteps }: { entityType: string; fields: FieldDef[]; workflowSteps: string[] }) {
+function RequirementRulesSection({ entityType, fields, workflowSteps }: { entityType: string; fields: FieldDef[]; workflowSteps: StepOption[] }) {
   const { t } = useTranslation()
 
   const { data, refetch } = useQuery<{ fieldRequirementRules: RequirementRule[] }>(
@@ -254,7 +264,8 @@ function RequirementRulesSection({ entityType, fields, workflowSteps }: { entity
     ruleMap.set(`${r.fieldName}|${r.workflowStep ?? ''}`, r)
   }
 
-  const stepOptions = ['', ...workflowSteps]
+  // La prima colonna è «tutte le fasi»; poi una per fase, con l'etichetta.
+  const stepOptions: StepOption[] = [{ name: '', label: '' }, ...workflowSteps]
 
   function toggle(fieldName: string, workflowStep: string | null, currentRequired: boolean) {
     if (currentRequired) {
@@ -280,8 +291,8 @@ function RequirementRulesSection({ entityType, fields, workflowSteps }: { entity
                 {t('fieldRules.requirement.field')}
               </th>
               {stepOptions.map((s) => (
-                <th key={s} style={{ textAlign: 'center', padding: '6px 8px', whiteSpace: 'nowrap' }}>
-                  {s === '' ? t('fieldRules.requirement.allSteps') : s}
+                <th key={s.name} style={{ textAlign: 'center', padding: '6px 8px', whiteSpace: 'nowrap' }}>
+                  {s.name === '' ? t('fieldRules.requirement.allSteps') : s.label}
                 </th>
               ))}
             </tr>
@@ -294,16 +305,16 @@ function RequirementRulesSection({ entityType, fields, workflowSteps }: { entity
                   <span style={{ marginLeft: 5, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-table)' }}>{field.name}</span>
                 </td>
                 {stepOptions.map((step) => {
-                  const key      = `${field.name}|${step}`
+                  const key      = `${field.name}|${step.name}`
                   const rule     = ruleMap.get(key)
                   const required = rule?.required ?? false
                   return (
-                    <td key={step} style={{ textAlign: 'center', padding: '7px 8px' }}>
+                    <td key={step.name} style={{ textAlign: 'center', padding: '7px 8px' }}>
                       <input
                         type="checkbox"
                         checked={required}
-                        aria-label={`${field.label || field.name} — ${step === '' ? t('fieldRules.requirement.allSteps') : step}`}
-                        onChange={() => toggle(field.name, step || null, required)}
+                        aria-label={`${field.label || field.name} — ${step.name === '' ? t('fieldRules.requirement.allSteps') : step.label}`}
+                        onChange={() => toggle(field.name, step.name || null, required)}
                         style={{ accentColor: 'var(--color-brand)', width: 14, height: 14, cursor: 'pointer' }}
                       />
                     </td>

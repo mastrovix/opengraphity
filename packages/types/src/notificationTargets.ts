@@ -98,14 +98,25 @@ const TICKET_CREATED_EVENTS: ReadonlySet<string> = new Set(['incident.created', 
 /** Riepiloghi del tenant: nessuna entità, quindi nessun assegnatario né team (NT-8). */
 const TENANT_SUMMARY_EVENTS: ReadonlySet<string> = new Set(['digest.daily'])
 
-/** I bersagli che non dipendono dall'entità dell'evento: sempre applicabili. */
-const ENTITY_FREE_TARGETS: readonly string[] = [NOTIFICATION_TARGET_ALL, ...NOTIFICATION_ROLE_TARGETS]
-
-/** I bersagli che hanno senso per questo tipo di evento, nell'ordine dell'interfaccia. */
-export function applicableNotificationTargets(eventType: string): readonly string[] {
-  if (NO_ASSIGNMENT_EVENTS.has(eventType) || TICKET_CREATED_EVENTS.has(eventType) || TENANT_SUMMARY_EVENTS.has(eventType)) return ENTITY_FREE_TARGETS
-  if (TEAM_ONLY_EVENTS.has(eventType)) return [NOTIFICATION_TARGET_ALL, NOTIFICATION_TARGET_TEAM, ...NOTIFICATION_ROLE_TARGETS]
-  return NOTIFICATION_TARGETS
+/**
+ * I bersagli che hanno senso per questo tipo di evento, nell'ordine
+ * dell'interfaccia.
+ *
+ * `roleTargets` sono i bersagli per ruolo DEL TENANT: i ruoli creati
+ * dall'organizzazione (ondata 7) esistono e l'API li accetta già
+ * (`isTargetApplicable` non guarda l'elenco), ma la tendina non li offriva,
+ * perché qui c'erano solo i quattro di fabbrica (revisione totale · E-39).
+ * Chi non li ha a disposizione (un test statico sui seed del prodotto) non
+ * passa niente e ottiene i ruoli di fabbrica, come prima.
+ */
+export function applicableNotificationTargets(
+  eventType: string, roleTargets: readonly string[] = NOTIFICATION_ROLE_TARGETS,
+): readonly string[] {
+  if (NO_ASSIGNMENT_EVENTS.has(eventType) || TICKET_CREATED_EVENTS.has(eventType) || TENANT_SUMMARY_EVENTS.has(eventType)) {
+    return [NOTIFICATION_TARGET_ALL, ...roleTargets]
+  }
+  if (TEAM_ONLY_EVENTS.has(eventType)) return [NOTIFICATION_TARGET_ALL, NOTIFICATION_TARGET_TEAM, ...roleTargets]
+  return [...NOTIFICATION_BASE_TARGETS, ...roleTargets]
 }
 
 /** Vero se il bersaglio può essere risolto per quel tipo di evento. Un ruolo non dipende dall'entità: sempre. */

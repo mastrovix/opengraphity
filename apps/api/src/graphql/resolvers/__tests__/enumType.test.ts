@@ -63,7 +63,10 @@ const ENUM_ROW = { id: 'e-1', tenantId: 'tenant-1', name: 'ticket_source', label
 // Le query delle sedi usano tutte l'alias `n`: la policy degli allarmi legge
 // `MATCH (t:Tenant …) RETURN t.event_policy`, e un filtro sul solo nome
 // dell'etichetta si sarebbe mangiato anche quella (mi e successo).
-const CONFIG_LABELS = /\(n:(?:BusinessRule|AutoTrigger|SLAPolicyNode|DynamicCIGroup|StandardChangeCatalogEntry|FieldVisibilityRule)\b|risk_band_thresholds/
+// Revisione totale · C-5: fra le sedi ci sono anche le AZIONI delle regole e
+// dei passi, e i campi impostati da una scadenza — altre letture con l'alias
+// `n`, da servire vuote senza consumare la coda.
+const CONFIG_LABELS = /\(n:(?:BusinessRule|AutoTrigger|SLAPolicyNode|DynamicCIGroup|StandardChangeCatalogEntry|FieldVisibilityRule|WorkflowStep)\b|risk_band_thresholds/
 
 function fakeSession(responses: Array<{ records: unknown[] }>) {
   const queue = [...responses]

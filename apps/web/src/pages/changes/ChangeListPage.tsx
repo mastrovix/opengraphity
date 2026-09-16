@@ -17,6 +17,7 @@ import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
 import { apolloClient } from '@/lib/apollo'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { formatDate } from '@/lib/datetime'
 
@@ -67,17 +68,19 @@ export function ChangeListPage() {
   const currentStep = extractStepFromFilter(filterGroup)
   const priorityFilter = extractFieldFromFilter(filterGroup, 'priority')
 
-  const { steps: wfSteps, byName: stepByName } = useWorkflowSteps('change')
+  const { steps: wfSteps, byName: stepByName, labelFor } = useWorkflowSteps('change')
+  // I valori del filtro sono quelli del CLIENTE (revisione totale · F-6): la
+  // priorità era cablata a quattro valori con etichette inglesi letterali — un
+  // cliente che aggiunge `emergency` non poteva filtrarla — e l'etichetta del
+  // filtro sui passi era il letterale «Step» col nome tecnico del passo.
+  const { valuesOf, labelOf } = useDomainVocabularies()
   const filterFields: FieldConfig[] = [
-    { key: 'currentStep', label: 'Step', type: 'enum',
-      options: wfSteps.map((s) => ({ value: s.name, label: s.label || s.name })) },
+    { key: 'currentStep', label: t('pages.changes.phase'), type: 'enum',
+      options: wfSteps.map((s) => ({ value: s.name, label: labelFor(s.name) ?? s.name })) },
     { key: 'priority', label: t('admin.sla.priority'), type: 'enum',
-      options: [
-        { value: 'critical', label: 'Critical' },
-        { value: 'high',     label: 'High'     },
-        { value: 'medium',   label: 'Medium'   },
-        { value: 'low',      label: 'Low'      },
-      ] },
+      // `valuesOf` è null finché i vocabolari non si conoscono: nessun valore
+      // inventato, il filtro resta senza opzioni per un istante.
+      options: (valuesOf('priority') ?? []).map((v) => ({ value: v, label: labelOf('priority', v) ?? v })) },
   ]
 
   // Ordinamento sul server: le colonne erano dichiarate ordinabili e il clic
@@ -143,7 +146,8 @@ export function ChangeListPage() {
       key:    'priority',
       label:  t('admin.sla.priority'),
       width:  '120px',
-      render: (v) => v ? <SeverityBadge value={v as string} /> : <span style={{ color: 'var(--color-slate-light)' }}>—</span>,
+      // F-5: la priorità viene dal vocabolario `priority`.
+      render: (v) => v ? <SeverityBadge value={v as string} vocabulary="priority" /> : <span style={{ color: 'var(--color-slate-light)' }}>—</span>,
     },
     {
       key:    'aggregateRiskScore',

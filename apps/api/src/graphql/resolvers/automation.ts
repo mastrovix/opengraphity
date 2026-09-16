@@ -4,6 +4,7 @@ import { withSession } from './ci-utils.js'
 import { runQuery } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { invalidateTriggerCache } from '../../lib/triggerEngine.js'
+import { assertStepFieldValue, stepFieldMetas } from '../../lib/stepFieldWrites.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { invalidateRulesCache } from '../../lib/rulesEngine.js'
 import { parseConditions, usesChangedOperator, type ConditionOperator } from '../../lib/conditionEvaluator.js'
@@ -142,6 +143,14 @@ export async function assertStepTargets(
   entityType: string,
   opts: { actions?: string | null; conditions?: string | null },
 ): Promise<void> {
+  // I CAMPI che l'automazione scrive (revisione totale · C-4): `set_field` e
+  // `set_priority` passano dalla stessa validazione dell'azione di passo
+  // `update_field` — il campo deve essere del metamodello del cliente e il
+  // valore del suo vocabolario. Prima la scrittura accettava qualunque
+  // proprietà non compresa in una lista di dieci nomi, e il rifiuto arrivava
+  // (se arrivava) solo a runtime, in un log.
+  await assertAutomationFieldWrites(session, tenantId, entityType, opts.actions)
+
   const hasActionTarget    = opts.actions    != null && opts.actions.includes('transition_workflow')
   const hasStatusCondition = opts.conditions != null && opts.conditions.includes('"status"')
   if (!hasActionTarget && !hasStatusCondition) return
@@ -183,6 +192,33 @@ export async function assertStepTargets(
       if (value == null || String(value).trim() === '') return
       if (!known.has(String(value))) reject(`Invalid conditions: item ${i} (status ${c.operator})`, String(value))
     })
+  }
+}
+
+/**
+ * I campi scritti da `set_field` / `set_priority`, validati contro il
+ * metamodello e i vocabolari del cliente (revisione totale · C-4). Un valore
+ * con un segnaposto `{campo}` si risolve a runtime e lì viene validato di
+ * nuovo, come per le azioni di passo.
+ */
+async function assertAutomationFieldWrites(
+  session: Session, tenantId: string, entityType: string, actions?: string | null,
+): Promise<void> {
+  if (actions == null || (!actions.includes('set_field') && !actions.includes('set_priority'))) return
+  const parsed = parseActions(actions)
+  const writes = parsed.map((a, i) => ({ a, i })).filter(({ a }) => a?.type === 'set_field' || a?.type === 'set_priority')
+  if (writes.length === 0) return
+  const metas = await stepFieldMetas(session, tenantId, entityType)
+  for (const { a, i } of writes) {
+    const field = a.type === 'set_priority' ? 'priority' : String(a.params?.['field'] ?? '')
+    const value = a.type === 'set_priority' ? (a.params?.['priority'] ?? a.params?.['value']) : a.params?.['value']
+    if (!field) {
+      throw new ValidationError(`Invalid actions: item ${i} (${a.type}) needs the field name.`, { key: 'errors.automation.fieldRequired', params: { item: i, type: a.type } })
+    }
+    // La priorità di un incident vive su `severity`: è la stessa coppia che
+    // `writeTicketField` conosce, e il metamodello la dichiara così.
+    const metaField = field === 'priority' && entityType === 'incident' && !metas.has('priority') ? 'severity' : field
+    assertStepFieldValue(metas, entityType, metaField, value, `Invalid actions: item ${i} (${a.type})`, { allowTemplate: true })
   }
 }
 

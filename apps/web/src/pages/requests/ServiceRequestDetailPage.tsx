@@ -70,8 +70,13 @@ export function ServiceRequestDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const ids = { title: useId(), description: useId(), priority: useId(), dueDate: useId(), notes: useId(), assignee: useId() }
-  const { role: myRole } = useMe()
-  const canEditCustomFields = myRole === 'admin' || myRole === 'operator'
+  const { can } = useMe()
+  // Il permesso, non il NOME del ruolo (revisione totale · F-2): dall'ondata
+  // «Nulla cablato» i ruoli sono del cliente, e l'API concede
+  // `setTicketCustomFields` a `ticket.work`. Col confronto sul nome un ruolo
+  // «tecnico L2» con quel permesso vedeva i campi in sola lettura, e un ruolo
+  // chiamato «operator» SENZA il permesso vedeva il form e prendeva un 403.
+  const canEditCustomFields = can('ticket.work')
   const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id, fetchPolicy: 'cache-and-network' })
   const sr = data?.serviceRequest
   const srTransitions = (sr?.availableTransitions ?? []).map(withLocalizedLabel)

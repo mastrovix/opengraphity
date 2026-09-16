@@ -61,7 +61,17 @@ async function assertInApproval(session: Session, changeId: string, teamId: stri
   if (row.purpose !== 'approval') {
     throw new GraphQLError(`The change is not in the approval stage (step "${row.step}", purpose ${row.purpose ?? 'not declared'})`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: row.purpose ? 'errors.approval.notInApproval' : 'errors.approval.notInApprovalNoPurpose', params: { step: row.step, purpose: row.purpose ?? '' } } } })
   }
-  return { changeType: row.changeType ?? 'normal', teamName: row.teamName ?? teamId }
+  // Il tipo della change DECIDE il varco (tipi pre-approvati, priorità): un
+  // ripiego su «normal» faceva valutare un tipo che il cliente può avere
+  // rinominato o non avere affatto (revisione totale · B-25). Un dato
+  // incompleto si dice, non si indovina.
+  if (row.changeType == null || String(row.changeType).trim() === '') {
+    throw new GraphQLError(
+      `The change ${changeId} has no change type: the approval gate cannot be evaluated. Set the type on the change.`,
+      { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.noChangeType', params: { change: changeId } } } },
+    )
+  }
+  return { changeType: String(row.changeType), teamName: row.teamName ?? teamId }
 }
 
 export async function approveChangeApproval(_: unknown, args: { changeId: string; teamId: string; note?: string }, ctx: GraphQLContext) {
@@ -112,7 +122,7 @@ export async function approveChangeApproval(_: unknown, args: { changeId: string
       const avail = await workflowEngine.getAvailableTransitions(session, instanceId, ctx.tenantId)
       const toStep = await targetStepByPurpose(session, ctx.tenantId, 'change', ['scheduled'],
         'change advance after all approvals', avail.map((t) => t.toStep))
-      const res = await workflowEngine.transition(session, { instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.approvalsComplete') }, { userId: ctx.userId ?? 'system', entityData: {} })
+      const res = await workflowEngine.transition(session, { instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.approvalsComplete'), tenantId: ctx.tenantId }, { userId: ctx.userId ?? 'system', entityData: {} })
       if (!res.success) {
         throw new GraphQLError(`Approvals complete but the change did not move to "${toStep}": ${res.error ?? 'transition failed'}`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.approval.didNotAdvance', params: { step: toStep, reason: res.error ?? '' } } } })
       }
@@ -166,7 +176,7 @@ export async function rejectChangeApproval(_: unknown, args: { changeId: string;
     const availReject = await workflowEngine.getAvailableTransitions(session, instanceId, ctx.tenantId)
     const backStep = await targetStepByPurpose(session, ctx.tenantId, 'change', ['assessment'],
       'change return after an approval rejection', availReject.map((t) => t.toStep))
-    const res = await workflowEngine.transition(session, { instanceId, toStepName: backStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.approvalRejected', { note: args.note.trim() }) }, { userId: ctx.userId ?? 'system', entityData: {} })
+    const res = await workflowEngine.transition(session, { instanceId, toStepName: backStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.approvalRejected', { note: args.note.trim() }), tenantId: ctx.tenantId }, { userId: ctx.userId ?? 'system', entityData: {} })
     // Se fallisce, la change resta in approval con i task riaperti e senza
     // requisiti: il gate blocca l'approvazione e il rigetto è ripetibile.
     if (!res.success) throw new GraphQLError(res.error ?? 'Rejection failed', { extensions: { code: 'CONFLICT', i18n: transitionErrorI18n(res) ?? { key: 'errors.approval.rejectFailed' } } })

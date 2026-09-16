@@ -19,16 +19,36 @@ export interface DomainEvent<T = unknown> {
   payload: T
 }
 
-export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical'
-export type ChangeType       = 'standard' | 'normal' | 'emergency'
-export type ChangeRisk       = 'low' | 'medium' | 'high'
-export type CIStatus         = 'operational' | 'degraded' | 'down' | 'maintenance'
+/**
+ * ATTENZIONE — questi alias NON sono più vocabolari chiusi (revisione totale ·
+ * E-38). Severità dell'incident, tipo e rischio della change, stato del CI e
+ * tipo di dipendenza sono VOCABOLARI DEL CLIENTE: si rinominano dal Dizionario
+ * e si allungano. Un'unione di letterali qui mentiva, e il codice tipizzato
+ * continuava a compilare confrontando con valori che nel grafo non esistevano
+ * più (un cast nascondeva la bugia al confine dell'evento).
+ *
+ * Restano come DOCUMENTAZIONE dei valori di fabbrica, per leggere i seed e le
+ * migrazioni; la validazione di un valore passa da `assertDomainValue`, che
+ * legge il vocabolario del tenant. Le uniche scale chiuse sono quelle del
+ * protocollo in ingresso (`event_severity`, `ci.health`): quelle stanno in
+ * `WIRE_VOCABULARIES` e non si rinominano.
+ */
+export type FactoryIncidentSeverity = 'low' | 'medium' | 'high' | 'critical'
+export type FactoryChangeType       = 'standard' | 'normal' | 'emergency'
+export type FactoryChangeRisk       = 'low' | 'medium' | 'high'
+/** Un valore del vocabolario del cliente: la forma è una stringa, non un'unione. */
+export type IncidentSeverity = string
+export type ChangeType       = string
+export type ChangeRisk       = string
+export type CIStatus         = string
 /**
  * Salute del CI derivata dal monitoraggio (`ci.health`), separata dal ciclo di
  * vita (`ci.status`: active/inactive/maintenance/decommissioned).
  */
 export type CIHealth         = 'operational' | 'degraded' | 'down'
-export type CIDependencyType = 'depends_on' | 'hosted_on' | 'connects_to' | 'backed_up_by' | 'protected_by'
+/** Il tipo di relazione del metamodello del cliente (E-38): una stringa. */
+export type CIDependencyType = string
+export type FactoryCIDependencyType = 'depends_on' | 'hosted_on' | 'connects_to' | 'backed_up_by' | 'protected_by'
 
 // --- Incident ---
 

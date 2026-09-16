@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
-import { SeverityBadge } from '@/components/SeverityBadge'
+// G-ANO-6: la severità delle anomalie è una scala del prodotto, non il vocabolario del cliente.
+import { AnomalySeverityBadge } from '@/components/ui/badges'
 import { colors, alpha } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
 import { RULE_LABEL_KEYS, AnomalyStatusBadge, anomalyEntityTypeLabel, anomalyTitle, anomalyDescription } from './AnomalyPage'
@@ -69,7 +70,7 @@ export function DetailPanel({
 
       {/* Badges */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-        <SeverityBadge value={anomaly.severity} />
+        <AnomalySeverityBadge value={anomaly.severity} />
         <AnomalyStatusBadge value={anomaly.status} />
       </div>
 

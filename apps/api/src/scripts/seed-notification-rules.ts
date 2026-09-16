@@ -28,7 +28,13 @@ try {
   console.log(`\nSeed NotificationRule per tenant: ${slug}\n`)
   await seedNotificationRules(slug, session)
   console.log('\nDone.')
+} catch (err) {
+  // H-9: l'errore esce con 1. Il `process.exit(0)` che stava nel `finally`
+  // girava anche in caso di eccezione e diceva «riuscito».
+  console.error(err)
+  await session.close()
+  process.exit(1)
 } finally {
   await session.close()
-  process.exit(0)
 }
+process.exit(0)

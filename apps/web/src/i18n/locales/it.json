@@ -602,7 +602,12 @@
       "renameUsageMatrix": "la matrice {{name}}",
       "renameUsagePolicy": "la policy degli allarmi ({{list}})",
       "renameConfirmButton": "Rinomina",
-      "renameUsageFailed": "Non è stato possibile contare cosa usa il valore: {{error}}"
+      "renameUsageFailed": "Non è stato possibile contare cosa usa il valore: {{error}}",
+      "saveValuesFirst": "Prima salva o annulla le modifiche ai valori: etichette, colori e ordine valgono sui valori salvati.",
+      "replaceInUseIntro": "Questi valori sono stati tolti ma sono ancora usati dai record: scegli in quale valore diventano. I record vengono riscritti insieme al Dizionario, in una sola transazione.",
+      "replaceInUseLabel": "Valore che sostituisce {{value}}",
+      "replaceInUseCount_one": "{{count}} record interessato",
+      "replaceInUseCount_other": "{{count}} record interessati"
     },
     "sync": {
       "sourceCreated": "Sorgente di sincronizzazione creata",
@@ -2199,7 +2204,9 @@
         "unauthorized_relation": "Una relazione che hai dichiarato non ammessa fra due tipi di CI.",
         "isolated_cluster": "Un piccolo gruppo di CI collegati fra loro ma staccati dal resto del grafo (cercato fino a 6 passi di distanza).",
         "risk_concentration": "Un CI con molti incident aperti delle severità che conti come critiche."
-      }
+      },
+      "orphanChip": "{{value}} (non esiste più)",
+      "orphanValue": "«{{value}}» è salvato in questa regola ma non è più tra i valori dell'organizzazione: cliccalo per toglierlo, altrimenti il salvataggio viene rifiutato."
     },
     "roles": {
       "title": "Ruoli",
@@ -2266,7 +2273,8 @@
         "lockoutTemporary": "Il blocco è sempre temporaneo: nessuno, amministratori compresi, resta chiuso fuori per sempre.",
         "outOfRange": "Un valore è fuori dal suo intervallo.",
         "tooManyRequired": "I caratteri obbligatori non stanno nella lunghezza minima.",
-        "saved": "Regole delle password salvate"
+        "saved": "Regole delle password salvate",
+        "realmOutOfRange": "Keycloak ha «{{rule}}» a {{value}}, fuori dall'intervallo che questa pagina governa ({{min}}–{{max}}). Lasciandolo com'è, il resto si salva comunque; per cambiarlo, usa un valore nell'intervallo."
       },
       "providers": {
         "title": "Accesso con l'account aziendale",
@@ -3485,7 +3493,8 @@
       "chooseAssessmentsToReopen": "Scegli quali assessment riaprire, oppure «tutti».",
       "onlyInInitialStep": "Si può fare solo nel passo iniziale; la change è in «{{current}}».",
       "rejectViaApproval": "Per rigettare la change usa «Rigetta» nella sezione Approvazione: riapre gli assessment.",
-      "typeRequired": "Il tipo di change è obbligatorio: scegli un valore del vocabolario change_type."
+      "typeRequired": "Il tipo di change è obbligatorio: scegli un valore del vocabolario change_type.",
+      "noChangeType": "La change {{change}} non ha un tipo: il varco delle approvazioni non si può valutare. Imposta il tipo sulla change."
     },
     "import": {
       "tenantRequired": "Manca il cliente: l'importazione non sa dove scrivere.",
@@ -3567,7 +3576,9 @@
       "unknownActionType": "Il tipo di azione «{{type}}» non esiste. Disponibili: {{allowed}}.",
       "updateFieldNeedsField": "L'azione «aggiorna campo» richiede il campo da scrivere.",
       "createChangeNeedsType": "{{field}}: un’azione che crea una change deve indicarne il tipo.",
-      "badStepChannels": "{{field}}: i canali {{channels}} non sono consegnabili all'ingresso in un passo. Ammessi: {{allowed}}."
+      "badStepChannels": "{{field}}: i canali {{channels}} non sono consegnabili all'ingresso in un passo. Ammessi: {{allowed}}.",
+      "duplicateTransition": "Una transizione {{trigger}} da «{{from}}» a «{{to}}» esiste già: due archi identici renderebbero l'esito dipendente da quale dei due sceglie il motore. Usa un innesco diverso.",
+      "onEnterFieldsEntity": "Il passo «{{step}}» scrive dei campi all'ingresso, ma «{{entityType}}» non è un'entità su cui il prodotto scrive: togli i campi o usa un workflow di ticket."
     },
     "channel": {
       "platform": "La piattaforma «{{platform}}» non è supportata. Ammesse: {{allowed}}."
@@ -3585,7 +3596,8 @@
       "eventNotSupported": "L'evento «{{event}}» non gira per «{{entityType}}»: gira per {{supported}}.",
       "changePriorityDerived": "La priorità di una change deriva da tipo e rischio: un'automazione non può impostare «{{field}}».",
       "fieldNotOnEntity": "Il tipo di ticket «{{entityType}}» non ha il campo «{{field}}».",
-      "entityNotWritable": "Le automazioni non possono scrivere i campi di «{{entityType}}»."
+      "entityNotWritable": "Le automazioni non possono scrivere i campi di «{{entityType}}».",
+      "fieldRequired": "{{field}} ({{type}}): il nome del campo è obbligatorio."
     },
     "matrix": {
       "cellOutOfVocabulary": "Matrice «{{matrix}}», cella «{{cell}}»: «{{value}}» non è nel vocabolario «{{vocabulary}}» di questo cliente. Ammessi: {{allowed}}.",
@@ -3651,7 +3663,8 @@
       "customFieldsNotJson": "I campi del CI non sono un JSON valido.",
       "customFieldsNotObject": "I campi del CI devono essere un elenco nome → valore.",
       "unknownField": "«{{field}}» non è un campo del tipo {{type}}.",
-      "requiredGroup": "{{group}} è obbligatorio per i CI di tipo {{type}}: si può cambiare, non togliere."
+      "requiredGroup": "{{group}} è obbligatorio per i CI di tipo {{type}}: si può cambiare, non togliere.",
+      "ambiguousType": "Il CI {{ci}} combacia con più di un tipo ({{types}}): le domande dell'assessment sarebbero arbitrarie. Lascia attivo un solo tipo per queste etichette."
     },
     "portal": {
       "unclassifiedStates": "{{count}} stati dei ticket non appartengono a nessuna classe del workflow incident attivo ({{states}}): i contatori del portale non li conterebbero. Sistema i passi (iniziale / finale / categoria) nel disegnatore.",
@@ -3724,7 +3737,8 @@
       "missingChangeManagerRequirement": "Manca il requisito del Change Manager: designa un team Change Manager (Team e Utenti) prima di approvare.",
       "noChangeManagerTeam": "Nessun team è designato Change Manager: configurane uno (Team e Utenti) prima di mandare la change in approvazione.",
       "incomplete_one": "L'approvazione non è completa: {{count}} requisito è ancora in attesa.",
-      "incomplete_other": "L'approvazione non è completa: {{count}} requisiti sono ancora in attesa."
+      "incomplete_other": "L'approvazione non è completa: {{count}} requisiti sono ancora in attesa.",
+      "noPublishedStep": "Il workflow della knowledge base non ha un arco da qui a un passo pubblicato: l'approvazione non può pubblicare l'articolo. Aggiungilo nel disegnatore."
     },
     "fieldRule": {
       "sameField": "Il campo che innesca la regola e quello su cui agisce non possono essere lo stesso.",
@@ -4006,6 +4020,9 @@
       "nameRequired": "La persona ha bisogno di un nome.",
       "keycloakRefused": "Il server di accesso ha rifiutato il nuovo account: {{reason}}",
       "deactivateSelf": "Non puoi disattivare te stesso."
+    },
+    "sort": {
+      "unknownField": "{{what}}: «{{field}}» non è un campo ordinabile. Ordinabili: {{allowed}}."
     }
   },
   "errorBoundary": {
@@ -4644,7 +4661,8 @@
       "map": {
         "severity": "Severità",
         "impact": "Impatto",
-        "urgency": "Urgenza"
+        "urgency": "Urgenza",
+        "chooseValue": "Scegli un valore…"
       },
       "howItWorks": {
         "title": "Come funziona",

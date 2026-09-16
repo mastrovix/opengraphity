@@ -320,6 +320,15 @@ export class WorkflowEngine {
       // 1. Stato corrente + arco verso lo step richiesto. Se ci sono più archi
       //    verso lo stesso step (es. manuale + sla_breach) preferisce quello con
       //    il trigger richiesto.
+      //
+      //    E-29 (revisione totale): la preferenza ora è un ordine TOTALE. Con
+      //    un innesco di sistema che non combacia con nessuno dei due archi
+      //    (es. `timer` su archi `manual` e `sla_breach`) l'ordine era parziale
+      //    e la scelta dipendeva dal piano di esecuzione: la stessa scadenza
+      //    poteva passare o essere rifiutata «root cause required» a caso.
+      //    A pari innesco vince l'arco CON la condizione — una guardia scritta
+      //    dal cliente non si scavalca per via di un arco più permissivo — e a
+      //    pari condizione decide l'id, che è stabile.
       const stateResult = await session.executeRead((tx) =>
         tx.run(`
           MATCH (wi:WorkflowInstance {id: $instanceId})
@@ -346,7 +355,9 @@ export class WorkflowEngine {
             tr.trigger                    AS trigger,
             tr.condition                  AS condition,
             exec.entered_at               AS enteredAt
-          ORDER BY CASE WHEN tr.trigger = $triggerType THEN 0 ELSE 1 END
+          ORDER BY CASE WHEN tr.trigger = $triggerType THEN 0 ELSE 1 END,
+                   CASE WHEN tr.condition IS NULL THEN 1 ELSE 0 END,
+                   tr.id
           LIMIT 1
         `, { instanceId: input.instanceId, toStepName: input.toStepName, triggerType: input.triggerType, tenantId: input.tenantId ?? null }),
       )
@@ -486,7 +497,13 @@ export class WorkflowEngine {
           WITH DISTINCT wi, r
           DELETE r
           WITH wi
-          MATCH (nextStep:WorkflowStep {id: $nextStepId})
+          // Lo step di arrivo è quello della DEFINIZIONE dell'istanza
+          // (revisione totale · E-6): gli id dei passi non sono garantiti
+          // unici fra definizioni (i seed storici usavano step-<nome>),
+          // quindi un id omonimo in un'altra definizione faceva creare DUE
+          // relazioni CURRENT_STEP, e la lettura successiva ne scegliva una a
+          // caso. createInstance passava già dalla definizione; qui no.
+          MATCH (nextStep:WorkflowStep {id: $nextStepId, definition_id: wi.definition_id})
           CREATE (wi)-[:CURRENT_STEP]->(nextStep)
           SET wi.current_step = $nextStepName,
               wi.updated_at   = $now,

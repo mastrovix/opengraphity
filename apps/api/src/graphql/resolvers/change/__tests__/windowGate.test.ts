@@ -15,6 +15,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 const getStepPurpose        = vi.fn<(s: unknown, t: string, e: string, step: string) => Promise<string | null>>()
+// Revisione totale · B-11: il varco guarda anche se il passo di arrivo è
+// TERMINALE (un passo di annullamento aggiunto dal cliente è un'uscita, non
+// un ingresso nella finestra di rilascio).
+const getStepRow            = vi.fn<(s: unknown, t: string, e: string, step: string) => Promise<unknown>>()
 const getStepNamesByPurpose = vi.fn<() => Promise<string[]>>()
 const isPreApprovedChangeType = vi.fn<() => Promise<boolean>>()
 const assertAllApprovalsSatisfied = vi.fn<() => Promise<void>>()
@@ -22,7 +26,7 @@ const areAllApprovalsSatisfied    = vi.fn<() => Promise<boolean>>()
 const inc = vi.fn()
 const areAllAssessmentsComplete = vi.fn<() => Promise<boolean>>()
 
-vi.mock('../../../../lib/workflowHelpers.js', () => ({ getStepPurpose, getStepNamesByPurpose }))
+vi.mock('../../../../lib/workflowHelpers.js', () => ({ getStepPurpose, getStepRow, getStepNamesByPurpose }))
 vi.mock('../../../../lib/changePolicy.js',    () => ({ isPreApprovedChangeType }))
 vi.mock('../approvalCreation.js',             () => ({ assertAllApprovalsSatisfied, areAllApprovalsSatisfied }))
 vi.mock('../../../../middleware/metrics.js',  () => ({ changeWindowGateBlockedTotal: { inc } }))
@@ -42,10 +46,15 @@ const PURPOSES: Record<string, string | null> = {
   assessment: 'assessment', approval: 'approval', scheduled: 'scheduled',
   deployment: 'implementation', review: 'review', senzaScopo: null,
 }
+/** I passi TERMINALI: la chiusura di fabbrica e un «Annullata» del cliente. */
+const TERMINALI = new Set(['closed', 'annullata'])
 
 beforeEach(() => {
   vi.clearAllMocks()
   getStepPurpose.mockImplementation((_s, _t, _e, step) => Promise.resolve(PURPOSES[step] ?? null))
+  getStepRow.mockImplementation((_s, _t, _e, step) => Promise.resolve({
+    name: step, purpose: PURPOSES[step] ?? null, isTerminal: TERMINALI.has(step), category: TERMINALI.has(step) ? 'closed' : 'active',
+  }))
   getStepNamesByPurpose.mockResolvedValue(['approval'])
   isPreApprovedChangeType.mockResolvedValue(false)
   areAllApprovalsSatisfied.mockResolvedValue(false)
@@ -221,5 +230,32 @@ describe('uscire dall\'analisi chiede valutazioni e piano completi, per ogni tip
   it('con tutto completato la pre-approvata esce libera', async () => {
     isPreApprovedChangeType.mockResolvedValue(true)
     await expect(changeGateOutcome(session, input('assessment', 'scheduled', 'standard'))).resolves.toEqual({ kind: 'open' })
+  })
+})
+
+/**
+ * Revisione totale · B-11: uscire dall'analisi o dall'approvazione verso
+ * QUALUNQUE passo non-analisi chiedeva tutte le valutazioni o tutte le
+ * approvazioni. Il workflow di fabbrica non ha un passo di annullamento, ma il
+ * cliente lo aggiunge: con l'arco «approvazione → Annullata» l'operatore non
+ * poteva ritirare una change senza prima farla approvare, e con «analisi →
+ * Annullata» doveva completare tutte le valutazioni di una change da buttare.
+ */
+describe('abbandonare la change non è entrare nella finestra (B-11)', () => {
+  it('approvazione → passo terminale del cliente: varco aperto', async () => {
+    await expect(changeGateOutcome(session, input('approval', 'annullata'))).resolves.toEqual({ kind: 'open' })
+    expect(assertAllApprovalsSatisfied).not.toHaveBeenCalled()
+  })
+
+  it('analisi → passo terminale del cliente: aperto anche con valutazioni incomplete', async () => {
+    areAllAssessmentsComplete.mockResolvedValue(false)
+    await expect(changeGateOutcome(session, input('assessment', 'annullata'))).resolves.toEqual({ kind: 'open' })
+  })
+
+  it('un passo della FINESTRA resta protetto anche se il cliente lo dichiara terminale', async () => {
+    getStepRow.mockImplementation((_s, _t, _e, step) => Promise.resolve({
+      name: step, purpose: PURPOSES[step] ?? null, isTerminal: true, category: 'closed',
+    }))
+    await expect(changeGateOutcome(session, input('approval', 'scheduled'))).resolves.toEqual({ kind: 'needs_approvals' })
   })
 })

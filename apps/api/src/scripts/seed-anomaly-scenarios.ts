@@ -26,6 +26,7 @@ import { v4 as uuidv4 } from 'uuid'
 import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 import { resolveTenantArg, requireConfirmFlag, refuseInProduction } from './lib/scriptArgs.js'
+import { getInitialStepName } from '../lib/workflowHelpers.js'
 
 async function run(session: ReturnType<typeof getSession>, tenantId: string, label: string, cypher: string, params: Record<string, unknown> = {}) {
   console.log(`  → ${label}`)
@@ -152,21 +153,35 @@ async function main() {
   const sessionF = getSession(undefined, neo4j.session.WRITE)
   try {
     const now = new Date().toISOString()
+    // Il passo INIZIALE del workflow incident del cliente: `status: 'open'`
+    // era un nome cablato che nessun workflow dichiara (revisione totale ·
+    // H-5), quindi quegli incident non avevano uno stato del prodotto.
+    const stepSession = getSession(undefined, neo4j.session.READ)
+    let initialStep: string
+    try { initialStep = await getInitialStepName(stepSession, TENANT, 'incident') } finally { await stepSession.close() }
     for (let i = 1; i <= 6; i++) {
       const id = uuidv4()
       await run(sessionF, TENANT,`Incidente critico #${i} → SRV-010`, `
-        MATCH (srv:Server {name: 'SRV-010', tenant_id: $tenantId})
+        MATCH (srv:ConfigurationItem:Server {name: 'SRV-010', tenant_id: $tenantId})
+        // H-5: il numero è non-nullabile nello SDL e senza di esso l'elenco
+        // degli incident del tenant falliva per intero («Cannot return null
+        // for non-nullable field Incident.number»). Qui il numero è dello
+        // scenario, non del contatore del prodotto, e si vede che lo è.
         CREATE (inc:Incident {
           id:          $id,
           tenant_id:   $tenantId,
+          number:      'INC-ANOMALY-' + toString($i),
           title:       'Incidente critico automatico #' + toString($i),
           severity:    'critical',
-          status:      'open',
+          status:      $initialStep,
           created_at:  $now,
           updated_at:  $now
         })
-        CREATE (inc)-[:AFFECTS]->(srv)
-      `, { id, i, now })
+        // H-6: la regola delle anomalie legge AFFECTED_BY, come tutto il
+        // resto dell'API (AFFECTS è problem→CI): con AFFECTS lo scenario
+        // non veniva mai rilevato e sembrava un difetto dello scanner.
+        CREATE (inc)-[:AFFECTED_BY]->(srv)
+      `, { id, i, now, initialStep })
     }
   } finally {
     await sessionF.close()
@@ -177,13 +192,13 @@ async function main() {
   const sessionG = getSession(undefined, neo4j.session.WRITE)
   try {
     await run(sessionG, TENANT,'Crea LEGACY-SRV-01, LEGACY-APP-01, LEGACY-DB-01 (cluster)', `
-      MERGE (srv:Server  {name: 'LEGACY-SRV-01', tenant_id: $tenantId})
+      MERGE (srv:ConfigurationItem:Server  {name: 'LEGACY-SRV-01', tenant_id: $tenantId})
         ON CREATE SET srv.id = randomUUID(), srv.status = 'active', srv.environment = 'production',
                       srv.description = 'Legacy server — cluster isolato', srv.created_at = datetime()
-      MERGE (app:Application {name: 'LEGACY-APP-01', tenant_id: $tenantId})
+      MERGE (app:ConfigurationItem:Application {name: 'LEGACY-APP-01', tenant_id: $tenantId})
         ON CREATE SET app.id = randomUUID(), app.status = 'active', app.environment = 'production',
                       app.description = 'Legacy app — cluster isolato', app.created_at = datetime()
-      MERGE (db:Database {name: 'LEGACY-DB-01', tenant_id: $tenantId})
+      MERGE (db:ConfigurationItem:Database {name: 'LEGACY-DB-01', tenant_id: $tenantId})
         ON CREATE SET db.id = randomUUID(), db.status = 'active', db.environment = 'production',
                       db.description = 'Legacy db — cluster isolato', db.created_at = datetime()
       MERGE (app)-[:HOSTED_ON]->(srv)

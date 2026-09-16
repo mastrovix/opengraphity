@@ -7,7 +7,8 @@ import { useTranslation } from 'react-i18next'
 import { ShieldAlert, ShieldCheck, Radar, RefreshCw, SlidersHorizontal } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
-import { SeverityBadge } from '@/components/SeverityBadge'
+// G-ANO-6: la severità delle anomalie è una scala del prodotto, non il vocabolario del cliente.
+import { AnomalySeverityBadge } from '@/components/ui/badges'
 import {
   GET_ANOMALIES, GET_ANOMALY_STATS, GET_ANOMALY_SCAN_STATUS,
   RESOLVE_ANOMALY, RUN_ANOMALY_SCANNER,
@@ -169,7 +170,7 @@ export function AnomalyPage() {
       label:    t('pages.anomalies.severity'),
       width:    '120px',
       sortable: true,
-      render:   (v) => <SeverityBadge value={String(v)} />,
+      render:   (v) => <AnomalySeverityBadge value={String(v)} />,
     },
     {
       key:      'status',

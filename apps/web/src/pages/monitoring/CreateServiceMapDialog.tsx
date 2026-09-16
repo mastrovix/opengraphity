@@ -9,7 +9,7 @@
  * (non un select vuoto), il fallimento della mutation è un toast con il
  * messaggio del server.
  */
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -55,10 +55,18 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
   const [debounced, setDebounced] = useState('')
   const [serviceId, setServiceId] = useState('')
   const [depth, setDepth] = useState(SERVICE_MAP_DEFAULT_DEPTH)
-  // Ondata 6 · C-3: i tipi percorribili sono quelli del CLIENTE (spediti +
-  // suoi), non quattro caselle scritte qui. Finché la lista non è arrivata si
-  // parte dai quattro spediti, che sono la scelta predefinita dell'API.
-  const [rels, setRels] = useState<Set<string>>(() => new Set(SHIPPED_SERVICE_RELATIONSHIP_TYPES))
+  /**
+   * Ondata 6 · C-3: i tipi percorribili sono quelli del CLIENTE (spediti +
+   * suoi), non quattro caselle scritte qui.
+   *
+   * Revisione totale · G-MON-5: erano ACCESE solo le quattro spedite, mentre
+   * l'API, quando `relationshipTypes` è omesso, percorre TUTTE le relazioni di
+   * servizio del cliente. Un cliente con `RUNS_ON` vedeva la casella spenta e,
+   * se non la notava, creava una mappa che non la seguiva. Adesso partono
+   * accese tutte quelle del cliente, come farebbe l'API: l'effetto di
+   * «non scelgo niente» e quello di «apro e salvo» coincidono.
+   */
+  const [rels, setRels] = useState<Set<string> | null>(null)
   const [asDraft, setAsDraft] = useState(false)
 
   useEffect(() => {
@@ -77,6 +85,11 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
   // non c'è si mostrano i quattro spediti (la scelta predefinita dell'API), e
   // un errore si vede.
   const relTypes = relData?.serviceRelationshipTypes ?? SHIPPED_SERVICE_RELATIONSHIP_TYPES
+  // G-MON-5: appena i tipi del cliente arrivano, sono tutti selezionati.
+  useEffect(() => { setRels((prev) => prev ?? new Set(relTypes)) }, [relTypes])
+  // useMemo: altrimenti l'insieme cambia identità a ogni render e l'effetto
+  // dell'anteprima ripartirebbe ogni volta.
+  const selectedRels = useMemo(() => rels ?? new Set(relTypes), [rels, relTypes])
   const [create, { loading: creating }] = useMutation<{ createServiceMap: ServiceMapDetail }>(CREATE_SERVICE_MAP)
 
   /*
@@ -87,28 +100,29 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
   const ciLabels = useCILabels()
   const [previewVars, setPreviewVars] = useState<{ serviceId: string; maxDepth: number; relationshipTypes: string[] } | null>(null)
   useEffect(() => {
-    const ok = serviceId !== '' && rels.size > 0 && depth >= 1 && depth <= SERVICE_MAP_MAX_DEPTH
-    const timer = setTimeout(() => setPreviewVars(ok ? { serviceId, maxDepth: depth, relationshipTypes: [...rels].sort() } : null), SEARCH_DEBOUNCE)
+    const ok = serviceId !== '' && selectedRels.size > 0 && depth >= 1 && depth <= SERVICE_MAP_MAX_DEPTH
+    const timer = setTimeout(() => setPreviewVars(ok ? { serviceId, maxDepth: depth, relationshipTypes: [...selectedRels].sort() } : null), SEARCH_DEBOUNCE)
     return () => clearTimeout(timer)
-  }, [serviceId, depth, rels])
+  }, [serviceId, depth, selectedRels])
   const { data: previewData, loading: previewLoading, error: previewError } = useQuery<{ serviceMapCreationPreview: { serviceName: string; nodes: { ci: { id: string; name: string; type: string | null }; level: number; role: string }[] } }>(
     GET_SERVICE_MAP_CREATION_PREVIEW, { variables: previewVars ?? undefined, skip: !open || previewVars === null, fetchPolicy: 'network-only' },
   )
   const previewNodes = previewVars ? (previewData?.serviceMapCreationPreview.nodes ?? null) : null
 
   const toggleRel = (r: string) => setRels((prev) => {
-    const next = new Set(prev)
+    // G-MON-5: prima del caricamento «tutte» è lo stato di partenza.
+    const next = new Set(prev ?? relTypes)
     if (next.has(r)) next.delete(r); else next.add(r)
     return next
   })
 
-  const canSubmit = serviceId !== '' && rels.size > 0 && depth >= 1 && depth <= SERVICE_MAP_MAX_DEPTH && !creating
+  const canSubmit = serviceId !== '' && selectedRels.size > 0 && depth >= 1 && depth <= SERVICE_MAP_MAX_DEPTH && !creating
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!canSubmit) return
     try {
-      const res = await create({ variables: { serviceId, maxDepth: depth, relationshipTypes: [...rels], status: asDraft ? 'draft' : 'active' } })
+      const res = await create({ variables: { serviceId, maxDepth: depth, relationshipTypes: [...selectedRels], status: asDraft ? 'draft' : 'active' } })
       const map = res.data?.createServiceMap
       if (!map) throw new Error(t('monitoring.services.create.noResult'))
       toast.success(t('toast.services.created', { name: map.name }))
@@ -167,14 +181,14 @@ export function CreateServiceMapDialog({ open, onClose, onCreated }: Props) {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
             {relTypes.map((r) => (
               <label key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: colors.slateDark }}>
-                <input type="checkbox" checked={rels.has(r)} onChange={() => toggleRel(r)} />
+                <input type="checkbox" checked={selectedRels.has(r)} onChange={() => toggleRel(r)} />
                 {r}
               </label>
             ))}
           </div>
           <p style={hint}>{t('monitoring.services.create.relationshipsHint')}</p>
           {relError && <p role="alert" style={{ ...hint, color: colors.danger }}>{t('monitoring.services.create.relationshipsError', { error: relError.message })}</p>}
-          {rels.size === 0 && <p role="alert" style={{ ...hint, color: colors.danger }}>{t('monitoring.services.create.relationshipsRequired')}</p>}
+          {selectedRels.size === 0 && <p role="alert" style={{ ...hint, color: colors.danger }}>{t('monitoring.services.create.relationshipsRequired')}</p>}
         </fieldset>
         {previewVars && (
           <section aria-labelledby={`${ids.service}-preview`} aria-busy={previewLoading} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px' }}>

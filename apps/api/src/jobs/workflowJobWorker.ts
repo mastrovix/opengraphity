@@ -285,7 +285,7 @@ async function processNotificationJob(job: Job): Promise<void> {
         }
         const result = await workflowEngine.transition(
           session,
-          { instanceId, toStepName: toStep, triggeredBy: 'timer', triggerType: 'automatic' },
+          { instanceId, toStepName: toStep, triggeredBy: 'timer', triggerType: 'automatic', tenantId },
           { userId: 'system', entityData: {} },
         )
         if (!result.success) {

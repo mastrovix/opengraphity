@@ -18,6 +18,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { formatDate } from '@/lib/datetime'
 import { toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
 import { colors } from '@/lib/tokens'
+import { useCILabels } from '@/hooks/useCILabels'
 
 interface CI {
   id:          string
@@ -49,6 +50,8 @@ const PAGE_SIZE = 50
 export function CMDBPage() {
   const { t } = useTranslation()
   const baseEnums = useCIBaseEnums()
+  // F-23: etichette dei tipi e degli ambienti dal metamodello e dal Dizionario.
+  const ciLabels = useCILabels()
 
   const columns: ColumnDef<CI>[] = [
     { key: 'name', label: t('pages.cmdb.name'), sortable: true },
@@ -57,9 +60,12 @@ export function CMDBPage() {
       label:    t('pages.cmdb.type'),
       width:    '160px',
       sortable: true,
+      // L'ETICHETTA del tipo, non il nome tecnico «umanizzato» (revisione
+      // totale · F-23): un tipo `sap_hana_db` con etichetta «SAP HANA»
+      // diventava «Sap hana db».
       render:   (v) => (
-        <span style={{ color: "var(--color-slate)", textTransform: 'capitalize' }}>
-          {String(v).replace(/_/g, ' ')}
+        <span style={{ color: "var(--color-slate)" }}>
+          {ciLabels.typeLabel(String(v))}
         </span>
       ),
     },
@@ -110,9 +116,8 @@ export function CMDBPage() {
   const typeFromUrl = searchParams.get('type')
   const healthRule = healthRuleFromParam(searchParams.get('health'))
 
-  const pageTitle = typeFromUrl
-    ? typeFromUrl.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-    : t('sidebar.cmdb')
+  // F-23: il titolo è l'etichetta del tipo scelta dal cliente.
+  const pageTitle = typeFromUrl ? ciLabels.typeLabel(typeFromUrl) : t('sidebar.cmdb')
 
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(healthRule ? { rules: [healthRule] } : null)

@@ -73,7 +73,11 @@ export function ProblemListPage() {
       label:   t('pages.problems.priority'),
       width:   '130px',
       sortable: true,
-      render:  (v) => <SeverityBadge value={String(v)} />,
+      // La priorità viene dal vocabolario `priority` (le uscite della matrice),
+      // non da `severity`: col vocabolario sbagliato un cliente con `p1..p4`
+      // vedeva la pill rossa «valore fuori vocabolario» su ogni riga, con un
+      // `console.error` per riga (revisione totale · F-5).
+      render:  (v) => <SeverityBadge value={String(v)} vocabulary="priority" />,
     },
     {
       key:     'status',

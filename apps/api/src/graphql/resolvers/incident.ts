@@ -25,6 +25,7 @@ import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { listPage } from '../../lib/listLimit.js'
 import { serviceRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
+import { orderByOrThrow } from '../../lib/sortField.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
@@ -49,10 +50,10 @@ export const INCIDENT_SORT_WHITELIST: Record<string, string> = {
 }
 
 function incidentOrderBy(sortField?: string | null, sortDirection?: string | null): string {
-  const col = sortField && INCIDENT_SORT_WHITELIST[sortField]
-  if (!col) return 'i.created_at DESC'
-  const dir = sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
-  return `i.${col} ${dir}`
+  // A-22: un campo non ordinabile è un errore, non un ordine diverso in
+  // silenzio. Le colonne della whitelist sono senza alias: si aggiunge qui.
+  const prefixed = Object.fromEntries(Object.entries(INCIDENT_SORT_WHITELIST).map(([k, v]) => [k, `i.${v}`]))
+  return orderByOrThrow(prefixed, sortField, sortDirection ?? 'desc', 'i.created_at DESC', 'incidents(sortField)')
 }
 
 async function incidents(
@@ -191,9 +192,14 @@ async function updateIncident(
 
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      // La descrizione si può SVUOTARE (revisione totale · B-17): con
+      // «coalesce» null e assente erano la stessa cosa, e chi cancellava un
+      // testo sbagliato lo ritrovava lì dopo il salvataggio. Ora conta se il
+      // campo è presente nell'input. Il titolo no: un ticket senza titolo non
+      // si riconosce in nessun elenco.
       SET i += {
         title:       coalesce($title, i.title),
-        description: coalesce($description, i.description),
+        description: CASE WHEN $descriptionGiven THEN $description ELSE i.description END,
         severity:    coalesce($severity, i.severity),
         impact:      coalesce($impact, i.impact),
         urgency:     coalesce($urgency, i.urgency),
@@ -209,6 +215,8 @@ async function updateIncident(
       tenantId:    ctx.tenantId,
       title:       input.title       ?? null,
       description: input.description ?? null,
+      // B-17: «presente nell'input» distingue il vuoto dall'assenza.
+      descriptionGiven: Object.prototype.hasOwnProperty.call(input, 'description'),
       severity,
       impact,
       urgency,

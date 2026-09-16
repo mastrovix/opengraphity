@@ -160,3 +160,36 @@ export function StatusLabel({ status }: { status: string | null | undefined }) {
     s.replace(/_/g, ' ')
   return <strong title={s} style={{ color, textTransform: 'uppercase' }}>{label}</strong>
 }
+
+/**
+ * La severità di un'ANOMALIA: una scala del PRODOTTO (`ANOMALY_SEVERITIES`),
+ * non il vocabolario `severity` degli incident.
+ *
+ * Revisione totale · G-ANO-6: qui si usava `SeverityBadge`, cioè il vocabolario
+ * del cliente, mentre la tendina accanto usava le etichette del prodotto
+ * (`pages.anomalies.severities.*`): lo stesso valore si leggeva in due modi
+ * diversi nella stessa riga, e un cliente che avesse tolto `low` dal Dizionario
+ * vedeva il badge marcato «fuori vocabolario» per una scala che il Dizionario
+ * non governa. Etichette e colori vengono da qui, una volta sola.
+ */
+const ANOMALY_SEVERITY_STYLE: Record<string, { bg: string; color: string }> = {
+  critical: { bg: 'var(--color-danger-bg)',  color: 'var(--color-danger-text)' },
+  high:     { bg: 'var(--color-warning-bg)', color: 'var(--color-warning-text)' },
+  medium:   { bg: 'var(--color-info-bg)',    color: 'var(--color-info-text)' },
+  low:      { bg: 'var(--surface-2)',        color: 'var(--text-muted)' },
+}
+
+export function AnomalySeverityBadge({ value }: { value: string | null | undefined }) {
+  const { t } = useTranslation()
+  if (!value) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
+  const s = ANOMALY_SEVERITY_STYLE[value]
+  // Un valore che la scala del prodotto non ha è un difetto dei dati, non una
+  // scelta del cliente: si vede (rosso) e il `title` porta il valore grezzo.
+  const style = s ?? { bg: 'var(--color-danger-bg)', color: 'var(--color-danger-text)' }
+  const label = s ? t(`pages.anomalies.severities.${value}`) : value
+  return (
+    <Pill bg={style.bg} color={style.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'uppercase' }} title={value}>
+      {label}
+    </Pill>
+  )
+}

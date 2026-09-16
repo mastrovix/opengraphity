@@ -5,7 +5,7 @@ import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { invalidateRuleCache, DEFAULT_ROUTABLE_CHANNELS, ROUTABLE_CHANNELS_BY_EVENT, routableChannels, unroutableChannels } from '@opengraphity/notifications'
 import {
-  NOTIFICATION_TARGETS, NOTIFICATION_BASE_TARGETS, isNotificationTarget, notificationTargetRole, applicableNotificationTargets, isTargetApplicable,
+  NOTIFICATION_BASE_TARGETS, isNotificationTarget, notificationTargetRole, roleNotificationTarget, applicableNotificationTargets, isTargetApplicable,
   WORKFLOW_STEP_PURPOSES, isWorkflowStepPurpose, isStepEnteredEventType,
   NOTIFICATION_SEVERITIES, type NotificationSeverity,
 } from '@opengraphity/types'
@@ -13,7 +13,7 @@ import { SEEDED_EVENT_TYPES } from '../../lib/seedNotificationRules.js'
 import { workflowEventTypeRows } from '../../lib/stepEvent.js'
 import { validateEnum } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
-import { assertRolesExist } from '../../lib/roles.js'
+import { assertRolesExist, tenantRoles } from '../../lib/roles.js'
 
 function mapRule(props: Record<string, unknown>, eventProduced = true) {
   const digestRecipients = props['digest_recipients']
@@ -196,13 +196,22 @@ async function producedEventTypes(session: Parameters<typeof workflowEventTypeRo
   return new Set<string>([...SEEDED_EVENT_TYPES, ...UI_ONLY_EVENT_TYPES, ...rows.map((r) => r.eventType)])
 }
 
-/** La tabella dei canali instradabili, così com'è nel pacchetto: l'interfaccia non conosce nomi di eventi o canali. */
-function notificationRouting() {
+/**
+ * La tabella dei canali instradabili, così com'è nel pacchetto: l'interfaccia
+ * non conosce nomi di eventi o canali.
+ *
+ * I bersagli per ruolo sono quelli DEL TENANT (revisione totale · E-39): i
+ * ruoli creati dall'organizzazione non comparivano nella tendina, pur essendo
+ * accettati dall'API.
+ */
+async function notificationRouting(tenantId: string) {
+  const roles = await tenantRoles(tenantId)
+  const roleTargets = [...roles.keys()].map(roleNotificationTarget)
   return {
     defaultChannels: [...DEFAULT_ROUTABLE_CHANNELS],
     byEventType:     Object.entries(ROUTABLE_CHANNELS_BY_EVENT).map(([eventType, channels]) => ({ eventType, channels: [...channels] })),
-    targetsByEventType: SEEDED_EVENT_TYPES.map((eventType) => ({ eventType, targets: [...applicableNotificationTargets(eventType)] })),
-    defaultTargets:  [...NOTIFICATION_TARGETS],
+    targetsByEventType: SEEDED_EVENT_TYPES.map((eventType) => ({ eventType, targets: [...applicableNotificationTargets(eventType, roleTargets)] })),
+    defaultTargets:  [...NOTIFICATION_BASE_TARGETS, ...roleTargets],
   }
 }
 
@@ -472,6 +481,10 @@ async function deleteNotificationRule(
 }
 
 export const notificationRuleResolvers = {
-  Query:    { notificationRules, notificationRouting, workflowEventTypes },
+  Query:    {
+    notificationRules, workflowEventTypes,
+    // E-39: l'instradamento dipende dai RUOLI del tenant, quindi passa dal contesto.
+    notificationRouting: (_: unknown, __: unknown, ctx: GraphQLContext) => notificationRouting(ctx.tenantId),
+  },
   Mutation: { createNotificationRule, updateNotificationRule, deleteNotificationRule },
 }

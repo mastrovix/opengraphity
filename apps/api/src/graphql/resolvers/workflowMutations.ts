@@ -33,12 +33,17 @@ import { labelTranslationsCypher } from '../../lib/workflowLabelTranslations.js'
 import { assignTeamCypher, TEAM_NOW_PARAM } from '../../lib/ticketTeamHistory.js'
 import { workflowChangeDetails, workflowSnapshot } from '../../lib/workflowAuditDetails.js'
 
-// Safe label map — prevents Cypher injection when creating entities dynamically
+// Safe label map — prevents Cypher injection when creating entities dynamically.
+// Le richieste di servizio c'erano nel workflow ma NON qui (revisione totale ·
+// B-28): un `on_enter_fields` su un passo delle richieste veniva saltato in
+// silenzio. Ora ci sono, e un tipo che non conosciamo ferma la transizione
+// invece di far finta di avere applicato i campi del passo.
 const ENTITY_LABELS: Record<string, string> = {
-  incident:   'Incident',
-  problem:    'Problem',
-  change:     'Change',
-  kb_article: 'KBArticle',
+  incident:        'Incident',
+  problem:         'Problem',
+  change:          'Change',
+  service_request: 'ServiceRequest',
+  kb_article:      'KBArticle',
 }
 
 /**
@@ -75,7 +80,13 @@ async function applyOnEnterFields(
   const tenantId   = rec.get('tenantId')   as string
   const entityType = rec.get('entityType') as string
   const label      = ENTITY_LABELS[entityType]
-  if (!label) return
+  // B-28: niente fallback silenzioso. Se il passo dichiara campi da scrivere e
+  // non sappiamo su quale nodo scriverli, la transizione non è riuscita.
+  if (!label) {
+    throw new GraphQLError(`Step "${stepName}" writes fields on enter, but entity type "${entityType}" is not writable`, {
+      extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.onEnterFieldsEntity', params: { step: stepName, entityType } } },
+    })
+  }
 
   let parsed: Record<string, string>
   try { parsed = JSON.parse(raw) as Record<string, string> }
@@ -680,23 +691,38 @@ export async function updateWorkflowTransition(
   // rende l'arco inerte, una condizione non registrata lo rende un muro.
   const trigger   = assertTransitionTrigger(input.trigger,    `transizione ${transitionId}`)
   const condition = assertTransitionCondition(input.condition, `transizione ${transitionId}`)
+  /**
+   * `coalesce($x, t.x)` non permetteva di CANCELLARE un valore: passare null
+   * lasciava quello vecchio, e una condizione sbagliata su una transizione non
+   * si poteva più togliere dalla mutation puntuale — restava e bloccava la
+   * transizione (revisione totale · M-9). Ora conta se il campo è PRESENTE
+   * nell'input: presente e null = cancella, assente = non si tocca. Il
+   * commento di `assertTransitionCondition` promette esattamente questo.
+   */
+  const given = (field: keyof typeof input) => Object.prototype.hasOwnProperty.call(input, field)
   return withSession(async (session) => {
-    await session.executeWrite((tx) =>
+    const written = await session.executeWrite((tx) =>
       tx.run(`
-        // tenant-ok: la definizione dello step di partenza è scopata alla riga dopo
-        MATCH (src:WorkflowStep)-[t:TRANSITIONS_TO {id: $transitionId}]->()
-        MATCH (wd:WorkflowDefinition {id: src.definition_id, tenant_id: $tenantId})
+        // La transizione DEVE essere di questa definizione (revisione totale ·
+        // B-26): prima era cercata per solo id, e il «customizzato» veniva
+        // segnato sulla definizione dello step di partenza — cioè un'altra
+        // definizione dello stesso tenant si modificava per conto di questa.
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        // tenant-ok: lo step di partenza è della definizione appena scopata
+        MATCH (src:WorkflowStep {definition_id: $definitionId})-[t:TRANSITIONS_TO {id: $transitionId}]->()
         ${MARK_CUSTOMIZED_BUMP}
         // Un'etichetta CAMBIATA nel disegnatore è del cliente: le traduzioni spedite non valgono più (#22).
         ${labelTranslationsCypher('t', 'coalesce($label, t.label)')}
-        SET t.label          = coalesce($label, t.label),
-            t.trigger        = coalesce($trigger, t.trigger),
+        SET t.label          = CASE WHEN $labelGiven      THEN $label      ELSE t.label       END,
+            t.trigger        = CASE WHEN $triggerGiven    THEN $trigger    ELSE t.trigger     END,
             t.requires_input = $requiresInput,
-            t.input_field    = coalesce($inputField, t.input_field),
-            t.condition      = coalesce($condition, t.condition),
-            t.timer_hours    = coalesce($timerHours, t.timer_hours)
+            t.input_field    = CASE WHEN $inputFieldGiven THEN $inputField ELSE t.input_field END,
+            t.condition      = CASE WHEN $conditionGiven  THEN $condition  ELSE t.condition   END,
+            t.timer_hours    = CASE WHEN $timerHoursGiven THEN $timerHours ELSE t.timer_hours END
+        RETURN t.id AS id
       `, {
         transitionId,
+        definitionId,
         tenantId: ctx.tenantId,
         ...customizedParams(ctx),
         label:         label         ?? null,
@@ -705,8 +731,19 @@ export async function updateWorkflowTransition(
         inputField:    inputField    ?? null,
         condition:     condition     ?? null,
         timerHours:    timerHours    ?? null,
+        // M-9: presente e null = cancella; assente = lascia com'è. L'etichetta
+        // vuota non cancella (un arco senza etichetta non si può cliccare):
+        // per lei «presente» vale solo con un testo.
+        labelGiven:      given('label') && label != null,
+        triggerGiven:    given('trigger'),
+        inputFieldGiven: given('inputField'),
+        conditionGiven:  given('condition'),
+        timerHoursGiven: given('timerHours'),
       }),
     )
+    // B-26: se la transizione non è di questa definizione non si tocca nulla e
+    // lo si dice, invece di restituire la definizione come se fosse cambiata.
+    if (!written.records.length) throw new NotFoundError('WorkflowTransition', transitionId)
     const wdResult = await session.executeRead((tx) =>
       tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
@@ -740,10 +777,31 @@ export async function addWorkflowTransition(
   },
   ctx: GraphQLContext,
 ) {
+  const resolvedTrigger = assertTransitionTrigger(trigger, `new transition ${fromStepName} → ${toStepName}`) ?? 'manual'
   return withSession(async (session) => {
     const id = uuidv4()
-    const result = await session.executeWrite((tx) =>
-      tx.run(`
+    const result = await session.executeWrite(async (tx) => {
+      /**
+       * Due archi IDENTICI (stessa coppia di passi, stesso innesco) non si
+       * creano (revisione totale · B-27): il motore ne sceglie uno con
+       * `LIMIT 1` senza un ordine dichiarato, quindi con condizioni diverse
+       * l'esito della transizione dipenderebbe dal piano di esecuzione. Chi
+       * vuole due strade diverse usa due inneschi diversi.
+       */
+      const dup = await tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        // tenant-ok: step della definizione appena scopata
+        MATCH (from:WorkflowStep {definition_id: $definitionId, name: $fromStepName})
+              -[tr:TRANSITIONS_TO {trigger: $trigger}]->
+              (:WorkflowStep {definition_id: $definitionId, name: $toStepName})
+        RETURN tr.id AS id LIMIT 1
+      `, { definitionId, tenantId: ctx.tenantId, fromStepName, toStepName, trigger: resolvedTrigger })
+      if (dup.records.length) {
+        throw new GraphQLError(`A ${resolvedTrigger} transition from ${fromStepName} to ${toStepName} already exists`, {
+          extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.duplicateTransition', params: { from: fromStepName, to: toStepName, trigger: resolvedTrigger } } },
+        })
+      }
+      return tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
         // tenant-ok: step della definizione appena scopata
         MATCH (from:WorkflowStep {definition_id: $definitionId, name: $fromStepName})
@@ -758,12 +816,12 @@ export async function addWorkflowTransition(
         RETURN tr, from.name AS fromStep, to.name AS toStep, wd.entity_type AS entityType
       `, {
         definitionId, tenantId: ctx.tenantId, fromStepName, toStepName, id,
-        trigger: assertTransitionTrigger(trigger, `new transition ${fromStepName} → ${toStepName}`) ?? 'manual',
+        trigger: resolvedTrigger,
         label: label ?? 'New transition',
         sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null,
         ...customizedParams(ctx),
-      }),
-    )
+      })
+    })
     if (!result.records.length) {
       throw new GraphQLError('Steps not found, or not part of this definition', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.workflow.stepsNotInDefinition' } } })
     }

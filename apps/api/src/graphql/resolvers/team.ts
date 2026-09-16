@@ -10,6 +10,7 @@ import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import type { GraphQLContext } from '../../context.js'
 import { mapTeam } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { orderByOrThrow } from '../../lib/sortField.js'
 import { audit } from '../../lib/audit.js'
 import { cache } from '../../lib/cache.js'
 import { loadMetamodel } from '@opengraphity/schema-generator'
@@ -37,8 +38,8 @@ async function teams(_: unknown, args: { filters?: string; sortField?: string; s
   return withSession(async (session) => {
     const params: Record<string, unknown> = { tenantId: ctx.tenantId }
     const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, TEAM_ALLOWED_FIELDS, 't') : ''
-    const orderBy = TEAM_SORT_WHITELIST[args.sortField ?? ''] ?? 't.name'
-    const orderDir = args.sortDirection === 'desc' ? 'DESC' : 'ASC'
+    // A-22: nessun ordine diverso in silenzio.
+    const orderBy = orderByOrThrow(TEAM_SORT_WHITELIST, args.sortField, args.sortDirection, 't.name ASC', 'teams(sortField)')
     // Prefetch members / owned+supported CIs / manager with pattern
     // comprehensions: one query, no per-team N+1 and no cartesian blow-up
     // (each comprehension returns an independent list).
@@ -50,7 +51,7 @@ async function teams(_: unknown, args: { filters?: string; sortField?: string; s
         [ (t)<-[:OWNED_BY]-(oci) WHERE oci.tenant_id = $tenantId | { props: properties(oci), label: head([l IN labels(oci) WHERE l <> 'ConfigurationItem']) } ] as ownedCIs,
         [ (t)<-[:SUPPORTED_BY]-(sci) WHERE sci.tenant_id = $tenantId | { props: properties(sci), label: head([l IN labels(sci) WHERE l <> 'ConfigurationItem']) } ] as supportedCIs,
         [ (t)-[:MANAGED_BY]->(mgr:User) | properties(mgr) ] as managers
-      ORDER BY ${orderBy} ${orderDir}
+      ORDER BY ${orderBy}
     `
     const rows = await runQuery<{ props: Props; members: Props[]; ownedCIs: { props: Props; label: string }[]; supportedCIs: { props: Props; label: string }[]; managers: Props[] }>(session, cypher, params)
     const mapCIRow = (c: { props: Props; label: string }) => { c.props['type'] = ciTypeFromLabels(ctx.tenantId, [c.label]); return mapCI(c.props) }

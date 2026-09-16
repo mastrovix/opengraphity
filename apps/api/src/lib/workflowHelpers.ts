@@ -283,6 +283,14 @@ export async function getStepNamesByPurpose(
  * Lo scopo di un passo preciso, `null` se non dichiarato. Serve a chi ha in
  * mano il nome corrente di un'istanza e deve capire dove si trova.
  */
+/** La riga del passo (scopo, categoria, terminale) dal workflow del tenant; null se non c'è. */
+export async function getStepRow(
+  session: Session, tenantId: string, entityType: string, stepName: string,
+): Promise<StepRow | null> {
+  const steps = await loadSteps(session, tenantId, entityType)
+  return steps.find((s) => s.name === stepName) ?? null
+}
+
 export async function getStepPurpose(
   session: Session, tenantId: string, entityType: string, stepName: string,
 ): Promise<string | null> {

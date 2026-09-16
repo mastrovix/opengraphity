@@ -19,6 +19,7 @@ import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useRoles } from '@/hooks/useRoles'
 
 interface Props {
   actionType: string
@@ -51,6 +52,8 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
   const { labelOf, entriesOf } = useDomainVocabularies()
   const { values: severityValues } = useEnumValues(entityType || 'incident', 'severity')
   const { fields: fieldMetas } = useEntityFieldMetas(entityType)
+  // F-16: i ruoli del cliente, per l'azione «richiedi approvazione».
+  const { roles, labelOf: roleLabelOf } = useRoles()
 
   const teams = teamsData?.teams ?? []
   const users = usersData?.users ?? []
@@ -271,7 +274,12 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
           {text('title_template', 'title_template', t('workflow.actionParams.approvalTitleExample'))}
-          {choice('approver_role', 'approver_role', [{ value: 'admin' }, { value: 'manager' }], 'admin')}
+          {/* I ruoli sono del CLIENTE (revisione totale · F-16): le due scelte
+              cablate `admin`/`manager` potevano non esistere, e l'azione
+              «richiedi approvazione» non trovava mai destinatari. */}
+          {choice('approver_role', 'approver_role',
+            roles.map((r) => ({ value: r.key, label: roleLabelOf(r.key) })),
+            params['approver_role'] ?? roles[0]?.key ?? '')}
           {choice('approval_type', 'approval_type', [
             { value: 'any', label: 'any (1 approver sufficient)' },
             { value: 'all', label: 'all (all approvers required)' },

@@ -94,6 +94,9 @@ import { userEmailLowercase } from './20261001_1010_user_email_lowercase.js'
 import { answerOptionTenant } from './20261001_1020_answer_option_tenant.js'
 import { requestCreatedBy } from './20261001_1030_request_created_by.js'
 import { slaBreachedAt } from './20261002_1000_sla_breached_at.js'
+import { changeTaskKeys } from './20261002_1010_change_task_keys.js'
+import { slaWarningRepair } from './20261002_1020_sla_warning_repair.js'
+import { stepDeadlineCalendar } from './20261002_1030_step_deadline_calendar.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -186,4 +189,7 @@ export const MIGRATIONS: readonly Migration[] = [
   answerOptionTenant,
   requestCreatedBy,
   slaBreachedAt,
+  changeTaskKeys,
+  slaWarningRepair,
+  stepDeadlineCalendar,
 ]

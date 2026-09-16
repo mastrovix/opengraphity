@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/FormControls'
 import { GET_IMPACT_ANALYSIS_WEIGHTS } from '@/graphql/queries'
 import { UPDATE_IMPACT_ANALYSIS_WEIGHTS } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
+import { IMPACT_LIMITS } from '@opengraphity/types'
 import { showError } from '@/lib/showError'
 
 const WEIGHT_KEYS = ['productionCI', 'blastRadiusCI', 'blastRadiusCap', 'openIncident', 'failedChange', 'ongoingChange'] as const
@@ -22,12 +23,13 @@ const WINDOW_KEYS = ['recentChangesDays', 'recentIncidentsDays'] as const
 type Key = (typeof WEIGHT_KEYS)[number] | (typeof WINDOW_KEYS)[number]
 type Weights = Record<Key, number> & { isDefault: boolean }
 
-/** Gli stessi intervalli dell'API (`lib/impactWeights.ts`). */
-export const IMPACT_LIMITS: Record<Key, { min: number; max: number }> = {
-  productionCI: { min: 0, max: 100 }, blastRadiusCI: { min: 0, max: 100 }, blastRadiusCap: { min: 0, max: 100 },
-  openIncident: { min: 0, max: 100 }, failedChange: { min: 0, max: 100 }, ongoingChange: { min: 0, max: 100 },
-  recentChangesDays: { min: 1, max: 365 }, recentIncidentsDays: { min: 1, max: 365 },
-}
+/**
+ * Gli intervalli vengono da @opengraphity/types, che è la stessa sorgente che
+ * l'API usa per validarli (revisione totale · G-25): erano copiati a mano, e
+ * se il server alzasse un tetto questa pagina continuerebbe a bloccare al
+ * vecchio.
+ */
+export { IMPACT_LIMITS }
 
 export function impactDraftValid(draft: Record<Key, string>): boolean {
   return (Object.keys(IMPACT_LIMITS) as Key[]).every((k) => {

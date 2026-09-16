@@ -29,6 +29,7 @@ import { assertDomainValue } from '../../lib/domainMatrix.js'
 import { listPage } from '../../lib/listLimit.js'
 import { setTicketUser } from '../../services/ticketAssignment.js'
 import { roleHasPermission } from '../../lib/roles.js'
+import { orderByOrThrow } from '../../lib/sortField.js'
 
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
@@ -66,8 +67,8 @@ async function serviceRequests(
     // I campi del cliente si filtrano come quelli del prodotto (ondata 4).
     const allowedFields = new Set([...getScalarFields(info.schema, 'ServiceRequest'), ...(await requestCustomFieldDefs(ctx, 'service_request')).map((d) => d.name)])
     const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r') : ''
-    const orderBy = REQUEST_SORT_WHITELIST[args.sortField ?? ''] ?? 'r.created_at'
-    const orderDir = args.sortDirection === 'asc' ? 'ASC' : 'DESC'
+    // A-22: un campo non ordinabile è un errore, non un ordine diverso in silenzio.
+    const orderBy = orderByOrThrow(REQUEST_SORT_WHITELIST, args.sortField, args.sortDirection ?? 'desc', 'r.created_at DESC', 'serviceRequests(sortField)')
     // Revisione totale · B-1: `advWhere` è un'espressione nuda e va unita con
     // AND — interpolata così com'era rendeva il Cypher invalido, quindi QUALUNQUE
     // filtro della pagina Richieste faceva fallire l'elenco (riprodotto su c-test).
@@ -79,7 +80,7 @@ async function serviceRequests(
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (r:ServiceRequest {tenant_id: $tenantId})
       ${whereClause}
-      WITH r ORDER BY ${orderBy} ${orderDir}
+      WITH r ORDER BY ${orderBy}
       SKIP toInteger($offset) LIMIT toInteger($limit)
       RETURN properties(r) as props
     `, params)
@@ -189,11 +190,15 @@ async function updateServiceRequest(
     if (!before[0]) throw new NotFoundError('ServiceRequest')
     const cypher = `
       MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
+      // Descrizione e data attesa si possono SVUOTARE (revisione totale ·
+      // B-17): con «coalesce» null e assente erano la stessa cosa, quindi una
+      // data sbagliata non si poteva togliere più. Il titolo no: una richiesta
+      // senza titolo non si riconosce in nessun elenco.
       SET r += {
         title:       coalesce($title,       r.title),
-        description: coalesce($description, r.description),
+        description: CASE WHEN $descriptionGiven THEN $description ELSE r.description END,
         priority:    coalesce($priority,    r.priority),
-        due_date:    coalesce($dueDate,     r.due_date),
+        due_date:    CASE WHEN $dueDateGiven     THEN $dueDate     ELSE r.due_date    END,
         updated_at:  $now
       }
       RETURN properties(r) as props
@@ -205,6 +210,9 @@ async function updateServiceRequest(
       description: input.description ?? null,
       priority:    input.priority    ?? null,
       dueDate:     input.dueDate     ?? null,
+      // B-17: «presente nell'input» distingue il vuoto dall'assenza.
+      descriptionGiven: Object.prototype.hasOwnProperty.call(input, 'description'),
+      dueDateGiven:     Object.prototype.hasOwnProperty.call(input, 'dueDate'),
       now,
     })
     const row = rows[0]

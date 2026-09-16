@@ -14,6 +14,7 @@ import { ticketCustomFieldResolvers } from './ticketCustomFields.js'
 import type { IResolvers } from '@graphql-tools/utils'
 import { incidentResolvers } from './incident.js'
 import { problemResolvers } from './problem.js'
+import { orderByOrThrow } from '../../lib/sortField.js'
 import {
   linkRelatedTicket, unlinkRelatedTicket,
   incidentRelatedIncidents, incidentRelatedProblems, incidentRelatedChanges,
@@ -106,12 +107,12 @@ const meStub = {
   users: async (_: unknown, args: { sortField?: string; sortDirection?: string }, ctx: GraphQLContext) => {
     const session = getSession()
     try {
-      const orderBy = USER_SORT_WHITELIST[args.sortField ?? ''] ?? 'u.name'
-      const orderDir = args.sortDirection === 'desc' ? 'DESC' : 'ASC'
+      // A-22: un campo non ordinabile è un errore, non un ordine diverso in silenzio.
+      const orderBy = orderByOrThrow(USER_SORT_WHITELIST, args.sortField, args.sortDirection, 'u.name ASC', 'users(sortField)')
       type Row = { props: Record<string, unknown>; teamId: string | null }
       const rows = await runQuery<Row>(session, `
         MATCH (u:User {tenant_id: $tenantId})
-        RETURN properties(u) AS props, null AS teamId ORDER BY ${orderBy} ${orderDir}
+        RETURN properties(u) AS props, null AS teamId ORDER BY ${orderBy}
       `, { tenantId: ctx.tenantId })
       return rows.map((r) => mapUser(r.props))
     } finally {

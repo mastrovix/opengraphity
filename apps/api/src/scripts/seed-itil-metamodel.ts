@@ -286,9 +286,14 @@ async function main() {
     console.log(`  Tipi: ${ITIL_TYPES.length} (${ITIL_TYPES.map(t => t.label).join(', ')})`)
     console.log(`  Scope: itil | tenant_id: ${TENANT_ID}`)
   } finally {
+    // Mai `process.exit(0)` qui (revisione totale · H-9): il `finally` gira
+    // anche quando il `try` lancia, e terminava il processo con esito 0 prima
+    // che il `.catch` potesse stampare l'errore e uscire 1 — in una pipeline
+    // di onboarding un metamodello rimasto a metà passava per riuscito.
     await session.close()
-    process.exit(0)
   }
 }
 
-main().catch((err) => { console.error(err); process.exit(1) })
+main()
+  .then(() => process.exit(0))
+  .catch((err) => { console.error(err); process.exit(1) })

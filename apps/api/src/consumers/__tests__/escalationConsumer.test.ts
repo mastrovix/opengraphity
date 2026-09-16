@@ -88,7 +88,10 @@ describe('EscalationConsumer — sla.breached', () => {
     expect(transition).toHaveBeenCalledOnce()
     expect(transition).toHaveBeenCalledWith(
       session,
-      { instanceId: 'wi-1', toStepName: 'escalated', triggeredBy: 'sla-engine', triggerType: 'sla_breach' },
+      // CONTRATTO RINEGOZIATO (revisione totale · E-31): il tenant sul motore
+      // non è più facoltativo — ogni chiamante dice per quale organizzazione
+      // sta transizionando, così la query filtra sempre per tenant.
+      { instanceId: 'wi-1', toStepName: 'escalated', triggeredBy: 'sla-engine', triggerType: 'sla_breach', tenantId: 't1' },
       { userId: 'system', entityData: {} },
     )
 

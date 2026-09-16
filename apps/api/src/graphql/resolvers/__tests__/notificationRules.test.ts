@@ -31,6 +31,8 @@ vi.mock('../../../lib/roles.js', async (importOriginal) => {
       const missing = roleKeys.filter((k) => !keys.has(k))
       if (missing.length) throw new (await import('../../../lib/errors.js')).ValidationError(`Recipients name roles this organization does not have: ${missing.join(', ')}`, { key: 'errors.role.unknownTarget', params: { roles: missing.join(', ') } })
     }),
+    // E-39: la tendina offre i ruoli DEL TENANT, quindi l'instradamento li legge.
+    tenantRoles: vi.fn(async () => new Map([...keys].map((k) => [k, { key: k, name: k, permissions: [] }]))),
   }
 })
 vi.mock('@opengraphity/notifications', async (importOriginal) => {
@@ -55,8 +57,11 @@ async function expectBadInput(p: Promise<unknown>, pattern: RegExp) {
 beforeEach(() => vi.clearAllMocks())
 
 describe('Query.notificationRouting', () => {
-  it('restituisce i canali predefiniti e una voce per ogni tipo con formatter dedicato, copiati dal pacchetto', () => {
-    const out = notificationRuleResolvers.Query.notificationRouting()
+  it('restituisce i canali predefiniti e una voce per ogni tipo con formatter dedicato, copiati dal pacchetto', async () => {
+    // CONTRATTO RINEGOZIATO (revisione totale · E-39): l'instradamento dipende
+    // dai ruoli del tenant (anche quelli creati dall'organizzazione), quindi
+    // vuole il contesto ed è asincrono.
+    const out = await notificationRuleResolvers.Query.notificationRouting(null, null, ctx)
     expect(out.defaultChannels).toEqual([...DEFAULT_ROUTABLE_CHANNELS])
     expect(out.byEventType).toEqual(Object.entries(ROUTABLE_CHANNELS_BY_EVENT).map(([eventType, channels]) => ({ eventType, channels: [...channels] })))
     expect(out.byEventType.find((e) => e.eventType === 'incident.created')!.channels).toEqual(['in_app', 'email', 'slack', 'teams'])
@@ -66,6 +71,15 @@ describe('Query.notificationRouting', () => {
     // copie: chi legge non può mutare la tabella del pacchetto
     out.defaultChannels.push('sms')
     expect(DEFAULT_ROUTABLE_CHANNELS).toEqual(['in_app', 'email'])
+  })
+
+  it('E-39: i bersagli offerti comprendono i ruoli creati dall\'organizzazione', async () => {
+    const out = await notificationRuleResolvers.Query.notificationRouting(null, null, ctx)
+    expect(out.defaultTargets).toContain('role:service_desk')
+    const created = out.targetsByEventType.find((e) => e.eventType === 'incident.created')
+    expect(created?.targets).toContain('role:service_desk')
+    // e restano i bersagli che quell'evento NON può risolvere
+    expect(created?.targets).not.toContain('assignee')
   })
 })
 

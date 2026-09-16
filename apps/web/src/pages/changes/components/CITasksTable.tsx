@@ -15,7 +15,7 @@ import type { AffectedCI, AssessmentTaskData } from '@/types/change'
 import { AssessmentModal } from './AssessmentModal'
 import { PlanModal } from './PlanModal'
 import { EyeButton, OpenTaskButton, RiskBadge, TaskStatusRow } from './shared'
-import { colors, palette } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 import { useCILabels } from '@/hooks/useCILabels'
 
 function CIExpandedRow({ a }: { a: AffectedCI }) {
@@ -184,9 +184,12 @@ export function CITasksTable({ affected, actsForAnyTeam, userTeamIds, defaultOpe
               <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)' }}>{a.ci.name}</span>
               <span style={{ width: 80, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{a.ci.type ? ciLabels.typeLabel(a.ci.type) : ''}</span>
               <span style={{ width: 80, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{a.ci.environment ? ciLabels.environmentLabel(a.ci.environment) : ''}</span>
-              <span style={{ width: 80 }}>{a.riskScore != null && (
-                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: a.riskScore <= 30 ? palette.success.text : a.riskScore <= 60 ? palette.warning.text : palette.danger.text }}>{a.riskScore}</span>
-              )}</span>
+              {/* Le fasce di rischio sono dato del cliente
+                  (`risk_band_thresholds`): il colore veniva da soglie cablate
+                  30/60, quindi con fasce 0-20/21-50/51-100 un CI con rischio
+                  45 era «medio» in tutta l'app e verde qui (revisione totale ·
+                  F-7). `RiskBadge` legge le soglie del cliente. */}
+              <span style={{ width: 80 }}>{a.riskScore != null && <RiskBadge score={a.riskScore} compact />}</span>
               <span style={{ width: 130 }}>
                 {done
                   ? <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-success)', textTransform: 'uppercase' }}>{t('changeTasks.completed')}</span>

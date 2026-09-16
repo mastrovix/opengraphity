@@ -20,6 +20,9 @@ import { Button } from '@/components/Button'
 import { useRoles } from '@/hooks/useRoles'
 import { colors, palette } from '@/lib/tokens'
 import { formatDate } from '@/lib/datetime'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { vocabularyValueStyle } from '@/lib/domainStyle'
+import { TEAM_TYPE_VOCABULARY } from '@/lib/teamVocabularies'
 
 const UPDATE_USER_TEAMS = gql`
   mutation UpdateUserTeams($userId: ID!, $teamIds: [ID!]!) {
@@ -50,6 +53,17 @@ interface UserData {
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
+
+/** Il tipo di un team, con lo stile e l'etichetta del vocabolario del cliente (F-9). */
+function TeamTypePill({ type }: { type: string }) {
+  const { valuesOf, labelOf, colorOf } = useDomainVocabularies()
+  const s = vocabularyValueStyle(TEAM_TYPE_VOCABULARY, type, valuesOf(TEAM_TYPE_VOCABULARY), colorOf(TEAM_TYPE_VOCABULARY, type))
+  return (
+    <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px' }}>
+      {labelOf(TEAM_TYPE_VOCABULARY, type) ?? type}
+    </Pill>
+  )
+}
 
 export function UserDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -168,14 +182,10 @@ export function UserDetailPage() {
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Link to={`/teams/${team.id}`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)', textDecoration: 'none' }}>{team.name}</Link>
-                        {team.type && (
-                          <Pill
-                            bg={team.type === 'support' ? 'var(--color-success-bg)' : team.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)'}
-                            color={team.type === 'support' ? 'var(--color-success)' : team.type === 'owner' ? colors.brand : 'var(--color-slate)'}
-                            radius={4}
-                            style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px' }}
-                          >{team.type}</Pill>
-                        )}
+                        {/* Il tipo di team è un vocabolario del cliente: stile ed
+                            etichetta vengono da lui, non da due nomi cablati
+                            (revisione totale · F-9). */}
+                        {team.type && <TeamTypePill type={team.type} />}
                       </div>
                     </div>
                     <button type="button"
@@ -220,14 +230,10 @@ export function UserDetailPage() {
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{team.name}</span>
-                        {team.type && (
-                          <Pill
-                            bg={team.type === 'support' ? 'var(--color-success-bg)' : team.type === 'owner' ? 'var(--color-info-bg)' : 'var(--color-slate-bg)'}
-                            color={team.type === 'support' ? 'var(--color-success)' : team.type === 'owner' ? colors.brand : 'var(--color-slate)'}
-                            radius={4}
-                            style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px' }}
-                          >{team.type}</Pill>
-                        )}
+                        {/* Il tipo di team è un vocabolario del cliente: stile ed
+                            etichetta vengono da lui, non da due nomi cablati
+                            (revisione totale · F-9). */}
+                        {team.type && <TeamTypePill type={team.type} />}
                       </div>
                       {team.description && (
                         <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 1 }}>{team.description}</div>

@@ -42,14 +42,21 @@ export async function calculateChain(ciId: string, tenantId: string): Promise<st
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
       WITH ci, labels(ci) AS ciLabels
       UNWIND ciLabels AS lbl
-      // tenant-ok: tipo CI condiviso per label
+      // La definizione del tipo si risolve come in tutto il resto del prodotto
+      // (revisione totale · C-20): solo tipi ATTIVI, solo quelli base o di
+      // QUESTO tenant, e il tipo del cliente vince su quello base con la
+      // stessa etichetta. Prima era un LIMIT 1 su una ricerca senza tenant:
+      // due organizzazioni con la stessa neo4j_label e famiglie diverse
+      // davano una catena a caso.
+      // tenant-ok: i tipi base sono condivisi, quelli del cliente filtrati sul suo id
       OPTIONAL MATCH (td:CITypeDefinition {neo4j_label: lbl})
-      WITH ci, td, td.chain_families AS families
-      WHERE td IS NOT NULL
-      LIMIT 1
+        WHERE td.active = true
+          AND (td.scope = 'base' OR (td.scope = 'tenant' AND td.tenant_id = $tenantId))
+      WITH ci, td ORDER BY CASE WHEN td.scope = 'tenant' THEN 0 ELSE 1 END
+      WITH ci, head(collect(td)) AS td
       WITH ci, CASE
-        WHEN families IS NULL THEN '["Application","Infrastructure"]'
-        ELSE families
+        WHEN td IS NULL OR td.chain_families IS NULL THEN '["Application","Infrastructure"]'
+        ELSE td.chain_families
       END AS rawFamilies
       WITH ci, rawFamilies
       // If only one family, use it directly
@@ -68,6 +75,8 @@ export async function calculateChain(ciId: string, tenantId: string): Promise<st
         // tenant-ok: tipo CI condiviso per label
         OPTIONAL MATCH (utd:CITypeDefinition {neo4j_label: uLbl})
         WHERE utd.chain_families = '["Application"]'
+          AND utd.active = true
+          AND (utd.scope = 'base' OR (utd.scope = 'tenant' AND utd.tenant_id = $tenantId))
         RETURN count(utd) > 0 AS hasAppUpstream
       }
       SET ci.chain = CASE
@@ -77,7 +86,11 @@ export async function calculateChain(ciId: string, tenantId: string): Promise<st
       END
       RETURN ci.chain AS chain
     `, { ciId, tenantId }))
-    return (result.records[0]?.get('chain') as string) ?? 'Infrastructure'
+    // Niente ripiego muto: se il CI non c'è (più) lo si dice, invece di
+    // restituire «Infrastructure» come se la catena fosse stata calcolata.
+    const chain = result.records[0]?.get('chain') as string | undefined
+    if (!chain) throw new Error(`calculateChain: CI ${ciId} not found in tenant ${tenantId}`)
+    return chain
   } finally {
     await session.close()
   }
@@ -103,33 +116,50 @@ export async function calculateAllChains(tenantId: string): Promise<{ total: num
   const relPattern = await chainRelPattern(tenantId)
   const session = getSession(undefined, 'WRITE')
   try {
-    // Step 1: Set chain for CIs whose type has a single chain_family
+    /**
+     * Step 1: la famiglia del tipo, risolta ESATTAMENTE come in
+     * `calculateChain` (revisione totale · C-20). Prima erano due scritture in
+     * fila senza filtro per tenant né `active`, quindi un CI che combaciava
+     * con due definizioni prendeva la famiglia dell'ultima query eseguita; e
+     * il ricalcolo generale e il salvataggio di un singolo CI potevano dare
+     * catene diverse allo stesso CI. I tipi ambigui tornano a catena nulla e
+     * li decide lo step 2.
+     */
     await session.executeWrite(tx => tx.run(`
       MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
       WITH ci, labels(ci) AS ciLabels
       UNWIND ciLabels AS lbl
-      // tenant-ok: tipo CI condiviso per label
-      MATCH (td:CITypeDefinition {neo4j_label: lbl})
-      WHERE td.chain_families = '["Application"]'
-      SET ci.chain = 'Application'
+      // tenant-ok: i tipi base sono condivisi, quelli del cliente filtrati sul suo id
+      OPTIONAL MATCH (td:CITypeDefinition {neo4j_label: lbl})
+        WHERE td.active = true
+          AND (td.scope = 'base' OR (td.scope = 'tenant' AND td.tenant_id = $tenantId))
+      WITH ci, td ORDER BY CASE WHEN td.scope = 'tenant' THEN 0 ELSE 1 END
+      WITH ci, head(collect(td)) AS td
+      SET ci.chain = CASE td.chain_families
+        WHEN '["Application"]'    THEN 'Application'
+        WHEN '["Infrastructure"]' THEN 'Infrastructure'
+        ELSE null
+      END
     `, { tenantId }))
 
-    await session.executeWrite(tx => tx.run(`
-      MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
-      WITH ci, labels(ci) AS ciLabels
-      UNWIND ciLabels AS lbl
-      // tenant-ok: tipo CI condiviso per label
-      MATCH (td:CITypeDefinition {neo4j_label: lbl})
-      WHERE td.chain_families = '["Infrastructure"]'
-      SET ci.chain = 'Infrastructure'
-    `, { tenantId }))
-
-    // Step 2: For CIs with multiple families, check upstream
+    /**
+     * Step 2: i tipi con più famiglie si decidono da monte, con la STESSA
+     * regola di `calculateChain`: conta se a monte c'è un CI il cui TIPO è
+     * solo-Application, non se ha l'etichetta `:Application` (C-20). Un tipo
+     * del cliente dichiarato solo-Application contava per il calcolo
+     * puntuale e non per questo.
+     */
     await session.executeWrite(tx => tx.run(`
       MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
       WHERE ci.chain IS NULL
-      OPTIONAL MATCH (app:Application {tenant_id: $tenantId})-[:${relPattern}*0..10]->(ci)
-      WITH ci, count(app) > 0 AS hasApp
+      OPTIONAL MATCH (up:ConfigurationItem {tenant_id: $tenantId})-[:${relPattern}*0..10]->(ci)
+      // tenant-ok: i tipi base sono condivisi, quelli del cliente filtrati sul suo id
+      OPTIONAL MATCH (utd:CITypeDefinition)
+        WHERE utd.neo4j_label IN labels(up)
+          AND utd.chain_families = '["Application"]'
+          AND utd.active = true
+          AND (utd.scope = 'base' OR (utd.scope = 'tenant' AND utd.tenant_id = $tenantId))
+      WITH ci, count(utd) > 0 AS hasApp
       SET ci.chain = CASE WHEN hasApp THEN 'Application' ELSE 'Infrastructure' END
     `, { tenantId }))
 

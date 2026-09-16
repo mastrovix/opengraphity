@@ -10,6 +10,15 @@ vi.mock('../ci-utils.js', () => ({ withSession: vi.fn() }))
 vi.mock('../../../lib/triggerEngine.js', () => ({ invalidateTriggerCache: vi.fn() }))
 vi.mock('../../../lib/rulesEngine.js', () => ({ invalidateRulesCache: vi.fn() }))
 vi.mock('../../../lib/filterBuilder.js', () => ({ buildAdvancedWhere: vi.fn() }))
+// C-4: i campi scrivibili vengono dal metamodello del cliente.
+vi.mock('../../../lib/stepFieldWrites.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/stepFieldWrites.js')>()),
+  stepFieldMetas: vi.fn(async () => new Map([
+    ['category', { name: 'category', fieldType: 'enum', enumValues: ['network', 'hardware'], enumTypeName: 'category' }],
+    ['severity', { name: 'severity', fieldType: 'enum', enumValues: ['critical', 'high', 'medium', 'low'], enumTypeName: 'severity' }],
+    ['notes',    { name: 'notes',    fieldType: 'text', enumValues: [], enumTypeName: null }],
+  ])),
+}))
 const selectSLAForEntity = vi.fn(async (..._a: unknown[]) => null as null | { id: string; name: string })
 vi.mock('@opengraphity/sla', () => ({ selectSLAForEntity, getTenantTimezone: vi.fn(async () => 'Europe/Rome') }))
 
@@ -89,6 +98,29 @@ describe('mutations: enum a scrittura', () => {
 
 describe('assertStepTargets', () => {
   const session = {} as never
+
+  /**
+   * Revisione totale · C-4: `set_field` scriveva QUALUNQUE proprietà non
+   * compresa in una lista di dieci nomi, senza controllare che il campo fosse
+   * del metamodello né che il valore stesse nel vocabolario — «deleted = true»
+   * era un soft-delete di massa da una regola. Ora passa dalla stessa
+   * validazione dell'azione di passo `update_field`, al salvataggio e alla
+   * scrittura.
+   */
+  it('set_field: campo del metamodello e valore del vocabolario, o rifiuto al salvataggio (C-4)', async () => {
+    const ok = '[{"type":"set_field","params":{"field":"category","value":"network"}}]'
+    await expect(assertStepTargets(session, 't', 'incident', { actions: ok })).resolves.toBeUndefined()
+
+    await expect(assertStepTargets(session, 't', 'incident', { actions: '[{"type":"set_field","params":{"field":"deleted","value":true}}]' }))
+      .rejects.toThrow(/is not a field of incident in the metamodel|cannot be set by a step/)
+    await expect(assertStepTargets(session, 't', 'incident', { actions: '[{"type":"set_field","params":{"field":"category","value":"xyz"}}]' }))
+      .rejects.toThrow(/is not a value of the field "category"/)
+    await expect(assertStepTargets(session, 't', 'incident', { actions: '[{"type":"set_field","params":{"value":"x"}}]' }))
+      .rejects.toThrow(/needs the field name/)
+    // Un segnaposto si risolve a runtime e lì viene validato.
+    await expect(assertStepTargets(session, 't', 'incident', { actions: '[{"type":"set_field","params":{"field":"category","value":"{category}"}}]' }))
+      .resolves.toBeUndefined()
+  })
 
   it('non legge i passi se non c\'è niente da validare', async () => {
     const { getWorkflowSteps } = await import('../../../lib/workflowHelpers.js')

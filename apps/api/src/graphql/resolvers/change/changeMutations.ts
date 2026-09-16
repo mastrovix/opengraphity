@@ -258,7 +258,7 @@ async function linkChangeToRequestingProblem(
     }
     const res = await workflowEngine.transition(
       session,
-      { instanceId, toStepName: toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.rfcCreated', { code: changeCode }) },
+      { instanceId, toStepName: toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.rfcCreated', { code: changeCode }), tenantId: ctx.tenantId },
       { userId: ctx.userId, entityData: {} } as ActionContext,
     )
     if (!res.success) {

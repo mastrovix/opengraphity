@@ -115,6 +115,24 @@ export class CustomizedWorkflowError extends Error {
 const STEP_METADATA_KEY_RE = /^[a-z][a-z0-9_]*$/
 const RESERVED_STEP_KEYS = new Set(['id', 'name', 'label', 'labels', 'type', 'definition_id', 'tenant_id', 'enter_actions', 'exit_actions', 'created_at', 'updated_at'])
 
+/**
+ * Le chiavi dei METADATI che i seed governano.
+ *
+ * In sovrascrittura, una chiave che il seed non porta più va TOLTA dal nodo
+ * (revisione totale · E-30): `SET s += st.metadata` aggiungeva e aggiornava,
+ * mai rimuoveva, quindi una `deadline` togliendola dal seed restava sul passo
+ * e il diff diceva «riallineato» mentre la scadenza personalizzata continuava
+ * a scattare. In Cypher una proprietà messa a `null` viene rimossa: è così
+ * che si azzerano le chiavi governate e assenti.
+ *
+ * L'elenco è CHIUSO di proposito: le proprietà scritte dal prodotto e non dai
+ * seed (per esempio `notify_rule`, `deadline_calendar_id`, `sub_workflow_id`)
+ * non si toccano — un seed non le conosce e non deve cancellarle.
+ */
+export const SEEDED_STEP_METADATA_KEYS = [
+  'step_order', 'is_initial', 'is_terminal', 'is_open', 'category', 'purpose', 'deadline',
+] as const
+
 /** Le chiavi dei metadati finiscono in un `SET s += map`: solo snake_case, mai le proprietà strutturali. */
 function assertStepMetadata(defName: string, stepName: string, metadata: WorkflowStepDef['metadata']): Record<string, string | number | boolean | null> {
   if (!metadata) return {}
@@ -343,15 +361,26 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
         SET s.label = st.label, s.labels = st.labels, s.type = st.type,
             s.enter_actions = st.enterActions, s.exit_actions = st.exitActions,
             s.updated_at = $now
+        // E-30: prima si TOLGONO le chiavi governate dai seed che questo seed
+        // non porta (in Cypher il null rimuove la proprietà), poi si scrivono
+        // quelle che porta. Solo in sovrascrittura: un MERGE normale non
+        // cancella niente.
+        SET s += st.clear
         SET s += st.metadata
         MERGE (wd)-[:HAS_STEP]->(s)
       `, {
         defId, tenantId, now,
-        steps: def.steps.map((s) => ({
-          id: s.id, name: s.name, label: s.label, labels: serializeLocalizedLabels(s.labels), type: s.type,
-          enterActions: JSON.stringify(s.enterActions), exitActions: JSON.stringify(s.exitActions),
-          metadata: assertStepMetadata(def.name, s.name, s.metadata),
-        })),
+        steps: def.steps.map((s) => {
+          const metadata = assertStepMetadata(def.name, s.name, s.metadata)
+          const clear = overwrite
+            ? Object.fromEntries(SEEDED_STEP_METADATA_KEYS.filter((k) => !(k in metadata)).map((k) => [k, null]))
+            : {}
+          return {
+            id: s.id, name: s.name, label: s.label, labels: serializeLocalizedLabels(s.labels), type: s.type,
+            enterActions: JSON.stringify(s.enterActions), exitActions: JSON.stringify(s.exitActions),
+            metadata, clear,
+          }
+        }),
       })
 
       // 4. Step non più nel seed: via solo se nessuna istanza li attraversa.

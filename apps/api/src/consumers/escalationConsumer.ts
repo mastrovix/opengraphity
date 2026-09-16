@@ -83,7 +83,7 @@ export class EscalationConsumer extends BaseConsumer<unknown> {
       }
       const result = await workflowEngine.transition(
         session,
-        { instanceId, toStepName: toStep, triggeredBy: 'sla-engine', triggerType: 'sla_breach' },
+        { instanceId, toStepName: toStep, triggeredBy: 'sla-engine', triggerType: 'sla_breach', tenantId },
         { userId: 'system', entityData: {} },
       )
       if (!result.success) {

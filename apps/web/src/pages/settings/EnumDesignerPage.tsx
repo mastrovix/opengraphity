@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useApolloClient, useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
@@ -9,7 +9,8 @@ import { Button } from '@/components/Button'
 import { Input, Select } from '@/components/ui/FormControls'
 import { inputS, labelS, btnSecondary, btnDanger, btnPrimary as sharedBtnPrimary } from '@/components/ui/styles'
 import { toast } from 'sonner'
-import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT, GET_ENUM_VALUE_USAGE } from '@/graphql/queries'
+import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT, GET_ENUM_VALUE_USAGE, GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { useConfirm } from '@/hooks/useConfirm'
 import { dictionaryList } from '@/lib/dictionaryList'
 import {
@@ -36,13 +37,27 @@ interface EnumValueLabel { value: string; label: string; labels: LocalizedLabel[
 /**
  * Le lingue del prodotto. Il Dizionario mostra un campo per ciascuna: le
  * etichette sono parole del CLIENTE, quindi le scrive lui — e chi usa l'altra
- * lingua le legge in italiano se ne ha compilata una sola (il ripiego e'
+ * lingua le legge nell'altra se ne ha compilata una sola (il ripiego è
  * dichiarato, e la diagnostica lo segnala).
+ *
+ * L'ELENCO viene dall'API (`tenantLanguageSettings.available`), come per la
+ * pagina Organizzazione e per le severità del portale: era una costante del
+ * web, quindi una terza lingua aggiunta lato server sarebbe stata offerta dal
+ * portale e non dal Dizionario (revisione totale · G-12). I nomi delle lingue
+ * restano qui: sono nomi propri, non si traducono.
  */
-const LINGUE = [
-  { codice: 'it', nome: 'Italiano' },
-  { codice: 'en', nome: 'English'  },
-] as const
+const NOMI_LINGUA: Record<string, string> = { it: 'Italiano', en: 'English' }
+
+/** Le lingue del cliente, nell'ordine dichiarato dall'API. */
+function useLingue(): { codice: string; nome: string }[] {
+  const { data } = useQuery<{ tenantLanguageSettings: { available: string[] } }>(
+    GET_TENANT_LANGUAGE_SETTINGS, { fetchPolicy: METAMODEL_FETCH_POLICY },
+  )
+  return useMemo(
+    () => (data?.tenantLanguageSettings.available ?? []).map((codice) => ({ codice, nome: NOMI_LINGUA[codice] ?? codice })),
+    [data],
+  )
+}
 
 interface EnumType {
   id:        string
@@ -238,6 +253,8 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
   onCustomized: (copy: EnumType) => void
 }) {
   const { t } = useTranslation()
+  // G-12: le lingue del cliente, dichiarate dall'API.
+  const lingue = useLingue()
   // Un vocabolario spedito col prodotto è UN nodo per tutti i clienti: non si
   // modifica in posto. L'interfaccia lo dice e offre «Personalizza», che ne
   // crea la copia del tenant (quella vince in lettura solo per chi la ha).
@@ -311,6 +328,18 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
     onError: (err) => showError(err),
   })
 
+  /**
+   * Etichette e colori si scrivono con la LORO mutation (revisione totale ·
+   * G-2): usando quella del «Salva» dei valori, il suo `onCompleted` faceva
+   * `setDirty(false)` e i bottoni Salva/Annulla sparivano mentre la lista a
+   * schermo era diversa dal server — l'admin credeva di aver salvato i valori.
+   */
+  const [updateLabels, { loading: savingLabels }] = useMutation(UPDATE_ENUM_TYPE, {
+    refetchQueries: [GET_ENUM_TYPES],
+    onCompleted: () => toast.success(t('pages.dictionary.updated')),
+    onError: (err) => showError(err),
+  })
+
   const [setDefault, { loading: settingDefault }] = useMutation(UPDATE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
     onCompleted: () => toast.success(t('pages.dictionary.defaultSet')),
@@ -374,6 +403,9 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
   const move = (index: number, by: -1 | 1) => {
     const target = index + by
     if (target < 0 || target >= values.length) return
+    // G-2: `reorderEnumValues` pretende la lista dei valori SALVATI; con
+    // aggiunte o rimozioni non salvate la rifiutava.
+    if (dirty) { toast.error(t('pages.dictionary.saveValuesFirst')); return }
     const next = [...values]
     ;[next[index], next[target]] = [next[target]!, next[index]!]
     void reorderValues({ variables: { id: e.id, values: next } })
@@ -414,8 +446,45 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
     if (ok) void renameValue({ variables: { id: e.id, from, to } })
   }
 
-  const handleSave = () => {
-    void updateEnum({ variables: { id: e.id, input: { label, values, scope: e.isSystem ? undefined : scope } } })
+  /**
+   * I valori TOLTI e ancora usati dai record: l'API li rifiuta e accetta una
+   * sostituzione esplicita (`replacements: [{from, to}]`), che il Dizionario
+   * non mandava mai — «togli il valore e riscrivi i record su X» non era
+   * raggiungibile dall'interfaccia, e restava solo l'errore (revisione totale
+   * · G-11). Qui si contano gli usi e, se ci sono, si chiede su cosa
+   * riscriverli prima di salvare.
+   */
+  const [replaceFor, setReplaceFor] = useState<{ from: string; total: number }[]>([])
+  const [replaceWith, setReplaceWith] = useState<Record<string, string>>({})
+
+  const handleSave = async () => {
+    const removed = e.values.filter((v) => !values.includes(v))
+    if (removed.length > 0 && replaceFor.length === 0) {
+      type Usage = { total: number }
+      const inUse: { from: string; total: number }[] = []
+      for (const from of removed) {
+        try {
+          const res = await apollo.query<{ enumValueUsage: Usage }>({ query: GET_ENUM_VALUE_USAGE, variables: { id: e.id, value: from }, fetchPolicy: 'network-only' })
+          if ((res.data?.enumValueUsage.total ?? 0) > 0) inUse.push({ from, total: res.data!.enumValueUsage.total })
+        } catch (err) {
+          showError(err, t('pages.dictionary.renameUsageFailed', { error: errorMessage(err) }))
+          return
+        }
+      }
+      if (inUse.length > 0) {
+        // Si chiede, non si riscrive da soli: cambiare il valore di decine di
+        // record è una modifica ai DATI.
+        setReplaceFor(inUse)
+        setReplaceWith(Object.fromEntries(inUse.map((u) => [u.from, values[0] ?? ''])))
+        return
+      }
+    }
+    const replacements = replaceFor
+      .map((u) => ({ from: u.from, to: replaceWith[u.from] ?? '' }))
+      .filter((r) => r.to !== '')
+    setReplaceFor([])
+    setReplaceWith({})
+    void updateEnum({ variables: { id: e.id, input: { label, values, scope: e.isSystem ? undefined : scope, ...(replacements.length > 0 ? { replacements } : {}) } } })
   }
 
   const handleCancel = () => {
@@ -423,6 +492,8 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
     setScope(e.scope)
     setValues(e.values)
     setLabelDrafts({})
+    setReplaceFor([])
+    setReplaceWith({})
     setDirty(false)
   }
 
@@ -444,16 +515,21 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
     const nuova  = (labelDrafts[chiave] ?? '').trim()
     const scarta = () => setLabelDrafts((d) => { const n = { ...d }; delete n[chiave]; return n })
     if (nuova === etichettaSalvata(v, lingua)) { scarta(); return }
-    // La lista INTERA, tutti i valori per tutte le lingue: la mutation
-    // sostituisce in blocco, mandarne una sola cancellerebbe le altre.
-    const lista = values.flatMap((val) =>
-      LINGUE.flatMap(({ codice }) => {
+    // G-2: con valori aggiunti o rimossi e non salvati, scrivere le etichette
+    // cancellava sul server l'etichetta dei valori rimossi localmente (la
+    // mutation sostituisce in blocco) e scartava quella dei valori nuovi.
+    // Prima si salvano i valori.
+    if (dirty) { toast.error(t('pages.dictionary.saveValuesFirst')); return }
+    // La lista INTERA, tutti i valori per tutte le lingue, dai valori SALVATI:
+    // la mutation sostituisce in blocco, mandarne una sola cancellerebbe le altre.
+    const lista = e.values.flatMap((val) =>
+      lingue.flatMap(({ codice }) => {
         const etichetta = val === v && codice === lingua ? nuova : etichettaSalvata(val, codice)
         return etichetta.trim() === '' ? [] : [{ value: val, language: codice, label: etichetta }]
       }),
     )
     scarta()
-    void updateEnum({ variables: { id: e.id, input: { valueLabels: lista } } })
+    void updateLabels({ variables: { id: e.id, input: { valueLabels: lista } } })
   }
 
   /** Il colore salvato per un valore, o '' se non ne ha. */
@@ -465,11 +541,14 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
    * «Nessun colore» toglie la voce.
    */
   const salvaColore = (v: string, colore: string) => {
-    const lista = values.flatMap((val) => {
+    // G-2: come per le etichette, dai valori SALVATI e non con modifiche in
+    // sospeso (un colore su un valore non ancora salvato veniva rifiutato).
+    if (dirty) { toast.error(t('pages.dictionary.saveValuesFirst')); return }
+    const lista = e.values.flatMap((val) => {
       const c = val === v ? colore : coloreSalvato(val)
       return c === '' ? [] : [{ value: val, color: c }]
     })
-    void updateEnum({ variables: { id: e.id, input: { valueColors: lista } } })
+    void updateLabels({ variables: { id: e.id, input: { valueColors: lista } } })
   }
 
   return (
@@ -641,7 +720,7 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
                     tabella. Sul vocabolario spedito è in sola lettura, come i
                     valori: per cambiarla si usa «Personalizza», che la copia.
                   */}
-                  {LINGUE.map(({ codice, nome }) => (
+                  {lingue.map(({ codice, nome }) => (
                     shipped ? (
                       <span key={codice} style={{ flex: '1 1 120px', fontWeight: 400, color: 'var(--color-slate)' }}>
                         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginRight: 4 }}>{codice}</span>
@@ -673,7 +752,7 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
                     <Select
                       style={{ ...inputS, height: 26, width: 'auto', fontWeight: 400, ...(shipped ? readOnlyS : {}) }}
                       value={coloreSalvato(v)}
-                      disabled={shipped || saving}
+                      disabled={shipped || saving || savingLabels}
                       onChange={(ev) => salvaColore(v, ev.target.value)}
                       aria-label={t('pages.dictionary.valueColorLabel', { value: v })}
                     >
@@ -742,9 +821,31 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: `1px solid ${palette.neutral.borderLight}` }}>
+        {/* G-11: i valori tolti e ancora usati chiedono su cosa riscrivere i
+            record. Senza questa scelta l'API rifiuta, ed era un vicolo cieco. */}
+        {replaceFor.length > 0 && (
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', border: `1px solid ${palette.warning.border}`, borderRadius: 8, background: palette.warning.bg, marginBottom: 8 }}>
+            <span style={{ fontSize: 'var(--font-size-body)', color: palette.warning.text }}>{t('pages.dictionary.replaceInUseIntro')}</span>
+            {replaceFor.map((u) => (
+              <label key={u.from} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)' }}>
+                <span style={{ fontFamily: 'monospace' }}>{u.from}</span>
+                <span style={{ color: 'var(--color-slate-light)' }}>{t('pages.dictionary.replaceInUseCount', { count: u.total })}</span>
+                <span aria-hidden="true">→</span>
+                <Select
+                  style={{ ...inputS, height: 26, width: 'auto', fontWeight: 400 }}
+                  value={replaceWith[u.from] ?? ''}
+                  onChange={(ev) => setReplaceWith((m) => ({ ...m, [u.from]: ev.target.value }))}
+                  aria-label={t('pages.dictionary.replaceInUseLabel', { value: u.from })}
+                >
+                  {values.map((v) => <option key={v} value={v}>{etichettaSalvata(v, lingue[0]?.codice ?? '') || v}</option>)}
+                </Select>
+              </label>
+            ))}
+          </div>
+        )}
         {dirty && (
           <>
-            <button type="button" style={btnPrimary} onClick={handleSave} disabled={saving}>
+            <button type="button" style={btnPrimary} onClick={() => void handleSave()} disabled={saving}>
               <Save size={14} aria-hidden="true" /> {t('common.save')}
             </button>
             <button type="button" style={btnSecondary} onClick={handleCancel}>

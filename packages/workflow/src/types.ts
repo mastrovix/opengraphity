@@ -247,8 +247,15 @@ export interface TransitionInput {
    */
   triggerType: WorkflowTrigger
   notes?:      string
-  /** Se presente, l'istanza deve appartenere a questo tenant (difesa in profondità). */
-  tenantId?:   string
+  /**
+   * L'istanza DEVE appartenere a questo tenant. Era facoltativo («difesa in
+   * profondità») e 8 chiamanti su 14 non lo passavano, quindi la query non
+   * filtrava per tenant nella maggioranza dei cammini: la difesa dichiarata
+   * era spenta, e un futuro chiamante che prendesse `instanceId` dall'input
+   * dell'utente avrebbe ereditato il buco (revisione totale · E-31). Ora è
+   * obbligatorio: chi chiama il motore sa per quale organizzazione lo fa.
+   */
+  tenantId:    string
 }
 
 /** Frase dell'errore per chi lo mostra: chiave i18n del web e parametri. */

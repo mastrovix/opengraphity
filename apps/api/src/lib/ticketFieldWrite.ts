@@ -26,6 +26,7 @@ import { runQueryOne } from '@opengraphity/neo4j'
 import { ValidationError, NotFoundError } from './errors.js'
 import { resolvePriorityPatch } from './priority.js'
 import { assertDomainValue } from './domainMatrix.js'
+import { assertStepFieldValue, stepFieldMetas } from './stepFieldWrites.js'
 
 const LABELS: Readonly<Record<string, string>> = {
   incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'ServiceRequest',
@@ -68,9 +69,16 @@ export async function writeTicketField(
   if (!label) throw new ValidationError(`Entity type "${entityType}" has no writable fields for automations`, { key: 'errors.automation.entityNotWritable', params: { entityType } })
   const current = await runQueryOne<{ props: Props }>(session, `MATCH (e:${label} {id: $id, tenant_id: $tenantId}) RETURN properties(e) AS props`, { id: entityId, tenantId })
   if (!current) throw new NotFoundError(label, entityId)
+  // Il campo e il valore passano dalla STESSA validazione dell'azione di passo
+  // `update_field` (revisione totale · C-4): deve essere un campo del
+  // metamodello del cliente e il valore del suo vocabolario. Prima `set_field`
+  // scriveva qualunque proprietà non compresa in una lista corta di dieci
+  // nomi: «deleted = true» era un soft-delete di massa da una regola,
+  // «resolved_at = …» faceva risultare concluso un ticket aperto, e un valore
+  // fuori Dizionario sparisce da filtri e matrici.
   const props = PRIORITY_FIELDS.has(field)
     ? await priorityWrite(tenantId, entityType, field, value, current.props)
-    : { [field]: value }
+    : { [field]: assertStepFieldValue(await stepFieldMetas(session, tenantId, entityType), entityType, field, value, `set_field ${field}`, { allowTemplate: false }) }
   const now = new Date().toISOString()
   const row = await runQueryOne<{ props: Props }>(session, `
     MATCH (e:${label} {id: $id, tenant_id: $tenantId})

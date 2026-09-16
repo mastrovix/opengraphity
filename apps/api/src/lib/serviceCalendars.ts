@@ -57,7 +57,14 @@ const READ_CYPHER = `
   WITH c, collect(DISTINCT p.name) AS policies
   OPTIONAL MATCH (o:OLAContract {tenant_id: $tenantId, calendar_id: c.id})
   WITH c, policies, collect(DISTINCT o.name) AS contracts
-  OPTIONAL MATCH (wd:WorkflowDefinition {tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {deadline_calendar_id: c.id})
+  // «Usato dai passi» guarda la SCADENZA, non solo la proprietà di comodo
+  // (revisione totale · C-35): deadline_calendar_id la scrive solo il
+  // disegnatore, quindi una scadenza arrivata da un seed o da una migrazione
+  // non impediva di cancellare il calendario — e la passata delle scadenze
+  // finiva «failed» ogni ora. Gli id dei calendari sono UUID: la scadenza che
+  // li cita li contiene per intero.
+  OPTIONAL MATCH (wd:WorkflowDefinition {tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep)
+    WHERE s.deadline_calendar_id = c.id OR (s.deadline IS NOT NULL AND s.deadline CONTAINS c.id)
   RETURN c.id AS id, c.name AS name, c.days AS days, c.start AS start, c.end AS end, c.holidays AS holidays,
          policies, contracts, collect(DISTINCT wd.name + ' · ' + coalesce(s.label, s.name)) AS steps
   ORDER BY toLower(c.name)

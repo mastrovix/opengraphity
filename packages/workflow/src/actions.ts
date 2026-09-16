@@ -61,15 +61,28 @@ export function resolveTemplate(template: string, ctx: Record<string, unknown>):
   // Solo `{a.b.c}`: le graffe di un body JSON (`{"id":"{incident.id}"}`) non sono placeholder.
   return template.replace(/\{([A-Za-z_][\w.]*)\}/g, (_match, path: string) => {
     const parts = path.trim().split('.')
+    let container: Record<string, unknown> | null = ctx
     let value: unknown = ctx
+    let exists = true
     for (const part of parts) {
-      if (value == null || typeof value !== 'object') { value = undefined; break }
-      value = (value as Record<string, unknown>)[part]
+      if (value == null || typeof value !== 'object') { exists = false; break }
+      container = value as Record<string, unknown>
+      if (!Object.prototype.hasOwnProperty.call(container, part)) { exists = false; break }
+      value = container[part]
     }
-    if (value == null) {
+    /**
+     * Un campo che NON ESISTE nel contesto è un template sbagliato: si ferma,
+     * come prima. Un campo che esiste ed è VUOTO è un dato legittimo (un
+     * incident aperto dal portale senza descrizione, una categoria non
+     * scelta): risolve alla stringa vuota (revisione totale · E-10). Prima
+     * faceva fallire l'intera azione — `create_entity`, `update_field`,
+     * `call_webhook`, `assign_to` — e non c'era modo di scrivere un template
+     * tollerante.
+     */
+    if (!exists) {
       throw new Error(`resolveTemplate: placeholder {${path.trim()}} did not resolve (available keys: ${Object.keys(ctx).join(', ')})`)
     }
-    return String(value)
+    return value == null ? '' : String(value)
   })
 }
 

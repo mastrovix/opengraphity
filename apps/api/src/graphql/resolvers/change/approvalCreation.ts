@@ -43,8 +43,15 @@ export async function getApprovalGateState(session: Session, changeId: string, t
            count(CASE WHEN a.kind = 'change_manager' THEN 1 END) AS cm
   `, { changeId, tenantId })
   if (!row) throw new NotFoundError('Change', changeId)
+  // B-25: nessun ripiego su «normal» — il tipo decide le approvazioni.
+  if (row.changeType == null || String(row.changeType).trim() === '') {
+    throw new GraphQLError(
+      `The change ${changeId} has no change type: the approval requirements cannot be decided. Set the type on the change.`,
+      { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.noChangeType', params: { change: changeId } } } },
+    )
+  }
   return {
-    changeType:       row.changeType ?? 'normal',
+    changeType:       String(row.changeType),
     total:            Number(row.total),
     pending:          Number(row.pending),
     hasChangeManager: Number(row.cm) > 0,

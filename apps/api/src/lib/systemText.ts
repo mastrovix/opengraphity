@@ -24,6 +24,9 @@ export const SYSTEM_TEXTS = {
   'event.incident.occurrences': { en: 'Occurrences: {count} (first: {first}, last: {last})', it: 'Occorrenze: {count} (prima: {first}, ultima: {last})' },
   'incident.reassignedTeam':    { en: 'Reassigned to team {team}',                            it: 'Riassegnato al team {team}' },
   'incident.assignedUser':      { en: 'Assigned to {user}',                                   it: 'Assegnato a {user}' },
+  // Revisione totale · M-10: il cambio di gruppo stacca l'assegnatario che in
+  // quel gruppo non c'è, e lo dice.
+  'incident.unassignedOnTeamChange': { en: '{user} is no longer the assignee: not a member of team {team}', it: '{user} non è più l\'assegnatario: non fa parte del team {team}' },
   'incident.reassignedUser':    { en: 'Reassigned to {user}',                                 it: 'Riassegnato a {user}' },
   'workflow.transitionComment': { en: 'Workflow: {step}',                                     it: 'Workflow: {step}' },
   'workflow.transitionCommentNotes': { en: 'Workflow: {step} — {notes}',                      it: 'Workflow: {step} — {notes}' },

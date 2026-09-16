@@ -160,7 +160,14 @@ export async function myPendingApprovals(
              a.resolution_note AS resolutionNote
       ORDER BY a.requested_at DESC
     `, { tenantId: ctx.tenantId, userId: ctx.userId }))
-    return res.records.map(mapApproval)
+    /**
+     * Il `CONTAINS` della query è solo un PREFILTRO (revisione totale · B-29):
+     * `approvers` è una stringa JSON, quindi il confronto per sottostringa
+     * faceva vedere a un utente le approvazioni di un altro il cui id
+     * contenesse il suo (id non-UUID da import o script). L'appartenenza si
+     * decide sull'elenco vero, elemento per elemento.
+     */
+    return res.records.map(mapApproval).filter((a) => a.approvers.includes(ctx.userId))
   } finally {
     await session.close()
   }
@@ -367,19 +374,31 @@ export async function approveRequest(
         if (wiRes.records.length > 0) {
           const instanceId = wiRes.records[0].get('instanceId') as string
           const actionCtx: ActionContext = { userId: ctx.userId, entityData: { id: entityId } }
-          // Pick the first manual transition whose target is NOT the initial
-          // step — that's the forward path (draft → ... → active-state).
-          const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
-          const initial = await getInitialStepName(session, ctx.tenantId, 'kb_article')
+          /**
+           * L'articolo approvato va nel passo PUBBLICATO, riconosciuto dalla
+           * sua categoria (revisione totale · B-30). Prima si prendeva «la
+           * prima transizione manuale che non torna all'iniziale»: in un
+           * workflow del cliente con un arco «revisione → archiviato» davanti
+           * a «→ pubblicato», l'approvazione ARCHIVIAVA l'articolo. Se nessun
+           * passo raggiungibile è di categoria «published» non si inventa una
+           * strada: si dice che il workflow non ne ha una.
+           */
+          const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
+          const steps = await getWorkflowSteps(session, ctx.tenantId, 'kb_article')
+          const publishedSteps = new Set(steps.filter((st) => st.category === 'published').map((st) => st.name))
           const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
-          const forward = transitions.find((t) => t.toStep !== initial)
-          if (forward) {
-            await workflowEngine.transition(
-              session,
-              { instanceId, toStepName: forward.toStep, triggeredBy: ctx.userId, triggerType: 'manual' },
-              actionCtx,
+          const forward = transitions.find((t) => publishedSteps.has(t.toStep))
+          if (!forward) {
+            throw new GraphQLError(
+              'The knowledge base workflow has no transition to a published step from here: the approval cannot publish the article',
+              { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.approval.noPublishedStep' } } },
             )
           }
+          await workflowEngine.transition(
+            session,
+            { instanceId, toStepName: forward.toStep, triggeredBy: ctx.userId, triggerType: 'manual', tenantId: ctx.tenantId },
+            actionCtx,
+          )
         }
         sseManager.sendToUser(ctx.tenantId, requestedBy, {
           id:          uuidv4(),
@@ -490,7 +509,7 @@ export async function rejectRequest(
         const initialStep = await getInitialStepName(session, ctx.tenantId, 'kb_article')
         await workflowEngine.transition(
           session,
-          { instanceId, toStepName: initialStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: args.note },
+          { instanceId, toStepName: initialStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: args.note, tenantId: ctx.tenantId },
           actionCtx,
         )
       }

@@ -314,3 +314,31 @@ describe('cache della policy per tenant', () => {
     expect(getCachedEventPolicy('t2', 0)).toBeNull()
   })
 })
+
+/**
+ * C-37 (revisione totale): le chiavi della `severity_map` sono le severità che
+ * i sistemi di monitoraggio MANDANO, non un vocabolario che il cliente
+ * rinomina. Le due cose devono restare d'accordo: se un giorno qualcuno
+ * togliesse `event_severity` dai vocabolari «di collegamento», la rinomina
+ * diventerebbe possibile, la mappa resterebbe sulle chiavi vecchie e la
+ * validazione rifiuterebbe quelle nuove — il vicolo cieco già visto con
+ * `impact`. Questo test lega la validazione al divieto.
+ */
+describe('C-37 · la mappa delle severità e il Dizionario dicono la stessa cosa', () => {
+  it('event_severity è un vocabolario di collegamento: i suoi valori non si rinominano', async () => {
+    const { WIRE_VOCABULARIES } = await import('../../graphql/resolvers/enumType.js')
+    expect(Object.keys(WIRE_VOCABULARIES)).toContain('event_severity')
+  })
+
+  it('assertSeverityMap pretende esattamente le severità del protocollo', async () => {
+    const { assertSeverityMap } = await import('../eventPolicy.js')
+    const { EVENT_SEVERITIES } = await import('../eventVocabularies.js')
+    const good = Object.fromEntries(EVENT_SEVERITIES.map((s) => [s, { impact: 'high', urgency: 'high' }]))
+    expect(Object.keys(assertSeverityMap(good))).toEqual([...EVENT_SEVERITIES])
+    // una chiave inventata (o rinominata a mano nel grafo) si dice
+    expect(() => assertSeverityMap({ ...good, avviso: { impact: 'high', urgency: 'high' } })).toThrow(/unknown keys: avviso/)
+    // e una che manca pure
+    const { info: _info, ...incomplete } = good
+    expect(() => assertSeverityMap(incomplete)).toThrow(/info is missing/)
+  })
+})

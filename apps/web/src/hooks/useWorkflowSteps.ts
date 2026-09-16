@@ -34,8 +34,16 @@ export interface WorkflowStepMeta {
  * Returns the raw steps plus derived lookups and filter helpers so callers
  * never need to hardcode a step name.
  */
+/** Un arco del workflow: serve a chi deve sapere DOVE si può andare da un passo. */
+export interface WorkflowTransitionMeta {
+  id:           string
+  fromStepName: string
+  toStepName:   string
+  trigger:      string
+}
+
 export function useWorkflowSteps(entityType: string) {
-  const { data, loading, error } = useQuery<{ workflowDefinition: { steps: WorkflowStepMeta[] } | null }>(
+  const { data, loading, error } = useQuery<{ workflowDefinition: { steps: WorkflowStepMeta[]; transitions?: WorkflowTransitionMeta[] } | null }>(
     GET_WORKFLOW_DEFINITION,
     // Entità vuota = chi chiama non ha un workflow da leggere (un CI, un evento): nessuna richiesta.
     { variables: { entityType }, fetchPolicy: METAMODEL_FETCH_POLICY, skip: !entityType },
@@ -78,9 +86,25 @@ export function useWorkflowSteps(entityType: string) {
     /** I passi con quello scopo, in ordine di flusso (un tenant può averne più di uno). */
     const stepsByPurpose = (purpose: string) => steps.filter((s) => s.purpose === purpose)
 
+    /**
+     * I passi RAGGIUNGIBILI da `from`, nell'ordine della definizione
+     * (revisione totale · G-9): chi manda un articolo «in revisione»
+     * scegliendo il primo passo non iniziale e non terminale scommetteva sulla
+     * POSIZIONE — con un `rejected` inserito prima di `review` l'articolo
+     * finiva rifiutato, o la transizione veniva rifiutata dal motore.
+     */
+    const transitions = data?.workflowDefinition?.transitions ?? []
+    const reachableFrom = (from: string | null | undefined): WorkflowStepMeta[] => {
+      if (!from) return []
+      const targets = new Set(transitions.filter((tr) => tr.fromStepName === from).map((tr) => tr.toStepName))
+      return steps.filter((st) => targets.has(st.name))
+    }
+
     return {
       loading, error,
       steps,
+      transitions,
+      reachableFrom,
       byName,
       initialStep: initial ?? null,
       terminalSet,

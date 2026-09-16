@@ -91,7 +91,12 @@ export async function loadIncidentDossier(
       title:       (p['title']  ?? '') as string,
       description: (p['description'] ?? null) as string | null,
       severity:    (p['severity'] ?? '') as string,
-      severityColor: p['severity'] ? ((await loadVocabularyEntries(tenantId, 'severity')).colors[p['severity'] as string] ?? null) : null,
+      // `Incident.severity` porta un valore del vocabolario `priority` (lo
+      // dice `enumValueUsage.ts`, e il badge dell'interfaccia usa quello):
+      // qui si leggeva `severity`, quindi un colore scelto dal cliente non
+      // arrivava nel dossier e un valore nuovo usciva grigio (revisione
+      // totale · C-19).
+      severityColor: p['severity'] ? ((await loadVocabularyEntries(tenantId, 'priority')).colors[p['severity'] as string] ?? null) : null,
       status:      (p['status']   ?? '') as string,
       category:    (p['category'] ?? null) as string | null,
       createdAt:   (p['created_at']  ?? null) as string | null,

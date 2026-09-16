@@ -130,7 +130,9 @@
     "articleCount_other": "{{count}} articles",
     "searchResults_one": "{{count}} result for",
     "searchResults_other": "{{count}} results for",
-    "clearSearch": "Clear"
+    "clearSearch": "Clear",
+    "categoryResults": "{{count}} article(s) in {{category}}",
+    "clearCategory": "All categories"
   },
   "common": {
     "loading": "Loading...",

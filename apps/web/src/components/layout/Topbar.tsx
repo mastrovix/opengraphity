@@ -3,6 +3,7 @@ import { useLocation, Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Bell } from 'lucide-react'
 import { GlobalSearch } from './GlobalSearch'
+import { useMetamodel } from '@/contexts/MetamodelContext'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +31,8 @@ const FIRST_SEGMENT_PAGE: Readonly<Record<string, string>> = {
 export function Breadcrumb() {
   const { t } = useTranslation()
   const { pathname } = useLocation()
+  // F-22: l'etichetta dei tipi CI la decide il disegnatore del cliente.
+  const { getCIType } = useMetamodel()
 
   const LABELS: Record<string, string> = {
     dashboard:          t('sidebar.dashboard'),
@@ -66,6 +69,11 @@ export function Breadcrumb() {
     'event-policy':     t('sidebar.eventPolicy'),
   }
   const formatSegment = (part: string): string => {
+    // L'etichetta del cliente per un tipo di CI vince sulle chiavi dei tipi
+    // spediti (revisione totale · F-22): il breadcrumb diceva «Server» anche
+    // dopo che il disegnatore l'aveva rinominato «Host fisico».
+    const ciType = getCIType(part)
+    if (ciType?.label) return ciType.label
     if (LABELS[part]) return LABELS[part]
     if (/^[0-9a-f-]{20,}$/i.test(part)) return t('topbar.detail')
     if (/^\d+$/.test(part)) return t('topbar.detail')

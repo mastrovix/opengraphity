@@ -232,7 +232,9 @@ export function KBAdminPage() {
   // lista pubblica e del portale.
   const { entriesOf, labelOf } = useDomainVocabularies()
   const CATEGORY_ENTRIES = entriesOf('kb_category') ?? []
-  const { steps: kbSteps, byName: kbStepByName, initialStep: kbInitialStep } = useWorkflowSteps('kb_article')
+  const { steps: kbSteps, byName: kbStepByName, initialStep: kbInitialStep, reachableFrom: kbReachableFrom } = useWorkflowSteps('kb_article')
+  // G-9: dove si può andare dal passo iniziale, secondo gli archi del workflow.
+  const kbReachableFromInitial = kbReachableFrom(kbInitialStep?.name).filter((st) => !st.isTerminal)
 
   // List state
   const [page,    setPage]    = useState(0)
@@ -289,9 +291,12 @@ export function KBAdminPage() {
       // defined by the workflow, not by this page.
       if (publishingRef.current && d.createKBArticle.workflowInstanceId) {
         publishingRef.current = false
-        const forwardFromInitial = kbSteps
-          .filter((s) => !s.isInitial && !s.isTerminal)
-          .map((s) => s.name)[0]
+        // La destinazione la decide il WORKFLOW: il primo passo RAGGIUNGIBILE
+        // dal passo iniziale che non sia terminale (revisione totale · G-9 —
+        // prima si prendeva il primo passo non iniziale e non terminale
+        // nell'ORDINE della definizione, quindi un `rejected` inserito prima
+        // di `review` riceveva l'articolo, o la transizione veniva rifiutata).
+        const forwardFromInitial = kbReachableFromInitial[0]?.name
         if (forwardFromInitial) {
           void execTransition({
             variables: { instanceId: d.createKBArticle.workflowInstanceId, toStep: forwardFromInitial },
@@ -317,9 +322,8 @@ export function KBAdminPage() {
         // initial step (workflow decides which step that leads to).
         publishingRef.current = false
         const wi = d.updateKBArticle.workflowInstanceId ?? editArticle?.workflowInstanceId
-        const forwardFromInitial = kbSteps
-          .filter((s) => !s.isInitial && !s.isTerminal)
-          .map((s) => s.name)[0]
+        // G-9: vedi sopra, la destinazione viene dagli archi del workflow.
+        const forwardFromInitial = kbReachableFromInitial[0]?.name
         if (wi && forwardFromInitial) {
           void execTransition({ variables: { instanceId: wi, toStep: forwardFromInitial } }).then((res) => {
             const r = res.data?.executeWorkflowTransition

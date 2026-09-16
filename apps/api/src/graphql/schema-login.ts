@@ -79,8 +79,24 @@ export function loginSDL(): string {
     samlSpMetadataUrl: String
   }
 
+  """
+  Una regola che il realm porta FUORI dall'intervallo che il prodotto governa
+  (revisione totale · A-19): un realm configurato dalla console di Keycloak può
+  avere «blocca dopo 2 tentativi». La pagina la mostra e dice perché il valore
+  non si può alzare o abbassare da qui, invece di rifiutare ogni salvataggio
+  senza spiegazioni.
+  """
+  type PasswordRuleOutOfRange {
+    rule:  String!
+    value: Int!
+    min:   Int!
+    max:   Int!
+  }
+
   type LoginSettings {
     passwordRules: PasswordRules!
+    """Vuoto quando il realm sta tutto dentro gli intervalli del prodotto."""
+    passwordRulesOutOfRange: [PasswordRuleOutOfRange!]!
     providers:     [LoginProvider!]!
     addresses:     [LoginProviderAddresses!]!
   }

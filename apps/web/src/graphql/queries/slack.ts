@@ -17,6 +17,7 @@ export const GET_LOGIN_SETTINGS = gql`
   query GetLoginSettings {
     loginSettings {
       passwordRules { minLength uppercase lowercase digits special notUsername notEmail history expireDays lockoutEnabled lockoutFailures lockoutMinutes }
+      passwordRulesOutOfRange { rule value min max }
       providers { kind displayName enabled clientId tenant hostedDomain metadataUrl redirectUri samlSpMetadataUrl }
       addresses { kind redirectUri samlSpMetadataUrl }
     }

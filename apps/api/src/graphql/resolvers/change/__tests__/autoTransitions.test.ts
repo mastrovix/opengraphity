@@ -133,7 +133,8 @@ describe('evaluateAutoTransitions', () => {
       expect(workflowEngine.transition).toHaveBeenCalledOnce()
       expect(workflowEngine.transition).toHaveBeenCalledWith(
         mockSession,
-        { instanceId: 'wi-1', toStepName: 'planning', triggeredBy: 'system', triggerType: 'automatic' },
+        // CONTRATTO RINEGOZIATO (revisione totale · E-31): tenant obbligatorio sul motore.
+        { instanceId: 'wi-1', toStepName: 'planning', triggeredBy: 'system', triggerType: 'automatic', tenantId: 'tenant-1' },
         { userId: 'user-1', entityData: { id: 'chg-1', code: 'CHG00000001' } },
       )
       expect(afterEnterStep).toHaveBeenCalledWith(mockSession, 'chg-1', 'tenant-1', 'planning')
@@ -463,7 +464,8 @@ describe('il varco della finestra di rilascio (terza revisione * C1)', () => {
     await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
     expect(transizioniDellaChange()).toHaveLength(1)
     expect(transizioniDellaChange()[0]![1]).toEqual(
-      { instanceId: 'wi-1', toStepName: 'rilascio_programmato', triggeredBy: 'system', triggerType: 'automatic' },
+      // CONTRATTO RINEGOZIATO (revisione totale · E-31): tenant obbligatorio sul motore.
+      { instanceId: 'wi-1', toStepName: 'rilascio_programmato', triggeredBy: 'system', triggerType: 'automatic', tenantId: 'tenant-1' },
     )
   })
 

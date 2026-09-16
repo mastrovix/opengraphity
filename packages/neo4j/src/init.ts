@@ -360,6 +360,12 @@ const INDEXES: SchemaStatement[] = [
   { label: 'ServiceCalendar(tenant_id)', cypher: 'CREATE INDEX service_calendar_tenant IF NOT EXISTS FOR (n:ServiceCalendar) ON (n.tenant_id)' },
   // WorkflowStep: the engine resolves steps by (definition, name) on every transition.
   { label: 'WorkflowStep(definition_id, name)', cypher: 'CREATE INDEX workflow_step_definition_name IF NOT EXISTS FOR (n:WorkflowStep) ON (n.definition_id, n.name)' },
+  // E la transizione cerca lo step di arrivo per (definizione, id) — senza
+  // questo indice era una scansione dell'etichetta a ogni transizione
+  // (revisione totale · E-6). Non è un vincolo di unicità: gli id dei passi dei
+  // seed storici (`step-<nome>`) si ripetono fra definizioni, ed è proprio per
+  // questo che la query passa dalla definizione.
+  { label: 'WorkflowStep(definition_id, id)', cypher: 'CREATE INDEX workflow_step_definition_id IF NOT EXISTS FOR (n:WorkflowStep) ON (n.definition_id, n.id)' },
   // Comments: one model for every ticket, `(ticket)-[:HAS_COMMENT]->(:Comment)`
   // (apps/api/src/lib/ticketComments.ts). `EntityComment` was retired by the
   // migration 20260923_1030_comments_single_model: its index is no longer created.
