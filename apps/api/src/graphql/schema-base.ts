@@ -793,6 +793,13 @@ export function buildBaseSDL(): string {
     """Il vocabolario del Dizionario da cui pesca le scelte, per leggerne le etichette; null se non ne ha uno."""
     vocabulary: String
     """
+    Vero se questo campo filtra le RIGHE di una tabella (ondata 7): la domanda
+    e' «esiste una riga dove…», quindi gli operatori sono quelli che una
+    relazione sa fare — uguale, contiene, vuoto. Offrirne altri vorrebbe dire
+    offrire un filtro che il server rifiuta.
+    """
+    rowFilter:  Boolean!
+    """
     Il valore sul nodo e' una LISTA, non un valore solo (selezione multipla dei
     moduli del catalogo, ondata 4). Cambia gli operatori: «contiene una di»,
     non «uguale a» — un uguale su una lista non trova mai niente.

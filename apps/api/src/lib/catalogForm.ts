@@ -40,6 +40,7 @@ import {
   type FormTableColumn, type FormTableDefinition, type FormTableRow,
 } from '@opengraphity/types'
 import { ValidationError } from './errors.js'
+import type { RelationFieldDef } from './filterBuilder.js'
 import { assertCustomFieldName } from './customFieldName.js'
 import { loadVocabularyEntries } from './vocabularyEntries.js'
 import { runFormulaScript, runValidationScript } from './metamodelScript.js'
@@ -1319,4 +1320,46 @@ export async function writeFormReferences(
       }
     }
   }
+}
+
+/**
+ * FILTRARE UNA TABELLA: una riga per volta (ondata 7).
+ *
+ * La domanda che una persona fa non è «com'è la tabella», è «ci sono ticket
+ * dove qualcuno ha chiesto il ruolo di amministratore». Cioè: esiste UNA RIGA
+ * con quel valore. È la stessa forma dei campi di riferimento dell'ondata 2 —
+ * una relazione da interrogare con `EXISTS` — quindi si riusa lo stesso
+ * meccanismo del costruttore di filtri, `relProps` compreso: `rel.field`
+ * distingue le righe di due tabelle diverse, che condividono il tipo di
+ * relazione.
+ *
+ * Nessuna Cypher nuova, quindi: un campo virtuale per ogni (tabella, colonna),
+ * e il generatore di WHERE che c'è già fa il resto.
+ */
+export const FORM_TABLE_FILTER_SEPARATOR = '__'
+
+/** Il nome del campo virtuale: `persone_da_abilitare__ruolo`. */
+export function formTableFilterName(field: string, column: string): string {
+  return `${field}${FORM_TABLE_FILTER_SEPARATOR}${column}`
+}
+
+/**
+ * I campi virtuali per filtrare le righe, uno per colonna di ogni tabella
+ * della libreria. Le colonne senza definizione (una tabella mai finita) non
+ * producono niente: non si inventa un filtro su una colonna che non c'è.
+ */
+export function formTableFilterFields(library: readonly FormFieldDef[]): Record<string, RelationFieldDef> {
+  const out: Record<string, RelationFieldDef> = {}
+  for (const campo of library) {
+    if (!isFormTableType(campo.fieldType) || !campo.tableDefinition) continue
+    for (const colonna of campo.tableDefinition.columns) {
+      out[formTableFilterName(campo.name, colonna.name)] = {
+        relType: 'FORM_TABLE_ROW',
+        targetLabel: 'FormTableRow',
+        searchProp: colonna.name,
+        relProps: { field: campo.name },
+      }
+    }
+  }
+  return out
 }

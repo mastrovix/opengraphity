@@ -172,7 +172,17 @@ interface EntityFilterField {
   vocabulary: string | null
   /** Il valore sul nodo è una LISTA: vuole gli operatori di lista (ondata 4). */
   multi:      boolean
+  /** Filtra le RIGHE di una tabella: operatori di relazione (ondata 7). */
+  rowFilter:  boolean
 }
+
+/**
+ * Gli operatori che una RELAZIONE sa fare, cioè quelli con cui si filtrano le
+ * righe di una tabella (ondata 7). La lista è quella di `filterBuilder.ts`
+ * sull'API: lì gli altri sono un rifiuto esplicito, e offrirli qui vorrebbe
+ * dire mandare l'utente contro quel rifiuto.
+ */
+const OPERATORI_DI_RELAZIONE = ['equals', 'contains', 'is_empty', 'is_not_empty'] as const
 
 // ── Fields to always skip ─────────────────────────────────────────────────────
 
@@ -235,6 +245,7 @@ export function useEntityFields(typeName: string): { fields: FieldConfig[]; erro
       result.push({
         key:     f.name,
         label,
+        ...(f.rowFilter ? { operators: OPERATORI_DI_RELAZIONE } : {}),
         type:    f.multi ? 'multi_enum' : 'enum',
         // Le scelte con l'etichetta del Dizionario quando il server le manda;
         // altrimenti il valore ripulito, che è quello che si faceva prima.
@@ -269,7 +280,11 @@ export function useEntityFields(typeName: string): { fields: FieldConfig[]; erro
 
     // Una lista senza vocabolario non ha scelte da offrire, ma resta una lista:
     // gli operatori di testo su di essa non troverebbero niente.
-    result.push({ key: f.name, label, type: f.multi ? 'multi_enum' : 'text' })
+    result.push({
+      key: f.name, label,
+      ...(f.rowFilter ? { operators: OPERATORI_DI_RELAZIONE } : {}),
+      type: f.multi ? 'multi_enum' : 'text',
+    })
   }
 
   return { fields: result, error: error ?? null }

@@ -14,7 +14,7 @@ import { buildAdvancedWhere, type RelationFieldDef } from '../../lib/filterBuild
 import {
   FORM_REFERENCE_LABELS, FORM_REFERENCE_REL_TYPES, FORM_REFERENCE_SEARCH_PROPS, isFormReferenceType,
 } from '@opengraphity/types'
-import { formFields } from '../../lib/catalogForm.js'
+import { formFields, formTableFilterFields } from '../../lib/catalogForm.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
 import * as requestService from '../../services/requestService.js'
 import { audit } from '../../lib/audit.js'
@@ -83,6 +83,10 @@ async function serviceRequests(
       ...getScalarFields(info.schema, 'ServiceRequest'),
       ...(await requestCustomFieldDefs(ctx, 'service_request')).map((d) => d.name),
       ...libreria.map((d) => d.name),
+      // I campi virtuali delle TABELLE (ondata 7): `persone__ruolo` filtra le
+      // righe, e senza questi nomi nella lista ammessa il filtro sarebbe
+      // rifiutato come «campo non consentito».
+      ...Object.keys(formTableFilterFields(libreria)),
     ])
     /**
      * I campi di RIFERIMENTO (ondata 2) non sono proprietà: sono relazioni.
@@ -100,6 +104,13 @@ async function serviceRequests(
       if (!relType || !targetLabel || !searchProp) continue
       relationFields[campo.name] = { relType, targetLabel, searchProp, relProps: { field: campo.name } }
     }
+    /**
+     * Le TABELLE (ondata 7) si filtrano per RIGA: `EXISTS { … (r)-[:FORM_TABLE_ROW
+     * {field}]->(:FormTableRow) WHERE riga.<colonna> … }`. Stesso meccanismo dei
+     * riferimenti, quindi nessuna Cypher nuova — è il senso di aver fatto le
+     * righe dei nodi invece di un JSON.
+     */
+    Object.assign(relationFields, formTableFilterFields(libreria))
     const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r', relationFields) : ''
     // A-22: un campo non ordinabile è un errore, non un ordine diverso in silenzio.
     const orderBy = orderByOrThrow(REQUEST_SORT_WHITELIST, args.sortField, args.sortDirection ?? 'desc', 'r.created_at DESC', 'serviceRequests(sortField)')

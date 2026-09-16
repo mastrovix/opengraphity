@@ -12,7 +12,7 @@ describe('entityFilterFields (sostituto dell\'introspezione per il FilterBuilder
     // `multi: false`: un campo dello schema non e mai una lista (le liste sono
     // escluse a monte), ma il campo esiste su tutti — la selezione multipla dei
     // moduli lo accende (ondata 4).
-    expect(byName.get('title')).toEqual({ name: 'title', kind: 'SCALAR', scalarName: 'String', enumValues: null, label: null, choices: [], formFieldType: null, vocabulary: null, multi: false })
+    expect(byName.get('title')).toEqual({ name: 'title', kind: 'SCALAR', scalarName: 'String', enumValues: null, label: null, choices: [], formFieldType: null, vocabulary: null, rowFilter: false, multi: false })
     expect(byName.get('createdAt')?.kind).toBe('SCALAR')
     expect(byName.has('affectedCIs')).toBe(false)   // lista
     expect(byName.has('assignee')).toBe(false)      // oggetto

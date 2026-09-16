@@ -11,10 +11,10 @@
  */
 import { GraphQLObjectType, getNamedType, isEnumType, isListType, isNonNullType, isScalarType, type GraphQLResolveInfo, type GraphQLOutputType } from 'graphql'
 import { ValidationError } from '../../lib/errors.js'
-import { FORM_FIELD_TYPES_MULTI, isFormTableType, type TicketCustomFieldEntityType } from '@opengraphity/types'
+import { FORM_FIELD_TYPES_MULTI, formTableColumnLabel, isFormTableType, type TicketCustomFieldEntityType } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 import { requestCustomFieldDefs } from './ticketCustomFields.js'
-import { formFields } from '../../lib/catalogForm.js'
+import { formFields, formTableFilterName } from '../../lib/catalogForm.js'
 import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { withSession } from './ci-utils.js'
 import { labelFor } from '../../lib/enumValueLabels.js'
@@ -35,6 +35,8 @@ export interface EntityFilterField {
   formFieldType: string | null
   /** Il vocabolario del Dizionario del campo, per leggerne le etichette. */
   vocabulary: string | null
+  /** Filtra le righe di una tabella: operatori di relazione (ondata 7). */
+  rowFilter: boolean
   /** Il valore sul nodo è una lista (selezione multipla): serve un operatore di lista. */
   multi:      boolean
 }
@@ -43,8 +45,8 @@ function classify(type: GraphQLOutputType): EntityFilterField | null {
   const inner = isNonNullType(type) ? type.ofType : type
   if (isListType(inner)) return null                       // liste = relazioni/array
   const named = getNamedType(inner)
-  if (isScalarType(named)) return { name: '', kind: 'SCALAR', scalarName: named.name, enumValues: null, label: null, choices: [], formFieldType: null, vocabulary: null, multi: false }
-  if (isEnumType(named))   return { name: '', kind: 'ENUM', scalarName: null, enumValues: named.getValues().map((v) => v.name), label: null, choices: [], formFieldType: null, vocabulary: null, multi: false }
+  if (isScalarType(named)) return { name: '', kind: 'SCALAR', scalarName: named.name, enumValues: null, label: null, choices: [], formFieldType: null, vocabulary: null, rowFilter: false, multi: false }
+  if (isEnumType(named))   return { name: '', kind: 'ENUM', scalarName: null, enumValues: named.getValues().map((v) => v.name), label: null, choices: [], formFieldType: null, vocabulary: null, rowFilter: false, multi: false }
   return null                                              // object/interface/union
 }
 
@@ -76,8 +78,8 @@ export const entityFilterFieldsResolvers = {
       const custom = (await requestCustomFieldDefs(ctx, entityType))
         .filter((d) => !fields.some((f) => f.name === d.name))
         .map((d): EntityFilterField => d.fieldType === 'enum'
-          ? { name: d.name, kind: 'ENUM', scalarName: null, enumValues: d.enumValues, label: null, choices: [], formFieldType: null, vocabulary: null, multi: false }
-          : { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null, label: null, choices: [], formFieldType: null, vocabulary: null, multi: false })
+          ? { name: d.name, kind: 'ENUM', scalarName: null, enumValues: d.enumValues, label: null, choices: [], formFieldType: null, vocabulary: null, rowFilter: false, multi: false }
+          : { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null, label: null, choices: [], formFieldType: null, vocabulary: null, rowFilter: false, multi: false })
       /**
        * I campi della LIBRERIA dei moduli del catalogo (ondata 1): sono
        * proprieta dei ticket come gli altri, quindi vanno OFFERTI nel
@@ -106,13 +108,13 @@ export const entityFilterFieldsResolvers = {
             // «Ambienti_coinvolti / Production» dove tutto il resto del
             // prodotto dice «Ambienti coinvolti / Produzione».
             if (!d.vocabulary) {
-              return { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null, label: d.label, choices: [], formFieldType: d.fieldType, vocabulary: null, multi }
+              return { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null, label: d.label, choices: [], formFieldType: d.fieldType, vocabulary: null, rowFilter: false, multi }
             }
             const v = await loadVocabularyEntries(ctx.tenantId, d.vocabulary)
             return {
               name: d.name, kind: 'ENUM', scalarName: null, enumValues: v.values as string[], label: d.label,
               choices: (v.values as string[]).map((valore) => ({ value: valore, label: labelFor(valore, v.labels, lingua, ripiego) })),
-              formFieldType: d.fieldType, vocabulary: d.vocabulary, multi,
+              formFieldType: d.fieldType, vocabulary: d.vocabulary, rowFilter: false, multi,
             }
           })
       }).then((p) => Promise.all(p))

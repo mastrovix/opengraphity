@@ -32,6 +32,14 @@ export interface FieldConfig {
   key:      string
   label:    string
   type:     'text' | 'date' | 'enum' | 'multi_enum'
+  /**
+   * Gli operatori ammessi, quando sono MENO di quelli del tipo (ondata 7): un
+   * filtro sulle righe di una tabella passa da una relazione, e una relazione
+   * sa fare uguale, contiene e vuoto. Offrire gli altri vorrebbe dire offrire
+   * un filtro che il server rifiuta — il tipo di trappola che questo progetto
+   * ha già pagato con i vocabolari scritti a mano.
+   */
+  operators?: readonly FilterOperator[]
   options?: { value: string; label: string }[]  // for enum type
 }
 
@@ -459,7 +467,9 @@ export function FilterBuilder({ fields, onApply, initialRules }: FilterBuilderPr
             rules.map((rule, idx) => {
               const fieldCfg  = fields.find((f) => f.key === rule.field)
               const fieldType = fieldCfg?.type ?? 'text'
-              const operators = OPERATORS_BY_TYPE[fieldType] ?? OPERATORS_BY_TYPE.text
+              const tuttiGliOperatori = OPERATORS_BY_TYPE[fieldType] ?? OPERATORS_BY_TYPE.text
+              const ammessi = fieldCfg?.operators
+              const operators = ammessi ? tuttiGliOperatori.filter((op) => ammessi.includes(op.value)) : tuttiGliOperatori
 
               return (
                 <div key={rule.id}>

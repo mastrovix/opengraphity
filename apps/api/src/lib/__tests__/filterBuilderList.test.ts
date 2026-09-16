@@ -42,3 +42,44 @@ describe('operatori di lista', () => {
       .toThrow(/Filter field not allowed/)
   })
 })
+
+/**
+ * FILTRARE LE RIGHE di una tabella (ondata 7). Non c'è Cypher nuova: sono i
+ * campi di relazione dell'ondata 2, con `rel.field` che distingue le righe di
+ * due tabelle diverse. Questo test tiene ferma proprio quella parte — senza il
+ * vincolo, un filtro su una tabella troverebbe le righe dell'altra.
+ */
+describe('righe di una tabella', () => {
+  const campiTabella = new Set(['persone__ruolo', 'fornitori__ruolo'])
+  const relazioni = {
+    persone__ruolo:   { relType: 'FORM_TABLE_ROW', targetLabel: 'FormTableRow', searchProp: 'ruolo', relProps: { field: 'persone' } },
+    fornitori__ruolo: { relType: 'FORM_TABLE_ROW', targetLabel: 'FormTableRow', searchProp: 'ruolo', relProps: { field: 'fornitori' } },
+  }
+  const regolaSu = (field: string, operator: string, value: unknown) =>
+    JSON.stringify({ rules: [{ field, operator, value, logic: 'AND' }] })
+
+  it('«uguale a» diventa un EXISTS su una riga, con il nome della tabella nella relazione', () => {
+    const params: Record<string, unknown> = {}
+    const where = buildAdvancedWhere(regolaSu('persone__ruolo', 'equals', 'admin'), params, campiTabella, 'n', relazioni)
+    expect(where).toContain('EXISTS { MATCH (n)-[:FORM_TABLE_ROW {field: $af_0_rel_field}]->(_af_t0:FormTableRow)')
+    expect(where).toContain('_af_t0.ruolo = $af_0')
+    expect(params['af_0']).toBe('admin')
+    expect(params['af_0_rel_field']).toBe('persone')
+  })
+
+  it('due tabelle con la STESSA colonna non si confondono: cambia `rel.field`', () => {
+    const params: Record<string, unknown> = {}
+    buildAdvancedWhere(regolaSu('fornitori__ruolo', 'equals', 'admin'), params, campiTabella, 'n', relazioni)
+    expect(params['af_0_rel_field']).toBe('fornitori')
+  })
+
+  it('«è vuoto» chiede che NON esista nessuna riga di quella tabella', () => {
+    const where = buildAdvancedWhere(regolaSu('persone__ruolo', 'is_empty', null), {}, campiTabella, 'n', relazioni)
+    expect(where).toContain('NOT EXISTS { MATCH (n)-[:FORM_TABLE_ROW {field: $af_0_rel_field}]->(:FormTableRow) }')
+  })
+
+  it('un operatore che una relazione non sa fare viene RIFIUTATO, non ignorato', () => {
+    expect(() => buildAdvancedWhere(regolaSu('persone__ruolo', 'greater_than', '3'), {}, campiTabella, 'n', relazioni))
+      .toThrow(/not supported on relation field/)
+  })
+})
