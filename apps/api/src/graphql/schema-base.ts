@@ -177,6 +177,13 @@ export function buildBaseSDL(): string {
     voci storiche non sono state riscritte, e questa lista le mostra comunque.
     """
     auditActions: [AuditActionCount!]!
+    """
+    I tipi di entità presenti nel registro, con il numero di voci (revisione
+    totale · G-20): la tendina del filtro era una lista scritta a mano di sette
+    valori, senza le richieste di servizio, i CI, i vocabolari, i workflow e le
+    mappe di servizio — voci che esistevano e non si potevano isolare.
+    """
+    auditEntityTypes: [AuditEntityTypeCount!]!
 
     # Approval Workflow
     approvalRequests(page: Int, pageSize: Int, filters: String, sortField: String, sortDirection: String): ApprovalRequestsResult!

@@ -53,6 +53,14 @@ export interface SLAStatus {
 }
 
 /** Columns returned by every SLAStatus read — one source for the projection. */
+/**
+ * Le letture dei ticket usano l'UNIONE DI ETICHETTE (revisione totale ·
+ * E-27): erano `MATCH (e {id, tenant_id}) WHERE e:Incident OR e:Problem OR
+ * e:ServiceRequest`, cioè una scansione di tutti i nodi del database a ogni
+ * evento e a ogni job SLA, perché senza etichetta nel pattern nessun indice è
+ * utilizzabile. `(e:Incident|Problem|ServiceRequest {...})` dice la stessa
+ * cosa e passa dagli indici per etichetta.
+ */
 export const SLA_STATUS_PROJECTION = `
       s.id as id, s.tenant_id as tenant_id, s.entity_id as entity_id,
       s.entity_type as entity_type, s.started_at as started_at,
@@ -131,8 +139,7 @@ export function mapToSLAStatus(props: Record<string, unknown>): SLAStatus {
  */
 export async function getEntityCreatedAt(tenantId: string, entityId: string): Promise<Date> {
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})
     RETURN e.created_at AS created_at
   `
   const session = readSession()
@@ -165,8 +172,7 @@ export async function getEntityScope(
   tenantId: string, entityId: string,
 ): Promise<{ category: string | null; teamId: string | null }> {
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest OR e:Change
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId}) OR e:Change
     OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t:Team)
     RETURN e.category AS category, t.id AS teamId
   `
@@ -236,8 +242,7 @@ export async function createSLAStatus(params: {
   const id = randomUUID()
 
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})
     // MERGE (not CREATE): an at-least-once redelivery of entity.created must not
     // create a second SLAStatus for the same entity. ON CREATE sets the fields
     // once; a redelivery returns the existing status unchanged.
@@ -293,8 +298,7 @@ export async function getSLAStatus(
   entityId: string,
 ): Promise<SLAStatus | null> {
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     RETURN ${SLA_STATUS_PROJECTION}
   `
 
@@ -324,8 +328,7 @@ export async function ticketReference(tenantId: string, entityId: string): Promi
   const session = readSession()
   try {
     const row = await runQueryOne<{ number: string | null; title: string | null; severity: string | null; status: string | null }>(session, `
-      MATCH (e {id: $entityId, tenant_id: $tenantId})
-      WHERE e:Incident OR e:Problem OR e:ServiceRequest
+      MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})
       RETURN coalesce(e.number, e.code) AS number, e.title AS title,
              coalesce(e.severity, e.priority) AS severity, e.status AS status
     `, { tenantId, entityId })
@@ -349,8 +352,7 @@ export async function markResponseBreachNotified(tenantId: string, entityId: str
   const session = writeSession()
   try {
     await runQuery(session, `
-      MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-      WHERE e:Incident OR e:Problem OR e:ServiceRequest
+      MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
       SET s.response_breach_notified_at = coalesce(s.response_breach_notified_at, $at)
     `, { tenantId, entityId, at })
   } finally {
@@ -360,8 +362,7 @@ export async function markResponseBreachNotified(tenantId: string, entityId: str
 
 export async function markResponseMet(tenantId: string, entityId: string): Promise<void> {
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     SET s.response_met = true
   `
   const session = writeSession()
@@ -414,8 +415,7 @@ export async function markResolveMet(
    * policy lo ritrova.
    */
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     SET s.resolve_met       = $met,
         s.breached          = CASE WHEN $met THEN coalesce(s.breached, false) ELSE true END,
         s.resolved_at       = $resolvedAt,
@@ -458,8 +458,7 @@ export async function pauseSLA(
 
   const now = pausedAt.toISOString()
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     SET s.paused_at = $now, s.paused_type = $slaType
   `
   const session = writeSession()
@@ -505,8 +504,7 @@ export async function resumeSLA(
     : current.resolve_deadline
 
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     SET s.response_deadline = $newResponse,
         s.resolve_deadline  = $newResolve,
         s.paused_at         = null,
@@ -547,8 +545,7 @@ export async function reopenSLA(tenantId: string, entityId: string, reopenedAt: 
   const shiftMs = Math.max(0, reopenedAt.getTime() - resolvedAt.getTime())
   const newResolve = new Date(parseInstant(current.resolve_deadline, `resolve_deadline of SLAStatus ${current.id}`).getTime() + shiftMs).toISOString()
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     SET s.resolve_deadline = $newResolve,
         s.resolved_at      = null,
         s.resolve_met      = false,
@@ -598,8 +595,7 @@ export async function repolicySLA(tenantId: string, entityId: string, policy: SL
   const newResponse = new Date(calculateDeadline(started, tier.response_minutes, tier.business_hours, policy.timezone, policy.calendar).getTime() + pausedShift).toISOString()
   const newResolve  = new Date(calculateDeadline(started, tier.resolve_minutes,  tier.business_hours, policy.timezone, policy.calendar).getTime() + pausedShift).toISOString()
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     SET s.response_deadline     = $newResponse,
         s.resolve_deadline      = $newResolve,
         s.tier_response_minutes = $response,
@@ -634,8 +630,7 @@ export async function repolicySLA(tenantId: string, entityId: string, policy: SL
  */
 export async function markBreached(tenantId: string, entityId: string, at: string = new Date().toISOString()): Promise<void> {
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     SET s.breached = true, s.breached_at = coalesce(s.breached_at, $at)
   `
   const session = writeSession()

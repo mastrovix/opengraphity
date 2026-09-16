@@ -83,9 +83,16 @@ const CONSTRAINTS: SchemaStatement[] = [
     label: 'FormTemplate.id',
     cypher: 'CREATE CONSTRAINT form_template_id_unique IF NOT EXISTS FOR (n:FormTemplate) REQUIRE n.id IS UNIQUE',
   },
+  /**
+   * L'etichetta vera è `SLAPolicyNode` (revisione totale · E-25): il vincolo
+   * era su `SLAPolicy`, che l'applicazione non usa — un vincolo morto, e
+   * NESSUNA unicità sull'id delle policy vere, quindi due creazioni
+   * concorrenti con lo stesso id passavano. Verificato sul grafo: zero nodi
+   * `:SLAPolicy`, quindi non c'è niente da migrare.
+   */
   {
-    label: 'SLAPolicy.id',
-    cypher: 'CREATE CONSTRAINT sla_policy_id_unique IF NOT EXISTS FOR (n:SLAPolicy) REQUIRE n.id IS UNIQUE',
+    label: 'SLAPolicyNode.id',
+    cypher: 'CREATE CONSTRAINT sla_policy_node_id_unique IF NOT EXISTS FOR (n:SLAPolicyNode) REQUIRE n.id IS UNIQUE',
   },
   {
     label: 'Problem.id',
@@ -648,6 +655,35 @@ export interface InitSchemaOptions {
    */
   migrations?: readonly Migration[]
   log?: (message: string) => void
+  /**
+   * Rifà la semina dei contatori anche se il marcatore c'è (E-26). Serve dopo
+   * un ripristino da backup, dove i numeri nel grafo possono essere più alti
+   * dei contatori.
+   */
+  reseedCounters?: boolean
+}
+
+/** Il marcatore della semina dei contatori (E-26): un nodo solo, senza tenant. */
+const COUNTER_SEED_MARKER = 'counters'
+
+async function countersAlreadySeeded(force: boolean): Promise<boolean> {
+  if (force) return false
+  const session = getDriver().session({ defaultAccessMode: neo4j.session.READ })
+  try {
+    const r = await session.run('MATCH (s:SchemaSeed {id: $id}) RETURN s.at AS at', { id: COUNTER_SEED_MARKER })
+    return r.records.length > 0
+  } finally {
+    await session.close()
+  }
+}
+
+async function markCountersSeeded(): Promise<void> {
+  const session = getDriver().session({ defaultAccessMode: neo4j.session.WRITE })
+  try {
+    await session.run('MERGE (s:SchemaSeed {id: $id}) SET s.at = $at', { id: COUNTER_SEED_MARKER, at: new Date().toISOString() })
+  } finally {
+    await session.close()
+  }
 }
 
 /**
@@ -661,7 +697,20 @@ export async function initSchema(opts: InitSchemaOptions = {}): Promise<void> {
   await runPrechecks()
   await runStatements(CONSTRAINTS, 'Constraint')
   await runStatements(INDEXES, 'Index')
-  await runStatements(COUNTER_SEEDS, 'CounterSeed')
+  /**
+   * I contatori si seminano UNA volta (revisione totale · E-26): sono cinque
+   * `max()` su tutti gli incident, problem, richieste, change e task, cioè
+   * cinque scansioni complete, e giravano a ogni esecuzione. Servono una sola
+   * volta: a partire da lì il contatore lo alza l'applicazione (`sequence.ts`)
+   * e l'import lo alza sopra ogni numero conservato. Un marcatore nel grafo
+   * lo ricorda; `reseedCounters: true` lo rifà (dopo un ripristino da backup).
+   */
+  if (await countersAlreadySeeded(opts.reseedCounters === true)) {
+    log('[neo4j:init] Counter seeds skipped: already done (pass reseedCounters to redo them after a restore).')
+  } else {
+    await runStatements(COUNTER_SEEDS, 'CounterSeed')
+    await markCountersSeeded()
+  }
   log('[neo4j:init] Schema initialisation complete.')
 
   const migrations = opts.migrations ?? []

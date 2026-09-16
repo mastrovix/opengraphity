@@ -136,7 +136,7 @@ export function ServiceCatalogAdminPage() {
                   <td style={{ padding: '10px 14px' }}>
                     {it.requiresApproval
                       ? <Pill bg={palette.warning.tint} color={palette.warning.strong}>{t('pages.serviceCatalogAdmin.required')}</Pill>
-                      : <span style={{ color: 'var(--color-slate-light)' }}>No</span>}
+                      : <span style={{ color: 'var(--color-slate-light)' }}>{t('common.no')}</span>}
                   </td>
                   <td style={{ padding: '10px 14px' }}>
                     {it.active

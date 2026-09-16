@@ -6,6 +6,19 @@
  *
  * Tenant-scoped, operator-driven data fixes (migrate-enum-references.ts,
  * which needs `--tenant`) are NOT migrations: they stay manual scripts.
+ *
+ * REGOLA ROTTA TRE VOLTE, e come si e rimediato (revisione totale · H-16).
+ * Tre migrazioni sono state modificate DOPO il commit che le introduceva:
+ * `20260908_1000_workflow_step_metadata`,
+ * `20260908_1010_ci_configuration_item_label` e
+ * `20260917_1810_ci_lifecycle_semantics`. La piu dannosa e la 1010: la sua
+ * prima versione metteva `:ConfigurationItem` anche sui nodi dei tipi ITIL,
+ * che hanno una `neo4j_label`; il filtro `scope <> 'itil'` e arrivato dopo, e
+ * su un database migrato prima quei ticket sono rimasti etichettati come CI —
+ * `migrate --status` lo mostrava come «drift» informativo e nessuno lo
+ * traduceva in un'azione. La riparazione e la migrazione
+ * `20261002_1070_remove_ci_label_from_tickets`, che toglie la label. Quando il
+ * runner segnala un drift su una di queste tre, e quello: non riapplicarle.
  */
 import type { Migration } from '@opengraphity/neo4j'
 import { workflowStepMetadata }     from './20260908_1000_workflow_step_metadata.js'
@@ -98,6 +111,9 @@ import { changeTaskKeys } from './20261002_1010_change_task_keys.js'
 import { slaWarningRepair } from './20261002_1020_sla_warning_repair.js'
 import { stepDeadlineCalendar } from './20261002_1030_step_deadline_calendar.js'
 import { serviceCalendarNameKey } from './20261002_1040_service_calendar_name_key.js'
+import { eventPolicyHighImpact } from './20261002_1050_event_policy_high_impact.js'
+import { slaNullResolveOutcome } from './20261002_1060_sla_null_resolve_outcome.js'
+import { removeCiLabelFromTickets } from './20261002_1070_remove_ci_label_from_tickets.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -194,4 +210,7 @@ export const MIGRATIONS: readonly Migration[] = [
   slaWarningRepair,
   stepDeadlineCalendar,
   serviceCalendarNameKey,
+  eventPolicyHighImpact,
+  slaNullResolveOutcome,
+  removeCiLabelFromTickets,
 ]

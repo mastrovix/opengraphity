@@ -16,6 +16,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { parseArgs } from 'node:util'
 import { getSession } from '@opengraphity/neo4j'
+import { runScript } from './lib/runScript.js'
 
 const { values: args } = parseArgs({
   options: { slug: { type: 'string', default: 'system' } },
@@ -294,6 +295,5 @@ async function main() {
   }
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((err) => { console.error(err); process.exit(1) })
+// H-45: il runner uniforme — errore intero, exit code 1, driver Neo4j chiuso.
+runScript('seed-itil-metamodel', main)

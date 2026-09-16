@@ -176,6 +176,14 @@ export function servicesSDL(): string {
     evaluatedAt:       String
     """Le cause dell'ultima valutazione, dalla più pesante (al più 20)."""
     explanation:       [ImpactCause!]!
+    """
+    Quanti componenti che contano sono non operativi all'ultima valutazione —
+    TUTTI, non solo quelli entrati nelle 20 cause di explanation, ed è il
+    numero che la regola minNodes confronta (revisione totale · G-MON-6).
+    null per una mappa mai rivalutata da quando il motore lo registra: chi lo
+    mostra dice la frase generica, non un numero inventato.
+    """
+    unhealthyCount:    Int
     nodes:             [ServiceMapNode!]!
     nodeCount:         Int!
     """Archi vivi fra i componenti inclusi."""

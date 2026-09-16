@@ -62,7 +62,18 @@ interface SavedNotification {
 function fromSaved(n: SavedNotification): InAppNotification {
   let params: Record<string, string> | undefined
   if (n.messageParams) {
-    try { params = JSON.parse(n.messageParams) as Record<string, string> } catch { params = undefined }
+    /**
+     * F-42: un `catch` muto lasciava la notifica con la chiave i18n non
+     * interpolata a schermo («Ticket {{number}} assegnato»). I parametri non
+     * si possono inventare, ma il difetto si dice nel log invece di
+     * presentarsi all'utente come testo rotto.
+     */
+    try {
+      params = JSON.parse(n.messageParams) as Record<string, string>
+    } catch (e) {
+      params = undefined
+      console.error('[notifications] message params are not readable: the text will show without values', n.id, e)
+    }
   }
   return {
     id: n.id, type: n.type, title: n.title, title_fallback: n.titleFallback ?? undefined,

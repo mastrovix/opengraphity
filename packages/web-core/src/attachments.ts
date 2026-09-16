@@ -39,14 +39,25 @@ export function createAttachments(api: ApiBase): Attachments {
       if (!res.ok) throw new Error(await errorMessageOf(res))
       const blob = await res.blob()
       const url  = URL.createObjectURL(blob)
-      try {
-        const link = document.createElement('a')
-        link.href     = url
-        link.download = filename
-        link.click()
-      } finally {
+      /**
+       * L'URL si revoca DOPO (revisione totale · E-42): la revoca sincrona
+       * subito dopo `click()` su Firefox e Safari può annullare il download
+       * appena avviato — dal portale, a volte, il file non partiva. Il
+       * browser ha bisogno che l'URL resti valido per un istante; un minuto
+       * è abbondante e non trattiene niente di sensibile (il blob è già in
+       * memoria del browser).
+       */
+      const link = document.createElement('a')
+      link.href     = url
+      link.download = filename
+      // Alcuni browser richiedono che l'elemento sia nel documento.
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      setTimeout(() => {
+        link.remove()
         URL.revokeObjectURL(url)
-      }
+      }, 60_000)
     },
   }
 }

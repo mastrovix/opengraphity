@@ -32,10 +32,18 @@ export interface TokenRefreshMessages {
   authServerUnreachable: (retryInSeconds: number) => string
 }
 
+/**
+ * I messaggi di RIPIEGO, in inglese come tutti i testi del prodotto che non
+ * passano da i18n (revisione totale · E-14): erano in italiano, e l'app web
+ * non passava i suoi — quindi un tenant in inglese leggeva tre frasi italiane
+ * alla scadenza della sessione. Il guardiano i18n non vede i letterali dei
+ * pacchetti, per questo ci era rimasto. Chi ha i18n (web e portale) passa i
+ * propri: questi valgono solo per chi non lo fa.
+ */
 export const DEFAULT_TOKEN_REFRESH_MESSAGES: TokenRefreshMessages = {
-  sessionExpired:        () => 'Sessione scaduta — nuovo accesso necessario',
-  authServerRestored:    () => 'Connessione al server di autenticazione ripristinata',
-  authServerUnreachable: (s) => `Server di autenticazione non raggiungibile — nuovo tentativo tra ${s}s`,
+  sessionExpired:        () => 'Session expired — please sign in again',
+  authServerRestored:    () => 'Connection to the authentication server restored',
+  authServerUnreachable: (s) => `Authentication server unreachable — retrying in ${s}s`,
 }
 
 export const DEFAULT_BACKOFF_MS: readonly number[] = [5_000, 10_000, 20_000, 40_000, 60_000]

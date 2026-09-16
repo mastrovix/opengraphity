@@ -123,7 +123,8 @@ export function TicketNewPage() {
       return
     }
     setFieldErrors({})
-    void createTicket({ variables: { title: title.trim(), description: description.trim() || undefined, priority, category, customFields: portalCustomFieldsInput(customFields, customValues) } })
+    // `canSubmit` garantisce una descrizione non vuota: nessun ramo «undefined».
+    void createTicket({ variables: { title: title.trim(), description: description.trim(), priority, category, customFields: portalCustomFieldsInput(customFields, customValues) } })
   }
 
   return (
@@ -223,8 +224,12 @@ export function TicketNewPage() {
 
       {/* Description */}
       <div style={{ marginBottom: 20 }}>
+        {/* H-35: la descrizione E obbligatoria — senza, «Invia ticket» resta
+            grigio — ma l'etichetta non lo diceva, a differenza di categoria,
+            titolo e severita: chi compilava tutto il resto non capiva perche
+            il pulsante non si accendeva. */}
         <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
-          {t('ticket.fields.description')}
+          {t('ticket.fields.description')} *
         </label>
         <textarea
           value={description}

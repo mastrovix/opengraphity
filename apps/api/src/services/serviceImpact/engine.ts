@@ -333,6 +333,9 @@ export function evaluationWriteCypher(): string {
       WITH m, previous, wasStale, stale, staleReason,
            (previous IS NULL OR previous <> $health) AS changed, (stale AND NOT wasStale) AS becameStale
       SET m.health = $health, m.impact_score = toInteger($impactScore), m.explanation = $explanation, m.evaluated_at = $now,
+          // G-MON-6: quanti componenti sono non operativi in tutto, non solo
+          // quelli entrati nelle prime 20 cause.
+          m.unhealthy_count = toInteger($unhealthyCount),
           m.stale = stale, m.stale_reason = staleReason, m.health_if_active = $healthIfActive, m.health_note = $healthNote,
           m.health_since = CASE WHEN changed THEN $now ELSE m.health_since END
       ${
@@ -449,6 +452,7 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
         row = await runQueryOne<WriteRow>(session, evaluationWriteCypher(), {
           mapId, tenantId, now, stale, version: state.version, healthNote,
           health: result.health, healthIfActive: result.healthIfActive, impactScore: result.impactScore, explanation,
+          unhealthyCount: result.unhealthyCount,
           ...serviceHistoryParams({ trigger, health: result.health, previousHealth: null, impactScore: result.impactScore, causes }, now, 'h'),
           ...serviceHistoryParams({ trigger: 'map_changed', health: result.health, previousHealth: null, impactScore: result.impactScore, causes, note: staleNote }, now, 'st'),
         })

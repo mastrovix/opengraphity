@@ -64,6 +64,22 @@ export function conditionFailureKey(name: string): string {
 
 class ConcurrentTransitionError extends Error {}
 
+/**
+ * L'etichetta del nodo per un tipo di entità con workflow (E-27): la stessa
+ * allowlist che il motore usa per scrivere lo status (`ENTITY_LABELS`, qui
+ * sopra). Un tipo che non conosciamo non si indovina: si dice.
+ */
+function entityLabel(entityType: string): string {
+  const label = ENTITY_LABELS[entityType]
+  if (!label) {
+    throw new Error(
+      `[workflow-engine] entity type "${entityType}" has no node label: a workflow instance cannot be created for it. `
+      + `Known types: ${Object.keys(ENTITY_LABELS).join(', ')}.`,
+    )
+  }
+  return label
+}
+
 export class WorkflowEngine {
   private readonly conditions = new Map<string, RegisteredCondition>()
   private readonly stepEnteredListeners: StepEnteredListener[] = []
@@ -246,7 +262,11 @@ export class WorkflowEngine {
       // Lo start step è cercato DENTRO la definizione scelta: gli id degli step
       // non sono garantiti unici tra definizioni (seed storici `${tenant}-step-new`).
       const res = await tx.run(`
-        MATCH (entity {id: $entityId, tenant_id: $tenantId})
+        // L'ENTITÀ con la sua etichetta (revisione totale · E-27): senza, il
+        // MATCH è una scansione di tutti i nodi del database a ogni creazione
+        // di ticket. Le etichette sono quelle dei tipi che hanno un workflow e
+        // stanno in un posto solo (allowlist, non interpolazione libera).
+        MATCH (entity:${entityLabel(entityType)} {id: $entityId, tenant_id: $tenantId})
         MATCH (wd:WorkflowDefinition {id: $defId})-[:HAS_STEP]->(startStep:WorkflowStep {id: $stepId})
         CREATE (wi:WorkflowInstance {
           id:            $instanceId,
@@ -667,10 +687,19 @@ export class WorkflowEngine {
         workflowLogger.error({ instanceId: input.instanceId, stepName: nextStepName, timerDelayMinutes }, `[workflow-engine] ${msg}`)
         actionErrors.push(msg)
       } else if (nextStepType === 'timer_wait') {
+        /**
+         * La coda si CHIUDE sempre, e il timer ha un id (revisione totale ·
+         * E-28): la `Queue` era creata a ogni transizione e chiusa solo sul
+         * cammino felice, quindi un `queue.add` che lanciava (Redis instabile)
+         * lasciava una connessione Redis aperta per sempre; e senza `jobId`
+         * un rientro nello stesso passo di attesa accodava un SECONDO timer,
+         * che poi transizionava due volte.
+         */
+        let queue: import('bullmq').Queue | null = null
         try {
           const { Queue } = await import('bullmq')
           const { getRedisConnection } = await import('@opengraphity/events')
-          const queue = new Queue('notification-jobs', { connection: getRedisConnection() })
+          queue = new Queue('notification-jobs', { connection: getRedisConnection() })
           // Il passo di arrivo si legge ADESSO solo per dire subito se l'arco
           // manca (un passo di attesa senza uscita automatica è una definizione
           // rotta, e l'amministratore lo deve sapere al primo ingresso). Chi
@@ -691,18 +720,25 @@ export class WorkflowEngine {
               instanceId: input.instanceId,
               toStep,
               tenantId:   wi['tenant_id'] as string,
-            }, { delay: delayMinutes * 60 * 1000 })
+            }, {
+              delay: delayMinutes * 60 * 1000,
+              // E-28: un'attesa per istanza e per passo. Un rientro nello
+              // stesso passo sostituisce il timer, non ne aggiunge un secondo.
+              jobId: `timer_wait:${input.instanceId}:${nextStepId}`,
+            })
             workflowLogger.info({ instanceId: input.instanceId, toStep, delayMinutes }, '[workflow-engine] timer_wait job scheduled')
           } else {
             const msg = `timer_wait: step "${nextStepName}" has no automatic transition — the workflow will never leave this step`
             workflowLogger.error({ instanceId: input.instanceId, stepName: nextStepName }, `[workflow-engine] ${msg}`)
             actionErrors.push(msg)
           }
-          await queue.close()
         } catch (e) {
           const msg = `timer_wait scheduling failed: ${e instanceof Error ? e.message : String(e)} — the workflow will never leave step "${nextStepName}"`
           workflowLogger.error({ err: e, instanceId: input.instanceId }, `[workflow-engine] ${msg}`)
           actionErrors.push(msg)
+        } finally {
+          // E-28: anche quando `add` lancia.
+          if (queue) await queue.close().catch((e: unknown) => workflowLogger.warn({ err: e }, '[workflow-engine] timer queue not closed'))
         }
       }
 

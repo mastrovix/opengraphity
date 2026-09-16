@@ -411,6 +411,13 @@ function ApprovalCard({
   )
 }
 
+/**
+ * I tipi di entità per cui il prodotto crea approvazioni (F-40): change, KB e
+ * i ticket (l'azione `create_approval_request` delle regole può chiederne una
+ * su un incident, un problem o una richiesta).
+ */
+const APPROVAL_ENTITY_TYPES = ['change', 'kb_article', 'incident', 'problem', 'service_request'] as const
+
 export function ApprovalsPage() {
   const { t } = useTranslation()
   const entityTypeLabel = useEntityTypeLabel()
@@ -425,9 +432,14 @@ export function ApprovalsPage() {
       { value: 'approved', label: t('pages.approvals.statusApproved') },
       { value: 'rejected', label: t('pages.approvals.statusRejected') },
     ]},
-    { key: 'entityType', label: t('pages.audit.colEntityType'), type: 'enum', options: [
-      { value: 'change', label: entityTypeLabel('change') }, { value: 'kb_article', label: entityTypeLabel('kb_article') },
-    ]},
+    /**
+     * Tutti i tipi che una richiesta di approvazione può avere (revisione
+     * totale · F-40): la tendina offriva solo change e articoli KB, mentre
+     * `approvalRequests` restituisce anche i ticket — quelle approvazioni si
+     * vedevano in «tutti» e non si potevano isolare.
+     */
+    { key: 'entityType', label: t('pages.audit.colEntityType'), type: 'enum',
+      options: APPROVAL_ENTITY_TYPES.map((v) => ({ value: v, label: entityTypeLabel(v) })) },
     { key: 'title', label: t('common.title'), type: 'text' },
     { key: 'requestedAt', label: t('pages.approvals.requestedAt'), type: 'date' },
   ]

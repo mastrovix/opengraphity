@@ -4,15 +4,11 @@
  */
 import { getSession } from '@opengraphity/neo4j'
 import { v4 as uuidv4 } from 'uuid'
+import { resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
-const tenantId = (() => {
-  const idx = process.argv.indexOf('--tenant-id')
-  if (idx < 0 || !process.argv[idx + 1]) {
-    process.stderr.write('Usage: seed-dashboards.ts --tenant-id <id>\n')
-    process.exit(1)
-  }
-  return process.argv[idx + 1]
-})()
+// H-45: un solo modo di leggere il tenant (accetta --tenant, --tenant-id e --slug).
+const tenantId = resolveTenantArg()
 
 interface WidgetSpec {
   title:        string
@@ -177,11 +173,6 @@ async function main() {
   }
 }
 
-// Exit 0 SOLO in caso di successo: un errore deve produrre exit ≠ 0 e stack
-// (prima process.exit(0) nel finally mascherava qualsiasi fallimento del seed).
-main()
-  .then(() => process.exit(0))
-  .catch((err: unknown) => {
-    process.stderr.write((err instanceof Error ? (err.stack ?? err.message) : String(err)) + '\n')
-    process.exit(1)
-  })
+// H-45: `runScript` stampa l'errore intero, mette exit code 1 e chiude il
+// driver Neo4j — senza `process.exit`, che troncava i log asincroni.
+runScript('seed-dashboards', main)

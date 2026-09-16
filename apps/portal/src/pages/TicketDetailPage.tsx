@@ -21,7 +21,7 @@ interface EntityComment {
   editedAt: string | null; editedByName: string | null; deletedAt: string | null; deletedByName: string | null
 }
 interface Attachment { id: string; filename: string; mimeType: string; sizeBytes: number; downloadUrl: string }
-interface HistoryEntry { fromStep: string; toStep: string; fromLabel: string | null; toLabel: string | null; label: string | null; triggeredAt: string; triggeredBy: string }
+interface HistoryEntry { fromStep: string | null; toStep: string; fromLabel: string | null; toLabel: string | null; label: string | null; triggeredAt: string; triggeredBy: string }
 interface Ticket {
   id: string; number: string; title: string; description: string | null; status: string
   /** Categoria ed etichetta del passo nel workflow del cliente (ondata 7 · D-15). */
@@ -272,7 +272,8 @@ export function TicketDetailPage() {
             <div key={i} style={{ textAlign: 'center', padding: '6px 0', fontSize: 10, color: colors.slateLight }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <ChevronRight size={12} />
-                {h.fromLabel !== null || h.fromStep !== 'start' ? `${h.fromLabel ?? h.fromStep} → ${h.toLabel ?? h.toStep}` : (h.toLabel ?? h.toStep)}
+                {/* H-49: la prima voce ha `fromStep: null`, non il nome «start». */}
+                {h.fromStep !== null ? `${h.fromLabel ?? h.fromStep} → ${h.toLabel ?? h.toStep}` : (h.toLabel ?? h.toStep)}
                 {' · '}
                 {fmtRelative(h.triggeredAt)}
               </span>

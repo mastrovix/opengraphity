@@ -40,7 +40,7 @@ import { topologyResolvers } from './topology.js'
 import { notificationRuleResolvers } from './notificationRules.js'
 import { queueStatsResolvers } from './queueStats.js'
 import { syncResolvers } from './sync.js'
-import { auditLog, auditActions } from './auditLog.js'
+import { auditLog, auditActions, auditEntityTypes } from './auditLog.js'
 import { enumTypeResolvers } from './enumType.js'
 import { domainMatrixResolvers } from './domainMatrix.js'
 import { monitoringResolvers } from './monitoring.js'
@@ -353,6 +353,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...inboxResolvers.Query,
       auditLog,
       auditActions,
+      auditEntityTypes,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
       ciProblems:  ciResolvers.Query.ciProblems,
@@ -471,6 +472,9 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     SLAPolicyNode:      automationResolvers.SLAPolicyNode,  // il nome del calendario (ondata 2)
     OLAContract:        olaResolvers.OLAContract,           // il nome del calendario (ondata 2)
     TicketOLA:          olaResolvers.TicketOLA,             // il riquadro OLA/UC del ticket (secondo giro UI del 15 set 2026)
+    // Il nome di chi ha risolto l'anomalia, letto solo se il client lo chiede
+    // (revisione totale · ANO-8): il campo c'era ma la mappa non era unita qui.
+    Anomaly:            anomalyResolvers.Anomaly,
     Event:              eventResolvers.Event,
     EventHistoryEntry:  eventResolvers.EventHistoryEntry,   // cronologia dell'allarme (Event Management)
     ServiceMap:         serviceResolvers.ServiceMap,        // servizi monitorati: nodes/edges/history sono field resolver

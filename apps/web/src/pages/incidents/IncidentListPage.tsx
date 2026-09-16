@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { pausedWhenHidden } from '@/lib/polling'
 import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
@@ -133,7 +134,7 @@ export function IncidentListPage() {
   }>(GET_INCIDENTS, {
     variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
-    pollInterval: 30_000,   // keep the list fresh without manual reload
+    ...pausedWhenHidden(30_000),   // keep the list fresh without manual reload
   })
 
   const items = data?.incidents?.items ?? []

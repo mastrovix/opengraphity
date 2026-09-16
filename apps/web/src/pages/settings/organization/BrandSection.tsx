@@ -41,6 +41,13 @@ export function BrandSection() {
 
   const refreshBrand = () => { void refetch(); void client.refetchQueries({ include: [GET_TENANT_BRAND] }) }
   const [save, { loading: saving }] = useMutation(SET_TENANT_BRAND, {
+    /**
+     * `onError` c'è (revisione totale · G-16): mancava, e con `void save(...)`
+     * la promise rifiutata restava senza gestore — un `unhandledRejection` in
+     * console e nessun avviso in pagina, quindi il salvataggio sembrava
+     * riuscito. `showError` è lo stesso avviso di tutte le altre mutation.
+     */
+    onError: (e) => showError(e),
     onCompleted: () => { toast.success(t('pages.organization.brandSaved')); refreshBrand() },
   })
 

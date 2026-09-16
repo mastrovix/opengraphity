@@ -53,7 +53,11 @@ COPY --from=builder /app/apps/portal/dist /usr/share/nginx/html
 
 # Inline nginx config: SPA fallback + reverse-proxy to API. Only reachable from
 # the front-door nginx and 127.0.0.1:5174; X-Forwarded-Host is still forced to
-# $host so the API never sees a client-chosen tenant header.
+# $host so the API never sees a client-chosen tenant header. Body sizes and
+# timeouts as in apps/web/Dockerfile (revisione totale · H-11, H-20, H-21).
+# index.html is served no-cache like the web's (H-15): with heuristic caching a
+# browser kept an old index.html pointing at an asset hash that no longer
+# exists, and the portal came up blank until a hard refresh.
 RUN printf 'server {\n\
     listen 80;\n\
     root /usr/share/nginx/html;\n\
@@ -65,6 +69,7 @@ RUN printf 'server {\n\
     proxy_busy_buffers_size     256k;\n\
 \n\
     location /graphql {\n\
+        client_max_body_size 2m;\n\
         proxy_pass http://api:4000;\n\
         proxy_http_version 1.1;\n\
         proxy_set_header Host $host;\n\
@@ -88,7 +93,9 @@ RUN printf 'server {\n\
     }\n\
 \n\
     location /api {\n\
-        client_max_body_size 11m;\n\
+        client_max_body_size 101m;\n\
+        proxy_read_timeout 600s;\n\
+        proxy_send_timeout 600s;\n\
         proxy_pass http://api:4000;\n\
         proxy_http_version 1.1;\n\
         proxy_set_header Host $host;\n\
@@ -104,6 +111,11 @@ RUN printf 'server {\n\
 \n\
     location / {\n\
         try_files $uri $uri/ /index.html;\n\
+        add_header Cache-Control "no-cache, no-store, must-revalidate";\n\
+        add_header Pragma "no-cache";\n\
+        add_header Expires 0;\n\
+        etag off;\n\
+        if_modified_since off;\n\
     }\n\
 }\n' > /etc/nginx/conf.d/default.conf
 

@@ -125,6 +125,16 @@ const RE_T_LITERAL = /(?:^|[^A-Za-z0-9_$.])(?:i18n(?:ext)?\.)?t\(\s*(['"])([^'"`
 const RE_T_TEMPLATE = /(?:^|[^A-Za-z0-9_$.])(?:i18n(?:ext)?\.)?t\(\s*`([^`$]*)\$\{/g
 // qualsiasi letterale stringa che coincide con una chiave definita (labelKey: 'roles.admin', ecc.)
 const RE_ANY_LITERAL = /(['"`])((?:[A-Za-z0-9_]+\.)+[A-Za-z0-9_]+)\1/g
+/**
+ * Un template literal che COMPONE una chiave, anche fuori da `t(`)`
+ * (revisione totale · H-23). `configurationIssueText.ts` costruisce
+ * `configurationIssues.gap.${kind}` e la passa a un helper; `menu.ts` mette
+ * `labelKey` in una tabella. Il prefisso entra solo se qualche chiave definita
+ * comincia cosi: un template che non e una chiave (`${kind}:${id}`) non ha
+ * prefisso e resta fuori.
+ */
+const RE_ANY_TEMPLATE_PREFIX = /`((?:[A-Za-z0-9_]+\.)+)\$\{/g
+
 // toast.success('…') / toast.error(`…`)
 const RE_TOAST_LITERAL = /toast\.(success|error|warning|info)\(\s*(['"`])/g
 // <button …>testo</button> con testo letterale (non un'espressione {…})
@@ -149,6 +159,9 @@ for (const file of files) {
   }
   for (const m of src.matchAll(RE_ANY_LITERAL)) {
     if (keyExists(m[2])) usedKeys.add(m[2])
+  }
+  for (const m of src.matchAll(RE_ANY_TEMPLATE_PREFIX)) {
+    if ([...defined].some((k) => k.startsWith(m[1]))) usedPrefixes.add(m[1])
   }
   // `t` RINOMINATO: le sue chiavi diventano invisibili a questo controllo.
   // Terza revisione: `ReportListView.tsx` faceva `const { t: tr } = ...` perche
@@ -183,6 +196,15 @@ for (const file of files) {
   nascondevano quelli veri.
 */
 const API_SRC = path.join(ROOT, 'apps/api/src')
+/**
+ * Anche i PACCHETTI mandano chiavi (revisione totale · H-23):
+ * `packages/workflow` compone `errors.workflow.condition.<nome>` e
+ * `packages/notifications` ha le sue. Scansionando solo apps/api quelle chiavi
+ * risultavano «definite e mai usate».
+ */
+const PKG_SRCS = fs.readdirSync(path.join(ROOT, 'packages'))
+  .map((d) => path.join(ROOT, 'packages', d, 'src'))
+  .filter((d) => fs.existsSync(d))
 function sorgentiApi(dir, out = []) {
   if (!fs.existsSync(dir)) return out
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -192,11 +214,58 @@ function sorgentiApi(dir, out = []) {
   }
   return out
 }
-for (const p of sorgentiApi(API_SRC)) {
+for (const p of [API_SRC, ...PKG_SRCS].flatMap((d) => sorgentiApi(d))) {
   const src = fs.readFileSync(p, 'utf8')
   for (const m of src.matchAll(/key: '([A-Za-z0-9_.]+)'/g)) usedKeys.add(m[1])
-  // `errors.ciType.inUse${suffisso}`: la chiave si compone, e si valida il prefisso
-  for (const m of src.matchAll(/key: `([A-Za-z0-9_.]*)\$\{/g)) usedPrefixes.add(m[1])
+  /**
+   * Qualunque letterale che SIA una chiave definita (revisione totale · H-23).
+   * `key: '...'` non copre tutte le forme con cui l'API manda una chiave:
+   * `consequenceKey`, il ternario dentro `i18n: { key: ... }`, le chiavi nei
+   * `params`. Quelle chiavi erano segnalate come «definite e mai usate»
+   * mentre e l'API a mandarle — e prima del fix del prefisso vuoto il
+   * controllo non parlava affatto.
+   */
+  for (const m of src.matchAll(/(['"`])((?:[A-Za-z0-9_]+\.)+[A-Za-z0-9_]+)\1/g)) {
+    // `keyExists`, non `defined.has`: l'API manda la chiave BASE di un plurale
+    // (`errors.ciType.relationUsedByServiceMaps`), e definite sono `_one`/`_other`.
+    if (keyExists(m[2])) usedKeys.add(m[2])
+  }
+  /**
+   * `errors.ciType.inUse${suffisso}`: la chiave si compone, e si valida il
+   * prefisso. Un prefisso VUOTO non entra (revisione totale · H-23): non tutti
+   * i `key:` dell'API sono chiavi i18n — `olaChangeUnits.ts` ha
+   * `key: ${m.kind}:${p.id}:${i}`, che e l'identificativo di un tratto — e un
+   * prefisso vuoto rende `k.startsWith(prefisso)` sempre vero, cioe spegne del
+   * tutto il controllo (c) «chiavi definite e mai usate». Si vedeva
+   * nell'intestazione: «prefissi dinamici (, admin.sla…)».
+   */
+  for (const m of src.matchAll(/key: `([A-Za-z0-9_.]*)\$\{/g)) {
+    if (m[1].length > 0) usedPrefixes.add(m[1])
+  }
+  // Un template che compone una chiave anche fuori da `key:` (`consequenceKey`,
+  // `errorI18n`, i `params`): il prefisso entra solo se e di chiavi vere.
+  for (const m of src.matchAll(/`((?:[A-Za-z0-9_]+\.)+)\$\{/g)) {
+    if ([...defined].some((k) => k.startsWith(m[1]))) usedPrefixes.add(m[1])
+  }
+  /**
+   * RADICE IN UNA COSTANTE: `const K = 'errors.metamodelName'` e poi
+   * `` `${K}.typeTaken` `` (revisione totale · H-23). E il modo con cui
+   * `packages/schema-generator/src/nameValidation.ts` tiene le sue chiavi in un
+   * posto solo, ed e buono — ma il template non ha prefisso statico, quindi
+   * quelle 21 chiavi risultavano «mai usate». Qui si legge la costante e si
+   * risolve `${NOME}.` nel suo valore.
+   */
+  const radici = new Map()
+  for (const m of src.matchAll(/\bconst ([A-Z][A-Za-z0-9_]*) = '((?:[A-Za-z0-9_]+\.)+[A-Za-z0-9_]+)'/g)) {
+    radici.set(m[1], m[2])
+  }
+  for (const m of src.matchAll(/`\$\{([A-Z][A-Za-z0-9_]*)\}((?:\.[A-Za-z0-9_]+)*)/g)) {
+    const radice = radici.get(m[1])
+    if (!radice) continue
+    // `${K}.typeSyntax` e una chiave intera; `${K}.consequence.${x}` un prefisso.
+    usedKeys.add(`${radice}${m[2]}`)
+    usedPrefixes.add(`${radice}${m[2]}.`)
+  }
 }
 
 // (c) chiavi mai usate: coperte da un uso letterale o da un prefisso dinamico
@@ -268,6 +337,11 @@ for (const k of [...defined].sort()) {
 // quelli sono difetti veri (`Sync triggered`, `Heap Memory`, `Auto-refresh
 // 10s`, `External ID`): l'elenco puo solo accorciarsi.
 const IT_EN_IDENTICHE_ACCETTATE = new Set([
+  // «discovery» e il nome della funzione che scopre i CI da sola: l'origine di
+  // un alias si chiama cosi anche in italiano (regola delle parole tecniche).
+  // L'altra origine, «manual», e invece tradotta in «a mano» (revisione
+  // totale · G-EVT-8).
+  'events.aliases.source.discovery',
   // «business rule» e «trigger» sono nomi di funzioni del prodotto e restano
   // inglesi anche in italiano (regola delle parole tecniche); al singolare la
   // frase del conto coincide («1 business rule», «1 trigger»).
@@ -282,6 +356,16 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // uguali nelle due lingue; i giorni invece no («d» / «gg»).
   'time.short.minutes',
   'time.short.hoursMinutes',
+  // «span» è il termine di OpenTelemetry per un tratto di traccia: si chiama
+  // così anche in italiano (regola delle parole tecniche), e al singolare la
+  // frase coincide (revisione totale · G-19).
+  'pages.monitoring.spans_one',
+  // «incident» e «problem» sono i nomi ITIL delle entità e restano uguali in
+  // italiano, come in tutto il prodotto (regola delle parole tecniche): qui
+  // servono a comporre «Risolvi incident INC…» invece del valore grezzo
+  // interpolato di prima (revisione totale · F-27).
+  'entities.incident',
+  'entities.problem',
   // Nomi delle ENTITÀ nel costruttore dei report (revisione totale · C-18):
   // «Team», «CI», «Incident» e «Change» sono i nomi che il prodotto usa in
   // italiano, come in tutto il resto dell'interfaccia (regola delle parole
@@ -449,8 +533,6 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   'notificationRules.eventGroupStandard',
   'notificationRules.severity.info',
   'pages.audit.colIp',
-  'pages.changeCatalogAdmin.colWorkflow',
-  'pages.changeCatalogAdmin.workflow',
   'pages.changes.count_one',
   'pages.cmdb.count_one',
   'pages.dashboard.badgeTeam',
@@ -1022,12 +1104,49 @@ function prosa(v) {
     const pEn = flatten(JSON.parse(fs.readFileSync(path.join(PORTAL_I18N, 'en.json'), 'utf8')))
     const pIt = flatten(JSON.parse(fs.readFileSync(path.join(PORTAL_I18N, 'it.json'), 'utf8')))
     const esiste = (tab, k) => tab[k] !== undefined || Object.keys(tab).some((x) => x.startsWith(k + '_'))
+    /**
+     * PARITA' fra le due lingue e nessun valore vuoto (revisione totale · H-24).
+     * Il controllo guardava solo `t('chiave')`: una chiave aggiunta al solo
+     * `en.json` passava, e il portale italiano mostrava il NOME della chiave a
+     * schermo. Le due tabelle devono avere le stesse chiavi (i plurali a parte,
+     * che dipendono dalla lingua) e nessun valore vuoto.
+     */
+    const pluraleDi = (k) => k.replace(/_(zero|one|two|few|many|other)$/, '')
+    const basiEn = new Set(Object.keys(pEn).map(pluraleDi))
+    const basiIt = new Set(Object.keys(pIt).map(pluraleDi))
+    for (const k of basiEn) if (!basiIt.has(k)) err(`[portal] chiave in portal/en.json e non in portal/it.json: ${k}`)
+    for (const k of basiIt) if (!basiEn.has(k)) err(`[portal] chiave in portal/it.json e non in portal/en.json: ${k}`)
+    for (const [lingua, tab] of [['en', pEn], ['it', pIt]]) {
+      for (const [k, v] of Object.entries(tab)) {
+        if (typeof v !== 'string' || v.trim() === '') err(`[portal] valore vuoto in portal/${lingua}.json: ${k}`)
+      }
+    }
+
     for (const file of walk(PORTAL_SRC)) {
       const src = fs.readFileSync(file, 'utf8')
       for (const m of src.matchAll(/\bt\(\s*'([a-zA-Z0-9_.]+)'/g)) {
         const k = m[1]
         for (const [lingua, tab] of [['en', pEn], ['it', pIt]]) {
           if (!esiste(tab, k)) err(`[portal] ${path.relative(ROOT, file)}:${lineOf(src, m.index)} chiave non definita in portal/${lingua}.json: ${k}`)
+        }
+      }
+      /**
+       * Anche i TEMPLATE (H-24): `t(\`ticket.status.${status}\`)`,
+       * `t(\`portal.languageName.${l}\`)`, `t(\`ticket.empty.${filter}\`)`.
+       * Si valida il prefisso: almeno una chiave deve cominciare cosi, in
+       * entrambe le lingue.
+       */
+      for (const m of src.matchAll(/\bt\(\s*`([a-zA-Z0-9_.]*)\$\{/g)) {
+        const prefisso = m[1]
+        const riga = lineOf(src, m.index)
+        if (!prefisso) {
+          err(`[portal] ${path.relative(ROOT, file)}:${riga} t(\`\${…}\`) senza prefisso statico: non verificabile`)
+          continue
+        }
+        for (const [lingua, tab] of [['en', pEn], ['it', pIt]]) {
+          if (!Object.keys(tab).some((k) => k.startsWith(prefisso))) {
+            err(`[portal] ${path.relative(ROOT, file)}:${riga} nessuna chiave con prefisso "${prefisso}" in portal/${lingua}.json`)
+          }
         }
       }
     }

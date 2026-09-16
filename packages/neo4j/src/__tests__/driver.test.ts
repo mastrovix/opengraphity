@@ -41,3 +41,37 @@ describe('NEO4J_MAX_POOL_SIZE', () => {
     expect(driverCalls[0]!.config).toMatchObject({ maxConnectionPoolSize: 50, connectionAcquisitionTimeout: 30_000 })
   })
 })
+
+/**
+ * La sessione avvolta converte i numeri e traccia le query anche su una
+ * transazione ESPLICITA (revisione totale · M-22).
+ *
+ * `beginTransaction` era l'unico modo di ottenere una transazione non
+ * avvolta: le sue `tx.run` restituivano `neo4j.Integer` invece di numeri e le
+ * sue query non finivano nel tracciamento. Un chiamante c'è davvero
+ * (`backup-neo4j.ts`, che esporta tutto in una sola transazione di lettura).
+ */
+describe('getSession(): beginTransaction', () => {
+  it('la transazione esplicita e avvolta: la sua run non e quella grezza del driver', async () => {
+    vi.resetModules()
+    const neo4j = (await import('neo4j-driver')).default as unknown as { driver: ReturnType<typeof vi.fn> }
+    const txRun = vi.fn(async () => ({ records: [], summary: {} }))
+    const rawTx = { run: txRun, commit: vi.fn(), rollback: vi.fn() }
+    neo4j.driver.mockReturnValue({
+      verifyConnectivity: vi.fn().mockResolvedValue(undefined),
+      session: vi.fn(() => ({ beginTransaction: () => rawTx, run: vi.fn(), close: vi.fn() })),
+      close: vi.fn(),
+    } as never)
+
+    const { getSession } = await import('../driver.js')
+    const tx = getSession().beginTransaction()
+
+    // È il segno del wrapping: `run` è la funzione del proxy, non quella del
+    // driver — quindi passa da convertResult e dal tracciamento.
+    expect(tx.run).not.toBe(txRun)
+    await tx.run('RETURN 1')
+    expect(txRun).toHaveBeenCalledWith('RETURN 1', undefined)
+    // commit/rollback restano quelli veri: il proxy tocca solo `run`.
+    expect(tx.commit).toBe(rawTx.commit)
+  })
+})

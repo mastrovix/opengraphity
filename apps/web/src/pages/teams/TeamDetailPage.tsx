@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useRoles } from '@/hooks/useRoles'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { Trans, useTranslation } from 'react-i18next'
@@ -118,6 +119,8 @@ export function TeamDetailPage() {
   const [pendingManagerUser, setPendingManagerUser] = useState<{ id: string; name: string } | null>(null)
   // Giro del 14 set 2026 (#48): i membri si aggiungono e si tolgono dal team.
   const [showMemberModal, setShowMemberModal] = useState(false)
+  // F-43: conferma prima di togliere il manager.
+  const [confirmRemoveManager, setConfirmRemoveManager] = useState(false)
   const [memberSearch, setMemberSearch] = useState('')
 
   const { data, loading, error, refetch } = useQuery<{ team: Team | null }>(GET_TEAM, {
@@ -140,7 +143,7 @@ export function TeamDetailPage() {
     onCompleted: () => { toast.success(t('toast.team.managerUpdated')); refetch(); setShowManagerModal(false) },
     onError: (err) => showError(err),
   })
-  const [removeManager] = useMutation(REMOVE_TEAM_MANAGER, {
+  const [removeManager, { loading: removingManager }] = useMutation(REMOVE_TEAM_MANAGER, {
     onCompleted: () => { toast.success(t('toast.team.managerRemoved')); refetch() },
     onError: (err) => showError(err),
   })
@@ -257,7 +260,10 @@ export function TeamDetailPage() {
                   <Button variant="ghost" onClick={() => { setManagerSearch(''); setPendingManagerUser(null); setShowManagerModal(true) }} style={{ color: 'var(--color-brand)', fontWeight: 500, fontSize: 'var(--font-size-table)', padding: 0 }}>{t('pages.teams.changeManager')}</Button>
                   <button
                     type="button"
-                    onClick={() => removeManager({ variables: { teamId: team.id } })}
+                    // F-43: si CHIEDE conferma, come per ogni altra rimozione
+                    // della pagina. Un clic per sbaglio lasciava il team senza
+                    // manager, e le escalation al manager senza destinatario.
+                    onClick={() => setConfirmRemoveManager(true)}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', borderRadius: 4 }}
                     title={t('pages.teams.removeManager')}
                     aria-label={t('pages.teams.removeManager')}
@@ -480,6 +486,18 @@ export function TeamDetailPage() {
         {/* Allegati */}
         <AttachmentsSection entityType="team" entityId={team.id} />
       </div>
-    </PageContainer>
+          <ConfirmModal
+        open={confirmRemoveManager}
+        title={t('pages.teams.removeManager')}
+        body={t('pages.teams.removeManagerConfirm', { team: team?.name ?? '' })}
+        danger
+        loading={removingManager}
+        onConfirm={() => {
+          if (team) void removeManager({ variables: { teamId: team.id } })
+          setConfirmRemoveManager(false)
+        }}
+        onCancel={() => setConfirmRemoveManager(false)}
+      />
+</PageContainer>
   )
 }

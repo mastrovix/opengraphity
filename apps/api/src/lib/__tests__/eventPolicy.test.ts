@@ -11,6 +11,7 @@ import {
   DEFAULT_EVENT_POLICY, DEFAULT_EVENT_POLICY_JSON, EVENT_POLICY_V2_KEYS, EVENT_POLICY_V2_MIGRATION,
   EVENT_POLICY_V3_KEYS, EVENT_POLICY_V3_MIGRATION, EVENT_POLICY_V4_KEYS, EVENT_POLICY_V4_MIGRATION,
   EVENT_POLICY_V5_KEYS, EVENT_POLICY_V5_MIGRATION, EVENT_POLICY_V6_KEYS, EVENT_POLICY_V6_MIGRATION,
+  EVENT_POLICY_V7_KEYS, EVENT_POLICY_V7_MIGRATION,
   EVENT_POLICY_MAX, assertLifecycleStatuses,
   assertEventPolicy, parseEventPolicy, completeEventPolicy, toEventPolicyGQL, applyEventPolicyInput,
   EVENT_POLICY_CACHE_TTL_MS, getCachedEventPolicy, cacheEventPolicy, invalidateEventPolicyCache,
@@ -210,6 +211,22 @@ describe('ignore_lifecycle_statuses (D6.3) e la semantica del ciclo di vita (ond
     expect(toEventPolicyGQL(DEFAULT_EVENT_POLICY)).toMatchObject({
       retiredStatuses: ['inactive', 'decommissioned', 'expired', 'revoked'], maintenanceStatuses: ['maintenance'],
     })
+  })
+
+  it('G-MON-7: la soglia «un guasto si propaga» e nella policy, non nel web', () => {
+    // Era `HIGH_IMPACT = 5` in CIHealthPage: la stessa soglia per una CMDB da
+    // 50 CI e per una da 50.000. Il valore iniziale e quello che il web usava,
+    // cosi il primo giorno non cambia niente.
+    expect(DEFAULT_EVENT_POLICY.high_impact_dependents).toBe(5)
+    expect(EVENT_POLICY_V7_KEYS).toEqual(['high_impact_dependents'])
+    expect(EVENT_POLICY_V7_MIGRATION).toBe('20261002_1050_event_policy_high_impact')
+    expect(toEventPolicyGQL(DEFAULT_EVENT_POLICY)).toMatchObject({ highImpactDependents: 5 })
+    // Una policy a cui manca la chiave dice quale migrazione la aggiunge.
+    const senza = { ...DEFAULT_EVENT_POLICY } as Record<string, unknown>
+    delete senza['high_impact_dependents']
+    expect(() => parseEventPolicy(JSON.stringify(senza), 'c-test'))
+      .toThrow(/20261002_1050_event_policy_high_impact/)
+    expect(completeEventPolicy(senza)).toMatchObject({ high_impact_dependents: 5 })
   })
 
   it('policy senza le chiavi dell\'ondata 7 → errore che indica la migrazione 1810; completeEventPolicy le aggiunge', () => {

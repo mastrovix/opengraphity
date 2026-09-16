@@ -1,3 +1,10 @@
+/**
+ * CONTRATTO RINEGOZIATO (revisione totale · E-14): i messaggi di RIPIEGO del
+ * pacchetto sono in inglese, come tutti i testi che non passano da i18n. Erano
+ * in italiano e l'app web non passava i suoi, quindi un tenant in inglese
+ * leggeva tre frasi italiane alla scadenza della sessione. Web e portale ora
+ * passano entrambi i propri.
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createTokenRefresh, type KeycloakLike } from '../tokenRefresh.js'
 import type { ClientLogger } from '../logger.js'
@@ -60,7 +67,7 @@ describe('isSessionInvalid / forceLogin', () => {
     tr.forceLogin(); tr.forceLogin(); tr.forceLogin()
     expect(keycloak.login).toHaveBeenCalledTimes(1)
     expect(notify.error).toHaveBeenCalledTimes(1)
-    expect(notify.error).toHaveBeenCalledWith('Sessione scaduta — nuovo accesso necessario')
+    expect(notify.error).toHaveBeenCalledWith('Session expired — please sign in again')
   })
 
   it('uses app-provided messages', () => {
@@ -113,7 +120,7 @@ describe('startTokenRefreshLoop', () => {
     expect(keycloak.login).not.toHaveBeenCalled()
     expect(notify.error).toHaveBeenCalledTimes(1)
     expect(notify.error).toHaveBeenLastCalledWith(
-      'Server di autenticazione non raggiungibile — nuovo tentativo tra 5s',
+      'Authentication server unreachable — retrying in 5s',
       { id: 'keycloak-refresh', duration: 5_000 },
     )
     expect(logger.warn).toHaveBeenCalledWith('Refresh token fallito (rete), nuovo tentativo', expect.objectContaining({ attempt: 1, delayMs: 5_000, message: 'ECONNREFUSED' }))
@@ -126,7 +133,7 @@ describe('startTokenRefreshLoop', () => {
     // 3rd attempt succeeds → success notification, counters reset
     await vi.advanceTimersByTimeAsync(10_000)
     expect(keycloak.updateToken).toHaveBeenCalledTimes(3)
-    expect(notify.success).toHaveBeenCalledWith('Connessione al server di autenticazione ripristinata', { id: 'keycloak-refresh' })
+    expect(notify.success).toHaveBeenCalledWith('Connection to the authentication server restored', { id: 'keycloak-refresh' })
     expect(keycloak.login).not.toHaveBeenCalled()
   })
 
@@ -153,7 +160,7 @@ describe('startTokenRefreshLoop', () => {
     keycloak.onTokenExpired!()
     await flush()
     expect(keycloak.login).toHaveBeenCalledTimes(1)
-    expect(notify.error).toHaveBeenCalledWith('Sessione scaduta — nuovo accesso necessario')
+    expect(notify.error).toHaveBeenCalledWith('Session expired — please sign in again')
     await vi.advanceTimersByTimeAsync(120_000)
     expect(keycloak.updateToken).toHaveBeenCalledTimes(1)
   })

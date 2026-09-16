@@ -7,6 +7,8 @@
  * `/api/webhooks/inbound/:id`); etichette e messaggi in i18n (D·6.4).
  */
 import { useId, useState } from 'react'
+import { formatDateTime } from '@/lib/datetime'
+import { InvalidFilterNotice } from '@/components/InvalidFilterNotice'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
@@ -106,7 +108,12 @@ const hintS: React.CSSProperties = { fontSize: 'var(--font-size-caption)', color
 const PILL_S: React.CSSProperties = { fontWeight: 400, marginRight: 4 }
 const ROW_ACTIONS: React.CSSProperties = { display: 'flex', gap: 6 }
 
-function fmtDate(d: string | null) { return d ? new Date(d).toLocaleString(i18n.language, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—' }
+/**
+ * G-26: `formatDateTime` come in tutto il resto dell'app. Qui c'era un formato
+ * proprio, con l'anno a due cifre: le date di Integrazioni si leggevano
+ * «25/09/26» mentre ogni altra pagina scriveva «25 set 2026».
+ */
+const fmtDate = formatDateTime
 function copyText(text: string) { void navigator.clipboard.writeText(text); toast.success(i18n.t('toast.integration.copied')) }
 
 /** Chiave i18n del titolo di ogni modale. */
@@ -390,6 +397,8 @@ export function IntegrationsPage() {
 
   return (
     <PageContainer>
+      {/* F-17: un filtro dell'URL illeggibile si dice, non si ignora. */}
+      <InvalidFilterNotice show={inList.filtersInvalid || outList.filtersInvalid || keyList.filtersInvalid} />
       <div style={{ marginBottom: 24 }}>
         <PageTitle icon={<Plug size={22} color="var(--color-icon-accent)" />}>{t('admin.integrations.title')}</PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>

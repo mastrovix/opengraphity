@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { InvalidFilterNotice } from '@/components/InvalidFilterNotice'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -193,6 +194,8 @@ export function AutoTriggersPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <PageContainer>
+      {/* F-17: un filtro dell'URL illeggibile si dice, non si ignora. */}
+      <InvalidFilterNotice show={list.filtersInvalid} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <PageTitle icon={<Zap size={22} color="var(--color-icon-accent)" />}>{t('sidebar.autoTriggers')}</PageTitle>

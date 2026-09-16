@@ -13,6 +13,7 @@
  * diventa invisibile in una settimana.
  */
 import { useState } from 'react'
+import { pausedWhenHidden } from '@/lib/polling'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -59,7 +60,7 @@ export function ConfigurationIssuesBanner() {
     // La diagnostica cambia anche per fatti che non passano da questa pagina
     // (un ticket risolto da un allarme): senza rilettura il banner elencava
     // ancora un incident già risolto.
-    pollInterval: 60_000,
+    ...pausedWhenHidden(60_000),
   })
 
   // Un errore qui non deve rompere la pagina: se la diagnostica non risponde,

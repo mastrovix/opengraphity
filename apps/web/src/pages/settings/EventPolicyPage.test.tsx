@@ -27,6 +27,8 @@ const POLICY = {
   // sulla policy, accanto agli stati ignorati.
   retiredStatuses: ['inactive', 'decommissioned'],
   maintenanceStatuses: ['maintenance'],
+  // G-MON-7: la soglia «un guasto qui si propaga» della console della salute.
+  highImpactDependents: 5,
   severityMap: JSON.stringify(MAP),
 }
 

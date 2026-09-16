@@ -88,5 +88,11 @@ export function adminSDL(): string {
     action: String!
     count:  Int!
   }
+
+  "Un tipo di entità presente nel registro di audit e quante voci lo portano (G-20)."
+  type AuditEntityTypeCount {
+    entityType: String!
+    count:      Int!
+  }
   `
 }

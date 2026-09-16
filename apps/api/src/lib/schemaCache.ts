@@ -32,7 +32,7 @@
  */
 import { makeExecutableSchema } from '@graphql-tools/schema'
 import type { GraphQLSchema } from 'graphql'
-import { loadMetamodel, generateSDL, loadITILTypes, generateITILEnumsSDL } from '@opengraphity/schema-generator'
+import { loadMetamodel, generateSDL } from '@opengraphity/schema-generator'
 import type { ReservedSchemaNames } from '@opengraphity/schema-generator'
 import { reservedNamesOfBaseSchema } from './metamodelNames.js'
 import { ENUM_SCOPE } from './enumScope.js'
@@ -172,15 +172,17 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
   // Adesso un dato corrotto degrada come un tipo che non si assembla: lo
   // schema di base viene servito, il motivo finisce nell'intestazione, nel
   // log e nel banner, e l'admin ha una pagina da cui rimediare.
+  /**
+   * I tipi ITIL NON si rileggono per costruire lo schema (revisione totale ·
+   * E-37): servivano solo a `generateITILEnumsSDL`, che restituisce sempre
+   * stringa vuota da quando gli stati vengono dai workflow configurabili.
+   * Era una lettura del metamodello in più a ogni ricostruzione dello schema,
+   * per un contributo nullo. Chi ha bisogno dei tipi ITIL li legge dal
+   * resolver (`lib/itilTypes.ts`), che è l'implementazione viva.
+   */
   let ciTypes: Awaited<ReturnType<typeof loadMetamodel>> = []
-  let itilTypes: Awaited<ReturnType<typeof loadITILTypes>> = []
   try {
-    const caricati = await Promise.all([
-      loadMetamodel(tenantId, ENUM_SCOPE),
-      loadITILTypes(tenantId, ENUM_SCOPE),
-    ])
-    ciTypes   = caricati[0]
-    itilTypes = caricati[1]
+    ciTypes = await loadMetamodel(tenantId, ENUM_SCOPE)
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e)
     logger.error({ tenantId, err: e }, 'Metamodello del tenant illeggibile: si serve lo schema di base')
@@ -195,7 +197,8 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
     return entry
   }
 
-  const itilEnumsSDL = generateITILEnumsSDL(itilTypes)
+  // E-37: nessun SDL dagli enum ITIL (la funzione restituiva sempre '').
+  const itilEnumsSDL = ''
   const baseSDL      = buildBaseSDL()
   // I nomi già occupati dallo schema di base: senza, un tipo CI del cliente
   // omonimo di un tipo base non verrebbe intercettato — graphql-tools non
@@ -208,7 +211,7 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
     graphqlSchemaBuildsTotal.inc({})
     const entry: SchemaCacheEntry = { schema, generatedAt: Date.now(), tenantId, degraded: false, reason: null }
     store(tenantId, startedAt, entry)
-    logger.info({ tenantId, ciTypes: ciTypes.length, itilTypes: itilTypes.length }, 'Schema generato')
+    logger.info({ tenantId, ciTypes: ciTypes.length }, 'Schema generato')
     return entry
   } catch (e) {
     // Lo schema del tenant non si assembla: quasi sempre un tipo o un campo

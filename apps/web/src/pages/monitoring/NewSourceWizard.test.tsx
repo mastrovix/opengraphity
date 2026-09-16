@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { NewSourceWizard } from './NewSourceWizard'
-import { GET_SAMPLE_INBOUND_PAYLOAD, GET_PAYLOAD_KEYS, GET_MONITORING_SOURCES } from '@/graphql/queries'
+import { GET_SAMPLE_INBOUND_PAYLOAD, GET_PAYLOAD_KEYS, GET_MONITORING_SOURCE } from '@/graphql/queries'
 import { PREVIEW_INBOUND_EVENTS, CREATE_MONITORING_SOURCE, SEND_SAMPLE_EVENT } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import type { MonitoringSource } from '@/types/events'
@@ -77,13 +77,21 @@ const sendSampleMock = (sourceId = 'src-new', payload: string | null = null): Gq
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
-/** `monitoringSources` interrogata dal passo Prova dopo l'invio (D·2.3). */
+/**
+ * La sorgente interrogata dal passo Prova dopo l'invio (D·2.3).
+ * CONTRATTO RINEGOZIATO (revisione totale · G-MON-9): si legge UNA sorgente
+ * (`monitoringSource(id:)`), non l'elenco completo con tutte le configurazioni.
+ */
 function sourcesMock(over: Partial<MonitoringSource> & { id: string }): GqlMock {
   const src: MonitoringSource = {
     name: 'My tool', entityType: 'event', connectorKind: 'generic', fieldMapping: '{}', defaultValues: null, valueMapping: null,
     enabled: true, lastReceivedAt: null, receiveCount: 0, lastError: null, lastErrorAt: null, errorCount: 0, createdAt: '2026-09-09T10:00:00Z', ...over,
   }
-  return { request: { query: GET_MONITORING_SOURCES }, result: { data: { monitoringSources: [{ __typename: 'InboundWebhook', ...src }] } }, maxUsageCount: Number.POSITIVE_INFINITY }
+  return {
+    request: { query: GET_MONITORING_SOURCE, variables: { id: over.id } },
+    result: { data: { monitoringSource: { __typename: 'InboundWebhook', ...src } } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  }
 }
 
 /** Percorso via input + datalist (D·2.2): si digita il percorso; le opzioni leggibili sono nella datalist. */

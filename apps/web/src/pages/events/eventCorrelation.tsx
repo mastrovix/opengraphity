@@ -195,8 +195,20 @@ export function EventIncidentCell({ event, policy, stopRowClick = false }: CellP
       return <HintedChip tint={TINT_INFO} label={t('events.correlation.chip.pending')} hint={t('events.correlation.text.pending')} />
     case 'skipped_orphan':
       return <HintedChip tint={TINT_WARNING} label={t('events.correlation.chip.linkCI')} hint={t('events.correlation.text.skipped_orphan')} />
+    /**
+     * «Sotto soglia» e «Nessun incident» erano un trattino (revisione totale ·
+     * G-EVT-12): con una policy che apre da critical, un allarme warning
+     * mostrava una colonna vuota, indistinguibile da un allarme che la policy
+     * non ha ancora valutato. La frase che spiega perche esisteva gia
+     * (`correlationSentence`), non arrivava alla colonna.
+     */
+    case 'skipped_severity':
+      return <HintedChip tint={TINT_NEUTRAL} label={t('events.correlation.chip.skipped_severity')} hint={correlationSentence(t, event, policy, { statusLabel })} />
+    case 'none':
+      return <HintedChip tint={TINT_NEUTRAL} label={t('events.correlation.chip.none')} hint={t('events.correlation.text.none')} />
     default:
-      return <span style={{ color: colors.slateLight }}>—</span>
+      // Un esito nuovo dell'API non e un trattino muto: la frase lo nomina.
+      return <HintedChip tint={TINT_NEUTRAL} label={event.correlation} hint={t('events.correlation.text.unknown', { value: event.correlation })} />
   }
 }
 

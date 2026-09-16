@@ -59,8 +59,19 @@ if [ -z "${VITE_KEYCLOAK_CLIENT_ID:-}" ]; then
 fi
 
 echo "build-local: variabili del bundle"
-for v in VITE_API_URL VITE_API_BASE_URL VITE_KEYCLOAK_URL VITE_KEYCLOAK_CLIENT_ID VITE_TENANT_SLUG; do
+for v in VITE_API_URL VITE_KEYCLOAK_URL VITE_KEYCLOAK_CLIENT_ID VITE_TENANT_SLUG; do
   printf '  %-28s %s\n' "$v" "${!v:-(non impostata)}"
+done
+
+# VARIABILI MORTE (revisione totale · H-50). `VITE_API_BASE_URL` era in questo
+# elenco ma nessun sorgente la legge (lo garantisce `restDownloads.test.ts`), e
+# `MINIO_ROOT_*` e di un servizio rimosso dal compose: stamparle induce a
+# credere che servano. Se sono ancora in infra/.env lo si dice, una riga, e
+# si continua — non e un errore, e roba da togliere quando capita.
+for v in VITE_API_BASE_URL MINIO_ROOT_USER MINIO_ROOT_PASSWORD; do
+  if [ -n "${!v:-}" ]; then
+    echo "  nota: $v e impostata in infra/.env ma nessun codice la legge (si puo togliere)" >&2
+  fi
 done
 
 # I PACCHETTI DEL WORKSPACE PRIMA (terza revisione).

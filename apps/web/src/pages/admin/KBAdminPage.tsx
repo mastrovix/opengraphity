@@ -111,7 +111,7 @@ function VersionHistory({ articleId, onRestored }: { articleId: string; onRestor
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-table)' }}>
         <thead>
           <tr style={{ textAlign: 'left' }}>
-            <th style={{ padding: '7px 12px' }}>Ver.</th>
+            <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.colVersion')}</th>
             <th style={{ padding: '7px 12px' }}>{t('common.title')}</th>
             <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.editedBy')}</th>
             <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.date')}</th>

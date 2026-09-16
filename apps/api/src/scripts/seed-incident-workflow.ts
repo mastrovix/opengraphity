@@ -12,6 +12,7 @@
  */
 import { seedWorkflowForTenant } from '@opengraphity/workflow'
 import { resolveTenantArg, resolveSeedOverwriteOpts } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 async function main() {
   const tenantId = resolveTenantArg()
@@ -19,6 +20,4 @@ async function main() {
   console.log(`[seed-incident-workflow] tenant=${tenantId} definitionId=${definitionId}`)
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((e) => { console.error(e instanceof Error ? e.stack ?? e.message : e); process.exit(1) })
+runScript('seed-incident-workflow', main)

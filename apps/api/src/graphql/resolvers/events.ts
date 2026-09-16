@@ -253,6 +253,8 @@ interface EventFilter {
   orphan?: boolean | null
   search?: string | null
   since?: string | null
+  /** G-EVT-3: filtro su `resolved_at`, la stessa domanda del riquadro «Risolti 24h». */
+  resolvedSince?: string | null
   incidentId?: string | null
   suppressedByChangeId?: string | null
 }
@@ -321,6 +323,12 @@ async function events(_: unknown, args: { filter?: EventFilter | null; limit?: n
     const ms = Date.parse(f.since)
     if (Number.isNaN(ms)) throw new ValidationError(`since must be an ISO date, got ${JSON.stringify(f.since)}`)
     conditions.push('e.last_seen_at >= $since'); params['since'] = new Date(ms).toISOString()
+  }
+  if (f.resolvedSince) {
+    // G-EVT-3: la stessa domanda del riquadro, sulla stessa proprietà.
+    const ms = Date.parse(f.resolvedSince)
+    if (Number.isNaN(ms)) throw new ValidationError(`resolvedSince must be an ISO date, got ${JSON.stringify(f.resolvedSince)}`)
+    conditions.push('e.resolved_at >= $resolvedSince'); params['resolvedSince'] = new Date(ms).toISOString()
   }
   const where = 'WHERE ' + conditions.join(' AND ')
   // Con `search` la sorgente delle righe è l'indice full-text (P-4), poi lo

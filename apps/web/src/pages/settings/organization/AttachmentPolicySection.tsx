@@ -3,6 +3,7 @@
  * tipi di file, dentro i limiti della piattaforma che la pagina mostra.
  */
 import { useEffect, useId, useState } from 'react'
+import { showError } from '@/lib/showError'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -24,6 +25,13 @@ export function AttachmentPolicySection() {
   const [exts, setExts] = useState<string[]>([])
   useEffect(() => { if (saved) { setSize(String(saved.maxSizeMb)); setExts(saved.extensions) } }, [saved])
   const [save, { loading: saving }] = useMutation(SET_ATTACHMENT_POLICY, {
+    /**
+     * `onError` c'è (revisione totale · G-16): mancava, e con `void save(...)`
+     * la promise rifiutata restava senza gestore — un `unhandledRejection` in
+     * console e nessun avviso in pagina, quindi il salvataggio sembrava
+     * riuscito. `showError` è lo stesso avviso di tutte le altre mutation.
+     */
+    onError: (e) => showError(e),
     refetchQueries: [GET_ATTACHMENT_POLICY],
     onCompleted: () => toast.success(t('pages.organization.attachmentsSaved')),
   })

@@ -98,10 +98,12 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
           <button
             type="button"
             className="nodrag nopan"
+            // F-36: il pulsante «×» non aveva nome accessibile.
+            aria-label={t('reportBuilder.removeNode', { node: d.label })}
             onMouseDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); d.onDelete() }}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', lineHeight: 1, padding: '0 2px', marginLeft: 2 }}
-          >×</button>
+          ><span aria-hidden="true">×</span></button>
         )}
       </div>
 

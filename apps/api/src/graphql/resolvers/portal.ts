@@ -359,7 +359,8 @@ async function myTicket(
     // più resta col suo nome; la prima voce non ha un passo di partenza.
     const stepLabel = await stepMeta(session, ctx.tenantId, lingua)
     const history = historyResult.records.map((r) => ({
-      fromStep:    (r.get('fromStep')    ?? 'start') as string,
+      // H-49: niente «start» inventato — la prima voce non ha un passo di partenza.
+      fromStep:    (r.get('fromStep') ?? null) as string | null,
       toStep:      r.get('toStep')      as string,
       fromLabel:   r.get('fromStep') == null ? null : stepLabel(r.get('fromStep') as string, kind).statusLabel,
       toLabel:     stepLabel(r.get('toStep') as string, kind).statusLabel,

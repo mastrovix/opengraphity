@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { CIHealthPage } from './CIHealthPage'
-import { GET_CI_HEALTH_OVERVIEW, GET_BASE_CI_TYPE, GET_TEAMS } from '@/graphql/queries'
+import { GET_CI_HEALTH_OVERVIEW, GET_BASE_CI_TYPE, GET_TEAMS, GET_EVENT_POLICY } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { withVocabularyLabels, type VocabularyLabels } from '@/test/vocabularies'
 import { meMock, teamsMock } from '@/test/mocks/gql'
@@ -49,13 +49,24 @@ const baseTypeMock = (): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
+/**
+ * La Policy eventi: la pagina ne legge `highImpactDependents`, la soglia da
+ * cui il chip «Impatto» dice «un guasto qui si propaga»
+ * (revisione totale · G-MON-7, prima era il numero 5 nel sorgente).
+ */
+const policyMock = (highImpactDependents = 5): GqlMock => ({
+  request: { query: GET_EVENT_POLICY },
+  result: { data: { eventPolicy: { __typename: 'EventPolicy', highImpactDependents } } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+})
+
 const baseTypeErrorMock = (): GqlMock => ({ request: { query: GET_BASE_CI_TYPE }, error: new Error('metamodel down'), maxUsageCount: Number.POSITIVE_INFINITY })
 const teamsErrorMock = (): GqlMock => ({ request: { query: GET_TEAMS, variables: {} }, error: new Error('teams down'), maxUsageCount: Number.POSITIVE_INFINITY })
 
-function renderPage(role: string, opts: { overview?: Partial<CIHealthOverview>; seen?: Vars[]; route?: string; teams?: GqlMock; baseType?: GqlMock; labels?: VocabularyLabels } = {}) {
+function renderPage(role: string, opts: { overview?: Partial<CIHealthOverview>; seen?: Vars[]; route?: string; teams?: GqlMock; baseType?: GqlMock; labels?: VocabularyLabels; highImpactDependents?: number } = {}) {
   return renderWithProviders(opts.labels ? withVocabularyLabels(<CIHealthPage />, opts.labels) : <CIHealthPage />, {
     route: opts.route ?? '/monitoring/health',
-    mocks: [meMock(role), overviewMock(opts.overview, opts.seen), opts.teams ?? teamsMock([{ id: 't1', name: 'DBA' }]), opts.baseType ?? baseTypeMock()],
+    mocks: [meMock(role), overviewMock(opts.overview, opts.seen), opts.teams ?? teamsMock([{ id: 't1', name: 'DBA' }]), opts.baseType ?? baseTypeMock(), policyMock(opts.highImpactDependents)],
   })
 }
 

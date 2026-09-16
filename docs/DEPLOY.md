@@ -29,10 +29,15 @@ Indice
 browser ──► nginx :80 (front door, template envsubst)
               ├─ {tenant}.localhost        → web (nginx, SPA agenti)      → /graphql, /api → api
               ├─ portal.{tenant}.localhost → portal (nginx, self-service) → /graphql, /api → api
-              └─ $TAILSCALE_HOST (HTTPS via tailscale serve) → web + keycloak same-origin
+              ├─ $TAILSCALE_HOST (HTTPS via tailscale serve) → web + keycloak same-origin,
+              │                                                  portale sotto /portal/ (H-33)
+              └─ qualunque altro Host                          → 404 (default_server, H-32)
 api :4000 (Express + Apollo, USER node) ── neo4j :7687 ── redis :6379 ── keycloak :8080
-worker (stessa immagine dell'api, `dist/worker.js`: embedding ONNX off event-loop)
-prometheus ← api:/metrics      promtail (docker socket) → loki ← grafana      jaeger (OTLP)
+worker        (stessa immagine dell'api, `dist/worker.js`: embedding ONNX off event-loop)
+events-worker (stessa immagine, WORKER_PROFILE=events: ingest allarmi, correlazione,
+               manutenzione eventi, valutazione delle mappe di servizio)
+prometheus ← api:/metrics, worker:/metrics, events-worker:/metrics
+promtail (docker socket) → loki ← grafana      jaeger (OTLP)
 ```
 
 Tutte le immagini di terze parti sono pinnate **tag + digest** (digest della
@@ -123,7 +128,14 @@ Con default sicuri, da cambiare consapevolmente:
   (locale + Tailscale): il token è accettato solo se il suo `iss` è tra quelle.
 - `TAILSCALE_TENANT_HOST` (default `c-one.localhost`): tenant che il front-door
   Tailscale inoltra come `X-Forwarded-Host` (l'hostname Tailscale non porta lo
-  slug).
+  slug). Vale anche per il portale, che da remoto sta sotto `/portal/` dello
+  stesso host (revisione totale · H-33).
+- `NGINX_API_MAX_BODY` (default `101m`): corpo massimo che il front-door
+  accetta su `/api/`. Va tenuto **sopra** `ATTACHMENT_MAX_MB_CAP` (default
+  100 MB), altrimenti nginx rifiuta l'allegato con un 413 in HTML prima che
+  l'API veda la richiesta e l'impostazione dell'organizzazione sembra non
+  valere (revisione totale · H-11). Gli nginx dentro i container `web` e
+  `portal` hanno lo stesso tetto scritto nei rispettivi Dockerfile.
 - `GRAPHQL_INTROSPECTION` (default `false`): `true` abilita l'Apollo Sandbox
   sulla stack locale. Mai `true` su un deploy raggiungibile da terzi.
 - `METRICS_TOKEN` (vuoto): se valorizzato, `GET /metrics` richiede
@@ -213,8 +225,11 @@ KEYCLOAK_URL=http://localhost:8080 NEO4J_URI=bolt://localhost:7687 \
   --slug c-one --admin-email admin@example.com \
   --admin-first-name Nome --admin-last-name Cognome --name "C-One"
 
-# 3. (Tailscale) redirect URI / web origins del client opengrafo-web
-bash infra/scripts/update-keycloak-redirects.sh
+# 3. (Tailscale) redirect URI / web origins dei client web E portale
+#    dell'organizzazione indicata; il secondo argomento e l'host pubblico
+#    (H-30: prima realm, client e host erano cablati su c-one e il portale
+#    non veniva toccato affatto).
+bash infra/scripts/update-keycloak-redirects.sh c-one "$TAILSCALE_HOST"
 ```
 
 Apri `http://c-one.localhost` (agenti) e `http://portal.c-one.localhost`
@@ -226,7 +241,7 @@ Apri `http://c-one.localhost` (agenti) e `http://portal.c-one.localhost`
 | Porta host | Servizio | Bind | Note |
 |---|---|---|---|
 | 80 | nginx | `0.0.0.0` | unico ingresso pubblico (LAN/Tailscale) |
-| 4000 | api | `127.0.0.1` | `/health`, `/graphql`, `/metrics` — senza header nginx |
+| 4000 | api | `127.0.0.1` | `/health` (completa: 503 con migrazioni pendenti), `/health/live` (sonda del container: processo + Neo4j + Redis, H-48), `/graphql`, `/metrics` — senza header nginx |
 | 5173 / 5174 | web / portal | `127.0.0.1` | accesso diretto alle SPA |
 | 7474 / 7687 | neo4j | `127.0.0.1` | browser + bolt |
 | 6379 | redis | `127.0.0.1` | con `requirepass` |
@@ -248,7 +263,10 @@ Per esporre la stack oltre `localhost` passare **solo** da nginx (o da
   `level` (pino: 30 info, 40 warn, 50 error). Esempio in Grafana → Explore:
   `{job="api", level="50"}`. Il vecchio scrape del file su `/tmp` (che l'API
   non scriveva) è stato rimosso.
-- **Metriche → Prometheus**: scrape di `api:4000/metrics` ogni 15 s, retention
+- **Metriche → Prometheus**: scrape di **tre** target ogni 15 s —
+  `api:4000`, `worker:4000` e `events-worker:4000`
+  (`infra/prometheus/prometheus.yml`): le metriche della pipeline degli allarmi
+  vivono dove gira la pipeline. Retention
   15 giorni (`prometheus_data`). Metriche disponibili
   (`apps/api/src/middleware/metrics.ts`): `http_requests_total`,
   `http_request_duration_seconds`, `graphql_resolver_duration_seconds`,
@@ -351,12 +369,19 @@ esattamente le immagini precedenti.
 dal maintenance worker dell'API ogni giorno a mezzanotte, retention degli
 ultimi N archivi): export via Cypher di **tutti i nodi e le relazioni** in
 JSONL, compresso in `backup_<stamp>.tar.gz` sotto `BACKUP_DIR`
-(`/data/backups` → volume `api_backups`). Non è un `neo4j-admin dump`: non è
-transazionalmente consistente e non contiene indici/constraint (che
-`neo4j:init` ricrea). **Non include**: allegati (`api_data:/data/attachments`),
-Keycloak (`keycloak_data`, realm e utenti), Redis (code BullMQ — ricostruibili),
-Grafana/Prometheus/Loki. Un altro intervento sta estendendo lo script agli
-allegati e a Keycloak: fino ad allora vanno salvati a parte (sotto).
+(`/data/backups` → volume `api_backups`). Non è un `neo4j-admin dump`, ma
+**una sola transazione di lettura**, quindi l'export è coerente; il manifest
+registra anche `SHOW CONSTRAINTS` e `SHOW INDEXES`, che `migrate --init-schema`
+ricrea. **Include** gli allegati (`attachments.tar`) e i realm Keycloak
+(`keycloak/<realm>.json`, senza gli utenti). **Non include**: gli utenti
+Keycloak, Redis (code BullMQ — ricostruibili), Grafana/Prometheus/Loki.
+
+> Revisione totale · H-26: questo paragrafo diceva l'esatto contrario — «non è
+> transazionalmente consistente», «non contiene indici/constraint», «non
+> include allegati e Keycloak», «un altro intervento sta estendendo lo script»
+> — mentre lo script fa tutte quelle cose da tempo e OPERATIONS §1 lo
+> descriveva correttamente. Chi seguiva DEPLOY salvava gli allegati due volte
+> e credeva di non avere i realm.
 
 Backup manuale e copia **off-host** (obbligatoria: un volume Docker non è un
 backup):

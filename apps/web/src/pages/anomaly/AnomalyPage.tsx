@@ -39,8 +39,15 @@ const SCAN_TIMEOUT_MS = 120_000
 
 /** Etichetta del tipo CI dell'entità: chiave i18n fissa (lib/ciEnums) o il nome grezzo. */
 export function anomalyEntityTypeLabel(t: (k: string) => string, a: Pick<Anomaly, 'entitySubtype' | 'entityType'>): string {
-  const key = ciTypeLabelKey(a.entitySubtype)
-  return key ? t(key) : (a.entitySubtype ?? a.entityType)
+  /**
+   * G-ANO-15: `entitySubtype` è `String!` nello schema, quindi non è mai null
+   * e il ripiego `?? entityType` non scattava mai — un CI senza sottotipo
+   * arrivava come stringa VUOTA e la seconda riga della colonna restava
+   * bianca. Il vuoto vale come assente.
+   */
+  const subtype = a.entitySubtype?.trim() ? a.entitySubtype : null
+  const key = subtype ? ciTypeLabelKey(subtype) : null
+  return key ? t(key) : (subtype ?? a.entityType)
 }
 
 /**
@@ -317,8 +324,15 @@ export function AnomalyPage() {
       void refetchStats()
       setSelected(null)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : t('pages.anomalies.errResolving')
-      setResolveError(msg)
+      /**
+       * UN avviso solo (revisione totale · G-ANO-11): il messaggio grezzo
+       * finiva nel box rosso del pannello mentre il link degli errori di
+       * Apollo aveva già mostrato il suo toast — due avvisi identici per lo
+       * stesso errore. Qui resta la frase del pannello, che dice cosa non è
+       * riuscito; il dettaglio tecnico lo dà il toast.
+       */
+      setResolveError(t('pages.anomalies.errResolving'))
+      void err
     } finally {
       setMutLoading(false)
     }
@@ -378,7 +392,7 @@ export function AnomalyPage() {
             color: colors.slate,
           }}
         >
-          <RefreshCw size={14} style={{ animation: scannerLoading ? 'spin 1s linear infinite' : undefined }} />
+          <RefreshCw size={14} aria-hidden="true" style={{ animation: scannerLoading ? 'spin 1s linear infinite' : undefined }} />
           {t('pages.anomalies.runScanner')}
         </button>
         </div>
@@ -420,7 +434,7 @@ export function AnomalyPage() {
           /* G-ANO-3: «nessuna anomalia» solo senza filtri; con un filtro attivo
              il vuoto è del filtro, non della CMDB. */
           filterGroup
-            ? <EmptyState icon={<SlidersHorizontal size={32} color={colors.slateLight} />} title={t('pages.anomalies.noResults')} description={t('pages.anomalies.noResultsDesc')} />
+            ? <EmptyState icon={<SlidersHorizontal size={32} color={colors.slateLight} aria-hidden="true" />} title={t('pages.anomalies.noResults')} description={t('pages.anomalies.noResultsDesc')} />
             : <AnomalyEmptyState scanStatus={scanStatus} />
         ) : (
           <SortableFilterTable<Anomaly>
@@ -442,7 +456,16 @@ export function AnomalyPage() {
       {selected && (
         <DetailPanel
           key={selected.id}
-          anomaly={selected}
+          /**
+           * L'anomalia AGGIORNATA, non l'istantanea del clic (revisione
+           * totale · G-ANO-10): dopo uno scan che l'aveva chiusa da sé il
+           * pannello mostrava ancora «aperta» e il pulsante «Risolvi», e
+           * risolverla sovrascriveva la chiusura automatica. Se l'elenco non
+           * la contiene più (chiusa, o fuori dal filtro) resta l'istantanea,
+           * ma il pannello sa che è vecchia.
+           */
+          anomaly={anomalies.find((a) => a.id === selected.id) ?? selected}
+          stale={!anomalies.some((a) => a.id === selected.id)}
           onClose={() => { setSelected(null); setResolveError(null) }}
           onResolve={(id, resolutionStatus, note) => void handleResolve(id, resolutionStatus, note)}
           loading={mutLoading}

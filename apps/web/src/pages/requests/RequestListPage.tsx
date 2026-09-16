@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { pausedWhenHidden } from '@/lib/polling'
 import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
@@ -83,7 +84,8 @@ export function RequestListPage() {
 
   const { data, loading, error, refetch } = useQuery<{ serviceRequests: { items: ServiceRequest[]; total: number } }>(GET_SERVICE_REQUESTS, {
     variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filtersJson, sortField, sortDirection: sortDir },
-    pollInterval: 30_000,   // keep the list fresh without manual reload
+    // F-21: il polling si ferma quando la scheda è in background.
+    ...pausedWhenHidden(30_000),
   })
 
   function handleSort(field: string, direction: 'asc' | 'desc') { setSortField(field); setSortDir(direction); setPage(0) }

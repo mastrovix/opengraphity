@@ -289,8 +289,20 @@ initKeycloak().then((authenticated) => {
 }).catch((err: Error) => {
   // initKeycloak throws for: no tenant in subdomain, missing VITE_KEYCLOAK_URL,
   // unknown realm, Keycloak unreachable. Without this the user sees a blank page.
-  root.innerHTML = `<div style="display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui">
-    <div style="font-size:20px;font-weight:600;color:var(--color-danger)">${i18n.t('auth.error')}</div>
-    <div style="color:var(--color-slate);font-size:14px">${err.message}</div>
-  </div>`
+  /**
+   * Il messaggio si scrive come TESTO, non come HTML (revisione totale ·
+   * F-19): arriva dalla rete o dalla configurazione (una risposta di Keycloak,
+   * un proxy), e con `innerHTML` un `<` lo mangiava e un intermediario che
+   * controllasse quel testo poteva iniettare markup nella pagina d'errore.
+   */
+  const box = document.createElement('div')
+  box.setAttribute('style', 'display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui')
+  const title = document.createElement('div')
+  title.setAttribute('style', 'font-size:20px;font-weight:600;color:var(--color-danger)')
+  title.textContent = i18n.t('auth.error')
+  const detail = document.createElement('div')
+  detail.setAttribute('style', 'color:var(--color-slate);font-size:14px')
+  detail.textContent = err.message
+  box.append(title, detail)
+  root.replaceChildren(box)
 })

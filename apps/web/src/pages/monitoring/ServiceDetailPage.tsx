@@ -161,7 +161,22 @@ export function ServiceDetailPage() {
 
   const [reevaluate, { loading: reevaluating }] = useMutation<{ reevaluateServiceMap: ServiceMapDetail }>(REEVALUATE_SERVICE_MAP)
   const [setStatus, { loading: settingStatus }] = useMutation<{ setServiceMapStatus: ServiceMapDetail }>(SET_SERVICE_MAP_STATUS)
-  const [deleteMap, { loading: deleting }] = useMutation<{ deleteServiceMap: boolean }>(DELETE_SERVICE_MAP)
+  /**
+   * La mappa eliminata sparisce anche dalla CACHE (revisione totale · G-MON-12).
+   *
+   * Dopo la cancellazione la lista (`cache-and-network`) ridisegnava dalla
+   * cache e mostrava ancora la riga: cliccandola si arrivava a un «non
+   * trovato». Con il polling in pausa a scheda nascosta poteva restare a
+   * lungo. Qui si butta via il nodo e si rilegge la lista.
+   */
+  const [deleteMap, { loading: deleting }] = useMutation<{ deleteServiceMap: boolean }>(DELETE_SERVICE_MAP, {
+    update(cache, result) {
+      if (result.data?.deleteServiceMap !== true) return
+      cache.evict({ id: cache.identify({ __typename: 'ServiceMap', id }) })
+      cache.gc()
+    },
+    refetchQueries: ['GetServiceMaps', 'GetServiceHealthCounts'],
+  })
   const [syncMap, { loading: syncing }] = useMutation<{ syncServiceMap: ServiceMapSyncResult }>(SYNC_SERVICE_MAP)
 
   if (loading && !data && !previousData) return <PageLoader />

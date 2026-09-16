@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
-import { GET_SERVICE_REQUESTS, GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
+import { GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { colors, palette } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
@@ -33,7 +33,7 @@ const inputBase: React.CSSProperties = {
 const selectBase: React.CSSProperties = {
   ...inputBase,
   appearance:         'none',
-  backgroundImage:    `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238892a4' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+  backgroundImage:    'var(--select-arrow)',
   backgroundRepeat:   'no-repeat',
   backgroundPosition: 'right 12px center',
   paddingRight:       36,
@@ -90,7 +90,15 @@ export function CreateServiceRequestPage() {
   const titleError = submitted && !title.trim() ? t('forms.fieldRequired') : ''
 
   const [createRequest, { loading }] = useMutation(CREATE_SERVICE_REQUEST, {
-    refetchQueries: [{ query: GET_SERVICE_REQUESTS }],
+    /**
+     * Il refetch per NOME dell'operazione (revisione totale · F-14):
+     * `[{ query: GET_X }]` senza variabili rinfresca solo la voce di cache
+     * SENZA variabili, che nessuna lista usa (tutte passano limite, pagina e
+     * filtri) — quindi dopo una creazione l'elenco restava quello di prima.
+     * Col nome, Apollo rinfresca ogni query attiva con quel nome, qualunque
+     * siano le sue variabili.
+     */
+    refetchQueries: ['GetServiceRequests'],
     onCompleted: () => { toast.success(t('toast.request.created')); navigate('/requests') },
     onError:     (err) => showError(err),
   })

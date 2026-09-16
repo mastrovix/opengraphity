@@ -37,13 +37,14 @@
  * dicono nel `title` (D·2.8) invece di far credere a un ordine globale.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Radar, RefreshCw, Plug, Loader2 } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { SortableFilterTable, sortRowsBy, type ColumnDef } from '@/components/SortableFilterTable'
+import { listReturnState } from '@/lib/listReturn'
 import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
 import { Pagination } from '@/components/ui/Pagination'
@@ -67,9 +68,20 @@ import { StormBanner } from './StormBanner'
 import { CriticalServicesBanner } from '@/pages/monitoring/CriticalServicesBanner'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import {
-  EVENT_STATUSES, EVENT_SEVERITIES, EVENT_ROW_SCALAR_FIELDS,
+  EVENT_STATUSES, EVENT_STATUS_RANK, EVENT_SEVERITIES, EVENT_ROW_SCALAR_FIELDS,
   type EventRow, type EventStats, type EventStatCounts, type EventStatus, type EventSeverity, type EventFilterVars, type MonitoringSourceRef, type EventPolicy,
 } from '@/types/events'
+
+/**
+ * Le colonne che sono una SCALA e non del testo (revisione totale · G-EVT-7):
+ * l'ordinamento le segue invece di confrontare le parole, altrimenti
+ * «Severita crescente» risponde critical, info, warning. Le stesse scale
+ * vanno sulle `ColumnDef`, cosi la tabella non controllata ordina uguale.
+ */
+const COLUMN_RANKS: Readonly<Record<string, readonly string[]>> = {
+  status:   EVENT_STATUS_RANK,
+  severity: EVENT_SEVERITIES,
+}
 
 const PAGE_SIZE       = 50
 const POLL_MS         = 15_000
@@ -81,8 +93,15 @@ interface ConsoleFilter {
   severity: EventSeverity[]
   orphan:   boolean
   search:   string
-  /** ISO: solo eventi visti dopo questo istante (riquadro "risolti 24h"). */
+  /** ISO: solo eventi visti dopo questo istante. */
   since:    string | null
+  /**
+   * ISO: solo eventi RISOLTI dopo questo istante (revisione totale · G-EVT-3).
+   * Il riquadro «Risolti 24h» conta su `resolved_at` e il suo filtro usava
+   * `since` (visti di recente): un allarme visto tre giorni fa e risolto
+   * un'ora prima era nel numero e non nell'elenco.
+   */
+  resolvedSince: string | null
   /** Sorgente di monitoraggio (select) — null = tutte. */
   sourceId: string | null
   /** CI (arrivo dal dettaglio CI) — null = tutti. */
@@ -93,7 +112,7 @@ interface ConsoleFilter {
   changeId:   string | null
 }
 
-const EMPTY_FILTER: ConsoleFilter = { status: [], severity: [], orphan: false, search: '', since: null, sourceId: null, ciId: null, incidentId: null, changeId: null }
+const EMPTY_FILTER: ConsoleFilter = { status: [], severity: [], orphan: false, search: '', since: null, resolvedSince: null, sourceId: null, ciId: null, incidentId: null, changeId: null }
 
 /** Solo i contatori: `stormSources` non è un riquadro. */
 type StatKey = keyof EventStatCounts
@@ -108,6 +127,7 @@ function toFilterVars(f: ConsoleFilter): EventFilterVars | null {
   if (f.orphan)          vars.orphan   = true
   if (f.search.trim())   vars.search   = f.search.trim()
   if (f.since)           vars.since    = f.since
+  if (f.resolvedSince)   vars.resolvedSince = f.resolvedSince
   if (f.sourceId)        vars.sourceId = f.sourceId
   if (f.ciId)            vars.ciId     = f.ciId
   if (f.incidentId)      vars.incidentId = f.incidentId
@@ -124,7 +144,8 @@ function presetFor(key: StatKey, now: number): ConsoleFilter {
     case 'orphan':      return { ...EMPTY_FILTER, orphan: true }
     case 'suppressed':  return { ...EMPTY_FILTER, status: ['suppressed'] }
     case 'flapping':    return { ...EMPTY_FILTER, status: ['flapping'] }
-    case 'resolved24h': return { ...EMPTY_FILTER, status: ['resolved'], since: new Date(now - DAY_MS).toISOString() }
+    // G-EVT-3: la stessa domanda del riquadro — risolti nelle ultime 24 ore.
+    case 'resolved24h': return { ...EMPTY_FILTER, status: ['resolved'], resolvedSince: new Date(now - DAY_MS).toISOString() }
   }
 }
 
@@ -265,6 +286,8 @@ function toggle<T>(list: T[], v: T): T[] { return list.includes(v) ? list.filter
 export function EventsPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  // G-EVT-13: i filtri della console, da portare nella scheda e riavere al ritorno.
+  const location = useLocation()
   const { can } = useMe()
   const canAct = can('event.work')
   const managesSources = can('config.monitoring')
@@ -282,8 +305,15 @@ export function EventsPage() {
 
   // Qualsiasi modifica esplicita del filtro "materializza" il preset del
   // contatore attivo (il riquadro non è più "il" filtro) e torna alla prima pagina.
+  /**
+   * Un chip aggiunto NON allarga la finestra temporale (revisione totale ·
+   * G-EVT-5): `since: null` azzerava il taglio del riquadro, quindi dal
+   * riquadro «Risolti 24h» aggiungere «critical» dava «tutti i risolti di
+   * sempre, critici» — dodici righe diventavano ottocento. La finestra è
+   * parte di quello che si sta guardando: si tocca solo se la si tocca.
+   */
   const updateFilter = useCallback((patch: Partial<ConsoleFilter>) => {
-    writeParams((p) => writeFilter(p, { ...filter, ...patch, since: null }))
+    writeParams((p) => writeFilter(p, { ...filter, ...patch }))
   }, [filter, writeParams])
 
   // Sorgente, CI, incident, change e ricerca sopravvivono al click sui contatori: sono "dove guardo", non "cosa cerco".
@@ -302,9 +332,18 @@ export function EventsPage() {
   // Ricerca testuale con debounce: la query (e l'URL) partono quando l'utente
   // smette di scrivere; un cambio dell'URL dall'esterno ("indietro") riallinea la casella.
   const [searchInput, setSearchInput] = useState(filter.search)
-  useEffect(() => { setSearchInput(filter.search) }, [filter.search])
+  /**
+   * G-EVT-4: l'URL porta il testo TRIMMATO e l'effetto riallineava la casella
+   * a quello — così uno spazio finale seguito da una pausa spariva mentre si
+   * stava ancora scrivendo («api », pausa, «03» → «api03»). Il riallineamento
+   * serve solo quando l'URL cambia da FUORI (indietro, link incollato): lo si
+   * riconosce dal fatto che il testo trimmato di chi scrive è già quello.
+   */
   useEffect(() => {
-    if (searchInput === filter.search) return
+    setSearchInput((current) => (current.trim() === filter.search ? current : filter.search))
+  }, [filter.search])
+  useEffect(() => {
+    if (searchInput.trim() === filter.search) return
     const timer = setTimeout(() => updateFilter({ search: searchInput }), SEARCH_DEBOUNCE)
     return () => clearTimeout(timer)
   }, [searchInput, filter.search, updateFilter])
@@ -393,7 +432,9 @@ export function EventsPage() {
   // prima si scartano le righe, poi si ordina quel che resta.
   const items = useMemo(() => {
     const matching = applyFilterGroup(rows, filterGroup)
-    return sort.field === null ? matching : sortRowsBy(matching, String(sort.field), sort.dir)
+    return sort.field === null
+      ? matching
+      : sortRowsBy(matching, String(sort.field), sort.dir, COLUMN_RANKS[String(sort.field)])
   }, [rows, filterGroup, sort])
   const total = data?.events.total ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
@@ -409,14 +450,14 @@ export function EventsPage() {
   }, [liveData, totalPages, page, setPage])
 
   const columns: ColumnDef<EventRow>[] = [
-    { key: 'status',   label: t('events.columns.status'),   width: '120px', sortable: true, render: (_v, row) => (
+    { key: 'status',   label: t('events.columns.status'),   width: '120px', sortable: true, rank: EVENT_STATUS_RANK, render: (_v, row) => (
       // Giro del 14 set 2026 (#50): la presa in carico si registrava ma la riga non lo diceva.
       <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
         <EventStatusBadge status={row.status} severity={row.severity} />
         {row.acknowledgedAt && <span title={formatDateTime(row.acknowledgedAt)} style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{t('events.acknowledged')}</span>}
       </span>
     ) },
-    { key: 'severity', label: t('events.columns.severity'), width: '110px', sortable: true, render: (_v, row) => <EventSeverityBadge severity={row.severity} /> },
+    { key: 'severity', label: t('events.columns.severity'), width: '110px', sortable: true, rank: EVENT_SEVERITIES, render: (_v, row) => <EventSeverityBadge severity={row.severity} /> },
     {
       // Il titolo è un link al dettaglio: è lui il bersaglio da tastiera (la
       // riga resta cliccabile con il mouse ma non è focalizzabile, vedi
@@ -424,7 +465,7 @@ export function EventsPage() {
       key: 'title', label: t('events.columns.title'), sortable: true,
       render: (_v, row) => (
         <div>
-          <Link to={`/events/${row.id}`} onClick={(e) => e.stopPropagation()} style={{ fontWeight: 600, color: colors.slateDark, textDecoration: 'none' }}>{row.title}</Link>
+          <Link to={`/events/${row.id}`} state={listReturnState(location.search)} onClick={(e) => e.stopPropagation()} style={{ fontWeight: 600, color: colors.slateDark, textDecoration: 'none' }}>{row.title}</Link>
           <div style={{ fontSize: 'var(--font-size-table)', color: colors.slateLight, marginTop: 2 }}>{resourceKindLabel(t, row.resourceKind)} · {row.resource}</div>
         </div>
       ),
@@ -554,7 +595,8 @@ export function EventsPage() {
             loading={loading && !data}
             label={t('events.title')}
             emptyComponent={<EmptyState icon={<Radar size={32} />} title={t('events.empty.title')} description={t('events.empty.description')} />}
-            onRowClick={(row) => navigate(`/events/${row.id}`)}
+            // G-EVT-13: la scheda deve sapere con quali filtri si e arrivati.
+            onRowClick={(row) => navigate(`/events/${row.id}`, { state: listReturnState(location.search) })}
             focusableRows={false}
             onSort={onSort}
             sortField={sort.field === null ? null : String(sort.field)}

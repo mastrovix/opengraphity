@@ -318,7 +318,11 @@ export function FilterBuilder({ fields, onApply, initialRules }: FilterBuilderPr
     const active = rules.filter((r) => {
       if (!r.field) return false
       if (NO_VALUE_OPS.has(r.operator)) return true
-      if (r.operator === 'between') return r.value != null && r.value2 != null
+      // «fra» vuole DUE estremi (revisione totale · F-37): bastava che non
+      // fossero null, quindi un secondo campo lasciato vuoto veniva
+      // serializzato e mandato al server, che lo rifiutava — e l'utente non
+      // sapeva quale filtro fosse sbagliato.
+      if (r.operator === 'between') return !!r.value && !!r.value2
       if (r.operator === 'in' || r.operator === 'not_in')
         return Array.isArray(r.value) && r.value.length > 0
       return r.value !== null && r.value !== ''

@@ -23,8 +23,15 @@ import { formatDateTime } from '@/lib/datetime'
  * le voci storiche non sono state riscritte — è un registro di conformità — e
  * questa lista le mostra comunque, così la storia si ritrova tutta.
  */
+/**
+ * Anche i TIPI DI ENTITÀ vengono dal registro (revisione totale · G-20): il
+ * filtro era una lista di sette valori scritta qui, con etichette letterali e
+ * senza le richieste di servizio, i CI, i vocabolari, i workflow, le mappe —
+ * voci che esistevano nel registro e non si potevano isolare.
+ */
 const GET_AUDIT_ACTIONS = gql`
   query GetAuditActions {
+    auditEntityTypes { entityType count }
     auditActions { action count }
   }
 `
@@ -78,11 +85,18 @@ export function AuditLogPage() {
   // `<entità>.step_entered`, prima sotto il nome del passo) le voci storiche
   // NON sono state riscritte — è un registro di conformità — quindi qui
   // compaiono entrambe le metà della storia e nessuna diventa introvabile.
-  const actionsQuery = useQuery<{ auditActions: { action: string; count: number }[] }>(
+  const actionsQuery = useQuery<{ auditActions: { action: string; count: number }[]; auditEntityTypes: { entityType: string; count: number }[] }>(
     GET_AUDIT_ACTIONS, { fetchPolicy: METAMODEL_FETCH_POLICY },
   )
   const actionOptions = (actionsQuery.data?.auditActions ?? [])
     .map(({ action, count }) => ({ value: action, label: `${action} (${count})` }))
+  /** G-20: le etichette dei tipi ITIL sono quelle del cliente, le altre il nome tecnico. */
+  const ITIL_AUDIT_LABELS: Record<string, string> = {
+    Incident: typeLabel('incident'), Change: typeLabel('change'),
+    Problem: typeLabel('problem'), ServiceRequest: typeLabel('service_request'),
+  }
+  const entityTypeOptions = (actionsQuery.data?.auditEntityTypes ?? [])
+    .map(({ entityType, count }) => ({ value: entityType, label: `${ITIL_AUDIT_LABELS[entityType] ?? entityType} (${count})` }))
 
   const AUDIT_FILTER_FIELDS: FieldConfig[] = [
     // `text` finché le azioni non sono arrivate: meglio un filtro che funziona
@@ -90,13 +104,12 @@ export function AuditLogPage() {
     actionOptions.length > 0
       ? { key: 'action', label: t('pages.audit.colAction'), type: 'enum', options: actionOptions }
       : { key: 'action', label: t('pages.audit.colAction'), type: 'text' },
-    { key: 'entityType', label: t('pages.audit.colEntityType'), type: 'enum', options: [
-      // I valori sono le etichette Neo4j dell'audit; il nome dei tipi ITIL è quello del cliente (F16).
-      { value: 'Incident', label: typeLabel('incident') }, { value: 'Change', label: typeLabel('change') },
-      { value: 'Problem', label: typeLabel('problem') }, { value: 'User', label: 'User' },
-      { value: 'Team', label: 'Team' }, { value: 'AutoTrigger', label: 'Trigger' },
-      { value: 'BusinessRule', label: 'Business Rule' },
-    ]},
+    // G-20: i tipi presenti nel registro, col loro conteggio. Il nome dei tipi
+    // ITIL resta quello del cliente (F16); per gli altri vale l'etichetta
+    // Neo4j, che è il nome tecnico con cui l'audit li registra.
+    entityTypeOptions.length > 0
+      ? { key: 'entityType', label: t('pages.audit.colEntityType'), type: 'enum', options: entityTypeOptions }
+      : { key: 'entityType', label: t('pages.audit.colEntityType'), type: 'text' },
     { key: 'userEmail', label: t('pages.audit.colUserEmail'), type: 'text' },
     { key: 'createdAt', label: t('pages.audit.colDate'), type: 'date' },
   ]

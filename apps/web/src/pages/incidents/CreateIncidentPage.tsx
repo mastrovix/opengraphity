@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { CREATE_INCIDENT, ASSIGN_INCIDENT_TO_TEAM } from '@/graphql/mutations'
 import { derivePriority, priorityCode, impactUrgencyFromPriority } from '@/lib/priority'
 import { usePriorityMatrix } from '@/hooks/usePriorityMatrix'
-import { GET_INCIDENTS, GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
+import { GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
 import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 import { useEnumValues } from '@/hooks/useEnumValues'
@@ -108,7 +108,15 @@ export function CreateIncidentPage() {
   const canSubmit = title.trim() !== '' && description.trim() !== '' && category !== '' && selectedCIs.length > 0
 
   const [createIncident, { loading }] = useMutation<{ createIncident: { id: string } }>(CREATE_INCIDENT, {
-    refetchQueries: [{ query: GET_INCIDENTS }],
+    /**
+     * Il refetch per NOME dell'operazione (revisione totale · F-14):
+     * `[{ query: GET_X }]` senza variabili rinfresca solo la voce di cache
+     * SENZA variabili, che nessuna lista usa (tutte passano limite, pagina e
+     * filtri) — quindi dopo una creazione l'elenco restava quello di prima.
+     * Col nome, Apollo rinfresca ogni query attiva con quel nome, qualunque
+     * siano le sue variabili.
+     */
+    refetchQueries: ['GetIncidents'],
     onCompleted: async (data) => {
       if (selectedTeam) {
         await assignToTeam({ variables: { id: data.createIncident.id, teamId: selectedTeam.id } })

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { formatDateTime } from '@/lib/datetime'
 import { colors, palette, alpha, lookupOrError } from '@/lib/tokens'
 import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
@@ -91,7 +92,11 @@ const LOG_COLUMNS: ColumnDef<LogEntry>[] = [
     sortable: true,
     render: (_val, row) => (
       <span style={{ color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
-        {new Date(row.timestamp).toLocaleString('it-IT', { hour12: false })}
+        {/* La lingua di chi guarda, come in tutta l'app (revisione totale ·
+            F-12): il locale era `it-IT` cablato, quindi un utente in inglese
+            vedeva le date dei log in formato italiano e diverse da ogni altra
+            pagina. `formatDateTime` passa da `currentLocale()`. */}
+        {formatDateTime(row.timestamp)}
       </span>
     ),
   },

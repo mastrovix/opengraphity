@@ -38,7 +38,14 @@ export function portalSDL(): string {
   }
 
   type WorkflowHistoryEntry {
-    fromStep:    String!
+    """
+    Il passo da cui si arriva; **null** per la prima voce, che non ha un passo
+    di partenza (revisione totale · H-49). Prima era non-nullo e quel caso si
+    scriveva con il nome «start», un letterale condiviso fra API e portale: se
+    un cliente chiamava un suo passo «start», la riga della storia perdeva la
+    parte «da».
+    """
+    fromStep:    String
     toStep:      String!
     """Etichette dei passi nella lingua chiesta; null se il passo non è (più) nel workflow."""
     fromLabel:   String

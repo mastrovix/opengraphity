@@ -46,7 +46,9 @@ const policyMock = (): GqlMock => ({
     __typename: 'EventPolicy', version: 1, updatedAt: null, openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
     suppressUpstreamHops: 1, flapThreshold: 5, flapWindowMinutes: 10, flapStableMinutes: 15,
     stormThresholdPerMinute: 50, stormCooldownMinutes: 5, retentionDays: 30, severityMap: '{}',
-    ignoreLifecycleStatuses: ['decommissioned'],
+    ignoreLifecycleStatuses: ['decommissioned'], matchShortHostname: false,
+    // G-MON-7: la soglia dell'evidenza «si propaga» sta nella policy.
+    highImpactDependents: 5,
   } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
@@ -206,7 +208,7 @@ describe('EventsPage — correlazione automatica (ondata 3)', () => {
     eventFixture({ id: 'c5', title: 'Below threshold', severity: 'warning', correlation: 'skipped_severity', correlationAt: '2026-09-09T08:00:00Z' }),
   ]
 
-  it('colonna Incident: link con icona "automatico", chip silenziato/in attesa/collega un CI, trattino sotto soglia', async () => {
+  it('colonna Incident: link con icona "automatico", chip silenziato/in attesa/collega un CI/sotto soglia', async () => {
     renderPage('operator', undefined, { events: CORRELATED })
     expect(await screen.findByText('Opened by policy')).toBeInTheDocument()
     const rows = bodyRows()
@@ -225,8 +227,11 @@ describe('EventsPage — correlazione automatica (ondata 3)', () => {
     // orfano: chip ambra "Collega un CI"
     expect(within(rows[3]!).getByText('Link a CI')).toBeInTheDocument()
 
-    // sotto soglia: nessun incident, nessun chip
-    expect(within(rows[4]!).getByText('—')).toBeInTheDocument()
+    // CONTRATTO RINEGOZIATO (revisione totale · G-EVT-12): sotto soglia era un
+    // trattino muto, indistinguibile da «non ancora valutato». Ora e un chip
+    // con la frase che dice perche non c'e un incident.
+    expect(within(rows[4]!).getAllByText('Below threshold').length).toBeGreaterThan(0)
+    expect(within(rows[4]!).getByTitle(/below the policy threshold/i)).toBeInTheDocument()
   })
 
   it('"Rivaluta ora" solo per silenziati / in attesa / orfani; un evento silenziato non offre "Apri incident"', async () => {
@@ -399,13 +404,19 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['firing'], severity: ['critical'], search: 'cpu' }))
   })
 
-  it('?stat=resolved24h: since = adesso − 24 h', async () => {
+  it('CONTRATTO RINEGOZIATO (G-EVT-3): ?stat=resolved24h filtra su resolvedSince, come conta il riquadro', async () => {
+    /**
+     * Revisione totale · G-EVT-3: il riquadro conta `resolved_at >= 24h` e il
+     * suo filtro usava `since`, cioè `last_seen_at` — un allarme visto tre
+     * giorni fa e risolto un'ora prima era nel numero e non nell'elenco.
+     */
     const seen: Vars[] = []
     renderPage('viewer', seen, { route: '/events?stat=resolved24h' })
     await screen.findByText('CPU high on web-01')
-    const f = seen[0]?.filter as { status: string[]; since: string }
+    const f = seen[0]?.filter as { status: string[]; resolvedSince: string; since?: string }
     expect(f.status).toEqual(['resolved'])
-    const ageMs = Date.now() - Date.parse(f.since)
+    expect(f.since).toBeUndefined()
+    const ageMs = Date.now() - Date.parse(f.resolvedSince)
     expect(ageMs).toBeGreaterThan(24 * 3_600_000 - 5_000)
     expect(ageMs).toBeLessThan(24 * 3_600_000 + 5_000)
     expect(screen.getByRole('button', { name: /Resolved 24h\s*7/ })).toHaveAttribute('aria-pressed', 'true')

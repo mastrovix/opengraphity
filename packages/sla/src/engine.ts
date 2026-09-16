@@ -74,9 +74,31 @@ async function resolvePolicy(
   return null
 }
 
+/**
+ * I tipi di evento su cui il motore SLA ha una regola (revisione totale ·
+ * E-33): la stessa lista dello `switch` di `process`, dichiarata perché il
+ * consumatore possa scartare il resto PRIMA di toccare Redis. Con il fan-out
+ * di tutti gli eventi a tutte le code, una tempesta di allarmi costava al motore
+ * SLA una EXISTS e una SET per ogni `event.received`, più una riga di log per
+ * ognuno.
+ */
+const SLA_HANDLED_EVENTS: ReadonlySet<string> = new Set([
+  'incident.created', 'incident.resolved', 'incident.assigned',
+  'request.created', 'request.completed',
+  'problem.created', 'problem.resolved',
+  'sla.resolve.pause', 'sla.resolve.stop', 'sla.resolve.resume', 'sla.resolve.start',
+  'sla.response.pause', 'sla.response.resume', 'sla.response.start', 'sla.response.stop',
+  TICKET_TEAM_ASSIGNED_EVENT, WORKFLOW_STEP_ENTERED_EVENT,
+])
+
 export class SLAEngine extends BaseConsumer<unknown> {
   constructor() {
     super('sla-engine')
+  }
+
+  /** E-33: quello che non è in `SLA_HANDLED_EVENTS` non arriva nemmeno alla deduplica. */
+  protected override handles(eventType: string): boolean {
+    return SLA_HANDLED_EVENTS.has(eventType)
   }
 
   async process(event: DomainEvent<unknown>): Promise<void> {

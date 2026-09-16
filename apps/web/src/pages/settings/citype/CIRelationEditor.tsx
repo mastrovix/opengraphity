@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { Modal } from '@/components/Modal'
@@ -37,6 +37,9 @@ export function CIRelationEditor({ open, onClose, onSave, allTypes }: RelationMo
   const { t } = useTranslation()
   const [form, setForm] = useState<RelationForm>(emptyRelForm())
   const [saving, setSaving] = useState(false)
+  // G-13: il modale è sempre montato; riaprendolo si ritrovava la relazione
+  // appena aggiunta, e sembrava che fosse stata duplicata.
+  useEffect(() => { if (open) setForm(emptyRelForm()) }, [open])
   const set = (k: keyof RelationForm, v: unknown) => setForm(p => ({ ...p, [k]: v }))
 
   return (

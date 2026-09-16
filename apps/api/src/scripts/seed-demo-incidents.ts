@@ -31,6 +31,7 @@ import { getSession } from '@opengraphity/neo4j'
 import { INCIDENT_WORKFLOW_BASE } from '@opengraphity/workflow'
 import { v4 as uuidv4 } from 'uuid'
 import { resolveTenantArg, requireConfirmFlag, refuseInProduction } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 /** Nodi che puntano a un incident per proprietà (entity_type/entity_id), non per relazione. */
 const ENTITY_LINKED_LABELS = ['Attachment', 'AuditEntry', 'Notification'] as const
@@ -344,4 +345,6 @@ async function main() {
   }
 }
 
-main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1) })
+// H-45: `runScript` stampa l'errore intero, mette exit code 1 e chiude il
+// driver Neo4j — senza `process.exit`, che troncava i log asincroni (pino).
+runScript('seed-demo-incidents', main)

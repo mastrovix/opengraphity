@@ -63,16 +63,37 @@ function StepCell({ kind, status }: { kind: LinkedKind; status: string }) {
   )
 }
 
+/**
+ * La ricerca la fa il SERVER (revisione totale · F-8).
+ *
+ * Incident e change venivano caricati coi 50 più recenti e filtrati nel
+ * browser: su un tenant con trecento incident, cercare per numero non trovava
+ * il ticket e l'utente concludeva che non esistesse. `incidents` e `changes`
+ * non hanno un argomento `search`, ma hanno `filters` — lo stesso JSON del
+ * costruttore di filtri: qui si compone «numero contiene X OPPURE titolo
+ * contiene X», che è quello che la modale chiede.
+ */
+function searchFilters(term: string, numberField: string): string | undefined {
+  const q = term.trim()
+  if (q === '') return undefined
+  return JSON.stringify({
+    rules: [
+      { id: 'n', field: numberField, operator: 'contains', value: q, logic: 'OR' },
+      { id: 't', field: 'title',     operator: 'contains', value: q, logic: 'OR' },
+    ],
+  })
+}
+
 /** Risultati di ricerca per il tipo attivo: query lazy (skip quando il tab non è attivo). */
 function useLinkSearch(kind: LinkedKind | null, term: string): LinkedTicketItem[] {
   const { data: inc } = useQuery<{ incidents: { items: LinkedTicketItem[] } }>(GET_INCIDENTS, {
-    variables: { limit: 50 }, skip: kind !== 'INCIDENT',
+    variables: { limit: 50, filters: searchFilters(term, 'number') }, skip: kind !== 'INCIDENT',
   })
   const { data: prb } = useQuery<{ problems: { items: LinkedTicketItem[] } }>(GET_PROBLEMS, {
     variables: { search: term.trim() || undefined, limit: 20 }, skip: kind !== 'PROBLEM',
   })
   const { data: chg } = useQuery<{ changes: { items: { id: string; code: string; title: string; approvalStatus?: string | null; workflowInstance?: { currentStep?: string | null } | null }[] } }>(GET_CHANGES, {
-    variables: { limit: 50 }, skip: kind !== 'CHANGE',
+    variables: { limit: 50, filters: searchFilters(term, 'code') }, skip: kind !== 'CHANGE',
   })
   if (kind === 'INCIDENT') return inc?.incidents?.items ?? []
   if (kind === 'PROBLEM')  return prb?.problems?.items ?? []

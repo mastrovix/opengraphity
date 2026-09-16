@@ -58,6 +58,9 @@ function mapAnomaly(p: Props) {
     resolutionStatus: p['resolution_status']  ? toStr(p['resolution_status'])  : null,
     resolutionNote:   p['resolution_note']    ? toStr(p['resolution_note'])    : null,
     resolvedBy:       p['resolved_by']        ? toStr(p['resolved_by'])        : null,
+    // G-ANO-8: il nome lo risolve il field resolver (una lettura sola per riga
+    // mostrata, e solo se il client lo chiede).
+    resolvedByName:   null as string | null,
     resolvedReason:   p['resolved_reason']    ? toStr(p['resolved_reason'])    : null,
     tenantId:         toStr(p['tenant_id']),
   }
@@ -101,7 +104,30 @@ async function openCountsByRule(tenantId: string): Promise<Map<string, number>> 
 
 const ANOMALY_ALLOWED_FIELDS = new Set(['title', 'severity', 'status', 'ruleKey', 'detectedAt'])
 
+/** Quanto vive la cache dei riquadri delle anomalie (G-ANO-7). */
+const ANOMALY_STATS_TTL_SECONDS = 10
+
 export const anomalyResolvers = {
+  /**
+   * G-ANO-8: il NOME di chi ha risolto, letto solo se il client lo chiede. Un
+   * id che non è più un utente del tenant (persona rimossa) non diventa una
+   * stringa tecnica a schermo: resta vuoto.
+   */
+  Anomaly: {
+    resolvedByName: async (parent: { resolvedBy: string | null }, _: unknown, ctx: GraphQLContext) => {
+      if (!parent.resolvedBy) return null
+      const session = getSession(undefined, 'READ')
+      try {
+        const row = await runQueryOne<{ name: string | null }>(session,
+          'MATCH (u:User {id: $id, tenant_id: $tenantId}) RETURN u.name AS name',
+          { id: parent.resolvedBy, tenantId: ctx.tenantId })
+        return row?.name ?? null
+      } finally {
+        await session.close()
+      }
+    },
+  },
+
   Query: {
     anomalyRules: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
       const [configs, options, counts] = await Promise.all([
@@ -225,7 +251,17 @@ export const anomalyResolvers = {
           falsePositive: toNumber(row['falsePositive']),
           acceptedRisk:  toNumber(row['acceptedRisk']),
         }
-        cache.set(cacheKey, result, 60)
+        /**
+         * TTL corto (revisione totale · G-ANO-7): la cache era di 60 secondi
+         * e la invalidavano solo l'accodamento dello scan e la risoluzione —
+         * lo SCAN, che gira in un altro processo, non poteva invalidarla.
+         * Quindi a scan finito i riquadri restavano quelli di prima per un
+         * minuto, mentre la tabella sotto era già aggiornata: due numeri che
+         * si contraddicevano nella stessa pagina. Dieci secondi bastano a
+         * evitare la raffica di query di un caricamento e non sopravvivono a
+         * uno scan.
+         */
+        cache.set(cacheKey, result, ANOMALY_STATS_TTL_SECONDS)
         return result
       } finally {
         await session.close()
@@ -267,7 +303,9 @@ export const anomalyResolvers = {
           tenantId:         ctx.tenantId,
           resolutionStatus,
           note:             args.note,
-          resolvedBy:       ctx.userId || 'unknown',
+          // G-ANO-8: se non c'è un utente, la colonna resta VUOTA — «unknown»
+          // scritto nel grafo diventava «Risolta da unknown» a schermo.
+          resolvedBy:       ctx.userId || null,
           now,
         })
         if (!row) throw new NotFoundError('Anomaly')

@@ -12,7 +12,7 @@ export const GET_ANOMALIES = gql`
         id ruleKey title severity status
         entityId entityType entitySubtype entityName
         description descriptionParams { key value } detectedAt resolvedAt
-        resolutionStatus resolutionNote resolvedBy resolvedReason
+        resolutionStatus resolutionNote resolvedBy resolvedByName resolvedReason
       }
     }
   }
@@ -29,7 +29,7 @@ export const GET_ANOMALY_STATS = gql`
 export const RESOLVE_ANOMALY = gql`
   mutation ResolveAnomaly($id: ID!, $resolutionStatus: ResolutionStatus!, $note: String!) {
     resolveAnomaly(id: $id, resolutionStatus: $resolutionStatus, note: $note) {
-      id status resolutionStatus resolutionNote resolvedBy resolvedAt
+      id status resolutionStatus resolutionNote resolvedBy resolvedByName resolvedAt
     }
   }
 `

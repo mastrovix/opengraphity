@@ -1,4 +1,6 @@
 import { useLocation } from 'react-router-dom'
+// F-21: i contatori della barra non interrogano l'API a scheda nascosta.
+import { pausedWhenHidden } from '@/lib/polling'
 import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
@@ -99,7 +101,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
 
   const { data: anomalyStatsData, error: anomalyError } = useQuery<{ anomalyStats: { critical: number; open: number } }>(
     GET_ANOMALY_STATS,
-    { pollInterval: 60_000, fetchPolicy: 'cache-and-network', skip: !opens('/anomalies') },
+    { ...pausedWhenHidden(60_000), fetchPolicy: 'cache-and-network', skip: !opens('/anomalies') },
   )
   const anomalyCritical = anomalyStatsData?.anomalyStats?.critical ?? 0
 
@@ -107,7 +109,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   // generiche e le approvazioni che si decidono nel ticket (change, richieste).
   const { data: pendingApprovalsData } = useQuery<{ myPendingApprovals: { id: string }[]; pendingTicketApprovals: { kind: string; entityId: string }[] }>(
     MY_PENDING_APPROVALS_COUNT,
-    { pollInterval: 60_000, fetchPolicy: 'cache-and-network', skip: !opens('/approvals') },
+    { ...pausedWhenHidden(60_000), fetchPolicy: 'cache-and-network', skip: !opens('/approvals') },
   )
   const pendingApprovalsCount = (pendingApprovalsData?.myPendingApprovals?.length ?? 0) + (pendingApprovalsData?.pendingTicketApprovals?.length ?? 0)
 

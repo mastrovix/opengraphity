@@ -19,15 +19,53 @@ export const KIND_TITLE_KEY: Record<string, string> = {
   validation: 'changeTasks.kind.validation', deployment: 'changeTasks.kind.deployment', review: 'changeTasks.kind.review',
 }
 
-export function toLocal(iso: string): string {
+/**
+ * ISO → valore di un campo `datetime-local`, nel fuso indicato (revisione
+ * totale · F-13).
+ *
+ * Senza `timeZone` vale il fuso del browser, come prima: è il ripiego finché
+ * la risposta col fuso dell'organizzazione non è arrivata, e chi mostra il
+ * campo scrive accanto quale fuso sta usando. Le finestre di rilascio si
+ * pianificano nel fuso dell'ORGANIZZAZIONE: un operatore in viaggio che
+ * digitava 22:00 le salvava alle 22:00 del suo posto, cioè a un'altra ora per
+ * il cliente.
+ */
+export function toLocal(iso: string, timeZone?: string | null): string {
   if (!iso) return ''
   const d = new Date(iso)
   if (isNaN(d.getTime())) return ''
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  if (!timeZone) {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+  // `sv-SE` dà «AAAA-MM-GG HH:MM», che è il formato del campo con uno spazio.
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(d).replace(' ', 'T')
 }
 
-export function fromLocal(v: string): string { return v ? new Date(v).toISOString() : '' }
+/** Quanti minuti il fuso è avanti rispetto a UTC in quell'istante (F-13). */
+function zoneOffsetMinutes(at: Date, timeZone: string): number {
+  const asUtc = new Date(new Intl.DateTimeFormat('sv-SE', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).format(at).replace(' ', 'T') + 'Z')
+  return Math.round((asUtc.getTime() - at.getTime()) / 60_000)
+}
+
+/**
+ * Valore del campo → ISO, leggendolo nel fuso indicato (F-13). Due passaggi:
+ * il primo con l'offset del momento indicato, il secondo per i casi a cavallo
+ * dell'ora legale, dove l'offset cambia proprio in quel giorno.
+ */
+export function fromLocal(v: string, timeZone?: string | null): string {
+  if (!v) return ''
+  if (!timeZone) return new Date(v).toISOString()
+  const naive = new Date(`${v}:00Z`)
+  if (isNaN(naive.getTime())) return ''
+  let instant = new Date(naive.getTime() - zoneOffsetMinutes(naive, timeZone) * 60_000)
+  instant = new Date(naive.getTime() - zoneOffsetMinutes(instant, timeZone) * 60_000)
+  return instant.toISOString()
+}
 
 export function StickyAction({ label, disabled, blockReason, onClick }: {
   label: string; disabled: boolean; blockReason?: string; onClick: () => void

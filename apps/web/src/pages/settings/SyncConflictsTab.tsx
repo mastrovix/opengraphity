@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { SyncConflict } from './useSyncPage'
 import { StatusBadge, btnStyle } from './syncShared'
@@ -8,6 +7,10 @@ import { formatDateTime } from '@/lib/datetime'
 // ── Props ────────────────────────────────────────────────────────────────────
 
 export interface SyncConflictsTabProps {
+  /** G-21: quanti conflitti ci sono in tutto con questo filtro. */
+  total:          number
+  status:         'open' | 'resolved' | 'all'
+  onStatusChange: (s: 'open' | 'resolved' | 'all') => void
   conflicts: SyncConflict[]
   loading: boolean
   onResolveConflict: (conflictId: string, resolution: string) => Promise<void>
@@ -15,18 +18,23 @@ export interface SyncConflictsTabProps {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function SyncConflictsTab({ conflicts, loading, onResolveConflict }: SyncConflictsTabProps) {
+export function SyncConflictsTab({ conflicts, loading, onResolveConflict, total, status, onStatusChange }: SyncConflictsTabProps) {
   const { t } = useTranslation()
-  const [filter, setFilter] = useState('open')
-
-  const filtered = filter === 'all' ? conflicts : conflicts.filter(c => c.status === filter)
+  /**
+   * Il filtro lo applica il SERVER (revisione totale · G-21): era client-side
+   * sui 50 conflitti più recenti, quindi «risolti» mostrava solo quelli finiti
+   * dentro quei 50 e un tenant con 80 conflitti aperti ne vedeva 50 senza che
+   * niente lo dicesse. Ora il conteggio totale è quello vero e, se la pagina
+   * non li contiene tutti, lo scrive.
+   */
+  const filtered = conflicts
 
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {(['open', 'resolved', 'all'] as const).map(s => (
-          <button type="button" key={s} aria-pressed={filter === s} onClick={() => setFilter(s)}
-            style={{ padding: '6px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer', background: filter === s ? colors.brand : colors.white, color: filter === s ? colors.white : palette.neutral.textMuted }}>
+          <button type="button" key={s} aria-pressed={status === s} onClick={() => onStatusChange(s)}
+            style={{ padding: '6px 12px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer', background: status === s ? colors.brand : colors.white, color: status === s ? colors.white : palette.neutral.textMuted }}>
             {t(`pages.sync.filter.${s}`)}
           </button>
         ))}
@@ -34,11 +42,17 @@ export function SyncConflictsTab({ conflicts, loading, onResolveConflict }: Sync
 
       {loading && <div style={{ padding: 24, color: colors.slate }}>Loading...</div>}
 
+      {!loading && total > filtered.length && (
+        <p style={{ margin: '0 0 8px', fontSize: 'var(--font-size-table)', color: colors.slate }}>
+          {t('pages.sync.conflictsShown', { shown: filtered.length, total })}
+        </p>
+      )}
+
       {!loading && (
         <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
           {filtered.length === 0 && (
             <div style={{ padding: 32, textAlign: 'center', color: colors.slate, fontSize: 'var(--font-size-body)' }}>
-              {filter === 'open' ? t('pages.sync.noOpenConflicts') : t('pages.sync.noConflicts')}
+              {status === 'open' ? t('pages.sync.noOpenConflicts') : t('pages.sync.noConflicts')}
             </div>
           )}
           {filtered.map((c, i) => {

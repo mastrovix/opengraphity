@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Edit2, Check, X } from 'lucide-react'
@@ -181,8 +181,14 @@ function VisibilityRulesSection({ entityType, fields }: { entityType: string; fi
               {t('fieldRules.visibility.ruleDesc', { triggerField: rule.triggerField, triggerValue: rule.triggerValue, action: rule.action === 'show' ? t('fieldRules.show') : t('fieldRules.hide'), targetField: rule.targetField })}
             </span>
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-              <button type="button" style={{ ...btnSecondary, padding: '4px 8px' }} onClick={() => startEdit(rule)}><Edit2 size={12} /></button>
-              <button type="button" style={btnDanger} onClick={() => { void deleteRule({ variables: { id: rule.id } }) }}><Trash2 size={12} /></button>
+              {/* G-15: le due icone non avevano nome accessibile: da screen
+                  reader erano «pulsante», «pulsante». */}
+              <button type="button" style={{ ...btnSecondary, padding: '4px 8px' }}
+                aria-label={t('fieldRules.visibility.editRule', { field: rule.targetField })}
+                onClick={() => startEdit(rule)}><Edit2 size={12} aria-hidden="true" /></button>
+              <button type="button" style={btnDanger}
+                aria-label={t('fieldRules.visibility.deleteRule', { field: rule.targetField })}
+                onClick={() => { void deleteRule({ variables: { id: rule.id } }) }}><Trash2 size={12} aria-hidden="true" /></button>
             </div>
           </div>
         )
@@ -202,36 +208,39 @@ function VisibilityRuleForm({ form, fields, isEnumTrigger, triggerField, onChang
 }) {
   const { t } = useTranslation()
   const { labelOf } = useDomainVocabularies()
+  // G-15: le etichette del form non erano collegate ai controlli (screen
+  // reader: «menu» senza nome). `useId` dà la radice degli identificativi.
+  const ids = useId()
   return (
     <div style={{ background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 8, padding: '14px 16px', marginBottom: 10 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px 1fr', gap: 10, marginBottom: 10 }}>
         <div>
-          <label style={labelS}>{t('fieldRules.visibility.triggerField')}</label>
-          <Select style={selectS} value={form.triggerField} onChange={(e) => onChange({ triggerField: e.target.value, triggerValue: '' })}>
+          <label htmlFor={`${ids}-trigger-field`} style={labelS}>{t('fieldRules.visibility.triggerField')}</label>
+          <Select id={`${ids}-trigger-field`} style={selectS} value={form.triggerField} onChange={(e) => onChange({ triggerField: e.target.value, triggerValue: '' })}>
             {fields.map((f) => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
           </Select>
         </div>
         <div>
-          <label style={labelS}>{t('fieldRules.visibility.triggerValue')}</label>
+          <label htmlFor={`${ids}-trigger-value`} style={labelS}>{t('fieldRules.visibility.triggerValue')}</label>
           {isEnumTrigger && triggerField?.enumValues.length ? (
-            <Select style={selectS} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })}>
+            <Select id={`${ids}-trigger-value`} style={selectS} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })}>
               <option value="">{t('pages.taskView.choose')}</option>
               {triggerField.enumValues.map((v) => <option key={v} value={v}>{(triggerField.enumTypeName && labelOf(triggerField.enumTypeName, v)) || v}</option>)}
             </Select>
           ) : (
-            <Input style={inputS} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })} placeholder={t('fieldRules.visibility.triggerValuePlaceholder')} />
+            <Input id={`${ids}-trigger-value`} style={inputS} value={form.triggerValue} onChange={(e) => onChange({ triggerValue: e.target.value })} placeholder={t('fieldRules.visibility.triggerValuePlaceholder')} />
           )}
         </div>
         <div>
-          <label style={labelS}>{t('fieldRules.visibility.action')}</label>
-          <Select style={selectS} value={form.action} onChange={(e) => onChange({ action: e.target.value as 'show' | 'hide' })}>
+          <label htmlFor={`${ids}-action`} style={labelS}>{t('fieldRules.visibility.action')}</label>
+          <Select id={`${ids}-action`} style={selectS} value={form.action} onChange={(e) => onChange({ action: e.target.value as 'show' | 'hide' })}>
             <option value="show">{t('fieldRules.show')}</option>
             <option value="hide">{t('fieldRules.hide')}</option>
           </Select>
         </div>
         <div>
-          <label style={labelS}>{t('fieldRules.visibility.targetField')}</label>
-          <Select style={selectS} value={form.targetField} onChange={(e) => onChange({ targetField: e.target.value })}>
+          <label htmlFor={`${ids}-target-field`} style={labelS}>{t('fieldRules.visibility.targetField')}</label>
+          <Select id={`${ids}-target-field`} style={selectS} value={form.targetField} onChange={(e) => onChange({ targetField: e.target.value })}>
             {fields.filter((f) => f.name !== form.triggerField).map((f) => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
           </Select>
         </div>

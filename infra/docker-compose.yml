@@ -213,6 +213,13 @@ services:
     ports:
       - "127.0.0.1:3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      # H-17: senza volume indice e chunk vivevano nel filesystem del
+      # container, quindi un `up -d --force-recreate loki` (o un aggiornamento
+      # dell'immagine) azzerava tutta la storia dei log — e promtail, che
+      # conserva le posizioni di lettura in promtail_data, non le rispediva.
+      # OPERATIONS §6 manda a quei log per gli incidenti operativi.
+      - loki_data:/loki
     networks:
       - opengrafo-network
     healthcheck:
@@ -264,7 +271,15 @@ services:
       # Tenant host the Tailscale front door impersonates (X-Forwarded-Host):
       # the Tailscale hostname carries no tenant slug
       TAILSCALE_TENANT_HOST: ${TAILSCALE_TENANT_HOST:-c-one.localhost}
-      NGINX_ENVSUBST_FILTER: ^(TAILSCALE_HOST|KEYCLOAK_PUBLIC_ORIGIN|TAILSCALE_TENANT_HOST)$$
+      # Corpo massimo accettato su /api/ (revisione totale · H-11): era 11m
+      # fisso, «pari al limite di 10 MB degli allegati» — ma da quando la
+      # dimensione massima e una scelta dell'organizzazione fino a
+      # ATTACHMENT_MAX_MB_CAP (default 100 MB), nginx rispondeva 413 in HTML
+      # prima che l'API vedesse la richiesta, e l'impostazione appena salvata
+      # sembrava non valere. Tenerlo un po' sopra il tetto: e l'API a dire di
+      # no, con il suo messaggio.
+      NGINX_API_MAX_BODY: ${NGINX_API_MAX_BODY:-101m}
+      NGINX_ENVSUBST_FILTER: ^(TAILSCALE_HOST|KEYCLOAK_PUBLIC_ORIGIN|TAILSCALE_TENANT_HOST|NGINX_API_MAX_BODY)$$
     volumes:
       - ./nginx:/etc/nginx/templates:ro
     networks:
@@ -367,8 +382,22 @@ services:
       TRANSFORMERS_CACHE: /data/models
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
 
+      # Limits — revisione totale · H-10: erano documentate in .env.example
+      # (e in OPERATIONS/DEPLOY) ma NON arrivavano al container, quindi
+      # scriverle in infra/.env non cambiava niente.
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-1000}
+      RATE_LIMIT_WINDOW_MINUTES: ${RATE_LIMIT_WINDOW_MINUTES:-1}
+      GRAPHQL_SCHEMA_CACHE_MAX: ${GRAPHQL_SCHEMA_CACHE_MAX:-25}
+      MAX_CI_TYPES_PER_TENANT: ${MAX_CI_TYPES_PER_TENANT:-200}
+      ATTACHMENT_MAX_MB_CAP: ${ATTACHMENT_MAX_MB_CAP:-100}
+      # Backup notturno (maintenance worker, che gira in QUESTO processo)
+      BACKUP_RETENTION: ${BACKUP_RETENTION:-14}
+      BACKUP_SKIP_KEYCLOAK: ${BACKUP_SKIP_KEYCLOAK:-false}
+
       # Optional integrations
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # DEPLOY dice «un solo posto da cambiare»: che sia vero (H-10).
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
       REPORT_AI_MODEL: ${REPORT_AI_MODEL:-}
       # Slack (ondata 8): il token di ogni organizzazione sta nel grafo, cifrato con
       # SECRETS_ENCRYPTION_KEY. Qui solo l'app Slack DI OPENGRAFO («Aggiungi a Slack»)
@@ -396,8 +425,14 @@ services:
     networks:
       - opengrafo-network
     healthcheck:
-      # The api image has no wget/curl — probe /health with node's built-in fetch
-      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      # The api image has no wget/curl — probe with node's built-in fetch.
+      # /health/live, not /health (revisione totale · H-48): /health answers 503
+      # while migrations are pending, which is right for an operator but wrong
+      # for a container probe — during the documented two-step deploy (new image
+      # up, then `migrate`) `docker compose ps` showed the API red as if it had
+      # crashed. /health/live answers the container's question: is this process
+      # alive and are Neo4j and Redis reachable.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/health/live').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -474,6 +509,8 @@ services:
       TRANSFORMERS_CACHE: /data/models
       # Correlation may call the AI triage of new incidents (optional, like in the API)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # H-10: lo stesso modello dell'API, altrimenti la triage dal worker usa un altro modello.
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
       # Il token Slack delle organizzazioni si legge cifrato dal grafo (ondata 8)
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-}
       # GET /metrics of this process: the pipeline metrics live where the
@@ -562,4 +599,6 @@ volumes:
   api_backups:
   jaeger_data:
   prometheus_data:
+  # H-17: indice e chunk di Loki (altrimenti la storia dei log muore col container)
+  loki_data:
   promtail_data:

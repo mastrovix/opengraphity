@@ -1,118 +1,77 @@
 /**
- * POST /api/logs/client over a real Express app (express.json() as in
- * server.ts): valid entry → 204 and a LogEntry CREATE whose tenant/user come
- * from the auth context and whose message/data travel as Cypher PARAMETERS
- * (never interpolated); bad level / array / oversized body → 4xx, no write.
+ * Un log del browser ha una dimensione MASSIMA (revisione totale · M-24).
+ *
+ * Non c'era nessun tetto oltre a quello del parser JSON di express: un client
+ * (o una pagina con un errore in un ciclo) poteva riempire Neo4j di `LogEntry`
+ * da mezzo mega. Il taglio si vede — `… [troncato]` — perché un log tagliato in
+ * silenzio è peggio di uno tagliato dichiarato.
  */
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
-import express from 'express'
-import type { Server } from 'node:http'
-import type { AddressInfo } from 'node:net'
-import { perms } from '../../lib/__tests__/testPermissions.js'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
-vi.mock('../../middleware/auth.js', () => ({
-  authMiddleware: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    req.user = { tenantId: 'tenant-1', userId: 'user-1', email: 'u@example.com', role: 'viewer', permissions: perms('viewer') }
-    next()
-  },
+const run = vi.fn(async () => ({ records: [] }))
+const close = vi.fn(async () => undefined)
+vi.mock('@opengraphity/neo4j', () => ({
+  getSession: () => ({
+    executeWrite: (fn: (tx: { run: typeof run }) => unknown) => fn({ run }),
+    close,
+  }),
 }))
+vi.mock('../../middleware/auth.js', () => ({ authMiddleware: (_r: unknown, _s: unknown, next: () => void) => next() }))
 
-const { getSession } = await import('@opengraphity/neo4j')
 const { clientLogRouter } = await import('../client-logs.js')
 
-interface Write { q: string; p: Record<string, unknown> }
-const writes: Write[] = []
-const session = {
-  executeWrite: vi.fn().mockImplementation((fn: (tx: unknown) => unknown) =>
-    fn({ run: (q: string, p: Record<string, unknown>) => { writes.push({ q, p }); return Promise.resolve({ records: [] }) } })),
-  close: vi.fn().mockResolvedValue(undefined),
+/** Il solo handler del router, chiamato con una richiesta finta. */
+function handler(): (req: unknown, res: unknown, next: unknown) => Promise<void> {
+  const layer = (clientLogRouter as unknown as { stack: { route?: { path: string; stack: { handle: unknown }[] } }[] })
+    .stack.find((l) => l.route?.path === '/logs/client')
+  // [authMiddleware, asyncHandler(handleClientLog)]
+  return layer!.route!.stack[1]!.handle as (req: unknown, res: unknown, next: unknown) => Promise<void>
 }
 
-let server: Server
-let base: string
+function fakeRes() {
+  const res = {
+    statusCode: 0, body: undefined as unknown,
+    status(c: number) { res.statusCode = c; return res },
+    json(b: unknown) { res.body = b; return res },
+    end() { return res },
+  }
+  return res
+}
 
-beforeAll(async () => {
-  const app = express()
-  app.use(express.json())
-  app.use('/api', clientLogRouter)
-  await new Promise<void>((resolve) => { server = app.listen(0, resolve) })
-  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/logs/client`
-})
-afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())) })
-beforeEach(() => {
-  vi.clearAllMocks()
-  writes.length = 0
-  vi.mocked(getSession).mockReturnValue(session as never)
-})
+async function post(body: unknown) {
+  const res = fakeRes()
+  await handler()({ body, user: { tenantId: 'c-test', userId: 'u1' } }, res, () => undefined)
+  return res
+}
 
-const post = (body: unknown, raw = false) => fetch(base, {
-  method: 'POST', headers: { 'content-type': 'application/json' }, body: raw ? String(body) : JSON.stringify(body),
-})
+const scritto = () => (run.mock.calls.at(-1)?.[1] ?? {}) as Record<string, string>
 
 describe('POST /api/logs/client', () => {
-  it('valid entry → 204; tenant/user from auth context; message and data as parameters', async () => {
-    const res = await post({
-      level: 'error', message: 'Uncaught TypeError', url: 'https://app/incidents/1',
-      stack: 'TypeError: x\n  at y', data: { component: 'IncidentDetail' }, timestamp: '2026-09-08T10:00:00.000Z',
-    })
-    expect(res.status).toBe(204)
-    expect(writes).toHaveLength(1)
-    const { q, p } = writes[0]!
-    expect(q).toMatch(/CREATE \(l:LogEntry/)
-    expect(q).toMatch(/tenant_id:\s+\$tenantId/)
-    expect(q).toMatch(/message:\s+\$message/)
-    expect(p).toMatchObject({ tenantId: 'tenant-1', level: 'error', message: 'Uncaught TypeError', timestamp: '2026-09-08T10:00:00.000Z' })
-    expect(JSON.parse(p['data'] as string)).toEqual({
-      component: 'IncidentDetail', url: 'https://app/incidents/1', stack: 'TypeError: x\n  at y', userId: 'user-1',
-    })
-    expect(session.close).toHaveBeenCalled()
+  beforeEach(() => { run.mockClear() })
+
+  it('taglia un messaggio enorme invece di scriverlo intero (e invece di rifiutarlo)', async () => {
+    const res = await post({ level: 'error', message: 'x'.repeat(50_000) })
+    expect(res.statusCode).toBe(204)
+    const m = scritto()['message']!
+    expect(m.length).toBeLessThanOrEqual(4_000)
+    expect(m.endsWith('… [troncato]')).toBe(true)
   })
 
-  it('a client-supplied tenantId/userId in the body is ignored (identity only from auth)', async () => {
-    const res = await post({ level: 'warn', message: 'm', tenantId: 'tenant-evil', userId: 'admin', data: { userId: 'admin' } })
-    expect(res.status).toBe(204)
-    expect(writes[0]!.p['tenantId']).toBe('tenant-1')
-    expect(JSON.parse(writes[0]!.p['data'] as string)['userId']).toBe('user-1')
+  it('taglia anche stack, url e dati di contesto', async () => {
+    await post({ level: 'warn', message: 'ok', stack: 's'.repeat(50_000), url: 'u'.repeat(50_000), data: { k: 'v'.repeat(50_000) } })
+    const d = scritto()['data']!
+    expect(d.length).toBeLessThanOrEqual(8_000)
+    expect(d.endsWith('… [troncato]')).toBe(true)
   })
 
-  it('no log injection: quotes/newlines/Cypher in message never reach the query text', async () => {
-    const message = `"}) DETACH DELETE l //\n MATCH (n) DETACH DELETE n`
-    const res = await post({ level: 'info', message })
-    expect(res.status).toBe(204)
-    expect(writes[0]!.q).not.toContain('DETACH DELETE')
-    expect(writes[0]!.p['message']).toBe(message)
+  it('un messaggio che non è una stringa è un errore del client, non «[object Object]» nel grafo', async () => {
+    const res = await post({ level: 'error', message: { oops: true } })
+    expect(res.statusCode).toBe(400)
+    expect(run).not.toHaveBeenCalled()
   })
 
-  it('missing timestamp → server time is used (ISO string)', async () => {
-    const res = await post({ level: 'info', message: 'hello' })
-    expect(res.status).toBe(204)
-    expect(writes[0]!.p['timestamp']).toMatch(/^\d{4}-\d{2}-\d{2}T/)
-    expect(Number.isNaN(Date.parse(writes[0]!.p['timestamp'] as string))).toBe(false)
-  })
-
-  it.each(['debug', 'fatal', '', undefined, 42])('level %j → 400 and no write', async (level) => {
-    const res = await post({ level, message: 'x' })
-    expect(res.status).toBe(400)
-    expect((await res.json() as { error: string }).error).toMatch(/level must be one of: error, warn, info/)
-    expect(getSession).not.toHaveBeenCalled()
-  })
-
-  it('JSON array body → 400 (no level), no write', async () => {
-    const res = await post([{ level: 'error', message: 'x' }])
-    expect(res.status).toBe(400)
-    expect(getSession).not.toHaveBeenCalled()
-  })
-
-  it('malformed JSON → 400 from the body parser, no write', async () => {
-    const res = await post('{"level": "error", ', true)
-    expect(res.status).toBe(400)
-    expect(getSession).not.toHaveBeenCalled()
-  })
-
-  it('body over the express.json() limit (100 kB) → 413, no write', async () => {
-    const res = await post({ level: 'error', message: 'x'.repeat(120 * 1024) })
-    expect(res.status).toBe(413)
-    expect(getSession).not.toHaveBeenCalled()
+  it('un messaggio corto passa intero, senza segni di taglio', async () => {
+    await post({ level: 'info', message: 'tutto bene' })
+    expect(scritto()['message']).toBe('tutto bene')
   })
 })

@@ -9,6 +9,7 @@
 import { useId, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { toast } from 'sonner'
 import { Trash2, Plus, Loader2 } from 'lucide-react'
 import { QueryError } from '@/components/QueryError'
@@ -25,6 +26,16 @@ import { colors } from '@/lib/tokens'
 import { TINT_INFO } from '@/lib/eventPalette'
 import { CI_ALIAS_KINDS, type CIAlias, type CIAliasKind } from '@/types/events'
 import { showError } from '@/lib/showError'
+
+/**
+ * L'origine di un alias tradotta (revisione totale · G-EVT-8). Un valore che
+ * non conosciamo si mostra tale e quale invece di sparire: se la discovery ne
+ * introduce un terzo, si vede che manca la traduzione.
+ */
+const ALIAS_SOURCES: readonly string[] = ['manual', 'discovery']
+function aliasSourceLabel(t: TFunction, source: string): string {
+  return ALIAS_SOURCES.includes(source) ? t(`events.aliases.source.${source}`) : source
+}
 
 const hint: React.CSSProperties = { margin: 0, fontSize: 'var(--font-size-table)', color: colors.slateLight, lineHeight: 1.5 }
 const bodyMuted: React.CSSProperties = { color: colors.slateLight, fontSize: 'var(--font-size-body)', margin: 0 }
@@ -46,17 +57,26 @@ export function CIAliasesSection({ ci, canEdit, variant }: Props) {
 
   const { data, loading, error, refetch } = useQuery<{ ciAliases: CIAlias[] }>(GET_CI_ALIASES, { variables: { ciId: ci.id } })
   const [deleteAlias] = useMutation(DELETE_CI_ALIAS)
+  /**
+   * Quale alias si sta eliminando (revisione totale · G-EVT-9): il cestino non
+   * aveva stato, quindi due click davano due mutation e la seconda cadeva sul
+   * nodo appena cancellato — un errore rosso dopo un «eliminato» verde.
+   */
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [createAlias, { loading: creating }] = useMutation(CREATE_CI_ALIAS)
   const aliases = data?.ciAliases ?? []
 
   async function handleDelete(alias: CIAlias) {
     const ok = await confirm({ title: t('events.aliases.deleteTitle'), body: `${t(`events.aliases.kind.${alias.kind}`)}: ${alias.value}`, danger: true })
     if (!ok) return
+    if (deletingId) return
+    setDeletingId(alias.id)
     try {
       await deleteAlias({ variables: { id: alias.id } })
       toast.success(t('toast.events.aliasDeleted'))
       void refetch()
-    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) }))
+    } finally { setDeletingId(null) }
   }
 
   async function handleCreate() {
@@ -84,10 +104,25 @@ export function CIAliasesSection({ ci, canEdit, variant }: Props) {
             <li key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)' }}>
               <Pill bg={TINT_INFO.bg} color={TINT_INFO.color} style={{ fontSize: 'var(--font-size-label)' }}>{t(`events.aliases.kind.${a.kind}`)}</Pill>
               <span style={{ fontFamily: 'monospace', color: colors.slateDark, wordBreak: 'break-all' }}>{a.value}</span>
-              <span style={{ color: colors.slateLight, marginLeft: 'auto', whiteSpace: 'nowrap' }} title={formatDateTime(a.createdAt)}>{a.source}</span>
+              {/* G-EVT-8: l'origine era stampata grezza («manual» in un'interfaccia italiana). */}
+              <span
+                style={{ color: colors.slateLight, marginLeft: 'auto', whiteSpace: 'nowrap' }}
+                title={t('events.aliases.sourceTitle', { source: aliasSourceLabel(t, a.source), date: formatDateTime(a.createdAt) })}
+              >
+                {aliasSourceLabel(t, a.source)}
+              </span>
               {canEdit && (
-                <Button variant="danger" size="xs" aria-label={t('events.aliases.delete', { value: a.value })} title={t('common.delete')} onClick={() => void handleDelete(a)} style={{ padding: 4 }}>
-                  <Trash2 size={13} aria-hidden="true" />
+                <Button
+                  variant="danger" size="xs"
+                  aria-label={t('events.aliases.delete', { value: a.value })}
+                  title={t('common.delete')}
+                  disabled={deletingId !== null}
+                  onClick={() => void handleDelete(a)}
+                  style={{ padding: 4 }}
+                >
+                  {deletingId === a.id
+                    ? <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+                    : <Trash2 size={13} aria-hidden="true" />}
                 </Button>
               )}
             </li>

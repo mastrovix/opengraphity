@@ -324,7 +324,7 @@ export default function ReportsPage() {
   // hide the area too — the old rule printed a blank page).
   const handlePrint = () => {
     const previousTitle = document.title
-    document.title = active?.title ?? 'Report ITSM'
+    document.title = active?.title ?? t('pages.aiAnalysis.documentTitle')
     const restore = () => { document.title = previousTitle; window.removeEventListener('afterprint', restore) }
     window.addEventListener('afterprint', restore)
     window.print()

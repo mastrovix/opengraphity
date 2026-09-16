@@ -11,12 +11,18 @@ import { formatDateTime } from '@/lib/datetime'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
+/**
+ * Le pianificazioni pronte, con l'etichetta in i18n
+ * (revisione totale · G-2/H-23): erano cinque letterali inglesi dentro il
+ * sorgente, quindi un cliente italiano leggeva «Every 6 hours» in mezzo a una
+ * pagina tradotta. `labelKey` si risolve al render.
+ */
 const CRON_PRESETS = [
-  { label: 'Every hour',       value: '0 * * * *' },
-  { label: 'Every 6 hours',    value: '0 */6 * * *' },
-  { label: 'Every 12 hours',   value: '0 */12 * * *' },
-  { label: 'Daily at midnight',value: '0 0 * * *' },
-  { label: 'Custom…',          value: '__custom__' },
+  { labelKey: 'pages.sync.schedulePreset.hourly',        value: '0 * * * *' },
+  { labelKey: 'pages.sync.schedulePreset.every6h',       value: '0 */6 * * *' },
+  { labelKey: 'pages.sync.schedulePreset.every12h',      value: '0 */12 * * *' },
+  { labelKey: 'pages.sync.schedulePreset.dailyMidnight', value: '0 0 * * *' },
+  { labelKey: 'pages.sync.schedulePreset.custom',        value: '__custom__' },
 ]
 
 // ── TextareaFileField ────────────────────────────────────────────────────────
@@ -285,7 +291,7 @@ export function SyncSourcesTab({
         <Modal
           open
           onClose={() => setSchedSource(null)}
-          title={`Schedule — ${schedSource.name}`}
+          title={t('pages.sync.scheduleTitle', { name: schedSource.name })}
           width={400}
           footer={
             <>
@@ -296,12 +302,12 @@ export function SyncSourcesTab({
         >
           <label htmlFor={`${fid}-sched-preset`} style={labelStyle}>{t('pages.sync.cronPreset')}</label>
           <Select id={`${fid}-sched-preset`} style={inputStyle} value={schedPreset} onChange={e => setSchedPreset(e.target.value)}>
-            {CRON_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            {CRON_PRESETS.map(p => <option key={p.value} value={p.value}>{t(p.labelKey)}</option>)}
           </Select>
           {schedPreset === '__custom__' && (
             <>
               <label htmlFor={`${fid}-sched-custom`} style={{ ...labelStyle, marginTop: 8 }}>{t('pages.sync.customCron')}</label>
-              <Input id={`${fid}-sched-custom`} style={inputStyle} value={schedCustom} onChange={e => setSchedCustom(e.target.value)} placeholder="e.g. 0 */4 * * *" />
+              <Input id={`${fid}-sched-custom`} style={inputStyle} value={schedCustom} onChange={e => setSchedCustom(e.target.value)} placeholder={t('pages.sync.schedulePreset.placeholder')} />
             </>
           )}
         </Modal>

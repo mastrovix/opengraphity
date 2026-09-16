@@ -140,7 +140,20 @@ export interface ServiceMapRow {
   service:     ServiceRef
   /** Cause ordinate: critiche prima, poi peso, poi livello (max 20). */
   explanation: ImpactCause[]
+  /**
+   * Quanti componenti che contano sono non operativi in TUTTO (revisione
+   * totale · G-MON-6): `explanation` e tagliata a 20, quindi contarla dava un
+   * numero falso. null per una mappa mai rivalutata da quando il motore lo
+   * registra: chi lo mostra dice la frase generica.
+   */
+  unhealthyCount: number | null
 }
+
+/**
+ * `ServiceMapNode.addedBy` per un CI cancellato dalla CMDB: il contratto e in
+ * `apps/api/src/graphql/resolvers/services.ts` (SERVICE_NODE_GONE_ADDED_BY).
+ */
+export const SERVICE_NODE_GONE_ADDED_BY = 'gone'
 
 /** Contatori di tutto il tenant, indipendenti dal filtro. */
 export interface ServiceMapCounts {
@@ -186,6 +199,11 @@ export interface ServiceMapNode {
   critical:      boolean
   /** Id del CI da cui si arriva (null a livello 1). */
   via:           string | null
+  /**
+   * Chi ha messo il nodo nella mappa; `gone` (SERVICE_NODE_GONE_ADDED_BY) vuol
+   * dire che il CI non e piu nella CMDB e della mappa resta solo il suo id:
+   * livello e ruolo non sono valori letti (revisione totale · G-MON-10).
+   */
   addedBy:       string
   /** Salute del CI dal monitoraggio; null = mai toccato da un allarme. */
   health:        CIHealth | null
@@ -377,6 +395,8 @@ export interface ServiceMapRemovedNode {
   ci:    CIRef
   level: number
   role:  ServiceNodeRole
+  /** `gone` = il CI non e piu nella CMDB: livello e ruolo non si possono leggere (G-MON-10). */
+  addedBy: string
 }
 
 /** Diff fra la mappa attuale e quella che si costruirebbe adesso dal grafo (nessuna scrittura). */

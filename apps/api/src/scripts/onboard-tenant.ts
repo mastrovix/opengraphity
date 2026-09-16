@@ -176,7 +176,9 @@ async function createClient(kc: KeycloakAdmin, token: string, a: Args): Promise<
       ...(a.piIp ? [`https://${a.slug}.${a.piIp}.nip.io/*`] : []),
       // Local Docker / dev — all access patterns (mai in produzione: H-46)
       ...(a.production ? [] : [
-        `http://${a.slug}.localhost/*`,          // nginx-dev on port 80
+        // H-29: il front-door nginx del compose, porta 80 (il vecchio
+        // infra/nginx-dev.conf non esiste piu: non era montato da niente).
+        `http://${a.slug}.localhost/*`,
         `http://${a.slug}.localhost:5173/*`,     // web container direct
         `http://*.localhost/*`,                  // any localhost subdomain (port 80)
         `http://*.localhost:5173/*`,             // any localhost subdomain on 5173
@@ -213,7 +215,7 @@ async function createPortalClient(kc: KeycloakAdmin, token: string, a: Args): Pr
       ...(a.piIp ? [`https://portal.${a.slug}.${a.piIp}.nip.io/*`] : []),
       // Local Docker / dev (mai in produzione: H-46)
       ...(a.production ? [] : [
-        `http://portal.${a.slug}.localhost/*`,       // nginx-dev on port 80
+        `http://portal.${a.slug}.localhost/*`,       // front-door nginx, porta 80
         `http://portal.${a.slug}.localhost:5174/*`,  // portal container direct
         `http://*.localhost/*`,                      // any localhost subdomain (port 80)
         `http://*.localhost:5174/*`,                 // any localhost subdomain on 5174

@@ -27,6 +27,7 @@ import neo4j from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
 import { resolveTenantArg, requireConfirmFlag, refuseInProduction } from './lib/scriptArgs.js'
 import { getInitialStepName } from '../lib/workflowHelpers.js'
+import { runScript } from './lib/runScript.js'
 
 async function run(session: ReturnType<typeof getSession>, tenantId: string, label: string, cypher: string, params: Record<string, unknown> = {}) {
   console.log(`  → ${label}`)
@@ -209,7 +210,8 @@ async function main() {
   }
 
   console.log('\n✓ Tutti gli scenari creati. Avvia lo scanner per rilevare le anomalie.')
-  process.exit(0)
 }
 
-main().catch(err => { console.error(err); process.exit(1) })
+// H-45: `runScript` stampa l'errore intero, mette exit code 1 e chiude il
+// driver Neo4j — senza `process.exit`, che troncava i log asincroni (pino).
+runScript('seed-anomaly-scenarios', main)

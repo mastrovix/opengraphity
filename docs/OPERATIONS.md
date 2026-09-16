@@ -138,7 +138,12 @@ Procedura consigliata per un ripristino completo:
 8. Keycloak: importare `keycloak/<realm>.json` da console admin
    (Realm settings → Action → Partial import) o via Admin API
    (`POST /admin/realms/{realm}/partialImport`). Gli **utenti non sono nel
-   backup**: Keycloak va salvato a parte (dump del suo database Postgres).
+   backup**: Keycloak va salvato a parte. In questo stack Keycloak gira con
+   `KC_DB: dev-file` (`infra/docker-compose.yml`), quindi il suo stato sta nel
+   volume `keycloak_data`, **non** in un Postgres: si salva copiando quel
+   volume a container fermo. Revisione totale · H-27: qui c'era scritto «dump
+   del suo database Postgres», e durante un restore l'operatore cercava un
+   database che non c'è.
 9. Riavviare l'API; il worker embedding ricrea l'indice vettoriale e ricalcola
    gli embedding mancanti (`backfill-embeddings` se serve).
 
@@ -185,6 +190,18 @@ Come funziona:
 - `checksum` = sha256 del sorgente normalizzato di `up`. `--status` segnala
   il *drift* (codice cambiato dopo l'applicazione): informativo, non rieseguito.
 
+> **I tre drift che ci sono già** (revisione totale · H-16).
+> `20260908_1000_workflow_step_metadata`,
+> `20260908_1010_ci_configuration_item_label` e
+> `20260917_1810_ci_lifecycle_semantics` sono state modificate dopo essere
+> state applicate: `--status` le segnala e **non** vanno riapplicate. La 1010
+> è quella con una conseguenza sui dati: la sua prima versione metteva
+> `:ConfigurationItem` anche sui nodi dei tipi ITIL (che hanno una
+> `neo4j_label`), quindi su un database migrato l'8 settembre i ticket
+> risultavano anche CI — ricerca globale con doppioni e stati degli incident
+> raccolti nel vocabolario `ci_status`. La toglie la migrazione
+> `20261002_1070_remove_ci_label_from_tickets`.
+
 **Aggiungere una migrazione**
 
 1. Creare `migrations/YYYYMMDD_HHMM_nome.ts` che esporta un `Migration`
@@ -207,10 +224,23 @@ dell'amministratore mostra `migrations_pending`. Con
 uno schema che non corrisponde al codice (default `false`: il deploy in due
 tempi descritto in §8 resta possibile). Lo stato è letto con una cache di 60 s.
 
+L'**healthcheck del container** interroga `GET /health/live`, non `/health`
+(revisione totale · H-48): `/health/live` dice solo se il processo è vivo e se
+Neo4j e Redis rispondono, e ignora le migrazioni. Prima il container usava
+`/health`, quindi nel mezzo del deploy in due tempi `docker compose ps`
+mostrava l'API `unhealthy` come se fosse caduta. Per l'operatore la sonda
+resta `/health`: è lei che dice `pendingMigrations`.
+
 **Rollback** = nuova migrazione che inverte la precedente (mai modificare
 una migrazione applicata: verrebbe ignorata e segnalata come drift).
 
 Migrazioni presenti:
+
+> Questa tabella NON è l'elenco delle migrazioni: ne commenta una ventina,
+> quelle con un seguito operativo. L'elenco vero — oggi 94 — è
+> `apps/api/src/scripts/migrations/index.ts`, e quello applicato lo dice
+> `migrate --status`. Revisione totale · H-27: la tabella si leggeva come
+> completa.
 
 | id | Cosa fa |
 |---|---|
@@ -255,9 +285,18 @@ collegato reali riceverebbero email e digest. Prima di collegare un provider rea
 ambiente con dati demo:
 
 ```cypher
-MATCH (u:User {tenant_id: $tenant}) WHERE u.email ENDS WITH '@example.com' OR u.id STARTS WITH 'USR-'
+MATCH (u:User {tenant_id: $tenant})
+WHERE u.email ENDS WITH '@demo.opengrafo.io' OR u.email ENDS WITH '@demo.opengraphity.io' OR u.email ENDS WITH '@example.com'
 SET u.notifications_enabled = false
 ```
+
+> Revisione totale · H-18: la query di prima cercava `@example.com` o
+> `u.id STARTS WITH 'USR-'` e **non prendeva nessun utente dei seed**. Le
+> e-mail finiscono in `@demo.opengrafo.io` (`seed-users-bulk`, 700 utenti) o
+> `@demo.opengraphity.io` (`seed-users`, 10 utenti); `USR-nnn` e il **nome**,
+> non l'id (gli id sono UUID o `user-00n`). Chi la eseguiva e poi collegava
+> Resend spediva il digest a 710 indirizzi inventati.
+
 
 e verificare chi resta abilitato:
 `MATCH (u:User) WHERE coalesce(u.notifications_enabled, true) RETURN u.tenant_id, u.email`.
@@ -311,7 +350,7 @@ regole, matrici o workflow) e dice quale migrazione li completa.
 | `KEYCLOAK_ADMIN_PASSWORD` | `onboard-tenant`, `add-user`, `createUser` GraphQL, export realm nel backup | Cambiarla in Keycloak (utente admin del realm `master`) e nell'env dell'API. Fino ad allora: creazione utenti 500 e **backup notturno fallito** (Keycloak auth fallita) — voluto. Le sessioni degli utenti finali non sono toccate. |
 | `DISCOVERY_ENCRYPTION_KEY` (64 hex = 32 byte) | credenziali dei connettori discovery cifrate at rest (`packages/discovery/src/encryption.ts`) | **Non ruotabile a caldo**: le credenziali salvate con la vecchia chiave non sono più decifrabili (sync in errore `Decryption failed: invalid key or corrupted data`). Procedura: annotare le credenziali di ogni `SyncSource` (dalle console dei provider, non sono esportabili in chiaro), cambiare chiave, reinserirle dall'UI. Non perderla: il backup contiene solo il cifrato. |
 | `NEO4J_PASSWORD` | tutto | `ALTER CURRENT USER SET PASSWORD` in Neo4j, poi env di API/worker e riavvio. Con la password vecchia l'API non parte (fail-fast del driver). |
-| `KEYCLOAK_CLIENT_SECRET` (portal) | portale self-service | Rigenerare in Keycloak → client `opengrafo-portal` e aggiornare l'env del portale. |
+| ~~`KEYCLOAK_CLIENT_SECRET` (portal)~~ | — | **Non esiste** (revisione totale · H-27): il client `opengrafo-portal` è un client **pubblico** (`publicClient: true`, `onboard-tenant.ts`), come quello del web: un'applicazione che gira nel browser non può tenere un segreto. Non c'è niente da ruotare; chi lo cercava durante una rotazione cercava una cosa che il prodotto non ha. |
 | `METRICS_TOKEN` | `GET /metrics` da Prometheus | Aggiornare lo scrape config; senza token l'endpoint resta accessibile solo da reti private. |
 
 Regola generale: i segreti si cambiano in un solo deploy (env + servizio),
@@ -538,7 +577,7 @@ subito.
 
 | id | Cosa fa |
 |---|---|
-| `20260909_1000_event_management_bootstrap` | ondata 1: constraint/indici su `Event`/`CIAlias`, prima scrittura di `event_policy` (difettosa sui tenant senza nodo `:Tenant`, corretta dalla 1010) |
+| `20260909_1000_event_management_bootstrap` | ondata 1: `status_source = 'manual'` sui CI che avevano già uno stato, prima scrittura di `event_policy` (difettosa sui tenant senza nodo `:Tenant`, corretta dalla 1010). Revisione totale · H-27: qui c'era scritto «constraint/indici su `Event`/`CIAlias`», che questa migrazione non crea — constraint e indici stanno in `packages/neo4j/src/init.ts` (`migrate --init-schema`), che è la loro sorgente unica |
 | `20260909_1010_event_management_fixup` | rimuove `status_source` dai CI (la salute vive in `ci.health`), crea i nodi `:Tenant` mancanti dai `tenant_id` degli utenti, scrive la policy predefinita dove manca |
 | `20260909_1020_event_management_notification_rules` | regole di notifica `event.received/resolved/orphan`, `ci.health_changed` su ogni tenant; `max_users/max_ci` interi |
 | `20260909_1030_event_management_correlation_rules` | regole `event.suppressed/correlated`; `Event.correlation = 'none'` dove assente |

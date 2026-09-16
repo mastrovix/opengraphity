@@ -414,7 +414,8 @@ export function ProblemDetailPage() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <Select value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
+                    {/* F-36: la Select ha un nome accessibile (era senza etichetta). */}
+                    <Select aria-label={t('detail.assignedTeam')} value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
                       <option value="">{t('detail.selectTeam')}</option>
                       {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                     </Select>
@@ -455,7 +456,7 @@ export function ProblemDetailPage() {
                   const teamUsers = users.filter((u) => u.teams?.some((tm) => tm.id === problem.assignedTeam!.id))
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <Select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
+                      <Select aria-label={t('detail.assignee')} value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
                         <option value="">{t('detail.selectUser')}</option>
                         {teamUsers.map((u) => (
                           <option key={u.id} value={u.id}>{u.name}</option>

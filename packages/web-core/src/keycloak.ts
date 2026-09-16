@@ -43,13 +43,23 @@ function describeCause(err: unknown): string {
   return String(err)
 }
 
+/**
+ * I messaggi di questo file sono in INGLESE (revisione totale · H-34).
+ *
+ * Erano in italiano fisso e finiscono a schermo (`main.tsx`): un cliente
+ * inglese con Keycloak giu leggeva «Impossibile connettersi a Keycloak (…)».
+ * Non possono passare da i18n: succedono PRIMA che l'app esista — non c'e un
+ * tenant, quindi non c'e la sua lingua, e nemmeno le traduzioni sono caricate.
+ * La lingua del prodotto e l'inglese, e questo e il caso in cui vale senza
+ * eccezioni.
+ */
 export function createKeycloak(opts: CreateKeycloakOptions): KeycloakHandle {
   const envNames = opts.envNames ?? DEFAULT_ENV_NAMES
   let instance: Keycloak | null = null
 
   function getKeycloak(): Keycloak {
     if (!instance) {
-      throw new Error('Keycloak non inizializzato — chiama initKeycloak() prima')
+      throw new Error('Keycloak is not initialized — call initKeycloak() first')
     }
     return instance
   }
@@ -58,10 +68,10 @@ export function createKeycloak(opts: CreateKeycloakOptions): KeycloakHandle {
     const realm = opts.resolveRealm()
 
     if (!opts.url) {
-      throw new Error(`${envNames.url} non configurata — imposta la variabile nell'ambiente di build (.env.local)`)
+      throw new Error(`${envNames.url} is not configured — set it in the build environment (.env.local)`)
     }
     if (!opts.clientId) {
-      throw new Error(`${envNames.clientId} non configurata — imposta la variabile nell'ambiente di build (.env.local)`)
+      throw new Error(`${envNames.clientId} is not configured — set it in the build environment (.env.local)`)
     }
 
     const kc = new Keycloak({ url: opts.url, realm, clientId: opts.clientId })
@@ -76,8 +86,8 @@ export function createKeycloak(opts: CreateKeycloakOptions): KeycloakHandle {
       return authenticated
     } catch (err) {
       throw new Error(
-        `Impossibile connettersi a Keycloak (${opts.url}) per il realm "${realm}": ${describeCause(err)}. ` +
-        `Verifica che il realm esista e che Keycloak sia raggiungibile.`,
+        `Cannot reach Keycloak (${opts.url}) for realm "${realm}": ${describeCause(err)}. ` +
+        `Check that the realm exists and that Keycloak is reachable.`,
         { cause: err },
       )
     }

@@ -94,7 +94,21 @@ export function AssistantPage() {
         for (const line of block.split('\n')) {
           if (line.startsWith('event: ')) event = line.slice(7).trim()
           else if (line.startsWith('data: ')) {
-            const data = JSON.parse(line.slice(6)) as { delta?: string; name?: string; text?: string; message?: string }
+            /**
+             * Una riga che non si legge NON interrompe la conversazione
+             * (revisione totale · F-18): il `JSON.parse` era nudo, quindi un
+             * frame spezzato al confine del chunk faceva salire un'eccezione
+             * generica e la risposta si fermava a metà, con un errore in
+             * console e niente a schermo. Si salta quella riga e si continua:
+             * lo stream porta il testo a pezzi, e perderne uno è meglio che
+             * perdere tutto.
+             */
+            let data: { delta?: string; name?: string; text?: string; message?: string }
+            try {
+              data = JSON.parse(line.slice(6)) as typeof data
+            } catch {
+              continue
+            }
             if (event === 'text' && data.delta) { acc += data.delta; setStreamText(acc) }
             else if (event === 'tool' && data.name) setActiveTools(prev => [...prev, data.name!])
             else if (event === 'done') {

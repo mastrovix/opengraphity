@@ -248,7 +248,9 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   // I ruoli li legge chi assegna ruoli alle persone e chi indirizza notifiche «per ruolo».
   { anyOf: ['admin.users', 'config.notifications', 'config.workflow', 'config.automation'], query: ['roles'] },
-  { anyOf: ['admin.audit'], query: ['logs', 'auditLog', 'auditActions'] },
+  // `auditEntityTypes`: i tipi di entità presenti nel registro, per il filtro
+  // della pagina Audit Log (revisione totale · G-20). Stesso permesso del resto.
+  { anyOf: ['admin.audit'], query: ['logs', 'auditLog', 'auditActions', 'auditEntityTypes'] },
   {
     anyOf: ['admin.system'],
     query: ['tenantProvisioningGaps', 'configurationIssues', 'queueStats', 'queueJobs', 'systemHealth', 'systemMetrics', 'traceInfo'],

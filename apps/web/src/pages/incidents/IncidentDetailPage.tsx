@@ -139,6 +139,8 @@ interface Incident {
   slaStatus:            SlaStatusInfo | null
   /** Allarmi di monitoraggio correlati (Event Management, ondata 3). */
   correlatedEvents:     EventRow[]
+  /** Quanti sono in TUTTO: `correlatedEvents` e paginato (revisione totale · G-EVT-11). */
+  correlatedEventCount: number
   correlatedEventsPurged: number
   /** Servizi monitorati collegati all'incident (Servizi monitorati, ondata 3). */
   impactedServices:     ImpactedServiceRef[]
@@ -777,7 +779,7 @@ export function IncidentDetailPage() {
           />
 
           {/* Allarmi di monitoraggio correlati (aperti/agganciati dalla policy eventi) */}
-          <MonitoringAlarmsSection events={incident.correlatedEvents} purged={incident.correlatedEventsPurged} incidentId={incident.id} />
+          <MonitoringAlarmsSection events={incident.correlatedEvents} total={incident.correlatedEventCount} purged={incident.correlatedEventsPurged} incidentId={incident.id} />
 
           {/* Servizi monitorati collegati (visibile solo se ce n'è almeno uno) */}
           <ImpactedServicesSection services={incident.impactedServices} />

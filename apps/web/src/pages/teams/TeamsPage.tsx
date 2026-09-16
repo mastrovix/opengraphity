@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { InvalidFilterNotice } from '@/components/InvalidFilterNotice'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -124,6 +125,8 @@ export function TeamsPage() {
 
   return (
     <PageContainer>
+      {/* F-17: un filtro dell'URL illeggibile si dice, non si ignora. */}
+      <InvalidFilterNotice show={list.filtersInvalid} />
       <ListPageHeader
         icon={<UsersRound size={22} color="var(--color-icon-accent)" />}
         title={t('pages.teams.title')}

@@ -21,7 +21,14 @@ export function PortalLanguageSelect() {
   const { data: meData } = useQuery<{ me: { language: string | null } | null }>(GET_ME)
   const { data: settings } = useQuery<{ tenantLanguageSettings: { available: string[]; defaultLanguage: string | null } }>(GET_TENANT_LANGUAGE_SETTINGS, { fetchPolicy: 'cache-first' })
   const [save, { error }] = useMutation(SET_MY_LANGUAGE, { refetchQueries: [GET_ME] })
-  const available = settings?.tenantLanguageSettings.available ?? ['en', 'it']
+  /**
+   * Le lingue le decide l'ORGANIZZAZIONE (revisione totale · H-40): qui c'era
+   * un ripiego `['en', 'it']` che, finche la query non rispondeva, offriva
+   * lingue che l'organizzazione potrebbe non aver abilitato — un fallback
+   * silenzioso, contro la regola. Senza risposta il menu offre solo «lingua
+   * dell'organizzazione», che e sempre vera.
+   */
+  const available = settings?.tenantLanguageSettings.available ?? []
   const current = meData?.me?.language ?? ORGANIZATION
 
   const onChange = async (value: string) => {

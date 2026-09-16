@@ -12,6 +12,7 @@
  * dopo il salvataggio mostra il problema invece di sembrare a posto.
  */
 import { useMemo, useState } from 'react'
+import { showError } from '@/lib/showError'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -149,9 +150,18 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
   const current = draft ?? settingsOf(rule)
   const set = (patch: Partial<AnomalyRuleSettings>) => setDraft({ ...current, ...patch })
   const problem = ruleDraftProblem(current, rule.spec)
+  /**
+   * La bozza si azzera QUANDO i dati nuovi sono arrivati (revisione totale ·
+   * G-ANO-9): `onCompleted` la buttava subito e il refetch non era atteso,
+   * quindi su una rete lenta la scheda diceva «salvato» e tornava a mostrare
+   * la soglia di PRIMA per qualche secondo — sembrava che il salvataggio non
+   * avesse funzionato. `awaitRefetchQueries` aspetta la risposta.
+   */
   const [save, { loading: saving }] = useMutation(UPDATE_ANOMALY_RULE, {
     refetchQueries: [GET_ANOMALY_RULES],
+    awaitRefetchQueries: true,
     onCompleted: () => { toast.success(t('pages.anomalyRules.saved')); setDraft(null) },
+    onError: (e) => showError(e),
   })
 
   const typeLabel = useMemo(() => {

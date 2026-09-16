@@ -93,6 +93,15 @@ export interface ImpactResult {
   impactScore: number
   causes:      ImpactCause[]
   /**
+   * Quanti componenti che contano sono non operativi, TUTTI
+   * (revisione totale · G-MON-6). `causes` e tagliato a
+   * SERVICE_MAX_CAUSES = 20, quindi chi lo contava per spiegare la salute
+   * («20 componenti non operativi, meno dei 25 previsti») diceva un numero
+   * falso appena le cause passavano venti. E anche il numero con cui la regola
+   * `min_nodes` viene confrontata: e questo che va detto a chi legge.
+   */
+  unhealthyCount: number
+  /**
    * La salute che il servizio avrebbe SENZA le finestre di change in corso
    * (stessi nodi, `inChangeWindow` ignorato): valorizzata solo quando
    * `health = 'maintenance'`, altrimenti null. È la «sarebbe: giù» della UI.
@@ -222,6 +231,7 @@ function evaluateCore(nodes: readonly ImpactNodeInput[], rules: ServiceImpactRul
   return {
     health,
     impactScore,
+    unhealthyCount,
     causes: causes.slice(0, SERVICE_MAX_CAUSES).map(({ level: _level, ...c }) => c),
   }
 }

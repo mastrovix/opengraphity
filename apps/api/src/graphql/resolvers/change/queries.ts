@@ -18,6 +18,9 @@ import {
 } from './mappers.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { listPage } from '../../../lib/listLimit.js'
+import { buildAdvancedWhere } from '../../../lib/filterBuilder.js'
+import { getScalarFields } from '../../../lib/schemaFields.js'
+import type { GraphQLResolveInfo } from 'graphql'
 import { serviceRelPatternForTenant } from '../../../lib/ciMetamodelForTenant.js'
 
 type Session = ReturnType<typeof getSession>
@@ -135,7 +138,12 @@ export const CHANGE_SORT_WHITELIST: Record<string, string> = {
   createdAt:          'c.created_at',
 }
 
-export async function changes(_: unknown, args: { currentStep?: string; priority?: string; limit?: number; offset?: number; sortField?: string | null; sortDirection?: string | null }, ctx: GraphQLContext) {
+export async function changes(
+  _: unknown,
+  args: { currentStep?: string; priority?: string; limit?: number; offset?: number; filters?: string; sortField?: string | null; sortDirection?: string | null },
+  ctx: GraphQLContext,
+  info?: GraphQLResolveInfo,
+) {
   const { limit, offset } = listPage(args, 50)
   const sortCol = args.sortField ? CHANGE_SORT_WHITELIST[args.sortField] : undefined
   const sortDir = args.sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
@@ -146,6 +154,20 @@ export async function changes(_: unknown, args: { currentStep?: string; priority
       : ''
     const conds = ['coalesce(c.deleted, false) = false']
     if (args.priority) conds.push('c.priority = $priority')
+    /**
+     * Le change accettano i FILTRI avanzati come incident e problem
+     * (revisione totale · F-8): la ricerca della modale «collega ticket»
+     * caricava le 50 più recenti e filtrava nel browser, quindi su un tenant
+     * con trecento change cercare per codice non trovava niente. Lo stesso
+     * argomento serve all'export CSV, che ora può ripetere i filtri di
+     * schermo.
+     */
+    const params: Record<string, unknown> = {
+      tenantId: ctx.tenantId, currentStep: args.currentStep ?? null, priority: args.priority ?? null, limit, offset,
+    }
+    const allowedFields = new Set(info ? getScalarFields(info.schema, 'Change') : ['code', 'title', 'status', 'priority', 'change_type'])
+    const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowedFields, 'c') : ''
+    if (advWhere) conds.push(`(${advWhere})`)
     const priorityWhere = `WHERE ${conds.join(' AND ')}`
     const items = await runQuery<{
       props: Props
@@ -165,14 +187,14 @@ export async function changes(_: unknown, args: { currentStep?: string; priority
              properties(app)   AS appUser
       ORDER BY ${orderBy}
       SKIP toInteger($offset) LIMIT toInteger($limit)
-    `, { tenantId: ctx.tenantId, currentStep: args.currentStep ?? null, priority: args.priority ?? null, limit, offset })
+    `, params)
 
     const countRows = await runQuery<{ total: unknown }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})
       ${joinWF}
       ${priorityWhere}
       RETURN count(c) AS total
-    `, { tenantId: ctx.tenantId, currentStep: args.currentStep ?? null, priority: args.priority ?? null })
+    `, params)
 
     return {
       items: items.map((r) => ({

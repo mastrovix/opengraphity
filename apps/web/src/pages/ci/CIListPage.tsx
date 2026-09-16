@@ -42,7 +42,7 @@ interface CIItem {
 }
 
 export function CIListPage() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { typeName } = useParams<{ typeName: string }>()
   const navigate = useNavigate()
   const { getCIType, loading: metamodelLoading, error: metamodelError } = useMetamodel()
@@ -62,9 +62,14 @@ export function CIListPage() {
   const labelKey = ciTypeLabelKey(typeName)
   const ciTypeLabel = ciType?.label || (labelKey ? t(labelKey) : (typeName ?? ''))
   const baseEnums = useCIBaseEnums()
-  const newLabel = i18n.language.startsWith('it') && ciTypeLabel.match(/[aA]$/)
-    ? t('pages.cmdb.newFeminine', { type: ciTypeLabel })
-    : t('pages.cmdb.new', { type: ciTypeLabel })
+  /**
+   * NESSUNA euristica di genere (revisione totale · F-44): «finisce per A
+   * quindi è femminile» sbaglia su qualunque tipo del cliente — «Stampante»
+   * diventava «Nuovo Stampante», «Sonda» ci prendeva per caso. Il testo ora
+   * non concorda: «Aggiungi: <tipo>» vale per ogni nome, in ogni lingua, e
+   * non inventa una grammatica sui nomi che il cliente sceglie.
+   */
+  const newLabel = t('pages.cmdb.addOfType', { type: ciTypeLabel })
 
   const { queryKey, listQuery, createMutation } = useMemo(() => {
     if (!typeName) return { queryKey: '', listQuery: null, createMutation: null }

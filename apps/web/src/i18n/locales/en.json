@@ -264,7 +264,8 @@
       "noResults": "No configuration items found",
       "noResultsDesc": "The CMDB is empty. Add the first CI to get started.",
       "noCiOfType": "No {{type}}",
-      "baseEnumsUnavailable": "Status/environment values unavailable from the metamodel (base type)"
+      "baseEnumsUnavailable": "Status/environment values unavailable from the metamodel (base type)",
+      "addOfType": "Add: {{type}}"
     },
     "anomalies": {
       "title": "Anomalies",
@@ -314,7 +315,8 @@
       "resolvedReason": "Closed because",
       "resolvedByRuleDisabled": "The rule was switched off",
       "noResults": "No anomaly matches the filters",
-      "noResultsDesc": "Change or clear the filters to see the others."
+      "noResultsDesc": "Change or clear the filters to see the others.",
+      "detailStale": "This anomaly is no longer in the list: the scanner closed it, or a filter excludes it. What you see is the last reading."
     },
     "topology": {
       "title": "Topology Map",
@@ -384,7 +386,8 @@
         "notSet": "— not set —",
         "hint": "Internal: people of your organization. External: a supplier."
       },
-      "chooseType": "— Choose a type —"
+      "chooseType": "— Choose a type —",
+      "removeManagerConfirm": "Remove the manager of «{{team}}»? Escalations to the manager will have no recipient until you set a new one."
     },
     "users": {
       "title": "Users",
@@ -443,7 +446,8 @@
       "errorMessage": "Error: {{message}}",
       "unexpectedPayload": "event \"{{event}}\" with an unexpected payload",
       "invalidJson": "invalid JSON: {{message}}",
-      "noTableInAnswer": "No table found in the answer"
+      "noTableInAnswer": "No table found in the answer",
+      "documentTitle": "ITSM report"
     },
     "queueStats": {
       "title": "Job Queue",
@@ -667,7 +671,17 @@
         "queued": "queued",
         "open": "open",
         "resolved": "resolved"
-      }
+      },
+      "schedulePreset": {
+        "hourly": "Every hour",
+        "every6h": "Every 6 hours",
+        "every12h": "Every 12 hours",
+        "dailyMidnight": "Daily at midnight",
+        "custom": "Custom…",
+        "placeholder": "e.g. 0 */4 * * *"
+      },
+      "scheduleTitle": "Schedule — {{name}}",
+      "conflictsShown": "Showing {{shown}} of {{total}} conflicts: resolve these, and the rest appears."
     },
     "import": {
       "title": "Historical data import",
@@ -798,7 +812,9 @@
         "pid": "PID",
         "version": "Node.js"
       },
-      "noTraces": "No recent traces"
+      "noTraces": "No recent traces",
+      "spans_one": "{{count}} span",
+      "spans_other": "{{count}} spans"
     },
     "approvals": {
       "title": "Approvals",
@@ -902,7 +918,8 @@
       "charCount": "{{used}} / {{max}} characters",
       "chooseCategory": "Choose a category",
       "awaitingApproval": "Waiting for approval before publication:",
-      "openApprovals": "open Approvals"
+      "openApprovals": "open Approvals",
+      "colVersion": "Version"
     },
     "workflow": {
       "title": "Workflow",
@@ -918,108 +935,6 @@
       "deleteTransition": "Delete transition",
       "count_one": "{{count}} workflow",
       "count_other": "{{count}} workflows"
-    },
-    "changeCatalog": {
-      "title": "Standard Change Catalog",
-      "subtitle": "Pre-approved procedures organized by category",
-      "search": "Search catalog...",
-      "procedures": "procedures",
-      "hours": "hours",
-      "usedTimes": "Used {{count}} times",
-      "noResults": "No procedures found",
-      "createTitle": "Create Standard Change",
-      "preApproved": "This is a pre-approved Standard Change. No CAB approval required.",
-      "checklist": "Deploy Checklist",
-      "rollback": "Rollback Procedure",
-      "created": "Standard Change created from catalog",
-      "backToCatalog": "Back to catalog",
-      "defaultWorkflow": "Default (Standard Change)",
-      "ciRequired": "CI required",
-      "ciRequiredHint": "Select at least one CI to create the change",
-      "maintenanceWindow": "Maintenance window",
-      "notifyTeam": "Notify team after creation",
-      "requireConfirm": "Require completion confirmation",
-      "templateVars": "Available variables",
-      "sectionBase": "Basic Information",
-      "sectionTemplate": "Change Template",
-      "sectionCI": "Affected CIs",
-      "sectionChecklist": "Deploy Checklist",
-      "sectionOperational": "Operational Information",
-      "sectionNotifications": "Notifications",
-      "riskLow": "Low",
-      "riskMedium": "Medium",
-      "riskHigh": "High",
-      "entryNotFound": "Catalog entry not found",
-      "ciNameHint": "The {ci_name} tag is replaced with the selected CI name",
-      "filteredBy": "Filtered by"
-    },
-    "changeCatalogAdmin": {
-      "title": "Change Catalog Management",
-      "categories": "Categories",
-      "entries": "Catalog Entries",
-      "newCategory": "New category",
-      "newEntry": "New entry",
-      "deleteBlocked": "Delete entries associated with this category first",
-      "editCategory": "Edit Category",
-      "editEntry": "Edit Catalog Entry",
-      "category": "Category",
-      "selectCategory": "— Select —",
-      "name": "Name",
-      "description": "Description",
-      "icon": "Icon",
-      "iconNone": "— None —",
-      "color": "Color",
-      "riskLevel": "Risk Level",
-      "impact": "Impact",
-      "low": "Low",
-      "medium": "Medium",
-      "high": "High",
-      "critical": "Critical",
-      "titleTemplate": "Title Template",
-      "titleTemplatePlaceholder": "e.g. SSL certificate renewal for {ci_name}",
-      "descTemplate": "Description Template",
-      "defaultPriority": "Default Priority",
-      "ciTypes": "CI Types",
-      "checklistLabel": "Deploy Checklist",
-      "addStep": "Add step",
-      "stepTitle": "Step title",
-      "stepDesc": "Description (optional)",
-      "duration": "Estimated duration (hours)",
-      "downtime": "Requires Downtime",
-      "rollback": "Rollback Procedure",
-      "cancel": "Cancel",
-      "save": "Save",
-      "create": "Create",
-      "confirmDelete": "Confirm deletion",
-      "confirmDeleteCategory": "Are you sure you want to delete this category?",
-      "confirmDeleteEntry": "Are you sure you want to delete this catalog entry?",
-      "delete": "Delete",
-      "noCategories": "No categories",
-      "noEntries": "No entries in catalog",
-      "categoryCreated": "Category created",
-      "categoryUpdated": "Category updated",
-      "categoryDeleted": "Category deleted",
-      "categoryEnabled": "Category enabled",
-      "categoryDisabled": "Category disabled",
-      "entryCreated": "Entry created",
-      "entryUpdated": "Entry updated",
-      "entryDeleted": "Entry deleted",
-      "namePlaceholder": "e.g. SSL certificate update",
-      "maintenanceWindowPlaceholder": "e.g. Saturday 02:00-06:00",
-      "workflow": "Workflow",
-      "colName": "Name",
-      "colCategory": "Category",
-      "colRisk": "Risk",
-      "colDuration": "Duration",
-      "colUsage": "Uses",
-      "colStatus": "Status",
-      "colActions": "Actions",
-      "colWorkflow": "Workflow",
-      "default": "Default",
-      "enabled": "Enabled",
-      "colEntries": "Entries",
-      "nameRequired": "Name is required",
-      "nameAndCategoryRequired": "Name and category are required"
     },
     "whatIf": {
       "title": "What-if Planning",
@@ -1059,43 +974,6 @@
       "viewPath": "View path",
       "summaryImpact": "If {{target}} becomes unavailable: impacted CIs {{cis}}, services {{services}}, teams {{teams}}. Risk {{risk}}/100.",
       "summaryRemove": "If {{target}} is removed: impacted CIs {{cis}}, services {{services}}, teams {{teams}}. Risk {{risk}}/100."
-    },
-    "changeCalendar": {
-      "title": "Change Calendar",
-      "subtitle": "Scheduled changes and maintenance windows",
-      "month": "Month",
-      "week": "Week",
-      "day": "Day",
-      "today": "Today",
-      "findSlot": "Find slot",
-      "conflicts": "Conflicts",
-      "noEvents": "No changes scheduled in this period",
-      "slotDuration": "Duration (hours)",
-      "slotCIs": "Affected CIs",
-      "slotRange": "Date range",
-      "searchSlots": "Find available slots",
-      "useSlot": "Use this slot",
-      "score": "Score",
-      "more": "+ {{count}} more",
-      "dayMon": "Mon",
-      "dayTue": "Tue",
-      "dayWed": "Wed",
-      "dayThu": "Thu",
-      "dayFri": "Fri",
-      "daySat": "Sat",
-      "daySun": "Sun",
-      "monthJan": "January",
-      "monthFeb": "February",
-      "monthMar": "March",
-      "monthApr": "April",
-      "monthMay": "May",
-      "monthJun": "June",
-      "monthJul": "July",
-      "monthAug": "August",
-      "monthSep": "September",
-      "monthOct": "October",
-      "monthNov": "November",
-      "monthDec": "December"
     },
     "ci": {
       "navigationLockedWhileEditing": "Save or cancel your edits before opening another CI",
@@ -1725,7 +1603,16 @@
       "beforeWindowTitle": "Before the planned window",
       "beforeWindowBody": "The planned release window starts on {{when}}. Move the change to «{{step}}» now?",
       "beforeWindowConfirm": "Yes, move it now",
-      "riskNotAssessed": "Risk not yet assessed: priority from the change type"
+      "riskNotAssessed": "Risk not yet assessed: priority from the change type",
+      "backToChanges": "Changes",
+      "colEnvironment": "Env",
+      "colDistance": "Dist.",
+      "hops_one": "{{count}} hop",
+      "hops_other": "{{count}} hops",
+      "taskFunctional": "Functional",
+      "taskTechnical": "Technical",
+      "taskPlanning": "Planning",
+      "notesField": "Notes"
     },
     "reportSchedule": {
       "lastRun": "Last run: {{date}}",
@@ -2330,6 +2217,10 @@
     "addCIModal": {
       "owner": "Owner Group: {{name}}",
       "support": "Support Group: {{name}}"
+    },
+    "questionAdmin": {
+      "coreBadge": "CORE",
+      "inactiveBadge": "INACTIVE"
     }
   },
   "filter": {
@@ -2771,7 +2662,9 @@
       "ruleDesc": "When {{triggerField}} = {{triggerValue}} → {{action}} {{targetField}}",
       "created": "Visibility rule created",
       "updated": "Visibility rule updated",
-      "deleted": "Visibility rule deleted"
+      "deleted": "Visibility rule deleted",
+      "editRule": "Edit the rule for «{{field}}»",
+      "deleteRule": "Delete the rule for «{{field}}»"
     },
     "requirement": {
       "title": "REQUIRED FIELDS",
@@ -3744,7 +3637,8 @@
       "noChangeManagerTeam": "No team is designated Change Manager: configure one (Teams and Users) before sending the change to approval.",
       "incomplete_one": "The approval is incomplete: {{count}} requirement is still pending.",
       "incomplete_other": "The approval is incomplete: {{count}} requirements are still pending.",
-      "noPublishedStep": "The knowledge base workflow has no arrow from here to a published step: the approval cannot publish the article. Add it in the workflow designer."
+      "noPublishedStep": "The knowledge base workflow has no arrow from here to a published step: the approval cannot publish the article. Add it in the workflow designer.",
+      "transitionRefused": "The knowledge base workflow refused the transition: the article was not moved."
     },
     "fieldRule": {
       "sameField": "The field that triggers the rule and the field it acts on cannot be the same.",
@@ -4031,7 +3925,10 @@
     },
     "sort": {
       "unknownField": "{{what}}: \"{{field}}\" is not a sortable field. Sortable: {{allowed}}."
-    }
+    },
+    "sessionExpired": "Session expired — please sign in again",
+    "authRestored": "Connection to the authentication server restored",
+    "authUnreachable": "Authentication server unreachable — retrying in {{seconds}}s"
   },
   "errorBoundary": {
     "title": "Something went wrong",
@@ -4585,7 +4482,8 @@
       "searchCIPlaceholder": "CI name (min. 2 characters)",
       "searchResults": "CI search results",
       "rememberAlias": "Remember this name next time (create alias)",
-      "reevaluate": "Re-evaluate now"
+      "reevaluate": "Re-evaluate now",
+      "aliasNotPossible": "The source identifies this resource by {{kind}}: an alias can only be remembered for a hostname, an IP, an FQDN or an external id."
     },
     "detail": {
       "back": "Back to alarms",
@@ -4628,7 +4526,12 @@
         "ip": "IP",
         "fqdn": "FQDN",
         "external_id": "External ID"
-      }
+      },
+      "source": {
+        "manual": "manual",
+        "discovery": "discovery"
+      },
+      "sourceTitle": "Source: {{source}} · added on {{date}}"
     },
     "policy": {
       "title": "Event policy",
@@ -4705,7 +4608,8 @@
         "stormCooldownMinutes": "The storm ends once the rate stays below the threshold for this many minutes; later alarms return to normal correlation.",
         "ignoreLifecycleStatuses": "Alarms on CIs in these statuses open no incident and do not change the CI health: they stay in the console with the reason “lifecycle ignored”. “decommissioned” is usually enough: a retired CI the monitoring has not switched off yet must wake nobody.",
         "retiredStatuses": "A CI in these statuses does not count in the service health: it shows on the map, marked “retired”, but carries no weight and never puts the service under maintenance. Shipped default: “inactive” and “decommissioned”.",
-        "maintenanceStatuses": "A CI in these statuses is not updated by monitoring and leaves the map calculation, marked “under maintenance”. This is the CI lifecycle, not a change window. Shipped default: “maintenance”."
+        "maintenanceStatuses": "A CI in these statuses is not updated by monitoring and leaves the map calculation, marked “under maintenance”. This is the CI lifecycle, not a change window. Shipped default: “maintenance”.",
+        "highImpactDependents": "From how many dependent CIs upwards the console marks a CI as «a failure here spreads». 0 = no emphasis, only the count is shown."
       },
       "flapStableMinutes": "Stable minutes before resuming",
       "stormThresholdPerMinute": "Storm threshold (new alarms per minute)",
@@ -4716,7 +4620,8 @@
         "changeWindow": "Silence in a change window",
         "lifecycle": "CI lifecycle",
         "flapStorm": "Flapping and storms",
-        "retention": "Retention"
+        "retention": "Retention",
+        "console": "Health console"
       },
       "validation": {
         "integer": "Enter a whole number (minimum {{min}}).",
@@ -4738,7 +4643,8 @@
         "ignoreLifecycleStatuses": "No status ignored: alarms are evaluated on every CI.",
         "retiredStatuses": "No status counts as retired: every component weighs in the service health, retired ones included.",
         "maintenanceStatuses": "No status counts as maintenance: monitoring updates the health of every CI."
-      }
+      },
+      "highImpactDependents": "Dependants from which a failure spreads"
     },
     "health": {
       "operational": "Operational",
@@ -4767,7 +4673,9 @@
         "storm_no_ci": "Storm, no CI",
         "skipped_lifecycle": "Lifecycle · {{status}}",
         "skipped_lifecycleNoStatus": "Lifecycle ignored",
-        "pending": "Re-evaluating"
+        "pending": "Re-evaluating",
+        "skipped_severity": "Below threshold",
+        "none": "No incident"
       },
       "auto": {
         "opened": "Incident opened automatically by monitoring",
@@ -4867,7 +4775,10 @@
         "sources": "Sources"
       }
     },
-    "acknowledged": "Acknowledged"
+    "acknowledged": "Acknowledged",
+    "correlated": {
+      "partial": "Showing the {{shown}} most recent of {{total}}: open the console to see them all."
+    }
   },
   "monitoring": {
     "tools": {
@@ -5246,7 +5157,7 @@
       "dependents_other": "{{count}} dependents",
       "dependentsHint_one": "{{count}} CI directly depends on this one",
       "dependentsHint_other": "{{count}} CIs directly depend on this one",
-      "dependentsHigh": "At least 5 CIs depend on this one: a failure here spreads",
+      "dependentsHigh": "At least {{min}} CIs depend on this one: a failure here spreads",
       "sourceMonitoring": "Monitoring",
       "sourceMonitoringHint": "Health computed from the alarms of the monitoring sources",
       "sourceManual": "Manual",
@@ -5626,7 +5537,8 @@
         },
         "saveFailed": "Rules not saved: {{error}}. If another admin — or the automatic sync — changed the map, reload and try again.",
         "reload": "Reload",
-        "openIncidentNote": "An incident opens by itself when health reaches the threshold, and is resolved only when the service is operational again: below the threshold but still degraded, it stays open."
+        "openIncidentNote": "An incident opens by itself when health reaches the threshold, and is resolved only when the service is operational again: below the threshold but still degraded, it stays open.",
+        "overwritten": "Someone else saved the rules while you were editing them: your change was discarded and the fields now show the saved values."
       },
       "componentsEdit": {
         "changed_one": "{{count}} component changed",
@@ -5695,7 +5607,9 @@
         "autoTitle_other": "{{count}} components included automatically",
         "autoHint": "Already in the map: the sync brought them in. Exclude one and it leaves the map for good.",
         "summary_one": "+{{add}} −{{remove}} · {{count}} excluded",
-        "summary_other": "+{{add}} −{{remove}} · {{count}} excluded"
+        "summary_other": "+{{add}} −{{remove}} · {{count}} excluded",
+        "ciGone": "CI no longer in the CMDB",
+        "ciGoneHint": "This CI was deleted from the CMDB: only its reference is left in the map, so its level and role can no longer be read."
       },
       "openIncident": {
         "title": "Open incident",
@@ -5989,7 +5903,8 @@
       "requestedBy": "Requested by",
       "owner": "Owner",
       "member": "Member"
-    }
+    },
+    "removeNode": "Remove «{{node}}» from the query"
   },
   "reportChart": {
     "chartType": "Chart type",
@@ -6589,5 +6504,9 @@
     "inferred": "Counted from when the ticket was opened: the ticket is older than the assignment history.",
     "usedScheduled": "The team time starts {{start}}, when the plan's window opens · due {{deadline}}",
     "inferredTask": "Counted from when the task was created: the task is older than the assignment history."
+  },
+  "entities": {
+    "incident": "incident",
+    "problem": "problem"
   }
 }

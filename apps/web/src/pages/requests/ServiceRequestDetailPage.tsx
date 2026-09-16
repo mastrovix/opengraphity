@@ -155,9 +155,20 @@ export function ServiceRequestDetailPage() {
   }
 
   const runTransition = (instanceId: string, toStep: string, notes?: string) => {
+    /**
+     * Il toast di successo arriva SOLO se la transizione è avvenuta
+     * (revisione totale · F-3): era agganciato alla promise della mutation,
+     * che si risolve anche quando il motore rifiuta (`success: false`) —
+     * quindi una transizione bloccata da una guardia mostrava insieme
+     * l'errore e «spostato in …». L'esito lo dice `onCompleted`, che è il
+     * solo che lo conosce.
+     */
     void executeTransition({ variables: { instanceId, toStep, notes: notes?.trim() || null } })
-      // Giro del 14 set 2026 (#42): il toast ripeteva il pulsante («Evadi»), non l'esito.
-      .then(() => toast.success(t('toast.transition.movedTo', { step: stepLabel(toStep) })))
+      .then((res) => {
+        if (res.data?.executeWorkflowTransition?.success === false) return
+        // Giro del 14 set 2026 (#42): il toast dice l'esito, non il pulsante.
+        toast.success(t('toast.transition.movedTo', { step: stepLabel(toStep) }))
+      })
       .catch(() => { /* onError handles toast */ })
   }
 

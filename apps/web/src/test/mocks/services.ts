@@ -63,6 +63,8 @@ export function mapRow(over: Record<string, unknown> = {}): Record<string, unkno
     __typename: 'ServiceMap', id: 'map-1', name: 'Enterprise Billing', status: 'active', health: 'degraded',
     healthIfActive: null,
     healthSince: HEALTH_SINCE, impactScore: 41, stale: false, staleReason: null, nodeCount: 4,
+    // G-MON-6: quanti componenti sono non operativi in tutto (le cause sono tagliate a 20).
+    unhealthyCount: CAUSES.length,
     evaluatedAt: EVALUATED_AT, service: SERVICE, explanation: CAUSES, ...over,
   }
 }

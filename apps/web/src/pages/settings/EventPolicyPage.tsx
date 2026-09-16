@@ -130,6 +130,8 @@ interface FormState {
   stormThresholdPerMinute: number
   stormCooldownMinutes: number
   retentionDays:        number
+  /** G-MON-7: da quanti dipendenti la console della salute segna «si propaga» (0 = nessuna evidenza). */
+  highImpactDependents: number
   matchShortHostname:   boolean
   /** Stati del ciclo di vita ignorati dagli allarmi (D6.3): sempre nell'ordine del vocabolario, così il confronto con i valori letti è stabile. */
   ignoreLifecycleStatuses: string[]
@@ -155,6 +157,8 @@ type NumberField = { [K in keyof FormState]: FormState[K] extends number ? K : n
 const MIN: Record<NumberField, number> = {
   openDelaySeconds: 0, suppressUpstreamHops: 0, stormThresholdPerMinute: 0,
   flapThreshold: 1, flapWindowMinutes: 1, flapStableMinutes: 1, stormCooldownMinutes: 1, retentionDays: 1,
+  // 0 = nessuna evidenza nella console: e una scelta, non un errore.
+  highImpactDependents: 0,
 }
 
 const NUMBER_FIELDS = Object.keys(MIN) as NumberField[]
@@ -182,6 +186,7 @@ function toForm(p: EventPolicy): { form: FormState; mapError: string | null } {
       flapWindowMinutes: p.flapWindowMinutes, flapStableMinutes: p.flapStableMinutes,
       stormThresholdPerMinute: p.stormThresholdPerMinute, stormCooldownMinutes: p.stormCooldownMinutes,
       retentionDays: p.retentionDays,
+      highImpactDependents: p.highImpactDependents,
       matchShortHostname: p.matchShortHostname,
       ignoreLifecycleStatuses: [...p.ignoreLifecycleStatuses],
       retiredStatuses:     [...p.retiredStatuses],
@@ -194,7 +199,7 @@ function toForm(p: EventPolicy): { form: FormState; mapError: string | null } {
 
 const HOW_IT_WORKS = ['threshold', 'grouping', 'autoResolve', 'changeWindow', 'lifecycle', 'flapping', 'storm'] as const
 
-type GroupName = 'recognition' | 'incidents' | 'changeWindow' | 'lifecycle' | 'flapStorm' | 'retention'
+type GroupName = 'recognition' | 'incidents' | 'changeWindow' | 'lifecycle' | 'flapStorm' | 'retention' | 'console'
 
 /**
  * Riquadro titolato: un <fieldset> per gruppo. A livello di modulo (non
@@ -314,6 +319,7 @@ export function EventPolicyPage() {
         flapWindowMinutes: form.flapWindowMinutes, flapStableMinutes: form.flapStableMinutes,
         stormThresholdPerMinute: form.stormThresholdPerMinute, stormCooldownMinutes: form.stormCooldownMinutes,
         retentionDays: form.retentionDays,
+        highImpactDependents: form.highImpactDependents,
         matchShortHostname: form.matchShortHostname,
         ignoreLifecycleStatuses: form.ignoreLifecycleStatuses,
         retiredStatuses:     form.retiredStatuses,
@@ -570,6 +576,14 @@ export function EventPolicyPage() {
         <Group name="retention">
           <div className={grid}>
             {numberField('retentionDays')}
+          </div>
+        </Group>
+
+        {/* 5. Console della salute (revisione totale · G-MON-7): la soglia
+            «un guasto qui si propaga» era il numero 5 scritto nel web. */}
+        <Group name="console">
+          <div className={grid}>
+            {numberField('highImpactDependents')}
           </div>
         </Group>
 

@@ -288,7 +288,13 @@ export function changeSDL(): string {
   }
 
   extend type Query {
-    changes(currentStep: String, priority: String, limit: Int, offset: Int, sortField: String, sortDirection: String): ChangeList!
+    """
+    «filters»: il JSON del costruttore di filtri, come per incident e problem
+    (revisione totale · F-8). Serve alla ricerca della modale «collega
+    ticket», che prima caricava le 50 più recenti e filtrava nel browser, e
+    all'export CSV, che ora ripete i filtri di schermo.
+    """
+    changes(currentStep: String, priority: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): ChangeList!
     change(id: ID!): Change
     changeAffectedCIs(changeId: ID!): [ChangeAffectedCI!]!
     changeAuditTrail(changeId: ID!): [ChangeAuditEntry!]!

@@ -38,6 +38,7 @@ import { GET_EVENT, GET_EVENT_POLICY } from '@/graphql/queries'
 import { formatDateTime, timeAgo } from '@/lib/datetime'
 import { ciPath } from '@/lib/ciPath'
 import { ciTypeLabelKey, enumLabel } from '@/lib/ciEnums'
+import { useListReturn } from '@/lib/listReturn'
 import { colors } from '@/lib/tokens'
 import { TINT_NEUTRAL } from '@/lib/eventPalette'
 import { ToolBadge } from '@/pages/monitoring/monitoringShared'
@@ -56,6 +57,7 @@ export function EventDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { goBack: goBackToList } = useListReturn('/events')
   const { can } = useMe()
   const { ciTypes } = useMetamodel()
   const { statusLabel } = useCILabels()
@@ -94,7 +96,8 @@ export function EventDetailPage() {
   return (
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
-        <button type="button" onClick={() => navigate('/events')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
+        {/* G-EVT-13: torna alla console con i filtri con cui ci si era arrivati. */}
+        <button type="button" onClick={goBackToList} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
           <ArrowLeft size={14} aria-hidden="true" />
           {t('events.detail.back')}
         </button>

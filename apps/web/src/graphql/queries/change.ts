@@ -2,8 +2,8 @@ import { gql } from '@apollo/client'
 import { EVENT_ROW_FIELDS, CUSTOM_FIELD_VALUE_FIELDS } from '../fragments'
 
 export const GET_CHANGES = gql`
-  query GetChanges($currentStep: String, $priority: String, $limit: Int, $offset: Int, $sortField: String, $sortDirection: String) {
-    changes(currentStep: $currentStep, priority: $priority, limit: $limit, offset: $offset, sortField: $sortField, sortDirection: $sortDirection) {
+  query GetChanges($currentStep: String, $priority: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
+    changes(currentStep: $currentStep, priority: $priority, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
         id
@@ -51,6 +51,7 @@ export const GET_CHANGE = gql`
       resolvesProblems { id number title status priority removable }
       approvals { kind teamId teamName status approvedByName approvedAt canApprove onBehalf }
       suppressedEvents { ...EventRowFields }
+      suppressedEventCount
       customFields { ...CustomFieldValueFields }
     }
   }

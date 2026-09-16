@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 // G-ANO-6: la severità delle anomalie è una scala del prodotto, non il vocabolario del cliente.
@@ -22,12 +22,20 @@ export function Field({ label, value }: { label: string; value: string }) {
 
 export function DetailPanel({
   anomaly,
+  stale = false,
   onClose,
   onResolve,
   loading,
   resolveError,
 }: {
   anomaly: Anomaly
+  /**
+   * L'anomalia non è più nell'elenco caricato (revisione totale · G-ANO-10):
+   * lo scan l'ha chiusa, o un filtro l'ha esclusa. Il pannello mostra i dati
+   * dell'ultima lettura e non offre più «Risolvi», che sovrascriverebbe una
+   * chiusura automatica.
+   */
+  stale?: boolean
   onClose: () => void
   onResolve: (id: string, resolutionStatus: string, note: string) => void
   loading: boolean
@@ -35,19 +43,43 @@ export function DetailPanel({
 }) {
   const { t } = useTranslation()
   const [showForm, setShowForm] = useState(false)
+  /**
+   * G-ANO-13: il pannello è un dialogo — si annuncia, prende il fuoco e si
+   * chiude con Escape. Prima era un `div` fisso: da tastiera non veniva
+   * annunciato e non si poteva chiudere senza mouse. E sotto i 700px occupava
+   * quasi tutta la pagina: ora la larghezza si adatta.
+   */
+  const panelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    panelRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
 
-  const isOpen = anomaly.status === 'open'
+  const isOpen = anomaly.status === 'open' && !stale
 
   return (
-    <div style={{
-      position: 'fixed', top: 0, right: 0, bottom: 0,
-      width: 420, background: 'var(--surface)',
-      borderLeft: '1px solid var(--border)',
-      boxShadow: `-4px 0 24px ${alpha.black08}`,
-      zIndex: 100,
-      overflowY: 'auto',
-      padding: 24,
-    }}>
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={anomalyTitle(t, anomaly)}
+      tabIndex={-1}
+      style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0,
+        width: 'min(420px, 100vw)', background: 'var(--surface)',
+        borderLeft: '1px solid var(--border)',
+        boxShadow: `-4px 0 24px ${alpha.black08}`,
+        zIndex: 100,
+        overflowY: 'auto',
+        padding: 24,
+      }}>
+      {stale && (
+        <p role="status" style={{ margin: '0 0 12px', fontSize: 'var(--font-size-table)', color: 'var(--color-warning-text)' }}>
+          {t('pages.anomalies.detailStale')}
+        </p>
+      )}
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 16 }}>
         <div style={{ flex: 1 }}>
@@ -88,8 +120,10 @@ export function DetailPanel({
         {anomaly.resolutionNote && (
           <Field label={t('common.note')} value={anomaly.resolutionNote} />
         )}
-        {anomaly.resolvedBy && (
-          <Field label={t('common.resolvedBy')} value={anomaly.resolvedBy} />
+        {/* G-ANO-8: il nome, non l'UUID. Se chi l'ha risolta non è più un
+            utente del tenant la riga non compare affatto. */}
+        {anomaly.resolvedByName && (
+          <Field label={t('common.resolvedBy')} value={anomaly.resolvedByName} />
         )}
       </div>
 

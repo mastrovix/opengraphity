@@ -8,7 +8,7 @@ import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { CREATE_CHANGE } from '@/graphql/mutations'
-import { GET_CHANGES, GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT, GET_PRE_APPROVED_CHANGE_TYPES, GET_CI_GROUPS_BY_ID } from '@/graphql/queries'
+import { GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT, GET_PRE_APPROVED_CHANGE_TYPES, GET_CI_GROUPS_BY_ID } from '@/graphql/queries'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
@@ -105,7 +105,9 @@ export function CreateChangePage() {
   useEffect(() => {
     if (requestSource && !prefilled) {
       setSelectedCIs((requestSource.affectedCIs ?? []).map((ci) => ({ id: ci.id, name: ci.name, type: ci.type, environment: ci.environment, ownerGroup: ci.ownerGroup, supportGroup: ci.supportGroup })))
-      const label = requestSource.kind === 'problem' ? 'problem' : 'incident'
+      // F-27: il tipo si traduce («Risolvi problem PRB…» in un'interfaccia
+      // italiana era il valore grezzo interpolato nel titolo).
+      const label = t(requestSource.kind === 'problem' ? 'entities.problem' : 'entities.incident')
       setTitle(t('pages.createChange.resolutionTitle', { kind: label, number: requestSource.number, title: requestSource.title }))
       setPrefilled(true)
     }
@@ -127,7 +129,15 @@ export function CreateChangePage() {
     .filter(ci => !selectedCIs.find(s => s.id === ci.id))
 
   const [createChange, { loading }] = useMutation<{ createChange: { id: string; code: string } }>(CREATE_CHANGE, {
-    refetchQueries: [{ query: GET_CHANGES, variables: { phase: null, limit: 50, offset: 0 } }],
+    /**
+     * Il refetch per NOME dell'operazione (revisione totale · F-14):
+     * `[{ query: GET_X }]` senza variabili rinfresca solo la voce di cache
+     * SENZA variabili, che nessuna lista usa (tutte passano limite, pagina e
+     * filtri) — quindi dopo una creazione l'elenco restava quello di prima.
+     * Col nome, Apollo rinfresca ogni query attiva con quel nome, qualunque
+     * siano le sue variabili.
+     */
+    refetchQueries: ['GetChanges'],
     onCompleted: (data) => {
       toast.success(t('toast.change.created', { code: data.createChange.code }))
       navigate(`/changes/${data.createChange.id}`, { state: { refresh: true } })
@@ -181,7 +191,10 @@ export function CreateChangePage() {
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  })
+    // F-26: l'array di dipendenze mancava, quindi l'effetto si ri-registrava a
+    // OGNI render — due ascoltatori aggiunti e togliati a ogni digitazione nel
+    // form. Dipende solo da quanti CI sono senza gruppo.
+  }, [ciWithoutGroups.length])
   const canSubmit = title.trim() !== '' && why.trim() !== '' && what.trim() !== '' && changeType !== '' && selectedCIs.length > 0 && ciWithoutGroups.length === 0 && !loading
 
   const handleSubmit = () => {

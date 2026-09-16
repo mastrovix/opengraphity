@@ -13,8 +13,6 @@ import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin
 import { ApolloServerPluginLandingPageDisabled } from '@apollo/server/plugin/disabled'
 import { expressMiddleware } from '@apollo/server/express4'
 import type { GraphQLRequestContextDidEncounterErrors } from '@apollo/server'
-import type { ValidationRule } from 'graphql'
-import { GraphQLError } from 'graphql'
 import { buildContext, type GraphQLContext } from './context.js'
 import { getSchemaForTenant, getSchemaState } from './lib/schemaCache.js'
 import { healthRouter } from './rest/health.js'
@@ -33,6 +31,7 @@ import { webhookInboundRouter } from './rest/webhooks-inbound.js'
 import { v1Router } from './rest/v1/index.js'
 import { logger, httpLogger, graphqlLogger } from './lib/logger.js'
 import { maskDriverError } from './lib/maskInternalErrors.js'
+import { depthLimit, fieldCountLimit } from './lib/queryLimits.js'
 import { graphqlRateLimiterPlugin } from './middleware/graphqlRateLimiter.js'
 import { metricsMiddlewareWithRpm, metricsHandler, graphqlMetricsPlugin } from './middleware/metrics.js'
 import { startGraphQLSpan, updateActiveSpanName, type GraphQLSpanHandle } from './telemetry.js'
@@ -40,71 +39,6 @@ import http from 'http'
 
 const PORT = config.port
 
-// ── GraphQL depth limit (inline, no external dependency) ─────────────────────
-
-interface SelectionSetNode { selections: unknown[] }
-interface FieldLikeNode { selectionSet?: SelectionSetNode }
-
-function getDepth(node: FieldLikeNode, current: number): number {
-  if (!node.selectionSet) return current
-  return Math.max(
-    ...node.selectionSet.selections.map((sel) =>
-      getDepth(sel as FieldLikeNode, current + 1),
-    ),
-  )
-}
-
-function depthLimit(maxDepth: number): ValidationRule {
-  return (context) => ({
-    Document(node) {
-      for (const def of node.definitions) {
-        if (def.kind === 'OperationDefinition') {
-          const depth = getDepth(def as unknown as FieldLikeNode, 0)
-          if (depth > maxDepth) {
-            context.reportError(
-              new GraphQLError(
-                `Query depth ${depth} exceeds maximum allowed depth of ${maxDepth}`,
-                { nodes: [def] },
-              ),
-            )
-          }
-        }
-      }
-    },
-  })
-}
-
-// Total field count across the whole operation (aliases included). Depth alone
-// does not stop breadth amplification — the same expensive field aliased N
-// times stays shallow but multiplies the work. This caps that.
-function countFields(node: FieldLikeNode): number {
-  if (!node.selectionSet) return 0
-  let total = 0
-  for (const sel of node.selectionSet.selections) {
-    total += 1 + countFields(sel as FieldLikeNode)
-  }
-  return total
-}
-
-function fieldCountLimit(maxFields: number): ValidationRule {
-  return (context) => ({
-    Document(node) {
-      for (const def of node.definitions) {
-        if (def.kind === 'OperationDefinition') {
-          const count = countFields(def as unknown as FieldLikeNode)
-          if (count > maxFields) {
-            context.reportError(
-              new GraphQLError(
-                `Query selects ${count} fields, exceeding the maximum of ${maxFields}`,
-                { nodes: [def] },
-              ),
-            )
-          }
-        }
-      }
-    },
-  })
-}
 
 // ── Express app ──────────────────────────────────────────────────────────────
 

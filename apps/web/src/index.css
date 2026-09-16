@@ -224,6 +224,16 @@
   --color-vendor-dynatrace:  #1496ff;
   --color-vendor-slack:      #4a154b;
   --color-vendor-teams:      #464eb8;
+
+  /*
+    LA FRECCIA DELLE SELECT, qui e non nei sorgenti (revisione totale · F-35):
+    era un data-URI SVG con l'esadecimale `%238892a4` scritto in tre file
+    TypeScript — fuori dai token e invisibile al lint, perché codificato. Un
+    cambio di palette lasciava la freccia del vecchio grigio. Il colore del
+    tratto è lo stesso `--text-muted` di tutti i segni secondari; se cambia,
+    si cambia qui.
+  */
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
 @theme inline {

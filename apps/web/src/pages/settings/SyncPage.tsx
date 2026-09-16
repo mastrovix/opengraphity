@@ -74,6 +74,9 @@ export function SyncPage() {
           conflicts={hook.conflicts}
           loading={hook.conflictsLoading}
           onResolveConflict={hook.handleResolveConflict}
+          total={hook.conflictsTotal}
+          status={hook.conflictStatus}
+          onStatusChange={hook.setConflictStatus}
         />
       )}
 

@@ -57,6 +57,8 @@ export interface ChangeData {
   approvals?:           ChangeApproval[]
   /** Allarmi silenziati dalla finestra di rilascio di questa change (Event Management, ondata 3). */
   suppressedEvents?:    EventRow[]
+  /** Quanti sono in TUTTO: `suppressedEvents` e paginato (revisione totale · G-EVT-11). */
+  suppressedEventCount?: number
 }
 
 export interface ChangeApproval {

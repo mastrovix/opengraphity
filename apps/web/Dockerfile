@@ -12,7 +12,12 @@ COPY apps/web/dist /usr/share/nginx/html
 # Inline nginx config: SPA fallback + reverse-proxy to API. Only reachable from
 # the front-door nginx and 127.0.0.1:5173; X-Forwarded-Host is still forced to
 # $host so the API never sees a client-chosen tenant header, and
-# client_max_body_size matches the API's 10 MB attachment limit.
+# client_max_body_size on /api is 101m — just above ATTACHMENT_MAX_MB_CAP
+# (default 100 MB, a per-organization setting since the attachment wave), so an
+# oversized upload is refused by the API with its own message instead of by
+# nginx with an HTML 413 (revisione totale · H-11). /graphql gets 2m, above the
+# API's own 512 kB JSON limit, for the same reason (H-21), and /api gets a
+# 600 s read timeout for CSV imports and PDF/Excel exports (H-20).
 RUN printf 'server {\n\
     listen 80;\n\
     root /usr/share/nginx/html;\n\
@@ -24,6 +29,7 @@ RUN printf 'server {\n\
     proxy_busy_buffers_size     256k;\n\
 \n\
     location /graphql {\n\
+        client_max_body_size 2m;\n\
         proxy_pass http://api:4000;\n\
         proxy_http_version 1.1;\n\
         proxy_set_header Host $host;\n\
@@ -47,7 +53,9 @@ RUN printf 'server {\n\
     }\n\
 \n\
     location /api {\n\
-        client_max_body_size 11m;\n\
+        client_max_body_size 101m;\n\
+        proxy_read_timeout 600s;\n\
+        proxy_send_timeout 600s;\n\
         proxy_pass http://api:4000;\n\
         proxy_http_version 1.1;\n\
         proxy_set_header Host $host;\n\

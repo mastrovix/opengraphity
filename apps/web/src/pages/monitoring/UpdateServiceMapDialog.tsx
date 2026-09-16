@@ -36,7 +36,7 @@ import { GET_SERVICE_MAP_PROPOSAL } from '@/graphql/queries'
 import { APPLY_SERVICE_MAP_PROPOSAL, REMOVE_SERVICE_MAP_EXCLUSION } from '@/graphql/mutations'
 import { colors, palette } from '@/lib/tokens'
 import { propagationLabel, roleLabel } from './servicesShared'
-import type { ServiceMapDetail, ServiceMapProposal } from '@/types/services'
+import { SERVICE_NODE_GONE_ADDED_BY, type ServiceMapDetail, type ServiceMapProposal } from '@/types/services'
 
 interface Props {
   map:     ServiceMapDetail
@@ -245,8 +245,20 @@ export function UpdateServiceMapDialog({ map, open, onClose }: Props) {
               {proposal.removed.map((n) => (
                 <div key={n.ci.id} style={row} data-testid="proposal-removed" data-ci-id={n.ci.id}>
                   <span style={{ fontWeight: 600, marginRight: 'auto' }}>{n.ci.name}</span>
-                  <span style={{ color: colors.slateLight, fontSize: 'var(--font-size-table)' }}>
-                    {t('monitoring.services.map.level', { level: n.level })} · {roleLabel(t, n.role)}
+                  {/**
+                    * Un CI cancellato dalla CMDB non ha piu livello ne ruolo
+                    * (revisione totale · G-MON-10): l'API risponde livello 0 e
+                    * ruolo «component» perche della mappa resta solo il suo id,
+                    * e il dialogo scriveva «Livello 0 · Componente» come se
+                    * fossero valori letti. Ora lo dice.
+                    */}
+                  <span
+                    style={{ color: colors.slateLight, fontSize: 'var(--font-size-table)' }}
+                    title={n.addedBy === SERVICE_NODE_GONE_ADDED_BY ? t('monitoring.services.update.ciGoneHint') : undefined}
+                  >
+                    {n.addedBy === SERVICE_NODE_GONE_ADDED_BY
+                      ? t('monitoring.services.update.ciGone')
+                      : `${t('monitoring.services.map.level', { level: n.level })} · ${roleLabel(t, n.role)}`}
                   </span>
                   <label style={checkLabel}>
                     <input type="checkbox" checked={remove.has(n.ci.id)} disabled={busy} aria-label={t('monitoring.services.update.removeLabel', { name: n.ci.name })} onChange={() => setRemove((s) => toggle(s, n.ci.id))} />

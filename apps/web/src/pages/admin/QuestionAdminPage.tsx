@@ -307,10 +307,10 @@ export function QuestionAdminPage() {
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     <CategoryBadge category={q.category} />
                     {q.isCore && (
-                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: colors.slateBg, color: 'var(--color-slate)' }}>CORE</span>
+                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: colors.slateBg, color: 'var(--color-slate)' }}>{t('pages.questionAdmin.coreBadge')}</span>
                     )}
                     {!q.isActive && (
-                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: palette.danger.tint, color: palette.danger.text }}>INATTIVA</span>
+                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: palette.danger.tint, color: palette.danger.text }}>{t('pages.questionAdmin.inactiveBadge')}</span>
                     )}
                   </div>
                 </button>

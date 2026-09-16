@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { pausedWhenHidden } from '@/lib/polling'
 import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -94,7 +95,8 @@ export function ChangeListPage() {
   const { data, loading, error, refetch } = useQuery<{ changes: { items: ChangeRow[]; total: number } }>(GET_CHANGES, {
     variables: { currentStep, priority: priorityFilter, limit: PAGE_SIZE, offset: page * PAGE_SIZE, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
-    pollInterval: 30_000,   // keep the list fresh without manual reload
+    // F-21: il polling si ferma quando la scheda è in background.
+    ...pausedWhenHidden(30_000),
   })
 
   useEffect(() => {
@@ -198,7 +200,11 @@ export function ChangeListPage() {
           onExport={async () => {
             const res = await apolloClient.query<{ changes: { items: ChangeRow[] } }>({
               query: GET_CHANGES,
-              variables: { currentStep, limit: 10000, offset: 0 },
+              // L'export porta gli STESSI filtri dello schermo (revisione
+              // totale · F-25): la priorità non veniva passata, quindi con
+              // «solo critical» attivo il file conteneva tutte le priorità,
+              // col nome del filtro nel titolo.
+              variables: { currentStep, priority: priorityFilter, limit: 10000, offset: 0 },
               fetchPolicy: 'network-only',
             })
             const rows = (res.data?.changes?.items ?? []).map((r) => ({

@@ -147,8 +147,18 @@ export function useCustomReports() {
     onError: (e) => showError(e),
   })
 
+  /**
+   * La vista si chiude quando il salvataggio è COMPLETO, non a metà (revisione
+   * totale · G-23): `onCompleted` faceva `setView('detail')` subito, e il
+   * salvataggio delle impostazioni è DUE mutation in fila — se la seconda
+   * (pianificazione, destinatari, formato) falliva, la scheda era già chiusa
+   * con nome e visibilità salvati e il resto no, con un toast d'errore su una
+   * pagina che non mostrava più il form. Ora chiude `handleSaveSettings`,
+   * dopo entrambe.
+   */
   const [updateTemplate, { loading: updating }] = useMutation(UPDATE_REPORT_TEMPLATE, {
-    onCompleted: () => { refetch(); setView('detail') },
+    onCompleted: () => { refetch() },
+    onError: (e) => showError(e),
   })
 
   const [deleteTemplate] = useMutation(DELETE_REPORT_TEMPLATE, {
@@ -293,6 +303,8 @@ export function useCustomReports() {
           format:     settingsFormat,
         },
       })
+      // G-23: solo qui, quando ENTRAMBE sono passate.
+      setView('detail')
     } catch (err: unknown) {
       showError(err, err instanceof Error ? err.message : t('toast.report.saveFailed'))
     }

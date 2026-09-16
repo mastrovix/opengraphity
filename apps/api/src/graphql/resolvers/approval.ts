@@ -31,6 +31,31 @@ interface ApprovalRequest {
   resolutionNote: string | null
 }
 
+/**
+ * L'ESITO della transizione conta (revisione totale · M-15).
+ *
+ * Approvazione e rifiuto di un articolo chiamavano `workflowEngine.transition`
+ * e buttavano via il risultato: se una guardia del workflow del cliente
+ * rifiutava il passaggio, l'approvazione risultava comunque concessa, la
+ * notifica diceva «pubblicato» e l'articolo restava in revisione. Il motore
+ * non lancia, RESTITUISCE l'esito — chi lo ignora sta dicendo una cosa falsa.
+ */
+function assertTransitionApplied(
+  result: { success: boolean; error?: string; errorI18n?: { key: string; params?: Record<string, string> } },
+  what: string,
+): void {
+  if (result.success) return
+  throw new GraphQLError(
+    `${what}: the knowledge base workflow refused the transition — ${result.error ?? 'no reason given'}`,
+    {
+      extensions: {
+        code: 'CONFLICT',
+        ...(result.errorI18n ? { i18n: result.errorI18n } : { i18n: { key: 'errors.approval.transitionRefused' } }),
+      },
+    },
+  )
+}
+
 function mapApproval(r: { get: (k: string) => unknown }): ApprovalRequest {
   return {
     id:             r.get('id')             as string,
@@ -394,11 +419,16 @@ export async function approveRequest(
               { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.approval.noPublishedStep' } } },
             )
           }
-          await workflowEngine.transition(
+          const applied = await workflowEngine.transition(
             session,
             { instanceId, toStepName: forward.toStep, triggeredBy: ctx.userId, triggerType: 'manual', tenantId: ctx.tenantId },
             actionCtx,
           )
+          // M-15: se il workflow rifiuta, l'articolo NON è pubblicato — e non
+          // si manda la notifica «pubblicato» né si lascia l'approvazione
+          // concessa: la mutation fallisce e la transazione dell'approvazione
+          // resta indietro, che è la cosa vera.
+          assertTransitionApplied(applied, 'The article was approved but could not be published')
         }
         sseManager.sendToUser(ctx.tenantId, requestedBy, {
           id:          uuidv4(),
@@ -507,11 +537,13 @@ export async function rejectRequest(
         const actionCtx: ActionContext = { userId: ctx.userId, entityData: { id: entityId } }
         const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
         const initialStep = await getInitialStepName(session, ctx.tenantId, 'kb_article')
-        await workflowEngine.transition(
+        const applied = await workflowEngine.transition(
           session,
           { instanceId, toStepName: initialStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: args.note, tenantId: ctx.tenantId },
           actionCtx,
         )
+        // M-15: lo stesso sul rifiuto — «rimandato in bozza» deve essere vero.
+        assertTransitionApplied(applied, 'The publication was rejected but the article could not go back to draft')
       }
       void audit(ctx, 'kb_article.publication_rejected', 'KBArticle', entityId)
     }

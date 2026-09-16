@@ -59,6 +59,7 @@ export const GET_INCIDENT = gql`
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
       # history: who opened the incident from the alarm (monitoring or an operator)
       correlatedEvents { ...EventRowFields history(limit: 20) { kind incident { id } } }
+      correlatedEventCount
       correlatedEventsPurged
       impactedServices { ...ImpactedServiceFields }
       customFields { ...CustomFieldValueFields }

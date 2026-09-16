@@ -54,7 +54,14 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
       role="button"
       tabIndex={0}
       onClick={handleClick}
-      onKeyDown={(e) => e.key === 'Enter' && handleClick()}
+      // F-36: anche la barra spaziatrice, come vuole il ruolo «button»
+      // (`role="button"` + `tabIndex` senza Space non è raggiungibile da
+      // tastiera come un pulsante vero).
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return
+        e.preventDefault()
+        handleClick()
+      }}
       style={{
         display:         'flex',
         gap:             12,
