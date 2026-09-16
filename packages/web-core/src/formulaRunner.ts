@@ -48,7 +48,19 @@ export interface FormulaEsito {
  * dice il campo, accanto al suo valore.
  */
 export async function runFormula(code: string, input: Record<string, unknown>): Promise<FormulaEsito> {
-  const vm = await contesto()
+  /**
+   * Il sandbox si carica DENTRO il try, non prima: se il wasm non parte —
+   * un CSP senza `wasm-unsafe-eval`, una rete che perde il file — l'errore
+   * deve arrivare al campo e non restare una promise rifiutata nella console.
+   * È il difetto che ha lasciato il campo calcolato vuoto nel portale: si
+   * vedeva «—», cioè «nessun valore», che è una risposta, non un guasto.
+   */
+  let vm: QuickJSContext
+  try {
+    vm = await contesto()
+  } catch (e) {
+    return { value: null, error: e instanceof Error ? e.message : String(e) }
+  }
   try {
     const risultato = vm.evalCode(`(function(){\n  const input = ${JSON.stringify(input)};\n${code}\n})()`)
     if (risultato.error) {

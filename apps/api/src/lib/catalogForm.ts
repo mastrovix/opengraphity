@@ -519,6 +519,14 @@ export async function resolveFormWrites(
   inputs: readonly FormAnswerInput[] | null | undefined,
   opts: { endUser?: boolean; draftId?: string | null; userId?: string | null; maxTableRows?: number } = {},
 ): Promise<FormWriteResult> {
+  /**
+   * La lingua di chi legge i rifiuti: le etichette dei campi entrano nei
+   * messaggi, e l'etichetta base è quella con cui il campo è nato (spesso
+   * inglese). Una lettura sola per salvataggio.
+   */
+  const lingua = await languageFor(tenantId)
+  /** L'etichetta del campo per i messaggi. */
+  const nome = (c: FormFieldDef): string => etichettaDelCampo(c, lingua)
   const answers = formAnswerMap(inputs)
   const visibili = visibleFormItems(def, answers, opts)
   const perNome = new Map(visibili.map((i) => [i.field, i]))
@@ -556,8 +564,8 @@ export async function resolveFormWrites(
      * e ignorarlo lascerebbe credere che il valore mandato conti qualcosa.
      */
     if (campo.formula) {
-      throw new ValidationError(`The field "${campo.label}" is computed: its value comes from its formula, it cannot be sent.`,
-        { key: 'errors.catalogForm.answerComputed', params: { field: campo.label } })
+      throw new ValidationError(`The field "${nome(campo)}" is computed: its value comes from its formula, it cannot be sent.`,
+        { key: 'errors.catalogForm.answerComputed', params: { field: nome(campo) } })
     }
 
     const multi = FORM_FIELD_TYPES_MULTI.includes(campo.fieldType)
@@ -567,8 +575,8 @@ export async function resolveFormWrites(
       const allowed = campo.vocabulary ? await vocabolarioDi(campo.vocabulary) : null
       for (const v of valori) {
         if (allowed && allowed.length > 0 && !allowed.includes(v)) {
-          throw new ValidationError(`"${v}" is not a value of "${campo.label}" (allowed: ${allowed.join(', ')}).`,
-            { key: 'errors.formField.notInVocabulary', params: { field: campo.label, value: v, allowed: allowed.join(', ') } })
+          throw new ValidationError(`"${v}" is not a value of "${nome(campo)}" (allowed: ${allowed.join(', ')}).`,
+            { key: 'errors.formField.notInVocabulary', params: { field: nome(campo), value: v, allowed: allowed.join(', ') } })
         }
       }
       out[input.name] = [...new Set(valori)]
@@ -587,8 +595,8 @@ export async function resolveFormWrites(
       if (ids.length > 1) {
         // Un riferimento è uno solo, per ora: accettarne due qui e scriverne
         // uno sarebbe una perdita silenziosa.
-        throw new ValidationError(`The field "${campo.label}" takes one reference, ${ids.length} were sent.`,
-          { key: 'errors.formField.oneReference', params: { field: campo.label, count: String(ids.length) } })
+        throw new ValidationError(`The field "${nome(campo)}" takes one reference, ${ids.length} were sent.`,
+          { key: 'errors.formField.oneReference', params: { field: nome(campo), count: String(ids.length) } })
       }
       await assertRiferimentoEsiste(session, tenantId, campo, ids[0]!)
       riferimenti.push({ field: campo.name, fieldType: campo.fieldType, ids })
@@ -611,7 +619,7 @@ export async function resolveFormWrites(
      * proprietà, che è il documento opaco che questo modulo evita.
      */
     if (isFormTableType(campo.fieldType)) {
-      const righe = await validaRigheTabella(campo, input.rows ?? [], vocabolarioDi, opts.maxTableRows ?? Number.POSITIVE_INFINITY)
+      const righe = await validaRigheTabella(campo, nome(campo), input.rows ?? [], vocabolarioDi, opts.maxTableRows ?? Number.POSITIVE_INFINITY)
       if (righe.length > 0) tabelle.push({ field: campo.name, rows: righe })
       continue
     }
@@ -644,8 +652,8 @@ export async function resolveFormWrites(
       if (!esito.ok) {
         // La scelta del proprietario: si RIFIUTA e si nomina la formula. Chi
         // compila non può rimediare, ma nessun ticket nasce con un dato finto.
-        throw new ValidationError(`The formula of field "${campo.label}" failed: ${esito.error}`,
-          { key: 'errors.formField.formulaFailed', params: { field: campo.label, message: esito.error } })
+        throw new ValidationError(`The formula of field "${nome(campo)}" failed: ${esito.error}`,
+          { key: 'errors.formField.formulaFailed', params: { field: nome(campo), message: esito.error } })
       }
       const valore = esito.value
       // `NaN`/`Infinity` non sono valori: sono il segno che la formula ha
@@ -682,16 +690,16 @@ export async function resolveFormWrites(
         : 0
       allegatiRichiesti.push({ field: campo.name, label: campo.label, required: obbligatorio, count: quanti })
       if (obbligatorio && quanti === 0) {
-        throw new ValidationError(`The field "${campo.label}" needs at least one file.`,
-          { key: 'errors.formField.fileRequired', params: { field: campo.label } })
+        throw new ValidationError(`The field "${nome(campo)}" needs at least one file.`,
+          { key: 'errors.formField.fileRequired', params: { field: nome(campo) } })
       }
       continue
     }
 
     if (isFormReferenceType(campo.fieldType)) {
       if (obbligatorio && !riferimenti.some((r) => r.field === campo.name)) {
-        throw new ValidationError(`The field "${campo.label}" is required.`,
-          { key: 'errors.formField.required', params: { field: campo.label } })
+        throw new ValidationError(`The field "${nome(campo)}" is required.`,
+          { key: 'errors.formField.required', params: { field: nome(campo) } })
       }
       continue
     }
@@ -700,8 +708,8 @@ export async function resolveFormWrites(
     // campo ha il suo modo di essere vuoto, e per una tabella è «zero righe».
     if (isFormTableType(campo.fieldType)) {
       if (obbligatorio && !tabelle.some((t) => t.field === campo.name && t.rows.length > 0)) {
-        throw new ValidationError(`The table "${campo.label}" needs at least one row.`,
-          { key: 'errors.formTable.rowRequired', params: { field: campo.label } })
+        throw new ValidationError(`The table "${nome(campo)}" needs at least one row.`,
+          { key: 'errors.formTable.rowRequired', params: { field: nome(campo) } })
       }
       continue
     }
@@ -712,8 +720,8 @@ export async function resolveFormWrites(
       ? isFormAnswerEmpty(answers[item.field])
       : isFormAnswerEmpty(scritto as FormAnswerValue)
     if (vuoto) {
-      throw new ValidationError(`The field "${campo.label}" is required.`,
-        { key: 'errors.formField.required', params: { field: campo.label } })
+      throw new ValidationError(`The field "${nome(campo)}" is required.`,
+        { key: 'errors.formField.required', params: { field: nome(campo) } })
     }
   }
 
@@ -728,12 +736,26 @@ export async function resolveFormWrites(
       campo.validationScript, { input: { ...out }, value: valore }, campo.name, tenantId, 'tenant',
     )
     if (rifiuto) {
-      throw new ValidationError(`The field "${campo.label}" was refused: ${rifiuto}`,
-        { key: 'errors.formField.script', params: { field: campo.label, message: rifiuto } })
+      throw new ValidationError(`The field "${nome(campo)}" was refused: ${rifiuto}`,
+        { key: 'errors.formField.script', params: { field: nome(campo), message: rifiuto } })
     }
   }
 
   return { props: out, references: riferimenti, attachmentFields: allegatiRichiesti, tables: tabelle }
+}
+
+/**
+ * L'ETICHETTA DI UN CAMPO nella lingua di chi legge il messaggio.
+ *
+ * `FormFieldDef.label` è l'etichetta base, quella con cui il campo è nato — di
+ * solito inglese. I messaggi di rifiuto la mettevano dentro così com'era, e un
+ * utente del portale in italiano leggeva «The field "Estimated cost (EUR)" was
+ * refused» — metà frase tradotta dal client, metà nome in un'altra lingua.
+ * Trovato provando dal portale, non dai test.
+ */
+export function etichettaDelCampo(campo: FormFieldDef, lingua: string | null | undefined): string {
+  if (!lingua) return campo.label
+  return campo.labels.find((l) => l.language === lingua)?.label || campo.label
 }
 
 // ── La tabella ripetibile: definizione, validazione, righe (ondata 7) ────────
@@ -893,30 +915,32 @@ export async function leggiRigheTabella(
  */
 export async function validaRigheTabella(
   campo: FormFieldDef,
+  /** L'etichetta del campo nella lingua di chi legge: la risolve il chiamante. */
+  etichetta: string,
   righe: readonly FormTableRow[],
-  vocabolarioDi: (nome: string) => Promise<readonly string[] | null>,
+  vocabolarioDi: (nomeVocabolario: string) => Promise<readonly string[] | null>,
   maxRighe: number,
 ): Promise<FormTableRow[]> {
   const def = campo.tableDefinition
   if (!def) {
-    throw new ValidationError(`The field "${campo.label}" is a table but has no columns: fix it in the field library.`,
-      { key: 'errors.formTable.noColumns', params: { field: campo.label } })
+    throw new ValidationError(`The field "${etichetta}" is a table but has no columns: fix it in the field library.`,
+      { key: 'errors.formTable.noColumns', params: { field: etichetta } })
   }
   const perNome = new Map(def.columns.map((c) => [c.name, c]))
   const piene = righe.filter((r) => !isFormTableRowEmpty(r))
   if (piene.length > maxRighe) {
-    throw new ValidationError(`The table "${campo.label}" takes at most ${maxRighe} rows, ${piene.length} were sent.`,
-      { key: 'errors.formTable.tooManyRows', params: { field: campo.label, max: String(maxRighe), count: String(piene.length) } })
+    throw new ValidationError(`The table "${etichetta}" takes at most ${maxRighe} rows, ${piene.length} were sent.`,
+      { key: 'errors.formTable.tooManyRows', params: { field: etichetta, max: String(maxRighe), count: String(piene.length) } })
   }
 
   const out: FormTableRow[] = []
   for (const [i, riga] of piene.entries()) {
     const numero = String(i + 1)
     const convertita: Record<string, string | null> = {}
-    for (const nome of Object.keys(riga)) {
-      if (!perNome.has(nome)) {
-        throw new ValidationError(`The table "${campo.label}" has no column "${nome}".`,
-          { key: 'errors.formTable.unknownColumn', params: { field: campo.label, column: nome } })
+    for (const nomeColonna of Object.keys(riga)) {
+      if (!perNome.has(nomeColonna)) {
+        throw new ValidationError(`The table "${etichetta}" has no column "${nomeColonna}".`,
+          { key: 'errors.formTable.unknownColumn', params: { field: etichetta, column: nomeColonna } })
       }
     }
     for (const colonna of def.columns) {
@@ -924,14 +948,14 @@ export async function validaRigheTabella(
       const vuoto = grezzo == null || String(grezzo).trim() === ''
       if (vuoto) {
         if (colonna.required) {
-          throw new ValidationError(`Row ${numero} of "${campo.label}": the column "${etichettaColonna(colonna)}" is required.`,
-            { key: 'errors.formTable.cellRequired', params: { field: campo.label, column: etichettaColonna(colonna), row: numero } })
+          throw new ValidationError(`Row ${numero} of "${etichetta}": the column "${etichettaColonna(colonna)}" is required.`,
+            { key: 'errors.formTable.cellRequired', params: { field: etichetta, column: etichettaColonna(colonna), row: numero } })
         }
         convertita[colonna.name] = null
         continue
       }
       const allowed = colonna.vocabulary ? await vocabolarioDi(colonna.vocabulary) : null
-      convertita[colonna.name] = String(convertiCella(campo, colonna, String(grezzo).trim(), allowed, numero))
+      convertita[colonna.name] = String(convertiCella(etichetta, colonna, String(grezzo).trim(), allowed, numero))
     }
     out.push(convertita)
   }
@@ -956,35 +980,35 @@ function etichettaColonna(colonna: FormTableColumn): string {
  * come si salva.
  */
 function convertiCella(
-  campo: FormFieldDef, colonna: FormTableColumn, testo: string,
+  etichetta: string, colonna: FormTableColumn, testo: string,
   allowed: readonly string[] | null, riga: string,
 ): string {
-  const dove = { field: campo.label, column: etichettaColonna(colonna), row: riga }
+  const dove = { field: etichetta, column: etichettaColonna(colonna), row: riga }
   switch (colonna.fieldType) {
     case 'number': {
       const n = Number(testo)
       if (!Number.isFinite(n)) {
-        throw new ValidationError(`Row ${riga} of "${campo.label}": "${testo}" is not a number for "${dove.column}".`,
+        throw new ValidationError(`Row ${riga} of "${etichetta}": "${testo}" is not a number for "${dove.column}".`,
           { key: 'errors.formTable.cellNotNumber', params: { ...dove, value: testo } })
       }
       return String(n)
     }
     case 'boolean':
       if (testo !== 'true' && testo !== 'false') {
-        throw new ValidationError(`Row ${riga} of "${campo.label}": "${dove.column}" takes true or false, got "${testo}".`,
+        throw new ValidationError(`Row ${riga} of "${etichetta}": "${dove.column}" takes true or false, got "${testo}".`,
           { key: 'errors.formTable.cellNotBoolean', params: { ...dove, value: testo } })
       }
       return testo
     case 'date': {
       if (Number.isNaN(Date.parse(testo))) {
-        throw new ValidationError(`Row ${riga} of "${campo.label}": "${testo}" is not a date for "${dove.column}".`,
+        throw new ValidationError(`Row ${riga} of "${etichetta}": "${testo}" is not a date for "${dove.column}".`,
           { key: 'errors.formTable.cellNotDate', params: { ...dove, value: testo } })
       }
       return testo
     }
     case 'enum':
       if (allowed && allowed.length > 0 && !allowed.includes(testo)) {
-        throw new ValidationError(`Row ${riga} of "${campo.label}": "${testo}" is not a value of "${dove.column}" (allowed: ${allowed.join(', ')}).`,
+        throw new ValidationError(`Row ${riga} of "${etichetta}": "${testo}" is not a value of "${dove.column}" (allowed: ${allowed.join(', ')}).`,
           { key: 'errors.formTable.cellNotInVocabulary', params: { ...dove, value: testo, allowed: allowed.join(', ') } })
       }
       return testo
