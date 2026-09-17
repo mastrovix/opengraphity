@@ -66,6 +66,23 @@ export function formatTime(iso: string | null | undefined): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString(currentLocale())
 }
 
+const ORA_MINUTO: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
+
+/**
+ * Solo ore e minuti: «06:57», non «06:57:00».
+ *
+ * `formatTime` lascia decidere al locale, e in italiano il locale mette anche i
+ * SECONDI. Su una finestra di rilascio sono rumore — si scrivono col controllo
+ * `datetime-local`, quindi sono sempre `:00` — e in una casella di calendario
+ * rubano lo spazio al codice della change (17 set 2026). Il locale resta
+ * esplicito: il browser non decide la lingua di questo prodotto.
+ */
+export function formatHourMinute(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString(currentLocale(), ORA_MINUTO)
+}
+
 /** "adesso", "5 min fa", "3 ore fa", "2 giorni fa", poi la data completa. */
 export function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()

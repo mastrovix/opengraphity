@@ -143,7 +143,8 @@
     "anomalyRules": "Regole di anomalia",
     "roles": "Ruoli",
     "loginSecurity": "Accesso e password",
-    "catalogForms": "Moduli del catalogo"
+    "catalogForms": "Moduli del catalogo",
+    "changeCalendar": "Calendario change"
   },
   "pages": {
     "incidents": {
@@ -1641,6 +1642,44 @@
       "taskTechnical": "Tecnico",
       "taskPlanning": "Pianificazione",
       "notesField": "Note"
+    },
+    "changeCalendar": {
+      "title": "Calendario delle change",
+      "subtitle": "Le finestre pianificate: cosa va in produzione, quando, e dove due change si pestano i piedi.",
+      "week": "Settimana",
+      "month": "Mese",
+      "filterAll": "Entrambi",
+      "stateAll": "Tutte",
+      "stateOpen": "In corso",
+      "stateDone": "Concluse",
+      "today": "Oggi",
+      "previous": "Periodo precedente",
+      "next": "Periodo successivo",
+      "toList": "Vai all'elenco",
+      "typeRelease": "Rilascio",
+      "typeValidation": "Validazione",
+      "legendClash": "Stesso CI nello stesso momento",
+      "legendWarn": "Rilasci che si accavallano, CI diversi",
+      "clashWith": "Stesso CI di: {{codes}}",
+      "warnWith": "Si accavalla con: {{codes}}",
+      "summary": "{{changes}} change · {{releases}} finestre di rilascio",
+      "clashes_one": "{{count}} finestra sullo stesso CI",
+      "clashes_other": "{{count}} finestre sullo stesso CI",
+      "warns_one": "{{count}} rilascio che si accavalla",
+      "warns_other": "{{count}} rilasci che si accavallano",
+      "unreadable_one": "{{count}} piano con date inservibili, fuori dal calendario",
+      "unreadable_other": "{{count}} piani con date inservibili, fuori dal calendario",
+      "empty": "Nessuna finestra pianificata in questo periodo.",
+      "preview": "Anteprima della change",
+      "openChange": "Apri la change",
+      "notGiven": "non indicato",
+      "noCI": "Nessun CI impattato.",
+      "affectedCIs_one": "CI impattato ({{count}})",
+      "affectedCIs_other": "CI impattati ({{count}})",
+      "plan": "Il piano",
+      "noPlan": "Nessuna finestra pianificata.",
+      "planWithoutDates_one": "{{count}} piano senza date: {{codes}}",
+      "planWithoutDates_other": "{{count}} piani senza date: {{codes}}"
     },
     "reportSchedule": {
       "lastRun": "Ultima esecuzione: {{date}}",
@@ -3613,7 +3652,8 @@
       "onlyInInitialStep": "Si può fare solo nel passo iniziale; la change è in «{{current}}».",
       "rejectViaApproval": "Per rigettare la change usa «Rigetta» nella sezione Approvazione: riapre gli assessment.",
       "typeRequired": "Il tipo di change è obbligatorio: scegli un valore del vocabolario change_type.",
-      "noChangeType": "La change {{change}} non ha un tipo: il varco delle approvazioni non si può valutare. Imposta il tipo sulla change."
+      "noChangeType": "La change {{change}} non ha un tipo: il varco delle approvazioni non si può valutare. Imposta il tipo sulla change.",
+      "calendarRange": "L'intervallo del calendario è vuoto o al rovescio: da {{from}} a {{to}}."
     },
     "import": {
       "tenantRequired": "Manca il cliente: l'importazione non sa dove scrivere.",

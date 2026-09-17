@@ -16,6 +16,7 @@ import { CreateProblemPage } from '@/pages/problems/CreateProblemPage'
 import { ChangeListPage } from '@/pages/changes/ChangeListPage'
 import { CreateChangePage } from '@/pages/changes/CreateChangePage'
 import { ChangeDetailPage } from '@/pages/changes/ChangeDetailPage'
+import { ChangeCalendarPage } from '@/pages/changes/ChangeCalendarPage'
 import { TaskViewPage } from '@/pages/tasks/TaskViewPage'
 import { MyTasksPage } from '@/pages/MyTasksPage'
 import { QuestionAdminPage } from '@/pages/admin/QuestionAdminPage'
@@ -156,6 +157,7 @@ const router = createBrowserRouter([
       guarded('problems/:id', <Keyed Page={ProblemDetailPage} />),
       guarded('changes', <ChangeListPage />),
       guarded('changes/new', <CreateChangePage />),
+      guarded('changes/calendar', <ChangeCalendarPage />),
       guarded('changes/:id', <Keyed Page={ChangeDetailPage} />),
       guarded('tasks/:taskId', <Keyed Page={TaskViewPage} />),
       guarded('my-tasks', <MyTasksPage />),

@@ -22,6 +22,7 @@ import { buildAdvancedWhere } from '../../../lib/filterBuilder.js'
 import { getScalarFields } from '../../../lib/schemaFields.js'
 import type { GraphQLResolveInfo } from 'graphql'
 import { serviceRelPatternForTenant } from '../../../lib/ciMetamodelForTenant.js'
+import { ValidationError } from '../../../lib/errors.js'
 
 type Session = ReturnType<typeof getSession>
 
@@ -752,5 +753,135 @@ export async function changeResolvesProblems(
       ORDER BY p.created_at DESC
     `, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => ({ ...r, severity: null }))
+  })
+}
+
+/**
+ * IL CALENDARIO DELLE CHANGE (17 set 2026).
+ *
+ * Non esisteva modo di chiedere «cosa va in produzione questa settimana». Le
+ * finestre stanno nei passi del piano di rilascio — un JSON su un
+ * `DeployPlanTask`, che a sua volta punta al CI impattato per proprietà — e i
+ * filtri di lista si costruiscono dai campi scalari del tipo `Change`: quella
+ * data non era né filtrabile né ordinabile, quindi il calendario non si poteva
+ * disegnare.
+ *
+ * ## Il filtro per intervallo sta nel DATABASE
+ * Ogni piano porta l'inviluppo delle sue finestre (`window_start`,
+ * `window_end`, indicizzati e scritti da `saveDeployPlan` nello stesso `SET`
+ * dei passi): la `WHERE` sceglie i pochi piani che toccano l'intervallo, e il
+ * JSON si apre solo per quelli. Senza l'inviluppo si leggerebbero i piani di
+ * TUTTO il tenant a ogni apertura di pagina — su un tenant con migliaia di
+ * change è una scansione per ogni sguardo al calendario.
+ *
+ * ## Il JSON si apre con l'UNICO parser che esiste
+ * `parseDeploySteps` legge quei passi da quando esistono, e pretende l'offset
+ * esplicito su ogni data: una finestra scritta come `2026-09-09T22:00` verrebbe
+ * letta nel fuso del server API, non in quello del tenant, e il calendario
+ * mostrerebbe il rilascio nell'ora sbagliata. Aprire il JSON in Cypher con
+ * APOC eviterebbe questo giro, ma la regola sull'offset finirebbe scritta due
+ * volte — e la seconda copia, dentro una `WHERE`, non la vedrebbe nessun test.
+ *
+ * ## Un piano illeggibile si CONTA, non si salta
+ * Un piano scritto via API o importato prima di quella regola può portare date
+ * vuote o a rovescio: non ha un inviluppo, quindi non può stare in calendario.
+ * Ma tacerlo farebbe leggere il calendario come completo, quindi torna nel
+ * conto `unreadablePlans` — che si chiede al database con un `count`, senza
+ * leggere niente.
+ */
+export async function changeCalendar(
+  _: unknown,
+  args: { from: string; to: string },
+  ctx: GraphQLContext,
+) {
+  const { parseDeploySteps, assertWindowDate } = await import('../../../lib/deployWindows.js')
+  /*
+   * L'intervallo passa dalla stessa regola delle finestre: offset esplicito.
+   * Senza, «questa settimana» vorrebbe dire una cosa diversa per il server e
+   * per chi guarda. Poi si normalizza in ISO `Z`, perché il confronto in Cypher
+   * è fra STRINGHE: `window_start` è scritto da `planEnvelope`, che produce
+   * sempre `Z`, e confrontarlo con un `+02:00` darebbe un ordine alfabetico
+   * senza senso.
+   */
+  const daMs = Date.parse(assertWindowDate(args.from, 'from'))
+  const aMs  = Date.parse(assertWindowDate(args.to, 'to'))
+  if (Number.isNaN(daMs) || Number.isNaN(aMs) || aMs <= daMs) {
+    throw new ValidationError(`The range is empty or reversed: from ${args.from} to ${args.to}`,
+      { key: 'errors.change.calendarRange', params: { from: args.from, to: args.to } })
+  }
+  const daIso = new Date(daMs).toISOString()
+  const aIso  = new Date(aMs).toISOString()
+
+  return withSession(async (session) => {
+    const rows = await runQuery<{
+      changeId: string; code: string; title: string; changeType: string | null; priority: string | null
+      currentStep: string | null; steps: string | null; taskCode: string | null; ciId: string | null; ciName: string | null
+    }>(session, `
+      MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask)
+      WHERE coalesce(c.deleted, false) = false
+        AND dp.window_start IS NOT NULL AND dp.window_end IS NOT NULL
+        AND dp.window_start < $to AND dp.window_end > $from
+      OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
+      OPTIONAL MATCH (ci {id: dp.ci_id, tenant_id: $tenantId})
+      RETURN c.id AS changeId, c.code AS code, c.title AS title, c.change_type AS changeType,
+             c.priority AS priority, wi.current_step AS currentStep,
+             dp.steps AS steps, dp.code AS taskCode, dp.ci_id AS ciId, ci.name AS ciName
+      ORDER BY dp.window_start
+    `, { tenantId: ctx.tenantId, from: daIso, to: aIso })
+
+    /*
+     * I piani con dei passi ma senza inviluppo: date vuote, illeggibili o a
+     * rovescio. Un `count`, non una lettura — e senza intervallo, perché un
+     * piano senza date non cade in nessuna settimana.
+     */
+    const rotti = await runQueryOne<{ n: unknown }>(session, `
+      MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask)
+      WHERE coalesce(c.deleted, false) = false
+        AND coalesce(dp.steps, '[]') <> '[]'
+        AND (dp.window_start IS NULL OR dp.window_end IS NULL)
+      RETURN count(dp) AS n
+    `, { tenantId: ctx.tenantId })
+    let unreadablePlans = toNumber(rotti?.n)
+
+    const entries: Array<Record<string, unknown>> = []
+    for (const r of rows) {
+      let steps
+      try {
+        steps = parseDeploySteps(r.steps)
+      } catch {
+        // Un piano rotto non fa fallire il calendario di tutti gli altri: ha un
+        // inviluppo (quindi non è nel conto di sopra) ma il JSON non si apre.
+        unreadablePlans += 1
+        continue
+      }
+      for (const s of steps) {
+        for (const [kind, w] of [['validation', s.validationWindow], ['release', s.releaseWindow]] as const) {
+          const da = Date.parse(w?.start ?? '')
+          const a  = Date.parse(w?.end ?? '')
+          if (Number.isNaN(da) || Number.isNaN(a) || a < da) continue
+          // SI SOVRAPPONE all'intervallo, non «è contenuta»: un rilascio che
+          // comincia domenica e finisce lunedì appartiene a entrambe le
+          // settimane, e sparire da una delle due sarebbe peggio.
+          if (da >= aMs || a <= daMs) continue
+          entries.push({
+            changeId: r.changeId, code: r.code, title: r.title,
+            changeType: r.changeType, priority: r.priority, currentStep: r.currentStep,
+            kind, start: w.start, end: w.end, stepTitle: s.title,
+            taskCode: r.taskCode, ciId: r.ciId ?? '', ciName: r.ciName ?? r.ciId ?? '',
+          })
+        }
+      }
+    }
+
+    // In ordine di inizio: il calendario è una cronologia, e a pari ora la
+    // validazione viene prima del rilascio (è l'ordine del processo).
+    entries.sort((x, y) => {
+      const d = Date.parse(x['start'] as string) - Date.parse(y['start'] as string)
+      if (d !== 0) return d
+      const peso = (k: unknown) => (k === 'validation' ? 0 : 1)
+      return peso(x['kind']) - peso(y['kind']) || String(x['code']).localeCompare(String(y['code']))
+    })
+
+    return { entries, unreadablePlans }
   })
 }

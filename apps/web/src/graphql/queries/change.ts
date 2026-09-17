@@ -272,3 +272,74 @@ export const GET_CHANGE_IMPACT = gql`
     }
   }
 `
+
+/**
+ * IL CALENDARIO DELLE CHANGE (17 set 2026): le finestre pianificate che cadono
+ * nell'intervallo, una voce per finestra. L'intervallo lo applica il server,
+ * che filtra sull'inviluppo indicizzato del piano — qui non si scarica tutto
+ * per poi tagliare nel browser.
+ */
+export const GET_CHANGE_CALENDAR = gql`
+  query GetChangeCalendar($from: String!, $to: String!) {
+    changeCalendar(from: $from, to: $to) {
+      unreadablePlans
+      entries {
+        changeId
+        code
+        title
+        changeType
+        priority
+        currentStep
+        kind
+        start
+        end
+        stepTitle
+        taskCode
+        ciId
+        ciName
+      }
+    }
+  }
+`
+
+/**
+ * L'ANTEPRIMA di una change per il calendario (17 set 2026): titolo, perché,
+ * cosa e i CI impattati.
+ *
+ * Volutamente MAGRA e chiesta solo quando il modale si apre: mettere `why`,
+ * `what` e l'elenco dei CI su ogni voce del calendario avrebbe ripetuto gli
+ * stessi campi per ogni finestra della stessa change — un piano con tre passi
+ * li avrebbe portati sei volte.
+ */
+export const GET_CHANGE_PREVIEW = gql`
+  query GetChangePreview($id: ID!) {
+    change(id: $id) {
+      id
+      code
+      title
+      why
+      what
+      changeType
+      priority
+    }
+    changeAffectedCIs(changeId: $id) {
+      ci {
+        id
+        name
+        type
+        environment
+        supportGroup { id name }
+      }
+      deployPlan {
+        code
+        status
+        steps {
+          title
+          validationWindow { start end }
+          releaseWindow { start end }
+        }
+        assignedTeam { id name }
+      }
+    }
+  }
+`

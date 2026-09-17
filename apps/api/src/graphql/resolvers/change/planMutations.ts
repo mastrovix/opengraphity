@@ -6,6 +6,7 @@ import { NotFoundError } from '../../../lib/errors.js'
 import { ValidationError } from '../../../lib/errors.js'
 import { assertWindowDate } from '../../../lib/deployWindows.js'
 import { TASK_STATUS } from '../../../lib/taskStatus.js'
+import { planEnvelope } from '../../../lib/deployWindows.js'
 import { withSession, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { mapDeployPlanTask } from './mappers.js'
@@ -67,10 +68,30 @@ export async function saveDeployPlan(
       releaseWindow:    { start: s.releaseWindow.start,    end: s.releaseWindow.end    },
     }))
 
+    /*
+     * L'INVILUPPO accanto ai passi, nello stesso `SET` (17 set 2026).
+     *
+     * `window_start` e `window_end` sono la prima e l'ultima data fra tutte le
+     * finestre di questo piano, validazioni comprese: sono un INDICE, non una
+     * verità — la verità resta il JSON dei passi. Servono perché «dammi i piani
+     * che toccano questa settimana» non si può chiedere a un JSON, e senza di
+     * loro il calendario delle change dovrebbe leggere i piani di TUTTO il
+     * tenant a ogni apertura di pagina.
+     *
+     * Si scrivono QUI e solo qui, nella stessa istruzione dei passi, perché
+     * questa è l'unica funzione del prodotto che scrive passi veri: gli altri
+     * due punti scrivono `'[]'` alla creazione del task. Un inviluppo scritto
+     * altrove sarebbe la seconda verità che questo commento serve a impedire.
+     */
+    const inviluppo = planEnvelope(normalized)
     await session.executeWrite((tx) => tx.run(`
       MATCH (dp:DeployPlanTask {id: $taskId, tenant_id: $tenantId})
-      SET dp.steps = $steps, dp.status = '${TASK_STATUS.IN_PROGRESS}'
-    `, { taskId: args.taskId, tenantId: ctx.tenantId, steps: JSON.stringify(normalized) }))
+      SET dp.steps = $steps, dp.status = '${TASK_STATUS.IN_PROGRESS}',
+          dp.window_start = $windowStart, dp.window_end = $windowEnd
+    `, {
+      taskId: args.taskId, tenantId: ctx.tenantId, steps: JSON.stringify(normalized),
+      windowStart: inviluppo?.start ?? null, windowEnd: inviluppo?.end ?? null,
+    }))
 
     const ciName = await getCIName(session, tctx.ciId, ctx.tenantId)
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'deploy_plan_saved', ctx.userId,

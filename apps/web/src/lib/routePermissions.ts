@@ -27,6 +27,7 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, readonly Permission[]>> 
   'problems/:id':                  ['problem.read'],
   'changes':                       ['change.read'],
   'changes/new':                   ['change.write'],
+  'changes/calendar':              ['change.read'],
   'changes/:id':                   ['change.read'],
   'tasks/:taskId':                 ['change.read'],
   'requests':                      ['request.read'],

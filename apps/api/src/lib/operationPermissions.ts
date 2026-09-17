@@ -84,7 +84,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   { anyOf: ['problem.delete'], mutation: ['deleteProblem'] },
   {
     anyOf: ['change.read'],
-    query: ['changes', 'change', 'changeAffectedCIs', 'changeAuditTrail', 'changeImpactAnalysis', 'changeImpactedCIs',
+    query: ['changes', 'change', 'changeAffectedCIs', 'changeAuditTrail', 'changeCalendar', 'changeImpactAnalysis', 'changeImpactedCIs',
       'ciChanges', 'taskById', 'approvalRequests', 'assessmentQuestionCatalog'],
   },
   {

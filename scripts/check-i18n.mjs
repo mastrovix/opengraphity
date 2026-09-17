@@ -1027,14 +1027,23 @@ function prosa(v) {
     i pezzi FUORI dalle graffe (le graffe diventano uno spazio), e si scarta
     tutto cio che contiene `=` o virgolette, che nel JSX vuol dire attributo.
   */
-  const RE_TESTO_CON_ESPRESSIONI = /> {0,400}([^<>]{2,400}?)</gs
+  const RE_TESTO_CON_ESPRESSIONI = /(?<![=\-])> {0,400}([^<>]{2,400}?)</gs
+  /*
+    `(?<![=\-])` su entrambe: il `>` di una FUNZIONE FRECCIA non apre un nodo
+    di testo. Senza, `useMemo(() => intervallo(modo, riferimento), [...])`
+    veniva segnalato come «testo JSX in italiano» — i nomi delle variabili sono
+    italiani, il testo a schermo no. La regex gemella della verifica sulla
+    prosa (`RE_TESTO_JSX_APERTO`) aveva già questa guardia; a queste due
+    mancava, e un guardiano che grida su codice insegna a ignorarlo (17 set
+    2026).
+  */
   /*
     E il testo che finisce dove COMINCIA un'espressione, non dove comincia un
     tag: `>Salva modifiche{pendingCount > 0 && (`. Il `>` dentro `pendingCount
     > 0` fa si che il primo `<` utile sia righe piu sotto, quindi la regex qui
     sopra cattura mezzo blocco di codice e la scarta. Questa si fermaal `{`.
   */
-  const RE_TESTO_PRIMA_DI_ESPRESSIONE = /> {0,400}([^<>{}]{3,400}?)\{/gs
+  const RE_TESTO_PRIMA_DI_ESPRESSIONE = /(?<![=\-])> {0,400}([^<>{}]{3,400}?)\{/gs
 
   const daScansionare = [...files.map((f) => [f, WEB_SRC])]
   if (fs.existsSync(PORTAL_SRC)) {

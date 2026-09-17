@@ -119,6 +119,7 @@ import { catalogFormLimits } from './20261003_1020_catalog_form_limits.js'
 import { formTableRowsLimit } from './20261004_1010_form_table_rows_limit.js'
 import { metamodelDuplicateFields } from './20261005_1010_metamodel_duplicate_fields.js'
 import { changeTransitionLabels } from './20261005_1020_change_transition_labels.js'
+import { deployPlanWindowEnvelope } from './20261005_1030_deploy_plan_window_envelope.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -223,4 +224,5 @@ export const MIGRATIONS: readonly Migration[] = [
   formTableRowsLimit,
   metamodelDuplicateFields,
   changeTransitionLabels,
+  deployPlanWindowEnvelope,
 ]

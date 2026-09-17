@@ -35,8 +35,38 @@
  * si contano a parte, per dirlo. È la regola di sempre: niente fallback
  * silenziosi.
  */
-import type { AffectedCI, DeployStep, TimeWindow } from '@/types/change'
+import type { DeployStep, TimeWindow } from '@/types/change'
 import { TASK_STATUS } from '@/lib/taskStatus'
+
+/**
+ * QUELLO CHE SERVE DAVVERO, e non un `AffectedCI` intero.
+ *
+ * La funzione legge il piano, il CI e gli stati dei tre task: dichiararlo così
+ * permette a chi chiama di chiedere all'API solo quei campi — l'anteprima del
+ * calendario ne ha bisogno per mostrare il piano nel modale, e caricare
+ * risposte di assessment, validazioni e review per farlo sarebbe stato uno
+ * spreco. `AffectedCI` resta assegnabile a questa forma, quindi il riquadro
+ * della pagina di dettaglio continua a passare il suo (17 set 2026).
+ *
+ * Gli stati degli assessment sono facoltativi: senza, l'avanzamento
+ * (`taskChiusi`) li conta come non chiusi. Chi mostra quel numero li chiede;
+ * chi mostra solo la cronologia può non chiederli.
+ */
+export interface CiConPiano {
+  readonly ci: {
+    readonly id: string
+    readonly name: string
+    readonly supportGroup?: { readonly name: string } | null
+  }
+  readonly deployPlan?: {
+    readonly code: string
+    readonly status: string
+    readonly steps: readonly DeployStep[]
+    readonly assignedTeam?: { readonly name: string } | null
+  } | null
+  readonly assessmentOwner?:   { readonly status: string } | null
+  readonly assessmentSupport?: { readonly status: string } | null
+}
 
 /** Il tipo di finestra. Sono le due che ogni passo del piano porta con sé. */
 export type TipoFinestra = 'validation' | 'release'
@@ -121,7 +151,7 @@ export function contaFinestreDistinte(finestre: readonly { da: number; a: number
 }
 
 /** I tre task che l'avanzamento conta: assessment funzionale, tecnico, piano. */
-function statiDeiTask(a: AffectedCI): Array<string | null> {
+function statiDeiTask(a: CiConPiano): Array<string | null> {
   return [
     a.assessmentOwner?.status   ?? null,
     a.assessmentSupport?.status ?? null,
@@ -130,7 +160,7 @@ function statiDeiTask(a: AffectedCI): Array<string | null> {
 }
 
 /** Le due voci di un passo, tenendo solo quelle con una finestra ordinabile. */
-function vociDelPasso(step: DeployStep, a: AffectedCI): VoceDiPiano[] {
+function vociDelPasso(step: DeployStep, a: CiConPiano): VoceDiPiano[] {
   const base = { stepTitle: step.title, taskCode: a.deployPlan?.code ?? null, ciId: a.ci.id, ciName: a.ci.name }
   const coppie: Array<[TipoFinestra, TimeWindow | null | undefined]> = [
     ['validation', step.validationWindow],
@@ -143,7 +173,7 @@ function vociDelPasso(step: DeployStep, a: AffectedCI): VoceDiPiano[] {
   })
 }
 
-export function riepilogoRilascio(affected: readonly AffectedCI[]): RiepilogoRilascio {
+export function riepilogoRilascio(affected: readonly CiConPiano[]): RiepilogoRilascio {
   const voci = affected.flatMap((a) => (a.deployPlan?.steps ?? []).flatMap((s) => vociDelPasso(s, a)))
 
   /*

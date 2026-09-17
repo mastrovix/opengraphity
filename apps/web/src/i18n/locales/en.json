@@ -143,7 +143,8 @@
     "anomalyRules": "Anomaly rules",
     "roles": "Roles",
     "loginSecurity": "Login & passwords",
-    "catalogForms": "Catalog forms"
+    "catalogForms": "Catalog forms",
+    "changeCalendar": "Change calendar"
   },
   "pages": {
     "incidents": {
@@ -1641,6 +1642,44 @@
       "taskTechnical": "Technical",
       "taskPlanning": "Planning",
       "notesField": "Notes"
+    },
+    "changeCalendar": {
+      "title": "Change calendar",
+      "subtitle": "The planned windows: what goes to production, when, and where two changes collide.",
+      "week": "Week",
+      "month": "Month",
+      "filterAll": "Both",
+      "stateAll": "All",
+      "stateOpen": "In progress",
+      "stateDone": "Finished",
+      "today": "Today",
+      "previous": "Previous period",
+      "next": "Next period",
+      "toList": "Go to the list",
+      "typeRelease": "Release",
+      "typeValidation": "Validation",
+      "legendClash": "Same CI at the same time",
+      "legendWarn": "Overlapping releases, different CIs",
+      "clashWith": "Same CI as: {{codes}}",
+      "warnWith": "Overlaps with: {{codes}}",
+      "summary": "{{changes}} changes · {{releases}} release windows",
+      "clashes_one": "{{count}} window on the same CI",
+      "clashes_other": "{{count}} windows on the same CI",
+      "warns_one": "{{count}} overlapping release",
+      "warns_other": "{{count}} overlapping releases",
+      "unreadable_one": "{{count}} plan with unusable dates, outside the calendar",
+      "unreadable_other": "{{count}} plans with unusable dates, outside the calendar",
+      "empty": "No window planned in this period.",
+      "preview": "Change preview",
+      "openChange": "Open the change",
+      "notGiven": "not given",
+      "noCI": "No CI affected.",
+      "affectedCIs_one": "Affected CI ({{count}})",
+      "affectedCIs_other": "Affected CIs ({{count}})",
+      "plan": "The plan",
+      "noPlan": "No window planned.",
+      "planWithoutDates_one": "{{count}} plan with no dates: {{codes}}",
+      "planWithoutDates_other": "{{count}} plans with no dates: {{codes}}"
     },
     "reportSchedule": {
       "lastRun": "Last run: {{date}}",
@@ -3613,7 +3652,8 @@
       "onlyInInitialStep": "This can be done only in the initial step; the change is in «{{current}}».",
       "rejectViaApproval": "To reject the change, use «Reject» in the Approval section: it reopens the assessments.",
       "typeRequired": "The change type is required: choose a value of the change_type vocabulary.",
-      "noChangeType": "The change {{change}} has no change type: the approval gate cannot be evaluated. Set the type on the change."
+      "noChangeType": "The change {{change}} has no change type: the approval gate cannot be evaluated. Set the type on the change.",
+      "calendarRange": "The calendar range is empty or reversed: from {{from}} to {{to}}."
     },
     "import": {
       "tenantRequired": "The tenant is missing: the import does not know where to write.",
