@@ -10,6 +10,7 @@ import {
   type EnumValueLabelEntry, type EnumValueLabels, type Lingua,
   LINGUE,
   parseValueLabels, valueLabelEntries, pruneValueLabels, renameValueLabel, serializeValueLabels,
+  valueLabelsReasonKey,
 } from '../../lib/enumValueLabels.js'
 import {
   parseValueColors, valueColorEntries, renameValueColor, pruneValueColors, serializeValueColors, assertValueColorsInput,
@@ -50,6 +51,8 @@ interface EnumTypeDef {
   valueLabelsRaw: EnumValueLabels
   /** I colori per valore, nell'ordine dei valori (revisione del 14 set 2026 · F9). */
   valueColors: EnumValueColorEntry[]
+  /** Perche non porta etichette per valore (chiave i18n), `null` se le porta. */
+  valueLabelsReasonKey: string | null
   isSystem:  boolean
   /** `tenant_id = 'system'`: spedito col prodotto, uguale per tutti i clienti. */
   isShipped: boolean
@@ -204,10 +207,14 @@ function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
       '[vocabolario] colori per valore non leggibili: a schermo il valore resta neutro',
     )
   }
+  const nome = r.get('name') as string
   return {
     id:        r.get('id')        as string,
     tenantId,
-    name:      r.get('name')      as string,
+    name:      nome,
+    // Il motivo viaggia col vocabolario: la pagina non deve tenere una sua
+    // copia dell'elenco, che divergerebbe al primo vocabolario nuovo.
+    valueLabelsReasonKey: valueLabelsReasonKey(nome),
     label:     r.get('label')     as string,
     // A-18: `values` è una lista, sempre. Il ripiego `JSON.parse` copriva UN
     // nodo (`ci_chain`, scritto come stringa JSON dal seed del metamodello) e
@@ -369,6 +376,9 @@ export async function createEnumType(
     return {
       id, tenantId: ctx.tenantId, name: input.name, label: input.label,
       values: input.values, isSystem: false, isShipped: false, scope: input.scope,
+      // Un vocabolario del cliente porta etichette: l'elenco di quelli che non
+      // le portano è dei vocabolari spediti, e chi crea non può entrarci.
+      valueLabelsReasonKey: valueLabelsReasonKey(input.name),
       // Un vocabolario nuovo nasce senza etichette: a schermo si legge il
       // valore, e l'admin le scrive dal Dizionario quando vuole.
       valueLabelsRaw: {},

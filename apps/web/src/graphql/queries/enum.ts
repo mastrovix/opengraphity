@@ -5,7 +5,7 @@ import { gql } from '@apollo/client'
 export const GET_ENUM_TYPES = gql`
   query GetEnumTypes($scope: String, $language: String) {
     enumTypes(scope: $scope) {
-      id name label values defaultValue isSystem isShipped scope createdAt updatedAt
+      id name label values defaultValue isSystem isShipped scope createdAt updatedAt valueLabelsReasonKey
       valueLabels(language: $language) { value label labels { language label } }
       valueColors { value color }
     }
@@ -15,7 +15,7 @@ export const GET_ENUM_TYPES = gql`
 export const GET_ENUM_TYPE = gql`
   query GetEnumType($id: ID!, $language: String) {
     enumType(id: $id) {
-      id name label values defaultValue isSystem isShipped scope createdAt updatedAt
+      id name label values defaultValue isSystem isShipped scope createdAt updatedAt valueLabelsReasonKey
       valueLabels(language: $language) { value label labels { language label } }
       valueColors { value color }
     }

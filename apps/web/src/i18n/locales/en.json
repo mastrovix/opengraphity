@@ -636,7 +636,11 @@
       "replaceInUseIntro": "These values are removed but still used by records: choose which value they become. The records are rewritten with the dictionary, in one transaction.",
       "replaceInUseLabel": "Value that replaces {{value}}",
       "replaceInUseCount_one": "{{count}} record",
-      "replaceInUseCount_other": "{{count}} records"
+      "replaceInUseCount_other": "{{count}} records",
+      "noValueLabels": {
+        "workflowStep": "These values are the names of the workflow steps, so their language is written on the step itself — open Configuration → Workflow Designer and edit the step label. Writing a label here would not change what anyone reads.",
+        "importKeys": "These values are recognition keys for data arriving from other systems (p1, sev1, crit, blocker…), not menu entries: nobody reads them on screen, so they carry no label."
+      }
     },
     "sync": {
       "sourceCreated": "Sync source created",

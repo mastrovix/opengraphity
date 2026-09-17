@@ -86,6 +86,12 @@ interface EnumType {
   isSystem:  boolean
   /** Spedito col prodotto (`tenant_id = 'system'`): uno per tutti i clienti. */
   isShipped: boolean
+  /**
+   * Perche questo vocabolario non porta etichette per valore (chiave i18n),
+   * `null` se le porta. Lo decide il server: la pagina non tiene un suo elenco,
+   * che divergerebbe al primo vocabolario nuovo.
+   */
+  valueLabelsReasonKey: string | null
   scope:     string
   createdAt: string
   updatedAt: string
@@ -259,6 +265,17 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
   // modifica in posto. L'interfaccia lo dice e offre «Personalizza», che ne
   // crea la copia del tenant (quella vince in lettura solo per chi la ha).
   const shipped = e.isShipped
+  /*
+   * QUESTO VOCABOLARIO NON PORTA ETICHETTE PER VALORE, e non è una mancanza.
+   *
+   * Per i quattro «status_*» i valori sono i nomi dei passi del workflow, e la
+   * lingua si scrive sul passo; per `import_severity` i 28 valori sono chiavi
+   * di riconoscimento dei dati in arrivo, non voci di menu. Senza dirlo, la
+   * pagina mostrava «not written» accanto a ogni valore in entrambe le lingue:
+   * tredici volte su Change Status, e la lettura naturale è «manca qualcosa»
+   * (17 set 2026).
+   */
+  const senzaEtichette = e.valueLabelsReasonKey
   const [label, setLabel]   = useState(e.label)
   const [scope, setScope]   = useState(e.scope)
   const [values, setValues] = useState<string[]>(e.values)
@@ -720,7 +737,12 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
                     tabella. Sul vocabolario spedito è in sola lettura, come i
                     valori: per cambiarla si usa «Personalizza», che la copia.
                   */}
-                  {lingue.map(({ codice, nome }) => (
+                  {/* Niente colonne delle lingue quando il vocabolario non porta
+                      etichette: al loro posto, sotto l'elenco, c'è la frase che
+                      dice dove si scrive la lingua. Mostrare caselle vuote e
+                      spiegarle a parte avrebbe lasciato in piedi l'invito a
+                      compilarle. */}
+                  {!senzaEtichette && lingue.map(({ codice, nome }) => (
                     shipped ? (
                       <span key={codice} style={{ flex: '1 1 120px', fontWeight: 400, color: 'var(--color-slate)' }}>
                         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginRight: 4 }}>{codice}</span>
@@ -796,6 +818,13 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
         {!shipped && values.length > 1 && (
           <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '0 0 8px', lineHeight: 1.45 }}>
             {t('pages.dictionary.orderNote')}
+          </p>
+        )}
+        {/* PERCHÉ non ci sono etichette per valore: si dice qui, sotto i valori,
+            dove si guardava per capire cosa mancasse. */}
+        {senzaEtichette && (
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 8px', lineHeight: 1.5 }}>
+            {t(senzaEtichette)}
           </p>
         )}
         {shipped ? (

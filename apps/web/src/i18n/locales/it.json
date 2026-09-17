@@ -636,7 +636,11 @@
       "replaceInUseIntro": "Questi valori sono stati tolti ma sono ancora usati dai record: scegli in quale valore diventano. I record vengono riscritti insieme al Dizionario, in una sola transazione.",
       "replaceInUseLabel": "Valore che sostituisce {{value}}",
       "replaceInUseCount_one": "{{count}} record interessato",
-      "replaceInUseCount_other": "{{count}} record interessati"
+      "replaceInUseCount_other": "{{count}} record interessati",
+      "noValueLabels": {
+        "workflowStep": "Questi valori sono i nomi dei passi del workflow, quindi la loro lingua si scrive sul passo — apri Configurazione → Workflow Designer e modifica l’etichetta del passo. Scrivere un’etichetta qui non cambierebbe ciò che legge nessuno.",
+        "importKeys": "Questi valori sono chiavi di riconoscimento dei dati in arrivo dagli altri sistemi (p1, sev1, crit, blocker…), non voci di menu: nessuno li legge a schermo, quindi non portano etichetta."
+      }
     },
     "sync": {
       "sourceCreated": "Sorgente di sincronizzazione creata",
