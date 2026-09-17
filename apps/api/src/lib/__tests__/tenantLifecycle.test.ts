@@ -15,12 +15,15 @@ import { resetConfigCache } from '../config.js'
 let tenantRows: Array<Record<string, unknown>> = []
 let conteggi: Record<string, unknown> | null = { utenti: 2, ticket: 7 }
 let conteggiEsplode = false
+let adminRows: Array<Record<string, unknown>> = [{ tenantId: 'acme', email: 'admin@acme.io' }]
+let adminSingolo: Record<string, unknown> | null = { email: 'admin@acme.io' }
 const eseguite: string[] = []
 
 vi.mock('@opengraphity/neo4j', () => ({
   runQuery: vi.fn(async (_s: unknown, q: string) => {
     eseguite.push(q)
     if (q.includes('MATCH (t:Tenant)\n    WHERE t.id IS NOT NULL')) return tenantRows
+    if (q.includes("u.role = 'admin'") && q.includes('u.tenant_id AS tenantId')) return adminRows
     return []
   }),
   runQueryOne: vi.fn(async (_s: unknown, q: string) => {
@@ -34,6 +37,8 @@ vi.mock('@opengraphity/neo4j', () => ({
       return r ? { suspendedAt: r['suspendedAt'] ?? null } : null
     }
     if (q.includes('count(n) AS quanti')) return { quanti: 1234 }
+    // La lettura del singolo amministratore, per `resetAdminPassword`.
+    if (q.includes("u.role = 'admin'") && q.includes('RETURN u.email AS email')) return adminSingolo
     return null
   }),
   toNumber: (v: unknown) => (v == null ? 0 : Number(v)),
@@ -42,6 +47,7 @@ vi.mock('../logger.js', () => ({ logger: { child: () => ({ warn: vi.fn(), info: 
 
 const {
   assertSlugValido, listTenants, renameTenant, suspendTenant, resumeTenant, purgeTenant,
+  resetAdminPassword,
 } = await import('../tenantLifecycle.js')
 
 const session = {} as never
@@ -56,6 +62,8 @@ beforeEach(() => {
   tenantRows = [tenant()]
   conteggi = { utenti: 2, ticket: 7 }
   conteggiEsplode = false
+  adminRows = [{ tenantId: 'acme', email: 'admin@acme.io' }]
+  adminSingolo = { email: 'admin@acme.io' }
 })
 
 describe('lo slug è l\'identità: le sue regole', () => {
@@ -239,5 +247,86 @@ describe('la cancellazione definitiva, e le sue tre sbarre', () => {
     const deleteRealm = vi.fn(async () => { throw new Error('Keycloak non raggiungibile') })
     await expect(purgeTenant(session, 'acme', 'acme', deleteRealm)).rejects.toThrow(/Keycloak/)
     expect(eseguite.some((q) => q.includes('DETACH DELETE'))).toBe(false)
+  })
+})
+
+/**
+ * LA PASSWORD DI UN AMMINISTRATORE, reimpostata dalla console (17 set 2026).
+ *
+ * L'azione esiste perché senza di lei un tenant di cui si era perduta la
+ * password temporanea era un vicolo cieco: nessuno entrava, e la sola uscita
+ * era Keycloak a mano. Quello che si pinna qui sono le sbarre — su CHI si può
+ * agire — e la regola che conta più di tutte: **una password che non è stata
+ * impostata non si consegna**, perché consegnarne una falsa manda a cercare il
+ * guasto dalla parte sbagliata.
+ */
+describe('reimpostare la password di un amministratore', () => {
+  const genera = () => 'Pw-generata-123'
+
+  it('la imposta in Keycloak sul realm del tenant e la restituisce una volta', async () => {
+    const imposta = vi.fn(async () => {})
+    const esito = await resetAdminPassword(session, 'acme', 'admin@acme.io', genera, imposta)
+    expect(imposta).toHaveBeenCalledWith('acme', 'admin@acme.io', 'Pw-generata-123')
+    expect(esito).toEqual({ email: 'admin@acme.io', temporaryPassword: 'Pw-generata-123', tenantSospeso: false })
+  })
+
+  it('l\'e-mail si normalizza: chi la digita non deve indovinare le maiuscole', async () => {
+    const imposta = vi.fn(async () => {})
+    const esito = await resetAdminPassword(session, 'acme', '  Admin@ACME.io  ', genera, imposta)
+    expect(esito.email).toBe('admin@acme.io')
+    expect(imposta).toHaveBeenCalledWith('acme', 'admin@acme.io', 'Pw-generata-123')
+  })
+
+  it('rifiuta chi NON è un amministratore attivo di quel tenant', async () => {
+    // Un utente di un altro tenant, disattivato o senza il ruolo: la query non
+    // lo trova, e non si reimposta niente a nessuno.
+    adminSingolo = null
+    const imposta = vi.fn(async () => {})
+    await expect(resetAdminPassword(session, 'acme', 'tizio@altrove.io', genera, imposta))
+      .rejects.toThrow(/not an active administrator/)
+    expect(imposta).not.toHaveBeenCalled()
+  })
+
+  it('rifiuta un tenant che non esiste', async () => {
+    tenantRows = []
+    const imposta = vi.fn(async () => {})
+    await expect(resetAdminPassword(session, 'ignoto', 'admin@acme.io', genera, imposta)).rejects.toThrow()
+    expect(imposta).not.toHaveBeenCalled()
+  })
+
+  it('se Keycloak FALLISCE la password non si consegna', async () => {
+    const imposta = vi.fn(async () => { throw new Error('Keycloak non raggiungibile') })
+    await expect(resetAdminPassword(session, 'acme', 'admin@acme.io', genera, imposta))
+      .rejects.toThrow(/Keycloak/)
+  })
+
+  it('su un tenant sospeso si può fare, e la risposta lo DICE', async () => {
+    // Utile e non contraddittorio: si riapre prima la porta, poi il tenant.
+    // Senza dirlo, il login che si ferma sembrerebbe una password sbagliata.
+    tenantRows = [tenant({ suspendedAt: '2026-09-01T00:00:00.000Z' })]
+    const esito = await resetAdminPassword(session, 'acme', 'admin@acme.io', genera, vi.fn(async () => {}))
+    expect(esito.tenantSospeso).toBe(true)
+  })
+
+  it('NON scrive nel database: la password vive solo in Keycloak', async () => {
+    await resetAdminPassword(session, 'acme', 'admin@acme.io', genera, vi.fn(async () => {}))
+    expect(eseguite.some((q) => /\bSET\b|\bMERGE\b|\bCREATE\b/.test(q))).toBe(false)
+  })
+})
+
+describe('gli amministratori nell\'elenco', () => {
+  it('ogni riga porta i suoi, per poter reimpostare la password', async () => {
+    adminRows = [
+      { tenantId: 'acme', email: 'admin@acme.io' },
+      { tenantId: 'acme', email: 'secondo@acme.io' },
+    ]
+    const righe = await listTenants(session)
+    expect(righe[0]!.admins).toEqual(['admin@acme.io', 'secondo@acme.io'])
+  })
+
+  it('nessun amministratore = lista VUOTA, e la console non offre il pulsante', async () => {
+    adminRows = []
+    const righe = await listTenants(session)
+    expect(righe[0]!.admins).toEqual([])
   })
 })

@@ -194,6 +194,30 @@ select:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
   padding: 8px 12px; user-select: all;
 }
 
+/*
+ * IL RIQUADRO DI UN'AZIONE che chiede una conferma (per ora: la password).
+ *
+ * Neutro di proposito: non è un pericolo come la cancellazione (bordo rosso) né
+ * una consegna come la password (bordo del brand). È una domanda — «a chi?» —
+ * e un riquadro che grida davanti a una domanda insegna a non leggerlo.
+ */
+.riquadro {
+  border: 1px solid var(--border); background: var(--slate-bg);
+  border-radius: var(--radius); padding: 18px 20px; margin-bottom: 20px;
+}
+.riquadro h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+.riquadro p  { margin: 0 0 12px; font-size: 13.5px; color: var(--slate-dark); max-width: 74ch; }
+.riquadro .chi { font-family: var(--mono); font-size: 13.5px; color: var(--slate-dark); }
+.riquadro label.campo { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--slate-dark); margin-bottom: 14px; max-width: 360px; }
+.riquadro label.campo select { font-weight: 400; }
+
+/*
+ * «no admin»: un tenant in cui NESSUNO può entrare. Sta accanto allo stato
+ * perché è una condizione del tenant, non un errore dell'operazione, e ha il
+ * colore dell'attenzione — non del guasto: il tenant funziona, ma è chiuso.
+ */
+.pill.senzaAdmin { background: var(--warning-bg); color: var(--warning-text); margin-left: 6px; }
+
 /* Gli indirizzi del tenant: due link, il secondo più tenue perché è il portale. */
 td.urls { font-size: 13px; white-space: nowrap; }
 td.urls a { color: var(--brand-hover); text-decoration: none; }

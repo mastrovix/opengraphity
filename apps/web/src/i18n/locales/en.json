@@ -4009,7 +4009,8 @@
       "nameEmpty": "The tenant name cannot be empty.",
       "nameTooLong": "The tenant name is too long: {{max}} characters at most.",
       "purgeNotSuspended": "The tenant \"{{slug}}\" is not suspended: suspend it first, then delete it. There is no shortcut from active to deleted.",
-      "purgeConfirmMismatch": "To delete the tenant \"{{slug}}\" its slug must be typed again as confirmation."
+      "purgeConfirmMismatch": "To delete the tenant \"{{slug}}\" its slug must be typed again as confirmation.",
+      "notAnAdmin": "\"{{email}}\" is not an active administrator of tenant \"{{tenant}}\": the password can only be reset for an administrator who can actually sign in."
     },
     "list": {
       "limit": "A list can show between 1 and {{max}} rows (asked: {{got}}).",

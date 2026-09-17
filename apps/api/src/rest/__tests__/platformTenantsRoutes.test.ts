@@ -39,12 +39,15 @@ const lifecycle = {
   resumeTenant:    vi.fn(async () => {}),
   purgeTenant:     vi.fn(async () => ({ nodiCancellati: 3, realmCancellato: true })),
   assertSlugValido: vi.fn(),
+  resetAdminPassword: vi.fn(async () => ({ email: 'admin@acme.io', temporaryPassword: 'Pw-1', tenantSospeso: false })),
 }
 vi.mock('../../lib/tenantLifecycle.js', () => lifecycle)
 vi.mock('../../scripts/lib/keycloakAdmin.js', () => ({
-  createKeycloakAdmin: () => ({ getAdminToken: async () => 't', delete: async () => {} }),
+  createKeycloakAdmin: () => ({ getAdminToken: async () => 't', delete: async () => {}, setPassword: async () => {} }),
   keycloakConfigFromEnv: () => ({}),
+  findUserIdByEmail: async () => 'kc-user-1',
 }))
+vi.mock('../../scripts/lib/password.js', () => ({ generateTemporaryPassword: () => 'Pw-1' }))
 
 const { getSession } = await import('@opengraphity/neo4j')
 const { platformTenantsRouter } = await import('../platform-tenants.js')
@@ -151,5 +154,49 @@ describe('la sessione si chiude anche quando la scrittura fallisce', () => {
     // corpo senza messaggio le faceva scrivere «[object Object]».
     const body = await res.json() as { error?: { message?: string } }
     expect(body.error?.message).toBeTruthy()
+  })
+})
+
+/**
+ * LA PASSWORD DI UN AMMINISTRATORE: rotta a sé, e una risposta che NON si
+ * mette in cache (17 set 2026).
+ *
+ * Una risposta JSON con una password dentro, se un intermediario la conserva,
+ * è una password in chiaro su disco: `Cache-Control: no-store` non è un
+ * dettaglio di stile.
+ */
+describe('POST /platform/tenants/:slug/admin-password', () => {
+  const chiedi = (slug: string, body: unknown) =>
+    fetch(`${base}/${slug}/admin-password`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    })
+
+  it('reimposta e restituisce la password, con `no-store`', async () => {
+    const res = await chiedi('acme', { email: 'admin@acme.io' })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    expect(await res.json()).toMatchObject({ email: 'admin@acme.io', temporaryPassword: 'Pw-1' })
+  })
+
+  it('senza e-mail è 400: non si indovina a CHI cambiare la password', async () => {
+    const res = await chiedi('acme', {})
+    expect(res.status).toBe(400)
+    expect(lifecycle.resetAdminPassword).not.toHaveBeenCalled()
+  })
+
+  it('un\'e-mail vuota è 400 come se mancasse', async () => {
+    const res = await chiedi('acme', { email: '   ' })
+    expect(res.status).toBe(400)
+    expect(lifecycle.resetAdminPassword).not.toHaveBeenCalled()
+  })
+
+  it('il rifiuto del ciclo di vita arriva col suo messaggio', async () => {
+    const { ValidationError } = await import('../../lib/errors.js')
+    lifecycle.resetAdminPassword.mockRejectedValueOnce(
+      new ValidationError('"x@y.io" is not an active administrator of tenant "acme": …') as never)
+    const res = await chiedi('acme', { email: 'x@y.io' })
+    expect(res.status).toBe(400)
+    const body = await res.json() as { error?: { message?: string } }
+    expect(body.error?.message).toMatch(/not an active administrator/)
   })
 })

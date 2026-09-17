@@ -58,6 +58,14 @@ export interface TenantRow {
    */
   appUrl:    string | null
   portalUrl: string | null
+  /**
+   * Gli amministratori del tenant (e-mail, in ordine). Servono a una cosa
+   * sola: poter reimpostare la password di chi entra, dalla console, senza
+   * passare a mano da Keycloak. Vuota = nessun admin attivo, ed è un tenant in
+   * cui NESSUNO può entrare: la console lo dice invece di offrire un pulsante
+   * che non ha su chi agire.
+   */
+  admins:    string[]
 }
 
 /** `{slug}` sostituito, e nient'altro: un modello non è un linguaggio. */
@@ -108,6 +116,31 @@ export async function listTenants(session: Session): Promise<TenantRow[]> {
     ORDER BY t.id
   `, {})
 
+  /*
+   * Gli admin in UNA query per tutti i tenant: sono pochi per tenant (uno,
+   * di solito) e una query per riga avrebbe aggiunto un giro a ogni apertura
+   * della pagina. Il filtro sul ruolo è quello dell'API, non un'idea nuova.
+   */
+  const admins = new Map<string, string[]>()
+  try {
+    // tenant-ok: la console di piattaforma guarda TUTTI i tenant, per definizione.
+    const righeAdmin = await runQuery<{ tenantId: string; email: string }>(session, `
+      MATCH (u:User)
+      WHERE u.role = 'admin' AND coalesce(u.active, true) = true
+        AND u.email IS NOT NULL AND u.tenant_id IS NOT NULL
+      RETURN u.tenant_id AS tenantId, u.email AS email
+      ORDER BY tenantId, email
+    `, {})
+    for (const a of righeAdmin) {
+      const elenco = admins.get(a.tenantId) ?? []
+      elenco.push(a.email)
+      admins.set(a.tenantId, elenco)
+    }
+  } catch (err) {
+    // Come i conteggi: non si finge che non ce ne siano.
+    log.warn({ err }, 'tenant admins unavailable')
+  }
+
   const conteggi = new Map<string, { utenti: number | null; ticket: number | null }>()
   for (const r of righe) {
     try {
@@ -140,6 +173,7 @@ export async function listTenants(session: Session): Promise<TenantRow[]> {
     ticket:      conteggi.get(r.id)?.ticket ?? null,
     appUrl:      daModello(config.tenantUrlTemplate, r.slug ?? r.id),
     portalUrl:   daModello(config.portalUrlTemplate, r.slug ?? r.id),
+    admins:      admins.get(r.id) ?? [],
   }))
 }
 
@@ -193,6 +227,65 @@ export async function suspendTenant(session: Session, id: string): Promise<void>
     SET t.suspended_at = $now, t.updated_at = $now
   `, { id, now: new Date().toISOString() })
   log.warn({ tenantId: id }, 'tenant SUSPENDED: no access, data untouched')
+}
+
+/**
+ * REIMPOSTARE LA PASSWORD DI UN AMMINISTRATORE (17 set 2026).
+ *
+ * Nasce da un vicolo cieco vero: la console creava un tenant e mostrava la
+ * password temporanea UNA volta — se la si perdeva, in quel tenant non
+ * entrava più nessuno, e la sola via d'uscita era Keycloak a mano. Un prodotto
+ * che ti porta in uno stato da cui non ti tira fuori ha un pezzo mancante, non
+ * una password dimenticata.
+ *
+ * Tre cose che questa funzione NON fa, di proposito:
+ *
+ *  - **non sceglie l'utente**: l'e-mail arriva da chi chiama e deve essere di
+ *    un amministratore ATTIVO di QUEL tenant. Indovinare «il primo admin»
+ *    reimposterebbe, prima o poi, la password della persona sbagliata.
+ *  - **non tocca il database**: la password vive solo in Keycloak. Qui si
+ *    legge chi può averla, e il resto lo fa `impostaInKeycloak`, che arriva da
+ *    fuori — così la funzione si prova senza rete, come `purgeTenant`.
+ *  - **non ritorna la password se impostarla è FALLITO**: consegnare una
+ *    password che non è quella vera è peggio di un errore, perché manda a
+ *    cercare il guasto dall'altra parte.
+ */
+export interface EsitoResetPassword {
+  email: string
+  /** Temporanea: Keycloak obbliga il cambio al primo accesso. Mostrata una volta. */
+  temporaryPassword: string
+  /** Vero se il tenant è sospeso: la password è valida, ma nessuno entra finché non si riattiva. */
+  tenantSospeso: boolean
+}
+
+export async function resetAdminPassword(
+  session: Session,
+  id: string,
+  email: string,
+  generaPassword: () => string,
+  impostaInKeycloak: (realm: string, email: string, password: string) => Promise<void>,
+): Promise<EsitoResetPassword> {
+  const t = await tenantEsistente(session, id)
+
+  const pulita = email.trim().toLowerCase()
+  const row = await runQueryOne<{ email: string }>(session, `
+    MATCH (u:User {tenant_id: $id, email: $email})
+    WHERE u.role = 'admin' AND coalesce(u.active, true) = true
+    RETURN u.email AS email
+  `, { id, email: pulita })
+  if (!row) {
+    // La frase dice cosa cercare, non solo che è andata male: l'e-mail può
+    // essere di un altro tenant, di un utente disattivato o di un non-admin.
+    throw new ValidationError(
+      `"${pulita}" is not an active administrator of tenant "${id}": the password can only be reset for an administrator who can actually sign in.`,
+      { key: 'errors.tenant.notAnAdmin', params: { email: pulita, tenant: id } })
+  }
+
+  const password = generaPassword()
+  await impostaInKeycloak(id, pulita, password)
+  log.warn({ tenantId: id, email: pulita }, 'admin password reset from the platform console')
+
+  return { email: pulita, temporaryPassword: password, tenantSospeso: t.suspendedAt != null }
 }
 
 /** Riattiva un tenant sospeso. */

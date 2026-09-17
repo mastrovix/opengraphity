@@ -68,6 +68,16 @@ export interface Tenant {
   /** `null` = il modello dell'indirizzo non è configurato su questa installazione. */
   appUrl: string | null
   portalUrl: string | null
+  /** Gli amministratori attivi: vuota = in questo tenant non entra nessuno. */
+  admins: string[]
+}
+
+export interface EsitoResetPassword {
+  email: string
+  /** Mostrata UNA volta, come alla creazione: non è scritta da nessuna parte. */
+  temporaryPassword: string
+  /** La password è valida, ma finché il tenant è sospeso nessuno entra. */
+  tenantSospeso: boolean
 }
 
 async function chiama<T>(path: string, init?: RequestInit): Promise<T> {
@@ -137,5 +147,11 @@ export const api = {
   rename:    (slug: string, name: string) => chiama<{ tenants: Tenant[] }>(`/platform/tenants/${encodeURIComponent(slug)}`, { method: 'PATCH', body: JSON.stringify({ action: 'rename', name }) }),
   suspend:   (slug: string)              => chiama<{ tenants: Tenant[] }>(`/platform/tenants/${encodeURIComponent(slug)}`, { method: 'PATCH', body: JSON.stringify({ action: 'suspend' }) }),
   resume:    (slug: string)              => chiama<{ tenants: Tenant[] }>(`/platform/tenants/${encodeURIComponent(slug)}`, { method: 'PATCH', body: JSON.stringify({ action: 'resume' }) }),
+  /*
+   * POST e non PATCH: non c'è niente di idempotente in una password nuova, e
+   * la risposta porta un segreto — tenerla su una rotta sua rende ovvio, dalla
+   * lista qui sotto, quale risposta non va registrata né messa in cache.
+   */
+  resetPassword: (slug: string, email: string) => chiama<EsitoResetPassword>(`/platform/tenants/${encodeURIComponent(slug)}/admin-password`, { method: 'POST', body: JSON.stringify({ email }) }),
   purge:     (slug: string, confirm: string) => chiama<{ slug: string; nodiCancellati: number; realmCancellato: boolean }>(`/platform/tenants/${encodeURIComponent(slug)}`, { method: 'DELETE', body: JSON.stringify({ confirm }) }),
 }

@@ -16,7 +16,7 @@
  *     ridigitare, e il conto dei nodi davanti agli occhi.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { api, messaggio, type Tenant, type NuovoTenant, type EsitoCreazione } from './api'
+import { api, messaggio, type Tenant, type NuovoTenant, type EsitoCreazione, type EsitoResetPassword } from './api'
 import { LogOut, Plus } from 'lucide-react'
 import { getKeycloak } from './keycloak'
 import { collegaAvvisi } from './tokenRefresh'
@@ -27,12 +27,13 @@ function Conteggio({ n }: { n: number | null }) {
   return <>{n.toLocaleString('en-GB')}</>
 }
 
-function Riga({ t, onRename, onSuspend, onResume, onPurge, occupato }: {
+function Riga({ t, onRename, onSuspend, onResume, onPurge, onPassword, occupato }: {
   t: Tenant
   onRename: (slug: string, nome: string) => void
   onSuspend: (slug: string) => void
   onResume: (slug: string) => void
   onPurge: (slug: string) => void
+  onPassword: (t: Tenant) => void
   occupato: boolean
 }) {
   const [inModifica, setInModifica] = useState(false)
@@ -74,6 +75,11 @@ function Riga({ t, onRename, onSuspend, onResume, onPurge, occupato }: {
       <td className="num"><Conteggio n={t.ticket} /></td>
       <td>
         <span className={`pill ${t.stato}`}>{t.stato === 'active' ? 'active' : 'suspended'}</span>
+        {/* Un tenant senza amministratori attivi è un tenant in cui NESSUNO
+            entra, e non si vede da nessun'altra colonna: gli utenti possono
+            essere dieci e nessuno di loro un admin. Si dice qui, dove si
+            guarda lo stato. */}
+        {t.admins.length === 0 && <span className="pill senzaAdmin" title="No active administrator: nobody can sign in">no admin</span>}
       </td>
       <td>
         <div className="azioni">
@@ -81,6 +87,14 @@ function Riga({ t, onRename, onSuspend, onResume, onPurge, occupato }: {
           {t.stato === 'active'
             ? <button onClick={() => onSuspend(t.slug)} disabled={occupato}>Suspend</button>
             : <button onClick={() => onResume(t.slug)} disabled={occupato}>Resume</button>}
+          {/* La password: offerta solo se c'è un amministratore su cui agire —
+              come la cancellazione, il pulsante non c'è invece di esserci e
+              rifiutare. Questa azione esiste perché senza di lei un tenant di
+              cui si è perduta la password era un vicolo cieco, riapribile solo
+              a mano da Keycloak (17 set 2026). */}
+          {t.admins.length > 0 && (
+            <button onClick={() => onPassword(t)} disabled={occupato}>Reset password…</button>
+          )}
           {/* La cancellazione si offre SOLO su un tenant sospeso: il pulsante
               non c'è, invece di esserci e rifiutare. Un'azione offerta e poi
               negata insegna che l'interfaccia mente. */}
@@ -285,27 +299,100 @@ function Creazione({ onCreato, setErrore }: {
  * Non è scritta da nessuna parte e non si può richiedere: questo riquadro è
  * l'unico posto in cui compare. Per questo non si chiude da sé, non sparisce
  * caricando l'elenco, e lo dice.
+ *
+ * Serve a DUE momenti — un tenant appena creato e una password reimpostata —
+ * e sono lo stesso momento visto due volte: qualcuno sta guardando l'unica
+ * copia di un segreto. Una seconda versione del riquadro avrebbe finito per
+ * divergere proprio qui.
  */
-function PasswordUnaVolta({ esito, onChiudi }: { esito: EsitoCreazione; onChiudi: () => void }) {
+function PasswordUnaVolta({ titolo, spiegazione, password, onChiudi }: {
+  titolo: string
+  spiegazione: string
+  password: string
+  onChiudi: () => void
+}) {
   const [copiata, setCopiata] = useState(false)
-  if (!esito.temporaryPassword) return null
   return (
     <div className="password">
-      <h2>“{esito.slug}” is ready — this password is shown once</h2>
-      <p>
-        Temporary password for the first administrator: they must change it at first sign-in. It is stored
-        nowhere and cannot be shown again — if it is lost, reset it in Keycloak.
-      </p>
+      <h2>{titolo}</h2>
+      <p>{spiegazione}</p>
       <div className="riga">
-        <code>{esito.temporaryPassword}</code>
-        <button
-          onClick={() => {
-            void navigator.clipboard.writeText(esito.temporaryPassword ?? '').then(() => setCopiata(true))
-          }}
-        >
+        <code>{password}</code>
+        <button onClick={() => { void navigator.clipboard.writeText(password).then(() => setCopiata(true)) }}>
           {copiata ? 'Copied' : 'Copy'}
         </button>
         <button onClick={onChiudi}>I have it</button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * REIMPOSTARE LA PASSWORD DI UN AMMINISTRATORE.
+ *
+ * Chiude il vicolo cieco che questa console aveva: la password si vedeva una
+ * volta alla creazione e, se la si perdeva, in quel tenant non entrava più
+ * nessuno — la sola via d'uscita era Keycloak a mano. Il riquadro della
+ * creazione lo diceva pure, «if it is lost, reset it in Keycloak»: una frase
+ * che ammetteva il pezzo mancante invece di essere il pezzo.
+ *
+ * CHI si sceglie, non si indovina: l'elenco arriva dal server (amministratori
+ * attivi di quel tenant) e con più di uno la scelta è esplicita. Reimpostare
+ * «il primo admin» avrebbe, prima o poi, cambiato la password alla persona
+ * sbagliata.
+ */
+function RiquadroPassword({ t, onFatta, onAnnulla, setErrore }: {
+  t: Tenant
+  onFatta: (esito: EsitoResetPassword) => void
+  onAnnulla: () => void
+  setErrore: (m: string | null) => void
+}) {
+  const [email, setEmail] = useState(t.admins[0] ?? '')
+  const [inCorso, setInCorso] = useState(false)
+
+  return (
+    <div className="riquadro">
+      <h2>New temporary password for “{t.slug}”</h2>
+      <p>
+        The chosen administrator gets a new temporary password and must change it at first sign-in.
+        The current password stops working immediately. The new one is shown here once.
+      </p>
+
+      {t.admins.length === 1 ? (
+        <p className="chi"><strong>{t.admins[0]}</strong></p>
+      ) : (
+        <label className="campo">
+          Administrator
+          <select value={email} onChange={(e) => setEmail(e.target.value)} disabled={inCorso}>
+            {t.admins.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </label>
+      )}
+
+      {/* Un tenant sospeso si può comunque riaprire: la password sarà valida
+          quando lo riattivi. Dirlo qui evita la conclusione sbagliata («la
+          password non funziona») quando il login si fermerà. */}
+      {t.stato === 'suspended' && (
+        <p className="nota">
+          This tenant is suspended: the password will be valid, but nobody can sign in until you resume it.
+        </p>
+      )}
+
+      <div className="riga">
+        <button
+          className="primario"
+          disabled={inCorso || email === ''}
+          onClick={() => {
+            setInCorso(true)
+            setErrore(null)
+            api.resetPassword(t.slug, email)
+              .then(onFatta)
+              .catch((e: unknown) => { setErrore(messaggio(e)); setInCorso(false) })
+          }}
+        >
+          {inCorso ? 'Resetting…' : 'Reset password'}
+        </button>
+        <button onClick={onAnnulla} disabled={inCorso}>Cancel</button>
       </div>
     </div>
   )
@@ -317,6 +404,9 @@ export function TenantsPage() {
   const [esito, setEsito] = useState<string | null>(null)
   const [daCancellare, setDaCancellare] = useState<string | null>(null)
   const [appenaCreato, setAppenaCreato] = useState<EsitoCreazione | null>(null)
+  /** Il tenant di cui si sta reimpostando la password, e la password appena data. */
+  const [daReimpostare, setDaReimpostare] = useState<Tenant | null>(null)
+  const [passwordNuova, setPasswordNuova] = useState<EsitoResetPassword | null>(null)
   const [occupato, setOccupato] = useState(false)
 
   /*
@@ -399,7 +489,42 @@ export function TenantsPage() {
 
       {/* La password sta SOPRA tutto e resta finché non si conferma di averla
           presa: è l'unico posto in cui compare. */}
-      {appenaCreato && <PasswordUnaVolta esito={appenaCreato} onChiudi={() => setAppenaCreato(null)} />}
+      {appenaCreato?.temporaryPassword && (
+        <PasswordUnaVolta
+          titolo={`“${appenaCreato.slug}” is ready — this password is shown once`}
+          spiegazione={
+            'Temporary password for the first administrator: they must change it at first sign-in. It is stored ' +
+            'nowhere and cannot be shown again — if it is lost, use “Reset password” on that tenant\u2019s row.'
+          }
+          password={appenaCreato.temporaryPassword}
+          onChiudi={() => setAppenaCreato(null)}
+        />
+      )}
+      {passwordNuova && (
+        <PasswordUnaVolta
+          titolo={`New password for ${passwordNuova.email} — shown once`}
+          spiegazione={
+            'They must change it at first sign-in, and the previous password no longer works. It is stored ' +
+            'nowhere and cannot be shown again.' +
+            (passwordNuova.tenantSospeso ? ' The tenant is suspended: resume it before they can sign in.' : '')
+          }
+          password={passwordNuova.temporaryPassword}
+          onChiudi={() => setPasswordNuova(null)}
+        />
+      )}
+
+      {daReimpostare && (
+        <RiquadroPassword
+          t={daReimpostare}
+          setErrore={setErrore}
+          onAnnulla={() => setDaReimpostare(null)}
+          onFatta={(esito) => {
+            setDaReimpostare(null)
+            setPasswordNuova(esito)
+            setEsito(null)
+          }}
+        />
+      )}
 
       <Creazione
         setErrore={setErrore}
@@ -431,6 +556,7 @@ export function TenantsPage() {
                 onRename={(slug, nome) => azione(api.rename(slug, nome))}
                 onSuspend={(slug) => azione(api.suspend(slug))}
                 onResume={(slug) => azione(api.resume(slug))}
+                onPassword={(tenant) => { setErrore(null); setPasswordNuova(null); setDaReimpostare(tenant) }}
                 onPurge={(slug) => { setDaCancellare(slug); setEsito(null) }}
               />
             ))}

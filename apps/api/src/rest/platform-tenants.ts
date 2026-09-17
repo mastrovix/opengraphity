@@ -31,6 +31,7 @@ import { asyncHandler, restErrorHandler } from './errorHandler.js'
 import { logger } from '../lib/logger.js'
 import {
   listTenants, renameTenant, suspendTenant, resumeTenant, purgeTenant, tenantFootprint, assertSlugValido,
+  resetAdminPassword,
 } from '../lib/tenantLifecycle.js'
 import { config } from '../lib/config.js'
 import { DEFAULT_TENANT_PLAN, DEFAULT_TENANT_TIMEZONE } from '../lib/tenantPlans.js'
@@ -197,6 +198,53 @@ router.post('/platform/tenants', asyncHandler(async (req: Request, res: Response
       ...(consegnata ? { temporaryPassword: consegnata, partial: true } : {}),
     })
   }
+}))
+
+/**
+ * REIMPOSTARE LA PASSWORD DI UN AMMINISTRATORE.
+ *
+ * Rotta a sé e non un'altra `action` del PATCH, perché l'unica cosa che
+ * restituisce è un segreto: tenerla separata rende ovvio, leggendo le rotte,
+ * quale risposta non va né registrata né messa in cache. È anche il motivo per
+ * cui è una POST e non un PATCH — non c'è niente di idempotente in una
+ * password nuova.
+ *
+ * L'e-mail arriva nel corpo e deve essere di un amministratore ATTIVO di quel
+ * tenant (la sbarra è in `resetAdminPassword`). La console la prende
+ * dall'elenco, quindi in pratica non si digita: a schermo si conferma chi.
+ */
+router.post('/platform/tenants/:slug/admin-password', asyncHandler(async (req: Request, res: Response) => {
+  const slug = String(req.params['slug'])
+  const body = req.body as { email?: unknown }
+  const chi  = attore(req)
+
+  if (typeof body.email !== 'string' || body.email.trim() === '') {
+    res.status(400).json({ error: 'the body must carry "email": which administrator gets a new password' })
+    return
+  }
+
+  const { createKeycloakAdmin, keycloakConfigFromEnv, findUserIdByEmail } = await import('../scripts/lib/keycloakAdmin.js')
+  const { generateTemporaryPassword } = await import('../scripts/lib/password.js')
+  const kc = createKeycloakAdmin(keycloakConfigFromEnv())
+
+  log.warn({ slug, chi, email: body.email }, 'console: admin password reset requested')
+  const esito = await conSessioneDiLettura((s) => resetAdminPassword(
+    s, slug, body.email as string,
+    generateTemporaryPassword,
+    async (realm, email, password) => {
+      const token  = await kc.getAdminToken()
+      const userId = await findUserIdByEmail(kc, token, realm, email)
+      // `temporary: true`: al primo accesso Keycloak obbliga a cambiarla, e
+      // quella che compare a schermo smette di valere.
+      await kc.setPassword(token, realm, userId, password, true)
+    },
+  ))
+
+  log.warn({ slug, chi, email: esito.email }, 'console: admin password reset')
+  // `no-store`: la risposta porta un segreto. Non è paranoia — una risposta
+  // JSON messa in cache da un intermediario è una password in chiaro su disco.
+  res.setHeader('Cache-Control', 'no-store')
+  res.json(esito)
 }))
 
 /**
