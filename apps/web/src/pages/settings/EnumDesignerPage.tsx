@@ -7,7 +7,7 @@ import { PageTitle } from '@/components/PageTitle'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
 import { Input, Select } from '@/components/ui/FormControls'
-import { inputS, labelS, btnSecondary, btnDanger, btnPrimary as sharedBtnPrimary } from '@/components/ui/styles'
+import { inputS, labelS, btnSecondary, btnDanger, readOnlyInputS, btnPrimary as sharedBtnPrimary } from '@/components/ui/styles'
 import { toast } from 'sonner'
 import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT, GET_ENUM_VALUE_USAGE, GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
@@ -106,8 +106,8 @@ const iconBtn: React.CSSProperties = {
   background: 'none', border: 'none', cursor: 'pointer', padding: 2,
   display: 'flex', color: 'var(--color-slate-light)', lineHeight: 1,
 }
-/** Campo in sola lettura (vocabolario spedito col prodotto, o nome tecnico). */
-const readOnlyS: React.CSSProperties = { background: 'var(--color-slate-bg)', color: colors.slateLight }
+/** Campo in sola lettura: lo stile è del sistema di design (`readOnlyInputS`). */
+const readOnlyS = readOnlyInputS
 
 // ── CreateEnumDialog ──────────────────────────────────────────────────────────
 
@@ -639,7 +639,7 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
         <label htmlFor="editor-name" style={labelS}>{t('pages.dictionary.nameLabel')}</label>
         <Input
           id="editor-name"
-          style={{ ...inputS, background: 'var(--color-slate-bg)', color: colors.slateLight }}
+          style={{ ...inputS, ...readOnlyS }}
           value={e.name}
           readOnly
         />

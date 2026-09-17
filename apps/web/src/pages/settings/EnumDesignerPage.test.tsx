@@ -326,3 +326,34 @@ describe('Dizionario — i vocabolari senza etichette per valore', () => {
     expect(screen.getAllByText('not written').length).toBeGreaterThan(0)
   })
 })
+
+/**
+ * I CAMPI IN SOLA LETTURA SI DEVONO LEGGERE (17 set 2026).
+ *
+ * Lo stile c'era: il suo colore era `slateLight`, che tokens.ts dichiara
+ * «tertiary text, placeholders». Su un vocabolario spedito il nome tecnico,
+ * l'etichetta e lo scope si leggevano quindi come suggerimenti dentro caselle
+ * vuote, e dal vivo si è concluso che il vocabolario fosse vuoto.
+ */
+describe('Dizionario — un valore bloccato non si confonde con un campo vuoto', () => {
+  it('i campi di un vocabolario spedito portano il colore del TESTO, non quello dei placeholder', async () => {
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [listMock([SHIPPED]), lingueMock] })
+    await user.click(await screen.findByRole('button', { name: /Severità/ }))
+
+    for (const campo of ['Technical name', 'Label']) {
+      const el = screen.getByLabelText(campo)
+      expect(el, campo).toHaveAttribute('readonly')
+      expect(el.style.color, campo).toBe('var(--color-slate-dark)')
+      // Lo sfondo è quello che dice «bloccato», e resta.
+      expect(el.style.backgroundColor, campo).toBe('var(--color-slate-bg)')
+    }
+  })
+
+  it('un vocabolario proprio resta un campo normale, scrivibile', async () => {
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [listMock([OWN]), lingueMock] })
+    await user.click(await screen.findByRole('button', { name: /Colore sede/ }))
+    const label = screen.getByLabelText('Label')
+    expect(label).not.toHaveAttribute('readonly')
+    expect(label.style.backgroundColor).not.toBe('var(--color-slate-bg)')
+  })
+})
