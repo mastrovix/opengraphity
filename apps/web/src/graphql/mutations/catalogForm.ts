@@ -71,3 +71,26 @@ export const SET_CATALOG_FORM_LIMITS = gql`
     }
   }
 `
+
+/**
+ * Corregge UNA risposta al modulo di una richiesta già creata (decisione del
+ * proprietario, 17 set 2026). Passa dalle stesse regole della compilazione —
+ * revisione di allora, condizioni, vocabolario, script — e i campi calcolati
+ * che dipendono da quello scritto si ricalcolano. Prima non si poteva: un
+ * ambiente scelto male restava sbagliato per sempre.
+ */
+export const SET_REQUEST_FORM_ANSWER = gql`
+  mutation SetRequestFormAnswer($requestId: ID!, $field: String!, $value: String) {
+    setServiceRequestFormAnswer(requestId: $requestId, field: $field, value: $value) {
+      id
+      formRevision
+      formAnswers {
+        name label fieldType value values displayValue displayValues
+        references { id label }
+        files { id filename sizeBytes }
+        tableColumns { name label fieldType }
+        rows { cells { column value displayValue } }
+      }
+    }
+  }
+`

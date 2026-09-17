@@ -213,7 +213,7 @@ async function assertAutomationFieldWrites(
    * IL METAMODELLO **PIÙ** I CAMPI DEI MODULI (ondata 8).
    *
    * Un'azione `set_field` su una richiesta può scrivere una risposta al modulo:
-   * l'esecutore la manda a `writeFormAnswerFromAutomation`, che riapplica le
+   * l'esecutore la manda a `writeFormAnswer`, che riapplica le
    * regole del modulo (revisione con cui è stata compilata, condizioni,
    * vocabolario, validationScript). Senza questi campi la validazione rifiutava
    * una regola che poi avrebbe funzionato — «modello_richiesto non è un campo di

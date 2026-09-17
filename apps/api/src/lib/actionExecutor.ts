@@ -159,10 +159,10 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
        */
       const written = await withSession(async (session) => {
         if (ctx.entityType === 'service_request' && action.type !== 'set_priority') {
-          const { formFieldsByName, writeFormAnswerFromAutomation } = await import('./catalogForm.js')
+          const { formFieldsByName, writeFormAnswer } = await import('./catalogForm.js')
           const daModulo = await formFieldsByName(session, ctx.tenantId, [field])
           if (daModulo.has(field)) {
-            const esito = await writeFormAnswerFromAutomation(session, ctx.tenantId, ctx.entityId, field, value)
+            const esito = await writeFormAnswer(session, ctx.tenantId, ctx.entityId, field, value)
             return esito as { before: Record<string, unknown>; after: Record<string, unknown> }
           }
         }

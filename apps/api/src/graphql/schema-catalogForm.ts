@@ -241,6 +241,11 @@ export function catalogFormSDL(): string {
     rows:        [FormAnswerTableRow!]!
     """Le colonne della tabella con cui leggere le righe: nome, etichetta e tipo."""
     tableColumns: [FormAnswerTableColumn!]!
+    """
+    Le scelte del vocabolario, con l'etichetta: servono a CORREGGERE la
+    risposta (decisione del 17 set 2026). Vuota per i campi senza vocabolario.
+    """
+    options: [FormFieldOption!]!
   }
 
   """Una riga come si legge: una cella per colonna, nell'ordine delle colonne."""

@@ -340,6 +340,80 @@ async function updateServiceRequest(
 }
 
 /**
+ * CORREGGERE UNA RISPOSTA AL MODULO di una richiesta già creata (decisione del
+ * proprietario, 17 set 2026).
+ *
+ * Prima non si poteva da nessuna interfaccia: l'unica scrittura dopo la
+ * creazione era quella di un'automazione, quindi un ambiente scelto male
+ * restava sbagliato per sempre — in filtri, report, widget e SLA — e l'unica
+ * strada era chiudere la richiesta e riaprirla.
+ *
+ * Passa dalla STESSA funzione che usa un'automazione, quindi dalle stesse
+ * cinque regole: il ticket deve venire da un modulo, comanda la revisione con
+ * cui è stato compilato, un campo nascosto da una condizione si rifiuta, un
+ * calcolato si rifiuta, e vocabolario più `validationScript` si applicano. I
+ * campi calcolati che dipendono da questo si ricalcolano.
+ *
+ * `request.write` e non `ticket.work`: correggere una risposta è cambiare il
+ * DATO della richiesta, non lavorarla. Ogni correzione è una voce dell'Audit
+ * Log (il plugin la registra da sé) e, come ogni modifica, pubblica
+ * `ticket.updated`.
+ */
+async function setServiceRequestFormAnswer(
+  _: unknown,
+  args: { requestId: string; field: string; value?: string | null },
+  ctx: GraphQLContext,
+) {
+  requirePermission(ctx, 'request.write')
+  return withSession(async (session) => {
+    const { writeFormAnswer } = await import('../../lib/catalogForm.js')
+    const prima = await runQueryOne<{ props: Props }>(session, `
+      MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
+      RETURN properties(r) AS props`, { id: args.requestId, tenantId: ctx.tenantId })
+    if (!prima) throw new NotFoundError('ServiceRequest', args.requestId)
+
+    await writeFormAnswer(session, ctx.tenantId, args.requestId, args.field, args.value ?? null)
+
+    const dopo = await runQueryOne<{ props: Props }>(session, `
+      MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
+      RETURN properties(r) AS props`, { id: args.requestId, tenantId: ctx.tenantId })
+    if (!dopo) throw new NotFoundError('ServiceRequest', args.requestId)
+
+    /*
+     * NELL'AUDIT CI VA IL VALORE, non solo il nome del campo. Registrava
+     * `{field}` e basta, e il valore di prima non era scritto in nessun posto:
+     * una correzione sbagliata non si poteva rileggere né disfare. E con le
+     * risposte che una correzione SPEGNE (perché il modulo non le chiede più)
+     * la voce senza valori era peggio che inutile — diceva che era cambiato
+     * «Ambiente» mentre tre risposte erano state svuotate.
+     */
+    const svuotate = Object.keys(prima.props).filter((k) =>
+      prima.props[k] != null && dopo.props[k] == null && k !== args.field)
+    void audit(ctx, 'request.formAnswerChanged', 'ServiceRequest', args.requestId, {
+      field: args.field,
+      from: valoreDiAudit(prima.props[args.field]),
+      to: valoreDiAudit(dopo.props[args.field]),
+      ...(svuotate.length > 0
+        ? { cleared: svuotate.map((k) => ({ field: k, from: valoreDiAudit(prima.props[k]) })) }
+        : {}),
+    })
+    await publishTicketUpdated(ctx, 'service_request', args.requestId, prima.props, dopo.props)
+    return mapRequest(dopo.props)
+  }, true)
+}
+
+/**
+ * Un valore di risposta come si scrive nell'Audit Log: testo, e `null` se non
+ * c'era. I numeri di Neo4j sono oggetti (`Integer`), quindi passano da
+ * `String(...)`; una lista si legge separata da virgole.
+ */
+function valoreDiAudit(raw: unknown): string | null {
+  if (raw == null) return null
+  if (Array.isArray(raw)) return raw.map((v) => String(v)).join(', ')
+  return String(raw)
+}
+
+/**
  * Giro nel browser del 14 set 2026 (#41): una richiesta non si poteva
  * assegnare a nessuno. Le richieste non hanno un gruppo assegnatario, quindi
  * non vale la regola «prima il gruppo» di incident e problem: si assegna a chi
@@ -636,7 +710,7 @@ async function removeCIFromServiceRequest(_: unknown, args: { requestId: string;
 
 export const serviceRequestResolvers = {
   Query:    { serviceRequests, serviceRequest, serviceCatalogItems },
-  Mutation: { createServiceRequest, updateServiceRequest, assignServiceRequestToUser, createServiceCatalogItem, updateServiceCatalogItem, addCIToServiceRequest, removeCIFromServiceRequest },
+  Mutation: { createServiceRequest, updateServiceRequest, setServiceRequestFormAnswer, assignServiceRequestToUser, createServiceCatalogItem, updateServiceCatalogItem, addCIToServiceRequest, removeCIFromServiceRequest },
   ServiceCatalogItem: {
     /**
      * Il nome dell'iter scelto, risolto qui e non nella lettura della voce:

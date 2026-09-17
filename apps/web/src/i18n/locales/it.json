@@ -2968,7 +2968,9 @@
     "commentDeletedBy": "Commento cancellato da {{name}} · {{date}}",
     "commentEditedBy": "Modificato da {{name}} · {{date}}",
     "removeAssignment": "Togli l'assegnazione",
-    "formAnswerEmpty": "senza risposta"
+    "formAnswerEmpty": "senza risposta",
+    "formAnswerEdit": "Correggi «{{field}}»",
+    "formAnswerSaved": "«{{field}}» corretto"
   },
   "search": {
     "placeholder": "Cerca ovunque... (Ctrl+K)",
@@ -4154,12 +4156,13 @@
       "notComputable": "Un campo {{fieldType}} non può essere calcolato: la formula la possono avere solo i campi a valore singolo che diventano una proprietà del ticket.",
       "formulaFailed": "La formula del campo «{{field}}» è fallita: {{message}}. Correggila nella libreria dei campi.",
       "notInLibrary": "«{{field}}» non è un campo della libreria dei moduli.",
-      "ticketWithoutForm": "Questa richiesta non nasce da un modulo del catalogo: «{{field}}» non è mai stato chiesto, quindi un'automazione non può rispondere.",
+      "ticketWithoutForm": "Questa richiesta non nasce da un modulo del catalogo: «{{field}}» non è mai stato chiesto, quindi non c'è una risposta da scrivere.",
       "revisionMissing": "La revisione {{revision}} del modulo di questa richiesta non si può leggere: manca la sua copia congelata.",
-      "notAskedHere": "Il campo «{{field}}» non è chiesto dal modulo con cui questa richiesta è stata compilata (revisione {{revision}}), o una condizione lo nasconde: un'automazione non può rispondere a una domanda che non è stata fatta.",
-      "computedNotSettable": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, un'automazione non può scriverlo.",
-      "notSettableType": "Un'automazione non può scrivere «{{field}}»: un campo {{fieldType}} non è un valore singolo.",
-      "requiredNotClearable": "Il campo «{{field}}» è obbligatorio: un'automazione non può svuotarlo."
+      "notAskedHere": "Il campo «{{field}}» non è chiesto dal modulo con cui questa richiesta è stata compilata (revisione {{revision}}), o una condizione lo nasconde: a una domanda che non è stata fatta non c'è risposta da scrivere.",
+      "computedNotSettable": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, non si scrive a mano.",
+      "notSettableType": "«{{field}}» non si scrive così: un campo {{fieldType}} non è un valore singolo.",
+      "requiredNotClearable": "Il campo «{{field}}» è obbligatorio: non si può svuotare.",
+      "hidesUnclearable": "Rispondere «{{field}}» così farebbe smettere al modulo di chiedere «{{other}}», e i suoi file, riferimenti o righe non si possono svuotare da qui: svuota prima quel campo."
     },
     "catalogForm": {
       "shape": "La definizione del modulo ha una forma sbagliata in {{where}}.",

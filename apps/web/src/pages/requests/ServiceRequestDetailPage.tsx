@@ -232,7 +232,7 @@ export function ServiceRequestDetailPage() {
             <TicketOLACard entityType="service_request" entityId={sr.id} />
             <CustomFieldsCard entityType="service_request" ticketId={sr.id} fields={sr.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
             {/* Le risposte al modulo della voce di catalogo (moduli del catalogo, ondata 1) */}
-            <FormAnswersCard answers={sr.formAnswers ?? []} revision={sr.formRevision ?? null} />
+            <FormAnswersCard answers={sr.formAnswers ?? []} revision={sr.formRevision ?? null} requestId={sr.id} />
           </div>
 
           {/* CI della richiesta (CM-8) */}

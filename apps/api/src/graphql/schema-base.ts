@@ -446,6 +446,21 @@ export function buildBaseSDL(): string {
     createServiceCatalogItem(input: CreateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceCatalogItem(id: ID!, input: UpdateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceRequest(id: ID!, input: UpdateServiceRequestInput!): ServiceRequest!
+    """
+    Corregge UNA risposta al modulo di una richiesta già creata (decisione del
+    proprietario, 17 set 2026: prima non si poteva, da nessuna interfaccia — un
+    ambiente scelto male restava sbagliato per sempre in filtri, report e SLA).
+
+    Passa dalle STESSE regole della compilazione: la revisione con cui la
+    richiesta e' stata compilata, le condizioni di allora, il vocabolario, lo
+    script di validazione; un campo calcolato e uno nascosto si rifiutano, e
+    svuotare un obbligatorio si rifiuta. I campi calcolati che dipendono da
+    questo si ricalcolano. Un valore nullo o vuoto svuota la risposta.
+
+    Una risposta sola per chiamata: e' cosi' che la si corregge, e ogni
+    correzione e' una voce dell'Audit Log.
+    """
+    setServiceRequestFormAnswer(requestId: ID!, field: String!, value: String): ServiceRequest!
     assignServiceRequestToUser(id: ID!, userId: ID): ServiceRequest!
 
     # CMDB

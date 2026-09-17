@@ -149,7 +149,7 @@ export async function formFields(session: Session, tenantId: string): Promise<Fo
  * La usano tutti e tre i lati, e devono dire la stessa cosa: il client per
  * OFFRIRE il campo nell'azione (`settableByAutomation` in
  * `entityFilterFields`), la validazione della regola per ACCETTARLA
- * (`assertAutomationFieldWrites`), e `writeFormAnswerFromAutomation` per
+ * (`assertAutomationFieldWrites`), e `writeFormAnswer` per
  * scrivere. Quando erano due, il client offriva un campo che la validazione
  * rifiutava — visto dal vivo su c-test: «modello_richiesto non è un campo di
  * questo tipo di ticket» su un campo che la tendina proponeva.
@@ -1362,6 +1362,14 @@ export interface FormAnswerRead {
   rows: FormTableRow[]
   /** Le colonne della tabella, per sapere cosa mostrare e in che ordine. */
   tableColumns: readonly FormTableColumn[]
+  /**
+   * Le scelte del vocabolario, già con l'etichetta: servono a CORREGGERE la
+   * risposta (decisione del 17 set 2026). Senza, la correzione di un campo a
+   * vocabolario sarebbe una casella di testo dove bisogna indovinare il valore
+   * interno — cioè il difetto che la revisione ha appena chiuso altrove. Vuota
+   * per i campi senza vocabolario.
+   */
+  options: ReadonlyArray<{ value: string; label: string }>
 }
 
 /**
@@ -1405,6 +1413,14 @@ export async function formAnswersOf(
   // Le etichette dei vocabolari citati dal modulo: una lettura per vocabolario,
   // non una per risposta.
   const leggibile = await etichetteDeiValori(tenantId, [...library.values()])
+  /** Le scelte dei vocabolari citati, una lettura per vocabolario. */
+  const scelte = new Map<string, Array<{ value: string; label: string }>>()
+  for (const campo of library.values()) {
+    if (!campo.vocabulary || scelte.has(campo.name)) continue
+    const v = await loadVocabularyEntries(tenantId, campo.vocabulary)
+    const etichetta = leggibile(campo.name)
+    scelte.set(campo.name, (v.values as string[]).map((valore) => ({ value: valore, label: etichetta(valore) })))
+  }
 
   const out: FormAnswerRead[] = []
   for (const nome of nomi) {
@@ -1429,6 +1445,7 @@ export async function formAnswersOf(
       // Le colonne di ALLORA le porta il campo: senza, una riga sarebbe una
       // mappa di nomi interni e chi legge non saprebbe in che ordine mostrarla.
       tableColumns: campo?.tableDefinition?.columns ?? [],
+      options: scelte.get(nome) ?? [],
     })
   }
   return out
@@ -1711,9 +1728,10 @@ export function formTableFilterFields(library: readonly FormFieldDef[]): Record<
 }
 
 /**
- * SCRIVERE UNA RISPOSTA DA UN'AUTOMAZIONE (ondata 8).
+ * SCRIVERE UNA RISPOSTA a modulo già compilato (ondata 8; dal 17 set 2026 la
+ * usano in due).
  *
- * Fino a qui una regola poteva LEGGERE una risposta (la condizione vede
+ * Fino all'ondata 8 una regola poteva LEGGERE una risposta (la condizione vede
  * `properties(nodo)`) ma non scriverla: l'azione «imposta campo» valida il
  * nome contro il metamodello ITIL, e un campo della libreria non è lì. Il
  * rifiuto era giusto, perché scrivere la proprietà a mano scavalcherebbe
@@ -1735,8 +1753,16 @@ export function formTableFilterFields(library: readonly FormFieldDef[]): Record<
  *
  * Fuori: allegati, riferimenti e tabelle. Un'azione manda un valore solo, e
  * quei tre non sono un valore — sono file, relazioni e righe.
+ *
+ * I CHIAMANTI SONO DUE, e per questo la funzione non si chiama più
+ * «…FromAutomation» e i suoi rifiuti non dicono più «un'automazione non può»:
+ * ci passa anche una PERSONA che corregge una risposta dal riquadro della
+ * richiesta (`setServiceRequestFormAnswer`). Provandola nel browser il primo
+ * rifiuto arrivato a schermo diceva a un operatore che «un'automazione non può
+ * rispondere a una domanda che non è stata fatta»: vero sul perché, falso su
+ * chi — e chi legge un errore che parla di qualcun altro non sa cosa fare.
  */
-export async function writeFormAnswerFromAutomation(
+export async function writeFormAnswer(
   session: Session,
   tenantId: string,
   requestId: string,
@@ -1761,7 +1787,7 @@ export async function writeFormAnswerFromAutomation(
 
   // 1. Il ticket nasce da un modulo?
   if (typeof itemId !== 'string' || itemId === '' || revision == null || Number(revision) === 0) {
-    throw new ValidationError(`The request does not come from a catalog form: "${etichetta}" was never asked, so an automation cannot answer it.`,
+    throw new ValidationError(`The request does not come from a catalog form: "${etichetta}" was never asked, so there is no answer to write.`,
       { key: 'errors.formField.ticketWithoutForm', params: { field: etichetta } })
   }
 
@@ -1789,13 +1815,13 @@ export async function writeFormAnswerFromAutomation(
   )
   const item = visibleFormItems(def, answers).find((i) => i.field === field)
   if (!item) {
-    throw new ValidationError(`The field "${etichetta}" is not asked by the form this request was filled with (revision ${String(revision)}), or a condition hides it.`,
+    throw new ValidationError(`The field "${etichetta}" is not asked by the form this request was filled with (revision ${String(revision)}), or a condition hides it: a question that was never put has no answer to write.`,
       { key: 'errors.formField.notAskedHere', params: { field: etichetta, revision: String(revision) } })
   }
 
   // 4. Un campo calcolato ha già il suo valore.
   if (campo.formula) {
-    throw new ValidationError(`The field "${etichetta}" is computed: its value comes from its formula, an automation cannot set it.`,
+    throw new ValidationError(`The field "${etichetta}" is computed: its value comes from its formula, it cannot be set by hand.`,
       { key: 'errors.formField.computedNotSettable', params: { field: etichetta } })
   }
 
@@ -1805,24 +1831,30 @@ export async function writeFormAnswerFromAutomation(
     || isFormReferenceType(campo.fieldType)
     || isFormTableType(campo.fieldType)
     || FORM_FIELD_TYPES_MULTI.includes(campo.fieldType)) {
-    throw new ValidationError(`An automation cannot set "${etichetta}": a ${campo.fieldType} field is not a single value.`,
+    throw new ValidationError(`"${etichetta}" cannot be set this way: a ${campo.fieldType} field is not a single value.`,
       { key: 'errors.formField.notSettableType', params: { field: etichetta, fieldType: campo.fieldType } })
   }
 
-  // 5. Le regole di tutti: obbligatorietà, vocabolario, script.
+  /*
+   * 5. Le regole di tutti: obbligatorietà, vocabolario, script.
+   *
+   * Svuotare un campo NON è una scorciatoia: prima uscivo subito con un `SET`
+   * solo, e così un campo svuotato non spegneva le risposte che dipendevano da
+   * lui né rifaceva i calcolati che lo leggevano — lo stesso difetto di
+   * `RICH-000022`, dalla porta accanto. Un valore vuoto è un valore: passa
+   * dalla stessa stabilizzazione.
+   */
   const testo = value == null ? '' : String(value).trim()
   const obbligatorio = item.required ?? campo.required
-  if (testo === '') {
-    if (obbligatorio) {
-      throw new ValidationError(`The field "${etichetta}" is required: an automation cannot clear it.`,
-        { key: 'errors.formField.requiredNotClearable', params: { field: etichetta } })
-    }
-    return await scriviProprieta(session, tenantId, requestId, field, null)
+  const vuoto = testo === ''
+  if (vuoto && obbligatorio) {
+    throw new ValidationError(`The field "${etichetta}" is required: it cannot be cleared.`,
+      { key: 'errors.formField.requiredNotClearable', params: { field: etichetta } })
   }
   const allowed = campo.vocabulary ? (await loadVocabularyEntries(tenantId, campo.vocabulary)).values : null
-  const convertito = coerce(campo, testo, allowed as readonly string[] | null)
+  const convertito = vuoto ? null : coerce(campo, testo, allowed as readonly string[] | null)
 
-  if (campo.validationScript) {
+  if (!vuoto && campo.validationScript) {
     const rifiuto = await runValidationScript(
       campo.validationScript,
       { input: { ...answers, [field]: convertito }, value: convertito },
@@ -1833,63 +1865,144 @@ export async function writeFormAnswerFromAutomation(
         { key: 'errors.formField.script', params: { field: etichetta, message: rifiuto } })
     }
   }
-  const esito = await scriviProprieta(session, tenantId, requestId, field, convertito)
+  /*
+   * 6. LO STATO CHE QUESTA RISPOSTA PRODUCE: formule e visibilità, fino a
+   *    quando smettono di cambiare (17 set 2026).
+   *
+   * Il punto 3 rifiuta di SCRIVERE un campo nascosto; mancava la sua
+   * conseguenza dall'altro lato. Su `RICH-000022`, correggendo «Ambiente» da
+   * Produzione a Sviluppo, «Costo stimato» — che il modulo chiede solo in
+   * produzione — restava sul nodo con 2000, e il calcolato «Costo totale» col
+   * suo 2440: il ticket mostrava come risposte due domande che quel modulo, in
+   * quella configurazione, non fa. Quei numeri finiscono in filtri, report,
+   * widget e condizioni delle regole, e nessuno li avrebbe più potuti
+   * correggere, perché ormai nascosti il punto 3 li rifiuta — un valore
+   * bloccato e sbagliato per sempre.
+   *
+   * E le due cose si inseguono: svuotare «Costo stimato» rifà «Costo totale»,
+   * e «Costo totale» decide se si chiede «Ambienti coinvolti». Provato dal
+   * vivo con una passata sola di ciascuna, «Ambienti coinvolti» restava a
+   * «Produzione» con un totale ormai a 0 — corretto a metà è sempre sbagliato.
+   * Quindi si gira fino al punto fisso, come fa il browser a ogni tasto.
+   *
+   * Il valore di prima non è perduto: chi chiama registra nell'Audit Log il
+   * valore prima e dopo e l'elenco delle risposte svuotate
+   * (`setServiceRequestFormAnswer`).
+   */
+  const nomiDelModulo = catalogFormFieldNames(def)
+  const libreria = await formFieldsByName(session, tenantId, nomiDelModulo)
+  const { spente, calcolati } = await stabilizzaRisposte(
+    def, libreria, answers, { ...answers, [field]: convertito as FormAnswerValue }, tenantId,
+  )
 
   /*
-   * 7. I CAMPI CALCOLATI CHE DIPENDONO DA QUESTO (revisione del 17 set 2026).
-   *
-   * Al salvataggio del modulo le formule si rieseguono tutte; da
-   * un'automazione si scriveva UNA proprietà e basta. Una regola che imposta
-   * `quantita` lasciava `costo_totale` al valore di prima: il ticket portava
-   * due verità, e il totale sbagliato finiva in filtri, report e widget senza
-   * che niente lo dicesse. Il rifiuto di SCRIVERE un calcolato c'era (punto 4);
-   * mancava la sua conseguenza.
-   *
-   * Si ricalcola come alla creazione: la formula vede solo i campi NON
-   * calcolati (niente catene), e si scrivono solo i calcolati VISIBILI con le
-   * risposte di adesso — un campo che nessuno vede non è una risposta.
+   * Quello che non si può svuotare con una proprietà si RIFIUTA prima di
+   * scrivere: i file di un allegato, le relazioni di un riferimento e le righe
+   * di una tabella stanno fuori dal nodo, e cancellarli non è un lavoro che
+   * la correzione di una riga possa fare di nascosto. Meglio dire quale campo
+   * sta in mezzo, così chi corregge decide lui.
    */
-  await ricalcolaCalcolati(session, tenantId, requestId, def, { ...answers, [field]: convertito as FormAnswerValue })
+  for (const nome of spente) {
+    const suo = libreria.get(nome)
+    if (!suo) continue
+    if (isFormAttachmentType(suo.fieldType) || isFormReferenceType(suo.fieldType) || isFormTableType(suo.fieldType)) {
+      const sua = etichettaDelCampo(suo, lingua)
+      throw new ValidationError(`Setting "${etichetta}" would stop the form from asking "${sua}", whose files, references or rows cannot be cleared from here: empty that field first.`,
+        { key: 'errors.formField.hidesUnclearable', params: { field: etichetta, other: sua } })
+    }
+  }
+
+  /*
+   * UNA SCRITTURA SOLA: il valore chiesto, le risposte che il modulo non
+   * chiede più e i calcolati rifatti. Erano tre `SET` in fila, e fra l'uno e
+   * l'altro il ticket esisteva con un totale che non tornava coi suoi addendi
+   * — letto da un webhook o da una regola in quell'istante, era una verità
+   * falsa.
+   */
+  const daScrivere: Record<string, unknown> = { [field]: convertito }
+  for (const n of spente) daScrivere[n] = null
+  for (const [n, v] of Object.entries(calcolati)) daScrivere[n] = v
+  const esito = await scriviProprieta(session, tenantId, requestId, daScrivere)
+  if (spente.length > 0) {
+    log.info({ tenantId, requestId, field, spente }, 'form answers cleared: the form no longer asks them')
+  }
   return esito
 }
 
 /**
- * Riesegue le formule dei campi calcolati del modulo e scrive i valori nuovi.
- * `answers` sono le risposte di adesso, col valore appena scritto già dentro.
+ * LO STATO STABILE di un modulo dopo che una risposta è cambiata: le formule
+ * rifatte e le risposte che il modulo non chiede più, insieme.
+ *
+ * Non sono due passaggi in fila, sono due cose che si INSEGUONO: una risposta
+ * spenta rifà i calcolati che la leggevano, e un calcolato nuovo può nascondere
+ * un altro campo, che una volta spento rifà altri calcolati. Su `RICH-000022`
+ * la passata sola lasciava «Ambienti coinvolti» compilato con un «Costo
+ * totale» ormai a 0 e la condizione (`> 1000`) falsa.
+ *
+ * Quindi si gira fino a quando niente cambia più, come fa il browser a ogni
+ * tasto. Il tetto delle dieci passate è una sicurezza contro un modulo con
+ * condizioni circolari, non un limite di profondità che il cliente possa
+ * incontrare (ogni giro spegne almeno una risposta, e le risposte sono finite).
+ *
+ * `prima` è la fotografia delle risposte come stavano: si spegne solo ciò che
+ * ERA chiesto e non lo è più. Un campo già nascosto da prima con un valore vecchio non si
+ * tocca — sarebbe una pulizia altrui fatta di straforo, dentro la correzione di
+ * un'altra risposta.
  */
-async function ricalcolaCalcolati(
-  session: Session, tenantId: string, requestId: string,
-  def: CatalogFormDefinition, answers: Record<string, FormAnswerValue>,
-): Promise<void> {
+async function stabilizzaRisposte(
+  def: CatalogFormDefinition,
+  libreria: Map<string, FormFieldDef>,
+  prima: Record<string, FormAnswerValue>,
+  partenza: Record<string, FormAnswerValue>,
+  tenantId: string,
+): Promise<{ spente: string[]; calcolati: Record<string, unknown> }> {
   const nomi = catalogFormFieldNames(def)
-  const library = await formFieldsByName(session, tenantId, nomi)
-  const calcolati = nomi.filter((n) => library.get(n)?.formula)
-  if (calcolati.length === 0) return
+  const nomiCalcolati = nomi.filter((n) => libreria.get(n)?.formula)
+  const eranoVisibili = new Set(visibleFormItems(def, prima).map((i) => i.field))
+  const stato: Record<string, FormAnswerValue> = { ...partenza }
+  const spente: string[] = []
+  const calcolati: Record<string, unknown> = {}
 
-  const visibili = new Set(visibleFormItems(def, answers).map((i) => i.field))
-  const perLaFormula = formulaInput(answers, new Set(calcolati))
-  const nuovi: Record<string, unknown> = {}
-  for (const n of calcolati) {
-    if (!visibili.has(n)) continue
-    const campo = library.get(n)!
-    const r = await runFormulaScript(campo.formula!, perLaFormula, campo.name, tenantId)
-    if (!r.ok) {
-      throw new ValidationError(`The formula of field "${campo.label}" failed while recomputing: ${r.error}`,
-        { key: 'errors.formField.formulaFailed', params: { field: campo.label, name: campo.name, message: r.error } })
+  for (let giro = 0; giro < 10; giro++) {
+    let cambiato = false
+
+    // Le formule: solo i calcolati VISIBILI adesso, e vedono solo i campi non
+    // calcolati (`formulaInput`), così non ci sono catene fra formule.
+    const visibili = new Set(visibleFormItems(def, stato).map((i) => i.field))
+    const perLaFormula = formulaInput(stato, new Set(nomiCalcolati))
+    for (const n of nomiCalcolati) {
+      if (!visibili.has(n)) continue
+      const campo = libreria.get(n)!
+      const r = await runFormulaScript(campo.formula!, perLaFormula, campo.name, tenantId)
+      if (!r.ok) {
+        throw new ValidationError(`The formula of field "${campo.label}" failed while recomputing: ${r.error}`,
+          { key: 'errors.formField.formulaFailed', params: { field: campo.label, name: campo.name, message: r.error } })
+      }
+      const v = r.value
+      const valore = (v == null || (typeof v === 'number' && !Number.isFinite(v)) || String(v).trim() === '')
+        ? null
+        : coerce(campo, String(v), campo.vocabulary ? (await loadVocabularyEntries(tenantId, campo.vocabulary)).values as readonly string[] : null)
+      if (!Object.prototype.hasOwnProperty.call(calcolati, n) || calcolati[n] !== valore) cambiato = true
+      calcolati[n] = valore
+      stato[n] = valore as FormAnswerValue
     }
-    const v = r.value
-    if (v == null || (typeof v === 'number' && !Number.isFinite(v)) || String(v).trim() === '') {
-      nuovi[n] = null
-      continue
+
+    // La visibilità, con i calcolati appena rifatti già dentro.
+    const oraVisibili = new Set(visibleFormItems(def, stato).map((i) => i.field))
+    for (const n of nomi) {
+      if (!eranoVisibili.has(n) || oraVisibili.has(n) || spente.includes(n)) continue
+      if (isFormAnswerEmpty(stato[n])) continue
+      stato[n] = null
+      spente.push(n)
+      delete calcolati[n]
+      cambiato = true
     }
-    const allowed = campo.vocabulary ? (await loadVocabularyEntries(tenantId, campo.vocabulary)).values : null
-    nuovi[n] = coerce(campo, String(v), allowed as readonly string[] | null)
+    if (!cambiato) break
   }
-  if (Object.keys(nuovi).length === 0) return
-  await runQuery(session, `
-    MATCH (r:ServiceRequest {id: $requestId, tenant_id: $tenantId})
-    SET r += $props, r.updated_at = $now`,
-    { requestId, tenantId, props: nuovi, now: new Date().toISOString() })
+
+  // Un calcolato spento non si riscrive col suo valore: comanda lo spegnimento.
+  for (const n of spente) delete calcolati[n]
+  return { spente, calcolati }
 }
 
 /**
@@ -1904,19 +2017,24 @@ function rispostaDaProprieta(name: string, raw: unknown): FormAnswerInput {
 }
 
 /**
- * La scrittura, una proprietà sola. `SET r += $props` con la mappa come
- * PARAMETRO: il nome del campo è validato dalla libreria, ma la regola qui è
- * che in Cypher non si interpola comunque.
+ * LA SCRITTURA, UNA SOLA. `SET r += $props` con la mappa come PARAMETRO: i
+ * nomi dei campi sono validati dalla libreria, ma la regola qui è che in
+ * Cypher non si interpola comunque.
+ *
+ * Prende una MAPPA e non un campo perché una correzione tocca più proprietà
+ * insieme — il valore chiesto, le risposte che il modulo non chiede più, i
+ * calcolati rifatti — e in mezzo a tre `SET` in fila il ticket esisteva con un
+ * totale che non tornava coi suoi addendi.
  */
 async function scriviProprieta(
-  session: Session, tenantId: string, requestId: string, field: string, value: unknown,
+  session: Session, tenantId: string, requestId: string, props: Record<string, unknown>,
 ): Promise<{ before: unknown; after: unknown }> {
   const row = await runQueryOne<{ before: Record<string, unknown>; after: Record<string, unknown> }>(session, `
     MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
     WITH r, properties(r) AS before
     SET r += $props, r.updated_at = $now
     RETURN before, properties(r) AS after`,
-  { id: requestId, tenantId, props: { [field]: value }, now: new Date().toISOString() })
+  { id: requestId, tenantId, props, now: new Date().toISOString() })
   if (!row) throw new NotFoundError('ServiceRequest', requestId)
   return { before: row.before, after: row.after }
 }

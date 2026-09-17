@@ -2968,7 +2968,9 @@
     "commentDeletedBy": "Comment deleted by {{name}} · {{date}}",
     "commentEditedBy": "Edited by {{name}} · {{date}}",
     "removeAssignment": "Remove the assignment",
-    "formAnswerEmpty": "not answered"
+    "formAnswerEmpty": "not answered",
+    "formAnswerEdit": "Correct \"{{field}}\"",
+    "formAnswerSaved": "\"{{field}}\" corrected"
   },
   "search": {
     "placeholder": "Search everywhere... (Ctrl+K)",
@@ -4154,12 +4156,13 @@
       "notComputable": "A {{fieldType}} field cannot be computed: only single-value fields stored as a ticket property can have a formula.",
       "formulaFailed": "The formula of field \"{{field}}\" failed: {{message}}. Fix the formula in the field library.",
       "notInLibrary": "\"{{field}}\" is not a field of the form library.",
-      "ticketWithoutForm": "This request does not come from a catalog form: \"{{field}}\" was never asked, so an automation cannot answer it.",
+      "ticketWithoutForm": "This request does not come from a catalog form: \"{{field}}\" was never asked, so there is no answer to write.",
       "revisionMissing": "The form revision {{revision}} of this request cannot be read: its frozen copy is missing.",
-      "notAskedHere": "The field \"{{field}}\" is not asked by the form this request was filled with (revision {{revision}}), or a condition hides it: an automation cannot answer a question that was never put.",
-      "computedNotSettable": "The field \"{{field}}\" is computed: its value comes from its formula, an automation cannot set it.",
-      "notSettableType": "An automation cannot set \"{{field}}\": a {{fieldType}} field is not a single value.",
-      "requiredNotClearable": "The field \"{{field}}\" is required: an automation cannot clear it."
+      "notAskedHere": "The field \"{{field}}\" is not asked by the form this request was filled with (revision {{revision}}), or a condition hides it: a question that was never put has no answer to write.",
+      "computedNotSettable": "The field \"{{field}}\" is computed: its value comes from its formula, it cannot be set by hand.",
+      "notSettableType": "\"{{field}}\" cannot be set this way: a {{fieldType}} field is not a single value.",
+      "requiredNotClearable": "The field \"{{field}}\" is required: it cannot be cleared.",
+      "hidesUnclearable": "Answering \"{{field}}\" this way would stop the form from asking \"{{other}}\", whose files, references or rows cannot be cleared from here: empty that field first."
     },
     "catalogForm": {
       "shape": "The form definition has the wrong shape at {{where}}.",
