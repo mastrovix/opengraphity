@@ -1945,6 +1945,27 @@
       "empty": "No planned step",
       "title": "Deploy plan — {{ci}}"
     },
+    "releasePlan": {
+      "title": "Consolidated plan",
+      "when": "When",
+      "type": "Type",
+      "step": "Step",
+      "task": "Task",
+      "ci": "CI",
+      "typeValidation": "Validation",
+      "typeRelease": "Release",
+      "envelope": "Release, end to end",
+      "noWindowYet": "no window yet",
+      "windowsApart_one": "{{count}} separate window, not contiguous",
+      "windowsApart_other": "{{count}} separate windows, not contiguous",
+      "taskProgress": "Tasks closed",
+      "plansDone": "Plans completed",
+      "ofTotal": "{{done}} of {{total}}",
+      "withoutDates_one": "One plan with no date",
+      "withoutDates_other": "{{count}} plans with no date",
+      "noSteps": "no step filled in",
+      "unusableDates": "dates cannot be used"
+    },
     "assistant": {
       "placeholder": "Ask something about your environment...",
       "intro": "Ask something about your environment: incidents, CIs, impact, changes, knowledge base.",

@@ -1945,6 +1945,27 @@
       "empty": "Nessun passo pianificato",
       "title": "Piano di rilascio — {{ci}}"
     },
+    "releasePlan": {
+      "title": "Piano complessivo",
+      "when": "Quando",
+      "type": "Tipo",
+      "step": "Passo",
+      "task": "Task",
+      "ci": "CI",
+      "typeValidation": "Validazione",
+      "typeRelease": "Rilascio",
+      "envelope": "Rilascio complessivo",
+      "noWindowYet": "nessuna finestra ancora",
+      "windowsApart_one": "{{count}} finestra distinta, non contigua",
+      "windowsApart_other": "{{count}} finestre distinte, non contigue",
+      "taskProgress": "Task chiusi",
+      "plansDone": "Piani completati",
+      "ofTotal": "{{done}} su {{total}}",
+      "withoutDates_one": "Un piano senza una data",
+      "withoutDates_other": "{{count}} piani senza una data",
+      "noSteps": "nessun passo compilato",
+      "unusableDates": "date non utilizzabili"
+    },
     "assistant": {
       "placeholder": "Chiedi qualcosa sul tuo ambiente...",
       "intro": "Fai una domanda sul tuo ambiente: incident, CI, impatti, change, knowledge base.",

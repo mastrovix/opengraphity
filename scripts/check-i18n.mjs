@@ -370,6 +370,13 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // frase del conto coincide («1 business rule», «1 trigger»).
   'ciTypeDesigner.deleteImpact.businessRules_one',
   'ciTypeDesigner.deleteImpact.autoTriggers_one',
+  // «Task» e «CI» nominano due oggetti del prodotto e si chiamano così anche in
+  // italiano: il primo è il nome che l'interfaccia usa da sempre per i task di
+  // una change (`changeTasks.*`), il secondo è la sigla di Configuration Item,
+  // che non si traduce (regola delle parole tecniche: resta inglese ciò che
+  // NOMINA). Sono intestazioni di colonna del piano complessivo.
+  'pages.releasePlan.task',
+  'pages.releasePlan.ci',
   // Nomi di prodotti esterni (ondata 8 di «Nulla cablato»): Slack, Microsoft
   // Entra ID e Google Workspace si chiamano così in ogni lingua.
   'admin.integrations.slack.tab',
@@ -1047,6 +1054,21 @@ function prosa(v) {
   for (const [file, base] of daScansionare) {
     const relPath = path.relative(base, file)
     const pulito = senzaCommenti(fs.readFileSync(file, 'utf8'))
+    /*
+     * IL JSX STA NEI `.tsx`, E LE REGEX DI FORMA JSX SOLO LI (17 set 2026).
+     *
+     * `RE_TESTO_CON_ESPRESSIONI` e `RE_TESTO_PRIMA_DI_ESPRESSIONE` hanno il
+     * flag `s`, quindi scavalcano le righe: in un file `.ts` il `>` di una
+     * funzione freccia apre una cattura che arriva fino alla prima graffa utile
+     * e porta dentro mezzo blocco di codice. Su
+     * `pages/changes/releasePlanSummary.ts` ha segnalato come «testo JSX»
+     * la riga `steps.some((s) => ordinabile(...) || ordinabile(...))`, che
+     * testo a schermo non e: un guardiano che grida su codice insegna a
+     * ignorarlo. TypeScript rifiuta il JSX in un `.ts`, quindi restringere non
+     * perde niente — `RE_STRINGA`, che e il controllo vero sull'italiano
+     * cablato, continua a guardare TUTTI i file.
+     */
+    const forseJSX = file.endsWith('.tsx')
     const visti = new Set()
     const segnala = (riga, dove) => {
       const chiave = `${riga}|${dove}`
@@ -1060,12 +1082,12 @@ function prosa(v) {
       const testo = m[1] ?? m[2] ?? m[3] ?? ''
       if (italiano(testo)) segnala(lineOf(pulito, m.index), `«${testo.slice(0, 80).replace(/\n/g, ' ')}»`)
     }
-    for (const m of pulito.matchAll(RE_TESTO_PRIMA_DI_ESPRESSIONE)) {
+    for (const m of forseJSX ? pulito.matchAll(RE_TESTO_PRIMA_DI_ESPRESSIONE) : []) {
       const testo = m[1]
       if (/[="']/.test(testo)) continue
       if (italiano(testo)) segnala(lineOf(pulito, m.index), `testo JSX «${testo.trim().slice(0, 80)}»`)
     }
-    for (const m of pulito.matchAll(RE_TESTO_CON_ESPRESSIONI)) {
+    for (const m of forseJSX ? pulito.matchAll(RE_TESTO_CON_ESPRESSIONI) : []) {
       const grezzo = m[1]
       if (/[="']/.test(grezzo)) continue
       const testo = grezzo.replace(/\{[^{}]*\}/g, ' ')

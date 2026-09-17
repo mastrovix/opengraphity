@@ -51,6 +51,7 @@ import type { AffectedCI, ChangeAuditEntryData, ChangeData, MeData } from '@/typ
 import { PhaseChipBar } from './components/PhaseChipBar'
 import { ChangeInfoCard } from './components/ChangeInfoCard'
 import { CITasksTable } from './components/CITasksTable'
+import { ReleasePlanCard } from './components/ReleasePlanCard'
 import { AuditTimeline } from './components/AuditTimeline'
 import { AddCIModal } from './components/AddCIModal'
 import { fmtDate } from './components/shared'
@@ -405,6 +406,12 @@ export function ChangeDetailPage() {
         activeColor={atApproval ? undefined : palette.yellow.bg}
         activeTextColor={atApproval ? undefined : 'var(--color-slate-dark)'}
       />
+
+      {/* IL PIANO COMPLESSIVO, in ordine di data (17 set 2026). Sta subito sotto
+          i task perché è la loro somma: si popola task per task, e al CAB è già
+          il documento da leggere. Si nasconde da sé finché non c'è niente da
+          riepilogare, quindi non serve un varco di fase qui. */}
+      <ReleasePlanCard affected={affected} />
 
       <SectionCard title={t('pages.changeDetail.involvedCIs')} collapsible count={affected.length}>
         <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)' }}>
