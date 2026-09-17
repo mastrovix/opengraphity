@@ -203,6 +203,7 @@
       "notBoolean": "Il campo «{{field}}» è sì/no: usa true o false.",
       "notDate": "Il campo «{{field}}» è una data, «{{value}}» no.",
       "notInVocabulary": "«{{value}}» non è un valore di «{{field}}». Ammessi: {{allowed}}.",
+      "vocabularyEmpty": "Il campo «{{field}}» non ha ancora nessuna scelta disponibile: segnalalo all'IT.",
       "script": "Il campo «{{field}}» è stato rifiutato: {{message}}",
       "oneReference": "Il campo «{{field}}» prende un riferimento, ne sono arrivati {{count}}.",
       "fileRequired": "Il campo «{{field}}» ha bisogno di almeno un file.",
@@ -231,6 +232,7 @@
       "cellNotBoolean": "Riga {{row}} di «{{field}}»: «{{column}}» vuole sì o no, è arrivato «{{value}}».",
       "cellNotDate": "Riga {{row}} di «{{field}}»: «{{value}}» non è una data per «{{column}}».",
       "cellNotInVocabulary": "Riga {{row}} di «{{field}}»: «{{value}}» non è un valore di «{{column}}» (ammessi: {{allowed}}).",
+      "cellVocabularyEmpty": "Riga {{row}} di «{{field}}»: la colonna «{{column}}» non ha ancora nessuna scelta. Segnalalo all'IT.",
       "rowRequired": "La tabella «{{field}}» vuole almeno una riga.",
       "notATable": "Un campo {{fieldType}} non vuole colonne: le ha solo un campo tabella."
     },
@@ -264,6 +266,8 @@
       "answerComputed": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, non si può mandare.",
       "answerNotAList": "Il campo «{{field}}» tiene un valore solo: è arrivato come elenco. Riprova; se succede ancora, segnalalo all'IT.",
       "answerNotASingleValue": "Il campo «{{field}}» tiene più valori: è arrivato come valore solo. Riprova; se succede ancora, segnalalo all'IT.",
+      "answerNotAReference": "Il campo «{{field}}» non è un riferimento. Riprova; se succede ancora, segnalalo all'IT.",
+      "answerNotATable": "Il campo «{{field}}» non è una tabella. Riprova; se succede ancora, segnalalo all'IT.",
       "revisionChanged": "Il modulo di «{{item}}» è cambiato mentre lo compilavi (era la revisione {{filled}}, ora è la {{current}}): queste risposte sono di un altro modulo. Rifai la richiesta."
     },
     "scripting": {

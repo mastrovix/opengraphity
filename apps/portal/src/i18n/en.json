@@ -203,6 +203,7 @@
       "notBoolean": "The field \"{{field}}\" is yes/no: use true or false.",
       "notDate": "The field \"{{field}}\" is a date, \"{{value}}\" is not.",
       "notInVocabulary": "\"{{value}}\" is not a value of \"{{field}}\". Allowed: {{allowed}}.",
+      "vocabularyEmpty": "The field \"{{field}}\" has no choices available yet: please tell IT.",
       "script": "The field \"{{field}}\" was refused: {{message}}",
       "oneReference": "The field \"{{field}}\" takes one reference, {{count}} were sent.",
       "fileRequired": "The field \"{{field}}\" needs at least one file.",
@@ -231,6 +232,7 @@
       "cellNotBoolean": "Row {{row}} of \"{{field}}\": \"{{column}}\" takes yes or no, got \"{{value}}\".",
       "cellNotDate": "Row {{row}} of \"{{field}}\": \"{{value}}\" is not a date for \"{{column}}\".",
       "cellNotInVocabulary": "Row {{row}} of \"{{field}}\": \"{{value}}\" is not a value of \"{{column}}\" (allowed: {{allowed}}).",
+      "cellVocabularyEmpty": "Row {{row}} of \"{{field}}\": the column \"{{column}}\" has no choices yet. Please tell IT.",
       "rowRequired": "The table \"{{field}}\" needs at least one row.",
       "notATable": "A {{fieldType}} field takes no table columns: only a table field does."
     },
@@ -264,6 +266,8 @@
       "answerComputed": "The field \"{{field}}\" is computed: its value comes from its formula, it cannot be sent.",
       "answerNotAList": "The field \"{{field}}\" holds one value: it arrived as a list. Try again; if it happens again, tell IT.",
       "answerNotASingleValue": "The field \"{{field}}\" holds several values: it arrived as a single one. Try again; if it happens again, tell IT.",
+      "answerNotAReference": "The field \"{{field}}\" is not a reference. Try again; if it happens again, tell IT.",
+      "answerNotATable": "The field \"{{field}}\" is not a table. Try again; if it happens again, tell IT.",
       "revisionChanged": "The form of \"{{item}}\" changed while you were filling it (it was revision {{filled}}, now it is {{current}}): these answers belong to another form. Start the request again."
     },
     "scripting": {

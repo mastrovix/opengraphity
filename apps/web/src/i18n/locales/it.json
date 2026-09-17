@@ -3710,7 +3710,9 @@
     },
     "filter": {
       "invalidTypeName": "Nome di tipo non valido: «{{typeName}}».",
-      "typeNotFilterable": "Il tipo «{{typeName}}» non esiste o non si può filtrare."
+      "typeNotFilterable": "Il tipo «{{typeName}}» non esiste o non si può filtrare.",
+      "operatorForList": "Il campo «{{field}}» tiene più valori: «{{operator}}» è un operatore da testo. Usa «contiene uno di», «contiene tutti» o «non contiene nessuno di».",
+      "operatorForSingle": "Il campo «{{field}}» tiene un valore solo: «{{operator}}» è per i campi a scelta multipla."
     },
     "task": {
       "resultOneOf": "Il risultato deve essere uno di: {{allowed}}.",
@@ -4140,6 +4142,7 @@
       "notBoolean": "Il campo «{{field}}» è sì/no: usa true o false.",
       "notDate": "Il campo «{{field}}» è una data, «{{value}}» no.",
       "notInVocabulary": "«{{value}}» non è un valore di «{{field}}». Ammessi: {{allowed}}.",
+      "vocabularyEmpty": "Il campo «{{field}}» sceglie da un Dizionario ancora vuoto ({{vocabulary}}): riempilo in Configurazione → Dizionario, altrimenti a quel campo non si può rispondere.",
       "script": "Il campo «{{field}}» è stato rifiutato: {{message}}",
       "oneReference": "Il campo «{{field}}» prende un riferimento, ne sono arrivati {{count}}.",
       "fileRequired": "Il campo «{{field}}» ha bisogno di almeno un file.",
@@ -4186,6 +4189,8 @@
       "answerComputed": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, non si può mandare.",
       "answerNotAList": "Il campo «{{field}}» tiene un valore solo: è arrivato come elenco. Chi l'ha mandato ha un difetto — riprova, e se resta segnalalo.",
       "answerNotASingleValue": "Il campo «{{field}}» tiene più valori: è arrivato come valore solo. Chi l'ha mandato ha un difetto — riprova, e se resta segnalalo.",
+      "answerNotAReference": "Il campo «{{field}}» non è un riferimento: vuole un valore, non degli identificativi. Chi l'ha mandato ha un difetto.",
+      "answerNotATable": "Il campo «{{field}}» non è una tabella: vuole un valore, non delle righe. Chi l'ha mandato ha un difetto.",
       "revisionChanged": "Il modulo di «{{item}}» è cambiato mentre lo compilavi (era la revisione {{filled}}, ora è la {{current}}): queste risposte sono di un altro modulo. Rifai la richiesta."
     },
     "serviceCatalog": {
@@ -4205,6 +4210,7 @@
       "cellNotBoolean": "Riga {{row}} di «{{field}}»: «{{column}}» vuole sì o no, è arrivato «{{value}}».",
       "cellNotDate": "Riga {{row}} di «{{field}}»: «{{value}}» non è una data per «{{column}}».",
       "cellNotInVocabulary": "Riga {{row}} di «{{field}}»: «{{value}}» non è un valore di «{{column}}» (ammessi: {{allowed}}).",
+      "cellVocabularyEmpty": "Riga {{row}} di «{{field}}»: la colonna «{{column}}» sceglie da un Dizionario ancora vuoto. Riempilo in Configurazione → Dizionario.",
       "rowRequired": "La tabella «{{field}}» vuole almeno una riga.",
       "notATable": "Un campo {{fieldType}} non vuole colonne: le ha solo un campo tabella."
     }

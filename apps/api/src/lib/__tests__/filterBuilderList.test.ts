@@ -83,3 +83,63 @@ describe('righe di una tabella', () => {
       .toThrow(/not supported on relation field/)
   })
 })
+
+/**
+ * «DIVERSO DA» E «NON FRA» COMPRENDONO CHI NON HA RISPOSTO (17 set 2026).
+ *
+ * In Cypher `NULL <> 'x'` è NULL, cioè falso: un ticket che quella domanda non
+ * l'ha mai avuta spariva dal risultato. Sulle richieste è la norma — un campo
+ * di modulo esiste solo per la voce di catalogo che lo chiede — quindi «tutte
+ * tranne produzione» mostrava solo le richieste di quella voce. La regola
+ * giusta era già scritta per «non contiene nessuno di», con tanto di commento.
+ */
+describe('gli operatori negativi non scartano chi non ha risposto', () => {
+  it('«diverso da» include il campo mai compilato', () => {
+    const where = buildAdvancedWhere(regola('not_equals', 'production'), {}, campi)
+    expect(where).toBe('(n.sistemi IS NULL OR n.sistemi <> $af_0)')
+  })
+
+  it('«non fra» fa lo stesso', () => {
+    const where = buildAdvancedWhere(regola('not_in', ['production', 'staging']), {}, campi)
+    expect(where).toBe('(n.sistemi IS NULL OR NOT n.sistemi IN $af_0)')
+  })
+
+  it('«uguale a» invece NON lo include: chi non ha risposto non è uguale a niente', () => {
+    const where = buildAdvancedWhere(regola('equals', 'production'), {}, campi)
+    expect(where).toBe('n.sistemi = $af_0')
+  })
+})
+
+/**
+ * L'OPERATORE DEVE STARE COL TIPO DEL CAMPO (17 set 2026).
+ *
+ * L'operatore era validato contro un elenco, il tipo non entrava nella
+ * decisione: un `contains` su una selezione multipla genera
+ * `toLower(lista) CONTAINS …`, che in Cypher è un errore di tipo. L'errore
+ * veniva mascherato e la pagina Richieste INTERA non caricava, senza dire
+ * quale regola. Ora si rifiuta la regola, nominandola.
+ */
+describe('operatore × tipo del campo', () => {
+  const liste = new Set(['sistemi'])
+
+  it('un operatore di testo su una lista è rifiutato, e dice cosa usare', () => {
+    expect(() => buildAdvancedWhere(regola('contains', 'crm'), {}, campi, 'n', {}, '', liste))
+      .toThrow(/holds several values/)
+  })
+
+  it('un operatore di lista su un campo a valore singolo è rifiutato', () => {
+    const scalari = new Set(['ambiente_uso'])
+    const spec = JSON.stringify({ rules: [{ field: 'ambiente_uso', operator: 'has_any', value: ['a'], logic: 'AND' }] })
+    expect(() => buildAdvancedWhere(spec, {}, scalari, 'n', {}, '', new Set()))
+      .toThrow(/holds one value/)
+  })
+
+  it('senza l\'elenco delle liste il controllo non scatta: i chiamanti che non le conoscono restano come prima', () => {
+    expect(() => buildAdvancedWhere(regola('contains', 'crm'), {}, campi)).not.toThrow()
+    expect(() => buildAdvancedWhere(regola('has_any', ['crm']), {}, campi)).not.toThrow()
+  })
+
+  it('e gli abbinamenti giusti passano', () => {
+    expect(() => buildAdvancedWhere(regola('has_any', ['crm']), {}, campi, 'n', {}, '', liste)).not.toThrow()
+  })
+})

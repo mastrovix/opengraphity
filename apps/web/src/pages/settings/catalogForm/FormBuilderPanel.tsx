@@ -259,6 +259,7 @@ export function FormBuilderPanel() {
                     condizione={item.visibleWhen}
                     soggetti={soggettiCondizione.filter((n) => n !== item.field)}
                     etichettaDi={(n) => perNome.get(n)?.label ?? n}
+                    campoDi={(n) => perNome.get(n)}
                     onChange={(c) => sostituisciVoce(iSez, iVoce, c ? { ...item, visibleWhen: c } : omettiCondizione(item))}
                   />
                 </div>
@@ -342,14 +343,67 @@ function omettiCondizione(item: CatalogFormItem): CatalogFormItem {
 }
 
 /**
+ * IL VALORE DI UNA REGOLA, SCELTO E NON DIGITATO.
+ *
+ * Era una casella di testo sempre, anche quando il campo sceglie da un
+ * vocabolario del Dizionario: l'amministratore doveva conoscere il valore
+ * INTERNO (`production`), e chi scriveva «Produzione» — cioè l'etichetta che
+ * il prodotto gli mostra ovunque — otteneva una condizione che non sarebbe
+ * scattata mai, in silenzio. È lo stesso difetto chiuso per le business rule
+ * nell'ondata 5 dei moduli e rimasto aperto qui; l'ho visto nel browser
+ * guardando la regola di «Costo stimato» (revisione del 17 set 2026).
+ *
+ * Le scelte arrivano dalla libreria (`options`, già con le etichette nella
+ * lingua di chi guarda). Un sì/no offre Sì e No. Tutto il resto resta testo,
+ * perché è testo davvero.
+ */
+function ValoreDellaRegola({ campo, valore, onValore }: {
+  campo: FormFieldRow | undefined
+  valore: string
+  onValore: (v: string) => void
+}) {
+  const { t } = useTranslation()
+  const stile = { width: 'auto', minWidth: 120, padding: '2px 22px 2px 6px', fontSize: 'var(--font-size-table)' }
+
+  if (campo && campo.options.length > 0) {
+    return (
+      <Select value={valore} style={stile} onChange={(e) => onValore(e.target.value)}>
+        <option value="">{t('common.select')}</option>
+        {campo.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        {/* Un valore salvato che il Dizionario non ha più resta visibile invece
+            di sembrare un'altra scelta. */}
+        {valore !== '' && !campo.options.some((o) => o.value === valore) && (
+          <option value={valore}>{valore}</option>
+        )}
+      </Select>
+    )
+  }
+  if (campo?.fieldType === 'boolean') {
+    return (
+      <Select value={valore} style={stile} onChange={(e) => onValore(e.target.value)}>
+        <option value="">{t('common.select')}</option>
+        <option value="true">{t('common.yes')}</option>
+        <option value="false">{t('common.no')}</option>
+      </Select>
+    )
+  }
+  return (
+    <Input value={valore} style={{ width: 120, padding: '2px 6px', fontSize: 'var(--font-size-table)' }}
+      onChange={(e) => onValore(e.target.value)} />
+  )
+}
+
+/**
  * L'editor di una condizione. Dichiarativa, non uno script: così si può
  * mostrare, spiegare e verificare — e il server la rivaluta con la stessa
  * funzione, senza eseguire codice del cliente.
  */
-function EditorCondizione({ condizione, soggetti, etichettaDi, onChange }: {
+function EditorCondizione({ condizione, soggetti, etichettaDi, campoDi, onChange }: {
   condizione?: FormCondition
   soggetti: readonly string[]
   etichettaDi: (name: string) => string
+  /** Il campo della libreria: da lì vengono il tipo e le scelte del Dizionario. */
+  campoDi: (name: string) => FormFieldRow | undefined
   onChange: (c: FormCondition | undefined) => void
 }) {
   const { t } = useTranslation()
@@ -392,8 +446,11 @@ function EditorCondizione({ condizione, soggetti, etichettaDi, onChange }: {
                 {FORM_CONDITION_OPS.map((op) => <option key={op} value={op}>{t(`pages.catalogForms.conditionOp.${op}`)}</option>)}
               </Select>
               {!(FORM_CONDITION_OPS_WITHOUT_VALUE as readonly string[]).includes(regola.op) && (
-                <Input value={regola.value ?? ''} style={{ width: 120, padding: '2px 6px', fontSize: 'var(--font-size-table)' }}
-                  onChange={(e) => onChange({ ...condizione!, rules: condizione!.rules.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)) })} />
+                <ValoreDellaRegola
+                  campo={campoDi(regola.field)}
+                  valore={regola.value ?? ''}
+                  onValore={(v) => onChange({ ...condizione!, rules: condizione!.rules.map((r, j) => (j === i ? { ...r, value: v } : r)) })}
+                />
               )}
               <button type="button" aria-label={t('pages.catalogForms.builder.removeCondition')}
                 onClick={() => {

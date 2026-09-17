@@ -5,7 +5,7 @@ import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLResolveInfo } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
 import { withSession, mapCI, ciTypeFromLabels } from './ci-utils.js'
-import { TICKET_CI_RELATIONSHIP } from '@opengraphity/types'
+import { FORM_FIELD_TYPES_MULTI, TICKET_CI_RELATIONSHIP } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { assertCIsLinkable } from '../../lib/ticketCIExclusions.js'
 import { mapUser } from '../../lib/mappers.js'
@@ -111,7 +111,16 @@ async function serviceRequests(
      * righe dei nodi invece di un JSON.
      */
     Object.assign(relationFields, formTableFilterFields(libreria))
-    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r', relationFields) : ''
+    /**
+     * I campi che sul nodo portano una LISTA (selezione multipla): serve al
+     * costruttore dei filtri per rifiutare un operatore di testo su una lista
+     * con un messaggio, invece di generare Cypher invalida e far cadere tutta
+     * la pagina (revisione del 17 set 2026).
+     */
+    const campiLista = new Set(
+      libreria.filter((c) => FORM_FIELD_TYPES_MULTI.includes(c.fieldType)).map((c) => c.name),
+    )
+    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r', relationFields, '', campiLista) : ''
     // A-22: un campo non ordinabile è un errore, non un ordine diverso in silenzio.
     const orderBy = orderByOrThrow(REQUEST_SORT_WHITELIST, args.sortField, args.sortDirection ?? 'desc', 'r.created_at DESC', 'serviceRequests(sortField)')
     // Revisione totale · B-1: `advWhere` è un'espressione nuda e va unita con

@@ -86,6 +86,8 @@ export interface ValidatedWidget {
   neo4jLabel: string
   /** field name → property, for the fields this widget uses. */
   property:   (field: string) => string
+  /** field name → tipo del campo: serve a confrontare un filtro col tipo giusto. */
+  fieldType:  (field: string) => string
 }
 
 const badInput = (message: string, key: string, params: Record<string, string>) =>
@@ -127,7 +129,38 @@ export function validateWidgetConfig(
       if (!f) throw new Error(`widget: field ${field} not validated`)
       return f.property
     },
+    fieldType: (field: string) => byName.get(field)?.fieldType ?? 'string',
   }
+}
+
+/**
+ * IL VALORE DEL FILTRO, NEL TIPO DEL CAMPO (revisione del 17 set 2026).
+ *
+ * Il client manda sempre una stringa — la casella di un filtro è testo, e la
+ * scelta sì/no manda `'true'`. Ma un campo booleano o numerico di un modulo
+ * del catalogo sta sul nodo col suo tipo, e in Cypher `n.serve_vpn = 'true'`
+ * confronta un booleano con una stringa: MAI vero. Il widget «richieste con
+ * approvazione = Sì» contava zero per sempre, e quello zero veniva presentato
+ * come un dato.
+ *
+ * Stessa regola del valutatore delle condizioni (`sameValue`): si converte al
+ * tipo del campo, e un valore che non si converte resta com'è — la query non
+ * troverà niente, ma è il dato a essere sbagliato, non il confronto.
+ */
+export function widgetFilterValue(raw: unknown, fieldType: string): unknown {
+  if (raw == null) return raw
+  const testo = String(raw).trim()
+  if (fieldType === 'boolean') {
+    const basso = testo.toLowerCase()
+    if (basso === 'true')  return true
+    if (basso === 'false') return false
+    return raw
+  }
+  if (fieldType === 'number') {
+    const n = Number(testo)
+    return Number.isFinite(n) ? n : raw
+  }
+  return raw
 }
 
 /** Aggregate value: null means "no numeric data" — an error, never a fabricated 0. */
@@ -144,7 +177,7 @@ function aggregateValue(records: Array<{ get: (k: string) => unknown }>, what: s
 }
 
 async function executeWidgetQuery(cfg: WidgetConfig, tenantId: string) {
-  const { neo4jLabel, property } = validateWidgetConfig(cfg, await widgetCatalog(tenantId))
+  const { neo4jLabel, property, fieldType } = validateWidgetConfig(cfg, await widgetCatalog(tenantId))
 
   const whereClause: string[] = ['n.tenant_id = $tenantId']
   const params: Record<string, unknown> = { tenantId }
@@ -158,7 +191,7 @@ async function executeWidgetQuery(cfg: WidgetConfig, tenantId: string) {
 
   if (cfg.filterField && cfg.filterValue != null) {
     whereClause.push(`n.${property(cfg.filterField)} = $filterValue`)
-    params['filterValue'] = cfg.filterValue
+    params['filterValue'] = widgetFilterValue(cfg.filterValue, fieldType(cfg.filterField))
   }
 
   const whereStr = `WHERE ${whereClause.join(' AND ')}`

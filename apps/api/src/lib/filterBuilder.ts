@@ -1,3 +1,4 @@
+import { ValidationError } from './errors.js'
 // Shared advanced-filter WHERE builder — used by all list resolvers
 
 export interface AdvFilterRule {
@@ -47,6 +48,43 @@ import { propertyForField } from './fieldProperty.js'
  *                        name (`Incident.priority` → `severity`, lib/fieldProperty.ts) is
  *                        filtered on that property
  */
+/**
+ * GLI OPERATORI DI LISTA VANNO SUI CAMPI LISTA, E VICEVERSA (revisione del 17
+ * set 2026).
+ *
+ * L'operatore era validato contro un elenco, il TIPO del campo non entrava
+ * nella decisione: un `contains` su una selezione multipla genera
+ * `toLower(lista) CONTAINS …`, che in Cypher è un errore di tipo. L'errore
+ * veniva mascherato e la pagina Richieste INTERA non caricava, senza dire
+ * quale regola. Il client offre già gli operatori giusti, quindi ci si arriva
+ * con un filtro salvato a mano o con un client più vecchio — ed è proprio il
+ * caso in cui serve un messaggio, non un 500.
+ *
+ * `listFields` sono i nomi che sul nodo portano una lista; chi non li conosce
+ * non passa niente e il controllo non scatta (il comportamento di prima).
+ */
+const OPERATORI_DI_LISTA: readonly string[] = ['has_any', 'has_all', 'has_none', 'list_is_empty', 'list_is_not_empty']
+const OPERATORI_DI_TESTO: readonly string[] = ['contains', 'starts_with', 'ends_with']
+
+function assertOperatoreCompatibile(field: string, operator: string, listFields: ReadonlySet<string> | undefined): void {
+  // `undefined` = il chiamante non sa quali campi sono liste: non si indovina,
+  // e il comportamento resta quello di prima (i test di questo file lo fissano).
+  if (!listFields) return
+  const lista = listFields.has(field)
+  if (lista && OPERATORI_DI_TESTO.includes(operator)) {
+    throw new ValidationError(
+      `The field "${field}" holds several values: "${operator}" is for text. Use "has_any", "has_all" or "has_none".`,
+      { key: 'errors.filter.operatorForList', params: { field, operator } },
+    )
+  }
+  if (!lista && OPERATORI_DI_LISTA.includes(operator)) {
+    throw new ValidationError(
+      `The field "${field}" holds one value: "${operator}" is for multiple-choice fields.`,
+      { key: 'errors.filter.operatorForSingle', params: { field, operator } },
+    )
+  }
+}
+
 export function buildAdvancedWhere(
   filtersJson: string,
   params: Record<string, unknown>,
@@ -54,6 +92,7 @@ export function buildAdvancedWhere(
   nodeAlias = 'n',
   relationFields: Record<string, RelationFieldDef> = {},
   typeName = '',
+  listFields?: ReadonlySet<string>,
 ): string {
   let group: AdvFilterGroup
   try { group = JSON.parse(filtersJson) as AdvFilterGroup }
@@ -80,6 +119,9 @@ export function buildAdvancedWhere(
     if (!allowedFields.has(rule.field)) {
       throw new Error(`Filter field not allowed for this entity: ${rule.field}`)
     }
+    // L'operatore deve stare col TIPO del campo, altrimenti la Cypher che
+    // segue è invalida e cade tutta la lista senza dire quale regola.
+    assertOperatoreCompatibile(rule.field, rule.operator, listFields)
 
     // Relation field: generate EXISTS subquery
     const relDef = relationFields[rule.field]
@@ -136,9 +178,22 @@ export function buildAdvancedWhere(
         params[pk] = rule.value
         conditions.push(`${prop} = $${pk}`)
         break
+      /**
+       * «DIVERSO DA» COMPRENDE CHI NON HA RISPOSTO (revisione del 17 set 2026).
+       *
+       * In Cypher `NULL <> 'x'` è NULL, cioè falso: un ticket che quella
+       * domanda non l'ha mai avuta spariva dal risultato. Sulle richieste è la
+       * norma, non l'eccezione — un campo di modulo esiste solo per la voce di
+       * catalogo che lo chiede: su 300 richieste con 40 nate da quella voce,
+       * «Ambiente ≠ produzione» restituiva una trentina di righe e l'utente
+       * leggeva «tutte tranne produzione».
+       *
+       * La regola giusta era già scritta dieci righe sotto per `has_none`, con
+       * tanto di commento: qui mancava.
+       */
       case 'not_equals':
         params[pk] = rule.value
-        conditions.push(`${prop} <> $${pk}`)
+        conditions.push(`(${prop} IS NULL OR ${prop} <> $${pk})`)
         break
       case 'is_empty':
         conditions.push(`(${prop} IS NULL OR ${prop} = '')`)
@@ -205,7 +260,8 @@ export function buildAdvancedWhere(
         break
       case 'not_in':
         params[pk] = rule.value
-        conditions.push(`NOT ${prop} IN $${pk}`)
+        // Come `not_equals`: chi non ha risposto non è «fra i valori esclusi».
+        conditions.push(`(${prop} IS NULL OR NOT ${prop} IN $${pk})`)
         break
       default:
         // Unknown operator = corrupt filter — refuse, don't silently drop the rule.

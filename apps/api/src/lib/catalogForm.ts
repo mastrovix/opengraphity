@@ -526,6 +526,45 @@ export function visibleFormItems(def: CatalogFormDefinition, answers: FormAnswer
   return formItemsToFill(def, answers, opts)
 }
 
+/**
+ * UNA DATA SI SALVA IN UNA FORMA SOLA (revisione del 17 set 2026).
+ *
+ * Il controllo era `Date.parse` e poi si scriveva il TESTO GREZZO. Ma la
+ * risposta diventa una proprietà del ticket, e su quella proprietà i filtri
+ * delle liste, i report e le condizioni fanno confronti d'ORDINE: su una
+ * stringa l'ordine è lessicografico. Una data scritta `01/02/2026` — che
+ * `Date.parse` accetta, e che un client REST o un browser con un formato
+ * locale può mandare — non veniva trovata da «dopo il 2026-01-01» e in un
+ * raggruppamento per mese finiva a parte. Peggio: un report che la converte
+ * con `datetime()` manda in errore tutta la sezione.
+ *
+ * `date` → `YYYY-MM-DD`, senza fuso: una data di calendario non è un istante.
+ * `datetime` senza fuso → si aggiungono i secondi e basta (`2026-03-01T10:00`
+ * resta le dieci di quel giorno: convertirlo in UTC sposterebbe l'ora che chi
+ * compila ha scritto). Con un fuso dichiarato è un istante, e si normalizza in
+ * UTC perché due istanti uguali si devono leggere uguali.
+ */
+function normalizzaData(fieldType: string, testo: string): string {
+  if (fieldType === 'date') {
+    // Già `YYYY-MM-DD…`: si prendono i tre numeri e basta.
+    const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(testo)
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
+    /*
+     * Altrimenti si legge quello che il parser ha capito, NEI CAMPI LOCALI.
+     * Passare da `toISOString()` sposterebbe il giorno: `new Date('02/01/2026')`
+     * è la mezzanotte LOCALE del primo febbraio, che in UTC è il 31 gennaio —
+     * e una data di calendario non ha un fuso da convertire. (Difetto del
+     * rimedio stesso, trovato dal test che lo accompagna.)
+     */
+    const d = new Date(testo)
+    const due = (n: number): string => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}`
+  }
+  const locale = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.exec(testo)
+  if (locale) return locale[1] ? testo : `${testo}:00`
+  return new Date(testo).toISOString()
+}
+
 function coerce(def: FormFieldDef, raw: string, allowed: readonly string[] | null): unknown {
   const testo = raw.trim()
   switch (def.fieldType) {
@@ -550,10 +589,26 @@ function coerce(def: FormFieldDef, raw: string, allowed: readonly string[] | nul
         throw new ValidationError(`The field "${def.label}" is a date, "${testo}" is not.`,
           { key: 'errors.formField.notDate', params: { field: def.label, value: testo } })
       }
-      return testo
+      return normalizzaData(def.fieldType, testo)
     }
     case 'enum': {
-      if (allowed && allowed.length > 0 && !allowed.includes(testo)) {
+      /*
+       * UN VOCABOLARIO VUOTO È UN ERRORE DI CONFIGURAZIONE, non un permesso
+       * (revisione del 17 set 2026). Il controllo era «se ci sono valori
+       * ammessi»: chi pubblicava un modulo prima di riempire il Dizionario
+       * otteneva un campo che accetta QUALUNQUE testo, e quei valori finivano
+       * come proprietà del ticket — in filtri, report e widget, con scelte che
+       * il Dizionario non conosce e che nessuno saprebbe da dove vengono.
+       * La pubblicazione verifica che il vocabolario ESISTA; qui si pretende
+       * che abbia qualcosa dentro.
+       */
+      if (allowed && allowed.length === 0) {
+        throw new ValidationError(
+          `The field "${def.label}" chooses from a Dictionary that has no values yet: fill it in Settings → Dictionary, or the field cannot be answered.`,
+          { key: 'errors.formField.vocabularyEmpty', params: { field: def.label, vocabulary: def.vocabulary ?? '' } },
+        )
+      }
+      if (allowed && !allowed.includes(testo)) {
         throw new ValidationError(`"${testo}" is not a value of "${def.label}" (allowed: ${allowed.join(', ')}).`,
           { key: 'errors.formField.notInVocabulary', params: { field: def.label, value: testo, allowed: allowed.join(', ') } })
       }
@@ -627,6 +682,25 @@ export async function resolveFormWrites(
       throw new ValidationError(
         `The field "${nome(campo)}" holds several values: it was sent as one. Send "values", not "value".`,
         { key: 'errors.catalogForm.answerNotASingleValue', params: { field: nome(campo), name: campo.name } },
+      )
+    }
+    /*
+     * E le altre due forme, che venivano BUTTATE IN SILENZIO: un `refIds` su un
+     * campo di testo e un `rows` su un campo che non è una tabella. Lo stesso
+     * file rifiuta a voce alta un campo nascosto, un calcolato mandato e una
+     * colonna inesistente — qui taceva, e chi aveva sbagliato la chiamata
+     * credeva di aver scritto qualcosa (revisione del 17 set 2026).
+     */
+    if (input.refIds != null && !isFormReferenceType(campo.fieldType)) {
+      throw new ValidationError(
+        `The field "${nome(campo)}" is not a reference: it takes a value, not ids.`,
+        { key: 'errors.catalogForm.answerNotAReference', params: { field: nome(campo), name: campo.name } },
+      )
+    }
+    if (input.rows != null && !isFormTableType(campo.fieldType)) {
+      throw new ValidationError(
+        `The field "${nome(campo)}" is not a table: it takes a value, not rows.`,
+        { key: 'errors.catalogForm.answerNotATable', params: { field: nome(campo), name: campo.name } },
       )
     }
   }
@@ -755,8 +829,14 @@ export async function resolveFormWrites(
       const valori = (input.values ?? []).map((v) => String(v).trim()).filter((v) => v !== '')
       if (valori.length === 0) { out[input.name] = null; continue }
       const allowed = campo.vocabulary ? await vocabolarioDi(campo.vocabulary) : null
+      if (allowed && allowed.length === 0) {
+        throw new ValidationError(
+          `The field "${nome(campo)}" chooses from a Dictionary that has no values yet: fill it in Settings → Dictionary, or the field cannot be answered.`,
+          { key: 'errors.formField.vocabularyEmpty', params: { field: nome(campo), name: campo.name, vocabulary: campo.vocabulary ?? '' } },
+        )
+      }
       for (const v of valori) {
-        if (allowed && allowed.length > 0 && !allowed.includes(v)) {
+        if (allowed && !allowed.includes(v)) {
           throw new ValidationError(`"${v}" is not a value of "${nome(campo)}" (allowed: ${allowed.join(', ')}).`,
             { key: 'errors.formField.notInVocabulary', params: { field: nome(campo), name: campo.name, value: v, allowed: allowed.join(', ') } })
         }
@@ -1192,7 +1272,14 @@ function convertiCella(
       return testo
     }
     case 'enum':
-      if (allowed && allowed.length > 0 && !allowed.includes(testo)) {
+      // Come per i campi: un vocabolario vuoto è configurazione rotta, non un
+      // permesso di scrivere qualunque cosa nella cella.
+      if (allowed && allowed.length === 0) {
+        throw new ValidationError(
+          `Row ${riga} of "${etichetta}": the column "${dove.column}" chooses from a Dictionary that has no values yet.`,
+          { key: 'errors.formTable.cellVocabularyEmpty', params: { ...dove } })
+      }
+      if (allowed && !allowed.includes(testo)) {
         throw new ValidationError(`Row ${riga} of "${etichetta}": "${testo}" is not a value of "${dove.column}" (allowed: ${allowed.join(', ')}).`,
           { key: 'errors.formTable.cellNotInVocabulary', params: { ...dove, value: testo, allowed: allowed.join(', ') } })
       }
@@ -1656,9 +1743,20 @@ export async function writeFormAnswerFromAutomation(
       { key: 'errors.formField.revisionMissing', params: { revision: String(revision) } })
   }
 
-  // 3. Il campo era CHIESTO su questo ticket, e non nascosto da una condizione.
+  /*
+   * 3. Il campo era CHIESTO su questo ticket, e non nascosto da una condizione.
+   *
+   * Le risposte si rimettono insieme dalle proprietà del nodo NELLA LORO FORMA:
+   * una lista resta una lista, un numero resta un numero. Prima si passava
+   * tutto per `String(...)` con un `join(',')`, quindi una selezione multipla
+   * arrivava al valutatore come `"produzione,collaudo"` e l'appartenenza non
+   * scattava: una regola legittima veniva rifiutata con «una condizione lo
+   * nasconde», che era falso — e con `contains` funzionava per caso, come
+   * sottostringa, il che rendeva il difetto intermittente (revisione del 17
+   * set 2026).
+   */
   const answers = formAnswerMap(
-    catalogFormFieldNames(def).map((nome) => ({ name: nome, value: testoDiProprieta(ticket.props[nome]) })),
+    catalogFormFieldNames(def).map((nome) => rispostaDaProprieta(nome, ticket.props[nome])),
   )
   const item = visibleFormItems(def, answers).find((i) => i.field === field)
   if (!item) {
@@ -1706,14 +1804,74 @@ export async function writeFormAnswerFromAutomation(
         { key: 'errors.formField.script', params: { field: etichetta, message: rifiuto } })
     }
   }
-  return await scriviProprieta(session, tenantId, requestId, field, convertito)
+  const esito = await scriviProprieta(session, tenantId, requestId, field, convertito)
+
+  /*
+   * 7. I CAMPI CALCOLATI CHE DIPENDONO DA QUESTO (revisione del 17 set 2026).
+   *
+   * Al salvataggio del modulo le formule si rieseguono tutte; da
+   * un'automazione si scriveva UNA proprietà e basta. Una regola che imposta
+   * `quantita` lasciava `costo_totale` al valore di prima: il ticket portava
+   * due verità, e il totale sbagliato finiva in filtri, report e widget senza
+   * che niente lo dicesse. Il rifiuto di SCRIVERE un calcolato c'era (punto 4);
+   * mancava la sua conseguenza.
+   *
+   * Si ricalcola come alla creazione: la formula vede solo i campi NON
+   * calcolati (niente catene), e si scrivono solo i calcolati VISIBILI con le
+   * risposte di adesso — un campo che nessuno vede non è una risposta.
+   */
+  await ricalcolaCalcolati(session, tenantId, requestId, def, { ...answers, [field]: convertito as FormAnswerValue })
+  return esito
 }
 
-/** Il valore di una proprietà come testo, per rimettere insieme le risposte. */
-function testoDiProprieta(raw: unknown): string | null {
-  if (raw == null) return null
-  if (Array.isArray(raw)) return raw.map((v) => String(v)).join(',')
-  return String(raw)
+/**
+ * Riesegue le formule dei campi calcolati del modulo e scrive i valori nuovi.
+ * `answers` sono le risposte di adesso, col valore appena scritto già dentro.
+ */
+async function ricalcolaCalcolati(
+  session: Session, tenantId: string, requestId: string,
+  def: CatalogFormDefinition, answers: Record<string, FormAnswerValue>,
+): Promise<void> {
+  const nomi = catalogFormFieldNames(def)
+  const library = await formFieldsByName(session, tenantId, nomi)
+  const calcolati = nomi.filter((n) => library.get(n)?.formula)
+  if (calcolati.length === 0) return
+
+  const visibili = new Set(visibleFormItems(def, answers).map((i) => i.field))
+  const perLaFormula = formulaInput(answers, new Set(calcolati))
+  const nuovi: Record<string, unknown> = {}
+  for (const n of calcolati) {
+    if (!visibili.has(n)) continue
+    const campo = library.get(n)!
+    const r = await runFormulaScript(campo.formula!, perLaFormula, campo.name, tenantId)
+    if (!r.ok) {
+      throw new ValidationError(`The formula of field "${campo.label}" failed while recomputing: ${r.error}`,
+        { key: 'errors.formField.formulaFailed', params: { field: campo.label, name: campo.name, message: r.error } })
+    }
+    const v = r.value
+    if (v == null || (typeof v === 'number' && !Number.isFinite(v)) || String(v).trim() === '') {
+      nuovi[n] = null
+      continue
+    }
+    const allowed = campo.vocabulary ? (await loadVocabularyEntries(tenantId, campo.vocabulary)).values : null
+    nuovi[n] = coerce(campo, String(v), allowed as readonly string[] | null)
+  }
+  if (Object.keys(nuovi).length === 0) return
+  await runQuery(session, `
+    MATCH (r:ServiceRequest {id: $requestId, tenant_id: $tenantId})
+    SET r += $props, r.updated_at = $now`,
+    { requestId, tenantId, props: nuovi, now: new Date().toISOString() })
+}
+
+/**
+ * Una risposta ricostruita da una proprietà del nodo, nella forma che il
+ * valutatore delle condizioni si aspetta: una LISTA resta una lista (è così
+ * che `eq` diventa appartenenza), tutto il resto è un valore singolo.
+ */
+function rispostaDaProprieta(name: string, raw: unknown): FormAnswerInput {
+  if (raw == null) return { name, value: null }
+  if (Array.isArray(raw)) return { name, values: raw.map((v) => String(v)) }
+  return { name, value: String(raw) }
 }
 
 /**

@@ -3710,7 +3710,9 @@
     },
     "filter": {
       "invalidTypeName": "Invalid type name: \"{{typeName}}\".",
-      "typeNotFilterable": "Type \"{{typeName}}\" does not exist, or cannot be filtered."
+      "typeNotFilterable": "Type \"{{typeName}}\" does not exist, or cannot be filtered.",
+      "operatorForList": "The field \"{{field}}\" holds several values: \"{{operator}}\" is a text operator. Use \"has any\", \"has all\" or \"has none\".",
+      "operatorForSingle": "The field \"{{field}}\" holds one value: \"{{operator}}\" is for multiple-choice fields."
     },
     "task": {
       "resultOneOf": "The result must be one of: {{allowed}}.",
@@ -4140,6 +4142,7 @@
       "notBoolean": "The field \"{{field}}\" is yes/no: use true or false.",
       "notDate": "The field \"{{field}}\" is a date, \"{{value}}\" is not.",
       "notInVocabulary": "\"{{value}}\" is not a value of \"{{field}}\". Allowed: {{allowed}}.",
+      "vocabularyEmpty": "The field \"{{field}}\" chooses from a Dictionary that is still empty ({{vocabulary}}): fill it in Settings → Dictionary, or the field cannot be answered.",
       "script": "The field \"{{field}}\" was refused: {{message}}",
       "oneReference": "The field \"{{field}}\" takes one reference, {{count}} were sent.",
       "fileRequired": "The field \"{{field}}\" needs at least one file.",
@@ -4186,6 +4189,8 @@
       "answerComputed": "The field \"{{field}}\" is computed: its value comes from its formula, it cannot be sent.",
       "answerNotAList": "The field \"{{field}}\" holds one value: it arrived as a list. Whatever sent it has a defect — try again, and report it if it persists.",
       "answerNotASingleValue": "The field \"{{field}}\" holds several values: it arrived as a single one. Whatever sent it has a defect — try again, and report it if it persists.",
+      "answerNotAReference": "The field \"{{field}}\" is not a reference: it takes a value, not ids. Whatever sent it has a defect.",
+      "answerNotATable": "The field \"{{field}}\" is not a table: it takes a value, not rows. Whatever sent it has a defect.",
       "revisionChanged": "The form of \"{{item}}\" changed while you were filling it (it was revision {{filled}}, now it is {{current}}): these answers belong to another form. Start the request again."
     },
     "serviceCatalog": {
@@ -4205,6 +4210,7 @@
       "cellNotBoolean": "Row {{row}} of \"{{field}}\": \"{{column}}\" takes yes or no, got \"{{value}}\".",
       "cellNotDate": "Row {{row}} of \"{{field}}\": \"{{value}}\" is not a date for \"{{column}}\".",
       "cellNotInVocabulary": "Row {{row}} of \"{{field}}\": \"{{value}}\" is not a value of \"{{column}}\" (allowed: {{allowed}}).",
+      "cellVocabularyEmpty": "Row {{row}} of \"{{field}}\": the column \"{{column}}\" chooses from a Dictionary that is still empty. Fill it in Settings → Dictionary.",
       "rowRequired": "The table \"{{field}}\" needs at least one row.",
       "notATable": "A {{fieldType}} field takes no table columns: only a table field does."
     }

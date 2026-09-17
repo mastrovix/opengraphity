@@ -857,6 +857,53 @@ describe('catalogFormForEndUser', () => {
  * delega alla stessa funzione, quindi la parità non è più una promessa scritta
  * in un commento.
  */
+/**
+ * LE DATE SI SALVANO IN UNA FORMA SOLA, e le forme sbagliate si rifiutano
+ * (revisione del 17 set 2026, ondata 3 «i silenzi»).
+ */
+describe('date normalizzate e forme rifiutate', () => {
+  const session = {} as never
+  const lib = new Map([
+    ['data_inizio', campo('data_inizio', 'date')],
+    ['quando',      campo('quando', 'datetime')],
+    ['modello',     campo('modello', 'text')],
+  ])
+  const def: CatalogFormDefinition = {
+    version: 1, revision: 1,
+    sections: [{ id: 's', title: {}, items: [{ field: 'data_inizio' }, { field: 'quando' }, { field: 'modello' }] }],
+  }
+
+  it('una data in formato locale diventa ISO: senza, «dopo il» non la trova', async () => {
+    const out = (await resolveFormWrites(session, 't1', def, lib, [{ name: 'data_inizio', value: '02/01/2026' }])).props
+    expect(out['data_inizio']).toBe('2026-02-01')
+  })
+
+  it('una data già ISO resta com\'è', async () => {
+    const out = (await resolveFormWrites(session, 't1', def, lib, [{ name: 'data_inizio', value: '2026-03-01' }])).props
+    expect(out['data_inizio']).toBe('2026-03-01')
+  })
+
+  it('un momento locale non viene spostato di fuso: le dieci restano le dieci', async () => {
+    const out = (await resolveFormWrites(session, 't1', def, lib, [{ name: 'quando', value: '2026-03-01T10:00' }])).props
+    expect(out['quando']).toBe('2026-03-01T10:00:00')
+  })
+
+  it('un momento con fuso dichiarato è un istante, e si scrive in UTC', async () => {
+    const out = (await resolveFormWrites(session, 't1', def, lib, [{ name: 'quando', value: '2026-03-01T12:00:00+02:00' }])).props
+    expect(out['quando']).toBe('2026-03-01T10:00:00.000Z')
+  })
+
+  it('`refIds` su un campo che non è un riferimento è un rifiuto, non un silenzio', async () => {
+    await expect(resolveFormWrites(session, 't1', def, lib, [{ name: 'modello', refIds: ['ci-1'] }]))
+      .rejects.toThrow(/is not a reference/)
+  })
+
+  it('`rows` su un campo che non è una tabella è un rifiuto, non un silenzio', async () => {
+    await expect(resolveFormWrites(session, 't1', def, lib, [{ name: 'modello', rows: [{ a: 'b' }] }]))
+      .rejects.toThrow(/is not a table/)
+  })
+})
+
 describe('formItemsToFill: una sorgente sola per la visibilità', () => {
   const def: CatalogFormDefinition = {
     version: 1, revision: 3,

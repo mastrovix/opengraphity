@@ -18,9 +18,12 @@ vi.mock('../tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') })
 
 /** Lo script di validazione: per difetto accetta; un test lo fa rifiutare. */
 let rifiutoDelloScript: string | null = null
+/** La formula finta: `input.<campo> * 2`, così si vede che ha riletto il valore nuovo. */
 vi.mock('../metamodelScript.js', () => ({
   runValidationScript: vi.fn(async () => rifiutoDelloScript),
-  runFormulaScript: vi.fn(async () => ({ ok: true, value: null })),
+  runFormulaScript: vi.fn(async (_code: string, input: Record<string, unknown>) => ({
+    ok: true, value: Number(input['costo_stimato'] ?? 0) * 2,
+  })),
 }))
 
 /** Le proprietà del ticket, la libreria e la revisione congelata: le decide ogni caso. */
@@ -31,10 +34,17 @@ const scritture: Array<Record<string, unknown>> = []
 
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(() => ({ close: vi.fn() })),
-  runQuery: vi.fn(async (_s: unknown, query: string) => {
+  runQuery: vi.fn(async (_s: unknown, query: string, params?: Record<string, unknown>) => {
     if (query.includes('MATCH (f:FormField')) return libreriaRighe
     if (query.includes('CatalogFormRevision')) {
       return revisioneCongelata ? [{ definition: JSON.stringify(revisioneCongelata) }] : []
+    }
+    // Il RICALCOLO dei campi calcolati scrive da qui (una mappa di proprietà):
+    // la finta lo registra come le altre scritture, altrimenti un test che
+    // pretende il ricalcolo passerebbe anche senza.
+    if (query.includes('SET r += $props')) {
+      scritture.push(params?.['props'] as Record<string, unknown>)
+      return []
     }
     return []
   }),
@@ -153,5 +163,41 @@ describe('una risposta scritta da una regola', () => {
     libreriaRighe = []
     await expect(writeFormAnswerFromAutomation(session, 't1', 'sr-1', 'inventato', 'x'))
       .rejects.toThrow(/is not a field of the form library/)
+  })
+})
+
+
+/**
+ * I CAMPI CALCOLATI CHE DIPENDONO DA QUELLO SCRITTO (revisione del 17 set 2026).
+ *
+ * Al salvataggio del modulo le formule si rieseguono tutte; da un'automazione
+ * si scriveva una proprietà e basta, quindi una regola che imposta `quantita`
+ * lasciava `costo_totale` al valore di prima — il ticket portava due verità, e
+ * il totale sbagliato finiva in filtri, report e widget.
+ */
+describe('ricalcolo dei campi calcolati', () => {
+  beforeEach(() => {
+    scritture.length = 0
+    rifiutoDelloScript = null
+    propsTicket = { catalog_item_id: 'voce-1', form_revision: 3, costo_stimato: 100, costo_totale: 200 }
+    libreriaRighe = [
+      rigaLibreria({ name: 'costo_stimato', field_type: 'number', label: 'Costo stimato', labels: JSON.stringify({ it: 'Costo stimato' }), vocabulary: null }),
+      rigaLibreria({ name: 'costo_totale', field_type: 'number', label: 'Costo totale', labels: JSON.stringify({ it: 'Costo totale' }), vocabulary: null, formula: 'return input.costo_stimato * 2' }),
+    ]
+    revisioneCongelata = {
+      version: 1, revision: 3,
+      sections: [{ id: 's', title: { it: 'S' }, items: [{ field: 'costo_stimato' }, { field: 'costo_totale' }] }],
+    }
+  })
+
+  it('scrivendo il campo da cui dipende, il calcolato si aggiorna', async () => {
+    await writeFormAnswerFromAutomation(session, 't1', 'req-1', 'costo_stimato', '500')
+    // Due scritture: il valore chiesto, e il ricalcolo.
+    expect(scritture).toEqual([{ costo_stimato: 500 }, { costo_totale: 1000 }])
+  })
+
+  it('il calcolato resta in sola lettura: scriverlo è ancora un rifiuto', async () => {
+    await expect(writeFormAnswerFromAutomation(session, 't1', 'req-1', 'costo_totale', '9'))
+      .rejects.toThrow(/is computed/)
   })
 })
