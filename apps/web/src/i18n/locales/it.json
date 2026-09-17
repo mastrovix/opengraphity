@@ -2403,6 +2403,7 @@
         "byCategory": "Per categoria (come prima)",
         "inactive": "spento",
         "saved": "Iter salvato",
+        "savedAndActivated": "Iter assegnato, e acceso: «{{name}}» era spento, e con un iter spento nessuno avrebbe potuto aprire quella richiesta.",
         "approversElsewhere": "Chi approva è una proprietà del workflow, non della voce: si indica sul passo di approvazione, nel",
         "definitionsTitle": "Gli iter delle richieste",
         "definitionsHelp": "Un iter spento non entra nella scelta di nessuna richiesta nuova; i ticket che ci sono già restano dove sono. Una copia nasce spenta, così la puoi finire prima.",

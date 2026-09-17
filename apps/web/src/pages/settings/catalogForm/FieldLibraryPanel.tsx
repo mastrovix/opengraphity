@@ -74,6 +74,28 @@ const BOZZA_VUOTA: Bozza = { name: '', fieldType: 'text', labelIt: '', labelEn: 
 interface TestoPerLinguaLetto { language: string; label: string }
 
 /**
+ * LE COLONNE DI UNA TABELLA da modificare, lette dal documento della libreria.
+ *
+ * Due difetti in una riga (revisione del 17 set 2026). Il primo: la query non
+ * chiedeva `tableDefinition`, quindi l'editor si apriva VUOTO e salvando si
+ * mandava «nessuna colonna» — l'API rifiutava accusando una tabella che le
+ * aveva, e un campo tabella era di fatto non modificabile. Il secondo: un
+ * `JSON.parse` senza guardia, cioè un documento malformato nel grafo che fa
+ * cadere la pagina invece di dire cosa non si capisce. Qui un documento
+ * illeggibile diventa una tabella vuota E un errore in console: chi modifica
+ * vede l'editor, non una schermata bianca.
+ */
+function colonneDi(c: FormFieldRow): FormTableDefinition {
+  if (!c.tableDefinition) return emptyFormTable()
+  try {
+    return JSON.parse(c.tableDefinition) as FormTableDefinition
+  } catch (err) {
+    console.error(`FormField ${c.name}: table_definition cannot be read`, err)
+    return emptyFormTable()
+  }
+}
+
+/**
  * IL TESTO DI UNA LINGUA quando si apre un campo per modificarlo, col ripiego
  * sull'etichetta BASE.
  *
@@ -362,7 +384,7 @@ export function FieldLibraryPanel() {
                         helpEn: perLingua(c.helps, 'en', c.help),
                         required: c.required, vocabulary: c.vocabulary ?? '', inList: c.inList,
                         formula: c.formula ?? '', validationScript: c.validationScript ?? '',
-                        tabella: c.tableDefinition ? (JSON.parse(c.tableDefinition) as FormTableDefinition) : emptyFormTable(),
+                        tabella: colonneDi(c),
                       })
                     }}
                     aria-label={t('common.edit')}

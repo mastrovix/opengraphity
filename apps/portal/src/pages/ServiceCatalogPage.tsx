@@ -13,7 +13,7 @@ import { uploadFormDraftFile } from '../lib/formDraftUpload'
 import type { CatalogFormDefinition, FormAnswerValue, FormAnswers } from '@opengraphity/types'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
 import { notifyError } from '@/lib/notify'
-import { errorHasKey } from '@opengraphity/web-core'
+import { errorFieldName, errorHasKey } from '@opengraphity/web-core'
 import { colors, palette, alpha } from '@/lib/tokens'
 import { useTicketCategories } from '@/hooks/useTicketCategories'
 import { usePortalCustomFields, portalCustomFieldsInput, portalMissingCustomFields } from '@/hooks/usePortalCustomFields'
@@ -87,6 +87,13 @@ export function ServiceCatalogPage() {
   /** Le righe delle tabelle (ondata 7): non sono risposte, quindi stanno a parte. */
   const [righeTabelle, setRigheTabelle] = useState<Record<string, readonly CatalogFormTableRow[]>>({})
   const [inCaricamento, setInCaricamento] = useState<string | null>(null)
+  /**
+   * Il rifiuto del server acceso ACCANTO al campo che accusa: il portale non
+   * passava affatto `errors` al renderer, quindi l'unico segnale era l'avviso
+   * all'angolo, che sparisce dopo pochi secondi e su un modulo lungo lascia
+   * indovinare quale casella (revisione del 17 set 2026).
+   */
+  const [erroriModulo, setErroriModulo] = useState<Record<string, string>>({})
 
   /**
    * APRIRE (o chiudere) UNA VOCE COMINCIA DA ZERO.
@@ -102,6 +109,7 @@ export function ServiceCatalogPage() {
     setFileDelModulo({})
     setRisposte({})
     setRigheTabelle({})
+    setErroriModulo({})
     setOpenItem(it)
   }
 
@@ -138,6 +146,8 @@ export function ServiceCatalogPage() {
       onCompleted: (d) => { apriVoce(null); setDetails(''); navigate(`/tickets/${d.createServiceRequest.id}`, { state: { created: true } }) },
       onError: (e) => {
         notifyError(e.message)
+        const campo = errorFieldName(e)
+        if (campo) setErroriModulo({ [campo]: e.message })
         /**
          * Il modulo è cambiato mentre lo si compilava (ondata 8): le risposte
          * sono di un altro modulo, quindi si buttano e si chiude la richiesta.
@@ -264,6 +274,7 @@ export function ServiceCatalogPage() {
                   onTablesChange={(campo, rows) => { setRigheTabelle((p) => ({ ...p, [campo]: rows })) }}
                   tableAddRowLabel={t('catalog.addRow')}
                   tableRemoveRowLabel={t('catalog.removeRow')}
+                  errors={erroriModulo}
                   files={fileDelModulo}
                   uploadingField={inCaricamento}
                   onUploadFile={caricaFile}

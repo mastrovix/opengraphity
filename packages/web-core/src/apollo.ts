@@ -324,6 +324,32 @@ export function createApolloClient(opts: CreateApolloClientOptions): ApolloClien
  * Si guarda la CHIAVE e non il messaggio: il messaggio è prosa e cambia con la
  * lingua, la chiave è il contratto fra API e client.
  */
+/**
+ * IL CAMPO che un rifiuto del modulo accusa, se lo dice.
+ *
+ * I rifiuti dei moduli portano nei `params` sia `field` (l'etichetta, che
+ * entra nella frase) sia `name` (il nome interno del campo). Il nome serve a
+ * chi disegna il modulo per accendere l'errore ACCANTO alla casella giusta:
+ * prima il messaggio arrivava solo come avviso all'angolo, spariva dopo pochi
+ * secondi e nessun campo veniva marcato — su un modulo lungo si doveva
+ * indovinare quale (revisione del 17 set 2026).
+ *
+ * `null` quando il rifiuto non riguarda un campo (un tetto, una revisione
+ * cambiata): il chiamante allora mostra solo l'avviso, come prima.
+ */
+export function errorFieldName(error: unknown): string | null {
+  const errori = (error as { errors?: ErroreConChiave[] } | null)?.errors
+  const elenco = Array.isArray(errori) ? errori : [error as ErroreConChiave]
+  for (const e of elenco) {
+    const params = e?.extensions?.i18n?.params
+    if (params && typeof params === 'object') {
+      const nome = (params as Record<string, unknown>)['name']
+      if (typeof nome === 'string' && nome.trim() !== '') return nome
+    }
+  }
+  return null
+}
+
 export function errorHasKey(error: unknown, key: string): boolean {
   const errori = (error as { errors?: ErroreConChiave[] } | null)?.errors
   const elenco = Array.isArray(errori) ? errori : [error as ErroreConChiave]

@@ -26,7 +26,8 @@ import { GET_CATALOG_FORM_TO_FILL } from '@/graphql/queries'
 import type { CatalogFormDefinition, FormAnswerValue, FormAnswers } from '@opengraphity/types'
 import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { showError } from '@/lib/showError'
-import { errorHasKey } from '@opengraphity/web-core'
+import { errorFieldName, errorHasKey } from '@opengraphity/web-core'
+import { errorMessage } from '@/hooks/useMutationWithToast'
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
 const inputBase: React.CSSProperties = {
@@ -101,15 +102,42 @@ export function CreateServiceRequestPage() {
      */
     setBozzaId(crypto.randomUUID())
     setFileDelModulo({})
+    /*
+     * E LE RISPOSTE DELL'ALTRA VOCE NON RESTANO.
+     *
+     * I campi della libreria sono condivisi fra i moduli: senza questo
+     * azzeramento la voce nuova nasceva precompilata con quello che si era
+     * scritto per la precedente, e le sue condizioni si valutavano su risposte
+     * che non le appartenevano — un campo che appare o sparisce a torto.
+     */
+    setRisposte({})
+    setRigheTabelle({})
+    setRiferimenti({})
+    setErroriModulo({})
     const item = catalogItems.find((i) => i.id === id)
     if (item) {
-      setTitle(item.name)
+      /*
+       * IL TITOLO SCRITTO A MANO NON SI PERDE: si riempie solo se è vuoto o se
+       * è quello messo automaticamente dalla voce di prima. La descrizione era
+       * già protetta così — era il titolo a non esserlo, e chi aveva scritto
+       * «Portatile per Rossi – urgente» se lo vedeva sostituire da «Nuovo
+       * portatile» scegliendo la voce.
+       */
+      const automatico = title.trim() === '' || catalogItems.some((i) => i.name === title)
+      if (automatico) setTitle(item.name)
       if (item.description && !description.trim()) setDescription(item.description)
       if (item.priority) setPriority(item.priority)
     }
   }
 
   const titleError = submitted && !title.trim() ? t('forms.fieldRequired') : ''
+  /*
+   * La priorità aveva l'asterisco e nessun errore: con il segnaposto ancora
+   * scelto, «Crea la richiesta» usciva in silenzio e non succedeva
+   * ASSOLUTAMENTE NIENTE — nessun messaggio, nessun fuoco, niente (revisione
+   * del 17 set 2026). Un pulsante che non fa niente è peggio di un rifiuto.
+   */
+  const priorityError = submitted && !priority ? t('forms.fieldRequired') : ''
 
   const [createRequest, { loading }] = useMutation(CREATE_SERVICE_REQUEST, {
     /**
@@ -124,6 +152,16 @@ export function CreateServiceRequestPage() {
     onCompleted: () => { toast.success(t('toast.request.created')); navigate('/requests') },
     onError: (err) => {
       showError(err)
+      /*
+       * IL RIFIUTO SI ACCENDE ACCANTO AL CAMPO che accusa (revisione del 17
+       * set 2026). Prima `erroriModulo` veniva solo SVUOTATO, mai riempito:
+       * la prop esisteva, il renderer sapeva già disegnare il bordo rosso e
+       * l'`aria-invalid`, e non si accendevano mai. Il server ora manda anche
+       * il nome interno del campo accanto all'etichetta, che è quello che
+       * serve per trovare la casella.
+       */
+      const campo = errorFieldName(err)
+      if (campo) setErroriModulo({ [campo]: errorMessage(err) })
       /**
        * IL MODULO È CAMBIATO MENTRE SI COMPILAVA (ondata 8): l'avviso l'ha già
        * mostrato il link degli errori, qui si fa il resto — si buttano le
@@ -131,6 +169,7 @@ export function CreateServiceRequestPage() {
        * guarda la CHIAVE e non il messaggio, che cambia con la lingua.
        */
       if (errorHasKey(err, 'errors.catalogForm.revisionChanged')) {
+        setErroriModulo({})
         setRisposte({})
         setRiferimenti({})
         setRigheTabelle({})
@@ -441,7 +480,15 @@ export function CreateServiceRequestPage() {
                   * (incident, problem) già distinguevano il vuoto: qui no.
                   */}
                 <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', width: 8, height: 8, borderRadius: '50%', backgroundColor: priority === '' ? 'var(--color-border)' : styleOf('priority', priority).accent, pointerEvents: 'none', zIndex: 1 }} />
-                <select id={ids.priority} value={priority} onChange={(e) => setPriority(e.target.value)} disabled={priorityLoading} style={{ ...selectBase, paddingLeft: 30 }} {...focusHandlers(false)}>
+                <select
+                  id={ids.priority}
+                  value={priority}
+                  onChange={(e) => { setPriority(e.target.value); if (submitted) setSubmitted(false) }}
+                  disabled={priorityLoading}
+                  aria-invalid={priorityError ? true : undefined}
+                  style={{ ...selectBase, paddingLeft: 30, borderColor: priorityError ? 'var(--color-trigger-sla-breach)' : colors.border }}
+                  {...focusHandlers(!!priorityError)}
+                >
                   {priorityLoading
                     ? <option value="">{t('common.loading')}</option>
                     : <>
@@ -453,6 +500,9 @@ export function CreateServiceRequestPage() {
                   }
                 </select>
               </div>
+              {priorityError && (
+                <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>{priorityError}</p>
+              )}
             </div>
 
             {/* Due date */}

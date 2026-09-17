@@ -77,10 +77,32 @@ export function ItineraryPanel() {
   const [daDuplicare, setDaDuplicare] = useState('')
   const [nomeCopia, setNomeCopia] = useState('')
 
+  /**
+   * SCEGLIERE UN ITER SPENTO LO ACCENDE, e lo dice.
+   *
+   * La tendina offre anche le definizioni spente — deve, perché un iter
+   * duplicato nasce spento ed è la strada normale per farsene uno — ma l'API
+   * rifiuta di assegnarne uno non attivo, giustamente: con un iter spento
+   * nessuno potrebbe più aprire quella richiesta. Il risultato era un menu che
+   * offre quello che il server rifiuta, con un messaggio che manda a cercare
+   * la cosa sbagliata (revisione del 17 set 2026).
+   *
+   * Assegnare un iter È la decisione di usarlo: lo si accende qui, e il toast
+   * dice che è successo — invece di far tornare l'amministratore su un altro
+   * interruttore per capire perché il salvataggio non passava.
+   */
   const scegliIter = async (voce: Voce, definitionId: string) => {
+    const scelto = definizioni.find((d) => d.id === definitionId)
+    if (scelto && !scelto.active) {
+      const acceso = await accendi({ variables: { definitionId, active: true } })
+      if (!acceso.data) return
+      void rileggiDefinizioni()
+    }
     const r = await aggiornaVoce({ variables: { id: voce.id, input: { workflowDefinitionId: definitionId || null } } })
     if (!r.data) return
-    toast.success(t('pages.catalogForms.itinerary.saved'))
+    toast.success(scelto && !scelto.active
+      ? t('pages.catalogForms.itinerary.savedAndActivated', { name: scelto.name })
+      : t('pages.catalogForms.itinerary.saved'))
     void rileggiVoci()
   }
 

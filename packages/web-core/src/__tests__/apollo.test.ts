@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ApolloClient, ApolloLink, InMemoryCache, from, gql } from '@apollo/client/core'
 import { Observable } from '@apollo/client/utilities'
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
-import { createErrorLink, createAuthLink, createDeduper, type ErrorLinkOptions } from '../apollo.js'
+import { createErrorLink, createAuthLink, createDeduper, errorFieldName, type ErrorLinkOptions } from '../apollo.js'
 import type { ClientLogger } from '../logger.js'
 
 const QUERY = gql`query Me { me { id } }`
@@ -273,5 +273,40 @@ describe('lo stato HTTP di un errore di autenticazione (401 o 500) non cambia la
     await expect(client.query({ query: QUERY, fetchPolicy: 'no-cache' })).rejects.toThrow()
     expect(opts.refreshToken).not.toHaveBeenCalled()
     expect(opts.onNetworkError).toHaveBeenCalled()
+  })
+})
+
+/**
+ * IL CAMPO CHE UN RIFIUTO ACCUSA (revisione del 17 set 2026).
+ *
+ * I rifiuti dei moduli portano nei `params` l'etichetta (`field`, che entra
+ * nella frase) e il nome interno (`name`, che serve a trovare la casella). Il
+ * secondo è nato perché il messaggio arrivava solo come avviso all'angolo:
+ * spariva dopo pochi secondi e nessun campo veniva marcato.
+ */
+describe('errorFieldName', () => {
+  const conParams = (params: Record<string, unknown>) =>
+    ({ errors: [{ extensions: { i18n: { key: 'errors.formField.required', params } } }] })
+
+  it('legge il nome interno del campo', () => {
+    expect(errorFieldName(conParams({ field: 'Costo stimato (EUR)', name: 'costo_stimato' }))).toBe('costo_stimato')
+  })
+
+  it('un rifiuto che non riguarda un campo non ne inventa uno', () => {
+    expect(errorFieldName(conParams({ item: 'Nuovo portatile', filled: '5', current: '6' }))).toBeNull()
+    expect(errorFieldName(null)).toBeNull()
+    expect(errorFieldName({ message: 'boom' })).toBeNull()
+  })
+
+  it('l\'etichetta da sola non basta: senza `name` non si accende nessun campo', () => {
+    expect(errorFieldName(conParams({ field: 'Costo stimato (EUR)' }))).toBeNull()
+  })
+
+  it('con più errori prende il primo che nomina un campo', () => {
+    const errore = { errors: [
+      { extensions: { i18n: { key: 'errors.x', params: { a: 1 } } } },
+      { extensions: { i18n: { key: 'errors.formField.required', params: { name: 'preventivo' } } } },
+    ] }
+    expect(errorFieldName(errore)).toBe('preventivo')
   })
 })

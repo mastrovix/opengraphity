@@ -597,13 +597,13 @@ export async function resolveFormWrites(
     if (!multi && input.values != null) {
       throw new ValidationError(
         `The field "${nome(campo)}" holds one value: it was sent as a list. Send "value", not "values".`,
-        { key: 'errors.catalogForm.answerNotAList', params: { field: nome(campo) } },
+        { key: 'errors.catalogForm.answerNotAList', params: { field: nome(campo), name: campo.name } },
       )
     }
     if (multi && input.value != null && String(input.value).trim() !== '') {
       throw new ValidationError(
         `The field "${nome(campo)}" holds several values: it was sent as one. Send "values", not "value".`,
-        { key: 'errors.catalogForm.answerNotASingleValue', params: { field: nome(campo) } },
+        { key: 'errors.catalogForm.answerNotASingleValue', params: { field: nome(campo), name: campo.name } },
       )
     }
   }
@@ -705,17 +705,17 @@ export async function resolveFormWrites(
   for (const input of inputs ?? []) {
     if (!nelModulo.has(input.name)) {
       throw new ValidationError(`"${input.name}" is not a field of this form.`,
-        { key: 'errors.catalogForm.answerUnknown', params: { field: input.name } })
+        { key: 'errors.catalogForm.answerUnknown', params: { field: input.name, name: input.name } })
     }
     const item = perNome.get(input.name)
     if (!item) {
       throw new ValidationError(`The field "${input.name}" is not being asked with these answers: it is hidden by a condition, or not offered here.`,
-        { key: 'errors.catalogForm.answerHidden', params: { field: input.name } })
+        { key: 'errors.catalogForm.answerHidden', params: { field: input.name, name: input.name } })
     }
     const campo = library.get(input.name)!
     if (FORM_FIELD_TYPES_WITHOUT_ANSWER.includes(campo.fieldType)) {
       throw new ValidationError(`The field "${input.name}" is a note: it carries no answer.`,
-        { key: 'errors.catalogForm.answerNote', params: { field: input.name } })
+        { key: 'errors.catalogForm.answerNote', params: { field: input.name, name: input.name } })
     }
     /**
      * Un campo CALCOLATO non si riceve: lo calcola il server (ondata 6). Il
@@ -724,7 +724,7 @@ export async function resolveFormWrites(
      */
     if (campo.formula) {
       throw new ValidationError(`The field "${nome(campo)}" is computed: its value comes from its formula, it cannot be sent.`,
-        { key: 'errors.catalogForm.answerComputed', params: { field: nome(campo) } })
+        { key: 'errors.catalogForm.answerComputed', params: { field: nome(campo), name: campo.name } })
     }
 
     const multi = FORM_FIELD_TYPES_MULTI.includes(campo.fieldType)
@@ -735,7 +735,7 @@ export async function resolveFormWrites(
       for (const v of valori) {
         if (allowed && allowed.length > 0 && !allowed.includes(v)) {
           throw new ValidationError(`"${v}" is not a value of "${nome(campo)}" (allowed: ${allowed.join(', ')}).`,
-            { key: 'errors.formField.notInVocabulary', params: { field: nome(campo), value: v, allowed: allowed.join(', ') } })
+            { key: 'errors.formField.notInVocabulary', params: { field: nome(campo), name: campo.name, value: v, allowed: allowed.join(', ') } })
         }
       }
       out[input.name] = [...new Set(valori)]
@@ -755,7 +755,7 @@ export async function resolveFormWrites(
         // Un riferimento è uno solo, per ora: accettarne due qui e scriverne
         // uno sarebbe una perdita silenziosa.
         throw new ValidationError(`The field "${nome(campo)}" takes one reference, ${ids.length} were sent.`,
-          { key: 'errors.formField.oneReference', params: { field: nome(campo), count: String(ids.length) } })
+          { key: 'errors.formField.oneReference', params: { field: nome(campo), name: campo.name, count: String(ids.length) } })
       }
       await assertRiferimentoEsiste(session, tenantId, campo, ids[0]!)
       riferimenti.push({ field: campo.name, fieldType: campo.fieldType, ids })
@@ -808,7 +808,7 @@ export async function resolveFormWrites(
     // manca è un difetto nostro, e si dice invece di scrivere un null.
     if (!esito) {
       throw new ValidationError(`The formula of field "${nome(campo)}" was not computed.`,
-        { key: 'errors.formField.formulaFailed', params: { field: nome(campo), message: 'not computed' } })
+        { key: 'errors.formField.formulaFailed', params: { field: nome(campo), name: campo.name, message: 'not computed' } })
     }
     if ('error' in esito) {
       // La scelta del proprietario: si RIFIUTA e si nomina la formula. Chi
@@ -816,7 +816,7 @@ export async function resolveFormWrites(
       // Il rifiuto sta QUI e non dove la formula gira: una formula rotta su un
       // campo che nessuno vede non deve rompere la richiesta.
       throw new ValidationError(`The formula of field "${nome(campo)}" failed: ${esito.error}`,
-        { key: 'errors.formField.formulaFailed', params: { field: nome(campo), message: esito.error } })
+        { key: 'errors.formField.formulaFailed', params: { field: nome(campo), name: campo.name, message: esito.error } })
     }
     const valore = esito.value
     // `NaN`/`Infinity` non sono valori: sono il segno che la formula ha
@@ -853,7 +853,7 @@ export async function resolveFormWrites(
       allegatiRichiesti.push({ field: campo.name, label: campo.label, required: obbligatorio, count: quanti })
       if (obbligatorio && quanti === 0) {
         throw new ValidationError(`The field "${nome(campo)}" needs at least one file.`,
-          { key: 'errors.formField.fileRequired', params: { field: nome(campo) } })
+          { key: 'errors.formField.fileRequired', params: { field: nome(campo), name: campo.name } })
       }
       continue
     }
@@ -861,7 +861,7 @@ export async function resolveFormWrites(
     if (isFormReferenceType(campo.fieldType)) {
       if (obbligatorio && !riferimenti.some((r) => r.field === campo.name)) {
         throw new ValidationError(`The field "${nome(campo)}" is required.`,
-          { key: 'errors.formField.required', params: { field: nome(campo) } })
+          { key: 'errors.formField.required', params: { field: nome(campo), name: campo.name } })
       }
       continue
     }
@@ -871,7 +871,7 @@ export async function resolveFormWrites(
     if (isFormTableType(campo.fieldType)) {
       if (obbligatorio && !tabelle.some((t) => t.field === campo.name && t.rows.length > 0)) {
         throw new ValidationError(`The table "${nome(campo)}" needs at least one row.`,
-          { key: 'errors.formTable.rowRequired', params: { field: nome(campo) } })
+          { key: 'errors.formTable.rowRequired', params: { field: nome(campo), name: campo.name } })
       }
       continue
     }
@@ -883,7 +883,7 @@ export async function resolveFormWrites(
       : isFormAnswerEmpty(scritto as FormAnswerValue)
     if (vuoto) {
       throw new ValidationError(`The field "${nome(campo)}" is required.`,
-        { key: 'errors.formField.required', params: { field: nome(campo) } })
+        { key: 'errors.formField.required', params: { field: nome(campo), name: campo.name } })
     }
   }
 
@@ -899,7 +899,7 @@ export async function resolveFormWrites(
     )
     if (rifiuto) {
       throw new ValidationError(`The field "${nome(campo)}" was refused: ${rifiuto}`,
-        { key: 'errors.formField.script', params: { field: nome(campo), message: rifiuto } })
+        { key: 'errors.formField.script', params: { field: nome(campo), name: campo.name, message: rifiuto } })
     }
   }
 

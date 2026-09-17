@@ -16,6 +16,7 @@ export {
   createApolloClient,
   createErrorLink,
   wasNotifiedCentrally,
+  errorFieldName,
   errorHasKey,
   createAuthLink,
   createI18nLink,

@@ -25,11 +25,21 @@ export const GET_CATALOG_FORM_TO_FILL = gql`
   }
 `
 
-/** La libreria dei campi del tenant (pagina della libreria e costruttore). */
+/**
+ * La libreria dei campi del tenant (pagina della libreria e costruttore).
+ *
+ * `tableDefinition` NON si può togliere da qui: la scheda di modifica lo legge
+ * per riempire l'editor delle colonne. Quando mancava, aprire una tabella solo
+ * per correggerne l'etichetta apriva l'editor VUOTO, e salvando si mandava
+ * «nessuna colonna» — l'API rifiutava con «la tabella non ha colonne»,
+ * accusando una tabella che le aveva. Un campo tabella era di fatto non
+ * modificabile (revisione del 17 set 2026).
+ */
 export const GET_FORM_FIELDS = gql`
   query GetFormFields($language: String) {
     formFields {
       id name fieldType label required vocabulary help validationScript formula inList usedBy createdAt updatedAt
+      tableDefinition
       labels { language label }
       helps { language label }
       options(language: $language) { value label }
