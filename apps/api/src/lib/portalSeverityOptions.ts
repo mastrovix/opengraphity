@@ -16,7 +16,7 @@
  * Non dichiarato (proprietà assente) NON è «lista vuota»: il portale non può
  * aprire un ticket e lo dice, invece di indovinare dei valori.
  */
-import { getSession, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import type { ValueColor } from '@opengraphity/types'
 import { NotFoundError, ValidationError } from './errors.js'
 import { domainVocabulary } from './domainMatrix.js'
@@ -120,6 +120,61 @@ export async function portalSeverityChoices(tenantId: string, language: Lingua):
 }
 
 /** Valida e salva la scelta dell'amministratore. Restituisce ciò che è stato salvato. */
+/**
+ * IL SEME: alla nascita di un tenant, tutte le severità del vocabolario con
+ * le parole del Dizionario (17 set 2026).
+ *
+ * ## Perché serve
+ * Un tenant appena creato nasceva con un rilievo di gravità ERRORE addosso —
+ * `portal_severities_not_set` — e il portale non poteva aprire un ticket
+ * finché qualcuno non entrava in Organizzazione a scegliere. Un prodotto che
+ * si crea un errore da solo alla nascita ha un seme mancante, non una
+ * configurazione da fare.
+ *
+ * ## Perché NON è «indovinare», che questo file vieta
+ * Il divieto è sul momento della LETTURA: proprietà assente non diventa una
+ * lista inventata, perché il portale mostrerebbe valori che nessuno ha
+ * scelto. Qui si scrive una DICHIARAZIONE alla nascita, ed è la più neutra
+ * possibile: **tutti** i valori del vocabolario `severity`, nel suo ordine, e
+ * **nessuna etichetta propria** — la parola per ogni valore resta quella del
+ * Dizionario, che è la regola già dichiarata in questo file. Non aggiunge
+ * un'opinione: rende esplicito il massimo, e l'amministratore restringe.
+ *
+ * ## Additiva e idempotente
+ * Scrive solo dove la proprietà è ASSENTE: chi ha già scelto — anche una sola
+ * severità — non viene toccato. Senza vocabolario `severity` non scrive
+ * niente e lo dice, invece di scrivere una lista vuota (che il lettore
+ * rifiuterebbe a voce alta, e giustamente).
+ */
+export async function seedPortalSeverityOptions(
+  session: Queryable, tenantId: string,
+): Promise<{ seeded: readonly string[] | null; reason?: string }> {
+  const vocabolari = await runQuery<{ tenantId: string; values: unknown }>(session, `
+    MATCH (e:EnumTypeDefinition {name: $nome})
+    WHERE e.tenant_id IN [$tenantId, 'system']
+    RETURN e.tenant_id AS tenantId, e.values AS values
+  `, { nome: PORTAL_SEVERITY_VOCABULARY, tenantId })
+
+  // La copia del tenant VINCE sul nodo spedito, come in lettura.
+  const scelto = vocabolari.find((v) => v.tenantId === tenantId) ?? vocabolari.find((v) => v.tenantId === 'system')
+  const valori = Array.isArray(scelto?.values) ? scelto.values.filter((v): v is string => typeof v === 'string') : []
+  if (valori.length === 0) {
+    return { seeded: null, reason: `no "${PORTAL_SEVERITY_VOCABULARY}" vocabulary with values for tenant ${tenantId}` }
+  }
+
+  const options: PortalSeverityOption[] = valori.map((value) => ({ value, labels: {} }))
+  const row = await runQueryOne<{ id: string }>(session, `
+    MATCH (t:Tenant {id: $tenantId})
+    WHERE t.portal_severity_options IS NULL
+    SET t.portal_severity_options = $options, t.updated_at = $now
+    RETURN t.id AS id
+  `, { tenantId, options: JSON.stringify(options), now: new Date().toISOString() })
+
+  // Nessuna riga: la scelta c'era già (o il tenant non esiste, e lo dirà chi
+  // lo cerca). In entrambi i casi non si è scritto niente.
+  return row ? { seeded: valori } : { seeded: null, reason: 'already chosen' }
+}
+
 export async function setPortalSeverityOptions(
   tenantId: string, input: readonly PortalSeverityOptionInput[],
 ): Promise<PortalSeverityOption[]> {

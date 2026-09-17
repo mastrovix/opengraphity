@@ -41,6 +41,7 @@ import { seedNotificationRules } from './seedNotificationRules.js'
 import { seedDomainMatrices } from './domainMatrixSeed.js'
 import type { DomainMatrixKind } from './domainMatrix.js'
 import { seedFactoryRoles } from './roles.js'
+import { seedPortalSeverityOptions } from './portalSeverityOptions.js'
 
 /** I tipi di entità che devono avere una definizione di workflow attiva. */
 export const REQUIRED_WORKFLOW_ENTITY_TYPES = ['incident', 'problem', 'kb_article', 'change', 'service_request'] as const
@@ -54,6 +55,12 @@ export interface TenantProvisioningResult {
   notificationRulesCreated: number
   /** Le matrici di dominio create adesso (le altre c'erano già). */
   matricesCreated: DomainMatrixKind[]
+  /**
+   * Le severità dichiarate ADESSO per il portale, `null` se la scelta c'era
+   * già (o se manca il vocabolario). Senza questo seme un tenant nasceva con
+   * un rilievo di gravità errore addosso e il portale non apriva ticket.
+   */
+  portalSeveritiesSeeded: readonly string[] | null
   /**
    * Una riga per definizione di workflow. `created` è `null` per i seeder che
    * non lo dicono (tornano solo l'id): quello che conta è che dopo la chiamata
@@ -123,6 +130,13 @@ export async function provisionTenantData(
   const dashboardCreated = await provisionDefaultDashboard(session, tenantId, opts.userId ?? null)
   const rules = await seedNotificationRules(tenantId, session)
   const matricesCreated = await seedDomainMatrices(session, tenantId)
+  /*
+   * Le severità del portale: tutte quelle del vocabolario, con le parole del
+   * Dizionario. È una dichiarazione neutra, non una scelta al posto del
+   * cliente — che resta liberissimo di restringerla da Organizzazione — e
+   * senza di lei un tenant nuovo non poteva accettare un ticket dal portale.
+   */
+  const severita = await seedPortalSeverityOptions(session, tenantId)
 
   // Ogni tipo di ticket vuole la sua definizione PRIMA del primo create*:
   // `createInstance` fallisce a voce alta senza (packages/workflow/engine.ts).
@@ -184,6 +198,7 @@ export async function provisionTenantData(
     dashboardCreated,
     notificationRulesCreated: rules.created,
     matricesCreated,
+    portalSeveritiesSeeded: severita.seeded,
     workflows,
     gapsLeft: gaps.filter((g) => GAP_DA_PERSONA.includes(g.kind)),
   }

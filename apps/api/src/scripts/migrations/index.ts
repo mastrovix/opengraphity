@@ -121,6 +121,7 @@ import { metamodelDuplicateFields } from './20261005_1010_metamodel_duplicate_fi
 import { changeTransitionLabels } from './20261005_1020_change_transition_labels.js'
 import { deployPlanWindowEnvelope } from './20261005_1030_deploy_plan_window_envelope.js'
 import { enumTenantDuplicates } from './20261005_1040_enum_tenant_duplicates.js'
+import { portalSeveritiesSeed } from './20261005_1050_portal_severities_seed.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -227,4 +228,5 @@ export const MIGRATIONS: readonly Migration[] = [
   changeTransitionLabels,
   deployPlanWindowEnvelope,
   enumTenantDuplicates,
+  portalSeveritiesSeed,
 ]

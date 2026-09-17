@@ -32,6 +32,11 @@ vi.mock('../roles.js', () => ({
 vi.mock('../domainMatrixSeed.js', () => ({
   seedDomainMatrices: vi.fn(async () => ['priority', 'change_priority']),
 }))
+// Le severità del portale hanno i loro test (`portalSeverityOptions.test.ts`):
+// qui conta che il provisioning le semini, non COME.
+vi.mock('../portalSeverityOptions.js', () => ({
+  seedPortalSeverityOptions: vi.fn(async (_s: unknown, t: string) => { seeded.push(`severities:${t}`); return { seeded: ['low', 'high'] } }),
+}))
 
 const { provisionTenantData, tenantProvisioningGaps, formatGap, REQUIRED_WORKFLOW_ENTITY_TYPES } = await import('../provisionTenantData.js')
 
@@ -82,8 +87,12 @@ describe('provisionTenantData — tutti i pezzi, una volta sola', () => {
     expect(out.matricesCreated).toEqual(['priority', 'change_priority'])
     // cinque definizioni: incident (base + security), problem, kb, change, service request
     expect(out.workflows).toHaveLength(5)
+    // Le severità del portale, dichiarate alla nascita: senza, il tenant
+    // nasceva con un rilievo di gravità ERRORE e il portale non apriva ticket
+    // (17 set 2026).
+    expect(out.portalSeveritiesSeeded).toEqual(['low', 'high'])
     expect(seeded).toEqual([
-      'roles:c-two',
+      'roles:c-two', 'severities:c-two',
       'incident:c-two', 'problem:c-two', 'kb:c-two',
       'Change RFC Process:c-two', 'Service Request Fulfillment:c-two',
     ])
