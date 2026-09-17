@@ -11,15 +11,27 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const h = vi.hoisted(() => ({
-  // `executeRead` esegue davvero il callback: `initialStepSelection` (mockata)
-  // viene richiamata al suo interno.
-  session: {
-    executeRead: vi.fn(async (fn: (tx: unknown) => unknown) => fn({ run: vi.fn() })),
-    executeWrite: vi.fn(),
-    close: vi.fn(),
-  },
-}))
+const h = vi.hoisted(() => {
+  /*
+   * La TRANSAZIONE finta. Dal 17 set 2026 `createRequest` scrive tutto dentro
+   * `session.executeWrite`: o c'è tutto o non c'è niente. Quindi la finta deve
+   * ESEGUIRE il callback — altrimenti un test che crede di creare una
+   * richiesta non esegue nemmeno la CREATE — e `tx.run` risponde come il
+   * contatore dei numeri, che è l'unico a usarla direttamente (tutto il resto
+   * passa da `runQuery`, mockata a parte).
+   */
+  const tx = { run: vi.fn(async () => ({ records: [{ get: () => 5 }] })) }
+  return {
+    tx,
+    // `executeRead` esegue davvero il callback: `initialStepSelection` (mockata)
+    // viene richiamata al suo interno.
+    session: {
+      executeRead: vi.fn(async (fn: (t: unknown) => unknown) => fn(tx)),
+      executeWrite: vi.fn(async (fn: (t: unknown) => unknown) => fn(tx)),
+      close: vi.fn(),
+    },
+  }
+})
 
 // I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
 // Ondata 6 di «Nulla cablato»: il formato dei numeri è del cliente; qui quello di fabbrica.
@@ -92,7 +104,7 @@ let moduloDellaVoce: Array<{ form: string | null; name: string }> = []
 beforeEach(() => {
   vi.clearAllMocks()
   moduloDellaVoce = []
-  h.session.executeWrite.mockResolvedValue({ records: [{ get: () => 5 }] })
+  h.tx.run.mockResolvedValue({ records: [{ get: () => 5 }] })
   vi.mocked(runQuery).mockImplementation(async (_s: unknown, cypher: string, params?: Record<string, unknown>) => {
     if (cypher.includes('CREATE (r:ServiceRequest')) {
       return [{ props: {
@@ -119,11 +131,9 @@ beforeEach(() => {
 describe('createRequest', () => {
   it('numero REQ + 8 cifre dal contatore atomico (kind "service_request", tenant corrente)', async () => {
     await createRequest({ title: 'Nuovo laptop', priority: 'medium' }, ctx)
-    expect(h.session.executeWrite).toHaveBeenCalledTimes(1)
-    const tx = { run: vi.fn().mockResolvedValue({ records: [{ get: () => 5 }] }) }
-    await (h.session.executeWrite.mock.calls[0]![0] as (t: typeof tx) => Promise<unknown>)(tx)
-    expect(tx.run.mock.calls[0]![0]).toMatch(/MERGE \(c:Counter \{tenant_id: \$tenantId, kind: \$kind\}\)/)
-    expect(tx.run.mock.calls[0]![1]).toEqual({ tenantId: 'tenant-1', kind: 'service_request' })
+    // Il contatore passa da `tx.run`; tutto il resto della creazione da `runQuery`.
+    expect(h.tx.run.mock.calls[0]![0]).toMatch(/MERGE \(c:Counter \{tenant_id: \$tenantId, kind: \$kind\}\)/)
+    expect(h.tx.run.mock.calls[0]![1]).toEqual({ tenantId: 'tenant-1', kind: 'service_request' })
 
     const [[, params]] = queriesWith('CREATE (r:ServiceRequest')
     expect(params['number']).toBe('REQ00000005')
@@ -182,8 +192,11 @@ describe('createRequest', () => {
      * catalogo se c'è (`definitionId`) e sulla categoria altrimenti. Senza
      * voce sono entrambi assenti, ed è la scelta per tipo di sempre.
      */
+    // L'istanza si crea nella TRANSAZIONE della creazione, non nella sessione:
+    // dal 17 set 2026 o c'è tutto o non c'è niente (prima una richiesta poteva
+    // restare senza iter).
     expect(workflowEngine.createInstance).toHaveBeenCalledWith(
-      h.session, 'tenant-1', expect.stringMatching(UUID_RE), 'service_request', undefined, null,
+      h.tx, 'tenant-1', expect.stringMatching(UUID_RE), 'service_request', undefined, null,
     )
   })
 
@@ -254,5 +267,35 @@ describe('createRequest e la revisione del modulo', () => {
       { title: 'T', priority: 'medium', catalogItemId: 'cat-1' }, ctx,
     )
     expect(r.id).toMatch(UUID_RE)
+  })
+})
+
+
+/**
+ * TUTTO QUELLO CHE SCRIVE STA IN UNA TRANSAZIONE (revisione del 17 set 2026).
+ *
+ * `withSession(fn, true)` apre una sessione, non una transazione: ogni query
+ * faceva storia a sé, e il commento nel codice — «un fallimento fa fallire la
+ * creazione invece di lasciare un ticket a metà» — era falso. Un errore alla
+ * dodicesima riga di tabella lasciava undici righe, i riferimenti scritti e
+ * gli allegati reclamati; un errore sull'istanza lasciava una richiesta senza
+ * iter.
+ */
+describe('createRequest: atomicità', () => {
+  it('la CREATE, il richiedente e l\'istanza passano dalla stessa transazione', async () => {
+    await createRequest({ title: 'T', priority: 'medium' }, ctx)
+    // Una sola apertura di transazione per la creazione (più quella del contatore).
+    expect(h.session.executeWrite).toHaveBeenCalled()
+    // E le scritture hanno ricevuto la transazione, non la sessione.
+    for (const [primo, cypher] of vi.mocked(runQuery).mock.calls.map((c) => [c[0], c[1]] as const)) {
+      if (typeof cypher === 'string' && (cypher.includes('CREATE (r:ServiceRequest') || cypher.includes('REQUESTED_BY'))) {
+        expect(primo).toBe(h.tx)
+      }
+    }
+  })
+
+  it('se l\'istanza di workflow non si crea, la creazione FALLISCE (niente ticket senza iter)', async () => {
+    vi.mocked(workflowEngine.createInstance).mockRejectedValueOnce(new Error('nessuna definizione attiva'))
+    await expect(createRequest({ title: 'T', priority: 'medium' }, ctx)).rejects.toThrow(/nessuna definizione attiva/)
   })
 })

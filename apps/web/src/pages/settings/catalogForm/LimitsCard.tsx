@@ -23,6 +23,8 @@ import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 interface Tetti {
   maxLibraryFields: number
   maxFieldsPerForm: number
+  /** Quante RIGHE può avere una tabella ripetibile (ondata 7). */
+  maxTableRows: number
   libraryFieldsUsed: number
   min: number
   max: number
@@ -36,12 +38,20 @@ export function LimitsCard() {
   const [aperto, setAperto] = useState(false)
   const [libreria, setLibreria] = useState('')
   const [perModulo, setPerModulo] = useState('')
+  /*
+   * Il terzo tetto: applicato dal server dall'ondata 7 e non configurabile da
+   * nessuna parte, mentre tre commenti nel codice promettevano il contrario —
+   * un cliente che serve 80 righe doveva farsi cambiare una proprietà nel
+   * grafo (revisione del 17 set 2026).
+   */
+  const [righeTabella, setRigheTabella] = useState('')
 
   // I campi partono dai valori veri, e li riprendono quando arrivano dal server.
   useEffect(() => {
     if (!tetti) return
     setLibreria(String(tetti.maxLibraryFields))
     setPerModulo(String(tetti.maxFieldsPerForm))
+    setRigheTabella(String(tetti.maxTableRows))
   }, [tetti])
 
   if (!tetti) return null
@@ -53,14 +63,15 @@ export function LimitsCard() {
   const conferma = async () => {
     const a = Number(libreria)
     const b = Number(perModulo)
+    const c = Number(righeTabella)
     // Scritto come funzione e non come catena di confronti: il guardiano i18n
     // legge un `a < x` seguito da un `>` come se fosse un tag JSX.
     const dentro = (n: number) => Number.isInteger(n) && n >= tetti.min && n <= tetti.max
-    if (!dentro(a) || !dentro(b)) {
+    if (!dentro(a) || !dentro(b) || !dentro(c)) {
       toast.error(t('pages.catalogForms.limits.outOfRange', { min: tetti.min, max: tetti.max }))
       return
     }
-    const r = await salva({ variables: { maxLibraryFields: a, maxFieldsPerForm: b } })
+    const r = await salva({ variables: { maxLibraryFields: a, maxFieldsPerForm: b, maxTableRows: c } })
     if (!r.data) return
     toast.success(t('pages.catalogForms.limits.saved'))
     setAperto(false)
@@ -94,6 +105,9 @@ export function LimitsCard() {
         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontVariantNumeric: 'tabular-nums' }}>
           {t('pages.catalogForms.limits.perForm', { max: tetti.maxFieldsPerForm })}
         </span>
+        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontVariantNumeric: 'tabular-nums' }}>
+          {t('pages.catalogForms.limits.tableRows', { max: tetti.maxTableRows })}
+        </span>
       </div>
 
       {aperto && (
@@ -109,6 +123,12 @@ export function LimitsCard() {
               {t('pages.catalogForms.limits.perFormLabel')}
             </span>
             <Input type="number" min={tetti.min} max={tetti.max} value={perModulo} onChange={(e) => setPerModulo(e.target.value)} />
+          </label>
+          <label style={{ flex: '1 1 180px', minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 3 }}>
+              {t('pages.catalogForms.limits.tableRowsLabel')}
+            </span>
+            <Input type="number" min={tetti.min} max={tetti.max} value={righeTabella} onChange={(e) => setRigheTabella(e.target.value)} />
           </label>
           <button type="button" onClick={() => void conferma()} disabled={loading}
             style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>

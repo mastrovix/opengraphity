@@ -69,11 +69,26 @@ export interface TenantProvisioningResult {
  * default storico e non lo si cambia qui).
  */
 async function provisionDefaultDashboard(session: Queryable, tenantId: string, userId: string | null): Promise<boolean> {
+  /*
+   * LA CHIAVE DEL MERGE NON PORTA `is_default` (revisione del 17 set 2026).
+   *
+   * È lo stesso schema che ha creato cinque campi duplicati nel metamodello:
+   * una proprietà di STATO nella chiave di un MERGE. `is_default` lo riscrive
+   * la pagina delle dashboard (impostarne un'altra come predefinita spegne
+   * questa), quindi alla seconda esecuzione — e questa è una MUTATION, non una
+   * migrazione a colpo singolo — l'onboarding non riconosceva più la propria
+   * dashboard e ne creava una seconda con lo stesso nome.
+   *
+   * La chiave è tenant + nome, che è ciò che identifica «la dashboard
+   * provisionata»; `is_default` si scrive alla creazione e da lì in poi è del
+   * cliente.
+   */
   const r = await session.run(
-    `MERGE (d:DashboardConfig {tenant_id: $tenantId, name: 'Dashboard', is_default: true})
+    `MERGE (d:DashboardConfig {tenant_id: $tenantId, name: 'Dashboard'})
      ON CREATE SET
        d.id         = $id,
        d.user_id    = $userId,
+       d.is_default = true,
        d.visibility = 'private',
        d.created_at = $now,
        d.updated_at = $now

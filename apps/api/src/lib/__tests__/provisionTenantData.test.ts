@@ -94,8 +94,19 @@ describe('provisionTenantData — tutti i pezzi, una volta sola', () => {
     const out = await provisionTenantData(s as never, 'c-two')
     expect(out.dashboardCreated).toBe(false)
     const [cypher, params] = s.calls()[0]!
-    expect(cypher).toContain("MERGE (d:DashboardConfig {tenant_id: $tenantId, name: 'Dashboard', is_default: true})")
+    /*
+     * La chiave è tenant + NOME, e non porta `is_default` (revisione del 17
+     * set 2026): quella proprietà la riscrive la pagina delle dashboard, e
+     * tenerla nella chiave faceva sì che la seconda esecuzione non
+     * riconoscesse più la dashboard provisionata e ne creasse una seconda. È
+     * lo stesso schema che ha creato i doppioni del metamodello. Questo test
+     * prima pinnava la stringa col difetto dentro: cementava il difetto invece
+     * di trovarlo.
+     */
+    expect(cypher).toContain("MERGE (d:DashboardConfig {tenant_id: $tenantId, name: 'Dashboard'})")
+    expect(cypher).not.toContain('is_default: true}')
     expect(cypher).toContain('ON CREATE SET')
+    expect(cypher).toContain('d.is_default = true')
     expect(params['tenantId']).toBe('c-two')
     // Da una migrazione non c'è nessuno a cui intestarla: resta null, non inventata.
     expect(params['userId']).toBeNull()

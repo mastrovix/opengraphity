@@ -1033,6 +1033,16 @@ function prosa(v) {
   if (fs.existsSync(PORTAL_SRC)) {
     for (const f of walk(PORTAL_SRC)) daScansionare.push([f, path.join(ROOT, 'apps')])
   }
+  /*
+   * E `packages/web-core`, che era FUORI dal perimetro (revisione del 17 set
+   * 2026). Dentro vive il renderer che disegna OGNI modulo del catalogo in
+   * ENTRAMBE le app: un testo italiano cablato lì lo vedrebbero sia gli
+   * operatori sia gli utenti finali, e nessun controllo lo guardava.
+   */
+  const WEB_CORE_SRC = path.join(ROOT, 'packages/web-core/src')
+  if (fs.existsSync(WEB_CORE_SRC)) {
+    for (const f of walk(WEB_CORE_SRC)) daScansionare.push([f, path.join(ROOT, 'packages')])
+  }
 
   for (const [file, base] of daScansionare) {
     const relPath = path.relative(base, file)

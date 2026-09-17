@@ -2376,6 +2376,8 @@
         "perForm": "fino a {{max}} campi per modulo",
         "libraryLabel": "Campi nella libreria",
         "perFormLabel": "Campi in un modulo",
+        "tableRows": "fino a {{max}} righe per tabella",
+        "tableRowsLabel": "Righe per tabella",
         "range": "Un numero intero fra {{min}} e {{max}}. Abbassare un tetto non cancella niente: quello che c'è resta, semplicemente non cresce più.",
         "outOfRange": "Un tetto è un numero intero fra {{min}} e {{max}}.",
         "saved": "Tetti salvati"

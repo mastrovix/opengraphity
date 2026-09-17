@@ -88,7 +88,7 @@ describe('errorLink — UNAUTHORIZED', () => {
     expect(opts.refreshToken).toHaveBeenCalledTimes(1)
     expect(script.calls()).toBe(2)
     expect(opts.onSessionInvalid).toHaveBeenCalledTimes(1)
-    expect(logger.error).toHaveBeenCalledWith('UNAUTHORIZED dopo refresh del token', expect.objectContaining({ operation: 'Me' }))
+    expect(logger.error).toHaveBeenCalledWith('UNAUTHORIZED after token refresh', expect.objectContaining({ operation: 'Me' }))
     expect(opts.onGraphQLError).not.toHaveBeenCalled()
   })
 

@@ -442,7 +442,7 @@ export function buildBaseSDL(): string {
     Cambia il tetto tecnico sui moduli. Non abbassa nulla di gia' scritto: una
     libreria gia' oltre il nuovo tetto resta, ma non cresce piu'.
     """
-    setCatalogFormLimits(maxLibraryFields: Int!, maxFieldsPerForm: Int!): CatalogFormLimits!
+    setCatalogFormLimits(maxLibraryFields: Int!, maxFieldsPerForm: Int!, maxTableRows: Int!): CatalogFormLimits!
     createServiceCatalogItem(input: CreateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceCatalogItem(id: ID!, input: UpdateServiceCatalogItemInput!): ServiceCatalogItem!
     updateServiceRequest(id: ID!, input: UpdateServiceRequestInput!): ServiceRequest!

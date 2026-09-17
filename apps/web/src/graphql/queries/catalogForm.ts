@@ -69,6 +69,6 @@ export const GET_CATALOG_ITEMS_WITH_WORKFLOW = gql`
 /** Il tetto tecnico sui moduli e quanto ne è occupato (ondata 4). */
 export const GET_CATALOG_FORM_LIMITS = gql`
   query GetCatalogFormLimits {
-    catalogFormLimits { maxLibraryFields maxFieldsPerForm libraryFieldsUsed min max }
+    catalogFormLimits { maxLibraryFields maxFieldsPerForm maxTableRows libraryFieldsUsed min max }
   }
 `

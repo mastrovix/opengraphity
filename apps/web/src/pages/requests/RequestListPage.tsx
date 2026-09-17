@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { pausedWhenHidden } from '@/lib/polling'
 import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useFormFieldColumns, type FormFieldValue } from '@/components/ticket/formFieldColumns'
-import { useQuery } from '@apollo/client/react'
+import { useApolloClient, useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
@@ -91,6 +91,7 @@ export function RequestListPage() {
 
   const filtersJson = filterGroup ? JSON.stringify(filterGroup) : undefined
 
+  const apollo = useApolloClient()
   const { data, loading, error, refetch } = useQuery<{ serviceRequests: { items: ServiceRequest[]; total: number } }>(GET_SERVICE_REQUESTS, {
     variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filtersJson, sortField, sortDirection: sortDir },
     // F-21: il polling si ferma quando la scheda è in background.
@@ -128,7 +129,22 @@ export function RequestListPage() {
           />
         </div>
         <ExportCsvButton
-          onExport={async () => { exportToCsv('service-requests', columns, withFormFieldCells(withCustomFieldCells(items))) }}
+          onExport={async () => {
+            /*
+             * IL CSV ESPORTA TUTTE LE RIGHE FILTRATE, non la pagina a schermo
+             * (revisione del 17 set 2026). Prima passava `items`, cioè le venti
+             * righe correnti: con 350 richieste filtrate si otteneva un file da
+             * venti righe, col nome giusto e nessun avviso — ed è la lista dove
+             * vivono le risposte ai moduli. Incident, problem e CI rifanno la
+             * query da sempre; le richieste no.
+             */
+            const res = await apollo.query<{ serviceRequests: { items: ServiceRequest[] } }>({
+              query: GET_SERVICE_REQUESTS,
+              variables: { limit: 10000, offset: 0, filters: filtersJson, sortField, sortDirection: sortDir },
+              fetchPolicy: 'network-only',
+            })
+            exportToCsv('service-requests', columns, withFormFieldCells(withCustomFieldCells(res.data?.serviceRequests?.items ?? [])))
+          }}
         />
       </div>
 

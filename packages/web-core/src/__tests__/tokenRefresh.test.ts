@@ -123,7 +123,7 @@ describe('startTokenRefreshLoop', () => {
       'Authentication server unreachable — retrying in 5s',
       { id: 'keycloak-refresh', duration: 5_000 },
     )
-    expect(logger.warn).toHaveBeenCalledWith('Refresh token fallito (rete), nuovo tentativo', expect.objectContaining({ attempt: 1, delayMs: 5_000, message: 'ECONNREFUSED' }))
+    expect(logger.warn).toHaveBeenCalledWith('Token refresh failed (network), retrying', expect.objectContaining({ attempt: 1, delayMs: 5_000, message: 'ECONNREFUSED' }))
 
     // 2nd attempt after 5s fails again → next delay 10s (backoff)
     await vi.advanceTimersByTimeAsync(5_000)

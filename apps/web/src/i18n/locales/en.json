@@ -2376,6 +2376,8 @@
         "perForm": "up to {{max}} fields per form",
         "libraryLabel": "Fields in the library",
         "perFormLabel": "Fields in one form",
+        "tableRows": "up to {{max}} rows per table",
+        "tableRowsLabel": "Rows per table",
         "range": "A whole number between {{min}} and {{max}}. Lowering a limit never deletes anything: what is already there stays, it just stops growing.",
         "outOfRange": "A limit is a whole number between {{min}} and {{max}}.",
         "saved": "Limits saved"

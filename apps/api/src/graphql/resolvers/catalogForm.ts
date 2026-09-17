@@ -22,6 +22,7 @@ import { ValidationError } from '../../lib/errors.js'
 import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { assertFormSize, assertLibraryRoom, assertLimitValue, CATALOG_FORM_LIMIT_MAX, CATALOG_FORM_LIMIT_MIN, catalogFormLimits as leggiTetti } from '../../lib/catalogFormLimits.js'
 import { assertFormTable, etichetteDeiValori, parseFormTable } from '../../lib/catalogForm.js'
+import { ticketPropsOf } from '../../lib/ticketProps.js'
 import { labelFor, type EnumValueLabels } from '../../lib/enumValueLabels.js'
 import { isLingua, languageFor } from '../../lib/tenantLanguage.js'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
@@ -404,20 +405,24 @@ export const catalogFormResolvers = {
      * semplicemente non cresce piu. Cancellare campi per far tornare i conti
      * sarebbe perdere dati per rispettare un numero.
      */
-    setCatalogFormLimits: async (_: unknown, args: { maxLibraryFields: number; maxFieldsPerForm: number }, ctx: GraphQLContext) => {
+    setCatalogFormLimits: async (_: unknown, args: { maxLibraryFields: number; maxFieldsPerForm: number; maxTableRows: number }, ctx: GraphQLContext) => {
       const maxLibraryFields = assertLimitValue('The library limit', args.maxLibraryFields)
       const maxFieldsPerForm = assertLimitValue('The per-form limit', args.maxFieldsPerForm)
+      // Il terzo tetto: applicato dal server dall'ondata 7 e non configurabile
+      // da nessuna parte fino al 17 set 2026.
+      const maxTableRows = assertLimitValue('The table rows limit', args.maxTableRows)
       const write = getSession(undefined, 'WRITE')
       try {
         const row = await runQueryOne<{ n: unknown }>(write, `
           MATCH (t:Tenant {id: $tenantId})
           SET t.max_form_fields = toInteger($maxLibraryFields),
-              t.max_form_fields_per_form = toInteger($maxFieldsPerForm)
+              t.max_form_fields_per_form = toInteger($maxFieldsPerForm),
+              t.max_form_table_rows = toInteger($maxTableRows)
           WITH t
           OPTIONAL MATCH (f:FormField {tenant_id: $tenantId})
-          RETURN count(f) AS n`, { tenantId: ctx.tenantId, maxLibraryFields, maxFieldsPerForm })
+          RETURN count(f) AS n`, { tenantId: ctx.tenantId, maxLibraryFields, maxFieldsPerForm, maxTableRows })
         if (!row) throw new Error(`Tenant ${ctx.tenantId} has no :Tenant node: fix the tenant before changing the catalog form limits`)
-        return { maxLibraryFields, maxFieldsPerForm, libraryFieldsUsed: Number(row.n ?? 0), min: CATALOG_FORM_LIMIT_MIN, max: CATALOG_FORM_LIMIT_MAX }
+        return { maxLibraryFields, maxFieldsPerForm, maxTableRows, libraryFieldsUsed: Number(row.n ?? 0), min: CATALOG_FORM_LIMIT_MIN, max: CATALOG_FORM_LIMIT_MAX }
       } finally { await write.close() }
     },
 
@@ -440,12 +445,34 @@ export const catalogFormResolvers = {
           sections: inviata.sections,
         }
         const now = new Date().toISOString()
-        await runQuery(session, `
-          MATCH (i:ServiceCatalogItem {id: $itemId, tenant_id: $tenantId})
-          SET i.form = $form, i.form_updated_at = $now, i.updated_at = $now`,
-        { itemId: args.itemId, tenantId: ctx.tenantId, form: JSON.stringify(salvata), now })
-        // La copia immutabile: e cio che rende leggibile domani un ticket compilato oggi.
-        await saveCatalogFormRevision(session, ctx.tenantId, args.itemId, salvata, now, ctx.userId ?? null)
+        /*
+         * LA REVISIONE PUBBLICATA E LA SUA COPIA CONGELATA IN UNA TRANSAZIONE
+         * (revisione del 17 set 2026).
+         *
+         * Erano due scritture separate. Con due amministratori che salvano
+         * insieme entrambi calcolano la stessa revisione N+1, entrambi scrivono
+         * `i.form`, e il secondo FALLISCE sulla CREATE della copia (c'è un
+         * vincolo di unicità su tenant+voce+revisione) — con un errore
+         * mascherato in «Internal database error». Da quel momento
+         * `ServiceCatalogItem.form` dice «revisione N+1» e la copia con quel
+         * numero contiene il modulo dell'ALTRO: i ticket nuovi puntano a una
+         * revisione il cui contenuto non è il loro, e le risposte ai campi
+         * presenti solo in uno non si leggono più. Lo stesso accadeva senza
+         * concorrenza, se la CREATE fallisse per qualunque motivo: form
+         * incrementato, copia assente, e `formAnswersOf` che restituisce una
+         * lista vuota.
+         *
+         * O entrambe o nessuna. Il vincolo di unicità diventa allora una
+         * difesa utile: il secondo salvataggio fallisce e non lascia niente.
+         */
+        await session.executeWrite(async (tx) => {
+          await runQuery(tx, `
+            MATCH (i:ServiceCatalogItem {id: $itemId, tenant_id: $tenantId})
+            SET i.form = $form, i.form_updated_at = $now, i.updated_at = $now`,
+          { itemId: args.itemId, tenantId: ctx.tenantId, form: JSON.stringify(salvata), now })
+          // La copia immutabile: e cio che rende leggibile domani un ticket compilato oggi.
+          await saveCatalogFormRevision(tx, ctx.tenantId, args.itemId, salvata, now, ctx.userId ?? null)
+        })
         return {
           itemId: voce.id, itemName: voce.name, revision: salvata.revision,
           definition: JSON.stringify(salvata), updatedAt: now,
@@ -610,11 +637,26 @@ export async function serviceRequestFormFieldValues(
   const conRisposta = libreria.filter((f) => f.inList
     && !FORM_FIELD_TYPES_WITHOUT_ANSWER.includes(f.fieldType) && FORM_FIELD_TYPES_AS_PROPERTY.includes(f.fieldType))
   if (conRisposta.length === 0) return []
-  const session = getSession(undefined, 'READ')
+  /*
+   * LE PROPRIETÀ SONO GIÀ STATE LETTE (revisione del 17 set 2026).
+   *
+   * Questo è un resolver di CAMPO: girava per ogni riga della lista, e per
+   * ognuna apriva una sessione e rileggeva `properties(r)` — proprietà che la
+   * query della lista aveva già letto e buttato via. Con venti righe e tre
+   * campi in lista erano venti sessioni e venti query in più per render,
+   * ripetute dal polling ogni trenta secondi. `withTicketProps` esiste per
+   * questo, e `customFields` lo usava già: qui no.
+   *
+   * Il ripiego (rilettura) resta per i chiamanti che non passano dal mapper.
+   */
+  const giaLette = ticketPropsOf(parent)
+  const session = giaLette ? null : getSession(undefined, 'READ')
   try {
-    const row = await runQueryOne<{ props: Record<string, unknown> }>(session, `
-      MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
-      RETURN properties(r) AS props`, { id: parent.id, tenantId: ctx.tenantId })
+    const row = giaLette
+      ? { props: giaLette }
+      : await runQueryOne<{ props: Record<string, unknown> }>(session!, `
+          MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
+          RETURN properties(r) AS props`, { id: parent.id, tenantId: ctx.tenantId })
     if (!row) return []
     // Le etichette dei valori le mette l'API, come per le risposte del modulo e
     // per i report: una sola verita su «come si legge production».
@@ -638,5 +680,5 @@ export async function serviceRequestFormFieldValues(
           rows: [] as never[], tableColumns: [] as never[],
         }
       })
-  } finally { await session.close() }
+  } finally { if (session) await session.close() }
 }

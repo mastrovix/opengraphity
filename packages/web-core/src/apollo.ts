@@ -114,7 +114,7 @@ function retryAfterRefresh(
         sub = forward(operation).subscribe({
           next: (result) => {
             if (hasUnauthorized(result)) {
-              logger.error('UNAUTHORIZED dopo refresh del token', { operation: operation.operationName })
+              logger.error('UNAUTHORIZED after token refresh', { operation: operation.operationName })
               o.onSessionInvalid()
             }
             observer.next(result)
@@ -129,7 +129,7 @@ function retryAfterRefresh(
         if (o.isSessionInvalid()) {
           o.onSessionInvalid()
         } else {
-          logger.error('Token refresh fallito (rete)', { operation: operation.operationName, message: error.message })
+          logger.error('Token refresh failed (network)', { operation: operation.operationName, message: error.message })
           if (once(NETWORK_DEDUPE_KEY)) o.onNetworkError(error, { operation: operation.operationName })
         }
         observer.error(error)
@@ -174,7 +174,7 @@ export function createErrorLink(o: ErrorLinkOptions): ErrorLink {
   return new ErrorLink(({ error, operation, forward }) => {
     // Stessa decisione per le due forme in cui UNAUTHORIZED può arrivare.
     if (isUnauthorizedServerError(error)) {
-      logger.warn('UNAUTHORIZED arrivato come ServerError (media type non GraphQL): rinfresco comunque', {
+      logger.warn('UNAUTHORIZED arrived as a ServerError (content type is not GraphQL): refreshing anyway', {
         operation: operation.operationName,
       })
       return retryAfterRefresh(o, once, logger, operation, forward)
@@ -242,18 +242,16 @@ interface ErroreConChiave {
  * ricevono gli stessi parametri della frase che li contiene, così «Rinominare
  * «{{from}}» in «{{to}}»» funziona come un pezzo.
  */
-function conPezziTradotti(
-  params: Record<string, string | number>, traduci: TraduciErrore,
-): Record<string, string | number> {
+function conPezziTradotti(params: Record<string, string | number>, translate: TraduciErrore): Record<string, string | number> {
   const fuori: Record<string, string | number> = { ...params }
   for (const [nome, valore] of Object.entries(params)) {
     if (!nome.endsWith('Key') || typeof valore !== 'string') continue
-    fuori[nome.slice(0, -3)] = traduci(valore, params) ?? valore
+    fuori[nome.slice(0, -3)] = translate(valore, params) ?? valore
   }
   return fuori
 }
 
-function conFrasi(result: ApolloLink.Result, traduci: TraduciErrore): ApolloLink.Result {
+function conFrasi(result: ApolloLink.Result, translate: TraduciErrore): ApolloLink.Result {
   const errors = (result as { errors?: ErroreConChiave[] }).errors
   if (!errors || errors.length === 0) return result
   return {
@@ -261,18 +259,18 @@ function conFrasi(result: ApolloLink.Result, traduci: TraduciErrore): ApolloLink
     errors: errors.map((e) => {
       const i18n = e.extensions?.i18n
       if (!i18n || typeof i18n.key !== 'string') return e
-      const params = conPezziTradotti((i18n.params ?? {}) as Record<string, string | number>, traduci)
-      const frase = traduci(i18n.key, params)
+      const params = conPezziTradotti((i18n.params ?? {}) as Record<string, string | number>, translate)
+      const frase = translate(i18n.key, params)
       return frase === null ? e : { ...e, message: frase }
     }),
   } as ApolloLink.Result
 }
 
-export function createI18nLink(traduci: TraduciErrore): ApolloLink {
+export function createI18nLink(translate: TraduciErrore): ApolloLink {
   return new ApolloLinkClass((operation, forward) =>
     new Observable<ApolloLink.Result>((observer) => {
       const sub = forward(operation).subscribe({
-        next:     (result) => observer.next(conFrasi(result, traduci)),
+        next:     (result) => observer.next(conFrasi(result, translate)),
         error:    (err: unknown) => observer.error(err),
         complete: () => observer.complete(),
       })
@@ -296,7 +294,7 @@ export function createAuthLink(getToken: () => string | undefined): ApolloLink {
 
 export function createApolloClient(opts: CreateApolloClientOptions): ApolloClient {
   const { uri, getToken, defaultOptions, traduciErrore, typePolicies, ...linkOptions } = opts
-  if (!uri) throw new Error('createApolloClient: "uri" mancante (VITE_API_URL)')
+  if (!uri) throw new Error('createApolloClient: "uri" is missing (VITE_API_URL)')
   const httpLink = new HttpLink({ uri })
   /*
     L'ORDINE CONTA: il link che traduce sta DENTRO quello che segnala, così la

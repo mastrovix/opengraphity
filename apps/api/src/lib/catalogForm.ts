@@ -23,7 +23,7 @@
  * doveva comparire.
  */
 import type { Session } from 'neo4j-driver'
-import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import { createMetamodelCache } from './metamodelCache.js'
 import {
   CATALOG_FORM_VERSION, FORM_FIELD_NAME_RE, FORM_FIELD_TYPES, FORM_FIELD_TYPES_MULTI,
@@ -1138,7 +1138,7 @@ export interface FormTableWrite {
 }
 
 export async function writeFormTables(
-  session: Session, tenantId: string, entityId: string, tables: readonly FormTableWrite[],
+  session: Queryable, tenantId: string, entityId: string, tables: readonly FormTableWrite[],
 ): Promise<void> {
   for (const t of tables) {
     for (const [indice, riga] of t.rows.entries()) {
@@ -1305,7 +1305,7 @@ function convertiCella(
 
 /** Scrive la copia immutabile di una revisione appena pubblicata. */
 export async function saveCatalogFormRevision(
-  session: Session, tenantId: string, itemId: string, def: CatalogFormDefinition, publishedAt: string, publishedBy: string | null,
+  session: Queryable, tenantId: string, itemId: string, def: CatalogFormDefinition, publishedAt: string, publishedBy: string | null,
 ): Promise<void> {
   await runQuery(session, `
     MATCH (i:ServiceCatalogItem {id: $itemId, tenant_id: $tenantId})
@@ -1609,7 +1609,7 @@ async function contaAllegatiBozza(
  * silenzio qui era esattamente il difetto.
  */
 export async function claimDraftAttachments(
-  session: Session, tenantId: string, draftId: string, entityType: string, entityId: string, userId: string,
+  session: Queryable, tenantId: string, draftId: string, entityType: string, entityId: string, userId: string,
   fields: readonly string[],
 ): Promise<{ claimed: number; leftBehind: number }> {
   const comuni = { tenantId, draftType: FORM_DRAFT_ENTITY_TYPE, draftId, userId, fields: [...fields] }
@@ -1635,7 +1635,7 @@ export async function claimDraftAttachments(
  * non fa due archi, e il campo resta leggibile da chi rilegge le risposte.
  */
 export async function writeFormReferences(
-  session: Session, tenantId: string, entityLabelIsServiceRequest: true, entityId: string,
+  session: Queryable, tenantId: string, entityLabelIsServiceRequest: true, entityId: string,
   references: readonly FormReferenceWrite[],
 ): Promise<void> {
   void entityLabelIsServiceRequest

@@ -144,6 +144,13 @@ export function catalogFormSDL(): string {
     maxLibraryFields:  Int!
     """Quanti campi puo' citare UN modulo."""
     maxFieldsPerForm:  Int!
+    """
+    Quante RIGHE puo' avere una tabella ripetibile (ondata 7). Era applicato dal
+    server e non esposto qui, quindi nessuno poteva alzarlo da UI: un cliente che
+    serve 80 righe doveva farsi cambiare una proprieta' nel grafo, mentre tre
+    commenti nel codice promettevano il contrario (revisione del 17 set 2026).
+    """
+    maxTableRows:      Int!
     """Quanti campi ci sono adesso nella libreria: per dire quanto manca al tetto."""
     libraryFieldsUsed: Int!
     """I binari entro cui si puo' scrivere un tetto, per non doverli ripetere nel client."""

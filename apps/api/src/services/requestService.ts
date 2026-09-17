@@ -156,7 +156,31 @@ export async function createRequest(
     }
     const initialStatus = scelta.stepName
 
-    const rows = await runQuery<{ props: Props }>(session, `
+    /*
+     * ── TUTTO QUELLO CHE SCRIVE STA IN UNA TRANSAZIONE ─────────────────────
+     *
+     * `withSession(fn, true)` apre una SESSIONE, non una transazione: ogni
+     * `runQuery` faceva storia a sé, e il commento che stava qui — «un
+     * fallimento fa fallire la creazione invece di lasciare un ticket a metà»
+     * — era falso (revisione del 17 set 2026, trovato da due revisori).
+     *
+     * Cosa lasciava indietro: un errore alla dodicesima riga di tabella dava
+     * un ticket con undici righe, i riferimenti già scritti e gli allegati già
+     * reclamati; un errore sull'istanza di workflow dava una richiesta SENZA
+     * iter — la classe di difetto «CHG00000003 ferma» già vista. E l'utente
+     * ripeteva, creando un secondo ticket.
+     *
+     * Ora o c'è tutto o non c'è niente. `runQuery` accetta qualunque cosa sappia
+     * eseguire (`Queryable`) e `createInstance` dichiara
+     * `Session | ManagedTransaction`: si passa `tx` dove prima si passava la
+     * sessione, senza duplicare una riga di Cypher.
+     *
+     * Fuori dalla transazione restano, di proposito: la lettura del numero e
+     * del passo iniziale (sopra) e l'evento `request.created` (sotto) — un
+     * evento pubblicato dentro non si ritira se la transazione non passa.
+     */
+    return await session.executeWrite(async (tx) => {
+    const rows = await runQuery<{ props: Props }>(tx, `
       CREATE (r:ServiceRequest {
         id:                $id,
         tenant_id:         $tenantId,
@@ -201,7 +225,7 @@ export async function createRequest(
     })
     if (!rows[0]) throw new Error('Failed to create service request')
 
-    await runQuery(session, `
+    await runQuery(tx, `
       MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
       OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN u IS NOT NULL THEN [1] ELSE [] END |
@@ -214,17 +238,17 @@ export async function createRequest(
 
     /**
      * I riferimenti del modulo (ondata 2) diventano relazioni, e i file della
-     * bozza passano al ticket. Entrambi DOPO la CREATE e nella stessa sessione:
-     * il nodo deve esistere per essere agganciato, e un fallimento qui fa
-     * fallire la creazione invece di lasciare un ticket a metà.
+     * bozza passano al ticket. Entrambi DOPO la CREATE e nella STESSA
+     * TRANSAZIONE: il nodo deve esistere per essere agganciato, e un
+     * fallimento qui fa fallire la creazione — ora davvero.
      */
     if (formReferences.length > 0) {
-      await writeFormReferences(session, ctx.tenantId, true, id, formReferences)
+      await writeFormReferences(tx, ctx.tenantId, true, id, formReferences)
     }
     // Le righe delle tabelle (ondata 7): nodi appesi al ticket, quindi dopo la
     // CREATE e nella stessa sessione, per la stessa ragione dei riferimenti.
     if (formTables.length > 0) {
-      await writeFormTables(session, ctx.tenantId, id, formTables)
+      await writeFormTables(tx, ctx.tenantId, id, formTables)
     }
     if (input.formDraftId) {
       /*
@@ -236,7 +260,7 @@ export async function createRequest(
        * caricato per un'altra voce che finiva su questa.
        */
       const { claimed, leftBehind } = await claimDraftAttachments(
-        session, ctx.tenantId, input.formDraftId, 'service_request', id, ctx.userId, campiAllegato,
+        tx, ctx.tenantId, input.formDraftId, 'service_request', id, ctx.userId, campiAllegato,
       )
       if (claimed > 0) logger.info({ tenantId: ctx.tenantId, requestId: id, draftId: input.formDraftId, reclamati: claimed }, 'Form draft attachments claimed')
       // Non un silenzio: i file che nessuna domanda di questo modulo chiedeva
@@ -248,11 +272,12 @@ export async function createRequest(
     }
 
     await workflowEngine.createInstance(
-      session, ctx.tenantId, id, 'service_request',
+      tx, ctx.tenantId, id, 'service_request',
       input.workflowDefinitionId ?? undefined, input.category ?? null,
     )
 
-    return mapRequest(rows[0].props)
+      return mapRequest(rows[0]!.props)
+    })
   }, true)
 
   await publishEvent('request.created', ctx.tenantId, ctx.userId, { id, title: input.title, priority: input.priority }, now)

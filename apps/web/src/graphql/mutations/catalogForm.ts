@@ -65,9 +65,9 @@ export const SET_WORKFLOW_DEFINITION_ACTIVE = gql`
 
 /** Cambia il tetto tecnico sui moduli: non tocca nulla di già scritto (ondata 4). */
 export const SET_CATALOG_FORM_LIMITS = gql`
-  mutation SetCatalogFormLimits($maxLibraryFields: Int!, $maxFieldsPerForm: Int!) {
-    setCatalogFormLimits(maxLibraryFields: $maxLibraryFields, maxFieldsPerForm: $maxFieldsPerForm) {
-      maxLibraryFields maxFieldsPerForm libraryFieldsUsed min max
+  mutation SetCatalogFormLimits($maxLibraryFields: Int!, $maxFieldsPerForm: Int!, $maxTableRows: Int!) {
+    setCatalogFormLimits(maxLibraryFields: $maxLibraryFields, maxFieldsPerForm: $maxFieldsPerForm, maxTableRows: $maxTableRows) {
+      maxLibraryFields maxFieldsPerForm maxTableRows libraryFieldsUsed min max
     }
   }
 `

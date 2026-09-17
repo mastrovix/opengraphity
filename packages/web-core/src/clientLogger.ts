@@ -21,9 +21,9 @@ export function createClientLogger(api: ApiBase): ClientLogger {
           timestamp: new Date().toISOString(),
         }),
       })
-      if (!res.ok) console.warn(`[clientLogger] invio log fallito: ${res.status} ${res.statusText}`, message)
+      if (!res.ok) console.warn(`[clientLogger] sending logs failed: ${res.status} ${res.statusText}`, message)
     } catch (err) {
-      console.warn('[clientLogger] invio log fallito', err, message)
+      console.warn('[clientLogger] sending logs failed', err, message)
     }
   }
 
