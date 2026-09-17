@@ -37,6 +37,10 @@ vi.mock('../domainMatrixSeed.js', () => ({
 vi.mock('../portalSeverityOptions.js', () => ({
   seedPortalSeverityOptions: vi.fn(async (_s: unknown, t: string) => { seeded.push(`severities:${t}`); return { seeded: ['low', 'high'] } }),
 }))
+// Idem per la lingua: il seme ha i suoi test in `tenantLanguageSeed.test.ts`.
+vi.mock('../tenantLanguage.js', () => ({
+  seedDefaultLanguage: vi.fn(async (_s: unknown, t: string) => { seeded.push(`language:${t}`); return { seeded: 'en' } }),
+}))
 
 const { provisionTenantData, tenantProvisioningGaps, formatGap, REQUIRED_WORKFLOW_ENTITY_TYPES } = await import('../provisionTenantData.js')
 
@@ -91,8 +95,11 @@ describe('provisionTenantData — tutti i pezzi, una volta sola', () => {
     // nasceva con un rilievo di gravità ERRORE e il portale non apriva ticket
     // (17 set 2026).
     expect(out.portalSeveritiesSeeded).toEqual(['low', 'high'])
+    // La lingua del prodotto, dichiarata: a schermo non cambia niente, ma da
+    // ripiego diventa una scelta (e il rilievo sparisce).
+    expect(out.defaultLanguageSeeded).toBe('en')
     expect(seeded).toEqual([
-      'roles:c-two', 'severities:c-two',
+      'roles:c-two', 'severities:c-two', 'language:c-two',
       'incident:c-two', 'problem:c-two', 'kb:c-two',
       'Change RFC Process:c-two', 'Service Request Fulfillment:c-two',
     ])
