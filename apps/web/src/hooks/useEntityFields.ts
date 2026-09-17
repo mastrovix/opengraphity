@@ -133,15 +133,19 @@ const FORM_TYPE_TO_AUTOMATION: Readonly<Record<string, string>> = {
  * leggere), non la libreria dell'amministratore: chi scrive una regola non ha
  * per forza i permessi della configurazione del catalogo.
  */
-export function useFormFieldMetas(entityType: string): FieldMeta[] {
+export function useFormFieldMetas(entityType: string, opts: { soloScrivibili?: boolean } = {}): FieldMeta[] {
   const richiesta = entityType === 'service_request'
   const { data } = useQuery<{ entityFilterFields: EntityFilterField[] }>(
     GET_ENTITY_FILTER_FIELDS,
     { variables: { typeName: 'ServiceRequest' }, skip: !richiesta, fetchPolicy: METAMODEL_FETCH_POLICY },
   )
   const campi = data?.entityFilterFields
+  const soloScrivibili = opts.soloScrivibili === true
   return useMemo(() => (campi ?? [])
     .filter((f) => f.formFieldType != null && FORM_TYPE_TO_AUTOMATION[f.formFieldType] != null)
+    // Per le AZIONI si offrono solo i campi che un'automazione può scrivere
+    // (ondata 8): un menu che offre quello che il server rifiuta è una trappola.
+    .filter((f) => !soloScrivibili || f.settableByAutomation)
     .map((f): FieldMeta => ({
       name:         f.name,
       label:        f.label ?? f.name,
@@ -150,7 +154,7 @@ export function useFormFieldMetas(entityType: string): FieldMeta[] {
       // Il vocabolario: da lì l'editor legge l'etichetta di ogni valore, come
       // fa per i campi del metamodello.
       enumTypeName: f.vocabulary,
-    })), [campi])
+    })), [campi, soloScrivibili])
 }
 
 // ── Campi filtrabili dal server (FilterBuilder) ──────────────────────────────
@@ -174,6 +178,8 @@ interface EntityFilterField {
   multi:      boolean
   /** Filtra le RIGHE di una tabella: operatori di relazione (ondata 7). */
   rowFilter:  boolean
+  /** Un'automazione può scriverlo (ondata 8). */
+  settableByAutomation: boolean
 }
 
 /**

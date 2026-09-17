@@ -11,10 +11,13 @@
  */
 import { GraphQLObjectType, getNamedType, isEnumType, isListType, isNonNullType, isScalarType, type GraphQLResolveInfo, type GraphQLOutputType } from 'graphql'
 import { ValidationError } from '../../lib/errors.js'
-import { FORM_FIELD_TYPES_MULTI, formTableColumnLabel, isFormTableType, type TicketCustomFieldEntityType } from '@opengraphity/types'
+import {
+  FORM_FIELD_TYPES_AS_PROPERTY, FORM_FIELD_TYPES_MULTI, formTableColumnLabel, isFormTableType,
+  type TicketCustomFieldEntityType,
+} from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 import { requestCustomFieldDefs } from './ticketCustomFields.js'
-import { formFields, formTableFilterName } from '../../lib/catalogForm.js'
+import { formFields, formTableFilterName, type FormFieldDef } from '../../lib/catalogForm.js'
 import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { withSession } from './ci-utils.js'
 import { labelFor } from '../../lib/enumValueLabels.js'
@@ -37,6 +40,8 @@ export interface EntityFilterField {
   vocabulary: string | null
   /** Filtra le righe di una tabella: operatori di relazione (ondata 7). */
   rowFilter: boolean
+  /** Un'automazione può scriverlo: campo della libreria, valore singolo, senza formula (ondata 8). */
+  settableByAutomation: boolean
   /** Il valore sul nodo è una lista (selezione multipla): serve un operatore di lista. */
   multi:      boolean
 }
@@ -45,8 +50,8 @@ function classify(type: GraphQLOutputType): EntityFilterField | null {
   const inner = isNonNullType(type) ? type.ofType : type
   if (isListType(inner)) return null                       // liste = relazioni/array
   const named = getNamedType(inner)
-  if (isScalarType(named)) return { name: '', kind: 'SCALAR', scalarName: named.name, enumValues: null, label: null, choices: [], formFieldType: null, vocabulary: null, rowFilter: false, multi: false }
-  if (isEnumType(named))   return { name: '', kind: 'ENUM', scalarName: null, enumValues: named.getValues().map((v) => v.name), label: null, choices: [], formFieldType: null, vocabulary: null, rowFilter: false, multi: false }
+  if (isScalarType(named)) return { name: '', kind: 'SCALAR', scalarName: named.name, enumValues: null, label: null, choices: [], formFieldType: null, vocabulary: null, rowFilter: false, settableByAutomation: false, multi: false }
+  if (isEnumType(named))   return { name: '', kind: 'ENUM', scalarName: null, enumValues: named.getValues().map((v) => v.name), label: null, choices: [], formFieldType: null, vocabulary: null, rowFilter: false, settableByAutomation: false, multi: false }
   return null                                              // object/interface/union
 }
 
@@ -60,6 +65,17 @@ export function entityFilterFieldsFromSchema(schema: GraphQLResolveInfo['schema'
     if (c) out.push({ ...c, name })
   }
   return out
+}
+
+/**
+ * Un campo della libreria che un'AUTOMAZIONE può scrivere (ondata 8): valore
+ * singolo, che diventa una proprietà, e senza formula. Gli altri l'API li
+ * rifiuta; questo serve a non offrirli.
+ */
+function scrivibile(d: FormFieldDef): boolean {
+  if (d.formula) return false
+  if (FORM_FIELD_TYPES_MULTI.includes(d.fieldType)) return false
+  return FORM_FIELD_TYPES_AS_PROPERTY.includes(d.fieldType)
 }
 
 /** I tipi GraphQL dei ticket che hanno campi del cliente (ondata 4). */
@@ -78,8 +94,8 @@ export const entityFilterFieldsResolvers = {
       const custom = (await requestCustomFieldDefs(ctx, entityType))
         .filter((d) => !fields.some((f) => f.name === d.name))
         .map((d): EntityFilterField => d.fieldType === 'enum'
-          ? { name: d.name, kind: 'ENUM', scalarName: null, enumValues: d.enumValues, label: null, choices: [], formFieldType: null, vocabulary: null, rowFilter: false, multi: false }
-          : { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null, label: null, choices: [], formFieldType: null, vocabulary: null, rowFilter: false, multi: false })
+          ? { name: d.name, kind: 'ENUM', scalarName: null, enumValues: d.enumValues, label: null, choices: [], formFieldType: null, vocabulary: null, rowFilter: false, settableByAutomation: false, multi: false }
+          : { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null, label: null, choices: [], formFieldType: null, vocabulary: null, rowFilter: false, settableByAutomation: false, multi: false })
       /**
        * I campi della LIBRERIA dei moduli del catalogo (ondata 1): sono
        * proprieta dei ticket come gli altri, quindi vanno OFFERTI nel
@@ -108,13 +124,13 @@ export const entityFilterFieldsResolvers = {
             // «Ambienti_coinvolti / Production» dove tutto il resto del
             // prodotto dice «Ambienti coinvolti / Produzione».
             if (!d.vocabulary) {
-              return { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null, label: d.label, choices: [], formFieldType: d.fieldType, vocabulary: null, rowFilter: false, multi }
+              return { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null, label: d.label, choices: [], formFieldType: d.fieldType, vocabulary: null, rowFilter: false, settableByAutomation: scrivibile(d), multi }
             }
             const v = await loadVocabularyEntries(ctx.tenantId, d.vocabulary)
             return {
               name: d.name, kind: 'ENUM', scalarName: null, enumValues: v.values as string[], label: d.label,
               choices: (v.values as string[]).map((valore) => ({ value: valore, label: labelFor(valore, v.labels, lingua, ripiego) })),
-              formFieldType: d.fieldType, vocabulary: d.vocabulary, rowFilter: false, multi,
+              formFieldType: d.fieldType, vocabulary: d.vocabulary, rowFilter: false, settableByAutomation: scrivibile(d), multi,
             }
           })
       }).then((p) => Promise.all(p))
@@ -140,14 +156,14 @@ export const entityFilterFieldsResolvers = {
               if (!colonna.vocabulary) {
                 return {
                   name: nome, kind: 'SCALAR', scalarName: 'String', enumValues: null, label: etichetta,
-                  choices: [], formFieldType: colonna.fieldType, vocabulary: null, rowFilter: true, multi: false,
+                  choices: [], formFieldType: colonna.fieldType, vocabulary: null, rowFilter: true, settableByAutomation: false, multi: false,
                 }
               }
               const v = await loadVocabularyEntries(ctx.tenantId, colonna.vocabulary)
               return {
                 name: nome, kind: 'ENUM', scalarName: null, enumValues: v.values as string[], label: etichetta,
                 choices: (v.values as string[]).map((valore) => ({ value: valore, label: labelFor(valore, v.labels, lingua, ripiego) })),
-                formFieldType: colonna.fieldType, vocabulary: colonna.vocabulary, rowFilter: true, multi: false,
+                formFieldType: colonna.fieldType, vocabulary: colonna.vocabulary, rowFilter: true, settableByAutomation: false, multi: false,
               }
             })())
           }

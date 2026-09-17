@@ -11,7 +11,7 @@ import type { TFunction } from 'i18next'
 import { useQuery } from '@apollo/client/react'
 import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
-import { useEntityFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
+import { useEntityFieldMetas, useFormFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
 import { isStepFieldWritable, AUTOMATION_NOTIFICATION_CHANNELS } from '@opengraphity/types'
 import { useTargetOptions, withCurrent, CHANNEL_LABEL_KEY } from '@/pages/settings/NotificationRuleList'
 import { fieldTypeKey } from '@/lib/automationOperators'
@@ -51,7 +51,15 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
   const { values: priorityValues } = useEnumValues(entityType || 'incident', 'priority')
   const { labelOf, entriesOf } = useDomainVocabularies()
   const { values: severityValues } = useEnumValues(entityType || 'incident', 'severity')
-  const { fields: fieldMetas } = useEntityFieldMetas(entityType)
+  const { fields: metamodelFields } = useEntityFieldMetas(entityType)
+  /**
+   * I campi dei MODULI che un'automazione può scrivere (ondata 8): solo quelli
+   * a valore singolo e senza formula — `settableByAutomation` lo decide l'API,
+   * che è anche quella che rifiuta gli altri. Un nome che il metamodello ha già
+   * vince: è quello che il ticket scrive davvero.
+   */
+  const daiModuli = useFormFieldMetas(entityType, { soloScrivibili: true })
+  const fieldMetas = [...metamodelFields, ...daiModuli.filter((f) => !metamodelFields.some((m) => m.name === f.name))]
   // F-16: i ruoli del cliente, per l'azione «richiedi approvazione».
   const { roles, labelOf: roleLabelOf } = useRoles()
 

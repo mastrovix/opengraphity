@@ -800,6 +800,15 @@ export function buildBaseSDL(): string {
     """
     rowFilter:  Boolean!
     """
+    Vero se un'AUTOMAZIONE puo' scriverlo (ondata 8): un campo della libreria a
+    valore singolo, senza formula. Fuori restano note, allegati, riferimenti,
+    tabelle, selezione multipla e campi calcolati — un'azione manda un valore
+    solo, e quelli non sono un valore. L'API rifiuta comunque gli altri: questo
+    serve al client per non OFFRIRLI, che e' la differenza fra un menu e una
+    trappola.
+    """
+    settableByAutomation: Boolean!
+    """
     Il valore sul nodo e' una LISTA, non un valore solo (selezione multipla dei
     moduli del catalogo, ondata 4). Cambia gli operatori: «contiene una di»,
     non «uguale a» — un uguale su una lista non trova mai niente.

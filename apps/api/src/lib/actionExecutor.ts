@@ -147,8 +147,28 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
       const field = action.type === 'set_priority' ? 'priority' : assertSettableField(p['field'])
       const value = action.type === 'set_priority' ? String(p['priority'] ?? p['value'] ?? '') : p['value']
       if (action.type === 'set_priority' && !value) throw new Error('set_priority: priority value is required')
-      const { writeTicketField } = await import('./ticketFieldWrite.js')
-      const written = await withSession((session) => writeTicketField(session, ctx.tenantId, ctx.entityType, ctx.entityId, field, value), true)
+      /**
+       * UNA RISPOSTA DI MODULO passa da un'altra strada (ondata 8): non è una
+       * proprietà come le altre, ha addosso il vocabolario, lo script di
+       * validazione, l'obbligatorietà e le condizioni del modulo con cui il
+       * ticket è stato compilato. `writeTicketField` non le conosce — valida
+       * contro il metamodello ITIL — e fino a qui rifiutava, giustamente.
+       *
+       * Si riconosce dalla libreria, non da una lista di nomi: se quel nome è
+       * un campo della libreria del tenant, è una risposta.
+       */
+      const written = await withSession(async (session) => {
+        if (ctx.entityType === 'service_request' && action.type !== 'set_priority') {
+          const { formFieldsByName, writeFormAnswerFromAutomation } = await import('./catalogForm.js')
+          const daModulo = await formFieldsByName(session, ctx.tenantId, [field])
+          if (daModulo.has(field)) {
+            const esito = await writeFormAnswerFromAutomation(session, ctx.tenantId, ctx.entityId, field, value)
+            return esito as { before: Record<string, unknown>; after: Record<string, unknown> }
+          }
+        }
+        const { writeTicketField } = await import('./ticketFieldWrite.js')
+        return await writeTicketField(session, ctx.tenantId, ctx.entityType, ctx.entityId, field, value)
+      }, true)
       // L'aggiornamento si pubblica (webhook, notifiche); le automazioni non lo
       // rivalutano, perché l'attore è l'automazione (consumers/automationConsumer.ts).
       if (ctx.entityType !== 'change') {

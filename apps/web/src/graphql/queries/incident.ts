@@ -119,6 +119,6 @@ export const GET_SERVICE_REQUEST = gql`
 /** Campi filtrabili di un tipo (scalari/enum): sostituisce l'introspezione `__type`, spenta in produzione. */
 export const GET_ENTITY_FILTER_FIELDS = gql`
   query EntityFilterFields($typeName: String!) {
-    entityFilterFields(typeName: $typeName) { name kind scalarName enumValues label choices { value label } formFieldType vocabulary rowFilter multi }
+    entityFilterFields(typeName: $typeName) { name kind scalarName enumValues label choices { value label } formFieldType vocabulary rowFilter settableByAutomation multi }
   }
 `

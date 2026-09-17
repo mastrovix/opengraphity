@@ -23,7 +23,7 @@
  * doveva comparire.
  */
 import type { Session } from 'neo4j-driver'
-import { getSession, runQuery } from '@opengraphity/neo4j'
+import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { createMetamodelCache } from './metamodelCache.js'
 import {
   CATALOG_FORM_VERSION, FORM_FIELD_NAME_RE, FORM_FIELD_TYPES, FORM_FIELD_TYPES_MULTI,
@@ -39,7 +39,7 @@ import {
   type FormAnswerValue, type FormAnswers, type FormCondition, type FormFieldType, type LocalizedLabel,
   type FormTableColumn, type FormTableDefinition, type FormTableRow,
 } from '@opengraphity/types'
-import { ValidationError } from './errors.js'
+import { NotFoundError, ValidationError } from './errors.js'
 import type { RelationFieldDef } from './filterBuilder.js'
 import { assertCustomFieldName } from './customFieldName.js'
 import { loadVocabularyEntries } from './vocabularyEntries.js'
@@ -1386,4 +1386,144 @@ export function formTableFilterFields(library: readonly FormFieldDef[]): Record<
     }
   }
   return out
+}
+
+/**
+ * SCRIVERE UNA RISPOSTA DA UN'AUTOMAZIONE (ondata 8).
+ *
+ * Fino a qui una regola poteva LEGGERE una risposta (la condizione vede
+ * `properties(nodo)`) ma non scriverla: l'azione «imposta campo» valida il
+ * nome contro il metamodello ITIL, e un campo della libreria non è lì. Il
+ * rifiuto era giusto, perché scrivere la proprietà a mano scavalcherebbe
+ * tutto quello che protegge una risposta.
+ *
+ * Quindi si passa da qui, che applica le STESSE regole di una persona che
+ * compila — sono le cinque decisioni del proprietario:
+ *
+ *  1. il ticket deve NASCERE DA UN MODULO. Su una richiesta generica non c'è
+ *     niente che dica se quel campo andava chiesto: si rifiuta dicendolo.
+ *  2. valgono le domande di ALLORA, cioè la revisione con cui il ticket è
+ *     stato compilato. Un campo aggiunto al modulo dopo non si scrive su un
+ *     ticket vecchio: su quel ticket quella domanda non è mai stata fatta.
+ *  3. un campo NASCOSTO da una condizione non si scrive: non è stato chiesto.
+ *  4. un campo CALCOLATO non si scrive: ha già il suo valore, e al prossimo
+ *     salvataggio la formula lo rifarebbe — due verità.
+ *  5. vocabolario e script di validazione SI APPLICANO: una regola non è più
+ *     autorevole di un utente. E svuotare un campo obbligatorio si rifiuta.
+ *
+ * Fuori: allegati, riferimenti e tabelle. Un'azione manda un valore solo, e
+ * quei tre non sono un valore — sono file, relazioni e righe.
+ */
+export async function writeFormAnswerFromAutomation(
+  session: Session,
+  tenantId: string,
+  requestId: string,
+  field: string,
+  value: unknown,
+): Promise<{ before: unknown; after: unknown }> {
+  const ticket = await runQueryOne<{ props: Record<string, unknown> }>(session, `
+    MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
+    RETURN properties(r) AS props`, { id: requestId, tenantId })
+  if (!ticket) throw new NotFoundError('ServiceRequest', requestId)
+
+  const itemId = ticket.props['catalog_item_id']
+  const revision = ticket.props['form_revision']
+  const lingua = await languageFor(tenantId)
+  const library = await formFieldsByName(session, tenantId, [field])
+  const campo = library.get(field)
+  if (!campo) {
+    throw new ValidationError(`"${field}" is not a field of the form library.`,
+      { key: 'errors.formField.notInLibrary', params: { field } })
+  }
+  const etichetta = etichettaDelCampo(campo, lingua)
+
+  // 1. Il ticket nasce da un modulo?
+  if (typeof itemId !== 'string' || itemId === '' || revision == null || Number(revision) === 0) {
+    throw new ValidationError(`The request does not come from a catalog form: "${etichetta}" was never asked, so an automation cannot answer it.`,
+      { key: 'errors.formField.ticketWithoutForm', params: { field: etichetta } })
+  }
+
+  // 2. Le domande di ALLORA.
+  const def = await catalogFormRevision(session, tenantId, itemId, Number(revision))
+  if (!def) {
+    throw new ValidationError(`The form revision ${String(revision)} of this request cannot be read: the frozen copy is missing.`,
+      { key: 'errors.formField.revisionMissing', params: { revision: String(revision) } })
+  }
+
+  // 3. Il campo era CHIESTO su questo ticket, e non nascosto da una condizione.
+  const answers = formAnswerMap(
+    catalogFormFieldNames(def).map((nome) => ({ name: nome, value: testoDiProprieta(ticket.props[nome]) })),
+  )
+  const item = visibleFormItems(def, answers).find((i) => i.field === field)
+  if (!item) {
+    throw new ValidationError(`The field "${etichetta}" is not asked by the form this request was filled with (revision ${String(revision)}), or a condition hides it.`,
+      { key: 'errors.formField.notAskedHere', params: { field: etichetta, revision: String(revision) } })
+  }
+
+  // 4. Un campo calcolato ha già il suo valore.
+  if (campo.formula) {
+    throw new ValidationError(`The field "${etichetta}" is computed: its value comes from its formula, an automation cannot set it.`,
+      { key: 'errors.formField.computedNotSettable', params: { field: etichetta } })
+  }
+
+  // Fuori dal perimetro: quello che non è un valore singolo.
+  if (FORM_FIELD_TYPES_WITHOUT_ANSWER.includes(campo.fieldType)
+    || isFormAttachmentType(campo.fieldType)
+    || isFormReferenceType(campo.fieldType)
+    || isFormTableType(campo.fieldType)
+    || FORM_FIELD_TYPES_MULTI.includes(campo.fieldType)) {
+    throw new ValidationError(`An automation cannot set "${etichetta}": a ${campo.fieldType} field is not a single value.`,
+      { key: 'errors.formField.notSettableType', params: { field: etichetta, fieldType: campo.fieldType } })
+  }
+
+  // 5. Le regole di tutti: obbligatorietà, vocabolario, script.
+  const testo = value == null ? '' : String(value).trim()
+  const obbligatorio = item.required ?? campo.required
+  if (testo === '') {
+    if (obbligatorio) {
+      throw new ValidationError(`The field "${etichetta}" is required: an automation cannot clear it.`,
+        { key: 'errors.formField.requiredNotClearable', params: { field: etichetta } })
+    }
+    return await scriviProprieta(session, tenantId, requestId, field, null)
+  }
+  const allowed = campo.vocabulary ? (await loadVocabularyEntries(tenantId, campo.vocabulary)).values : null
+  const convertito = coerce(campo, testo, allowed as readonly string[] | null)
+
+  if (campo.validationScript) {
+    const rifiuto = await runValidationScript(
+      campo.validationScript,
+      { input: { ...answers, [field]: convertito }, value: convertito },
+      campo.name, tenantId, 'tenant',
+    )
+    if (rifiuto) {
+      throw new ValidationError(`The field "${etichetta}" was refused: ${rifiuto}`,
+        { key: 'errors.formField.script', params: { field: etichetta, message: rifiuto } })
+    }
+  }
+  return await scriviProprieta(session, tenantId, requestId, field, convertito)
+}
+
+/** Il valore di una proprietà come testo, per rimettere insieme le risposte. */
+function testoDiProprieta(raw: unknown): string | null {
+  if (raw == null) return null
+  if (Array.isArray(raw)) return raw.map((v) => String(v)).join(',')
+  return String(raw)
+}
+
+/**
+ * La scrittura, una proprietà sola. `SET r += $props` con la mappa come
+ * PARAMETRO: il nome del campo è validato dalla libreria, ma la regola qui è
+ * che in Cypher non si interpola comunque.
+ */
+async function scriviProprieta(
+  session: Session, tenantId: string, requestId: string, field: string, value: unknown,
+): Promise<{ before: unknown; after: unknown }> {
+  const row = await runQueryOne<{ before: Record<string, unknown>; after: Record<string, unknown> }>(session, `
+    MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
+    WITH r, properties(r) AS before
+    SET r += $props, r.updated_at = $now
+    RETURN before, properties(r) AS after`,
+  { id: requestId, tenantId, props: { [field]: value }, now: new Date().toISOString() })
+  if (!row) throw new NotFoundError('ServiceRequest', requestId)
+  return { before: row.before, after: row.after }
 }

@@ -4143,7 +4143,14 @@
       "notAColumn": "Un campo {{fieldType}} non può essere una colonna: lo possono solo i campi che diventano una proprietà del ticket.",
       "libraryFull": "La libreria dei campi è piena: il tetto è {{max}} campi e ce ne sono già {{existing}}. Alza il tetto nella pagina dei moduli, oppure cancella un campo che non usa nessuno.",
       "notComputable": "Un campo {{fieldType}} non può essere calcolato: la formula la possono avere solo i campi a valore singolo che diventano una proprietà del ticket.",
-      "formulaFailed": "La formula del campo «{{field}}» è fallita: {{message}}. Correggila nella libreria dei campi."
+      "formulaFailed": "La formula del campo «{{field}}» è fallita: {{message}}. Correggila nella libreria dei campi.",
+      "notInLibrary": "«{{field}}» non è un campo della libreria dei moduli.",
+      "ticketWithoutForm": "Questa richiesta non nasce da un modulo del catalogo: «{{field}}» non è mai stato chiesto, quindi un'automazione non può rispondere.",
+      "revisionMissing": "La revisione {{revision}} del modulo di questa richiesta non si può leggere: manca la sua copia congelata.",
+      "notAskedHere": "Il campo «{{field}}» non è chiesto dal modulo con cui questa richiesta è stata compilata (revisione {{revision}}), o una condizione lo nasconde: un'automazione non può rispondere a una domanda che non è stata fatta.",
+      "computedNotSettable": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, un'automazione non può scriverlo.",
+      "notSettableType": "Un'automazione non può scrivere «{{field}}»: un campo {{fieldType}} non è un valore singolo.",
+      "requiredNotClearable": "Il campo «{{field}}» è obbligatorio: un'automazione non può svuotarlo."
     },
     "catalogForm": {
       "shape": "La definizione del modulo ha una forma sbagliata in {{where}}.",
