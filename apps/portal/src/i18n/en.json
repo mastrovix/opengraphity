@@ -319,7 +319,11 @@
     }
   },
   "auth": {
-    "bootstrapError": "Authentication error"
+    "bootstrapError": "Authentication error",
+    "tenantSuspended": {
+      "title": "This service desk is suspended",
+      "detail": "Access has been suspended by the platform administrator. Your requests are untouched: nothing has been deleted. Contact your IT department to have access resumed."
+    }
   },
   "customFields": {
     "choose": "— Choose —"

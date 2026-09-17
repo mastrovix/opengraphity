@@ -49,6 +49,27 @@ function unauthorized(message: string): GraphQLError {
   return new GraphQLError(message, { extensions: { code: 'UNAUTHORIZED' } })
 }
 
+/**
+ * UN TENANT SOSPESO NON È UNA SESSIONE SCADUTA, e va detto con un codice
+ * proprio (17 set 2026).
+ *
+ * Con `UNAUTHORIZED` il client faceva la cosa giusta per il motivo sbagliato:
+ * rinfrescava il token, riprovava, veniva rifiutato di nuovo e concludeva che
+ * l'account non è più accettato — quindi tornava al login. Ma Keycloak dice
+ * sì (il realm esiste, la persona esiste), l'app riparte, la prima query
+ * riceve un altro rifiuto, e si ricomincia: un ciclo infinito, che in più
+ * gonfiava l'URL fino a farlo rifiutare da nginx con un 414.
+ *
+ * `TENANT_SUSPENDED` è definitivo per definizione: non c'è niente che il
+ * client possa riprovare, e la sola risposta giusta è una frase a chi guarda.
+ * Lo stato resta 401 — l'accesso è negato — ma il codice dice PERCHÉ.
+ */
+export const TENANT_SUSPENDED = 'TENANT_SUSPENDED'
+
+function tenantSuspended(): GraphQLError {
+  return new GraphQLError('Unauthorized: tenant suspended', { extensions: { code: TENANT_SUSPENDED } })
+}
+
 // ── Pure helpers (exported for tests) ────────────────────────────────────────
 
 /**
@@ -272,7 +293,7 @@ async function resolveKeycloak(decoded: KeycloakTokenPayload, req: express.Reque
    */
   if (await tenantSospeso(realm)) {
     authLogger.warn({ realm }, 'access to a suspended tenant: rejected')
-    throw unauthorized('Unauthorized: tenant suspended')
+    throw tenantSuspended()
   }
 
   const user = await findUserInTenant(decoded.email, realm)

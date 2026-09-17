@@ -37,6 +37,7 @@ import { graphqlRateLimiterPlugin } from './middleware/graphqlRateLimiter.js'
 import { metricsMiddlewareWithRpm, metricsHandler, graphqlMetricsPlugin } from './middleware/metrics.js'
 import { startGraphQLSpan, updateActiveSpanName, type GraphQLSpanHandle } from './telemetry.js'
 import http from 'http'
+import { TENANT_SUSPENDED } from './auth/resolveAuth.js'
 
 const PORT = config.port
 
@@ -244,6 +245,8 @@ app.use('/api', reportsRouter)
  */
 const EXPECTED_CLIENT_ERROR_CODES: ReadonlySet<string> = new Set([
   'UNAUTHORIZED', 'FORBIDDEN', 'BAD_USER_INPUT', 'NOT_FOUND', 'CONFLICT', 'RATE_LIMITED', 'BAD_REQUEST',
+  // Un tenant sospeso è una decisione di chi amministra la piattaforma, non un guasto.
+  TENANT_SUSPENDED,
 ])
 
 function isExpectedClientError(code: unknown): boolean {
@@ -470,7 +473,9 @@ function respondAuthError(res: express.Response, err: unknown): void {
    * che non sono dell'utente (ruolo non valido, più nodi User).
    */
   const code   = typeof e?.extensions?.['code'] === 'string' ? (e.extensions['code'] as string) : null
-  const isAuth = code === 'UNAUTHORIZED' || code === 'FORBIDDEN'
+  // `TENANT_SUSPENDED` è un accesso negato come gli altri due: 401 col corpo
+  // leggibile, perché è dal corpo che il client capisce di non dover riprovare.
+  const isAuth = code === 'UNAUTHORIZED' || code === 'FORBIDDEN' || code === TENANT_SUSPENDED
   const status = isAuth ? 401 : 500
   if (!isAuth) {
     graphqlLogger.error({ code, message: e?.message }, 'GraphQL context build failed: answering 500, not 401')

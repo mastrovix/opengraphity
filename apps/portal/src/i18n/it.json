@@ -319,7 +319,11 @@
     }
   },
   "auth": {
-    "bootstrapError": "Errore di autenticazione"
+    "bootstrapError": "Errore di autenticazione",
+    "tenantSuspended": {
+      "title": "Questo service desk è sospeso",
+      "detail": "L’accesso è stato sospeso da chi amministra la piattaforma. Le tue richieste sono intatte: non è stato cancellato niente. Rivolgiti al reparto IT per farlo riattivare."
+    }
   },
   "customFields": {
     "choose": "— Scegli —"

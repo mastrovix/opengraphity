@@ -20,6 +20,21 @@ export interface ErrorLinkOptions {
   isSessionInvalid: () => boolean
   /** Session invalid or fresh token still rejected: redirect to login (`forceLogin`). */
   onSessionInvalid: () => void
+  /**
+   * IL TENANT È SOSPESO: si FERMA qui (17 set 2026).
+   *
+   * Non è una sessione da rinnovare né un account da riautenticare: è una
+   * decisione di chi amministra la piattaforma, e nessun tentativo la cambia.
+   * Senza questo ramo il client rinfrescava, riprovava, concludeva «account
+   * non accettato» e tornava al login — dove Keycloak dice sì, perché il realm
+   * e la persona esistono ancora. Da lì: app, query, rifiuto, login, per
+   * sempre. Chi guarda vedeva un'app che lampeggia, e nginx un URL che cresce
+   * a ogni giro finché non lo rifiuta con un 414.
+   *
+   * Senza questa funzione il rifiuto resta un errore mostrato come gli altri:
+   * meglio una frase sola che un ciclo.
+   */
+  onTenantSuspended?: (() => void) | undefined
   /** Transport failure (API or Keycloak unreachable). Already deduped: one call per `dedupeMs`. */
   onNetworkError: (error: Error, info: { operation?: string | undefined }) => void
   /** Any other GraphQL error. Deduped per message. */
@@ -84,6 +99,39 @@ function isUnauthorizedServerError(error: unknown): boolean {
   }
 }
 
+/** Il codice che l'API usa per un tenant sospeso (`auth/resolveAuth.ts`). */
+export const TENANT_SUSPENDED_CODE = 'TENANT_SUSPENDED'
+
+function codici(errors: unknown): string[] {
+  if (!Array.isArray(errors)) return []
+  return (errors as readonly { extensions?: Record<string, unknown> }[])
+    .map((e) => e.extensions?.['code'])
+    .filter((c): c is string => typeof c === 'string')
+}
+
+/**
+ * Il tenant sospeso, nelle DUE forme in cui il rifiuto può arrivare: errore
+ * GraphQL combinato, o `ServerError` quando il media type non è quello
+ * GraphQL. La stessa doppia lettura di UNAUTHORIZED qui sotto — mancarne una
+ * rimetterebbe il ciclo.
+ */
+function isTenantSuspended(error: unknown): boolean {
+  if (CombinedGraphQLErrors.is(error)) {
+    return error.errors.some((e) => e.extensions?.['code'] === TENANT_SUSPENDED_CODE)
+  }
+  if (ServerError.is(error)) {
+    try {
+      const body: unknown = JSON.parse(error.bodyText)
+      return codici((body as { errors?: unknown }).errors).includes(TENANT_SUSPENDED_CODE)
+    } catch { return false }
+  }
+  return false
+}
+
+function resultHasTenantSuspended(result: ApolloLink.Result): boolean {
+  return codici((result as { errors?: unknown }).errors).includes(TENANT_SUSPENDED_CODE)
+}
+
 /**
  * UNAUTHORIZED from the API: refresh the token (forced — the API just rejected
  * the one we have) and replay the SAME operation with the new bearer, without
@@ -113,7 +161,12 @@ function retryAfterRefresh(
         if (cancelled) return
         sub = forward(operation).subscribe({
           next: (result) => {
-            if (hasUnauthorized(result)) {
+            // Sospeso DOPO il rinfresco (per esempio sospeso proprio adesso):
+            // è una frase, non un ritorno al login.
+            if (resultHasTenantSuspended(result)) {
+              logger.warn('tenant suspended: stopping here', { operation: operation.operationName })
+              o.onTenantSuspended?.()
+            } else if (hasUnauthorized(result)) {
               logger.error('UNAUTHORIZED after token refresh', { operation: operation.operationName })
               o.onSessionInvalid()
             }
@@ -172,6 +225,18 @@ export function createErrorLink(o: ErrorLinkOptions): ErrorLink {
   const once   = createDeduper(o.dedupeMs ?? DEFAULT_DEDUPE_MS)
 
   return new ErrorLink(({ error, operation, forward }) => {
+    /*
+     * IL TENANT SOSPESO SI GUARDA PRIMA DI TUTTO.
+     * Arriva come un 401 e somiglia a un token scaduto, ma rinfrescare non
+     * serve: il token è buono, è il tenant che è chiuso. Questo ramo sta sopra
+     * gli altri perché sotto c'è il rinfresco, e il rinfresco qui è il primo
+     * passo del ciclo infinito.
+     */
+    if (isTenantSuspended(error)) {
+      logger.warn('tenant suspended: no refresh, no login', { operation: operation.operationName })
+      o.onTenantSuspended?.()
+      return
+    }
     // Stessa decisione per le due forme in cui UNAUTHORIZED può arrivare.
     if (isUnauthorizedServerError(error)) {
       logger.warn('UNAUTHORIZED arrived as a ServerError (content type is not GraphQL): refreshing anyway', {

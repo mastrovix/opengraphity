@@ -276,3 +276,59 @@ describe('extractTenantFromHost', () => {
     expect(extractTenantFromHost(host)).toBeNull()
   })
 })
+
+/**
+ * IL TENANT SOSPESO, e il suo CODICE (17 set 2026).
+ *
+ * Non è una sessione scaduta, e il codice è l'unica cosa che lo dice al
+ * client. Con `UNAUTHORIZED` l'app rinfrescava il token, riprovava, tornava al
+ * login, Keycloak diceva sì — e si ricominciava: un ciclo che gonfiava l'URL
+ * fino a un 414 di nginx. `TENANT_SUSPENDED` è definitivo per costruzione:
+ * non c'è niente da riprovare, e chi guarda merita una frase.
+ */
+describe('un tenant sospeso', () => {
+  /** Il DB risponde per QUERY: la sospensione e la ricerca dell'utente sono due letture diverse. */
+  function dbPerQuery(risposte: { sospesoAl: string | null; utente?: Record<string, unknown> | null }) {
+    executeRead.mockImplementation(async (work: (tx: { run: (q: string, p: unknown) => unknown }) => unknown) =>
+      work({
+        run: (q: string) => {
+          if (q.includes('suspended_at')) return { records: [record({ suspendedAt: risposte.sospesoAl })] }
+          const u = risposte.utente
+          return { records: u === null || u === undefined ? [] : [record(u)] }
+        },
+      }),
+    )
+  }
+
+  beforeEach(() => {
+    verifyKeycloakToken.mockResolvedValue(kcToken())
+  })
+
+  it('si rifiuta con `TENANT_SUSPENDED`, non con `UNAUTHORIZED`', async () => {
+    dbPerQuery({ sospesoAl: '2026-09-17T10:00:00.000Z', utente: { id: 'u1', role: 'operator', active: true } })
+    await rejectsWithCode(
+      resolveAuth('tok', makeReq({ host: 'tenant-a.localhost' })),
+      'TENANT_SUSPENDED',
+      /suspended/,
+    )
+  })
+
+  it('vale anche per chi è admin: un tenant sospeso è sospeso', async () => {
+    verifyKeycloakToken.mockResolvedValue(kcToken())
+    dbPerQuery({ sospesoAl: '2026-09-17T10:00:00.000Z', utente: { id: 'u1', role: 'admin', active: true } })
+    await rejectsWithCode(resolveAuth('tok', makeReq({ host: 'tenant-a.localhost' })), 'TENANT_SUSPENDED')
+  })
+
+  it('non sospeso: si entra normalmente', async () => {
+    dbPerQuery({ sospesoAl: null, utente: { id: 'u1', role: 'operator', active: true } })
+    const ctx = await resolveAuth('tok', makeReq({ host: 'tenant-a.localhost' }))
+    expect(ctx).toMatchObject({ tenantId: 'tenant-a', userId: 'u1' })
+  })
+
+  it('un tenant che non esiste NON è «sospeso»: lo fermano i controlli sull\'utente', async () => {
+    // Uno zero mal letto qui direbbe «sospeso» per un tenant inesistente, e la
+    // frase a schermo manderebbe a riattivare qualcosa che non c'è.
+    dbPerQuery({ sospesoAl: null, utente: null })
+    await rejectsWithCode(resolveAuth('tok', makeReq({ host: 'tenant-a.localhost' })), 'UNAUTHORIZED', /user not found/)
+  })
+})

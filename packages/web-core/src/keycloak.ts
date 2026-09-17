@@ -32,6 +32,56 @@ export interface KeycloakHandle {
 
 const DEFAULT_ENV_NAMES = { url: 'VITE_KEYCLOAK_URL', clientId: 'VITE_KEYCLOAK_CLIENT_ID' }
 
+/**
+ * I parametri con cui Keycloak RISPONDE tornando dal login. Sono la sua
+ * risposta, non l'indirizzo della pagina.
+ */
+const RISPOSTA_DEL_LOGIN = [
+  'state', 'session_state', 'code', 'iss',
+  'error', 'error_description', 'error_uri',
+  'kc_action_status',
+] as const
+
+/**
+ * L'INDIRIZZO A CUI TORNARE DOPO IL LOGIN — e perché non è
+ * `window.location.href` (17 set 2026).
+ *
+ * `redirectUri: window.location.href` sembra la cosa ovvia, e ha prodotto un
+ * URL da ottomila caratteri e un **414 Request-URI Too Large** da nginx.
+ * Il meccanismo, che si autoalimenta:
+ *
+ *  1. si va al login; Keycloak riporta a `/pagina#state=A&code=A`;
+ *  2. `init` legge `window.location.href` — che ORA porta quel frammento — e
+ *     lo tiene come `redirectUri` per i login successivi;
+ *  3. al login dopo, Keycloak accoda la SUA risposta a un indirizzo che un
+ *     frammento ce l'ha già: `/pagina#state=A&code=A&state=B&code=B`;
+ *  4. con `state` due volte il callback non si riconosce più, quindi si
+ *     rifà il login — e ogni giro aggiunge trecento caratteri.
+ *
+ * Nessuno di questi passi è sbagliato da solo: sbagliato è chiamare
+ * «indirizzo della pagina» una stringa che contiene la risposta a una domanda
+ * precedente. Qui la risposta si toglie.
+ *
+ * Il frammento si butta solo quando È una risposta di login: un'ancora vera
+ * (`#sezione`) è di chi legge, e resta.
+ */
+export function redirectUriPulito(href: string): string {
+  const u = new URL(href)
+
+  const frammento = u.hash.startsWith('#') ? u.hash.slice(1) : u.hash
+  if (frammento !== '') {
+    const p = new URLSearchParams(frammento)
+    // Una risposta di login porta sempre `state` (o un `error`): è quella la
+    // firma, non la presenza di un frammento qualsiasi.
+    if (RISPOSTA_DEL_LOGIN.some((k) => p.has(k))) u.hash = ''
+  }
+
+  // `responseMode: 'query'` mette gli stessi parametri nella query string.
+  for (const k of RISPOSTA_DEL_LOGIN) u.searchParams.delete(k)
+
+  return u.toString()
+}
+
 function describeCause(err: unknown): string {
   if (err instanceof Error) return err.message
   if (err && typeof err === 'object') {
@@ -80,7 +130,9 @@ export function createKeycloak(opts: CreateKeycloakOptions): KeycloakHandle {
         onLoad:           'login-required',
         checkLoginIframe: false,
         pkceMethod:       'S256',
-        redirectUri:      window.location.href,
+        // NON `window.location.href`: porterebbe la risposta del login
+        // precedente, e ogni giro la accoderebbe di nuovo (vedi sopra).
+        redirectUri:      redirectUriPulito(window.location.href),
       })
       instance = kc
       return authenticated

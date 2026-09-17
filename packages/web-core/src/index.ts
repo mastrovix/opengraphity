@@ -1,5 +1,6 @@
 export { getTenantSlug, requireTenantSlug, type RequireTenantSlugOptions } from './tenantSlug.js'
-export { createKeycloak, type CreateKeycloakOptions, type KeycloakHandle } from './keycloak.js'
+export { mostraSchermataDiStop, resetSchermataDiStop, type SchermataDiStop } from './stopScreen.js'
+export { createKeycloak, redirectUriPulito, type CreateKeycloakOptions, type KeycloakHandle } from './keycloak.js'
 export { type ClientLogger, consoleLogger } from './logger.js'
 export { createClientLogger } from './clientLogger.js'
 export {
@@ -24,6 +25,7 @@ export {
   createDeduper,
   DEFAULT_DEDUPE_MS,
   NETWORK_DEDUPE_KEY,
+  TENANT_SUSPENDED_CODE,
   type CreateApolloClientOptions,
   type ErrorLinkOptions,
   type GraphQLErrorInfo,

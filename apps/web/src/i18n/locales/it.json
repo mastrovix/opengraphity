@@ -2515,7 +2515,11 @@
     "forbiddenTitle": "Accesso negato",
     "forbiddenBody": "Il tuo ruolo non consente di aprire questa pagina. Se pensi sia un errore, contatta un amministratore.",
     "backHome": "Torna alla dashboard",
-    "error": "Errore di autenticazione"
+    "error": "Errore di autenticazione",
+    "tenantSuspended": {
+      "title": "Questo spazio di lavoro è sospeso",
+      "detail": "L’accesso è stato sospeso da chi amministra la piattaforma. I dati sono intatti: non è stato cancellato niente. Chiedi a un amministratore di riattivarlo dalla console di piattaforma."
+    }
   },
   "anomaly": {
     "rules": {
