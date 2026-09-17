@@ -453,6 +453,29 @@ export function assertCatalogForm(def: CatalogFormDefinition, library: ReadonlyM
           { key: 'errors.catalogForm.referenceEndUser', params: { field: i.field, fieldType: f.fieldType } },
         )
       }
+      /**
+       * OBBLIGATORIO + NON OFFERTO NEL PORTALE = UN DATO CHE NON ARRIVERÀ MAI
+       * (revisione del 17 set 2026).
+       *
+       * Ogni voce di catalogo attiva è offerta nel portale, e dal portale i
+       * campi `endUser: false` non si chiedono nemmeno — `visibleFormItems` li
+       * salta PRIMA del controllo di obbligatorietà. Quindi chi compila da lì
+       * non viene bloccato: la domanda semplicemente non gli viene fatta, la
+       * richiesta nasce senza quel dato, e non esiste un modo di riempirlo
+       * dopo. Un buco silenzioso, garantito, su ogni richiesta dal portale.
+       *
+       * Il rifiuto sta QUI e non a chi compila: è l'amministratore che può
+       * rimediare, e ha due strade — offrire il campo nel portale, o non
+       * pretenderlo. Nota che i RIFERIMENTI sono per forza non offerti (regola
+       * sopra): un riferimento obbligatorio non si pubblica, e questo è il
+       * modo giusto di scoprirlo.
+       */
+      if ((i.required ?? f.required) && i.endUser === false) {
+        throw new ValidationError(
+          `The field "${i.field}" is required but it is not offered in the portal: a request opened from the portal would never be asked for it, and nothing can fill it afterwards. Either offer it in the portal, or stop requiring it.`,
+          { key: 'errors.catalogForm.requiredNotForEndUser', params: { field: i.field } },
+        )
+      }
     }
   }
   /**

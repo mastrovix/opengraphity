@@ -258,6 +258,7 @@
       "noForm": "The catalog item \"{{item}}\" has no form: there is nothing to answer.",
       "conditionFieldType": "A condition looks at the field \"{{field}}\", which is a {{fieldType}}: only fields stored as a property can be a condition subject.",
       "referenceEndUser": "The field \"{{field}}\" is a reference ({{fieldType}}): it cannot be offered in the portal, because choosing one means searching the CMDB or the staff list. Untick \"offer it in the portal\".",
+      "requiredNotForEndUser": "This form is misconfigured: a required field is not asked here. Please tell IT.",
       "tooManyFields": "This form has {{count}} fields: {{max}} is the limit. Raise the limit on the catalog forms page, or split the request into two catalog items.",
       "limitOutOfRange": "A limit must be a whole number between {{min}} and {{max}}.",
       "answerComputed": "The field \"{{field}}\" is computed: its value comes from its formula, it cannot be sent.",

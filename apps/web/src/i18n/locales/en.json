@@ -2310,6 +2310,8 @@
         "preview": "Preview",
         "previewHelp": "The real form, rendered by the same component the workspace and the portal use: answer here to watch the conditional fields appear.",
         "noItems": "There is no active catalog item to build a form for. Add one in Admin → Service catalog.",
+        "discardTitle": "Discard the draft?",
+        "discardBody": "This item’s form has unpublished changes. Switching item loses them: publish first, or continue and start over from the saved one.",
         "libraryEmpty": "The field library is empty: open the other tab and define the first field.",
         "referenceStaffOnly": "Workspace only",
         "referenceStaffOnlyWhy": "A reference cannot be offered in the portal: choosing one means searching the CMDB or the staff list, which an end user does not do. The field stays fillable from the workspace."
@@ -4178,6 +4180,7 @@
       "noForm": "The catalog item \"{{item}}\" has no form: there is nothing to answer.",
       "conditionFieldType": "A condition looks at the field \"{{field}}\", which is a {{fieldType}}: only fields stored as a property can be a condition subject.",
       "referenceEndUser": "The field \"{{field}}\" is a reference ({{fieldType}}): it cannot be offered in the portal, because choosing one means searching the CMDB or the staff list. Untick \"offer it in the portal\".",
+      "requiredNotForEndUser": "The field \"{{field}}\" is required but not offered in the portal: a request opened from there would never be asked for it, and nothing can fill it afterwards. Either offer it in the portal, or stop requiring it.",
       "tooManyFields": "This form has {{count}} fields: {{max}} is the limit. Raise the limit on the catalog forms page, or split the request into two catalog items.",
       "limitOutOfRange": "A limit must be a whole number between {{min}} and {{max}}.",
       "answerComputed": "The field \"{{field}}\" is computed: its value comes from its formula, it cannot be sent.",
@@ -5999,7 +6002,9 @@
       "formulas_with_scripting_off_one": "A form field is computed by a formula, but scripts are switched off for this organization ({{names}}): no request using that form can be created — whoever fills it is refused, and cannot fix it. **Switch scripts on in Settings → Organization, or remove the formula from the field library**.",
       "formulas_with_scripting_off_other": "{{count}} form fields are computed by a formula, but scripts are switched off for this organization ({{names}}): no request using those forms can be created — whoever fills one is refused, and cannot fix it. **Switch scripts on in Settings → Organization, or remove the formulas from the field library**.",
       "metamodel_duplicate_field_one": "A metamodel field is defined TWICE on the same type ({{fields}}): dropdowns show it twice, and a visibility rule written on one definition does not apply to the other. **Run the migrations** (20261005_1010 removes the duplicates); if it comes back, please report it.",
-      "metamodel_duplicate_field_other": "{{count}} groups of metamodel fields are defined more than once on the same type ({{fields}}): dropdowns show them twice, and a visibility rule written on one definition does not apply to the other. **Run the migrations** (20261005_1010 removes the duplicates); if they come back, please report it."
+      "metamodel_duplicate_field_other": "{{count}} groups of metamodel fields are defined more than once on the same type ({{fields}}): dropdowns show them twice, and a visibility rule written on one definition does not apply to the other. **Run the migrations** (20261005_1010 removes the duplicates); if they come back, please report it.",
+      "catalog_form_to_fix_one": "A catalog form cannot be filled as configured ({{forms}}): whoever opens the request gets a refusal they cannot fix. **Open it in Settings → Catalog forms**: `fieldsMissing` = it names a field no longer in the library, `requiredNotForEndUser` = it requires a field the portal never asks for.",
+      "catalog_form_to_fix_other": "{{count}} catalog forms cannot be filled as configured ({{forms}}): whoever opens those requests gets a refusal they cannot fix. **Open them in Settings → Catalog forms**: `fieldsMissing` = they name a field no longer in the library, `requiredNotForEndUser` = they require a field the portal never asks for."
     },
     "gap": {
       "tenant_missing": "no row: the tenant does not exist",

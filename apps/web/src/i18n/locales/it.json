@@ -2310,6 +2310,8 @@
         "preview": "Anteprima",
         "previewHelp": "Il modulo vero, reso dallo stesso componente che usano l'area di lavoro e il portale: rispondi qui e guarda comparire i campi condizionali.",
         "noItems": "Non c'è nessuna voce di catalogo attiva per cui disegnare un modulo. Aggiungila in Amministrazione → Catalogo servizi.",
+        "discardTitle": "Buttare il disegno?",
+        "discardBody": "Il modulo di questa voce ha modifiche non pubblicate. Cambiando voce si perdono: pubblica prima, oppure continua e ricomincia da quello salvato.",
         "libraryEmpty": "La libreria dei campi è vuota: apri l'altra scheda e definisci il primo campo.",
         "referenceStaffOnly": "Solo area di lavoro",
         "referenceStaffOnlyWhy": "Un riferimento non si può offrire nel portale: scegliere un CI o una persona vuol dire cercare nella CMDB o nell'elenco del personale, cosa che un utente finale non fa. Il campo resta compilabile dall'area di lavoro."
@@ -4178,6 +4180,7 @@
       "noForm": "La voce di catalogo «{{item}}» non ha un modulo: non c'è niente da rispondere.",
       "conditionFieldType": "Una condizione guarda il campo «{{field}}», che è di tipo {{fieldType}}: solo i campi salvati come proprietà possono essere il soggetto di una condizione.",
       "referenceEndUser": "Il campo «{{field}}» è un riferimento ({{fieldType}}): non si può offrire nel portale, perché scegliere vuol dire cercare nella CMDB o nell'elenco del personale. Togli la spunta «Offrilo nel portale».",
+      "requiredNotForEndUser": "Il campo «{{field}}» è obbligatorio ma non è offerto nel portale: a chi apre la richiesta da lì la domanda non verrebbe mai fatta, e dopo nessuno può riempirlo. Offrilo nel portale, oppure non pretenderlo.",
       "tooManyFields": "Questo modulo ha {{count}} campi: il tetto è {{max}}. Alza il tetto nella pagina dei moduli, oppure dividi la richiesta in due voci di catalogo.",
       "limitOutOfRange": "Un tetto è un numero intero fra {{min}} e {{max}}.",
       "answerComputed": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, non si può mandare.",
@@ -5999,7 +6002,9 @@
       "formulas_with_scripting_off_one": "Un campo dei moduli è calcolato da una formula, ma gli script sono spenti per questa organizzazione ({{names}}): nessuna richiesta che usa quel modulo si può creare — chi compila viene rifiutato e non può rimediare. **Accendi gli script in Configurazione → Organizzazione, oppure togli la formula dalla libreria dei campi**.",
       "formulas_with_scripting_off_other": "{{count}} campi dei moduli sono calcolati da una formula, ma gli script sono spenti per questa organizzazione ({{names}}): nessuna richiesta che usa quei moduli si può creare — chi compila viene rifiutato e non può rimediare. **Accendi gli script in Configurazione → Organizzazione, oppure togli le formule dalla libreria dei campi**.",
       "metamodel_duplicate_field_one": "Un campo del metamodello è definito DUE volte nello stesso tipo ({{fields}}): le tendine lo mostrano due volte, e una regola di visibilità scritta su una definizione non vale per l'altra. **Esegui le migrazioni** (la 20261005_1010 toglie i doppioni); se ricompare, aprine una segnalazione.",
-      "metamodel_duplicate_field_other": "{{count}} gruppi di campi del metamodello sono definiti più di una volta nello stesso tipo ({{fields}}): le tendine li mostrano doppi, e una regola di visibilità scritta su una definizione non vale per l'altra. **Esegui le migrazioni** (la 20261005_1010 toglie i doppioni); se ricompaiono, aprine una segnalazione."
+      "metamodel_duplicate_field_other": "{{count}} gruppi di campi del metamodello sono definiti più di una volta nello stesso tipo ({{fields}}): le tendine li mostrano doppi, e una regola di visibilità scritta su una definizione non vale per l'altra. **Esegui le migrazioni** (la 20261005_1010 toglie i doppioni); se ricompaiono, aprine una segnalazione.",
+      "catalog_form_to_fix_one": "Un modulo del catalogo non si può compilare come è configurato ({{forms}}): chi apre la richiesta riceve un rifiuto che non può risolvere. **Aprilo in Configurazione → Moduli del catalogo**: `fieldsMissing` = cita un campo che non è più in libreria, `requiredNotForEndUser` = pretende un campo che il portale non chiede.",
+      "catalog_form_to_fix_other": "{{count}} moduli del catalogo non si possono compilare come sono configurati ({{forms}}): chi apre quelle richieste riceve un rifiuto che non può risolvere. **Aprili in Configurazione → Moduli del catalogo**: `fieldsMissing` = citano un campo che non è più in libreria, `requiredNotForEndUser` = pretendono un campo che il portale non chiede."
     },
     "gap": {
       "tenant_missing": "nessuna riga: il tenant non esiste",

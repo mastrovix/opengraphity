@@ -409,8 +409,40 @@ describe('ondata 2: riferimenti e allegati', () => {
       sections: [{ id: 'a', title: {}, items: [{ field: 'dispositivo' }] }],
     }
     expect(() => assertCatalogForm(offerto, LIBRERIA)).toThrow(/cannot be offered in the portal/)
-    // Con la spunta togliata passa.
-    expect(() => assertCatalogForm(moduloRif, LIBRERIA)).not.toThrow()
+    // Con la spunta togliata passa (e senza pretenderlo: vedi il caso qui sotto).
+    const nonOfferto: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 'a', title: {}, items: [{ field: 'dispositivo', endUser: false }, { field: 'per_chi', endUser: false }] }],
+    }
+    expect(() => assertCatalogForm(nonOfferto, LIBRERIA)).not.toThrow()
+  })
+
+  /*
+   * OBBLIGATORIO + NON OFFERTO NEL PORTALE (decisione del 17 set 2026).
+   *
+   * Dal portale un campo `endUser: false` non si chiede nemmeno — la
+   * visibilità lo salta prima dell'obbligatorietà — quindi chi compila non
+   * viene bloccato: la richiesta nasce senza quel dato e nessuno può riempirlo
+   * dopo. Un buco silenzioso su OGNI richiesta dal portale. Si rifiuta dove si
+   * può rimediare: alla pubblicazione.
+   *
+   * `moduloRif` è esattamente quel caso (un riferimento obbligatorio, e i
+   * riferimenti sono per forza non offerti): resta come documento di prova per
+   * la SCRITTURA, che dall'area di lavoro è ancora legittima.
+   */
+  it('un obbligatorio che il portale non chiede non si pubblica, e il rifiuto lo nomina', () => {
+    expect(() => assertCatalogForm(moduloRif, LIBRERIA)).toThrow(/required but it is not offered in the portal/)
+    expect(() => assertCatalogForm(moduloRif, LIBRERIA)).toThrow(/per_chi/)
+  })
+
+  it('e vale anche per l\'obbligatorietà che viene dalla LIBRERIA, non solo dal modulo', () => {
+    const lib = new Map(LIBRERIA)
+    lib.set('costo', campo('costo', 'number', { required: true }))
+    const def: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 'a', title: {}, items: [{ field: 'costo', endUser: false }] }],
+    }
+    expect(() => assertCatalogForm(def, lib)).toThrow(/required but it is not offered in the portal/)
   })
 
   it('una condizione non può guardare un allegato né un riferimento', () => {

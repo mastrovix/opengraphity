@@ -258,6 +258,7 @@
       "noForm": "La voce di catalogo «{{item}}» non ha un modulo: non c'è niente da rispondere.",
       "conditionFieldType": "Una condizione guarda il campo «{{field}}», che è di tipo {{fieldType}}: solo i campi salvati come proprietà possono essere il soggetto di una condizione.",
       "referenceEndUser": "Il campo «{{field}}» è un riferimento ({{fieldType}}): non si può offrire nel portale, perché scegliere vuol dire cercare nella CMDB o nell'elenco del personale. Togli la spunta «Offrilo nel portale».",
+      "requiredNotForEndUser": "Questo modulo non è configurato bene: un campo obbligatorio non viene chiesto qui. Segnalalo all'IT.",
       "tooManyFields": "Questo modulo ha {{count}} campi: il tetto è {{max}}. Alza il tetto nella pagina dei moduli, oppure dividi la richiesta in due voci di catalogo.",
       "limitOutOfRange": "Un tetto è un numero intero fra {{min}} e {{max}}.",
       "answerComputed": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, non si può mandare.",

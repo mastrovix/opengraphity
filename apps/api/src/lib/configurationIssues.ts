@@ -69,6 +69,7 @@ import { olaContractsMeasurability } from './olaMeasurability.js'
 import { TICKET_CUSTOM_FIELD_ENTITY_TYPES } from '@opengraphity/types'
 import { createMetamodelCache } from './metamodelCache.js'
 import { duplicateMetamodelFields } from './metamodelDuplicateFields.js'
+import { catalogFormsToFix } from './catalogFormHealth.js'
 
 const log = logger.child({ module: 'configuration-issues' })
 
@@ -110,6 +111,7 @@ export type ConfigurationIssueKind =
   | 'ola_contract_unmeasurable'
   | 'formulas_with_scripting_off'
   | 'metamodel_duplicate_field'
+  | 'catalog_form_to_fix'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -161,7 +163,7 @@ async function computeConfigurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -466,6 +468,25 @@ async function checkOLAContracts(tenantId: string, session: Session): Promise<Co
   if (withoutTeam.length > 0) out.push({ kind: 'ola_contract_without_team', severity: 'warning', where: '/admin/ola-uc', params: { count: String(withoutTeam.length), names: withoutTeam.join(', ') } })
   if (unmeasurable.length > 0) out.push({ kind: 'ola_contract_unmeasurable', severity: 'warning', where: '/admin/ola-uc', params: { count: String(unmeasurable.length), names: unmeasurable.join(', ') } })
   return out
+}
+
+/**
+ * I MODULI DEL CATALOGO CHE NON SI POSSONO COMPILARE (revisione del 17 set
+ * 2026). La pubblicazione rifiuta le configurazioni impossibili, ma un modulo
+ * pubblicato prima della regola resta com'è, e un campo cancellato dalla
+ * libreria rompe un modulo che ieri andava: senza questo controllo il rifiuto
+ * arriva solo a chi apre la richiesta, cioè a chi non può rimediare.
+ */
+async function checkCatalogForms(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const daSistemare = await catalogFormsToFix(session, tenantId)
+  if (daSistemare.length === 0) return []
+  return [{
+    kind: 'catalog_form_to_fix', severity: 'error', where: '/settings/catalog-forms',
+    params: {
+      count: String(daSistemare.length),
+      forms: daSistemare.map((m) => `${m.item} (${m.reason}: ${m.fields.join(', ')})`).join('; '),
+    },
+  }]
 }
 
 /**

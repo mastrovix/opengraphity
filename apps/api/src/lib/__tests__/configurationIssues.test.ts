@@ -105,9 +105,12 @@ vi.mock('../customFieldSteps.js', async (importOriginal) => ({ ...(await importO
 // Contratti OLA/UC (secondo giro UI del 15 set 2026, punto 3): di default tutti misurabili.
 let misurabilitaOLA: { withoutTeam: string[]; unmeasurable: string[] } = { withoutTeam: [], unmeasurable: [] }
 let campiDuplicati: Array<{ typeName: string; field: string; count: number }> = []
+let moduliDaSistemare: Array<{ item: string; reason: string; fields: string[] }> = []
 vi.mock('../olaMeasurability.js', () => ({ olaContractsMeasurability: vi.fn(async () => misurabilitaOLA) }))
 /* I campi duplicati nel metamodello: di norma nessuno (il caso suo sta in metamodelDuplicateFields.test.ts). */
 vi.mock('../metamodelDuplicateFields.js', () => ({ duplicateMetamodelFields: vi.fn(async () => campiDuplicati) }))
+/* I moduli del catalogo da sistemare: di norma nessuno (il caso suo sta in fondo). */
+vi.mock('../catalogFormHealth.js', () => ({ catalogFormsToFix: vi.fn(async () => moduliDaSistemare) }))
 vi.mock('../slaWarningCheck.js', () => ({ slaPoliciesWarningNotBeforeDeadline: vi.fn(async () => preavvisiScaduti) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
 vi.mock('../domainMatrix.js', async (importOriginal) => {
@@ -608,6 +611,33 @@ describe('configurationIssues — campi che citano fasi sparite', () => {
  * avviso: una regola di visibilità scritta su una definizione non vale per
  * l'altra, quindi la configurazione dice una cosa e il prodotto ne fa un'altra.
  */
+/**
+ * I MODULI CHE NON SI POSSONO COMPILARE (revisione del 17 set 2026): la
+ * pubblicazione rifiuta le configurazioni impossibili, ma un modulo pubblicato
+ * prima della regola — o rotto cancellando un campo dalla libreria — lo
+ * scoprirebbe solo chi apre la richiesta.
+ */
+describe('configurationIssues — moduli del catalogo da sistemare', () => {
+  it('un modulo impossibile → errore che nomina la voce e il motivo, si rimedia nel costruttore', async () => {
+    moduliDaSistemare = [
+      { item: 'Nuovo portatile', reason: 'requiredNotForEndUser', fields: ['per_chi'] },
+      { item: 'Nuovo accesso', reason: 'fieldsMissing', fields: ['centro_di_costo'] },
+    ]
+    try {
+      const issues = await configurationIssues('t1')
+      expect(issues.filter((i) => i.kind === 'catalog_form_to_fix')).toEqual([
+        {
+          kind: 'catalog_form_to_fix', severity: 'error', where: '/settings/catalog-forms',
+          params: {
+            count: '2',
+            forms: 'Nuovo portatile (requiredNotForEndUser: per_chi); Nuovo accesso (fieldsMissing: centro_di_costo)',
+          },
+        },
+      ])
+    } finally { moduliDaSistemare = [] }
+  })
+})
+
 describe('configurationIssues — campi duplicati nel metamodello', () => {
   it('doppioni → errore che li nomina col tipo, si rimedia nel disegnatore', async () => {
     campiDuplicati = [

@@ -30,6 +30,7 @@ import { CatalogFormRenderer } from '@opengraphity/web-core'
 import { GET_CATALOG_FORM, GET_FORM_FIELDS, GET_SERVICE_CATALOG_ADMIN } from '@/graphql/queries'
 import { SAVE_CATALOG_FORM } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
+import { useConfirm } from '@/hooks/useConfirm'
 import { colors, fontWeight } from '@/lib/tokens'
 import { Input, Select } from '@/components/ui/FormControls'
 import type { FormFieldRow } from './FieldLibraryPanel'
@@ -54,6 +55,7 @@ function idSezione(esistenti: readonly string[]): string {
 
 export function FormBuilderPanel() {
   const { t, i18n } = useTranslation()
+  const confirm = useConfirm()
   const lingua = i18n.language
 
   const { data: catalogData } = useQuery<{ serviceCatalogItems: CatalogItem[] }>(GET_SERVICE_CATALOG_ADMIN, { fetchPolicy: 'cache-and-network' })
@@ -85,6 +87,28 @@ export function FormBuilderPanel() {
     catch { setBozza(emptyCatalogForm()) }
     setToccato(false)
   }, [formData])
+
+  /**
+   * CAMBIARE VOCE NON BUTTA IL DISEGNO SENZA CHIEDERE.
+   *
+   * `toccato` disabilitava solo il pulsante «Pubblica»: sfiorare la tendina
+   * delle voci — o passare alla «Libreria dei campi» per aggiungere un campo
+   * che serve, cioè il caso descritto nel commento in testa a questa pagina —
+   * ricaricava la definizione salvata e il lavoro svaniva in silenzio
+   * (revisione del 17 set 2026).
+   */
+  const chiediPrimaDiPerdere = async (): Promise<boolean> => {
+    if (!toccato) return true
+    return await confirm({
+      title: t('pages.catalogForms.builder.discardTitle'),
+      body:  t('pages.catalogForms.builder.discardBody'),
+      danger: true,
+    })
+  }
+  const cambiaVoce = async (id: string) => {
+    if (!(await chiediPrimaDiPerdere())) return
+    setVoceId(id)
+  }
 
   const [risposteAnteprima, setRisposteAnteprima] = useState<Record<string, FormAnswerValue>>({})
   const [salva, { loading: salvando }] = useMutation(SAVE_CATALOG_FORM, { onError: (e) => showError(e) })
@@ -136,7 +160,7 @@ export function FormBuilderPanel() {
             <span style={{ display: 'block', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
               {t('pages.catalogForms.builder.item')}
             </span>
-            <Select value={voceId} onChange={(e) => setVoceId(e.target.value)}>
+            <Select value={voceId} onChange={(e) => void cambiaVoce(e.target.value)}>
               {voci.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
             </Select>
           </label>
