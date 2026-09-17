@@ -2648,7 +2648,7 @@
     "conditionHint": "The engine can only evaluate conditions written in the code: an invented condition blocks the arrow, because it is refused on every attempt and the ticket stops moving.",
     "conditionOption": {
       "has_linked_change": "A change is linked",
-      "all_assessments_complete": "All assessments complete",
+      "all_assessments_complete": "All assessments and the release plan complete",
       "all_deployments_complete": "All deployments and validations complete",
       "all_reviews_confirmed": "All reviews confirmed",
       "rootCause != null": "Root cause is filled in"
@@ -3687,7 +3687,7 @@
       "condition": {
         "rootCauseRequired": "A root cause is required for this transition.",
         "has_linked_change": "Link a change first, then request the change.",
-        "all_assessments_complete": "The assessments are not complete yet for every CI.",
+        "all_assessments_complete": "The assessments or the release plan are not yet complete for every CI: the functional assessment, the technical one and the plan are all required.",
         "all_deployments_complete": "Validation or deployment is not complete yet for every CI.",
         "all_reviews_confirmed": "The reviews are not confirmed yet for every CI."
       },

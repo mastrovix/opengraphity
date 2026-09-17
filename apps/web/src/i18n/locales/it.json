@@ -2648,7 +2648,7 @@
     "conditionHint": "Il motore sa valutare solo le condizioni scritte nel codice: una condizione inventata blocca l'arco, perché viene rifiutata a ogni tentativo e il ticket non si muove più.",
     "conditionOption": {
       "has_linked_change": "C'è una change collegata",
-      "all_assessments_complete": "Tutti gli assessment completati",
+      "all_assessments_complete": "Tutte le valutazioni e il piano completati",
       "all_deployments_complete": "Tutti i rilasci e le verifiche completati",
       "all_reviews_confirmed": "Tutte le revisioni confermate",
       "rootCause != null": "La causa radice è compilata"
@@ -3687,7 +3687,7 @@
       "condition": {
         "rootCauseRequired": "Per questa transizione serve la causa.",
         "has_linked_change": "Collega prima una change, poi richiedi la change.",
-        "all_assessments_complete": "Le valutazioni non sono ancora complete per tutti i CI.",
+        "all_assessments_complete": "Le valutazioni o il piano di rilascio non sono ancora completi per tutti i CI: servono l’assessment funzionale, quello tecnico e il piano.",
         "all_deployments_complete": "Validazione o deploy non ancora completati per tutti i CI.",
         "all_reviews_confirmed": "Le review non sono ancora confermate per tutti i CI."
       },
