@@ -486,9 +486,17 @@ function vistaRisposta(
   }
 }
 
+/**
+ * Le risposte di una richiesta, pronte da leggere.
+ *
+ * `endUser: true` — lo passa il PORTALE — mostra solo le voci che il modulo
+ * offre a un utente finale: le altre sono domande che a lui non sono state
+ * fatte, e alcune portano dato interno (revisione del 17 set 2026, dove si è
+ * anche scoperto che il portale non le mostrava affatto).
+ */
 export async function serviceRequestFormAnswers(
   parent: { id: string; catalogItemId?: string | null; formRevision?: number | null },
-  _args: unknown, ctx: GraphQLContext,
+  _args: unknown, ctx: GraphQLContext, opts: { endUser?: boolean } = {},
 ): Promise<Array<Record<string, unknown>>> {
   if (!parent.catalogItemId || !parent.formRevision) return []
   const session = getSession(undefined, 'READ')
@@ -499,7 +507,7 @@ export async function serviceRequestFormAnswers(
     if (!row) return []
     const risposte = await formAnswersOf(session, ctx.tenantId, {
       id: parent.id, catalogItemId: parent.catalogItemId, formRevision: parent.formRevision, props: row.props,
-    })
+    }, opts)
     /**
      * Le etichette dei valori delle celle: i vocabolari delle colonne, letti
      * una volta ciascuno. Una colonna a scelta deve leggersi «Amministratore»

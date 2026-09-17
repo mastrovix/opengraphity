@@ -36,7 +36,7 @@ vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undef
   qui e finta, altrimenti la sua query consumerebbe la coda della sessione finta
   e ogni asserzione su cosa legge il resolver diventerebbe inaffidabile.
 */
-vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
+vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 
 const { enumTypeResolvers, customizeEnumType } = await import('../enumType.js')
 const { getSession } = await import('@opengraphity/neo4j')

@@ -32,7 +32,7 @@ const h = vi.hoisted(() => {
 // La lingua in cui il modello scrive si legge dal cliente (lib/systemText.ts).
 // Ondata 6 di «Nulla cablato»: le funzioni AI sono dell'organizzazione; qui tutte accese.
 vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
-vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 vi.mock('../../lib/config.js', () => ({ config: h.cfg }))
 vi.mock('@anthropic-ai/sdk', () => ({
   default: class {

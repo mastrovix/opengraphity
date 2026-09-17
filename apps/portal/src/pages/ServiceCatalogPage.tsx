@@ -11,7 +11,7 @@ import {
 import { isFormAttachmentType } from '@opengraphity/types'
 import { uploadFormDraftFile } from '../lib/formDraftUpload'
 import type { CatalogFormDefinition, FormAnswerValue, FormAnswers } from '@opengraphity/types'
-import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
+import { CREATE_SERVICE_REQUEST, DELETE_FORM_ATTACHMENT } from '@/graphql/mutations'
 import { notifyError } from '@/lib/notify'
 import { errorFieldName, errorHasKey } from '@opengraphity/web-core'
 import { colors, palette, alpha } from '@/lib/tokens'
@@ -118,6 +118,17 @@ export function ServiceCatalogPage() {
     setOpenItem(it)
   }
 
+  /**
+   * Toglie un file caricato per sbaglio. Si CANCELLA, non si dimentica: il
+   * reclamo alla creazione guarda il grafo, quindi un file dimenticato solo
+   * dalla pagina tornerebbe sul ticket.
+   */
+  const togliFile = async (campo: string, id: string) => {
+    const r = await cancellaAllegato({ variables: { id } })
+    if (!r.data) return
+    setFileDelModulo((p) => ({ ...p, [campo]: (p[campo] ?? []).filter((f) => f.id !== id) }))
+  }
+
   const caricaFile = async (campo: string, file: File) => {
     setInCaricamento(campo)
     try {
@@ -161,6 +172,7 @@ export function ServiceCatalogPage() {
     })
   }
 
+  const [cancellaAllegato] = useMutation(DELETE_FORM_ATTACHMENT, { onError: (e) => notifyError(e.message) })
   const [createRequest, { loading: submitting }] = useMutation<{ createServiceRequest: { id: string; number: string } }>(
     CREATE_SERVICE_REQUEST,
     {
@@ -261,10 +273,35 @@ export function ServiceCatalogPage() {
       ))}
 
       {openItem && (
-        <div style={{ position: 'fixed', inset: 0, background: alpha.scrim, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
-          onClick={() => apriVoce(null)}>
-          <div style={{ background: colors.white, borderRadius: 12, padding: 24, width: 460, maxWidth: '90vw' }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize: 17, fontWeight: 600, color: colors.slateDark, marginBottom: 4 }}>{openItem.name}</h3>
+        /*
+         * IL MODULO DEVE SCORRERE, E IL MODALE DEVE ESSERE UN DIALOGO
+         * (revisione del 17 set 2026).
+         *
+         * Il pannello era centrato in un contenitore `fixed` senza
+         * `max-height` né `overflow`: un modulo più alto della finestra veniva
+         * tagliato SOPRA e SOTTO — i pulsanti «Annulla / Invia» finivano fuori
+         * schermo e i primi campi erano irraggiungibili. Ed è esattamente il
+         * modulo ricco per cui l'ondata 1 esiste.
+         *
+         * E non era un dialogo: nessun ruolo, nessun nome, nessun Escape,
+         * nessun fuoco spostato. Con un lettore di schermo il modulo non
+         * veniva annunciato e si continuava a tabulare nella pagina sotto.
+         */
+        <div
+          style={{ position: 'fixed', inset: 0, background: alpha.scrim, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 100, padding: 24, overflowY: 'auto' }}
+          onClick={() => apriVoce(null)}
+          onKeyDown={(e) => { if (e.key === 'Escape') apriVoce(null) }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="og-catalog-modal-title"
+            ref={(el) => { el?.focus() }}
+            tabIndex={-1}
+            style={{ background: colors.white, borderRadius: 12, padding: 24, width: 460, maxWidth: '90vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', outline: 'none' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 id="og-catalog-modal-title" style={{ fontSize: 17, fontWeight: 600, color: colors.slateDark, marginBottom: 4 }}>{openItem.name}</h3>
             {openItem.requiresApproval && <p style={{ fontSize: 12, color: palette.warning.text, marginBottom: 12 }}>{t('catalog.approvalNotice')}</p>}
             <label style={{ fontSize: 12, fontWeight: 600, color: palette.neutral.textStrong, display: 'block', marginBottom: 6 }}>{t('catalog.details')}</label>
             <textarea value={details} onChange={e => setDetails(e.target.value)} rows={4}
@@ -302,6 +339,10 @@ export function ServiceCatalogPage() {
                   files={fileDelModulo}
                   uploadingField={inCaricamento}
                   onUploadFile={caricaFile}
+                  /* Un file caricato per sbaglio si deve poter togliere: la × del
+                     renderer compare solo con questa prop, e il portale non la
+                     passava (nel web sì). */
+                  onRemoveFile={togliFile}
                   fileAddLabel={t('catalog.addFile')}
                   fileRemoveLabel={t('catalog.removeFile')}
                 />

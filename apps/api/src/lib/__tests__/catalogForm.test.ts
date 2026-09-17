@@ -39,7 +39,7 @@ const formule: string[] = []
  * chi legge (trovato provando dal portale: «The field "Estimated cost" was
  * refused» a un utente italiano), `resolveFormWrites` la legge una volta.
  */
-vi.mock('../tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
+vi.mock('../tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 vi.mock('../metamodelScript.js', () => ({
   runValidationScript: vi.fn(async () => null),
   runFormulaScript: vi.fn(async (code: string, input: Record<string, unknown>) => {

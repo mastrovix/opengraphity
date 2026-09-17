@@ -6,6 +6,7 @@ import { withSession } from './ci-utils.js'
 import { ForbiddenError, ValidationError } from '../../lib/errors.js'
 import { listPage } from '../../lib/listLimit.js'
 import { audit } from '../../lib/audit.js'
+import { serviceRequestFormAnswers } from './catalogForm.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { validateStringLength } from '../../lib/validation.js'
@@ -375,7 +376,23 @@ async function myTicket(
     const customFields = customFieldValues(await customFieldDefs(session, ctx.tenantId, kind), props, { onlyVisibleToEndUser: true, stepContext: await ticketStepContext(session, ctx.tenantId, id) })
       .filter((f) => f.visible)
 
-    return { ...ticket, comments, attachments, history, customFields }
+    /*
+     * LE RISPOSTE AL MODULO, per chi le ha scritte (revisione del 17 set 2026).
+     *
+     * Chi compilava dodici campi non li rivedeva mai: né per controllare, né
+     * per citarli al telefono. Si mostrano con le domande della revisione con
+     * cui la richiesta è stata compilata, e solo le voci che il modulo offre
+     * agli utenti finali — le altre non gli sono state chieste.
+     */
+    const formAnswers = kind === 'service_request'
+      ? await serviceRequestFormAnswers(
+          { id, catalogItemId: (props['catalog_item_id'] ?? null) as string | null,
+            formRevision: props['form_revision'] == null ? null : Number(props['form_revision']) },
+          undefined, ctx, { endUser: true },
+        )
+      : []
+
+    return { ...ticket, comments, attachments, history, customFields, formAnswers }
   })
 }
 

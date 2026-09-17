@@ -370,8 +370,15 @@ function CampoDelModulo({ campo, item, valore, errore, erroreFormula, computedLa
   const testo = etichetta(campo, language)
   const spiegazione = aiuto(campo, item, language)
   const id = `og-form-f-${campo.name}`
+  const idEtichetta = `${id}-label`
   const idAiuto = spiegazione ? `${id}-help` : undefined
   const idErrore = errore ? `${id}-err` : undefined
+  /**
+   * L'etichetta punta al controllo solo quando un controllo con quell'`id`
+   * esiste: per la selezione multipla (un gruppo di caselle), per un allegato e
+   * per un riferimento il nome si dà con `aria-labelledby`, non con `htmlFor`.
+   */
+  const puntaAlControllo = campo.fieldType !== 'multi_enum'
   const descritto = [idAiuto, idErrore].filter(Boolean).join(' ') || undefined
   const larghezza = item.width === 'half' ? 'og-form-cell og-form-cell-half' : 'og-form-cell'
 
@@ -453,17 +460,29 @@ function CampoDelModulo({ campo, item, valore, errore, erroreFormula, computedLa
 
   return (
     <div className={larghezza}>
-      <label className="og-form-label" htmlFor={id}>
+      {/*
+        L'ETICHETTA DEVE PUNTARE A UN CONTROLLO CHE ESISTE (revisione del 17
+        set 2026).
+
+        `htmlFor={id}` veniva emesso SEMPRE, ma per la selezione multipla, per
+        un allegato e per un riferimento nessun elemento portava quell'`id`:
+        clic sull'etichetta inerte, e gruppo o controllo senza nome per un
+        lettore di schermo — con l'asterisco dell'obbligatorio come unica
+        indicazione, anch'essa staccata. Per quei tre casi l'etichetta non
+        punta a niente (`htmlFor` assente) e porta invece un id suo, che il
+        gruppo usa con `aria-labelledby`.
+      */}
+      <label className="og-form-label" id={idEtichetta} {...(puntaAlControllo ? { htmlFor: id } : {})}>
         {testo}
         {obbligatorio && <span className="og-form-required" aria-label={requiredLabel}>*</span>}
       </label>
 
       {isFormAttachmentType(campo.fieldType) && (
-        <CampoAllegato campo={campo} disabled={disabled} extra={extra} />
+        <CampoAllegato campo={campo} disabled={disabled} extra={extra} controlId={id} etichettaId={idEtichetta} />
       )}
 
       {isFormReferenceType(campo.fieldType) && (
-        <CampoRiferimento campo={campo} disabled={disabled} extra={extra} />
+        <CampoRiferimento campo={campo} disabled={disabled} extra={extra} controlId={id} etichettaId={idEtichetta} />
       )}
 
       {campo.fieldType === 'textarea' && (
@@ -489,7 +508,7 @@ function CampoDelModulo({ campo, item, valore, errore, erroreFormula, computedLa
       )}
 
       {campo.fieldType === 'multi_enum' && (
-        <div className="og-form-multi" role="group" aria-labelledby={id} aria-describedby={descritto}>
+        <div className="og-form-multi" role="group" aria-labelledby={idEtichetta} aria-describedby={descritto}>
           {(campo.options ?? []).map((o) => {
             const scelti = Array.isArray(valore) ? valore.map(String) : []
             const dentro = scelti.includes(o.value)
@@ -528,7 +547,12 @@ function CampoDelModulo({ campo, item, valore, errore, erroreFormula, computedLa
  * dopo la creazione. Lo stato dei file è del chiamante: gli serve per sapere
  * se un campo obbligatorio è soddisfatto prima di inviare.
  */
-function CampoAllegato({ campo, disabled, extra }: { campo: CatalogFormFieldView; disabled?: boolean; extra: CatalogFormRendererProps }) {
+function CampoAllegato({ campo, disabled, extra, controlId, etichettaId }: {
+  campo: CatalogFormFieldView; disabled?: boolean; extra: CatalogFormRendererProps
+  /** L'id che l'etichetta del campo punta: lo porta l'input del file. */
+  controlId: string
+  etichettaId: string
+}) {
   const caricati = extra.files?.[campo.name] ?? []
   const inCorso = extra.uploadingField === campo.name
   return (
@@ -553,6 +577,8 @@ function CampoAllegato({ campo, disabled, extra }: { campo: CatalogFormFieldView
       {extra.onUploadFile && (
         <label className="og-form-file-add">
           <input
+            id={controlId}
+            aria-labelledby={etichettaId}
             type="file"
             disabled={disabled || inCorso}
             onChange={(e) => {
@@ -581,7 +607,12 @@ function formatKb(bytes: number): string {
  * chiamante: nel portale non c'è, e il campo lo DICE invece di mostrare una
  * casella che non trova niente — un utente finale non naviga la CMDB.
  */
-function CampoRiferimento({ campo, disabled, extra }: { campo: CatalogFormFieldView; disabled?: boolean; extra: CatalogFormRendererProps }) {
+function CampoRiferimento({ campo, disabled, extra, controlId, etichettaId }: {
+  campo: CatalogFormFieldView; disabled?: boolean; extra: CatalogFormRendererProps
+  /** L'id che l'etichetta del campo punta: lo porta la casella di ricerca. */
+  controlId: string
+  etichettaId: string
+}) {
   const scelti = extra.references?.[campo.name] ?? []
   const [query, setQuery] = useState('')
   const [risultati, setRisultati] = useState<readonly CatalogFormReference[] | null>(null)
@@ -620,6 +651,8 @@ function CampoRiferimento({ campo, disabled, extra }: { campo: CatalogFormFieldV
   return (
     <div className="og-form-ref">
       <input
+        id={controlId}
+        aria-labelledby={etichettaId}
         className="og-form-input"
         type="search"
         value={query}

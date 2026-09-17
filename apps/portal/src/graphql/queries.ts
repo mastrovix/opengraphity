@@ -14,6 +14,14 @@ export const GET_MY_TICKETS = gql`
   }
 `
 
+/**
+ * Il ticket di chi guarda, con le sue risposte al modulo del catalogo.
+ *
+ * `formAnswers` (revisione del 17 set 2026): chi compilava dodici campi non li
+ * rivedeva MAI — né per controllare, né per citarli al telefono. L'API manda
+ * solo le voci che il modulo offre agli utenti finali, con le domande della
+ * revisione con cui la richiesta è stata compilata.
+ */
 export const GET_MY_TICKET = gql`
   query MyTicket($id: ID!, $language: String) {
     myTicket(id: $id, language: $language) {
@@ -30,6 +38,13 @@ export const GET_MY_TICKET = gql`
         fromStep toStep fromLabel toLabel label triggeredAt triggeredBy
       }
       customFields { name label fieldType value valueLabel(language: $language) }
+      formAnswers {
+        name label fieldType value values displayValue displayValues
+        references { id label }
+        files { id filename sizeBytes }
+        tableColumns { name label fieldType }
+        rows { cells { column value displayValue } }
+      }
     }
   }
 `

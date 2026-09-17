@@ -27,7 +27,7 @@
  * manca. Fra un ripiego muto e un ripiego che si annuncia, la differenza è chi
  * scopre il problema: noi o il cliente.
  */
-import { getSession, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { NotFoundError, ValidationError } from './errors.js'
 import { registerMetamodelCacheClearer, invalidateSchema } from './schemaInvalidator.js'
 import { LINGUE, type Lingua } from './enumValueLabels.js'
@@ -124,6 +124,32 @@ export async function tenantDefaultLanguage(tenantId: string): Promise<Lingua | 
  */
 export async function languageFor(tenantId: string): Promise<Lingua> {
   return (await tenantDefaultLanguage(tenantId)) ?? LINGUA_DI_ULTIMA_ISTANZA
+}
+
+/**
+ * LA LINGUA DI CHI LEGGE IL MESSAGGIO, non quella dell'organizzazione.
+ *
+ * `languageFor` dà la lingua predefinita del cliente, e va bene per i testi
+ * che non hanno un destinatario. Ma un RIFIUTO lo legge una persona, e quella
+ * persona può avere scelto un'altra lingua (`setMyLanguage`, che scrive
+ * `u.language`): su un tenant italiano un utente inglese leggeva metà frase
+ * tradotta dal client e l'etichetta del campo nell'altra lingua — il difetto
+ * che un commento dichiarava chiuso ed era chiuso a metà (revisione del 17 set
+ * 2026).
+ *
+ * Senza utente (una chiave API, un worker) resta la lingua del cliente.
+ */
+export async function languageForUser(tenantId: string, userId: string | null | undefined): Promise<Lingua> {
+  if (!userId) return languageFor(tenantId)
+  const session = getSession(undefined, 'READ')
+  try {
+    const rows = await runQuery<{ language: string | null }>(session, `
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      RETURN u.language AS language`, { userId, tenantId })
+    const scelta = rows[0]?.language
+    if (scelta && isLingua(scelta)) return scelta
+  } finally { await session.close() }
+  return languageFor(tenantId)
 }
 
 /** Configura la lingua predefinita del cliente. Rifiuta tutto ciò che non è una lingua del prodotto. */

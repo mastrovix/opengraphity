@@ -51,7 +51,7 @@ export function HomePage() {
               minWidth:        64,
             }}>
               <div style={{ fontSize: 20, fontWeight: 700, color: colors.brand }}>{value}</div>
-              <div style={{ fontSize: 10, color: colors.slateLight, marginTop: 2 }}>{label}</div>
+              <div style={{ fontSize: 12, color: colors.slateLight, marginTop: 2 }}>{label}</div>
             </div>
           ))}
         </div>
@@ -88,8 +88,8 @@ export function HomePage() {
         >
           <PlusCircle size={32} style={{ color: colors.brand }} />
           <div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>{t('home.newTicket')}</div>
-            <div style={{ fontSize: 10, color: colors.slate, marginTop: 4 }}>{t('home.newTicketDesc')}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: colors.slateDark }}>{t('home.newTicket')}</div>
+            <div style={{ fontSize: 12, color: colors.slate, marginTop: 4 }}>{t('home.newTicketDesc')}</div>
           </div>
         </button>}
 
@@ -112,8 +112,8 @@ export function HomePage() {
         >
           <Search size={32} style={{ color: colors.slate }} />
           <div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>{t('home.searchKB')}</div>
-            <div style={{ fontSize: 10, color: colors.slate, marginTop: 4 }}>{t('home.searchKBDesc')}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: colors.slateDark }}>{t('home.searchKB')}</div>
+            <div style={{ fontSize: 12, color: colors.slate, marginTop: 4 }}>{t('home.searchKBDesc')}</div>
           </div>
         </button>
       </div>
@@ -121,8 +121,8 @@ export function HomePage() {
       {/* Recent tickets */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h2 style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>{t('home.recentTickets')}</h2>
-          <Link to="/tickets" style={{ fontSize: 10, color: colors.brand }}>{t('home.seeAll')}</Link>
+          <h2 style={{ fontSize: 12, fontWeight: 600, color: colors.slateDark }}>{t('home.recentTickets')}</h2>
+          <Link to="/tickets" style={{ fontSize: 12, color: colors.brand }}>{t('home.seeAll')}</Link>
         </div>
 
         {tickets.length === 0 ? (
@@ -153,10 +153,10 @@ export function HomePage() {
                 onMouseLeave={e => { e.currentTarget.style.backgroundColor = palette.neutral.surface1 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10, fontWeight: 500, color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {ticket.title}
                   </div>
-                  <div style={{ fontSize: 10, color: colors.slateLight, marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: colors.slateLight, marginTop: 2 }}>
                     {fmtRelative(ticket.updatedAt, 'day')}
                   </div>
                 </div>

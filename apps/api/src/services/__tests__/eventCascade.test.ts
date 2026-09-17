@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // I testi scritti nei ticket si risolvono nella lingua del cliente (lib/systemText.ts): qui italiano.
-vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }

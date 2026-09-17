@@ -91,6 +91,8 @@
     "openedOn": "Opened {{date}}",
     "updatedOn": "Updated {{date}}",
     "noMessages": "No messages yet.",
+    "formAnswers": "What you declared",
+    "formAnswerEmpty": "no answer",
     "loadError": "Unable to load the ticket: {{message}}",
     "notFound": "Ticket not found or not accessible.",
     "rulesError": "Unable to validate required fields: {{message}}",
@@ -178,7 +180,16 @@
     "portal": {
       "severityNotConfigured": "The severities offered in the portal are not configured, so a ticket cannot be opened there. An administrator chooses them in Settings → Organization.",
       "severityStale": "The portal offers {{values}}, which the severity dictionary no longer has ({{allowed}}). An administrator fixes the choice in Settings → Organization.",
-      "severityNotOffered": "This severity is not offered in the portal. Choose one of: {{allowed}}."
+      "severityNotOffered": "This severity is not offered in the portal. Choose one of: {{allowed}}.",
+      "unclassifiedStates": "{{count}} ticket states belong to no class of the active incident workflow ({{states}}): the portal counters would not count them. Fix the steps (initial / terminal / category) in the designer.",
+      "categoryRequired": "Choose a category for the request.",
+      "priorityRequired": "Choose a priority for the request.",
+      "noCategories": "The ticket categories dictionary has no values: add them in Settings → Dictionary.",
+      "severityAtLeastOne": "Choose at least one severity for the portal: without it nobody can open a ticket there.",
+      "severityUnknown": "\"{{value}}\" is not a value of the severity dictionary ({{allowed}}).",
+      "severityDuplicate": "\"{{value}}\" appears twice.",
+      "severityLanguage": "Unknown language \"{{language}}\".",
+      "severityLabelTooLong": "The label of \"{{value}}\" is longer than {{max}} characters."
     },
     "serviceRequest": {
       "catalogItemWithoutPriority": "The catalog item «{{item}}» has no priority, so a request cannot be opened from it. An administrator sets it in Admin → Service catalog.",
@@ -278,6 +289,33 @@
         "action": "The \"execute script\" action of \"{{source}}\"",
         "formula": "The formula of field \"{{field}}\""
       }
+    },
+    "authz": {
+      "permissionRequired": "Your role cannot do this: it needs one of these permissions: {{required}}.",
+      "roleNotAllowed": "Role \"{{role}}\" cannot run {{operation}} (it needs one of these permissions: {{required}})."
+    },
+    "customField": {
+      "unknown": "«{{field}}» is not a field of this kind of ticket: it may have been removed. Reload the page.",
+      "notForEndUser": "The field «{{field}}» is not offered in the portal.",
+      "duplicate": "The field «{{field}}» was sent twice.",
+      "required": "These fields are required: {{fields}}.",
+      "script": "«{{field}}»: {{error}}",
+      "entityType": "«{{entityType}}» has no additional fields.",
+      "restShape": "customFields must be an object {fieldName: value} with text, number, yes/no or null values.",
+      "nameFormat": "The field name «{{name}}» must use lowercase letters, digits and underscores, 2 to 40 characters, starting with a letter.",
+      "nameTaken": "«{{name}}» is already a field of this kind of ticket in the product: choose another name.",
+      "nameInData": "Some tickets already carry a value called «{{name}}»: choose another name, so your field does not show old data.",
+      "nameTypeFixed": "The name and the type of the field «{{name}}» cannot change, because tickets already store values under them. Remove the field and add a new one.",
+      "stepRulesShape": "{{where}}: the step rules of the field are not valid.",
+      "unknownSteps": "Field «{{field}}»: the workflow has no step {{steps}} (steps: {{known}}).",
+      "notEditableInStep": "The field «{{field}}» cannot be changed in step «{{step}}».",
+      "notInStep": "The field «{{field}}» is not part of step «{{step}}».",
+      "stepRulesJson": "The step rules saved for {{where}} are not valid JSON: open the field in the designer and set them again."
+    },
+    "attachmentPolicy": {
+      "size": "The maximum attachment size must be a whole number of MB between 1 and {{max}} (the platform limit).",
+      "noExtensions": "Choose at least one allowed file type.",
+      "extension": "«.{{extension}}» is not a file type the platform accepts."
     }
   },
   "auth": {

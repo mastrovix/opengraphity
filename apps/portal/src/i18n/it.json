@@ -91,6 +91,8 @@
     "openedOn": "Aperto {{date}}",
     "updatedOn": "Aggiornato {{date}}",
     "noMessages": "Nessun messaggio ancora.",
+    "formAnswers": "Quello che hai dichiarato",
+    "formAnswerEmpty": "senza risposta",
     "loadError": "Impossibile caricare il ticket: {{message}}",
     "notFound": "Ticket non trovato o non accessibile.",
     "rulesError": "Impossibile validare i campi obbligatori: {{message}}",
@@ -178,7 +180,16 @@
     "portal": {
       "severityNotConfigured": "Le severità offerte nel portale non sono configurate, quindi non si può aprire un ticket. Un amministratore le sceglie da Impostazioni → Organizzazione.",
       "severityStale": "Il portale offre {{values}}, che il vocabolario delle severità non ha più ({{allowed}}). Un amministratore corregge la scelta da Impostazioni → Organizzazione.",
-      "severityNotOffered": "Questa severità non è offerta nel portale. Scegli fra: {{allowed}}."
+      "severityNotOffered": "Questa severità non è offerta nel portale. Scegli fra: {{allowed}}.",
+      "unclassifiedStates": "{{count}} stati dei ticket non appartengono a nessuna classe del workflow incident attivo ({{states}}): i contatori del portale non li conterebbero. Sistema i passi (iniziale / finale / categoria) nel disegnatore.",
+      "categoryRequired": "Scegli una categoria per la richiesta.",
+      "priorityRequired": "Scegli una priorità per la richiesta.",
+      "noCategories": "Il vocabolario delle categorie dei ticket non ha valori: aggiungili in Impostazioni → Dizionario.",
+      "severityAtLeastOne": "Scegli almeno una severità per il portale: senza, nessuno può aprire un ticket.",
+      "severityUnknown": "«{{value}}» non è un valore del vocabolario delle severità ({{allowed}}).",
+      "severityDuplicate": "«{{value}}» compare due volte.",
+      "severityLanguage": "Lingua sconosciuta «{{language}}».",
+      "severityLabelTooLong": "L'etichetta di «{{value}}» supera i {{max}} caratteri."
     },
     "serviceRequest": {
       "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi.",
@@ -278,6 +289,33 @@
         "action": "L'azione «esegui script» di «{{source}}»",
         "formula": "La formula del campo «{{field}}»"
       }
+    },
+    "authz": {
+      "permissionRequired": "Il tuo ruolo non può farlo: serve uno di questi permessi: {{required}}.",
+      "roleNotAllowed": "Il ruolo «{{role}}» non può eseguire {{operation}} (serve uno di questi permessi: {{required}})."
+    },
+    "customField": {
+      "unknown": "«{{field}}» non è un campo di questo tipo di ticket: forse è stato tolto. Ricarica la pagina.",
+      "notForEndUser": "Il campo «{{field}}» non è offerto nel portale.",
+      "duplicate": "Il campo «{{field}}» è stato mandato due volte.",
+      "required": "Questi campi sono obbligatori: {{fields}}.",
+      "script": "«{{field}}»: {{error}}",
+      "entityType": "«{{entityType}}» non ha campi aggiuntivi.",
+      "restShape": "customFields deve essere un oggetto {nomeCampo: valore} con valori di testo, numero, sì/no o null.",
+      "nameFormat": "Il nome del campo «{{name}}» deve usare lettere minuscole, cifre e trattino basso, da 2 a 40 caratteri, iniziando con una lettera.",
+      "nameTaken": "«{{name}}» è già un campo di questo tipo di ticket nel prodotto: scegli un altro nome.",
+      "nameInData": "Alcuni ticket portano già un valore chiamato «{{name}}»: scegli un altro nome, così il tuo campo non mostra dati vecchi.",
+      "nameTypeFixed": "Il nome e il tipo del campo «{{name}}» non si possono cambiare, perché i ticket hanno già valori salvati con quel nome. Togli il campo e aggiungine uno nuovo.",
+      "stepRulesShape": "{{where}}: le regole di fase del campo non sono valide.",
+      "unknownSteps": "Campo «{{field}}»: il workflow non ha la fase {{steps}} (fasi: {{known}}).",
+      "notEditableInStep": "Il campo «{{field}}» non si modifica nella fase «{{step}}».",
+      "notInStep": "Il campo «{{field}}» non fa parte della fase «{{step}}».",
+      "stepRulesJson": "Le regole per fase salvate su {{where}} non sono JSON valido: riapri il campo nel disegnatore e reimpostale."
+    },
+    "attachmentPolicy": {
+      "size": "La dimensione massima di un allegato deve essere un numero intero di MB fra 1 e {{max}} (il limite della piattaforma).",
+      "noExtensions": "Scegli almeno un tipo di file ammesso.",
+      "extension": "«.{{extension}}» non è un tipo di file che la piattaforma accetta."
     }
   },
   "auth": {

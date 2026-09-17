@@ -19,7 +19,7 @@
  * dire leggere il suo codice, che è esattamente il mestiere che non vogliamo
  * fare a mano.
  */
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { runFormula } from '@opengraphity/web-core'
 import { colors } from '@/lib/tokens'
@@ -46,6 +46,9 @@ export function ScriptFields({
   onValidationScript: (v: string) => void
 }) {
   const { t } = useTranslation()
+  const base = useId()
+  const idFormula = `${base}-formula`
+  const idScript = `${base}-script`
   const [valoriProva, setValoriProva] = useState('{}')
   const [esito, setEsito] = useState<{ ok: boolean; testo: string } | null>(null)
   const [provando, setProvando] = useState(false)
@@ -75,10 +78,13 @@ export function ScriptFields({
     <>
       {canCompute && (
         <div style={{ marginTop: 14 }}>
-          <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 3 }}>
+          {/* Un'etichetta, non uno `span`: la casella della formula era senza
+              nome accessibile (revisione del 17 set 2026). */}
+          <label htmlFor={idFormula} style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 3 }}>
             {t('pages.catalogForms.library.formula')}
-          </span>
+          </label>
           <textarea
+            id={idFormula}
             value={formula}
             onChange={(e) => { onFormula(e.target.value); setEsito(null) }}
             placeholder={t('pages.catalogForms.library.formulaPlaceholder')}
@@ -105,7 +111,9 @@ export function ScriptFields({
                 {t('pages.catalogForms.library.testFormula')}
               </button>
               {esito && (
-                <p style={{
+                /* `role="status"`: chi usa un lettore di schermo premeva «Prova»
+                   e non sentiva NIENTE. */
+                <p role="status" style={{
                   flexBasis: '100%', margin: 0, fontSize: 'var(--font-size-table)',
                   fontFamily: 'var(--font-mono)',
                   color: esito.ok ? 'var(--color-slate-dark)' : 'var(--color-danger)',
@@ -119,10 +127,11 @@ export function ScriptFields({
       )}
 
       <div style={{ marginTop: 14 }}>
-        <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 3 }}>
+        <label htmlFor={idScript} style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 3 }}>
           {t('pages.catalogForms.library.validationScript')}
-        </span>
+        </label>
         <textarea
+          id={idScript}
           value={validationScript}
           onChange={(e) => onValidationScript(e.target.value)}
           placeholder={t('pages.catalogForms.library.validationScriptPlaceholder')}

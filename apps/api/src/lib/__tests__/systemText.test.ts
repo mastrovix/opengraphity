@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('../tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
+vi.mock('../tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 
 const { SYSTEM_TEXTS, systemTextIn, systemText, formatInstantIn, LINGUE } = await import('../systemText.js')
 

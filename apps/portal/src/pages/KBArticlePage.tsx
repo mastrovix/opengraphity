@@ -56,7 +56,7 @@ export function KBArticlePage() {
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
       {/* Breadcrumb */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: colors.slateLight, marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: colors.slateLight, marginBottom: 20 }}>
         <Link to="/kb" style={{ color: colors.brand }}>{t('kb.breadcrumb')}</Link>
         <span>›</span>
         <span>{catData?.kbCategories.find((c) => c.name === article.category)?.label ?? article.category}</span>
@@ -70,14 +70,14 @@ export function KBArticlePage() {
       <h1 style={{ fontSize: 26, fontWeight: 700, color: colors.slateDark, marginBottom: 12, lineHeight: 1.3 }}>
         {article.title}
       </h1>
-      <div style={{ display: 'flex', gap: 16, fontSize: 10, color: colors.slateLight, marginBottom: 32, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 16, fontSize: 12, color: colors.slateLight, marginBottom: 32, flexWrap: 'wrap' }}>
         <span>{t('kb.by')} <strong style={{ color: colors.slate }}>{article.authorName}</strong></span>
         {article.publishedAt && <span>{t('kb.published')}: {fmtDateLong(article.publishedAt)}</span>}
         <span>{article.views} {t('kb.views')}</span>
       </div>
 
       {/* Article body */}
-      <div className="md-body" style={{ fontSize: 10, lineHeight: 1.8, color: colors.slateDark, marginBottom: 40 }}>
+      <div className="md-body" style={{ fontSize: 12, lineHeight: 1.8, color: colors.slateDark, marginBottom: 40 }}>
         <ReactMarkdown remarkPlugins={[remarkGfm]}>
           {article.body}
         </ReactMarkdown>
@@ -91,11 +91,11 @@ export function KBArticlePage() {
         textAlign:       'center',
         marginBottom:    32,
       }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark, marginBottom: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: colors.slateDark, marginBottom: 14 }}>
           {t('kb.helpful')}
         </div>
         {voted !== null ? (
-          <p style={{ fontSize: 10, color: colors.slate }}>{t('kb.thanksFeedback')}</p>
+          <p style={{ fontSize: 12, color: colors.slate }}>{t('kb.thanksFeedback')}</p>
         ) : (
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
             <button
@@ -143,7 +143,7 @@ export function KBArticlePage() {
       {/* Related articles */}
       {related.length > 0 && (
         <div style={{ marginBottom: 32 }}>
-          <h2 style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark, marginBottom: 14 }}>
+          <h2 style={{ fontSize: 12, fontWeight: 600, color: colors.slateDark, marginBottom: 14 }}>
             {t('kb.related')}
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -182,7 +182,7 @@ export function KBArticlePage() {
         flexWrap:        'wrap',
         gap:             12,
       }}>
-        <span style={{ fontSize: 10, color: palette.warning.strong, fontWeight: 500 }}>
+        <span style={{ fontSize: 12, color: palette.warning.strong, fontWeight: 500 }}>
           {t('kb.notSolved')}
         </span>
         {canSubmit && <Link

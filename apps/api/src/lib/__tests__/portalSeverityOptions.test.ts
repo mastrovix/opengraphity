@@ -22,7 +22,7 @@ vi.mock('../vocabularyEntries.js', () => ({
     colors: { blocker: 'danger' },
   })),
 }))
-vi.mock('../tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
+vi.mock('../tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 
 const { portalSeverityChoices, setPortalSeverityOptions } = await import('../portalSeverityOptions.js')
 

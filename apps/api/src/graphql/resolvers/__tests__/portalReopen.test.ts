@@ -18,7 +18,7 @@ const mockSession = {
 }
 
 // I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
-vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
+vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 // Verifica «Cosa resta cablato», ondata 1: le severità offerte nel portale.
 vi.mock('../../../lib/portalSeverityOptions.js', () => import('../../../lib/__tests__/portalSeverityOptionsFake.js'))
 vi.mock('../../../lib/vocabularyEntries.js', () => ({ loadVocabularyEntries: vi.fn(async () => ({ values: ['low', 'medium', 'high', 'critical'], labels: {}, colors: {} })) }))

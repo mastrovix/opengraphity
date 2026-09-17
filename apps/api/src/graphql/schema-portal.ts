@@ -92,6 +92,16 @@ export function portalSDL(): string {
     history:      [WorkflowHistoryEntry!]!
     "I campi del cliente offerti all'utente finale, con i valori (ondata 4)."
     customFields: [CustomFieldValue!]!
+    """
+    LE RISPOSTE AL MODULO del catalogo, con le domande della revisione con cui
+    la richiesta e' stata compilata. Solo le voci che il modulo offre agli
+    utenti finali: le altre sono domande che a lui non sono state fatte.
+
+    Vuoto per un incident e per una richiesta senza modulo. Revisione del 17
+    set 2026: chi compilava dodici campi non li rivedeva MAI — ne' per
+    controllare, ne' per citarli al telefono.
+    """
+    formAnswers: [FormAnswer!]!
   }
 
   type MyTicketsResult {

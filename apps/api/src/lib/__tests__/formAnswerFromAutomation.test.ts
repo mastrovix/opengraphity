@@ -14,7 +14,7 @@ import type { CatalogFormDefinition } from '@opengraphity/types'
 vi.mock('../vocabularyEntries.js', () => ({
   loadVocabularyEntries: vi.fn(async () => ({ values: ['produzione', 'collaudo'], labels: {}, colors: {} })),
 }))
-vi.mock('../tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
+vi.mock('../tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 
 /** Lo script di validazione: per difetto accetta; un test lo fa rifiutare. */
 let rifiutoDelloScript: string | null = null

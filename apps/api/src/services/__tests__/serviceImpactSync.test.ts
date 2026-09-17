@@ -23,7 +23,7 @@ import { GraphQLError } from 'graphql'
 // dalla policy degli allarmi (cache in memoria): qui la policy è mockata, così
 // la mappa resta UNA sola query nel test.
 // Le note si compongono nella lingua del cliente: qui italiano, come le attese.
-vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ suppress_upstream_hops: 1,
   // Ondata 7 · C-4: la SEMANTICA del ciclo di vita («ritirato», «in
   // manutenzione») è dato del cliente e vive sulla policy. Qui i valori

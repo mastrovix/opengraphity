@@ -13,7 +13,7 @@ vi.mock('@opengraphity/neo4j', async (importOriginal) => {
   return { getSession: vi.fn(), toNumber: orig.toNumber, runQuery: vi.fn() }
 })
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
+vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 const drift = vi.fn()
 vi.mock('../../../lib/vocabularyShippedDrift.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../../lib/vocabularyShippedDrift.js')>(),

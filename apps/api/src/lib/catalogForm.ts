@@ -29,7 +29,7 @@ import {
   CATALOG_FORM_VERSION, FORM_FIELD_NAME_RE, FORM_FIELD_TYPES, FORM_FIELD_TYPES_MULTI,
   FORM_FIELD_TYPES_WITHOUT_ANSWER, FORM_FIELD_TYPES_WITH_VOCABULARY, FORM_CONDITION_OPS,
   FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_DRAFT_ENTITY_TYPE, FORM_FIELD_TYPES_AS_PROPERTY,
-  canBeConditionSubject, catalogFormConditionFieldNames, catalogFormFieldNames,
+  canBeConditionSubject, catalogFormConditionFieldNames, catalogFormFieldNames, catalogFormForEndUser,
   evaluateFormCondition, formItemsToFill, formulaInput, isFormTableColumnType, isFormTableType,
   FORM_TABLE_COLUMN_TYPES, FORM_TABLE_VERSION, FORM_TABLE_V1_KEYS,
   isFormAnswerEmpty, isFormAttachmentType, isFormConditionOp, isFormFieldType, isFormReferenceType,
@@ -43,9 +43,13 @@ import { NotFoundError, ValidationError } from './errors.js'
 import type { RelationFieldDef } from './filterBuilder.js'
 import { assertCustomFieldName } from './customFieldName.js'
 import { loadVocabularyEntries } from './vocabularyEntries.js'
+import { logger } from './logger.js'
 import { runFormulaScript, runValidationScript } from './metamodelScript.js'
 import { labelFor, type EnumValueLabels } from './enumValueLabels.js'
-import { languageFor } from './tenantLanguage.js'
+import { languageFor, languageForUser } from './tenantLanguage.js'
+
+/** Il log di questo percorso: prima non ne aveva nessuno (revisione del 17 set 2026). */
+const log = logger.child({ module: 'catalog-form' })
 
 export { FORM_DRAFT_ENTITY_TYPE }
 
@@ -647,7 +651,9 @@ export async function resolveFormWrites(
    * messaggi, e l'etichetta base è quella con cui il campo è nato (spesso
    * inglese). Una lettura sola per salvataggio.
    */
-  const lingua = await languageFor(tenantId)
+  // La lingua di CHI COMPILA quando la si conosce, non quella del cliente: un
+  // utente inglese su un tenant italiano leggeva l'etichetta nell'altra lingua.
+  const lingua = await languageForUser(tenantId, opts.userId)
   /** L'etichetta del campo per i messaggi. */
   const nome = (c: FormFieldDef): string => etichettaDelCampo(c, lingua)
   /*
@@ -1358,13 +1364,36 @@ export interface FormAnswerRead {
   tableColumns: readonly FormTableColumn[]
 }
 
+/**
+ * Le risposte di un ticket, con le domande della revisione con cui è stato
+ * compilato.
+ *
+ * `endUser: true` = le legge chi ha compilato dal portale: si mostrano solo le
+ * voci che il modulo offre a un utente finale. Le altre sono domande che a lui
+ * non sono state fatte, e alcune portano dato interno.
+ */
 export async function formAnswersOf(
   session: Session, tenantId: string,
   ticket: { id: string; catalogItemId: string | null; formRevision: number | null; props: Record<string, unknown> },
+  opts: { endUser?: boolean } = {},
 ): Promise<FormAnswerRead[]> {
   if (!ticket.catalogItemId || !ticket.formRevision) return []
-  const def = await catalogFormRevision(session, tenantId, ticket.catalogItemId, ticket.formRevision)
-  if (!def) return []
+  const completo = await catalogFormRevision(session, tenantId, ticket.catalogItemId, ticket.formRevision)
+  if (!completo) {
+    /*
+     * La copia congelata di quella revisione non c'è: le risposte sono sul
+     * nodo ma non si sa più che domande erano. Restituire una lista vuota è il
+     * comportamento di prima — un ticket che dice «nessuna risposta» pur
+     * avendone — e va bene per la pagina (meglio di un errore che la fa
+     * cadere), ma non deve essere un SILENZIO: è un dato mancante, e ora si
+     * vede nei log (revisione del 17 set 2026: questo file non ne aveva
+     * nessuno).
+     */
+    log.warn({ tenantId, requestId: ticket.id, itemId: ticket.catalogItemId, revision: ticket.formRevision },
+      'Form revision frozen copy missing: answers cannot be read with the questions of that revision')
+    return []
+  }
+  const def = opts.endUser === true ? catalogFormForEndUser(completo) : completo
   const nomi = catalogFormFieldNames(def)
   const library = await formFieldsByName(session, tenantId, nomi)
 
