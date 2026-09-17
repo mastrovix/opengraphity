@@ -117,6 +117,7 @@ import { removeCiLabelFromTickets } from './20261002_1070_remove_ci_label_from_t
 import { catalogFormSchema } from './20261003_1010_catalog_form_schema.js'
 import { catalogFormLimits } from './20261003_1020_catalog_form_limits.js'
 import { formTableRowsLimit } from './20261004_1010_form_table_rows_limit.js'
+import { metamodelDuplicateFields } from './20261005_1010_metamodel_duplicate_fields.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -219,4 +220,5 @@ export const MIGRATIONS: readonly Migration[] = [
   catalogFormSchema,
   catalogFormLimits,
   formTableRowsLimit,
+  metamodelDuplicateFields,
 ]

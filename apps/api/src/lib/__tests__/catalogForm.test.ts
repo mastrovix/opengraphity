@@ -68,7 +68,7 @@ vi.mock('@opengraphity/neo4j', () => ({
   }),
 }))
 
-const { parseCatalogForm, assertCatalogForm, resolveFormWrites, visibleFormItems } = await import('../catalogForm.js')
+const { parseCatalogForm, assertCatalogForm, resolveFormWrites, visibleFormItems, settableByAutomation, formFieldAutomationMetas } = await import('../catalogForm.js')
 const { runValidationScript, runFormulaScript } = await import('../metamodelScript.js')
 
 const campo = (name: string, fieldType: string, extra: Record<string, unknown> = {}) => ({
@@ -600,5 +600,50 @@ describe('tabelle ripetibili', () => {
     const senzaColonne = new Map<string, never>([['persone', campo('persone', 'table')]])
     await expect(resolveFormWrites(session, 't1', def, senzaColonne, righe([{ persona: 'Ada' }]), { maxTableRows: 10 }))
       .rejects.toThrow(/is a table but has no columns/)
+  })
+})
+
+
+/**
+ * COSA PUÒ SCRIVERE UN'AUTOMAZIONE (ondata 8).
+ *
+ * La regola sta in un posto solo perché la leggono tre lati che devono dire la
+ * stessa cosa: la tendina che OFFRE il campo, la validazione che ACCETTA la
+ * regola, e la scrittura. Quando erano due, la tendina offriva
+ * `modello_richiesto` e il salvataggio rispondeva «non è un campo di questo
+ * tipo di ticket» — visto dal vivo su c-test.
+ */
+describe('scrivibile da un\'automazione', () => {
+  const campo = (extra: Record<string, unknown>) => ({
+    id: 'x', name: 'x', label: 'X', labels: [], help: null, helps: [], required: false,
+    vocabulary: null, validationScript: null, formula: null, inList: false, tableDefinition: null,
+    ...extra,
+  }) as never
+
+  it('sì per testo, numero, data, sì/no e scelta singola', () => {
+    for (const fieldType of ['text', 'textarea', 'number', 'date', 'datetime', 'boolean', 'enum']) {
+      expect(settableByAutomation(campo({ fieldType })), fieldType).toBe(true)
+    }
+  })
+
+  it('no per un campo CALCOLATO: il valore lo fa la formula', () => {
+    expect(settableByAutomation(campo({ fieldType: 'number', formula: 'return 1' }))).toBe(false)
+  })
+
+  it('no per la scelta MULTIPLA: sul nodo è una lista', () => {
+    expect(settableByAutomation(campo({ fieldType: 'multi_enum' }))).toBe(false)
+  })
+
+  it('no per quello che non diventa una proprietà (note, allegati, riferimenti, tabelle)', () => {
+    for (const fieldType of ['note', 'attachment', 'ref_ci', 'ref_user', 'ref_team', 'table']) {
+      expect(settableByAutomation(campo({ fieldType })), fieldType).toBe(false)
+    }
+  })
+})
+
+describe('formFieldAutomationMetas', () => {
+  it('solo per le richieste: gli altri tipi di ticket non compilano moduli', async () => {
+    expect((await formFieldAutomationMetas({} as never, 't1', 'incident')).size).toBe(0)
+    expect((await formFieldAutomationMetas({} as never, 't1', 'change')).size).toBe(0)
   })
 })

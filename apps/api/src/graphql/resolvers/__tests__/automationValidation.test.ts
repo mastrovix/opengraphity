@@ -19,6 +19,20 @@ vi.mock('../../../lib/stepFieldWrites.js', async (importOriginal) => ({
     ['notes',    { name: 'notes',    fieldType: 'text', enumValues: [], enumTypeName: null }],
   ])),
 }))
+/*
+ * ONDATA 8: `set_field` su una RICHIESTA può scrivere una risposta al modulo.
+ * La validazione somma questi campi a quelli del metamodello; qui si finge la
+ * libreria del tenant, perché il test riguarda la porta di scrittura.
+ */
+vi.mock('../../../lib/catalogForm.js', () => ({
+  formFieldAutomationMetas: vi.fn(async (_s: unknown, _t: string, entityType: string) =>
+    entityType === 'service_request'
+      ? new Map([
+          ['modello_richiesto', { name: 'modello_richiesto', fieldType: 'string', enumValues: [], enumTypeName: null }],
+          ['ambiente_uso',      { name: 'ambiente_uso', fieldType: 'enum', enumValues: ['production', 'test'], enumTypeName: 'ambienti' }],
+        ])
+      : new Map()),
+}))
 const selectSLAForEntity = vi.fn(async (..._a: unknown[]) => null as null | { id: string; name: string })
 vi.mock('@opengraphity/sla', () => ({ selectSLAForEntity, getTenantTimezone: vi.fn(async () => 'Europe/Rome') }))
 
@@ -227,3 +241,36 @@ describe('operatore «è cambiato» (V-19)', () => {
   })
 })
 
+
+/**
+ * UN CAMPO DEL MODULO IN UN'AZIONE (ondata 8). Il difetto che questi casi
+ * chiudono: la tendina offriva `modello_richiesto` e il salvataggio rispondeva
+ * «non è un campo di questo tipo di ticket», perché la validazione guardava
+ * solo il metamodello. Visto dal vivo su c-test creando la regola.
+ */
+describe('set_field su una richiesta: i campi del modulo', () => {
+  const session = {} as never
+  it('accetta un campo della libreria e il valore del suo vocabolario', async () => {
+    await expect(assertStepTargets(session, 't', 'service_request', {
+      actions: '[{"type":"set_field","params":{"field":"modello_richiesto","value":"ThinkPad standard"}}]',
+    })).resolves.toBeUndefined()
+    await expect(assertStepTargets(session, 't', 'service_request', {
+      actions: '[{"type":"set_field","params":{"field":"ambiente_uso","value":"production"}}]',
+    })).resolves.toBeUndefined()
+  })
+  it('rifiuta un valore fuori dal vocabolario del campo', async () => {
+    await expect(assertStepTargets(session, 't', 'service_request', {
+      actions: '[{"type":"set_field","params":{"field":"ambiente_uso","value":"collaudo"}}]',
+    })).rejects.toThrow(/is not a value of the field/)
+  })
+  it('rifiuta un campo che la libreria non ha', async () => {
+    await expect(assertStepTargets(session, 't', 'service_request', {
+      actions: '[{"type":"set_field","params":{"field":"costo_totale","value":"1"}}]',
+    })).rejects.toThrow(/not a field of service_request/)
+  })
+  it('gli altri tipi di ticket non guadagnano quei campi', async () => {
+    await expect(assertStepTargets(session, 't', 'incident', {
+      actions: '[{"type":"set_field","params":{"field":"modello_richiesto","value":"x"}}]',
+    })).rejects.toThrow(/not a field of incident/)
+  })
+})

@@ -259,14 +259,23 @@ export function BusinessRulesPage() {
 
   // ── Condition / Action builders ───────────────────────────────────────────
 
-  const updateCondition = (i: number, p: Partial<Condition>) => patch({ conditions: draft.conditions.map((c, j) => j === i ? { ...c, ...p } : c) })
-  const removeCondition = (i: number) => patch({ conditions: draft.conditions.filter((_, j) => j !== i) })
-  const addCondition = () => patch({ conditions: [...draft.conditions, { ...EMPTY_CONDITION }] })
+  /*
+   * Ogni aiutante legge le condizioni e le azioni da `prev`, non dalla bozza
+   * della chiusura. Non è stile: `ActionParamsEditor`, quando si sceglie il
+   * campo di «Imposta campo», fa DUE modifiche nello stesso gesto — il campo e
+   * il valore da azzerare — e due `patch` calcolati sulla stessa bozza vecchia
+   * si annullano: vinceva il secondo e il CAMPO SPARIVA. La tendina tornava
+   * vuota e l'azione non era configurabile (trovato nel browser su c-test,
+   * ondata 8). Con `prev` le due modifiche si compongono.
+   */
+  const updateCondition = (i: number, p: Partial<Condition>) => modal.setDraft((prev) => ({ ...prev, conditions: prev.conditions.map((c, j) => j === i ? { ...c, ...p } : c) }))
+  const removeCondition = (i: number) => modal.setDraft((prev) => ({ ...prev, conditions: prev.conditions.filter((_, j) => j !== i) }))
+  const addCondition = () => modal.setDraft((prev) => ({ ...prev, conditions: [...prev.conditions, { ...EMPTY_CONDITION }] }))
 
-  const setActionParam = (i: number, key: string, val: string) => patch({ actions: draft.actions.map((a, j) => j === i ? { ...a, params: { ...a.params, [key]: val } } : a) })
-  const updateAction = (i: number, p: Partial<RuleAction>) => patch({ actions: draft.actions.map((a, j) => j === i ? { ...a, ...p } : a) })
-  const removeAction = (i: number) => patch({ actions: draft.actions.filter((_, j) => j !== i) })
-  const addAction = () => patch({ actions: [...draft.actions, { ...EMPTY_ACTION }] })
+  const setActionParam = (i: number, key: string, val: string) => modal.setDraft((prev) => ({ ...prev, actions: prev.actions.map((a, j) => j === i ? { ...a, params: { ...a.params, [key]: val } } : a) }))
+  const updateAction = (i: number, p: Partial<RuleAction>) => modal.setDraft((prev) => ({ ...prev, actions: prev.actions.map((a, j) => j === i ? { ...a, ...p } : a) }))
+  const removeAction = (i: number) => modal.setDraft((prev) => ({ ...prev, actions: prev.actions.filter((_, j) => j !== i) }))
+  const addAction = () => modal.setDraft((prev) => ({ ...prev, actions: [...prev.actions, { ...EMPTY_ACTION }] }))
 
   // ── Render ────────────────────────────────────────────────────────────────
 

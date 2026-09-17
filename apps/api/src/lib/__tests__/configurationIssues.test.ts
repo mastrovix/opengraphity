@@ -104,7 +104,10 @@ vi.mock('../customFieldSteps.js', async (importOriginal) => ({ ...(await importO
 ]) }))
 // Contratti OLA/UC (secondo giro UI del 15 set 2026, punto 3): di default tutti misurabili.
 let misurabilitaOLA: { withoutTeam: string[]; unmeasurable: string[] } = { withoutTeam: [], unmeasurable: [] }
+let campiDuplicati: Array<{ typeName: string; field: string; count: number }> = []
 vi.mock('../olaMeasurability.js', () => ({ olaContractsMeasurability: vi.fn(async () => misurabilitaOLA) }))
+/* I campi duplicati nel metamodello: di norma nessuno (il caso suo sta in metamodelDuplicateFields.test.ts). */
+vi.mock('../metamodelDuplicateFields.js', () => ({ duplicateMetamodelFields: vi.fn(async () => campiDuplicati) }))
 vi.mock('../slaWarningCheck.js', () => ({ slaPoliciesWarningNotBeforeDeadline: vi.fn(async () => preavvisiScaduti) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
 vi.mock('../domainMatrix.js', async (importOriginal) => {
@@ -596,6 +599,30 @@ describe('configurationIssues — campi che citano fasi sparite', () => {
         { kind: 'custom_field_from_step_absent', severity: 'warning', where: '/settings/itil-designer', params: { count: '1', fields: 'Note di chiusura (change, review): Change Emergency' } },
       ])
     } finally { campiConFasi = [] }
+  })
+})
+
+/**
+ * CAMPI DEFINITI DUE VOLTE NELLO STESSO TIPO (trovato nel browser su c-test:
+ * «Priorità» due volte nelle tendine delle automazioni). È un `error` e non un
+ * avviso: una regola di visibilità scritta su una definizione non vale per
+ * l'altra, quindi la configurazione dice una cosa e il prodotto ne fa un'altra.
+ */
+describe('configurationIssues — campi duplicati nel metamodello', () => {
+  it('doppioni → errore che li nomina col tipo, si rimedia nel disegnatore', async () => {
+    campiDuplicati = [
+      { typeName: 'incident', field: 'priority', count: 2 },
+      { typeName: 'problem',  field: 'impact',   count: 2 },
+    ]
+    try {
+      const issues = await configurationIssues('t1')
+      expect(issues.filter((i) => i.kind === 'metamodel_duplicate_field')).toEqual([
+        {
+          kind: 'metamodel_duplicate_field', severity: 'error', where: '/settings/itil-designer',
+          params: { count: '2', fields: 'incident.priority (2), problem.impact (2)' },
+        },
+      ])
+    } finally { campiDuplicati = [] }
   })
 })
 

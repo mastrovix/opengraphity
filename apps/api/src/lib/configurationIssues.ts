@@ -68,6 +68,7 @@ import { stepsNamedBy, workflowStepsByDefinition } from './customFieldSteps.js'
 import { olaContractsMeasurability } from './olaMeasurability.js'
 import { TICKET_CUSTOM_FIELD_ENTITY_TYPES } from '@opengraphity/types'
 import { createMetamodelCache } from './metamodelCache.js'
+import { duplicateMetamodelFields } from './metamodelDuplicateFields.js'
 
 const log = logger.child({ module: 'configuration-issues' })
 
@@ -108,6 +109,7 @@ export type ConfigurationIssueKind =
   | 'ola_contract_without_team'
   | 'ola_contract_unmeasurable'
   | 'formulas_with_scripting_off'
+  | 'metamodel_duplicate_field'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -159,7 +161,7 @@ async function computeConfigurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -464,6 +466,23 @@ async function checkOLAContracts(tenantId: string, session: Session): Promise<Co
   if (withoutTeam.length > 0) out.push({ kind: 'ola_contract_without_team', severity: 'warning', where: '/admin/ola-uc', params: { count: String(withoutTeam.length), names: withoutTeam.join(', ') } })
   if (unmeasurable.length > 0) out.push({ kind: 'ola_contract_unmeasurable', severity: 'warning', where: '/admin/ola-uc', params: { count: String(unmeasurable.length), names: unmeasurable.join(', ') } })
   return out
+}
+
+/**
+ * DUE CAMPI CON LO STESSO NOME NELLO STESSO TIPO (trovato nel browser su
+ * c-test: «Priorità» due volte nelle tendine delle automazioni). Il perché e
+ * come si rimedia stanno in `lib/metamodelDuplicateFields.ts`; qui si dice.
+ */
+async function checkDuplicateFields(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const doppioni = await duplicateMetamodelFields(session, tenantId)
+  if (doppioni.length === 0) return []
+  return [{
+    kind: 'metamodel_duplicate_field', severity: 'error', where: '/settings/itil-designer',
+    params: {
+      count:  String(doppioni.length),
+      fields: doppioni.map((d) => `${d.typeName}.${d.field} (${d.count})`).join(', '),
+    },
+  }]
 }
 
 /**

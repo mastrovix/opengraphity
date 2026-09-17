@@ -37,6 +37,14 @@ export interface FieldMeta {
   enumTypeName: string | null
 }
 
+/**
+ * La prima definizione per ogni nome, le altre via. Esportata perché è la
+ * regola che il test pinna: vedi il commento dentro `useEntityFieldMetas`.
+ */
+export function unoPerNome<T extends { name: string }>(defs: readonly T[]): T[] {
+  return defs.filter((f, i, arr) => arr.findIndex((x) => x.name === f.name) === i)
+}
+
 interface TypeDef {
   name:   string
   fields: { name: string; label: string; fieldType: string; enumValues?: string[] | null; enumTypeName?: string | null }[]
@@ -75,10 +83,24 @@ export function useEntityFieldMetas(entityType: string, { withVirtual = true }: 
     if (!types) return { fields: [], error: null }   // in caricamento
     const typeDef = types.find(t => t.name === entityType)
     if (!typeDef) return { fields: [], error: `entity type "${entityType}" is not in the metamodel` }
-    const fields: FieldMeta[] = typeDef.fields.map(f => ({
-      name: f.name, label: shippedLabel('field', f.name, f.label), fieldType: f.fieldType, enumValues: f.enumValues ?? [],
-      enumTypeName: f.enumTypeName ?? null,
-    }))
+    /*
+     * UN NOME SOLO PER CAMPO, anche se il metamodello ne porta due.
+     *
+     * Visto dal vivo su c-test: le tendine delle automazioni mostravano
+     * «Priorità» DUE volte (e così Impatto e Urgenza), perché il tipo aveva
+     * davvero due definizioni con lo stesso nome — una migrazione che non era
+     * idempotente (rimedio: la migrazione `20261005_1010` le toglie, e
+     * `metamodel_duplicate_field` lo dice nella diagnostica se ricompaiono).
+     * Ma due voci identiche in una tendina non hanno MAI senso: sul nodo il
+     * campo è uno, `properties(n).priority`. Quindi qui si tiene la prima e si
+     * scartano le altre — l'interfaccia resta leggibile anche con un
+     * metamodello sporco, e React non riceve due figli con la stessa chiave.
+     */
+    const fields: FieldMeta[] = unoPerNome(typeDef.fields)
+      .map(f => ({
+        name: f.name, label: shippedLabel('field', f.name, f.label), fieldType: f.fieldType, enumValues: f.enumValues ?? [],
+        enumTypeName: f.enumTypeName ?? null,
+      }))
     if (withVirtual) {
       for (const { labelKey, ...v } of VIRTUAL_RELATION_FIELDS) {
         if (!fields.find(f => f.name === v.name)) fields.push({ ...v, label: t(labelKey) })

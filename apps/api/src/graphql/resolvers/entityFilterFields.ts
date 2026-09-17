@@ -12,12 +12,12 @@
 import { GraphQLObjectType, getNamedType, isEnumType, isListType, isNonNullType, isScalarType, type GraphQLResolveInfo, type GraphQLOutputType } from 'graphql'
 import { ValidationError } from '../../lib/errors.js'
 import {
-  FORM_FIELD_TYPES_AS_PROPERTY, FORM_FIELD_TYPES_MULTI, formTableColumnLabel, isFormTableType,
+  FORM_FIELD_TYPES_MULTI, formTableColumnLabel, isFormTableType,
   type TicketCustomFieldEntityType,
 } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
 import { requestCustomFieldDefs } from './ticketCustomFields.js'
-import { formFields, formTableFilterName, type FormFieldDef } from '../../lib/catalogForm.js'
+import { formFields, formTableFilterName, settableByAutomation } from '../../lib/catalogForm.js'
 import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { withSession } from './ci-utils.js'
 import { labelFor } from '../../lib/enumValueLabels.js'
@@ -67,17 +67,6 @@ export function entityFilterFieldsFromSchema(schema: GraphQLResolveInfo['schema'
   return out
 }
 
-/**
- * Un campo della libreria che un'AUTOMAZIONE può scrivere (ondata 8): valore
- * singolo, che diventa una proprietà, e senza formula. Gli altri l'API li
- * rifiuta; questo serve a non offrirli.
- */
-function scrivibile(d: FormFieldDef): boolean {
-  if (d.formula) return false
-  if (FORM_FIELD_TYPES_MULTI.includes(d.fieldType)) return false
-  return FORM_FIELD_TYPES_AS_PROPERTY.includes(d.fieldType)
-}
-
 /** I tipi GraphQL dei ticket che hanno campi del cliente (ondata 4). */
 const CUSTOM_FIELD_TYPES: Readonly<Record<string, TicketCustomFieldEntityType>> = {
   Incident: 'incident', Problem: 'problem', Change: 'change', ServiceRequest: 'service_request',
@@ -124,13 +113,13 @@ export const entityFilterFieldsResolvers = {
             // «Ambienti_coinvolti / Production» dove tutto il resto del
             // prodotto dice «Ambienti coinvolti / Produzione».
             if (!d.vocabulary) {
-              return { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null, label: d.label, choices: [], formFieldType: d.fieldType, vocabulary: null, rowFilter: false, settableByAutomation: scrivibile(d), multi }
+              return { name: d.name, kind: 'SCALAR', scalarName: d.fieldType === 'number' ? 'Float' : d.fieldType === 'boolean' ? 'Boolean' : 'String', enumValues: null, label: d.label, choices: [], formFieldType: d.fieldType, vocabulary: null, rowFilter: false, settableByAutomation: settableByAutomation(d), multi }
             }
             const v = await loadVocabularyEntries(ctx.tenantId, d.vocabulary)
             return {
               name: d.name, kind: 'ENUM', scalarName: null, enumValues: v.values as string[], label: d.label,
               choices: (v.values as string[]).map((valore) => ({ value: valore, label: labelFor(valore, v.labels, lingua, ripiego) })),
-              formFieldType: d.fieldType, vocabulary: d.vocabulary, rowFilter: false, settableByAutomation: scrivibile(d), multi,
+              formFieldType: d.fieldType, vocabulary: d.vocabulary, rowFilter: false, settableByAutomation: settableByAutomation(d), multi,
             }
           })
       }).then((p) => Promise.all(p))

@@ -5,6 +5,7 @@ import { runQuery } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { invalidateTriggerCache } from '../../lib/triggerEngine.js'
 import { assertStepFieldValue, stepFieldMetas } from '../../lib/stepFieldWrites.js'
+import { formFieldAutomationMetas } from '../../lib/catalogForm.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { invalidateRulesCache } from '../../lib/rulesEngine.js'
 import { parseConditions, usesChangedOperator, type ConditionOperator } from '../../lib/conditionEvaluator.js'
@@ -208,7 +209,22 @@ async function assertAutomationFieldWrites(
   const parsed = parseActions(actions)
   const writes = parsed.map((a, i) => ({ a, i })).filter(({ a }) => a?.type === 'set_field' || a?.type === 'set_priority')
   if (writes.length === 0) return
-  const metas = await stepFieldMetas(session, tenantId, entityType)
+  /*
+   * IL METAMODELLO **PIÙ** I CAMPI DEI MODULI (ondata 8).
+   *
+   * Un'azione `set_field` su una richiesta può scrivere una risposta al modulo:
+   * l'esecutore la manda a `writeFormAnswerFromAutomation`, che riapplica le
+   * regole del modulo (revisione con cui è stata compilata, condizioni,
+   * vocabolario, validationScript). Senza questi campi la validazione rifiutava
+   * una regola che poi avrebbe funzionato — «modello_richiesto non è un campo di
+   * questo tipo di ticket», su un campo che la tendina offriva (visto dal vivo
+   * su c-test). Il metamodello VINCE sui nomi uguali: è quello che il ticket
+   * scrive davvero.
+   */
+  const metas = new Map([
+    ...await formFieldAutomationMetas(session, tenantId, entityType),
+    ...await stepFieldMetas(session, tenantId, entityType),
+  ])
   for (const { a, i } of writes) {
     const field = a.type === 'set_priority' ? 'priority' : String(a.params?.['field'] ?? '')
     const value = a.type === 'set_priority' ? (a.params?.['priority'] ?? a.params?.['value']) : a.params?.['value']

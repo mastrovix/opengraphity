@@ -140,6 +140,58 @@ export async function formFields(session: Session, tenantId: string): Promise<Fo
 }
 
 /**
+ * UN'AUTOMAZIONE PUÒ SCRIVERLO? (ondata 8) — la regola, in un posto solo.
+ *
+ * La usano tutti e tre i lati, e devono dire la stessa cosa: il client per
+ * OFFRIRE il campo nell'azione (`settableByAutomation` in
+ * `entityFilterFields`), la validazione della regola per ACCETTARLA
+ * (`assertAutomationFieldWrites`), e `writeFormAnswerFromAutomation` per
+ * scrivere. Quando erano due, il client offriva un campo che la validazione
+ * rifiutava — visto dal vivo su c-test: «modello_richiesto non è un campo di
+ * questo tipo di ticket» su un campo che la tendina proponeva.
+ *
+ * Fuori: i campi con FORMULA (li calcola il server), le scelte MULTIPLE (sul
+ * nodo sono liste), e tutto ciò che non diventa una proprietà (note, allegati,
+ * riferimenti, tabelle).
+ */
+export function settableByAutomation(d: FormFieldDef): boolean {
+  if (d.formula) return false
+  if (FORM_FIELD_TYPES_MULTI.includes(d.fieldType)) return false
+  return FORM_FIELD_TYPES_AS_PROPERTY.includes(d.fieldType)
+}
+
+/**
+ * Il tipo di un campo di modulo nel vocabolario della validazione delle azioni
+ * (`StepFieldMeta`): un modulo parla di `text`/`textarea`/`datetime`, quella
+ * validazione di stringa, numero, data, sì/no, enum. Un tipo senza
+ * corrispondente resta FUORI, invece di arrivare come «?tipo».
+ */
+const FORM_TYPE_TO_STEP_FIELD: Readonly<Record<string, string>> = {
+  text: 'string', textarea: 'string', number: 'number',
+  date: 'date', datetime: 'date', boolean: 'boolean', enum: 'enum',
+}
+
+/**
+ * I campi della LIBRERIA che un'automazione può scrivere, nella forma che
+ * `assertStepFieldValue` sa validare (nome, tipo, valori del vocabolario).
+ * Solo per le RICHIESTE: sono le sole che compilano un modulo.
+ */
+export async function formFieldAutomationMetas(
+  session: Session, tenantId: string, entityType: string,
+): Promise<Map<string, { name: string; fieldType: string; enumValues: string[]; enumTypeName: string | null }>> {
+  const out = new Map<string, { name: string; fieldType: string; enumValues: string[]; enumTypeName: string | null }>()
+  if (entityType !== 'service_request') return out
+  for (const d of await formFields(session, tenantId)) {
+    if (!settableByAutomation(d)) continue
+    const tipo = FORM_TYPE_TO_STEP_FIELD[d.fieldType]
+    if (!tipo) continue
+    const valori = d.vocabulary ? (await loadVocabularyEntries(tenantId, d.vocabulary)).values as string[] : []
+    out.set(d.name, { name: d.name, fieldType: tipo, enumValues: valori, enumTypeName: d.vocabulary })
+  }
+  return out
+}
+
+/**
  * Le ETICHETTE dei campi che hanno una formula (ondata 6). La usa la
  * diagnostica di configurazione per dire all'amministratore che i suoi campi
  * calcolati non gireranno con gli script spenti.
