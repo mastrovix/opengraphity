@@ -377,6 +377,36 @@ export function emptyCatalogForm(): CatalogFormDefinition {
 }
 
 /**
+ * LE VOCI DEL MODULO DA COMPILARE, date queste risposte — **in un posto solo**.
+ *
+ * Era scritta tre volte: `visibleFormItems` nell'API, `visibleCatalogFormItems`
+ * in `web-core`, e una terza copia in linea dentro il corpo del renderer.
+ * Condiviso c'era solo il valutatore di UNA condizione, mentre il commento del
+ * renderer affermava «è la stessa funzione che il server richiama». Tre copie
+ * della regola che decide cosa si può scrivere su un ticket sono tre modi di
+ * divergere: basta aggiungere una dimensione di visibilità da un lato — come è
+ * successo con `endUser` — e il client mostra un campo che il server rifiuta,
+ * cioè chi compila non ha via d'uscita (revisione del 17 set 2026).
+ *
+ * `endUser: true` = chi compila è un utente finale del portale, e le voci che
+ * il modulo destina all'area di lavoro non gli si chiedono.
+ */
+export function formItemsToFill(
+  def: CatalogFormDefinition, answers: FormAnswers, opts: { endUser?: boolean } = {},
+): CatalogFormItem[] {
+  const out: CatalogFormItem[] = []
+  for (const s of def.sections) {
+    if (!evaluateFormCondition(s.visibleWhen, answers)) continue
+    for (const i of s.items) {
+      if (opts.endUser && i.endUser === false) continue
+      if (!evaluateFormCondition(i.visibleWhen, answers)) continue
+      out.push(i)
+    }
+  }
+  return out
+}
+
+/**
  * IL MODULO COME LO VEDE L'UTENTE FINALE: via le voci che il modulo non offre
  * nel portale, e via le sezioni che così restano senza voci.
  *

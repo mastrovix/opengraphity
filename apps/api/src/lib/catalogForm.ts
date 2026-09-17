@@ -30,7 +30,7 @@ import {
   FORM_FIELD_TYPES_WITHOUT_ANSWER, FORM_FIELD_TYPES_WITH_VOCABULARY, FORM_CONDITION_OPS,
   FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_DRAFT_ENTITY_TYPE, FORM_FIELD_TYPES_AS_PROPERTY,
   canBeConditionSubject, catalogFormConditionFieldNames, catalogFormFieldNames,
-  evaluateFormCondition, formulaInput, isFormTableColumnType, isFormTableType,
+  evaluateFormCondition, formItemsToFill, formulaInput, isFormTableColumnType, isFormTableType,
   FORM_TABLE_COLUMN_TYPES, FORM_TABLE_VERSION, FORM_TABLE_V1_KEYS,
   isFormAnswerEmpty, isFormAttachmentType, isFormConditionOp, isFormFieldType, isFormReferenceType,
   isFormTableRowEmpty,
@@ -493,21 +493,14 @@ export function formAnswerMap(inputs: readonly FormAnswerInput[] | null | undefi
 }
 
 /**
- * Le voci del modulo che, date queste risposte, sono davvero da compilare:
- * sezione visibile e campo visibile. È il calcolo che il browser fa per
- * mostrare e che il server rifà per accettare.
+ * Le voci del modulo che, date queste risposte, sono davvero da compilare.
+ *
+ * È LA STESSA FUNZIONE del browser, non una copia: `formItemsToFill` vive in
+ * `@opengraphity/types`. Il nome locale resta perché lo chiamano venti punti,
+ * e perché dal server si legge meglio così.
  */
 export function visibleFormItems(def: CatalogFormDefinition, answers: FormAnswers, opts: { endUser?: boolean } = {}): CatalogFormItem[] {
-  const out: CatalogFormItem[] = []
-  for (const s of def.sections) {
-    if (!evaluateFormCondition(s.visibleWhen, answers)) continue
-    for (const i of s.items) {
-      if (opts.endUser && i.endUser === false) continue
-      if (!evaluateFormCondition(i.visibleWhen, answers)) continue
-      out.push(i)
-    }
-  }
-  return out
+  return formItemsToFill(def, answers, opts)
 }
 
 function coerce(def: FormFieldDef, raw: string, allowed: readonly string[] | null): unknown {
@@ -614,9 +607,6 @@ export async function resolveFormWrites(
       )
     }
   }
-  const answers = formAnswerMap(inputs)
-  const visibili = visibleFormItems(def, answers, opts)
-  const perNome = new Map(visibili.map((i) => [i.field, i]))
   const nelModulo = new Set(catalogFormFieldNames(def))
 
   const out: Record<string, unknown> = {}
@@ -629,6 +619,88 @@ export async function resolveFormWrites(
     vocabolari.set(nome, v.values)
     return v.values
   }
+
+  /*
+   * ── LE FORMULE GIRANO PRIMA DELLA VISIBILITÀ ───────────────────────────────
+   *
+   * Scelta del proprietario (17 set 2026), dopo che il difetto è stato
+   * riprodotto nel browser: una condizione su un campo CALCOLATO si deve
+   * poter scrivere. «Chiedi la giustificazione se il costo totale supera
+   * mille» è la prima regola che un cliente scrive, e il costruttore la
+   * offriva già.
+   *
+   * Prima l'ordine era: visibilità → rifiuti → formule. Quindi per il server
+   * un campo calcolato era SEMPRE vuoto quando valutava le condizioni (i
+   * calcolati non arrivano dal client: li rifiuta, giustamente), mentre il
+   * browser li aveva già in mano. Risultato misurato: il campo compariva, si
+   * compilava, e al salvataggio arrivava «il campo non viene chiesto con
+   * queste risposte» — richiesta non creabile, mai.
+   *
+   * Ora l'ordine è: formule → visibilità → rifiuti → scrittura. Le tre cose
+   * che lo tengono in piedi:
+   *
+   *  1. NIENTE CATENE, come prima: una formula vede solo le risposte dei campi
+   *     NON calcolati (`formulaInput`), quindi eseguirle tutte insieme non
+   *     crea dipendenze fra loro e non c'è nessun ciclo da riconoscere.
+   *  2. I VALORI GREZZI per la formula si convertono in modo TOLLERANTE: qui
+   *     non si rifiuta niente, perché i rifiuti veri hanno il loro posto più
+   *     sotto e devono restare nell'ordine di prima (un campo nascosto che
+   *     arriva è più informativo di «questo numero non è un numero»). Per una
+   *     richiesta valida le risposte sono solo quelle visibili, quindi la
+   *     formula vede esattamente quello che vedeva prima.
+   *  3. UNA FORMULA CHE FALLISCE non ferma il salvataggio QUI: l'errore si
+   *     ricorda e si solleva dov'era prima, cioè scrivendo quel campo se è
+   *     visibile. Una formula rotta su un campo che nessuno vede non deve
+   *     rompere la richiesta.
+   */
+  const calcolatiDelModulo = [...nelModulo].filter((n) => library.get(n)?.formula)
+  /** Le risposte convertite per la formula: nessun rifiuto, vedi il punto 2. */
+  const grezze: Record<string, unknown> = {}
+  if (calcolatiDelModulo.length > 0) {
+    for (const input of inputs ?? []) {
+      const campo = library.get(input.name)
+      if (!campo || campo.formula) continue
+      if (FORM_FIELD_TYPES_MULTI.includes(campo.fieldType)) {
+        grezze[input.name] = (input.values ?? []).map((v) => String(v).trim()).filter((v) => v !== '')
+        continue
+      }
+      if (!FORM_FIELD_TYPES_AS_PROPERTY.includes(campo.fieldType)) continue
+      const raw = input.value
+      if (raw == null || String(raw).trim() === '') continue
+      try {
+        grezze[input.name] = coerce(campo, String(raw), campo.vocabulary ? await vocabolarioDi(campo.vocabulary) : null)
+      } catch {
+        // Tollerante di proposito: il rifiuto con il messaggio giusto arriva più sotto.
+      }
+    }
+  }
+  /** Per campo calcolato: il valore, oppure l'errore da sollevare al momento di scriverlo. */
+  const formule = new Map<string, { value: unknown } | { error: string }>()
+  if (calcolatiDelModulo.length > 0) {
+    const perLaFormula = formulaInput(grezze, new Set(calcolatiDelModulo))
+    for (const n of calcolatiDelModulo) {
+      const campo = library.get(n)!
+      const esito = await runFormulaScript(campo.formula!, perLaFormula, campo.name, tenantId)
+      formule.set(n, esito.ok ? { value: esito.value } : { error: esito.error })
+    }
+  }
+
+  /**
+   * Le risposte con cui si valutano le condizioni: quelle mandate più i valori
+   * calcolati, normalizzati come li normalizza il browser (`null`, booleano e
+   * numero così come sono, tutto il resto come testo) — se i due lati
+   * normalizzassero diversamente, la stessa condizione direbbe due cose.
+   */
+  const answers: Record<string, FormAnswerValue> = { ...formAnswerMap(inputs) }
+  for (const [n, esito] of formule) {
+    if ('error' in esito) continue
+    const v = esito.value
+    answers[n] = v == null || (typeof v === 'number' && !Number.isFinite(v)) || String(v).trim() === ''
+      ? null
+      : typeof v === 'boolean' || typeof v === 'number' ? v : String(v)
+  }
+  const visibili = visibleFormItems(def, answers, opts)
+  const perNome = new Map(visibili.map((i) => [i.field, i]))
 
   for (const input of inputs ?? []) {
     if (!nelModulo.has(input.name)) {
@@ -718,45 +790,48 @@ export async function resolveFormWrites(
   }
 
   /**
-   * I CAMPI CALCOLATI (ondata 6), prima dell'obbligatorietà: una formula che
-   * non produce niente su un campo obbligatorio deve far fallire il
-   * salvataggio come un campo lasciato vuoto.
+   * I CAMPI CALCOLATI (ondata 6) si SCRIVONO qui, prima dell'obbligatorietà:
+   * una formula che non produce niente su un campo obbligatorio deve far
+   * fallire il salvataggio come un campo lasciato vuoto.
    *
+   * Le formule sono già state eseguite più sopra, perché le condizioni le
+   * guardano (decisione del 17 set 2026): qui si prende l'esito e si scrive.
    * Solo i campi VISIBILI: se una condizione nasconde il campo, la domanda non
-   * è stata fatta e la formula non c'entra. E solo quelli del modulo: un campo
-   * calcolato della libreria che questo modulo non cita non si scrive.
-   *
-   * La formula vede le risposte già convertite dei campi NON calcolati
-   * (`formulaInput`): niente catene, quindi niente cicli da riconoscere.
+   * è stata fatta e la formula non c'entra — per questo il rifiuto di una
+   * formula rotta vive qui e non dove gira.
    */
-  const calcolati = new Set(visibili.map((i) => i.field).filter((n) => library.get(n)?.formula))
-  if (calcolati.size > 0) {
-    const perLaFormula = formulaInput(out, calcolati)
-    for (const item of visibili) {
-      const campo = library.get(item.field)!
-      if (!campo.formula) continue
-      const esito = await runFormulaScript(campo.formula, perLaFormula, campo.name, tenantId)
-      if (!esito.ok) {
-        // La scelta del proprietario: si RIFIUTA e si nomina la formula. Chi
-        // compila non può rimediare, ma nessun ticket nasce con un dato finto.
-        throw new ValidationError(`The formula of field "${nome(campo)}" failed: ${esito.error}`,
-          { key: 'errors.formField.formulaFailed', params: { field: nome(campo), message: esito.error } })
-      }
-      const valore = esito.value
-      // `NaN`/`Infinity` non sono valori: sono il segno che la formula ha
-      // moltiplicato qualcosa che non c'era. Il sandbox li fa già diventare
-      // `null` passando per JSON; il controllo esplicito c'è perché la regola
-      // sia scritta e non un effetto collaterale di come si serializza.
-      if (valore == null || (typeof valore === 'number' && !Number.isFinite(valore)) || String(valore).trim() === '') {
-        out[campo.name] = null
-        continue
-      }
-      const allowed = campo.vocabulary ? await vocabolarioDi(campo.vocabulary) : null
-      // Lo stesso `coerce` di un valore scritto a mano: una formula che
-      // restituisce «pippo» per un numero, o un valore fuori vocabolario,
-      // viene rifiutata dalle regole che valgono per tutti.
-      out[campo.name] = coerce(campo, String(valore), allowed)
+  for (const item of visibili) {
+    const campo = library.get(item.field)!
+    if (!campo.formula) continue
+    const esito = formule.get(campo.name)
+    // Il modulo cita il campo, quindi la formula è stata eseguita sopra: se
+    // manca è un difetto nostro, e si dice invece di scrivere un null.
+    if (!esito) {
+      throw new ValidationError(`The formula of field "${nome(campo)}" was not computed.`,
+        { key: 'errors.formField.formulaFailed', params: { field: nome(campo), message: 'not computed' } })
     }
+    if ('error' in esito) {
+      // La scelta del proprietario: si RIFIUTA e si nomina la formula. Chi
+      // compila non può rimediare, ma nessun ticket nasce con un dato finto.
+      // Il rifiuto sta QUI e non dove la formula gira: una formula rotta su un
+      // campo che nessuno vede non deve rompere la richiesta.
+      throw new ValidationError(`The formula of field "${nome(campo)}" failed: ${esito.error}`,
+        { key: 'errors.formField.formulaFailed', params: { field: nome(campo), message: esito.error } })
+    }
+    const valore = esito.value
+    // `NaN`/`Infinity` non sono valori: sono il segno che la formula ha
+    // moltiplicato qualcosa che non c'era. Il sandbox li fa già diventare
+    // `null` passando per JSON; il controllo esplicito c'è perché la regola
+    // sia scritta e non un effetto collaterale di come si serializza.
+    if (valore == null || (typeof valore === 'number' && !Number.isFinite(valore)) || String(valore).trim() === '') {
+      out[campo.name] = null
+      continue
+    }
+    const allowed = campo.vocabulary ? await vocabolarioDi(campo.vocabulary) : null
+    // Lo stesso `coerce` di un valore scritto a mano: una formula che
+    // restituisce «pippo» per un numero, o un valore fuori vocabolario, viene
+    // rifiutata dalle regole che valgono per tutti.
+    out[campo.name] = coerce(campo, String(valore), allowed)
   }
 
   /**

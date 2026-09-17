@@ -26,7 +26,7 @@
  */
 import { useEffect, useMemo, useState } from 'react'
 import {
-  FORM_FIELD_TYPES_WITHOUT_ANSWER, evaluateFormCondition, isFormAttachmentType, isFormReferenceType,
+  FORM_FIELD_TYPES_WITHOUT_ANSWER, evaluateFormCondition, formItemsToFill, isFormAttachmentType, isFormReferenceType,
   isFormTableType, localizedText,
   type CatalogFormDefinition, type CatalogFormItem, type FormAnswerValue, type FormAnswers,
 } from '@opengraphity/types'
@@ -159,24 +159,19 @@ function aiuto(f: CatalogFormFieldView, item: CatalogFormItem, language: string 
 }
 
 /**
- * Le voci da mostrare, date le risposte di adesso. È la stessa funzione che il
- * server richiama prima di scrivere (`visibleFormItems`): qui però serve anche
- * a sapere quali campi NON inviare, quindi il chiamante la può usare per
- * ripulire le risposte quando una condizione si spegne.
+ * Le voci da mostrare, date le risposte di adesso.
+ *
+ * È la STESSA funzione che il server richiama prima di scrivere — dal 17 set
+ * 2026 alla lettera: `formItemsToFill` vive in `@opengraphity/types` e questa
+ * la richiama. Prima erano due copie, e il commento diceva già «è la stessa»:
+ * una promessa che nessun test teneva. Qui serve anche a sapere quali campi NON
+ * inviare, quindi il chiamante la può usare per ripulire le risposte quando una
+ * condizione si spegne.
  */
 export function visibleCatalogFormItems(
   definition: CatalogFormDefinition, answers: FormAnswers, endUser?: boolean,
 ): CatalogFormItem[] {
-  const out: CatalogFormItem[] = []
-  for (const s of definition.sections) {
-    if (!evaluateFormCondition(s.visibleWhen, answers)) continue
-    for (const i of s.items) {
-      if (endUser && i.endUser === false) continue
-      if (!evaluateFormCondition(i.visibleWhen, answers)) continue
-      out.push(i)
-    }
-  }
-  return out
+  return formItemsToFill(definition, answers, { endUser })
 }
 
 /** Una risposta nella forma che l'API accetta (`FormAnswerInput`). */

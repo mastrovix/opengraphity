@@ -16,7 +16,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   evaluateFormCondition, evaluateFormRule, emptyCatalogForm, catalogFormFieldNames,
-  catalogFormForEndUser,
+  catalogFormForEndUser, formItemsToFill,
   type CatalogFormDefinition, type FormCondition,
 } from '@opengraphity/types'
 
@@ -505,6 +505,69 @@ describe('campi calcolati', () => {
     expect(runFormulaScript).toHaveBeenCalledTimes(1)
   })
 
+  /*
+   * ── LA DECISIONE DEL 17 SET 2026 ───────────────────────────────────────────
+   *
+   * Una condizione può guardare un campo CALCOLATO. Il difetto che questo
+   * chiude era stato riprodotto nel browser: il costruttore offriva il campo
+   * calcolato come soggetto, il browser mostrava il campo condizionato (lì il
+   * valore calcolato c'è), e il server rifiutava con «non viene chiesto con
+   * queste risposte» — perché calcolava la visibilità PRIMA delle formule.
+   * Quella richiesta non si poteva creare, mai.
+   */
+  it('una condizione su un campo CALCOLATO si valuta: il campo condizionato si accetta', async () => {
+    const lib = libreria({ giustificazione: campo('giustificazione', 'text') })
+    const def: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 's1', title: [{ language: 'it', label: 'S' }], items: [
+        { field: 'costo' },
+        { field: 'totale' },
+        { field: 'giustificazione', required: true, visibleWhen: { logic: 'and', rules: [{ field: 'totale', op: 'gt', value: '1000' }] } },
+      ] }],
+    }
+    // `totale` = formula su `costo`: 5000 > 1000, quindi la giustificazione si chiede.
+    const r = await resolveFormWrites(session, 't1', def, lib, [
+      { name: 'costo', value: '5000' }, { name: 'giustificazione', value: 'Sostituzione urgente' },
+    ])
+    expect(r.props['totale']).toBe(5000)
+    expect(r.props['giustificazione']).toBe('Sostituzione urgente')
+  })
+
+  it('e sotto la soglia quel campo non è chiesto: chi lo manda comunque è rifiutato', async () => {
+    const lib = libreria({ giustificazione: campo('giustificazione', 'text') })
+    const def: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 's1', title: [{ language: 'it', label: 'S' }], items: [
+        { field: 'costo' },
+        { field: 'totale' },
+        { field: 'giustificazione', required: true, visibleWhen: { logic: 'and', rules: [{ field: 'totale', op: 'gt', value: '1000' }] } },
+      ] }],
+    }
+    // 10 → totale 10: la giustificazione non si chiede, e non è obbligatoria.
+    await expect(resolveFormWrites(session, 't1', def, lib, [{ name: 'costo', value: '10' }]))
+      .resolves.toMatchObject({ props: { totale: 10 } })
+    // Mandarla comunque resta un varco, come per ogni campo nascosto.
+    await expect(resolveFormWrites(session, 't1', def, lib, [
+      { name: 'costo', value: '10' }, { name: 'giustificazione', value: 'x' },
+    ])).rejects.toThrow(/hidden by a condition/)
+  })
+
+  it('una formula rotta su un campo che NESSUNO vede non rompe la richiesta', async () => {
+    formulaFallisce = 'ReferenceError: quantita is not defined'
+    const lib = libreria()
+    const def: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 's1', title: [{ language: 'it', label: 'S' }], items: [
+        { field: 'costo' },
+        // visibile solo sopra i mille: con costo 10 resta fuori
+        { field: 'totale', visibleWhen: { logic: 'and', rules: [{ field: 'costo', op: 'gt', value: '1000' }] } },
+      ] }],
+    }
+    const r = await resolveFormWrites(session, 't1', def, lib, [{ name: 'costo', value: '10' }])
+    expect(r.props['costo']).toBe(10)
+    expect(r.props['totale']).toBeUndefined()
+  })
+
   it('un client che manda un campo calcolato viene RIFIUTATO, non ignorato', async () => {
     const def = definizione(['costo', 'totale'])
     await expect(resolveFormWrites(session, 't1', def, libreria(), [
@@ -535,7 +598,17 @@ describe('campi calcolati', () => {
       .rejects.toThrow(/is a number, "pippo" is not/)
   })
 
-  it('un campo calcolato NASCOSTO da una condizione non si calcola: la domanda non è stata fatta', async () => {
+  /*
+   * Un campo calcolato NASCOSTO non si SCRIVE: la domanda non è stata fatta.
+   *
+   * Fino al 17 set 2026 non si calcolava nemmeno. Poi il proprietario ha
+   * deciso che una condizione può guardare un campo calcolato («chiedi la
+   * giustificazione se il totale supera mille»), e per valutarla il valore
+   * deve esistere: ora la formula gira per ogni campo calcolato che il modulo
+   * cita, e la visibilità decide solo cosa finisce sul ticket. Il prezzo della
+   * decisione è un giro di sandbox per campo calcolato a ogni salvataggio.
+   */
+  it('un campo calcolato NASCOSTO da una condizione non si scrive, ma si calcola (le condizioni lo guardano)', async () => {
     const lib = libreria()
     const def: CatalogFormDefinition = {
       version: 1, revision: 1,
@@ -546,7 +619,7 @@ describe('campi calcolati', () => {
     }
     const r = await resolveFormWrites(session, 't1', def, lib, [{ name: 'costo', value: '10' }])
     expect(r.props['totale']).toBeUndefined()
-    expect(runFormulaScript).not.toHaveBeenCalled()
+    expect(runFormulaScript).toHaveBeenCalledTimes(1)
   })
 
   it('calcolato e OBBLIGATORIO: se la formula non produce niente, il salvataggio si ferma come per un campo vuoto', async () => {
@@ -737,5 +810,61 @@ describe('catalogFormForEndUser', () => {
     const dato = modulo()
     catalogFormForEndUser(dato)
     expect(catalogFormFieldNames(dato)).toEqual(['modello', 'ambiente', 'costo_interno', 'approvazione_diretta'])
+  })
+})
+
+
+/**
+ * LA VISIBILITÀ È UNA FUNZIONE SOLA (revisione del 17 set 2026).
+ *
+ * Era scritta tre volte — server, renderer, e una copia in linea nel corpo del
+ * render — e condiviso c'era solo il valutatore di una singola condizione. Ora
+ * `formItemsToFill` vive in `@opengraphity/types` e la richiamano entrambi:
+ * `visibleFormItems` (API) e `visibleCatalogFormItems` (web-core) sono due nomi
+ * per la stessa cosa. Questo test tiene fermo il lato server; il renderer
+ * delega alla stessa funzione, quindi la parità non è più una promessa scritta
+ * in un commento.
+ */
+describe('formItemsToFill: una sorgente sola per la visibilità', () => {
+  const def: CatalogFormDefinition = {
+    version: 1, revision: 3,
+    sections: [
+      { id: 'a', title: { it: 'Sempre' }, items: [
+        { field: 'tipo' },
+        { field: 'costo', visibleWhen: { match: 'all', rules: [{ field: 'tipo', op: 'eq', value: 'portatile' }] } },
+        { field: 'interno', endUser: false },
+      ] },
+      { id: 'b', title: { it: 'Solo per i grandi importi' },
+        visibleWhen: { match: 'all', rules: [{ field: 'costo', op: 'gt', value: '1000' }] },
+        items: [{ field: 'giustificazione' }] },
+    ],
+  }
+
+  it('`visibleFormItems` dell\'API è `formItemsToFill`: stesso elenco, stessi argomenti', () => {
+    for (const risposte of [
+      {},
+      { tipo: 'portatile' },
+      { tipo: 'portatile', costo: 5000 },
+      { tipo: 'fisso', costo: 5000 },
+    ]) {
+      expect(visibleFormItems(def, risposte).map((i) => i.field))
+        .toEqual(formItemsToFill(def, risposte).map((i) => i.field))
+      expect(visibleFormItems(def, risposte, { endUser: true }).map((i) => i.field))
+        .toEqual(formItemsToFill(def, risposte, { endUser: true }).map((i) => i.field))
+    }
+  })
+
+  it('una condizione di SEZIONE su un valore calcolato apre la sezione', () => {
+    // `costo` qui è il valore che la formula ha prodotto: per la visibilità è
+    // una risposta come le altre, ed è il punto della decisione del 17 set.
+    expect(formItemsToFill(def, { tipo: 'portatile', costo: 5000 }).map((i) => i.field))
+      .toEqual(['tipo', 'costo', 'interno', 'giustificazione'])
+    expect(formItemsToFill(def, { tipo: 'portatile', costo: 10 }).map((i) => i.field))
+      .toEqual(['tipo', 'costo', 'interno'])
+  })
+
+  it('dal portale le voci dell\'area di lavoro non si chiedono', () => {
+    expect(formItemsToFill(def, { tipo: 'portatile' }, { endUser: true }).map((i) => i.field))
+      .toEqual(['tipo', 'costo'])
   })
 })
