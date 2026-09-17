@@ -106,6 +106,33 @@ function hostHeaderOf(req: express.Request): string {
 
 interface UserRecord { id: string; role: unknown; active: boolean }
 
+/**
+ * Il tenant è sospeso? Letta a ogni richiesta autenticata, quindi va tenuta
+ * ECONOMICA: una proprietà sul nodo `:Tenant`, che è indicizzato per `id`.
+ *
+ * Nessuna cache: una sospensione serve a chiudere la porta adesso, e un minuto
+ * di cache vorrebbe dire un minuto in cui la porta è ancora aperta. Se questa
+ * lettura diventasse un costo, la si mette in cache con un TTL di pochi
+ * secondi — mai con uno che si misuri in minuti.
+ *
+ * Un errore di lettura NON apre la porta: si rifiuta. È la scelta severa, ed è
+ * quella giusta su un controllo di accesso.
+ */
+async function tenantSospeso(tenantId: string): Promise<boolean> {
+  const session = getSession(undefined, 'READ')
+  try {
+    const result = await session.executeRead((tx) =>
+      tx.run('MATCH (t:Tenant {id: $tenantId}) RETURN t.suspended_at AS suspendedAt', { tenantId }))
+    const row = result.records[0]
+    // Nessun nodo `:Tenant`: non è «non sospeso», è un tenant che non esiste —
+    // e `findUserInTenant` lo fermerà comunque un istante dopo.
+    if (!row) return false
+    return row.get('suspendedAt') != null
+  } finally {
+    await session.close()
+  }
+}
+
 async function findUserInTenant(email: string, tenantId: string): Promise<UserRecord | null> {
   const session = getSession(undefined, 'READ')
   try {
@@ -202,6 +229,26 @@ async function resolveKeycloak(decoded: KeycloakTokenPayload, req: express.Reque
     throw unauthorized('Unauthorized: token has no email claim')
   }
 
+  /*
+   * L'HOST DELLA CONSOLE NON È UN TENANT (17 set 2026).
+   *
+   * `opengrafo-admin.localhost` ha la forma di un tenant, e senza questo
+   * rifiuto `extractTenantFromHost` ne dedurrebbe uno chiamato
+   * `opengrafo-admin`: un token di tenant presentato lì verrebbe accettato, e
+   * il confine fra i tenant e la console di piattaforma passerebbe solo da
+   * nginx. Qui si rifiuta a monte: sulla console si entra SOLO dal suo
+   * cammino (`auth/platformAuth.ts`), che pretende il realm di piattaforma.
+   *
+   * Conseguenza dichiarata: quello slug è riservato, nessun tenant può
+   * chiamarsi così.
+   */
+  const host = hostHeaderOf(req).split(',')[0]!.trim().split(':')[0]!.toLowerCase()
+  const consoleHost = config.platformHost?.toLowerCase()
+  if (consoleHost && host === consoleHost) {
+    authLogger.warn({ host }, 'tenant token presented on the platform console host: rejected')
+    throw unauthorized('Unauthorized: tenant token on the platform console host')
+  }
+
   // Cross-check: the realm the token was issued by must match the subdomain
   // the request arrived on. Applies to REST and GraphQL alike; nginx forces
   // X-Forwarded-Host so a client cannot pick the tenant by header.
@@ -209,6 +256,23 @@ async function resolveKeycloak(decoded: KeycloakTokenPayload, req: express.Reque
   if (tenantFromHost && tenantFromHost !== realm) {
     authLogger.warn({ realm, hostTenant: tenantFromHost }, 'Tenant/host mismatch — token rejected')
     throw unauthorized('Unauthorized: token/tenant mismatch')
+  }
+
+  /*
+   * UN TENANT SOSPESO NON LASCIA ENTRARE NESSUNO (17 set 2026).
+   *
+   * La console di piattaforma può sospendere un tenant, e la sospensione deve
+   * valere SUBITO, anche per chi ha in mano un token ancora valido — altrimenti
+   * «sospeso» vorrebbe dire «sospeso fra un quarto d'ora», che è il tempo di
+   * vita di un access token. Il controllo sta qui e non nella console: chi
+   * decide se si entra è il cammino di autenticazione, a ogni richiesta.
+   *
+   * Vale per tutti, admin compresi: un tenant sospeso è sospeso. Per rientrare
+   * si riattiva dalla console.
+   */
+  if (await tenantSospeso(realm)) {
+    authLogger.warn({ realm }, 'access to a suspended tenant: rejected')
+    throw unauthorized('Unauthorized: tenant suspended')
   }
 
   const user = await findUserInTenant(decoded.email, realm)

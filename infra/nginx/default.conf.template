@@ -26,6 +26,79 @@
 # totale · H-11: it used to be a fixed 11m «matching the API's 10 MB limit»,
 # from before the maximum became a per-organization setting up to 100 MB.
 
+# ── Platform console: opengrafo-admin.localhost ───────────────────────────────
+# La console crea, rinomina, sospende e CANCELLA i tenant: non appartiene a
+# nessuno di loro e vive su un host suo.
+#
+# Il `server_name` è ESATTO, non una regex, e questo è ciò che lo protegge:
+# nginx preferisce sempre un nome esatto a una espressione regolare, quindi
+# vince su `~^(?<tenant>[^.]+)\.localhost$` — che altrimenti corrisponderebbe
+# anche qui e tratterebbe la console come un tenant chiamato «opengrafo-admin».
+# Sta comunque scritto prima, perché si legge nell'ordine in cui si ragiona.
+#
+# La seconda metà della protezione è nell'API: `resolveAuth` rifiuta un token
+# di tenant presentato su questo host, così il confine non dipende da nginx.
+#
+# Non c'è `/graphql`: lo schema del prodotto è legato a un tenant e la console
+# non ne ha uno. Solo `/platform`, che ha la sua autenticazione (realm dedicato
+# + questo host, `apps/api/src/auth/platformAuth.ts`).
+server {
+    listen 80;
+    server_name opengrafo-admin.localhost;
+
+    # Il DNS di Docker: `proxy_pass` con una variabile lo richiede, e senza
+    # questa riga l'inoltro dava 502 — visto dal vivo appena scritto il blocco.
+    resolver 127.0.0.11 ipv6=off valid=30s;
+
+    large_client_header_buffers 4 32k;
+    proxy_buffer_size           128k;
+    proxy_buffers               4 256k;
+    proxy_busy_buffers_size     256k;
+
+    # Le stesse intestazioni delle altre app, più `noindex`: è un pannello di
+    # servizio, non una pagina da trovare. Niente `wasm-unsafe-eval`: la console
+    # non esegue formule, quindi non le serve.
+    #
+    # `connect-src` elenca ENTRAMBE le origini pubbliche di Keycloak, come i
+    # blocchi di web e portale. Scritto più stretto — solo
+    # `${KEYCLOAK_PUBLIC_ORIGIN}` — la console si fermava all'avvio con «Cannot
+    # reach Keycloak … Load failed»: il bundle è costruito con
+    # `VITE_KEYCLOAK_URL`, che qui è l'host Tailscale, e il CSP bloccava la
+    # richiesta prima che partisse. Un CSP più severo del necessario non è più
+    # sicuro: è solo rotto in un modo che somiglia a un guasto di rete.
+    add_header Content-Security-Policy
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ${KEYCLOAK_PUBLIC_ORIGIN} https://${TAILSCALE_HOST}; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+        always;
+    add_header X-Content-Type-Options "nosniff"                         always;
+    add_header X-Frame-Options        "DENY"                            always;
+    add_header Referrer-Policy        "strict-origin-when-cross-origin" always;
+    add_header X-Robots-Tag           "noindex, nofollow"               always;
+
+    location /platform {
+        client_max_body_size 64k;
+        set $upstream_api api:4000;
+        proxy_pass         http://$upstream_api;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        # X-Forwarded-Host imposto da nginx: `platformAuth` confronta questo
+        # host con quello configurato, e un client non deve poterlo scegliere.
+        proxy_set_header   X-Forwarded-Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        set $upstream_console console:80;
+        proxy_pass         http://$upstream_console;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Forwarded-Host $host;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+
 # ── Portal: portal.{tenant}.localhost ────────────────────────────────────────
 server {
     listen 80;

@@ -58,6 +58,7 @@ import { tenantTimezone } from './tenantTimezone.js'
 import { businessHoursWithoutCalendar } from './serviceCalendars.js'
 import { pendingMigrations } from './migrationState.js'
 import { teamsWithoutSourcing } from './teamSourcing.js'
+import { changesStuckWithOpenPath } from './changesStuck.js'
 import { ticketsWithoutSla } from './ticketsWithoutSla.js'
 import { workflowsMissingStepRoles } from './workflowStepRoles.js'
 import { vocabulariesBehindShipped } from './vocabularyShippedDrift.js'
@@ -112,6 +113,7 @@ export type ConfigurationIssueKind =
   | 'formulas_with_scripting_off'
   | 'metamodel_duplicate_field'
   | 'catalog_form_to_fix'
+  | 'changes_stuck'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -163,7 +165,7 @@ async function computeConfigurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms, checkStuckChanges]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -515,6 +517,26 @@ async function checkMigrations(_tenantId: string): Promise<ConfigurationIssue[]>
   const pending = await pendingMigrations()
   if (pending.length === 0) return []
   return [{ kind: 'migrations_pending', severity: 'error', where: null, params: { count: String(pending.length), migrations: pending.join(', ') } }]
+}
+
+/**
+ * LE CHANGE FERME CON LA STRADA APERTA (17 set 2026). La logica — e il perché
+ * si segnala invece di ripararle — sta in `changesStuck.ts`; qui c'è solo la
+ * voce del banner. `warning` e non `error`: niente è rotto, ma del lavoro
+ * finito è parcheggiato e nessuno lo sa.
+ */
+async function checkStuckChanges(tenantId: string): Promise<ConfigurationIssue[]> {
+  const session = getSession()
+  try {
+    const ferme = await changesStuckWithOpenPath(session, tenantId)
+    if (ferme.length === 0) return []
+    return [{
+      kind: 'changes_stuck', severity: 'warning', where: '/changes',
+      params: { count: String(ferme.length), changes: ferme.join(', ') },
+    }]
+  } finally {
+    await session.close()
+  }
 }
 
 /**

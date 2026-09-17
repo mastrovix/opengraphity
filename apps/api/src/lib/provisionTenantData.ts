@@ -60,6 +60,13 @@ export interface TenantProvisioningResult {
    * la definizione **c'è**, e che una esistente non è stata toccata.
    */
   workflows: Array<{ name: string; created: boolean | null }>
+  /**
+   * Quello che RESTA da configurare a una persona: team, change manager,
+   * domande di assessment. Non è un errore — il provisioning non poteva
+   * riempirli — ma non si tace: chi chiama lo mostra, e la diagnostica lo porta
+   * nel banner dell'amministratore.
+   */
+  gapsLeft: ProvisioningGap[]
 }
 
 /**
@@ -145,10 +152,29 @@ export async function provisionTenantData(
    * VISIBILE: se manca qualcosa il chiamante lo sa subito, con la lista, e
    * rilanciare completa (il provisioning è idempotente).
    */
+  /*
+   * MA SI FALLISCE SOLO PER I BUCHI CHE IL PROVISIONING POTEVA CHIUDERE
+   * (17 set 2026).
+   *
+   * Prima si lanciava per QUALUNQUE buco, e fra quelli ce ne sono tre che il
+   * prodotto non può riempire da sé: i TEAM (sono persone, nessuno le può
+   * inventare), il CHANGE MANAGER (è un team) e le DOMANDE di assessment (sono
+   * la configurazione del cliente, non un dato di fabbrica). Risultato: ogni
+   * tenant nuovo finiva con «provisioned only in part … run it again», e
+   * rilanciare non cambiava niente — visto dal vivo creando `prova-cons`, con
+   * l'onboarding che aveva fatto tutto e si dichiarava fallito.
+   *
+   * Un errore che compare sempre e non si può risolvere non è un errore: è
+   * rumore che insegna a ignorare gli errori veri. Quei tre tornano nel
+   * risultato come `gapsLeft`, e la diagnostica li mostra già all'admin col
+   * banner (`configurationIssues`, voce `provisioning_gap`), che è il posto
+   * dove una persona può rimediare.
+   */
   const gaps = await tenantProvisioningGaps(session, tenantId)
-  if (gaps.length > 0) {
+  const miei = gaps.filter((g) => !GAP_DA_PERSONA.includes(g.kind))
+  if (miei.length > 0) {
     throw new Error(
-      `Tenant ${tenantId} provisioned only in part: ${gaps.map((g) => formatGap(g)).join('; ')}. `
+      `Tenant ${tenantId} provisioned only in part: ${miei.map((g) => formatGap(g)).join('; ')}. `
       + 'The provisioning is idempotent: run it again to complete it.',
     )
   }
@@ -159,8 +185,20 @@ export async function provisionTenantData(
     notificationRulesCreated: rules.created,
     matricesCreated,
     workflows,
+    gapsLeft: gaps.filter((g) => GAP_DA_PERSONA.includes(g.kind)),
   }
 }
+
+/**
+ * I buchi che NESSUN provisioning può chiudere: li riempie una persona dalle
+ * pagine del prodotto. Elencarli qui è la differenza fra «qualcosa è andato
+ * storto» e «resta da configurare».
+ */
+const GAP_DA_PERSONA: readonly ProvisioningGap['kind'][] = [
+  'no_teams',
+  'no_change_manager',
+  'no_assessment_questions',
+]
 
 /**
  * UN BUCO, come DATO e non come frase.

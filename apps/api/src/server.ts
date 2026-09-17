@@ -20,6 +20,7 @@ import { sseRouter } from './rest/sse.js'
 import { reportStreamRouter } from './rest/report-stream.js'
 import { assistantRouter } from './rest/assistant.js'
 import { clientLogRouter } from './rest/client-logs.js'
+import { platformTenantsRouter } from './rest/platform-tenants.js'
 import { handleSlackCommands, handleSlackActions, handleSlackOAuthCallback } from './rest/slack.js'
 import { attachmentRouter } from './rest/attachments.js'
 import { brandRouter } from './rest/brand.js'
@@ -219,6 +220,13 @@ app.use('/api', sseRouter)
 app.use('/api', reportStreamRouter)
 app.use('/api', assistantRouter)
 app.use('/api', clientLogRouter)
+/*
+ * LA CONSOLE DI PIATTAFORMA, fuori da `/api` e con la sua autenticazione
+ * (realm dedicato + host della console). Senza `PLATFORM_REALM` e
+ * `PLATFORM_CONSOLE_HOST` ogni richiesta qui è rifiutata: la console non
+ * esiste dove nessuno l'ha configurata.
+ */
+app.use(platformTenantsRouter)
 app.use('/api', attachmentRouter)
 app.use('/api', brandRouter)
 app.use('/api', incidentPdfRouter)

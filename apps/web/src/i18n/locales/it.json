@@ -3999,7 +3999,13 @@
         "holidays": "Le festività devono essere date nel formato YYYY-MM-DD."
       },
       "inAppRetention": "Le notifiche si conservano per un numero intero di giorni fra {{min}} e {{max}}.",
-      "name": "Il nome dell'organizzazione deve avere da 1 a {{max}} caratteri."
+      "name": "Il nome dell'organizzazione deve avere da 1 a {{max}} caratteri.",
+      "slugShape": "«{{slug}}» non è uno slug valido: da 3 a 32 caratteri, minuscole, cifre e trattini, senza trattino all'inizio o alla fine.",
+      "slugReserved": "«{{slug}}» è un nome riservato dal prodotto e non può essere un tenant.",
+      "nameEmpty": "Il nome del tenant non può essere vuoto.",
+      "nameTooLong": "Il nome del tenant è troppo lungo: al massimo {{max}} caratteri.",
+      "purgeNotSuspended": "Il tenant «{{slug}}» non è sospeso: prima si sospende, poi si cancella. Non c'è una scorciatoia da attivo a cancellato.",
+      "purgeConfirmMismatch": "Per cancellare il tenant «{{slug}}» bisogna riscrivere il suo slug come conferma."
     },
     "list": {
       "limit": "Una lista può mostrare fra 1 e {{max}} righe (richieste: {{got}}).",
@@ -6076,7 +6082,8 @@
       "metamodel_duplicate_field_one": "Un campo del metamodello è definito DUE volte nello stesso tipo ({{fields}}): le tendine lo mostrano due volte, e una regola di visibilità scritta su una definizione non vale per l'altra. **Esegui le migrazioni** (la 20261005_1010 toglie i doppioni); se ricompare, aprine una segnalazione.",
       "metamodel_duplicate_field_other": "{{count}} gruppi di campi del metamodello sono definiti più di una volta nello stesso tipo ({{fields}}): le tendine li mostrano doppi, e una regola di visibilità scritta su una definizione non vale per l'altra. **Esegui le migrazioni** (la 20261005_1010 toglie i doppioni); se ricompaiono, aprine una segnalazione.",
       "catalog_form_to_fix_one": "Un modulo del catalogo non si può compilare come è configurato ({{forms}}): chi apre la richiesta riceve un rifiuto che non può risolvere. **Aprilo in Configurazione → Moduli del catalogo**: `fieldsMissing` = cita un campo che non è più in libreria, `requiredNotForEndUser` = pretende un campo che il portale non chiede.",
-      "catalog_form_to_fix_other": "{{count}} moduli del catalogo non si possono compilare come sono configurati ({{forms}}): chi apre quelle richieste riceve un rifiuto che non può risolvere. **Aprili in Configurazione → Moduli del catalogo**: `fieldsMissing` = citano un campo che non è più in libreria, `requiredNotForEndUser` = pretendono un campo che il portale non chiede."
+      "catalog_form_to_fix_other": "{{count}} moduli del catalogo non si possono compilare come sono configurati ({{forms}}): chi apre quelle richieste riceve un rifiuto che non può risolvere. **Aprili in Configurazione → Moduli del catalogo**: `fieldsMissing` = citano un campo che non è più in libreria, `requiredNotForEndUser` = pretendono un campo che il portale non chiede.",
+      "changes_stuck": "{{count}} change sono ferme pur avendo la strada aperta ({{changes}}): la loro transizione automatica aspetta una condizione che è già soddisfatta. Le transizioni automatiche si valutano solo quando qualcuno lavora la change, quindi una che si è persa l'occasione non riparte da sé. **Apri quelle change e fai avanzare il passo**: il lavoro è già finito, manca solo il movimento."
     },
     "gap": {
       "tenant_missing": "nessuna riga: il tenant non esiste",

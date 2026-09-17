@@ -344,7 +344,15 @@ services:
       # Public URL — the origin browsers use; tokens carry this in their `iss` claim
       KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
       # I client delle app a cui l'API crede (token emessi per altri client rifiutati): gli stessi dei bundle.
-      KEYCLOAK_APP_CLIENT_IDS: "${VITE_KEYCLOAK_CLIENT_ID:-opengrafo-web},${VITE_KEYCLOAK_CLIENT_ID_PORTAL:-opengrafo-portal}"
+      KEYCLOAK_APP_CLIENT_IDS: "${VITE_KEYCLOAK_CLIENT_ID:-opengrafo-web},${VITE_KEYCLOAK_CLIENT_ID_PORTAL:-opengrafo-portal},${VITE_KEYCLOAK_CLIENT_ID_CONSOLE:-opengrafo-console}"
+      # ── La console di piattaforma (17 set 2026) ──────────────────────────────
+      # Senza queste due, ogni richiesta a `/platform` è rifiutata: la console
+      # non esiste dove nessuno l'ha configurata. Niente default, nemmeno qui.
+      PLATFORM_REALM: ${PLATFORM_REALM:-}
+      PLATFORM_CONSOLE_HOST: ${PLATFORM_CONSOLE_HOST:-}
+      # Gli indirizzi delle app di un tenant, con `{slug}`: li mostra la console.
+      TENANT_URL_TEMPLATE: ${TENANT_URL_TEMPLATE:-}
+      PORTAL_URL_TEMPLATE: ${PORTAL_URL_TEMPLATE:-}
       KEYCLOAK_ADMIN_USER: admin
       KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD mancante in infra/.env}"
 
@@ -558,6 +566,35 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
+
+  # ── LA CONSOLE DI PIATTAFORMA (17 set 2026) ────────────────────────────────
+  # Crea, rinomina, sospende e cancella i TENANT: non appartiene a nessuno di
+  # loro, e per questo ha un host e un realm Keycloak suoi.
+  #
+  # `PLATFORM_REALM` non ha default nemmeno qui: senza, l'API rifiuta ogni
+  # richiesta alla console e il bundle si ferma all'avvio. È voluto — una
+  # console che si crea da sé su ogni installazione è una porta che nessuno ha
+  # chiesto di aprire.
+  console:
+    build:
+      context: ..
+      dockerfile: apps/console/Dockerfile
+      args:
+        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:?VITE_KEYCLOAK_URL mancante in infra/.env (URL Keycloak raggiungibile dal browser)}
+        VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID_CONSOLE:-opengrafo-console}
+        VITE_PLATFORM_REALM: ${PLATFORM_REALM:?PLATFORM_REALM mancante in infra/.env (il realm Keycloak degli amministratori di piattaforma)}
+    ports:
+      - "127.0.0.1:5175:80"
+    depends_on:
+      - api
+    networks:
+      - opengrafo-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   portal:
     build:

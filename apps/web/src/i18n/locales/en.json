@@ -3999,7 +3999,13 @@
         "holidays": "Holidays must be dates in YYYY-MM-DD format."
       },
       "inAppRetention": "Notifications are kept for a whole number of days between {{min}} and {{max}}.",
-      "name": "The organization name must have 1–{{max}} characters."
+      "name": "The organization name must have 1–{{max}} characters.",
+      "slugShape": "\"{{slug}}\" is not a valid tenant slug: 3 to 32 characters, lowercase letters, digits and hyphens, not starting or ending with a hyphen.",
+      "slugReserved": "\"{{slug}}\" is a name the product reserves and cannot be a tenant.",
+      "nameEmpty": "The tenant name cannot be empty.",
+      "nameTooLong": "The tenant name is too long: {{max}} characters at most.",
+      "purgeNotSuspended": "The tenant \"{{slug}}\" is not suspended: suspend it first, then delete it. There is no shortcut from active to deleted.",
+      "purgeConfirmMismatch": "To delete the tenant \"{{slug}}\" its slug must be typed again as confirmation."
     },
     "list": {
       "limit": "A list can show between 1 and {{max}} rows (asked: {{got}}).",
@@ -6076,7 +6082,8 @@
       "metamodel_duplicate_field_one": "A metamodel field is defined TWICE on the same type ({{fields}}): dropdowns show it twice, and a visibility rule written on one definition does not apply to the other. **Run the migrations** (20261005_1010 removes the duplicates); if it comes back, please report it.",
       "metamodel_duplicate_field_other": "{{count}} groups of metamodel fields are defined more than once on the same type ({{fields}}): dropdowns show them twice, and a visibility rule written on one definition does not apply to the other. **Run the migrations** (20261005_1010 removes the duplicates); if they come back, please report it.",
       "catalog_form_to_fix_one": "A catalog form cannot be filled as configured ({{forms}}): whoever opens the request gets a refusal they cannot fix. **Open it in Settings → Catalog forms**: `fieldsMissing` = it names a field no longer in the library, `requiredNotForEndUser` = it requires a field the portal never asks for.",
-      "catalog_form_to_fix_other": "{{count}} catalog forms cannot be filled as configured ({{forms}}): whoever opens those requests gets a refusal they cannot fix. **Open them in Settings → Catalog forms**: `fieldsMissing` = they name a field no longer in the library, `requiredNotForEndUser` = they require a field the portal never asks for."
+      "catalog_form_to_fix_other": "{{count}} catalog forms cannot be filled as configured ({{forms}}): whoever opens those requests gets a refusal they cannot fix. **Open them in Settings → Catalog forms**: `fieldsMissing` = they name a field no longer in the library, `requiredNotForEndUser` = they require a field the portal never asks for.",
+      "changes_stuck": "{{count}} changes are stuck although the way is open ({{changes}}): their automatic transition is waiting on a condition that is already satisfied. Automatic transitions are only evaluated while someone works the change, so one that missed its chance never restarts on its own. **Open those changes and move the step forward**: the work is done, only the move is missing."
     },
     "gap": {
       "tenant_missing": "no row: the tenant does not exist",

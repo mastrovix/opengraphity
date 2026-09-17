@@ -64,6 +64,62 @@ const PAROLE_CYPHER = /\b(MATCH|MERGE|CREATE|OPTIONAL MATCH|DETACH DELETE|UNWIND
 const sembraQuery = (t) => PAROLE_CYPHER.test(t) && t.includes('(') && t.trim().length > 24
 
 /**
+ * VIA I COMMENTI A BLOCCO, MA NON QUELLO CHE STA IN UNA STRINGA (17 set 2026).
+ *
+ * Prima era una `replace` con una regex, e `/*` dentro una stringa apriva un
+ * finto commento: tutto fino al primo `*\/` veniva mangiato, la parita dei
+ * backtick si spostava, e l'estrattore costruiva una "query" fatta di codice.
+ * Visto dal vivo su `lib/tenantOnboarding.ts`, dove i redirect di Keycloak
+ * contengono il jolly — `https://${slug}.${domain}/*`. Il guardiano diceva «una
+ * query non valida» indicando una riga che query non era: chi lo legge impara a
+ * non fidarsi.
+ *
+ * Qui si cammina sul sorgente sapendo dove si e: dentro una stringa (apice,
+ * doppio apice, backtick) o dentro un commento di riga, un `/*` e testo.
+ */
+function senzaCommentiABlocco(src) {
+  let out = ''
+  let i = 0
+  while (i < src.length) {
+    const c = src[i]
+    // Stringhe: si salta fino alla chiusura, rispettando gli escape.
+    if (c === "'" || c === '"' || c === '`') {
+      const fine = (() => {
+        for (let j = i + 1; j < src.length; j++) {
+          if (src[j] === '\\') { j++; continue }
+          if (src[j] === c) return j
+          // Un apice singolo o doppio non attraversa la riga: se ci arriva, non
+          // era una stringa (un apostrofo in un commento di riga, per esempio).
+          if (c !== '`' && src[j] === '\n') return -1
+        }
+        return -1
+      })()
+      if (fine === -1) { out += c; i++; continue }
+      out += src.slice(i, fine + 1)
+      i = fine + 1
+      continue
+    }
+    // Commento di riga: resta (un `http://` in una stringa non si deve rompere).
+    if (c === '/' && src[i + 1] === '/') {
+      const fine = src.indexOf('\n', i)
+      const stop = fine === -1 ? src.length : fine
+      out += src.slice(i, stop)
+      i = stop
+      continue
+    }
+    // Commento a blocco: via, ed e il solo caso in cui si butta qualcosa.
+    if (c === '/' && src[i + 1] === '*') {
+      const fine = src.indexOf('*/', i + 2)
+      i = fine === -1 ? src.length : fine + 2
+      continue
+    }
+    out += c
+    i++
+  }
+  return out
+}
+
+/**
  * I template del file. Si prendono i letterali con i backtick, dal delimitatore
  * al suo compagno, saltando quelli annidati in un'espressione `${...}`.
  */
@@ -92,6 +148,17 @@ function templates(src) {
 }
 
 const intere = []
+/**
+ * SECONDO CONTROLLO, tutto testuale: un tetto passato come PARAMETRO.
+ *
+ * `LIMIT $max` con un numero JS arriva a Neo4j come FLOAT, e `LIMIT` vuole un
+ * INTEGER: la query esplode a runtime con «'200.0' is not a valid value».
+ * EXPLAIN non lo vede (i parametri non ci sono), un test con un driver finto
+ * nemmeno (il tipo lo rifiuta il server), e l'errore arriva quindi in
+ * produzione — è arrivato: ha spento l'intera pagina di diagnostica il 17 set
+ * 2026. La forma giusta è interpolare la costante nel template.
+ */
+const tettiParametrici = []
 let composte = 0
 let esempi = 0
 for (const dir of SCAN) {
@@ -102,10 +169,14 @@ for (const dir of SCAN) {
      * scorciatoia che Cypher non accetta e che nessuno esegue). Restano i
      * commenti di riga, cosi un `http://` dentro una stringa non si rompe.
      */
-    const src = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    const src = senzaCommentiABlocco(readFileSync(file, 'utf8'))
     if (!src.includes('`')) continue
     for (const t of templates(src)) {
       if (!sembraQuery(t)) continue
+      // Prima dello scarto delle composte: una query composta ha lo stesso
+      // problema, e il controllo e testuale — non ha bisogno di EXPLAIN.
+      const tetto = /\b(LIMIT|SKIP)\s+\$([A-Za-z_][A-Za-z0-9_]*)/i.exec(t)
+      if (tetto) tettiParametrici.push({ file: relative(ROOT, file), clausola: `${tetto[1].toUpperCase()} $${tetto[2]}` })
       if (t.includes('${')) { composte++; continue }
       /**
        * Un ESEMPIO dentro un commento, non una query. Si riconosce da tre
@@ -210,4 +281,11 @@ if (rotte.length > 0) {
   console.error('\nUna query che non si parsa non e mai stata eseguita: nessun test la copre.')
   process.exit(1)
 }
-console.log(`check-cypher: ${intere.length} query scritte per intero, tutte valide (EXPLAIN). Fuori perimetro: ${composte} composte con \${…}, ${esempi} esempi nei commenti.`)
+
+if (tettiParametrici.length > 0) {
+  console.error(`check-cypher: ${tettiParametrici.length} tetti passati come PARAMETRO (Neo4j li riceve come float e rifiuta la query):`)
+  for (const t of tettiParametrici) console.error(`  ${t.file}\n    ${t.clausola}`)
+  console.error('\nInterpola la costante nel template (`LIMIT ${MAX}`), come topology.ts e services.ts.')
+  process.exit(1)
+}
+console.log(`check-cypher: ${intere.length} query scritte per intero, tutte valide (EXPLAIN); nessun tetto parametrico. Fuori perimetro: ${composte} composte con \${…}, ${esempi} esempi nei commenti.`)

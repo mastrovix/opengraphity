@@ -88,6 +88,39 @@ describe('resolveAuth (Keycloak)', () => {
     expect(close).toHaveBeenCalled()
   })
 
+  /**
+   * L'HOST DELLA CONSOLE DI PIATTAFORMA NON È UN TENANT (17 set 2026).
+   *
+   * `opengrafo-admin.localhost` ha la forma di un tenant: senza il rifiuto,
+   * `extractTenantFromHost` ne dedurrebbe uno chiamato «opengrafo-admin» e un
+   * token di tenant presentato là verrebbe accettato — il confine fra i tenant
+   * e la console passerebbe solo da nginx. La console ha il suo cammino
+   * (`auth/platformAuth.ts`), che pretende il realm di piattaforma.
+   */
+  it('un token di TENANT sull\'host della console si rifiuta', async () => {
+    process.env['PLATFORM_CONSOLE_HOST'] = 'opengrafo-admin.localhost'
+    resetConfigCache()
+    verifyKeycloakToken.mockResolvedValue(kcToken({ iss: 'http://localhost:8080/realms/opengrafo-admin' }))
+    dbReturns([record({ id: 'u-1', role: 'admin' })])
+    try {
+      await rejectsWithCode(
+        resolveAuth('tok', makeReq({ host: 'opengrafo-admin.localhost' })),
+        'UNAUTHORIZED', /platform console host/)
+    } finally {
+      delete process.env['PLATFORM_CONSOLE_HOST']
+      resetConfigCache()
+    }
+  })
+
+  it('senza host della console configurato nulla cambia per i tenant', async () => {
+    delete process.env['PLATFORM_CONSOLE_HOST']
+    resetConfigCache()
+    verifyKeycloakToken.mockResolvedValue(kcToken())
+    dbReturns([record({ id: 'u-1', role: 'operator' })])
+    const ctx = await resolveAuth('tok', makeReq({ host: 'tenant-a.localhost' }))
+    expect(ctx.tenantId).toBe('tenant-a')
+  })
+
   it('cerca l\'utente con tenant_id = realm (mai LIMIT 1 senza tenant)', async () => {
     verifyKeycloakToken.mockResolvedValue(kcToken({ iss: 'http://localhost:8080/realms/tenant-b' }))
     const params = lastQueryParams()

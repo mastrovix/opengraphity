@@ -24,6 +24,10 @@ let enumRows: Array<{ name: string; owner: string; values: string[]; labels: str
 let linguaDelCliente: string | null = 'it'
 
 vi.mock('@opengraphity/neo4j', () => ({
+  // `runQuery` serve al controllo delle change ferme (changesStuck.ts): senza,
+  // quel controllo falliva e ogni scenario di questo file si ritrovava un
+  // `check_failed` in più — un mock incompleto che fa sembrare rotto il codice.
+  runQuery: vi.fn(async () => []),
   getSession: () => ({
     run: vi.fn(),
     executeRead: (fn: (tx: { run: () => Promise<unknown> }) => unknown) => fn({
