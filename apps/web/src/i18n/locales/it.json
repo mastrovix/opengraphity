@@ -3950,6 +3950,7 @@
     "serviceRequest": {
       "priorityFromCatalog": "La priorità di una richiesta dal catalogo la decide la voce del catalogo.",
       "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi.",
+      "catalogItemInactive": "La voce di catalogo «{{item}}» non è attiva: non si possono aprire nuove richieste da lì. Riattivala in Admin → Catalogo Servizi, oppure scegli un'altra voce.",
       "priorityRequired": "Scegli la priorità della richiesta.",
       "catalogItemPriorityRequired": "Una voce del catalogo deve avere una priorità."
     },
@@ -4179,6 +4180,8 @@
       "tooManyFields": "Questo modulo ha {{count}} campi: il tetto è {{max}}. Alza il tetto nella pagina dei moduli, oppure dividi la richiesta in due voci di catalogo.",
       "limitOutOfRange": "Un tetto è un numero intero fra {{min}} e {{max}}.",
       "answerComputed": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, non si può mandare.",
+      "answerNotAList": "Il campo «{{field}}» tiene un valore solo: è arrivato come elenco. Chi l'ha mandato ha un difetto — riprova, e se resta segnalalo.",
+      "answerNotASingleValue": "Il campo «{{field}}» tiene più valori: è arrivato come valore solo. Chi l'ha mandato ha un difetto — riprova, e se resta segnalalo.",
       "revisionChanged": "Il modulo di «{{item}}» è cambiato mentre lo compilavi (era la revisione {{filled}}, ora è la {{current}}): queste risposte sono di un altro modulo. Rifai la richiesta."
     },
     "serviceCatalog": {

@@ -14,7 +14,7 @@ import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import {
   canBeComputed, CATALOG_FORM_VERSION, formTableColumnLabel, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY, isFormTableType,
   FORM_FIELD_TYPES_WITHOUT_ANSWER, FORM_FIELD_TYPES_WITH_VOCABULARY,
-  catalogFormFieldNames, emptyCatalogForm, isFormFieldType, serializeLocalizedLabels,
+  catalogFormFieldNames, catalogFormForEndUser, emptyCatalogForm, isFormFieldType, serializeLocalizedLabels,
   type CatalogFormDefinition,
 } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
@@ -210,8 +210,22 @@ export const catalogFormResolvers = {
      */
     catalogFormToFill: async (_: unknown, args: { itemId: string; endUser?: boolean }, ctx: GraphQLContext) => {
       const voce = await vocePerId(ctx.tenantId, args.itemId)
-      const def = parseCatalogForm(voce.form, `ServiceCatalogItem ${voce.name}`)
-      if (!def || def.revision === 0 || def.sections.every((s) => s.items.length === 0)) return null
+      const completo = parseCatalogForm(voce.form, `ServiceCatalogItem ${voce.name}`)
+      if (!completo || completo.revision === 0 || completo.sections.every((s) => s.items.length === 0)) return null
+      /*
+       * `endUser` SI APPLICA QUI, non solo nel browser.
+       *
+       * Prima l'argomento era dichiarato e mai letto: il portale riceveva la
+       * definizione integrale, con le voci «solo area di lavoro», i loro aiuti
+       * e le formule dei campi. Il filtro stava nel renderer, cioè dalla parte
+       * di chi guarda. Ora la definizione che esce è già quella che quel
+       * chiamante ha diritto di vedere, e i campi sono solo quelli che resta
+       * da compilare (revisione del 17 set 2026).
+       */
+      const def = args.endUser === true ? catalogFormForEndUser(completo) : completo
+      // Filtrato tutto, non resta niente da compilare: il portale mostra la
+      // richiesta generica invece di un modulo vuoto.
+      if (def.sections.length === 0) return null
       const session = getSession(undefined, 'READ')
       try {
         const nomi = catalogFormFieldNames(def)
@@ -225,9 +239,20 @@ export const catalogFormResolvers = {
             { extensions: { code: 'BAD_USER_INPUT' } },
           )
         }
+        /*
+         * `revision` resta quella del modulo PUBBLICATO (non del documento
+         * filtrato): è il numero che il ticket porta, e che la protezione del
+         * modulo ripubblicato a metà compilazione confronta.
+         *
+         * `validationScript` non esce verso il portale: lo esegue il server, il
+         * browser non lo guarda, e per l'utente finale è codice del cliente.
+         */
         return {
-          itemId: voce.id, revision: def.revision, definition: JSON.stringify(def),
-          fields: nomi.map((n) => vistaCampo(library.get(n)!, [])),
+          itemId: voce.id, revision: completo.revision, definition: JSON.stringify(def),
+          fields: nomi.map((n) => {
+            const vista = vistaCampo(library.get(n)!, [])
+            return args.endUser === true ? { ...vista, validationScript: null } : vista
+          }),
         }
       } finally { await session.close() }
     },

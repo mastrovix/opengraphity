@@ -16,6 +16,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   evaluateFormCondition, evaluateFormRule, emptyCatalogForm, catalogFormFieldNames,
+  catalogFormForEndUser,
   type CatalogFormDefinition, type FormCondition,
 } from '@opengraphity/types'
 
@@ -281,6 +282,37 @@ describe('resolveFormWrites', () => {
     await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, risposte({
       tipo_dispositivo: 'fisso', centro_di_costo: 'CC-1', urgente: 'true',
     }), { endUser: true })).rejects.toThrow(/hidden by a condition|not offered here/)
+  })
+
+  /*
+   * IL VARCO DELLA FORMA (chiuso il 17 set 2026, ondata 1 del rimedio).
+   *
+   * `formAnswerMap` preferisce `values` a `value` anche quando la lista è
+   * VUOTA, mentre la scrittura di un campo a valore singolo legge `value`:
+   * mandando le due cose insieme si otteneva un campo che per le CONDIZIONI
+   * era vuoto e per il TICKET valeva. Il costo diventava 5000 e
+   * `centro_di_costo`, obbligatorio solo quando il costo supera i mille, non
+   * veniva mai chiesto.
+   */
+  it('SICUREZZA: `values` su un campo a valore singolo è rifiutato, non preferito', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, [
+      { name: 'tipo_dispositivo', value: 'portatile' },
+      { name: 'modello', value: 'MacBook Pro' },
+      { name: 'costo', value: '5000', values: [] },
+    ])).rejects.toThrow(/holds one value/)
+  })
+
+  it('SICUREZZA: lo stesso varco non passa nemmeno con una lista piena', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, [
+      { name: 'tipo_dispositivo', value: 'portatile', values: ['fisso'] },
+    ])).rejects.toThrow(/holds one value/)
+  })
+
+  it('e il contrario: una selezione multipla mandata come valore solo è rifiutata', async () => {
+    await expect(resolveFormWrites(session, 't1', moduloDiProva(), LIBRERIA, [
+      { name: 'tipo_dispositivo', value: 'fisso' },
+      { name: 'sistemi', value: 'crm' },
+    ])).rejects.toThrow(/holds several values/)
   })
 
   it('un campo che non appartiene al modulo non può scrivere una proprietà del ticket', async () => {
@@ -645,5 +677,65 @@ describe('formFieldAutomationMetas', () => {
   it('solo per le richieste: gli altri tipi di ticket non compilano moduli', async () => {
     expect((await formFieldAutomationMetas({} as never, 't1', 'incident')).size).toBe(0)
     expect((await formFieldAutomationMetas({} as never, 't1', 'change')).size).toBe(0)
+  })
+})
+
+
+/**
+ * IL MODULO COME LO VEDE L'UTENTE FINALE (ondata 1 del rimedio del 17 set 2026).
+ *
+ * Il difetto: `catalogFormToFill` dichiarava `endUser` e non lo leggeva, quindi
+ * al portale arrivavano le voci «solo area di lavoro» con etichette, aiuti e le
+ * formule dei campi. Il filtro stava solo nel renderer. Qui si tiene fermo che
+ * la definizione esca già filtrata.
+ */
+describe('catalogFormForEndUser', () => {
+  const modulo = (): CatalogFormDefinition => ({
+    version: 1, revision: 4,
+    sections: [
+      { id: 'a', title: { it: 'Il dispositivo' }, items: [
+        { field: 'modello' },
+        { field: 'ambiente', endUser: true },
+        { field: 'costo_interno', endUser: false },
+      ] },
+      { id: 'b', title: { it: 'Solo per noi' }, items: [
+        { field: 'approvazione_diretta', endUser: false },
+      ] },
+    ],
+  })
+
+  it('toglie le voci non offerte nel portale e lascia le altre', () => {
+    const out = catalogFormForEndUser(modulo())
+    expect(catalogFormFieldNames(out)).toEqual(['modello', 'ambiente'])
+  })
+
+  it('toglie la sezione che resta senza voci: il suo titolo è comunque un dato interno', () => {
+    const out = catalogFormForEndUser(modulo())
+    expect(out.sections.map((s) => s.id)).toEqual(['a'])
+  })
+
+  it('senza `endUser` una voce è offerta: assente vuol dire sì', () => {
+    const out = catalogFormForEndUser({ version: 1, revision: 1, sections: [
+      { id: 'a', title: {}, items: [{ field: 'x' }] },
+    ] })
+    expect(catalogFormFieldNames(out)).toEqual(['x'])
+  })
+
+  it('la revisione non cambia: è il numero che il ticket porta', () => {
+    expect(catalogFormForEndUser(modulo()).revision).toBe(4)
+    expect(catalogFormForEndUser(modulo()).version).toBe(1)
+  })
+
+  it('un modulo tutto interno resta senza sezioni (il chiamante offre la richiesta generica)', () => {
+    const out = catalogFormForEndUser({ version: 1, revision: 2, sections: [
+      { id: 'a', title: { it: 'Interna' }, items: [{ field: 'x', endUser: false }] },
+    ] })
+    expect(out.sections).toEqual([])
+  })
+
+  it('non tocca il documento di partenza', () => {
+    const dato = modulo()
+    catalogFormForEndUser(dato)
+    expect(catalogFormFieldNames(dato)).toEqual(['modello', 'ambiente', 'costo_interno', 'approvazione_diretta'])
   })
 })

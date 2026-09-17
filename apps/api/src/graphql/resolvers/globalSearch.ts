@@ -7,6 +7,35 @@ import { mapRequest } from '../../services/requestService.js'
 import type { GraphQLContext } from '../../context.js'
 import type { Props } from './ci-utils.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
+import type { Permission } from '@opengraphity/types'
+
+/**
+ * OGNI GRUPPO DELLA RICERCA VUOLE IL SUO PERMESSO DI LETTURA.
+ *
+ * Il difetto (revisione del 17 set 2026): `globalSearch` chiede
+ * `workspace.use` — il permesso di «stare nell'area di lavoro» — e restituiva
+ * TUTTI i gruppi. E i tipi restituiti sono quelli veri (`ServiceRequest`,
+ * `Incident`…), i cui resolver di campo NON passano dalla policy: quindi un
+ * ruolo con `workspace.use` e senza `request.read` poteva chiedere
+ * `globalSearch{ serviceRequests{ formAnswers{ name displayValue } } }` e
+ * leggere le risposte ai moduli di chiunque — costi, riferimenti, dati
+ * anagrafici. È esattamente il caso per cui i ruoli personalizzati esistono.
+ *
+ * Il rimedio è qui e non nella tabella dei permessi: la ricerca DEVE restare
+ * aperta a chi ha l'area di lavoro (è la barra in cima a ogni pagina), ma
+ * consegna solo i gruppi che chi cerca può leggere. Il portale non passa da
+ * qui: la sua ricerca è un'altra.
+ */
+const PERMESSO_DEL_GRUPPO: Readonly<Record<keyof GlobalSearchResults, Permission>> = {
+  incidents:       'incident.read',
+  problems:        'problem.read',
+  changes:         'change.read',
+  serviceRequests: 'request.read',
+  kbArticles:      'kb.read',
+  cis:             'cmdb.read',
+  // Le attività di una change si leggono con la change: sono sue.
+  tasks:           'change.read',
+}
 
 // ── result shape ──────────────────────────────────────────────────────────────
 
@@ -87,6 +116,9 @@ async function globalSearch(
   const lucene = toLucene(q)
   if (!lucene) return emptyResults()
 
+  /** Chi cerca può leggere questo gruppo? */
+  const puo = (gruppo: keyof GlobalSearchResults): boolean => ctx.permissions.has(PERMESSO_DEL_GRUPPO[gruppo])
+
   return withSession(async (session) => {
     const res = emptyResults()
 
@@ -105,18 +137,18 @@ async function globalSearch(
     const ciTextHits: GlobalSearchResults['cis'] = []
     for (const r of rows) {
       if (r.labels.includes('Incident')) {
-        if (res.incidents.length < limit) res.incidents.push(mapIncident(r.props))
+        if (puo('incidents') && res.incidents.length < limit) res.incidents.push(mapIncident(r.props))
       } else if (r.labels.includes('Change')) {
         if (r.props['deleted'] === true) continue // eliminata logicamente
-        if (res.changes.length < limit) res.changes.push(mapChange(r.props))
+        if (puo('changes') && res.changes.length < limit) res.changes.push(mapChange(r.props))
       } else if (r.labels.includes('Problem')) {
-        if (res.problems.length < limit) res.problems.push(mapProblem(r.props))
+        if (puo('problems') && res.problems.length < limit) res.problems.push(mapProblem(r.props))
       } else if (r.labels.includes('KBArticle')) {
-        if (kbIds.length < limit) kbIds.push(r.props['id'] as string)
+        if (puo('kbArticles') && kbIds.length < limit) kbIds.push(r.props['id'] as string)
       } else if (r.labels.includes('ServiceRequest')) {
         // Giro del 14 set 2026 (#54): erano nell'indice e venivano scartate.
-        if (res.serviceRequests.length < limit) res.serviceRequests.push(mapRequest(r.props))
-      } else if (ciTextHits.length < limit) {
+        if (puo('serviceRequests') && res.serviceRequests.length < limit) res.serviceRequests.push(mapRequest(r.props))
+      } else if (puo('cis') && ciTextHits.length < limit) {
         r.props['type'] = ciTypeFromLabels(ctx.tenantId, r.labels)
         ciTextHits.push(mapCI(r.props))
       }
@@ -124,7 +156,9 @@ async function globalSearch(
 
     // 2. CI direct id lookup (ids are UUIDs — useful when pasting an id).
     //    Direct matches take priority; union with fulltext hits, no duplicates.
-    const idRows = await runQuery<{ props: Props; labels: string[] }>(session, `
+    //    Senza `cmdb.read` non si cerca affatto: non è solo un filtro sui
+    //    risultati, è una query che non ha ragione di girare.
+    const idRows = !puo('cis') ? [] : await runQuery<{ props: Props; labels: string[] }>(session, `
       MATCH (ci)
       WHERE ${await ciLabelPredicateForTenant('ci', ctx.tenantId)}
         AND ci.tenant_id = $tenantId
@@ -150,7 +184,7 @@ async function globalSearch(
     }
 
     // 3. Change tasks by code, resolved back to their Change and CI.
-    const taskRows = await runQuery<{
+    const taskRows = !puo('tasks') ? [] : await runQuery<{
       id: string; code: string; label: string; status: string
       changeCode: string; changeId: string; ciName: string
     }>(session, `

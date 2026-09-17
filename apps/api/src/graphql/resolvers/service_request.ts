@@ -209,12 +209,30 @@ async function createServiceRequest(
     let workflowDefinitionId: string | null = null
     let priority = args.input.priority ?? null
     if (args.input.catalogItemId) {
-      const item = await runQueryOne<{ requiresApproval: boolean; priority: string | null; name: string; category: string | null; workflowDefinitionId: string | null }>(session,
+      const item = await runQueryOne<{ requiresApproval: boolean; priority: string | null; name: string; category: string | null; workflowDefinitionId: string | null; active: boolean | null }>(session,
         `MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId})
          RETURN ci.requires_approval AS requiresApproval, ci.priority AS priority, ci.name AS name,
-                ci.category AS category, ci.workflow_definition_id AS workflowDefinitionId`,
+                ci.category AS category, ci.workflow_definition_id AS workflowDefinitionId,
+                ci.active AS active`,
         { id: args.input.catalogItemId, tenantId: ctx.tenantId })
       if (!item) throw new NotFoundError('ServiceCatalogItem', args.input.catalogItemId)
+      /*
+       * UNA VOCE SPENTA NON APRE PIÙ RICHIESTE (revisione del 17 set 2026).
+       *
+       * La creazione leggeva approvazione, priorità, categoria e iter della
+       * voce e non guardava `active`: il catalogo non la mostrava più, ma chi
+       * aveva l'id — un collegamento salvato, una pagina rimasta aperta, una
+       * chiamata REST — continuava ad aprire richieste su un servizio che
+       * l'amministratore aveva spento (il fornitore è cambiato, il servizio
+       * non esiste più). Le richieste GIÀ aperte su quella voce continuano il
+       * loro iter: si chiude la porta, non si buttano fuori le persone.
+       */
+      if (item.active === false) {
+        throw new ValidationError(
+          `The catalog item "${item.name}" is not active: no new request can be opened from it.`,
+          { key: 'errors.serviceRequest.catalogItemInactive', params: { item: item.name } },
+        )
+      }
       requiresApproval = item.requiresApproval ?? false
       workflowDefinitionId = item.workflowDefinitionId ?? null
       // La categoria della richiesta è quella della voce (ondata 2): le policy SLA per categoria la usano.
@@ -436,10 +454,20 @@ async function assertWorkflowDefinition(session: Session, tenantId: string, defi
 }
 
 async function serviceCatalogItems(_: unknown, args: { activeOnly?: boolean }, ctx: GraphQLContext) {
+  /*
+   * DAL PORTALE SI VEDONO SOLO LE VOCI ATTIVE, e non perché il client lo chiede.
+   *
+   * `activeOnly` era facoltativo: il portale lo passa, ma chi chiamava senza —
+   * un client scritto a mano, una pagina vecchia — riceveva anche le voci
+   * spente e con esse il loro id, che fino a oggi bastava per aprire una
+   * richiesta (chiuso in `createServiceRequest`). Per un utente finale una
+   * voce spenta non esiste: lo decide il server (revisione del 17 set 2026).
+   */
+  const soloAttive = args.activeOnly === true || isPortalOnly(ctx)
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (ci:ServiceCatalogItem {tenant_id: $tenantId})
-      ${args.activeOnly ? 'WHERE ci.active = true' : ''}
+      ${soloAttive ? 'WHERE ci.active = true' : ''}
       RETURN properties(ci) AS props ORDER BY ci.category, ci.name
     `, { tenantId: ctx.tenantId })
     return rows.map((r) => mapCatalogItem(r.props))

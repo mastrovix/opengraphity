@@ -91,6 +91,16 @@ export function CreateServiceRequestPage() {
 
   const onSelectCatalogItem = (id: string) => {
     setCatalogItemId(id)
+    /*
+     * CAMBIARE VOCE COMINCIA UNA BOZZA NUOVA (revisione del 17 set 2026).
+     *
+     * I file già caricati rispondevano alle domande dell'altra voce: restando
+     * sulla stessa bozza finivano sul ticket comunque, e soddisfacevano anche
+     * l'obbligatorietà di un campo allegato che questa voce chiede. Quelli di
+     * prima li porta via la passata notturna.
+     */
+    setBozzaId(crypto.randomUUID())
+    setFileDelModulo({})
     const item = catalogItems.find((i) => i.id === id)
     if (item) {
       setTitle(item.name)
@@ -160,12 +170,16 @@ export function CreateServiceRequestPage() {
   /**
    * ALLEGATI E RIFERIMENTI (ondata 2).
    *
-   * `bozzaId` nasce UNA volta con la pagina: i file di un campo allegato si
-   * caricano subito, su quella bozza, perché la richiesta non esiste ancora.
-   * Alla creazione i file passano dalla bozza al ticket; se questa pagina
-   * viene abbandonata, la manutenzione notturna li cancella.
+   * `bozzaId` è di UNA voce di catalogo, non della pagina: i file di un campo
+   * allegato si caricano subito, su quella bozza, perché la richiesta non
+   * esiste ancora. Alla creazione i file passano dalla bozza al ticket; se
+   * questa pagina viene abbandonata, la manutenzione notturna li cancella.
+   *
+   * Cambiando voce la bozza ricomincia (`onSelectCatalogItem`): i file
+   * caricati per le domande dell'altra voce non c'entrano più niente, e il
+   * server li reclamava tutti — difetto riprodotto dal vivo il 17 set 2026.
    */
-  const [bozzaId] = useState(() => crypto.randomUUID())
+  const [bozzaId, setBozzaId] = useState(() => crypto.randomUUID())
   const [fileDelModulo, setFileDelModulo] = useState<Record<string, CatalogFormFile[]>>({})
   const [inCaricamento, setInCaricamento] = useState<string | null>(null)
   const [riferimenti, setRiferimenti] = useState<Record<string, CatalogFormReference[]>>({})

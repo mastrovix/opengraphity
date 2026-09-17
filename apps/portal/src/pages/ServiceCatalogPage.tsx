@@ -70,11 +70,40 @@ export function ServiceCatalogPage() {
    * all'utente finale viene rifiutato alla pubblicazione, perché scegliere un
    * CI vuol dire cercare nella CMDB.
    */
-  const [bozzaId] = useState(() => crypto.randomUUID())
+  /*
+   * LA BOZZA È DI QUESTA VOCE, non della pagina.
+   *
+   * Nasceva una volta per apertura della pagina, e alla creazione il server
+   * reclamava TUTTI i file di quella bozza: il difetto, riprodotto dal vivo il
+   * 17 set 2026, era caricare un file su «Nuovo portatile», chiudere, inviare
+   * «Nuovo mouse» e vedere la richiesta del mouse portarsi dietro il file
+   * dell'altra. Il server ora prende solo i file dei campi allegato visibili
+   * (`claimDraftAttachments`), che è la difesa vera; qui si chiude la causa:
+   * ogni apertura di una voce comincia una bozza sua, e i file di prima non
+   * appartengono più a niente — li porta via la passata notturna.
+   */
+  const [bozzaId, setBozzaId] = useState(() => crypto.randomUUID())
   const [fileDelModulo, setFileDelModulo] = useState<Record<string, CatalogFormFile[]>>({})
   /** Le righe delle tabelle (ondata 7): non sono risposte, quindi stanno a parte. */
   const [righeTabelle, setRigheTabelle] = useState<Record<string, readonly CatalogFormTableRow[]>>({})
   const [inCaricamento, setInCaricamento] = useState<string | null>(null)
+
+  /**
+   * APRIRE (o chiudere) UNA VOCE COMINCIA DA ZERO.
+   *
+   * I campi della libreria sono condivisi fra i moduli, quindi senza questo
+   * azzeramento la voce nuova nasceva precompilata con le risposte date a
+   * quella di prima, e le sue condizioni si valutavano su risposte che non le
+   * appartenevano. Con i file era peggio: restavano sulla stessa bozza e il
+   * server li reclamava tutti.
+   */
+  const apriVoce = (it: CatalogItem | null) => {
+    setBozzaId(crypto.randomUUID())
+    setFileDelModulo({})
+    setRisposte({})
+    setRigheTabelle({})
+    setOpenItem(it)
+  }
 
   const caricaFile = async (campo: string, file: File) => {
     setInCaricamento(campo)
@@ -106,7 +135,7 @@ export function ServiceCatalogPage() {
       // Revisione totale · H-36: si apre la richiesta appena inviata, con la
       // conferma — prima si atterrava su «I miei ticket» con uno stato che
       // nessuno leggeva, e la richiesta non si vedeva nemmeno (H-2).
-      onCompleted: (d) => { setOpenItem(null); setDetails(''); setRisposte({}); setFileDelModulo({}); navigate(`/tickets/${d.createServiceRequest.id}`, { state: { created: true } }) },
+      onCompleted: (d) => { apriVoce(null); setDetails(''); navigate(`/tickets/${d.createServiceRequest.id}`, { state: { created: true } }) },
       onError: (e) => {
         notifyError(e.message)
         /**
@@ -116,10 +145,10 @@ export function ServiceCatalogPage() {
          * CHIAVE, non il messaggio.
          */
         if (errorHasKey(e, 'errors.catalogForm.revisionChanged')) {
-          setRisposte({})
-          setFileDelModulo({})
-          setRigheTabelle({})
-          setOpenItem(null)
+          // Anche la BOZZA si azzera: i file caricati per le risposte buttate
+          // non appartengono più a niente, e alla seconda prova venivano
+          // reclamati comunque (revisione del 17 set 2026).
+          apriVoce(null)
         }
       },
     },
@@ -186,7 +215,7 @@ export function ServiceCatalogPage() {
           <h2 style={{ fontSize: 13, fontWeight: 700, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>{cat}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
             {list.map(it => (
-              <button key={it.id} disabled={!canSubmit} title={canSubmit ? undefined : t('portal.noSubmit')} onClick={() => { setOpenItem(it); setDetails(''); setCustomValues({}); setCustomErrors({}) }}
+              <button key={it.id} disabled={!canSubmit} title={canSubmit ? undefined : t('portal.noSubmit')} onClick={() => { apriVoce(it); setDetails(''); setCustomValues({}); setCustomErrors({}) }}
                 style={{ textAlign: 'left', background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 16, cursor: canSubmit ? 'pointer' : 'default' }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: colors.slateDark, marginBottom: 4 }}>{it.name}</div>
                 {it.description && <div style={{ fontSize: 12, color: colors.slate, lineHeight: 1.5 }}>{it.description}</div>}
@@ -199,7 +228,7 @@ export function ServiceCatalogPage() {
 
       {openItem && (
         <div style={{ position: 'fixed', inset: 0, background: alpha.scrim, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
-          onClick={() => setOpenItem(null)}>
+          onClick={() => apriVoce(null)}>
           <div style={{ background: colors.white, borderRadius: 12, padding: 24, width: 460, maxWidth: '90vw' }} onClick={e => e.stopPropagation()}>
             <h3 style={{ fontSize: 17, fontWeight: 600, color: colors.slateDark, marginBottom: 4 }}>{openItem.name}</h3>
             {openItem.requiresApproval && <p style={{ fontSize: 12, color: palette.warning.text, marginBottom: 12 }}>{t('catalog.approvalNotice')}</p>}
@@ -244,7 +273,7 @@ export function ServiceCatalogPage() {
               </div>
             )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button onClick={() => setOpenItem(null)} style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 13 }}>{t('common.cancel')}</button>
+              <button onClick={() => apriVoce(null)} style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 13 }}>{t('common.cancel')}</button>
               <button onClick={submit} disabled={submitting} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: colors.brand, color: colors.white, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: submitting ? 0.6 : 1 }}>
                 {submitting ? t('catalog.submitting') : t('catalog.submit')}
               </button>

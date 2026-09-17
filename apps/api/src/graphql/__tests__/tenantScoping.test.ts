@@ -101,6 +101,17 @@ describe('tenant scoping sui MATCH di dominio (tutta l\'API)', () => {
     expect(offenders).toHaveLength(1)
     expect(scanText(['MATCH (ct:CITypeDefinition {id: $ciTypeId})', 'WHERE ct.tenant_id = $tenantId'])).toHaveLength(0)
   })
+  /*
+   * Le etichette dei MODULI sono nel perimetro (revisione del 17 set 2026).
+   * Erano fuori dall'elenco di dominio, quindi questo lint e il suo gemello
+   * giravano a vuoto su tutte e otto le ondate: qui si pretende che vedano.
+   */
+  it('i moduli del catalogo sono nel perimetro: una lettura senza tenant è un rilievo', () => {
+    expect(scanText(['MATCH (f:FormField {name: $name})'])).toHaveLength(1)
+    expect(scanText(['MATCH (rev:CatalogFormRevision {item_id: $itemId, revision: $revision})'])).toHaveLength(1)
+    expect(scanText(['MATCH (row:FormTableRow {id: $id})'])).toHaveLength(1)
+    expect(scanText(['MATCH (f:FormField {tenant_id: $tenantId, name: $name})'])).toHaveLength(0)
+  })
   it('la chiave presa da un alias già legato non chiede il tenant, un parametro sì', () => {
     expect(keyedOnBoundAlias('instance_id: wi.id')).toBe(true)
     expect(keyedOnBoundAlias('definition_id: wi.definition_id, name: wi.current_step')).toBe(true)

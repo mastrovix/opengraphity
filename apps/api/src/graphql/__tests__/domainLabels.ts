@@ -46,4 +46,13 @@ export const DOMAIN_LABELS = [
   // Il conflitto della sincronizzazione e i record di cambiamento: il giro a
   // mano li aveva visti fuori elenco.
   'SyncConflict', 'SyncChangeRecord',
+  /**
+   * I MODULI DEL CATALOGO (ondate 1-8), assenti da questo elenco fin dall'inizio
+   * — quindi i due lint giravano A VUOTO su tutto il programma: la libreria dei
+   * campi del cliente, le copie congelate delle revisioni e le righe delle
+   * tabelle ripetibili si leggevano e si scrivevano senza che nessuno
+   * verificasse il `tenant_id`. Trovato dalla revisione del 17 set 2026, ed è
+   * il rilievo che rendeva tutti gli altri meno sicuri di quanto sembrassero.
+   */
+  'FormField', 'CatalogFormRevision', 'FormTableRow', 'FormTemplate',
 ] as const

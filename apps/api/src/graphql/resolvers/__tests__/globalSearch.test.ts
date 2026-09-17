@@ -122,6 +122,41 @@ describe('globalSearch', () => {
     expect(res.tasks).toEqual([])
   })
 
+  /*
+   * OGNI GRUPPO VUOLE IL SUO PERMESSO (revisione del 17 set 2026).
+   *
+   * `globalSearch` chiede `workspace.use` e restituiva tutti i gruppi. I tipi
+   * restituiti sono quelli veri, e i loro resolver di campo non passano dalla
+   * policy: un ruolo con l'area di lavoro e senza `request.read` poteva
+   * chiedere `serviceRequests { formAnswers { … } }` e leggere le risposte ai
+   * moduli di chiunque.
+   */
+  it('SICUREZZA: chi non può leggere le richieste non le riceve dalla ricerca', async () => {
+    primeQueries({
+      fulltext: [
+        { props: { id: 'sr-1', number: 'SR00000001', title: 'New laptop', status: 'open', priority: 'low', created_at: 'c', updated_at: 'u' }, labels: ['ServiceRequest'] },
+        { props: { id: 'inc-1', number: 'INC0001', tenant_id: 'tenant-1', title: 'Laptop down', severity: 'high', status: 'open', created_at: 'c', updated_at: 'u' }, labels: ['Incident'] },
+      ],
+    })
+    const soloAreaDiLavoro: GraphQLContext = { ...ctx, role: 'custom', permissions: new Set(['workspace.use', 'incident.read']) }
+    const res = await globalSearch(null, { query: 'laptop' }, soloAreaDiLavoro)
+    expect(res.serviceRequests).toEqual([])
+    // Quello che può leggere lo riceve: il filtro è per gruppo, non un muro.
+    expect(res.incidents).toHaveLength(1)
+  })
+
+  it('SICUREZZA: senza cmdb.read non si cercano i CI, e senza change.read nemmeno le attività', async () => {
+    primeQueries({
+      fulltext: [{ props: { id: 'ci-1', name: 'web-01', status: 'active', created_at: 'c' }, labels: ['Server'] }],
+      ciById: [{ props: { id: 'ci-2', name: 'web-02', status: 'active', created_at: 'c' }, labels: ['Server'] }],
+      tasks: [{ id: 't-1', code: 'TASK00000001', label: 'AssessmentTask', status: 'open', changeCode: 'CHG00000001', changeId: 'chg-1', ciName: 'web-01' }],
+    })
+    const senzaCmdb: GraphQLContext = { ...ctx, role: 'custom', permissions: new Set(['workspace.use']) }
+    const res = await globalSearch(null, { query: 'web' }, senzaCmdb)
+    expect(res.cis).toEqual([])
+    expect(res.tasks).toEqual([])
+  })
+
   /** Giro nel browser del 14 set 2026 (#54): le richieste erano nell'indice ma scartate. */
   it('le ServiceRequest hanno il loro gruppo, fuori dai CI', async () => {
     primeQueries({

@@ -579,6 +579,41 @@ export async function resolveFormWrites(
   const lingua = await languageFor(tenantId)
   /** L'etichetta del campo per i messaggi. */
   const nome = (c: FormFieldDef): string => etichettaDelCampo(c, lingua)
+  /*
+   * LA FORMA DELLA RISPOSTA SI CONTROLLA PRIMA DI TUTTO, ed è un varco che si
+   * chiude qui e non più in basso (revisione del 17 set 2026).
+   *
+   * `formAnswerMap` preferisce `values` a `value` — deve, perché una selezione
+   * multipla è una lista — anche quando `values` è una lista VUOTA. Ma la
+   * scrittura di un campo a valore singolo legge `value`. Quindi
+   * `{value: '5000', values: []}` su un campo numerico faceva due cose insieme:
+   * per le CONDIZIONI quel campo risultava vuoto (ogni regola falsa, quindi un
+   * campo di approvazione obbligatorio sopra i mille non veniva mai chiesto) e
+   * per il TICKET valeva 5000. Il renderer manda sempre una forma sola, quindi
+   * era un attacco via API, non un difetto quotidiano — ma la mappa delle
+   * risposte è la base su cui si rivaluta tutto, e una base falsificabile
+   * rende inutili i tre controlli che seguono.
+   *
+   * La regola: la forma della risposta deve corrispondere al TIPO del campo.
+   * Chi manda l'altra è un client con un difetto, e glielo si dice.
+   */
+  for (const input of inputs ?? []) {
+    const campo = library.get(input.name)
+    if (!campo) continue                          // lo dice il controllo 1, con il suo messaggio
+    const multi = FORM_FIELD_TYPES_MULTI.includes(campo.fieldType)
+    if (!multi && input.values != null) {
+      throw new ValidationError(
+        `The field "${nome(campo)}" holds one value: it was sent as a list. Send "value", not "values".`,
+        { key: 'errors.catalogForm.answerNotAList', params: { field: nome(campo) } },
+      )
+    }
+    if (multi && input.value != null && String(input.value).trim() !== '') {
+      throw new ValidationError(
+        `The field "${nome(campo)}" holds several values: it was sent as one. Send "values", not "value".`,
+        { key: 'errors.catalogForm.answerNotASingleValue', params: { field: nome(campo) } },
+      )
+    }
+  }
   const answers = formAnswerMap(inputs)
   const visibili = visibleFormItems(def, answers, opts)
   const perNome = new Map(visibili.map((i) => [i.field, i]))
@@ -737,8 +772,8 @@ export async function resolveFormWrites(
     const obbligatorio = item.required ?? campo.required
 
     if (isFormAttachmentType(campo.fieldType)) {
-      const quanti = opts.draftId
-        ? await contaAllegatiBozza(session, tenantId, opts.draftId, campo.name, opts.userId ?? null)
+      const quanti = opts.draftId && opts.userId
+        ? await contaAllegatiBozza(session, tenantId, opts.draftId, campo.name, opts.userId)
         : 0
       allegatiRichiesti.push({ field: campo.name, label: campo.label, required: obbligatorio, count: quanti })
       if (obbligatorio && quanti === 0) {
@@ -1325,11 +1360,11 @@ async function assertRiferimentoEsiste(session: Session, tenantId: string, campo
  * possibile).
  */
 async function contaAllegatiBozza(
-  session: Session, tenantId: string, draftId: string, field: string, userId: string | null,
+  session: Session, tenantId: string, draftId: string, field: string, userId: string,
 ): Promise<number> {
   const rows = await runQuery<{ n: number }>(session, `
     MATCH (a:Attachment {tenant_id: $tenantId, entity_type: $draftType, entity_id: $draftId, field_name: $field})
-    WHERE $userId IS NULL OR a.uploaded_by = $userId
+    WHERE a.uploaded_by = $userId
     RETURN count(a) AS n`,
   { tenantId, draftType: FORM_DRAFT_ENTITY_TYPE, draftId, field, userId })
   return Number(rows[0]?.n ?? 0)
@@ -1342,18 +1377,39 @@ async function contaAllegatiBozza(
  * `storage_path` ed è opaco — quindi qui non c'è niente che possa fallire a
  * metà lasciando un file orfano e un nodo giusto.
  *
- * Restituisce quanti ne ha reclamati: il chiamante lo registra.
+ * ## SOLO I FILE DELLE DOMANDE CHE QUESTO MODULO HA FATTO
+ *
+ * `fields` sono i campi allegato VISIBILI con le risposte date — gli stessi
+ * che `resolveFormWrites` ha usato per l'obbligatorietà. Prima si reclamava
+ * TUTTO quello che stava sulla bozza, senza guardare il campo, e il difetto è
+ * stato riprodotto dal vivo il 17 set 2026: nel portale si carica un file su
+ * «Nuovo portatile», si chiude, si invia «Nuovo mouse» — una voce senza modulo
+ * e senza campi allegato — e la richiesta del mouse si porta dietro il file
+ * dell'altra, `field_name` compreso. Lo stesso accadeva col file di un campo
+ * poi nascosto da una condizione: la risposta veniva dimenticata, il file no.
+ *
+ * La regola è quella già valida per i valori: se la domanda non è stata fatta,
+ * la risposta non si prende — nemmeno quando è un file. I file rimasti sulla
+ * bozza non si cancellano qui (non sono nostri da buttare): li porta via la
+ * passata notturna, e quanti sono lo dice il valore restituito, perché un
+ * silenzio qui era esattamente il difetto.
  */
 export async function claimDraftAttachments(
-  session: Session, tenantId: string, draftId: string, entityType: string, entityId: string, userId: string | null,
-): Promise<number> {
-  const rows = await runQuery<{ n: number }>(session, `
+  session: Session, tenantId: string, draftId: string, entityType: string, entityId: string, userId: string,
+  fields: readonly string[],
+): Promise<{ claimed: number; leftBehind: number }> {
+  const comuni = { tenantId, draftType: FORM_DRAFT_ENTITY_TYPE, draftId, userId, fields: [...fields] }
+  const presi = await runQuery<{ n: number }>(session, `
     MATCH (a:Attachment {tenant_id: $tenantId, entity_type: $draftType, entity_id: $draftId})
-    WHERE $userId IS NULL OR a.uploaded_by = $userId
+    WHERE a.uploaded_by = $userId AND a.field_name IN $fields
     SET a.entity_type = $entityType, a.entity_id = $entityId, a.claimed_at = $now
     RETURN count(a) AS n`,
-  { tenantId, draftType: FORM_DRAFT_ENTITY_TYPE, draftId, entityType, entityId, userId, now: new Date().toISOString() })
-  return Number(rows[0]?.n ?? 0)
+  { ...comuni, entityType, entityId, now: new Date().toISOString() })
+  const lasciati = await runQuery<{ n: number }>(session, `
+    MATCH (a:Attachment {tenant_id: $tenantId, entity_type: $draftType, entity_id: $draftId})
+    WHERE a.uploaded_by = $userId AND NOT coalesce(a.field_name, '') IN $fields
+    RETURN count(a) AS n`, comuni)
+  return { claimed: Number(presi[0]?.n ?? 0), leftBehind: Number(lasciati[0]?.n ?? 0) }
 }
 
 /**

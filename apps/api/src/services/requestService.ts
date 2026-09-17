@@ -66,8 +66,8 @@ export async function createRequest(
    * Il ticket porta la revisione del modulo usato: se domani il modulo cambia,
    * queste risposte si rileggono ancora con la loro.
    */
-  const vuoto = { props: {} as Record<string, unknown>, revision: null as number | null, references: [] as FormReferenceWrite[], tables: [] as FormTableWrite[] }
-  const { props: formProps, revision: formRevision, references: formReferences, tables: formTables } = await withSession(async (session) => {
+  const vuoto = { props: {} as Record<string, unknown>, revision: null as number | null, references: [] as FormReferenceWrite[], tables: [] as FormTableWrite[], attachmentFields: [] as string[] }
+  const { props: formProps, revision: formRevision, references: formReferences, tables: formTables, attachmentFields: campiAllegato } = await withSession(async (session) => {
     if (!input.catalogItemId) {
       if (input.formAnswers?.length) {
         throw new ValidationError('Form answers were sent without a catalog item: a form belongs to a catalog item.',
@@ -117,7 +117,12 @@ export async function createRequest(
       // come gli altri, letto qui perché la validazione deve poterlo dire.
       maxTableRows: (await leggiTetti(session, ctx.tenantId)).maxTableRows,
     })
-    return { props: esito.props, revision: def.revision, references: esito.references, tables: esito.tables }
+    return {
+      props: esito.props, revision: def.revision, references: esito.references, tables: esito.tables,
+      // I campi allegato che questo modulo ha CHIESTO con queste risposte: solo
+      // i loro file si reclamano alla creazione (vedi `claimDraftAttachments`).
+      attachmentFields: esito.attachmentFields.map((a) => a.field),
+    }
   })
   const id  = uuidv4()
   const now = new Date().toISOString()
@@ -222,8 +227,24 @@ export async function createRequest(
       await writeFormTables(session, ctx.tenantId, id, formTables)
     }
     if (input.formDraftId) {
-      const reclamati = await claimDraftAttachments(session, ctx.tenantId, input.formDraftId, 'service_request', id, ctx.userId)
-      if (reclamati > 0) logger.info({ tenantId: ctx.tenantId, requestId: id, draftId: input.formDraftId, reclamati }, 'Form draft attachments claimed')
+      /*
+       * Si reclamano solo i file dei campi allegato VISIBILI (revisione del 17
+       * set 2026): `campiAllegato` sono quelli che `resolveFormWrites` ha
+       * chiesto, quindi le domande che questo modulo ha fatto davvero con
+       * queste risposte. Una richiesta SENZA modulo non ha campi allegato, e
+       * quindi non reclama niente: era il varco riprodotto dal vivo, un file
+       * caricato per un'altra voce che finiva su questa.
+       */
+      const { claimed, leftBehind } = await claimDraftAttachments(
+        session, ctx.tenantId, input.formDraftId, 'service_request', id, ctx.userId, campiAllegato,
+      )
+      if (claimed > 0) logger.info({ tenantId: ctx.tenantId, requestId: id, draftId: input.formDraftId, reclamati: claimed }, 'Form draft attachments claimed')
+      // Non un silenzio: i file che nessuna domanda di questo modulo chiedeva
+      // restano sulla bozza e li porta via la passata notturna.
+      if (leftBehind > 0) {
+        logger.warn({ tenantId: ctx.tenantId, requestId: id, draftId: input.formDraftId, lasciati: leftBehind, campiAllegato },
+          'Form draft attachments left behind: no visible attachment field asked for them')
+      }
     }
 
     await workflowEngine.createInstance(

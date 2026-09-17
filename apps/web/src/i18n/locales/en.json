@@ -3950,6 +3950,7 @@
     "serviceRequest": {
       "priorityFromCatalog": "The priority of a request from the catalog is set by the catalog item.",
       "catalogItemWithoutPriority": "The catalog item «{{item}}» has no priority, so a request cannot be opened from it. An administrator sets it in Admin → Service catalog.",
+      "catalogItemInactive": "The catalog item \"{{item}}\" is not active: no new request can be opened from it. Re-activate it in Admin → Service catalog, or pick another item.",
       "priorityRequired": "Choose the priority of the request.",
       "catalogItemPriorityRequired": "A catalog item must have a priority."
     },
@@ -4179,6 +4180,8 @@
       "tooManyFields": "This form has {{count}} fields: {{max}} is the limit. Raise the limit on the catalog forms page, or split the request into two catalog items.",
       "limitOutOfRange": "A limit must be a whole number between {{min}} and {{max}}.",
       "answerComputed": "The field \"{{field}}\" is computed: its value comes from its formula, it cannot be sent.",
+      "answerNotAList": "The field \"{{field}}\" holds one value: it arrived as a list. Whatever sent it has a defect — try again, and report it if it persists.",
+      "answerNotASingleValue": "The field \"{{field}}\" holds several values: it arrived as a single one. Whatever sent it has a defect — try again, and report it if it persists.",
       "revisionChanged": "The form of \"{{item}}\" changed while you were filling it (it was revision {{filled}}, now it is {{current}}): these answers belong to another form. Start the request again."
     },
     "serviceCatalog": {

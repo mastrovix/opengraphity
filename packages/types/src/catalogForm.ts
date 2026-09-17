@@ -376,6 +376,29 @@ export function emptyCatalogForm(): CatalogFormDefinition {
   }
 }
 
+/**
+ * IL MODULO COME LO VEDE L'UTENTE FINALE: via le voci che il modulo non offre
+ * nel portale, e via le sezioni che così restano senza voci.
+ *
+ * Perché esiste (revisione del 17 set 2026): `catalogFormToFill` dichiarava
+ * l'argomento `endUser` e non lo leggeva mai, quindi al portale arrivava la
+ * definizione INTEGRALE — le voci «solo area di lavoro», le loro etichette,
+ * i loro aiuti e, con i campi, il codice delle formule. Il filtro esisteva
+ * solo nel browser, cioè dove chiunque può toglierlo. La scrittura era già
+ * chiusa (il server rifiuta un campo non offerto), quindi era divulgazione e
+ * non un varco — ma una promessa scritta nello schema e nel commento della
+ * query del portale, e non mantenuta.
+ *
+ * Una sezione vuota si toglie: il suo titolo è comunque un dato interno, e
+ * mostrare un'intestazione senza campi sarebbe un modulo rotto.
+ */
+export function catalogFormForEndUser(def: CatalogFormDefinition): CatalogFormDefinition {
+  const sections = def.sections
+    .map((s) => ({ ...s, items: s.items.filter((i) => i.endUser !== false) }))
+    .filter((s) => s.items.length > 0)
+  return { ...def, sections }
+}
+
 /** Tutti i campi referenziati dal modulo, nell'ordine in cui compaiono. */
 export function catalogFormFieldNames(def: CatalogFormDefinition): string[] {
   return def.sections.flatMap((s) => s.items.map((i) => i.field))

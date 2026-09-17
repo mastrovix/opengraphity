@@ -181,7 +181,8 @@
       "severityNotOffered": "Questa severità non è offerta nel portale. Scegli fra: {{allowed}}."
     },
     "serviceRequest": {
-      "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi."
+      "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi.",
+      "catalogItemInactive": "Questo servizio non è più disponibile: l'IT lo ha disattivato. Scegli un'altra voce del catalogo, o apri un ticket descrivendo cosa ti serve."
     },
     "comment": {
       "ticketClosed": "Il ticket è chiuso: la conversazione non si può più modificare. Apri un nuovo ticket."
@@ -260,6 +261,8 @@
       "tooManyFields": "Questo modulo ha {{count}} campi: il tetto è {{max}}. Alza il tetto nella pagina dei moduli, oppure dividi la richiesta in due voci di catalogo.",
       "limitOutOfRange": "Un tetto è un numero intero fra {{min}} e {{max}}.",
       "answerComputed": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, non si può mandare.",
+      "answerNotAList": "Il campo «{{field}}» tiene un valore solo: è arrivato come elenco. Riprova; se succede ancora, segnalalo all'IT.",
+      "answerNotASingleValue": "Il campo «{{field}}» tiene più valori: è arrivato come valore solo. Riprova; se succede ancora, segnalalo all'IT.",
       "revisionChanged": "Il modulo di «{{item}}» è cambiato mentre lo compilavi (era la revisione {{filled}}, ora è la {{current}}): queste risposte sono di un altro modulo. Rifai la richiesta."
     },
     "scripting": {

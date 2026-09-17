@@ -181,7 +181,8 @@
       "severityNotOffered": "This severity is not offered in the portal. Choose one of: {{allowed}}."
     },
     "serviceRequest": {
-      "catalogItemWithoutPriority": "The catalog item «{{item}}» has no priority, so a request cannot be opened from it. An administrator sets it in Admin → Service catalog."
+      "catalogItemWithoutPriority": "The catalog item «{{item}}» has no priority, so a request cannot be opened from it. An administrator sets it in Admin → Service catalog.",
+      "catalogItemInactive": "This service is no longer available: IT has switched it off. Pick another catalog item, or open a ticket describing what you need."
     },
     "comment": {
       "ticketClosed": "The ticket is closed: its conversation can no longer be changed. Open a new ticket."
@@ -260,6 +261,8 @@
       "tooManyFields": "This form has {{count}} fields: {{max}} is the limit. Raise the limit on the catalog forms page, or split the request into two catalog items.",
       "limitOutOfRange": "A limit must be a whole number between {{min}} and {{max}}.",
       "answerComputed": "The field \"{{field}}\" is computed: its value comes from its formula, it cannot be sent.",
+      "answerNotAList": "The field \"{{field}}\" holds one value: it arrived as a list. Try again; if it happens again, tell IT.",
+      "answerNotASingleValue": "The field \"{{field}}\" holds several values: it arrived as a single one. Try again; if it happens again, tell IT.",
       "revisionChanged": "The form of \"{{item}}\" changed while you were filling it (it was revision {{filled}}, now it is {{current}}): these answers belong to another form. Start the request again."
     },
     "scripting": {

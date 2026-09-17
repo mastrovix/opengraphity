@@ -101,6 +101,44 @@ describe('createServiceRequest — item di catalogo', () => {
 })
 
 /**
+ * UNA VOCE SPENTA NON APRE PIÙ RICHIESTE (revisione del 17 set 2026).
+ *
+ * La creazione leggeva approvazione, priorità, categoria e iter della voce e
+ * non guardava `active`: il catalogo non la mostrava più, ma chi aveva l'id —
+ * un collegamento salvato, una pagina rimasta aperta, una chiamata REST —
+ * continuava ad aprire richieste su un servizio spento.
+ */
+describe('createServiceRequest — voce di catalogo disattivata', () => {
+  it('voce spenta → rifiuto che la nomina, nessuna creazione', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'low', name: 'Nuovo mouse', active: false })
+    const err = await failure(createServiceRequest(undefined, { input: { title: 'Mouse', priority: 'low', catalogItemId: 'cat-spenta' } }, ctx))
+    expect(err.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err.message).toMatch(/is not active/)
+    expect(err.message).toContain('Nuovo mouse')
+    expect(createRequest).not.toHaveBeenCalled()
+  })
+
+  it('una voce attiva (o senza il campo, per i dati di prima) apre come sempre', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'low', name: 'Nuovo mouse', active: true })
+    await createServiceRequest(undefined, { input: { title: 'Mouse', priority: 'low', catalogItemId: 'cat-1' } }, ctx)
+    expect(createRequest).toHaveBeenCalledTimes(1)
+
+    vi.clearAllMocks()
+    vi.mocked(runQuery).mockResolvedValue([])
+    vi.mocked(createRequest).mockResolvedValue({ id: 'sr-1', title: 'T' } as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'low', name: 'Voce vecchia', active: null })
+    await createServiceRequest(undefined, { input: { title: 'Mouse', priority: 'low', catalogItemId: 'cat-2' } }, ctx)
+    expect(createRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it('la query legge anche `active`: senza, il controllo non potrebbe esistere', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'low', name: 'X', active: true })
+    await createServiceRequest(undefined, { input: { title: 'T', priority: 'low', catalogItemId: 'cat-1' } }, ctx)
+    expect(vi.mocked(runQueryOne).mock.calls[0]![1]).toContain('ci.active AS active')
+  })
+})
+
+/**
  * Verifica «Cosa resta cablato», ondata 1 (scelta del proprietario): la
  * priorità di una richiesta dal catalogo la decide la voce. Il portale mandava
  * `medium` scritto nel codice.
