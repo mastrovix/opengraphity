@@ -204,6 +204,11 @@ export function CreateServiceRequestPage() {
     try { return JSON.parse(modulo.definition) as CatalogFormDefinition } catch { return null }
   }, [modulo])
   const [risposte, setRisposte] = useState<Record<string, FormAnswerValue>>({})
+  /** I campi CALCOLATI del modulo: il loro valore non è una risposta da cancellare. */
+  const calcolati = useMemo(
+    () => new Set((modulo?.fields ?? []).filter((f) => f.formula && f.formula.trim() !== '').map((f) => f.name)),
+    [modulo],
+  )
   const [erroriModulo, setErroriModulo] = useState<Record<string, string>>({})
 
   /**
@@ -284,13 +289,32 @@ export function CreateServiceRequestPage() {
    * comunque è un varco), e tenerla nello stato farebbe fallire l'invio per un
    * campo che chi compila non vede nemmeno.
    */
+  /*
+   * UN VALORE CALCOLATO NON SI CANCELLA, anche se il suo campo è nascosto.
+   *
+   * La pulizia serve alle risposte DATE: una condizione che si spegne fa
+   * dimenticare quello che era stato scritto, perché il server rifiuta un
+   * campo nascosto che arriva comunque. Ma un campo CALCOLATO non è una
+   * risposta: è un valore che il renderer produce e che le condizioni
+   * guardano, esattamente come fa il server dal 17 set 2026 (le formule
+   * girano per tutti i campi calcolati del modulo, la visibilità decide solo
+   * cosa finisce sul ticket). E nell'invio i calcolati sono già esclusi da
+   * `catalogFormAnswersToSend`.
+   *
+   * Cancellarlo faceva un CICLO INFINITO, misurato nel portale: il renderer lo
+   * riscriveva, la pagina lo cancellava, l'oggetto cambiava identità, l'effetto
+   * ripartiva — un giro di QuickJS ogni ~330 ms con il modulo fermo, per tutto
+   * il tempo che la pagina resta aperta.
+   */
   const cambiaRisposta = (name: string, value: FormAnswerValue) => {
     setErroriModulo((p) => { const n = { ...p }; delete n[name]; return n })
     setRisposte((precedenti) => {
       const aggiornate: Record<string, FormAnswerValue> = { ...precedenti, [name]: value }
       if (!definizione) return aggiornate
       const visibili = new Set(visibleCatalogFormItems(definizione, aggiornate as FormAnswers).map((i) => i.field))
-      for (const chiave of Object.keys(aggiornate)) if (!visibili.has(chiave)) delete aggiornate[chiave]
+      for (const chiave of Object.keys(aggiornate)) {
+        if (!visibili.has(chiave) && !calcolati.has(chiave)) delete aggiornate[chiave]
+      }
       return aggiornate
     })
   }
