@@ -252,7 +252,8 @@
       "referenceEndUser": "Il campo «{{field}}» è un riferimento ({{fieldType}}): non si può offrire nel portale, perché scegliere vuol dire cercare nella CMDB o nell'elenco del personale. Togli la spunta «Offrilo nel portale».",
       "tooManyFields": "Questo modulo ha {{count}} campi: il tetto è {{max}}. Alza il tetto nella pagina dei moduli, oppure dividi la richiesta in due voci di catalogo.",
       "limitOutOfRange": "Un tetto è un numero intero fra {{min}} e {{max}}.",
-      "answerComputed": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, non si può mandare."
+      "answerComputed": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, non si può mandare.",
+      "revisionChanged": "Il modulo di «{{item}}» è cambiato mentre lo compilavi (era la revisione {{filled}}, ora è la {{current}}): queste risposte sono di un altro modulo. Rifai la richiesta."
     },
     "scripting": {
       "scriptsSwitchedOff": "{{what}}: gli script sono spenti per questa organizzazione. Accendili in Configurazione > Organizzazione, oppure togli lo script dalla configurazione.",

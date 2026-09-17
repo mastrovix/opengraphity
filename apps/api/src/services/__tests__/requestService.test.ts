@@ -74,8 +74,24 @@ const STEPS = [
   { name: 'fulfilled', isInitial: false, isTerminal: true,  isOpen: false, category: 'closed', stepOrder: 2 },
 ]
 
+/**
+ * I tetti dei moduli (ondata 4/7): `createRequest` li legge per sapere quante
+ * righe accetta una tabella. Qui non interessano — interessa la revisione —
+ * quindi la finta risponde con i valori di fabbrica.
+ */
+vi.mock('../../lib/catalogFormLimits.js', () => ({
+  catalogFormLimits: vi.fn(async () => ({ maxLibraryFields: 120, maxFieldsPerForm: 60, maxTableRows: 50 })),
+}))
+
+/**
+ * Cosa risponde la query della voce di catalogo. Vuoto = la voce non ha un
+ * modulo, che è il caso di tutti i test tranne quelli sulla revisione.
+ */
+let moduloDellaVoce: Array<{ form: string | null; name: string }> = []
+
 beforeEach(() => {
   vi.clearAllMocks()
+  moduloDellaVoce = []
   h.session.executeWrite.mockResolvedValue({ records: [{ get: () => 5 }] })
   vi.mocked(runQuery).mockImplementation(async (_s: unknown, cypher: string, params?: Record<string, unknown>) => {
     if (cypher.includes('CREATE (r:ServiceRequest')) {
@@ -86,6 +102,9 @@ beforeEach(() => {
         created_at: params?.['now'], updated_at: params?.['now'],
       } }]
     }
+    // Il modulo della voce di catalogo: `moduloDellaVoce` lo decide caso per
+    // caso (ondata 8, la revisione cambiata sotto chi compila).
+    if (cypher.includes('RETURN i.form AS form')) return moduloDellaVoce
     if (cypher.includes('HAS_WORKFLOW')) return [{ instanceId: 'wi-sr', step: 'submitted' }]
     if (cypher.includes('SET r.completed_at')) return [{ props: { id: params?.['id'], number: 'REQ00000005', title: 'T', status: 'fulfilled', priority: 'medium', completed_at: params?.['now'] } }]
     return []
@@ -195,5 +214,45 @@ describe('mapRequest', () => {
         createdAt: 'c', updatedAt: 'u', requestedBy: null, assignee: null })
     expect(mapRequest({ catalog_item_id: 'cat', requires_approval: true, number: 'REQ00000001' }))
       .toMatchObject({ catalogItemId: 'cat', requiresApproval: true, number: 'REQ00000001' })
+  })
+})
+
+/**
+ * IL MODULO CAMBIATO MENTRE SI COMPILAVA (ondata 8, regola chiesta dal
+ * proprietario).
+ *
+ * Prima, le risposte scritte sulla revisione 5 venivano validate sulla 8: chi
+ * compilava riceveva «il campo X non è di questo modulo» oppure «campo
+ * obbligatorio» su una domanda che non aveva mai visto. Due rifiuti veri per un
+ * motivo incomprensibile. Ora si dice la cosa giusta e si ricomincia.
+ */
+describe('createRequest e la revisione del modulo', () => {
+  const modulo = (revision: number) => JSON.stringify({
+    version: 1, revision,
+    // Il titolo di una sezione è un testo PER LINGUA (`{it: …}`), non una lista.
+    sections: [{ id: 's1', title: { it: 'Sezione' }, items: [] }],
+  })
+
+  it('revisione compilata diversa da quella di adesso: si rifiuta dicendolo', async () => {
+    moduloDellaVoce = [{ form: modulo(8), name: 'Nuovo portatile' }]
+    await expect(createRequest(
+      { title: 'T', priority: 'medium', catalogItemId: 'cat-1', formRevision: 5 }, ctx,
+    )).rejects.toThrow(/changed while you were filling it \(revision 5 → 8\)/)
+  })
+
+  it('stessa revisione: si procede', async () => {
+    moduloDellaVoce = [{ form: modulo(8), name: 'Nuovo portatile' }]
+    const r = await createRequest(
+      { title: 'T', priority: 'medium', catalogItemId: 'cat-1', formRevision: 8 }, ctx,
+    )
+    expect(r.id).toMatch(UUID_RE)
+  })
+
+  it('un client che NON manda la revisione si accetta come prima: non si inventa un rifiuto', async () => {
+    moduloDellaVoce = [{ form: modulo(8), name: 'Nuovo portatile' }]
+    const r = await createRequest(
+      { title: 'T', priority: 'medium', catalogItemId: 'cat-1' }, ctx,
+    )
+    expect(r.id).toMatch(UUID_RE)
   })
 })

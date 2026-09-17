@@ -26,6 +26,7 @@ import { GET_CATALOG_FORM_TO_FILL } from '@/graphql/queries'
 import type { CatalogFormDefinition, FormAnswerValue, FormAnswers } from '@opengraphity/types'
 import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { showError } from '@/lib/showError'
+import { errorHasKey } from '@opengraphity/web-core'
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
 const inputBase: React.CSSProperties = {
@@ -111,7 +112,22 @@ export function CreateServiceRequestPage() {
      */
     refetchQueries: ['GetServiceRequests'],
     onCompleted: () => { toast.success(t('toast.request.created')); navigate('/requests') },
-    onError:     (err) => showError(err),
+    onError: (err) => {
+      showError(err)
+      /**
+       * IL MODULO È CAMBIATO MENTRE SI COMPILAVA (ondata 8): l'avviso l'ha già
+       * mostrato il link degli errori, qui si fa il resto — si buttano le
+       * risposte, che sono di un altro modulo, e si ricarica quello nuovo. Si
+       * guarda la CHIAVE e non il messaggio, che cambia con la lingua.
+       */
+      if (errorHasKey(err, 'errors.catalogForm.revisionChanged')) {
+        setRisposte({})
+        setRiferimenti({})
+        setRigheTabelle({})
+        setFileDelModulo({})
+        void rileggiModulo()
+      }
+    },
   })
 
   const checkSlaCoverage = useSlaCoverageCheck()
@@ -129,7 +145,7 @@ export function CreateServiceRequestPage() {
    * pubblicato, e allora la pagina resta quella di sempre — non una pagina
    * vuota che sembra rotta.
    */
-  const { data: formData } = useQuery<{ catalogFormToFill: { itemId: string; revision: number; definition: string; fields: CatalogFormFieldView[] } | null }>(
+  const { data: formData, refetch: rileggiModulo } = useQuery<{ catalogFormToFill: { itemId: string; revision: number; definition: string; fields: CatalogFormFieldView[] } | null }>(
     GET_CATALOG_FORM_TO_FILL,
     { variables: { itemId: catalogItemId, endUser: false, language: i18n.language }, skip: !catalogItemId, fetchPolicy: 'cache-and-network' },
   )
@@ -298,6 +314,13 @@ export function CreateServiceRequestPage() {
           formAnswers: risposteDaInviare(),
           // La bozza su cui sono stati caricati i file dei campi allegato (ondata 2).
           formDraftId: Object.values(fileDelModulo).some((l) => l.length > 0) ? bozzaId : undefined,
+          /**
+           * La revisione che stiamo compilando (ondata 8): se l'amministratore
+           * ripubblica il modulo mentre questa pagina è aperta, il server se ne
+           * accorge e lo DICE, invece di rifiutare un campo che non abbiamo
+           * mai visto.
+           */
+          formRevision: modulo?.revision,
           ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
         },
       },

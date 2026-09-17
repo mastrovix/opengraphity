@@ -13,6 +13,7 @@ import { uploadFormDraftFile } from '../lib/formDraftUpload'
 import type { CatalogFormDefinition, FormAnswerValue, FormAnswers } from '@opengraphity/types'
 import { CREATE_SERVICE_REQUEST } from '@/graphql/mutations'
 import { notifyError } from '@/lib/notify'
+import { errorHasKey } from '@opengraphity/web-core'
 import { colors, palette, alpha } from '@/lib/tokens'
 import { useTicketCategories } from '@/hooks/useTicketCategories'
 import { usePortalCustomFields, portalCustomFieldsInput, portalMissingCustomFields } from '@/hooks/usePortalCustomFields'
@@ -106,7 +107,21 @@ export function ServiceCatalogPage() {
       // conferma — prima si atterrava su «I miei ticket» con uno stato che
       // nessuno leggeva, e la richiesta non si vedeva nemmeno (H-2).
       onCompleted: (d) => { setOpenItem(null); setDetails(''); setRisposte({}); setFileDelModulo({}); navigate(`/tickets/${d.createServiceRequest.id}`, { state: { created: true } }) },
-      onError: (e) => notifyError(e.message),
+      onError: (e) => {
+        notifyError(e.message)
+        /**
+         * Il modulo è cambiato mentre lo si compilava (ondata 8): le risposte
+         * sono di un altro modulo, quindi si buttano e si chiude la richiesta.
+         * Chi compila riapre la voce e trova il modulo nuovo. Si guarda la
+         * CHIAVE, non il messaggio.
+         */
+        if (errorHasKey(e, 'errors.catalogForm.revisionChanged')) {
+          setRisposte({})
+          setFileDelModulo({})
+          setRigheTabelle({})
+          setOpenItem(null)
+        }
+      },
     },
   )
 
@@ -141,6 +156,9 @@ export function ServiceCatalogPage() {
       catalogItemId: openItem.id,
       // Le risposte al modulo: la regola sta in web-core, la stessa dell'area di
       // lavoro (solo i campi visibili, mai le note).
+      // La revisione compilata (ondata 8): il server rifiuta dicendolo se il
+      // modulo è cambiato mentre la pagina era aperta.
+      formRevision: modulo?.revision,
       formAnswers: definizione && modulo
         ? [
             ...catalogFormAnswersToSend(definizione, modulo.fields, risposte as FormAnswers, true)

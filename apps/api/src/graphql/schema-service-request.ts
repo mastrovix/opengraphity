@@ -116,6 +116,15 @@ export function serviceRequestSDL(): string {
     manutenzione notturna.
     """
     formDraftId: ID
+    """
+    La revisione del modulo che il client ha COMPILATO (ondata 8). Se
+    l'amministratore ripubblica il modulo mentre qualcuno lo sta compilando, le
+    risposte sono di un altro modulo: la richiesta viene rifiutata dicendolo —
+    «il modulo e' cambiato, ricomincia» — invece di ricevere un rifiuto
+    incomprensibile su un campo che non ha mai visto. Assente = il client non la
+    manda (un client vecchio): si accetta come prima.
+    """
+    formRevision: Int
   }
 
   input UpdateServiceRequestInput {

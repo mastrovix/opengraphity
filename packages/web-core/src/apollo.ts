@@ -312,3 +312,23 @@ export function createApolloClient(opts: CreateApolloClientOptions): ApolloClien
     ...(defaultOptions ? { defaultOptions } : {}),
   })
 }
+
+/**
+ * SE UN ERRORE PORTA UNA CHIAVE PRECISA.
+ *
+ * Serve quando una pagina non deve solo mostrare l'errore, ma FARE qualcosa:
+ * il caso che l'ha richiesta è il modulo di catalogo ripubblicato mentre
+ * qualcuno lo compilava (ondata 8) — lì la pagina deve anche buttare le
+ * risposte e ricaricare il modulo nuovo.
+ *
+ * Si guarda la CHIAVE e non il messaggio: il messaggio è prosa e cambia con la
+ * lingua, la chiave è il contratto fra API e client.
+ */
+export function errorHasKey(error: unknown, key: string): boolean {
+  const errori = (error as { errors?: ErroreConChiave[] } | null)?.errors
+  const elenco = Array.isArray(errori) ? errori : [error as ErroreConChiave]
+  return elenco.some((e) => {
+    const chiave = e?.extensions?.i18n?.key
+    return typeof chiave === 'string' && chiave === key
+  })
+}

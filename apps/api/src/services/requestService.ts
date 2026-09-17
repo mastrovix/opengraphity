@@ -47,7 +47,7 @@ export function mapRequest(props: Props) {
 }
 
 export async function createRequest(
-  input: { title: string; description?: string; priority: string; category?: string | null; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; formAnswers?: FormAnswerInput[] | null; formDraftId?: string | null; workflowDefinitionId?: string | null },
+  input: { title: string; description?: string; priority: string; category?: string | null; dueDate?: string; catalogItemId?: string; requiresApproval?: boolean; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; formAnswers?: FormAnswerInput[] | null; formDraftId?: string | null; formRevision?: number | null; workflowDefinitionId?: string | null },
   ctx: ServiceCtx,
   channel: 'agent' | 'portal' = 'agent',
 ) {
@@ -85,6 +85,26 @@ export async function createRequest(
           { key: 'errors.catalogForm.noForm', params: { item: row[0]?.name ?? input.catalogItemId } })
       }
       return vuoto
+    }
+    /**
+     * IL MODULO E' CAMBIATO MENTRE SI COMPILAVA (ondata 8).
+     *
+     * Il client manda la revisione che ha compilato. Se non e' quella di adesso,
+     * le risposte sono di un ALTRO modulo: un campo tolto diventa «non e' un
+     * campo di questo modulo», uno aggiunto e obbligatorio diventa «campo
+     * obbligatorio» su una domanda che chi compila non ha mai visto. Due
+     * rifiuti veri per un motivo incomprensibile.
+     *
+     * Quindi si dice la cosa giusta — «il modulo e' cambiato, ricomincia» — e si
+     * ferma qui. Non si tenta di recuperare le risposte: alcune potrebbero non
+     * avere piu' una domanda, e indovinare quali sono ancora buone sarebbe
+     * peggio che rifare il modulo.
+     */
+    if (input.formRevision != null && input.formRevision !== def.revision) {
+      throw new ValidationError(
+        `The form of "${row[0]?.name ?? input.catalogItemId}" changed while you were filling it (revision ${input.formRevision} → ${def.revision}): the answers belong to another form.`,
+        { key: 'errors.catalogForm.revisionChanged', params: { item: row[0]?.name ?? String(input.catalogItemId), filled: String(input.formRevision), current: String(def.revision) } },
+      )
     }
     const library = await formFieldsByName(session, ctx.tenantId, catalogFormFieldNames(def))
     const esito = await resolveFormWrites(session, ctx.tenantId, def, library, input.formAnswers, {

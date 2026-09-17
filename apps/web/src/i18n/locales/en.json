@@ -4171,7 +4171,8 @@
       "referenceEndUser": "The field \"{{field}}\" is a reference ({{fieldType}}): it cannot be offered in the portal, because choosing one means searching the CMDB or the staff list. Untick \"offer it in the portal\".",
       "tooManyFields": "This form has {{count}} fields: {{max}} is the limit. Raise the limit on the catalog forms page, or split the request into two catalog items.",
       "limitOutOfRange": "A limit must be a whole number between {{min}} and {{max}}.",
-      "answerComputed": "The field \"{{field}}\" is computed: its value comes from its formula, it cannot be sent."
+      "answerComputed": "The field \"{{field}}\" is computed: its value comes from its formula, it cannot be sent.",
+      "revisionChanged": "The form of \"{{item}}\" changed while you were filling it (it was revision {{filled}}, now it is {{current}}): these answers belong to another form. Start the request again."
     },
     "serviceCatalog": {
       "workflowNotFound": "That workflow does not exist here, or it is not active.",
