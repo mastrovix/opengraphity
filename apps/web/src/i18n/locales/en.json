@@ -2530,7 +2530,7 @@
         "removeRow": "Remove this row"
       },
       "itinerary": {
-        "intro": "Each catalog item can follow its own workflow. Leave it on “by category” to keep the behaviour you have; pick one to give that request its own steps.",
+        "intro": "An ITINERARY is the road a request travels: the steps from creation to closure, who approves, when it closes. You draw it in the Workflow Designer; here you decide WHICH itinerary each catalog item follows.",
         "duplicateTitle": "Duplicate a workflow",
         "duplicateHelp": "Steps, transitions, actions and positions are copied. The copy starts switched OFF, so it does not enter the choice for every new request before you have finished it — switch it on in the workflow designer.",
         "duplicateFrom": "Copy from",
@@ -2546,13 +2546,18 @@
         "saved": "Itinerary saved",
         "savedAndActivated": "Itinerary assigned, and switched on: \"{{name}}\" was off, and with an itinerary switched off nobody could open that request.",
         "approversElsewhere": "Who approves is a property of the workflow, not of the item: you set it on the approval step, in",
-        "definitionsTitle": "Request workflows",
-        "definitionsHelp": "A switched-off workflow does not enter the choice for any new request; the tickets already on it stay where they are. A copy starts switched off, so you can finish it first.",
+        "definitionsTitle": "Available itineraries",
+        "definitionsHelp": "These are this tenant’s request workflows. «In service» off means it does not enter the choice for a new request — tickets already open stay where they are. A copy is born off, so you can finish it before turning it on.",
         "active": "in service",
         "activated": "Workflow in service",
         "deactivated": "Workflow switched off",
-        "resolvesTo": "→ {{workflow}}",
-        "resolvesToNothing": "No itinerary applies: a new request of this item cannot start."
+        "resolvesTo": "Will use: {{workflow}}",
+        "resolvesToNothing": "No itinerary applies: a new request of this item cannot start.",
+        "everyCategory": "for every category",
+        "onlyCategory": "only for category «{{category}}»",
+        "openInDesigner": "Open in the designer",
+        "mappingTitle": "Which itinerary for each item",
+        "mappingHelp": "By default the item’s CATEGORY decides, which is what you have always had: under each dropdown you can read which itinerary would actually be used. Pick one only when that item must follow a road of its own."
       }
     }
   },

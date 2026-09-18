@@ -202,10 +202,19 @@ export function ItineraryPanel() {
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {definizioni.map((d) => (
               <li key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 8px', borderRadius: 6, background: colors.white, border: `1px solid ${colors.border}` }}>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
-                  {d.name}
-                  {d.category && <span style={{ color: 'var(--color-slate-light)' }}> · {d.category}</span>}
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{d.name}</span>
+                  {/* PER COSA VALE: senza, un elenco di nomi non dice perché
+                      una richiesta finisce su uno invece che sull'altro. */}
+                  <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+                    {d.category
+                      ? t('pages.catalogForms.itinerary.onlyCategory', { category: d.category })
+                      : t('pages.catalogForms.itinerary.everyCategory')}
+                  </span>
                 </span>
+                <Link to={`/workflow/${d.id}`} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-brand-hover)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                  {t('pages.catalogForms.itinerary.openInDesigner')}
+                </Link>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--font-size-body)', color: d.active ? 'var(--color-slate-dark)' : 'var(--color-slate-light)' }}>
                   <input type="checkbox" checked={d.active} onChange={(e) => void cambiaStato(d, e.target.checked)} />
                   {d.active ? t('pages.catalogForms.itinerary.active') : t('pages.catalogForms.itinerary.inactive')}
@@ -217,6 +226,12 @@ export function ItineraryPanel() {
       )}
 
       {/* ── L'iter di ogni voce ───────────────────────────────────────────── */}
+      <strong style={{ display: 'block', fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)', marginBottom: 6 }}>
+        {t('pages.catalogForms.itinerary.mappingTitle')}
+      </strong>
+      <p style={{ margin: '0 0 10px', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', maxWidth: '74ch', lineHeight: 1.5 }}>
+        {t('pages.catalogForms.itinerary.mappingHelp')}
+      </p>
       <div className="og-scroll-x">
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>

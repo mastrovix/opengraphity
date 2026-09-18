@@ -2530,7 +2530,7 @@
         "removeRow": "Togli questa riga"
       },
       "itinerary": {
-        "intro": "Ogni voce di catalogo può seguire il suo workflow. Lascia «per categoria» per tenere il comportamento che hai; scegline uno per dare a quella richiesta i suoi passi.",
+        "intro": "Un ITER è la strada che una richiesta percorre: i passi dalla creazione alla chiusura, chi approva, quando si chiude. Si disegna nel Workflow Designer; qui si decide QUALE iter tocca a quale voce del catalogo.",
         "duplicateTitle": "Duplica un workflow",
         "duplicateHelp": "Si copiano passi, transizioni, azioni e posizioni. La copia nasce SPENTA, così non entra nella scelta di ogni richiesta nuova prima che tu l'abbia finita — la accendi dal disegnatore.",
         "duplicateFrom": "Copia da",
@@ -2546,13 +2546,18 @@
         "saved": "Iter salvato",
         "savedAndActivated": "Iter assegnato, e acceso: «{{name}}» era spento, e con un iter spento nessuno avrebbe potuto aprire quella richiesta.",
         "approversElsewhere": "Chi approva è una proprietà del workflow, non della voce: si indica sul passo di approvazione, nel",
-        "definitionsTitle": "Gli iter delle richieste",
-        "definitionsHelp": "Un iter spento non entra nella scelta di nessuna richiesta nuova; i ticket che ci sono già restano dove sono. Una copia nasce spenta, così la puoi finire prima.",
+        "definitionsTitle": "Gli iter disponibili",
+        "definitionsHelp": "Sono i workflow delle richieste di questo tenant. «In servizio» spento vuol dire che non entra nella scelta di una richiesta nuova — i ticket già aperti restano dove sono. Una copia nasce spenta, così la puoi finire prima di accenderla.",
         "active": "in servizio",
         "activated": "Iter in servizio",
         "deactivated": "Iter spento",
-        "resolvesTo": "→ {{workflow}}",
-        "resolvesToNothing": "Nessun iter si applica: una richiesta nuova di questa voce non può partire."
+        "resolvesTo": "Userà: {{workflow}}",
+        "resolvesToNothing": "Nessun iter si applica: una richiesta nuova di questa voce non può partire.",
+        "everyCategory": "vale per tutte le categorie",
+        "onlyCategory": "solo per la categoria «{{category}}»",
+        "openInDesigner": "Apri nel disegnatore",
+        "mappingTitle": "Quale iter per ogni voce",
+        "mappingHelp": "Per difetto decide la CATEGORIA della voce, ed è il comportamento che hai sempre avuto: sotto ogni tendina c’è scritto quale iter verrebbe usato davvero. Scegline uno solo quando quella voce deve seguire una strada sua."
       }
     }
   },
