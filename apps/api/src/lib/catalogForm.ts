@@ -40,6 +40,8 @@ import {
   type FormTableColumn, type FormTableDefinition, type FormTableRow,
 } from '@opengraphity/types'
 import { NotFoundError, ValidationError } from './errors.js'
+// Le lingue del prodotto: il titolo di una sezione le vuole tutte.
+import { LINGUE } from './enumValueLabels.js'
 import type { RelationFieldDef } from './filterBuilder.js'
 import { assertCustomFieldName } from './customFieldName.js'
 import { loadVocabularyEntries } from './vocabularyEntries.js'
@@ -343,6 +345,19 @@ function sezione(raw: unknown, where: string): CatalogFormSection {
     title: testoPerLingua(o['title'], `${where}.title`) ?? {},
     items: items.map((it, i) => voce(it, `${where}.items[${i}]`)),
   }
+  /*
+   * LE COLONNE DELLA SEZIONE (18 set 2026). Solo 1 o 2: tre colonne su un
+   * modulo che si compila anche da telefono non sono una scelta, sono un
+   * errore che si vede tardi. Assente = una colonna, come tutti i moduli
+   * scritti finora — nessuno cambia aspetto da solo.
+   */
+  const colonne = o['columns']
+  if (colonne !== undefined && colonne !== null) {
+    if (colonne !== 1 && colonne !== 2) {
+      throw new ValidationError(`${where}: columns must be 1 or 2.`, { key: 'errors.catalogForm.sectionColumns', params: { where } })
+    }
+    if (colonne === 2) s['columns'] = 2
+  }
   const descrizione = testoPerLingua(o['description'], `${where}.description`)
   if (descrizione) s['description'] = descrizione
   const quando = condizione(o['visibleWhen'], `${where}.visibleWhen`)
@@ -402,6 +417,30 @@ export function assertCatalogForm(def: CatalogFormDefinition, library: ReadonlyM
         { key: 'errors.catalogForm.sectionDuplicate', params: { id: s.id } })
     }
     nomiSezioni.add(s.id)
+
+    /*
+     * IL TITOLO DELLA SEZIONE, IN TUTTE LE LINGUE DEL PRODOTTO (18 set 2026).
+     *
+     * Prima si poteva pubblicare una sezione senza nome, in silenzio: nel
+     * grafo restava `title: {}` e a schermo un blocco anonimo. Il proprietario
+     * ci è arrivato dal vivo — «riaprendo non vedo il titolo della sezione» —
+     * e la domanda giusta non era «dov'è finito» ma «perché si è potuto
+     * pubblicare senza».
+     *
+     * Entrambe le lingue, per scelta del proprietario: una sezione tradotta a
+     * metà si scopre quando qualcuno apre il modulo nell'altra lingua, cioè
+     * troppo tardi. Il rifiuto NOMINA la sezione e la lingua che manca, perché
+     * su un modulo di sei sezioni «manca un titolo» non basta a nessuno.
+     */
+    for (const lingua of LINGUE) {
+      const testo = (s.title as Record<string, string | undefined>)[lingua]
+      if (typeof testo !== 'string' || testo.trim() === '') {
+        throw new ValidationError(
+          `The section "${s.id}" has no title in ${lingua}: a section without a name is an anonymous block on the form.`,
+          { key: 'errors.catalogForm.sectionTitleRequired', params: { section: s.id, language: lingua } },
+        )
+      }
+    }
   }
 
   const usati = catalogFormFieldNames(def)

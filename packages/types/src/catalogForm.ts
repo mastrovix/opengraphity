@@ -346,7 +346,37 @@ export interface CatalogFormSection {
   readonly title: LocalizedText
   readonly description?: LocalizedText
   readonly visibleWhen?: FormCondition
+  /**
+   * QUANTE COLONNE, per i campi che non dicono la loro (18 set 2026).
+   *
+   * La larghezza era solo per campo, e fare una sezione a due colonne voleva
+   * dire spuntare «Mezza larghezza» dodici volte. Ora la sezione dichiara il
+   * default e il campo resta l'eccezione: `item.width` vince dove c'è, perché
+   * una riga intera in mezzo a due colonne è una scelta che si vuole poter
+   * fare (un testo lungo, una tabella).
+   *
+   * Assente = una colonna, che è il comportamento di tutti i moduli scritti
+   * finora: nessuna migrazione, nessun modulo che cambia aspetto da solo.
+   */
+  readonly columns?: 1 | 2
   readonly items: readonly CatalogFormItem[]
+}
+
+/**
+ * La larghezza VERA di un campo: la sua, se l'ha detta; altrimenti quella che
+ * discende dalle colonne della sezione.
+ *
+ * Una funzione sola, in `types`, perché la leggono in tre — il renderer (che
+ * disegna), il costruttore (che deve mostrare la larghezza effettiva, non
+ * quella scritta) e i test. Tre copie di «chi vince» sarebbero divergute al
+ * primo dubbio.
+ */
+export function larghezzaEffettiva(
+  section: Pick<CatalogFormSection, 'columns'>,
+  item: Pick<CatalogFormItem, 'width'>,
+): 'full' | 'half' {
+  if (item.width) return item.width
+  return section.columns === 2 ? 'half' : 'full'
 }
 
 /**

@@ -18,6 +18,7 @@ import {
   evaluateFormCondition, evaluateFormRule, emptyCatalogForm, catalogFormFieldNames,
   catalogFormForEndUser, formItemsToFill,
   type CatalogFormDefinition, type FormCondition,
+  larghezzaEffettiva,
 } from '@opengraphity/types'
 
 vi.mock('../vocabularyEntries.js', () => ({
@@ -111,7 +112,7 @@ function moduloDiProva(): CatalogFormDefinition {
       },
       {
         id: 'amministrativo',
-        title: { it: 'Amministrativo' },
+        title: { it: 'Amministrativo', en: 'Administrative' },
         items: [
           { field: 'centro_di_costo' },
           { field: 'istruzioni' },
@@ -185,17 +186,17 @@ describe('parseCatalogForm', () => {
   })
 
   it('una condizione senza regole è rifiutata: «sempre» e «mai» sarebbero indistinguibili', () => {
-    const def = { version: 1, revision: 1, sections: [{ id: 'a', title: {}, items: [{ field: 'modello', visibleWhen: { match: 'all', rules: [] } }] }] }
+    const def = { version: 1, revision: 1, sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'modello', visibleWhen: { match: 'all', rules: [] } }] }] }
     expect(() => parseCatalogForm(JSON.stringify(def), 'x')).toThrow(/at least one rule/)
   })
 
   it('operatore sconosciuto, valore mancante, id di sezione sbagliato', () => {
-    const conRegola = (rule: unknown) => JSON.stringify({ version: 1, revision: 1, sections: [{ id: 'a', title: {}, items: [{ field: 'modello', visibleWhen: { match: 'all', rules: [rule] } }] }] })
+    const conRegola = (rule: unknown) => JSON.stringify({ version: 1, revision: 1, sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'modello', visibleWhen: { match: 'all', rules: [rule] } }] }] })
     expect(() => parseCatalogForm(conRegola({ field: 'costo', op: 'maggiore', value: '1' }), 'x')).toThrow(/unknown operator/)
     expect(() => parseCatalogForm(conRegola({ field: 'costo', op: 'eq' }), 'x')).toThrow(/needs a value/)
     // `filled` non vuole un valore: passa.
     expect(() => parseCatalogForm(conRegola({ field: 'costo', op: 'filled' }), 'x')).not.toThrow()
-    expect(() => parseCatalogForm(JSON.stringify({ version: 1, revision: 1, sections: [{ id: 'Sezione 1', title: {}, items: [] }] }), 'x')).toThrow(/section id/)
+    expect(() => parseCatalogForm(JSON.stringify({ version: 1, revision: 1, sections: [{ id: 'Sezione 1', title: { it: 'Sezione', en: 'Section' }, items: [] }] }), 'x')).toThrow(/section id/)
   })
 })
 
@@ -205,35 +206,35 @@ describe('assertCatalogForm', () => {
   })
 
   it('un campo che non è in libreria', () => {
-    const def = { ...moduloDiProva(), sections: [{ id: 'a', title: {}, items: [{ field: 'inventato' }] }] }
+    const def = { ...moduloDiProva(), sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'inventato' }] }] }
     expect(() => assertCatalogForm(def, LIBRERIA)).toThrow(/not in the field library/)
   })
 
   it('lo stesso campo due volte scriverebbe due volte la stessa proprietà', () => {
-    const def = { ...moduloDiProva(), sections: [{ id: 'a', title: {}, items: [{ field: 'modello' }, { field: 'modello' }] }] }
+    const def = { ...moduloDiProva(), sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'modello' }, { field: 'modello' }] }] }
     expect(() => assertCatalogForm(def, LIBRERIA)).toThrow(/appears twice/)
   })
 
   it('una condizione che guarda un campo non presente nel modulo non potrebbe mai diventare vera', () => {
     const def = {
       version: 1, revision: 1,
-      sections: [{ id: 'a', title: {}, items: [{ field: 'modello', visibleWhen: { match: 'all', rules: [{ field: 'costo', op: 'gt', value: '10' }] } }] }],
+      sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'modello', visibleWhen: { match: 'all', rules: [{ field: 'costo', op: 'gt', value: '10' }] } }] }],
     } as CatalogFormDefinition
     expect(() => assertCatalogForm(def, LIBRERIA)).toThrow(/could never become true/)
   })
 
   it('una nota non porta risposta: non può essere obbligatoria né essere il soggetto di una condizione', () => {
-    const obbligatoria = { version: 1, revision: 1, sections: [{ id: 'a', title: {}, items: [{ field: 'istruzioni', required: true }] }] } as CatalogFormDefinition
+    const obbligatoria = { version: 1, revision: 1, sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'istruzioni', required: true }] }] } as CatalogFormDefinition
     expect(() => assertCatalogForm(obbligatoria, LIBRERIA)).toThrow(/carries no answer/)
     const soggetto = {
       version: 1, revision: 1,
-      sections: [{ id: 'a', title: {}, items: [{ field: 'istruzioni' }, { field: 'modello', visibleWhen: { match: 'all', rules: [{ field: 'istruzioni', op: 'filled' }] } }] }],
+      sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'istruzioni' }, { field: 'modello', visibleWhen: { match: 'all', rules: [{ field: 'istruzioni', op: 'filled' }] } }] }],
     } as CatalogFormDefinition
     expect(() => assertCatalogForm(soggetto, LIBRERIA)).toThrow(/only fields stored as a property/)
   })
 
   it('due sezioni con lo stesso identificativo', () => {
-    const def = { version: 1, revision: 1, sections: [{ id: 'a', title: {}, items: [] }, { id: 'a', title: {}, items: [] }] } as CatalogFormDefinition
+    const def = { version: 1, revision: 1, sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [] }, { id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [] }] } as CatalogFormDefinition
     expect(() => assertCatalogForm(def, LIBRERIA)).toThrow(/have the id/)
   })
 })
@@ -343,7 +344,7 @@ describe('resolveFormWrites', () => {
 
     const conSistemi: CatalogFormDefinition = {
       version: 1, revision: 1,
-      sections: [{ id: 'a', title: {}, items: [{ field: 'sistemi' }] }],
+      sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'sistemi' }] }],
     }
     await expect(resolveFormWrites(session, 't1', conSistemi, LIBRERIA, risposte({ sistemi: ['posta', 'inventato'] })))
       .rejects.toThrow(/is not a value of/)
@@ -356,7 +357,7 @@ describe('resolveFormWrites', () => {
       tipo_dispositivo: 'portatile', centro_di_costo: 'CC-1', costo: 'tanto',
     }))).rejects.toThrow(/is a number/)
 
-    const conData: CatalogFormDefinition = { version: 1, revision: 1, sections: [{ id: 'a', title: {}, items: [{ field: 'data_inizio' }] }] }
+    const conData: CatalogFormDefinition = { version: 1, revision: 1, sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'data_inizio' }] }] }
     await expect(resolveFormWrites(session, 't1', conData, LIBRERIA, risposte({ data_inizio: 'domani' })))
       .rejects.toThrow(/is a date/)
   })
@@ -396,23 +397,23 @@ describe('ondata 2: riferimenti e allegati', () => {
   const session = {} as never
   const moduloRif: CatalogFormDefinition = {
     version: 1, revision: 1,
-    sections: [{ id: 'a', title: {}, items: [{ field: 'dispositivo', endUser: false }, { field: 'per_chi', endUser: false, required: true }] }],
+    sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'dispositivo', endUser: false }, { field: 'per_chi', endUser: false, required: true }] }],
   }
   const moduloFile: CatalogFormDefinition = {
     version: 1, revision: 1,
-    sections: [{ id: 'a', title: {}, items: [{ field: 'preventivo', required: true }] }],
+    sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'preventivo', required: true }] }],
   }
 
   it('un riferimento NON si offre nel portale: il modulo che lo offre viene rifiutato alla pubblicazione', () => {
     const offerto: CatalogFormDefinition = {
       version: 1, revision: 1,
-      sections: [{ id: 'a', title: {}, items: [{ field: 'dispositivo' }] }],
+      sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'dispositivo' }] }],
     }
     expect(() => assertCatalogForm(offerto, LIBRERIA)).toThrow(/cannot be offered in the portal/)
     // Con la spunta togliata passa (e senza pretenderlo: vedi il caso qui sotto).
     const nonOfferto: CatalogFormDefinition = {
       version: 1, revision: 1,
-      sections: [{ id: 'a', title: {}, items: [{ field: 'dispositivo', endUser: false }, { field: 'per_chi', endUser: false }] }],
+      sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'dispositivo', endUser: false }, { field: 'per_chi', endUser: false }] }],
     }
     expect(() => assertCatalogForm(nonOfferto, LIBRERIA)).not.toThrow()
   })
@@ -440,7 +441,7 @@ describe('ondata 2: riferimenti e allegati', () => {
     lib.set('costo', campo('costo', 'number', { required: true }))
     const def: CatalogFormDefinition = {
       version: 1, revision: 1,
-      sections: [{ id: 'a', title: {}, items: [{ field: 'costo', endUser: false }] }],
+      sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'costo', endUser: false }] }],
     }
     expect(() => assertCatalogForm(def, lib)).toThrow(/required but it is not offered in the portal/)
   })
@@ -448,7 +449,7 @@ describe('ondata 2: riferimenti e allegati', () => {
   it('una condizione non può guardare un allegato né un riferimento', () => {
     const suFile: CatalogFormDefinition = {
       version: 1, revision: 1,
-      sections: [{ id: 'a', title: {}, items: [
+      sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [
         { field: 'preventivo' },
         { field: 'modello', visibleWhen: { match: 'all', rules: [{ field: 'preventivo', op: 'filled' }] } },
       ] }],
@@ -821,7 +822,7 @@ describe('catalogFormForEndUser', () => {
 
   it('senza `endUser` una voce è offerta: assente vuol dire sì', () => {
     const out = catalogFormForEndUser({ version: 1, revision: 1, sections: [
-      { id: 'a', title: {}, items: [{ field: 'x' }] },
+      { id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'x' }] },
     ] })
     expect(catalogFormFieldNames(out)).toEqual(['x'])
   })
@@ -870,7 +871,7 @@ describe('date normalizzate e forme rifiutate', () => {
   ])
   const def: CatalogFormDefinition = {
     version: 1, revision: 1,
-    sections: [{ id: 's', title: {}, items: [{ field: 'data_inizio' }, { field: 'quando' }, { field: 'modello' }] }],
+    sections: [{ id: 's', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'data_inizio' }, { field: 'quando' }, { field: 'modello' }] }],
   }
 
   it('una data in formato locale diventa ISO: senza, «dopo il» non la trova', async () => {
@@ -945,5 +946,83 @@ describe('formItemsToFill: una sorgente sola per la visibilità', () => {
   it('dal portale le voci dell\'area di lavoro non si chiedono', () => {
     expect(formItemsToFill(def, { tipo: 'portatile' }, { endUser: true }).map((i) => i.field))
       .toEqual(['tipo', 'costo'])
+  })
+})
+
+/**
+ * IL TITOLO DELLA SEZIONE E LE COLONNE (18 set 2026).
+ *
+ * Il proprietario ha costruito un modulo dal vivo e ha detto: «riaprendo non
+ * vedo il titolo della sezione». Nel grafo c'era `title: {}` — il prodotto
+ * aveva pubblicato una sezione senza nome, in silenzio, e a schermo restava un
+ * blocco anonimo. La domanda giusta non era «dov'è finito il titolo» ma
+ * «perché si è potuto pubblicare senza».
+ */
+describe('il titolo di una sezione', () => {
+  const conTitolo = (title: unknown) => ({
+    version: 1, revision: 1,
+    sections: [{ id: 'a', title, items: [{ field: 'modello' }] }],
+  })
+
+  it('serve in TUTTE le lingue del prodotto', () => {
+    expect(() => assertCatalogForm(conTitolo({ it: 'Dispositivo', en: 'Device' }) as never, LIBRERIA)).not.toThrow()
+  })
+
+  it('una sezione senza titolo non si pubblica, e il rifiuto la NOMINA', () => {
+    expect(() => assertCatalogForm(conTitolo({}) as never, LIBRERIA)).toThrow(/section "a" has no title/)
+  })
+
+  it('un titolo in una lingua sola non basta: l\'altra metà dei clienti vedrebbe un blocco anonimo', () => {
+    expect(() => assertCatalogForm(conTitolo({ it: 'Dispositivo' }) as never, LIBRERIA)).toThrow(/no title in en/)
+    expect(() => assertCatalogForm(conTitolo({ en: 'Device' }) as never, LIBRERIA)).toThrow(/no title in it/)
+  })
+
+  it('uno spazio non è un titolo', () => {
+    expect(() => assertCatalogForm(conTitolo({ it: '   ', en: 'Device' }) as never, LIBRERIA)).toThrow(/no title in it/)
+  })
+})
+
+describe('le colonne di una sezione', () => {
+  const conColonne = (columns: unknown) => JSON.stringify({
+    version: 1, revision: 1,
+    sections: [{ id: 'a', title: { it: 'S', en: 'S' }, columns, items: [] }],
+  })
+
+  it('una o due, e basta', () => {
+    expect(parseCatalogForm(conColonne(2), 'x')?.sections[0]?.columns).toBe(2)
+    expect(() => parseCatalogForm(conColonne(3), 'x')).toThrow(/columns must be 1 or 2/)
+    expect(() => parseCatalogForm(conColonne('2'), 'x')).toThrow(/columns must be 1 or 2/)
+  })
+
+  it('una colonna non si scrive: è il comportamento di sempre, e scriverlo farebbe salire una revisione per niente', () => {
+    const d = parseCatalogForm(conColonne(1), 'x')
+    expect(d?.sections[0]).not.toHaveProperty('columns')
+    expect(parseCatalogForm(conColonne(null), 'x')?.sections[0]).not.toHaveProperty('columns')
+  })
+})
+
+/**
+ * LA LARGHEZZA EFFETTIVA: chi vince fra sezione e campo (18 set 2026).
+ *
+ * Nasce da una richiesta precisa — «una o due colonne per sezione» — e da un
+ * rischio altrettanto preciso: due posti che dicono la stessa cosa. La regola
+ * sta in `types` e la leggono il renderer (che disegna) e il costruttore (che
+ * deve mostrare la larghezza VERA, non quella scritta): se il costruttore
+ * mostrasse la spunta spenta su un campo che il renderer disegna a metà,
+ * l'interfaccia mentirebbe su sé stessa.
+ */
+describe('larghezzaEffettiva', () => {
+  it('senza colonne dichiarate un campo è a larghezza piena, come tutti i moduli scritti finora', () => {
+    expect(larghezzaEffettiva({}, {})).toBe('full')
+    expect(larghezzaEffettiva({ columns: 1 }, {})).toBe('full')
+  })
+
+  it('in una sezione a due colonne un campo che non dice niente sta a metà', () => {
+    expect(larghezzaEffettiva({ columns: 2 }, {})).toBe('half')
+  })
+
+  it('il CAMPO vince sempre: una riga intera in mezzo a due colonne è una scelta che si vuole poter fare', () => {
+    expect(larghezzaEffettiva({ columns: 2 }, { width: 'full' })).toBe('full')
+    expect(larghezzaEffettiva({ columns: 1 }, { width: 'half' })).toBe('half')
   })
 })

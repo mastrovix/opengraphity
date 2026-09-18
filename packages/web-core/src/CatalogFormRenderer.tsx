@@ -27,7 +27,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   FORM_FIELD_TYPES_WITHOUT_ANSWER, evaluateFormCondition, formItemsToFill, isFormAttachmentType, isFormReferenceType,
-  isFormTableType, localizedText,
+  isFormTableType, larghezzaEffettiva, localizedText,
   type CatalogFormDefinition, type CatalogFormItem, type FormAnswerValue, type FormAnswers,
 } from '@opengraphity/types'
 
@@ -323,6 +323,7 @@ export function CatalogFormRenderer(props: CatalogFormRendererProps) {
                     key={item.field}
                     campo={campo}
                     item={item}
+                    colonneDellaSezione={sezione.columns}
                     valore={answers[item.field]}
                     errore={errors?.[item.field]}
                     language={language}
@@ -361,11 +362,13 @@ interface CampoProps {
   yesLabel?: string
   noLabel?: string
   onChange: (name: string, value: FormAnswerValue) => void
+  /** Le colonne della sezione che lo contiene: decidono la larghezza dei campi che non la dichiarano. */
+  colonneDellaSezione?: 1 | 2
   /** Il resto delle props del renderer: allegati e riferimenti (ondata 2). */
   extra: CatalogFormRendererProps
 }
 
-function CampoDelModulo({ campo, item, valore, errore, erroreFormula, computedLabel, language, disabled, requiredLabel, emptyChoiceLabel, yesLabel, noLabel, onChange, extra }: CampoProps) {
+function CampoDelModulo({ campo, item, valore, errore, erroreFormula, computedLabel, language, disabled, requiredLabel, emptyChoiceLabel, yesLabel, noLabel, colonneDellaSezione, onChange, extra }: CampoProps) {
   const obbligatorio = item.required ?? campo.required
   const testo = etichetta(campo, language)
   const spiegazione = aiuto(campo, item, language)
@@ -380,7 +383,9 @@ function CampoDelModulo({ campo, item, valore, errore, erroreFormula, computedLa
    */
   const puntaAlControllo = campo.fieldType !== 'multi_enum'
   const descritto = [idAiuto, idErrore].filter(Boolean).join(' ') || undefined
-  const larghezza = item.width === 'half' ? 'og-form-cell og-form-cell-half' : 'og-form-cell'
+  // La larghezza vera: quella del campo, o quella che discende dalle colonne
+  // della sezione (`larghezzaEffettiva`, in types: una regola, un posto).
+  const larghezza = larghezzaEffettiva({ columns: colonneDellaSezione }, item) === 'half' ? 'og-form-cell og-form-cell-half' : 'og-form-cell'
 
   // Una nota non è un campo: non ha etichetta, non ha valore, non si compila.
   if (campo.fieldType === 'note') {
