@@ -574,6 +574,33 @@ code, kbd, samp, pre {
 }
 
 /*
+  LA PRESA DI UN TRASCINAMENTO (18 set 2026).
+
+  `touch-action: none` toglie lo scorrimento sotto il dito; le due righe di
+  WebKit tolgono la selezione del testo e il menù della pressione lunga, che su
+  iOS si riprendono il gesto a metà.
+
+  E su un dispositivo a tocco la presa diventa 44px: il puntino del «grip» è
+  disegnato a 14px e da mouse è giusto così, ma col dito un bersaglio di 20px
+  si manca — e mancare la presa è indistinguibile da «il trascinamento non
+  funziona». 44px è il minimo che Apple indica, e vale solo dove il puntatore
+  è grosso: col mouse la riga resta compatta.
+*/
+.og-presa {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+@media (pointer: coarse) {
+  .og-presa {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+}
+
+/*
   LA CASSETTA DEGLI ATTREZZI SOPRA, QUANDO LE COLONNE SI IMPILANO (18 set 2026).
 
   Nel costruttore dei moduli la colonna destra è la palette dei campi: si

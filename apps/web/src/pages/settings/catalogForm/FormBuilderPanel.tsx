@@ -137,7 +137,7 @@ interface Trascinamento {
   bersaglio: string | null
   etichetta: string
   posizione: { x: number; y: number } | null
-  afferra: (e: React.PointerEvent, cosa: Trascinato, etichetta: string) => void
+  afferra: (e: React.PointerEvent | React.TouchEvent, cosa: Trascinato, etichetta: string) => void
 }
 
 /**
@@ -172,19 +172,43 @@ function useTrascinamento(onRilascio: (cosa: Trascinato, zona: Zona) => void): T
    * due `pointermove` e `pointerup` tutti arrivati, e nessun campo aggiunto.
    * Un gesto va ascoltato dall'istante in cui comincia.
    */
-  const afferra = (e: React.PointerEvent, cosa: Trascinato, testo: string) => {
-    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return
-    // Senza questo il dito scorre la pagina e il mouse seleziona il testo.
-    e.preventDefault()
+  const afferra = (e: React.PointerEvent | React.TouchEvent, cosa: Trascinato, testo: string) => {
+    /*
+     * SU iOS IL GESTO LO GUIDANO I TOUCH EVENT, NON I POINTER EVENT.
+     *
+     * Safari manda `pointercancel` appena decide che il gesto è suo — uno
+     * scorrimento, una selezione di testo, il menù della pressione lunga — e
+     * il trascinamento muore a metà: `touch-action: none` non basta a
+     * togliergli quella decisione. I touch event invece restano, e un
+     * `touchmove` non passivo con `preventDefault` ferma lo scorrimento per
+     * davvero.
+     *
+     * Il dito genera ENTRAMBE le famiglie di eventi: il ramo pointer ignora
+     * `pointerType: 'touch'`, se no lo stesso gesto verrebbe guidato due volte.
+     * Trovato dal proprietario su iPad il 18 set 2026, col codice a pointer
+     * event già in linea e funzionante col mouse.
+     */
+    const conDito = 'touches' in e
+    if (!conDito) {
+      const pe = e as React.PointerEvent
+      if (pe.pointerType === 'touch') return
+      if (!pe.isPrimary || (pe.pointerType === 'mouse' && pe.button !== 0)) return
+      // Senza questo il mouse seleziona il testo mentre si trascina.
+      pe.preventDefault()
+    }
+    const partenza = conDito ? (e as React.TouchEvent).touches[0] : (e as React.PointerEvent)
+    if (!partenza) return
+    const x0 = partenza.clientX
+    const y0 = partenza.clientY
     smonta.current?.()
     corso.current = { cosa, zona: null }
-    dove.current = { x: e.clientX, y: e.clientY }
+    dove.current = { x: x0, y: y0 }
     // Il contenitore da scorrere è quello DEI BERSAGLI, non quello della
     // presa: da quando la palette ha uno scorrimento suo, partire da lì
     // avrebbe scorso la palette invece della pagina.
     scorrevole.current = contenitoreScorrevole(document.querySelector('[data-drop]') ?? e.currentTarget)
     setTrascinato(cosa); setEtichetta(testo); setBersaglio(null)
-    setPosizione({ x: e.clientX, y: e.clientY })
+    setPosizione({ x: x0, y: y0 })
 
     /** La zona sotto il puntatore: la più interna che accetta quello che porto. */
     const zonaSotto = (x: number, y: number): { chiave: string; zona: Zona } | null => {
@@ -206,11 +230,23 @@ function useTrascinamento(onRilascio: (cosa: Trascinato, zona: Zona) => void): T
       setBersaglio(trovata?.chiave ?? null)
     }
 
+    const spostaA = (x: number, y: number) => {
+      dove.current = { x, y }
+      setPosizione({ x, y })
+      aggiorna(x, y)
+    }
+
     const muovi = (ev: PointerEvent) => {
       ev.preventDefault()
-      dove.current = { x: ev.clientX, y: ev.clientY }
-      setPosizione({ x: ev.clientX, y: ev.clientY })
-      aggiorna(ev.clientX, ev.clientY)
+      spostaA(ev.clientX, ev.clientY)
+    }
+    const muoviDito = (ev: TouchEvent) => {
+      const p = ev.touches[0]
+      if (!p) return
+      // Non passivo di proposito: è QUESTO che impedisce alla pagina di
+      // scorrere sotto il dito mentre si trascina.
+      ev.preventDefault()
+      spostaA(p.clientX, p.clientY)
     }
 
     /*
@@ -234,28 +270,47 @@ function useTrascinamento(onRilascio: (cosa: Trascinato, zona: Zona) => void): T
       window.removeEventListener('pointermove', muovi)
       window.removeEventListener('pointerup', molla)
       window.removeEventListener('pointercancel', annulla)
+      window.removeEventListener('touchmove', muoviDito)
+      window.removeEventListener('touchend', mollaDito)
+      window.removeEventListener('touchcancel', annulla)
       window.removeEventListener('keydown', tasto)
       smonta.current = null
       corso.current = { cosa: null, zona: null }
       setTrascinato(null); setBersaglio(null); setPosizione(null)
     }
-    function molla(ev: PointerEvent) {
+    /**
+     * Il bersaglio si rilegge dal punto in cui si è lasciato: con un gesto
+     * veloce l'ultimo movimento può mancare, e il rilascio cadrebbe nel vuoto
+     * pur essendo il dito nel posto giusto.
+     */
+    const lascia = (x: number, y: number) => {
       const { cosa: c, zona } = corso.current
-      // Il bersaglio si rilegge dal punto in cui si è lasciato: con un gesto
-      // veloce l'ultimo `pointermove` può mancare, e il rilascio cadrebbe nel
-      // vuoto pur essendo il dito nel posto giusto.
-      const finale = zonaSotto(ev.clientX, ev.clientY)?.zona ?? zona
+      const finale = zonaSotto(x, y)?.zona ?? zona
       if (c && finale) rilascio.current(c, finale)
       chiudi()
+    }
+    function molla(ev: PointerEvent) { lascia(ev.clientX, ev.clientY) }
+    function mollaDito(ev: TouchEvent) {
+      const p = ev.changedTouches[0]
+      // `changedTouches` e non `touches`: al `touchend` il dito non è più
+      // nell'elenco di quelli appoggiati, e `touches` è vuoto.
+      if (p) lascia(p.clientX, p.clientY)
+      else chiudi()
     }
     function annulla() { chiudi() }
     // `Escape` annulla: un gesto partito per sbaglio deve avere un'uscita che
     // non sposta niente.
     function tasto(ev: KeyboardEvent) { if (ev.key === 'Escape') chiudi() }
 
-    window.addEventListener('pointermove', muovi, { passive: false })
-    window.addEventListener('pointerup', molla)
-    window.addEventListener('pointercancel', annulla)
+    if (conDito) {
+      window.addEventListener('touchmove', muoviDito, { passive: false })
+      window.addEventListener('touchend', mollaDito)
+      window.addEventListener('touchcancel', annulla)
+    } else {
+      window.addEventListener('pointermove', muovi, { passive: false })
+      window.addEventListener('pointerup', molla)
+      window.addEventListener('pointercancel', annulla)
+    }
     window.addEventListener('keydown', tasto)
     smonta.current = chiudi
   }
@@ -296,7 +351,7 @@ function OmbraTrascinata({ etichetta, posizione }: { etichetta: string; posizion
  */
 function Maniglia({ etichetta, onAfferra, onSu, onGiu, evidenziata }: {
   etichetta: string
-  onAfferra: (e: React.PointerEvent) => void
+  onAfferra: (e: React.PointerEvent | React.TouchEvent) => void
   onSu: () => void
   onGiu: () => void
   evidenziata?: boolean
@@ -307,6 +362,8 @@ function Maniglia({ etichetta, onAfferra, onSu, onGiu, evidenziata }: {
       aria-label={etichetta}
       title={etichetta}
       onPointerDown={(e) => { e.currentTarget.focus(); onAfferra(e) }}
+      onTouchStart={onAfferra}
+      className="og-presa"
       onKeyDown={(e) => {
         if (e.key === 'ArrowUp')   { e.preventDefault(); onSu() }
         if (e.key === 'ArrowDown') { e.preventDefault(); onGiu() }
@@ -316,8 +373,9 @@ function Maniglia({ etichetta, onAfferra, onSu, onGiu, evidenziata }: {
         border: evidenziata ? '1px solid var(--color-brand)' : '1px solid transparent',
         borderRadius: 5, cursor: 'grab', color: 'var(--color-slate-light)', padding: '3px 1px',
         display: 'flex', alignItems: 'center', flex: '0 0 auto',
-        // Senza, il dito che scende scorre la pagina invece di trascinare.
-        touchAction: 'none',
+        // Il resto della presa (niente scorrimento, niente selezione, 44px
+        // col dito) sta in `.og-presa`: è una regola di tutta l'app, non di
+        // questa maniglia.
       }}
     >
       <GripVertical size={14} />
@@ -849,9 +907,11 @@ export function FormBuilderPanel() {
                         aria-label={t('pages.catalogForms.builder.dragField', { field: f.label })}
                         title={t('pages.catalogForms.builder.dragField', { field: f.label })}
                         onPointerDown={(e) => { trascinamento.afferra(e, { tipo: 'palette', campo: f.name }, f.label) }}
+                        onTouchStart={(e) => { trascinamento.afferra(e, { tipo: 'palette', campo: f.name }, f.label) }}
+                        className="og-presa"
                         style={{
-                          display: 'flex', color: 'var(--color-slate-light)', flex: '0 0 auto', cursor: 'grab',
-                          touchAction: 'none', background: 'none', border: 'none', padding: 0,
+                          display: 'flex', alignItems: 'center', color: 'var(--color-slate-light)',
+                          flex: '0 0 auto', cursor: 'grab', background: 'none', border: 'none', padding: 0,
                         }}
                       >
                         <GripVertical size={14} />
