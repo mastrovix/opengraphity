@@ -47,7 +47,7 @@ import {
 } from '@opengraphity/types'
 import { CatalogFormRenderer } from '@opengraphity/web-core'
 import { GET_CATALOG_FORM, GET_ENUM_TYPES, GET_FORM_FIELDS, GET_SERVICE_CATALOG_ADMIN, GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
-import { CREATE_FORM_FIELD, SAVE_CATALOG_FORM } from '@/graphql/mutations'
+import { CREATE_FORM_FIELD, SAVE_CATALOG_FORM, UPDATE_FORM_FIELD } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
 import { useConfirm } from '@/hooks/useConfirm'
 import { alpha, colors, fontWeight, palette } from '@/lib/tokens'
@@ -55,7 +55,7 @@ import { Input, Select } from '@/components/ui/FormControls'
 import type { FormFieldRow } from './FieldLibraryPanel'
 import { FieldEditor, inputDaBozza, BOZZA_VUOTA, type Bozza } from './FieldEditor'
 import { FormCanvas, IconaTipo, type Selezione } from './FormCanvas'
-import { ProprietaSezione, ProprietaVoce } from './ItemProperties'
+import { EditorDelCampoDiLibreria, ProprietaSezione, ProprietaVoce } from './ItemProperties'
 import { ModaleCentrato } from './ModaleCentrato'
 
 interface CatalogItem { id: string; name: string; active: boolean; category: string | null }
@@ -564,6 +564,22 @@ export function FormBuilderPanel() {
    * volta: aprire il secondo chiude il primo.
    */
   const [attrezziAperti, setAttrezziAperti] = useState<'library' | 'types' | null>(null)
+  /*
+   * IL CAMPO SI MODIFICA DA DOVE LO SI GUARDA (18 set 2026).
+   *
+   * Cliccando un campo sulla tela si cambiava solo come sta in QUESTO modulo —
+   * obbligatorio, larghezza, portale, condizione — e per l'etichetta, l'aiuto,
+   * il vocabolario o lo script bisognava andare nella Libreria, cercarlo e
+   * aprirlo: «dovrei poter cambiare le sue proprietà così come quando lo
+   * inserisco».
+   *
+   * Qui c'è la bozza del campo di libreria mentre la si modifica; `null`
+   * quando il blocco è chiuso. È lo STESSO editor della creazione, quindi
+   * niente può esserci lì e mancare qui.
+   */
+  const [campoInModifica, setCampoInModifica] = useState<Bozza | null>(null)
+  const [salvandoCampo, setSalvandoCampo] = useState(false)
+  const [aggiornaCampo] = useMutation(UPDATE_FORM_FIELD, { onError: (e) => showError(e) })
   const idVoce = useId()
 
   const sostituisciVoce = (iSez: number, iVoce: number, v: CatalogFormItem) =>
@@ -739,7 +755,7 @@ export function FormBuilderPanel() {
     if (!selezione) return null
     const sezione = bozza.sections[selezione.iSez]
     if (!sezione) return null
-    const chiudi = () => { setSelezione(null) }
+    const chiudi = () => { setSelezione(null); setCampoInModifica(null) }
 
     if (selezione.tipo === 'section') {
       return (
@@ -782,6 +798,33 @@ export function FormBuilderPanel() {
             sostituisciSezione(selezione.iSez, { ...sezione, items: sezione.items.filter((_, j) => j !== selezione.iVoce) })
             chiudi()
           }}
+          campoDiLibreria={campo && (
+            <EditorDelCampoDiLibreria
+              campo={campo}
+              bozza={campoInModifica}
+              onBozza={setCampoInModifica}
+              salvando={salvandoCampo}
+              vocabolari={enumData?.enumTypes ?? []}
+              campiLeggibili={libreria.map((f) => ({ name: f.name, label: f.label }))}
+              onSalva={async () => {
+                if (!campoInModifica) return
+                setSalvandoCampo(true)
+                try {
+                  const r = await aggiornaCampo({
+                    variables: { id: campo.id, input: inputDaBozza(campoInModifica, campo.fieldType) },
+                  })
+                  if (!r.data) return
+                  await rileggiLibreria()
+                  setCampoInModifica(null)
+                  toast.success(t('pages.catalogForms.library.saved'))
+                } catch {
+                  /* L'avviso lo mostra il link degli errori di Apollo: qui si
+                     prende il rifiuto per non lasciare una promessa non
+                     gestita, e si TIENE APERTO l'editor. */
+                } finally { setSalvandoCampo(false) }
+              }}
+            />
+          )}
           editorCondizione={(
             <EditorCondizione
               condizione={item.visibleWhen}

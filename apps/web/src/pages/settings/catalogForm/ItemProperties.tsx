@@ -15,14 +15,15 @@
  * `ModaleCentrato`, che porta le sue lezioni.
  */
 import { useTranslation } from 'react-i18next'
-import { Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import {
   isFormReferenceType, larghezzaEffettiva, FORM_FIELD_TYPES_WITHOUT_ANSWER,
   type CatalogFormItem, type CatalogFormSection,
 } from '@opengraphity/types'
 import { Input, Select, LabelledField } from '@/components/ui/FormControls'
-import { colors } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
 import type { FormFieldRow } from './FieldLibraryPanel'
+import { FieldEditor, bozzaDaCampo, type Bozza } from './FieldEditor'
 
 const bottone: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 7,
@@ -37,7 +38,7 @@ const spunta: React.CSSProperties = {
 
 /** Le proprietà di un CAMPO nel modulo. Il campo in sé (etichetta, tipo, script) sta in libreria. */
 export function ProprietaVoce({
-  item, campo, sezione, onItem, onRimuovi, editorCondizione,
+  item, campo, sezione, onItem, onRimuovi, editorCondizione, campoDiLibreria,
 }: {
   item: CatalogFormItem
   campo: FormFieldRow | undefined
@@ -46,6 +47,13 @@ export function ProprietaVoce({
   onRimuovi: () => void
   /** L'editor delle condizioni lo passa il pannello: conosce i soggetti possibili. */
   editorCondizione: React.ReactNode
+  /**
+   * L'editor del CAMPO in libreria (etichetta, aiuto, vocabolario, script…).
+   * Lo passa il pannello, che ha la mutation e la libreria: qui si dice solo
+   * dove va — sotto le proprietà di questo modulo, perché prima si guarda
+   * come il campo sta QUI e poi, se serve, si cambia il campo per tutti.
+   */
+  campoDiLibreria?: React.ReactNode
 }) {
   const { t } = useTranslation()
   const senzaRisposta = campo && (FORM_FIELD_TYPES_WITHOUT_ANSWER as readonly string[]).includes(campo.fieldType)
@@ -97,6 +105,8 @@ export function ProprietaVoce({
       )}
 
       <div style={{ marginTop: 14 }}>{editorCondizione}</div>
+
+      {campoDiLibreria}
 
       <div style={{ marginTop: 18, borderTop: `1px solid ${colors.border}`, paddingTop: 12 }}>
         <button type="button" onClick={onRimuovi} style={{ ...bottone, color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}>
@@ -171,6 +181,73 @@ export function ProprietaSezione({
           <Trash2 size={13} /> {t('pages.catalogForms.builder.removeSection')}
         </button>
       </div>
+    </div>
+  )
+}
+
+/**
+ * L'EDITOR DEL CAMPO DI LIBRERIA, dentro le proprietà della voce.
+ *
+ * Chiuso finché non lo si apre, e con l'avviso davanti: un campo sta in
+ * libreria, quindi cambiarlo cambia OGNI modulo che lo usa. Le proprietà qui
+ * sopra — obbligatorio, larghezza, portale, condizione — valgono per questo
+ * modulo e basta; questa parte no, e la differenza deve vedersi prima di
+ * scrivere, non dopo.
+ */
+export function EditorDelCampoDiLibreria({
+  campo, bozza, onBozza, onSalva, salvando, vocabolari, campiLeggibili,
+}: {
+  campo: FormFieldRow
+  bozza: Bozza | null
+  onBozza: (b: Bozza | null) => void
+  onSalva: () => void | Promise<void>
+  salvando: boolean
+  vocabolari: readonly { name: string; label: string; isShipped?: boolean }[]
+  campiLeggibili: readonly { name: string; label: string }[]
+}) {
+  const { t } = useTranslation()
+  const usi = campo.usedBy?.length ?? 0
+
+  if (!bozza) {
+    return (
+      <div style={{ marginTop: 16, borderTop: `1px solid ${colors.border}`, paddingTop: 12 }}>
+        <button type="button" onClick={() => { onBozza(bozzaDaCampo(campo)) }} style={bottone}>
+          <Pencil size={13} /> {t('pages.catalogForms.builder.editFieldItself')}
+        </button>
+        <p style={{ margin: '6px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', maxWidth: '62ch' }}>
+          {usi > 1
+            ? t('pages.catalogForms.builder.editFieldItselfShared', { count: usi })
+            : t('pages.catalogForms.builder.editFieldItselfHelp')}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ marginTop: 16, borderTop: `1px solid ${colors.border}`, paddingTop: 12 }}>
+      <strong style={{ display: 'block', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginBottom: 4 }}>
+        {t('pages.catalogForms.builder.editFieldItself')}
+      </strong>
+      {usi > 1 && (
+        <p style={{
+          margin: '0 0 10px', padding: '6px 10px', borderRadius: 6,
+          background: palette.warning.tint, color: palette.warning.text,
+          fontSize: 'var(--font-size-table)',
+        }}>
+          {t('pages.catalogForms.builder.editFieldItselfShared', { count: usi })}
+        </p>
+      )}
+      <FieldEditor
+        bozza={bozza}
+        onBozza={onBozza}
+        inModifica={{ id: campo.id, name: campo.name, fieldType: campo.fieldType, label: campo.label }}
+        vocabolari={vocabolari}
+        campiLeggibili={campiLeggibili}
+        onSalva={onSalva}
+        onAnnulla={() => { onBozza(null) }}
+        salvando={salvando}
+        etichettaSalva={t('common.save')}
+      />
     </div>
   )
 }

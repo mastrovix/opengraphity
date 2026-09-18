@@ -84,6 +84,48 @@ export interface CampoInModifica {
  * Ordinate per etichetta: in una tendina di venticinque voci è l'unico ordine
  * che si può cercare a occhio.
  */
+/**
+ * UNA RIGA DELLA LIBRERIA DIVENTA UNA BOZZA DA MODIFICARE.
+ *
+ * Stava scritta dentro il pulsante «Modifica» della libreria. Da quando lo
+ * stesso editor si apre anche dal designer — si clicca un campo del modulo e
+ * si cambiano le sue proprietà, non solo come sta in QUEL modulo — la
+ * conversione serve in due posti, e due copie avrebbero divergito sul primo
+ * campo nuovo (il `refTypes` di un riferimento è già dovuto passare di qui).
+ */
+export function bozzaDaCampo(c: {
+  name: string; fieldType: string; label: string; help: string | null
+  labels: ReadonlyArray<{ language: string; label: string }>
+  helps: ReadonlyArray<{ language: string; label: string }>
+  required: boolean; vocabulary: string | null; inList: boolean
+  formula: string | null; validationScript: string | null
+  tableDefinition?: string | null; refTypes?: string[]
+}): Bozza {
+  /* Il ripiego sull'etichetta BASE non è un vezzo: un campo può avere
+     l'etichetta in una lingua sola, e mostrare vuoto farebbe cancellare
+     l'altra al primo salvataggio. */
+  const perLingua = (testi: ReadonlyArray<{ language: string; label: string }>, lingua: string, base: string | null) =>
+    testi.find((l) => l.language === lingua)?.label ?? (base ?? '')
+  const tabella = (() => {
+    if (c.tableDefinition == null || c.tableDefinition === '') return emptyFormTable()
+    try { return JSON.parse(c.tableDefinition) as FormTableDefinition } catch (err) {
+      console.error(`FormField ${c.name}: table_definition cannot be read`, err)
+      return emptyFormTable()
+    }
+  })()
+  return {
+    name: c.name, fieldType: c.fieldType,
+    refTypes: c.refTypes ?? [],
+    labelIt: perLingua(c.labels, 'it', c.label),
+    labelEn: perLingua(c.labels, 'en', c.label),
+    helpIt: perLingua(c.helps, 'it', c.help),
+    helpEn: perLingua(c.helps, 'en', c.help),
+    required: c.required, vocabulary: c.vocabulary ?? '', inList: c.inList,
+    formula: c.formula ?? '', validationScript: c.validationScript ?? '',
+    tabella,
+  }
+}
+
 export function vocabolariUnici<T extends { name: string; label: string; isShipped?: boolean }>(
   vocabolari: readonly T[],
 ): T[] {
