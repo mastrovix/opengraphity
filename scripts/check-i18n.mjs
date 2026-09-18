@@ -359,6 +359,9 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // configura cerca «workflow» (deciso dal proprietario, 18 set 2026).
   'pages.catalogForms.tabs.forms',
   'pages.catalogForms.tabs.itinerary',
+  // L'interruttore «Designer | Anteprima» dentro la pagina: stesso nome della
+  // scheda, e per la stessa ragione — e il nome della cosa, non una frase.
+  'pages.catalogForms.builder.viewCanvas',
   // «Service Request Designer» e il nome della pagina, nella stessa famiglia di
   // «CI Type Designer» e «Workflow Designer» che stanno gia nella barra
   // laterale: un nome, non una frase (scelto dal proprietario, 18 set 2026).

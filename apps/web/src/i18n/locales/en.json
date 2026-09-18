@@ -2413,7 +2413,7 @@
         "sectionProperties": "Section properties",
         "fieldProperties": "Field properties",
         "views": "How to look at the form",
-        "viewCanvas": "Canvas",
+        "viewCanvas": "Designer",
         "sectionUntitled": "Section with no title",
         "hasCondition": "It appears only when a condition is true",
         "removeFieldHelp": "It takes the field off this form; it stays in the library, with its answers on the requests already filled.",

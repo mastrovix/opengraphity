@@ -2413,7 +2413,7 @@
         "sectionProperties": "Proprietà della sezione",
         "fieldProperties": "Proprietà del campo",
         "views": "Come guardare il modulo",
-        "viewCanvas": "Tela",
+        "viewCanvas": "Designer",
         "sectionUntitled": "Sezione senza titolo",
         "hasCondition": "Compare solo quando una condizione è vera",
         "removeFieldHelp": "Toglie il campo da questo modulo; resta in libreria, con le risposte già date sulle richieste compilate.",
