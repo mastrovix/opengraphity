@@ -741,6 +741,7 @@ export function FormBuilderPanel() {
             etichettaSalva={t('pages.catalogForms.builder.createField')}
             nomeDallEtichetta
             nomiPresi={libreria.map((f) => f.name)}
+            campiLeggibili={libreria.map((f) => ({ name: f.name, label: f.label }))}
           />
           </div>
         </div>

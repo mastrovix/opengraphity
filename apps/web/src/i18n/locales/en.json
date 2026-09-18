@@ -2470,7 +2470,31 @@
         "tableInList": "A table cannot be a list column, a widget or a report column: it is rows, not a value.",
         "refTypes": "Which CI types",
         "refTypesHelp": "Nothing ticked: the whole CMDB. Tick some and the search only offers those.",
-        "refTypesNone": "No CI type is defined yet."
+        "refTypesNone": "No CI type is defined yet.",
+        "help": {
+          "title": "Examples and available fields",
+          "insert": "Insert",
+          "ruleName": "You reference a field by its technical name, not its label: input.unit_cost, as shown in the Name column.",
+          "ruleNull": "A field nobody answered yet arrives as null, not zero — guard it before doing arithmetic, or you get NaN.",
+          "ruleReturnThrow": "A formula RETURNS the value; a validation script THROWS an error to refuse it (a return refuses nothing).",
+          "ruleOtherField": "Neither can write into another field: to have a derived value, put the formula on the destination field; to set it from outside, use an automation.",
+          "fieldsTitle": "Fields you can read",
+          "fieldsEmpty": "The library has no field yet.",
+          "formulaExamples": "Formulas",
+          "validationExamples": "Validation scripts",
+          "ex": {
+            "multiply": "Multiply two fields.",
+            "empty": "Handle a field that has no answer yet.",
+            "text": "Join two texts, skipping the empty ones.",
+            "days": "Days between two dates.",
+            "choice": "A value that depends on a choice.",
+            "negative": "Refuse a negative number.",
+            "otherField": "Compare with another field of the form.",
+            "format": "Demand a format (two letters and four digits).",
+            "future": "Demand a date in the future.",
+            "conditional": "Required only when another field says so."
+          }
+        }
       },
       "limits": {
         "title": "Limits",

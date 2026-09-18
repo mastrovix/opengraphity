@@ -176,6 +176,7 @@ export function FieldLibraryPanel() {
             onSalva={salva}
             onAnnulla={chiudi}
             etichettaSalva={t('common.save')}
+            campiLeggibili={campi.map((c) => ({ name: c.name, label: c.label }))}
           />
         </div>
       )}

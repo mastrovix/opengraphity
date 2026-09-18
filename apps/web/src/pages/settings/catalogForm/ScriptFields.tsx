@@ -23,6 +23,7 @@ import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { runFormula } from '@opengraphity/web-core'
 import { colors } from '@/lib/tokens'
+import { ScriptHelp, type CampoLeggibile } from './ScriptHelp'
 
 const areaStile: React.CSSProperties = {
   width: '100%', minHeight: 64, padding: '6px 8px', borderRadius: 6,
@@ -36,7 +37,7 @@ const aiutoStile: React.CSSProperties = {
 }
 
 export function ScriptFields({
-  formula, onFormula, canCompute, validationScript, onValidationScript,
+  formula, onFormula, canCompute, validationScript, onValidationScript, campiLeggibili,
 }: {
   formula: string
   onFormula: (v: string) => void
@@ -44,6 +45,8 @@ export function ScriptFields({
   canCompute: boolean
   validationScript: string
   onValidationScript: (v: string) => void
+  /** I campi che uno script può leggere con `input.nome`: li mostra l'aiuto. */
+  campiLeggibili?: readonly CampoLeggibile[]
 }) {
   const { t } = useTranslation()
   const base = useId()
@@ -140,6 +143,24 @@ export function ScriptFields({
         />
         <p style={aiutoStile}>{t('pages.catalogForms.library.validationScriptHelp')}</p>
       </div>
+
+      {/* L'AIUTO sta qui sotto, dove sono le caselle: un esempio che si legge
+          in un'altra pagina si copia a memoria, e a memoria si sbaglia il nome
+          del campo. */}
+      <ScriptHelp
+        campi={campiLeggibili ?? []}
+        conFormula={canCompute}
+        onInserisci={(dove, codice) => {
+          /* In CODA a quello che c'è: guardare un esempio non deve cancellare
+             quello che si stava scrivendo. */
+          if (dove === 'formula') {
+            onFormula(formula.trim() === '' ? codice : `${formula.replace(/\n+$/, '')}\n${codice}`)
+            setEsito(null)
+          } else {
+            onValidationScript(validationScript.trim() === '' ? codice : `${validationScript.replace(/\n+$/, '')}\n${codice}`)
+          }
+        }}
+      />
     </>
   )
 }

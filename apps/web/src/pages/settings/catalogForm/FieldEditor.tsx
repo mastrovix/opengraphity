@@ -96,7 +96,7 @@ export function inputDaBozza(b: Bozza, tipoEffettivo: string) {
 
 export function FieldEditor({
   bozza, onBozza, inModifica, vocabolari, onSalva, onAnnulla, salvando, etichettaSalva,
-  nomeDallEtichetta, nomiPresi,
+  nomeDallEtichetta, nomiPresi, campiLeggibili,
 }: {
   bozza: Bozza
   onBozza: (b: Bozza) => void
@@ -109,6 +109,8 @@ export function FieldEditor({
   /** Propone il nome dall'etichetta finche nessuno lo scrive a mano. */
   nomeDallEtichetta?: boolean
   nomiPresi?: readonly string[]
+  /** I campi che uno script può leggere: l'aiuto li elenca come `input.nome`. */
+  campiLeggibili?: readonly { name: string; label: string }[]
 }) {
   const { t } = useTranslation()
   const [nomeAMano, setNomeAMano] = useState(false)
@@ -292,6 +294,7 @@ export function FieldEditor({
           canCompute={calcolabile(inModifica?.fieldType ?? bozza.fieldType)}
           validationScript={bozza.validationScript}
           onValidationScript={(v) => onBozza({ ...bozza, validationScript: v })}
+          campiLeggibili={campiLeggibili}
         />
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>

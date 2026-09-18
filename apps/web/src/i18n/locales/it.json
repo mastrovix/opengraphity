@@ -2470,7 +2470,31 @@
         "tableInList": "Una tabella non può essere una colonna delle liste, un widget o una colonna di report: sono righe, non un valore.",
         "refTypes": "Quali tipi di CI",
         "refTypesHelp": "Nessuna spunta: tutta la CMDB. Spuntandone qualcuno, la ricerca offre solo quelli.",
-        "refTypesNone": "Non c’è ancora nessun tipo di CI."
+        "refTypesNone": "Non c’è ancora nessun tipo di CI.",
+        "help": {
+          "title": "Esempi e campi disponibili",
+          "insert": "Inserisci",
+          "ruleName": "Un campo si referenzia col suo nome tecnico, non con l’etichetta: input.unit_cost, quello della colonna Nome.",
+          "ruleNull": "Un campo che nessuno ha ancora compilato arriva null, non zero — controllalo prima di fare aritmetica, se no ottieni NaN.",
+          "ruleReturnThrow": "Una formula RESTITUISCE il valore; uno script di validazione LANCIA un errore per rifiutarlo (un return non rifiuta niente).",
+          "ruleOtherField": "Nessuno dei due può scrivere in un altro campo: per un valore derivato metti la formula sul campo di destinazione, per impostarlo da fuori usa un’automazione.",
+          "fieldsTitle": "I campi che puoi leggere",
+          "fieldsEmpty": "Nella libreria non c’è ancora nessun campo.",
+          "formulaExamples": "Formule",
+          "validationExamples": "Script di validazione",
+          "ex": {
+            "multiply": "Moltiplica due campi.",
+            "empty": "Gestisci un campo ancora senza risposta.",
+            "text": "Unisci due testi, saltando quelli vuoti.",
+            "days": "Giorni fra due date.",
+            "choice": "Un valore che dipende da una scelta.",
+            "negative": "Rifiuta un numero negativo.",
+            "otherField": "Confronta con un altro campo del modulo.",
+            "format": "Pretendi un formato (due lettere e quattro cifre).",
+            "future": "Pretendi una data nel futuro.",
+            "conditional": "Obbligatorio solo quando un altro campo lo dice."
+          }
+        }
       },
       "limits": {
         "title": "Tetti",
