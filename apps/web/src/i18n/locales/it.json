@@ -3660,7 +3660,8 @@
       "systemScope": "L'ambito di un vocabolario del prodotto non si cambia.",
       "systemDelete": "Un vocabolario del prodotto non si cancella.",
       "inUseByFields_one": "Il vocabolario è usato da {{count}} campo: staccalo prima.",
-      "inUseByFields_other": "Il vocabolario è usato da {{count}} campi: staccali prima."
+      "inUseByFields_other": "Il vocabolario è usato da {{count}} campi: staccali prima.",
+      "noChanges": "Niente da salvare su «{{name}}»: quello che hai mandato è identico a quello che c’è già."
     },
     "ciType": {
       "shipped": "Il tipo «{{label}}» ({{name}}) è spedito col prodotto: è un solo tipo per tutti i clienti. {{consequence}}",

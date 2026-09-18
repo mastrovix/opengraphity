@@ -18,7 +18,7 @@ import {
 } from '../../lib/enumValueColors.js'
 import { languageFor } from '../../lib/tenantLanguage.js'
 import { logger } from '../../lib/logger.js'
-import { newShippedValues, vocabulariesBehindShipped } from '../../lib/vocabularyShippedDrift.js'
+import { newShippedValues, stessaMappa, vocabulariesBehindShipped } from '../../lib/vocabularyShippedDrift.js'
 import { requirePermission } from '../../lib/permissions.js'
 
 /**
@@ -547,7 +547,8 @@ export async function updateEnumType(
         MATCH (e:EnumTypeDefinition {id: $id})
         WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
         RETURN e.is_system AS isSystem, e.tenant_id AS tenantId, e.name AS name, e.values AS values,
-               e.default_value AS defaultValue, e.value_labels AS valueLabels, e.value_colors AS valueColors
+               e.default_value AS defaultValue, e.value_labels AS valueLabels, e.value_colors AS valueColors,
+               e.label AS label, e.scope AS scope
       `, { id, tenantId: ctx.tenantId }),
     )
     if (!check.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -669,6 +670,43 @@ export async function updateEnumType(
           ? { key: 'errors.enum.removingDefault', params: { value: finalDefault, name } }
           : { key: 'errors.enum.defaultNotInValues', params: { value: finalDefault, name, values: next.join(', ') } },
       )
+    }
+
+    /*
+     * NIENTE DA SALVARE, NIENTE SALVATAGGIO (18 set 2026).
+     *
+     * Chiesto dal proprietario guardando un vocabolario personalizzato che non
+     * aveva cambiato niente: «bisogna impedire di salvare se non ci sono state
+     * modifiche». Non è pignoleria: un salvataggio a vuoto scrive `updated_at`,
+     * lascia una voce nell'audit e — sul primo salvataggio dopo
+     * «Personalizza» — fissa una copia identica alla spedita, che da quel
+     * momento scherma il tenant dai valori che il prodotto aggiungerà.
+     *
+     * Il confronto è sul RISULTATO, non sull'input: `next`, `etichetteFinali`,
+     * `coloriFinali` e `finalDefault` sono già quello che finirebbe scritto. Le
+     * mappe si confrontano come mappe — l'ordine delle chiavi non è una
+     * modifica — ed è lo stesso errore che aveva lasciato in piedi tre copie
+     * identiche su un tenant vero.
+     *
+     * Una RISCRITTURA di valori (`replacements`) non passa di qui: tocca i
+     * ticket, quindi è una modifica anche quando le liste finali coincidono.
+     */
+    if (replaced.size === 0) {
+      const etichettaCorrente = (check.records[0]!.get('label') ?? '') as string
+      const scopeCorrente     = (check.records[0]!.get('scope') ?? '') as string
+      const valoriUguali      = next.length === current.length && next.every((v, i) => v === current[i])
+      const nulladiNuovo = valoriUguali
+        && (input.label === undefined || input.label === etichettaCorrente)
+        && (input.scope === undefined || input.scope === scopeCorrente)
+        && finalDefault === currentDefault
+        && stessaMappa(etichetteFinali, check.records[0]!.get('valueLabels'))
+        && stessaMappa(coloriFinali, check.records[0]!.get('valueColors'))
+      if (nulladiNuovo) {
+        throw new ValidationError(
+          `Nothing to save on "${name}": the document you sent is identical to the one already stored.`,
+          { key: 'errors.enum.noChanges', params: { name } },
+        )
+      }
     }
 
     const now = new Date().toISOString()

@@ -3660,7 +3660,8 @@
       "systemScope": "The scope of a product dictionary cannot be changed.",
       "systemDelete": "A product dictionary cannot be deleted.",
       "inUseByFields_one": "The dictionary is used by {{count}} field: detach it first.",
-      "inUseByFields_other": "The dictionary is used by {{count}} fields: detach them first."
+      "inUseByFields_other": "The dictionary is used by {{count}} fields: detach them first.",
+      "noChanges": "Nothing to save on «{{name}}»: what you sent is identical to what is already stored."
     },
     "ciType": {
       "shipped": "Type \"{{label}}\" ({{name}}) ships with the product: it is one type for every tenant. {{consequence}}",

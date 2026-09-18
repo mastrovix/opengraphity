@@ -15,7 +15,7 @@ import { describe, expect, it, vi } from 'vitest'
 let rows: Array<Record<string, unknown>> = []
 vi.mock('@opengraphity/neo4j', () => ({ runQuery: vi.fn(async () => rows) }))
 
-const { newShippedValues, vocabulariesBehindShipped } = await import('../vocabularyShippedDrift.js')
+const { newShippedValues, vocabulariesBehindShipped, stessaMappa } = await import('../vocabularyShippedDrift.js')
 
 describe('newShippedValues', () => {
   it('i valori spediti che la copia non ha e non aveva visto, nell\'ordine spedito', () => {
@@ -51,3 +51,35 @@ describe('vocabulariesBehindShipped', () => {
     await expect(vocabulariesBehindShipped({} as never, 'c-one')).rejects.toThrow(/priority/)
   })
 })
+
+/*
+ * LE COPIE CHE NON AGGIUNGONO NIENTE.
+ *
+ * Il confronto delle etichette e dei colori per valore si fa SULLE MAPPE: come
+ * stringhe, l'ordine delle chiavi dice «diverse» anche quando le coppie sono
+ * le stesse — ed è l'errore che su c-one ha lasciato in piedi tre copie
+ * identiche, con scritto in un commento che avevano «colori diversi».
+ */
+describe('stessaMappa', () => {
+  it('l\u2019ordine delle chiavi non conta', () => {
+    expect(stessaMappa('{"a":"x","b":"y"}', '{"b":"y","a":"x"}')).toBe(true)
+  })
+
+  it('una coppia diversa conta', () => {
+    expect(stessaMappa('{"a":"x"}', '{"a":"z"}')).toBe(false)
+  })
+
+  it('una chiave in piu conta', () => {
+    expect(stessaMappa('{"a":"x"}', '{"a":"x","b":"y"}')).toBe(false)
+  })
+
+  it('vuoto, nullo e «{}» sono la stessa cosa: nessuna etichetta', () => {
+    expect(stessaMappa(null, '{}')).toBe(true)
+    expect(stessaMappa('', null)).toBe(true)
+  })
+
+  it('un JSON illeggibile non passa per uguale a niente', () => {
+    expect(stessaMappa('{rotto', '{}')).toBe(false)
+  })
+})
+
