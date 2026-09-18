@@ -2424,7 +2424,16 @@
         "editFieldItself": "Modifica il campo",
         "editFieldItselfHelp": "Etichetta, testo d’aiuto, vocabolario, formula e script: sono del campo, non di questo modulo.",
         "editFieldItselfShared_one": "Attenzione: questo campo è usato da {{count}} modulo. Quello che cambi qui vale per tutti.",
-        "editFieldItselfShared_other": "Attenzione: questo campo è usato da {{count}} moduli. Quello che cambi qui vale per tutti."
+        "editFieldItselfShared_other": "Attenzione: questo campo è usato da {{count}} moduli. Quello che cambi qui vale per tutti.",
+        "newItem": "Nuova voce",
+        "newItemTitle": "Nuova voce di catalogo",
+        "newItemHelp": "La richiesta che le persone potranno aprire. Appena creata si apre qui, pronta da disegnare.",
+        "newItemName": "Nome",
+        "newItemDescription": "Descrizione (facoltativa)",
+        "newItemCategory": "Categoria",
+        "newItemPriority": "Priorità",
+        "newItemApproval": "Richiede un’approvazione",
+        "newItemCreate": "Crea e disegna"
       },
       "library": {
         "intro": "Un campo si definisce una volta e lo riusano tutti i moduli. Il suo nome diventa la proprietà sul ticket — è il motivo per cui si può filtrare e riportare, e il motivo per cui non si può rinominare.",

@@ -47,11 +47,12 @@ import {
 } from '@opengraphity/types'
 import { CatalogFormRenderer } from '@opengraphity/web-core'
 import { GET_CATALOG_FORM, GET_ENUM_TYPES, GET_FORM_FIELDS, GET_SERVICE_CATALOG_ADMIN, GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
-import { CREATE_FORM_FIELD, SAVE_CATALOG_FORM, UPDATE_FORM_FIELD } from '@/graphql/mutations'
+import { CREATE_FORM_FIELD, CREATE_SERVICE_CATALOG_ITEM, SAVE_CATALOG_FORM, UPDATE_FORM_FIELD } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
 import { useConfirm } from '@/hooks/useConfirm'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { alpha, colors, fontWeight, palette } from '@/lib/tokens'
-import { Input, Select } from '@/components/ui/FormControls'
+import { Input, LabelledField, Select } from '@/components/ui/FormControls'
 import type { FormFieldRow } from './FieldLibraryPanel'
 import { FieldEditor, inputDaBozza, BOZZA_VUOTA, type Bozza } from './FieldEditor'
 import { FormCanvas, IconaTipo, type Selezione } from './FormCanvas'
@@ -406,7 +407,7 @@ export function FormBuilderPanel() {
   const confirm = useConfirm()
   const lingua = i18n.language
 
-  const { data: catalogData } = useQuery<{ serviceCatalogItems: CatalogItem[] }>(GET_SERVICE_CATALOG_ADMIN, { fetchPolicy: 'cache-and-network' })
+  const { data: catalogData, refetch: rileggiVoci } = useQuery<{ serviceCatalogItems: CatalogItem[] }>(GET_SERVICE_CATALOG_ADMIN, { fetchPolicy: 'cache-and-network' })
   const voci = (catalogData?.serviceCatalogItems ?? []).filter((v) => v.active)
   /*
    * NESSUNA VOCE PRESELEZIONATA (18 set 2026).
@@ -577,6 +578,24 @@ export function FormBuilderPanel() {
    * quando il blocco è chiuso. È lo STESSO editor della creazione, quindi
    * niente può esserci lì e mancare qui.
    */
+  /*
+   * LA VOCE DI CATALOGO SI CREA DA QUI (18 set 2026).
+   *
+   * «Per creare una service request devo prima creare la voce e poi andare nel
+   * designer: preferirei fare tutto direttamente nel designer.» Ha ragione: la
+   * voce e il suo modulo sono la stessa cosa vista da due parti, e mandare
+   * qualcuno in un'altra pagina per il primo passo di un lavoro che continua
+   * qui e un percorso che si dimentica a meta.
+   *
+   * Si chiede il minimo che il catalogo pretende — nome e priorita — piu le
+   * due cose che si decidono all'inizio e non dopo: la categoria (da lei
+   * dipende quale workflow segue) e se serve un'approvazione.
+   */
+  const [nuovaVoce, setNuovaVoce] = useState<{ name: string; description: string; category: string; priority: string; requiresApproval: boolean } | null>(null)
+  const [creandoVoce, setCreandoVoce] = useState(false)
+  const [creaVoce] = useMutation(CREATE_SERVICE_CATALOG_ITEM, { onError: (e) => showError(e) })
+  const { entriesOf } = useDomainVocabularies()
+
   const [campoInModifica, setCampoInModifica] = useState<Bozza | null>(null)
   const [salvandoCampo, setSalvandoCampo] = useState(false)
   const [aggiornaCampo] = useMutation(UPDATE_FORM_FIELD, { onError: (e) => showError(e) })
@@ -686,6 +705,92 @@ export function FormBuilderPanel() {
    * il JavaScript), e infilarle dentro la sezione spingeva il modulo in fondo
    * allo schermo proprio mentre lo si sta guardando.
    */
+  const modaleNuovaVoce = () => {
+    if (!nuovaVoce) return null
+    const pronto = nuovaVoce.name.trim() !== '' && nuovaVoce.priority !== ''
+    return (
+      <ModaleCentrato
+        titolo={t('pages.catalogForms.builder.newItemTitle')}
+        sottotitolo={t('pages.catalogForms.builder.newItemHelp')}
+        largo={560}
+        onChiudi={() => { setNuovaVoce(null) }}
+      >
+        <div style={{ display: 'grid', gap: 12 }}>
+          <LabelledField label={t('pages.catalogForms.builder.newItemName')}>
+            <Input value={nuovaVoce.name} onChange={(e) => { setNuovaVoce({ ...nuovaVoce, name: e.target.value }) }} />
+          </LabelledField>
+          <LabelledField label={t('pages.catalogForms.builder.newItemDescription')}>
+            <Input value={nuovaVoce.description} onChange={(e) => { setNuovaVoce({ ...nuovaVoce, description: e.target.value }) }} />
+          </LabelledField>
+          <div className="og-pair">
+            {/* La CATEGORIA non e un'etichetta: da lei dipende quale workflow
+                segue la richiesta, se questa voce non ne fissa uno suo. */}
+            <LabelledField label={t('pages.catalogForms.builder.newItemCategory')}>
+              <Select value={nuovaVoce.category} onChange={(e) => { setNuovaVoce({ ...nuovaVoce, category: e.target.value }) }}>
+                <option value="">{t('common.select')}</option>
+                {(entriesOf('category') ?? []).map((v) => <option key={v.value} value={v.value}>{v.label || v.value}</option>)}
+              </Select>
+            </LabelledField>
+            <LabelledField label={t('pages.catalogForms.builder.newItemPriority')}>
+              <Select value={nuovaVoce.priority} onChange={(e) => { setNuovaVoce({ ...nuovaVoce, priority: e.target.value }) }}>
+                <option value="">{t('common.select')}</option>
+                {(entriesOf('priority') ?? []).map((v) => <option key={v.value} value={v.value}>{v.label || v.value}</option>)}
+              </Select>
+            </LabelledField>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
+            <input type="checkbox" checked={nuovaVoce.requiresApproval}
+              onChange={(e) => { setNuovaVoce({ ...nuovaVoce, requiresApproval: e.target.checked }) }} />
+            {t('pages.catalogForms.builder.newItemApproval')}
+          </label>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button
+              type="button"
+              disabled={!pronto || creandoVoce}
+              onClick={() => {
+                void (async () => {
+                  setCreandoVoce(true)
+                  try {
+                    const r = await creaVoce({ variables: { input: {
+                      name: nuovaVoce.name.trim(),
+                      description: nuovaVoce.description.trim() || null,
+                      category: nuovaVoce.category || null,
+                      priority: nuovaVoce.priority,
+                      requiresApproval: nuovaVoce.requiresApproval,
+                    } } })
+                    const creata = (r.data as { createServiceCatalogItem?: { id: string } } | null | undefined)?.createServiceCatalogItem
+                    if (!creata) return
+                    await rileggiVoci()
+                    // Si apre SUBITO sul modulo della voce appena creata: e il
+                    // motivo per cui la si crea da qui.
+                    await cambiaVoce(creata.id)
+                    setNuovaVoce(null)
+                    toast.success(t('toast.catalog.created'))
+                  } catch {
+                    /* L'avviso lo mostra il link degli errori: qui si prende il
+                       rifiuto per non lasciare una promessa non gestita, e si
+                       tiene aperto il modale. */
+                  } finally { setCreandoVoce(false) }
+                })()
+              }}
+              style={{
+                padding: '7px 14px', borderRadius: 8, border: 'none',
+                background: pronto ? 'var(--color-brand)' : 'var(--color-surface-alt)',
+                color: pronto ? colors.white : 'var(--color-slate-light)',
+                fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium,
+                cursor: pronto && !creandoVoce ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {creandoVoce ? t('common.saving') : t('pages.catalogForms.builder.newItemCreate')}
+            </button>
+            <button type="button" onClick={() => { setNuovaVoce(null) }} style={bottone}>{t('common.cancel')}</button>
+          </div>
+        </div>
+      </ModaleCentrato>
+    )
+  }
+
   const modaleNuovoCampo = () => {
     if (!nuovoCampo) return null
     return (
@@ -892,10 +997,22 @@ export function FormBuilderPanel() {
           }}>
             {t('pages.catalogForms.builder.item')}
           </label>
-          <Select id={idVoce} value={voceId} onChange={(e) => void cambiaVoce(e.target.value)}>
-            <option value="">{t('pages.catalogForms.builder.chooseItem')}</option>
-            {voci.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-          </Select>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <Select id={idVoce} value={voceId} onChange={(e) => void cambiaVoce(e.target.value)}>
+                <option value="">{t('pages.catalogForms.builder.chooseItem')}</option>
+                {voci.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </Select>
+            </span>
+            {/* La voce si crea QUI: il modulo e la voce sono la stessa cosa
+                vista da due parti, e il primo passo non deve stare in
+                un'altra pagina. */}
+            <button type="button" onClick={() => { setNuovaVoce({ name: '', description: '', category: '', priority: '', requiresApproval: false }) }}
+              title={t('pages.catalogForms.builder.newItemTitle')}
+              style={{ ...bottone, flex: '0 0 auto', whiteSpace: 'nowrap' }}>
+              <Plus size={14} /> {t('pages.catalogForms.builder.newItem')}
+            </button>
+          </div>
         </div>
 
         {/*
@@ -1162,6 +1279,7 @@ export function FormBuilderPanel() {
         <OmbraTrascinata etichetta={trascinamento.etichetta} posizione={trascinamento.posizione} />
       )}
 
+      {modaleNuovaVoce()}
       {modaleNuovoCampo()}
       {modaleProprieta()}
     </div>
