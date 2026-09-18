@@ -35,6 +35,7 @@
  *    diventato inutilizzabile per chi non usa il mouse.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { GripVertical, Plus, Trash2, X } from 'lucide-react'
@@ -651,17 +652,65 @@ export function FormBuilderPanel() {
    */
   const modaleNuovoCampo = () => {
     if (!nuovoCampo) return null
-    return (
+    /*
+     * IN UN PORTAL, ATTACCATO AL BODY (18 set 2026).
+     *
+     * Scritto dentro la pagina, il modale era l'ultimo figlio di `.og-split` —
+     * e si prendeva la regola che avevo appena scritto per la palette
+     * impilata: `max-height: 42vh` sull'ultima colonna. Su una finestra da
+     * 482px il velo diventava alto 202 (42vh esatti), quindi il riquadro era
+     * tagliato e non poteva stare in mezzo a niente: `position: fixed` non
+     * salva da un tetto messo sull'elemento stesso.
+     *
+     * Un dialogo non appartiene alla colonna che l'ha aperto: sta sopra la
+     * pagina. Attaccandolo al `body` copre la finestra davvero, e nessuna
+     * regola di layout futura può più rimpicciolirlo.
+     */
+    return createPortal(
       <div
         role="dialog"
         aria-modal="true"
         aria-label={t('pages.catalogForms.builder.newFieldOfType', { type: t(`pages.catalogForms.fieldType.${nuovoCampo.bozza.fieldType}`) })}
         style={{
           position: 'fixed', inset: 0, zIndex: 100, background: alpha.scrim,
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, overflowY: 'auto',
+          /*
+           * CENTRATO QUANDO CI STA, SCORREVOLE QUANDO NO.
+           *
+           * `align-items: center` da solo avrebbe centrato anche un riquadro
+           * più alto dello schermo — e allora la parte di sopra (il nome, il
+           * tipo, le etichette) finisce FUORI, irraggiungibile, perché da un
+           * contenitore flex centrato non si scorre all'indietro. Il modo che
+           * regge tutte e due è `flex-start` sul velo e `margin: auto` sul
+           * riquadro: se c'è spazio il margine lo centra, se non ce n'è si
+           * scorre dall'inizio.
+           */
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+          padding: 'clamp(12px, 3vh, 32px) 16px', overflowY: 'auto',
         }}
       >
-        <div style={{ background: colors.white, borderRadius: 12, padding: 20, width: 680, maxWidth: '100%' }}>
+        {/*
+          IL RIQUADRO STA NELLO SCHERMO, e scorre DENTRO (18 set 2026).
+
+          L'editor completo è alto ~740px: su una finestra da 482 (e su un
+          iPad) usciva sotto, e l'unico modo di arrivare ai bottoni era
+          scorrere il velo — con l'intestazione che spariva. Ora il riquadro
+          non supera mai l'altezza disponibile e la parte scorrevole è il
+          CORPO: il titolo resta sempre a schermo, e con lui la croce per
+          chiudere.
+        */}
+        <div style={{
+          background: colors.white, borderRadius: 12, padding: 20, width: 680, maxWidth: '100%',
+          /* `margin: auto` CENTRA il riquadro — in tutte e due le direzioni —
+             quando c'è spazio; quando non ce n'è, i margini automatici non
+             assorbono niente e si scorre dall'alto invece di tagliare via
+             l'intestazione (che è quello che farebbe `align-items: center`). */
+          margin: 'auto', display: 'flex', flexDirection: 'column',
+          /* `100%` e non `100dvh`: il velo è già grande quanto la finestra
+             meno il suo margine, quindi il tetto è lo spazio VERO. `dvh` può
+             raccontare un'altra storia — le barre di iOS, uno schermo
+             emulato — e allora il riquadro esce dallo schermo. */
+          maxHeight: '100%',
+        }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <strong style={{ fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>
               {t('pages.catalogForms.builder.newFieldOfType', { type: t(`pages.catalogForms.fieldType.${nuovoCampo.bozza.fieldType}`) })}
@@ -678,6 +727,10 @@ export function FormBuilderPanel() {
               section: localizedText(bozza.sections[nuovoCampo.iSez]?.title ?? {}, lingua, '') || bozza.sections[nuovoCampo.iSez]?.id || '',
             })}
           </p>
+          {/* Il corpo scorre, l'intestazione no. `minHeight: 0` perché senza,
+              un figlio flex non si lascia rimpicciolire sotto il suo
+              contenuto e lo scorrimento non parte. */}
+          <div style={{ overflowY: 'auto', minHeight: 0, flex: 1 }}>
           <FieldEditor
             bozza={nuovoCampo.bozza}
             onBozza={(b) => { setNuovoCampo({ ...nuovoCampo, bozza: b }) }}
@@ -689,8 +742,10 @@ export function FormBuilderPanel() {
             nomeDallEtichetta
             nomiPresi={libreria.map((f) => f.name)}
           />
+          </div>
         </div>
-      </div>
+      </div>,
+      document.body,
     )
   }
 
