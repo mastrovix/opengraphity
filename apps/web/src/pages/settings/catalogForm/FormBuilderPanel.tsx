@@ -50,7 +50,7 @@ import { GET_CATALOG_FORM, GET_ENUM_TYPES, GET_FORM_FIELDS, GET_SERVICE_CATALOG_
 import { CREATE_FORM_FIELD, SAVE_CATALOG_FORM } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
 import { useConfirm } from '@/hooks/useConfirm'
-import { alpha, colors, fontWeight } from '@/lib/tokens'
+import { alpha, colors, fontWeight, palette } from '@/lib/tokens'
 import { Input, Select } from '@/components/ui/FormControls'
 import type { FormFieldRow } from './FieldLibraryPanel'
 import { FieldEditor, inputDaBozza, BOZZA_VUOTA, type Bozza } from './FieldEditor'
@@ -966,6 +966,36 @@ export function FormBuilderPanel() {
             </aside>
 
             <div>
+          {/*
+            L'INTESTAZIONE DELLA TELA (18 set 2026).
+
+            La tela cominciava con la prima sezione, senza dire di CHI è: il
+            nome della voce di catalogo stava solo nella tendina in alto, che
+            quando si scorre esce di scena. Qui c'è il nome, e accanto le due
+            misure che dicono a che punto sei — quante sezioni, quanti campi —
+            e se c'è qualcosa che non hai ancora pubblicato.
+          */}
+          <div style={{
+            display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap',
+            paddingBottom: 8, marginBottom: 12, borderBottom: `1px solid ${colors.border}`,
+          }}>
+            <strong style={{ fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>
+              {voceScelta?.name ?? ''}
+            </strong>
+            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+              {t('pages.catalogForms.builder.canvasSections', { count: bozza.sections.length })}
+              {' · '}
+              {t('pages.catalogForms.builder.canvasFields', { count: bozza.sections.reduce((n, sz) => n + sz.items.length, 0) })}
+            </span>
+            {/* Le modifiche non pubblicate: il bottone «Salva e pubblica» si
+                accende, ma sta in cima e da qui non si vede. */}
+            {toccato && (
+              <span style={{ fontSize: 'var(--font-size-table)', color: palette.warning.text, marginLeft: 'auto' }}>
+                {t('pages.catalogForms.builder.unsaved')}
+              </span>
+            )}
+          </div>
+
           <FormCanvas
             bozza={bozza}
             perNome={perNome}
