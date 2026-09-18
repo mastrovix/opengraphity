@@ -366,6 +366,10 @@ services:
       # Email (Resend)
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-OpenGrafo <onboarding@resend.dev>}
+      # `true` = questa installazione non manda posta: ogni messaggio finisce
+      # nei log e viene scartato. Lo annuncia all'avvio. Il digest gira dentro
+      # questo container, quindi è qui che l'interruttore conta.
+      EMAIL_SEND_DISABLED: ${EMAIL_SEND_DISABLED:-false}
 
       # Storage (api_data volume; backups on their own volume — see below)
       ATTACHMENT_DIR: /data/attachments

@@ -46,6 +46,7 @@
     "seed:automation": "tsx src/scripts/seed-automation.ts",
     "seed:field-rules": "tsx src/scripts/seed-field-rules.ts",
     "seed:demo-incidents": "tsx src/scripts/seed-demo-incidents.ts",
+    "seed:test-teams": "tsx src/scripts/seed-test-teams.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
