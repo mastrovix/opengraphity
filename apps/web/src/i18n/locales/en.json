@@ -2332,9 +2332,9 @@
       "title": "Catalog forms",
       "intro": "Each catalog item can ask for what that request actually needs: sections, conditional fields, its own help text. The fields come from the library, so the same question is one column in every report.",
       "tabs": {
-        "forms": "Forms",
+        "forms": "Designer",
         "library": "Field library",
-        "itinerary": "Itinerary"
+        "itinerary": "Workflow"
       },
       "fieldType": {
         "text": "Text",
@@ -2530,7 +2530,7 @@
         "removeRow": "Remove this row"
       },
       "itinerary": {
-        "intro": "An ITINERARY is the road a request travels: the steps from creation to closure, who approves, when it closes. You draw it in the Workflow Designer; here you decide WHICH itinerary each catalog item follows.",
+        "intro": "A WORKFLOW is the road a request travels: the steps from creation to closure, who approves, when it closes. You draw it in the Workflow Designer; here you decide which workflow each catalog item follows.",
         "duplicateTitle": "Duplicate a workflow",
         "duplicateHelp": "Steps, transitions, actions and positions are copied. The copy starts switched OFF, so it does not enter the choice for every new request before you have finished it — switch it on in the workflow designer.",
         "duplicateFrom": "Copy from",
@@ -2542,20 +2542,20 @@
         "category": "Category",
         "workflow": "Workflow",
         "inactive": "off",
-        "saved": "Itinerary saved",
-        "savedAndActivated": "Itinerary assigned, and switched on: \"{{name}}\" was off, and with an itinerary switched off nobody could open that request.",
+        "saved": "Workflow assigned",
+        "savedAndActivated": "Workflow assigned, and switched on: «{{name}}» was off, and with a workflow off nobody could open that request.",
         "approversElsewhere": "Who approves is a property of the workflow, not of the item: you set it on the approval step, in",
-        "definitionsTitle": "Available itineraries",
+        "definitionsTitle": "Available workflows",
         "definitionsHelp": "These are this tenant’s request workflows. «In service» off means it does not enter the choice for a new request — tickets already open stay where they are. A copy is born off, so you can finish it before turning it on.",
         "active": "in service",
         "activated": "Workflow in service",
         "deactivated": "Workflow switched off",
-        "resolvesToNothing": "No itinerary applies: a new request of this item cannot start.",
+        "resolvesToNothing": "No workflow applies: a new request of this item cannot start.",
         "everyCategory": "for every category",
         "onlyCategory": "only for category «{{category}}»",
         "openInDesigner": "Open in the designer",
-        "mappingTitle": "Which itinerary for each item",
-        "mappingHelp": "Which road a request born from each item follows. Changing the dropdown pins that itinerary on the item: do it when that request must behave differently from the others — for instance go through an approval."
+        "mappingTitle": "Which workflow for each item",
+        "mappingHelp": "Which road a request born from each item follows. Changing the dropdown pins that workflow on the item: do it when that request must behave differently from the others — for instance go through an approval."
       }
     }
   },

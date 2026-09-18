@@ -352,6 +352,13 @@ for (const k of [...defined].sort()) {
 // quelli sono difetti veri (`Sync triggered`, `Heap Memory`, `Auto-refresh
 // 10s`, `External ID`): l'elenco puo solo accorciarsi.
 const IT_EN_IDENTICHE_ACCETTATE = new Set([
+  // «Designer» e «Workflow» nominano due cose del prodotto e si chiamano cosi
+  // anche in italiano: il primo e la parola che il prodotto usa gia nella barra
+  // laterale («Workflow Designer», «CI Type Designer»), il secondo e il nome
+  // dell'oggetto — «iter» era una traduzione nostra che nessuno usava, e chi
+  // configura cerca «workflow» (deciso dal proprietario, 18 set 2026).
+  'pages.catalogForms.tabs.forms',
+  'pages.catalogForms.tabs.itinerary',
   // «Gantt» e il cognome di Henry Gantt: e il nome del diagramma, e i nomi
   // propri non si traducono (regola delle parole tecniche: resta inglese cio
   // che NOMINA). E l'etichetta della scheda, accanto a «Elenco»/«List», che

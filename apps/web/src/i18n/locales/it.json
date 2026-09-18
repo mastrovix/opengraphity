@@ -2332,9 +2332,9 @@
       "title": "Moduli del catalogo",
       "intro": "Ogni voce di catalogo può chiedere quello che serve davvero a quella richiesta: sezioni, campi condizionali, il suo testo d'aiuto. I campi vengono dalla libreria, così la stessa domanda è una colonna sola in ogni report.",
       "tabs": {
-        "forms": "Moduli",
+        "forms": "Designer",
         "library": "Libreria dei campi",
-        "itinerary": "Iter"
+        "itinerary": "Workflow"
       },
       "fieldType": {
         "text": "Testo",
@@ -2530,7 +2530,7 @@
         "removeRow": "Togli questa riga"
       },
       "itinerary": {
-        "intro": "Un ITER è la strada che una richiesta percorre: i passi dalla creazione alla chiusura, chi approva, quando si chiude. Si disegna nel Workflow Designer; qui si decide QUALE iter tocca a quale voce del catalogo.",
+        "intro": "Un WORKFLOW è la strada che una richiesta percorre: i passi dalla creazione alla chiusura, chi approva, quando si chiude. Si disegna nel Workflow Designer; qui si decide quale workflow tocca a quale voce del catalogo.",
         "duplicateTitle": "Duplica un workflow",
         "duplicateHelp": "Si copiano passi, transizioni, azioni e posizioni. La copia nasce SPENTA, così non entra nella scelta di ogni richiesta nuova prima che tu l'abbia finita — la accendi dal disegnatore.",
         "duplicateFrom": "Copia da",
@@ -2542,20 +2542,20 @@
         "category": "Categoria",
         "workflow": "Workflow",
         "inactive": "spento",
-        "saved": "Iter salvato",
-        "savedAndActivated": "Iter assegnato, e acceso: «{{name}}» era spento, e con un iter spento nessuno avrebbe potuto aprire quella richiesta.",
+        "saved": "Workflow assegnato",
+        "savedAndActivated": "Workflow assegnato, e acceso: «{{name}}» era spento, e con un workflow spento nessuno avrebbe potuto aprire quella richiesta.",
         "approversElsewhere": "Chi approva è una proprietà del workflow, non della voce: si indica sul passo di approvazione, nel",
-        "definitionsTitle": "Gli iter disponibili",
+        "definitionsTitle": "I workflow disponibili",
         "definitionsHelp": "Sono i workflow delle richieste di questo tenant. «In servizio» spento vuol dire che non entra nella scelta di una richiesta nuova — i ticket già aperti restano dove sono. Una copia nasce spenta, così la puoi finire prima di accenderla.",
         "active": "in servizio",
-        "activated": "Iter in servizio",
-        "deactivated": "Iter spento",
-        "resolvesToNothing": "Nessun iter si applica: una richiesta nuova di questa voce non può partire.",
+        "activated": "Workflow in servizio",
+        "deactivated": "Workflow spento",
+        "resolvesToNothing": "Nessun workflow si applica: una richiesta nuova di questa voce non può partire.",
         "everyCategory": "vale per tutte le categorie",
         "onlyCategory": "solo per la categoria «{{category}}»",
         "openInDesigner": "Apri nel disegnatore",
-        "mappingTitle": "Quale iter per ogni voce",
-        "mappingHelp": "Quale strada segue una richiesta nata da ogni voce. Cambiare la tendina fissa quell’iter sulla voce: fallo quando quella richiesta deve comportarsi diversamente dalle altre — per esempio passare da un’approvazione."
+        "mappingTitle": "Quale workflow per ogni voce",
+        "mappingHelp": "Quale strada segue una richiesta nata da ogni voce. Cambiare la tendina fissa quel workflow sulla voce: fallo quando quella richiesta deve comportarsi diversamente dalle altre — per esempio passare da un’approvazione."
       }
     }
   },
