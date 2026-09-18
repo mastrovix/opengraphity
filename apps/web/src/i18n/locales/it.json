@@ -2550,15 +2550,12 @@
         "active": "in servizio",
         "activated": "Iter in servizio",
         "deactivated": "Iter spento",
-        "resolvesTo": "Userà: {{workflow}}",
         "resolvesToNothing": "Nessun iter si applica: una richiesta nuova di questa voce non può partire.",
         "everyCategory": "vale per tutte le categorie",
         "onlyCategory": "solo per la categoria «{{category}}»",
         "openInDesigner": "Apri nel disegnatore",
         "mappingTitle": "Quale iter per ogni voce",
-        "mappingHelp": "Lasciando «Automatico» l’iter lo decide la categoria della voce: si usa quello dichiarato per quella categoria e, se nessuno la dichiara, quello che vale per tutte. Sotto ogni tendina c’è scritto quale iter userebbe oggi. Scegline uno preciso solo se questa voce deve seguire una strada diversa dalle altre.",
-        "byCategoryWith": "Automatico — dalla categoria «{{category}}»",
-        "byCategoryNone": "Automatico — la voce non ha categoria"
+        "mappingHelp": "Quale strada segue una richiesta nata da ogni voce. Cambiare la tendina fissa quell’iter sulla voce: fallo quando quella richiesta deve comportarsi diversamente dalle altre — per esempio passare da un’approvazione."
       }
     }
   },

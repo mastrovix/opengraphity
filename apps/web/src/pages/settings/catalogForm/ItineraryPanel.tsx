@@ -247,39 +247,42 @@ export function ItineraryPanel() {
                 <td style={td}>{v.name}</td>
                 <td style={{ ...td, color: 'var(--color-slate-light)' }}>{v.category ?? '—'}</td>
                 <td style={td}>
-                  <Select value={v.workflowDefinitionId ?? ''} onChange={(e) => void scegliIter(v, e.target.value)}>
-                    {/*
-                      IL VUOTO NON È «NESSUN ITER»: è «lo decide la categoria»,
-                      che è il comportamento di sempre. E lo dice NOMINANDO la
-                      categoria di questa voce: «per categoria» da solo non
-                      spiega niente se non sai che un iter ne dichiara una — il
-                      proprietario l'ha detto guardando cinque righe uguali.
-                    */}
-                    <option value="">
-                      {v.category
-                        ? t('pages.catalogForms.itinerary.byCategoryWith', { category: v.category })
-                        : t('pages.catalogForms.itinerary.byCategoryNone')}
-                    </option>
+                  {/*
+                    LA COLONNA MOSTRA IL WORKFLOW, E BASTA (18 set 2026).
+
+                    C'era un'opzione «per categoria» che non spiegava niente a
+                    chi non sa che un iter può dichiarare una categoria, e che
+                    su un catalogo di cinque voci non fa risparmiare niente:
+                    «basta far vedere il workflow associato».
+
+                    Per una voce che non ne ha uno fissato si mostra quello che
+                    la regola sceglierebbe OGGI — non è una bugia: è davvero
+                    l'iter che quella richiesta seguirebbe, e se domani le
+                    definizioni cambiano la riga cambia con loro. Toccare la
+                    tendina lo FISSA su quella voce, che è l'unico modo per
+                    dire «questa segue una strada sua».
+                  */}
+                  <Select
+                    value={v.workflowDefinitionId ?? iterPerCategoria(definizioni, v.category)?.id ?? ''}
+                    onChange={(e) => void scegliIter(v, e.target.value)}
+                  >
+                    {/* Il vuoto esiste solo quando NESSUN iter si applica: una
+                        tendina senza valore selezionato mostrerebbe comunque la
+                        prima voce, e direbbe una cosa falsa. */}
+                    {v.workflowDefinitionId == null && iterPerCategoria(definizioni, v.category) == null && (
+                      <option value="">—</option>
+                    )}
                     {definizioni.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.name}{d.active ? '' : ` · ${t('pages.catalogForms.itinerary.inactive')}`}
                       </option>
                     ))}
                   </Select>
-                  {/* Col default, QUALE iter viene usato: senza, «per
-                      categoria» è una promessa che non si può verificare. */}
-                  {v.workflowDefinitionId == null && (() => {
-                    const scelto = iterPerCategoria(definizioni, v.category)
-                    return scelto ? (
-                      <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
-                        {t('pages.catalogForms.itinerary.resolvesTo', { workflow: scelto.name })}
-                      </p>
-                    ) : (
-                      <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-danger)' }}>
-                        {t('pages.catalogForms.itinerary.resolvesToNothing')}
-                      </p>
-                    )
-                  })()}
+                  {v.workflowDefinitionId == null && iterPerCategoria(definizioni, v.category) == null && (
+                    <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-danger)' }}>
+                      {t('pages.catalogForms.itinerary.resolvesToNothing')}
+                    </p>
+                  )}
                 </td>
               </tr>
             ))}

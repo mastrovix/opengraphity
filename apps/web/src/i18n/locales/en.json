@@ -2550,15 +2550,12 @@
         "active": "in service",
         "activated": "Workflow in service",
         "deactivated": "Workflow switched off",
-        "resolvesTo": "Will use: {{workflow}}",
         "resolvesToNothing": "No itinerary applies: a new request of this item cannot start.",
         "everyCategory": "for every category",
         "onlyCategory": "only for category «{{category}}»",
         "openInDesigner": "Open in the designer",
         "mappingTitle": "Which itinerary for each item",
-        "mappingHelp": "Leave «Automatic» and the item’s category decides: the itinerary declared for that category is used, and if none declares it, the one that covers every category. Under each dropdown you can read which itinerary it would use today. Pick a specific one only when this item must follow a different road.",
-        "byCategoryWith": "Automatic — from category «{{category}}»",
-        "byCategoryNone": "Automatic — the item has no category"
+        "mappingHelp": "Which road a request born from each item follows. Changing the dropdown pins that itinerary on the item: do it when that request must behave differently from the others — for instance go through an approval."
       }
     }
   },
