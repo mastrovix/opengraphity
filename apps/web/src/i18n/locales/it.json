@@ -2015,7 +2015,9 @@
       "withoutDates_one": "Un piano senza una data",
       "withoutDates_other": "{{count}} piani senza una data",
       "noSteps": "nessun passo compilato",
-      "unusableDates": "date non utilizzabili"
+      "unusableDates": "date non utilizzabili",
+      "ganttTitle": "Il piano nel tempo",
+      "ganttTooShort": "{{when}} — troppo breve per disegnarla in scala: la barra è allargata per farsi vedere."
     },
     "assistant": {
       "placeholder": "Chiedi qualcosa sul tuo ambiente...",

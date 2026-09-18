@@ -14,10 +14,10 @@ import { AlertTriangle } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { StatusLabel } from '@/components/ui/badges'
 import { Pill } from '@/components/ui/Pill'
-import { formatDateTime, formatTime, formatDate } from '@/lib/datetime'
+import { formatDateTime, formatHourMinute, formatDate } from '@/lib/datetime'
 import { colors, palette } from '@/lib/tokens'
 import type { AffectedCI } from '@/types/change'
-import { riepilogoRilascio, type TipoFinestra } from '../releasePlanSummary'
+import { barreDelPiano, riepilogoRilascio, taccheDelPiano, type TipoFinestra, type VoceDiPiano } from '../releasePlanSummary'
 
 /**
  * Una finestra come si legge: «21 set 2026, 22:00 → 23:30» quando comincia e
@@ -26,8 +26,12 @@ import { riepilogoRilascio, type TipoFinestra } from '../releasePlanSummary'
  * lascerebbe credere che duri tre ore al contrario.
  */
 function finestraLeggibile(start: string, end: string): string {
+  // `formatHourMinute` e non `formatTime`: quest'ultima aggiunge i SECONDI, e
+  // «16:00:00» in una finestra di rilascio è rumore — nessuno pianifica al
+  // secondo (visto dal vivo il 18 set 2026, sullo stesso difetto già corretto
+  // nel calendario).
   return formatDate(start) === formatDate(end)
-    ? `${formatDateTime(start)} → ${formatTime(end)}`
+    ? `${formatDateTime(start)} → ${formatHourMinute(end)}`
     : `${formatDateTime(start)} → ${formatDateTime(end)}`
 }
 
@@ -49,6 +53,101 @@ function Riquadro({ label, children, color }: { label: string; children: React.R
     <div style={{ background: 'var(--color-surface-alt)', borderRadius: 8, padding: '10px 12px' }}>
       <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: color ?? 'var(--color-slate-dark)', fontVariantNumeric: 'tabular-nums' }}>{children}</div>
+    </div>
+  )
+}
+
+/**
+ * IL GANTT DEL PIANO.
+ *
+ * L'elenco sotto dice QUANDO succede ogni cosa; questo dice quanto dura, cosa
+ * si accavalla e dove sono i buchi — che in un elenco di righe non si vedono.
+ * L'aritmetica sta in `releasePlanSummary` (e ha i suoi test): qui si disegna
+ * e basta.
+ *
+ * Una riga per finestra, nello stesso ordine della tabella: chi guarda il
+ * disegno e poi l'elenco trova le stesse cose nella stessa sequenza.
+ */
+function GanttDelPiano({ voci }: { voci: readonly VoceDiPiano[] }) {
+  const { t } = useTranslation()
+  const barre  = barreDelPiano(voci)
+  const tacche = taccheDelPiano(voci)
+  if (barre.length === 0) return null
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', marginBottom: 6 }}>
+        {t('pages.releasePlan.ganttTitle')}
+      </div>
+
+      {/* Le tacche: senza, un Gantt dice «più lungo» ma non «quando». */}
+      <div style={{ position: 'relative', height: 16, marginLeft: 150 }}>
+        {tacche.map((tacca) => (
+          <span
+            key={tacca.quando}
+            style={{
+              position: 'absolute', left: `${String(tacca.sinistra)}%`, top: 0,
+              fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)',
+              transform: tacca.sinistra > 90 ? 'translateX(-100%)' : 'none', whiteSpace: 'nowrap',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {formatDate(new Date(tacca.quando).toISOString())}
+          </span>
+        ))}
+      </div>
+
+      {barre.map((b, i) => {
+        const stile = b.voce.tipo === 'release' ? palette.purple : palette.info
+        const quando = finestraLeggibile(b.voce.start, b.voce.end)
+        return (
+          <div key={`${b.voce.taskCode ?? b.voce.ciId}-${b.voce.tipo}-${String(i)}`}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
+            {/* L'etichetta a sinistra: il CI, che è la cosa che si cerca. */}
+            <span style={{
+              flex: '0 0 142px', width: 142, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-dark)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }} title={`${b.voce.ciName} · ${b.voce.stepTitle}`}>
+              {b.voce.ciName}
+            </span>
+            <span style={{ position: 'relative', flex: 1, height: 18, background: 'var(--color-surface-alt)', borderRadius: 4 }}>
+              {/* Le tacche continuano dentro la corsia: è la griglia che rende
+                  confrontabili due barre lontane. */}
+              {tacche.map((tacca) => (
+                <span key={tacca.quando} aria-hidden="true" style={{
+                  position: 'absolute', left: `${String(tacca.sinistra)}%`, top: 0, bottom: 0,
+                  borderLeft: '1px solid var(--color-border-light)',
+                }} />
+              ))}
+              <span
+                /* Il titolo porta le date VERE: una barra allargata per
+                   farsi vedere non deve poter ingannare sulla durata. */
+                title={b.allungata ? t('pages.releasePlan.ganttTooShort', { when: quando }) : quando}
+                style={{
+                  position: 'absolute', left: `${String(b.sinistra)}%`, width: `${String(b.larghezza)}%`,
+                  top: 2, bottom: 2, borderRadius: 3, background: stile.text,
+                  opacity: b.voce.tipo === 'release' ? 1 : 0.55,
+                  border: b.allungata ? `1px dashed ${colors.white}` : 'none',
+                }}
+              />
+            </span>
+          </div>
+        )
+      })}
+
+      {/* La legenda: due tinte, due mestieri. */}
+      <div style={{ display: 'flex', gap: 14, marginTop: 6, marginLeft: 150, fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' }}>
+        {(['release', 'validation'] as const).map((tipo) => (
+          <span key={tipo} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span aria-hidden="true" style={{
+              width: 14, height: 8, borderRadius: 2,
+              background: tipo === 'release' ? palette.purple.text : palette.info.text,
+              opacity: tipo === 'release' ? 1 : 0.55,
+            }} />
+            {t(tipo === 'release' ? 'pages.releasePlan.typeRelease' : 'pages.releasePlan.typeValidation')}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
@@ -87,6 +186,8 @@ export function ReleasePlanCard({ affected }: { affected: readonly AffectedCI[] 
           {t('pages.releasePlan.ofTotal', { done: r.pianiCompletati, total: r.pianiTotali })}
         </Riquadro>
       </div>
+
+      {r.voci.length > 0 && <GanttDelPiano voci={r.voci} />}
 
       {r.voci.length > 0 && (
         <div className="og-scroll-x">

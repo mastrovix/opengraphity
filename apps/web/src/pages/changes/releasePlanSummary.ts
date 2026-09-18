@@ -224,3 +224,104 @@ export function riepilogoRilascio(affected: readonly CiConPiano[]): RiepilogoRil
     pianiTotali:      affected.length,
   }
 }
+
+// ── IL GANTT ─────────────────────────────────────────────────────────────────
+//
+// L'elenco in ordine di data dice QUANDO succede ogni cosa; il Gantt dice
+// un'altra cosa che in un elenco non si vede: quanto DURA, cosa si accavalla,
+// e dove ci sono i buchi. Su un piano di sei passi su tre CI è la differenza
+// fra leggere sei righe e vedere la forma del rilascio (18 set 2026).
+//
+// Il modello sta qui, insieme al resto del riepilogo, perché è aritmetica —
+// e l'aritmetica di un diagramma è esattamente la parte che a occhio non si
+// controlla.
+
+/** Una barra del Gantt, in percentuale dell'asse: la vista la disegna e basta. */
+export interface BarraDelPiano {
+  voce:      VoceDiPiano
+  /** Dove comincia, in percentuale dell'inviluppo (0–100). */
+  sinistra:  number
+  /** Quanto è larga, in percentuale (mai meno di `minimo`). */
+  larghezza: number
+  /**
+   * Vero quando la finestra è più stretta del minimo visibile e la barra è
+   * stata allargata per farsi vedere. Chi disegna lo dice a parole (il titolo
+   * porta le date vere): una barra che mente sulla durata, e non lo dichiara,
+   * è peggio di nessuna barra.
+   */
+  allungata: boolean
+}
+
+/** L'asse del Gantt: l'estremo sinistro e destro di TUTTE le finestre, validazioni comprese. */
+export function asseDelPiano(voci: readonly VoceDiPiano[]): { da: number; a: number } | null {
+  if (voci.length === 0) return null
+  const da = Math.min(...voci.map((v) => v.inizio))
+  const a  = Math.max(...voci.map((v) => v.fine))
+  // Un asse di durata zero non si può dividere: succede con una finestra sola
+  // di durata nulla, ed è un piano da correggere, non da disegnare.
+  return a > da ? { da, a } : null
+}
+
+/**
+ * Le barre, nell'ordine in cui arrivano (che è quello della cronologia).
+ *
+ * `minimo` è la larghezza sotto la quale una barra sparisce: una finestra di
+ * mezz'ora su un piano di tre settimane vale lo 0,1% e a schermo non esiste.
+ * Allargarla è l'unico modo per mostrarla, e allora si dichiara.
+ */
+export function barreDelPiano(voci: readonly VoceDiPiano[], minimo = 1.2): BarraDelPiano[] {
+  const asse = asseDelPiano(voci)
+  if (!asse) return []
+  const span = asse.a - asse.da
+  return voci.map((voce) => {
+    const sinistra = ((voce.inizio - asse.da) / span) * 100
+    const vera     = ((voce.fine - voce.inizio) / span) * 100
+    const larghezza = Math.max(vera, minimo)
+    return {
+      voce,
+      // Una barra allargata non deve uscire dall'asse: si sposta a sinistra.
+      sinistra: Math.min(sinistra, 100 - larghezza),
+      larghezza,
+      allungata: larghezza > vera,
+    }
+  })
+}
+
+/**
+ * Le tacche dell'asse: un riferimento ogni giorno finché i giorni sono pochi,
+ * altrimenti uno ogni settimana. Senza tacche un Gantt è un disegno astratto —
+ * si vede che una cosa è più lunga di un'altra, ma non QUANDO.
+ */
+export function taccheDelPiano(voci: readonly VoceDiPiano[], massimeTacche = 8): { quando: number; sinistra: number }[] {
+  const asse = asseDelPiano(voci)
+  if (!asse) return []
+  const span = asse.a - asse.da
+  const giorno = 24 * 60 * 60 * 1000
+  const giorni = Math.ceil(span / giorno)
+  const passo = Math.max(1, Math.ceil(giorni / massimeTacche)) * giorno
+
+  // Si parte dalla mezzanotte del primo giorno: una tacca a un'ora qualunque
+  // non è un riferimento, è un numero in mezzo al disegno.
+  const primo = new Date(asse.da)
+  primo.setHours(0, 0, 0, 0)
+
+  /*
+   * LA PRIMA TACCA È L'INIZIO DELL'ASSE, sempre.
+   *
+   * Le tacche cadono a mezzanotte, e la mezzanotte del primo giorno sta quasi
+   * sempre PRIMA dell'inizio del piano: dal vivo il Gantt di una change che
+   * comincia il 2 ottobre alle 14:00 mostrava «03 ott» e «04 ott», e la prima
+   * barra restava senza data. Chi guarda un diagramma legge da sinistra: se lì
+   * non c'è un riferimento, il disegno dice «più lungo» ma non «quando».
+   */
+  const out: { quando: number; sinistra: number }[] = [{ quando: asse.da, sinistra: 0 }]
+  for (let t = primo.getTime(); t <= asse.a; t += passo) {
+    if (t <= asse.da) continue
+    const sinistra = ((t - asse.da) / span) * 100
+    // Troppo vicina alla prima: due date attaccate non si leggono, e la prima
+    // è quella che conta.
+    if (sinistra < 8) continue
+    out.push({ quando: t, sinistra })
+  }
+  return out
+}

@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import type { AffectedCI, DeployStep } from '@/types/change'
-import { riepilogoRilascio, contaFinestreDistinte } from '../releasePlanSummary'
+import { riepilogoRilascio, contaFinestreDistinte, asseDelPiano, barreDelPiano, taccheDelPiano } from '../releasePlanSummary'
 
 const w = (start: string, end: string) => ({ start, end })
 
@@ -169,5 +169,114 @@ describe('l\'avanzamento si conta task per task', () => {
     ])
     expect(r.pianiCompilati).toBe(2)
     expect(r.pianiCompletati).toBe(1)
+  })
+})
+
+/**
+ * IL GANTT: l'aritmetica delle barre (18 set 2026).
+ *
+ * Un diagramma si guarda e sembra giusto — è il tipo di cosa che a occhio non
+ * si controlla. Quello che si pinna qui è dove comincia una barra, quanto è
+ * larga, e la sola bugia ammessa: una finestra troppo breve per vedersi viene
+ * ALLARGATA, e la barra lo dichiara.
+ */
+describe('le barre del Gantt', () => {
+  const g = (ms: number) => new Date(2026, 9, 1, 0, 0, 0, 0).getTime() + ms
+  const ora = 60 * 60 * 1000
+  const voce = (inizio: number, fine: number, tipo: 'validation' | 'release' = 'release') => ({
+    tipo, start: new Date(g(inizio)).toISOString(), end: new Date(g(fine)).toISOString(),
+    inizio: g(inizio), fine: g(fine),
+    stepTitle: 'Passo', taskCode: 'TASK1', ciId: 'ci1', ciName: 'srv-01',
+  })
+
+  it('la prima barra parte da zero e l\'ultima finisce a cento', () => {
+    const barre = barreDelPiano([voce(0, 2 * ora), voce(8 * ora, 10 * ora)])
+    expect(barre[0]!.sinistra).toBe(0)
+    expect(barre[1]!.sinistra + barre[1]!.larghezza).toBeCloseTo(100, 6)
+  })
+
+  it('la larghezza è la durata, in proporzione all\'asse', () => {
+    // Asse di 10 ore: una finestra di 2 ore è il 20%.
+    const barre = barreDelPiano([voce(0, 2 * ora), voce(8 * ora, 10 * ora)])
+    expect(barre[0]!.larghezza).toBeCloseTo(20, 6)
+    expect(barre[0]!.allungata).toBe(false)
+  })
+
+  it('una finestra troppo breve si vede, e la barra DICHIARA di essere allargata', () => {
+    // Mezz'ora su venti giorni: lo 0,1%, cioè invisibile. Mentire sulla durata
+    // è accettabile solo se il codice lo dice a chi disegna, che lo dirà a chi
+    // guarda: il titolo della barra porta le date vere.
+    const venti = 20 * 24 * ora
+    const barre = barreDelPiano([voce(0, ora / 2), voce(venti - ora, venti)])
+    expect(barre[0]!.allungata).toBe(true)
+    expect(barre[0]!.larghezza).toBeGreaterThan(1)
+  })
+
+  it('una barra allargata non esce mai dall\'asse', () => {
+    const venti = 20 * 24 * ora
+    const barre = barreDelPiano([voce(0, ora), voce(venti - ora / 4, venti)])
+    for (const b of barre) expect(b.sinistra + b.larghezza).toBeLessThanOrEqual(100.0001)
+  })
+
+  it('l\'asse comprende le VALIDAZIONI, non solo i rilasci: il Gantt mostra tutto il piano', () => {
+    const barre = barreDelPiano([voce(0, ora, 'validation'), voce(9 * ora, 10 * ora, 'release')])
+    expect(barre).toHaveLength(2)
+    expect(barre[0]!.sinistra).toBe(0)
+  })
+
+  it('senza voci non c\'è niente da disegnare, e nemmeno un asse', () => {
+    expect(barreDelPiano([])).toEqual([])
+    expect(asseDelPiano([])).toBeNull()
+  })
+
+  it('un piano di durata zero non si disegna: un asse che non si può dividere', () => {
+    expect(asseDelPiano([voce(0, 0)])).toBeNull()
+    expect(barreDelPiano([voce(0, 0)])).toEqual([])
+  })
+
+  it('la prima tacca è l\'inizio del piano, le altre cadono a mezzanotte', () => {
+    // Le tacche dopo la prima stanno a mezzanotte: un riferimento a un'ora
+    // qualunque non è un riferimento, è un numero in mezzo al disegno.
+    const tacche = taccheDelPiano([voce(6 * ora, 3 * 24 * ora)])
+    expect(tacche.length).toBeGreaterThan(1)
+    expect(tacche[0]!.sinistra).toBe(0)
+    for (const tacca of tacche.slice(1)) {
+      const d = new Date(tacca.quando)
+      expect([d.getHours(), d.getMinutes()]).toEqual([0, 0])
+    }
+    for (const tacca of tacche) {
+      expect(tacca.sinistra).toBeGreaterThanOrEqual(0)
+      expect(tacca.sinistra).toBeLessThanOrEqual(100)
+    }
+  })
+
+  it('su un piano lungo le tacche si diradano invece di diventare illeggibili', () => {
+    const tacche = taccheDelPiano([voce(0, 60 * 24 * ora)], 8)
+    expect(tacche.length).toBeLessThanOrEqual(9)
+  })
+})
+
+describe('la prima tacca del Gantt', () => {
+  const g = (ms: number) => new Date(2026, 9, 2, 0, 0, 0, 0).getTime() + ms
+  const ora = 60 * 60 * 1000
+  const voce = (inizio: number, fine: number) => ({
+    tipo: 'release' as const, start: new Date(g(inizio)).toISOString(), end: new Date(g(fine)).toISOString(),
+    inizio: g(inizio), fine: g(fine),
+    stepTitle: 'P', taskCode: null, ciId: 'ci1', ciName: 'srv-01',
+  })
+
+  it('c\'è sempre, ed è l\'inizio del piano', () => {
+    // Il caso visto dal vivo: si comincia alle 14:00 del 2 ottobre, e la prima
+    // mezzanotte utile è il 3 — la prima barra restava senza data.
+    const tacche = taccheDelPiano([voce(14 * ora, 2 * 24 * ora + ora)])
+    expect(tacche[0]!.sinistra).toBe(0)
+    expect(tacche[0]!.quando).toBe(g(14 * ora))
+  })
+
+  it('una mezzanotte troppo vicina all\'inizio non si aggiunge: due date attaccate non si leggono', () => {
+    // Comincia alle 23:00: la mezzanotte è un'ora dopo, su un asse di 5 giorni.
+    const tacche = taccheDelPiano([voce(23 * ora, 5 * 24 * ora)])
+    const vicine = tacche.filter((x) => x.sinistra > 0 && x.sinistra < 8)
+    expect(vicine).toHaveLength(0)
   })
 })

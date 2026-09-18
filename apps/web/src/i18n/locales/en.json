@@ -2015,7 +2015,9 @@
       "withoutDates_one": "One plan with no date",
       "withoutDates_other": "{{count}} plans with no date",
       "noSteps": "no step filled in",
-      "unusableDates": "dates cannot be used"
+      "unusableDates": "dates cannot be used",
+      "ganttTitle": "The plan over time",
+      "ganttTooShort": "{{when}} — too short to draw to scale: the bar is widened to be visible."
     },
     "assistant": {
       "placeholder": "Ask something about your environment...",
