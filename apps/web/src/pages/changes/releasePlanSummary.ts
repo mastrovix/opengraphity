@@ -325,3 +325,36 @@ export function taccheDelPiano(voci: readonly VoceDiPiano[], massimeTacche = 8):
   }
   return out
 }
+
+// ── IL FILTRO PER TIPO ────────────────────────────────────────────────────────
+//
+// Su una change con sei CI la cronologia arriva a dodici voci, metà delle
+// quali sono validazioni: chi sta guardando la notte del rilascio le legge
+// come rumore, e chi prepara le prove vuole esattamente quelle. Sono due
+// letture dello stesso piano, e il filtro le separa (18 set 2026).
+
+/** Quali finestre mostrare: tutte, i soli rilasci, le sole validazioni. */
+export type FiltroDelPiano = 'all' | TipoFinestra
+
+/**
+ * Le voci che passano il filtro, nello stesso ordine.
+ *
+ * Filtrare NON è riordinare: chi toglie le validazioni deve ritrovare i
+ * rilasci dove stavano, altrimenti il filtro cambia due cose alla volta.
+ */
+export function vociFiltrate(voci: readonly VoceDiPiano[], filtro: FiltroDelPiano): VoceDiPiano[] {
+  return filtro === 'all' ? [...voci] : voci.filter((v) => v.tipo === filtro)
+}
+
+/**
+ * Quante voci per tipo. Sta nell'etichetta del filtro: un'opzione che porta
+ * il suo conto dice PRIMA del clic che non c'è niente da vedere — senza,
+ * l'unica risposta è una vista vuota, che si legge come un guasto.
+ */
+export function contaPerTipo(voci: readonly VoceDiPiano[]): Record<FiltroDelPiano, number> {
+  return {
+    all:        voci.length,
+    release:    voci.filter((v) => v.tipo === 'release').length,
+    validation: voci.filter((v) => v.tipo === 'validation').length,
+  }
+}

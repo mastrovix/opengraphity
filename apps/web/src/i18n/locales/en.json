@@ -2019,7 +2019,10 @@
       "ganttTooShort": "{{when}} — too short to draw to scale: the bar is widened to be visible.",
       "views": "How to look at the plan",
       "tabList": "List",
-      "tabGantt": "Gantt"
+      "tabGantt": "Gantt",
+      "filterLabel": "Which windows to show",
+      "filterBoth": "Both",
+      "noneOfType": "No window of this kind in the plan."
     },
     "assistant": {
       "placeholder": "Ask something about your environment...",

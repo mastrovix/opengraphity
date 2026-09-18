@@ -2019,7 +2019,10 @@
       "ganttTooShort": "{{when}} — troppo breve per disegnarla in scala: la barra è allargata per farsi vedere.",
       "views": "Come guardare il piano",
       "tabList": "Elenco",
-      "tabGantt": "Gantt"
+      "tabGantt": "Gantt",
+      "filterLabel": "Quali finestre mostrare",
+      "filterBoth": "Entrambi",
+      "noneOfType": "Nel piano non c’è nessuna finestra di questo tipo."
     },
     "assistant": {
       "placeholder": "Chiedi qualcosa sul tuo ambiente...",

@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import type { AffectedCI, DeployStep } from '@/types/change'
-import { riepilogoRilascio, contaFinestreDistinte, asseDelPiano, barreDelPiano, taccheDelPiano } from '../releasePlanSummary'
+import { riepilogoRilascio, contaFinestreDistinte, asseDelPiano, barreDelPiano, taccheDelPiano, vociFiltrate, contaPerTipo } from '../releasePlanSummary'
 
 const w = (start: string, end: string) => ({ start, end })
 
@@ -278,5 +278,47 @@ describe('la prima tacca del Gantt', () => {
     const tacche = taccheDelPiano([voce(23 * ora, 5 * 24 * ora)])
     const vicine = tacche.filter((x) => x.sinistra > 0 && x.sinistra < 8)
     expect(vicine).toHaveLength(0)
+  })
+})
+
+describe('il filtro per tipo', () => {
+  /* Due CI: uno con validazione + rilascio, uno col solo rilascio. */
+  const voci = riepilogoRilascio([
+    ci('fw-01', [passo('Regole', ['2026-10-02T09:00:00Z', '2026-10-02T10:00:00Z'], ['2026-10-02T22:00:00Z', '2026-10-02T23:00:00Z'])]),
+    ci('db-01', [{ title: 'Migrazione', releaseWindow: { start: '2026-10-03T22:00:00Z', end: '2026-10-03T23:00:00Z' } } as DeployStep]),
+  ]).voci
+
+  it('«entrambi» non toglie niente', () => {
+    expect(vociFiltrate(voci, 'all')).toEqual([...voci])
+  })
+
+  it('tiene solo il tipo chiesto, e NON riordina', () => {
+    const rilasci = vociFiltrate(voci, 'release')
+    expect(rilasci.map((v) => `${v.ciName}/${v.tipo}`)).toEqual(['fw-01/release', 'db-01/release'])
+    // Filtrare non è riordinare: i rilasci restano in ordine di data, come
+    // stavano nella cronologia completa.
+    expect(rilasci.map((v) => v.inizio)).toEqual([...rilasci.map((v) => v.inizio)].sort((a, b) => a - b))
+    expect(vociFiltrate(voci, 'validation').map((v) => v.ciName)).toEqual(['fw-01'])
+  })
+
+  it('conta per tipo, e il totale è la somma dei due', () => {
+    const c = contaPerTipo(voci)
+    expect(c).toEqual({ all: 3, release: 2, validation: 1 })
+    expect(c.release + c.validation).toBe(c.all)
+  })
+
+  it('un piano senza validazioni lo dice col conto, prima del clic', () => {
+    const soloRilasci = vociFiltrate(voci, 'release')
+    expect(contaPerTipo(soloRilasci).validation).toBe(0)
+    expect(vociFiltrate(soloRilasci, 'validation')).toEqual([])
+  })
+
+  it('il Gantt filtrato si ridisegna sulle sole voci rimaste', () => {
+    // L'asse segue quello che si vede: togliendo la validazione del mattino,
+    // il disegno comincia dal primo rilascio. Le tacche portano le date vere,
+    // quindi la scala resta leggibile.
+    const asseTutto = asseDelPiano(voci)
+    const asseSoloRilasci = asseDelPiano(vociFiltrate(voci, 'release'))
+    expect(asseTutto?.da).toBeLessThan(asseSoloRilasci?.da ?? 0)
   })
 })

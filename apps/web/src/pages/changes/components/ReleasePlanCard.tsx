@@ -18,7 +18,10 @@ import { Pill } from '@/components/ui/Pill'
 import { formatDateTime, formatHourMinute, formatDate } from '@/lib/datetime'
 import { colors, palette } from '@/lib/tokens'
 import type { AffectedCI } from '@/types/change'
-import { barreDelPiano, riepilogoRilascio, taccheDelPiano, type TipoFinestra, type VoceDiPiano } from '../releasePlanSummary'
+import {
+  barreDelPiano, contaPerTipo, riepilogoRilascio, taccheDelPiano, vociFiltrate,
+  type FiltroDelPiano, type TipoFinestra, type VoceDiPiano,
+} from '../releasePlanSummary'
 
 /**
  * Una finestra come si legge: «21 set 2026, 22:00 → 23:30» quando comincia e
@@ -164,6 +167,19 @@ export function ReleasePlanCard({ affected }: { affected: readonly AffectedCI[] 
    * un codice di task non deve cambiare scheda per ritrovarlo.
    */
   const [vista, setVista] = useState<'list' | 'gantt'>('list')
+  /*
+   * IL FILTRO PER TIPO, sulle DUE viste.
+   *
+   * Vale per l'elenco e per il Gantt insieme: sono due modi di guardare le
+   * stesse righe, e un filtro che si applicasse a uno solo farebbe dire alle
+   * due schede due cose diverse sullo stesso piano.
+   *
+   * Si apre su «entrambi», perché il piano È entrambe le cose: chi arriva qui
+   * deve vedere tutto quello che succede quella notte, e poi semmai togliere.
+   */
+  const [filtro, setFiltro] = useState<FiltroDelPiano>('all')
+  const voci   = vociFiltrate(r.voci, filtro)
+  const conti  = contaPerTipo(r.voci)
 
   // Nessuna finestra e nessun task chiuso: non c'è ancora niente da
   // riepilogare, e una sezione vuota si legge come un piano che non esiste
@@ -197,8 +213,9 @@ export function ReleasePlanCard({ affected }: { affected: readonly AffectedCI[] 
       </div>
 
       {r.voci.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 12, borderBottom: '1px solid var(--color-border-light)' }}>
         <div role="tablist" aria-label={t('pages.releasePlan.views')}
-          style={{ display: 'flex', gap: 4, marginBottom: 12, borderBottom: '1px solid var(--color-border-light)' }}>
+          style={{ display: 'flex', gap: 4 }}>
           {(['list', 'gantt'] as const).map((v) => (
             <button
               key={v}
@@ -218,11 +235,55 @@ export function ReleasePlanCard({ affected }: { affected: readonly AffectedCI[] 
             </button>
           ))}
         </div>
+
+        {/* IL FILTRO: le stesse tinte delle barre e delle pill, così l'opzione
+            e quello che seleziona si riconoscono senza leggere. Ogni opzione
+            porta il suo conto: «Validazione 0» dice prima del clic che non
+            c'è niente, invece di rispondere con una vista vuota. */}
+        <div role="group" aria-label={t('pages.releasePlan.filterLabel')}
+          style={{ display: 'flex', gap: 6, marginLeft: 'auto', paddingBottom: 6 }}>
+          {(['all', 'release', 'validation'] as const).map((f) => {
+            // «Entrambi» non ha una tinta sua: prende quella del marchio,
+            // perché le due tinte sono dei due mestieri, non delle opzioni.
+            const stile = f === 'all' ? null : f === 'release' ? palette.purple : palette.info
+            const scelto = filtro === f
+            return (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={scelto}
+                onClick={() => { setFiltro(f) }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                  padding: '3px 10px', borderRadius: 999,
+                  fontSize: 'var(--font-size-label)', fontWeight: scelto ? 600 : 400,
+                  border: `1px solid ${scelto ? (stile?.border ?? 'var(--color-brand)') : 'var(--color-border-light)'}`,
+                  background: scelto ? (stile?.tint ?? 'var(--color-surface-alt)') : 'transparent',
+                  color: scelto ? (stile?.text ?? 'var(--color-brand)') : 'var(--color-slate)',
+                }}
+              >
+                {t(f === 'all' ? 'pages.releasePlan.filterBoth'
+                  : f === 'release' ? 'pages.releasePlan.typeRelease'
+                  : 'pages.releasePlan.typeValidation')}
+                <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.7, fontWeight: 400 }}>{conti[f]}</span>
+              </button>
+            )
+          })}
+        </div>
+        </div>
       )}
 
-      {r.voci.length > 0 && vista === 'gantt' && <GanttDelPiano voci={r.voci} />}
+      {/* Filtrato a zero: una vista vuota da sola si legge come un piano che
+          non c'è, quando invece è una scelta di chi guarda. */}
+      {r.voci.length > 0 && voci.length === 0 && (
+        <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>
+          {t('pages.releasePlan.noneOfType')}
+        </p>
+      )}
 
-      {r.voci.length > 0 && vista === 'list' && (
+      {voci.length > 0 && vista === 'gantt' && <GanttDelPiano voci={voci} />}
+
+      {voci.length > 0 && vista === 'list' && (
         <div className="og-scroll-x">
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
@@ -235,7 +296,7 @@ export function ReleasePlanCard({ affected }: { affected: readonly AffectedCI[] 
               </tr>
             </thead>
             <tbody>
-              {r.voci.map((v, i) => (
+              {voci.map((v, i) => (
                 <tr key={`${v.taskCode ?? v.ciId}-${v.tipo}-${i}`} style={{ borderTop: '1px solid var(--color-border-light)' }}>
                   <td style={{ padding: '8px 10px', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-dark)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                     {finestraLeggibile(v.start, v.end)}
