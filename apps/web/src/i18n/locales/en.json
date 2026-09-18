@@ -2419,10 +2419,6 @@
         "removeFieldHelp": "It takes the field off this form; it stays in the library, with its answers on the requests already filled.",
         "halfWidthNeedsTwo": "Half width only exists in a two-column section: you set the columns in the section properties.",
         "sectionTitleMissingIn": "No title in {{languages}}",
-        "canvasSections_one": "{{count}} section",
-        "canvasSections_other": "{{count}} sections",
-        "canvasFields_one": "{{count}} field",
-        "canvasFields_other": "{{count}} fields",
         "unsaved": "Changes not published yet",
         "libraryGroup": "Library"
       },

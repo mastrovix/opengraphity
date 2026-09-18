@@ -1038,11 +1038,6 @@ export function FormBuilderPanel() {
             <strong style={{ fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>
               {voceScelta?.name ?? ''}
             </strong>
-            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
-              {t('pages.catalogForms.builder.canvasSections', { count: bozza.sections.length })}
-              {' · '}
-              {t('pages.catalogForms.builder.canvasFields', { count: bozza.sections.reduce((n, sz) => n + sz.items.length, 0) })}
-            </span>
             {/* Le modifiche non pubblicate: il bottone «Salva e pubblica» si
                 accende, ma sta in cima e da qui non si vede. */}
             {toccato && (
