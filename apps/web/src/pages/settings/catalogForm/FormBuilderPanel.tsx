@@ -37,7 +37,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { GripVertical, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, GripVertical, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   CATALOG_FORM_VERSION, FORM_CONDITION_OPS, FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_FIELD_TYPES,
@@ -556,6 +556,14 @@ export function FormBuilderPanel() {
    * si guarda, non chiede niente.
    */
   const [selezione, setSelezione] = useState<Selezione | null>(null)
+  /*
+   * GLI ATTREZZI SONO UN ACCORDION, CHIUSO IN PARTENZA (deciso dal
+   * proprietario, 18 set 2026). Due elenchi aperti — quattordici tipi più i
+   * campi della libreria — riempivano la colonna e spingevano la tela in
+   * fondo; e aperti tutti e due si scorre per arrivare al secondo. Uno per
+   * volta: aprire il secondo chiude il primo.
+   */
+  const [attrezziAperti, setAttrezziAperti] = useState<'library' | 'types' | null>(null)
   const idVoce = useId()
 
   const sostituisciVoce = (iSez: number, iVoce: number, v: CatalogFormItem) =>
@@ -927,14 +935,33 @@ export function FormBuilderPanel() {
           <div className="og-designer">
             <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 4 }}>
               {[
-                { titolo: t('pages.catalogForms.builder.paletteTab'), voci: disponibili.map((f) => ({ chiave: f.name, etichetta: f.label, tipo: f.fieldType, nuovo: false })) },
-                { titolo: t('pages.catalogForms.builder.fieldTypes'), voci: FORM_FIELD_TYPES.map((x) => ({ chiave: x, etichetta: t(`pages.catalogForms.fieldType.${x}`), tipo: x, nuovo: true })) },
+                /* «Libreria» e non «Campi»: sono i campi che ESISTONO già nel
+                   tenant e che questo modulo non usa — si riusano, ed è il
+                   motivo per cui la stessa domanda resta una colonna sola nei
+                   report. «Campi» non distingueva questo gruppo dall'altro,
+                   che di campi parla anche lui (deciso dal proprietario). */
+                { id: 'library' as const, titolo: t('pages.catalogForms.builder.libraryGroup'), voci: disponibili.map((f) => ({ chiave: f.name, etichetta: f.label, tipo: f.fieldType, nuovo: false })) },
+                { id: 'types' as const, titolo: t('pages.catalogForms.builder.fieldTypes'), voci: FORM_FIELD_TYPES.map((x) => ({ chiave: x, etichetta: t(`pages.catalogForms.fieldType.${x}`), tipo: x, nuovo: true })) },
               ].map((gruppo) => (
-                <div key={gruppo.titolo}>
-                  <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <div key={gruppo.id}>
+                  <button
+                    type="button"
+                    aria-expanded={attrezziAperti === gruppo.id}
+                    onClick={() => { setAttrezziAperti((x) => (x === gruppo.id ? null : gruppo.id)) }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left',
+                      background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', marginBottom: 6,
+                      fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)',
+                      textTransform: 'uppercase', letterSpacing: '0.04em',
+                    }}
+                  >
+                    {attrezziAperti === gruppo.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                     {gruppo.titolo}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {/* Il conto sta sul titolo chiuso: si sa se vale la pena
+                        aprirlo — una libreria vuota non si apre per scoprirlo. */}
+                    <span style={{ marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>{gruppo.voci.length}</span>
+                  </button>
+                  <div style={{ display: attrezziAperti === gruppo.id ? 'flex' : 'none', flexDirection: 'column', gap: 5 }}>
                     {gruppo.voci.length === 0 && (
                       <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
                         {libreria.length === 0 ? t('pages.catalogForms.builder.libraryEmpty') : t('pages.catalogForms.builder.paletteEmpty')}

@@ -2400,7 +2400,6 @@
         "columnsTwo": "Two columns",
         "allHalf": "All at half width",
         "allFull": "All at full width",
-        "paletteTab": "Fields",
         "paletteEmpty": "Every field of the library is already in this form.",
         "addToSection": "Add «{{field}}» to the section «{{section}}»",
         "dropHere": "Drop it here to add it to this section.",
@@ -2424,7 +2423,8 @@
         "canvasSections_other": "{{count}} sections",
         "canvasFields_one": "{{count}} field",
         "canvasFields_other": "{{count}} fields",
-        "unsaved": "Changes not published yet"
+        "unsaved": "Changes not published yet",
+        "libraryGroup": "Library"
       },
       "library": {
         "intro": "A field is defined once and reused by every form. Its name becomes the property on the ticket, which is why it can be filtered and reported on — and why it cannot be renamed.",

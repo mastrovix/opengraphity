@@ -2400,7 +2400,6 @@
         "columnsTwo": "Due colonne",
         "allHalf": "Tutti a mezza larghezza",
         "allFull": "Tutti a larghezza piena",
-        "paletteTab": "Campi",
         "paletteEmpty": "Tutti i campi della libreria sono già in questo modulo.",
         "addToSection": "Aggiungi «{{field}}» alla sezione «{{section}}»",
         "dropHere": "Lascialo qui per aggiungerlo a questa sezione.",
@@ -2424,7 +2423,8 @@
         "canvasSections_other": "{{count}} sezioni",
         "canvasFields_one": "{{count}} campo",
         "canvasFields_other": "{{count}} campi",
-        "unsaved": "Modifiche non ancora pubblicate"
+        "unsaved": "Modifiche non ancora pubblicate",
+        "libraryGroup": "Libreria"
       },
       "library": {
         "intro": "Un campo si definisce una volta e lo riusano tutti i moduli. Il suo nome diventa la proprietà sul ticket — è il motivo per cui si può filtrare e riportare, e il motivo per cui non si può rinominare.",
