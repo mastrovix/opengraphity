@@ -214,6 +214,41 @@ export const FORM_DRAFT_ENTITY_TYPE = 'form_draft'
 /** Il nome di un campo della libreria è il nome della proprietà sul ticket: stesse regole dei campi personalizzati. */
 export const FORM_FIELD_NAME_RE = CUSTOM_FIELD_NAME_RE
 
+/**
+ * IL NOME DI UN CAMPO, RICAVATO DALL'ETICHETTA (18 set 2026).
+ *
+ * Quando un campo si crea trascinando un TIPO dalla palette, chi costruisce il
+ * modulo scrive un'etichetta — «Data di consegna» — non un identificatore. Il
+ * nome però è la PROPRIETÀ SUL TICKET, non si cambia più (ci si appendono
+ * filtri, report e widget), quindi va ricavato con una regola sola e prevedibile
+ * invece che inventato caso per caso:
+ *
+ *  - accenti tolti, minuscole, tutto ciò che non è lettera o cifra diventa `_`;
+ *  - deve cominciare per lettera (`campo_` davanti, se no) e stare in 40
+ *    caratteri, perché sono le regole dei campi personalizzati;
+ *  - se il nome è già preso, si aggiunge `_2`, `_3`… — e NON si riusa il campo
+ *    esistente: due etichette uguali possono essere due domande diverse, e
+ *    riusare l'altro campo mischierebbe le risposte di due moduli.
+ *
+ * `presi` sono i nomi già in libreria. Il server ricontrolla comunque (nome
+ * riservato, campo già esistente): questa è la proposta, non la garanzia.
+ */
+export function nomeDaEtichetta(etichetta: string, presi: readonly string[] = []): string {
+  const senzaAccenti = etichetta.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  let base = senzaAccenti.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  if (base === '' || !/^[a-z]/.test(base)) base = `campo_${base}`.replace(/_+$/, '')
+  base = base.slice(0, 40).replace(/_+$/, '')
+  // Sotto i due caratteri la regex del nome non lo accetta.
+  if (base.length < 2) base = `${base}_1`
+  if (!presi.includes(base)) return base
+  for (let i = 2; i < 999; i++) {
+    const suffisso = `_${String(i)}`
+    const candidato = `${base.slice(0, 40 - suffisso.length).replace(/_+$/, '')}${suffisso}`
+    if (!presi.includes(candidato)) return candidato
+  }
+  return `campo_${String(Date.now()).slice(-8)}`
+}
+
 /** Testo per lingua dentro il JSON del modulo: `{ en: 'Cost centre', it: 'Centro di costo' }`. */
 export type LocalizedText = Readonly<Record<string, string>>
 

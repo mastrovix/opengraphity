@@ -18,7 +18,7 @@ import {
   evaluateFormCondition, evaluateFormRule, emptyCatalogForm, catalogFormFieldNames,
   catalogFormForEndUser, formItemsToFill,
   type CatalogFormDefinition, type FormCondition,
-  larghezzaEffettiva,
+  larghezzaEffettiva, nomeDaEtichetta, FORM_FIELD_NAME_RE,
 } from '@opengraphity/types'
 
 vi.mock('../vocabularyEntries.js', () => ({
@@ -1024,5 +1024,44 @@ describe('larghezzaEffettiva', () => {
   it('il CAMPO vince sempre: una riga intera in mezzo a due colonne è una scelta che si vuole poter fare', () => {
     expect(larghezzaEffettiva({ columns: 2 }, { width: 'full' })).toBe('full')
     expect(larghezzaEffettiva({ columns: 1 }, { width: 'half' })).toBe('half')
+  })
+})
+
+/*
+ * IL NOME RICAVATO DALL'ETICHETTA. Serve alla palette dei TIPI: si trascina
+ * «Data», si scrive «Data di consegna», e il nome della proprietà sul ticket
+ * lo propone il prodotto. È un nome che non si cambia più, quindi la regola
+ * va pinnata: qualunque etichetta deve dare un nome VALIDO, e non deve mai
+ * riusare un nome già preso (due etichette uguali sono due domande diverse,
+ * e riusare il campo mischierebbe le risposte di due moduli).
+ */
+describe('il nome di un campo ricavato dall\u2019etichetta', () => {
+  it('toglie accenti e simboli, e resta minuscolo', () => {
+    expect(nomeDaEtichetta('Data di consegna')).toBe('data_di_consegna')
+    expect(nomeDaEtichetta('Perché serve?')).toBe('perche_serve')
+    expect(nomeDaEtichetta('Costo stimato (EUR)')).toBe('costo_stimato_eur')
+  })
+
+  it('un nome comincia per lettera: una cifra davanti non è un nome', () => {
+    expect(nomeDaEtichetta('1° livello')).toMatch(FORM_FIELD_NAME_RE)
+    expect(nomeDaEtichetta('2026')).toMatch(FORM_FIELD_NAME_RE)
+  })
+
+  it('non riusa un nome già preso', () => {
+    expect(nomeDaEtichetta('Note', ['note'])).toBe('note_2')
+    expect(nomeDaEtichetta('Note', ['note', 'note_2'])).toBe('note_3')
+  })
+
+  it('sta nei 40 caratteri anche col suffisso', () => {
+    const lunga = 'Una etichetta davvero molto molto lunga per un campo'
+    const n = nomeDaEtichetta(lunga)
+    expect(n.length).toBeLessThanOrEqual(40)
+    expect(n).toMatch(FORM_FIELD_NAME_RE)
+    expect(nomeDaEtichetta(lunga, [n])).not.toBe(n)
+    expect(nomeDaEtichetta(lunga, [n])).toMatch(FORM_FIELD_NAME_RE)
+  })
+
+  it('qualunque etichetta dà un nome valido, anche una di soli simboli', () => {
+    for (const e of ['???', '   ', '€€€', 'a', 'È']) expect(nomeDaEtichetta(e)).toMatch(FORM_FIELD_NAME_RE)
   })
 })

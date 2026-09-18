@@ -574,7 +574,7 @@ code, kbd, samp, pre {
 }
 
 /*
-  LA PRESA DI UN TRASCINAMENTO (18 set 2026).
+  LA PRESA DI UN TRASCINAMENTO (`.og-grip`) (18 set 2026).
 
   `touch-action: none` toglie lo scorrimento sotto il dito; le due righe di
   WebKit tolgono la selezione del testo e il menù della pressione lunga, che su
@@ -586,14 +586,14 @@ code, kbd, samp, pre {
   funziona». 44px è il minimo che Apple indica, e vale solo dove il puntatore
   è grosso: col mouse la riga resta compatta.
 */
-.og-presa {
+.og-grip {
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
 @media (pointer: coarse) {
-  .og-presa {
+  .og-grip {
     min-width: 44px;
     min-height: 44px;
     justify-content: center;
