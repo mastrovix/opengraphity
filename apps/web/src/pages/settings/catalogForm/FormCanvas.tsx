@@ -157,30 +157,44 @@ function CampoSullaTela({
       */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '20px clamp(90px, 24%, 170px) minmax(0, 1fr)',
+        gridTemplateColumns: 'var(--og-grip-col, 20px) clamp(90px, 24%, 170px) minmax(0, 1fr)',
         columnGap: 8, alignItems: 'start',
       }}>
         {/*
-          LA PRESA SI ALLINEA ALLA RIGA DI TESTO DELL'ETICHETTA, e il numero
-          non è a occhio: è misurato.
-          L'etichetta porta 7px di `padding-top` (per stare sulla prima riga
-          del controllo), quindi la sua riga di testo comincia 7px sotto la
-          cima della griglia; la presa è un'icona di 14px in un bottone di 22.
-          Perché i due centri coincidano il bottone parte 3px sotto la cima —
-          e quel pixel che resta è l'aggiustamento ottico: le lettere stanno
-          sopra la linea di base, e allineare i centri geometrici fa sembrare
-          la presa appesa.
+          LA PRESA SI CENTRA SULLA RIGA DI TESTO DELL'ETICHETTA — per
+          costruzione, non con un numero.
 
-          Misurato dal vivo (18 set 2026) prendendo il rettangolo del NODO DI
-          TESTO con un `Range`, non quello dello `span`: lo span comprende il
-          proprio padding, e confrontare quel centro nascondeva 6px di
-          disallineamento — che a 4× di zoom si vedevano benissimo. Il
-          proprietario li ha visti a 1×.
+          Tre tentativi sbagliati, tutti con lo stesso errore: un padding
+          calcolato. Prima confrontavo il centro dello SPAN dell'etichetta
+          invece del suo testo (lo span comprende il proprio padding: due
+          numeri uguali e sei pixel di disallineamento). Poi il numero giusto
+          per il mouse era sbagliato col dito, perché su un dispositivo a
+          tocco il bottone della presa diventa 44px e la sua icona si
+          centrava undici pixel più in basso: da iPad la maniglia sembrava
+          appesa sotto il campo.
+
+          Qui il contenitore della presa È la riga di testo — stesso
+          `padding-top` dell'etichetta, altezza di una riga — e il bottone ci
+          si centra dentro. Che sia 22px o 44 non cambia niente: il centro
+          dell'icona cade sul centro della riga in tutti e due i casi.
         */}
-        <span style={{ display: 'flex', paddingTop: 3 }}>{maniglia}</span>
+        <span style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          paddingTop: 7, height: 17, boxSizing: 'content-box',
+        }}>
+          {maniglia}
+        </span>
         <span style={{
           paddingTop: 7, fontSize: 'var(--font-size-table)', color: 'var(--color-slate)',
-          fontWeight: fontWeight.medium, display: 'flex', alignItems: 'baseline', gap: 5, flexWrap: 'wrap',
+          fontWeight: fontWeight.medium, display: 'flex', gap: 5, flexWrap: 'wrap',
+          /* `lineHeight` DICHIARATA, e la stessa che usa il contenitore della
+             presa: due scatole con la stessa geometria si allineano da sole,
+             e non serve nessun numero di correzione. Lasciata al valore
+             ereditato, la prima riga dell'etichetta cadeva dieci pixel sotto
+             l'icona — su un telefono, dove l'etichetta va a capo, di più. */
+          lineHeight: '17px', alignItems: 'flex-start',
+          // A destra, accostata al controllo: come nel modulo vero.
+          justifyContent: 'flex-end', textAlign: 'right',
         }}>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {etichetta}

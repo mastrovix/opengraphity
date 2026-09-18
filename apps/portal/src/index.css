@@ -264,7 +264,10 @@ input, textarea, select {
   align-items: start;
   min-width: 0;
 }
-.og-form-cell > .og-form-label { grid-column: 1; padding-top: 7px; }
+/* A DESTRA nella sua colonna: un'etichetta corta in una colonna larga
+   lascerebbe un vuoto fra sé e il controllo, e la coppia non si leggerebbe
+   più come una coppia. */
+.og-form-cell > .og-form-label { grid-column: 1; padding-top: 7px; text-align: right; }
 .og-form-cell > *:not(.og-form-label) { grid-column: 2; }
 /* Una nota non ha etichetta: senza questo il suo testo starebbe in colonna 2,
    cioè rientrato di una colonna che non esiste. */
@@ -272,7 +275,8 @@ input, textarea, select {
 .og-form-cell-half { grid-column: auto; }
 @media (max-width: 700px) {
   .og-form-cell { grid-template-columns: minmax(0, 1fr); }
-  .og-form-cell > .og-form-label { padding-top: 0; }
+  /* Impilata, l'etichetta torna sopra e quindi a sinistra. */
+  .og-form-cell > .og-form-label { padding-top: 0; text-align: left; }
   .og-form-cell > *:not(.og-form-label) { grid-column: 1; }
 }
 @media (max-width: 700px) {

@@ -378,7 +378,10 @@ function Maniglia({ etichetta, onAfferra, onSu, onGiu, evidenziata }: {
         background: evidenziata ? 'var(--color-brand-light)' : 'none',
         border: evidenziata ? '1px solid var(--color-brand)' : '1px solid transparent',
         borderRadius: 5, cursor: 'grab', color: 'var(--color-slate-light)', padding: '3px 1px',
-        display: 'flex', alignItems: 'center', flex: '0 0 auto',
+        // `alignItems` lo decide `.og-grip`: al centro col mouse, in alto col
+        // dito (dove il bottone è alto 44px e un'icona centrata finirebbe
+        // sotto la riga dell'etichetta).
+        display: 'flex', flex: '0 0 auto',
         // Il resto della presa (niente scorrimento, niente selezione, 44px
         // col dito) sta in `.og-grip`: è una regola di tutta l'app, non di
         // questa maniglia.

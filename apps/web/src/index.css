@@ -621,6 +621,10 @@ code, kbd, samp, pre {
   è grosso: col mouse la riga resta compatta.
 */
 .og-grip {
+  /* L'icona al centro del bottone: senza, con un bersaglio da 44px resta
+     incollata in alto e la presa sembra fuori posto. Sta qui e non nello
+     stile in linea perché la misura del bottone la decide questo file. */
+  align-items: center;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -631,7 +635,26 @@ code, kbd, samp, pre {
     min-width: 44px;
     min-height: 44px;
     justify-content: center;
+    /*
+      L'allineamento NON si corregge qui con un padding: la presa cambia
+      misura (22px col mouse, 44 col dito) e un numero fisso vale per una
+      sola delle due. Chi la usa la centra sulla riga di testo
+      dell'etichetta, e allora la misura non conta — vedi `FormCanvas`.
+    */
   }
+}
+
+/*
+  LA COLONNA DELLA PRESA È LARGA QUANTO LA PRESA.
+
+  Sulla tela del costruttore la griglia di un campo è «presa | etichetta |
+  controllo». Con una colonna fissa da 20px e una presa che su un dispositivo
+  a tocco diventa 44, la presa sbordava sull'etichetta — su iPad si vedeva la
+  maniglia addosso al testo. Una variabile, due misure, un posto solo.
+*/
+:root { --og-grip-col: 20px; }
+@media (pointer: coarse) {
+  :root { --og-grip-col: 44px; }
 }
 
 /*
@@ -764,7 +787,10 @@ code, kbd, samp, pre {
   align-items: start;
   min-width: 0;
 }
-.og-form-cell > .og-form-label { grid-column: 1; padding-top: 7px; }
+/* A DESTRA nella sua colonna: un'etichetta corta in una colonna larga
+   lascerebbe un vuoto fra sé e il controllo, e la coppia non si leggerebbe
+   più come una coppia. */
+.og-form-cell > .og-form-label { grid-column: 1; padding-top: 7px; text-align: right; }
 .og-form-cell > *:not(.og-form-label) { grid-column: 2; }
 /* Una nota non ha etichetta: senza questo il suo testo starebbe in colonna 2,
    cioè rientrato di una colonna che non esiste. */
@@ -772,7 +798,8 @@ code, kbd, samp, pre {
 .og-form-cell-half { grid-column: auto; }
 @media (max-width: 700px) {
   .og-form-cell { grid-template-columns: minmax(0, 1fr); }
-  .og-form-cell > .og-form-label { padding-top: 0; }
+  /* Impilata, l'etichetta torna sopra e quindi a sinistra. */
+  .og-form-cell > .og-form-label { padding-top: 0; text-align: left; }
   .og-form-cell > *:not(.og-form-label) { grid-column: 1; }
 }
 @media (max-width: 700px) {
