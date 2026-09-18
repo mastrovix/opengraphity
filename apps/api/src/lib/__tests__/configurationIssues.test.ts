@@ -79,7 +79,12 @@ let ruoliMancanti: Array<Record<string, unknown>> = []
 vi.mock('../workflowStepRoles.js', () => ({ workflowsMissingStepRoles: vi.fn(async () => ruoliMancanti) }))
 /** Le copie dei vocabolari rimaste indietro rispetto ai valori spediti (F20): di default nessuna. */
 let copieIndietro: Array<{ id: string; name: string; newValues: string[] }> = []
-vi.mock('../vocabularyShippedDrift.js', () => ({ vocabulariesBehindShipped: vi.fn(async () => copieIndietro) }))
+/** Le copie di vocabolario identiche alla spedita: di default nessuna. */
+let copieInutili: Array<{ id: string; name: string; label: string }> = []
+vi.mock('../vocabularyShippedDrift.js', () => ({
+  vocabulariesBehindShipped: vi.fn(async () => copieIndietro),
+  vocabulariesCopiedWithoutChanges: vi.fn(async () => copieInutili),
+}))
 /** Le policy SLA con il preavviso non prima della scadenza (giro nel browser): di default nessuna. */
 let preavvisiScaduti: Array<{ name: string; warningMinutes: number; resolveMinutes: number }> = []
 // Verifica «Cosa resta cablato», ondata 1: le severità del portale dichiarate e dentro il vocabolario.
@@ -703,5 +708,17 @@ describe('formule e interruttore degli script', () => {
     campiConFormula = ['Costo totale (EUR)']
     const issues = await configurationIssues('t1')
     expect(issues.some((i) => i.kind === 'formulas_with_scripting_off')).toBe(false)
+  })
+
+  it('una copia di vocabolario identica a quella di fabbrica → avviso che la nomina', async () => {
+    // Non compra niente e paga il prezzo di ogni copia: non ricevera i valori
+    // che il prodotto aggiungera. Avviso e non errore: oggi non e rotto niente.
+    copieInutili = [{ id: 'v1', name: 'priority', label: 'Priority' }]
+    const out = await configurationIssues('c-one')
+    const avviso = out.find((i) => i.kind === 'vocabulary_copy_without_changes')
+    expect(avviso?.severity).toBe('warning')
+    expect(avviso?.params['names']).toContain('Priority')
+    expect(avviso?.where).toBe('/settings/enum-designer')
+    copieInutili = []
   })
 })

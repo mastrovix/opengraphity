@@ -61,7 +61,7 @@ import { teamsWithoutSourcing } from './teamSourcing.js'
 import { changesStuckWithOpenPath } from './changesStuck.js'
 import { ticketsWithoutSla } from './ticketsWithoutSla.js'
 import { workflowsMissingStepRoles } from './workflowStepRoles.js'
-import { vocabulariesBehindShipped } from './vocabularyShippedDrift.js'
+import { vocabulariesBehindShipped, vocabulariesCopiedWithoutChanges } from './vocabularyShippedDrift.js'
 import { slaPoliciesWarningNotBeforeDeadline } from './slaWarningCheck.js'
 import { blockedStepDeadlines } from './stepDeadlineBlocked.js'
 import { customFieldDefs } from './ticketCustomFields.js'
@@ -102,6 +102,7 @@ export type ConfigurationIssueKind =
   | 'workflow_optional_step_categories_missing'
   | 'workflow_optional_step_purposes_missing'
   | 'vocabulary_behind_shipped'
+  | 'vocabulary_copy_without_changes'
   | 'sla_warning_not_before_deadline'
   | 'step_deadlines_blocked'
   | 'slack_not_connected'
@@ -165,7 +166,7 @@ async function computeConfigurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms, checkStuckChanges]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkRedundantVocabularyCopies, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms, checkStuckChanges]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -411,6 +412,26 @@ async function checkVocabulariesBehindShipped(tenantId: string, session: Session
  * un comportamento senza dirlo (avviso). Una voce per workflow, gravità e tipo di ruolo;
  * i valori mancanti sono dati, la frase la compone il client.
  */
+/**
+ * LE COPIE DI VOCABOLARIO CHE NON AGGIUNGONO NIENTE (18 set 2026).
+ *
+ * Una copia identica alla spedita non compra niente e paga il prezzo di ogni
+ * copia: resta indietro in silenzio quando il prodotto aggiunge un valore. Si
+ * dice, con i nomi, e si rimedia cancellandola dal Dizionario — il prodotto
+ * ripiega da solo su quella di fabbrica.
+ *
+ * Avviso e non errore: oggi non è rotto niente, e la copia potrebbe essere il
+ * primo passo di una personalizzazione appena cominciata.
+ */
+async function checkRedundantVocabularyCopies(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const copie = await vocabulariesCopiedWithoutChanges(session, tenantId)
+  if (copie.length === 0) return []
+  return [{
+    kind: 'vocabulary_copy_without_changes', severity: 'warning', where: '/settings/enum-designer',
+    params: { count: String(copie.length), names: copie.map((c) => `«${c.label}»`).join(', ') },
+  }]
+}
+
 async function checkWorkflowStepRoles(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
   const out: ConfigurationIssue[] = []
   for (const m of await workflowsMissingStepRoles(session, tenantId)) {

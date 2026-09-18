@@ -52,3 +52,42 @@ export async function vocabulariesBehindShipped(session: Queryable, tenantId: st
   }
   return out
 }
+
+/**
+ * LE COPIE CHE NON AGGIUNGONO NIENTE (18 set 2026).
+ *
+ * Personalizzare un vocabolario vuol dire farne una copia che vince per nome, e
+ * il prodotto non la tocca più: da quel momento un valore aggiunto alla lista
+ * spedita non arriva (è `vocabulariesBehindShipped`, sopra). È un prezzo che ha
+ * senso pagare quando la copia SERVE — etichette per valore, colori, un ordine
+ * diverso, valori in più o in meno.
+ *
+ * Una copia che invece è uguale in tutto non compra niente e paga lo stesso
+ * prezzo: resta indietro in silenzio alla prima aggiunta del prodotto. Nascono
+ * così — un provisioning ripetuto, un'importazione — e nessuno se ne accorge,
+ * perché a schermo si vede una riga sola.
+ *
+ * «Uguale in tutto» è stretto di proposito: stessi valori NELLO STESSO ORDINE
+ * (l'ordine è quello che si vede nelle tendine), stessa etichetta, e nessuna
+ * etichetta o colore per valore. Se differisce una virgola, la copia sta
+ * facendo qualcosa e non si segnala.
+ */
+export interface VocabularyRedundantCopy {
+  id:    string
+  name:  string
+  label: string
+}
+
+export async function vocabulariesCopiedWithoutChanges(session: Queryable, tenantId: string): Promise<VocabularyRedundantCopy[]> {
+  // `tenant-ok`: la copia è del tenant, la spedita è del tenant condiviso 'system'.
+  return await runQuery<VocabularyRedundantCopy>(session, `
+    MATCH (c:EnumTypeDefinition {tenant_id: $tenantId})
+    MATCH (s:EnumTypeDefinition {tenant_id: 'system', name: c.name})
+    WHERE c.values = s.values
+      AND coalesce(c.label, '') = coalesce(s.label, '')
+      AND (c.value_labels IS NULL OR c.value_labels = '' OR c.value_labels = '{}')
+      AND (c.value_colors IS NULL OR c.value_colors = '' OR c.value_colors = '{}')
+    RETURN c.id AS id, c.name AS name, coalesce(c.label, c.name) AS label
+    ORDER BY toLower(coalesce(c.label, c.name))
+  `, { tenantId })
+}
