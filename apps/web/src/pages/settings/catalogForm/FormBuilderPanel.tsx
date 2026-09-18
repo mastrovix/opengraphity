@@ -34,7 +34,7 @@
  *    si aggiunge anche con Invio — senza questo, il costruttore sarebbe
  *    diventato inutilizzabile per chi non usa il mouse.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { GripVertical, Plus, Trash2 } from 'lucide-react'
@@ -50,7 +50,7 @@ import { GET_CATALOG_FORM, GET_FORM_FIELDS, GET_SERVICE_CATALOG_ADMIN, GET_TENAN
 import { SAVE_CATALOG_FORM } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
 import { useConfirm } from '@/hooks/useConfirm'
-import { colors, fontWeight } from '@/lib/tokens'
+import { alpha, colors, fontWeight } from '@/lib/tokens'
 import { Input, Select } from '@/components/ui/FormControls'
 import type { FormFieldRow } from './FieldLibraryPanel'
 
@@ -63,40 +63,250 @@ const bottone: React.CSSProperties = {
 }
 const iconaAzione: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 3 }
 
+/*
+ * IL TRASCINAMENTO SI FA COI POINTER EVENT, NON CON HTML5 (18 set 2026).
+ *
+ * La prima versione usava `draggable` + `dragstart`/`drop`, che è il modo
+ * standard sul desktop e NON ESISTE sul touch: su iPad e iPhone il dito non
+ * genera mai un `dragstart`, quindi il costruttore dei moduli si poteva usare
+ * solo da una tastiera e un mouse. Il proprietario l'ha trovato esattamente
+ * così — «non riesco a trascinare il campo nelle sezioni», da iPad — e non
+ * c'era nessun modo di accorgersene da qui: il difetto non è nel codice che si
+ * legge, è nella piattaforma che non chiama mai quel codice.
+ *
+ * I pointer event sono UNO SOLO per mouse, dito e penna. In cambio va scritto
+ * a mano quello che il browser regalava:
+ *
+ *  - il BERSAGLIO sotto il puntatore, che si trova con `elementFromPoint` e
+ *    l'attributo `data-drop` (il DOM, non gli handler di React);
+ *  - l'OMBRA che segue il dito, perché senza niente che si muove il gesto
+ *    sembra non essere partito;
+ *  - lo SCORRIMENTO ai bordi, altrimenti si può lasciar cadere solo su quello
+ *    che è già a schermo — su un modulo di sei sezioni è mezzo modulo.
+ *
+ * `touch-action: none` sulle maniglie è obbligatorio: senza, il dito che
+ * scende scorre la pagina invece di trascinare.
+ */
+
+/** Cosa si sta portando in giro. */
+type Trascinato =
+  | { tipo: 'palette'; campo: string }
+  | { tipo: 'item'; sezione: number; voce: number }
+  | { tipo: 'section'; sezione: number }
+
+/**
+ * Le zone in cui si può lasciar cadere, dichiarate nel DOM con `data-drop`:
+ * `sec-2` è la sezione 2, `ord-2` la sua intestazione (riordino), `item-2-3`
+ * la voce 3 di quella sezione.
+ */
+type Zona =
+  | { dove: 'section' | 'order'; iSez: number }
+  | { dove: 'item'; iSez: number; iVoce: number }
+
+function leggiZona(z: string): Zona | null {
+  const p = z.split('-')
+  if (p[0] === 'sec'  && p.length === 2) return { dove: 'section', iSez: Number(p[1]) }
+  if (p[0] === 'ord'  && p.length === 2) return { dove: 'order',   iSez: Number(p[1]) }
+  if (p[0] === 'item' && p.length === 3) return { dove: 'item', iSez: Number(p[1]), iVoce: Number(p[2]) }
+  return null
+}
+
+/** Una zona accetta quello che si sta trascinando? */
+function zonaBuona(cosa: Trascinato, z: Zona): boolean {
+  // Una sezione si lascia cadere su un'altra sezione, dovunque dentro: col
+  // dito, prendere la mira sulla sola intestazione è una richiesta assurda.
+  if (cosa.tipo === 'section') return z.dove !== 'item'
+  // Un campo NON si lascia cadere sull'intestazione: lì si riordinano sezioni.
+  return z.dove !== 'order'
+}
+
+/** Il contenitore che scorre davvero attorno a un elemento (per lo scorrimento ai bordi). */
+function contenitoreScorrevole(el: Element | null): Element | null {
+  let n = el
+  while (n && n !== document.body) {
+    const s = getComputedStyle(n)
+    if (/(auto|scroll)/.test(s.overflowY) && n.scrollHeight > n.clientHeight) return n
+    n = n.parentElement
+  }
+  return document.scrollingElement
+}
+
+interface Trascinamento {
+  trascinato: Trascinato | null
+  /** La zona evidenziata, come stringa `data-drop`: la vista la confronta e basta. */
+  bersaglio: string | null
+  etichetta: string
+  posizione: { x: number; y: number } | null
+  afferra: (e: React.PointerEvent, cosa: Trascinato, etichetta: string) => void
+}
+
+/**
+ * IL MOTORE DEL TRASCINAMENTO. Tiene cosa si trascina, dove si è sopra e dove
+ * sta il dito; chi chiama riceve il rilascio già risolto in (cosa, zona).
+ */
+function useTrascinamento(onRilascio: (cosa: Trascinato, zona: Zona) => void): Trascinamento {
+  const [trascinato, setTrascinato] = useState<Trascinato | null>(null)
+  const [bersaglio,  setBersaglio]  = useState<string | null>(null)
+  const [etichetta,  setEtichetta]  = useState('')
+  const [posizione,  setPosizione]  = useState<{ x: number; y: number } | null>(null)
+
+  // Lo stato VIVO del gesto: gli ascoltatori globali leggerebbero dalla
+  // chiusura uno stato vecchio di un render.
+  const corso = useRef<{ cosa: Trascinato | null; zona: Zona | null }>({ cosa: null, zona: null })
+  const dove  = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
+  const scorrevole = useRef<Element | null>(null)
+  const smonta = useRef<(() => void) | null>(null)
+  const rilascio = useRef(onRilascio)
+  useEffect(() => { rilascio.current = onRilascio })
+  // Un gesto in corso quando il pannello sparisce lascerebbe gli ascoltatori
+  // attaccati a `window`.
+  useEffect(() => () => { smonta.current?.() }, [])
+
+  /**
+   * GLI ASCOLTATORI SI ATTACCANO QUI, NON IN UN `useEffect`.
+   *
+   * Nella prima stesura stavano in un effetto su `trascinato`, cioè partivano
+   * DOPO il render: un gesto veloce — un trascinamento col dito, o due eventi
+   * sintetici di fila — finiva prima che gli ascoltatori esistessero, e non
+   * succedeva niente. Visto dal vivo nel browser il 18 set 2026: `pointerdown`,
+   * due `pointermove` e `pointerup` tutti arrivati, e nessun campo aggiunto.
+   * Un gesto va ascoltato dall'istante in cui comincia.
+   */
+  const afferra = (e: React.PointerEvent, cosa: Trascinato, testo: string) => {
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return
+    // Senza questo il dito scorre la pagina e il mouse seleziona il testo.
+    e.preventDefault()
+    smonta.current?.()
+    corso.current = { cosa, zona: null }
+    dove.current = { x: e.clientX, y: e.clientY }
+    // Il contenitore da scorrere è quello DEI BERSAGLI, non quello della
+    // presa: da quando la palette ha uno scorrimento suo, partire da lì
+    // avrebbe scorso la palette invece della pagina.
+    scorrevole.current = contenitoreScorrevole(document.querySelector('[data-drop]') ?? e.currentTarget)
+    setTrascinato(cosa); setEtichetta(testo); setBersaglio(null)
+    setPosizione({ x: e.clientX, y: e.clientY })
+
+    /** La zona sotto il puntatore: la più interna che accetta quello che porto. */
+    const zonaSotto = (x: number, y: number): { chiave: string; zona: Zona } | null => {
+      let n: Element | null | undefined = document.elementFromPoint(x, y)
+      while (n) {
+        const el: Element | null = n.closest('[data-drop]')
+        if (!el) return null
+        const chiave = el.getAttribute('data-drop') ?? ''
+        const zona = leggiZona(chiave)
+        if (zona && zonaBuona(cosa, zona)) return { chiave, zona }
+        n = el.parentElement
+      }
+      return null
+    }
+
+    const aggiorna = (x: number, y: number) => {
+      const trovata = zonaSotto(x, y)
+      corso.current.zona = trovata?.zona ?? null
+      setBersaglio(trovata?.chiave ?? null)
+    }
+
+    const muovi = (ev: PointerEvent) => {
+      ev.preventDefault()
+      dove.current = { x: ev.clientX, y: ev.clientY }
+      setPosizione({ x: ev.clientX, y: ev.clientY })
+      aggiorna(ev.clientX, ev.clientY)
+    }
+
+    /*
+     * LO SCORRIMENTO AI BORDI. Con HTML5 lo faceva il browser; qui no, e senza
+     * si può lasciar cadere solo su quello che è già a schermo — su un modulo
+     * lungo, o su uno schermo stretto dove la palette sta sotto le sezioni, è
+     * quasi tutto. Si ricalcola anche il bersaglio a ogni fotogramma: il dito
+     * sta fermo ma il contenuto scorre, e l'evidenza resterebbe dov'era.
+     */
+    const MARGINE = 70
+    let animazione = requestAnimationFrame(function passo() {
+      const { x, y } = dove.current
+      const velocita = y < MARGINE ? -12 : y > window.innerHeight - MARGINE ? 12 : 0
+      const c = scorrevole.current
+      if (velocita !== 0 && c) { c.scrollTop += velocita; aggiorna(x, y) }
+      animazione = requestAnimationFrame(passo)
+    })
+
+    const chiudi = () => {
+      cancelAnimationFrame(animazione)
+      window.removeEventListener('pointermove', muovi)
+      window.removeEventListener('pointerup', molla)
+      window.removeEventListener('pointercancel', annulla)
+      window.removeEventListener('keydown', tasto)
+      smonta.current = null
+      corso.current = { cosa: null, zona: null }
+      setTrascinato(null); setBersaglio(null); setPosizione(null)
+    }
+    function molla(ev: PointerEvent) {
+      const { cosa: c, zona } = corso.current
+      // Il bersaglio si rilegge dal punto in cui si è lasciato: con un gesto
+      // veloce l'ultimo `pointermove` può mancare, e il rilascio cadrebbe nel
+      // vuoto pur essendo il dito nel posto giusto.
+      const finale = zonaSotto(ev.clientX, ev.clientY)?.zona ?? zona
+      if (c && finale) rilascio.current(c, finale)
+      chiudi()
+    }
+    function annulla() { chiudi() }
+    // `Escape` annulla: un gesto partito per sbaglio deve avere un'uscita che
+    // non sposta niente.
+    function tasto(ev: KeyboardEvent) { if (ev.key === 'Escape') chiudi() }
+
+    window.addEventListener('pointermove', muovi, { passive: false })
+    window.addEventListener('pointerup', molla)
+    window.addEventListener('pointercancel', annulla)
+    window.addEventListener('keydown', tasto)
+    smonta.current = chiudi
+  }
+
+  return { trascinato, bersaglio, etichetta, posizione, afferra }
+}
+
+/**
+ * L'OMBRA CHE SEGUE IL DITO. Con HTML5 la disegnava il browser; togliendolo
+ * sparirebbe, e un trascinamento in cui non si muove niente si legge come un
+ * gesto che non è partito — che è esattamente il difetto che stiamo correggendo.
+ */
+function OmbraTrascinata({ etichetta, posizione }: { etichetta: string; posizione: { x: number; y: number } }) {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'fixed', left: posizione.x + 12, top: posizione.y + 12, zIndex: 1000,
+        pointerEvents: 'none', padding: '5px 10px', borderRadius: 7,
+        background: 'var(--color-brand)', color: colors.white,
+        fontSize: 'var(--font-size-table)', boxShadow: `0 4px 14px ${alpha.black20}`,
+        maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}
+    >
+      {etichetta}
+    </div>
+  )
+}
+
 /**
  * LA MANIGLIA: si trascina col dito e si sposta con la tastiera.
  *
- * È un BOTTONE, non un `div` con `draggable`: così entra nel giro dei tab, la
+ * È un BOTTONE, non un `div` da trascinare: così entra nel giro dei tab, la
  * legge un lettore di schermo, e `↑`/`↓` spostano l'elemento senza trascinare
  * niente. Il trascinamento è il gesto comodo; la tastiera è quello che rende
  * la pagina usabile — e questa è l'unica pagina da cui si compone un modulo,
  * quindi non poteva restare solo col mouse (18 set 2026).
  */
-function Maniglia({ etichetta, onDragStart, onDragEnd, onSu, onGiu, onDragOver, onDrop, evidenziata }: {
+function Maniglia({ etichetta, onAfferra, onSu, onGiu, evidenziata }: {
   etichetta: string
-  onDragStart: () => void
-  onDragEnd: () => void
+  onAfferra: (e: React.PointerEvent) => void
   onSu: () => void
   onGiu: () => void
-  onDragOver?: (e: React.DragEvent) => void
-  onDrop?: (e: React.DragEvent) => void
   evidenziata?: boolean
 }) {
   return (
     <button
       type="button"
-      draggable
       aria-label={etichetta}
       title={etichetta}
-      onDragStart={(e) => {
-        // Un payload c'è comunque: senza, Safari non avvia il trascinamento.
-        e.dataTransfer.setData('text/plain', etichetta)
-        e.dataTransfer.effectAllowed = 'move'
-        onDragStart()
-      }}
-      onDragEnd={onDragEnd}
-      {...(onDragOver ? { onDragOver } : {})}
-      {...(onDrop ? { onDrop } : {})}
+      onPointerDown={(e) => { e.currentTarget.focus(); onAfferra(e) }}
       onKeyDown={(e) => {
         if (e.key === 'ArrowUp')   { e.preventDefault(); onSu() }
         if (e.key === 'ArrowDown') { e.preventDefault(); onGiu() }
@@ -106,6 +316,8 @@ function Maniglia({ etichetta, onDragStart, onDragEnd, onSu, onGiu, onDragOver, 
         border: evidenziata ? '1px solid var(--color-brand)' : '1px solid transparent',
         borderRadius: 5, cursor: 'grab', color: 'var(--color-slate-light)', padding: '3px 1px',
         display: 'flex', alignItems: 'center', flex: '0 0 auto',
+        // Senza, il dito che scende scorre la pagina invece di trascinare.
+        touchAction: 'none',
       }}
     >
       <GripVertical size={14} />
@@ -206,21 +418,23 @@ export function FormBuilderPanel() {
   /*
    * IL TRASCINAMENTO, con la tastiera accanto.
    *
-   * `trascinato` è cosa si sta portando in giro: un campo della palette, una
-   * voce già nel modulo, o una sezione intera. Sta nello stato e non solo in
-   * `dataTransfer` perché serve anche per DIPINGERE il bersaglio mentre il
-   * dito è ancora in aria — senza, si trascina alla cieca.
-   *
-   * Ogni maniglia è un bottone: `↑` e `↓` spostano senza trascinare. Il
-   * trascinamento non esiste da tastiera, e questa pagina è l'unico posto da
-   * cui si compone un modulo.
+   * Il motore sta in `useTrascinamento` (pointer event: mouse, dito e penna);
+   * qui c'è solo cosa SIGNIFICA lasciar cadere una cosa in una zona. Ogni
+   * maniglia resta un bottone con `↑` e `↓`: il trascinamento non esiste da
+   * tastiera, e questa pagina è l'unico posto da cui si compone un modulo.
    */
-  type Trascinato =
-    | { tipo: 'palette'; campo: string }
-    | { tipo: 'item'; sezione: number; voce: number }
-    | { tipo: 'section'; sezione: number }
-  const [trascinato, setTrascinato] = useState<Trascinato | null>(null)
-  const [bersaglio, setBersaglio] = useState<string | null>(null)
+  const trascinamento = useTrascinamento((cosa, zona) => {
+    if (cosa.tipo === 'section') {
+      if (zona.dove !== 'item') muoviSezione(cosa.sezione, zona.iSez)
+      return
+    }
+    // Cadere SU una voce inserisce PRIMA di quella; cadere sulla sezione
+    // accoda in fondo — è come si legge un elenco.
+    const posto = zona.dove === 'item' ? zona.iVoce : (bozza.sections[zona.iSez]?.items.length ?? 0)
+    if (cosa.tipo === 'palette') aggiungiCampo(zona.iSez, cosa.campo, zona.dove === 'item' ? posto : undefined)
+    else muoviVoce(cosa.sezione, cosa.voce, zona.iSez, posto)
+  })
+  const { trascinato, bersaglio } = trascinamento
 
   /** La sezione che riceve un campo aggiunto da tastiera: l'ultima toccata. */
   const [sezioneCorrente, setSezioneCorrente] = useState(0)
@@ -326,7 +540,11 @@ export function FormBuilderPanel() {
   }
 
   return (
-    <div className="og-split">
+    /* `og-split-tools`: sotto i 900px porta la palette SOPRA le sezioni e la
+       tiene appiccicata, se no da iPad la presa e il bersaglio non stanno mai
+       a schermo insieme (vedi index.css). Con l'anteprima aperta no: quella
+       deve poter essere alta. */
+    <div className={`og-split${schedaDestra === 'fields' ? ' og-split-tools' : ''}`}>
       {/* ── Il disegno ─────────────────────────────────────────────────── */}
       <div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -364,42 +582,41 @@ export function FormBuilderPanel() {
         {voceId !== '' && bozza.sections.map((sezione, iSez) => (
           <div
             key={sezione.id}
-            onMouseDown={() => setSezioneCorrente(iSez)}
+            /* Un GRUPPO col nome della sezione: il `div` porta dei gestori
+               (segna qual è la sezione corrente, ed è un bersaglio del
+               trascinamento), e un elemento che reagisce senza dichiarare
+               cosa è, per un lettore di schermo non esiste. `group` è quello
+               che è davvero: un insieme di controlli con un'etichetta.
+               — errore di lint introdotto ieri con la palette e trovato oggi
+               facendo girare eslint su questo file (18 set 2026). */
+            role="group"
+            aria-label={localizedText(sezione.title, lingua, '') || sezione.id}
+            /* `pointerdown` e non `mousedown`: col dito il `mousedown` arriva
+               emulato e in ritardo (o non arriva), quindi su iPad la «sezione
+               corrente» — quella dove il «+» della palette mette il campo —
+               seguiva il tocco a scoppio ritardato. Il `focus` resta per chi
+               entra nella sezione con la tastiera. */
+            onPointerDown={() => setSezioneCorrente(iSez)}
             onFocus={() => setSezioneCorrente(iSez)}
             /* La sezione è un bersaglio: ci si lascia cadere un campo della
-               palette (va in fondo) o una voce presa da un'altra sezione. */
-            onDragOver={(e) => { if (trascinato && trascinato.tipo !== 'section') { e.preventDefault(); setBersaglio(`sec-${String(iSez)}`) } }}
-            onDragLeave={() => setBersaglio((b) => (b === `sec-${String(iSez)}` ? null : b))}
-            onDrop={(e) => {
-              e.preventDefault()
-              setBersaglio(null)
-              if (!trascinato) return
-              if (trascinato.tipo === 'palette') aggiungiCampo(iSez, trascinato.campo)
-              if (trascinato.tipo === 'item') muoviVoce(trascinato.sezione, trascinato.voce, iSez, sezione.items.length)
-              setTrascinato(null)
-            }}
+               palette (va in fondo), una voce presa da un'altra sezione, o
+               un'altra sezione (che si mette qui). Il motore legge `data-drop`
+               dal DOM: non servono handler per zona. */
+            data-drop={`sec-${String(iSez)}`}
             style={{
               border: `1px solid ${bersaglio === `sec-${String(iSez)}` ? 'var(--color-brand)' : colors.border}`,
               boxShadow: bersaglio === `sec-${String(iSez)}` ? '0 0 0 3px var(--color-brand-light)' : 'none',
               borderRadius: 10, padding: 14, marginBottom: 12, background: colors.white,
             }}
           >
-            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
+            <div data-drop={`ord-${String(iSez)}`}
+              style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
               <Maniglia
                 etichetta={t('pages.catalogForms.builder.moveSection', { title: localizedText(sezione.title, lingua, '') || sezione.id })}
-                onDragStart={() => setTrascinato({ tipo: 'section', sezione: iSez })}
-                onDragEnd={() => { setTrascinato(null); setBersaglio(null) }}
+                onAfferra={(e) => { trascinamento.afferra(e, { tipo: 'section', sezione: iSez }, localizedText(sezione.title, lingua, '') || sezione.id) }}
                 onSu={() => muoviSezione(iSez, iSez - 1)}
                 onGiu={() => muoviSezione(iSez, iSez + 1)}
-                /* Cadere sull'intestazione di un'altra sezione riordina: è
-                   l'unico punto in cui il bersaglio è «qui, fra le sezioni». */
-                onDragOver={(e) => { if (trascinato?.tipo === 'section') { e.preventDefault(); setBersaglio(`ord-${String(iSez)}`) } }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  if (trascinato?.tipo === 'section') muoviSezione(trascinato.sezione, iSez)
-                  setTrascinato(null); setBersaglio(null)
-                }}
-                evidenziata={bersaglio === `ord-${String(iSez)}`}
+                evidenziata={bersaglio === `ord-${String(iSez)}` || bersaglio === `sec-${String(iSez)}`}
               />
               {/*
                 IL TITOLO IN TUTTE LE LINGUE DEL PRODOTTO. Prima ce n'era una
@@ -466,15 +683,7 @@ export function FormBuilderPanel() {
                   /* Cadere SU una voce la inserisce PRIMA: è come si legge un
                      elenco, e senza un bersaglio per riga si potrebbe solo
                      accodare in fondo alla sezione. */
-                  onDragOver={(e) => { if (trascinato && trascinato.tipo !== 'section') { e.preventDefault(); e.stopPropagation(); setBersaglio(`item-${String(iSez)}-${String(iVoce)}`) } }}
-                  onDrop={(e) => {
-                    e.preventDefault(); e.stopPropagation()
-                    setBersaglio(null)
-                    if (!trascinato) return
-                    if (trascinato.tipo === 'palette') aggiungiCampo(iSez, trascinato.campo, iVoce)
-                    if (trascinato.tipo === 'item') muoviVoce(trascinato.sezione, trascinato.voce, iSez, iVoce)
-                    setTrascinato(null)
-                  }}
+                  data-drop={`item-${String(iSez)}-${String(iVoce)}`}
                   style={{
                     borderTop: bersaglio === `item-${String(iSez)}-${String(iVoce)}` ? '2px solid var(--color-brand)' : `1px solid ${colors.slateBg}`,
                     padding: '10px 0',
@@ -483,8 +692,7 @@ export function FormBuilderPanel() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <Maniglia
                       etichetta={t('pages.catalogForms.builder.moveField', { field: campo?.label ?? item.field })}
-                      onDragStart={() => setTrascinato({ tipo: 'item', sezione: iSez, voce: iVoce })}
-                      onDragEnd={() => { setTrascinato(null); setBersaglio(null) }}
+                      onAfferra={(e) => { trascinamento.afferra(e, { tipo: 'item', sezione: iSez, voce: iVoce }, campo?.label ?? item.field) }}
                       onSu={() => sostituisciSezione(iSez, { ...sezione, items: scambia(sezione.items, iVoce, Math.max(0, iVoce - 1)) })}
                       onGiu={() => sostituisciSezione(iSez, { ...sezione, items: scambia(sezione.items, iVoce, Math.min(sezione.items.length - 1, iVoce + 1)) })}
                     />
@@ -632,19 +840,22 @@ export function FormBuilderPanel() {
                         nessun elemento che è insieme bottone e oggetto da
                         trascinare.
                       */}
-                      <span
-                        draggable
-                        aria-hidden="true"
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData('text/plain', f.name)
-                          e.dataTransfer.effectAllowed = 'copy'
-                          setTrascinato({ tipo: 'palette', campo: f.name })
+                      <button
+                        type="button"
+                        /* Fuori dal giro dei tab di proposito: la strada da
+                           tastiera e il «+» qui accanto, che dice anche DOVE
+                           finisce il campo. Questa e la presa per il dito. */
+                        tabIndex={-1}
+                        aria-label={t('pages.catalogForms.builder.dragField', { field: f.label })}
+                        title={t('pages.catalogForms.builder.dragField', { field: f.label })}
+                        onPointerDown={(e) => { trascinamento.afferra(e, { tipo: 'palette', campo: f.name }, f.label) }}
+                        style={{
+                          display: 'flex', color: 'var(--color-slate-light)', flex: '0 0 auto', cursor: 'grab',
+                          touchAction: 'none', background: 'none', border: 'none', padding: 0,
                         }}
-                        onDragEnd={() => { setTrascinato(null); setBersaglio(null) }}
-                        style={{ display: 'flex', color: 'var(--color-slate-light)', flex: '0 0 auto', cursor: 'grab' }}
                       >
                         <GripVertical size={14} />
-                      </span>
+                      </button>
                       <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', fontWeight: fontWeight.medium }}>{f.label}</span>
                       <span style={{ marginLeft: 'auto', fontSize: 'var(--font-size-table)', fontFamily: 'var(--font-mono)', color: 'var(--color-slate-light)' }}>
                         {t(`pages.catalogForms.fieldType.${f.fieldType}`)}
@@ -691,6 +902,12 @@ export function FormBuilderPanel() {
         </div>
         )}
       </div>
+
+      {/* L'ombra che segue il dito: sta qui, fuori dalle due colonne, perché
+          è `position: fixed` e non appartiene a nessuna delle due. */}
+      {trascinamento.posizione && (
+        <OmbraTrascinata etichetta={trascinamento.etichetta} posizione={trascinamento.posizione} />
+      )}
     </div>
   )
 }

@@ -2408,7 +2408,8 @@
         "addToSection": "Aggiungi «{{field}}» alla sezione «{{section}}»",
         "addSectionFirst": "Aggiungi prima una sezione: un campo sta dentro una sezione.",
         "dropHere": "Lascialo qui per aggiungerlo a questa sezione.",
-        "pickItemFirst": "Scegli una voce di catalogo qui sopra: un modulo appartiene a una voce, e finché non la scegli non c’è niente da disegnare."
+        "pickItemFirst": "Scegli una voce di catalogo qui sopra: un modulo appartiene a una voce, e finché non la scegli non c’è niente da disegnare.",
+        "dragField": "Trascina «{{field}}» in una sezione"
       },
       "library": {
         "intro": "Un campo si definisce una volta e lo riusano tutti i moduli. Il suo nome diventa la proprietà sul ticket — è il motivo per cui si può filtrare e riportare, e il motivo per cui non si può rinominare.",

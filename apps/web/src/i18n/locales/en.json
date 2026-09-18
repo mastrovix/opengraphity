@@ -2408,7 +2408,8 @@
         "addToSection": "Add «{{field}}» to the section «{{section}}»",
         "addSectionFirst": "Add a section first: a field lives inside one.",
         "dropHere": "Drop it here to add it to this section.",
-        "pickItemFirst": "Choose a catalog item above: a form belongs to one, and there is nothing to design until you pick it."
+        "pickItemFirst": "Choose a catalog item above: a form belongs to one, and there is nothing to design until you pick it.",
+        "dragField": "Drag «{{field}}» into a section"
       },
       "library": {
         "intro": "A field is defined once and reused by every form. Its name becomes the property on the ticket, which is why it can be filtered and reported on — and why it cannot be renamed.",

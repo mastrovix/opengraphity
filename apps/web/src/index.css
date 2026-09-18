@@ -573,6 +573,37 @@ code, kbd, samp, pre {
   .og-split { grid-template-columns: minmax(0, 1fr); }
 }
 
+/*
+  LA CASSETTA DEGLI ATTREZZI SOPRA, QUANDO LE COLONNE SI IMPILANO (18 set 2026).
+
+  Nel costruttore dei moduli la colonna destra è la palette dei campi: si
+  prende un campo di lì e lo si lascia cadere in una sezione a sinistra.
+  Sotto i 900px — un iPad in verticale — le due colonne diventano una, e la
+  palette finisce SOTTO tutto il modulo: per trascinare un campo bisognava
+  attraversare l'intera pagina, cioè non si poteva. È così che il proprietario
+  ha trovato il difetto, da iPad.
+
+  Quindi: la palette va SOPRA (`order: -1`) e resta appiccicata in alto mentre
+  si scorrono le sezioni, così la presa e il bersaglio sono a schermo insieme.
+  Si limita in altezza e scorre per conto suo: una palette lunga che occupa
+  mezzo schermo è un altro modo di non far vedere il modulo.
+
+  Si applica solo dove serve (classe aggiunta dalla pagina quando la scheda
+  aperta è la palette, non l'anteprima): l'anteprima deve poter essere alta.
+*/
+@media (max-width: 900px) {
+  .og-split-tools > :last-child {
+    order: -1;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--color-surface);
+    max-height: 42vh;
+    overflow-y: auto;
+    border-bottom: 1px solid var(--color-border-light);
+  }
+}
+
 /* Due colonne pari (form affiancati). */
 .og-pair {
   display: grid;
