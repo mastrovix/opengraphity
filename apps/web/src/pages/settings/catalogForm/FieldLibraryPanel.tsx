@@ -18,18 +18,13 @@ import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { Plus, Trash2, Pencil, X } from 'lucide-react'
 import { toast } from 'sonner'
-import {
-  canBeComputed, emptyFormTable, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY,
-  FORM_FIELD_TYPES_WITH_VOCABULARY, isFormTableType, type FormTableDefinition,
-} from '@opengraphity/types'
+import { emptyFormTable, type FormTableDefinition } from '@opengraphity/types'
 import { GET_CATALOG_FORM_LIMITS, GET_ENUM_TYPES, GET_FORM_FIELDS } from '@/graphql/queries'
 import { CREATE_FORM_FIELD, DELETE_FORM_FIELD, UPDATE_FORM_FIELD } from '@/graphql/mutations'
 import { showError } from '@/lib/showError'
 import { LimitsCard } from './LimitsCard'
-import { ScriptFields } from './ScriptFields'
-import { TableColumnsEditor } from './TableColumnsEditor'
+import { FieldEditor, inputDaBozza, BOZZA_VUOTA, type Bozza } from './FieldEditor'
 import { colors, fontWeight } from '@/lib/tokens'
-import { Input, Select, LabelledField } from '@/components/ui/FormControls'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 
 export interface FormFieldRow {
@@ -52,23 +47,6 @@ export interface FormFieldRow {
   options: Array<{ value: string; label: string }>
 }
 
-interface Bozza {
-  name: string
-  fieldType: string
-  labelIt: string
-  labelEn: string
-  helpIt: string
-  helpEn: string
-  required: boolean
-  vocabulary: string
-  inList: boolean
-  formula: string
-  validationScript: string
-  /** Le colonne della tabella, già lette: il JSON lo ricuce chi salva. */
-  tabella: FormTableDefinition
-}
-
-const BOZZA_VUOTA: Bozza = { name: '', fieldType: 'text', labelIt: '', labelEn: '', helpIt: '', helpEn: '', required: false, vocabulary: '', inList: false, formula: '', validationScript: '', tabella: emptyFormTable() }
 
 /** Un'etichetta o un aiuto come li manda l'API: un testo per lingua. */
 interface TestoPerLinguaLetto { language: string; label: string }
@@ -144,30 +122,10 @@ export function FieldLibraryPanel() {
 
   const chiudi = () => { setBozza(null); setInModifica(null) }
 
-  const testiDa = (b: Bozza) => ({
-    labels: [{ language: 'it', text: b.labelIt }, { language: 'en', text: b.labelEn }].filter((x) => x.text.trim() !== ''),
-    helps: [{ language: 'it', text: b.helpIt }, { language: 'en', text: b.helpEn }].filter((x) => x.text.trim() !== ''),
-  })
-
   const salva = async () => {
     if (!bozza) return
-    const etichetta = bozza.labelIt.trim() || bozza.labelEn.trim()
-    if (!etichetta) { toast.error(t('pages.catalogForms.library.labelNeeded')); return }
-    const { labels, helps } = testiDa(bozza)
-    const comune = {
-      label: etichetta,
-      labels, helps,
-      required: bozza.required,
-      inList: bozza.inList,
-      // Vuoto = «togli»: l'API accetta la stringa vuota come «nessuna formula».
-      formula: bozza.formula.trim(),
-      validationScript: bozza.validationScript.trim(),
-      // Le colonne solo per una tabella: mandarle su un altro tipo è un rifiuto
-      // dell'API, e ha ragione lei.
-      tableDefinition: isFormTableType(inModifica?.fieldType ?? bozza.fieldType) ? JSON.stringify(bozza.tabella) : null,
-      vocabulary: bozza.vocabulary || null,
-      help: bozza.helpIt.trim() || bozza.helpEn.trim() || null,
-    }
+    const comune = inputDaBozza(bozza, inModifica?.fieldType ?? bozza.fieldType)
+    if (comune.label === '') { toast.error(t('pages.catalogForms.library.labelNeeded')); return }
     if (inModifica) {
       const r = await aggiorna({ variables: { id: inModifica.id, input: comune } })
       if (!r.data) return
@@ -179,22 +137,6 @@ export function FieldLibraryPanel() {
     }
     chiudi()
     void refetch()
-  }
-
-  /** I tipi che possono avere una FORMULA: valore singolo e proprietà del ticket. */
-  function calcolabile(tipo: string): boolean {
-    return canBeComputed(tipo)
-  }
-
-  /** I tipi che finiscono in una proprietà del ticket: gli unici che possono essere una colonna. */
-  function comeProprieta(tipo: string): boolean {
-    const proprieta: readonly string[] = FORM_FIELD_TYPES_AS_PROPERTY
-    return proprieta.includes(tipo)
-  }
-
-  function conVocabolario(tipo: string): boolean {
-    const conScelte: readonly string[] = FORM_FIELD_TYPES_WITH_VOCABULARY
-    return conScelte.includes(tipo)
   }
 
   return (
@@ -224,117 +166,15 @@ export function FieldLibraryPanel() {
             </button>
           </div>
 
-          <div className="og-pair">
-            <LabelledField label={t('pages.catalogForms.library.name')}>
-              <Input
-                value={inModifica ? inModifica.name : bozza.name}
-                disabled={!!inModifica}
-                placeholder="cost_centre"
-                onChange={(e) => setBozza({ ...bozza, name: e.target.value })}
-              />
-              <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
-                {inModifica ? t('pages.catalogForms.library.nameFixed') : t('pages.catalogForms.library.nameHelp')}
-              </p>
-            </LabelledField>
-            <LabelledField label={t('pages.catalogForms.library.type')}>
-              <Select
-                value={inModifica ? inModifica.fieldType : bozza.fieldType}
-                disabled={!!inModifica}
-                onChange={(e) => setBozza({ ...bozza, fieldType: e.target.value, vocabulary: conVocabolario(e.target.value) ? bozza.vocabulary : '' })}
-              >
-                {FORM_FIELD_TYPES.map((tipo) => (
-                  <option key={tipo} value={tipo}>{t(`pages.catalogForms.fieldType.${tipo}`)}</option>
-                ))}
-              </Select>
-              {inModifica && (
-                <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
-                  {t('pages.catalogForms.library.typeFixed')}
-                </p>
-              )}
-            </LabelledField>
-          </div>
-
-          <div className="og-pair" style={{ marginTop: 12 }}>
-            <LabelledField label={t('pages.catalogForms.library.labelIt')}>
-              <Input value={bozza.labelIt} onChange={(e) => setBozza({ ...bozza, labelIt: e.target.value })} />
-            </LabelledField>
-            <LabelledField label={t('pages.catalogForms.library.labelEn')}>
-              <Input value={bozza.labelEn} onChange={(e) => setBozza({ ...bozza, labelEn: e.target.value })} />
-            </LabelledField>
-          </div>
-
-          <div className="og-pair" style={{ marginTop: 12 }}>
-            <LabelledField label={t('pages.catalogForms.library.helpIt')}>
-              <Input value={bozza.helpIt} onChange={(e) => setBozza({ ...bozza, helpIt: e.target.value })} />
-            </LabelledField>
-            <LabelledField label={t('pages.catalogForms.library.helpEn')}>
-              <Input value={bozza.helpEn} onChange={(e) => setBozza({ ...bozza, helpEn: e.target.value })} />
-            </LabelledField>
-          </div>
-
-          {conVocabolario(inModifica?.fieldType ?? bozza.fieldType) && (
-            <div style={{ marginTop: 12 }}>
-              <LabelledField label={t('pages.catalogForms.library.vocabulary')}>
-                <Select value={bozza.vocabulary} onChange={(e) => setBozza({ ...bozza, vocabulary: e.target.value })}>
-                  <option value="">{t('common.select')}</option>
-                  {(enumData?.enumTypes ?? []).map((v) => <option key={v.name} value={v.name}>{v.label || v.name}</option>)}
-                </Select>
-                <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
-                  {t('pages.catalogForms.library.vocabularyHelp')}
-                </p>
-              </LabelledField>
-            </div>
-          )}
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
-            <input type="checkbox" checked={bozza.required} onChange={(e) => setBozza({ ...bozza, required: e.target.checked })} />
-            {t('pages.catalogForms.library.requiredByDefault')}
-          </label>
-
-          {/* Colonna nelle liste (ondata 4): la offriamo solo ai tipi che diventano
-              una proprietà del ticket — l'API rifiuta gli altri, e una spunta che
-              si può accendere per poi sentirsi dire no è una trappola. */}
-          {comeProprieta(bozza.fieldType) && (
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 10, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
-              <input type="checkbox" checked={bozza.inList} onChange={(e) => setBozza({ ...bozza, inList: e.target.checked })} style={{ marginTop: 3 }} />
-              <span>
-                {t('pages.catalogForms.library.inList')}
-                <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
-                  {t('pages.catalogForms.library.inListHelp')}
-                </span>
-              </span>
-            </label>
-          )}
-
-          {/* Le colonne, solo per una tabella (ondata 7). */}
-          {isFormTableType(inModifica?.fieldType ?? bozza.fieldType) && (
-            <TableColumnsEditor
-              definizione={bozza.tabella}
-              onChange={(d) => setBozza({ ...bozza, tabella: d })}
-              vocabolari={enumData?.enumTypes ?? []}
-            />
-          )}
-
-          {/* La formula e la validazione (ondata 6): due caselle di codice, con
-              i loro contratti e la prova. */}
-          <ScriptFields
-            formula={bozza.formula}
-            onFormula={(v) => setBozza({ ...bozza, formula: v })}
-            canCompute={calcolabile(inModifica?.fieldType ?? bozza.fieldType)}
-            validationScript={bozza.validationScript}
-            onValidationScript={(v) => setBozza({ ...bozza, validationScript: v })}
+          <FieldEditor
+            bozza={bozza}
+            onBozza={setBozza}
+            inModifica={inModifica}
+            vocabolari={enumData?.enumTypes ?? []}
+            onSalva={salva}
+            onAnnulla={chiudi}
+            etichettaSalva={t('common.save')}
           />
-
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <button type="button" onClick={() => void salva()}
-              style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium, cursor: 'pointer' }}>
-              {t('common.save')}
-            </button>
-            <button type="button" onClick={chiudi}
-              style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, fontSize: 'var(--font-size-body)', cursor: 'pointer', color: 'var(--color-slate-dark)' }}>
-              {t('common.cancel')}
-            </button>
-          </div>
         </div>
       )}
 

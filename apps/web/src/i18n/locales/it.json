@@ -2413,10 +2413,9 @@
         "fieldTypes": "Tipi di campo",
         "fieldTypesHelp": "Trascina un tipo in una sezione per creare un campo nuovo: gli dai un’etichetta ed entra in libreria.",
         "newFieldOfType": "Campo nuovo · {{type}}",
-        "fieldLabelIn": "Etichetta ({{language}})",
-        "newFieldName": "Sul ticket si chiamerà «{{name}}» — e non si potrà più cambiare.",
         "createField": "Crea e aggiungi",
-        "addTypeToSection": "Aggiungi un campo {{type}} nuovo"
+        "addTypeToSection": "Aggiungi un campo {{type}} nuovo",
+        "newFieldInSection": "Finirà nella sezione «{{section}}»."
       },
       "library": {
         "intro": "Un campo si definisce una volta e lo riusano tutti i moduli. Il suo nome diventa la proprietà sul ticket — è il motivo per cui si può filtrare e riportare, e il motivo per cui non si può rinominare.",

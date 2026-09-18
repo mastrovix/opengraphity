@@ -37,11 +37,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { GripVertical, Plus, Trash2 } from 'lucide-react'
+import { GripVertical, Plus, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   CATALOG_FORM_VERSION, FORM_CONDITION_OPS, FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_FIELD_TYPES,
-  FORM_FIELD_TYPES_WITHOUT_ANSWER, FORM_FIELD_TYPES_WITH_VOCABULARY,
+  FORM_FIELD_TYPES_WITHOUT_ANSWER,
   canBeConditionSubject, emptyCatalogForm, isFormReferenceType, larghezzaEffettiva, localizedText, nomeDaEtichetta,
   type CatalogFormDefinition, type CatalogFormItem, type CatalogFormSection,
   type FormAnswerValue, type FormAnswers, type FormCondition, type FormConditionOp,
@@ -54,6 +54,7 @@ import { useConfirm } from '@/hooks/useConfirm'
 import { alpha, colors, fontWeight } from '@/lib/tokens'
 import { Input, Select } from '@/components/ui/FormControls'
 import type { FormFieldRow } from './FieldLibraryPanel'
+import { FieldEditor, inputDaBozza, BOZZA_VUOTA, type Bozza } from './FieldEditor'
 
 interface CatalogItem { id: string; name: string; active: boolean; category: string | null }
 
@@ -498,9 +499,9 @@ export function FormBuilderPanel() {
      */
     if (cosa.tipo === 'newField') {
       setNuovoCampo({
-        fieldType: cosa.fieldType, iSez: zona.iSez,
+        iSez: zona.iSez,
         iVoce: zona.dove === 'item' ? zona.iVoce : null,
-        labels: {}, vocabulary: '',
+        bozza: { ...BOZZA_VUOTA, fieldType: cosa.fieldType },
       })
       setSezioneCorrente(zona.iSez)
       return
@@ -518,15 +519,24 @@ export function FormBuilderPanel() {
    * si stanno scrivendo. Finché è qui non esiste niente sul server.
    */
   interface NuovoCampo {
-    fieldType:  string
-    iSez:       number
+    iSez:  number
     /** `null` = in fondo alla sezione. */
-    iVoce:      number | null
-    labels:     Record<string, string>
-    vocabulary: string
+    iVoce: number | null
+    /** Tutto il campo che si sta scrivendo: è la stessa bozza della libreria. */
+    bozza: Bozza
   }
   const [nuovoCampo, setNuovoCampo] = useState<NuovoCampo | null>(null)
   const [creando, setCreando] = useState(false)
+  /* `Escape` chiude il modale. Sta su `window` e non sul riquadro: il fuoco è
+     dentro una casella dell'editor, e un gestore sul contenitore lo prende
+     solo per caso — oltre a essere un ascoltatore su un elemento che non è
+     interattivo, che è quello che dice il lint. */
+  useEffect(() => {
+    if (!nuovoCampo) return
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setNuovoCampo(null) }
+    window.addEventListener('keydown', esc)
+    return () => { window.removeEventListener('keydown', esc) }
+  }, [nuovoCampo])
   const [creaCampo] = useMutation(CREATE_FORM_FIELD, { onError: (e) => showError(e) })
   const { data: enumData } = useQuery<{ enumTypes: Array<{ name: string; label: string }> }>(GET_ENUM_TYPES, { fetchPolicy: 'cache-first' })
 
@@ -602,25 +612,13 @@ export function FormBuilderPanel() {
    */
   const confermaNuovoCampo = async () => {
     if (!nuovoCampo) return
-    const etichette = lingue.map((l) => (nuovoCampo.labels[l] ?? '').trim())
-    if (etichette.some((x) => x === '')) return
-    if (FORM_FIELD_TYPES_WITH_VOCABULARY.includes(nuovoCampo.fieldType as never) && nuovoCampo.vocabulary === '') return
-    const primaria = nuovoCampo.labels[lingua]?.trim() || etichette[0] || ''
-    const nome = nomeDaEtichetta(primaria, libreria.map((f) => f.name))
+    const b = nuovoCampo.bozza
+    const comune = inputDaBozza(b, b.fieldType)
+    if (comune.label === '') { toast.error(t('pages.catalogForms.library.labelNeeded')); return }
+    const nome = b.name.trim() === '' ? nomeDaEtichetta(comune.label, libreria.map((f) => f.name)) : b.name.trim()
     setCreando(true)
     try {
-      const r = await creaCampo({
-        variables: {
-          input: {
-            name: nome,
-            fieldType: nuovoCampo.fieldType,
-            label: primaria,
-            // `text`, non `label`: e il nome del campo in `LocalizedTextInput`.
-            labels: lingue.map((l) => ({ language: l, text: (nuovoCampo.labels[l] ?? '').trim() })),
-            ...(nuovoCampo.vocabulary === '' ? {} : { vocabulary: nuovoCampo.vocabulary }),
-          },
-        },
-      })
+      const r = await creaCampo({ variables: { input: { ...comune, name: nome, fieldType: b.fieldType } } })
       if (!r.data) return
       // La libreria si rilegge PRIMA di mettere la voce nella bozza: se no la
       // riga comparirebbe col nome tecnico al posto dell'etichetta.
@@ -631,75 +629,59 @@ export function FormBuilderPanel() {
   }
 
   /**
-   * L'EDITOR DEL CAMPO NUOVO, disegnato ESATTAMENTE dove il tipo è caduto.
+   * IL MODALE DEL CAMPO NUOVO.
    *
-   * Non è un modale: un modale avrebbe coperto il modulo e tolto l'unica cosa
-   * che rende ovvio il gesto — vedere il posto in cui il campo finirà.
+   * Dentro c'è l'EDITOR DELLA LIBRERIA, lo stesso: etichette, aiuto,
+   * obbligatorio, colonna nelle liste, il vocabolario di una tendina, le
+   * colonne di una tabella, la formula e lo script di validazione. Un editor
+   * ridotto avrebbe voluto dire che certe cose si possono impostare solo
+   * sapendo che esiste un'altra scheda — ed è esattamente il difetto da cui
+   * è nata la palette dei tipi.
+   *
+   * Un modale e non più un riquadro in linea: le caselle sono tante (compreso
+   * il JavaScript), e infilarle dentro la sezione spingeva il modulo in fondo
+   * allo schermo proprio mentre lo si sta guardando.
    */
-  const editorNuovoCampo = () => {
+  const modaleNuovoCampo = () => {
     if (!nuovoCampo) return null
-    const serveVocabolario = FORM_FIELD_TYPES_WITH_VOCABULARY.includes(nuovoCampo.fieldType as never)
-    const pronto = lingue.every((l) => (nuovoCampo.labels[l] ?? '').trim() !== '')
-      && (!serveVocabolario || nuovoCampo.vocabulary !== '')
-    const etichettaPrimaria = nuovoCampo.labels[lingua]?.trim()
-      || Object.values(nuovoCampo.labels).find((x) => x.trim() !== '')?.trim() || ''
     return (
       <div
-        key="new-field"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('pages.catalogForms.builder.newFieldOfType', { type: t(`pages.catalogForms.fieldType.${nuovoCampo.bozza.fieldType}`) })}
         style={{
-          border: '1px solid var(--color-brand)', borderRadius: 8, padding: 12, margin: '10px 0',
-          background: 'var(--color-brand-light)',
+          position: 'fixed', inset: 0, zIndex: 100, background: alpha.scrim,
+          display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, overflowY: 'auto',
         }}
       >
-        <div style={{ fontSize: 'var(--font-size-label)', fontWeight: fontWeight.medium, color: 'var(--color-slate-dark)', marginBottom: 8 }}>
-          {t('pages.catalogForms.builder.newFieldOfType', { type: t(`pages.catalogForms.fieldType.${nuovoCampo.fieldType}`) })}
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
-          {lingue.map((codice) => (
-            <Input
-              key={codice}
-              /* Il fuoco sulla prima casella: l'editor compare per un gesto
-                 deliberato, e chiedere un clic in più su quello che si è
-                 appena chiesto è un passaggio a vuoto. Con un ref e non con
-                 `autoFocus`, che la regola a11y vieta perché rubare il fuoco
-                 al caricamento di una pagina è un'altra cosa. */
-              ref={codice === lingue[0] ? (el) => { el?.focus() } : undefined}
-              value={nuovoCampo.labels[codice] ?? ''}
-              aria-label={t('pages.catalogForms.builder.fieldLabelIn', { language: codice.toUpperCase() })}
-              placeholder={t('pages.catalogForms.builder.fieldLabelIn', { language: codice.toUpperCase() })}
-              onChange={(e) => { setNuovoCampo({ ...nuovoCampo, labels: { ...nuovoCampo.labels, [codice]: e.target.value } }) }}
-            />
-          ))}
-        </div>
-        {serveVocabolario && (
-          <div style={{ marginTop: 8 }}>
-            <Select value={nuovoCampo.vocabulary} onChange={(e) => { setNuovoCampo({ ...nuovoCampo, vocabulary: e.target.value }) }}
-              aria-label={t('pages.catalogForms.library.vocabulary')}>
-              <option value="">{t('pages.catalogForms.library.vocabulary')}</option>
-              {(enumData?.enumTypes ?? []).map((v) => <option key={v.name} value={v.name}>{v.label || v.name}</option>)}
-            </Select>
+        <div style={{ background: colors.white, borderRadius: 12, padding: 20, width: 680, maxWidth: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <strong style={{ fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>
+              {t('pages.catalogForms.builder.newFieldOfType', { type: t(`pages.catalogForms.fieldType.${nuovoCampo.bozza.fieldType}`) })}
+            </strong>
+            <button type="button" onClick={() => { setNuovoCampo(null) }} aria-label={t('common.cancel')}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)' }}>
+              <X size={16} />
+            </button>
           </div>
-        )}
-        {/* Il nome tecnico si vede PRIMA di creare: non si cambia più, e chi
-            costruisce il modulo se lo ritrova nei filtri e nei report. */}
-        {/* Finché non c'è un'etichetta non si mostra nessun nome: «campo» non
-            è una proposta, è un segnaposto, e prometterebbe una cosa falsa su
-            un dato che non si cambia più. */}
-        {etichettaPrimaria !== '' && (
-          <p style={{ margin: '8px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' }}>
-            {t('pages.catalogForms.builder.newFieldName', {
-              name: nomeDaEtichetta(etichettaPrimaria, libreria.map((f) => f.name)),
+          {/* Dove finirà: è l'unica cosa che il modale, coprendo il modulo,
+              porta via — quindi si scrive. */}
+          <p style={{ margin: '0 0 12px', fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' }}>
+            {t('pages.catalogForms.builder.newFieldInSection', {
+              section: localizedText(bozza.sections[nuovoCampo.iSez]?.title ?? {}, lingua, '') || bozza.sections[nuovoCampo.iSez]?.id || '',
             })}
           </p>
-        )}
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <button type="button" disabled={!pronto || creando} onClick={() => { void confermaNuovoCampo() }}
-            style={{ ...bottone, borderColor: 'var(--color-brand)', color: pronto ? 'var(--color-brand)' : 'var(--color-slate-light)', cursor: pronto && !creando ? 'pointer' : 'not-allowed' }}>
-            <Plus size={14} /> {t('pages.catalogForms.builder.createField')}
-          </button>
-          <button type="button" onClick={() => { setNuovoCampo(null) }} style={bottone}>
-            {t('common.cancel')}
-          </button>
+          <FieldEditor
+            bozza={nuovoCampo.bozza}
+            onBozza={(b) => { setNuovoCampo({ ...nuovoCampo, bozza: b }) }}
+            vocabolari={enumData?.enumTypes ?? []}
+            onSalva={confermaNuovoCampo}
+            onAnnulla={() => { setNuovoCampo(null) }}
+            salvando={creando}
+            etichettaSalva={t('pages.catalogForms.builder.createField')}
+            nomeDallEtichetta
+            nomiPresi={libreria.map((f) => f.name)}
+          />
         </div>
       </div>
     )
@@ -962,8 +944,6 @@ export function FormBuilderPanel() {
             })
             // L'editor del campo nuovo si infila ESATTAMENTE nel punto in cui
             // il tipo è caduto: è lì che il campo finirà.
-            const editor = nuovoCampo?.iSez === iSez ? editorNuovoCampo() : null
-            if (editor) righe.splice(nuovoCampo?.iVoce ?? righe.length, 0, editor)
             return righe
             })()}
 
@@ -1152,7 +1132,11 @@ export function FormBuilderPanel() {
                         disabled={!dove}
                         onClick={() => {
                           if (!dove) return
-                          setNuovoCampo({ fieldType: tipo, iSez: Math.min(sezioneCorrente, bozza.sections.length - 1), iVoce: null, labels: {}, vocabulary: '' })
+                          setNuovoCampo({
+                            iSez: Math.min(sezioneCorrente, bozza.sections.length - 1),
+                            iVoce: null,
+                            bozza: { ...BOZZA_VUOTA, fieldType: tipo },
+                          })
                         }}
                         style={{ ...iconaAzione, marginLeft: 'auto', color: dove ? 'var(--color-brand)' : 'var(--color-slate-light)', cursor: dove ? 'pointer' : 'not-allowed' }}
                       >
@@ -1196,6 +1180,8 @@ export function FormBuilderPanel() {
       {trascinamento.posizione && (
         <OmbraTrascinata etichetta={trascinamento.etichetta} posizione={trascinamento.posizione} />
       )}
+
+      {modaleNuovoCampo()}
     </div>
   )
 }

@@ -2413,10 +2413,9 @@
         "fieldTypes": "Field types",
         "fieldTypesHelp": "Drag a type into a section to create a new field: you give it a label, it joins the library.",
         "newFieldOfType": "New field · {{type}}",
-        "fieldLabelIn": "Label ({{language}})",
-        "newFieldName": "It will be saved on the ticket as «{{name}}» — this cannot be changed later.",
         "createField": "Create and add",
-        "addTypeToSection": "Add a new {{type}} field"
+        "addTypeToSection": "Add a new {{type}} field",
+        "newFieldInSection": "It will go into the «{{section}}» section."
       },
       "library": {
         "intro": "A field is defined once and reused by every form. Its name becomes the property on the ticket, which is why it can be filtered and reported on — and why it cannot be renamed.",
