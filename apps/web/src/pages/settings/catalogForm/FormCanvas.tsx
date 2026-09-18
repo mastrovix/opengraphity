@@ -21,7 +21,10 @@
  * gli importa come sono disegnati.
  */
 import { useTranslation } from 'react-i18next'
-import { CalendarDays, ChevronDown, Eye, Paperclip, Search, Table2 } from 'lucide-react'
+import {
+  AlignLeft, Calendar, CalendarClock, CalendarDays, ChevronDown, Eye, Hash, Info, List, ListChecks,
+  Paperclip, Search, Server, Table2, ToggleLeft, Type, User, Users,
+} from 'lucide-react'
 import { larghezzaEffettiva, localizedText, type CatalogFormDefinition, type CatalogFormItem } from '@opengraphity/types'
 import { colors, fontWeight } from '@/lib/tokens'
 import type { FormFieldRow } from './FieldLibraryPanel'
@@ -36,6 +39,48 @@ export function stessaSelezione(a: Selezione | null, b: Selezione | null): boole
   if (a.tipo === 'section' && b.tipo === 'section') return a.iSez === b.iSez
   if (a.tipo === 'item' && b.tipo === 'item') return a.iSez === b.iSez && a.iVoce === b.iVoce
   return false
+}
+
+/**
+ * L'ICONA DEL TIPO, accanto a ogni controllo (18 set 2026).
+ *
+ * I controlli finti si somigliano: una casella di testo, un numero e una data
+ * sono tre rettangoli. Dentro il disegno qualche indizio c'era — il calendario,
+ * la freccia di una tendina — ma non bastava a distinguere una scelta singola
+ * da una multipla, o un riferimento a un CI da uno a una persona.
+ *
+ * Un'icona per tipo, la stessa qui e negli attrezzi da cui si trascina: chi
+ * costruisce riconosce la riga senza leggere, e chi cerca «quel campo data»
+ * lo trova scorrendo le icone.
+ */
+export const ICONA_DEL_TIPO: Record<string, typeof Type> = {
+  text:       Type,
+  textarea:   AlignLeft,
+  number:     Hash,
+  date:       Calendar,
+  datetime:   CalendarClock,
+  boolean:    ToggleLeft,
+  enum:       List,
+  multi_enum: ListChecks,
+  note:       Info,
+  attachment: Paperclip,
+  ref_ci:     Server,
+  ref_user:   User,
+  ref_team:   Users,
+  table:      Table2,
+}
+
+export function IconaTipo({ tipo, size }: { tipo: string; size?: number }) {
+  const { t } = useTranslation()
+  const Icona = ICONA_DEL_TIPO[tipo] ?? Type
+  const nome = t(`pages.catalogForms.fieldType.${tipo}`)
+  /* `title` e non solo il disegno: un'icona da sola e un indovinello per chi
+     non l'ha mai vista, e per un lettore di schermo non esiste. */
+  return (
+    <span title={nome} aria-label={nome} role="img" style={{ display: 'flex', color: 'var(--color-slate-light)', flex: '0 0 auto' }}>
+      <Icona size={size ?? 14} />
+    </span>
+  )
 }
 
 const scatola: React.CSSProperties = {
@@ -211,9 +256,14 @@ function CampoSullaTela({
             <span style={{ color: 'var(--color-slate-light)', fontFamily: 'var(--font-mono)' }}>ƒ</span>
           )}
         </span>
-        {/* Il disegno non si clicca: il clic è del campo, che seleziona. */}
-        <span style={{ pointerEvents: 'none', display: 'block' }}>
-          <ControlloFinto tipo={tipo} segnaposto={campo?.help ?? etichetta} />
+        {/* Il disegno non si clicca: il clic è del campo, che seleziona.
+            L'icona del tipo sta a sinistra del controllo, allineata alla sua
+            prima riga: `(34 - 14) / 2` dell'altezza di una casella. */}
+        <span style={{ pointerEvents: 'none', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <span style={{ paddingTop: 10 }}><IconaTipo tipo={tipo} /></span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <ControlloFinto tipo={tipo} segnaposto={campo?.help ?? etichetta} />
+          </span>
         </span>
       </div>
     </div>

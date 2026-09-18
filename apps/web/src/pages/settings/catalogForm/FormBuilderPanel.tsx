@@ -54,7 +54,7 @@ import { alpha, colors, fontWeight, palette } from '@/lib/tokens'
 import { Input, Select } from '@/components/ui/FormControls'
 import type { FormFieldRow } from './FieldLibraryPanel'
 import { FieldEditor, inputDaBozza, BOZZA_VUOTA, type Bozza } from './FieldEditor'
-import { FormCanvas, type Selezione } from './FormCanvas'
+import { FormCanvas, IconaTipo, type Selezione } from './FormCanvas'
 import { ProprietaSezione, ProprietaVoce } from './ItemProperties'
 import { ModaleCentrato } from './ModaleCentrato'
 
@@ -961,6 +961,9 @@ export function FormBuilderPanel() {
                         >
                           <GripVertical size={14} />
                         </button>
+                        {/* La stessa icona che il campo avrà sulla tela: si
+                            riconosce quello che si sta per trascinare. */}
+                        <IconaTipo tipo={v.tipo} />
                         <span style={{
                           fontSize: 'var(--font-size-table)', color: 'var(--color-slate-dark)',
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0,
