@@ -160,11 +160,17 @@ function CampoSullaTela({
         gridTemplateColumns: '20px clamp(90px, 24%, 170px) minmax(0, 1fr)',
         columnGap: 8, alignItems: 'start',
       }}>
-        {/* La presa si allinea al TESTO dell'etichetta, non alla scatola del
-            controllo: è un'icona di 14px in un bottone di 22, e il suo centro
-            cade esattamente sul centro della riga di testo se la riga parte da
-            zero. Sette pixel in più la facevano sembrare appesa sotto. */}
-        <span style={{ display: 'flex' }}>{maniglia}</span>
+        {/*
+          LA PRESA SI ALLINEA A QUELLO CHE SI VEDE DEL TESTO.
+          Il centro geometrico della riga e il centro di quello che l'occhio
+          legge non sono lo stesso punto: le lettere stanno sopra la linea di
+          base, e la parte bassa della riga è spazio per le discendenti («g»,
+          «p») che un'etichetta spesso non ha. Allineata al centro geometrico
+          — che è quello che i numeri dicevano giusto — la presa continuava a
+          SEMBRARE appesa sotto, ed è quello che conta. Due pixel in su la
+          mettono sul centro ottico.
+        */}
+        <span style={{ display: 'flex', marginTop: -2 }}>{maniglia}</span>
         <span style={{
           paddingTop: 7, fontSize: 'var(--font-size-table)', color: 'var(--color-slate)',
           fontWeight: fontWeight.medium, display: 'flex', alignItems: 'baseline', gap: 5, flexWrap: 'wrap',
