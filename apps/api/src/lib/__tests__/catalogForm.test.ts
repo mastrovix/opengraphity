@@ -1021,9 +1021,17 @@ describe('larghezzaEffettiva', () => {
     expect(larghezzaEffettiva({ columns: 2 }, {})).toBe('half')
   })
 
-  it('il CAMPO vince sempre: una riga intera in mezzo a due colonne è una scelta che si vuole poter fare', () => {
+  it('in due colonne il campo può chiedere la riga intera', () => {
     expect(larghezzaEffettiva({ columns: 2 }, { width: 'full' })).toBe('full')
-    expect(larghezzaEffettiva({ columns: 1 }, { width: 'half' })).toBe('half')
+  })
+
+  it('DECIDE LA SEZIONE: una mezza larghezza scritta non fabbrica una seconda colonna', () => {
+    // Era il difetto: `width: 'half'` metteva due campi affiancati in una
+    // sezione a una colonna, e passare la sezione a due colonne non cambiava
+    // niente perché i campi portavano già la loro larghezza. Il numero di
+    // colonne è della sezione.
+    expect(larghezzaEffettiva({ columns: 1 }, { width: 'half' })).toBe('full')
+    expect(larghezzaEffettiva({}, { width: 'half' })).toBe('full')
   })
 })
 

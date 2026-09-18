@@ -65,14 +65,24 @@ export function ProprietaVoce({
         </label>
       )}
 
-      <label style={spunta}>
-        {/* La spunta mostra la larghezza VERA: se la sezione è a due colonne,
-            un campo che non dice niente è già a metà — e vederla spenta
-            sarebbe una bugia. */}
-        <input type="checkbox" checked={larghezzaEffettiva(sezione, item) === 'half'}
-          onChange={(e) => { onItem({ ...item, width: e.target.checked ? 'half' : 'full' }) }} style={{ marginTop: 3 }} />
-        <span>{t('pages.catalogForms.builder.halfWidth')}</span>
-      </label>
+      {/*
+        LA MEZZA LARGHEZZA ESISTE SOLO DOVE C'È UNA SECONDA COLONNA.
+        Il numero di colonne è della sezione: offrire qui una spunta che in una
+        sezione a una colonna non fa niente è una trappola — la si accende, non
+        cambia nulla, e si cerca il difetto altrove. Quando non c'è, si dice
+        dove si imposta.
+      */}
+      {(sezione.columns ?? 1) === 2 ? (
+        <label style={spunta}>
+          <input type="checkbox" checked={larghezzaEffettiva(sezione, item) === 'half'}
+            onChange={(e) => { onItem({ ...item, width: e.target.checked ? 'half' : 'full' }) }} style={{ marginTop: 3 }} />
+          <span>{t('pages.catalogForms.builder.halfWidth')}</span>
+        </label>
+      ) : (
+        <p style={{ margin: '10px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+          {t('pages.catalogForms.builder.halfWidthNeedsTwo')}
+        </p>
+      )}
 
       {campo && isFormReferenceType(campo.fieldType) ? (
         <p style={{ margin: '10px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>

@@ -2417,7 +2417,8 @@
         "viewCanvas": "Canvas",
         "sectionUntitled": "Section with no title",
         "hasCondition": "It appears only when a condition is true",
-        "removeFieldHelp": "It takes the field off this form; it stays in the library, with its answers on the requests already filled."
+        "removeFieldHelp": "It takes the field off this form; it stays in the library, with its answers on the requests already filled.",
+        "halfWidthNeedsTwo": "Half width only exists in a two-column section: you set the columns in the section properties."
       },
       "library": {
         "intro": "A field is defined once and reused by every form. Its name becomes the property on the ticket, which is why it can be filtered and reported on — and why it cannot be renamed.",

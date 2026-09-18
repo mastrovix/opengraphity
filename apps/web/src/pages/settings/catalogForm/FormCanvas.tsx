@@ -141,9 +141,15 @@ function CampoSullaTela({
         borderRadius: 8, padding: 8,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+      {/* ETICHETTA A SINISTRA, come nel modulo vero (`.og-form-cell`): la tela
+          mente se incolonna quello che a schermo starà affiancato. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'clamp(90px, 26%, 170px) minmax(0, 1fr)', columnGap: 10, alignItems: 'start' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, paddingTop: 6 }}>
         {maniglia}
-        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', fontWeight: fontWeight.medium }}>
+        <span style={{
+          fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', fontWeight: fontWeight.medium,
+          overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
           {etichetta}
           {(item.required ?? campo?.required) === true && <span style={{ color: 'var(--color-danger)' }}> *</span>}
         </span>
@@ -161,6 +167,7 @@ function CampoSullaTela({
       {/* Il disegno non si clicca: il clic è del campo, che seleziona. */}
       <div style={{ pointerEvents: 'none' }}>
         <ControlloFinto tipo={tipo} segnaposto={campo?.help ?? etichetta} />
+      </div>
       </div>
     </div>
   )

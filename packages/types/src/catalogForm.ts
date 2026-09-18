@@ -398,20 +398,33 @@ export interface CatalogFormSection {
 }
 
 /**
- * La larghezza VERA di un campo: la sua, se l'ha detta; altrimenti quella che
- * discende dalle colonne della sezione.
+ * La larghezza VERA di un campo. DECIDE LA SEZIONE, poi il campo (18 set 2026).
  *
  * Una funzione sola, in `types`, perché la leggono in tre — il renderer (che
  * disegna), il costruttore (che deve mostrare la larghezza effettiva, non
- * quella scritta) e i test. Tre copie di «chi vince» sarebbero divergute al
- * primo dubbio.
+ * quella scritta) e i test.
+ *
+ * ## Prima vinceva il campo, e la sezione non contava
+ * La regola era «la sua, se l'ha detta»: un campo con `width: 'half'` stava a
+ * metà anche in una sezione a UNA colonna — cioè due campi affiancati in una
+ * sezione che dichiara di averne una. E all'inverso, passare una sezione da
+ * una a due colonne non cambiava NIENTE se i campi portavano già una larghezza
+ * scritta (ed è quello che fa «Tutti a mezza larghezza» su dodici campi). Il
+ * proprietario l'ha trovato esattamente così: «non si cambia il layout (1 o 2
+ * colonne)».
+ *
+ * Adesso il numero di colonne è della SEZIONE e non si aggira:
+ *  - una colonna: tutti pieni, e una mezza larghezza scritta sopra non ha modo
+ *    di fabbricare una seconda colonna che la sezione non ha;
+ *  - due colonne: metà per difetto, e il campo può chiedere la riga intera —
+ *    che è la scelta che si vuole davvero poter fare.
  */
 export function larghezzaEffettiva(
   section: Pick<CatalogFormSection, 'columns'>,
   item: Pick<CatalogFormItem, 'width'>,
 ): 'full' | 'half' {
-  if (item.width) return item.width
-  return section.columns === 2 ? 'half' : 'full'
+  if (section.columns !== 2) return 'full'
+  return item.width ?? 'half'
 }
 
 /**

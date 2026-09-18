@@ -574,6 +574,40 @@ code, kbd, samp, pre {
 }
 
 /*
+  IL COSTRUTTORE DEI MODULI: ATTREZZI A SINISTRA, TELA A DESTRA (18 set 2026).
+
+  La prima versione aveva la barra degli strumenti in alto; il proprietario l'ha
+  provata e ha chiesto il lato: «non mi piace la barra degli strumenti in alto,
+  meglio laterale». Ha ragione per una ragione pratica — una striscia
+  orizzontale con venti campi si scorre a mano, una colonna li mostra tutti — e
+  perché la tela cresce in altezza, non in larghezza.
+
+  La colonna degli attrezzi RESTA IN VISTA mentre la tela scorre: prendere un
+  campo e portarlo a una sezione in fondo, senza, vorrebbe dire scorrere con il
+  dito già premuto.
+
+  Sotto i 900px le due colonne si impilano e gli attrezzi vanno SOPRA, con la
+  loro altezza limitata: la presa e il bersaglio devono stare a schermo insieme
+  (è la lezione dell'iPad, vedi `.og-split-tools`).
+*/
+.og-designer {
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.og-designer > :first-child {
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+@media (max-width: 900px) {
+  .og-designer { grid-template-columns: minmax(0, 1fr); }
+  .og-designer > :first-child { max-height: 38vh; }
+}
+
+/*
   LA PRESA DI UN TRASCINAMENTO (`.og-grip`) (18 set 2026).
 
   `touch-action: none` toglie lo scorrimento sotto il dito; le due righe di
@@ -706,8 +740,41 @@ code, kbd, samp, pre {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
 }
-.og-form-cell { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/*
+  L'ETICHETTA A SINISTRA DEL CONTROLLO (18 set 2026, chiesto dal proprietario).
+
+  Era sopra, in colonna. Ora la cella è una griglia di due colonne:
+  l'etichetta a sinistra, e TUTTO il resto — il controllo, l'aiuto, l'errore —
+  incolonnato a destra. Regge con questo DOM perché l'etichetta è sempre il
+  primo figlio: gli altri figli vanno in colonna 2 uno per riga, senza che il
+  renderer debba aggiungere un involucro.
+
+  L'etichetta ha un filo di `padding-top` per allinearsi alla prima riga del
+  controllo e non al suo bordo.
+
+  Sotto i 700px torna sopra: su un telefono una colonna di etichette larga un
+  quarto dello schermo lascia al controllo una fessura.
+*/
+.og-form-cell {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: clamp(96px, 26%, 180px) minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 4px;
+  align-items: start;
+  min-width: 0;
+}
+.og-form-cell > .og-form-label { grid-column: 1; padding-top: 7px; }
+.og-form-cell > *:not(.og-form-label) { grid-column: 2; }
+/* Una nota non ha etichetta: senza questo il suo testo starebbe in colonna 2,
+   cioè rientrato di una colonna che non esiste. */
+.og-form-note { display: block; }
 .og-form-cell-half { grid-column: auto; }
+@media (max-width: 700px) {
+  .og-form-cell { grid-template-columns: minmax(0, 1fr); }
+  .og-form-cell > .og-form-label { padding-top: 0; }
+  .og-form-cell > *:not(.og-form-label) { grid-column: 1; }
+}
 @media (max-width: 700px) {
   /* Sotto la soglia due colonne di campi diventano illeggibili: una sola. */
   .og-form-cell-half { grid-column: 1 / -1; }

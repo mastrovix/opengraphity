@@ -240,8 +240,41 @@ input, textarea, select {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
 }
-.og-form-cell { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+/*
+  L'ETICHETTA A SINISTRA DEL CONTROLLO (18 set 2026, chiesto dal proprietario).
+
+  Era sopra, in colonna. Ora la cella è una griglia di due colonne:
+  l'etichetta a sinistra, e TUTTO il resto — il controllo, l'aiuto, l'errore —
+  incolonnato a destra. Regge con questo DOM perché l'etichetta è sempre il
+  primo figlio: gli altri figli vanno in colonna 2 uno per riga, senza che il
+  renderer debba aggiungere un involucro.
+
+  L'etichetta ha un filo di `padding-top` per allinearsi alla prima riga del
+  controllo e non al suo bordo.
+
+  Sotto i 700px torna sopra: su un telefono una colonna di etichette larga un
+  quarto dello schermo lascia al controllo una fessura.
+*/
+.og-form-cell {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: clamp(96px, 26%, 180px) minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 4px;
+  align-items: start;
+  min-width: 0;
+}
+.og-form-cell > .og-form-label { grid-column: 1; padding-top: 7px; }
+.og-form-cell > *:not(.og-form-label) { grid-column: 2; }
+/* Una nota non ha etichetta: senza questo il suo testo starebbe in colonna 2,
+   cioè rientrato di una colonna che non esiste. */
+.og-form-note { display: block; }
 .og-form-cell-half { grid-column: auto; }
+@media (max-width: 700px) {
+  .og-form-cell { grid-template-columns: minmax(0, 1fr); }
+  .og-form-cell > .og-form-label { padding-top: 0; }
+  .og-form-cell > *:not(.og-form-label) { grid-column: 1; }
+}
 @media (max-width: 700px) {
   /* Sotto la soglia due colonne di campi diventano illeggibili: una sola. */
   .og-form-cell-half { grid-column: 1 / -1; }

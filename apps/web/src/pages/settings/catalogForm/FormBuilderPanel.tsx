@@ -889,22 +889,23 @@ export function FormBuilderPanel() {
       {voceId !== '' && vista === 'canvas' && (
         <>
           {/*
-            GLI STRUMENTI: una striscia sola, che scorre. Due gruppi — i campi
-            che esistono in libreria e i TIPI con cui farne uno nuovo — perché
-            sono due gesti diversi: riusare e creare. Si trascinano sulla tela,
-            e il «+» li mette nella sezione corrente per chi non trascina.
+            GLI ATTREZZI, in una colonna a sinistra (chiesto dal proprietario:
+            «meglio laterale»). Due gruppi, perché sono due gesti diversi: i
+            campi che ESISTONO in libreria si riusano, i TIPI creano un campo
+            nuovo. Si trascinano sulla tela; il «+» li mette nella sezione
+            corrente, per chi non trascina.
           */}
-          <div style={{ marginBottom: 14 }}>
-            <div className="og-scroll-x" style={{ display: 'flex', gap: 16, alignItems: 'flex-start', paddingBottom: 4 }}>
+          <div className="og-designer">
+            <aside style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingRight: 4 }}>
               {[
                 { titolo: t('pages.catalogForms.builder.paletteTab'), voci: disponibili.map((f) => ({ chiave: f.name, etichetta: f.label, tipo: f.fieldType, nuovo: false })) },
                 { titolo: t('pages.catalogForms.builder.fieldTypes'), voci: FORM_FIELD_TYPES.map((x) => ({ chiave: x, etichetta: t(`pages.catalogForms.fieldType.${x}`), tipo: x, nuovo: true })) },
               ].map((gruppo) => (
-                <div key={gruppo.titolo} style={{ flex: '0 0 auto' }}>
-                  <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 4 }}>
+                <div key={gruppo.titolo}>
+                  <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                     {gruppo.titolo}
                   </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                     {gruppo.voci.length === 0 && (
                       <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
                         {libreria.length === 0 ? t('pages.catalogForms.builder.libraryEmpty') : t('pages.catalogForms.builder.paletteEmpty')}
@@ -914,9 +915,9 @@ export function FormBuilderPanel() {
                       <span
                         key={v.chiave}
                         style={{
-                          display: 'flex', alignItems: 'center', gap: 6, flex: '0 0 auto',
+                          display: 'flex', alignItems: 'center', gap: 6,
                           border: v.nuovo ? `1px dashed ${colors.border}` : `1px solid ${colors.border}`,
-                          borderRadius: 999, background: colors.white, padding: '4px 10px 4px 6px',
+                          borderRadius: 8, background: colors.white, padding: '4px 8px 4px 5px',
                         }}
                       >
                         <button
@@ -931,7 +932,10 @@ export function FormBuilderPanel() {
                         >
                           <GripVertical size={14} />
                         </button>
-                        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-dark)', whiteSpace: 'nowrap' }}>{v.etichetta}</span>
+                        <span style={{
+                          fontSize: 'var(--font-size-table)', color: 'var(--color-slate-dark)',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0,
+                        }} title={v.etichetta}>{v.etichetta}</span>
                         <button
                           type="button"
                           aria-label={v.nuovo
@@ -956,9 +960,9 @@ export function FormBuilderPanel() {
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
+            </aside>
 
+            <div>
           <FormCanvas
             bozza={bozza}
             perNome={perNome}
@@ -998,6 +1002,8 @@ export function FormBuilderPanel() {
             onClick={() => cambia((d) => ({ ...d, sections: [...d.sections, { id: idSezione(d.sections.map((s) => s.id)), title: {}, items: [] }] }))}>
             <Plus size={14} /> {t('pages.catalogForms.builder.addSection')}
           </button>
+            </div>
+          </div>
         </>
       )}
 

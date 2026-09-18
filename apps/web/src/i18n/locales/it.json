@@ -2417,7 +2417,8 @@
         "viewCanvas": "Tela",
         "sectionUntitled": "Sezione senza titolo",
         "hasCondition": "Compare solo quando una condizione è vera",
-        "removeFieldHelp": "Toglie il campo da questo modulo; resta in libreria, con le risposte già date sulle richieste compilate."
+        "removeFieldHelp": "Toglie il campo da questo modulo; resta in libreria, con le risposte già date sulle richieste compilate.",
+        "halfWidthNeedsTwo": "La mezza larghezza esiste solo in una sezione a due colonne: le colonne si impostano nelle proprietà della sezione."
       },
       "library": {
         "intro": "Un campo si definisce una volta e lo riusano tutti i moduli. Il suo nome diventa la proprietà sul ticket — è il motivo per cui si può filtrare e riportare, e il motivo per cui non si può rinominare.",
