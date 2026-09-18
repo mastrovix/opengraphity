@@ -34,16 +34,14 @@
  *    si aggiunge anche con Invio — senza questo, il costruttore sarebbe
  *    diventato inutilizzabile per chi non usa il mouse.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { GripVertical, Plus, Trash2, X } from 'lucide-react'
+import { GripVertical, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   CATALOG_FORM_VERSION, FORM_CONDITION_OPS, FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_FIELD_TYPES,
-  FORM_FIELD_TYPES_WITHOUT_ANSWER,
-  canBeConditionSubject, emptyCatalogForm, isFormReferenceType, larghezzaEffettiva, localizedText, nomeDaEtichetta,
+  canBeConditionSubject, emptyCatalogForm, isFormReferenceType, localizedText, nomeDaEtichetta,
   type CatalogFormDefinition, type CatalogFormItem, type CatalogFormSection,
   type FormAnswerValue, type FormAnswers, type FormCondition, type FormConditionOp,
 } from '@opengraphity/types'
@@ -56,6 +54,9 @@ import { alpha, colors, fontWeight } from '@/lib/tokens'
 import { Input, Select } from '@/components/ui/FormControls'
 import type { FormFieldRow } from './FieldLibraryPanel'
 import { FieldEditor, inputDaBozza, BOZZA_VUOTA, type Bozza } from './FieldEditor'
+import { FormCanvas, type Selezione } from './FormCanvas'
+import { ProprietaSezione, ProprietaVoce } from './ItemProperties'
+import { ModaleCentrato } from './ModaleCentrato'
 
 interface CatalogItem { id: string; name: string; active: boolean; category: string | null }
 
@@ -513,7 +514,7 @@ export function FormBuilderPanel() {
     if (cosa.tipo === 'palette') aggiungiCampo(zona.iSez, cosa.campo, zona.dove === 'item' ? posto : undefined)
     else muoviVoce(cosa.sezione, cosa.voce, zona.iSez, posto)
   })
-  const { trascinato, bersaglio } = trascinamento
+  const { bersaglio } = trascinamento
 
   /**
    * IL CAMPO NUOVO IN CORSO DI BATTESIMO: tipo, dove cadrà, e le etichette che
@@ -544,7 +545,15 @@ export function FormBuilderPanel() {
   /** La sezione che riceve un campo aggiunto da tastiera: l'ultima toccata. */
   const [sezioneCorrente, setSezioneCorrente] = useState(0)
   /** La colonna destra: i campi da trascinare, oppure il modulo vero. */
-  const [schedaDestra, setSchedaDestra] = useState<'fields' | 'preview'>('fields')
+  /** La tela o l'anteprima compilabile: due modi di guardare lo stesso modulo. */
+  const [vista, setVista] = useState<'canvas' | 'preview'>('canvas')
+  /**
+   * QUELLO CHE È SELEZIONATO SULLA TELA, e di cui il modale mostra le
+   * proprietà. Null = niente selezionato, e allora il modale non c'è: la tela
+   * si guarda, non chiede niente.
+   */
+  const [selezione, setSelezione] = useState<Selezione | null>(null)
+  const idVoce = useId()
 
   const sostituisciVoce = (iSez: number, iVoce: number, v: CatalogFormItem) =>
     cambia((d) => ({
@@ -652,105 +661,38 @@ export function FormBuilderPanel() {
    */
   const modaleNuovoCampo = () => {
     if (!nuovoCampo) return null
-    /*
-     * IN UN PORTAL, ATTACCATO AL BODY (18 set 2026).
-     *
-     * Scritto dentro la pagina, il modale era l'ultimo figlio di `.og-split` —
-     * e si prendeva la regola che avevo appena scritto per la palette
-     * impilata: `max-height: 42vh` sull'ultima colonna. Su una finestra da
-     * 482px il velo diventava alto 202 (42vh esatti), quindi il riquadro era
-     * tagliato e non poteva stare in mezzo a niente: `position: fixed` non
-     * salva da un tetto messo sull'elemento stesso.
-     *
-     * Un dialogo non appartiene alla colonna che l'ha aperto: sta sopra la
-     * pagina. Attaccandolo al `body` copre la finestra davvero, e nessuna
-     * regola di layout futura può più rimpicciolirlo.
-     */
-    return createPortal(
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('pages.catalogForms.builder.newFieldOfType', { type: t(`pages.catalogForms.fieldType.${nuovoCampo.bozza.fieldType}`) })}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 100, background: alpha.scrim,
-          /*
-           * CENTRATO QUANDO CI STA, SCORREVOLE QUANDO NO.
-           *
-           * `align-items: center` da solo avrebbe centrato anche un riquadro
-           * più alto dello schermo — e allora la parte di sopra (il nome, il
-           * tipo, le etichette) finisce FUORI, irraggiungibile, perché da un
-           * contenitore flex centrato non si scorre all'indietro. Il modo che
-           * regge tutte e due è `flex-start` sul velo e `margin: auto` sul
-           * riquadro: se c'è spazio il margine lo centra, se non ce n'è si
-           * scorre dall'inizio.
-           */
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-          padding: 'clamp(12px, 3vh, 32px) 16px', overflowY: 'auto',
-        }}
+    return (
+      <ModaleCentrato
+        titolo={t('pages.catalogForms.builder.newFieldOfType', { type: t(`pages.catalogForms.fieldType.${nuovoCampo.bozza.fieldType}`) })}
+        sottotitolo={t('pages.catalogForms.builder.newFieldInSection', {
+          section: localizedText(bozza.sections[nuovoCampo.iSez]?.title ?? {}, lingua, '') || bozza.sections[nuovoCampo.iSez]?.id || '',
+        })}
+        onChiudi={() => { setNuovoCampo(null) }}
       >
         {/*
-          IL RIQUADRO STA NELLO SCHERMO, e scorre DENTRO (18 set 2026).
-
-          L'editor completo è alto ~740px: su una finestra da 482 (e su un
-          iPad) usciva sotto, e l'unico modo di arrivare ai bottoni era
-          scorrere il velo — con l'intestazione che spariva. Ora il riquadro
-          non supera mai l'altezza disponibile e la parte scorrevole è il
-          CORPO: il titolo resta sempre a schermo, e con lui la croce per
-          chiudere.
+          Dentro c'è l'EDITOR DELLA LIBRERIA, lo stesso: etichette, aiuto,
+          obbligatorio, colonna nelle liste, vocabolario, tipi di CI di un
+          riferimento, colonne di una tabella, formula e script di validazione.
+          Un editor ridotto avrebbe voluto dire che certe cose si impostano solo
+          sapendo che esiste un'altra scheda — il difetto da cui è nata la
+          palette dei tipi.
         */}
-        <div style={{
-          background: colors.white, borderRadius: 12, padding: 20, width: 680, maxWidth: '100%',
-          /* `margin: auto` CENTRA il riquadro — in tutte e due le direzioni —
-             quando c'è spazio; quando non ce n'è, i margini automatici non
-             assorbono niente e si scorre dall'alto invece di tagliare via
-             l'intestazione (che è quello che farebbe `align-items: center`). */
-          margin: 'auto', display: 'flex', flexDirection: 'column',
-          /* `100%` e non `100dvh`: il velo è già grande quanto la finestra
-             meno il suo margine, quindi il tetto è lo spazio VERO. `dvh` può
-             raccontare un'altra storia — le barre di iOS, uno schermo
-             emulato — e allora il riquadro esce dallo schermo. */
-          maxHeight: '100%',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <strong style={{ fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>
-              {t('pages.catalogForms.builder.newFieldOfType', { type: t(`pages.catalogForms.fieldType.${nuovoCampo.bozza.fieldType}`) })}
-            </strong>
-            <button type="button" onClick={() => { setNuovoCampo(null) }} aria-label={t('common.cancel')}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)' }}>
-              <X size={16} />
-            </button>
-          </div>
-          {/* Dove finirà: è l'unica cosa che il modale, coprendo il modulo,
-              porta via — quindi si scrive. */}
-          <p style={{ margin: '0 0 12px', fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' }}>
-            {t('pages.catalogForms.builder.newFieldInSection', {
-              section: localizedText(bozza.sections[nuovoCampo.iSez]?.title ?? {}, lingua, '') || bozza.sections[nuovoCampo.iSez]?.id || '',
-            })}
-          </p>
-          {/* Il corpo scorre, l'intestazione no. `minHeight: 0` perché senza,
-              un figlio flex non si lascia rimpicciolire sotto il suo
-              contenuto e lo scorrimento non parte. */}
-          <div style={{ overflowY: 'auto', minHeight: 0, flex: 1 }}>
-          <FieldEditor
-            bozza={nuovoCampo.bozza}
-            onBozza={(b) => { setNuovoCampo({ ...nuovoCampo, bozza: b }) }}
-            vocabolari={enumData?.enumTypes ?? []}
-            onSalva={confermaNuovoCampo}
-            onAnnulla={() => { setNuovoCampo(null) }}
-            salvando={creando}
-            etichettaSalva={t('pages.catalogForms.builder.createField')}
-            nomeDallEtichetta
-            nomiPresi={libreria.map((f) => f.name)}
-            campiLeggibili={libreria.map((f) => ({ name: f.name, label: f.label }))}
-          />
-          </div>
-        </div>
-      </div>,
-      document.body,
+        <FieldEditor
+          bozza={nuovoCampo.bozza}
+          onBozza={(b) => { setNuovoCampo({ ...nuovoCampo, bozza: b }) }}
+          vocabolari={enumData?.enumTypes ?? []}
+          onSalva={confermaNuovoCampo}
+          onAnnulla={() => { setNuovoCampo(null) }}
+          salvando={creando}
+          etichettaSalva={t('pages.catalogForms.builder.createField')}
+          nomeDallEtichetta
+          nomiPresi={libreria.map((f) => f.name)}
+          campiLeggibili={libreria.map((f) => ({ name: f.name, label: f.label }))}
+        />
+      </ModaleCentrato>
     )
   }
 
-  /** Larghezza in blocco: la fatica vera erano dodici spunte, non la scelta. */
   const larghezzaInBlocco = (iSez: number, larghezza: 'full' | 'half') =>
     cambia((d) => ({
       ...d,
@@ -768,6 +710,80 @@ export function FormBuilderPanel() {
     const f = perNome.get(n)
     return f != null && canBeConditionSubject(f.fieldType)
   })
+
+  /** Il nome della sezione in cui finisce quello che si aggiunge col «+». */
+  const titoloSezioneCorrente = (() => {
+    const s = bozza.sections[Math.min(sezioneCorrente, bozza.sections.length - 1)]
+    return s ? (localizedText(s.title, lingua, '') || s.id) : ''
+  })()
+
+  /**
+   * IL MODALE DELLE PROPRIETÀ: un campo o una sezione, mai «tutto».
+   *
+   * Le stesse spunte di prima — obbligatorio, mezza larghezza, portale, la
+   * condizione — che sulla tela erano quaranta controlli in fila e qui sono
+   * quelli di UNA cosa.
+   */
+  const modaleProprieta = () => {
+    if (!selezione) return null
+    const sezione = bozza.sections[selezione.iSez]
+    if (!sezione) return null
+    const chiudi = () => { setSelezione(null) }
+
+    if (selezione.tipo === 'section') {
+      return (
+        <ModaleCentrato
+          titolo={t('pages.catalogForms.builder.sectionProperties')}
+          sottotitolo={localizedText(sezione.title, lingua, '') || sezione.id}
+          largo={560}
+          onChiudi={chiudi}
+        >
+          <ProprietaSezione
+            sezione={sezione}
+            lingue={lingue}
+            onSezione={(s) => { sostituisciSezione(selezione.iSez, s) }}
+            onLarghezzaInBlocco={(l) => { larghezzaInBlocco(selezione.iSez, l) }}
+            onRimuovi={() => {
+              cambia((d) => ({ ...d, sections: d.sections.filter((_, i) => i !== selezione.iSez) }))
+              chiudi()
+            }}
+          />
+        </ModaleCentrato>
+      )
+    }
+
+    const item = sezione.items[selezione.iVoce]
+    if (!item) return null
+    const campo = perNome.get(item.field)
+    return (
+      <ModaleCentrato
+        titolo={t('pages.catalogForms.builder.fieldProperties')}
+        sottotitolo={campo?.label ?? item.field}
+        largo={560}
+        onChiudi={chiudi}
+      >
+        <ProprietaVoce
+          item={item}
+          campo={campo}
+          sezione={sezione}
+          onItem={(v) => { sostituisciVoce(selezione.iSez, selezione.iVoce, v) }}
+          onRimuovi={() => {
+            sostituisciSezione(selezione.iSez, { ...sezione, items: sezione.items.filter((_, j) => j !== selezione.iVoce) })
+            chiudi()
+          }}
+          editorCondizione={(
+            <EditorCondizione
+              condizione={item.visibleWhen}
+              soggetti={soggettiCondizione.filter((n) => n !== item.field)}
+              etichettaDi={(n) => perNome.get(n)?.label ?? n}
+              campoDi={(n) => perNome.get(n)}
+              onChange={(c) => { sostituisciVoce(selezione.iSez, selezione.iVoce, c ? { ...item, visibleWhen: c } : omettiCondizione(item)) }}
+            />
+          )}
+        />
+      </ModaleCentrato>
+    )
+  }
 
   const salvaModulo = async () => {
     /*
@@ -793,458 +809,227 @@ export function FormBuilderPanel() {
   }
 
   return (
-    /* `og-split-tools`: sotto i 900px porta la palette SOPRA le sezioni e la
-       tiene appiccicata, se no da iPad la presa e il bersaglio non stanno mai
-       a schermo insieme (vedi index.css). Con l'anteprima aperta no: quella
-       deve poter essere alta. */
-    <div className={`og-split${schedaDestra === 'fields' ? ' og-split-tools' : ''}`}>
-      {/* ── Il disegno ─────────────────────────────────────────────────── */}
-      <div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
-          <label style={{ flex: '1 1 220px', minWidth: 0 }}>
-            <span style={{ display: 'block', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
-              {t('pages.catalogForms.builder.item')}
-            </span>
-            <Select value={voceId} onChange={(e) => void cambiaVoce(e.target.value)}>
-              <option value="">{t('pages.catalogForms.builder.chooseItem')}</option>
-              {voci.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-            </Select>
+    <div>
+      {/*
+        LA BARRA DEGLI STRUMENTI IN ALTO, LA TELA SOTTO (18 set 2026).
+
+        Il costruttore era due colonne: a sinistra un elenco di righe con le
+        spunte, a destra la palette. Chiesto dal proprietario: «come layout
+        vorrei qualcosa di più simile a un designer», e scelto da lui — tela
+        intera, strumenti in barra, proprietà nel modale.
+
+        Il senso non è l'estetica: con quattro controlli sotto ogni campo, un
+        modulo di dieci campi mostrava quaranta controlli e zero modulo. Ora si
+        vede il MODULO, e le impostazioni di una cosa si aprono quando quella
+        cosa è selezionata.
+      */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 3, background: 'var(--color-surface-1)',
+        display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap',
+        padding: '0 0 10px', borderBottom: `1px solid ${colors.border}`, marginBottom: 14,
+      }}>
+        <div style={{ minWidth: 220, flex: '1 1 240px' }}>
+          <label htmlFor={idVoce} style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 3 }}>
+            {t('pages.catalogForms.builder.item')}
           </label>
-          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', paddingBottom: 8 }}>
+          <Select id={idVoce} value={voceId} onChange={(e) => void cambiaVoce(e.target.value)}>
+            <option value="">{t('pages.catalogForms.builder.chooseItem')}</option>
+            {voci.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+          </Select>
+        </div>
+
+        {voceId !== '' && (
+          <div role="tablist" aria-label={t('pages.catalogForms.builder.views')} style={{ display: 'flex', gap: 4 }}>
+            {(['canvas', 'preview'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                aria-selected={vista === v}
+                onClick={() => { setVista(v) }}
+                style={{
+                  border: 'none', background: 'none', cursor: 'pointer', padding: '7px 12px',
+                  fontSize: 'var(--font-size-body)', fontWeight: vista === v ? fontWeight.medium : 400,
+                  color: vista === v ? 'var(--color-brand)' : 'var(--color-slate)',
+                  borderBottom: `2px solid ${vista === v ? 'var(--color-brand)' : 'transparent'}`,
+                  marginBottom: -11,
+                }}
+              >
+                {t(v === 'canvas' ? 'pages.catalogForms.builder.viewCanvas' : 'pages.catalogForms.builder.preview')}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
             {formData?.catalogForm?.revision
               ? t('pages.catalogForms.builder.revision', { revision: formData.catalogForm.revision })
               : t('pages.catalogForms.builder.neverPublished')}
           </span>
           <button type="button" onClick={() => void salvaModulo()} disabled={salvando || !toccato || !voceId}
-            style={{ ...bottone, border: 'none', background: 'var(--color-brand)', color: colors.white, fontWeight: fontWeight.medium, padding: '7px 14px', opacity: salvando || !toccato ? 0.55 : 1, cursor: salvando || !toccato ? 'not-allowed' : 'pointer' }}>
+            style={{
+              padding: '7px 14px', borderRadius: 8, border: 'none',
+              background: toccato && voceId ? 'var(--color-brand)' : 'var(--color-slate-bg)',
+              color: toccato && voceId ? colors.white : 'var(--color-slate-light)',
+              fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium,
+              cursor: toccato && voceId ? 'pointer' : 'not-allowed',
+            }}>
             {salvando ? t('common.saving') : t('pages.catalogForms.builder.publish')}
           </button>
-        </div>
+        </span>
+      </div>
 
-        {/*
-          Senza una voce scelta non si disegna niente: mostrare un modulo
-          modificabile che non appartiene a nessuno invita a lavorare per poi
-          scoprire che non si può pubblicare.
-        */}
-        {voceId === '' && (
-          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
-            {t('pages.catalogForms.builder.pickItemFirst')}
-          </p>
-        )}
+      {voceId === '' && (
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
+          {t('pages.catalogForms.builder.pickItemFirst')}
+        </p>
+      )}
 
-        {voceId !== '' && bozza.sections.map((sezione, iSez) => (
-          <div
-            key={sezione.id}
-            /* Un GRUPPO col nome della sezione: il `div` porta dei gestori
-               (segna qual è la sezione corrente, ed è un bersaglio del
-               trascinamento), e un elemento che reagisce senza dichiarare
-               cosa è, per un lettore di schermo non esiste. `group` è quello
-               che è davvero: un insieme di controlli con un'etichetta.
-               — errore di lint introdotto ieri con la palette e trovato oggi
-               facendo girare eslint su questo file (18 set 2026). */
-            role="group"
-            aria-label={localizedText(sezione.title, lingua, '') || sezione.id}
-            /* `pointerdown` e non `mousedown`: col dito il `mousedown` arriva
-               emulato e in ritardo (o non arriva), quindi su iPad la «sezione
-               corrente» — quella dove il «+» della palette mette il campo —
-               seguiva il tocco a scoppio ritardato. Il `focus` resta per chi
-               entra nella sezione con la tastiera. */
-            onPointerDown={() => setSezioneCorrente(iSez)}
-            onFocus={() => setSezioneCorrente(iSez)}
-            /* La sezione è un bersaglio: ci si lascia cadere un campo della
-               palette (va in fondo), una voce presa da un'altra sezione, o
-               un'altra sezione (che si mette qui). Il motore legge `data-drop`
-               dal DOM: non servono handler per zona. */
-            data-drop={`sec-${String(iSez)}`}
-            style={{
-              border: `1px solid ${bersaglio === `sec-${String(iSez)}` ? 'var(--color-brand)' : colors.border}`,
-              boxShadow: bersaglio === `sec-${String(iSez)}` ? '0 0 0 3px var(--color-brand-light)' : 'none',
-              borderRadius: 10, padding: 14, marginBottom: 12, background: colors.white,
+      {voceId !== '' && vista === 'canvas' && (
+        <>
+          {/*
+            GLI STRUMENTI: una striscia sola, che scorre. Due gruppi — i campi
+            che esistono in libreria e i TIPI con cui farne uno nuovo — perché
+            sono due gesti diversi: riusare e creare. Si trascinano sulla tela,
+            e il «+» li mette nella sezione corrente per chi non trascina.
+          */}
+          <div style={{ marginBottom: 14 }}>
+            <div className="og-scroll-x" style={{ display: 'flex', gap: 16, alignItems: 'flex-start', paddingBottom: 4 }}>
+              {[
+                { titolo: t('pages.catalogForms.builder.paletteTab'), voci: disponibili.map((f) => ({ chiave: f.name, etichetta: f.label, tipo: f.fieldType, nuovo: false })) },
+                { titolo: t('pages.catalogForms.builder.fieldTypes'), voci: FORM_FIELD_TYPES.map((x) => ({ chiave: x, etichetta: t(`pages.catalogForms.fieldType.${x}`), tipo: x, nuovo: true })) },
+              ].map((gruppo) => (
+                <div key={gruppo.titolo} style={{ flex: '0 0 auto' }}>
+                  <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 4 }}>
+                    {gruppo.titolo}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {gruppo.voci.length === 0 && (
+                      <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+                        {libreria.length === 0 ? t('pages.catalogForms.builder.libraryEmpty') : t('pages.catalogForms.builder.paletteEmpty')}
+                      </span>
+                    )}
+                    {gruppo.voci.map((v) => (
+                      <span
+                        key={v.chiave}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6, flex: '0 0 auto',
+                          border: v.nuovo ? `1px dashed ${colors.border}` : `1px solid ${colors.border}`,
+                          borderRadius: 999, background: colors.white, padding: '4px 10px 4px 6px',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          aria-label={t('pages.catalogForms.builder.dragField', { field: v.etichetta })}
+                          title={t('pages.catalogForms.builder.dragField', { field: v.etichetta })}
+                          onPointerDown={(e) => { trascinamento.afferra(e, v.nuovo ? { tipo: 'newField', fieldType: v.tipo } : { tipo: 'palette', campo: v.chiave }, v.etichetta) }}
+                          onTouchStart={(e) => { trascinamento.afferra(e, v.nuovo ? { tipo: 'newField', fieldType: v.tipo } : { tipo: 'palette', campo: v.chiave }, v.etichetta) }}
+                          className="og-grip"
+                          style={{ display: 'flex', alignItems: 'center', color: 'var(--color-slate-light)', background: 'none', border: 'none', padding: 0, cursor: 'grab' }}
+                        >
+                          <GripVertical size={14} />
+                        </button>
+                        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-dark)', whiteSpace: 'nowrap' }}>{v.etichetta}</span>
+                        <button
+                          type="button"
+                          aria-label={v.nuovo
+                            ? t('pages.catalogForms.builder.addTypeToSection', { type: v.etichetta })
+                            : t('pages.catalogForms.builder.addToSection', { field: v.etichetta, section: titoloSezioneCorrente })}
+                          title={v.nuovo
+                            ? t('pages.catalogForms.builder.addTypeToSection', { type: v.etichetta })
+                            : t('pages.catalogForms.builder.addToSection', { field: v.etichetta, section: titoloSezioneCorrente })}
+                          disabled={bozza.sections.length === 0}
+                          onClick={() => {
+                            if (bozza.sections.length === 0) return
+                            const iSez = Math.min(sezioneCorrente, bozza.sections.length - 1)
+                            if (v.nuovo) setNuovoCampo({ iSez, iVoce: null, bozza: { ...BOZZA_VUOTA, fieldType: v.tipo } })
+                            else aggiungiCampo(iSez, v.chiave)
+                          }}
+                          style={{ ...iconaAzione, color: bozza.sections.length === 0 ? 'var(--color-slate-light)' : 'var(--color-brand)' }}
+                        >
+                          <Plus size={14} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <FormCanvas
+            bozza={bozza}
+            perNome={perNome}
+            lingua={lingua}
+            selezione={selezione}
+            bersaglio={bersaglio}
+            onSeleziona={(s) => {
+              setSelezione(s)
+              if (s) setSezioneCorrente(s.iSez)
             }}
-          >
-            <div data-drop={`ord-${String(iSez)}`}
-              style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 10 }}>
+            maniglia={(iSez, iVoce) => (
               <Maniglia
-                etichetta={t('pages.catalogForms.builder.moveSection', { title: localizedText(sezione.title, lingua, '') || sezione.id })}
-                onAfferra={(e) => { trascinamento.afferra(e, { tipo: 'section', sezione: iSez }, localizedText(sezione.title, lingua, '') || sezione.id) }}
+                etichetta={t('pages.catalogForms.builder.moveField', { field: perNome.get(bozza.sections[iSez]?.items[iVoce]?.field ?? '')?.label ?? '' })}
+                onAfferra={(e) => { trascinamento.afferra(e, { tipo: 'item', sezione: iSez, voce: iVoce }, perNome.get(bozza.sections[iSez]?.items[iVoce]?.field ?? '')?.label ?? '') }}
+                onSu={() => {
+                  const s = bozza.sections[iSez]
+                  if (s) sostituisciSezione(iSez, { ...s, items: scambia(s.items, iVoce, Math.max(0, iVoce - 1)) })
+                }}
+                onGiu={() => {
+                  const s = bozza.sections[iSez]
+                  if (s) sostituisciSezione(iSez, { ...s, items: scambia(s.items, iVoce, Math.min(s.items.length - 1, iVoce + 1)) })
+                }}
+              />
+            )}
+            manigliaSezione={(iSez) => (
+              <Maniglia
+                etichetta={t('pages.catalogForms.builder.moveSection', { title: localizedText(bozza.sections[iSez]?.title ?? {}, lingua, '') || String(iSez + 1) })}
+                onAfferra={(e) => { trascinamento.afferra(e, { tipo: 'section', sezione: iSez }, localizedText(bozza.sections[iSez]?.title ?? {}, lingua, '') || String(iSez + 1)) }}
                 onSu={() => muoviSezione(iSez, iSez - 1)}
                 onGiu={() => muoviSezione(iSez, iSez + 1)}
                 evidenziata={bersaglio === `ord-${String(iSez)}` || bersaglio === `sec-${String(iSez)}`}
               />
-              {/*
-                IL TITOLO IN TUTTE LE LINGUE DEL PRODOTTO. Prima ce n'era una
-                casella sola, in quella corrente, e l'altra lingua restava
-                vuota senza che si vedesse: a schermo, per metà dei clienti,
-                una sezione anonima. La pubblicazione ora le pretende entrambe.
-              */}
-              <div style={{ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
-                {lingue.map((codice) => (
-                  <Input
-                    key={codice}
-                    value={(sezione.title as Record<string, string | undefined>)[codice] ?? ''}
-                    aria-label={t('pages.catalogForms.builder.sectionTitleIn', { language: codice.toUpperCase() })}
-                    placeholder={t('pages.catalogForms.builder.sectionTitleIn', { language: codice.toUpperCase() })}
-                    onChange={(e) => sostituisciSezione(iSez, { ...sezione, title: { ...sezione.title, [codice]: e.target.value } })}
-                  />
-                ))}
-              </div>
-              <button type="button" aria-label={t('pages.catalogForms.builder.removeSection')}
-                onClick={() => cambia((d) => ({ ...d, sections: d.sections.filter((_, i) => i !== iSez) }))}
-                style={{ ...iconaAzione, color: 'var(--color-danger)' }}>
-                <Trash2 size={14} />
-              </button>
-            </div>
-
-            {/* Le colonne della sezione, e la scorciatoia per i casi misti. */}
-            <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10, fontSize: 'var(--font-size-body)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-slate-dark)' }}>
-                {t('pages.catalogForms.builder.columns')}
-                <Select
-                  value={String(sezione.columns ?? 1)}
-                  aria-label={t('pages.catalogForms.builder.columns')}
-                  onChange={(e) => sostituisciSezione(iSez, { ...sezione, columns: e.target.value === '2' ? 2 : 1 })}
-                  style={{ width: 'auto' }}
-                >
-                  <option value="1">{t('pages.catalogForms.builder.columnsOne')}</option>
-                  <option value="2">{t('pages.catalogForms.builder.columnsTwo')}</option>
-                </Select>
-              </label>
-              {sezione.items.length > 0 && (
-                <>
-                  <button type="button" style={{ ...bottone, padding: '3px 8px' }} onClick={() => larghezzaInBlocco(iSez, 'half')}>
-                    {t('pages.catalogForms.builder.allHalf')}
-                  </button>
-                  <button type="button" style={{ ...bottone, padding: '3px 8px' }} onClick={() => larghezzaInBlocco(iSez, 'full')}>
-                    {t('pages.catalogForms.builder.allFull')}
-                  </button>
-                </>
-              )}
-            </div>
-
-            {sezione.items.length === 0 && (
-              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 10px' }}>
-                {t('pages.catalogForms.builder.sectionEmpty')}
-              </p>
             )}
-
-            {(() => {
-            const righe = sezione.items.map((item, iVoce) => {
-              const campo = perNome.get(item.field)
-              const senzaRisposta = campo && (FORM_FIELD_TYPES_WITHOUT_ANSWER as readonly string[]).includes(campo.fieldType)
-              return (
-                <div
-                  key={item.field}
-                  /* Cadere SU una voce la inserisce PRIMA: è come si legge un
-                     elenco, e senza un bersaglio per riga si potrebbe solo
-                     accodare in fondo alla sezione. */
-                  data-drop={`item-${String(iSez)}-${String(iVoce)}`}
-                  style={{
-                    borderTop: bersaglio === `item-${String(iSez)}-${String(iVoce)}` ? '2px solid var(--color-brand)' : `1px solid ${colors.slateBg}`,
-                    padding: '10px 0',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <Maniglia
-                      etichetta={t('pages.catalogForms.builder.moveField', { field: campo?.label ?? item.field })}
-                      onAfferra={(e) => { trascinamento.afferra(e, { tipo: 'item', sezione: iSez, voce: iVoce }, campo?.label ?? item.field) }}
-                      onSu={() => sostituisciSezione(iSez, { ...sezione, items: scambia(sezione.items, iVoce, Math.max(0, iVoce - 1)) })}
-                      onGiu={() => sostituisciSezione(iSez, { ...sezione, items: scambia(sezione.items, iVoce, Math.min(sezione.items.length - 1, iVoce + 1)) })}
-                    />
-                    <strong style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
-                      {campo?.label ?? item.field}
-                    </strong>
-                    <span style={{ fontSize: 'var(--font-size-table)', fontFamily: 'var(--font-mono)', color: 'var(--color-slate-light)' }}>
-                      {item.field} · {t(`pages.catalogForms.fieldType.${campo?.fieldType ?? 'text'}`)}
-                    </span>
-                    <span style={{ marginLeft: 'auto', display: 'flex', gap: 2 }}>
-                      <button type="button" aria-label={t('pages.catalogForms.builder.removeField')}
-                        onClick={() => sostituisciSezione(iSez, { ...sezione, items: sezione.items.filter((_, j) => j !== iVoce) })}
-                        style={{ ...iconaAzione, color: 'var(--color-danger)' }}>
-                        <Trash2 size={14} />
-                      </button>
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
-                    {/* Una nota non porta risposta: non può essere obbligatoria (l'API lo rifiuta). */}
-                    {!senzaRisposta && (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <input type="checkbox" checked={item.required ?? campo?.required ?? false}
-                          onChange={(e) => sostituisciVoce(iSez, iVoce, { ...item, required: e.target.checked })} />
-                        {t('pages.catalogForms.builder.required')}
-                      </label>
-                    )}
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      {/* La spunta mostra la larghezza VERA: se la sezione è a
-                          due colonne, un campo che non dice niente è già a
-                          metà — e vederla spenta sarebbe una bugia. */}
-                      <input type="checkbox" checked={larghezzaEffettiva(sezione, item) === 'half'}
-                        onChange={(e) => sostituisciVoce(iSez, iVoce, { ...item, width: e.target.checked ? 'half' : 'full' })} />
-                      {t('pages.catalogForms.builder.halfWidth')}
-                    </label>
-                    {campo && isFormReferenceType(campo.fieldType) ? (
-                      <span style={{ color: 'var(--color-slate-light)' }} title={t('pages.catalogForms.builder.referenceStaffOnlyWhy')}>
-                        {t('pages.catalogForms.builder.referenceStaffOnly')}
-                      </span>
-                    ) : (
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <input type="checkbox" checked={item.endUser !== false}
-                          onChange={(e) => sostituisciVoce(iSez, iVoce, { ...item, endUser: e.target.checked })} />
-                        {t('pages.catalogForms.builder.endUser')}
-                      </label>
-                    )}
-                  </div>
-
-                  <EditorCondizione
-                    condizione={item.visibleWhen}
-                    soggetti={soggettiCondizione.filter((n) => n !== item.field)}
-                    etichettaDi={(n) => perNome.get(n)?.label ?? n}
-                    campoDi={(n) => perNome.get(n)}
-                    onChange={(c) => sostituisciVoce(iSez, iVoce, c ? { ...item, visibleWhen: c } : omettiCondizione(item))}
-                  />
-                </div>
-              )
-            })
-            // L'editor del campo nuovo si infila ESATTAMENTE nel punto in cui
-            // il tipo è caduto: è lì che il campo finirà.
-            return righe
-            })()}
-
-            {(trascinato?.tipo === 'palette' || trascinato?.tipo === 'newField') && (
-              <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-brand)', margin: '8px 0 0' }}>
-                {t('pages.catalogForms.builder.dropHere')}
-              </p>
-            )}
-          </div>
-        ))}
-
-        <button type="button" style={{ ...bottone, display: voceId === '' ? 'none' : undefined }}
-          onClick={() => cambia((d) => ({ ...d, sections: [...d.sections, { id: idSezione(d.sections.map((s) => s.id)), title: {}, items: [] }] }))}>
-          <Plus size={14} /> {t('pages.catalogForms.builder.addSection')}
-        </button>
-
-        {libreria.length === 0 && (
-          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 12 }}>
-            {t('pages.catalogForms.builder.libraryEmpty')}
-          </p>
-        )}
-      </div>
-
-      {/* ── A destra: i campi da trascinare, oppure il modulo vero ──────── */}
-      <div>
-        {/*
-          DUE SCHEDE e non due pannelli impilati: mentre si costruisce si
-          guarda la palette, mentre si controlla si guarda l'anteprima, e
-          tenerle entrambe a metà altezza avrebbe reso scomode tutte e due.
-        */}
-        <div role="tablist" aria-label={t('pages.catalogForms.builder.rightPanel')}
-          style={{ display: 'flex', gap: 4, marginBottom: 12, borderBottom: `1px solid ${colors.border}` }}>
-          {(['fields', 'preview'] as const).map((scheda) => (
-            <button
-              key={scheda}
-              type="button"
-              role="tab"
-              aria-selected={schedaDestra === scheda}
-              onClick={() => setSchedaDestra(scheda)}
-              style={{
-                border: 'none', background: 'none', cursor: 'pointer', padding: '7px 12px',
-                fontSize: 'var(--font-size-body)', fontWeight: schedaDestra === scheda ? fontWeight.medium : 400,
-                color: schedaDestra === scheda ? 'var(--color-brand)' : 'var(--color-slate)',
-                borderBottom: `2px solid ${schedaDestra === scheda ? 'var(--color-brand)' : 'transparent'}`,
-                marginBottom: -1,
-              }}
-            >
-              {scheda === 'fields' ? t('pages.catalogForms.builder.paletteTab') : t('pages.catalogForms.builder.preview')}
-            </button>
-          ))}
-        </div>
-
-        {schedaDestra === 'fields' ? (
-          <div>
-            <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '0 0 12px' }}>
-              {t('pages.catalogForms.builder.paletteHelp')}
-            </p>
-            {disponibili.length === 0 ? (
-              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
-                {libreria.length === 0 ? t('pages.catalogForms.builder.libraryEmpty') : t('pages.catalogForms.builder.paletteEmpty')}
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {disponibili.map((f) => {
-                  const dove = bozza.sections[Math.min(sezioneCorrente, bozza.sections.length - 1)]
-                  const titoloDove = dove ? (localizedText(dove.title, lingua, '') || dove.id) : ''
-                  return (
-                    /*
-                      LA MANIGLIA TRASCINA, IL «+» AGGIUNGE (18 set 2026).
-                      Due gesti separati: il trascinamento per il dito e il
-                      mouse, il bottone per la tastiera — con l'etichetta che
-                      dice DOVE finirà il campo, perché «aggiungi» senza «a
-                      cosa» è la domanda che ha fatto finire un campo sulla
-                      voce sbagliata.
-                    */
-                    <div
-                      key={f.name}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        border: `1px solid ${colors.border}`, borderRadius: 8, background: colors.white,
-                        padding: '8px 10px',
-                      }}
-                    >
-                      {/*
-                        SI TRASCINA DALLA MANIGLIA, non da tutta la riga: si
-                        afferra il puntino, com'è l'abitudine, e il testo resta
-                        selezionabile. Il «+» accanto fa la stessa cosa con un
-                        clic o con Invio — due gesti, due bersagli distinti,
-                        nessun elemento che è insieme bottone e oggetto da
-                        trascinare.
-                      */}
-                      <button
-                        type="button"
-                        /* Fuori dal giro dei tab di proposito: la strada da
-                           tastiera e il «+» qui accanto, che dice anche DOVE
-                           finisce il campo. Questa e la presa per il dito. */
-                        tabIndex={-1}
-                        aria-label={t('pages.catalogForms.builder.dragField', { field: f.label })}
-                        title={t('pages.catalogForms.builder.dragField', { field: f.label })}
-                        onPointerDown={(e) => { trascinamento.afferra(e, { tipo: 'palette', campo: f.name }, f.label) }}
-                        onTouchStart={(e) => { trascinamento.afferra(e, { tipo: 'palette', campo: f.name }, f.label) }}
-                        className="og-grip"
-                        style={{
-                          display: 'flex', alignItems: 'center', color: 'var(--color-slate-light)',
-                          flex: '0 0 auto', cursor: 'grab', background: 'none', border: 'none', padding: 0,
-                        }}
-                      >
-                        <GripVertical size={14} />
-                      </button>
-                      <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', fontWeight: fontWeight.medium }}>{f.label}</span>
-                      <span style={{ marginLeft: 'auto', fontSize: 'var(--font-size-table)', fontFamily: 'var(--font-mono)', color: 'var(--color-slate-light)' }}>
-                        {t(`pages.catalogForms.fieldType.${f.fieldType}`)}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={dove ? t('pages.catalogForms.builder.addToSection', { field: f.label, section: titoloDove }) : f.label}
-                        title={dove ? t('pages.catalogForms.builder.addToSection', { field: f.label, section: titoloDove }) : ''}
-                        disabled={!dove}
-                        onClick={() => { if (dove) aggiungiCampo(Math.min(sezioneCorrente, bozza.sections.length - 1), f.name) }}
-                        style={{ ...iconaAzione, color: dove ? 'var(--color-brand)' : 'var(--color-slate-light)', cursor: dove ? 'pointer' : 'not-allowed' }}
-                      >
-                        <Plus size={15} />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {/*
-              I TIPI DI CAMPO (18 set 2026).
-
-              Sopra ci sono i campi che ESISTONO: si riusano, e riusarli è la
-              cosa giusta — un campo è una proprietà del ticket, e lo stesso
-              «Centro di costo» su due moduli deve essere lo stesso campo.
-              Ma chi costruisce un modulo cerca prima di tutto i mattoni
-              classici — una data, un sì/no, una tendina, un riferimento — e
-              qui non c'erano: per averli bisognava sapere che esiste un'altra
-              scheda, «Libreria dei campi», e andarci prima. Chiesto dal
-              proprietario esattamente così: «perché non vedo quelli base?».
-
-              Si trascinano come gli altri; il campo però nasce solo dopo aver
-              scritto l'etichetta, nell'editor che compare nel punto in cui è
-              caduto.
-            */}
-            <div style={{ marginTop: 18 }}>
-              <div style={{ fontSize: 'var(--font-size-label)', fontWeight: fontWeight.medium, color: 'var(--color-slate)', marginBottom: 4 }}>
-                {t('pages.catalogForms.builder.fieldTypes')}
-              </div>
-              <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '0 0 8px' }}>
-                {t('pages.catalogForms.builder.fieldTypesHelp')}
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {FORM_FIELD_TYPES.map((tipo) => {
-                  const dove = bozza.sections[Math.min(sezioneCorrente, bozza.sections.length - 1)]
-                  const etichettaTipo = t(`pages.catalogForms.fieldType.${tipo}`)
-                  return (
-                    <div
-                      key={tipo}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        border: `1px dashed ${colors.border}`, borderRadius: 8, background: colors.white,
-                        padding: '8px 10px',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        tabIndex={-1}
-                        aria-label={t('pages.catalogForms.builder.dragField', { field: etichettaTipo })}
-                        title={t('pages.catalogForms.builder.dragField', { field: etichettaTipo })}
-                        onPointerDown={(e) => { trascinamento.afferra(e, { tipo: 'newField', fieldType: tipo }, etichettaTipo) }}
-                        onTouchStart={(e) => { trascinamento.afferra(e, { tipo: 'newField', fieldType: tipo }, etichettaTipo) }}
-                        className="og-grip"
-                        style={{
-                          display: 'flex', alignItems: 'center', color: 'var(--color-slate-light)',
-                          flex: '0 0 auto', cursor: 'grab', background: 'none', border: 'none', padding: 0,
-                        }}
-                      >
-                        <GripVertical size={14} />
-                      </button>
-                      <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{etichettaTipo}</span>
-                      <button
-                        type="button"
-                        aria-label={t('pages.catalogForms.builder.addTypeToSection', { type: etichettaTipo })}
-                        title={t('pages.catalogForms.builder.addTypeToSection', { type: etichettaTipo })}
-                        disabled={!dove}
-                        onClick={() => {
-                          if (!dove) return
-                          setNuovoCampo({
-                            iSez: Math.min(sezioneCorrente, bozza.sections.length - 1),
-                            iVoce: null,
-                            bozza: { ...BOZZA_VUOTA, fieldType: tipo },
-                          })
-                        }}
-                        style={{ ...iconaAzione, marginLeft: 'auto', color: dove ? 'var(--color-brand)' : 'var(--color-slate-light)', cursor: dove ? 'pointer' : 'not-allowed' }}
-                      >
-                        <Plus size={15} />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-            {bozza.sections.length === 0 && voceId !== '' && (
-              <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 10 }}>
-                {t('pages.catalogForms.builder.addSectionFirst')}
-              </p>
-            )}
-          </div>
-        ) : (
-        <div>
-        <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '0 0 12px' }}>
-          {t('pages.catalogForms.builder.previewHelp')}
-        </p>
-        <div style={{ border: `1px solid ${colors.border}`, borderRadius: 10, padding: 16, background: colors.white }}>
-          <CatalogFormRenderer
-            definition={bozza}
-            fields={libreria}
-            answers={risposteAnteprima as FormAnswers}
-            onChange={(nome, valore) => setRisposteAnteprima((p) => ({ ...p, [nome]: valore }))}
-            language={lingua}
-            requiredLabel={t('forms.fieldRequired')}
-            emptyChoiceLabel={t('common.select')}
-            yesLabel={t('common.yes')}
-            noLabel={t('common.no')}
           />
-        </div>
-        </div>
-        )}
-      </div>
 
-      {/* L'ombra che segue il dito: sta qui, fuori dalle due colonne, perché
-          è `position: fixed` e non appartiene a nessuna delle due. */}
+          <button type="button" style={{ ...bottone, marginTop: 14 }}
+            onClick={() => cambia((d) => ({ ...d, sections: [...d.sections, { id: idSezione(d.sections.map((s) => s.id)), title: {}, items: [] }] }))}>
+            <Plus size={14} /> {t('pages.catalogForms.builder.addSection')}
+          </button>
+        </>
+      )}
+
+      {voceId !== '' && vista === 'preview' && (
+        <div>
+          <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '0 0 12px' }}>
+            {t('pages.catalogForms.builder.previewHelp')}
+          </p>
+          <div style={{ border: `1px solid ${colors.border}`, borderRadius: 10, padding: 16, background: colors.white }}>
+            <CatalogFormRenderer
+              definition={bozza}
+              fields={libreria}
+              answers={risposteAnteprima as FormAnswers}
+              onChange={(nome, valore) => setRisposteAnteprima((p) => ({ ...p, [nome]: valore }))}
+              language={lingua}
+              requiredLabel={t('forms.fieldRequired')}
+              emptyChoiceLabel={t('common.select')}
+              yesLabel={t('common.yes')}
+              noLabel={t('common.no')}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* L'ombra che segue il dito: `position: fixed`, quindi non appartiene a
+          nessun pezzo del layout. */}
       {trascinamento.posizione && (
         <OmbraTrascinata etichetta={trascinamento.etichetta} posizione={trascinamento.posizione} />
       )}
 
       {modaleNuovoCampo()}
+      {modaleProprieta()}
     </div>
   )
 }
