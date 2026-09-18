@@ -2016,8 +2016,10 @@
       "withoutDates_other": "{{count}} piani senza una data",
       "noSteps": "nessun passo compilato",
       "unusableDates": "date non utilizzabili",
-      "ganttTitle": "Il piano nel tempo",
-      "ganttTooShort": "{{when}} — troppo breve per disegnarla in scala: la barra è allargata per farsi vedere."
+      "ganttTooShort": "{{when}} — troppo breve per disegnarla in scala: la barra è allargata per farsi vedere.",
+      "views": "Come guardare il piano",
+      "tabList": "Elenco",
+      "tabGantt": "Gantt"
     },
     "assistant": {
       "placeholder": "Chiedi qualcosa sul tuo ambiente...",

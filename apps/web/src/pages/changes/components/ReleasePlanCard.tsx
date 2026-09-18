@@ -9,6 +9,7 @@
  * Si popola task per task: ogni piano compilato aggiunge le sue voci al posto
  * giusto nella cronologia, senza aspettare gli altri.
  */
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -76,10 +77,6 @@ function GanttDelPiano({ voci }: { voci: readonly VoceDiPiano[] }) {
 
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', marginBottom: 6 }}>
-        {t('pages.releasePlan.ganttTitle')}
-      </div>
-
       {/* Le tacche: senza, un Gantt dice «più lungo» ma non «quando». */}
       <div style={{ position: 'relative', height: 16, marginLeft: 150 }}>
         {tacche.map((tacca) => (
@@ -155,6 +152,18 @@ function GanttDelPiano({ voci }: { voci: readonly VoceDiPiano[] }) {
 export function ReleasePlanCard({ affected }: { affected: readonly AffectedCI[] }) {
   const { t } = useTranslation()
   const r = riepilogoRilascio(affected)
+  /*
+   * DUE VISTE DELLO STESSO PIANO, in due schede (18 set 2026).
+   *
+   * L'elenco porta i dettagli — il codice del task, il passo — e il Gantt
+   * porta la forma: durate, sovrapposizioni, buchi. Impilarli faceva scorrere
+   * per arrivare alla tabella, e il diagramma non è un'intestazione della
+   * tabella: è un altro modo di guardare le stesse righe.
+   *
+   * Si apre sull'ELENCO, che è quello che c'era: chi tornava qui per leggere
+   * un codice di task non deve cambiare scheda per ritrovarlo.
+   */
+  const [vista, setVista] = useState<'list' | 'gantt'>('list')
 
   // Nessuna finestra e nessun task chiuso: non c'è ancora niente da
   // riepilogare, e una sezione vuota si legge come un piano che non esiste
@@ -187,9 +196,33 @@ export function ReleasePlanCard({ affected }: { affected: readonly AffectedCI[] 
         </Riquadro>
       </div>
 
-      {r.voci.length > 0 && <GanttDelPiano voci={r.voci} />}
-
       {r.voci.length > 0 && (
+        <div role="tablist" aria-label={t('pages.releasePlan.views')}
+          style={{ display: 'flex', gap: 4, marginBottom: 12, borderBottom: '1px solid var(--color-border-light)' }}>
+          {(['list', 'gantt'] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={vista === v}
+              onClick={() => setVista(v)}
+              style={{
+                border: 'none', background: 'none', cursor: 'pointer', padding: '6px 12px',
+                fontSize: 'var(--font-size-body)', fontWeight: vista === v ? 600 : 400,
+                color: vista === v ? 'var(--color-brand)' : 'var(--color-slate)',
+                borderBottom: `2px solid ${vista === v ? 'var(--color-brand)' : 'transparent'}`,
+                marginBottom: -1,
+              }}
+            >
+              {t(v === 'list' ? 'pages.releasePlan.tabList' : 'pages.releasePlan.tabGantt')}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {r.voci.length > 0 && vista === 'gantt' && <GanttDelPiano voci={r.voci} />}
+
+      {r.voci.length > 0 && vista === 'list' && (
         <div className="og-scroll-x">
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>

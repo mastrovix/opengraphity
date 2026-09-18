@@ -2016,8 +2016,10 @@
       "withoutDates_other": "{{count}} plans with no date",
       "noSteps": "no step filled in",
       "unusableDates": "dates cannot be used",
-      "ganttTitle": "The plan over time",
-      "ganttTooShort": "{{when}} — too short to draw to scale: the bar is widened to be visible."
+      "ganttTooShort": "{{when}} — too short to draw to scale: the bar is widened to be visible.",
+      "views": "How to look at the plan",
+      "tabList": "List",
+      "tabGantt": "Gantt"
     },
     "assistant": {
       "placeholder": "Ask something about your environment...",
