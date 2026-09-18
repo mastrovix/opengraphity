@@ -100,7 +100,15 @@ export function ProprietaVoce({
         <label style={spunta}>
           <input type="checkbox" checked={item.endUser !== false}
             onChange={(e) => { onItem({ ...item, endUser: e.target.checked }) }} style={{ marginTop: 3 }} />
-          <span>{t('pages.catalogForms.builder.endUser')}</span>
+          <span>
+            {t('pages.catalogForms.builder.endUser')}
+            {/* Cosa vuol dire spegnerla, scritto accanto: «visibile» senza «a
+                chi» si legge come «visibile o no», e chi la spegne scopre solo
+                pubblicando che dal portale quella domanda non si fa. */}
+            <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+              {t('pages.catalogForms.builder.endUserHelp')}
+            </span>
+          </span>
         </label>
       )}
 

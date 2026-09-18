@@ -49,6 +49,11 @@ export function catalogFormSDL(): string {
     """
     refTypes:         [String!]!
     """
+    Condiviso nella LIBRERIA: il campo compare fra quelli da riusare su altri
+    moduli. Assente o falso = resta del modulo in cui e nato.
+    """
+    shared:           Boolean!
+    """
     La FORMULA di un campo calcolato (ondata 6): JavaScript che riceve in
     \`input\` le risposte dei campi non calcolati e RESTITUISCE il valore
     (\`return input.costo * input.quantita\`). Assente = campo normale, lo
@@ -130,6 +135,11 @@ export function catalogFormSDL(): string {
     crede di aver ristretto la scelta.
     """
     refTypes:         [String!]
+    """
+    Condiviso nella LIBRERIA: il campo compare fra quelli da riusare su altri
+    moduli. Assente o falso = resta del modulo in cui e nato.
+    """
+    shared:           Boolean
   }
 
   """Nome e tipo non si cambiano: il nome è la proprietà sul ticket e cambiarlo perderebbe i dati già raccolti."""
@@ -154,6 +164,11 @@ export function catalogFormSDL(): string {
     crede di aver ristretto la scelta.
     """
     refTypes:         [String!]
+    """
+    Condiviso nella LIBRERIA: il campo compare fra quelli da riusare su altri
+    moduli. Assente o falso = resta del modulo in cui e nato.
+    """
+    shared:           Boolean
   }
 
   """

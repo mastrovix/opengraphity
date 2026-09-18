@@ -2374,7 +2374,7 @@
         "removeField": "Togli questo campo",
         "required": "Obbligatorio qui",
         "halfWidth": "Mezza larghezza",
-        "endUser": "Offrilo nel portale",
+        "endUser": "Visibile nella service request",
         "showWhen": "Mostralo quando",
         "matchAll": "tutte queste",
         "matchAny": "almeno una di queste",
@@ -2433,7 +2433,8 @@
         "newItemCategory": "Categoria",
         "newItemPriority": "Priorità",
         "newItemApproval": "Richiede un’approvazione",
-        "newItemCreate": "Crea e disegna"
+        "newItemCreate": "Crea e disegna",
+        "endUserHelp": "Lo vede chi apre la richiesta dal portale. Spento, il campo resta a chi la lavora dall’area di lavoro."
       },
       "library": {
         "intro": "Un campo si definisce una volta e lo riusano tutti i moduli. Il suo nome diventa la proprietà sul ticket — è il motivo per cui si può filtrare e riportare, e il motivo per cui non si può rinominare.",
@@ -2513,7 +2514,9 @@
             "conditional": "Obbligatorio solo quando un altro campo lo dice."
           }
         },
-        "vocabularyShipped": "di fabbrica"
+        "vocabularyShipped": "di fabbrica",
+        "shared": "Condividilo nella libreria",
+        "sharedHelp": "Spento, il campo resta di questo modulo. Acceso, compare fra i campi da riusare: la stessa domanda su più moduli è una colonna sola in ogni report."
       },
       "limits": {
         "title": "Tetti",
@@ -4354,8 +4357,8 @@
       "answersWithoutItem": "Sono arrivate risposte a un modulo senza voce di catalogo: un modulo appartiene a una voce.",
       "noForm": "La voce di catalogo «{{item}}» non ha un modulo: non c'è niente da rispondere.",
       "conditionFieldType": "Una condizione guarda il campo «{{field}}», che è di tipo {{fieldType}}: solo i campi salvati come proprietà possono essere il soggetto di una condizione.",
-      "referenceEndUser": "Il campo «{{field}}» è un riferimento ({{fieldType}}): non si può offrire nel portale, perché scegliere vuol dire cercare nella CMDB o nell'elenco del personale. Togli la spunta «Offrilo nel portale».",
-      "requiredNotForEndUser": "Il campo «{{field}}» è obbligatorio ma non è offerto nel portale: a chi apre la richiesta da lì la domanda non verrebbe mai fatta, e dopo nessuno può riempirlo. Offrilo nel portale, oppure non pretenderlo.",
+      "referenceEndUser": "Il campo «{{field}}» è un riferimento ({{fieldType}}): non può essere visibile nella service request, perché sceglierlo vuol dire cercare nella CMDB o nell’elenco del personale. Togli la spunta «Visibile nella service request».",
+      "requiredNotForEndUser": "Il campo «{{field}}» è obbligatorio ma non è visibile nella service request: a chi la apre dal portale la domanda non verrebbe mai fatta, e dopo nessuno può riempirlo. Rendilo visibile, oppure non pretenderlo.",
       "tooManyFields": "Questo modulo ha {{count}} campi: il tetto è {{max}}. Alza il tetto nella pagina dei moduli, oppure dividi la richiesta in due voci di catalogo.",
       "limitOutOfRange": "Un tetto è un numero intero fra {{min}} e {{max}}.",
       "answerComputed": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, non si può mandare.",

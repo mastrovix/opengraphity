@@ -336,7 +336,7 @@ export const catalogFormResolvers = {
             label: $label, labels: $labels, help: $help, helps: $helps,
             required: $required, vocabulary: $vocabulary, validation_script: $validationScript,
             in_list: $inList, formula: $formula, table_definition: $tableDefinition,
-            ref_types: $refTypes,
+            ref_types: $refTypes, shared: $shared,
             created_at: $now, updated_at: $now
           })`, {
           id: randomUUID(), tenantId: ctx.tenantId, name, fieldType, label,
@@ -350,6 +350,8 @@ export const catalogFormResolvers = {
           formula: assertFormulaPossibile(fieldType, input['formula']),
           tableDefinition: assertTabella(fieldType, input['tableDefinition'], label || name),
           refTypes: await assertTipiDiCI(write, ctx.tenantId, fieldType, input['refTypes']),
+          // Per difetto NON condiviso: un campo nasce del modulo in cui si crea.
+          shared: input['shared'] === true,
           now,
         })
         // La leva del metamodello: la cache della libreria (che serve alle
@@ -389,6 +391,7 @@ export const catalogFormResolvers = {
               f.formula = CASE WHEN $formulaSet THEN $formula ELSE f.formula END,
               f.table_definition = CASE WHEN $tableSet THEN $tableDefinition ELSE f.table_definition END,
               f.ref_types = CASE WHEN $refTypesSet THEN $refTypes ELSE f.ref_types END,
+              f.shared = CASE WHEN $sharedSet THEN $shared ELSE coalesce(f.shared, false) END,
               f.updated_at = $now`, {
           id: args.id, tenantId: ctx.tenantId,
           label: input['label'] == null ? null : String(input['label']).trim(),
@@ -407,6 +410,7 @@ export const catalogFormResolvers = {
           tableDefinition: 'tableDefinition' in input
             ? assertTabella(corrente.fieldType, input['tableDefinition'], corrente.label)
             : null,
+          sharedSet: 'shared' in input, shared: input['shared'] === true,
           refTypesSet: 'refTypes' in input,
           refTypes: 'refTypes' in input
             ? await assertTipiDiCI(write, ctx.tenantId, corrente.fieldType, input['refTypes'])

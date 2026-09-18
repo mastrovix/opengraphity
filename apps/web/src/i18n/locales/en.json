@@ -2374,7 +2374,7 @@
         "removeField": "Remove this field",
         "required": "Required here",
         "halfWidth": "Half width",
-        "endUser": "Offer it in the portal",
+        "endUser": "Visible in the service request",
         "showWhen": "Show it when",
         "matchAll": "all of these",
         "matchAny": "any of these",
@@ -2433,7 +2433,8 @@
         "newItemCategory": "Category",
         "newItemPriority": "Priority",
         "newItemApproval": "Needs an approval",
-        "newItemCreate": "Create and design"
+        "newItemCreate": "Create and design",
+        "endUserHelp": "Whoever opens the request from the portal sees it. Off, the field stays with whoever works the request from the workspace."
       },
       "library": {
         "intro": "A field is defined once and reused by every form. Its name becomes the property on the ticket, which is why it can be filtered and reported on — and why it cannot be renamed.",
@@ -2513,7 +2514,9 @@
             "conditional": "Required only when another field says so."
           }
         },
-        "vocabularyShipped": "factory"
+        "vocabularyShipped": "factory",
+        "shared": "Share it in the library",
+        "sharedHelp": "Off, the field belongs to this form only. On, it appears among the fields to reuse: the same question on several forms is a single column in every report."
       },
       "limits": {
         "title": "Limits",
@@ -4354,8 +4357,8 @@
       "answersWithoutItem": "Form answers were sent without a catalog item: a form belongs to a catalog item.",
       "noForm": "The catalog item \"{{item}}\" has no form: there is nothing to answer.",
       "conditionFieldType": "A condition looks at the field \"{{field}}\", which is a {{fieldType}}: only fields stored as a property can be a condition subject.",
-      "referenceEndUser": "The field \"{{field}}\" is a reference ({{fieldType}}): it cannot be offered in the portal, because choosing one means searching the CMDB or the staff list. Untick \"offer it in the portal\".",
-      "requiredNotForEndUser": "The field \"{{field}}\" is required but not offered in the portal: a request opened from there would never be asked for it, and nothing can fill it afterwards. Either offer it in the portal, or stop requiring it.",
+      "referenceEndUser": "The field «{{field}}» is a reference ({{fieldType}}): it cannot be visible in the service request, because choosing one means searching the CMDB or the staff list. Untick «Visible in the service request».",
+      "requiredNotForEndUser": "The field «{{field}}» is required but it is not visible in the service request: whoever opens it from the portal would never be asked, and nothing can fill it afterwards. Make it visible, or stop requiring it.",
       "tooManyFields": "This form has {{count}} fields: {{max}} is the limit. Raise the limit on the catalog forms page, or split the request into two catalog items.",
       "limitOutOfRange": "A limit must be a whole number between {{min}} and {{max}}.",
       "answerComputed": "The field \"{{field}}\" is computed: its value comes from its formula, it cannot be sent.",

@@ -89,6 +89,19 @@ export interface FormFieldDef {
    * c'entra.
    */
   refTypes: string[]
+  /**
+   * CONDIVISO NELLA LIBRERIA (18 set 2026).
+   *
+   * Un campo nasce DENTRO un modulo e, per difetto, resta suo: non compare
+   * fra i campi da riusare. Chi vuole la stessa domanda su più moduli lo dice
+   * — ed è la scelta del proprietario, che si era ritrovato nella barra degli
+   * attrezzi gli scarti di ogni prova fatta.
+   *
+   * Assente = non condiviso: i campi nati prima di questa scelta li sistema la
+   * migrazione, che marca condivisi quelli usati da più di un modulo — perché
+   * quelli lo sono davvero, comunque siano nati.
+   */
+  shared: boolean
   /** Se diventa una colonna nelle liste e nell'esportazione (ondata 4). */
   inList: boolean
   createdAt: string | null
@@ -101,7 +114,7 @@ const FIELD_RETURN = `
   f.id AS id, f.name AS name, f.field_type AS fieldType, f.label AS label, f.labels AS labels,
   f.help AS help, f.helps AS helps, f.required AS required, f.vocabulary AS vocabulary,
   f.validation_script AS validationScript, f.formula AS formula,
-  f.table_definition AS tableDefinition, f.in_list AS inList, f.ref_types AS refTypes,
+  f.table_definition AS tableDefinition, f.in_list AS inList, f.ref_types AS refTypes, f.shared AS shared,
   f.created_at AS createdAt, f.updated_at AS updatedAt`
 
 function mapField(row: Record<string, unknown>): FormFieldDef {
@@ -127,6 +140,7 @@ function mapField(row: Record<string, unknown>): FormFieldDef {
     // Assente sui campi nati prima: nessun filtro, cioè tutta la CMDB —
     // esattamente quello che facevano.
     refTypes: Array.isArray(row['refTypes']) ? (row['refTypes']).map((x) => String(x)) : [],
+    shared: row['shared'] === true,
     // Assente sui campi nati prima dell'ondata 4: fuori dalle liste, che è la
     // scelta prudente — una colonna in più la si chiede, non la si subisce.
     inList: row['inList'] === true,

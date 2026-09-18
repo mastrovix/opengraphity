@@ -45,6 +45,8 @@ export interface Bozza {
   inList: boolean
   /** I tipi di CI ammessi da un `ref_ci`: vuoto = tutta la CMDB. */
   refTypes: string[]
+  /** Condiviso nella libreria: si può riusare su altri moduli. */
+  shared: boolean
   formula: string
   validationScript: string
   /** Le colonne della tabella, gia lette: il JSON lo ricuce chi salva. */
@@ -53,7 +55,7 @@ export interface Bozza {
 
 export const BOZZA_VUOTA: Bozza = {
   name: '', fieldType: 'text', labelIt: '', labelEn: '', helpIt: '', helpEn: '',
-  required: false, vocabulary: '', inList: false, refTypes: [], formula: '', validationScript: '',
+  required: false, vocabulary: '', inList: false, refTypes: [], shared: false, formula: '', validationScript: '',
   tabella: emptyFormTable(),
 }
 
@@ -99,7 +101,7 @@ export function bozzaDaCampo(c: {
   helps: ReadonlyArray<{ language: string; label: string }>
   required: boolean; vocabulary: string | null; inList: boolean
   formula: string | null; validationScript: string | null
-  tableDefinition?: string | null; refTypes?: string[]
+  tableDefinition?: string | null; refTypes?: string[]; shared?: boolean
 }): Bozza {
   /* Il ripiego sull'etichetta BASE non è un vezzo: un campo può avere
      l'etichetta in una lingua sola, e mostrare vuoto farebbe cancellare
@@ -116,6 +118,7 @@ export function bozzaDaCampo(c: {
   return {
     name: c.name, fieldType: c.fieldType,
     refTypes: c.refTypes ?? [],
+    shared: c.shared === true,
     labelIt: perLingua(c.labels, 'it', c.label),
     labelEn: perLingua(c.labels, 'en', c.label),
     helpIt: perLingua(c.helps, 'it', c.help),
@@ -157,6 +160,7 @@ export function inputDaBozza(b: Bozza, tipoEffettivo: string) {
     // Solo un `ref_ci` li porta: mandarli su un altro tipo è un rifiuto
     // dell'API, e ha ragione lei (un filtro che non filtra inganna).
     refTypes: tipoEffettivo === 'ref_ci' ? b.refTypes : [],
+    shared: b.shared,
     help: b.helpIt.trim() || b.helpEn.trim() || null,
   }
 }
@@ -364,6 +368,26 @@ export function FieldEditor({
             </LabelledField>
           </div>
         )}
+
+        {/*
+          CONDIVISO NELLA LIBRERIA (18 set 2026).
+
+          Per difetto NO: un campo nasce dentro un modulo e resta suo. La
+          libreria e per le domande che si riusano — «Centro di costo» su
+          cinque moduli e una colonna sola nei report — e riempirla con gli
+          scarti di ogni prova la rende inutile, che e esattamente quello che
+          il proprietario ci ha trovato dentro.
+        */}
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 10, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
+          <input type="checkbox" checked={bozza.shared}
+            onChange={(e) => { onBozza({ ...bozza, shared: e.target.checked }) }} style={{ marginTop: 3 }} />
+          <span>
+            {t('pages.catalogForms.library.shared')}
+            <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+              {t('pages.catalogForms.library.sharedHelp')}
+            </span>
+          </span>
+        </label>
 
         {/* Le colonne, solo per una tabella (ondata 7). */}
         {isFormTableType(inModifica?.fieldType ?? bozza.fieldType) && (

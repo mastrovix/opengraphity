@@ -39,6 +39,8 @@ export interface FormFieldRow {
   inList: boolean
   /** I tipi di CI ammessi da un `ref_ci`: vuoto = tutta la CMDB. */
   refTypes?: string[]
+  /** Condiviso nella libreria: compare fra i campi da riusare. */
+  shared?: boolean
   /** La formula di un campo calcolato, e lo script che rifiuta un valore (ondata 6). */
   formula: string | null
   validationScript: string | null

@@ -832,7 +832,16 @@ export function FormBuilderPanel() {
     }))
 
   const usati = new Set(bozza.sections.flatMap((s) => s.items.map((i) => i.field)))
-  const disponibili = libreria.filter((f) => !usati.has(f.name))
+  /*
+   * NELLA BARRA SOLO I CAMPI CONDIVISI (18 set 2026).
+   *
+   * «Di default non devono andare in libreria, solo se lo scelgo.» Un campo
+   * nato dentro un modulo resta suo: continua a vivere nella scheda «Libreria
+   * dei campi», dove si modifica e si cancella, ma non si propone qui come
+   * mattone da riusare. Cosi questo elenco torna a voler dire qualcosa: sono
+   * le domande che il tenant ha deciso di fare piu volte.
+   */
+  const disponibili = libreria.filter((f) => f.shared === true && !usati.has(f.name))
   /**
    * I campi che una condizione può guardare: quelli già nel modulo che
    * diventano una PROPRIETÀ. Un allegato o un riferimento andrebbero letti dal
