@@ -359,6 +359,11 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // configura cerca «workflow» (deciso dal proprietario, 18 set 2026).
   'pages.catalogForms.tabs.forms',
   'pages.catalogForms.tabs.itinerary',
+  // «Service Request Designer» e il nome della pagina, nella stessa famiglia di
+  // «CI Type Designer» e «Workflow Designer» che stanno gia nella barra
+  // laterale: un nome, non una frase (scelto dal proprietario, 18 set 2026).
+  'sidebar.catalogForms',
+  'pages.catalogForms.title',
   // «Gantt» e il cognome di Henry Gantt: e il nome del diagramma, e i nomi
   // propri non si traducono (regola delle parole tecniche: resta inglese cio
   // che NOMINA). E l'etichetta della scheda, accanto a «Elenco»/«List», che

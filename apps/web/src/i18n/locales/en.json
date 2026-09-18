@@ -143,7 +143,7 @@
     "anomalyRules": "Anomaly rules",
     "roles": "Roles",
     "loginSecurity": "Login & passwords",
-    "catalogForms": "Catalog forms",
+    "catalogForms": "Service Request Designer",
     "changeCalendar": "Change calendar"
   },
   "pages": {
@@ -2329,8 +2329,8 @@
       "inactiveBadge": "INACTIVE"
     },
     "catalogForms": {
-      "title": "Catalog forms",
-      "intro": "Each catalog item can ask for what that request actually needs: sections, conditional fields, its own help text. The fields come from the library, so the same question is one column in every report.",
+      "title": "Service Request Designer",
+      "intro": "This is where a service request is designed: the FORM whoever opens it fills in — sections, conditional fields, help text — and the WORKFLOW the request follows. Fields come from the library, so the same question is a single column in every report.",
       "tabs": {
         "forms": "Designer",
         "library": "Field library",

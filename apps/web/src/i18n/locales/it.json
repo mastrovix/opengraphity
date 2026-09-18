@@ -143,7 +143,7 @@
     "anomalyRules": "Regole di anomalia",
     "roles": "Ruoli",
     "loginSecurity": "Accesso e password",
-    "catalogForms": "Moduli del catalogo",
+    "catalogForms": "Service Request Designer",
     "changeCalendar": "Calendario change"
   },
   "pages": {
@@ -2329,8 +2329,8 @@
       "inactiveBadge": "INATTIVA"
     },
     "catalogForms": {
-      "title": "Moduli del catalogo",
-      "intro": "Ogni voce di catalogo può chiedere quello che serve davvero a quella richiesta: sezioni, campi condizionali, il suo testo d'aiuto. I campi vengono dalla libreria, così la stessa domanda è una colonna sola in ogni report.",
+      "title": "Service Request Designer",
+      "intro": "Qui si disegna una richiesta di servizio: il MODULO che chi la apre compila — sezioni, campi condizionali, testo d’aiuto — e il WORKFLOW che la richiesta segue. I campi vengono dalla libreria, così la stessa domanda è una colonna sola in ogni report.",
       "tabs": {
         "forms": "Designer",
         "library": "Libreria dei campi",
