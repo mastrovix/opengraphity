@@ -2541,7 +2541,6 @@
         "item": "Catalog item",
         "category": "Category",
         "workflow": "Workflow",
-        "byCategory": "By category (as before)",
         "inactive": "off",
         "saved": "Itinerary saved",
         "savedAndActivated": "Itinerary assigned, and switched on: \"{{name}}\" was off, and with an itinerary switched off nobody could open that request.",
@@ -2557,7 +2556,9 @@
         "onlyCategory": "only for category «{{category}}»",
         "openInDesigner": "Open in the designer",
         "mappingTitle": "Which itinerary for each item",
-        "mappingHelp": "By default the item’s CATEGORY decides, which is what you have always had: under each dropdown you can read which itinerary would actually be used. Pick one only when that item must follow a road of its own."
+        "mappingHelp": "Leave «Automatic» and the item’s category decides: the itinerary declared for that category is used, and if none declares it, the one that covers every category. Under each dropdown you can read which itinerary it would use today. Pick a specific one only when this item must follow a different road.",
+        "byCategoryWith": "Automatic — from category «{{category}}»",
+        "byCategoryNone": "Automatic — the item has no category"
       }
     }
   },

@@ -248,8 +248,18 @@ export function ItineraryPanel() {
                 <td style={{ ...td, color: 'var(--color-slate-light)' }}>{v.category ?? '—'}</td>
                 <td style={td}>
                   <Select value={v.workflowDefinitionId ?? ''} onChange={(e) => void scegliIter(v, e.target.value)}>
-                    {/* Il vuoto NON è «nessun iter»: è «scegli per categoria», che è il comportamento di sempre. */}
-                    <option value="">{t('pages.catalogForms.itinerary.byCategory')}</option>
+                    {/*
+                      IL VUOTO NON È «NESSUN ITER»: è «lo decide la categoria»,
+                      che è il comportamento di sempre. E lo dice NOMINANDO la
+                      categoria di questa voce: «per categoria» da solo non
+                      spiega niente se non sai che un iter ne dichiara una — il
+                      proprietario l'ha detto guardando cinque righe uguali.
+                    */}
+                    <option value="">
+                      {v.category
+                        ? t('pages.catalogForms.itinerary.byCategoryWith', { category: v.category })
+                        : t('pages.catalogForms.itinerary.byCategoryNone')}
+                    </option>
                     {definizioni.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.name}{d.active ? '' : ` · ${t('pages.catalogForms.itinerary.inactive')}`}

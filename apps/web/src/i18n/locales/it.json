@@ -2541,7 +2541,6 @@
         "item": "Voce di catalogo",
         "category": "Categoria",
         "workflow": "Workflow",
-        "byCategory": "Per categoria (come prima)",
         "inactive": "spento",
         "saved": "Iter salvato",
         "savedAndActivated": "Iter assegnato, e acceso: «{{name}}» era spento, e con un iter spento nessuno avrebbe potuto aprire quella richiesta.",
@@ -2557,7 +2556,9 @@
         "onlyCategory": "solo per la categoria «{{category}}»",
         "openInDesigner": "Apri nel disegnatore",
         "mappingTitle": "Quale iter per ogni voce",
-        "mappingHelp": "Per difetto decide la CATEGORIA della voce, ed è il comportamento che hai sempre avuto: sotto ogni tendina c’è scritto quale iter verrebbe usato davvero. Scegline uno solo quando quella voce deve seguire una strada sua."
+        "mappingHelp": "Lasciando «Automatico» l’iter lo decide la categoria della voce: si usa quello dichiarato per quella categoria e, se nessuno la dichiara, quello che vale per tutte. Sotto ogni tendina c’è scritto quale iter userebbe oggi. Scegline uno preciso solo se questa voce deve seguire una strada diversa dalle altre.",
+        "byCategoryWith": "Automatico — dalla categoria «{{category}}»",
+        "byCategoryNone": "Automatico — la voce non ha categoria"
       }
     }
   },
