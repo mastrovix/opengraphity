@@ -12,6 +12,7 @@ import {
   myTasks,
   changeResolvesIncidents,
   changeResolvesProblems,
+  changeDeployConflicts,
 } from './queries.js'
 import {
   createChange,
@@ -103,5 +104,6 @@ export const changeResolvers = {
     resolvesIncidents: changeResolvesIncidents,
     resolvesProblems:  changeResolvesProblems,
     approvals:         changeApprovals,
+    deployConflicts:   changeDeployConflicts,
   },
 }

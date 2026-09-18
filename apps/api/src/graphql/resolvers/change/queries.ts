@@ -885,3 +885,15 @@ export async function changeCalendar(
     return { entries, unreadablePlans }
   })
 }
+
+/**
+ * Field resolver `Change.deployConflicts`.
+ *
+ * A parte e non dentro `getChange`: costa una lettura dei piani sui CI
+ * condivisi, e la paga solo chi apre il dettaglio — non ogni lista di change
+ * che chiede quattro campi.
+ */
+export async function changeDeployConflicts(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  const { deployConflictsForChange } = await import('../../../lib/changeDeployConflicts.js')
+  return withSession((session) => deployConflictsForChange(session, ctx.tenantId, parent.id))
+}

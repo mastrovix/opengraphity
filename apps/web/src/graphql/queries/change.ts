@@ -50,6 +50,12 @@ export const GET_CHANGE = gql`
       resolvesIncidents { id number title status severity removable }
       resolvesProblems { id number title status priority removable }
       approvals { kind teamId teamName status approvedByName approvedAt canApprove onBehalf }
+      # Release conflicts: other changes deploying on the same CI in an
+      # overlapping window. Validation windows are not compared.
+      deployConflicts {
+        changeId code title currentStep ciId ciName
+        mine { start end } theirs { start end } overlap { start end }
+      }
       suppressedEvents { ...EventRowFields }
       suppressedEventCount
       customFields { ...CustomFieldValueFields }

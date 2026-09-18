@@ -1645,7 +1645,15 @@
       "taskFunctional": "Functional",
       "taskTechnical": "Technical",
       "taskPlanning": "Planning",
-      "notesField": "Notes"
+      "notesField": "Notes",
+      "deployConflicts": {
+        "title": "Release conflicts",
+        "none": "No release conflict: no other change deploys on these CIs in an overlapping window.",
+        "lede": "These changes deploy on the same CI while this one is releasing. Validation windows are not compared: two tests on the same CI do not disturb each other, two releases do.",
+        "mine": "This change",
+        "theirs": "The other change",
+        "overlap": "Overlap"
+      }
     },
     "changeCalendar": {
       "title": "Change calendar",

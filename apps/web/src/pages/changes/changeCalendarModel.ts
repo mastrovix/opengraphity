@@ -24,6 +24,8 @@
  */
 
 /** Una voce come arriva dall'API: una finestra, col suo tipo, task e CI. */
+import { finestreSiSovrappongono, intervalliSiSovrappongono } from '@opengraphity/types'
+
 export interface VoceCalendario {
   changeId:    string
   code:        string
@@ -95,10 +97,14 @@ export function scorri(modo: Modo, riferimento: Date, passi: number): Date {
     : new Date(riferimento.getFullYear(), riferimento.getMonth() + passi, 1)
 }
 
-/** Due intervalli si sovrappongono se si toccano per più di un istante. */
-function siSovrappongono(aDa: number, aA: number, bDa: number, bA: number): boolean {
-  return aDa < bA && bDa < aA
-}
+/*
+ * La regola della sovrapposizione è in `@opengraphity/types`
+ * (`finestreSiSovrappongono`), perché la usa anche l'API per i conflitti sul
+ * DETTAGLIO di una change (18 set 2026): due copie avrebbero risposto in modo
+ * diverso alla domanda «un rilascio che finisce nell'istante in cui l'altro
+ * comincia è un conflitto?». Qui resta la parte che riguarda il calendario:
+ * quale livello, e su quali voci.
+ */
 
 /**
  * Segna ogni voce con la sua sovrapposizione. Si confrontano solo i RILASCI, e
@@ -119,7 +125,7 @@ export function conSovrapposizioni(voci: readonly VoceCalendario[]): VoceSegnata
     for (let y = x + 1; y < rilasci.length; y++) {
       const a = rilasci[x]!, b = rilasci[y]!
       if (a.v.changeId === b.v.changeId) continue
-      if (!siSovrappongono(ms(a.v.start), ms(a.v.end), ms(b.v.start), ms(b.v.end))) continue
+      if (!finestreSiSovrappongono({ start: a.v.start, end: a.v.end }, { start: b.v.start, end: b.v.end })) continue
       // Lo stesso CI è un conflitto, CI diversi un avviso. Il livello di una
       // voce è il PEGGIORE dei suoi: una change che urta due volte, di cui una
       // sullo stesso CI, si legge come conflitto.
@@ -201,7 +207,7 @@ export function barreDellaSettimana(
       const da = Date.parse(v.start)
       const a  = Date.parse(v.end)
       if (Number.isNaN(da) || Number.isNaN(a) || a <= da) return null
-      if (!siSovrappongono(da, a, primo, ultimo)) return null
+      if (!intervalliSiSovrappongono(da, a, primo, ultimo)) return null
       /*
        * La prima e l'ultima colonna che la finestra tocca dentro la settimana.
        * `colonna` parte a -1 e non a 0: con lo zero non si distingue «tocca il
@@ -213,7 +219,7 @@ export function barreDellaSettimana(
       giorni.forEach((g, i) => {
         const gDa = g.getTime()
         const gA  = new Date(g.getFullYear(), g.getMonth(), g.getDate() + 1).getTime()
-        if (!siSovrappongono(da, a, gDa, gA)) return
+        if (!intervalliSiSovrappongono(da, a, gDa, gA)) return
         if (colonna === -1) colonna = i
         fine = i
       })

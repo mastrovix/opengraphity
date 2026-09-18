@@ -35,6 +35,38 @@ export function changeSDL(): string {
     # Valorizzato SOLO dal risultato di executeChangeTransition: azioni di step
     # (SLA, eventi, timer) fallite DOPO che la transizione è stata persistita.
     actionErrors:         [String!]
+    """
+    Le altre change che RILASCIANO su uno stesso CI in una finestra che si
+    sovrappone alla mia. Solo i deploy: due validazioni sullo stesso CI sono
+    due prove, due rilasci sono due mani sulla stessa macchina.
+
+    Campo risolto a parte: costa una lettura dei piani, e la paga solo la
+    pagina che la chiede. Vuoto = nessun conflitto, ed è una risposta —
+    non «non calcolato».
+    """
+    deployConflicts:      [ChangeDeployConflict!]!
+  }
+
+  """Due change che si incontrano sullo stesso CI mentre rilasciano."""
+  type ChangeDeployConflict {
+    changeId:    ID!
+    code:        String!
+    title:       String!
+    """Il passo in cui si trova l'altra change: dice quanto è imminente."""
+    currentStep: String
+    ciId:        ID!
+    ciName:      String!
+    """La finestra di rilascio di QUESTA change su quel CI."""
+    mine:        DeployWindowRange!
+    """Quella dell'altra."""
+    theirs:      DeployWindowRange!
+    """La parte in comune: le ore in cui si pestano i piedi."""
+    overlap:     DeployWindowRange!
+  }
+
+  type DeployWindowRange {
+    start: String!
+    end:   String!
   }
 
   # Un requisito di approvazione della change.

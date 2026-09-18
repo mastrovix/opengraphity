@@ -1645,7 +1645,15 @@
       "taskFunctional": "Funzionale",
       "taskTechnical": "Tecnico",
       "taskPlanning": "Pianificazione",
-      "notesField": "Note"
+      "notesField": "Note",
+      "deployConflicts": {
+        "title": "Conflitti di rilascio",
+        "none": "Nessun conflitto di rilascio: nessun’altra change rilascia su questi CI in una finestra sovrapposta.",
+        "lede": "Queste change rilasciano sullo stesso CI mentre questa è in rilascio. Le finestre di validazione non si confrontano: due prove sullo stesso CI non si disturbano, due rilasci sì.",
+        "mine": "Questa change",
+        "theirs": "L’altra change",
+        "overlap": "Sovrapposizione"
+      }
     },
     "changeCalendar": {
       "title": "Calendario delle change",

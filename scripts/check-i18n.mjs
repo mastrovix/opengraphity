@@ -707,11 +707,25 @@ const RE_TESTO_JSX = new RegExp('>([^<>{}]{4,}?)</', 'g')
 const RE_TESTO_JSX_APERTO = /(?<![=\-])>([^<>{}]*[A-Za-z][^<>{}]*?)(?=\{|<[A-Za-z/])/g
 /** Un letterale scelto da una condizione e messo come figlio JSX: `>{ok ? 'enabled' : 'disabled'}<`. */
 const RE_TERNARIO_JSX = />\s*\{[^{}\n]*\?\s*'([^']*)'\s*:\s*'([^']*)'\s*\}\s*</g
+/**
+ * LE PAROLE CHE NESSUN NODO DI TESTO CONTIENE: se compaiono, si e catturato
+ * codice e non prosa.
+ *
+ * Costante e non ripetuta, perche serve a DUE controlli: la prosa senza `t()`
+ * (`testoAperto`) e l'italiano cablato (i due rami JSX di (e2)). Il secondo
+ * non la usava, e con nomi di variabile ITALIANI — `conflitti`, `gruppi`,
+ * `righe` — un tratto di codice a cavallo di due righe veniva segnalato come
+ * testo italiano a schermo (18 set 2026). Il guardiano lo sapeva gia e lo
+ * diceva in un commento: «Il nome della variabile e italiano, il testo a
+ * schermo no».
+ */
+const RE_PAROLE_DI_CODICE = /\b(const|return|if|let|for|while|await|async|function|export|import|type|interface|Record|Promise|Array|Partial|Pick|Omit|Set|Map|typeof|as|extends|new|of|null|undefined)\b/
+
 /** Il pezzo di testo di `RE_TESTO_JSX_APERTO`, ripulito; `null` se e codice. */
 function testoAperto(grezzo) {
   const t = grezzo.trim()
   if (/[=;"'`()\[\]?]|&&|\|\||\n/.test(t)) return null
-  if (/\b(const|return|if|let|await|async|function|export|import|type|interface|Record|Promise|Array|Partial|Pick|Omit|Set|Map|typeof|as|extends)\b/.test(t)) return null
+  if (RE_PAROLE_DI_CODICE.test(t)) return null
   return t.replace(/^[·•|,–—-]+\s*/, '').replace(/[\s:]+$/, '')
 }
 
@@ -1094,6 +1108,9 @@ function prosa(v) {
     for (const m of forseJSX ? pulito.matchAll(RE_TESTO_PRIMA_DI_ESPRESSIONE) : []) {
       const testo = m[1]
       if (/[="']/.test(testo)) continue
+      // Codice, non un nodo di testo: i nomi di variabile italiani di questo
+      // prodotto lo facevano sembrare prosa.
+      if (RE_PAROLE_DI_CODICE.test(testo)) continue
       if (italiano(testo)) segnala(lineOf(pulito, m.index), `testo JSX «${testo.trim().slice(0, 80)}»`)
     }
     for (const m of forseJSX ? pulito.matchAll(RE_TESTO_CON_ESPRESSIONI) : []) {
@@ -1108,6 +1125,7 @@ function prosa(v) {
         testo a schermo no.
       */
       if (/[{}]/.test(testo)) continue
+      if (RE_PAROLE_DI_CODICE.test(testo)) continue
       if (italiano(testo)) segnala(lineOf(pulito, m.index), `testo JSX «${testo.trim().slice(0, 80)}»`)
     }
   }

@@ -59,6 +59,32 @@ export interface ChangeData {
   suppressedEvents?:    EventRow[]
   /** Quanti sono in TUTTO: `suppressedEvents` e paginato (revisione totale · G-EVT-11). */
   suppressedEventCount?: number
+  /**
+   * Le altre change che RILASCIANO su uno stesso CI in una finestra
+   * sovrapposta (18 set 2026). Lista vuota = nessun conflitto, ed è una
+   * risposta: la sezione lo dice invece di non comparire.
+   */
+  deployConflicts?:     ChangeDeployConflict[]
+}
+
+/** Una finestra del piano: due istanti ISO. */
+export interface DeployWindowRange {
+  start: string
+  end:   string
+}
+
+export interface ChangeDeployConflict {
+  changeId:    string
+  code:        string
+  title:       string
+  /** Il passo dell'altra change: dice quanto è imminente. */
+  currentStep: string | null
+  ciId:        string
+  ciName:      string
+  /** La finestra di QUESTA change, quella dell'altra, e la parte in comune. */
+  mine:    DeployWindowRange
+  theirs:  DeployWindowRange
+  overlap: DeployWindowRange
 }
 
 export interface ChangeApproval {

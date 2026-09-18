@@ -58,6 +58,7 @@ import { fmtDate } from './components/shared'
 import { formatDateTime } from '@/lib/datetime'
 import { UnifiedLinkedTickets } from '@/components/UnifiedLinkedTickets'
 import { SuppressedAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
+import { DeployConflictsSection } from './components/DeployConflictsSection'
 import { colors, palette } from '@/lib/tokens'
 import { withLocalizedLabel, localizedLabel } from '@/lib/localizedLabel'
 import { showError } from '@/lib/showError'
@@ -375,6 +376,12 @@ export function ChangeDetailPage() {
           },
         ]}
       />
+
+      {/* I conflitti di RILASCIO: altre change che deployano sugli stessi CI in
+          una finestra sovrapposta (18 set 2026). Sta accanto al piano e sopra
+          gli allarmi silenziati, perché è la domanda che si fa prima di
+          approvare — non un dettaglio da cercare. */}
+      <DeployConflictsSection conflitti={change.deployConflicts ?? []} />
 
       {/* Allarmi silenziati dalla finestra di rilascio (Event Management, ondata 3) */}
       <SuppressedAlarmsSection events={change.suppressedEvents ?? []} total={change.suppressedEventCount} changeId={change.id} />
