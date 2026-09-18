@@ -9,6 +9,7 @@
  * `request.read` o `portal.read`, perché lo legge chi apre una richiesta.
  */
 import { randomUUID } from 'crypto'
+import type { Session } from 'neo4j-driver'
 import { GraphQLError } from 'graphql'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import {
@@ -135,6 +136,51 @@ function assertColonnaPossibile(fieldType: string, inList: boolean): boolean {
 }
 
 /** Il vocabolario deve esistere per i tipi che pescano le scelte da lì, e solo per quelli. */
+/**
+ * I TIPI DI CI DI UN CAMPO `ref_ci` (18 set 2026).
+ *
+ * Il proprietario, davanti al modale: «un elemento del cmdb: dove setto la
+ * reference?». Non si poteva: la ricerca offriva OGNI CI del tenant, quindi
+ * «quale stampante?» proponeva anche i firewall.
+ *
+ * Due rifiuti, tutti e due fail-loud:
+ *  - un filtro su un campo che non e un riferimento a un CI: chi lo imposta
+ *    crederebbe di aver ristretto la scelta, e non e vero;
+ *  - un tipo di CI che non esiste (o rinominato): darebbe una ricerca che non
+ *    trova MAI niente, e chi compila non ha modo di capire perche.
+ * Vuoto resta «tutta la CMDB»: e quello che facevano tutti i campi finora.
+ */
+async function assertTipiDiCI(session: Session, tenantId: string, fieldType: string, refTypes: unknown): Promise<string[]> {
+  const lista = Array.isArray(refTypes) ? refTypes.map((x) => String(x).trim()).filter((x) => x !== '') : []
+  if (fieldType !== 'ref_ci') {
+    if (lista.length > 0) {
+      throw new ValidationError(`A ${fieldType} field takes no CI types: only ref_ci picks from the CMDB.`,
+        { key: 'errors.formField.refTypesNotAllowed', params: { fieldType } })
+    }
+    return []
+  }
+  if (lista.length === 0) return []
+  /*
+   * `:CITypeDefinition`, non `:CIType` — che non esiste: i tipi di CI stanno
+   * nel METAMODELLO, con lo scope `base` (spediti) o `tenant` (del cliente).
+   * Sbagliare nodo qui non dava una query vuota per caso: dava «questi tipi
+   * non esistono» su OGNI tipo, cioè un filtro impossibile da impostare
+   * (trovato provandolo nel browser, 18 set 2026).
+   * `tenant-ok`: i tipi `base` sono condivisi per definizione.
+   */
+  const noti = await runQuery<{ name: string }>(session, `
+    MATCH (t:CITypeDefinition)
+    WHERE t.scope = 'base' OR (t.scope = 'tenant' AND t.tenant_id = $tenantId)
+    RETURN t.name AS name`, { tenantId })
+  const insieme = new Set(noti.map((r) => String(r.name)))
+  const mancanti = lista.filter((x) => !insieme.has(x))
+  if (mancanti.length > 0) {
+    throw new ValidationError(`Unknown CI types: ${mancanti.join(', ')}.`,
+      { key: 'errors.formField.refTypesUnknown', params: { types: mancanti.join(', ') } })
+  }
+  return [...new Set(lista)]
+}
+
 async function assertVocabolario(tenantId: string, fieldType: string, vocabulary: string | null | undefined): Promise<string | null> {
   const serve = FORM_FIELD_TYPES_WITH_VOCABULARY.includes(fieldType as never)
   const nome = vocabulary == null || vocabulary.trim() === '' ? null : vocabulary.trim()
@@ -290,6 +336,7 @@ export const catalogFormResolvers = {
             label: $label, labels: $labels, help: $help, helps: $helps,
             required: $required, vocabulary: $vocabulary, validation_script: $validationScript,
             in_list: $inList, formula: $formula, table_definition: $tableDefinition,
+            ref_types: $refTypes,
             created_at: $now, updated_at: $now
           })`, {
           id: randomUUID(), tenantId: ctx.tenantId, name, fieldType, label,
@@ -302,6 +349,7 @@ export const catalogFormResolvers = {
           inList: assertColonnaPossibile(fieldType, input['inList'] === true),
           formula: assertFormulaPossibile(fieldType, input['formula']),
           tableDefinition: assertTabella(fieldType, input['tableDefinition'], label || name),
+          refTypes: await assertTipiDiCI(write, ctx.tenantId, fieldType, input['refTypes']),
           now,
         })
         // La leva del metamodello: la cache della libreria (che serve alle
@@ -340,6 +388,7 @@ export const catalogFormResolvers = {
               f.in_list = CASE WHEN $inListSet THEN $inList ELSE f.in_list END,
               f.formula = CASE WHEN $formulaSet THEN $formula ELSE f.formula END,
               f.table_definition = CASE WHEN $tableSet THEN $tableDefinition ELSE f.table_definition END,
+              f.ref_types = CASE WHEN $refTypesSet THEN $refTypes ELSE f.ref_types END,
               f.updated_at = $now`, {
           id: args.id, tenantId: ctx.tenantId,
           label: input['label'] == null ? null : String(input['label']).trim(),
@@ -358,6 +407,10 @@ export const catalogFormResolvers = {
           tableDefinition: 'tableDefinition' in input
             ? assertTabella(corrente.fieldType, input['tableDefinition'], corrente.label)
             : null,
+          refTypesSet: 'refTypes' in input,
+          refTypes: 'refTypes' in input
+            ? await assertTipiDiCI(write, ctx.tenantId, corrente.fieldType, input['refTypes'])
+            : [],
           now: new Date().toISOString(),
         })
         invalidateSchema(ctx.tenantId)

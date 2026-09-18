@@ -21,6 +21,7 @@
  */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQuery } from '@apollo/client/react'
 import {
   canBeComputed, emptyFormTable, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY,
   FORM_FIELD_TYPES_WITH_VOCABULARY, isFormTableType, nomeDaEtichetta, type FormTableDefinition,
@@ -29,6 +30,7 @@ import { ScriptFields } from './ScriptFields'
 import { TableColumnsEditor } from './TableColumnsEditor'
 import { colors, fontWeight } from '@/lib/tokens'
 import { Input, Select, LabelledField } from '@/components/ui/FormControls'
+import { GET_CI_TYPES } from '@/graphql/queries'
 
 /** Il campo che si sta scrivendo. Le etichette sono due lingue fisse: it ed en. */
 export interface Bozza {
@@ -41,6 +43,8 @@ export interface Bozza {
   required: boolean
   vocabulary: string
   inList: boolean
+  /** I tipi di CI ammessi da un `ref_ci`: vuoto = tutta la CMDB. */
+  refTypes: string[]
   formula: string
   validationScript: string
   /** Le colonne della tabella, gia lette: il JSON lo ricuce chi salva. */
@@ -49,7 +53,7 @@ export interface Bozza {
 
 export const BOZZA_VUOTA: Bozza = {
   name: '', fieldType: 'text', labelIt: '', labelEn: '', helpIt: '', helpEn: '',
-  required: false, vocabulary: '', inList: false, formula: '', validationScript: '',
+  required: false, vocabulary: '', inList: false, refTypes: [], formula: '', validationScript: '',
   tabella: emptyFormTable(),
 }
 
@@ -83,6 +87,9 @@ export function inputDaBozza(b: Bozza, tipoEffettivo: string) {
     // dell'API, e ha ragione lei.
     tableDefinition: isFormTableType(tipoEffettivo) ? JSON.stringify(b.tabella) : null,
     vocabulary: b.vocabulary || null,
+    // Solo un `ref_ci` li porta: mandarli su un altro tipo è un rifiuto
+    // dell'API, e ha ragione lei (un filtro che non filtra inganna).
+    refTypes: tipoEffettivo === 'ref_ci' ? b.refTypes : [],
     help: b.helpIt.trim() || b.helpEn.trim() || null,
   }
 }
@@ -105,6 +112,13 @@ export function FieldEditor({
 }) {
   const { t } = useTranslation()
   const [nomeAMano, setNomeAMano] = useState(false)
+  /* I tipi di CI servono solo a un `ref_ci`: la query si salta per tutti gli
+     altri campi, che sono la maggioranza. */
+  const { data: tipiData } = useQuery<{ ciTypes: Array<{ name: string; label: string; active: boolean }> }>(GET_CI_TYPES, {
+    fetchPolicy: 'cache-first',
+    skip: (inModifica?.fieldType ?? bozza.fieldType) !== 'ref_ci',
+  })
+  const tipiDiCI = (tipiData?.ciTypes ?? []).filter((x) => x.active)
 
   /**
    * Scrivere l'etichetta propone il nome. Solo nel costruttore, solo su un
@@ -215,6 +229,50 @@ export function FieldEditor({
               </span>
             </span>
           </label>
+        )}
+
+        {/*
+          I TIPI DI CI di un riferimento alla CMDB (18 set 2026). Senza, la
+          ricerca offriva OGNI CI del tenant: «quale stampante?» proponeva
+          anche i firewall. Nessuna spunta = tutta la CMDB, che è quello che
+          facevano tutti i campi finora — quindi non cambia niente per chi non
+          entra qui.
+        */}
+        {(inModifica?.fieldType ?? bozza.fieldType) === 'ref_ci' && (
+          <div style={{ marginTop: 14 }}>
+            <LabelledField label={t('pages.catalogForms.library.refTypes')}>
+              <div style={{
+                display: 'flex', flexWrap: 'wrap', gap: '6px 16px', maxHeight: 160, overflowY: 'auto',
+                border: `1px solid ${colors.border}`, borderRadius: 8, padding: 10,
+              }}>
+                {tipiDiCI.length === 0 && (
+                  <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+                    {t('pages.catalogForms.library.refTypesNone')}
+                  </span>
+                )}
+                {tipiDiCI.map((tipo) => (
+                  <label key={tipo.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
+                    <input
+                      type="checkbox"
+                      checked={bozza.refTypes.includes(tipo.name)}
+                      onChange={(e) => {
+                        onBozza({
+                          ...bozza,
+                          refTypes: e.target.checked
+                            ? [...bozza.refTypes, tipo.name]
+                            : bozza.refTypes.filter((x) => x !== tipo.name),
+                        })
+                      }}
+                    />
+                    {tipo.label || tipo.name}
+                  </label>
+                ))}
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+                {t('pages.catalogForms.library.refTypesHelp')}
+              </p>
+            </LabelledField>
+          </div>
         )}
 
         {/* Le colonne, solo per una tabella (ondata 7). */}

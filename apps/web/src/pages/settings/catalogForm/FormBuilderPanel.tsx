@@ -625,6 +625,13 @@ export function FormBuilderPanel() {
       await rileggiLibreria()
       aggiungiCampo(nuovoCampo.iSez, nome, nuovoCampo.iVoce ?? undefined)
       setNuovoCampo(null)
+    } catch {
+      /*
+       * L'avviso lo mostra già il link degli errori di Apollo, tradotto: qui
+       * si prende il rifiuto solo per non lasciare una promessa non gestita, e
+       * si TIENE APERTO il modale — chi ha appena scritto dieci caselle deve
+       * correggere quello che non va, non ricominciare.
+       */
     } finally { setCreando(false) }
   }
 

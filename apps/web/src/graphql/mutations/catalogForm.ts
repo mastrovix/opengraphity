@@ -4,13 +4,13 @@ import { gql } from '@apollo/client'
 
 export const CREATE_FORM_FIELD = gql`
   mutation CreateFormField($input: CreateFormFieldInput!) {
-    createFormField(input: $input) { id name fieldType label required vocabulary help validationScript formula inList usedBy }
+    createFormField(input: $input) { id name fieldType label required vocabulary help validationScript formula inList refTypes usedBy }
   }
 `
 
 export const UPDATE_FORM_FIELD = gql`
   mutation UpdateFormField($id: ID!, $input: UpdateFormFieldInput!) {
-    updateFormField(id: $id, input: $input) { id name fieldType label required vocabulary help validationScript formula inList usedBy }
+    updateFormField(id: $id, input: $input) { id name fieldType label required vocabulary help validationScript formula inList refTypes usedBy }
   }
 `
 

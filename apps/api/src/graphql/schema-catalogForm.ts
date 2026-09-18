@@ -42,6 +42,13 @@ export function catalogFormSDL(): string {
     vocabulary:       String
     validationScript: String
     """
+    I tipi di CI fra cui si puo' scegliere, per un campo \`ref_ci\`. Vuoto o
+    assente = tutta la CMDB. Su un altro tipo di campo e' un errore: un filtro
+    che non filtra niente e' peggio di nessun filtro, perche' chi lo imposta
+    crede di aver ristretto la scelta.
+    """
+    refTypes:         [String!]!
+    """
     La FORMULA di un campo calcolato (ondata 6): JavaScript che riceve in
     \`input\` le risposte dei campi non calcolati e RESTITUISCE il valore
     (\`return input.costo * input.quantita\`). Assente = campo normale, lo
@@ -116,6 +123,13 @@ export function catalogFormSDL(): string {
     tableDefinition:  String
     """Colonna nelle liste: spento se assente."""
     inList:           Boolean
+    """
+    I tipi di CI fra cui si puo' scegliere, per un campo \`ref_ci\`. Vuoto o
+    assente = tutta la CMDB. Su un altro tipo di campo e' un errore: un filtro
+    che non filtra niente e' peggio di nessun filtro, perche' chi lo imposta
+    crede di aver ristretto la scelta.
+    """
+    refTypes:         [String!]
   }
 
   """Nome e tipo non si cambiano: il nome è la proprietà sul ticket e cambiarlo perderebbe i dati già raccolti."""
@@ -133,6 +147,13 @@ export function catalogFormSDL(): string {
     tableDefinition:  String
     """Colonna nelle liste."""
     inList:           Boolean
+    """
+    I tipi di CI fra cui si puo' scegliere, per un campo \`ref_ci\`. Vuoto o
+    assente = tutta la CMDB. Su un altro tipo di campo e' un errore: un filtro
+    che non filtra niente e' peggio di nessun filtro, perche' chi lo imposta
+    crede di aver ristretto la scelta.
+    """
+    refTypes:         [String!]
   }
 
   """

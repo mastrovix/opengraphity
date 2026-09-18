@@ -164,7 +164,7 @@ export const GET_PORTAL_CATALOG_FORM = gql`
       revision
       definition
       fields {
-        name fieldType label required vocabulary help formula
+        name fieldType label required vocabulary help formula refTypes
         labels { language label }
         helps { language label }
         options(language: $language) { value label }

@@ -50,6 +50,12 @@ export interface CatalogFormFieldView {
    * e lo ricalcola l'API al salvataggio, che è quello che conta.
    */
   formula?: string | null
+  /**
+   * I TIPI DI CI fra cui scegliere, per un `ref_ci` (18 set 2026). Vuoto o
+   * assente = tutta la CMDB. Chi cerca lo riceve col campo e filtra: senza,
+   * una domanda «quale stampante?» proponeva anche i firewall.
+   */
+  refTypes?: readonly string[]
 }
 
 /** Un file caricato su una bozza: lo stato è del chiamante, il renderer lo mostra. */
@@ -134,7 +140,13 @@ export interface CatalogFormRendererProps {
   /** I nodi scelti dai campi di riferimento, per campo. */
   references?: Readonly<Record<string, readonly CatalogFormReference[]>>
   /** Cerca i candidati di un campo di riferimento. Assente = il campo dice che non si può scegliere qui. */
-  onSearchReference?: (fieldName: string, fieldType: string, query: string) => Promise<readonly CatalogFormReference[]>
+  /**
+   * Riceve il CAMPO intero e non nome+tipo: da quando un `ref_ci` può
+   * restringere la scelta a certi tipi di CI, chi cerca ha bisogno anche di
+   * `refTypes` — e passarlo come quarto argomento avrebbe voluto dire
+   * aggiungerne un quinto alla prossima impostazione.
+   */
+  onSearchReference?: (campo: CatalogFormFieldView, query: string) => Promise<readonly CatalogFormReference[]>
   /** Scegliere (o togliere, con `null`) il nodo puntato. */
   onPickReference?: (fieldName: string, chosen: CatalogFormReference | null) => void
   /** Testi dei due controlli nuovi, nella lingua dell'app. */
@@ -647,7 +659,7 @@ function CampoRiferimento({ campo, disabled, extra, controlId, etichettaId }: {
     if (testo.trim().length < 2) { setRisultati(null); return }
     setCercando(true)
     try {
-      setRisultati(await extra.onSearchReference!(campo.name, campo.fieldType, testo.trim()))
+      setRisultati(await extra.onSearchReference!(campo, testo.trim()))
     } finally {
       setCercando(false)
     }

@@ -38,6 +38,8 @@ export interface FormFieldRow {
   required: boolean
   vocabulary: string | null
   inList: boolean
+  /** I tipi di CI ammessi da un `ref_ci`: vuoto = tutta la CMDB. */
+  refTypes?: string[]
   /** La formula di un campo calcolato, e lo script che rifiuta un valore (ondata 6). */
   formula: string | null
   validationScript: string | null
@@ -218,6 +220,7 @@ export function FieldLibraryPanel() {
                       setBozza({
                         name: c.name, fieldType: c.fieldType,
                         // Il ripiego sull'etichetta BASE non è un vezzo: vedi `perLingua`.
+                        refTypes: c.refTypes ?? [],
                         labelIt: perLingua(c.labels, 'it', c.label),
                         labelEn: perLingua(c.labels, 'en', c.label),
                         helpIt: perLingua(c.helps, 'it', c.help),

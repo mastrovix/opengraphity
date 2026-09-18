@@ -259,10 +259,16 @@ export function CreateServiceRequestPage() {
    * genere, ognuna quella che la pagina corrispondente usa già: qui non si
    * inventa un endpoint nuovo.
    */
-  const cercaRiferimento = async (_campo: string, fieldType: string, query: string): Promise<CatalogFormReference[]> => {
+  const cercaRiferimento = async (campo: CatalogFormFieldView, query: string): Promise<CatalogFormReference[]> => {
+    const fieldType = campo.fieldType
     if (fieldType === 'ref_ci') {
+      /* I TIPI AMMESSI, se il campo li dichiara: `allCIs` li filtra già lato
+         server (`ciTypes`). Vuoto = tutta la CMDB, com'era prima. */
+      const tipi = campo.refTypes && campo.refTypes.length > 0 ? [...campo.refTypes] : undefined
       const r = await apollo.query<{ allCIs: { items: Array<{ id: string; name: string }> } }>({
-        query: GET_ALL_CIS, variables: { limit: 20, offset: 0, search: query }, fetchPolicy: 'network-only',
+        query: GET_ALL_CIS,
+        variables: { limit: 20, offset: 0, search: query, ...(tipi ? { ciTypes: tipi } : {}) },
+        fetchPolicy: 'network-only',
       })
       return (r.data?.allCIs?.items ?? []).map((c) => ({ id: c.id, label: c.name }))
     }

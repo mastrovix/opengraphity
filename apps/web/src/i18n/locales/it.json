@@ -2467,7 +2467,10 @@
         "columnRequired": "Obbligatoria",
         "addColumn": "Aggiungi una colonna",
         "tableNoColumns": "Nessuna colonna: una tabella ne vuole almeno una.",
-        "tableInList": "Una tabella non può essere una colonna delle liste, un widget o una colonna di report: sono righe, non un valore."
+        "tableInList": "Una tabella non può essere una colonna delle liste, un widget o una colonna di report: sono righe, non un valore.",
+        "refTypes": "Quali tipi di CI",
+        "refTypesHelp": "Nessuna spunta: tutta la CMDB. Spuntandone qualcuno, la ricerca offre solo quelli.",
+        "refTypesNone": "Non c’è ancora nessun tipo di CI."
       },
       "limits": {
         "title": "Tetti",
@@ -4275,7 +4278,9 @@
       "computedNotSettable": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, non si scrive a mano.",
       "notSettableType": "«{{field}}» non si scrive così: un campo {{fieldType}} non è un valore singolo.",
       "requiredNotClearable": "Il campo «{{field}}» è obbligatorio: non si può svuotare.",
-      "hidesUnclearable": "Rispondere «{{field}}» così farebbe smettere al modulo di chiedere «{{other}}», e i suoi file, riferimenti o righe non si possono svuotare da qui: svuota prima quel campo."
+      "hidesUnclearable": "Rispondere «{{field}}» così farebbe smettere al modulo di chiedere «{{other}}», e i suoi file, riferimenti o righe non si possono svuotare da qui: svuota prima quel campo.",
+      "refTypesNotAllowed": "Un campo {{fieldType}} non prende tipi di CI: solo un riferimento alla CMDB sceglie da lì.",
+      "refTypesUnknown": "Questi tipi di CI non esistono: {{types}}."
     },
     "catalogForm": {
       "shape": "La definizione del modulo ha una forma sbagliata in {{where}}.",

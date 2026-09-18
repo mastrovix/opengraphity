@@ -79,6 +79,16 @@ export interface FormFieldDef {
   formula: string | null
   /** Le colonne, se il campo è una TABELLA (ondata 7); null per tutti gli altri tipi. */
   tableDefinition: FormTableDefinition | null
+  /**
+   * I TIPI DI CI fra cui si può scegliere, per un campo `ref_ci` (18 set 2026).
+   *
+   * Vuoto = tutta la CMDB, che è quello che facevano tutti i campi prima: la
+   * ricerca offriva ogni CI del tenant, e una domanda «quale stampante?»
+   * proponeva anche i firewall. Chi compila non sa quale sia la risposta
+   * giusta, e chi legge la richiesta si ritrova un riferimento che non
+   * c'entra.
+   */
+  refTypes: string[]
   /** Se diventa una colonna nelle liste e nell'esportazione (ondata 4). */
   inList: boolean
   createdAt: string | null
@@ -91,7 +101,7 @@ const FIELD_RETURN = `
   f.id AS id, f.name AS name, f.field_type AS fieldType, f.label AS label, f.labels AS labels,
   f.help AS help, f.helps AS helps, f.required AS required, f.vocabulary AS vocabulary,
   f.validation_script AS validationScript, f.formula AS formula,
-  f.table_definition AS tableDefinition, f.in_list AS inList,
+  f.table_definition AS tableDefinition, f.in_list AS inList, f.ref_types AS refTypes,
   f.created_at AS createdAt, f.updated_at AS updatedAt`
 
 function mapField(row: Record<string, unknown>): FormFieldDef {
@@ -114,6 +124,9 @@ function mapField(row: Record<string, unknown>): FormFieldDef {
     validationScript: row['validationScript'] == null || row['validationScript'] === '' ? null : String(row['validationScript']),
     formula: row['formula'] == null || row['formula'] === '' ? null : String(row['formula']),
     tableDefinition: parseFormTable(row['tableDefinition'], `FormField ${name} (table)`),
+    // Assente sui campi nati prima: nessun filtro, cioè tutta la CMDB —
+    // esattamente quello che facevano.
+    refTypes: Array.isArray(row['refTypes']) ? (row['refTypes']).map((x) => String(x)) : [],
     // Assente sui campi nati prima dell'ondata 4: fuori dalle liste, che è la
     // scelta prudente — una colonna in più la si chiede, non la si subisce.
     inList: row['inList'] === true,

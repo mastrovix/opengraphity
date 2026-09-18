@@ -2467,7 +2467,10 @@
         "columnRequired": "Required",
         "addColumn": "Add a column",
         "tableNoColumns": "No columns yet: a table needs at least one.",
-        "tableInList": "A table cannot be a list column, a widget or a report column: it is rows, not a value."
+        "tableInList": "A table cannot be a list column, a widget or a report column: it is rows, not a value.",
+        "refTypes": "Which CI types",
+        "refTypesHelp": "Nothing ticked: the whole CMDB. Tick some and the search only offers those.",
+        "refTypesNone": "No CI type is defined yet."
       },
       "limits": {
         "title": "Limits",
@@ -4275,7 +4278,9 @@
       "computedNotSettable": "The field \"{{field}}\" is computed: its value comes from its formula, it cannot be set by hand.",
       "notSettableType": "\"{{field}}\" cannot be set this way: a {{fieldType}} field is not a single value.",
       "requiredNotClearable": "The field \"{{field}}\" is required: it cannot be cleared.",
-      "hidesUnclearable": "Answering \"{{field}}\" this way would stop the form from asking \"{{other}}\", whose files, references or rows cannot be cleared from here: empty that field first."
+      "hidesUnclearable": "Answering \"{{field}}\" this way would stop the form from asking \"{{other}}\", whose files, references or rows cannot be cleared from here: empty that field first.",
+      "refTypesNotAllowed": "A {{fieldType}} field takes no CI types: only a CMDB reference picks from the CMDB.",
+      "refTypesUnknown": "These CI types do not exist: {{types}}."
     },
     "catalogForm": {
       "shape": "The form definition has the wrong shape at {{where}}.",

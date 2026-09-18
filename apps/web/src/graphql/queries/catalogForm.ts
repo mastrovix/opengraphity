@@ -15,7 +15,7 @@ export const GET_CATALOG_FORM_TO_FILL = gql`
       revision
       definition
       fields {
-        name fieldType label required vocabulary help formula
+        name fieldType label required vocabulary help formula refTypes
         labels { language label }
         helps { language label }
         options(language: $language) { value label }
@@ -38,7 +38,7 @@ export const GET_CATALOG_FORM_TO_FILL = gql`
 export const GET_FORM_FIELDS = gql`
   query GetFormFields($language: String) {
     formFields {
-      id name fieldType label required vocabulary help validationScript formula inList usedBy createdAt updatedAt
+      id name fieldType label required vocabulary help validationScript formula inList refTypes usedBy createdAt updatedAt
       tableDefinition
       labels { language label }
       helps { language label }
