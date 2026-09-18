@@ -141,33 +141,53 @@ function CampoSullaTela({
         borderRadius: 8, padding: 8,
       }}
     >
-      {/* ETICHETTA A SINISTRA, come nel modulo vero (`.og-form-cell`): la tela
-          mente se incolonna quello che a schermo starà affiancato. */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'clamp(90px, 26%, 170px) minmax(0, 1fr)', columnGap: 10, alignItems: 'start' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, paddingTop: 6 }}>
-        {maniglia}
+      {/*
+        UNA GRIGLIA SOLA: presa, etichetta, controllo (18 set 2026).
+
+        Prima erano due contenitori annidati — la presa e l'etichetta in un
+        flex, il controllo accanto — e i tre pezzi si allineavano solo per
+        coincidenza: cambiando un padding o mandando l'etichetta a capo, la
+        presa restava indietro. Il proprietario l'ha visto subito, e aveva
+        ragione: «disallineamento».
+
+        Adesso sono tre colonne della STESSA riga, allineate in alto, e la
+        presa e l'etichetta portano lo stesso `paddingTop` della prima riga di
+        testo del controllo (7px, come `.og-form-cell` nel modulo vero). Niente
+        più annidamento: non c'è nulla che possa scivolare.
+      */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '20px clamp(90px, 24%, 170px) minmax(0, 1fr)',
+        columnGap: 8, alignItems: 'start',
+      }}>
+        {/* La presa si allinea al TESTO dell'etichetta, non alla scatola del
+            controllo: è un'icona di 14px in un bottone di 22, e il suo centro
+            cade esattamente sul centro della riga di testo se la riga parte da
+            zero. Sette pixel in più la facevano sembrare appesa sotto. */}
+        <span style={{ display: 'flex' }}>{maniglia}</span>
         <span style={{
-          fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', fontWeight: fontWeight.medium,
-          overflow: 'hidden', textOverflow: 'ellipsis',
+          paddingTop: 7, fontSize: 'var(--font-size-table)', color: 'var(--color-slate)',
+          fontWeight: fontWeight.medium, display: 'flex', alignItems: 'baseline', gap: 5, flexWrap: 'wrap',
         }}>
-          {etichetta}
-          {(item.required ?? campo?.required) === true && <span style={{ color: 'var(--color-danger)' }}> *</span>}
-        </span>
-        {/* I due segni che cambiano il comportamento e non si vedrebbero:
-            una condizione e la sola lettura di un campo calcolato. */}
-        {item.visibleWhen && (
-          <span title={t('pages.catalogForms.builder.hasCondition')} style={{ display: 'flex', color: 'var(--color-slate-light)' }}>
-            <Eye size={12} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {etichetta}
+            {(item.required ?? campo?.required) === true && <span style={{ color: 'var(--color-danger)' }}> *</span>}
           </span>
-        )}
-        {campo?.formula != null && campo.formula !== '' && (
-          <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontFamily: 'var(--font-mono)' }}>ƒ</span>
-        )}
-      </div>
-      {/* Il disegno non si clicca: il clic è del campo, che seleziona. */}
-      <div style={{ pointerEvents: 'none' }}>
-        <ControlloFinto tipo={tipo} segnaposto={campo?.help ?? etichetta} />
-      </div>
+          {/* I due segni che cambiano il comportamento e non si vedrebbero:
+              una condizione e la sola lettura di un campo calcolato. */}
+          {item.visibleWhen && (
+            <span title={t('pages.catalogForms.builder.hasCondition')} style={{ display: 'flex', color: 'var(--color-slate-light)' }}>
+              <Eye size={12} />
+            </span>
+          )}
+          {campo?.formula != null && campo.formula !== '' && (
+            <span style={{ color: 'var(--color-slate-light)', fontFamily: 'var(--font-mono)' }}>ƒ</span>
+          )}
+        </span>
+        {/* Il disegno non si clicca: il clic è del campo, che seleziona. */}
+        <span style={{ pointerEvents: 'none', display: 'block' }}>
+          <ControlloFinto tipo={tipo} segnaposto={campo?.help ?? etichetta} />
+        </span>
       </div>
     </div>
   )
