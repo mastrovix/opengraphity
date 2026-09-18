@@ -970,6 +970,7 @@ export function FormBuilderPanel() {
             bozza={bozza}
             perNome={perNome}
             lingua={lingua}
+            lingue={lingue}
             selezione={selezione}
             bersaglio={bersaglio}
             onSeleziona={(s) => {

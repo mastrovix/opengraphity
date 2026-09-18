@@ -221,11 +221,13 @@ function CampoSullaTela({
 }
 
 export function FormCanvas({
-  bozza, perNome, lingua, selezione, bersaglio, onSeleziona, maniglia, manigliaSezione,
+  bozza, perNome, lingua, lingue, selezione, bersaglio, onSeleziona, maniglia, manigliaSezione,
 }: {
   bozza: CatalogFormDefinition
   perNome: Map<string, FormFieldRow>
   lingua: string
+  /** Le lingue del prodotto: la pubblicazione pretende un titolo in tutte. */
+  lingue: readonly string[]
   selezione: Selezione | null
   /** La zona `data-drop` evidenziata dal trascinamento in corso. */
   bersaglio: string | null
@@ -241,6 +243,9 @@ export function FormCanvas({
       {bozza.sections.map((sezione, iSez) => {
         const titolo = localizedText(sezione.title, lingua, '') || sezione.id
         const sezSelezionata = stessaSelezione(selezione, { tipo: 'section', iSez })
+        /* Le lingue in cui il titolo manca: la pubblicazione le pretende tutte. */
+        const mancanti = lingue.filter((l) => ((sezione.title as Record<string, string | undefined>)[l] ?? '').trim() === '')
+          .map((l) => l.toUpperCase())
         return (
           <section
             key={sezione.id}
@@ -267,6 +272,20 @@ export function FormCanvas({
               >
                 {titolo === sezione.id ? t('pages.catalogForms.builder.sectionUntitled') : titolo}
               </button>
+              {/*
+                IL TITOLO CHE MANCA IN UN'ALTRA LINGUA, DETTO SUBITO.
+
+                La pubblicazione lo rifiuta — «la sezione "main" non ha un
+                titolo in en» — ma lo diceva solo al momento di pubblicare,
+                cioè dopo aver disegnato tutto il modulo. E sulla tela non si
+                vedeva niente di strano: il titolo nella lingua corrente c'è.
+                Il proprietario l'ha incontrato esattamente così.
+              */}
+              {mancanti.length > 0 && (
+                <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-danger)' }}>
+                  {t('pages.catalogForms.builder.sectionTitleMissingIn', { languages: mancanti.join(', ') })}
+                </span>
+              )}
               <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
                 {t((sezione.columns ?? 1) === 2 ? 'pages.catalogForms.builder.columnsTwo' : 'pages.catalogForms.builder.columnsOne')}
               </span>
