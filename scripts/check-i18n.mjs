@@ -736,7 +736,7 @@ const RE_TERNARIO_JSX = />\s*\{[^{}\n]*\?\s*'([^']*)'\s*:\s*'([^']*)'\s*\}\s*</g
  * diceva in un commento: «Il nome della variabile e italiano, il testo a
  * schermo no».
  */
-const RE_PAROLE_DI_CODICE = /\b(const|return|if|let|for|while|await|async|function|export|import|type|interface|Record|Promise|Array|Partial|Pick|Omit|Set|Map|typeof|as|extends|new|of|null|undefined)\b/
+const RE_PAROLE_DI_CODICE = /\b(const|return|if|let|for|while|await|async|function|export|import|type|interface|readonly|Record|Promise|Array|Partial|Pick|Omit|Set|Map|typeof|as|extends|new|of|null|undefined)\b/
 
 /** Il pezzo di testo di `RE_TESTO_JSX_APERTO`, ripulito; `null` se e codice. */
 function testoAperto(grezzo) {
@@ -851,6 +851,17 @@ function prosa(v) {
     for (const m of src.matchAll(RE_TESTO_JSX)) {
       const riga = lineOf(src, m.index)
       if (commenti.has(riga)) continue
+      /*
+        LE PAROLE DI CODICE VALGONO ANCHE QUI (18 set 2026).
+
+        L'altro ramo JSX le filtrava, questo no: e la firma di una funzione
+        generica — `<T extends {...}>(\n  vocabolari: readonly T[],\n): T[]` —
+        veniva segnalata come italiano a schermo, perche fra il `>` del
+        generico e un `</` piu avanti non c'e nessun carattere vietato. Un
+        guardiano che grida al lupo sulla prima funzione generica del giorno
+        insegna a ignorarlo.
+      */
+      if (RE_PAROLE_DI_CODICE.test(m[1])) continue
       if (prosa(m[1])) trovati.push({ dove: `testo JSX «${m[1].trim()}»`, riga })
     }
     for (const m of src.matchAll(RE_TESTO_JSX_APERTO)) {

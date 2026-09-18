@@ -2503,7 +2503,8 @@
             "future": "Demand a date in the future.",
             "conditional": "Required only when another field says so."
           }
-        }
+        },
+        "vocabularyShipped": "factory"
       },
       "limits": {
         "title": "Limits",

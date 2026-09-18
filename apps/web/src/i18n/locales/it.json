@@ -2503,7 +2503,8 @@
             "future": "Pretendi una data nel futuro.",
             "conditional": "Obbligatorio solo quando un altro campo lo dice."
           }
-        }
+        },
+        "vocabularyShipped": "di fabbrica"
       },
       "limits": {
         "title": "Tetti",

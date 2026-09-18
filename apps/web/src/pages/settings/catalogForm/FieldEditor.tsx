@@ -71,6 +71,31 @@ export interface CampoInModifica {
  * conto suo, un campo creato dal costruttore potrebbe nascere senza l'aiuto o
  * senza lo script — e nessuno se ne accorgerebbe fino a compilare il modulo.
  */
+/**
+ * UN VOCABOLARIO PER NOME, quello che il server userà davvero.
+ *
+ * Il Dizionario può avere due definizioni con lo stesso `name`: quella spedita
+ * col prodotto e la copia del tenant. Chi legge i valori — `loadVocabularyEntries`
+ * sul server — preferisce la copia del tenant e ripiega sulla spedita. Questa
+ * funzione fa la stessa scelta, perché una tendina che offre due righe uguali
+ * promette una scelta che non esiste: qualunque riga si prenda, nel campo
+ * finisce lo stesso nome.
+ *
+ * Ordinate per etichetta: in una tendina di venticinque voci è l'unico ordine
+ * che si può cercare a occhio.
+ */
+export function vocabolariUnici<T extends { name: string; label: string; isShipped?: boolean }>(
+  vocabolari: readonly T[],
+): T[] {
+  const perNome = new Map<string, T>()
+  for (const v of vocabolari) {
+    const gia = perNome.get(v.name)
+    // La copia del tenant vince, come sul server.
+    if (!gia || (gia.isShipped === true && v.isShipped !== true)) perNome.set(v.name, v)
+  }
+  return [...perNome.values()].sort((a, b) => (a.label || a.name).localeCompare(b.label || b.name))
+}
+
 export function inputDaBozza(b: Bozza, tipoEffettivo: string) {
   const testi = (it: string, en: string) =>
     [{ language: 'it', text: it }, { language: 'en', text: en }].filter((x) => x.text.trim() !== '')
@@ -101,7 +126,8 @@ export function FieldEditor({
   bozza: Bozza
   onBozza: (b: Bozza) => void
   inModifica?: CampoInModifica | null
-  vocabolari: readonly { name: string; label: string }[]
+  /** I vocabolari del Dizionario: `isShipped` distingue quelli di fabbrica dalle copie del tenant. */
+  vocabolari: readonly { name: string; label: string; isShipped?: boolean }[]
   onSalva: () => void | Promise<void>
   onAnnulla: () => void
   salvando?: boolean
@@ -204,7 +230,27 @@ export function FieldEditor({
             <LabelledField label={t('pages.catalogForms.library.vocabulary')}>
               <Select value={bozza.vocabulary} onChange={(e) => onBozza({ ...bozza, vocabulary: e.target.value })}>
                 <option value="">{t('common.select')}</option>
-                {vocabolari.map((v) => <option key={v.name} value={v.name}>{v.label || v.name}</option>)}
+                {/*
+                  UNA RIGA PER VOCABOLARIO, NON DUE (18 set 2026).
+
+                  La tendina mostrava «CI Status» due volte — quello di fabbrica
+                  e la copia del tenant — e sembrava una scelta. Non lo è: il
+                  campo salva il NOME (`ci_status`), e al momento di leggere i
+                  valori il server prende comunque la copia del tenant, se c'è
+                  (`loadVocabularyEntries`). Due righe con lo stesso nome sono
+                  la stessa scelta scritta due volte.
+
+                  Quindi si dedùplica per nome tenendo quella che il server
+                  userà, e «di fabbrica» resta solo dove è VERO — cioè dove il
+                  cliente non ha una sua copia: lì dice «questo non l'hai
+                  personalizzato», che è un'informazione, non un doppione.
+                */}
+                {vocabolariUnici(vocabolari).map((v) => (
+                  <option key={v.name} value={v.name}>
+                    {v.label || v.name} · {v.name}
+                    {v.isShipped === true ? ` · ${t('pages.catalogForms.library.vocabularyShipped')}` : ''}
+                  </option>
+                ))}
               </Select>
               <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
                 {t('pages.catalogForms.library.vocabularyHelp')}
