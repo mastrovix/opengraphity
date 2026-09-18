@@ -2550,7 +2550,9 @@
         "definitionsHelp": "Un iter spento non entra nella scelta di nessuna richiesta nuova; i ticket che ci sono già restano dove sono. Una copia nasce spenta, così la puoi finire prima.",
         "active": "in servizio",
         "activated": "Iter in servizio",
-        "deactivated": "Iter spento"
+        "deactivated": "Iter spento",
+        "resolvesTo": "→ {{workflow}}",
+        "resolvesToNothing": "Nessun iter si applica: una richiesta nuova di questa voce non può partire."
       }
     }
   },

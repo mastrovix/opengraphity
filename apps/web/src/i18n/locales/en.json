@@ -2550,7 +2550,9 @@
         "definitionsHelp": "A switched-off workflow does not enter the choice for any new request; the tickets already on it stay where they are. A copy starts switched off, so you can finish it first.",
         "active": "in service",
         "activated": "Workflow in service",
-        "deactivated": "Workflow switched off"
+        "deactivated": "Workflow switched off",
+        "resolvesTo": "→ {{workflow}}",
+        "resolvesToNothing": "No itinerary applies: a new request of this item cannot start."
       }
     }
   },

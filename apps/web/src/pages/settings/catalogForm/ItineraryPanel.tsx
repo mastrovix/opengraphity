@@ -44,6 +44,35 @@ interface Definizione {
   entityType: string
   category: string | null
   active: boolean
+  version: number
+}
+
+/**
+ * QUALE ITER USA DAVVERO «per categoria» (18 set 2026).
+ *
+ * La tendina offriva «Per categoria (come prima)» e i workflow, ma non diceva
+ * a COSA corrisponde il default — e il proprietario, guardando cinque righe
+ * tutte uguali, ha chiesto «non posso scegliere un workflow?». Le scelte
+ * c'erano; era il default a non dire niente.
+ *
+ * La regola è quella del motore (`initialStepSelection`), e va tenuta uguale:
+ * prima l'iter con la STESSA categoria della voce, se no quello SENZA
+ * categoria; a parità, la versione più alta. Uno spento non entra: una
+ * richiesta nuova non lo userebbe.
+ *
+ * Quando non ne applica nessuno non si tace: quella voce, oggi, non riesce a
+ * creare una richiesta — e si scoprirebbe solo aprendone una.
+ */
+export function iterPerCategoria(definizioni: readonly Definizione[], categoria: string | null): Definizione | null {
+  const candidati = definizioni
+    .filter((d) => d.active)
+    .filter((d) => (d.category != null && d.category === categoria) || d.category == null)
+    .sort((a, b) => {
+      const pa = a.category != null ? 0 : 1
+      const pb = b.category != null ? 0 : 1
+      return pa !== pb ? pa - pb : b.version - a.version
+    })
+  return candidati[0] ?? null
 }
 
 const th: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: `1px solid ${colors.border}` }
@@ -212,6 +241,20 @@ export function ItineraryPanel() {
                       </option>
                     ))}
                   </Select>
+                  {/* Col default, QUALE iter viene usato: senza, «per
+                      categoria» è una promessa che non si può verificare. */}
+                  {v.workflowDefinitionId == null && (() => {
+                    const scelto = iterPerCategoria(definizioni, v.category)
+                    return scelto ? (
+                      <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+                        {t('pages.catalogForms.itinerary.resolvesTo', { workflow: scelto.name })}
+                      </p>
+                    ) : (
+                      <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-danger)' }}>
+                        {t('pages.catalogForms.itinerary.resolvesToNothing')}
+                      </p>
+                    )
+                  })()}
                 </td>
               </tr>
             ))}
