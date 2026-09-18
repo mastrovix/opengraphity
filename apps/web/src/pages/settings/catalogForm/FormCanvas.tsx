@@ -161,16 +161,23 @@ function CampoSullaTela({
         columnGap: 8, alignItems: 'start',
       }}>
         {/*
-          LA PRESA SI ALLINEA A QUELLO CHE SI VEDE DEL TESTO.
-          Il centro geometrico della riga e il centro di quello che l'occhio
-          legge non sono lo stesso punto: le lettere stanno sopra la linea di
-          base, e la parte bassa della riga è spazio per le discendenti («g»,
-          «p») che un'etichetta spesso non ha. Allineata al centro geometrico
-          — che è quello che i numeri dicevano giusto — la presa continuava a
-          SEMBRARE appesa sotto, ed è quello che conta. Due pixel in su la
-          mettono sul centro ottico.
+          LA PRESA SI ALLINEA ALLA RIGA DI TESTO DELL'ETICHETTA, e il numero
+          non è a occhio: è misurato.
+          L'etichetta porta 7px di `padding-top` (per stare sulla prima riga
+          del controllo), quindi la sua riga di testo comincia 7px sotto la
+          cima della griglia; la presa è un'icona di 14px in un bottone di 22.
+          Perché i due centri coincidano il bottone parte 3px sotto la cima —
+          e quel pixel che resta è l'aggiustamento ottico: le lettere stanno
+          sopra la linea di base, e allineare i centri geometrici fa sembrare
+          la presa appesa.
+
+          Misurato dal vivo (18 set 2026) prendendo il rettangolo del NODO DI
+          TESTO con un `Range`, non quello dello `span`: lo span comprende il
+          proprio padding, e confrontare quel centro nascondeva 6px di
+          disallineamento — che a 4× di zoom si vedevano benissimo. Il
+          proprietario li ha visti a 1×.
         */}
-        <span style={{ display: 'flex', marginTop: -2 }}>{maniglia}</span>
+        <span style={{ display: 'flex', paddingTop: 3 }}>{maniglia}</span>
         <span style={{
           paddingTop: 7, fontSize: 'var(--font-size-table)', color: 'var(--color-slate)',
           fontWeight: fontWeight.medium, display: 'flex', alignItems: 'baseline', gap: 5, flexWrap: 'wrap',
