@@ -827,12 +827,18 @@ export function FormBuilderPanel() {
         cosa è selezionata.
       */}
       <div style={{
-        position: 'sticky', top: 0, zIndex: 3, background: 'var(--color-surface-1)',
-        display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap',
-        padding: '0 0 10px', borderBottom: `1px solid ${colors.border}`, marginBottom: 14,
+        position: 'sticky', top: 0, zIndex: 3,
+        background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 12,
+        boxShadow: `0 1px 2px ${alpha.black06}`,
+        display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
+        padding: '14px 16px', marginBottom: 18,
       }}>
-        <div style={{ minWidth: 220, flex: '1 1 240px' }}>
-          <label htmlFor={idVoce} style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 3 }}>
+        {/* QUALE MODULO: l'etichetta sopra, come ogni campo del prodotto. */}
+        <div style={{ minWidth: 240, flex: '0 1 320px' }}>
+          <label htmlFor={idVoce} style={{
+            display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)',
+            textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5,
+          }}>
             {t('pages.catalogForms.builder.item')}
           </label>
           <Select id={idVoce} value={voceId} onChange={(e) => void cambiaVoce(e.target.value)}>
@@ -841,8 +847,19 @@ export function FormBuilderPanel() {
           </Select>
         </div>
 
+        {/*
+          UN INTERRUTTORE, NON DUE LINK (18 set 2026).
+
+          Erano due parole con una sottolineatura, appoggiate al bordo della
+          barra: si leggevano come due voci di menù e non come uno stato. Un
+          segmento con la pastiglia bianca dice quale delle due viste stai
+          guardando anche con la coda dell'occhio.
+        */}
         {voceId !== '' && (
-          <div role="tablist" aria-label={t('pages.catalogForms.builder.views')} style={{ display: 'flex', gap: 4 }}>
+          <div role="tablist" aria-label={t('pages.catalogForms.builder.views')} style={{
+            display: 'inline-flex', gap: 2, padding: 3, borderRadius: 999,
+            background: 'var(--color-surface-alt)', alignSelf: 'flex-end', marginBottom: 1,
+          }}>
             {(['canvas', 'preview'] as const).map((v) => (
               <button
                 key={v}
@@ -851,11 +868,12 @@ export function FormBuilderPanel() {
                 aria-selected={vista === v}
                 onClick={() => { setVista(v) }}
                 style={{
-                  border: 'none', background: 'none', cursor: 'pointer', padding: '7px 12px',
-                  fontSize: 'var(--font-size-body)', fontWeight: vista === v ? fontWeight.medium : 400,
+                  border: 'none', cursor: 'pointer', padding: '6px 16px', borderRadius: 999,
+                  fontSize: 'var(--font-size-body)',
+                  fontWeight: vista === v ? fontWeight.medium : 400,
+                  background: vista === v ? colors.white : 'transparent',
                   color: vista === v ? 'var(--color-brand)' : 'var(--color-slate)',
-                  borderBottom: `2px solid ${vista === v ? 'var(--color-brand)' : 'transparent'}`,
-                  marginBottom: -11,
+                  boxShadow: vista === v ? `0 1px 2px ${alpha.black10}` : 'none',
                 }}
               >
                 {t(v === 'canvas' ? 'pages.catalogForms.builder.viewCanvas' : 'pages.catalogForms.builder.preview')}
@@ -864,19 +882,27 @@ export function FormBuilderPanel() {
           </div>
         )}
 
-        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, alignSelf: 'flex-end' }}>
+          {/* LO STATO come pastiglia: «mai pubblicata» è un avviso, una
+              revisione è un fatto, e due grigi uguali non lo dicevano. */}
+          <span style={{
+            fontSize: 'var(--font-size-table)', padding: '4px 10px', borderRadius: 999,
+            background: formData?.catalogForm?.revision ? 'var(--color-surface-alt)' : palette.warning.tint,
+            color: formData?.catalogForm?.revision ? 'var(--color-slate)' : palette.warning.text,
+            whiteSpace: 'nowrap',
+          }}>
             {formData?.catalogForm?.revision
               ? t('pages.catalogForms.builder.revision', { revision: formData.catalogForm.revision })
               : t('pages.catalogForms.builder.neverPublished')}
           </span>
           <button type="button" onClick={() => void salvaModulo()} disabled={salvando || !toccato || !voceId}
             style={{
-              padding: '7px 14px', borderRadius: 8, border: 'none',
-              background: toccato && voceId ? 'var(--color-brand)' : 'var(--color-slate-bg)',
+              padding: '9px 18px', borderRadius: 8, border: 'none',
+              background: toccato && voceId ? 'var(--color-brand)' : 'var(--color-surface-alt)',
               color: toccato && voceId ? colors.white : 'var(--color-slate-light)',
               fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium,
               cursor: toccato && voceId ? 'pointer' : 'not-allowed',
+              boxShadow: toccato && voceId ? `0 1px 2px ${alpha.black15}` : 'none',
             }}>
             {salvando ? t('common.saving') : t('pages.catalogForms.builder.publish')}
           </button>
