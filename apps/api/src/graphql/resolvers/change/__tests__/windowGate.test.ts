@@ -35,7 +35,7 @@ vi.mock('../../../../lib/logger.js', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }) },
 }))
 
-const { changeGateOutcome, assertChangeWindowGate, automaticTransitionAllowed } = await import('../windowGate.js')
+const { changeGateOutcome, assertChangeWindowGate, automaticTransitionAllowed, automaticTransitionOutcome } = await import('../windowGate.js')
 
 const session = {} as never
 const input = (currentStep: string, toStep: string, changeType = 'normal') => ({
@@ -257,5 +257,37 @@ describe('abbandonare la change non è entrare nella finestra (B-11)', () => {
       name: step, purpose: PURPOSES[step] ?? null, isTerminal: true, category: 'closed',
     }))
     await expect(changeGateOutcome(session, input('approval', 'scheduled'))).resolves.toEqual({ kind: 'needs_approvals' })
+  })
+})
+
+/**
+ * LA DECISIONE SENZA CONSEGUENZE (18 set 2026).
+ *
+ * Esiste perché la diagnostica delle «change ferme pur avendo la strada
+ * aperta» deve poter CHIEDERE al varco senza dichiarare un rifiuto: gira ogni
+ * minuto per ogni tenant, e con `automaticTransitionAllowed` avrebbe contato
+ * un rifiuto immaginario a ogni giro — sepellendo i rifiuti veri sotto il
+ * rumore, che è il modo più sicuro di rendere inutile una metrica.
+ *
+ * Stessa risposta, zero effetti: è questo che si pinna.
+ */
+describe('automaticTransitionOutcome — chiedere senza far rumore', () => {
+  it('dà la stessa risposta di `automaticTransitionAllowed`, col motivo', async () => {
+    const esito = await automaticTransitionOutcome(session, input('assessment', 'scheduled'))
+    expect(esito).toEqual({ allowed: false, reason: 'needs_approvals' })
+    expect(await automaticTransitionAllowed(session, input('assessment', 'scheduled'), 'auto_transition')).toBe(false)
+  })
+
+  it('NON incrementa la metrica dei rifiuti', async () => {
+    inc.mockClear()
+    await automaticTransitionOutcome(session, input('assessment', 'scheduled'))
+    expect(inc).not.toHaveBeenCalled()
+  })
+
+  it('quando il varco è aperto risponde `open`', async () => {
+    // Un passo che non entra nella finestra: nessun varco in gioco.
+    const esito = await automaticTransitionOutcome(session, input('draft', 'assessment'))
+    expect(esito.allowed).toBe(true)
+    expect(esito.reason).toBe('open')
   })
 })

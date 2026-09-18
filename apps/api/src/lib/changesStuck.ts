@@ -89,6 +89,23 @@ export async function changesStuckWithOpenPath(session: Session, tenantId: strin
    */
   const { workflowEngine } = await import('@opengraphity/workflow')
   await import('../workflow/conditions.js')
+  /*
+   * IL VARCO, e non solo la condizione dell'arco (18 set 2026).
+   *
+   * Questo controllo guardava la sola condizione, e il 18 set l'ho visto
+   * elencare `CHG00000008` fra le change «ferme pur avendo la strada aperta»
+   * mentre il varco rifiutava ENTRAMBI i suoi archi automatici. Il consiglio
+   * del rilievo — «apri quelle change e fai avanzare il passo: il lavoro è già
+   * finito, manca solo il movimento» — su quella change non muove niente: il
+   * lavoro NON è finito (mancano approvazioni o valutazioni), e il varco fa
+   * bene a tenerla dov'è.
+   *
+   * Si chiama `automaticTransitionOutcome`, che è la decisione del varco senza
+   * log né metrica: `automaticTransitionAllowed` conta un rifiuto ogni volta, e
+   * una diagnostica che gira ogni minuto per ogni tenant avrebbe sepolto i
+   * rifiuti veri sotto quelli immaginari.
+   */
+  const { automaticTransitionOutcome } = await import('../graphql/resolvers/change/windowGate.js')
 
   const ferme = new Set<string>()
   for (const r of candidati) {
@@ -114,7 +131,22 @@ export async function changesStuckWithOpenPath(session: Session, tenantId: strin
         continue
       }
     }
-    if (passa) ferme.add(r.code)
+    if (!passa) continue
+
+    /*
+     * La condizione è soddisfatta, ma la strada è davvero aperta solo se lo
+     * dice anche il varco: altrimenti la change non è ferma per un'occasione
+     * persa — sta aspettando qualcosa di legittimo, e dirlo con questa frase
+     * manderebbe a spingere un passo che il prodotto rifiuterà.
+     */
+    const varco = await automaticTransitionOutcome(session, {
+      tenantId,
+      changeId:    r.changeId,
+      changeType:  String(r.props['change_type'] ?? ''),
+      currentStep: r.fromStep,
+      toStep:      r.toStep,
+    })
+    if (varco.allowed) ferme.add(r.code)
   }
   return [...ferme]
 }

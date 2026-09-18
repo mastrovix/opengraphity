@@ -34,6 +34,16 @@ vi.mock('@opengraphity/workflow', () => ({
 // Nel prodotto questo import registra le condizioni sul motore; qui il motore
 // è già finto, e il modulo non deve trascinarsi dietro mezza API.
 vi.mock('../../workflow/conditions.js', () => ({ registerWorkflowConditions: vi.fn() }))
+/**
+ * IL VARCO DELLA FINESTRA DI RILASCIO, finto: la sua decisione ha i suoi test
+ * (`change/__tests__/windowGate.test.ts`). Qui conta che il rilievo la
+ * RISPETTI — e prima non la chiedeva affatto.
+ */
+let varcoApre = true
+const automaticTransitionOutcome = vi.fn(async () => (varcoApre ? { allowed: true, reason: 'open' } : { allowed: false, reason: 'needs_approvals' }))
+vi.mock('../../graphql/resolvers/change/windowGate.js', () => ({
+  automaticTransitionOutcome: () => automaticTransitionOutcome(),
+}))
 
 const { changesStuckWithOpenPath, MAX_CHANGE_DA_VALUTARE } = await import('../changesStuck.js')
 
@@ -47,6 +57,8 @@ const candidato = (code: string, condition: string | null) => ({
 beforeEach(() => {
   valutate.length = 0
   candidati = []
+  varcoApre = true
+  automaticTransitionOutcome.mockClear()
   condizioni = { all_assessments_complete: false }
 })
 
@@ -105,5 +117,46 @@ describe('changesStuckWithOpenPath', () => {
   it('le change ferme tornano in ordine, senza ripetizioni', async () => {
     candidati = [candidato('CHG-B', null), candidato('CHG-A', null), candidato('CHG-B', null)]
     expect(await changesStuckWithOpenPath(session, 't1')).toEqual(['CHG-B', 'CHG-A'])
+  })
+
+  /**
+   * IL VARCO, e non solo la condizione (18 set 2026).
+   *
+   * Trovato dal vivo: `CHG00000008` era elencata fra le ferme mentre il varco
+   * rifiutava entrambi i suoi archi automatici. Il rilievo consiglia «apri
+   * quella change e fai avanzare il passo», che su una change trattenuta dal
+   * varco non muove niente — e un rilievo che manda a premere un bottone
+   * inutile insegna a ignorare il banner.
+   */
+  describe('quello che il varco trattiene NON è «fermo con la strada aperta»', () => {
+    it('condizione soddisfatta ma varco chiuso: non si conta', async () => {
+      varcoApre = false
+      candidati = [candidato('CHG-1', 'all_assessments_complete')]
+      condizioni = { all_assessments_complete: true }
+      expect(await changesStuckWithOpenPath(session, 't1')).toEqual([])
+    })
+
+    it('vale anche per un arco SENZA condizione, che è il caso che l\'ha scoperto', async () => {
+      // L'arco `assessment → scheduled` disegnato a mano, automatico e senza
+      // condizione: sempre «aperto» per la condizione, sempre rifiutato dal varco.
+      varcoApre = false
+      candidati = [candidato('CHG-1', null)]
+      expect(await changesStuckWithOpenPath(session, 't1')).toEqual([])
+    })
+
+    it('varco aperto: la change resta nel rilievo, com\'è giusto', async () => {
+      candidati = [candidato('CHG-1', null)]
+      expect(await changesStuckWithOpenPath(session, 't1')).toEqual(['CHG-1'])
+    })
+
+    it('il varco si chiede DOPO la condizione: su una condizione falsa non si legge niente', async () => {
+      // Il varco fa due letture (scopi dei passi, approvazioni): farle per
+      // ogni candidato, anche quelli già esclusi, sarebbe lavoro buttato su
+      // ogni apertura di pagina.
+      candidati = [candidato('CHG-1', 'all_assessments_complete')]
+      condizioni = { all_assessments_complete: false }
+      await changesStuckWithOpenPath(session, 't1')
+      expect(automaticTransitionOutcome).not.toHaveBeenCalled()
+    })
   })
 })
