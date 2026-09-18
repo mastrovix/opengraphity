@@ -2372,7 +2372,7 @@
         "addSection": "Aggiungi una sezione",
         "removeSection": "Togli questa sezione",
         "removeField": "Togli questo campo",
-        "required": "Obbligatorio qui",
+        "required": "Obbligatorio in questo modulo",
         "halfWidth": "Mezza larghezza",
         "endUser": "Visibile nella service request",
         "showWhen": "Mostralo quando",
@@ -2454,7 +2454,7 @@
         "helpEn": "Testo d'aiuto (inglese)",
         "vocabulary": "Vocabolario",
         "vocabularyHelp": "Il vocabolario del Dizionario da cui vengono le scelte: etichette e colori arrivano con lui.",
-        "requiredByDefault": "Obbligatorio per difetto (ogni modulo può sovrascriverlo)",
+        "requiredByDefault": "Obbligatorio nei moduli che non dicono altro",
         "inList": "Mostralo come colonna nelle liste delle richieste",
         "inListHelp": "Il valore compare nella lista delle richieste e nell'esportazione CSV. Spento per difetto: una colonna per ogni campo renderebbe la lista illeggibile.",
         "inListShort": "Nelle liste",
@@ -2516,7 +2516,8 @@
         },
         "vocabularyShipped": "di fabbrica",
         "shared": "Condividilo nella libreria",
-        "sharedHelp": "Spento, il campo resta di questo modulo. Acceso, compare fra i campi da riusare: la stessa domanda su più moduli è una colonna sola in ogni report."
+        "sharedHelp": "Spento, il campo resta di questo modulo. Acceso, compare fra i campi da riusare: la stessa domanda su più moduli è una colonna sola in ogni report.",
+        "requiredByDefaultHelp": "È il valore di partenza del campo: ogni modulo può renderlo obbligatorio o no per conto suo."
       },
       "limits": {
         "title": "Tetti",

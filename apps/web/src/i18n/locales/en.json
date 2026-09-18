@@ -2372,7 +2372,7 @@
         "addSection": "Add a section",
         "removeSection": "Remove this section",
         "removeField": "Remove this field",
-        "required": "Required here",
+        "required": "Required in this form",
         "halfWidth": "Half width",
         "endUser": "Visible in the service request",
         "showWhen": "Show it when",
@@ -2454,7 +2454,7 @@
         "helpEn": "Help text (English)",
         "vocabulary": "Vocabulary",
         "vocabularyHelp": "The Dictionary vocabulary the choices come from: labels and colours come with it.",
-        "requiredByDefault": "Required by default (each form can override it)",
+        "requiredByDefault": "Required in forms that do not say otherwise",
         "inList": "Show as a column in the request lists",
         "inListHelp": "The value appears in the list of requests and in the CSV export. Off by default: a column for every field would make the list unreadable.",
         "inListShort": "In lists",
@@ -2516,7 +2516,8 @@
         },
         "vocabularyShipped": "factory",
         "shared": "Share it in the library",
-        "sharedHelp": "Off, the field belongs to this form only. On, it appears among the fields to reuse: the same question on several forms is a single column in every report."
+        "sharedHelp": "Off, the field belongs to this form only. On, it appears among the fields to reuse: the same question on several forms is a single column in every report.",
+        "requiredByDefaultHelp": "It is the field’s starting value: each form can require it or not on its own."
       },
       "limits": {
         "title": "Limits",

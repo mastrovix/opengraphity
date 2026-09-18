@@ -305,9 +305,19 @@ export function FieldEditor({
           </div>
         )}
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
-          <input type="checkbox" checked={bozza.required} onChange={(e) => onBozza({ ...bozza, required: e.target.checked })} />
-          {t('pages.catalogForms.library.requiredByDefault')}
+        {/* DUE obbligatori nello stesso modale, e nessuno dei due diceva
+            quale: questo e del CAMPO e vale nei moduli che non decidono,
+            quello in cima vale in QUESTO modulo. Il proprietario ha chiesto
+            cosa fosse — la prova che l'etichetta non bastava. */}
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 14, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
+          <input type="checkbox" checked={bozza.required}
+            onChange={(e) => { onBozza({ ...bozza, required: e.target.checked }) }} style={{ marginTop: 3 }} />
+          <span>
+            {t('pages.catalogForms.library.requiredByDefault')}
+            <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+              {t('pages.catalogForms.library.requiredByDefaultHelp')}
+            </span>
+          </span>
         </label>
 
         {/* Colonna nelle liste (ondata 4): la offriamo solo ai tipi che diventano
