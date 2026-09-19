@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
-import { ConfigurationIssuesBanner } from '@/components/ConfigurationIssuesBanner'
 import { useTenantLanguage } from '@/hooks/useTenantLanguage'
 import { useTranslation } from 'react-i18next'
 import { keycloak } from '../../lib/keycloak'
@@ -88,12 +87,14 @@ export function AppLayout() {
             minWidth:       0,
           }}
         >
-          <Topbar />
           {/* Revisione delle otto ondate · A·#3: lo schema degradato, le
               matrici incomplete e i buchi di configurazione avevano metrica,
               log e intestazione HTTP — e l'amministratore del tenant, l'unico
-              che può rimediare, vedeva solo pagine che non funzionano. */}
-          <ConfigurationIssuesBanner />
+              che può rimediare, vedeva solo pagine che non funzionano. Dal
+              20 set 2026 non è più un banner su ogni pagina (un quinto dello
+              schermo): la Topbar porta la pastiglia col numero, l'elenco sta
+              in Configurazione ▸ Diagnostica. */}
+          <Topbar />
           <main
             id="main-content"
             style={{

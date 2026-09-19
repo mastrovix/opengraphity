@@ -64,6 +64,9 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, readonly Permission[]>> 
   'reports/ola-uc':                ['report.read'],
   'custom-reports':                ['report.read'],
 
+  // La diagnostica della configurazione è della salute della piattaforma:
+  // lo stesso permesso con cui l'hook la chiede (useConfigurationIssues).
+  'settings/diagnostics':          ['admin.system'],
   'settings/organization':         ['config.organization'],
   'settings/ci-types':             ['config.metamodel'],
   'settings/itil-designer':        ['config.metamodel'],

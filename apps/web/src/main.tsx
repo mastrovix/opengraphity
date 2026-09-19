@@ -54,6 +54,7 @@ import { CITypeDesignerPage } from '@/pages/settings/CITypeDesignerPage'
 import { ITILTypeDesignerPage } from '@/pages/settings/ITILTypeDesignerPage'
 import { CatalogFormsPage } from '@/pages/settings/CatalogFormsPage'
 import { EnumDesignerPage }     from '@/pages/settings/EnumDesignerPage.js'
+import { ConfigurationDiagnosticsPage } from '@/pages/settings/ConfigurationDiagnosticsPage'
 import { OrganizationPage }     from '@/pages/settings/OrganizationPage'
 import { DomainMatricesPage }   from '@/pages/settings/DomainMatricesPage'
 import { SyncPage }             from '@/pages/settings/SyncPage'
@@ -208,6 +209,8 @@ const router = createBrowserRouter([
       // Organizzazione: le scelte che valgono per tutti (la lingua predefinita
       // dell'azienda, che era una costante nel codice). La lingua di una
       // PERSONA sta nel Profilo, aperto a ogni ruolo.
+      // Diagnostica: l'elenco dei rilievi che prima era un banner su ogni pagina.
+      guarded('settings/diagnostics', <ConfigurationDiagnosticsPage />),
       guarded('settings/organization', <OrganizationPage />),
       guarded('settings/ci-types', <CITypeDesignerPage />),
       guarded('settings/itil-designer', <ITILTypeDesignerPage />),

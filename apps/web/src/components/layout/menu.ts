@@ -7,7 +7,7 @@
  * /reports/sla scriveva «AI Analysis / Sla»: /reports è l'indirizzo di AI
  * Analysis, ma SLA Report non ne è una sottopagina.
  */
-import { LayoutDashboard, AlertCircle, Search, GitPullRequest, CalendarDays, HelpCircle, ClipboardList, Inbox, Route, UsersRound, User, BrainCircuit, LayoutGrid, ScrollText, Layers, Settings2, Activity, ShieldAlert, ShieldCheck, Share2, Bell, UserCircle, Tag, CheckSquare, BookOpen, Zap, GitBranch, Clock, Plug, FlaskConical, Sparkles, ShoppingCart, Gauge, Radar, HeartPulse, Boxes, Table2, Building2, Handshake, KeyRound } from 'lucide-react'
+import { LayoutDashboard, AlertCircle, Search, GitPullRequest, CalendarDays, HelpCircle, ClipboardList, Inbox, Route, UsersRound, User, BrainCircuit, LayoutGrid, ScrollText, Layers, Settings2, Activity, ShieldAlert, ShieldCheck, Share2, Bell, UserCircle, Tag, CheckSquare, BookOpen, Zap, GitBranch, Clock, Plug, FlaskConical, Sparkles, ShoppingCart, Gauge, Radar, HeartPulse, Boxes, Table2, Building2, Handshake, KeyRound, Stethoscope } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { voceAttiva } from './menuActive'
 
@@ -39,6 +39,7 @@ export const MONITORING_ITEM_DEFS = [
 ]
 
 export const CONFIG_ITEM_DEFS = [
+  { to: '/settings/diagnostics',      labelKey: 'sidebar.configurationDiagnostics', icon: Stethoscope },
   { to: '/settings/organization',    labelKey: 'sidebar.organization',    icon: Building2 },
   { to: '/settings/ci-types',        labelKey: 'sidebar.ciTypeDesigner',  icon: Layers   },
   { to: '/settings/itil-designer',   labelKey: 'sidebar.itilDesigner',    icon: Settings2 },

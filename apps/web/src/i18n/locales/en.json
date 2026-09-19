@@ -144,7 +144,8 @@
     "roles": "Roles",
     "loginSecurity": "Login & passwords",
     "catalogForms": "Service Request Designer",
-    "changeCalendar": "Change calendar"
+    "changeCalendar": "Change calendar",
+    "configurationDiagnostics": "Diagnostics"
   },
   "pages": {
     "incidents": {
@@ -2635,6 +2636,10 @@
         "abandoned_other": "Service request not created: the {{count}} fields already added to the library stay there, in the «Field library» tab.",
         "landingFailed": "All the fields were created, but the design did not reach the form. Try adding it again: the fields already exist and will not be created twice."
       }
+    },
+    "configurationDiagnostics": {
+      "title": "Configuration diagnostics",
+      "subtitle": "What is missing or inconsistent in this organization’s configuration, and where to fix it."
     }
   },
   "filter": {
@@ -6221,7 +6226,6 @@
     "title_one": "There is 1 thing to fix in the configuration",
     "title_other": "There are {{count}} things to fix in the configuration",
     "goFix": "Go and fix it",
-    "dismiss": "Hide until the next load",
     "reasonUnavailable": "reason not available",
     "issue": {
       "schema_degraded": "Part of the CI metamodel cannot be served by the API, so those types appear nowhere at all: {{reason}}",
@@ -6297,7 +6301,8 @@
       "no_change_manager": "no team designated Change Manager: normal and emergency changes cannot enter approval (Teams and Users)"
     },
     "andMore_one": " (and {{count}} more)",
-    "andMore_other": " (and {{count}} more)"
+    "andMore_other": " (and {{count}} more)",
+    "allClear": "There is nothing to fix in the configuration."
   },
   "forms": {
     "title": "Title",

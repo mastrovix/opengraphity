@@ -19,6 +19,7 @@ import { layoutPalette as C, alpha, colors } from '@/lib/tokens'
 import { useNotificationContext } from '@/contexts/NotificationContext'
 import { NotificationPanel } from '@/components/ui/NotificationPanel'
 import { posizioneNelMenu } from './menu'
+import { TopbarConfigurationIssues } from './TopbarConfigurationIssues'
 
 /** Dove porta il primo segmento di un indirizzo che non è a sua volta una pagina ('' = nessun link). */
 const FIRST_SEGMENT_PAGE: Readonly<Record<string, string>> = {
@@ -201,6 +202,10 @@ export function Topbar() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flexShrink: 1 }}>
         {/* Global search */}
         <GlobalSearch />
+
+        {/* Quante cose ci sono da sistemare nella configurazione: il numero
+            resta su ogni pagina, l'elenco sta nella sua pagina. */}
+        <TopbarConfigurationIssues />
 
         {/* Bell */}
         <div style={{ position: 'relative' }}>

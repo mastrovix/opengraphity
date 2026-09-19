@@ -144,7 +144,8 @@
     "roles": "Ruoli",
     "loginSecurity": "Accesso e password",
     "catalogForms": "Service Request Designer",
-    "changeCalendar": "Calendario change"
+    "changeCalendar": "Calendario change",
+    "configurationDiagnostics": "Diagnostica"
   },
   "pages": {
     "incidents": {
@@ -2635,6 +2636,10 @@
         "abandoned_other": "Service request non creata: i {{count}} campi già aggiunti alla libreria restano lì, nella scheda «Libreria dei campi».",
         "landingFailed": "I campi sono stati creati tutti, ma il disegno non è arrivato nel modulo. Riprova ad aggiungerlo: i campi ci sono già e non verranno creati due volte."
       }
+    },
+    "configurationDiagnostics": {
+      "title": "Diagnostica della configurazione",
+      "subtitle": "Quello che manca o non torna nella configurazione di questa organizzazione, con la strada per rimediarlo."
     }
   },
   "filter": {
@@ -6221,7 +6226,6 @@
     "title_one": "C'è 1 cosa da sistemare nella configurazione",
     "title_other": "Ci sono {{count}} cose da sistemare nella configurazione",
     "goFix": "Vai a sistemare",
-    "dismiss": "Nascondi fino al prossimo caricamento",
     "reasonUnavailable": "motivo non disponibile",
     "issue": {
       "schema_degraded": "Una parte del metamodello dei CI non è servibile dall'API, quindi quei tipi non compaiono da nessuna parte: {{reason}}",
@@ -6297,7 +6301,8 @@
       "no_change_manager": "nessun team designato Change Manager: le change normal ed emergency non possono entrare in approvazione (Team e Utenti)"
     },
     "andMore_one": " (e un altro)",
-    "andMore_other": " (e altri {{count}})"
+    "andMore_other": " (e altri {{count}})",
+    "allClear": "Non c'è niente da sistemare nella configurazione."
   },
   "forms": {
     "title": "Titolo",
