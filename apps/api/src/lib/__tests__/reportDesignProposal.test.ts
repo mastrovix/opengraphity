@@ -240,3 +240,33 @@ describe('la proposta, assemblata, passa la validazione vera', () => {
     })
   }
 })
+
+/**
+ * IL PERIODO SU UN GRAFICO A CATEGORIE (19 set 2026).
+ *
+ * «Perché se uso le barre non funziona?» — un istogramma raggruppato per
+ * `created_at` senza periodo raggruppa sul TIMESTAMP: una barra per ticket.
+ */
+describe('il periodo fuori dalle serie', () => {
+  const doc = (over: Record<string, unknown>) => documento({
+    grafico: 'bar', raggruppa_per_campo: 'created_at', ...over,
+  })
+
+  it('un istogramma raggruppato per data prende il periodo chiesto', () => {
+    const p = validaPropostaReport(doc({ raggruppa_per_periodo: 'month' }), ENTITA)!
+    expect(p.groupByGranularity).toBe('month')
+  })
+
+  it('senza periodo chiesto, un raggruppamento per data resta per giorno', () => {
+    const p = validaPropostaReport(doc({}), ENTITA)!
+    expect(p.groupByGranularity).toBe('day')
+  })
+
+  it('raggruppando per uno STATO il periodo non esiste, e chiederlo è uno scarto', () => {
+    const p = validaPropostaReport(documento({
+      grafico: 'bar', raggruppa_per_campo: 'status', raggruppa_per_periodo: 'month',
+    }), ENTITA)!
+    expect(p.groupByGranularity).toBeNull()
+    expect(p.scartati.map((s) => s.key)).toContain('reportProposal.discard.granularityNotADate')
+  })
+})

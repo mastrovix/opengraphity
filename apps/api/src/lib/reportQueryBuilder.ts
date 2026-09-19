@@ -456,6 +456,36 @@ export function buildReportQuery(
     : metrica === 'min' ? `min(${rootVar}.${campoMetrica})`
     : `max(${rootVar}.${campoMetrica})`
 
+  /**
+   * L'ESPRESSIONE DEL RAGGRUPPAMENTO SU UNA DATA.
+   *
+   * Vale per le serie E per i grafici a categorie: raggruppare un istogramma
+   * per `created_at` senza troncare dà UNA BARRA PER TIMESTAMP — il
+   * proprietario ne ha viste dodici, tutte alte 1, con sotto
+   * «2026-07-15T11:05:33.963Z» (19 set 2026). Il periodo c'era solo per linea
+   * e area, e il resto del prodotto continuava a offrire i campi data anche
+   * agli altri grafici.
+   *
+   * Nessun periodo = la proprietà grezza, cioè il comportamento di sempre per
+   * i campi che date non sono (stato, categoria, team).
+   */
+  const periodoDi = (variabile: string, campo: string): string => {
+    const g = section.groupByGranularity
+    if (!isReportGranularity(g)) return `${variabile}.${campo}`
+    const troncata = g === 'day'
+      ? `date(datetime(${variabile}.${campo}))`
+      : `date.truncate('${g}', datetime(${variabile}.${campo}))`
+    /*
+     * `toString(...)`: SENZA, l'asse di ogni serie diceva «[object Object]».
+     * Una data di Neo4j arriva come oggetto temporale; il suo `toString()`
+     * darebbe «2026-04-01», ma l'oggetto passa da una serializzazione JSON
+     * prima di essere letto e a quel punto il prototipo — e con lui il
+     * `toString` — non c'è più: resta `{year, month, day}`, che stampato
+     * diventa «[object Object]».
+     */
+    return `toString(${troncata})`
+  }
+
   let returnClause: string
   const columns: ReportColumn[] = []
   let groupSource: ReportValueSource | null = null
@@ -474,7 +504,7 @@ export function buildReportQuery(
       const field = groupField ?? 'status'
       groupSource = { neo4jLabel: groupNode.neo4jLabel, field: groupByField ?? 'status' }
       returnClause = [
-        `RETURN ${groupVar}.${field} AS label, ${misura} AS value`,
+        `RETURN ${periodoDi(groupVar, field)} AS label, ${misura} AS value`,
         `ORDER BY value ${sortDirVal}`,
         `LIMIT toInteger($limit)`,
       ].join('\n')
@@ -484,32 +514,12 @@ export function buildReportQuery(
     case 'line':
     case 'area': {
       const field = groupField ?? 'created_at'
-      /*
-       * `date.truncate` porta la data all'inizio del periodo: tutti i giorni
-       * di aprile diventano il 1° aprile, e il conteggio li somma. È il pezzo
-       * che mancava per «per mese» — senza, una serie su sei mesi era un
-       * punto al giorno.
-       */
-      const granularita = isReportGranularity(section.groupByGranularity) ? section.groupByGranularity : 'day'
-      const periodo = granularita === 'day'
-        ? `date(datetime(${groupVar}.${field}))`
-        : `date.truncate('${granularita}', datetime(${groupVar}.${field}))`
-      /*
-       * `toString(...)`: SENZA, l'asse di ogni serie diceva «[object Object]».
-       *
-       * Una data di Neo4j arriva come oggetto temporale; il suo `toString()`
-       * darebbe «2026-04-01», ma l'oggetto passa da una serializzazione JSON
-       * prima di essere letto e a quel punto il prototipo — e con lui il
-       * `toString` — non c'è più: resta `{year, month, day}`, che stampato
-       * diventa «[object Object]». Il difetto c'era da sempre su line e area;
-       * si è visto quando il proprietario ha chiesto i suoi sei mesi
-       * (19 set 2026). La conversione la fa Cypher, che è il posto dove la
-       * data è ancora una data.
-       */
-      const etichetta = `toString(${periodo})`
+      // Una serie è SEMPRE per periodo: senza scelta, per giorno — che è il
+      // comportamento con cui sono state salvate tutte quelle di prima.
+      const etichetta = isReportGranularity(section.groupByGranularity)
+        ? periodoDi(groupVar, field)
+        : `toString(date(datetime(${groupVar}.${field})))`
       returnClause = [
-        // `date('2026-09-09T10:00:00Z')` non si parsa («Text cannot be parsed
-        // to a Date»): la data va estratta dal datetime (C-7).
         `RETURN ${etichetta} AS label, ${misura} AS value`,
         `ORDER BY label ASC`,
       ].join('\n')

@@ -437,8 +437,28 @@ describe('la granularità di una serie', () => {
       .toThrow(/unsupported groupByGranularity/)
   })
 
-  it('fuori dalle serie il periodo non cambia niente', () => {
-    const barre = buildReportQuery(serie({ chartType: 'bar', groupByField: 'status', groupByGranularity: 'month' }), 't1', whitelist).query
-    expect(barre).not.toContain('date.truncate')
+  /*
+   * QUESTO TEST DICEVA IL CONTRARIO stamattina, e diceva il difetto.
+   *
+   * «Fuori dalle serie il periodo non cambia niente» significava che un
+   * istogramma raggruppato per `created_at` raggruppava sul TIMESTAMP: una
+   * barra per incident, tutte alte 1, con sotto «2026-07-15T11:05:33.963Z».
+   * Il proprietario l'ha visto mezz'ora dopo. Il periodo vale per qualunque
+   * grafico raggruppato per data.
+   */
+  it('anche un istogramma raggruppato per data si tronca al periodo', () => {
+    const barre = buildReportQuery(serie({ chartType: 'bar', groupByField: 'created_at', groupByGranularity: 'month' }), 't1', whitelist).query
+    expect(barre).toContain("toString(date.truncate('month', datetime(n0.created_at)))")
+  })
+
+  it('senza periodo un raggruppamento resta la proprietà grezza: stato, categoria, team', () => {
+    const barre = buildReportQuery(serie({ chartType: 'bar', groupByField: 'status' }), 't1', whitelist).query
+    expect(barre).toContain('RETURN n0.status AS label')
+    expect(barre).not.toContain('date')
+  })
+
+  it('una classifica per mese si raggruppa come le barre', () => {
+    const classifica = buildReportQuery(serie({ chartType: 'top_n', groupByField: 'created_at', groupByGranularity: 'month' }), 't1', whitelist).query
+    expect(classifica).toContain("toString(date.truncate('month', datetime(n0.created_at)))")
   })
 })

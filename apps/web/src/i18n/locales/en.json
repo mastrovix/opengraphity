@@ -7131,7 +7131,8 @@
       "filterDays": "«last N days» filter discarded: «{{value}}» is not a number of days.",
       "filterEmpty": "«{{op}}» filter discarded: the value to compare is missing.",
       "filterValueUnknown": "Filter discarded: «{{value}}» is not an allowed value. Allowed: {{allowed}}.",
-      "granularityUnknown": "«{{name}}» is not a period (day, week, month): the series stays daily."
+      "granularityUnknown": "«{{name}}» is not a period (day, week, month): the series stays daily.",
+      "granularityNotADate": "The period does not apply: «{{name}}» is not a date, and grouping by status or team has no periods."
     }
   },
   "reportAI": {

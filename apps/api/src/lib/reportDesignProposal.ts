@@ -337,21 +337,26 @@ export function validaPropostaReport(
   })
 
   /*
-   * IL PERIODO DI UNA SERIE (19 set 2026).
+   * IL PERIODO (19 set 2026).
    *
-   * Solo per `line`/`area`, ed è lì che serve: senza, «gli incident degli
-   * ultimi 6 mesi» diventava un punto al giorno. Un periodo non riconosciuto
-   * ricade su `month` quando la finestra del filtro è lunga, perché è quello
-   * che chiede chi parla di mesi — e si dice.
+   * Vale per QUALUNQUE grafico raggruppato per una data, non solo per le
+   * serie: un istogramma per `created_at` senza periodo dà una barra per
+   * timestamp. Una serie ha sempre un periodo (giorno, se non detto); un
+   * grafico a categorie lo prende solo quando raggruppa per una data, perché
+   * su «stato» o «team» non vuol dire niente.
    */
   const serie = chartType === 'line' || chartType === 'area'
+  const campoGruppo = groupByField === null ? null : campoDi(entitaGruppo, groupByField)
+  const gruppoEUnaData = campoGruppo !== null && (campoGruppo.fieldType === 'date' || campoGruppo.fieldType === 'datetime')
   const periodoChiesto = testo(doc['raggruppa_per_periodo'])
   let granularita: string | null = null
-  if (serie) {
+  if (serie || gruppoEUnaData) {
     granularita = isReportGranularity(periodoChiesto) ? periodoChiesto : 'day'
     if (periodoChiesto !== '' && !isReportGranularity(periodoChiesto)) {
       scartati.push({ what: periodoChiesto, key: 'reportProposal.discard.granularityUnknown', params: { name: periodoChiesto } })
     }
+  } else if (periodoChiesto !== '') {
+    scartati.push({ what: periodoChiesto, key: 'reportProposal.discard.granularityNotADate', params: { name: groupByField ?? '—' } })
   }
 
   return {

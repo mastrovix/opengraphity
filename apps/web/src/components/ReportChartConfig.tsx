@@ -116,6 +116,17 @@ export function ReportChartConfig({
 
   const resultNodes = Object.entries(nodeDataMap).filter(([, nd]) => nd.isResult)
   /** I campi su cui una metrica si può calcolare: numerici, e della RADICE. */
+  /**
+   * Il campo su cui si raggruppa è una DATA? Lo dice il metamodello
+   * (`fieldType`), con i nomi noti come rete per i campi che il metamodello
+   * non tipizza.
+   */
+  const campoDelGruppo = (nodeDataMap[groupByNodeId]?.fields ?? []).find((f) => f.name === groupByField)
+  const raggruppaPerData = groupByField !== '' && (
+    campoDelGruppo?.fieldType === 'date' || campoDelGruppo?.fieldType === 'datetime'
+    || DATE_FIELD_NAMES.includes(groupByField)
+  )
+
   const campiNumericiDellaRadice = (Object.values(nodeDataMap).find((nd) => nd.isRoot)?.fields ?? [])
     .filter((f) => f.fieldType === 'number')
   const tableColumnCount = resultNodes.reduce((acc, [, nd]) => acc + nd.selectedFields.length, 0)
@@ -220,9 +231,18 @@ export function ReportChartConfig({
             </div>
           )}
 
-          {/* Il periodo: solo per una serie, che è l'unico posto dove una data
-              si raggruppa. Fuori da lì non vuol dire niente. */}
-          {isTimeSeries && (
+          {/*
+            IL PERIODO compare per QUALUNQUE grafico raggruppato per una DATA
+            (19 set 2026).
+            Stava solo sulle serie, e intanto il costruttore offriva i campi
+            data anche agli istogrammi: raggruppare le barre per «Creato il»
+            dava una barra per timestamp — dodici barre alte 1 con sotto
+            «2026-07-15T11:05:33.963Z». O si toglievano i campi data dal
+            raggruppamento degli altri grafici, o si dava anche a loro il
+            periodo: la seconda, perché «gli incident per mese a barre» è una
+            domanda normale.
+          */}
+          {(isTimeSeries || raggruppaPerData) && (
             <div>
               <label htmlFor={ids.granularity} style={labelStyle}>{t('reportChart.granularityLabel')}</label>
               <select id={ids.granularity} value={groupByGranularity || 'day'}
