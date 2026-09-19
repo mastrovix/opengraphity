@@ -54,3 +54,46 @@ describe('campiFiltrabili', () => {
     expect(campiFiltrabili([], [], ETICHETTE).find((c) => c.key === 'createdAt')?.type).toBe('date')
   })
 })
+
+/**
+ * I TIPI DEI CAMPI COMUNI (19 set 2026, dalla revisione).
+ *
+ * Stato, ambiente e salute erano caselle di TESTO LIBERO con «contiene»:
+ * scrivendo «Ambiente contiene Produzione» — l'etichetta che il prodotto
+ * mostra ovunque — si salvava un filtro che nella service request non offriva
+ * mai niente, perché il grafo scrive `production`. La pagina CMDB li offre
+ * come tendine da sempre.
+ */
+describe('i tipi dei campi filtrabili', () => {
+  const valori = {
+    stati: ['active', 'retired'],
+    ambienti: ['production', 'staging'],
+    saluti: [{ value: 'up', label: 'In salute' }, { value: 'down', label: 'Guasto' }],
+  }
+
+  it('stato, ambiente e salute sono TENDINE quando i valori si conoscono', () => {
+    const campi = campiFiltrabili([], [], ETICHETTE, valori)
+    for (const chiave of ['status', 'environment', 'health']) {
+      const c = campi.find((x) => x.key === chiave)
+      expect(c?.type, chiave).toBe('enum')
+      expect(c?.options?.length, chiave).toBeGreaterThan(0)
+    }
+  })
+
+  it('senza valori restano caselle di testo invece di una tendina vuota', () => {
+    const campi = campiFiltrabili([], [], ETICHETTE)
+    expect(campi.find((x) => x.key === 'status')?.type).toBe('text')
+  })
+
+  it('un campo numerico o booleano NON si offre: il costruttore non lo sa filtrare', () => {
+    const tipi = [{ name: 'server', label: 'Server', fields: [
+      { name: 'ram_gb', label: 'RAM', fieldType: 'number' },
+      { name: 'critico', label: 'Critico', fieldType: 'boolean' },
+      { name: 'note', label: 'Note', fieldType: 'string' },
+    ] }]
+    const chiavi = campiFiltrabili(tipi, [], ETICHETTE).map((c) => c.key)
+    expect(chiavi).toContain('note')
+    expect(chiavi).not.toContain('ram_gb')
+    expect(chiavi).not.toContain('critico')
+  })
+})

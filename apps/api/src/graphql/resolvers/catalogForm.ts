@@ -467,13 +467,30 @@ export const catalogFormResolvers = {
             ? assertTabella(corrente.fieldType, input['tableDefinition'], corrente.label)
             : null,
           sharedSet: 'shared' in input, shared: input['shared'] === true,
-          refFilterSet: 'refFilter' in input,
-          refFilter: 'refFilter' in input
+          /*
+           * IL FILTRO SI RIVALIDA ANCHE QUANDO CAMBIANO SOLO I TIPI DI CI
+           * (19 set 2026, dalla revisione).
+           *
+           * `refFilterSet` era vero solo se l'input portava `refFilter`:
+           * restringendo i tipi da «Server» a «Stampante» il filtro vecchio
+           * — «costruttore = Dell», valido sui Server — restava in sede
+           * validato contro tipi che non ci sono più. Chi compilava la
+           * richiesta digitava nella casella e riceveva «Filter field not
+           * allowed for this entity: vendor», un messaggio che non nomina né
+           * il campo del modulo né la voce di catalogo, e la richiesta non si
+           * poteva inviare.
+           *
+           * Adesso basta che cambino i TIPI per rivalidare il filtro che c'è:
+           * se non regge più, il rifiuto arriva a chi sta configurando —
+           * dove si può correggere — invece che a chi compila.
+           */
+          refFilterSet: 'refFilter' in input || 'refTypes' in input,
+          refFilter: 'refFilter' in input || 'refTypes' in input
             ? await assertFiltroCI(write, ctx.tenantId, corrente.fieldType,
                 'refTypes' in input && Array.isArray(input['refTypes'])
                   ? (input['refTypes']).map((x) => String(x))
                   : corrente.refTypes,
-                input['refFilter'])
+                'refFilter' in input ? input['refFilter'] : corrente.refFilter)
             : null,
           refTypesSet: 'refTypes' in input,
           refTypes: 'refTypes' in input

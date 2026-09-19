@@ -31,6 +31,8 @@ import { TableColumnsEditor } from './TableColumnsEditor'
 import { colors, fontWeight } from '@/lib/tokens'
 import { Input, Select, LabelledField } from '@/components/ui/FormControls'
 import { GET_CI_TYPES } from '@/graphql/queries'
+import { useCIBaseEnums } from '@/lib/ciEnums'
+import { CI_HEALTHS } from '@/types/events'
 import { FilterBuilder, type FieldConfig, type FilterRule } from '@/components/FilterBuilder'
 
 /** Il campo che si sta scrivendo. Le etichette sono due lingue fisse: it ed en. */
@@ -193,12 +195,24 @@ export function campiFiltrabili(
   tipi: readonly { name: string; label: string; fields?: { name: string; label: string; fieldType: string; enumValues?: string[] | null; isSystem?: boolean }[] }[],
   scelti: readonly string[],
   etichette: { nome: string; stato: string; ambiente: string; salute: string; creato: string },
+  /**
+   * I valori dei tre campi comuni, dal metamodello e dal prodotto: senza,
+   * erano caselle di TESTO LIBERO con «contiene» come confronto (19 set 2026,
+   * dalla revisione). Chi scriveva «Ambiente contiene Produzione» — cioè
+   * l'etichetta che il prodotto mostra ovunque — salvava un filtro che nella
+   * service request non offriva MAI niente, in silenzio: il grafo scrive
+   * `production`. La pagina CMDB li offre come tendine da sempre; qui erano
+   * rientrati come testo.
+   */
+  valori: { stati: readonly string[]; ambienti: readonly string[]; saluti: readonly { value: string; label: string }[] }
+    = { stati: [], ambienti: [], saluti: [] },
 ): FieldConfig[] {
+  const tendina = (v: readonly string[]) => v.map((x) => ({ value: x, label: x }))
   const base: FieldConfig[] = [
     { key: 'name',        label: etichette.nome,     type: 'text' },
-    { key: 'status',      label: etichette.stato,    type: 'text' },
-    { key: 'environment', label: etichette.ambiente, type: 'text' },
-    { key: 'health',      label: etichette.salute,   type: 'text' },
+    { key: 'status',      label: etichette.stato,    type: valori.stati.length > 0 ? 'enum' : 'text',    ...(valori.stati.length > 0 ? { options: tendina(valori.stati) } : {}) },
+    { key: 'environment', label: etichette.ambiente, type: valori.ambienti.length > 0 ? 'enum' : 'text', ...(valori.ambienti.length > 0 ? { options: tendina(valori.ambienti) } : {}) },
+    { key: 'health',      label: etichette.salute,   type: valori.saluti.length > 0 ? 'enum' : 'text',   ...(valori.saluti.length > 0 ? { options: [...valori.saluti] } : {}) },
     { key: 'createdAt',   label: etichette.creato,   type: 'date' },
   ]
   const perNome = new Map<string, FieldConfig>()
@@ -206,10 +220,23 @@ export function campiFiltrabili(
     if (scelti.length > 0 && !scelti.includes(t.name)) continue
     for (const f of t.fields ?? []) {
       if (f.isSystem === true || perNome.has(f.name)) continue
+      // Solo i tipi che il costruttore di filtri sa rendere davvero.
+      if (!['date', 'datetime', 'enum', 'string', 'text'].includes(f.fieldType)) continue
+      if (f.fieldType === 'string' || f.fieldType === 'text') {
+        perNome.set(f.name, { key: f.name, label: f.label || f.name, type: 'text' })
+        continue
+      }
       perNome.set(f.name, {
         key: f.name,
         label: f.label || f.name,
-        type: f.fieldType === 'date' ? 'date' : f.fieldType === 'enum' ? 'enum' : 'text',
+        /*
+         * `number` e `boolean` diventavano TESTO, con «contiene» come
+         * confronto: `toLower(n.ram)` su un numero fa fallire la ricerca dei
+         * CI, e «uguale a "32"» non corrisponde mai a 32. Finché il
+         * costruttore di filtri non sa renderli, si tengono FUORI — un campo
+         * che non si può filtrare bene è meglio non offrirlo (19 set 2026).
+         */
+        type: f.fieldType === 'enum' ? 'enum' : 'date',
         ...(f.enumValues && f.enumValues.length > 0
           ? { options: f.enumValues.map((v) => ({ value: v, label: v })) }
           : {}),
@@ -247,6 +274,8 @@ export function FieldEditor({
     skip: (inModifica?.fieldType ?? bozza.fieldType) !== 'ref_ci',
   })
   const tipiDiCI = (tipiData?.ciTypes ?? []).filter((x) => x.active)
+  // Stato e ambiente dal tipo base del metamodello: unica sorgente, come in CMDB.
+  const baseEnums = useCIBaseEnums()
 
   /**
    * Scrivere l'etichetta propone il nome. Solo nel costruttore, solo su un
@@ -470,6 +499,12 @@ export function FieldEditor({
               fields={campiFiltrabili(tipiDiCI, bozza.refTypes, {
                 nome: t('pages.cmdb.name'), stato: t('pages.cmdb.status'), ambiente: t('pages.cmdb.environment'),
                 salute: t('pages.cmdb.health'), creato: t('pages.cmdb.createdAt'),
+              }, {
+                // Gli stessi valori che la pagina CMDB offre: stato e ambiente
+                // dal metamodello, la salute dal prodotto.
+                stati: baseEnums.statuses,
+                ambienti: baseEnums.environments,
+                saluti: CI_HEALTHS.map((h) => ({ value: h, label: t(`events.health.${h}`) })),
               })}
               initialRules={regoleDaJson(bozza.refFilter)}
               onApply={(gruppo) => {
