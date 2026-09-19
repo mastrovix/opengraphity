@@ -1,7 +1,7 @@
 import { useQuery } from '@apollo/client/react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GET_WORKFLOW_DEFINITION } from '@/graphql/queries/workflow'
+import { GET_WORKFLOW_DEFINITION, GET_WORKFLOW_STEP_LABELS } from '@/graphql/queries/workflow'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { localizedLabel, withLocalizedLabel, type LocalizedLabel } from '@/lib/localizedLabel'
 
@@ -48,6 +48,20 @@ export function useWorkflowSteps(entityType: string) {
     // Entità vuota = chi chiama non ha un workflow da leggere (un CI, un evento): nessuna richiesta.
     { variables: { entityType }, fetchPolicy: METAMODEL_FETCH_POLICY, skip: !entityType },
   )
+  /*
+   * LE ETICHETTE DI TUTTE LE DEFINIZIONI (20 set 2026, dal giro nel browser).
+   *
+   * `workflowDefinition` ne restituisce UNA — deve, perché il disegnatore ne
+   * modifica una — e un tenant può averne più d'una attiva per la stessa
+   * entità. Un ticket fermo su un passo dell'altra si leggeva col nome
+   * interno: nella stessa lista «Inviata» e «submitted». Il PROCESSO resta
+   * quello scelto (transizioni, passo iniziale, terminali); solo LEGGERE uno
+   * stato guarda tutte.
+   */
+  const { data: etichette } = useQuery<{ workflowStepLabels: { name: string; label: string; labels: { language: string; label: string }[] }[] }>(
+    GET_WORKFLOW_STEP_LABELS,
+    { variables: { entityType }, fetchPolicy: METAMODEL_FETCH_POLICY, skip: !entityType },
+  )
 
   const { i18n } = useTranslation()
   const language = i18n.resolvedLanguage ?? i18n.language
@@ -73,8 +87,18 @@ export function useWorkflowSteps(entityType: string) {
       !!stepName && terminalSet.has(stepName)
     const isOpen = (stepName: string | null | undefined) =>
       !!stepName && openSet.has(stepName)
-    const labelFor = (stepName: string | null | undefined) =>
-      (stepName && byName.get(stepName) && localizedLabel(byName.get(stepName)!)) || stepName || ''
+    /** Le etichette di tutte le definizioni attive: vedi sopra. */
+    const etichetteDiTutti = new Map((etichette?.workflowStepLabels ?? []).map((s) => [s.name, s]))
+    const labelFor = (stepName: string | null | undefined) => {
+      if (!stepName) return ''
+      const dalProcesso = byName.get(stepName)
+      if (dalProcesso) return localizedLabel(dalProcesso) || stepName
+      const altrove = etichetteDiTutti.get(stepName)
+      return (altrove && localizedLabel(altrove)) || stepName
+    }
+    /** Il passo è dichiarato da QUALCHE definizione attiva? Falso = orfano davvero. */
+    const isKnownStep = (stepName: string | null | undefined) =>
+      !!stepName && (byName.has(stepName) || etichetteDiTutti.has(stepName))
     const categoryOf = (stepName: string | null | undefined) =>
       (stepName && byName.get(stepName)?.category) || null
     /** Lo scopo di un passo, `null` se il passo non c'è o non lo dichiara. */
@@ -112,11 +136,12 @@ export function useWorkflowSteps(entityType: string) {
       isTerminal,
       isOpen,
       labelFor,
+      isKnownStep,
       categoryOf,
       purposeOf,
       hasPurpose,
       stepsByPurpose,
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `language` rifà le etichette quando cambia la lingua
-  }, [data, loading, error, language])
+  }, [data, etichette, loading, error, language])
 }

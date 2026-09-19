@@ -45,6 +45,9 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
       'enumTypes', 'enumType', 'criticalServiceCriticalities', 'preApprovedChangeTypes', 'riskBandThresholds',
       'navigableEntities', 'navigableRelations', 'reachableEntities',
       'workflowDefinitions', 'workflowDefinition', 'workflowDefinitionById', 'workflowEventTypes',
+      // Solo nome ed etichetta dei passi, per LEGGERE uno stato: stesso
+      // permesso di `workflowDefinition`, che è dove si leggono oggi.
+      'workflowStepLabels',
       'olaContracts', 'ticketOLAs', 'slaCoverage', 'ticketCreationCustomFields',
     ],
     mutation: ['watchEntity', 'unwatchEntity', 'linkSlackAccount'],

@@ -3,6 +3,7 @@ import { workflowEngine } from '@opengraphity/workflow'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { loadTransitionRows, mapWorkflowDefinition } from './workflowMapping.js'
+import { parseLocalizedLabels } from '@opengraphity/types'
 import { requestApprovalWouldBeSkipped } from '../../lib/requestApproval.js'
 
 // ── WorkflowStep.currentInstances ─────────────────────────────────────────────
@@ -175,6 +176,52 @@ export async function workflowDefinition(
     const steps = defResult.records[0].get('steps') as Array<{ properties: Record<string, unknown> }>
     const transitions = await loadTransitionRows(session, wd['id'] as string, ctx.tenantId)
     return mapWorkflowDefinition(wd, steps, transitions)
+  })
+}
+
+/**
+ * LE ETICHETTE DEI PASSI DI TUTTE LE DEFINIZIONI ATTIVE (20 set 2026, dal
+ * giro nel browser).
+ *
+ * `workflowDefinition` ne restituisce UNA sola, e deve: il disegnatore ne
+ * modifica una, e la scelta è deterministica apposta. Ma un tenant può averne
+ * più d'una attiva per la stessa entità — su c-test le richieste hanno
+ * «Service Request Fulfillment» e «Iter portatile con approvazione» — e un
+ * ticket fermo su un passo dell'ALTRA si leggeva col nome interno: nella
+ * stessa lista «Inviata» e «submitted», che per chi guarda sono due stati.
+ *
+ * Qui si leggono solo nome ed etichetta, da tutte: leggere uno stato non è
+ * percorrere un processo, e non serve sapere da quale definizione viene. Due
+ * definizioni con lo stesso nome di passo e un'etichetta diversa: vince la
+ * generica (senza categoria) e, a pari merito, la versione più alta — la
+ * stessa regola di `workflowDefinition`, così la lista e il dettaglio dicono
+ * la stessa parola.
+ */
+export async function workflowStepLabels(
+  _: unknown,
+  { entityType }: { entityType: string },
+  ctx: GraphQLContext,
+) {
+  return withSession(async (session) => {
+    const r = await session.executeRead((tx) =>
+      tx.run(`
+        MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
+        MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
+        RETURN s.name AS name, s.label AS label, s.labels AS labels
+        ORDER BY (wd.category IS NULL) DESC, wd.version DESC, wd.name
+      `, { tenantId: ctx.tenantId, entityType }),
+    )
+    const perNome = new Map<string, { name: string; label: string; labels: ReturnType<typeof parseLocalizedLabels> }>()
+    for (const rec of r.records) {
+      const name = rec.get('name') as string
+      if (perNome.has(name)) continue
+      perNome.set(name, {
+        name,
+        label: (rec.get('label') as string | null) ?? name,
+        labels: parseLocalizedLabels(rec.get('labels'), `WorkflowStep ${name}`),
+      })
+    }
+    return [...perNome.values()]
   })
 }
 

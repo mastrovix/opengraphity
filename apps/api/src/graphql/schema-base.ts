@@ -159,6 +159,17 @@ export function buildBaseSDL(): string {
     incidentWorkflowHistory(incidentId: ID!): [WorkflowStepExecution!]!
     incidentAvailableTransitions(incidentId: ID!): [WorkflowTransition!]!
     workflowDefinition(entityType: String!): WorkflowDefinition
+    """
+    Le ETICHETTE dei passi di TUTTE le definizioni attive di quell'entità (20
+    set 2026, dal giro nel browser). \`workflowDefinition\` ne restituisce UNA
+    sola — deve, perché il disegnatore ne modifica una — e un tenant può
+    averne più d'una: su c-test le richieste hanno «Service Request
+    Fulfillment» e «Iter portatile con approvazione», con passi diversi. Un
+    ticket fermo su un passo dell'altra definizione si leggeva col NOME
+    INTERNO: nella stessa lista «Inviata» e «submitted», che per chi guarda
+    sono due stati diversi.
+    """
+    workflowStepLabels(entityType: String!): [WorkflowStepLabel!]!
     workflowDefinitionById(id: ID!): WorkflowDefinition
     """
     Le definizioni del tenant. Per difetto solo quelle ATTIVE; «includeInactive»

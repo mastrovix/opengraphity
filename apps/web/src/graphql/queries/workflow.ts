@@ -21,6 +21,19 @@ export const GET_WORKFLOW_DEFINITION_BY_ID = gql`
   }
 `
 
+/**
+ * Le etichette dei passi di TUTTE le definizioni attive dell'entità (20 set
+ * 2026): `workflowDefinition` ne restituisce una sola, e un ticket fermo su
+ * un passo di un'altra si leggeva col nome interno.
+ */
+export const GET_WORKFLOW_STEP_LABELS = gql`
+  query GetWorkflowStepLabels($entityType: String!) {
+    workflowStepLabels(entityType: $entityType) {
+      name label labels { language label }
+    }
+  }
+`
+
 export const GET_WORKFLOW_DEFINITION = gql`
   query GetWorkflowDefinition($entityType: String!) {
     workflowDefinition(entityType: $entityType) {
