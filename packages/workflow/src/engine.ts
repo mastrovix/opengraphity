@@ -42,8 +42,12 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = ENTITY_NEO4J_LABE
 // Neo4j Integer (o numero nativo) → number: helper unico di @opengraphity/neo4j (D-22).
 const toNumber = neo4jToNumber
 
-function fail(error: string, errorI18n?: TransitionErrorI18n): TransitionResult {
-  return { success: false, error, ...(errorI18n ? { errorI18n } : {}) } as unknown as TransitionResult
+function fail(error: string, errorI18n?: TransitionErrorI18n, refusedByCondition?: string): TransitionResult {
+  return {
+    success: false, error,
+    ...(errorI18n ? { errorI18n } : {}),
+    ...(refusedByCondition ? { refusedByCondition } : {}),
+  } as unknown as TransitionResult
 }
 
 interface RegisteredCondition {
@@ -423,7 +427,9 @@ export class WorkflowEngine {
           entityData:   context.entityData,
         }
         const ok = await reg.evaluate(session, condCtx)
-        if (!ok) return fail(reg.failureMessage, { key: reg.failureKey, params: { condition } })
+        // Rifiuto, non errore: chi esegue in coda non deve ritentare (vedi
+        // `refusedByCondition` in types.ts).
+        if (!ok) return fail(reg.failureMessage, { key: reg.failureKey, params: { condition } }, condition)
       }
 
       const entityType = wi['entity_type'] as string

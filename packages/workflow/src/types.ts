@@ -357,6 +357,23 @@ export interface TransitionResult {
   error?:     string
   errorI18n?: TransitionErrorI18n
   /**
+   * LA TRANSIZIONE È STATA RIFIUTATA DA UNA GUARDIA, non è andata storta
+   * (20 set 2026). Le due cose si trattano in modo opposto e finora si
+   * distinguevano solo leggendo il messaggio:
+   *
+   *  - un ERRORE (config corrotta, condizione sconosciuta) si rilancia, e chi
+   *    esegue in coda ritenta;
+   *  - un RIFIUTO è una risposta: la condizione dice «non ancora». Ritentarla
+   *    non serve — non dipende dal tempo ma da qualcuno che chiuda un
+   *    compito o completi un assessment — e con i tentativi si esauriscono
+   *    anche gli eventi, che finiscono marcati «lost».
+   *
+   * Con la guardia sui compiti il caso è diventato ordinario: un'escalation
+   * da SLA su un arco guardato ritentava fino a perdere l'evento, e
+   * l'incident che doveva escalare non escalava, in silenzio.
+   */
+  refusedByCondition?: string
+  /**
    * Errors from step actions (sla_start, publish_event, timer scheduling, …)
    * that failed AFTER the transition was persisted. The transition itself
    * succeeded, but these side effects did NOT run — callers must surface them,

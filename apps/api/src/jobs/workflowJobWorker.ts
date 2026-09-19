@@ -317,6 +317,46 @@ async function processNotificationJob(job: Job): Promise<void> {
           { userId: 'system', entityData: {} },
         )
         if (!result.success) {
+          /**
+           * RIFIUTATA DA UNA GUARDIA ≠ ANDATA STORTA (rimedio, 20 set 2026).
+           *
+           * Qui era peggio che altrove: rilanciando, BullMQ ritentava, i
+           * tentativi si esaurivano e **il timer non veniva più riarmato**,
+           * quindi il ticket restava nel passo di attesa per sempre senza un
+           * segnale. Una guardia però non dipende dal tempo che passa ma da
+           * qualcuno che chiuda un compito: ritentare subito è inutile,
+           * riprovare PIÙ TARDI è esattamente la cosa giusta.
+           *
+           * Quindi si riarma il timer con lo stesso ritardo e si dice perché.
+           */
+          if (result.refusedByCondition) {
+            /**
+             * Stessa forma del varco delle approvazioni qui sopra (C-30):
+             * l'esito si scrive sull'esecuzione del passo, così la
+             * diagnostica elenca il ticket fra quelli bloccati e
+             * l'amministratore lo vede. Prima si rilanciava: BullMQ
+             * ritentava, i tentativi si esaurivano, il timer non veniva più
+             * riarmato e il ticket restava nell'attesa per sempre senza un
+             * segnale — che è il difetto che C-30 aveva chiuso per il varco
+             * e che la guardia nuova riapriva da un'altra porta.
+             */
+            await runQuery(session, `
+              MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})-[:STEP_HISTORY]->(ex:WorkflowStepExecution)
+              WHERE ex.exited_at IS NULL
+              SET ex.deadline_outcome    = 'refused',
+                  ex.deadline_reason     = 'transition_condition',
+                  ex.deadline_detail     = $detail,
+                  ex.deadline_to_step    = $toStep,
+                  ex.deadline_checked_at = $now
+            `, {
+              instanceId, tenantId, toStep,
+              detail: `timer_wait: the transition guard "${result.refusedByCondition}" refused the automatic transition to "${toStep}" (${result.error ?? ''})`,
+              now: new Date().toISOString(),
+            })
+            logger.warn({ instanceId, toStep, condition: result.refusedByCondition, error: result.error },
+              '[notification-jobs] timer_wait rifiutato da una guardia: il ticket resta nell-attesa (visibile nella diagnostica)')
+            break
+          }
           logger.error({ instanceId, toStep, error: result.error }, '[notification-jobs] timer_wait transition failed')
           throw new Error(`timer_wait transition failed for instance ${instanceId} → ${toStep}: ${result.error ?? 'unknown'}`)
         }

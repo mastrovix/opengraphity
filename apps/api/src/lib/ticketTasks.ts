@@ -336,6 +336,46 @@ export async function compitiDaFareNelPasso(
   return Number(righe[0]?.quanti ?? 0)
 }
 
+/**
+ * ANNULLA I COMPITI APERTI di un ticket che si è concluso (rimedio, 20 set
+ * 2026).
+ *
+ * Senza, un incident risolto con tre compiti aperti se li porta dietro per
+ * sempre: restano in «I miei compiti» della squadra, e chi li vede non ha
+ * modo di sapere che il lavoro non serve più. La guardia protegge solo dove
+ * il disegnatore l'ha messa, quindi un ticket si chiude coi compiti aperti
+ * ogni volta che nessuno ha scritto quella condizione.
+ *
+ * Si ANNULLANO, non si completano: nessuno li ha fatti, e scrivere «fatto»
+ * su un lavoro che non è stato fatto è una bugia nel registro. Il motivo lo
+ * mette il prodotto, così chi li ritrova sa perché sono spariti. Vale anche
+ * per quelli in attesa, che non partiranno mai.
+ *
+ * Torna quanti ne ha annullati.
+ */
+export async function annullaCompitiDelTicketConcluso(
+  tenantId: string,
+  entityId: string,
+  motivo: string,
+): Promise<number> {
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const righe = await runQuery<{ quanti: unknown }>(session, `
+      MATCH (ticket {id: $entityId, tenant_id: $tenantId})-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
+      WHERE k.state IN $daFare
+      SET k.state = $annullato, k.completed_at = $ora, k.completed_by = $attore, k.cancel_reason = $motivo
+      RETURN count(k) AS quanti
+    `, {
+      entityId, tenantId, daFare: [TASK_STATE.OPEN, TASK_STATE.WAITING],
+      annullato: TASK_STATE.CANCELLED, ora: new Date().toISOString(),
+      attore: 'system', motivo,
+    })
+    return Number(righe[0]?.quanti ?? 0)
+  } finally {
+    await session.close()
+  }
+}
+
 /** I compiti di un ticket, dal più recente. */
 export async function compitiDelTicket(tenantId: string, entityId: string): Promise<TicketTask[]> {
   const session = getSession(undefined, 'READ')

@@ -2,6 +2,8 @@ import { withSession, runQuery, runQueryOne, getSession, type Props } from '../c
 import { ciTypeFromLabels } from '../../../lib/ciTypeFromLabels.js'
 import type { GraphQLContext } from '../../../context.js'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../../../lib/taskStatus.js'
+import { TASK_STATE } from '../../../lib/ticketTasks.js'
+import { PERMESSO_LETTURA } from '../ticketTasks.js'
 import {
   mapChange,
   mapAssessmentTask,
@@ -623,7 +625,11 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
      * riga su cui non si può fare niente è rumore.
      */
     const compitiRows = await runQuery<Omit<MyTaskRow, 'kind'> & { miei: boolean }>(session, `
-      MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId, state: 'open'})
+      MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId, state: $apertoState})
+      // Un ticket CANCELLATO non ha più compiti da fare: la riga porterebbe a
+      // una pagina che non si apre. Lo filtrano tutte e sei le query dei
+      // compiti di change; questa era l'unica che se n'era dimenticata.
+      WHERE coalesce(ticket.deleted, false) = false
       OPTIONAL MATCH (k)-[:ASSIGNED_TO]->(mio:User {id: $userId, tenant_id: $tenantId})
       OPTIONAL MATCH (k)-[:ASSIGNED_TO_TEAM]->(:Team)<-[:MEMBER_OF]-(membro:User {id: $userId, tenant_id: $tenantId})
       WITH k, ticket, mio, membro
@@ -643,9 +649,21 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         k.created_at  AS createdAt,
         mio IS NOT NULL AS miei
       ORDER BY k.created_at DESC
-    `, params)
+    `, { ...params, apertoState: TASK_STATE.OPEN })
 
+    /**
+     * IL PERMESSO SEGUE IL TICKET, anche qui (rimedio, 20 set 2026).
+     *
+     * `myTasks` sta sotto il solo `workspace.use`, mentre `ticketTasks` è
+     * sotto l'unione dei permessi di lettura e raffina sul tipo vero. Senza
+     * questo filtro, chi è nella squadra leggeva TITOLO del compito e NUMERO
+     * del ticket anche senza poter aprire quel tipo di ticket — esattamente
+     * quello che il commento in testa a `resolvers/ticketTasks.ts` dice di
+     * voler evitare.
+     */
     for (const r of compitiRows) {
+      const permesso = PERMESSO_LETTURA[r.entityType]
+      if (!permesso || !ctx.permissions.has(permesso)) continue
       const { miei, ...riga } = r
       // Il titolo del compito È l'azione (`k.title AS action`): l'ha scritto
       // chi ha disegnato il passo, e dice esattamente cosa c'è da fare. Le

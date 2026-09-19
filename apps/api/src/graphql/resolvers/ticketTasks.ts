@@ -30,7 +30,7 @@ import type { Permission } from '@opengraphity/types'
  * Il permesso che serve per un ticket di questo tipo. Un tipo che non è qui
  * non si indovina: si dice, invece di lasciar passare.
  */
-const PERMESSO_LETTURA: Readonly<Record<string, Permission>> = {
+export const PERMESSO_LETTURA: Readonly<Record<string, Permission>> = {
   incident:        'incident.read',
   problem:         'problem.read',
   change:          'change.read',
