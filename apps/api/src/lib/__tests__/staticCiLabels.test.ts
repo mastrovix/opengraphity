@@ -27,6 +27,9 @@ const SHIPPED_CI_LABELS = new Set(
 )
 /** Le etichette del grafo ITSM che non sono tipi CI. */
 const ITSM_LABELS = new Set(['ConfigurationItem', 'CIBase', 'Incident', 'Change', 'ChangeTask', 'Problem', 'KnownError', 'ServiceRequest',
+  // I TASK (20 set 2026): il generico che un passo di workflow crea su
+  // qualunque ticket, e i cinque per CI delle change. Entrano nei report.
+  'Task', 'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'DeploymentTask', 'ReviewTask',
   'Team', 'User', 'WorkflowDefinition', 'WorkflowInstance', 'ReportTemplate'])
 
 const webWidget = readFileSync(join(WEB, 'pages', 'dashboard', 'useWidgetConfig.ts'), 'utf8')

@@ -19,11 +19,16 @@ vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({ close: async () => undefined }),
   toNumber: (v: unknown) => Number(v),
 }))
+const finto = vi.hoisted(() => ({ esisteGia: false, numeriPresi: 0 }))
+
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
   runQuery: async () => [{ id: 'task-1', teamId: null }],
-  runQueryOne: async () => null,
+  runQueryOne: async (_s: unknown, q: string) =>
+    (q.includes('task_key: $chiave') && finto.esisteGia ? { id: 'task-vecchio' } : null),
 }))
-vi.mock('../sequence.js', () => ({ nextSequenceBlock: async () => 1 }))
+vi.mock('../sequence.js', () => ({
+  nextSequenceBlock: async () => { finto.numeriPresi += 1; return finto.numeriPresi },
+}))
 vi.mock('../ticketTeamHistory.js', () => ({ firstTeamCypher: () => '', TEAM_NOW_PARAM: '__teamNow' }))
 vi.mock('../logger.js', () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }))
 
@@ -48,5 +53,22 @@ describe('su cosa può stare un compito', () => {
 
   it('su un tipo che il prodotto non conosce no', async () => {
     await expect(creaCompito(compito('pratica_del_futuro'))).rejects.toThrow(/is not a ticket/)
+  })
+})
+
+describe('la numerazione non fa buchi', () => {
+  it('rientrare nello stesso passo NON brucia un numero', async () => {
+    finto.numeriPresi = 0
+
+    finto.esisteGia = false
+    await creaCompito(compito('incident'))
+    expect(finto.numeriPresi, 'il primo task prende il suo numero').toBe(1)
+
+    // Stessa chiave naturale: la MERGE non crea niente, e il contatore non
+    // deve muoversi. Prima si prendeva un numero comunque, e la numerazione
+    // usciva coi buchi.
+    finto.esisteGia = true
+    await creaCompito(compito('incident'))
+    expect(finto.numeriPresi, 'il rientro non prende niente').toBe(1)
   })
 })

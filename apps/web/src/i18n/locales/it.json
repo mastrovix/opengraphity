@@ -6476,14 +6476,35 @@
       "user": "Utente",
       "ci": "CI",
       "incident": "Incident",
-      "change": "Change"
+      "change": "Change",
+      "task": "Task",
+      "assessmentTask": "Assessment della change",
+      "deployPlanTask": "Piano di rilascio",
+      "validationTest": "Validazione",
+      "deploymentTask": "Deploy",
+      "reviewTask": "Review"
     },
     "field": {
       "name": "Nome",
       "type": "Tipo",
       "email": "E-mail",
       "role": "Ruolo",
-      "number": "Numero"
+      "number": "Numero",
+      "code": "Codice",
+      "title": "Titolo",
+      "state": "Stato",
+      "entityType": "Tipo di ticket",
+      "step": "Passo",
+      "dueAt": "Scade il",
+      "createdAt": "Creato il",
+      "completedAt": "Chiuso il",
+      "status": "Stato",
+      "responderRole": "Ruolo di chi risponde",
+      "score": "Punteggio",
+      "result": "Esito",
+      "testedAt": "Verificato il",
+      "deployedAt": "Rilasciato il",
+      "reviewedAt": "Rivisto il"
     },
     "relation": {
       "affectedCI": "CI impattato",
@@ -6493,7 +6514,13 @@
       "relatedIncident": "Incident correlato",
       "requestedBy": "Richiesto da",
       "owner": "Responsabile",
-      "member": "Membro"
+      "member": "Membro",
+      "task": "Task",
+      "assessment": "Assessment",
+      "deployPlan": "Piano di rilascio",
+      "validation": "Validazione",
+      "deployment": "Deploy",
+      "review": "Review"
     },
     "removeNode": "Togli «{{node}}» dalla query",
     "filterOperator": "Confronto",

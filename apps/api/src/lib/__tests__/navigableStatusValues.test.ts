@@ -72,7 +72,12 @@ beforeEach(() => {
 describe('getNavigableEntities — i ticket dal metamodello ITIL', () => {
   it('tutti e quattro i ticket, nel gruppo itsm, con i campi del metamodello e il loro vocabolario', async () => {
     const entities = await load('c-two')
-    expect(entities.filter((e) => e.group === 'itsm').map((e) => e.entityType)).toEqual(['Incident', 'Change', 'Problem', 'ServiceRequest'])
+    // I quattro ticket, poi i TASK (20 set 2026): il generico del workflow e
+    // i cinque per CI delle change, che prima non si potevano riportare.
+    expect(entities.filter((e) => e.group === 'itsm').map((e) => e.entityType)).toEqual([
+      'Incident', 'Change', 'Problem', 'ServiceRequest',
+      'Task', 'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'DeploymentTask', 'ReviewTask',
+    ])
     const incident = entities.find((e) => e.entityType === 'Incident')!
     // `number` in testa: è del prodotto, non del metamodello (20 set 2026).
     expect(incident.fields.map((f) => f.name)).toEqual(['number', 'title', 'status', 'category'])
@@ -166,12 +171,19 @@ describe('i campi della libreria dei moduli (ondata 4)', () => {
  * INC00000024 è un elenco di righe che non si sa a cosa si riferiscono.
  */
 describe('i campi identificativi delle entità navigabili', () => {
-  it('ogni ticket offre «number» e ogni CI offre «name»', async () => {
+  it('ogni ticket offre «number», ogni task «code», ogni CI «name»', async () => {
     const entita = await load('t1')
-    const ticket = entita.filter((e) => e.group === 'itsm')
+    // I TASK hanno un `code`, non un `number`: è il loro identificativo
+    // leggibile (TASK00000042), e vale la stessa ragione — una tabella di
+    // righe che non si sa a cosa si riferiscono non serve a niente.
+    const TASK = ['Task', 'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'DeploymentTask', 'ReviewTask']
+    const ticket = entita.filter((e) => e.group === 'itsm' && !TASK.includes(e.entityType))
     expect(ticket.length).toBeGreaterThan(0)
     for (const e of ticket) {
       expect(e.fields.map((f) => f.name)).toContain('number')
+    }
+    for (const e of entita.filter((x) => TASK.includes(x.entityType))) {
+      expect(e.fields.map((f) => f.name), `${e.entityType} senza codice`).toContain('code')
     }
     for (const e of entita.filter((x) => x.group === 'cmdb')) {
       expect(e.fields.map((f) => f.name)).toContain('name')
@@ -180,7 +192,7 @@ describe('i campi identificativi delle entità navigabili', () => {
 
   it('«number» porta la chiave i18n del prodotto, non una etichetta inglese fissa', async () => {
     const entita = await load('t1')
-    const numero = entita.find((e) => e.group === 'itsm')!.fields.find((f) => f.name === 'number')!
+    const numero = entita.find((e) => e.entityType === 'Incident')!.fields.find((f) => f.name === 'number')!
     expect(numero.labelKey).toBe('reportBuilder.field.number')
   })
 })

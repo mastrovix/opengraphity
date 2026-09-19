@@ -24,6 +24,11 @@ export const STATIC_REPORT_LABELS: readonly string[] = [
   'Application', 'Server', 'Database', 'DatabaseInstance', 'Certificate',
   'BusinessApplication',
   'Incident', 'Change', 'ChangeTask', 'Problem', 'KnownError', 'ServiceRequest',
+  // I TASK (20 set 2026): quello generico che un passo di workflow crea su
+  // qualunque ticket, e i cinque per CI delle change. Erano invisibili ai
+  // report — «quanti aperti per squadra» non si poteva chiedere — e i cinque
+  // lo erano da sempre, non da adesso.
+  'Task', 'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'DeploymentTask', 'ReviewTask',
   'Team', 'User',
   'WorkflowDefinition', 'WorkflowInstance',
   'ReportTemplate',
@@ -37,6 +42,7 @@ export const STATIC_REPORT_RELATIONSHIP_TYPES: readonly string[] = [
   'MEMBER_OF', 'HAS_MEMBER', 'OWNED_BY', 'SUPPORTED_BY', 'MANAGED_BY',
   'BELONGS_TO', 'PARENT_OF', 'RELATED_TO', 'CAUSED_BY', 'REALIZES',
   'DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE',
+  'HAS_TASK',
   'HAS_CHANGE_TASK', 'HAS_ASSESSMENT', 'HAS_DEPLOY_PLAN', 'HAS_DEPLOYMENT',
   'HAS_VALIDATION', 'HAS_APPROVAL', 'HAS_REVIEW', 'HAS_COMMENT', 'HAS_SLA',
   'HAS_WORKFLOW', 'CURRENT_STEP', 'STEP_HISTORY', 'HAS_STEP', 'TRANSITIONS_TO',

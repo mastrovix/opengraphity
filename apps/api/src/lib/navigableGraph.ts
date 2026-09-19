@@ -82,6 +82,116 @@ const ORGANIZATION_ENTITIES: NavigableEntity[] = [
   },
 ]
 
+// ── I task (20 set 2026) ─────────────────────────────────────────────────────
+
+/**
+ * I TASK NEI REPORT.
+ *
+ * Fino a oggi non ci si poteva chiedere «quanti task aperti per squadra», né
+ * «quanti ne ha chiusi il Desk a settembre», né «quali sono in ritardo»: né
+ * il task generico nuovo né i cinque per CI delle change erano fra le entità
+ * navigabili. Per i cinque è un buco che c'era da sempre.
+ *
+ * Sono SEI entità e non una perché sono sei nodi diversi, con campi diversi:
+ * l'assessment ha un ruolo e un punteggio, la validazione un esito, il task
+ * generico un passo e una scadenza. Unirli avrebbe voluto dire inventare un
+ * tipo che nel grafo non esiste, e mostrare campi vuoti a seconda della riga.
+ */
+const CAMPO = (name: string, labelKey: string, fieldType = 'string'): NavigableField =>
+  ({ name, label: name, labelKey, fieldType, enumValues: [], enumTypeName: null })
+
+const TASK_ENTITIES: NavigableEntity[] = [
+  {
+    entityType: 'Task',
+    label:      'Task',
+    labelKey:   'reportBuilder.entity.task',
+    neo4jLabel: 'Task',
+    group:      'itsm',
+    fields: [
+      CAMPO('code',        'reportBuilder.field.code'),
+      CAMPO('title',       'reportBuilder.field.title'),
+      CAMPO('state',       'reportBuilder.field.state'),
+      CAMPO('entity_type', 'reportBuilder.field.entityType'),
+      CAMPO('step_name',   'reportBuilder.field.step'),
+      CAMPO('due_at',      'reportBuilder.field.dueAt',      'datetime'),
+      CAMPO('created_at',  'reportBuilder.field.createdAt',  'datetime'),
+      CAMPO('completed_at', 'reportBuilder.field.completedAt', 'datetime'),
+    ],
+    relations: [],
+  },
+  {
+    entityType: 'AssessmentTask',
+    label:      'Assessment',
+    labelKey:   'reportBuilder.entity.assessmentTask',
+    neo4jLabel: 'AssessmentTask',
+    group:      'itsm',
+    fields: [
+      CAMPO('code',           'reportBuilder.field.code'),
+      CAMPO('status',         'reportBuilder.field.status'),
+      CAMPO('responder_role', 'reportBuilder.field.responderRole'),
+      CAMPO('score',          'reportBuilder.field.score',      'number'),
+      CAMPO('created_at',     'reportBuilder.field.createdAt',  'datetime'),
+      CAMPO('completed_at',   'reportBuilder.field.completedAt', 'datetime'),
+    ],
+    relations: [],
+  },
+  {
+    entityType: 'DeployPlanTask',
+    label:      'Deploy plan',
+    labelKey:   'reportBuilder.entity.deployPlanTask',
+    neo4jLabel: 'DeployPlanTask',
+    group:      'itsm',
+    fields: [
+      CAMPO('code',         'reportBuilder.field.code'),
+      CAMPO('status',       'reportBuilder.field.status'),
+      CAMPO('created_at',   'reportBuilder.field.createdAt',   'datetime'),
+      CAMPO('completed_at', 'reportBuilder.field.completedAt', 'datetime'),
+    ],
+    relations: [],
+  },
+  {
+    entityType: 'ValidationTest',
+    label:      'Validation',
+    labelKey:   'reportBuilder.entity.validationTest',
+    neo4jLabel: 'ValidationTest',
+    group:      'itsm',
+    fields: [
+      CAMPO('code',      'reportBuilder.field.code'),
+      CAMPO('status',    'reportBuilder.field.status'),
+      CAMPO('result',    'reportBuilder.field.result'),
+      CAMPO('tested_at', 'reportBuilder.field.testedAt', 'datetime'),
+    ],
+    relations: [],
+  },
+  {
+    entityType: 'DeploymentTask',
+    label:      'Deployment',
+    labelKey:   'reportBuilder.entity.deploymentTask',
+    neo4jLabel: 'DeploymentTask',
+    group:      'itsm',
+    fields: [
+      CAMPO('code',        'reportBuilder.field.code'),
+      CAMPO('status',      'reportBuilder.field.status'),
+      CAMPO('deployed_at', 'reportBuilder.field.deployedAt', 'datetime'),
+    ],
+    relations: [],
+  },
+  {
+    entityType: 'ReviewTask',
+    label:      'Review',
+    labelKey:   'reportBuilder.entity.reviewTask',
+    neo4jLabel: 'ReviewTask',
+    group:      'itsm',
+    fields: [
+      CAMPO('code',        'reportBuilder.field.code'),
+      CAMPO('status',      'reportBuilder.field.status'),
+      CAMPO('result',      'reportBuilder.field.result'),
+      CAMPO('reviewed_at', 'reportBuilder.field.reviewedAt', 'datetime'),
+    ],
+    relations: [],
+  },
+]
+
 // ── Relazioni dei ticket ──────────────────────────────────────────────────────
 
 /**
@@ -106,6 +216,28 @@ const TICKET_RELATIONS: Array<NavigableRelation & { sourceEntityType: string }> 
   { sourceEntityType: 'ServiceRequest', relationshipType: 'REQUESTED_BY', direction: 'outgoing', label: 'Requested by', labelKey: 'reportBuilder.relation.requestedBy', targetEntityType: 'User', targetLabel: 'User', targetLabelKey: 'reportBuilder.entity.user', targetNeo4jLabel: 'User' },
   { sourceEntityType: 'ServiceRequest', relationshipType: 'ASSIGNED_TO', direction: 'outgoing', label: 'Assigned user', labelKey: 'reportBuilder.relation.assignedUser', targetEntityType: 'User', targetLabel: 'User', targetLabelKey: 'reportBuilder.entity.user', targetNeo4jLabel: 'User' },
   { sourceEntityType: 'Team', relationshipType: 'MEMBER_OF', direction: 'incoming', label: 'Member', labelKey: 'reportBuilder.relation.member', targetEntityType: 'User', targetLabel: 'User', targetLabelKey: 'reportBuilder.entity.user', targetNeo4jLabel: 'User' },
+
+  /**
+   * I TASK (20 set 2026). Da ogni ticket ai suoi, e da un task alla squadra
+   * e alla persona: è quello che serve per «quanti aperti per squadra».
+   * `HAS_TASK` è il task generico del workflow; le cinque `HAS_*` delle
+   * change sono quelle che il prodotto scrive da sempre.
+   */
+  { sourceEntityType: 'Incident',       relationshipType: 'HAS_TASK', direction: 'outgoing', label: 'Task', labelKey: 'reportBuilder.relation.task', targetEntityType: 'Task', targetLabel: 'Task', targetLabelKey: 'reportBuilder.entity.task', targetNeo4jLabel: 'Task' },
+  { sourceEntityType: 'Problem',        relationshipType: 'HAS_TASK', direction: 'outgoing', label: 'Task', labelKey: 'reportBuilder.relation.task', targetEntityType: 'Task', targetLabel: 'Task', targetLabelKey: 'reportBuilder.entity.task', targetNeo4jLabel: 'Task' },
+  { sourceEntityType: 'Change',         relationshipType: 'HAS_TASK', direction: 'outgoing', label: 'Task', labelKey: 'reportBuilder.relation.task', targetEntityType: 'Task', targetLabel: 'Task', targetLabelKey: 'reportBuilder.entity.task', targetNeo4jLabel: 'Task' },
+  { sourceEntityType: 'ServiceRequest', relationshipType: 'HAS_TASK', direction: 'outgoing', label: 'Task', labelKey: 'reportBuilder.relation.task', targetEntityType: 'Task', targetLabel: 'Task', targetLabelKey: 'reportBuilder.entity.task', targetNeo4jLabel: 'Task' },
+
+  { sourceEntityType: 'Change', relationshipType: 'HAS_ASSESSMENT',  direction: 'outgoing', label: 'Assessment',  labelKey: 'reportBuilder.relation.assessment',  targetEntityType: 'AssessmentTask', targetLabel: 'Assessment',  targetLabelKey: 'reportBuilder.entity.assessmentTask', targetNeo4jLabel: 'AssessmentTask' },
+  { sourceEntityType: 'Change', relationshipType: 'HAS_DEPLOY_PLAN', direction: 'outgoing', label: 'Deploy plan', labelKey: 'reportBuilder.relation.deployPlan', targetEntityType: 'DeployPlanTask', targetLabel: 'Deploy plan', targetLabelKey: 'reportBuilder.entity.deployPlanTask', targetNeo4jLabel: 'DeployPlanTask' },
+  { sourceEntityType: 'Change', relationshipType: 'HAS_VALIDATION',  direction: 'outgoing', label: 'Validation',  labelKey: 'reportBuilder.relation.validation',  targetEntityType: 'ValidationTest', targetLabel: 'Validation',  targetLabelKey: 'reportBuilder.entity.validationTest', targetNeo4jLabel: 'ValidationTest' },
+  { sourceEntityType: 'Change', relationshipType: 'HAS_DEPLOYMENT',  direction: 'outgoing', label: 'Deployment',  labelKey: 'reportBuilder.relation.deployment',  targetEntityType: 'DeploymentTask', targetLabel: 'Deployment',  targetLabelKey: 'reportBuilder.entity.deploymentTask', targetNeo4jLabel: 'DeploymentTask' },
+  { sourceEntityType: 'Change', relationshipType: 'HAS_REVIEW',      direction: 'outgoing', label: 'Review',      labelKey: 'reportBuilder.relation.review',      targetEntityType: 'ReviewTask',     targetLabel: 'Review',      targetLabelKey: 'reportBuilder.entity.reviewTask',     targetNeo4jLabel: 'ReviewTask' },
+
+  { sourceEntityType: 'Task', relationshipType: 'ASSIGNED_TO_TEAM', direction: 'outgoing', label: 'Assigned team', labelKey: 'reportBuilder.relation.assignedTeam', targetEntityType: 'Team', targetLabel: 'Team', targetLabelKey: 'reportBuilder.entity.team', targetNeo4jLabel: 'Team' },
+  { sourceEntityType: 'Task', relationshipType: 'ASSIGNED_TO',      direction: 'outgoing', label: 'Assigned user', labelKey: 'reportBuilder.relation.assignedUser', targetEntityType: 'User', targetLabel: 'User', targetLabelKey: 'reportBuilder.entity.user', targetNeo4jLabel: 'User' },
+  { sourceEntityType: 'AssessmentTask', relationshipType: 'ASSIGNED_TO_TEAM', direction: 'outgoing', label: 'Assigned team', labelKey: 'reportBuilder.relation.assignedTeam', targetEntityType: 'Team', targetLabel: 'Team', targetLabelKey: 'reportBuilder.entity.team', targetNeo4jLabel: 'Team' },
+  { sourceEntityType: 'DeployPlanTask', relationshipType: 'ASSIGNED_TO_TEAM', direction: 'outgoing', label: 'Assigned team', labelKey: 'reportBuilder.relation.assignedTeam', targetEntityType: 'Team', targetLabel: 'Team', targetLabelKey: 'reportBuilder.entity.team', targetNeo4jLabel: 'Team' },
 ]
 
 const relationsOf = (entityType: string): NavigableRelation[] =>
@@ -199,7 +331,12 @@ export async function getNavigableEntities(tenantId: string): Promise<NavigableE
       }
     })
 
-    return [...await ticketEntities(session, tenantId), ...ORGANIZATION_ENTITIES.map(withRelations), ...ciEntities]
+    return [
+      ...await ticketEntities(session, tenantId),
+      ...TASK_ENTITIES.map(withRelations),
+      ...ORGANIZATION_ENTITIES.map(withRelations),
+      ...ciEntities,
+    ]
   } finally {
     await session.close()
   }

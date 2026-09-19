@@ -225,9 +225,29 @@ export async function creaCompito(task: TaskToCreate): Promise<string> {
         )
       }
     }
-    const now       = new Date().toISOString()
-    const [codice]  = await nextSequenceBlock(session, task.tenantId, 'task', 1)
-      .then((ultimo) => ['TASK' + String(ultimo).padStart(8, '0')])
+    const now     = new Date().toISOString()
+    const chiave  = chiaveCompito(task.entityId, task.stepName, task.actionIndex)
+    /**
+     * IL NUMERO SOLO SE IL TASK NASCE DAVVERO (rimedio, 20 set 2026).
+     *
+     * La MERGE qui sotto è sulla chiave naturale: rientrare nel passo non
+     * crea niente. Ma il codice si prendeva comunque, sempre, quindi il
+     * contatore correva e la numerazione usciva coi buchi — «dov'è il
+     * TASK00000065?».
+     *
+     * Resta una corsa possibile: due scritture simultanee vedono entrambe
+     * «non c'è» e prendono un numero a testa, poi la MERGE ne fa nascere uno
+     * solo. Quel buco è il prezzo di non tenere un lucchetto sul contatore, e
+     * la differenza è fra un buco a ogni rientro e un buco solo quando due
+     * cose accadono nello stesso istante.
+     */
+    const gia = await runQueryOne<{ id: string }>(session, `
+      MATCH (k:Task {tenant_id: $tenantId, task_key: $chiave}) RETURN k.id AS id
+    `, { tenantId: task.tenantId, chiave })
+    const codice = gia
+      ? null
+      : await nextSequenceBlock(session, task.tenantId, 'task', 1)
+        .then((ultimo) => 'TASK' + String(ultimo).padStart(8, '0'))
     const dueAt = task.dueInDays == null
       ? null
       : new Date(Date.now() + task.dueInDays * 86_400_000).toISOString()
@@ -268,7 +288,7 @@ export async function creaCompito(task: TaskToCreate): Promise<string> {
       tenantId:   task.tenantId,
       etichetta,
       teamId:     squadra,
-      taskKey:    chiaveCompito(task.entityId, task.stepName, task.actionIndex),
+      taskKey:    chiave,
       id:         uuidv4(),
       code:       codice,
       title:      task.title,

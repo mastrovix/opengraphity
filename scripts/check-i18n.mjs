@@ -418,6 +418,19 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
    * dappertutto insieme, non qui da solo.
    */
   'tasks.kindOne',
+  /**
+   * Le entità e le relazioni dei TASK nel costruttore di report (20 set
+   * 2026). «Task», «Assessment» e «Review» sono le parole che il prodotto
+   * usa già in italiano — «Task attivi» sulla change, «Assessment
+   * funzionale» nel suo piano, «Review» fra i suoi passi — e sono le stesse
+   * che chi fa ITSM usa parlando italiano. Tradurle qui e non altrove
+   * darebbe due nomi alla stessa cosa a seconda della pagina.
+   */
+  'reportBuilder.entity.task',
+  'reportBuilder.entity.reviewTask',
+  'reportBuilder.relation.task',
+  'reportBuilder.relation.assessment',
+  'reportBuilder.relation.review',
   // «Designer» e «Workflow» nominano due cose del prodotto e si chiamano cosi
   // anche in italiano: il primo e la parola che il prodotto usa gia nella barra
   // laterale («Workflow Designer», «CI Type Designer»), il secondo e il nome

@@ -6476,14 +6476,35 @@
       "user": "User",
       "ci": "CI",
       "incident": "Incident",
-      "change": "Change"
+      "change": "Change",
+      "task": "Task",
+      "assessmentTask": "Change assessment",
+      "deployPlanTask": "Deploy plan",
+      "validationTest": "Validation",
+      "deploymentTask": "Deployment",
+      "reviewTask": "Review"
     },
     "field": {
       "name": "Name",
       "type": "Type",
       "email": "Email",
       "role": "Role",
-      "number": "Number"
+      "number": "Number",
+      "code": "Code",
+      "title": "Title",
+      "state": "State",
+      "entityType": "Ticket type",
+      "step": "Step",
+      "dueAt": "Due",
+      "createdAt": "Created",
+      "completedAt": "Closed",
+      "status": "Status",
+      "responderRole": "Responder role",
+      "score": "Score",
+      "result": "Result",
+      "testedAt": "Tested",
+      "deployedAt": "Deployed",
+      "reviewedAt": "Reviewed"
     },
     "relation": {
       "affectedCI": "Affected CI",
@@ -6493,7 +6514,13 @@
       "relatedIncident": "Related incident",
       "requestedBy": "Requested by",
       "owner": "Owner",
-      "member": "Member"
+      "member": "Member",
+      "task": "Task",
+      "assessment": "Assessment",
+      "deployPlan": "Deploy plan",
+      "validation": "Validation",
+      "deployment": "Deployment",
+      "review": "Review"
     },
     "removeNode": "Remove «{{node}}» from the query",
     "filterOperator": "Comparison",
