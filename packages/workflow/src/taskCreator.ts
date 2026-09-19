@@ -40,6 +40,8 @@ export interface TaskToCreate {
   description: string | null
   teamId:      string | null
   dueInDays:   number | null
+  /** Il TITOLO del compito da aspettare (già risolto), o `null` per partire subito. */
+  after:       string | null
   createdBy:   string
 }
 

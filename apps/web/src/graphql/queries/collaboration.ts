@@ -40,7 +40,7 @@ export const GET_ENTITY_COMMENTS = gql`
 export const GET_TICKET_TASKS = gql`
   query GetTicketTasks($entityId: ID!) {
     ticketTasks(entityId: $entityId) {
-      id code title description state entityType entityId stepName
+      id code title description state afterTitle entityType entityId stepName
       dueAt teamId teamName assigneeId assigneeName
       createdAt completedAt completedById cancelReason
     }

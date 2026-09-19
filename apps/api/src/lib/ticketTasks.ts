@@ -43,12 +43,14 @@ import { getSession } from '@opengraphity/neo4j'
 import { ENTITY_NEO4J_LABELS } from '@opengraphity/types'
 import type { TaskToCreate } from '@opengraphity/workflow'
 import { runQuery, runQueryOne } from '../graphql/resolvers/ci-utils.js'
-import { nextSequenceBlock } from './sequence.js'
+import { nextSequenceBlock, type SessionOrTx } from './sequence.js'
 import { firstTeamCypher, TEAM_NOW_PARAM } from './ticketTeamHistory.js'
 import { logger } from './logger.js'
 
 /** Gli stati di un compito. Non è un vocabolario del cliente: è il suo ciclo di vita. */
 export const TASK_STATE = {
+  /** Aspetta che un altro compito dello stesso passo sia chiuso. */
+  WAITING:   'waiting',
   OPEN:      'open',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',
@@ -56,9 +58,18 @@ export const TASK_STATE = {
 
 export type TaskState = (typeof TASK_STATE)[keyof typeof TASK_STATE]
 
-/** Un compito aperto è l'unico che chiede ancora qualcosa a qualcuno. */
+/** Un compito aperto è l'unico che chiede qualcosa a qualcuno ORA. */
 export function isOpenState(state: string): boolean {
   return state === TASK_STATE.OPEN
+}
+
+/**
+ * Un compito ancora DA FARE: aperto, o in attesa del suo turno. Sono questi
+ * che tengono fermo il passo — un compito in attesa è lavoro non fatto, non
+ * lavoro che non c'è.
+ */
+export function isPendingState(state: string): boolean {
+  return state === TASK_STATE.OPEN || state === TASK_STATE.WAITING
 }
 
 export interface TicketTask {
@@ -67,6 +78,8 @@ export interface TicketTask {
   title:       string
   description: string | null
   state:       string
+  /** Il titolo del compito che sta aspettando, se è in attesa. */
+  afterTitle:  string | null
   entityType:  string
   entityId:    string
   stepName:    string
@@ -83,7 +96,7 @@ export interface TicketTask {
 
 const RITORNO_COMPITO = `
   k.id AS id, k.code AS code, k.title AS title, k.description AS description,
-  k.state AS state, k.entity_type AS entityType, k.step_name AS stepName,
+  k.state AS state, k.after_title AS afterTitle, k.entity_type AS entityType, k.step_name AS stepName,
   k.due_at AS dueAt, k.created_at AS createdAt,
   k.completed_at AS completedAt, k.completed_by AS completedById,
   k.cancel_reason AS cancelReason,
@@ -100,6 +113,7 @@ function mapCompito(r: Record<string, unknown>): TicketTask {
     title:         r['title']         as string,
     description:   (r['description']  as string | null) ?? null,
     state:         r['state']         as string,
+    afterTitle:    (r['afterTitle']   as string | null) ?? null,
     entityType:    r['entityType']    as string,
     entityId:      r['entityId']      as string,
     stepName:      r['stepName']      as string,
@@ -178,7 +192,8 @@ export async function creaCompito(task: TaskToCreate): Promise<string> {
           k.code        = $code,
           k.title       = $title,
           k.description = $description,
-          k.state       = $stateOpen,
+          k.state       = $statoIniziale,
+          k.after_title = $after,
           k.entity_type = $entityType,
           k.step_name   = $stepName,
           k.due_at      = $dueAt,
@@ -202,7 +217,8 @@ export async function creaCompito(task: TaskToCreate): Promise<string> {
       code:       codice,
       title:      task.title,
       description: task.description,
-      stateOpen:  TASK_STATE.OPEN,
+      statoIniziale: task.after ? TASK_STATE.WAITING : TASK_STATE.OPEN,
+      after:      task.after,
       entityType: task.entityType,
       stepName:   task.stepName,
       dueAt,
@@ -232,6 +248,54 @@ export async function creaCompito(task: TaskToCreate): Promise<string> {
   } finally {
     await session.close()
   }
+}
+
+/**
+ * APRE CHI ASPETTAVA questo compito (20 set 2026).
+ *
+ * Si chiama sia quando un compito è chiuso sia quando è ANNULLATO: un
+ * compito annullato non deve lasciare appeso per sempre chi veniva dopo —
+ * il lavoro non si fa più, ma il seguito sì. È la conseguenza dall'altro
+ * lato di una regola di blocco, quella che si dimentica sempre.
+ *
+ * Il legame è per TITOLO, dentro lo stesso ticket e lo stesso passo: è quello
+ * che il disegnatore sceglie da una tendina dei compiti fratelli, e quello
+ * che chi legge la pagina vede scritto.
+ *
+ * Torna quanti ne ha aperti.
+ */
+export async function apriDipendenti(
+  session: SessionOrTx,
+  tenantId: string,
+  taskId: string,
+): Promise<number> {
+  const righe = await runQuery<{ aperti: unknown }>(session, `
+    MATCH (fatto:Task {id: $taskId, tenant_id: $tenantId})<-[:HAS_TASK]-(ticket)
+    MATCH (ticket)-[:HAS_TASK]->(dopo:Task {tenant_id: $tenantId, state: $attesa})
+    WHERE dopo.after_title = fatto.title AND dopo.step_name = fatto.step_name
+    SET dopo.state = $aperto
+    RETURN count(dopo) AS aperti
+  `, { taskId, tenantId, attesa: TASK_STATE.WAITING, aperto: TASK_STATE.OPEN })
+  return Number(righe[0]?.aperti ?? 0)
+}
+
+/**
+ * Quanti compiti di QUESTO passo sono ancora da fare (aperti o in attesa).
+ * La guardia `all_tasks_complete` legge questo: i compiti di un altro passo
+ * non c'entrano, e gli annullati non contano.
+ */
+export async function compitiDaFareNelPasso(
+  session: SessionOrTx,
+  tenantId: string,
+  entityId: string,
+  stepName: string,
+): Promise<number> {
+  const righe = await runQuery<{ quanti: unknown }>(session, `
+    MATCH (ticket {id: $entityId, tenant_id: $tenantId})-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
+    WHERE k.step_name = $stepName AND k.state IN $daFare
+    RETURN count(k) AS quanti
+  `, { entityId, tenantId, stepName, daFare: [TASK_STATE.OPEN, TASK_STATE.WAITING] })
+  return Number(righe[0]?.quanti ?? 0)
 }
 
 /** I compiti di un ticket, dal più recente. */

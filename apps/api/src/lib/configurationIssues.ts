@@ -126,6 +126,7 @@ export type ConfigurationIssueKind =
   | 'catalog_form_to_fix'
   | 'task_type_mismatch'
   | 'tasks_without_team'
+  | 'tasks_waiting_forever'
   | 'changes_stuck'
 
 export interface ConfigurationIssue {
@@ -750,6 +751,33 @@ async function checkTaskIntegrity(tenantId: string, session: Session): Promise<C
       },
     })
   }
+  /**
+   * Compiti IN ATTESA di un compito che sul ticket non c'è. Nascono da un
+   * refuso nel disegnatore — «parte quando è chiuso: ‹un titolo che nessun
+   * altro compito ha›» — e da soli non partirebbero mai, tenendo fermo anche
+   * il passo, perché la guardia conta anche le attese. Meglio dirlo che
+   * lasciare un ticket bloccato senza spiegazione.
+   */
+  const attesePerSempre = await runQuery<{ code: string; after: string }>(session, `
+    MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId, state: $attesa})
+    WHERE k.after_title IS NOT NULL
+      AND NOT EXISTS {
+        MATCH (ticket)-[:HAS_TASK]->(altro:Task {tenant_id: $tenantId})
+        WHERE altro.title = k.after_title AND altro.step_name = k.step_name
+      }
+    RETURN k.code AS code, k.after_title AS after
+    LIMIT 20
+  `, { tenantId, attesa: TASK_STATE.WAITING })
+  if (attesePerSempre.length > 0) {
+    out.push({
+      kind: 'tasks_waiting_forever', severity: 'error', where: null,
+      params: {
+        count: String(attesePerSempre.length),
+        examples: attesePerSempre.slice(0, 5).map((r) => `${r.code} → «${r.after}»`).join(', '),
+      },
+    })
+  }
+
   return out
 }
 

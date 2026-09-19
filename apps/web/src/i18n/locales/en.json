@@ -2860,7 +2860,8 @@
       "all_assessments_complete": "All assessments and the release plan complete",
       "all_deployments_complete": "All deployments and validations complete",
       "all_reviews_confirmed": "All reviews confirmed",
-      "rootCause != null": "Root cause is filled in"
+      "rootCause != null": "Root cause is filled in",
+      "all_tasks_complete": "All tasks of the step completed"
     },
     "triggerHint": "Who follows the arrow: «manual» a person from the ticket, «automatic» the engine when the condition holds, «timer» the end of a wait, «SLA breach» escalation.",
     "addStepStandardHint": "It is born «in progress» with no purpose: open the step panel to give it a category and a purpose, otherwise domain rules will not recognise it.",
@@ -2921,7 +2922,9 @@
       "approverRoleIgnored": "People or teams are set, so the role above is ignored.",
       "taskTitleExample": "E.g. Prepare the machine for {title}",
       "taskDueExample": "Days, e.g. 2",
-      "taskDescriptionExample": "What has to be done (optional)"
+      "taskDescriptionExample": "What has to be done (optional)",
+      "taskAfter": "starts when this is closed",
+      "taskAfterNone": "right away, in parallel"
     },
     "deadline": {
       "intro": "How long a ticket can stay in this step. When the time is up the ticket moves on its own along one of the arcs that leave the step, and the fields you choose are set.",
@@ -3905,7 +3908,8 @@
         "has_linked_change": "Link a change first, then request the change.",
         "all_assessments_complete": "The assessments or the release plan are not yet complete for every CI: the functional assessment, the technical one and the plan are all required.",
         "all_deployments_complete": "Validation or deployment is not complete yet for every CI.",
-        "all_reviews_confirmed": "The reviews are not confirmed yet for every CI."
+        "all_reviews_confirmed": "The reviews are not confirmed yet for every CI.",
+        "all_tasks_complete": "Some tasks of this step are still to be done: close or cancel them before moving on."
       },
       "changeUsesChangeTransition": "A change moves through its own transitions (with the approval checks), not this generic one.",
       "unknownActionType": "Action type «{{type}}» does not exist. Available: {{allowed}}.",
@@ -6297,7 +6301,9 @@
       "task_type_mismatch_one": "1 task hangs from a ticket that is not of its type ({{examples}}). This should not be possible: the type is inherited from the workflow and checked on write. If it is here, some path nobody foresaw wrote it — **report it**, and until then do not trust that task.",
       "task_type_mismatch_other": "{{count}} tasks hang from tickets that are not of their type ({{examples}}). This should not be possible: the type is inherited from the workflow and checked on write. If they are here, some path nobody foresaw wrote them — **report it**, and until then do not trust those tasks.",
       "tasks_without_team_one": "1 open task has no team ({{codes}}): **nobody knows they have to do it**. This happens when the team chosen in the workflow step was deleted afterwards. Assign it, or fix the step.",
-      "tasks_without_team_other": "{{count}} open tasks have no team ({{codes}}): **nobody knows they have to do them**. This happens when the team chosen in the workflow step was deleted afterwards. Assign them, or fix the step."
+      "tasks_without_team_other": "{{count}} open tasks have no team ({{codes}}): **nobody knows they have to do them**. This happens when the team chosen in the workflow step was deleted afterwards. Assign them, or fix the step.",
+      "tasks_waiting_forever_one": "1 task is waiting for a task that does not exist on its ticket ({{examples}}): it will **never start**, and it holds the step too. In the designer, «starts when this is closed» names a task that step does not create.",
+      "tasks_waiting_forever_other": "{{count}} tasks are waiting for tasks that do not exist on their tickets ({{examples}}): they will **never start**, and they hold the steps too. In the designer, «starts when this is closed» names tasks those steps do not create."
     },
     "gap": {
       "tenant_missing": "no row: the tenant does not exist",
@@ -7343,7 +7349,9 @@
     "state": {
       "open": "To do",
       "completed": "Done",
-      "cancelled": "Cancelled"
-    }
+      "cancelled": "Cancelled",
+      "waiting": "Waiting"
+    },
+    "waitingFor": "waits for «{{title}}»"
   }
 }

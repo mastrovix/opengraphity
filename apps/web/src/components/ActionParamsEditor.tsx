@@ -27,6 +27,12 @@ interface Props {
   entityType: string
   onChange:   (key: string, value: string) => void
   vocabulary?: 'automation' | 'workflow_step'
+  /**
+   * I titoli degli ALTRI compiti dello stesso passo: `create_task` li offre
+   * in tendina per dire «parte quando quello è chiuso». Li conosce solo chi
+   * ha in mano il passo intero (il pannello), non questo editor.
+   */
+  compitiFratelli?: readonly string[]
 }
 
 const textareaS: React.CSSProperties = { ...inputS, minHeight: 60, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }
@@ -42,7 +48,7 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-export function ActionParamsEditor({ actionType, params, entityType, onChange, vocabulary = 'automation' }: Props) {
+export function ActionParamsEditor({ actionType, params, entityType, onChange, vocabulary = 'automation', compitiFratelli = [] }: Props) {
   const { t } = useTranslation()
   const targetOptions = useTargetOptions()
   const { data: teamsData }    = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
@@ -298,6 +304,20 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
           </Labeled>
           {text('due_in_days', 'due_in_days', t('workflow.actionParams.taskDueExample'), 'number')}
           {text('description', 'description', t('workflow.actionParams.taskDescriptionExample'))}
+          {/*
+            LA SEQUENZA, compito per compito: vuoto = parte subito, che è il
+            caso normale. Si sceglie fra i compiti dello STESSO passo, per
+            titolo — quello che poi si legge sulla pagina del ticket. Senza
+            fratelli la tendina non compare: non c'è niente da aspettare.
+          */}
+          {compitiFratelli.length > 0 && (
+            <Labeled label={t('workflow.actionParams.taskAfter')}>
+              <Select style={selectS} value={params['after'] ?? ''} onChange={(e) => onChange('after', e.target.value)}>
+                <option value="">{t('workflow.actionParams.taskAfterNone')}</option>
+                {compitiFratelli.map((titolo) => <option key={titolo} value={titolo}>{titolo}</option>)}
+              </Select>
+            </Labeled>
+          )}
         </div>
       )
 

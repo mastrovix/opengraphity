@@ -2860,7 +2860,8 @@
       "all_assessments_complete": "Tutte le valutazioni e il piano completati",
       "all_deployments_complete": "Tutti i rilasci e le verifiche completati",
       "all_reviews_confirmed": "Tutte le revisioni confermate",
-      "rootCause != null": "La causa radice è compilata"
+      "rootCause != null": "La causa radice è compilata",
+      "all_tasks_complete": "Tutti i compiti del passo completati"
     },
     "triggerHint": "Chi percorre l'arco: «manuale» una persona dal ticket, «automatico» il motore quando la condizione è soddisfatta, «timer» la fine di un'attesa, «sfondamento SLA» l'escalation.",
     "addStepStandardHint": "Nasce «in lavorazione» e senza scopo: apri il pannello del passo per assegnargli categoria e scopo, altrimenti le regole di dominio non lo riconoscono.",
@@ -2921,7 +2922,9 @@
       "approverRoleIgnored": "Ci sono persone o squadre indicate, quindi il ruolo qui sopra viene ignorato.",
       "taskTitleExample": "Es. Prepara la macchina per {title}",
       "taskDueExample": "Giorni, es. 2",
-      "taskDescriptionExample": "Cosa c’è da fare (facoltativo)"
+      "taskDescriptionExample": "Cosa c’è da fare (facoltativo)",
+      "taskAfter": "parte quando è chiuso",
+      "taskAfterNone": "subito, in parallelo"
     },
     "deadline": {
       "intro": "Per quanto tempo un ticket può restare in questo passo. Allo scadere il ticket si sposta da solo lungo uno degli archi che escono dal passo, e i campi che scegli vengono impostati.",
@@ -3905,7 +3908,8 @@
         "has_linked_change": "Collega prima una change, poi richiedi la change.",
         "all_assessments_complete": "Le valutazioni o il piano di rilascio non sono ancora completi per tutti i CI: servono l’assessment funzionale, quello tecnico e il piano.",
         "all_deployments_complete": "Validazione o deploy non ancora completati per tutti i CI.",
-        "all_reviews_confirmed": "Le review non sono ancora confermate per tutti i CI."
+        "all_reviews_confirmed": "Le review non sono ancora confermate per tutti i CI.",
+        "all_tasks_complete": "Ci sono ancora compiti da fare in questo passo: chiudili o annullali prima di andare avanti."
       },
       "changeUsesChangeTransition": "Una change si muove con le sue transizioni (con i controlli di approvazione), non con questa generica.",
       "unknownActionType": "Il tipo di azione «{{type}}» non esiste. Disponibili: {{allowed}}.",
@@ -6297,7 +6301,9 @@
       "task_type_mismatch_one": "1 compito è appeso a un ticket che non è del suo tipo ({{examples}}). Non dovrebbe poter succedere: il tipo lo eredita dal workflow e la scrittura lo verifica. Se è qui, l'ha scritto una strada che nessuno aveva previsto — **segnalalo**, e nel frattempo quel compito non si fida.",
       "task_type_mismatch_other": "{{count}} compiti sono appesi a ticket che non sono del loro tipo ({{examples}}). Non dovrebbe poter succedere: il tipo lo eredita dal workflow e la scrittura lo verifica. Se sono qui, li ha scritti una strada che nessuno aveva previsto — **segnalalo**, e nel frattempo quei compiti non si fidano.",
       "tasks_without_team_one": "1 compito aperto non ha nessuna squadra ({{codes}}): **nessuno sa di doverlo fare**. Succede quando la squadra scelta nel passo del workflow è stata cancellata dopo. Assegnalo, o correggi il passo.",
-      "tasks_without_team_other": "{{count}} compiti aperti non hanno nessuna squadra ({{codes}}): **nessuno sa di doverli fare**. Succede quando la squadra scelta nel passo del workflow è stata cancellata dopo. Assegnali, o correggi il passo."
+      "tasks_without_team_other": "{{count}} compiti aperti non hanno nessuna squadra ({{codes}}): **nessuno sa di doverli fare**. Succede quando la squadra scelta nel passo del workflow è stata cancellata dopo. Assegnali, o correggi il passo.",
+      "tasks_waiting_forever_one": "1 compito aspetta un compito che sul suo ticket non esiste ({{examples}}): **non partirà mai**, e tiene fermo anche il passo. Nel disegnatore, il campo «parte quando è chiuso» nomina un compito che quel passo non crea.",
+      "tasks_waiting_forever_other": "{{count}} compiti aspettano compiti che sui loro ticket non esistono ({{examples}}): **non partiranno mai**, e tengono fermi anche i passi. Nel disegnatore, il campo «parte quando è chiuso» nomina compiti che quei passi non creano."
     },
     "gap": {
       "tenant_missing": "nessuna riga: il tenant non esiste",
@@ -7343,7 +7349,9 @@
     "state": {
       "open": "Da fare",
       "completed": "Fatto",
-      "cancelled": "Annullato"
-    }
+      "cancelled": "Annullato",
+      "waiting": "In attesa"
+    },
+    "waitingFor": "aspetta «{{title}}»"
   }
 }

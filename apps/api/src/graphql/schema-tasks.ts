@@ -17,8 +17,10 @@ export function ticketTasksSDL(): string {
     code: String!
     title: String!
     description: String
-    """open | completed | cancelled."""
+    """waiting (aspetta un altro compito) | open | completed | cancelled."""
     state: String!
+    """Il titolo del compito che sta aspettando, quando è in attesa."""
+    afterTitle: String
     """
     Il tipo del TICKET a cui è appeso, e deve corrispondergli: un compito di
     tipo incident su una change è vietato. Non è modificabile — un compito

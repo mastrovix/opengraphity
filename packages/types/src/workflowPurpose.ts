@@ -197,6 +197,7 @@ export const WORKFLOW_TRANSITION_CONDITIONS = [
   'all_assessments_complete',
   'all_deployments_complete',
   'all_reviews_confirmed',
+  'all_tasks_complete',
   'rootCause != null',
 ] as const
 

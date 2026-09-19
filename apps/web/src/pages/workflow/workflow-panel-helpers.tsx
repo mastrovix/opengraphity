@@ -146,6 +146,13 @@ export function paramsToRaw(type: string, params?: Record<string, unknown>): Rec
     approver_user_ids: listaIdComeTesto(params['approver_user_ids']),
     approver_team_ids: listaIdComeTesto(params['approver_team_ids']),
   }
+  if (type === 'create_task') return {
+    title_template: String(params['title_template'] ?? ''),
+    team_id:        String(params['team_id']        ?? ''),
+    description:    String(params['description']    ?? ''),
+    due_in_days:    params['due_in_days'] == null ? '' : String(params['due_in_days']),
+    after:          String(params['after']          ?? ''),
+  }
   /**
    * Un tipo senza un ramo suo NON perde i suoi parametri: si leggono come
    * testo, che è come li tiene l'editor. Prima qui c'era `return {}`, e
@@ -218,6 +225,7 @@ export function buildActionParams(type: string, raw: Record<string, string>): Re
       ...(raw['team_id']?.trim()     ? { team_id:     raw['team_id'].trim() }     : {}),
       ...(raw['description']?.trim() ? { description: raw['description'].trim() } : {}),
       ...(giorni ? { due_in_days: Number(giorni) } : {}),
+      ...(raw['after']?.trim() ? { after: raw['after'].trim() } : {}),
     }
   }
   /**

@@ -13,7 +13,7 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { CheckCircle2, Circle, XCircle, Clock, Users } from 'lucide-react'
+import { CheckCircle2, Circle, XCircle, Clock, Users, Hourglass } from 'lucide-react'
 import { GET_TICKET_TASKS } from '@/graphql/queries'
 import { COMPLETE_TICKET_TASK, CANCEL_TICKET_TASK } from '@/graphql/mutations'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -25,19 +25,23 @@ import { formatDate } from '@/lib/datetime'
 
 export interface TicketTaskRow {
   id: string; code: string; title: string; description: string | null
-  state: string; entityType: string; entityId: string; stepName: string
+  state: string; afterTitle: string | null; entityType: string; entityId: string; stepName: string
   dueAt: string | null; teamId: string | null; teamName: string | null
   assigneeId: string | null; assigneeName: string | null
   createdAt: string; completedAt: string | null; completedById: string | null
   cancelReason: string | null
 }
 
-const APERTO = 'open'
+const APERTO  = 'open'
+const ATTESA  = 'waiting'
+/** Da fare: aperto o in attesa del suo turno. Sono questi che tengono fermo il passo. */
+const daFare = (state: string) => state === APERTO || state === ATTESA
 
 function Stato({ state }: { state: string }) {
   const { t } = useTranslation()
   if (state === 'completed') return <CheckCircle2 size={16} aria-label={t('tasks.state.completed')} style={{ color: 'var(--color-success)', flexShrink: 0 }} />
   if (state === 'cancelled') return <XCircle size={16} aria-label={t('tasks.state.cancelled')} style={{ color: 'var(--color-slate-light)', flexShrink: 0 }} />
+  if (state === ATTESA)      return <Hourglass size={16} aria-label={t('tasks.state.waiting')} style={{ color: 'var(--color-slate-light)', flexShrink: 0 }} />
   return <Circle size={16} aria-label={t('tasks.state.open')} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
 }
 
@@ -56,7 +60,9 @@ export function TicketTasksSection({ entityId }: { entityId: string }) {
   const compiti = data?.ticketTasks ?? []
   if (compiti.length === 0) return null
 
-  const aperti = compiti.filter((c) => c.state === APERTO).length
+  // Il conto sono i compiti DA FARE, in attesa compresi: è quello che tiene
+  // fermo il passo, ed è la domanda di chi guarda («quanto manca?»).
+  const aperti = compiti.filter((c) => daFare(c.state)).length
 
   const chiudi = async (task: TicketTaskRow) => {
     try {
@@ -85,7 +91,8 @@ export function TicketTasksSection({ entityId }: { entityId: string }) {
     >
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {compiti.map((task) => {
-          const chiuso = task.state !== APERTO
+          const chiuso  = !daFare(task.state)
+          const inAttesa = task.state === ATTESA
           return (
             <li
               key={task.id}
@@ -120,6 +127,12 @@ export function TicketTasksSection({ entityId }: { entityId: string }) {
                       {t('tasks.due', { date: formatDate(task.dueAt) })}
                     </span>
                   )}
+                  {inAttesa && task.afterTitle && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Hourglass size={12} aria-hidden="true" />
+                      {t('tasks.waitingFor', { title: task.afterTitle })}
+                    </span>
+                  )}
                   {task.state === 'cancelled' && task.cancelReason && (
                     <span>{t('tasks.cancelledBecause', { reason: task.cancelReason })}</span>
                   )}
@@ -127,7 +140,9 @@ export function TicketTasksSection({ entityId }: { entityId: string }) {
               </div>
               {!chiuso && (
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  <Button size="sm" onClick={() => void chiudi(task)}>{t('tasks.complete')}</Button>
+                  {/* «Fatto» non si offre su un compito in attesa: il suo
+                      turno non è arrivato, e il server lo rifiuta. */}
+                  {!inAttesa && <Button size="sm" onClick={() => void chiudi(task)}>{t('tasks.complete')}</Button>}
                   <Button size="sm" variant="secondary" onClick={() => { setDaAnnullare(task); setMotivo('') }}>
                     {t('tasks.cancel')}
                   </Button>

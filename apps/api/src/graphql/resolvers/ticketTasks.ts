@@ -19,7 +19,7 @@ import { getSession } from '@opengraphity/neo4j'
 import { runQueryOne } from './ci-utils.js'
 import { audit } from '../../lib/audit.js'
 import {
-  compitiDelTicket, compito, TASK_STATE, isOpenState,
+  compitiDelTicket, compito, apriDipendenti, TASK_STATE, isOpenState, isPendingState,
   type TicketTask,
 } from '../../lib/ticketTasks.js'
 import type { GraphQLContext } from '../../context.js'
@@ -98,6 +98,9 @@ export async function completeTicketTask(
   const prima = await compitoScrivibile(ctx, args.taskId)
   // Richiudere un compito già chiuso non è un no-op silenzioso: chi lo fa sta
   // guardando una pagina vecchia, e deve saperlo.
+  // Chiudere un compito ancora IN ATTESA non si può: il suo turno non è
+  // arrivato, e dire «fatto» su un lavoro che non poteva partire è una
+  // bugia nel registro.
   if (!isOpenState(prima.state)) {
     throw new ValidationError(
       `Task ${prima.code} is not open any more (${prima.state}): reload the page.`,
@@ -116,6 +119,8 @@ export async function completeTicketTask(
       taskId: args.taskId, tenantId: ctx.tenantId, completed: TASK_STATE.COMPLETED,
       now: new Date().toISOString(), userId: ctx.userId, note: args.note?.trim() || null,
     }))
+    // Chi aspettava questo compito parte adesso.
+    await session.executeWrite((tx) => apriDipendenti(tx, ctx.tenantId, args.taskId))
   } finally {
     await session.close()
   }
@@ -129,7 +134,9 @@ export async function cancelTicketTask(
   ctx: GraphQLContext,
 ): Promise<TicketTask> {
   const prima = await compitoScrivibile(ctx, args.taskId)
-  if (!isOpenState(prima.state)) {
+  // Si annulla anche un compito IN ATTESA: «non serve più» si sa spesso
+  // prima che il suo turno arrivi.
+  if (!isPendingState(prima.state)) {
     throw new ValidationError(
       `Task ${prima.code} is not open any more (${prima.state}): reload the page.`,
       { key: 'errors.task.notOpen', params: { code: prima.code, state: prima.state } },
@@ -156,6 +163,13 @@ export async function cancelTicketTask(
       taskId: args.taskId, tenantId: ctx.tenantId, cancelled: TASK_STATE.CANCELLED,
       now: new Date().toISOString(), userId: ctx.userId, reason: motivo,
     }))
+    /**
+     * ANCHE annullando si apre chi aspettava. È la conseguenza dall'altro
+     * lato, quella che si dimentica: senza, un compito annullato lascerebbe
+     * il seguito fermo per sempre, e con lui il passo — che la guardia tiene
+     * chiuso finché c'è qualcosa in attesa.
+     */
+    await session.executeWrite((tx) => apriDipendenti(tx, ctx.tenantId, args.taskId))
   } finally {
     await session.close()
   }

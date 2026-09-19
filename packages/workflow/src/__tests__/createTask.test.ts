@@ -107,6 +107,18 @@ describe('create_task', () => {
     expect(scritti[0]!.createdBy).toBe('u-2')
   })
 
+  it('LA SEQUENZA: «parte quando è chiuso» viaggia col titolo risolto', async () => {
+    await runAction(azione({ title_template: 'Consegna', after: 'Prepara: {title}' }), istanza(), contesto)
+    // Il titolo dell'altro compito ha i segnaposto come il proprio: se non si
+    // risolvesse, «Prepara: {title}» non combacerebbe mai con quello nato.
+    expect(scritti[0]!.after).toBe('Prepara: Nuovo portatile')
+  })
+
+  it('senza «parte quando è chiuso» il compito parte subito', async () => {
+    await runAction(azione({ title_template: 'X' }), istanza(), contesto)
+    expect(scritti[0]!.after).toBeNull()
+  })
+
   it('le condizioni dell\'azione valgono anche qui: se non scattano, niente compito', async () => {
     const conCondizione = {
       type: 'create_task',

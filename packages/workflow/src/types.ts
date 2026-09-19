@@ -119,11 +119,13 @@ export interface CreateTaskParams {
   /** Fra quanti giorni scade. Vuoto = nessuna scadenza. */
   due_in_days?:   string | number
   /**
-   * La SEQUENZA («parte quando quell'altro è chiuso») arriva nell'ondata 2,
-   * insieme alla guardia che tiene fermo il passo: un compito «in attesa» che
-   * nessuno sa aprire sarebbe una trappola, quindi qui non si può nemmeno
-   * scrivere.
+   * LA SEQUENZA: il titolo di un altro compito dello stesso passo. Finché
+   * quello non è chiuso, questo sta fermo («in attesa»). Vuoto = parte
+   * subito, ed è il caso normale — chi non usa le sequenze non se ne
+   * accorge. Il proprietario l'ha chiesto così: «ci possono essere task in
+   * sequenza e task in parallelo, dipende dalla service request».
    */
+  after?:         string
 }
 
 export interface CallWebhookParams {

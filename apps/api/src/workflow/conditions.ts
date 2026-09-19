@@ -97,6 +97,26 @@ export const CHANGE_CONDITIONS: Record<string, { evaluate: ConditionEvaluator; f
       return pendingCount(row) === 0
     },
   },
+
+  /**
+   * I COMPITI DEL PASSO CHE SI STA LASCIANDO sono tutti chiusi (20 set 2026).
+   *
+   * È la decisione del proprietario: «il passo aspetta». Finché un compito
+   * creato in quel passo è aperto o in attesa, non si esce — ed è la ragione
+   * per cui esiste un compito invece di una nota: se non blocca, nessuno lo
+   * chiude. Gli annullati non contano (annullare è una decisione, non un
+   * lavoro rimasto), i compiti di ALTRI passi nemmeno.
+   *
+   * Vale per qualunque entità, non solo per le change: i compiti generici
+   * sono del motore.
+   */
+  all_tasks_complete: {
+    failureMessage: 'Some tasks of this step are still to be done',
+    evaluate: async (session, c) => {
+      const { compitiDaFareNelPasso } = await import('../lib/ticketTasks.js')
+      return (await compitiDaFareNelPasso(session, c.tenantId, c.entityId, c.fromStepName)) === 0
+    },
+  },
 }
 
 /** Idempotente: registra tutte le condizioni ITSM sull'engine. */

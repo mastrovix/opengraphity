@@ -366,6 +366,10 @@ export async function runAction(
         description: p.description?.trim() || null,
         teamId:      p.team_id?.trim() || null,
         dueInDays:   giorni,
+        // Il compito da aspettare si nomina col suo titolo, e il titolo può
+        // avere i segnaposto: si risolve con lo stesso contesto, altrimenti
+        // «Prepara {title}» non combacerebbe mai con quello che è nato.
+        after:       p.after?.trim() ? resolveTemplate(p.after.trim(), buildTemplateCtx(instance, ctx.entityData)) : null,
         createdBy:   ctx.userId,
       })
       log.info({ taskId, entityId: instance.entityId, entityType: instance.entityType }, 'workflow-action: create_task succeeded')

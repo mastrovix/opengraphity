@@ -401,6 +401,18 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
   }
 
   // ── Editor di una bozza (tipo + parametri + condizioni), condiviso tra add/edit ──
+  /**
+   * I titoli degli altri `create_task` dello stesso passo: servono alla
+   * tendina «parte quando è chiuso». Si escludono i vuoti e il compito
+   * stesso, perché un compito che aspetta sé stesso non parte mai.
+   */
+  const titoliDeiCompiti = (draft: ActionDraft): string[] => {
+    const tutti = [...editableEnterActions, ...editableExitActions]
+      .filter((a) => a.type === 'create_task')
+      .map((a) => String((a.params as Record<string, unknown> | undefined)?.['title_template'] ?? '').trim())
+    return [...new Set(tutti)].filter((titolo) => titolo && titolo !== (draft.params['title_template'] ?? '').trim())
+  }
+
   const renderDraftEditor = (draft: ActionDraft, setDraft: (updater: (d: ActionDraft) => ActionDraft) => void) => (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -418,6 +430,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
         actionType={draft.type}
         params={draft.params}
         entityType={entityType}
+        compitiFratelli={titoliDeiCompiti(draft)}
         onChange={(key, value) => setDraft((d) => ({ ...d, params: { ...d.params, [key]: value } }))}
       />
       <ConditionsSection
