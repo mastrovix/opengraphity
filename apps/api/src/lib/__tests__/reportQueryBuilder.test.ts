@@ -339,3 +339,64 @@ describe('FIELD_NAME_RE contract', () => {
   it.each(['status', 'created_at', 'ip_address', 'x1', 'a_b_c'])('accepts %s', f => expect(FIELD_NAME_RE.test(f)).toBe(true))
   it.each(['', 'Status', '_x', '1a', 'a b', 'a-b', 'a.b', 'a`b', 'a}b', 'x AS y', 'tenant_id) RETURN 1 //'])('rejects %j', f => expect(FIELD_NAME_RE.test(f)).toBe(false))
 })
+
+/**
+ * LE METRICHE FANNO QUELLO CHE DICONO (19 set 2026).
+ *
+ * `metric` e `metricField` si salvavano e NON si usavano: il RETURN era sempre
+ * `count(root)`, quindi un report configurato «media del costo» mostrava il
+ * numero di ticket. Trovato preparando il progettista AI dei report — una
+ * proposta che scrive «media» avrebbe prodotto un conteggio, e il difetto
+ * sarebbe passato da raro a normale.
+ */
+describe('le metriche', () => {
+  // Si riusa il costruttore di sezioni del file: una radice `Incident` con
+  // una colonna, che è quello che ogni altro test qui sopra usa.
+  const sezione = (over: Partial<ReportSectionDef>): ReportSectionDef =>
+    section({ nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] })], ...over })
+
+  it('count resta count', () => {
+    expect(buildReportQuery(sezione({}), 't1', whitelist).query).toContain('RETURN count(n0) AS value')
+  })
+
+  it('avg calcola la MEDIA sul campo della radice, non un conteggio', () => {
+    const q = buildReportQuery(sezione({ metric: 'avg', metricField: 'resolution_minutes' }), 't1', whitelist).query
+    expect(q).toContain('RETURN avg(toFloat(n0.resolution_minutes)) AS value')
+    expect(q).not.toContain('count(n0)')
+  })
+
+  it('sum somma, min e max non forzano il numero (valgono anche su una data)', () => {
+    expect(buildReportQuery(sezione({ metric: 'sum', metricField: 'cost' }), 't1', whitelist).query)
+      .toContain('sum(toFloat(n0.cost))')
+    expect(buildReportQuery(sezione({ metric: 'min', metricField: 'created_at' }), 't1', whitelist).query)
+      .toContain('min(n0.created_at)')
+    expect(buildReportQuery(sezione({ metric: 'max', metricField: 'created_at' }), 't1', whitelist).query)
+      .toContain('max(n0.created_at)')
+  })
+
+  it('la metrica vale anche sui grafici a categorie e sulle serie', () => {
+    const barre = buildReportQuery(sezione({
+      chartType: 'bar', metric: 'avg', metricField: 'cost', groupByField: 'status',
+    }), 't1', whitelist).query
+    expect(barre).toContain('AS label, avg(toFloat(n0.cost)) AS value')
+    const serie = buildReportQuery(sezione({
+      chartType: 'line', metric: 'sum', metricField: 'cost', groupByField: 'created_at',
+    }), 't1', whitelist).query
+    expect(serie).toContain('AS label, sum(toFloat(n0.cost)) AS value')
+  })
+
+  it('una metrica senza campo si RIFIUTA: prima diventava un conteggio in silenzio', () => {
+    expect(() => buildReportQuery(sezione({ metric: 'avg', metricField: null }), 't1', whitelist))
+      .toThrow(/needs a metricField/)
+  })
+
+  it('una metrica inventata si rifiuta', () => {
+    expect(() => buildReportQuery(sezione({ metric: 'median' }), 't1', whitelist))
+      .toThrow(/unsupported metric/)
+  })
+
+  it('un campo di metrica con Cypher dentro non passa', () => {
+    expect(() => buildReportQuery(sezione({ metric: 'sum', metricField: 'cost) RETURN 1 //' }), 't1', whitelist))
+      .toThrow()
+  })
+})

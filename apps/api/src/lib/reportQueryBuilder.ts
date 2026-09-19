@@ -93,6 +93,37 @@ export function assertChartType(v: unknown, where: string): ChartType {
   return v
 }
 
+/**
+ * LE METRICHE — e il difetto che nascondevano (19 set 2026).
+ *
+ * `metric` e `metricField` si salvavano, si rimostravano nel costruttore e
+ * NON si usavano: il RETURN era sempre `count(root)`. Un report configurato
+ * come «media del costo» mostrava il NUMERO DI TICKET, e nessuno lo diceva —
+ * la famiglia di difetti peggiore, perché l'interfaccia promette.
+ *
+ * Trovato preparando il progettista AI: una proposta che scrive «media del
+ * tempo di risoluzione» avrebbe prodotto un conteggio, e il difetto sarebbe
+ * passato dall'essere raro all'essere la norma.
+ *
+ * Nessun report salvato usava altro che `count` (verificato sui tre tenant),
+ * quindi correggerlo non cambia un solo numero già letto da qualcuno.
+ *
+ * LA METRICA SI CALCOLA SULLA RADICE: `avg(root.campo)`, non su un nodo
+ * qualsiasi del grafo. La definizione porta il nome del campo e non il nodo,
+ * e indovinare il nodo vorrebbe dire leggere una proprietà che quel nodo può
+ * non avere — che in Neo4j è `null`, cioè una media silenziosamente sbagliata.
+ * Il costruttore offre solo i campi numerici della radice.
+ */
+export const REPORT_METRICS = ['count', 'avg', 'sum', 'min', 'max'] as const
+export type ReportMetric = typeof REPORT_METRICS[number]
+
+/** Le metriche che hanno bisogno di un campo su cui calcolarsi. */
+export const REPORT_METRICS_WITH_FIELD: readonly ReportMetric[] = ['avg', 'sum', 'min', 'max']
+
+export function isReportMetric(v: unknown): v is ReportMetric {
+  return typeof v === 'string' && (REPORT_METRICS as readonly string[]).includes(v)
+}
+
 export const FILTER_OPERATORS = ['eq', 'neq', 'contains', 'in', 'last_n_days', 'is_null', 'is_not_null'] as const
 export const EDGE_DIRECTIONS = ['outgoing', 'incoming'] as const
 export const MAX_REPORT_LIMIT = 1000
@@ -230,6 +261,21 @@ export function validateReportSection(section: ReportSectionDef, whitelist: Repo
   if (section.sortDir != null) assertSortDir(section.sortDir, `${where}: sortDir`)
   if (section.groupByField != null) assertFieldName(toSnakeCase(section.groupByField), `${where}: groupByField`)
   if (section.metricField != null) assertFieldName(toSnakeCase(section.metricField), `${where}: metricField`)
+  /*
+   * La metrica si valida come il resto, e una metrica senza campo si RIFIUTA:
+   * prima `avg` senza campo diventava un conteggio in silenzio, che è
+   * esattamente la bugia che questa correzione toglie.
+   */
+  if (section.metric != null && section.metric !== '') {
+    if (!isReportMetric(section.metric)) {
+      throw new ValidationError(`${where}: unsupported metric ${JSON.stringify(section.metric)} (valid: ${REPORT_METRICS.join(', ')})`)
+    }
+    const serveCampo = (REPORT_METRICS_WITH_FIELD as readonly string[]).includes(section.metric)
+    const campo = section.metricField == null ? '' : String(section.metricField).trim()
+    if (serveCampo && campo === '' && chartType !== 'table') {
+      throw new ValidationError(`${where}: metric "${section.metric}" needs a metricField to compute on`)
+    }
+  }
 
   if (!Array.isArray(section.nodes) || section.nodes.length === 0) {
     throw new ValidationError(`${where}: at least one node is required`)
@@ -362,13 +408,35 @@ export function buildReportQuery(
   const sortDirVal = assertSortDir(sortDir ?? 'DESC', 'sortDir')
   params['limit']  = limitVal
 
+  /*
+   * LA MISURA. `count(root)` quando la metrica è il conteggio (o non c'è, che
+   * è come nascono tutti i report scritti finora), altrimenti l'aggregazione
+   * sul campo della RADICE — vedi il commento su `REPORT_METRICS` per il
+   * perché della radice e per il difetto che questo pezzo chiude.
+   *
+   * `toFloat` su somma e media: un numero salvato come testo darebbe una somma
+   * lessicografica, e la validazione di un campo di report non conosce i tipi.
+   * Minimo e massimo no: funzionano anche su date e testo, ed è quello che una
+   * persona si aspetta da «la più vecchia».
+   */
+  const metrica = section.metric != null && section.metric !== '' && isReportMetric(section.metric)
+    ? section.metric : 'count'
+  const campoMetrica = (REPORT_METRICS_WITH_FIELD as readonly string[]).includes(metrica) && section.metricField
+    ? assertFieldName(toSnakeCase(section.metricField), 'metricField') : null
+  const misura = campoMetrica === null
+    ? `count(${rootVar})`
+    : metrica === 'avg' ? `avg(toFloat(${rootVar}.${campoMetrica}))`
+    : metrica === 'sum' ? `sum(toFloat(${rootVar}.${campoMetrica}))`
+    : metrica === 'min' ? `min(${rootVar}.${campoMetrica})`
+    : `max(${rootVar}.${campoMetrica})`
+
   let returnClause: string
   const columns: ReportColumn[] = []
   let groupSource: ReportValueSource | null = null
 
   switch (chartType) {
     case 'kpi':
-      returnClause = `RETURN count(${rootVar}) AS value`
+      returnClause = `RETURN ${misura} AS value`
       break
 
     case 'pie':
@@ -380,7 +448,7 @@ export function buildReportQuery(
       const field = groupField ?? 'status'
       groupSource = { neo4jLabel: groupNode.neo4jLabel, field: groupByField ?? 'status' }
       returnClause = [
-        `RETURN ${groupVar}.${field} AS label, count(${rootVar}) AS value`,
+        `RETURN ${groupVar}.${field} AS label, ${misura} AS value`,
         `ORDER BY value ${sortDirVal}`,
         `LIMIT toInteger($limit)`,
       ].join('\n')
@@ -393,7 +461,7 @@ export function buildReportQuery(
       returnClause = [
         // `date('2026-09-09T10:00:00Z')` non si parsa («Text cannot be parsed
         // to a Date»): la data va estratta dal datetime (C-7).
-        `RETURN date(datetime(${groupVar}.${field})) AS label, count(${rootVar}) AS value`,
+        `RETURN date(datetime(${groupVar}.${field})) AS label, ${misura} AS value`,
         `ORDER BY label ASC`,
       ].join('\n')
       break

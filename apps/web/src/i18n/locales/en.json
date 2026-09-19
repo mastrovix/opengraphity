@@ -6461,7 +6461,8 @@
       "barHorizontal": "Horizontal bars",
       "line": "Line",
       "area": "Area",
-      "table": "Table"
+      "table": "Table",
+      "topN": "Top N"
     },
     "desc": {
       "kpi": "How many items are there?",
@@ -6471,7 +6472,8 @@
       "barHorizontal": "Comparison with long labels",
       "line": "Trend over time",
       "area": "Trend with a filled area",
-      "table": "Detailed data in columns"
+      "table": "Detailed data in columns",
+      "topN": "The first N by value, in order"
     },
     "metric": {
       "count": "Count",
@@ -6486,7 +6488,8 @@
     "needsColumn": "⚠ A table needs at least one column: with no field chosen the server refuses the section.",
     "configureToPreview": "Configure the chart to see the preview",
     "fieldOption": "Field…",
-    "total": "total"
+    "total": "total",
+    "noNumericField": "This entity has no numeric field: there is nothing for an average or a sum to compute."
   },
   "citypeDesigner": {
     "relation": {

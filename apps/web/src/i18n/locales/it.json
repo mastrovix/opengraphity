@@ -6461,7 +6461,8 @@
       "barHorizontal": "Barre orizzontali",
       "line": "Linea",
       "area": "Area",
-      "table": "Tabella"
+      "table": "Tabella",
+      "topN": "Classifica"
     },
     "desc": {
       "kpi": "Quanti elementi ci sono?",
@@ -6471,7 +6472,8 @@
       "barHorizontal": "Confronto con etichette lunghe",
       "line": "Andamento nel tempo",
       "area": "Andamento con riempimento",
-      "table": "Dati dettagliati in colonne"
+      "table": "Dati dettagliati in colonne",
+      "topN": "I primi N per valore, in ordine"
     },
     "metric": {
       "count": "Conteggio",
@@ -6486,7 +6488,8 @@
     "needsColumn": "⚠ Una tabella ha bisogno di almeno una colonna: senza campi scelti il server rifiuta la sezione.",
     "configureToPreview": "Configura il grafico per vedere l'anteprima",
     "fieldOption": "Campo…",
-    "total": "totale"
+    "total": "totale",
+    "noNumericField": "Questa entità non ha campi numerici: con la media o la somma non c'è niente da calcolare."
   },
   "citypeDesigner": {
     "relation": {

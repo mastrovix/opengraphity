@@ -1,7 +1,7 @@
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp,
+  Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp, ListOrdered,
   Table as TableIcon,
 } from 'lucide-react'
 import { ReportPreview } from './ReportPreview'
@@ -23,6 +23,9 @@ export const CHART_TYPES = [
   { value: 'line',           labelKey: 'reportChart.type.line',          descKey: 'reportChart.desc.line',          icon: <LineChart size={18} /> },
   { value: 'area',           labelKey: 'reportChart.type.area',          descKey: 'reportChart.desc.area',          icon: <TrendingUp size={18} /> },
   { value: 'table',          labelKey: 'reportChart.type.table',         descKey: 'reportChart.desc.table',         icon: <TableIcon size={18} /> },
+  /* `top_n` esisteva nell'API (e nei suoi test) e NON si poteva scegliere:
+     chi apriva un report che lo usava leggeva «top_n» come nome del grafico. */
+  { value: 'top_n',          labelKey: 'reportChart.type.topN',          descKey: 'reportChart.desc.topN',          icon: <ListOrdered size={18} /> },
 ]
 
 export const METRIC_TYPES = [
@@ -40,6 +43,8 @@ interface NodeDataEntry {
   fields:         NavigableField[]
   selectedFields: string[]
   isResult:       boolean
+  /** La RADICE: è il nodo su cui si calcola la metrica (vedi sotto). */
+  isRoot:         boolean
 }
 
 interface Props {
@@ -96,6 +101,9 @@ export function ReportChartConfig({
   const needsLimit   = !isKpi && !isTable && !isTimeSeries
 
   const resultNodes = Object.entries(nodeDataMap).filter(([, nd]) => nd.isResult)
+  /** I campi su cui una metrica si può calcolare: numerici, e della RADICE. */
+  const campiNumericiDellaRadice = (Object.values(nodeDataMap).find((nd) => nd.isRoot)?.fields ?? [])
+    .filter((f) => f.fieldType === 'number')
   const tableColumnCount = resultNodes.reduce((acc, [, nd]) => acc + nd.selectedFields.length, 0)
 
   return (
@@ -169,17 +177,30 @@ export function ReportChartConfig({
                   {METRIC_TYPES.map(m => <option key={m.value} value={m.value}>{t(m.labelKey)}</option>)}
                 </select>
               </div>
-              {metric !== 'count' && resultNodes.length > 0 && (
+              {/*
+                IL CAMPO DELLA METRICA VIENE DALLA RADICE (19 set 2026).
+
+                Prima si pescava da tutti i nodi «risultato», ma l'aggregazione
+                si calcola sulla radice: un campo di un altro nodo darebbe una
+                proprietà che la radice non ha, cioè `null` — una media
+                silenziosamente sbagliata. E la metrica ora si calcola davvero
+                (prima era sempre un conteggio), quindi offrire il campo
+                sbagliato costerebbe un numero falso invece di niente.
+              */}
+              {metric !== 'count' && (
                 <div style={{ flex: 1 }}>
                   <label htmlFor={ids.metricField} style={labelStyle}>{t('reportChart.field')}</label>
                   <select id={ids.metricField} value={metricField} onChange={e => onMetricFieldChange(e.target.value)} style={selectStyle}>
                     <option value="">{t('common.select')}</option>
-                    {resultNodes.flatMap(([, nd]) =>
-                      nd.fields.filter(f => f.fieldType === 'number').map(f => (
-                        <option key={f.name} value={f.name}>{f.label}</option>
-                      ))
-                    )}
+                    {campiNumericiDellaRadice.map((f) => (
+                      <option key={f.name} value={f.name}>{f.label}</option>
+                    ))}
                   </select>
+                  {campiNumericiDellaRadice.length === 0 && (
+                    <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+                      {t('reportChart.noNumericField')}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
