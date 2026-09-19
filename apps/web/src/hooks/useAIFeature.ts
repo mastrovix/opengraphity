@@ -5,8 +5,10 @@
  */
 import { useQuery } from '@apollo/client/react'
 import { GET_AI_SETTINGS } from '@/graphql/queries'
+import type { AIFeatureKey } from '@/lib/aiFeatures'
 
-export type AIFeature = 'triage' | 'assistant' | 'reportAnalysis' | 'postIncident' | 'kbArticles' | 'embeddings'
+/** L'elenco sta in `lib/aiFeatures.ts`: una copia sola, per il difetto raccontato lì. */
+export type AIFeature = AIFeatureKey
 
 export function useAIFeature(feature: AIFeature): boolean | null {
   const { data } = useQuery<{ aiSettings: { features: Record<AIFeature, boolean> } }>(GET_AI_SETTINGS, { fetchPolicy: 'cache-first' })

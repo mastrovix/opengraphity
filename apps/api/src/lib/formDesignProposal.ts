@@ -41,7 +41,7 @@
 import {
   FORM_CONDITION_OPS, FORM_CONDITION_OPS_WITHOUT_VALUE,
   FORM_FIELD_NAME_RE, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY, FORM_FIELD_TYPES_WITH_VOCABULARY,
-  canBeComputed, canBeConditionSubject, isFormFieldType, nomeDaEtichetta,
+  canBeComputed, canBeConditionSubject, isFormFieldType, isFormReferenceType, nomeDaEtichetta,
   type FormCondition, type FormConditionOp,
 } from '@opengraphity/types'
 import { validateScript } from '@opengraphity/scripting'
@@ -238,6 +238,30 @@ export function validaProposta(grezza: unknown, catalogo: CatalogoPerProposta): 
 
   /** I campi citati dal modulo finito: i suoi più quelli che c'erano già. */
   const citati = new Set<string>(catalogo.campiGiaNelModulo)
+  /**
+   * COME UNA CONDIZIONE NOMINA UN ALTRO CAMPO (19 set 2026).
+   *
+   * Il difetto, visto alla prima prova nel browser: il modello scriveva
+   * `visibile_quando: {field: 'tipo_accesso_applicativo'}` mentre il nome vero
+   * — che lo decide `nomeDaEtichetta` QUI, dopo — era `tipo_di_accesso`. La
+   * regola veniva scartata, e con essa l'unica cosa che l'utente aveva chiesto
+   * esplicitamente («se il tipo di accesso è amministratore chiedi anche…»).
+   *
+   * Il nome di un campo nuovo il modello NON PUÒ conoscerlo: non esiste ancora
+   * quando scrive la condizione. Quindi le condizioni si risolvono anche per
+   * ETICHETTA (ed è quello che il prompt gli chiede di scrivere): questa mappa
+   * porta il nome, l'etichetta normalizzata e il nome normalizzato di ogni
+   * campo citato, tutti al nome vero.
+   */
+  const perRiferimento = new Map<string, string>()
+  const citabile = (nome: string, etichetta: string) => {
+    perRiferimento.set(nome, nome)
+    perRiferimento.set(chiaveEtichetta(nome), nome)
+    if (etichetta !== '') perRiferimento.set(chiaveEtichetta(etichetta), nome)
+  }
+  for (const gia of catalogo.campiGiaNelModulo) {
+    citabile(gia, catalogo.campiLibreria.get(gia)?.label ?? '')
+  }
   const restanti = () => catalogo.maxCampiPerModulo - citati.size
 
   interface VoceGrezza { voce: Omit<VoceDiSezioneProposta, 'visibleWhen'>; condizione: unknown }
@@ -364,15 +388,44 @@ export function validaProposta(grezza: unknown, catalogo: CatalogoPerProposta): 
 
       tipoDelCampo.set(nome, tipo)
       citati.add(nome)
+      citabile(nome, source === 'library' ? (catalogo.campiLibreria.get(nome)?.label ?? etichetta) : etichetta)
       const calcolato = campiNuovi.find((x) => x.name === nome)?.formula != null
+      /*
+       * UN RIFERIMENTO NON PUÒ ESSERE OBBLIGATORIO — e non è una stranezza.
+       *
+       * Trovato pubblicando, subito dopo il difetto qui sotto: un riferimento
+       * non si offre nel portale, e il prodotto rifiuta un campo obbligatorio
+       * che il portale non chiede (nessuno potrebbe riempirlo, e la richiesta
+       * non si potrebbe creare). Le due regole insieme dicono questo, e la
+       * catena non si vede leggendo una regola sola.
+       *
+       * Lo si DICE: il modello lo aveva chiesto obbligatorio, e chi legge la
+       * proposta deve sapere perché non lo è.
+       */
+      const riferimento = isFormReferenceType(tipo)
+      const volutoObbligatorio = booleano(c['obbligatorio'], false)
+      if (riferimento && volutoObbligatorio) {
+        scartati.push({ cosa: etichetta, key: 'proposal.discard.referenceNotRequired', params: { fieldType: tipo } })
+      }
       items.push({
         voce: {
           field: nome, source,
           // Un campo calcolato non si compila: chiederlo obbligatorio sarebbe
           // una richiesta a chi non può rispondere (e il server la rifiuta).
-          required: !calcolato && booleano(c['obbligatorio'], false),
+          required: !calcolato && !riferimento && volutoObbligatorio,
           width: testo(c['larghezza']) === 'half' ? 'half' : 'full',
-          endUser: booleano(c['visibile_nella_richiesta'], true),
+          /*
+           * UN RIFERIMENTO NON SI OFFRE A CHI APRE LA RICHIESTA.
+           *
+           * Trovato PUBBLICANDO la prima proposta vera: `saveCatalogForm` la
+           * ha rifiutata perché il campo «Applicazione» (`ref_ci`) era
+           * visibile nella service request, e scegliere un CI vuol dire
+           * cercarlo nella CMDB — cosa che un utente finale non fa. È la
+           * stessa regola che il designer applica quando trascini un
+           * riferimento sulla tela; qui mancava, e il modulo si sarebbe
+           * potuto disegnare ma non salvare.
+           */
+          endUser: riferimento ? false : booleano(c['visibile_nella_richiesta'], true),
           readOnly: !calcolato && booleano(c['solo_lettura'], false),
           why: perche,
         },
@@ -402,7 +455,7 @@ export function validaProposta(grezza: unknown, catalogo: CatalogoPerProposta): 
     id: s.id, titleIt: s.titleIt, titleEn: s.titleEn, columns: s.columns,
     items: s.items.map((g) => ({
       ...g.voce,
-      visibleWhen: condizioneValida(g.condizione, citati, tipoDelCampo, g.voce.field, scartati),
+      visibleWhen: condizioneValida(g.condizione, perRiferimento, tipoDelCampo, g.voce.field, scartati),
     })),
   }))
 
@@ -436,7 +489,7 @@ function scriptValido(
  * comparire, ed è peggio di nessuna condizione — perché sembra impostata.
  */
 function condizioneValida(
-  raw: unknown, citati: ReadonlySet<string>, tipoDelCampo: ReadonlyMap<string, string>,
+  raw: unknown, perRiferimento: ReadonlyMap<string, string>, tipoDelCampo: ReadonlyMap<string, string>,
   campo: string, scartati: ScartoProposta[],
 ): string | null {
   if (raw == null) return null
@@ -447,10 +500,12 @@ function condizioneValida(
   const regole: { field: string; op: FormConditionOp; value?: string }[] = []
   for (const rawRegola of regoleGrezze) {
     const r = oggetto(rawRegola)
-    const altro = testo(r['field'])
+    const chiesto = testo(r['field'])
+    // Il nome vero, o l'etichetta con cui il modello lo ha chiamato.
+    const altro = perRiferimento.get(chiesto) ?? perRiferimento.get(chiaveEtichetta(chiesto)) ?? ''
     const op = testo(r['op'])
-    if (!citati.has(altro) || altro === campo) {
-      scartati.push({ cosa: campo, key: 'proposal.discard.conditionField', params: { name: altro || '—' } })
+    if (altro === '' || altro === campo) {
+      scartati.push({ cosa: campo, key: 'proposal.discard.conditionField', params: { name: chiesto || '—' } })
       return null
     }
     if (!canBeConditionSubject(tipoDelCampo.get(altro) ?? '')) {

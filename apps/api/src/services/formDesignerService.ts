@@ -171,7 +171,7 @@ Regole, in ordine di importanza:
 3. Il tipo di campo si scegli fra quelli ammessi. Una scelta ("enum"/"multi_enum") ha SEMPRE un vocabolario. Un riferimento alla CMDB ("ref_ci") può restringere i tipi di CI. Un allegato per un documento, una nota per le istruzioni senza risposta.
 4. Chiedi solo quello che serve: pochi campi giusti, non un questionario. Obbligatori solo quelli senza cui la richiesta non si può lavorare.
 5. Le sezioni raggruppano per argomento e hanno un titolo breve in italiano e inglese. Due colonne per gruppi di campi corti, una per i testi lunghi.
-6. Le condizioni di visibilità ("visibile_quando") guardano un ALTRO campo dello stesso modulo, e solo campi a valore semplice (non allegati, non riferimenti).
+6. Le condizioni di visibilità ("visibile_quando") guardano un ALTRO campo dello stesso modulo, e solo campi a valore semplice (non allegati, non riferimenti). In "field" scrivi l'ETICHETTA ITALIANA di quel campo, esattamente come l'hai scritta in "etichetta_it" (per un campo di libreria puoi scrivere il suo nome): il nome di un campo nuovo lo decido io dall'etichetta, e tu non puoi conoscerlo.
 7. Gli script (formula, script_validazione) sono JavaScript e vanno proposti solo se servono davvero: una formula riceve "input" con le risposte degli altri campi e RESTITUISCE il valore; uno script di validazione riceve "value" e lancia un errore se il valore non va. Niente require, import, eval, process, cicli infiniti.
 8. In "perche" scrivi, per ogni campo e per la voce, il pezzo della descrizione dell'utente da cui nasce: una riga, concreta. Chi legge deve poter verificare la proposta senza fidarsi.
 9. In "note" metti quello che non hai potuto fare e perché.
@@ -188,7 +188,7 @@ function schemaProposta(tipi: readonly string[]) {
         items: {
           type: 'object',
           properties: {
-            field: { type: 'string' },
+            field: { type: 'string', description: "L'etichetta italiana dell'altro campo (o il suo nome, se e' un campo di libreria)." },
             op:    { type: 'string', enum: ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'contains', 'filled', 'empty'] },
             value: { type: ['string', 'null'] },
           },

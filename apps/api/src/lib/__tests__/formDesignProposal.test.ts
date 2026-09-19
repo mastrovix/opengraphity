@@ -322,6 +322,10 @@ describe('la proposta, applicata, passa la validazione del salvataggio', () => {
         etichetta_it: 'Motivo dell\'urgenza', tipo: 'textarea',
         visibile_quando: { match: 'all', rules: [{ field: 'ambiente', op: 'eq', value: 'production' }] },
       }),
+      // IL CASO CHE MANCAVA (trovato pubblicando, 19 set 2026): un
+      // riferimento offerto a chi apre la richiesta fa RIFIUTARE il
+      // salvataggio, e il test non lo vedeva perché non c'erano riferimenti.
+      campo({ etichetta_it: 'Applicazione', tipo: 'ref_ci', visibile_nella_richiesta: true, obbligatorio: true }),
     ])
     const p = validaProposta(doc, catalogo())
     const definizione = propostaComeDefinizione(p, null)
@@ -333,7 +337,13 @@ describe('la proposta, applicata, passa la validazione del salvataggio', () => {
       ...p.campiNuovi.map((c) => [c.name, finto({ name: c.name, fieldType: c.fieldType as FormFieldDef['fieldType'] })] as const),
     ])
     expect(() => { assertCatalogForm(definizione, libreria) }).not.toThrow()
-    expect(definizione.sections[0]!.items).toHaveLength(3)
+    expect(definizione.sections[0]!.items).toHaveLength(4)
+    // Un riferimento non si offre a chi compila dal portale: lo rifiuterebbe
+    // `assertCatalogForm`, e la proposta deve saperlo da sé.
+    // Non offerto nel portale E non obbligatorio: le due regole del prodotto
+    // insieme dicono che un riferimento non puo essere pretesa.
+    expect(definizione.sections[0]!.items[3]).toMatchObject({ field: 'applicazione', endUser: false, required: false })
+    expect(p.scartati.map((x) => x.key)).toContain('proposal.discard.referenceNotRequired')
     // La proposta NON pubblica: la revisione resta quella di prima.
     expect(definizione.revision).toBe(0)
   })
@@ -347,3 +357,50 @@ function finto(over: Partial<FormFieldDef>): FormFieldDef {
     ...over,
   } as FormFieldDef
 }
+
+/**
+ * UNA CONDIZIONE SU UN CAMPO NUOVO (difetto trovato nel browser, 19 set 2026).
+ *
+ * Il modello scriveva `field: 'tipo_accesso_applicativo'` mentre il nome vero,
+ * derivato dall'etichetta, era `tipo_di_accesso`: la regola veniva scartata, e
+ * con lei l'unica cosa che l'utente aveva chiesto per nome («se il tipo di
+ * accesso è amministratore chiedi anche il responsabile»). Il nome di un campo
+ * che non esiste ancora il modello non può conoscerlo, quindi la condizione si
+ * risolve anche per ETICHETTA.
+ */
+describe('una condizione può nominare un campo per etichetta', () => {
+  const doc = (riferimento: string) => documento([
+    campo({ etichetta_it: 'Tipo di accesso', tipo: 'enum', vocabolario: 'environment' }),
+    campo({
+      etichetta_it: 'Responsabile che autorizza', tipo: 'text',
+      visibile_quando: { match: 'all', rules: [{ field: riferimento, op: 'eq', value: 'amministratore' }] },
+    }),
+  ])
+
+  it('per etichetta: è quello che il prompt gli chiede di scrivere', () => {
+    const p = validaProposta(doc('Tipo di accesso'), catalogo())
+    expect(JSON.parse(p.sezioni[0]!.items[1]!.visibleWhen!)).toMatchObject({ rules: [{ field: 'tipo_di_accesso' }] })
+  })
+
+  it('per nome derivato: funziona comunque', () => {
+    const p = validaProposta(doc('tipo_di_accesso'), catalogo())
+    expect(p.sezioni[0]!.items[1]!.visibleWhen).not.toBeNull()
+  })
+
+  it('un nome inventato resta uno scarto: si dice quale', () => {
+    const p = validaProposta(doc('tipo_accesso_applicativo'), catalogo())
+    expect(p.sezioni[0]!.items[1]!.visibleWhen).toBeNull()
+    expect(p.scartati.find((s) => s.key === 'proposal.discard.conditionField')?.params)
+      .toMatchObject({ name: 'tipo_accesso_applicativo' })
+  })
+
+  it('un campo GIÀ nel modulo si può nominare per etichetta di libreria', () => {
+    const p = validaProposta(documento([
+      campo({
+        etichetta_it: 'Motivo', tipo: 'textarea',
+        visibile_quando: { match: 'all', rules: [{ field: 'Ambiente', op: 'eq', value: 'production' }] },
+      }),
+    ]), catalogo({ campiGiaNelModulo: ['ambiente'] }))
+    expect(JSON.parse(p.sezioni[0]!.items[0]!.visibleWhen!)).toMatchObject({ rules: [{ field: 'ambiente' }] })
+  })
+})

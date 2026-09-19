@@ -362,6 +362,12 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // L'interruttore «Designer | Anteprima» dentro la pagina: stesso nome della
   // scheda, e per la stessa ragione — e il nome della cosa, non una frase.
   'pages.catalogForms.builder.viewCanvas',
+  // La riga «Workflow: …» della proposta dell'AI: e lo stesso nome, per la
+  // stessa ragione delle due chiavi sopra.
+  'pages.catalogForms.ai.itemWorkflow',
+  // «Formula» si scrive e si legge cosi nelle due lingue: e la parola che
+  // nomina la cosa (il prodotto la usa gia nell'editor dei campi calcolati).
+  'pages.catalogForms.ai.formula',
   // «Service request» e il nome dell'oggetto, e in italiano si dice cosi: la
   // pagina si chiama Service Request Designer, e chiamare «voce di catalogo»
   // la stessa cosa in una tendina era il solito secondo nome.

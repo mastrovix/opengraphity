@@ -287,7 +287,8 @@ export function catalogFormSDL(): string {
   chiesto senza sapere dove.
   """
   type FormDesignDiscard {
-    cosa:   String!
+    """Il pezzo di proposta a cui lo scarto si riferisce: l'etichetta di un campo, il nome di un elenco."""
+    what:   String!
     key:    String!
     """I parametri della chiave, come JSON."""
     params: String!

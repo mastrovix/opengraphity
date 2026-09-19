@@ -94,3 +94,26 @@ export const SET_REQUEST_FORM_ANSWER = gql`
     }
   }
 `
+
+/**
+ * L'AI PROGETTA UNA SERVICE REQUEST da una descrizione (19 set 2026).
+ *
+ * È una mutation e non una query per due ragioni: costa (una chiamata al
+ * modello) e va nell'Audit Log, e una query si sarebbe messa in cache come se
+ * la risposta fosse un dato del grafo. Non SCRIVE niente: quello che scrive è
+ * l'accettazione, con le mutation di sempre.
+ */
+export const PROPOSE_SERVICE_REQUEST_DESIGN = gql`
+  mutation ProposeServiceRequestDesign($prompt: String!, $itemId: ID) {
+    proposeServiceRequestDesign(prompt: $prompt, itemId: $itemId) {
+      prompt
+      maxFieldsPerForm
+      item { name description category priority requiresApproval workflowDefinitionId workflowDefinitionName why }
+      sections { id titleIt titleEn columns items { field source required width endUser readOnly visibleWhen why } }
+      newFields { name fieldType labelIt labelEn helpIt helpEn vocabulary refTypes formula validationScript why }
+      newVocabularies { name label values why }
+      discarded { what key params }
+      notes
+    }
+  }
+`

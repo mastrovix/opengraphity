@@ -36,6 +36,13 @@ export const GET_ATTACHMENT_POLICY = gql`
   }
 `
 
+/**
+ * I campi si ELENCANO, non si interpolano da `AI_FEATURE_KEYS`: il guardiano
+ * `apps/api/src/graphql/__tests__/webDocuments.test.ts` legge questi documenti
+ * come TESTO e li valida contro lo schema, e un `${…}` glieli renderebbe
+ * illeggibili (mi e successo il 19 set 2026). L'allineamento con l'elenco lo
+ * controlla `aiSettingsDocument.test.ts` nel web.
+ */
 export const GET_AI_SETTINGS = gql`
   query GetAISettings {
     aiSettings {

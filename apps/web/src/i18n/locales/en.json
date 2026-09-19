@@ -2581,6 +2581,51 @@
         "openInDesigner": "Open in the designer",
         "mappingTitle": "Which workflow for each item",
         "mappingHelp": "Which road a request born from each item follows. Changing the dropdown pins that workflow on the item: do it when that request must behave differently from the others — for instance go through an approval."
+      },
+      "ai": {
+        "title": "Describe the service request and I will design it",
+        "subtitleNew": "Write what the request must ask. I propose sections and fields: nothing is saved until you put them on the canvas.",
+        "subtitleExisting": "Write what «{{item}}» is missing. I add the fields you describe, without touching the ones already there.",
+        "button": "Design it with AI",
+        "addButton": "Add fields with AI",
+        "promptLabel": "What must this service request ask?",
+        "promptPlaceholder": "E.g. Request for a new laptop: the model, the working environment, the device to replace picked from the CMDB, the cost centre and the supplier quote as a PDF. If the environment is production, also ask why it is urgent. Approval is needed.",
+        "promptHelp": "I use the fields already in your library when the question is the same, and the value lists in your Dictionary. I do not design repeatable tables and I create no new workflows: I pick from yours.",
+        "design": "Design",
+        "thinking": "Designing…",
+        "youAsked": "You asked",
+        "itemHeading": "The service request",
+        "itemCategory": "Category: {{value}}",
+        "itemPriority": "Priority: {{value}}",
+        "itemApprovalYes": "Goes through an approval",
+        "itemApprovalNo": "No approval",
+        "itemWorkflow": "Workflow: {{value}}",
+        "workflowByCategory": "the one for the category",
+        "notChosen": "to be chosen",
+        "sectionsHeading": "The form: {{sections}} sections, {{fields}} fields",
+        "columns_one": "one column",
+        "columns_other": "{{count}} columns",
+        "reused": "reused",
+        "new": "new",
+        "required": "required",
+        "readOnly": "read-only",
+        "internal": "internal",
+        "conditional": "conditional",
+        "computed": "computed",
+        "formula": "Formula",
+        "validation": "Validation",
+        "vocabulariesHeading": "Value lists to create",
+        "vocabulariesHelp": "If you accept, these land in your Dictionary and any field will be able to use them.",
+        "discardedHeading": "What I discarded",
+        "notesHeading": "What I could not do",
+        "apply": "Put it on the canvas",
+        "again": "Rewrite the description",
+        "applyHelp": "I create the fields (and the value lists) in the library and put the sections on the canvas. The form is NOT published: you review it and then press «Save and publish».",
+        "applied_one": "One field on the canvas: review it and publish when you are happy.",
+        "applied_other": "{{count}} fields on the canvas: review them and publish when you are happy.",
+        "partial": "I stopped: only {{done}} were created. The canvas was not touched.",
+        "appliedPending_one": "One field created in the library. Now confirm the service request: the design lands on the canvas right after.",
+        "appliedPending_other": "{{count}} fields created in the library. Now confirm the service request: the design lands on the canvas right after."
       }
     }
   },
@@ -7029,7 +7074,8 @@
       "conditionValue": "Visibility rule discarded: «{{op}}» on «{{name}}» needs a value to compare with.",
       "categoryUnknown": "The category «{{name}}» is not one of the Dictionary's: pick one by hand.",
       "priorityUnknown": "The priority «{{name}}» is not one of the Dictionary's: pick one by hand.",
-      "workflowUnknown": "The workflow «{{name}}» does not exist: the AI creates none, pick one of yours."
+      "workflowUnknown": "The workflow «{{name}}» does not exist: the AI creates none, pick one of yours.",
+      "referenceNotRequired": "A reference ({{fieldType}}) cannot be required: it is not offered in the portal, and a field the portal never asks for cannot be demanded. You will find it optional."
     }
   }
 }

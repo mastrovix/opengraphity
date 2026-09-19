@@ -575,7 +575,7 @@ export const catalogFormResolvers = {
         // I parametri viaggiano come JSON: sono una mappa aperta (nomi di
         // campi, tipi, messaggi di un validatore) e tipizzarla vorrebbe dire
         // un tipo GraphQL per ogni scarto.
-        discarded: esito.scartati.map((x) => ({ cosa: x.cosa, key: x.key, params: JSON.stringify(x.params) })),
+        discarded: esito.scartati.map((x) => ({ what: x.cosa, key: x.key, params: JSON.stringify(x.params) })),
         notes: esito.note,
       }
     },

@@ -2581,6 +2581,51 @@
         "openInDesigner": "Apri nel disegnatore",
         "mappingTitle": "Quale workflow per ogni voce",
         "mappingHelp": "Quale strada segue una richiesta nata da ogni voce. Cambiare la tendina fissa quel workflow sulla voce: fallo quando quella richiesta deve comportarsi diversamente dalle altre — per esempio passare da un’approvazione."
+      },
+      "ai": {
+        "title": "Descrivi la service request e te la disegno",
+        "subtitleNew": "Scrivi cosa deve chiedere la richiesta. Ti propongo sezioni e campi: niente viene salvato finché non li metti sulla tela.",
+        "subtitleExisting": "Scrivi cosa manca a «{{item}}». Aggiungo i campi che descrivi, senza toccare quelli che ci sono.",
+        "button": "Disegnala con l'AI",
+        "addButton": "Aggiungi campi con l'AI",
+        "promptLabel": "Cosa deve chiedere questa service request?",
+        "promptPlaceholder": "Es. Richiesta di un nuovo portatile: il modello, l'ambiente di lavoro, il dispositivo da sostituire scelto dalla CMDB, il centro di costo e il preventivo del fornitore in PDF. Se l'ambiente è produzione chiedi anche il motivo dell'urgenza. Serve l'approvazione.",
+        "promptHelp": "Uso i campi che hai già in libreria quando la domanda è la stessa, e i vocabolari del tuo Dizionario. Non progetto tabelle ripetibili e non creo workflow nuovi: scelgo fra i tuoi.",
+        "design": "Disegna",
+        "thinking": "Sto disegnando…",
+        "youAsked": "Hai chiesto",
+        "itemHeading": "La service request",
+        "itemCategory": "Categoria: {{value}}",
+        "itemPriority": "Priorità: {{value}}",
+        "itemApprovalYes": "Passa da un'approvazione",
+        "itemApprovalNo": "Nessuna approvazione",
+        "itemWorkflow": "Workflow: {{value}}",
+        "workflowByCategory": "quello della categoria",
+        "notChosen": "da scegliere",
+        "sectionsHeading": "Il modulo: {{sections}} sezioni, {{fields}} campi",
+        "columns_one": "una colonna",
+        "columns_other": "{{count}} colonne",
+        "reused": "riuso",
+        "new": "nuovo",
+        "required": "obbligatorio",
+        "readOnly": "sola lettura",
+        "internal": "interno",
+        "conditional": "condizionato",
+        "computed": "calcolato",
+        "formula": "Formula",
+        "validation": "Validazione",
+        "vocabulariesHeading": "Elenchi di valori da creare",
+        "vocabulariesHelp": "Accettando, questi finiscono nel tuo Dizionario e li potrà usare qualunque campo.",
+        "discardedHeading": "Cosa ho scartato",
+        "notesHeading": "Cosa non ho potuto fare",
+        "apply": "Metti sulla tela",
+        "again": "Riscrivi la descrizione",
+        "applyHelp": "Creo i campi (e gli elenchi di valori) nella libreria e metto le sezioni sulla tela. Il modulo NON viene pubblicato: lo rivedi e poi premi «Salva e pubblica».",
+        "applied_one": "Un campo messo sulla tela: rivedilo e pubblica quando ti va bene.",
+        "applied_other": "{{count}} campi messi sulla tela: rivedili e pubblica quando ti vanno bene.",
+        "partial": "Mi sono fermato: creati solo {{done}}. La tela non è stata toccata.",
+        "appliedPending_one": "Un campo creato in libreria. Ora conferma la service request: il disegno arriva sulla tela subito dopo.",
+        "appliedPending_other": "{{count}} campi creati in libreria. Ora conferma la service request: il disegno arriva sulla tela subito dopo."
       }
     }
   },
@@ -7029,7 +7074,8 @@
       "conditionValue": "Regola di visibilità scartata: «{{op}}» su «{{name}}» ha bisogno di un valore da confrontare.",
       "categoryUnknown": "La categoria «{{name}}» non è fra quelle del Dizionario: da scegliere a mano.",
       "priorityUnknown": "La priorità «{{name}}» non è fra quelle del Dizionario: da scegliere a mano.",
-      "workflowUnknown": "Il workflow «{{name}}» non esiste: l'AI non ne crea, scegline uno dei tuoi."
+      "workflowUnknown": "Il workflow «{{name}}» non esiste: l'AI non ne crea, scegline uno dei tuoi.",
+      "referenceNotRequired": "Un riferimento ({{fieldType}}) non può essere obbligatorio: non si offre nel portale, e un campo che il portale non chiede non si può pretendere. Lo trovi facoltativo."
     }
   }
 }

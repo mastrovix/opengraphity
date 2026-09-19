@@ -37,7 +37,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useMutation, useQuery } from '@apollo/client/react'
-import { ChevronDown, ChevronRight, GripVertical, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, GripVertical, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   CATALOG_FORM_VERSION, FORM_CONDITION_OPS, FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_FIELD_TYPES,
@@ -48,6 +48,7 @@ import {
 import { CatalogFormRenderer } from '@opengraphity/web-core'
 import { GET_CATALOG_FORM, GET_ENUM_TYPES, GET_FORM_FIELDS, GET_SERVICE_CATALOG_ADMIN, GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
 import { CREATE_FORM_FIELD, CREATE_SERVICE_CATALOG_ITEM, SAVE_CATALOG_FORM, UPDATE_FORM_FIELD } from '@/graphql/mutations'
+import { useAIFeature } from '@/hooks/useAIFeature'
 import { showError } from '@/lib/showError'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
@@ -58,6 +59,7 @@ import { FieldEditor, inputDaBozza, BOZZA_VUOTA, type Bozza } from './FieldEdito
 import { FormCanvas, IconaTipo, type Selezione } from './FormCanvas'
 import { EditorDelCampoDiLibreria, ProprietaSezione, ProprietaVoce } from './ItemProperties'
 import { ModaleCentrato } from './ModaleCentrato'
+import { ModaleProgettoAI, type Progetto } from './ProgettoAI'
 
 interface CatalogItem { id: string; name: string; active: boolean; category: string | null }
 
@@ -443,12 +445,57 @@ export function FormBuilderPanel() {
 
   const [bozza, setBozza] = useState<CatalogFormDefinition>(emptyCatalogForm())
   const [toccato, setToccato] = useState(false)
+
+  /*
+   * IL PROGETTISTA AI (19 set 2026).
+   *
+   * `null` = modale chiuso. `itemId: null` dentro vuol dire «una service
+   * request nuova», altrimenti «aggiungi campi a questa voce».
+   *
+   * `aiAccesa` è `null` finché non si sa: in quel momento il bottone non si
+   * mostra e non si mostra nemmeno l'avviso, invece di indovinare.
+   */
+  const aiAccesa = useAIFeature('formDesigner')
+  const [progettoAI, setProgettoAI] = useState<{ itemId: string | null } | null>(null)
+  /**
+   * Il progetto in attesa che la VOCE esista.
+   *
+   * Per una service request nuova i campi si creano subito, ma la voce no: la
+   * priorità è obbligatoria e l'AI può non averla scelta. Allora si riapre il
+   * modale della voce PRECOMPILATO con quello che l'AI ha proposto — chi
+   * configura conferma quello che manca — e appena la voce c'è le sezioni
+   * atterrano sulla tela.
+   */
+  const [progettoInAttesa, setProgettoInAttesa] = useState<Progetto | null>(null)
+
   useEffect(() => {
     if (!formData?.catalogForm) return
     try { setBozza(JSON.parse(formData.catalogForm.definition) as CatalogFormDefinition) }
     catch { setBozza(emptyCatalogForm()) }
     setToccato(false)
   }, [formData])
+
+  /*
+   * IL PROGETTO CHE ASPETTA LA VOCE (19 set 2026).
+   *
+   * Per una service request NUOVA le sezioni non possono atterrare subito: la
+   * voce si crea col suo modale (la priorità è obbligatoria e l'AI può non
+   * averla scelta), e selezionarla ricarica il modulo dal server. Se
+   * mettessimo le sezioni prima, quella lettura le cancellerebbe. Quindi si
+   * aspetta che il modulo della voce nuova sia arrivato — `formData` — e si
+   * mette la proposta sopra: il modulo di una voce appena creata è vuoto,
+   * quindi «sopra» vuol dire «al posto di niente».
+   */
+  useEffect(() => {
+    if (progettoInAttesa === null || !formData?.catalogForm) return
+    const p = progettoInAttesa
+    setProgettoInAttesa(null)
+    void (async () => {
+      await rileggiLibreria()
+      setBozza((d) => ({ ...d, sections: [...d.sections.filter((x) => x.items.length > 0), ...sezioniDaProgetto(p)] }))
+      setToccato(true)
+    })()
+  }, [formData, progettoInAttesa, rileggiLibreria])
 
   /**
    * CAMBIARE VOCE NON BUTTA IL DISEGNO SENZA CHIEDERE.
@@ -689,6 +736,23 @@ export function FormBuilderPanel() {
        * correggere quello che non va, non ricominciare.
        */
     } finally { setCreando(false) }
+  }
+
+  /**
+   * LE SEZIONI DELLA PROPOSTA ATTERRANO SULLA TELA (19 set 2026).
+   *
+   * Non si salva niente: si tocca solo la bozza, e l'avviso «non pubblicato»
+   * si accende da sé. Le sezioni vuote che c'erano prima si buttano — un
+   * modulo appena creato ne ha una, e lasciarla darebbe una sezione senza
+   * titolo e senza campi in cima al disegno.
+   *
+   * La libreria si rilegge PRIMA: se no le righe nuove comparirebbero col
+   * nome tecnico al posto dell'etichetta (lo stesso motivo per cui lo fa
+   * `confermaNuovoCampo`).
+   */
+  const mettiSullaTela = async (progetto: Progetto) => {
+    await rileggiLibreria()
+    cambia((d) => ({ ...d, sections: [...d.sections.filter((x) => x.items.length > 0), ...sezioniDaProgetto(progetto)] }))
   }
 
   /**
@@ -1027,6 +1091,16 @@ export function FormBuilderPanel() {
               style={{ ...bottone, flex: '0 0 auto', whiteSpace: 'nowrap' }}>
               <Plus size={14} /> {t('pages.catalogForms.builder.newItem')}
             </button>
+            {/* DESCRIVILA E TE LA DISEGNO (19 set 2026). Il bottone c'e solo
+                se la funzione e accesa in Organizzazione -> AI: `null` vuol
+                dire «non lo so ancora», e allora non si mostra niente. */}
+            {aiAccesa === true && (
+              <button type="button" onClick={() => { setProgettoAI({ itemId: null }) }}
+                title={t('pages.catalogForms.ai.title')}
+                style={{ ...bottone, flex: '0 0 auto', whiteSpace: 'nowrap' }}>
+                <Sparkles size={14} /> {t('pages.catalogForms.ai.button')}
+              </button>
+            )}
           </div>
         </div>
 
@@ -1213,6 +1287,15 @@ export function FormBuilderPanel() {
             <strong style={{ fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>
               {voceScelta?.name ?? ''}
             </strong>
+            {/* AGGIUNGI CAMPI A QUESTA VOCE descrivendoli (19 set 2026): sta
+                qui e non nella barra perche parla del modulo che si sta
+                guardando, non della scelta della voce. */}
+            {aiAccesa === true && (
+              <button type="button" onClick={() => { setProgettoAI({ itemId: voceId }) }}
+                style={{ ...bottone, padding: '4px 10px' }}>
+                <Sparkles size={13} /> {t('pages.catalogForms.ai.addButton')}
+              </button>
+            )}
             {/* Le modifiche non pubblicate: il bottone «Salva e pubblica» si
                 accende, ma sta in cima e da qui non si vede. */}
             {toccato && (
@@ -1296,12 +1379,61 @@ export function FormBuilderPanel() {
 
       {modaleNuovaVoce()}
       {modaleNuovoCampo()}
+      {progettoAI !== null && (
+        <ModaleProgettoAI
+          itemId={progettoAI.itemId}
+          nomeVoce={progettoAI.itemId === null ? null : (voceScelta?.name ?? null)}
+          etichettaDi={(nome) => perNome.get(nome)?.label ?? nome}
+          onChiudi={() => { setProgettoAI(null) }}
+          onApplicato={async (progetto) => {
+            if (progettoAI.itemId !== null) { await mettiSullaTela(progetto); return 'done' }
+            /*
+             * Service request NUOVA: i campi ora esistono, la voce no. Si
+             * riapre il modale della voce PRECOMPILATO con quello che l'AI ha
+             * proposto — la priorita e obbligatoria e l'AI puo non averla
+             * scelta — e le sezioni atterrano appena la voce c'e.
+             */
+            setProgettoInAttesa(progetto)
+            setNuovaVoce({
+              name: progetto.item?.name ?? '',
+              description: progetto.item?.description ?? '',
+              category: progetto.item?.category ?? '',
+              priority: progetto.item?.priority ?? '',
+              requiresApproval: progetto.item?.requiresApproval ?? false,
+            })
+            return 'pending'
+          }}
+        />
+      )}
       {modaleProprieta()}
     </div>
   )
 }
 
 /** Sposta un elemento da una posizione all'altra, mantenendo l'ordine del resto. */
+/**
+ * Le sezioni di una proposta AI come sezioni del modulo.
+ *
+ * Pura e fuori dal componente: la usano il caso «aggiungi a una voce» e il
+ * caso «voce nuova», che passa da un effetto — e dentro un effetto una
+ * funzione che legge lo stato darebbe una chiusura vecchia.
+ */
+function sezioniDaProgetto(progetto: Progetto): CatalogFormSection[] {
+  return progetto.sections.map((sez) => ({
+    id: sez.id,
+    title: { it: sez.titleIt, en: sez.titleEn },
+    columns: sez.columns === 2 ? 2 : 1,
+    items: sez.items.map((i) => ({
+      field: i.field,
+      required: i.required,
+      width: i.width,
+      endUser: i.endUser,
+      readOnly: i.readOnly,
+      ...(i.visibleWhen === null ? {} : { visibleWhen: JSON.parse(i.visibleWhen) as FormCondition }),
+    })),
+  }))
+}
+
 function sposta<T>(list: readonly T[], da: number, a: number): T[] {
   const out = [...list]
   const [x] = out.splice(da, 1)
