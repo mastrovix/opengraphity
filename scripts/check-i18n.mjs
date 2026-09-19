@@ -749,7 +749,32 @@ const RE_TERNARIO_JSX = />\s*\{[^{}\n]*\?\s*'([^']*)'\s*:\s*'([^']*)'\s*\}\s*</g
  * diceva in un commento: «Il nome della variabile e italiano, il testo a
  * schermo no».
  */
-const RE_PAROLE_DI_CODICE = /\b(const|return|if|let|for|while|await|async|function|export|import|type|interface|readonly|Record|Promise|Array|Partial|Pick|Omit|Set|Map|typeof|as|extends|new|of|null|undefined)\b/
+/*
+ * PAROLE CHE IN UN'INTERFACCIA NON COMPAIONO MAI (corretto il 19 set 2026).
+ *
+ * Il 18 set ci avevo messo anche `for`, `of`, `as`, `new`, `while`, `null`,
+ * `undefined`, `Set`, `Map`, `Record` — e avevo applicato l'elenco al ramo
+ * principale del controllo. Sono parole INGLESI di uso quotidiano e nomi di
+ * tipo che in italiano sono sostantivi: la revisione del 19 set l'ha
+ * dimostrato misurandolo, sei stringhe su otto passavano —
+ * «Waiting for approval», «Save as draft», «Out of range», «Add new item»,
+ * «Il Set di regole non e completo», «Nessun Record trovato». Cioe' il
+ * guardiano nato per trovare i letterali a schermo aveva smesso di trovarli,
+ * e il prezzo era pagato per togliere CINQUE falsi positivi.
+ *
+ * Adesso l'elenco ha solo parole che a schermo non si leggono mai, e i falsi
+ * positivi si tolgono dove nascono davvero: `RE_CODICE_A CAPO` riconosce il
+ * pezzo di codice preso a cavallo di due righe, che e' la loro forma comune.
+ */
+const RE_PAROLE_DI_CODICE = /\b(const|return|let|await|async|function|export|import|interface|readonly|typeof|extends|Promise|Partial|Pick|Omit)\b/
+
+/**
+ * Un tratto preso A CAVALLO DI DUE RIGHE con indentazione di codice: e' quello
+ * che produceva i falsi positivi (un `&&`, una graffa e il nome italiano di
+ * una variabile alla riga dopo). Un nodo di testo JSX non contiene mai un a
+ * capo seguito da due o piu' spazi seguiti da codice.
+ */
+const RE_CODICE_A_CAPO = /\n\s{2,}\S/
 
 /** Il pezzo di testo di `RE_TESTO_JSX_APERTO`, ripulito; `null` se e codice. */
 function testoAperto(grezzo) {
@@ -874,7 +899,7 @@ function prosa(v) {
         guardiano che grida al lupo sulla prima funzione generica del giorno
         insegna a ignorarlo.
       */
-      if (RE_PAROLE_DI_CODICE.test(m[1])) continue
+      if (RE_PAROLE_DI_CODICE.test(m[1]) || RE_CODICE_A_CAPO.test(m[1])) continue
       if (prosa(m[1])) trovati.push({ dove: `testo JSX «${m[1].trim()}»`, riga })
     }
     for (const m of src.matchAll(RE_TESTO_JSX_APERTO)) {
@@ -1151,7 +1176,7 @@ function prosa(v) {
       if (/[="']/.test(testo)) continue
       // Codice, non un nodo di testo: i nomi di variabile italiani di questo
       // prodotto lo facevano sembrare prosa.
-      if (RE_PAROLE_DI_CODICE.test(testo)) continue
+      if (RE_PAROLE_DI_CODICE.test(testo) || RE_CODICE_A_CAPO.test(testo)) continue
       if (italiano(testo)) segnala(lineOf(pulito, m.index), `testo JSX «${testo.trim().slice(0, 80)}»`)
     }
     for (const m of forseJSX ? pulito.matchAll(RE_TESTO_CON_ESPRESSIONI) : []) {
@@ -1166,7 +1191,7 @@ function prosa(v) {
         testo a schermo no.
       */
       if (/[{}]/.test(testo)) continue
-      if (RE_PAROLE_DI_CODICE.test(testo)) continue
+      if (RE_PAROLE_DI_CODICE.test(testo) || RE_CODICE_A_CAPO.test(testo)) continue
       if (italiano(testo)) segnala(lineOf(pulito, m.index), `testo JSX «${testo.trim().slice(0, 80)}»`)
     }
   }

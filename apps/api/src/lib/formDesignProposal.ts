@@ -40,7 +40,8 @@
  */
 import {
   FORM_CONDITION_OPS, FORM_CONDITION_OPS_WITHOUT_VALUE,
-  FORM_FIELD_NAME_RE, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY, FORM_FIELD_TYPES_WITH_VOCABULARY,
+  FORM_FIELD_NAME_RE, FORM_FIELD_TYPES, FORM_FIELD_TYPES_AS_PROPERTY,
+  FORM_FIELD_TYPES_WITHOUT_ANSWER, FORM_FIELD_TYPES_WITH_VOCABULARY,
   canBeComputed, canBeConditionSubject, isFormFieldType, isFormReferenceType, nomeDaEtichetta,
   type FormCondition, type FormConditionOp,
 } from '@opengraphity/types'
@@ -58,8 +59,21 @@ export const TIPI_PROPONIBILI: readonly string[] = FORM_FIELD_TYPES.filter((t) =
 
 /** Il catalogo vero del tenant: quello che il modello può scegliere, e niente altro. */
 export interface CatalogoPerProposta {
-  /** I campi già in libreria: nome → tipo ed etichetta. */
-  readonly campiLibreria: ReadonlyMap<string, { readonly fieldType: string; readonly label: string }>
+  /** I campi già in libreria: nome → tipo, etichetta e se porta una formula. */
+  readonly campiLibreria: ReadonlyMap<string, { readonly fieldType: string; readonly label: string; readonly haFormula?: boolean }>
+  /**
+   * I nomi che una proprietà di ticket NON può avere: quelli del motore, quelli
+   * che l'API espone già, quelli riservati. Non si scartano i campi che ci
+   * finiscono sopra — si dà loro il nome successivo libero, come fa il
+   * designer quando trascini due volte la stessa etichetta.
+   *
+   * Senza questo, un'etichetta inglese come «Description» o «Status» produceva
+   * `description`/`status`, che `createFormField` rifiuta: la proposta si
+   * applicava a metà, lasciando campi orfani in libreria (rilievo del 19 set).
+   */
+  readonly nomiRiservati: ReadonlySet<string>
+  /** Gli id delle sezioni che il modulo ha GIÀ: i nuovi non devono ripeterli. */
+  readonly idSezioniEsistenti: readonly string[]
   /** I vocabolari del Dizionario: nome → valori. */
   readonly vocabolari: ReadonlyMap<string, readonly string[]>
   /** I tipi di CI su cui un `ref_ci` può pescare. */
@@ -232,9 +246,19 @@ export function validaProposta(grezza: unknown, catalogo: CatalogoPerProposta): 
   for (const [nome, def] of catalogo.campiLibreria) tipoDelCampo.set(nome, def.fieldType)
   /** I nomi già presi: la libreria più quelli che sto inventando ora. */
   const nomiPresi = new Set<string>([...catalogo.campiLibreria.keys()])
-  /** Etichetta normalizzata → nome, per riconoscere una domanda che esiste già. */
-  const perEtichetta = new Map<string, string>()
-  for (const [nome, def] of catalogo.campiLibreria) perEtichetta.set(chiaveEtichetta(def.label), nome)
+  /**
+   * Etichetta normalizzata → nome, per riconoscere una domanda che esiste già.
+   *
+   * Ci stanno SOLO i campi di libreria. Ci finivano anche quelli nuovi della
+   * proposta, e allora la stessa etichetta due volte («Note» in due sezioni)
+   * faceva cercare in libreria un nome che in libreria non c'era: `get(...)!`
+   * dava `undefined` e la mutation moriva con un TypeError, dopo che la
+   * chiamata al modello era già stata pagata (rilievo del 19 set).
+   */
+  const perEtichettaLibreria = new Map<string, string>()
+  for (const [nome, def] of catalogo.campiLibreria) perEtichettaLibreria.set(chiaveEtichetta(def.label), nome)
+  /** Le etichette già usate DENTRO questa proposta: la stessa domanda non si ripete. */
+  const etichetteProposte = new Map<string, string>()
 
   /** I campi citati dal modulo finito: i suoi più quelli che c'erano già. */
   const citati = new Set<string>(catalogo.campiGiaNelModulo)
@@ -267,10 +291,8 @@ export function validaProposta(grezza: unknown, catalogo: CatalogoPerProposta): 
   interface VoceGrezza { voce: Omit<VoceDiSezioneProposta, 'visibleWhen'>; condizione: unknown }
   const sezioniGrezze: { id: string; titleIt: string; titleEn: string; columns: 1 | 2; items: VoceGrezza[] }[] = []
 
-  let indiceSezione = 0
   for (const rawSez of lista(doc['sezioni'])) {
     const sez = oggetto(rawSez)
-    indiceSezione += 1
     const items: VoceGrezza[] = []
 
     for (const rawCampo of lista(sez['campi'])) {
@@ -294,7 +316,14 @@ export function validaProposta(grezza: unknown, catalogo: CatalogoPerProposta): 
       const riusoChiesto = testo(c['riuso'])
       const riuso = catalogo.campiLibreria.has(riusoChiesto)
         ? riusoChiesto
-        : (perEtichetta.get(chiaveEtichetta(etichetta)) ?? null)
+        : (perEtichettaLibreria.get(chiaveEtichetta(etichetta)) ?? null)
+      // La stessa etichetta due volte nella stessa proposta è la stessa
+      // domanda: entra una volta sola, e lo si dice.
+      const giaProposta = riuso === null ? etichetteProposte.get(chiaveEtichetta(etichetta)) : undefined
+      if (giaProposta !== undefined) {
+        scartati.push({ cosa: etichetta, key: 'proposal.discard.alreadyInForm', params: { name: giaProposta } })
+        continue
+      }
       if (riusoChiesto !== '' && riuso === null) {
         scartati.push({ cosa: etichetta, key: 'proposal.discard.reuseUnknown', params: { name: riusoChiesto } })
         // Non si ferma: il campo si può ancora creare nuovo.
@@ -328,7 +357,10 @@ export function validaProposta(grezza: unknown, catalogo: CatalogoPerProposta): 
         }
         tipo = tipoChiesto
         source = 'new'
-        nome = nomeDaEtichetta(etichettaIt || etichettaEn, [...nomiPresi])
+        // I nomi riservati entrano fra quelli «presi»: il campo prende il nome
+        // successivo libero invece di nascere con un nome che il salvataggio
+        // rifiuterebbe.
+        nome = nomeDaEtichetta(etichettaIt || etichettaEn, [...nomiPresi, ...catalogo.nomiRiservati])
         if (!FORM_FIELD_NAME_RE.test(nome)) {
           scartati.push({ cosa: etichetta, key: 'proposal.discard.fieldName', params: { name: nome } })
           continue
@@ -383,13 +415,16 @@ export function validaProposta(grezza: unknown, catalogo: CatalogoPerProposta): 
           why: perche,
         })
         nomiPresi.add(nome)
-        perEtichetta.set(chiaveEtichetta(etichetta), nome)
+        etichetteProposte.set(chiaveEtichetta(etichetta), nome)
       }
 
       tipoDelCampo.set(nome, tipo)
       citati.add(nome)
       citabile(nome, source === 'library' ? (catalogo.campiLibreria.get(nome)?.label ?? etichetta) : etichetta)
+      // Calcolato: la formula può venire dal campo NUOVO o dalla libreria (un
+      // campo riusato che ha già la sua formula è calcolato lo stesso).
       const calcolato = campiNuovi.find((x) => x.name === nome)?.formula != null
+        || catalogo.campiLibreria.get(nome)?.haFormula === true
       /*
        * UN RIFERIMENTO NON PUÒ ESSERE OBBLIGATORIO — e non è una stranezza.
        *
@@ -403,30 +438,51 @@ export function validaProposta(grezza: unknown, catalogo: CatalogoPerProposta): 
        * proposta deve sapere perché non lo è.
        */
       const riferimento = isFormReferenceType(tipo)
+      const solaLettura = !calcolato && booleano(c['solo_lettura'], false)
+      const offerto = riferimento ? false : booleano(c['visibile_nella_richiesta'], true)
       const volutoObbligatorio = booleano(c['obbligatorio'], false)
-      if (riferimento && volutoObbligatorio) {
-        scartati.push({ cosa: etichetta, key: 'proposal.discard.referenceNotRequired', params: { fieldType: tipo } })
+
+      /*
+       * QUANDO «OBBLIGATORIO» NON SI PUÒ CHIEDERE — quattro casi, una regola.
+       *
+       * Il prodotto rifiuta un campo obbligatorio che NESSUNO potrebbe
+       * riempire, e i modi di finirci sono quattro: un campo calcolato (lo
+       * scrive il server), una NOTA (non porta risposta), un campo in sola
+       * lettura senza formula, e un campo che il portale non chiede — dove
+       * ricade anche ogni riferimento, che nel portale non si offre mai.
+       *
+       * Avevo chiuso il solo caso del riferimento, trovandolo pubblicando; gli
+       * altri tre passavano senza un solo scarto e facevano rifiutare il
+       * salvataggio DOPO che i campi erano già stati creati (revisione del 19
+       * set). Adesso l'obbligatorietà cade e se ne dice il motivo, che è
+       * l'unica cosa che chi rivede può usare per decidere.
+       */
+      const senzaRisposta = (FORM_FIELD_TYPES_WITHOUT_ANSWER as readonly string[]).includes(tipo)
+      const motivoNonObbligabile =
+          calcolato      ? 'computed'
+        : senzaRisposta  ? 'note'
+        : solaLettura    ? 'readOnly'
+        : riferimento    ? 'reference'
+        : !offerto       ? 'notOffered'
+        : null
+      if (volutoObbligatorio && motivoNonObbligabile !== null) {
+        scartati.push({
+          cosa: etichetta,
+          key: motivoNonObbligabile === 'reference' ? 'proposal.discard.referenceNotRequired' : 'proposal.discard.cannotBeRequired',
+          params: { fieldType: tipo, why: motivoNonObbligabile },
+        })
       }
       items.push({
         voce: {
           field: nome, source,
-          // Un campo calcolato non si compila: chiederlo obbligatorio sarebbe
-          // una richiesta a chi non può rispondere (e il server la rifiuta).
-          required: !calcolato && !riferimento && volutoObbligatorio,
+          required: volutoObbligatorio && motivoNonObbligabile === null,
           width: testo(c['larghezza']) === 'half' ? 'half' : 'full',
           /*
-           * UN RIFERIMENTO NON SI OFFRE A CHI APRE LA RICHIESTA.
-           *
-           * Trovato PUBBLICANDO la prima proposta vera: `saveCatalogForm` la
-           * ha rifiutata perché il campo «Applicazione» (`ref_ci`) era
-           * visibile nella service request, e scegliere un CI vuol dire
-           * cercarlo nella CMDB — cosa che un utente finale non fa. È la
-           * stessa regola che il designer applica quando trascini un
-           * riferimento sulla tela; qui mancava, e il modulo si sarebbe
-           * potuto disegnare ma non salvare.
+           * UN RIFERIMENTO NON SI OFFRE A CHI APRE LA RICHIESTA: scegliere un
+           * CI vuol dire cercarlo nella CMDB, e `saveCatalogForm` lo rifiuta.
            */
-          endUser: riferimento ? false : booleano(c['visibile_nella_richiesta'], true),
-          readOnly: !calcolato && booleano(c['solo_lettura'], false),
+          endUser: offerto,
+          readOnly: solaLettura,
           why: perche,
         },
         condizione: c['visibile_quando'],
@@ -436,10 +492,19 @@ export function validaProposta(grezza: unknown, catalogo: CatalogoPerProposta): 
     if (items.length === 0) continue
     const titoloIt = testo(sez['titolo_it'])
     const titoloEn = testo(sez['titolo_en'])
+    /*
+     * UNA SEZIONE SENZA TITOLO non si salva («a section without a name is an
+     * anonymous box»), e i campi che contiene andrebbero persi con lei: si
+     * prende l'etichetta del primo campo, che è la cosa più vicina a quello
+     * che la sezione chiede. Un campo senza etichetta è già stato scartato
+     * sopra, quindi qualcosa da cui pescare c'è.
+     */
+    const primo = oggetto(lista(sez['campi'])[0])
+    const ripiego = testo(primo['etichetta_it']) || testo(primo['etichetta_en'])
     sezioniGrezze.push({
-      id: `ai_${String(indiceSezione)}`,
-      titleIt: titoloIt || titoloEn,
-      titleEn: titoloEn || titoloIt,
+      id: idSezioneLibero(catalogo.idSezioniEsistenti, sezioniGrezze.map((x) => x.id)),
+      titleIt: titoloIt || titoloEn || ripiego,
+      titleEn: titoloEn || titoloIt || ripiego,
       columns: Number(sez['colonne']) === 2 ? 2 : 1,
       items,
     })
@@ -463,6 +528,23 @@ export function validaProposta(grezza: unknown, catalogo: CatalogoPerProposta): 
   const voce = voceValidata(doc['voce'], catalogo, scartati)
 
   return { voce, vocabolariNuovi, campiNuovi, sezioni, scartati, note }
+}
+
+/**
+ * UN ID DI SEZIONE CHE NON ESISTE GIÀ.
+ *
+ * Gli id erano `ai_1`, `ai_2` contati DENTRO la proposta: la seconda proposta
+ * sullo stesso modulo rifaceva `ai_1`, e `assertCatalogForm` rifiutava la
+ * pubblicazione («Due sezioni hanno l'id "ai_1"») dopo che i campi erano già
+ * stati creati e la tela rimaneggiata (revisione del 19 set).
+ */
+function idSezioneLibero(esistenti: readonly string[], gia: readonly string[]): string {
+  const presi = new Set<string>([...esistenti, ...gia])
+  for (let i = 1; i < 999; i++) {
+    const candidato = `ai_${String(i)}`
+    if (!presi.has(candidato)) return candidato
+  }
+  return `ai_${String(Date.now()).slice(-8)}`
 }
 
 /** Uno script del cliente: acceso, e valido secondo il validatore del prodotto. */

@@ -4457,7 +4457,8 @@
     "formDesigner": {
       "emptyPrompt": "Write what the service request must ask: with no description there is nothing to design.",
       "promptTooLong": "The description is too long (max {{max}} characters). Describe what you need, not the full specification.",
-      "badAnswer": "The model answer cannot be read. Try again: if it happens twice, describe the request in simpler words."
+      "badAnswer": "The model answer cannot be read. Try again: if it happens twice, describe the request in simpler words.",
+      "invalidProposal": "The proposal would not be saveable ({{message}}). That is a defect on our side: try again, and report it if it happens twice."
     },
     "reportDesigner": {
       "emptyPrompt": "Write what report you need: with no description there is nothing to design.",
@@ -7099,7 +7100,9 @@
       "categoryUnknown": "The category «{{name}}» is not one of the Dictionary's: pick one by hand.",
       "priorityUnknown": "The priority «{{name}}» is not one of the Dictionary's: pick one by hand.",
       "workflowUnknown": "The workflow «{{name}}» does not exist: the AI creates none, pick one of yours.",
-      "referenceNotRequired": "A reference ({{fieldType}}) cannot be required: it is not offered in the portal, and a field the portal never asks for cannot be demanded. You will find it optional."
+      "referenceNotRequired": "A reference ({{fieldType}}) cannot be required: it is not offered in the portal, and a field the portal never asks for cannot be demanded. You will find it optional.",
+      "cannotBeRequired": "A {{fieldType}} field cannot be required ({{why}}): nobody could fill it, so the request could not be created. You will find it optional.",
+      "fieldName": "The label «{{name}}» does not yield a usable property name: write it with letters and digits."
     }
   },
   "reportProposal": {

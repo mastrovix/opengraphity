@@ -161,6 +161,22 @@ export interface EsitoPropostaReport extends PropostaReport {
   readonly prompt: string
 }
 
+/**
+ * Gli scarti di una proposta che non ha nominato NIENTE di riconoscibile: si
+ * rilegge il documento grezzo solo per dire quali entità il modello ha
+ * inventato, che è l'unica cosa utile in quel caso.
+ */
+function scartiDelRifiuto(grezza: unknown, entita: readonly NavigableEntity[]): PropostaReport['scartati'] {
+  const doc = (grezza ?? {}) as { nodi?: unknown }
+  const nomi = new Set(entita.flatMap((e) => [e.entityType, e.neo4jLabel, e.label].map((x) => x.toLowerCase())))
+  const fuori = (Array.isArray(doc.nodi) ? doc.nodi : [])
+    .map((n) => String(((n ?? {}) as { entita?: unknown }).entita ?? '').trim())
+    .filter((n) => n !== '' && !nomi.has(n.toLowerCase()))
+  return [...new Set(fuori)].map((name) => ({
+    what: name, key: 'reportProposal.discard.entityUnknown', params: { name },
+  }))
+}
+
 export async function proponiSezioneDiReport(req: RichiestaDiReport): Promise<EsitoPropostaReport> {
   await assertAIFeature(req.tenantId, 'reportDesigner')
 
@@ -175,6 +191,10 @@ export async function proponiSezioneDiReport(req: RichiestaDiReport): Promise<Es
       extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.reportDesigner.promptTooLong', params: { max: MAX_PROMPT_CHARS } } },
     })
   }
+
+  // La chiave PRIMA del lavoro: leggere tutto il metamodello per poi dire
+  // «non configurato» è il contrario del fail-fast (revisione del 19 set).
+  getClient()
 
   const entita = await getNavigableEntities(req.tenantId)
   if (entita.length === 0) {
@@ -241,9 +261,22 @@ export async function proponiSezioneDiReport(req: RichiestaDiReport): Promise<Es
 
   const proposta = validaPropostaReport(grezza, entita)
   if (proposta === null) {
-    throw new GraphQLError('The proposal names no entity of this organization', {
-      extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.reportDesigner.nothingUsable' } },
-    })
+    /*
+     * QUANDO NON RESTA NIENTE, SI DICE PERCHÉ (19 set 2026, dalla revisione).
+     *
+     * Prima si alzava un errore buttando gli scarti — cioè proprio
+     * l'informazione che il filtro esiste per produrre, e che spiega quali
+     * entità il modello ha nominato e perché non esistono. Il gemello dei
+     * moduli restituisce la proposta vuota con i suoi scarti, e chi guarda
+     * capisce se riscrivere la frase o creare quel tipo di CI.
+     */
+    return {
+      prompt, title: '', chartType: 'bar', metric: 'count', metricField: null,
+      groupByNodeId: null, groupByField: null, limit: 20, sortDir: 'DESC',
+      nodes: [], edges: [], why: '',
+      scartati: scartiDelRifiuto(grezza, entita),
+      note: [],
+    }
   }
 
   /*
@@ -260,7 +293,9 @@ export async function proponiSezioneDiReport(req: RichiestaDiReport): Promise<Es
   } catch (err) {
     log.error({ err, proposta }, '[report-designer] the filtered proposal does not pass validateReportSection')
     throw new GraphQLError(`The proposal would not be saveable: ${err instanceof Error ? err.message : String(err)}`, {
-      extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.reportDesigner.invalidProposal' } },
+      extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.reportDesigner.invalidProposal',
+        // I params ci vogliono: senza, i18next stampa «{{message}}» alla lettera.
+        params: { message: err instanceof Error ? err.message : String(err) } } },
     })
   }
 

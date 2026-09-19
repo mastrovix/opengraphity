@@ -43,7 +43,10 @@ export const aiSettingsMissingFeatures: Migration = {
       let doc: { features?: Record<string, unknown> }
       try { doc = JSON.parse(rec.get('raw') as string) as typeof doc }
       catch {
-        console.log(`[${aiSettingsMissingFeatures.id}] ${id}: ai_settings is not valid JSON — left alone, the read falls back to factory`)
+        // NON «ripiega su fabbrica»: `aiSettings.ts` lancia su un documento
+        // illeggibile, e lancia anche la pagina che lo riparerebbe. Si dice
+        // forte, perché quel tenant ha bisogno di una mano a parte.
+        console.error(`[${aiSettingsMissingFeatures.id}] ${id}: ai_settings is NOT valid JSON — left alone; every AI read will fail for this tenant until it is fixed`)
         continue
       }
       const features = doc.features
@@ -51,14 +54,31 @@ export const aiSettingsMissingFeatures: Migration = {
         console.log(`[${aiSettingsMissingFeatures.id}] ${id}: ai_settings has no features object — left alone`)
         continue
       }
+      /*
+       * IL VALORE DI UNA FUNZIONE NUOVA SEGUE QUELLO CHE IL CLIENTE HA SCELTO
+       * PER LE ALTRE (19 set 2026, dalla revisione).
+       *
+       * Scrivere il valore di fabbrica (acceso) sembrava innocuo e non lo è:
+       * un cliente che NON vuole mandare i suoi testi a un servizio esterno
+       * apre Organizzazione → AI e spegne tutto; questa migrazione gli
+       * riaccendeva due funzioni e scriveva nel suo documento che era una sua
+       * scelta. È il contrario del motivo per cui gli interruttori esistono —
+       * la prima riga di `aiSettings.ts` parla proprio di quel cliente.
+       *
+       * Regola: se ha spento TUTTO, la funzione nuova nasce spenta; se no,
+       * vale fabbrica, che è il comportamento di chi non ha scelto niente.
+       */
+      const esistenti = Object.entries(features).filter(([k]) => (AI_FEATURES as readonly string[]).includes(k))
+      const tutteSpente = esistenti.length > 0 && esistenti.every(([, v]) => v === false)
       const aggiunte: string[] = []
       for (const f of AI_FEATURES) {
         if (f in features) continue
-        features[f] = FACTORY_AI_SETTINGS.features[f]
-        aggiunte.push(`${f}=${String(FACTORY_AI_SETTINGS.features[f])}`)
+        const valore = tutteSpente ? false : FACTORY_AI_SETTINGS.features[f]
+        features[f] = valore
+        aggiunte.push(`${f}=${String(valore)}${tutteSpente ? ' (tutte le altre erano spente)' : ' (factory)'}`)
       }
       if (aggiunte.length === 0) continue
-      console.log(`[${aiSettingsMissingFeatures.id}] ${id}: adding ${aggiunte.join(', ')} (factory)`)
+      console.log(`[${aiSettingsMissingFeatures.id}] ${id}: adding ${aggiunte.join(', ')}`)
       daScrivere.push({ id, json: JSON.stringify(doc) })
     }
 

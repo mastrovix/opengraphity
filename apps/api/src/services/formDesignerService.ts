@@ -38,7 +38,7 @@ import { config } from '../lib/config.js'
 import { logger } from '../lib/logger.js'
 import { assertAIFeature } from '../lib/aiSettings.js'
 import { catalogFormLimits } from '../lib/catalogFormLimits.js'
-import { formFields, parseCatalogForm } from '../lib/catalogForm.js'
+import { assertCatalogForm, formFields, parseCatalogForm, type FormFieldDef } from '../lib/catalogForm.js'
 import { getScriptingPlan } from '../lib/scriptingPlan.js'
 import { loadVocabularyEntries } from '../lib/vocabularyEntries.js'
 import { SYSTEM_TENANT } from '../lib/enumScope.js'
@@ -66,6 +66,8 @@ interface Catalogo extends CatalogoPerProposta {
   /** Il modulo esistente, quando si aggiunge a una voce. */
   readonly moduloEsistente: CatalogFormDefinition | null
   readonly nomeVoce: string | null
+  /** I campi di libreria come li legge il salvataggio: servono alla rete di sicurezza. */
+  readonly campiDiLibreria: readonly FormFieldDef[]
 }
 
 async function leggiCatalogo(req: RichiestaDiProgetto): Promise<Catalogo> {
@@ -129,7 +131,11 @@ async function leggiCatalogo(req: RichiestaDiProgetto): Promise<Catalogo> {
     const citati = (moduloEsistente?.sections ?? []).flatMap((s) => s.items.map((i) => i.field))
 
     return {
-      campiLibreria: new Map(campi.map((c) => [c.name, { fieldType: c.fieldType, label: c.label }])),
+      campiLibreria: new Map(campi.map((c) => [c.name, {
+        fieldType: c.fieldType, label: c.label, haFormula: c.formula != null && c.formula.trim() !== '',
+      }])),
+      nomiRiservati: await nomiNonUsabili(req.tenantId),
+      idSezioniEsistenti: (moduloEsistente?.sections ?? []).map((s) => s.id),
       vocabolari: perNome,
       tipiCI: new Set(tipiCI.map((t) => t.name)),
       categorie: await valoriDi(req.tenantId, 'category'),
@@ -141,11 +147,55 @@ async function leggiCatalogo(req: RichiestaDiProgetto): Promise<Catalogo> {
       campiGiaNelModulo: citati,
       moduloEsistente,
       nomeVoce,
+      campiDiLibreria: campi,
     }
   } finally {
     await session.close()
   }
 }
+
+/**
+ * I NOMI CHE UN CAMPO NUOVO NON PUÒ PRENDERE (19 set 2026).
+ *
+ * `assertCustomFieldName` — quella che rifiuta davvero, dentro
+ * `createFormField` — guarda i nomi riservati del motore e i campi che l'API
+ * espone già per una service request. Qui si ricostruisce lo stesso insieme
+ * PRIMA, così `nomeDaEtichetta` gira alla larga invece di dare a un campo un
+ * nome che al momento di crearlo verrà rifiutato — con metà proposta già
+ * applicata e dei campi orfani in libreria.
+ *
+ * Resta fuori il quarto controllo (le proprietà che i ticket del cliente già
+ * portano): costa una query per nome e il caso è raro; se scatta, l'errore
+ * arriva dalla mutation come prima, e adesso è l'unico che può arrivare.
+ */
+async function nomiNonUsabili(tenantId: string): Promise<ReadonlySet<string>> {
+  const { customFieldNameReserved } = await import('@opengraphity/types')
+  const { getSchemaForTenant } = await import('../lib/schemaCache.js')
+  const { GraphQLObjectType } = await import('graphql')
+  const fuori = new Set<string>()
+  const tipo = (await getSchemaForTenant(tenantId)).getType('ServiceRequest')
+  if (tipo instanceof GraphQLObjectType) {
+    for (const nome of Object.keys(tipo.getFields())) {
+      fuori.add(nome.replace(/[A-Z]/g, (l) => `_${l.toLowerCase()}`))
+    }
+  }
+  // I riservati del motore: `customFieldNameReserved` è puro, quindi si prova
+  // su quello che l'AI può proporre invece di elencarlo di nuovo qui.
+  for (const nome of [...fuori]) if (customFieldNameReserved(nome, 'service_request')) fuori.add(nome)
+  for (const candidato of RISERVATI_NOTI) if (customFieldNameReserved(candidato, 'service_request')) fuori.add(candidato)
+  return fuori
+}
+
+/**
+ * I nomi che `customFieldNameReserved` conosce: l'elenco vero sta in
+ * `packages/types/src/ticketCustomFields.ts`, qui ci sono i candidati da
+ * provargli (un insieme non si enumera da una funzione booleana).
+ */
+const RISERVATI_NOTI: readonly string[] = [
+  'id', 'number', 'code', 'tenant_id', 'created_at', 'updated_at', 'status', 'title', 'description',
+  'priority', 'category', 'impact', 'urgency', 'severity', 'due_date', 'resolved_at', 'closed_at',
+  'assigned_to', 'requested_by', 'created_by', 'workflow_step', 'sla_status', 'form_revision',
+]
 
 /**
  * I valori di un vocabolario del cliente. Un vocabolario che non esiste non è
@@ -315,7 +365,17 @@ export async function proponiModulo(req: RichiestaDiProgetto): Promise<EsitoProp
     })
   }
 
+  /*
+   * LA CHIAVE SI CONTROLLA PRIMA DI LAVORARE (19 set 2026, dalla revisione).
+   *
+   * `getClient()` stava dopo sei letture del grafo: su una piattaforma senza
+   * `ANTHROPIC_API_KEY` si pagava tutto il catalogo per poi dire «non
+   * configurato». Fail-fast è la regola di casa, e qui costa una riga.
+   */
+  getClient()
+
   const catalogo = await leggiCatalogo(req)
+  const campiEsistenti = catalogo.campiDiLibreria
 
   // Quello che il modello vede del cliente. I campi della libreria arrivano
   // TUTTI (anche i non condivisi): qui non si sta offrendo il riuso a un altro
@@ -373,6 +433,49 @@ export async function proponiModulo(req: RichiestaDiProgetto): Promise<EsitoProp
   }
 
   const proposta = validaProposta(grezza, catalogo)
+
+  /*
+   * L'ULTIMA PAROLA È DELLA VALIDAZIONE VERA (19 set 2026, dalla revisione).
+   *
+   * Il gemello dei report lo faceva e questo no, ed è costato sei difetti che
+   * avevano tutti la stessa forma: il filtro lasciava passare qualcosa che
+   * `assertCatalogForm` poi rifiutava — una nota obbligatoria, un campo in
+   * sola lettura e obbligatorio, un obbligatorio non offerto nel portale, una
+   * sezione senza titolo, due sezioni con lo stesso id. Il rifiuto arrivava
+   * al SALVATAGGIO, cioè dopo che i campi erano già stati creati in libreria.
+   *
+   * Qui la proposta viene montata come modulo e data alla stessa funzione che
+   * decide al salvataggio. Se passa qualcosa, è un difetto MIO: si risponde
+   * con un errore invece di consegnare una proposta che non si potrà salvare.
+   * La libreria di prova mette insieme i campi che esistono e quelli che
+   * nascerebbero accettando — è esattamente quello che `saveCatalogForm`
+   * leggerà dal grafo dopo l'accettazione.
+   */
+  const libreriaDopo = new Map(campiEsistenti.map((c) => [c.name, c]))
+  for (const nuovo of proposta.campiNuovi) {
+    libreriaDopo.set(nuovo.name, {
+      id: `nuovo-${nuovo.name}`, name: nuovo.name, fieldType: nuovo.fieldType as FormFieldDef['fieldType'],
+      label: nuovo.labelIt || nuovo.labelEn, labels: [], help: null, helps: [],
+      required: false, vocabulary: nuovo.vocabulary, validationScript: nuovo.validationScript,
+      formula: nuovo.formula, tableDefinition: null, refTypes: [...nuovo.refTypes],
+      shared: false, refFilter: null, inList: false, createdAt: null, updatedAt: null,
+    })
+  }
+  try {
+    assertCatalogForm(propostaComeDefinizione(proposta, catalogo.moduloEsistente), libreriaDopo)
+  } catch (err) {
+    log.error({
+      err,
+      campiNuovi: proposta.campiNuovi.map((c) => c.name),
+      sezioni: proposta.sezioni.map((s) => s.id),
+    }, '[form-designer] the filtered proposal does not pass assertCatalogForm')
+    throw new GraphQLError(`The proposal would not be saveable: ${err instanceof Error ? err.message : String(err)}`, {
+      extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.formDesigner.invalidProposal',
+        // I params ci vogliono: senza, i18next stampa «{{message}}» alla lettera.
+        params: { message: err instanceof Error ? err.message : String(err) } } },
+    })
+  }
+
   log.info({
     ms: Date.now() - t0,
     sezioni: proposta.sezioni.length,

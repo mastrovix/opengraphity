@@ -34,6 +34,8 @@ function catalogo(over: Partial<CatalogoPerProposta> = {}): CatalogoPerProposta 
     consentiNuovi: true,
     maxCampiPerModulo: 20,
     campiGiaNelModulo: [],
+    nomiRiservati: new Set(['description', 'status', 'number', 'priority', 'title']),
+    idSezioniEsistenti: [],
     ...over,
   }
 }
@@ -402,5 +404,93 @@ describe('una condizione può nominare un campo per etichetta', () => {
       }),
     ]), catalogo({ campiGiaNelModulo: ['ambiente'] }))
     expect(JSON.parse(p.sezioni[0]!.items[0]!.visibleWhen!)).toMatchObject({ rules: [{ field: 'ambiente' }] })
+  })
+})
+
+/**
+ * I RILIEVI DELLA REVISIONE DEL 19 SET, uno per uno.
+ *
+ * Tutti avevano la stessa forma: il filtro lasciava passare qualcosa che il
+ * SALVATAGGIO poi rifiutava — e il rifiuto arrivava dopo che i campi erano già
+ * stati creati in libreria, cioè nel momento peggiore. Il criterio qui è
+ * sempre lo stesso: quello che esce dal filtro deve superare
+ * `assertCatalogForm`, che è la funzione che decide davvero.
+ */
+describe('la revisione del 19 set', () => {
+  const libreriaDopo = (p: ReturnType<typeof validaProposta>) => new Map<string, FormFieldDef>([
+    ['ambiente', finto({ name: 'ambiente', fieldType: 'enum', vocabulary: 'environment' })],
+    ['centro_di_costo', finto({ name: 'centro_di_costo', fieldType: 'text' })],
+    ...p.campiNuovi.map((c) => [c.name, finto({
+      name: c.name, fieldType: c.fieldType as FormFieldDef['fieldType'], formula: c.formula,
+    })] as const),
+  ])
+  const salvabile = (p: ReturnType<typeof validaProposta>, esistente: Parameters<typeof propostaComeDefinizione>[1] = null) => {
+    assertCatalogForm(propostaComeDefinizione(p, esistente), libreriaDopo(p))
+  }
+
+  it('la stessa etichetta due volte non fa più morire la mutation', () => {
+    // Prima: `TypeError: Cannot read properties of undefined (reading 'fieldType')`,
+    // cioè un 500 dopo aver pagato la chiamata al modello.
+    const p = validaProposta(documento([campo({ etichetta_it: 'Note' }), campo({ etichetta_it: 'Note' })]), catalogo())
+    expect(p.sezioni[0]!.items).toHaveLength(1)
+    expect(chiavi(p)).toContain('proposal.discard.alreadyInForm')
+    expect(() => { salvabile(p) }).not.toThrow()
+  })
+
+  it('una NOTA non nasce obbligatoria', () => {
+    const p = validaProposta(documento([campo({ tipo: 'note', etichetta_it: 'Leggi prima', obbligatorio: true })]), catalogo())
+    expect(p.sezioni[0]!.items[0]!.required).toBe(false)
+    expect(chiavi(p)).toContain('proposal.discard.cannotBeRequired')
+    expect(() => { salvabile(p) }).not.toThrow()
+  })
+
+  it('sola lettura e obbligatorio non stanno insieme senza una formula', () => {
+    const p = validaProposta(documento([campo({ etichetta_it: 'Costo noto', obbligatorio: true, solo_lettura: true })]), catalogo())
+    expect(p.sezioni[0]!.items[0]).toMatchObject({ required: false, readOnly: true })
+    expect(() => { salvabile(p) }).not.toThrow()
+  })
+
+  it('un campo che il portale non chiede non può essere obbligatorio', () => {
+    const p = validaProposta(documento([campo({ etichetta_it: 'Nota interna', obbligatorio: true, visibile_nella_richiesta: false })]), catalogo())
+    expect(p.sezioni[0]!.items[0]).toMatchObject({ required: false, endUser: false })
+    expect(() => { salvabile(p) }).not.toThrow()
+  })
+
+  it('le etichette inglesi non generano nomi RISERVATI', () => {
+    // «Description» dava `description`, che `createFormField` rifiuta: la
+    // proposta si applicava a metà, lasciando campi orfani in libreria.
+    const p = validaProposta(documento([
+      campo({ etichetta_it: 'Description', etichetta_en: 'Description' }),
+      campo({ etichetta_it: 'Status', etichetta_en: 'Status' }),
+    ]), catalogo())
+    for (const c of p.campiNuovi) expect(['description', 'status', 'number', 'priority', 'title']).not.toContain(c.name)
+    expect(p.campiNuovi).toHaveLength(2)
+  })
+
+  it('gli id di sezione non ripetono quelli che il modulo ha già', () => {
+    const p = validaProposta(documento([campo({ etichetta_it: 'Nuovo' })]), catalogo({ idSezioniEsistenti: ['ai_1', 'ai_2'] }))
+    expect(p.sezioni[0]!.id).toBe('ai_3')
+    const esistente = {
+      version: 1, revision: 1,
+      sections: [
+        { id: 'ai_1', title: { it: 'Una', en: 'One' }, items: [{ field: 'ambiente' }] },
+        { id: 'ai_2', title: { it: 'Due', en: 'Two' }, items: [{ field: 'centro_di_costo' }] },
+      ],
+    }
+    expect(() => { salvabile(p, esistente as never) }).not.toThrow()
+  })
+
+  it('una sezione senza titolo prende quello del primo campo, invece di non salvarsi', () => {
+    const p = validaProposta(documento([], {
+      sezioni: [{ titolo_it: '', titolo_en: '', colonne: 1, campi: [campo({ etichetta_it: 'Data di consegna', tipo: 'date' })] }],
+    }), catalogo())
+    expect(p.sezioni[0]!.titleIt).toBe('Data di consegna')
+    expect(() => { salvabile(p) }).not.toThrow()
+  })
+
+  it('un campo di libreria CON formula non diventa obbligatorio', () => {
+    const p = validaProposta(documento([campo({ riuso: 'costo_totale', etichetta_it: 'Costo totale', obbligatorio: true })]),
+      catalogo({ campiLibreria: new Map([['costo_totale', { fieldType: 'number', label: 'Costo totale', haFormula: true }]]) }))
+    expect(p.sezioni[0]!.items[0]!.required).toBe(false)
   })
 })

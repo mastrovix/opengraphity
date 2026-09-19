@@ -101,6 +101,22 @@ export function ReportChartRenderer({ chartType, data, title, error, valueLabel 
     case 'bar_horizontal':
       return <ReactECharts option={buildHorizontalBarOption(points(), REPORT_STYLE)} {...echartsProps} />
 
+    /*
+     * LA CLASSIFICA si disegna come una barra ORIZZONTALE (19 set 2026).
+     *
+     * `top_n` era valido per l'API, coperto dai suoi test e reso da nessuno:
+     * cadeva sul `default`, cioè «grafico non disponibile». Finché non si
+     * poteva scegliere dalla UI il difetto era invisibile; offrendola, il 19
+     * set, ho tolto una bugia («top_n» come nome del grafico) e ne ho messa
+     * una peggiore — una scelta che il prodotto offre e non disegna.
+     *
+     * Orizzontale e non verticale perché una classifica si legge per nome: le
+     * etichette stanno in riga, e il contratto dei dati è lo stesso delle
+     * barre ({label, value} già ordinati e tagliati dal server).
+     */
+    case 'top_n':
+      return <ReactECharts option={buildHorizontalBarOption(points(), REPORT_STYLE)} {...echartsProps} />
+
     case 'line':
       return <ReactECharts option={buildLineOption(points())} {...echartsProps} />
 

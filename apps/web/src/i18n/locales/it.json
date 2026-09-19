@@ -4457,7 +4457,8 @@
     "formDesigner": {
       "emptyPrompt": "Scrivi cosa deve chiedere la service request: senza descrizione non c'è niente da disegnare.",
       "promptTooLong": "La descrizione è troppo lunga (massimo {{max}} caratteri). Descrivi cosa serve, non il capitolato.",
-      "badAnswer": "La risposta del modello non è leggibile. Riprova: se succede di nuovo, descrivi la richiesta con parole più semplici."
+      "badAnswer": "La risposta del modello non è leggibile. Riprova: se succede di nuovo, descrivi la richiesta con parole più semplici.",
+      "invalidProposal": "La proposta non sarebbe salvabile ({{message}}). È un difetto nostro: riprova, e se succede ancora segnalalo."
     },
     "reportDesigner": {
       "emptyPrompt": "Scrivi che report ti serve: senza descrizione non c'è niente da disegnare.",
@@ -7099,7 +7100,9 @@
       "categoryUnknown": "La categoria «{{name}}» non è fra quelle del Dizionario: da scegliere a mano.",
       "priorityUnknown": "La priorità «{{name}}» non è fra quelle del Dizionario: da scegliere a mano.",
       "workflowUnknown": "Il workflow «{{name}}» non esiste: l'AI non ne crea, scegline uno dei tuoi.",
-      "referenceNotRequired": "Un riferimento ({{fieldType}}) non può essere obbligatorio: non si offre nel portale, e un campo che il portale non chiede non si può pretendere. Lo trovi facoltativo."
+      "referenceNotRequired": "Un riferimento ({{fieldType}}) non può essere obbligatorio: non si offre nel portale, e un campo che il portale non chiede non si può pretendere. Lo trovi facoltativo.",
+      "cannotBeRequired": "Un campo {{fieldType}} non può essere obbligatorio ({{why}}): nessuno potrebbe riempirlo, e la richiesta non si potrebbe creare. Lo trovi facoltativo.",
+      "fieldName": "Dall'etichetta «{{name}}» non esce un nome utilizzabile per una proprietà: scrivila con lettere e numeri."
     }
   },
   "reportProposal": {
