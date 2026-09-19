@@ -998,8 +998,15 @@ export function FormBuilderPanel() {
         display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
         padding: '14px 16px', marginBottom: 18,
       }}>
-        {/* QUALE MODULO: l'etichetta sopra, come ogni campo del prodotto. */}
-        <div style={{ minWidth: 240, flex: '0 1 320px' }}>
+        {/*
+          QUALE MODULO: l'etichetta sopra, come ogni campo del prodotto.
+
+          `flex: 1 1 300px` e non una larghezza fissa: da iPad la barra va a
+          capo e questa colonna si stringeva fino a tagliare il nome della
+          richiesta a meta («Scegli una service re…»). Cosi cresce con lo
+          spazio che c'e, e quando la barra si impila prende la riga intera.
+        */}
+        <div style={{ minWidth: 220, flex: '1 1 300px' }}>
           <label htmlFor={idVoce} style={{
             display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)',
             textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5,
@@ -1007,7 +1014,7 @@ export function FormBuilderPanel() {
             {t('pages.catalogForms.builder.item')}
           </label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ flex: '1 1 auto', minWidth: 0 }}>
               <Select id={idVoce} value={voceId} onChange={(e) => void cambiaVoce(e.target.value)}>
                 <option value="">{t('pages.catalogForms.builder.chooseItem')}</option>
                 {voci.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
