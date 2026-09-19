@@ -55,7 +55,15 @@ export function IncidentListPage() {
     { key: 'title',    label: t('pages.incidents.title_col'),    sortable: true },
     {
       key:     'severity',
-      label:   t('pages.incidents.severity'),
+      /*
+       * «PRIORITÀ», non «Severità» (20 set 2026, decisione del proprietario
+       * dal giro nel browser). È lo stesso valore che il dettaglio chiama
+       * «Priorità P1» e che il prodotto calcola da Impatto × Urgenza: la
+       * proprietà sul grafo si chiama `severity` per ragioni storiche (vedi
+       * `lib/fieldProperty.ts`), ma a schermo il nome giusto è uno solo,
+       * altrimenti la lista e il dettaglio sembrano due cose diverse.
+       */
+      label:   t('pages.incidents.priority'),
       width:   '130px',
       sortable: true,
       // La priorità di un incident vive su `severity` ma i suoi valori sono le

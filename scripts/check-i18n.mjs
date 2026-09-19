@@ -405,6 +405,12 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // («Cambiamento», «Banca dati») darebbe un prodotto che nessuno riconosce.
   // Gli altri tipi spediti sono tradotti: «Applicazione», «Certificato»,
   // «Richiesta di servizio», «Istanza di database».
+  // Il titolo della pagina e la voce di menu sono LA STESSA COSA: si
+  // chiamavano «Report Builder» nel menu e «Costruttore di report» nella
+  // pagina (20 set 2026, dal giro nel browser). Vale la regola degli altri
+  // disegnatori del prodotto — «Workflow Designer», «CI Type Designer»,
+  // «Service Request Designer»: e il nome della cosa, non una frase.
+  'pages.reportBuilder.title',
   'metamodel.shipped.type.server',
   'metamodel.shipped.type.database',
   'metamodel.shipped.type.incident',

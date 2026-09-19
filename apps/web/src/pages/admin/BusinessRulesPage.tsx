@@ -242,7 +242,9 @@ export function BusinessRulesPage() {
     } },
     { key: 'priority', label: '#', sortable: true, render: (v) => <span style={{ fontWeight: 600, color: 'var(--color-brand)' }}>{String(v)}</span> },
     { key: 'name', label: t('common.name'), sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
-    { key: 'entityType', label: t('automation.columns.entity'), sortable: true },
+    // Il nome dell'entità, non `service_request` (20 set 2026, dal giro nel
+    // browser): `labelOf` è lo stesso che riempie il filtro qui sopra.
+    { key: 'entityType', label: t('automation.columns.entity'), sortable: true, render: (v) => labelOf(String(v)) },
     { key: 'eventType', label: t('automation.columns.event'), sortable: true, render: (v) => t(eventOptionKey(String(v))) },
     { key: 'conditionLogic', label: t('admin.rules.logic'), sortable: true, render: (v) => <Pill bg={v === 'and' ? palette.info.tint : palette.warning.tint} color={v === 'and' ? palette.info.text : palette.warning.strong} radius={10}>{String(v).toUpperCase()}</Pill> },
     { key: 'stopOnMatch', label: t('admin.rules.stop'), sortable: true, render: (v) => v ? <Pill bg={palette.danger.tint} color="var(--color-trigger-sla-breach)" radius={10}>STOP</Pill> : null },

@@ -179,7 +179,8 @@ export function AutoTriggersPage() {
 
   const triggerColumns: ColumnDef<AutoTrigger>[] = [
     { key: 'name', label: t('common.name'), sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
-    { key: 'entityType', label: t('automation.columns.entity'), sortable: true },
+    // Il nome dell'entità, non `service_request` (20 set 2026).
+    { key: 'entityType', label: t('automation.columns.entity'), sortable: true, render: (v) => labelOf(String(v)) },
     { key: 'eventType', label: t('automation.columns.event'), sortable: true, render: (v) => t(eventOptionKey(String(v))) },
     { key: 'enabled', label: t('admin.triggers.enabledLabel'), sortable: true, render: (_v, row) => (
       <Toggle checked={row.enabled} onChange={() => handleToggleEnabled(row)} label={t('admin.triggers.toggleLabel', { name: row.name })} />

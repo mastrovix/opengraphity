@@ -150,7 +150,7 @@
     "incidents": {
       "title": "Incident",
       "new": "Nuovo Incident",
-      "severity": "Severità",
+      "priority": "Priorità",
       "status": "Stato",
       "createdAt": "Creato il",
       "title_col": "Titolo",
@@ -263,7 +263,8 @@
       "noResultsDesc": "Il CMDB è vuoto. Aggiungi il primo CI per iniziare.",
       "noCiOfType": "Nessun {{type}}",
       "baseEnumsUnavailable": "Valori di stato/ambiente non disponibili dal metamodello (tipo base)",
-      "addOfType": "Aggiungi: {{type}}"
+      "addOfType": "Aggiungi: {{type}}",
+      "allTypes": "Tutti i tipi"
     },
     "anomalies": {
       "title": "Anomalie",
@@ -1339,7 +1340,7 @@
       }
     },
     "reportBuilder": {
-      "title": "Costruttore di report",
+      "title": "Report Builder",
       "count_one": "1 report",
       "count_other": "{{count}} report",
       "new": "Nuovo report",

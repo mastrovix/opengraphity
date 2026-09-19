@@ -107,7 +107,7 @@ export function TriageSuggestionCard({
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
             <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: colors.white, border: `1px solid ${colors.border}`, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              {t('pages.incidents.severity')}: <SeverityBadge value={s.severity} />
+              {t('pages.incidents.priority')}: <SeverityBadge value={s.severity} />
             </span>
             <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: colors.white, border: `1px solid ${colors.border}` }}>
               {t('pages.kb.category')}: <strong>{s.category}</strong>

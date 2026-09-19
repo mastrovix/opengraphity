@@ -133,9 +133,26 @@ function ModalPortal({ modalType, children, onClose }: { modalType: ModalKey; ch
 
 // ── Component ───────────────────────────────────────────────────────────────
 
+/** Le entità che un webhook in ingresso può creare. */
+const ENTITA_WEBHOOK = ['incident', 'change', 'problem', 'event'] as const
+
 export function IntegrationsPage() {
   const { t } = useTranslation()
   const confirm = useConfirm()
+  /*
+   * Il nome dell'entità (20 set 2026, dal giro nel browser): la colonna
+   * mostrava il nome interno — «event» — mentre il filtro sopra, sulla stessa
+   * pagina, diceva «Evento di monitoraggio». Una sola funzione per tutti e
+   * due, e l'elenco delle entità in un posto solo.
+   */
+  const etichettaEntita = (v: string) => {
+    const chiavi: Record<string, string> = {
+      incident: 'admin.integrations.entityIncident', change: 'admin.integrations.entityChange',
+      problem:  'admin.integrations.entityProblem',  event:  'admin.integrations.entityEvent',
+    }
+    const chiave = chiavi[v]
+    return chiave ? t(chiave) : v
+  }
   // La scheda è nell'indirizzo (?tab=slack): il ritorno da Slack deve riaprire quella.
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')
@@ -160,10 +177,7 @@ export function IntegrationsPage() {
 
   const yesNo = [{ value: 'true', label: t('common.yes') }, { value: 'false', label: t('common.no') }]
   const INBOUND_FILTERS: FieldConfig[] = [
-    { key: 'entityType', label: t('admin.integrations.filters.entityType'), type: 'enum', options: [
-      { value: 'incident', label: t('admin.integrations.entityIncident') }, { value: 'change', label: t('admin.integrations.entityChange') }, { value: 'problem', label: t('admin.integrations.entityProblem') },
-      { value: 'event', label: t('admin.integrations.entityEvent') },
-    ]},
+    { key: 'entityType', label: t('admin.integrations.filters.entityType'), type: 'enum', options: ENTITA_WEBHOOK.map((v) => ({ value: v, label: etichettaEntita(v) })) },
     { key: 'enabled', label: t('admin.integrations.filters.enabled'), type: 'enum', options: yesNo },
     { key: 'name', label: t('admin.integrations.filters.name'), type: 'text' },
   ]
@@ -319,7 +333,8 @@ export function IntegrationsPage() {
 
   const inboundColumns: ColumnDef<InboundWebhook>[] = [
     { key: 'name', label: t('admin.integrations.columns.name'), sortable: true },
-    { key: 'entityType', label: t('admin.integrations.columns.entityType'), sortable: true, render: (v) => <Pill bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{String(v)}</Pill> },
+    // Il nome dell'entità come nel filtro qui sopra, non `event` (20 set 2026).
+    { key: 'entityType', label: t('admin.integrations.columns.entityType'), sortable: true, render: (v) => <Pill bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{etichettaEntita(String(v))}</Pill> },
     { key: 'connectorKind', label: t('admin.integrations.connectorKind'), sortable: true, render: (v) => v ? <Pill bg={palette.purple.bg} color={palette.purple.dark} radius={12} style={PILL_S}>{String(v)}</Pill> : '—' },
     // Endpoint reale (rotta /api/webhooks/inbound/:id). Per le sorgenti evento
     // l'URL si copia da Monitoraggio → Sorgenti, insieme al token: qui solo il link.

@@ -561,6 +561,51 @@ code, kbd, samp, pre {
   :root { --vh-app: 100dvh; }
 }
 
+
+/*
+ * IL MENU A COMPARSA DELLA SIDEBAR COMPRESSA (20 set 2026, dal giro nel
+ * browser).
+ *
+ * Con la sidebar stretta un gruppo si riduceva alla sua icona, che porta alla
+ * PRIMA voce: le altre non erano raggiungibili e non c'era modo di sapere che
+ * esistessero — il Costruttore di report, i Report SLA e gli OLA/UC
+ * sparivano dal menu (ed è il motivo per cui il proprietario non trovava il
+ * box dell'AI). Ora passando sull'icona — o arrivandoci col tasto Tab, da cui
+ * `:focus-within` — compare accanto il pannellino col nome del gruppo e le
+ * sue voci.
+ *
+ * In CSS e non in React: senza stato non ci sono render a ogni movimento del
+ * mouse, e la tastiera funziona senza scrivere niente.
+ */
+.sidebar-flyout-anchor { position: relative; }
+.sidebar-flyout {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: 0;
+  margin-left: 6px;
+  min-width: 210px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--chrome-bg);
+  border: 1px solid var(--chrome-border);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  z-index: 60;
+}
+.sidebar-flyout-anchor:hover > .sidebar-flyout,
+.sidebar-flyout-anchor:focus-within > .sidebar-flyout { display: block; }
+.sidebar-flyout-title {
+  padding: 4px 10px 8px;
+  font-size: var(--font-size-table);
+  font-weight: 600;
+  color: var(--chrome-text);
+  opacity: 0.75;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sidebar-flyout { animation: sidebar-flyout-in 120ms ease-out; }
+  @keyframes sidebar-flyout-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+}
+
 :root { --og-split-min: 900px; }
 
 /*

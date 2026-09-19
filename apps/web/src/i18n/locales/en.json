@@ -150,7 +150,7 @@
     "incidents": {
       "title": "Incidents",
       "new": "New Incident",
-      "severity": "Severity",
+      "priority": "Priority",
       "status": "Status",
       "createdAt": "Created",
       "title_col": "Title",
@@ -263,7 +263,8 @@
       "noResultsDesc": "The CMDB is empty. Add the first CI to get started.",
       "noCiOfType": "No {{type}}",
       "baseEnumsUnavailable": "Status/environment values unavailable from the metamodel (base type)",
-      "addOfType": "Add: {{type}}"
+      "addOfType": "Add: {{type}}",
+      "allTypes": "All types"
     },
     "anomalies": {
       "title": "Anomalies",
