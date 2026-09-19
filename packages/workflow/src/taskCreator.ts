@@ -39,6 +39,8 @@ export interface TaskToCreate {
   title:       string
   description: string | null
   teamId:      string | null
+  /** Il campo del modulo da cui leggere la squadra; vince su `teamId`. */
+  teamFromField: string | null
   dueInDays:   number | null
   /** Il TITOLO del compito da aspettare (già risolto), o `null` per partire subito. */
   after:       string | null

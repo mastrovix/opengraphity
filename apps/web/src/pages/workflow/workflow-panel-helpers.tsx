@@ -152,6 +152,7 @@ export function paramsToRaw(type: string, params?: Record<string, unknown>): Rec
     description:    String(params['description']    ?? ''),
     due_in_days:    params['due_in_days'] == null ? '' : String(params['due_in_days']),
     after:          String(params['after']          ?? ''),
+    team_from_field: String(params['team_from_field'] ?? ''),
   }
   /**
    * Un tipo senza un ramo suo NON perde i suoi parametri: si leggono come
@@ -226,6 +227,7 @@ export function buildActionParams(type: string, raw: Record<string, string>): Re
       ...(raw['description']?.trim() ? { description: raw['description'].trim() } : {}),
       ...(giorni ? { due_in_days: Number(giorni) } : {}),
       ...(raw['after']?.trim() ? { after: raw['after'].trim() } : {}),
+      ...(raw['team_from_field']?.trim() ? { team_from_field: raw['team_from_field'].trim() } : {}),
     }
   }
   /**

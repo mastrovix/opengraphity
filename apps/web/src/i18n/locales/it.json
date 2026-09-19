@@ -2924,7 +2924,10 @@
       "taskDueExample": "Giorni, es. 2",
       "taskDescriptionExample": "Cosa c’è da fare (facoltativo)",
       "taskAfter": "parte quando è chiuso",
-      "taskAfterNone": "subito, in parallelo"
+      "taskAfterNone": "subito, in parallelo",
+      "taskTeamFromField": "oppure la squadra nel campo",
+      "taskTeamFromFieldNone": "nessun campo: vale la squadra qui accanto",
+      "taskTeamFieldWins": "Sono indicati sia una squadra sia un campo: vince il CAMPO, perché è il dato della singola richiesta. Se il campo è vuoto il compito nasce senza destinatario, e la Diagnostica lo dice."
     },
     "deadline": {
       "intro": "Per quanto tempo un ticket può restare in questo passo. Allo scadere il ticket si sposta da solo lungo uno degli archi che escono dal passo, e i campi che scegli vengono impostati.",
@@ -4419,7 +4422,8 @@
       "refTypesNotAllowed": "Un campo {{fieldType}} non prende tipi di CI: solo un riferimento alla CMDB sceglie da lì.",
       "refTypesUnknown": "Questi tipi di CI non esistono: {{types}}.",
       "refFilterNotAllowed": "Un campo {{fieldType}} non prende un filtro sui CI: solo un riferimento alla CMDB pesca da lì.",
-      "refFilterInvalid": "Il filtro sui CI non è utilizzabile: {{message}}. Una regola può usare i campi comuni a ogni CI e le proprietà dei tipi scelti."
+      "refFilterInvalid": "Il filtro sui CI non è utilizzabile: {{message}}. Una regola può usare i campi comuni a ogni CI e le proprietà dei tipi scelti.",
+      "teamNotFound": "La formula del campo «{{field}}» ha restituito la squadra «{{team}}», che non esiste. Correggi la formula o crea la squadra: un compito senza destinatario non lo vede nessuno."
     },
     "catalogForm": {
       "shape": "La definizione del modulo ha una forma sbagliata in {{where}}.",

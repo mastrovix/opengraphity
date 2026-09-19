@@ -169,6 +169,33 @@ export async function creaCompito(task: TaskToCreate): Promise<string> {
   const etichetta = etichettaDi(task.entityType)
   const session   = getSession(undefined, 'WRITE')
   try {
+    /**
+     * LA SQUADRA DAL MODULO (ondata 4). Se il passo dice «prendila dal campo
+     * X», la si legge dalla risposta: un campo squadra del modulo è una
+     * relazione `FORM_REFERS_TO_TEAM` sul ticket. Vince sulla squadra fissa
+     * scelta nel disegnatore — è il dato di QUESTA richiesta contro una
+     * scelta fatta una volta per tutte.
+     *
+     * Se il campo non ha risposta non si ripiega sulla squadra fissa in
+     * silenzio: sarebbe un compito che finisce alla squadra sbagliata senza
+     * che nessuno lo sappia. Il compito nasce senza destinatario, e la
+     * Diagnostica lo dice.
+     */
+    let squadra = task.teamId
+    if (task.teamFromField) {
+      const riga = await runQueryOne<{ teamId: string | null }>(session, `
+        MATCH (ticket {id: $entityId, tenant_id: $tenantId})-[r:FORM_REFERS_TO_TEAM {field: $campo}]->(team:Team {tenant_id: $tenantId})
+        RETURN team.id AS teamId
+        LIMIT 1
+      `, { entityId: task.entityId, tenantId: task.tenantId, campo: task.teamFromField })
+      squadra = riga?.teamId ?? null
+      if (!squadra) {
+        logger.warn(
+          { entityId: task.entityId, campo: task.teamFromField, tenantId: task.tenantId },
+          '[tasks] the form field named by the step action has no team in it: the task has no assignee',
+        )
+      }
+    }
     const now       = new Date().toISOString()
     const [codice]  = await nextSequenceBlock(session, task.tenantId, 'task', 1)
       .then((ultimo) => ['TASK' + String(ultimo).padStart(8, '0')])
@@ -211,7 +238,7 @@ export async function creaCompito(task: TaskToCreate): Promise<string> {
       entityId:   task.entityId,
       tenantId:   task.tenantId,
       etichetta,
-      teamId:     task.teamId,
+      teamId:     squadra,
       taskKey:    chiaveCompito(task.entityId, task.stepName, task.actionIndex),
       id:         uuidv4(),
       code:       codice,
@@ -234,7 +261,7 @@ export async function creaCompito(task: TaskToCreate): Promise<string> {
         'a task can only hang from a ticket of its own type',
       )
     }
-    if (!creato['teamId'] && task.teamId) {
+    if (!creato['teamId'] && squadra) {
       // La squadra indicata nel disegnatore non esiste più (cancellata dopo
       // aver scritto il workflow): il compito nasce senza destinatario, e lo
       // si dice. Ripiegare su una squadra a caso vorrebbe dire assegnare

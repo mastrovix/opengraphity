@@ -166,11 +166,26 @@ export function canBeConditionSubject(fieldType: string): boolean {
  * Quali tipi possono essere calcolati: quelli che diventano una proprietà
  * SINGOLA. Fuori la selezione multipla (una formula che restituisce una lista
  * è un altro lavoro: servirebbe validare ogni elemento e decidere l'ordine),
- * fuori le note (non hanno risposta), fuori allegati e riferimenti (una
- * formula non può creare un file né scegliere un nodo del grafo).
+ * fuori le note (non hanno risposta), fuori gli allegati (una formula non può
+ * creare un file).
+ *
+ * ## L'eccezione: `ref_team` (20 set 2026)
+ * Dei RIFERIMENTI, che sono nodi del grafo e non proprietà, ne è entrato uno
+ * solo: la squadra. Serviva a una cosa precisa — «se la sede è Milano allora
+ * il Desk di Milano» — che il proprietario ha chiesto di scrivere con gli
+ * `if` di una formula, e che poi decide a chi vanno i compiti del workflow.
+ *
+ * La formula restituisce il NOME della squadra e il server lo risolve in un
+ * nodo `Team`: se quel nome non esiste la risposta è RIFIUTATA, come un
+ * valore fuori vocabolario. Non si ripiega su niente — un refuso nella
+ * formula darebbe compiti senza destinatario che nessuno vede.
+ *
+ * Perché non anche `ref_user` e `ref_ci`: gli omonimi. Due «Mario Rossi»
+ * esistono, e sbagliare CI è peggio che non sceglierlo. Se serviranno sarà
+ * una decisione a parte, non un'estensione di sfroso di questa.
  */
 export const FORM_FIELD_TYPES_COMPUTABLE: readonly FormFieldType[] =
-  ['text', 'textarea', 'number', 'date', 'datetime', 'boolean', 'enum']
+  ['text', 'textarea', 'number', 'date', 'datetime', 'boolean', 'enum', 'ref_team']
 
 export function canBeComputed(fieldType: string): boolean {
   return (FORM_FIELD_TYPES_COMPUTABLE as readonly string[]).includes(fieldType)

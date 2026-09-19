@@ -2924,7 +2924,10 @@
       "taskDueExample": "Days, e.g. 2",
       "taskDescriptionExample": "What has to be done (optional)",
       "taskAfter": "starts when this is closed",
-      "taskAfterNone": "right away, in parallel"
+      "taskAfterNone": "right away, in parallel",
+      "taskTeamFromField": "or the team in the field",
+      "taskTeamFromFieldNone": "no field: the team chosen here applies",
+      "taskTeamFieldWins": "Both a team and a field are set: the FIELD wins, because it is the data of this one request. If the field is empty the task is created with no assignee, and Diagnostics says so."
     },
     "deadline": {
       "intro": "How long a ticket can stay in this step. When the time is up the ticket moves on its own along one of the arcs that leave the step, and the fields you choose are set.",
@@ -4419,7 +4422,8 @@
       "refTypesNotAllowed": "A {{fieldType}} field takes no CI types: only a CMDB reference picks from the CMDB.",
       "refTypesUnknown": "These CI types do not exist: {{types}}.",
       "refFilterNotAllowed": "A {{fieldType}} field takes no CI filter: only a CMDB reference picks from the CMDB.",
-      "refFilterInvalid": "The CI filter is not usable: {{message}}. A rule can use the fields every CI has and the properties of the chosen types."
+      "refFilterInvalid": "The CI filter is not usable: {{message}}. A rule can use the fields every CI has and the properties of the chosen types.",
+      "teamNotFound": "The formula of field «{{field}}» returned the team «{{team}}», which does not exist. Fix the formula or create the team: a task with no assignee is seen by nobody."
     },
     "catalogForm": {
       "shape": "The form definition has the wrong shape at {{where}}.",

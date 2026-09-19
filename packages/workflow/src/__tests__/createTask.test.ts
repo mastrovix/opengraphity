@@ -82,9 +82,18 @@ describe('create_task', () => {
     await expect(runAction(azione({ title_template: 'X', due_in_days: 'domani' }), istanza(), contesto)).rejects.toThrow(/due_in_days/)
   })
 
+  it('LA SQUADRA DAL MODULO: il campo viaggia accanto alla squadra fissa', async () => {
+    await runAction(azione({ title_template: 'X', team_id: 'team-desk', team_from_field: 'desk_competente' }), istanza(), contesto)
+    // Chi scrive decide quale vince (il campo): qui si verifica solo che
+    // arrivino tutti e due, invece di perdersi per strada come i parametri
+    // dell'ondata 1.
+    expect(scritti[0]).toMatchObject({ teamId: 'team-desk', teamFromField: 'desk_competente' })
+  })
+
   it('senza squadra il compito nasce lo stesso, senza destinatario', async () => {
     await runAction(azione({ title_template: 'X' }), istanza(), contesto)
     expect(scritti[0]!.teamId).toBeNull()
+    expect(scritti[0]!.teamFromField).toBeNull()
   })
 
   /**

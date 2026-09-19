@@ -114,8 +114,16 @@ export interface CreateTaskParams {
   title_template: string
   /** Facoltativa: cosa c'è da fare, per chi lo trova in «I miei compiti». */
   description?:   string
-  /** La squadra che lo deve fare. */
+  /** La squadra che lo deve fare, scelta disegnando il workflow. */
   team_id?:       string
+  /**
+   * …oppure il nome di un CAMPO SQUADRA del modulo: la squadra è quella che
+   * sta nella risposta. È la strada per cui «Sede: Milano» finisce al Desk
+   * di Milano — il campo si riempie a mano da chi smista, o da solo con una
+   * formula. Se ci sono entrambi vince il campo: è il dato della singola
+   * richiesta, e batte la scelta fatta una volta per tutte.
+   */
+  team_from_field?: string
   /** Fra quanti giorni scade. Vuoto = nessuna scadenza. */
   due_in_days?:   string | number
   /**

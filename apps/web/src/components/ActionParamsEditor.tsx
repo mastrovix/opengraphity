@@ -9,7 +9,7 @@
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useQuery } from '@apollo/client/react'
-import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS } from '@/graphql/queries'
+import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS, GET_FORM_FIELDS } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { useEntityFieldMetas, useFormFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
 import { isStepFieldWritable, AUTOMATION_NOTIFICATION_CHANNELS } from '@opengraphity/types'
@@ -68,6 +68,15 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
   const fieldMetas = [...metamodelFields, ...daiModuli.filter((f) => !metamodelFields.some((m) => m.name === f.name))]
   // F-16: i ruoli del cliente, per l'azione «richiedi approvazione».
   const { roles, labelOf: roleLabelOf } = useRoles()
+  /**
+   * I CAMPI SQUADRA dei moduli: l'azione «crea un compito» può prendere la
+   * squadra da lì invece che sceglierla una volta per tutte. Si chiedono solo
+   * quando servono — è una query in più su ogni apertura del pannello.
+   */
+  const { data: campiModulo } = useQuery<{ formFields: { name: string; label: string; fieldType: string }[] }>(
+    GET_FORM_FIELDS, { skip: actionType !== 'create_task', fetchPolicy: METAMODEL_FETCH_POLICY },
+  )
+  const campiSquadra = (campiModulo?.formFields ?? []).filter((f) => f.fieldType === 'ref_team')
 
   const teams = teamsData?.teams ?? []
   const users = usersData?.users ?? []
@@ -302,6 +311,24 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
               {teams.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
           </Labeled>
+          {/*
+            …oppure la squadra che sta in un CAMPO del modulo: è la strada per
+            cui «Sede: Milano» finisce al Desk di Milano. Vince sulla squadra
+            fissa qui sopra, e il pannello lo dice invece di lasciarlo capire.
+          */}
+          {campiSquadra.length > 0 && (
+            <Labeled label={t('workflow.actionParams.taskTeamFromField')}>
+              <Select style={selectS} value={params['team_from_field'] ?? ''} onChange={(e) => onChange('team_from_field', e.target.value)}>
+                <option value="">{t('workflow.actionParams.taskTeamFromFieldNone')}</option>
+                {campiSquadra.map((f) => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
+              </Select>
+            </Labeled>
+          )}
+          {params['team_from_field'] && params['team_id'] && (
+            <p style={{ flexBasis: '100%', margin: 0, fontSize: 'var(--font-size-table)', color: 'var(--color-warning-text)' }}>
+              {t('workflow.actionParams.taskTeamFieldWins')}
+            </p>
+          )}
           {text('due_in_days', 'due_in_days', t('workflow.actionParams.taskDueExample'), 'number')}
           {text('description', 'description', t('workflow.actionParams.taskDescriptionExample'))}
           {/*

@@ -364,7 +364,8 @@ export async function runAction(
         actionIndex: ctx.actionIndex ?? 0,
         title,
         description: p.description?.trim() || null,
-        teamId:      p.team_id?.trim() || null,
+        teamId:        p.team_id?.trim() || null,
+        teamFromField: p.team_from_field?.trim() || null,
         dueInDays:   giorni,
         // Il compito da aspettare si nomina col suo titolo, e il titolo può
         // avere i segnaposto: si risolve con lo stesso contesto, altrimenti

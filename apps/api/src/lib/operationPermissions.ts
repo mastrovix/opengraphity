@@ -74,6 +74,13 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
     anyOf: ['incident.read', 'problem.read', 'change.read', 'request.read', 'kb.read'],
     query: ['ticketTasks'],
   },
+  /**
+   * La LIBRERIA DEI CAMPI dei moduli la legge anche chi disegna un workflow
+   * (20 set 2026): l'azione «crea un compito» offre di prendere la squadra
+   * da un campo del modulo, e per offrirlo deve sapere quali campi squadra
+   * esistono. È una lettura di metamodello, non di dati di un cliente.
+   */
+  { anyOf: ['config.catalog', 'config.workflow'], query: ['formFields'] },
   {
     anyOf: ['incident.write', 'problem.write', 'change.write', 'request.write', 'kb.write'],
     mutation: ['claimTicketTask', 'completeTicketTask', 'cancelTicketTask'],
@@ -256,7 +263,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   {
     anyOf: ['config.catalog'],
-    query: ['assessmentQuestionsAdmin', 'questionCITypeAssignments', 'formFields', 'catalogForm', 'catalogFormLimits'],
+    query: ['assessmentQuestionsAdmin', 'questionCITypeAssignments', 'catalogForm', 'catalogFormLimits'],
     mutation: ['saveCatalogForm',
       // La PROPOSTA dell'AI non scrive niente, quindi basta poter comporre un
       // modulo; se chi chiede non ha anche `config.metamodel` la proposta
