@@ -45,7 +45,14 @@ function Stato({ state }: { state: string }) {
   return <Circle size={16} aria-label={t('tasks.state.open')} style={{ color: 'var(--color-brand)', flexShrink: 0 }} />
 }
 
-export function TicketTasksSection({ entityId }: { entityId: string }) {
+/**
+ * `titleKey`: sulla CHANGE serve un nome diverso. Quella pagina ha già una
+ * sezione «Task attivi» — i cinque compiti per CI — e due riquadri che in
+ * inglese si chiamano "Active tasks" e "Tasks" si leggono come se il secondo
+ * contenesse il primo. Qui i compiti sono quelli del PASSO, e il titolo lo
+ * dice.
+ */
+export function TicketTasksSection({ entityId, titleKey = 'tasks.title' }: { entityId: string; titleKey?: string }) {
   const { t } = useTranslation()
   const { data, refetch } = useQuery<{ ticketTasks: TicketTaskRow[] }>(GET_TICKET_TASKS, {
     variables: { entityId },
@@ -86,7 +93,7 @@ export function TicketTasksSection({ entityId }: { entityId: string }) {
     <SectionCard
       collapsible={false}
       defaultOpen
-      title={t('tasks.title')}
+      title={t(titleKey)}
       count={aperti > 0 ? aperti : undefined}
     >
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>

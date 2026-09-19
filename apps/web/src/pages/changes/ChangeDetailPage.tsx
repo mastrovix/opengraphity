@@ -724,7 +724,7 @@ export function ChangeDetailPage() {
         </Modal>
       )}
 
-      <TicketTasksSection entityId={change.id} />
+      <TicketTasksSection entityId={change.id} titleKey="tasks.titleStep" />
           <AttachmentsSection entityType="change" entityId={change.id} defaultOpen={false} />
       {/* F13: le change avevano solo l'audit, nessun commento. */}
       <EntityCommentsSection entityType="change" entityId={change.id} />

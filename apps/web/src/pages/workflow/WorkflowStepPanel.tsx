@@ -21,10 +21,11 @@ import {
   actionLabel,
   paramsToRaw,
   buildActionParams,
+  titoliCompitiOffribili,
 } from './workflow-panel-helpers'
 import { Input, Select } from '@/components/ui/FormControls'
 import { useTargetOptions, withCurrent } from '@/pages/settings/NotificationRuleList'
-import { WORKFLOW_STEP_PURPOSES, WORKFLOW_STEP_CATEGORIES } from '@opengraphity/types'
+import { WORKFLOW_STEP_PURPOSES, WORKFLOW_STEP_CATEGORIES, TICKET_ENTITY_TYPES } from '@opengraphity/types'
 import { StepDeadlineEditor, deadlineFromDraft, draftFromDeadline, draftProblem, type DeadlineTarget } from './StepDeadlineEditor'
 
 const ACCENT_COLOR = colors.brand
@@ -407,10 +408,13 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
    * stesso, perché un compito che aspetta sé stesso non parte mai.
    */
   const titoliDeiCompiti = (draft: ActionDraft): string[] => {
-    const tutti = [...editableEnterActions, ...editableExitActions]
+    const compiti = [...editableEnterActions, ...editableExitActions]
       .filter((a) => a.type === 'create_task')
-      .map((a) => String((a.params as Record<string, unknown> | undefined)?.['title_template'] ?? '').trim())
-    return [...new Set(tutti)].filter((titolo) => titolo && titolo !== (draft.params['title_template'] ?? '').trim())
+      .map((a) => {
+        const p = a.params as Record<string, unknown> | undefined
+        return { titolo: String(p?.['title_template'] ?? '').trim(), dopo: String(p?.['after'] ?? '').trim() }
+      })
+    return titoliCompitiOffribili(compiti, (draft.params['title_template'] ?? '').trim())
   }
 
   const renderDraftEditor = (draft: ActionDraft, setDraft: (updater: (d: ActionDraft) => ActionDraft) => void, fase: 'enter' | 'exit' = 'enter') => (
@@ -429,7 +433,14 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
             L'API lo rifiuta comunque; qui non si offre nemmeno.
           */}
           {WORKFLOW_STEP_ACTION_TYPES
-            .filter((ty) => ty !== 'create_task' || fase === 'enter')
+            /*
+              «Crea un compito» solo sui TICKET: su un articolo della
+              knowledge base il compito nascerebbe legale e irraggiungibile —
+              nessuna pagina lo mostra, «I miei compiti» non sa dove portare,
+              e con la guardia l'articolo resterebbe bloccato senza rimedio.
+              L'API lo rifiuta comunque; qui non si offre nemmeno.
+            */
+            .filter((ty) => ty !== 'create_task' || (fase === 'enter' && (TICKET_ENTITY_TYPES as readonly string[]).includes(entityType)))
             .map((ty) => <option key={ty} value={ty}>{ty}</option>)}
         </Select>
       </div>

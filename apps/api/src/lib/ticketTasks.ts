@@ -40,7 +40,7 @@
  */
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
-import { ENTITY_NEO4J_LABELS } from '@opengraphity/types'
+import { ENTITY_NEO4J_LABELS, TICKET_ENTITY_TYPES } from '@opengraphity/types'
 import type { TaskToCreate } from '@opengraphity/workflow'
 import { runQuery, runQueryOne } from '../graphql/resolvers/ci-utils.js'
 import { nextSequenceBlock, type SessionOrTx } from './sequence.js'
@@ -136,6 +136,24 @@ function mapCompito(r: Record<string, unknown>): TicketTask {
  * compiti.
  */
 function etichettaDi(entityType: string): string {
+  /**
+   * SOLO SUI TICKET (rimedio, 20 set 2026). `ENTITY_NEO4J_LABELS` contiene
+   * anche `kb_article`, perché il motore sa muovere anche gli articoli. Ma un
+   * compito su un articolo sarebbe legale e **irraggiungibile**: nessuna
+   * pagina della knowledge base mostra i compiti, «I miei compiti» non sa
+   * dove portare (l'articolo non ha un numero né una rotta fra quelle dei
+   * ticket), e con la guardia l'articolo si bloccherebbe senza che esista
+   * un'interfaccia per sbloccarlo.
+   *
+   * La risposta era già scritta accanto alla mappa: `TICKET_ENTITY_TYPES`,
+   * col commento «l'articolo della knowledge base non è un ticket».
+   */
+  if (!(TICKET_ENTITY_TYPES as readonly string[]).includes(entityType)) {
+    throw new Error(
+      `Tasks: "${entityType}" is not a ticket — a task can only hang from ${TICKET_ENTITY_TYPES.join(', ')}. ` +
+      'On anything else it would be created and then be unreachable.',
+    )
+  }
   const etichetta = ENTITY_NEO4J_LABELS[entityType]
   if (!etichetta) {
     throw new Error(`Tasks: unknown entity type "${entityType}" — it is not in the product's allowlist (ENTITY_NEO4J_LABELS)`)

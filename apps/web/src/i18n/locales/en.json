@@ -1627,7 +1627,7 @@
       "what": "What",
       "changeOwner": "Change owner",
       "requester": "Requester",
-      "tasksDone": "{{done}}/{{total}} tasks done",
+      "tasksDone": "{{done}}/{{total}} per-CI tasks completed",
       "approve": "Approve",
       "reject": "Reject",
       "removeCIConfirm": "Remove <b>{{ci}}</b> from the change? Every task attached to it will be deleted.",
@@ -2968,7 +2968,8 @@
       "summaryFields": "It also sets {{fields}}.",
       "corrupted": "The stored deadline of this step cannot be read ({{error}}). Saving is disabled so it is not lost: fix the stored data first."
     },
-    "orphanStep": "«{{step}}» is not (any more) a step of this process: the ticket is stuck on a step that was renamed or removed in the designer."
+    "orphanStep": "«{{step}}» is not (any more) a step of this process: the ticket is stuck on a step that was renamed or removed in the designer.",
+    "conditionOnSystemTrigger": "This edge is travelled by the system, not by a person: if the condition is not met the ticket does not move and nobody notices at the time. The refusal leaves a note on the ticket (escalation) or an entry in Diagnostics (timed wait), but the step will only happen once someone has sorted out what is missing."
   },
   "designerFieldRow": {
     "required": "required",
@@ -7359,6 +7360,7 @@
       "waiting": "Waiting"
     },
     "waitingFor": "waits for «{{title}}»",
-    "kindOne": "Task"
+    "kindOne": "Task",
+    "titleStep": "Step tasks"
   }
 }

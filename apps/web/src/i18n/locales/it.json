@@ -1627,7 +1627,7 @@
       "what": "Cosa",
       "changeOwner": "Responsabile della change",
       "requester": "Richiedente",
-      "tasksDone": "{{done}}/{{total}} task completati",
+      "tasksDone": "{{done}}/{{total}} task per CI completati",
       "approve": "Approva",
       "reject": "Rifiuta",
       "removeCIConfirm": "Rimuovere <b>{{ci}}</b> dalla change? Tutti i task collegati verranno eliminati.",
@@ -2968,7 +2968,8 @@
       "summaryFields": "Imposta anche {{fields}}.",
       "corrupted": "La scadenza salvata di questo passo non si riesce a leggere ({{error}}). Il salvataggio è spento per non perderla: correggi prima il dato salvato."
     },
-    "orphanStep": "«{{step}}» non è (più) un passo di questo processo: il ticket è rimasto su un passo rinominato o tolto dal disegnatore."
+    "orphanStep": "«{{step}}» non è (più) un passo di questo processo: il ticket è rimasto su un passo rinominato o tolto dal disegnatore.",
+    "conditionOnSystemTrigger": "Questo arco lo percorre il sistema, non una persona: se la condizione non è soddisfatta il ticket non si muove e nessuno se ne accorge sul momento. Il rifiuto lascia una nota sul ticket (escalation) o un rilievo in Diagnostica (attesa a tempo), ma il passaggio avverrà solo quando qualcuno avrà sistemato quello che manca."
   },
   "designerFieldRow": {
     "required": "obbligatorio",
@@ -7359,6 +7360,7 @@
       "waiting": "In attesa"
     },
     "waitingFor": "aspetta «{{title}}»",
-    "kindOne": "Compito"
+    "kindOne": "Compito",
+    "titleStep": "Compiti del passo"
   }
 }

@@ -265,3 +265,32 @@ export function ActionBadge({ type, params }: { type: string; params?: Record<st
     </span>
   )
 }
+
+/**
+ * QUALI COMPITI DEL PASSO SI POSSONO ASPETTARE (rimedio, 20 set 2026).
+ *
+ * La tendina «parte quando è chiuso» escludeva solo sé stessi, quindi «A
+ * dopo B» **e** «B dopo A» erano entrambi scrivibili. Non dà errore: nascono
+ * tutti e due in attesa, si aprono solo alla chiusura di un altro, e la
+ * guardia conta anche le attese — il passo resta bloccato per sempre. Il
+ * rilievo in Diagnostica non lo vede: cerca il titolo MANCANTE, non il
+ * cerchio.
+ *
+ * Si tolgono sé stessi e chiunque, direttamente o per catena, aspetti già me.
+ */
+export function titoliCompitiOffribili(
+  compiti: readonly { titolo: string; dopo: string }[],
+  mio: string,
+): string[] {
+  const aspettaMe = new Set<string>()
+  let cresciuta = true
+  while (cresciuta) {
+    cresciuta = false
+    for (const c of compiti) {
+      if (!c.titolo || aspettaMe.has(c.titolo)) continue
+      if (c.dopo === mio || aspettaMe.has(c.dopo)) { aspettaMe.add(c.titolo); cresciuta = true }
+    }
+  }
+  return [...new Set(compiti.map((c) => c.titolo))]
+    .filter((t) => t && t !== mio && !aspettaMe.has(t))
+}

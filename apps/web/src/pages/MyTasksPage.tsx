@@ -148,12 +148,11 @@ function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
             : t(`pages.myTasks.actionText.${task.kind === 'assessment' ? `assessment_${task.role}` : task.kind}`, { defaultValue: task.action })}
         </div>
         <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
-          <strong style={{ color: 'var(--color-slate)' }}>{task.entityNumber}</strong>
-          {/* Il CI c'è solo sui compiti delle change, che nascono per CI:
-              scrivere «CI: —» su un compito di una richiesta sarebbe
-              inventarsi un dato mancante che mancante non è. */}
-          {task.ciName && <>{' · '}CI: <strong style={{ color: 'var(--color-slate)' }}>{task.ciName}</strong></>}
-          {' · '}
+          {/* Il NUMERO del ticket non si ripete: sta in cima al gruppo, che è
+              lì apposta. Il CI invece c'è solo sui compiti delle change, che
+              nascono per CI — scrivere «CI: —» su un compito di una richiesta
+              sarebbe inventarsi un dato mancante che mancante non è. */}
+          {task.ciName && <>CI: <strong style={{ color: 'var(--color-slate)' }}>{task.ciName}</strong>{' · '}</>}
           {t('changeTasks.createdOn', { date: fmtDate(task.createdAt) })}
         </div>
       </Link>
@@ -209,9 +208,35 @@ function groupByTicket(tasks: MyTask[]): Array<{ entityNumber: string; strada: s
   return Array.from(m.values()).sort((a, b) => b.entityNumber.localeCompare(a.entityNumber))
 }
 
+/**
+ * I compiti di UN ticket, con il suo numero in cima (rimedio, 20 set 2026).
+ *
+ * Il raggruppamento c'era già ma non si vedeva: un `div` nudo. Con i soli
+ * compiti di change non dava fastidio; da quando l'elenco mescola prefissi
+ * diversi (`INC…`, `PRB…`, `CHG…`, `RICH-…`) le righe uscivano ordinate per
+ * prefisso alfabetico e sembravano in ordine casuale. Il numero in cima
+ * spiega l'ordine, e porta al ticket: `strada` era già calcolata e non la
+ * usava nessuno.
+ */
+function IntestazioneDelTicket({ gruppo, children }: {
+  gruppo: { entityNumber: string; strada: string | null; tasks: MyTask[] }
+  children: React.ReactNode
+}) {
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate)', padding: '6px 0 2px' }}>
+        {gruppo.strada
+          ? <Link to={gruppo.strada} style={{ color: 'inherit', textDecoration: 'none' }}>{gruppo.entityNumber}</Link>
+          : gruppo.entityNumber}
+      </div>
+      {children}
+    </div>
+  )
+}
+
 export function MyTasksPage() {
   const { t } = useTranslation()
-  const { me } = useMe()
+  const { me, can } = useMe()
   const currentUserId = me?.id ?? null
 
   const { data, loading, error, refetch } = useQuery<{ myTasks: MyTasksResult }>(GET_MY_TASKS, {
@@ -247,8 +272,23 @@ export function MyTasksPage() {
     void claimTask({ variables: { taskId: task.id, userId: currentUserId } })
   }
 
-  /** Si può prendere: i compiti delle change che lo prevedono, e quelli generici. */
-  const siPuoPrendere = (t: MyTask) => t.kind === 'assessment' || t.kind === 'deploy-plan' || t.kind === 'task'
+  /**
+   * Si può prendere: i compiti delle change che lo prevedono, e quelli
+   * generici — ma solo se chi guarda può SCRIVERE quel tipo di ticket. Il
+   * server lo pretende (`claimTicketTask` chiede `incident.write` e
+   * compagnia), quindi offrire il pulsante a chi ha la sola lettura voleva
+   * dire prometterglielo e poi dargli un errore.
+   */
+  const PERMESSO_SCRITTURA: Record<string, string> = {
+    incident: 'incident.write', problem: 'problem.write',
+    change: 'change.write', service_request: 'request.write',
+  }
+  const siPuoPrendere = (t: MyTask) => {
+    if (t.kind === 'assessment' || t.kind === 'deploy-plan') return true
+    if (t.kind !== 'task') return false
+    const p = PERMESSO_SCRITTURA[t.entityType]
+    return p !== undefined && can(p as Parameters<typeof can>[0])
+  }
 
   return (
     <PageContainer>
@@ -281,14 +321,9 @@ export function MyTasksPage() {
           {assignedToMe.length > 0 && (
             <SectionCard title={t('pages.myTasks.assignedToMe')} count={assignedToMe.length} defaultOpen>
               {assignedGroups.map((g) => (
-                <div key={g.entityNumber} style={{ marginBottom: 4 }}>
-                  {g.tasks.map((t) => (
-                    <TaskRow
-                      key={t.id}
-                      task={t}
-                    />
-                  ))}
-                </div>
+                <IntestazioneDelTicket key={g.entityNumber} gruppo={g}>
+                  {g.tasks.map((t) => <TaskRow key={t.id} task={t} />)}
+                </IntestazioneDelTicket>
               ))}
             </SectionCard>
           )}
@@ -297,7 +332,7 @@ export function MyTasksPage() {
           {unassigned.length > 0 && (
             <SectionCard title={t('pages.myTasks.unassigned')} count={unassigned.length} defaultOpen>
               {unassignedGroups.map((g) => (
-                <div key={g.entityNumber} style={{ marginBottom: 4 }}>
+                <IntestazioneDelTicket key={g.entityNumber} gruppo={g}>
                   {g.tasks.map((t) => (
                     <TaskRow
                       key={t.id}
@@ -306,7 +341,7 @@ export function MyTasksPage() {
                       claimLoading={claiming || prendendo}
                     />
                   ))}
-                </div>
+                </IntestazioneDelTicket>
               ))}
             </SectionCard>
           )}
