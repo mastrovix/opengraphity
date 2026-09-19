@@ -2394,8 +2394,6 @@
         "discardTitle": "Buttare il disegno?",
         "discardBody": "Il modulo di questa voce ha modifiche non pubblicate. Cambiando voce si perdono: pubblica prima, oppure continua e ricomincia da quello salvato.",
         "libraryEmpty": "La libreria dei campi è vuota: apri l'altra scheda e definisci il primo campo.",
-        "referenceStaffOnly": "Solo area di lavoro",
-        "referenceStaffOnlyWhy": "Un riferimento non si può offrire nel portale: scegliere un CI o una persona vuol dire cercare nella CMDB o nell'elenco del personale, cosa che un utente finale non fa. Il campo resta compilabile dall'area di lavoro.",
         "chooseItem": "Scegli una service request",
         "publishConfirmTitle": "Pubblicare questo modulo?",
         "publishConfirmBody": "Il modulo di «{{item}}» viene sostituito da questo disegno, e la revisione sale. Chi lo sta compilando adesso dovrà rifare la richiesta.",
@@ -2446,7 +2444,9 @@
         "visibilityHelp": "Il campo compare solo se la condizione è vera. La valuta il browser mentre si compila e la ricontrolla il server quando si salva: una risposta a un campo nascosto viene rifiutata.",
         "visibilityNoSubjects": "Una condizione guarda la risposta di un ALTRO campo, e in questo modulo non ce n’è ancora nessuno che possa essere guardato. Aggiungi un campo che porti una risposta — testo, numero, data, sì/no o una scelta — e qui comparirà la condizione.",
         "readOnly": "Sola lettura in questo modulo",
-        "readOnlyHelp": "Si vede ma non si compila: il valore arriva da fuori, per esempio da un’automazione. Un campo in sola lettura non può essere obbligatorio, se non ha una formula."
+        "readOnlyHelp": "Si vede ma non si compila: il valore arriva da fuori, per esempio da un’automazione. Un campo in sola lettura non può essere obbligatorio, se non ha una formula.",
+        "referenceNeedsTypes": "Per offrirlo nel portale, dichiara a quali tipi di CI punta: chi compila da lì sceglie da un elenco (per esempio «le applicazioni di business»), non cerca nella CMDB.",
+        "referencePeopleStaffOnly": "Un riferimento a una persona o a una squadra resta dell'area di lavoro: nel portale non si offre l'elenco del personale."
       },
       "library": {
         "intro": "Un campo si definisce una volta e lo riusano tutti i moduli. Il suo nome diventa la proprietà sul ticket — è il motivo per cui si può filtrare e riportare, e il motivo per cui non si può rinominare.",
@@ -4429,7 +4429,6 @@
       "answersWithoutItem": "Sono arrivate risposte a un modulo senza voce di catalogo: un modulo appartiene a una voce.",
       "noForm": "La voce di catalogo «{{item}}» non ha un modulo: non c'è niente da rispondere.",
       "conditionFieldType": "Una condizione guarda il campo «{{field}}», che è di tipo {{fieldType}}: solo i campi salvati come proprietà possono essere il soggetto di una condizione.",
-      "referenceEndUser": "Il campo «{{field}}» è un riferimento ({{fieldType}}): non può essere visibile nella service request, perché sceglierlo vuol dire cercare nella CMDB o nell’elenco del personale. Togli la spunta «Visibile nella service request».",
       "requiredNotForEndUser": "Il campo «{{field}}» è obbligatorio ma non è visibile nella service request: a chi la apre dal portale la domanda non verrebbe mai fatta, e dopo nessuno può riempirlo. Rendilo visibile, oppure non pretenderlo.",
       "tooManyFields": "Questo modulo ha {{count}} campi: il tetto è {{max}}. Alza il tetto nella pagina dei moduli, oppure dividi la richiesta in due voci di catalogo.",
       "limitOutOfRange": "Un tetto è un numero intero fra {{min}} e {{max}}.",
@@ -4442,7 +4441,8 @@
       "sectionTitleRequired": "La sezione «{{section}}» non ha un titolo in {{language}}: una sezione senza nome, sul modulo, è un blocco anonimo.",
       "sectionColumns": "{{where}}: una sezione ha una o due colonne, nient’altro.",
       "readOnlyRequired": "Il campo «{{field}}» è in sola lettura e obbligatorio, e non ha una formula: nessuno potrebbe riempirlo, quindi la richiesta non nascerebbe. Togli l’obbligo, oppure dagli una formula.",
-      "answerReadOnly": "Il campo «{{field}}» è in sola lettura in questo modulo: il suo valore non viene da chi compila."
+      "answerReadOnly": "Il campo «{{field}}» è in sola lettura in questo modulo: il suo valore non viene da chi compila.",
+      "referenceEndUserNeedsTypes": "Il campo «{{field}}» è un riferimento ({{fieldType}}) senza tipi di CI dichiarati: nel portale si sceglie da un elenco, non cercando nella CMDB. Dichiara a quali tipi di CI punta, oppure togli la spunta «Visibile nella service request»."
     },
     "serviceCatalog": {
       "workflowNotFound": "Quel workflow qui non esiste, oppure è spento.",

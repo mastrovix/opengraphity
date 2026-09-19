@@ -62,6 +62,14 @@ export function buildBaseSDL(): string {
     catalogFormLimits: CatalogFormLimits!
     """Il modulo pronto da compilare: web e portale leggono questo. «endUser» limita ai campi offerti agli utenti finali."""
     catalogFormToFill(itemId: ID!, endUser: Boolean): CatalogFormToFill
+    """
+    I CI fra cui SCEGLIERE per un campo «riferimento» di una voce di catalogo
+    (20 set 2026). Non è una ricerca nella CMDB: il campo dichiara a quali
+    tipi punta, e qui tornano i CI di QUEI tipi — come i valori di un
+    vocabolario. Serve al portale, dove l'utente finale non ha (e non deve
+    avere) accesso alla CMDB. Risponde id ed etichetta, niente altro.
+    """
+    portalReferenceChoices(itemId: ID!, field: String!, search: String): [ReferenceChoice!]!
 
     # CMDB — generic queries (typed CI queries come from dynamic schema)
     allCIs(limit: Int, offset: Int, type: String, environment: String, status: String, search: String, ciTypes: [String], excludeCiTypes: [String], filters: String, sortField: String, sortDirection: String): AllCIsResult!

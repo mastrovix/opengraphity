@@ -24,6 +24,7 @@ import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { assertFormSize, assertLibraryRoom, assertLimitValue, CATALOG_FORM_LIMIT_MAX, CATALOG_FORM_LIMIT_MIN, catalogFormLimits as leggiTetti } from '../../lib/catalogFormLimits.js'
 import { assertFormTable, etichetteDeiValori, parseFormTable } from '../../lib/catalogForm.js'
 import { ticketPropsOf } from '../../lib/ticketProps.js'
+import { toPascalCase } from '@opengraphity/schema-generator'
 import { proponiModulo } from '../../services/formDesignerService.js'
 import { labelFor, type EnumValueLabels } from '../../lib/enumValueLabels.js'
 import { isLingua, languageFor } from '../../lib/tenantLanguage.js'
@@ -274,6 +275,30 @@ async function vocePerId(tenantId: string, itemId: string): Promise<{ id: string
   } finally { await session.close() }
 }
 
+/**
+ * I CI dei tipi dichiarati, in ordine di nome. Il tetto è basso apposta: è un
+ * elenco da cui scegliere, non una ricerca — se i CI di quel tipo sono
+ * centinaia, chi configura restringe il tipo o aggiunge un filtro.
+ */
+const MAX_SCELTE = 50
+
+async function scelteDiRiferimento(
+  session: Session, tenantId: string, tipi: readonly string[], cerca: string | null,
+): Promise<Array<{ id: string; label: string }>> {
+  const etichette = tipi.map((t) => toPascalCase(t))
+  // Le etichette sono nomi di tipo del metamodello: `toPascalCase` le rende
+  // identificatori, e la lista viaggia come PARAMETRO, non interpolata.
+  const righe = await runQuery<{ id: string; label: string }>(session, `
+    MATCH (n:ConfigurationItem {tenant_id: $tenantId})
+    WHERE any(l IN labels(n) WHERE l IN $etichette)
+      AND ($cerca IS NULL OR toLower(n.name) CONTAINS toLower($cerca))
+    RETURN n.id AS id, coalesce(n.name, n.id) AS label
+    ORDER BY label
+    LIMIT ${MAX_SCELTE}
+  `, { tenantId, etichette, cerca })
+  return righe
+}
+
 export const catalogFormResolvers = {
   Query: {
     formFields: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
@@ -291,6 +316,45 @@ export const catalogFormResolvers = {
         const row = await runQueryOne<{ n: unknown }>(session, `
           MATCH (f:FormField {tenant_id: $tenantId}) RETURN count(f) AS n`, { tenantId: ctx.tenantId })
         return { ...tetti, libraryFieldsUsed: Number(row?.n ?? 0), min: CATALOG_FORM_LIMIT_MIN, max: CATALOG_FORM_LIMIT_MAX }
+      } finally { await session.close() }
+    },
+
+    /**
+     * I CI FRA CUI SCEGLIERE in un campo «riferimento» di una voce di
+     * catalogo (20 set 2026, decisione del proprietario).
+     *
+     * Non è una ricerca nella CMDB: il campo dichiara a quali TIPI punta, e
+     * qui tornano i CI di quei tipi — come i valori di un vocabolario. Serve
+     * al portale, dove chi compila non ha accesso alla CMDB e non deve
+     * averlo: la domanda che fa è «quali sono le scelte di QUESTO campo»,
+     * non «mostrami i CI».
+     *
+     * Tre porte, nell'ordine: la voce di catalogo deve esistere, il campo
+     * deve essere davvero nel suo modulo (e offerto a chi compila dal
+     * portale), e deve dichiarare i tipi. Senza una delle tre non si
+     * risponde: una lista di CI non esce da qui per sbaglio.
+     */
+    portalReferenceChoices: async (
+      _: unknown,
+      args: { itemId: string; field: string; search?: string | null },
+      ctx: GraphQLContext,
+    ) => {
+      const voce = await vocePerId(ctx.tenantId, args.itemId)
+      const def = parseCatalogForm(voce.form, `ServiceCatalogItem ${voce.name}`)
+      const voceDelModulo = def?.sections.flatMap((s) => s.items).find((i) => i.field === args.field)
+      if (!voceDelModulo || voceDelModulo.endUser === false) {
+        throw new GraphQLError(`Field "${args.field}" is not asked by the form of "${voce.name}"`, { extensions: { code: 'BAD_USER_INPUT' } })
+      }
+      const session = getSession(undefined, 'READ')
+      try {
+        const campo = (await formFieldsByName(session, ctx.tenantId, [args.field])).get(args.field)
+        if (!campo || campo.fieldType !== 'ref_ci' || campo.refTypes.length === 0) {
+          throw new GraphQLError(
+            `Field "${args.field}" does not declare which CI types it points to: there is no list to choose from`,
+            { extensions: { code: 'BAD_USER_INPUT' } },
+          )
+        }
+        return await scelteDiRiferimento(session, ctx.tenantId, campo.refTypes, args.search ?? null)
       } finally { await session.close() }
     },
 

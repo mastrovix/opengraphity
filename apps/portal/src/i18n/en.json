@@ -165,7 +165,10 @@
     "removeFile": "Remove",
     "computed": "computed",
     "addRow": "Add a row",
-    "removeRow": "Remove this row"
+    "removeRow": "Remove this row",
+    "searchReference": "Search…",
+    "noResults": "No results",
+    "clearReference": "Clear the choice"
   },
   "notFound": {
     "title": "Page not found",

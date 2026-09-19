@@ -298,6 +298,12 @@ export function catalogFormSDL(): string {
     params: String!
   }
 
+  """Un CI fra cui scegliere in un campo «riferimento»: quel tanto che serve a mostrarlo e a sceglierlo."""
+  type ReferenceChoice {
+    id:    ID!
+    label: String!
+  }
+
   """
   La proposta di progetto per una service request: NON scrive niente. Arriva
   nel modulo del designer come bozza, e si applica accettandola — i campi nuovi

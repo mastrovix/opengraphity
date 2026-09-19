@@ -157,6 +157,19 @@ export const GET_TENANT_BRAND = gql`
  * risposta a un campo non offerto — il browser decide cosa mostrare, il server
  * decide cosa accettare.
  */
+/**
+ * I CI fra cui scegliere in un campo «riferimento» del modulo (20 set 2026):
+ * non è una ricerca nella CMDB — il server risponde con i CI dei TIPI che
+ * quel campo dichiara, id ed etichetta.
+ */
+export const GET_PORTAL_REFERENCE_CHOICES = gql`
+  query GetPortalReferenceChoices($itemId: ID!, $field: String!, $search: String) {
+    portalReferenceChoices(itemId: $itemId, field: $field, search: $search) {
+      id label
+    }
+  }
+`
+
 export const GET_PORTAL_CATALOG_FORM = gql`
   query GetPortalCatalogForm($itemId: ID!, $language: String) {
     catalogFormToFill(itemId: $itemId, endUser: true) {

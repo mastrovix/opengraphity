@@ -41,7 +41,7 @@ import { ChevronDown, ChevronRight, GripVertical, Plus, Sparkles, Trash2 } from 
 import { toast } from 'sonner'
 import {
   CATALOG_FORM_VERSION, FORM_CONDITION_OPS, FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_FIELD_TYPES,
-  canBeConditionSubject, emptyCatalogForm, freeSectionId, isFormReferenceType, localizedText, nomeDaEtichetta,
+  canBeConditionSubject, emptyCatalogForm, freeSectionId, localizedText, nomeDaEtichetta,
   sectionsFromProposal,
   type CatalogFormDefinition, type CatalogFormItem, type CatalogFormSection,
   type FormAnswerValue, type FormAnswers, type FormCondition, type FormConditionOp,
@@ -707,10 +707,9 @@ export function FormBuilderPanel() {
    * arrivi nemmeno.
    */
   const aggiungiCampo = (iSez: number, nome: string, indice?: number) => {
-    const scelto = perNome.get(nome)
-    const voceNuova: CatalogFormItem = scelto && isFormReferenceType(scelto.fieldType)
-      ? { field: nome, endUser: false }
-      : { field: nome }
+    // Un riferimento nasce offerto nel portale come ogni altro campo (20 set
+    // 2026): prima nasceva spento, perché il server rifiutava il contrario.
+    const voceNuova: CatalogFormItem = { field: nome }
     cambia((d) => ({
       ...d,
       sections: d.sections.map((s, i) => {

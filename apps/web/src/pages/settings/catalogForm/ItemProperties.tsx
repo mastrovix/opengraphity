@@ -92,11 +92,18 @@ export function ProprietaVoce({
         </p>
       )}
 
-      {campo && isFormReferenceType(campo.fieldType) ? (
-        <p style={{ margin: '10px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
-          {t('pages.catalogForms.builder.referenceStaffOnly')} — {t('pages.catalogForms.builder.referenceStaffOnlyWhy')}
-        </p>
-      ) : (
+      {/*
+        * UN RIFERIMENTO SI PUÒ OFFRIRE NEL PORTALE, a una condizione (20 set
+        * 2026, decisione del proprietario): che il campo dichiari a quali
+        * TIPI di CI punta. Allora dal portale non si cerca nella CMDB, si
+        * sceglie da un elenco — «le applicazioni di business» — come da un
+        * vocabolario. Senza tipi il server rifiuta il modulo, quindi la
+        * condizione si dice QUI, non alla pubblicazione.
+        *
+        * Persone e squadre restano dell'area di lavoro: l'elenco del
+        * personale nel portale non si offre.
+        */}
+      {(
         <label style={spunta}>
           <input type="checkbox" checked={item.endUser !== false}
             onChange={(e) => { onItem({ ...item, endUser: e.target.checked }) }} style={{ marginTop: 3 }} />
@@ -108,6 +115,16 @@ export function ProprietaVoce({
             <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
               {t('pages.catalogForms.builder.endUserHelp')}
             </span>
+            {campo && campo.fieldType === 'ref_ci' && (campo.refTypes?.length ?? 0) === 0 && (
+              <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-trigger-sla-breach)' }}>
+                {t('pages.catalogForms.builder.referenceNeedsTypes')}
+              </span>
+            )}
+            {campo && isFormReferenceType(campo.fieldType) && campo.fieldType !== 'ref_ci' && (
+              <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+                {t('pages.catalogForms.builder.referencePeopleStaffOnly')}
+              </span>
+            )}
           </span>
         </label>
       )}

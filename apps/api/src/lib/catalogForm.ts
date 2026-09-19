@@ -522,18 +522,36 @@ export function assertCatalogForm(def: CatalogFormDefinition, library: ReadonlyM
           { key: 'errors.catalogForm.noteRequired', params: { field: i.field } })
       }
       /**
-       * UN RIFERIMENTO NON SI OFFRE NEL PORTALE (ondata 2, limite dichiarato).
-       * Scegliere un CI, una persona o una squadra vuol dire cercarli, e un
-       * utente finale non naviga la CMDB né l'elenco del personale: non è una
-       * mancanza del renderer, è una decisione. Il campo resta compilabile
-       * dall'area di lavoro; il rifiuto lo dice qui, alla pubblicazione, invece
-       * di lasciare nel portale una casella che non trova niente.
+       * NEL PORTALE SI SCEGLIE FRA I CI DI UN TIPO, non si naviga la CMDB
+       * (20 set 2026, decisione del proprietario dal giro nel browser).
+       *
+       * Il divieto nasceva da una ragione giusta — «un utente finale non
+       * naviga la CMDB» — ma la conseguenza si è vista dal vivo su una voce
+       * che l'AI aveva appena creato: «Richiesta di accesso ad applicazione»,
+       * la cui descrizione dice «un'applicazione presente in CMDB», dal
+       * portale non poteva chiedere QUALE. Il richiedente la scriveva nella
+       * motivazione, se ci pensava, e un operatore la collegava dopo leggendo
+       * il testo libero.
+       *
+       * La regola adesso: un riferimento a CI si offre nel portale SOLO se il
+       * campo dichiara i tipi ammessi. Allora non è una ricerca nella CMDB, è
+       * una scelta in un elenco — «le Business Application», come un
+       * vocabolario — e il portale la chiede al prodotto
+       * (`portalReferenceChoices`), che risponde con i CI di QUEI tipi e
+       * niente altro. Senza tipi dichiarati il campo resta dell'area di
+       * lavoro: là la ricerca libera ha senso, nel portale no.
+       *
+       * Persone e squadre restano fuori: nessuno le ha chieste, e «l'elenco
+       * del personale» era l'altra metà della ragione originale.
        */
       if (isFormReferenceType(f.fieldType) && i.endUser !== false) {
-        throw new ValidationError(
-          `The field "${i.field}" is a reference (${f.fieldType}): it cannot be offered in the portal, because choosing one means searching the CMDB or the staff list. Untick "offer it in the portal".`,
-          { key: 'errors.catalogForm.referenceEndUser', params: { field: i.field, fieldType: f.fieldType } },
-        )
+        const tipiDichiarati = f.fieldType === 'ref_ci' && (f.refTypes?.length ?? 0) > 0
+        if (!tipiDichiarati) {
+          throw new ValidationError(
+            `The field "${i.field}" is a reference (${f.fieldType}) without declared CI types: in the portal one picks from a list, not by searching the CMDB. Declare which CI types it points to, or untick "offer it in the portal".`,
+            { key: 'errors.catalogForm.referenceEndUserNeedsTypes', params: { field: i.field, fieldType: f.fieldType } },
+          )
+        }
       }
       /**
        * OBBLIGATORIO + NON OFFERTO NEL PORTALE = UN DATO CHE NON ARRIVERÀ MAI

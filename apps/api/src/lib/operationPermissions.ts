@@ -101,7 +101,11 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   { anyOf: ['change.delete'], mutation: ['deleteChange'] },
   { anyOf: ['request.read'], query: ['serviceRequests', 'serviceRequest', 'ciServiceRequests'] },
   { anyOf: ['request.write'], mutation: ['addCIToServiceRequest', 'removeCIFromServiceRequest'] },
-  { anyOf: ['request.read', 'portal.read'], query: ['serviceCatalogItems', 'catalogFormToFill'] },
+  { anyOf: ['request.read', 'portal.read'], query: ['serviceCatalogItems', 'catalogFormToFill',
+    // Le scelte di un campo «riferimento» del modulo: chi può vedere il
+    // modulo può vedere le sue scelte, e sono i CI dei tipi che il campo
+    // dichiara — non la CMDB (20 set 2026).
+    'portalReferenceChoices'] },
   { anyOf: ['request.write'], mutation: ['updateServiceRequest', 'assignServiceRequestToUser', 'setServiceRequestFormAnswer'] },
   { anyOf: ['request.write', 'portal.submit'], mutation: ['createServiceRequest'] },
   // Il passo di workflow per id d'istanza: vale per incident, richieste e articoli.

@@ -91,6 +91,8 @@ const LIBRERIA = new Map<string, never>([
   // Ondata 2
   ['preventivo',      campo('preventivo', 'attachment')],
   ['dispositivo',     campo('dispositivo', 'ref_ci')],
+  // Un riferimento che DICHIARA i tipi: dal portale si sceglie fra quelli.
+  ['applicazione',    campo('applicazione', 'ref_ci', { refTypes: ['business_application'] })],
   ['per_chi',         campo('per_chi', 'ref_user')],
   ['squadra',         campo('squadra', 'ref_team')],
 ])
@@ -404,18 +406,40 @@ describe('ondata 2: riferimenti e allegati', () => {
     sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'preventivo', required: true }] }],
   }
 
-  it('un riferimento NON si offre nel portale: il modulo che lo offre viene rifiutato alla pubblicazione', () => {
+  /*
+   * NEL PORTALE SI SCEGLIE FRA I CI DI UN TIPO (20 set 2026, decisione del
+   * proprietario). Il divieto di prima valeva per ogni riferimento; ora vale
+   * per quelli che non dicono a cosa puntano — là la scelta sarebbe una
+   * ricerca nella CMDB, e quella l'utente finale non la fa.
+   */
+  it('un riferimento SENZA tipi dichiarati non si offre nel portale', () => {
     const offerto: CatalogFormDefinition = {
       version: 1, revision: 1,
       sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'dispositivo' }] }],
     }
-    expect(() => assertCatalogForm(offerto, LIBRERIA)).toThrow(/cannot be offered in the portal/)
+    expect(() => assertCatalogForm(offerto, LIBRERIA)).toThrow(/without declared CI types/)
     // Con la spunta togliata passa (e senza pretenderlo: vedi il caso qui sotto).
     const nonOfferto: CatalogFormDefinition = {
       version: 1, revision: 1,
       sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'dispositivo', endUser: false }, { field: 'per_chi', endUser: false }] }],
     }
     expect(() => assertCatalogForm(nonOfferto, LIBRERIA)).not.toThrow()
+  })
+
+  it('un riferimento CON i tipi dichiarati si offre nel portale', () => {
+    const offerto: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'applicazione' }] }],
+    }
+    expect(() => assertCatalogForm(offerto, LIBRERIA)).not.toThrow()
+  })
+
+  it('una persona o una squadra restano dell\'area di lavoro anche coi tipi', () => {
+    const offerto: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'per_chi' }] }],
+    }
+    expect(() => assertCatalogForm(offerto, LIBRERIA)).toThrow(/without declared CI types/)
   })
 
   /*

@@ -1,14 +1,14 @@
 import { useState, useMemo } from 'react'
-import { useQuery, useMutation } from '@apollo/client/react'
+import { useQuery, useMutation, useApolloClient } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { GET_SERVICE_CATALOG } from '@/graphql/queries'
-import { GET_PORTAL_CATALOG_FORM } from '../graphql/queries'
+import { GET_PORTAL_CATALOG_FORM, GET_PORTAL_REFERENCE_CHOICES } from '../graphql/queries'
 import {
   CatalogFormRenderer, catalogFormAnswersToSend, catalogFormTableAnswers, visibleCatalogFormItems,
   type CatalogFormFieldView, type CatalogFormFile, type CatalogFormTableRow,
 } from '@opengraphity/web-core'
-import { isFormAttachmentType } from '@opengraphity/types'
+import { isFormAttachmentType, isFormReferenceType } from '@opengraphity/types'
 import { uploadFormDraftFile } from '../lib/formDraftUpload'
 import type { CatalogFormDefinition, FormAnswerValue, FormAnswers } from '@opengraphity/types'
 import { CREATE_SERVICE_REQUEST, DELETE_FORM_ATTACHMENT } from '@/graphql/mutations'
@@ -89,6 +89,28 @@ export function ServiceCatalogPage() {
    */
   const [bozzaId, setBozzaId] = useState(() => crypto.randomUUID())
   const [fileDelModulo, setFileDelModulo] = useState<Record<string, CatalogFormFile[]>>({})
+  /**
+   * I CI scelti nei campi «riferimento» (20 set 2026). Non sono risposte:
+   * viaggiano in `refIds` e diventano relazioni, come nell'area di lavoro.
+   */
+  const [riferimenti, setRiferimenti] = useState<Record<string, { id: string; label: string }[]>>({})
+  const apollo = useApolloClient()
+
+  /**
+   * Le scelte di un campo «riferimento»: le chiede al PRODOTTO, non alla
+   * CMDB. Il server risponde con i CI dei tipi che quel campo dichiara — se
+   * non ne dichiara nessuno il campo non è nemmeno offerto qui.
+   */
+  const cercaRiferimento = async (campo: { name: string }, query: string): Promise<{ id: string; label: string }[]> => {
+    if (!openItem) return []
+    const r = await apollo.query<{ portalReferenceChoices: { id: string; label: string }[] }>({
+      query: GET_PORTAL_REFERENCE_CHOICES,
+      variables: { itemId: openItem.id, field: campo.name, search: query || null },
+      fetchPolicy: 'network-only',
+    })
+    return r.data?.portalReferenceChoices ?? []
+  }
+
   /** Le righe delle tabelle (ondata 7): non sono risposte, quindi stanno a parte. */
   const [righeTabelle, setRigheTabelle] = useState<Record<string, readonly CatalogFormTableRow[]>>({})
   const [inCaricamento, setInCaricamento] = useState<string | null>(null)
@@ -238,7 +260,16 @@ export function ServiceCatalogPage() {
         ? [
             ...catalogFormAnswersToSend(definizione, modulo.fields, risposte as FormAnswers, true)
               // Gli allegati non viaggiano come risposta: sono già sulla bozza.
-              .filter((a) => !isFormAttachmentType(modulo.fields.find((f) => f.name === a.name)?.fieldType ?? '')),
+              .filter((a) => !isFormAttachmentType(modulo.fields.find((f) => f.name === a.name)?.fieldType ?? ''))
+              // Un riferimento viaggia in `refIds`: il server verifica che il
+              // nodo esista nel tenant e scrive una relazione (come nell'area
+              // di lavoro).
+              .map((a) => {
+                const tipo = modulo.fields.find((f) => f.name === a.name)?.fieldType ?? ''
+                if (!isFormReferenceType(tipo)) return a
+                const scelto = riferimenti[a.name]?.[0]
+                return { name: a.name, refIds: scelto ? [scelto.id] : [] }
+              }),
             // Le righe delle tabelle (ondata 7): stessa regola dell'area di
             // lavoro, perché la funzione è la stessa.
             ...catalogFormTableAnswers(definizione, modulo.fields, risposte as FormAnswers, righeTabelle, true)
@@ -345,6 +376,18 @@ export function ServiceCatalogPage() {
                   onRemoveFile={togliFile}
                   fileAddLabel={t('catalog.addFile')}
                   fileRemoveLabel={t('catalog.removeFile')}
+                  /*
+                   * I campi «riferimento» (20 set 2026): non si naviga la
+                   * CMDB, si sceglie fra i CI dei TIPI che il campo dichiara
+                   * — è il prodotto a dire quali sono, con
+                   * `portalReferenceChoices`.
+                   */
+                  references={riferimenti}
+                  onSearchReference={cercaRiferimento}
+                  onPickReference={(campo, scelto) => { setRiferimenti((p) => ({ ...p, [campo]: scelto ? [scelto] : [] })) }}
+                  referenceSearchLabel={t('catalog.searchReference')}
+                  referenceNoResultsLabel={t('catalog.noResults')}
+                  referenceClearLabel={t('catalog.clearReference')}
                 />
               </div>
             )}

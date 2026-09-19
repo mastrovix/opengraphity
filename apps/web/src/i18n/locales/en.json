@@ -2394,8 +2394,6 @@
         "discardTitle": "Discard the draft?",
         "discardBody": "This item’s form has unpublished changes. Switching item loses them: publish first, or continue and start over from the saved one.",
         "libraryEmpty": "The field library is empty: open the other tab and define the first field.",
-        "referenceStaffOnly": "Workspace only",
-        "referenceStaffOnlyWhy": "A reference cannot be offered in the portal: choosing one means searching the CMDB or the staff list, which an end user does not do. The field stays fillable from the workspace.",
         "chooseItem": "Choose a service request",
         "publishConfirmTitle": "Publish this form?",
         "publishConfirmBody": "The form of «{{item}}» is replaced by this design, and the revision goes up. Anyone filling it right now will have to start again.",
@@ -2446,7 +2444,9 @@
         "visibilityHelp": "The field appears only when the condition is true. The browser evaluates it while filling in and the server checks it again on save: an answer to a hidden field is refused.",
         "visibilityNoSubjects": "A condition looks at ANOTHER field’s answer, and this form has none that can be looked at yet. Add a field that carries an answer — text, number, date, yes/no or a choice — and the condition will show up here.",
         "readOnly": "Read-only in this form",
-        "readOnlyHelp": "It is shown but not filled in: the value comes from elsewhere, for instance an automation. A read-only field cannot be required unless it has a formula."
+        "readOnlyHelp": "It is shown but not filled in: the value comes from elsewhere, for instance an automation. A read-only field cannot be required unless it has a formula.",
+        "referenceNeedsTypes": "To offer it in the portal, declare which CI types it points to: whoever fills it there picks from a list (say «the business applications»), they do not search the CMDB.",
+        "referencePeopleStaffOnly": "A reference to a person or a team stays in the workspace: the portal does not offer the staff list."
       },
       "library": {
         "intro": "A field is defined once and reused by every form. Its name becomes the property on the ticket, which is why it can be filtered and reported on — and why it cannot be renamed.",
@@ -4429,7 +4429,6 @@
       "answersWithoutItem": "Form answers were sent without a catalog item: a form belongs to a catalog item.",
       "noForm": "The catalog item \"{{item}}\" has no form: there is nothing to answer.",
       "conditionFieldType": "A condition looks at the field \"{{field}}\", which is a {{fieldType}}: only fields stored as a property can be a condition subject.",
-      "referenceEndUser": "The field «{{field}}» is a reference ({{fieldType}}): it cannot be visible in the service request, because choosing one means searching the CMDB or the staff list. Untick «Visible in the service request».",
       "requiredNotForEndUser": "The field «{{field}}» is required but it is not visible in the service request: whoever opens it from the portal would never be asked, and nothing can fill it afterwards. Make it visible, or stop requiring it.",
       "tooManyFields": "This form has {{count}} fields: {{max}} is the limit. Raise the limit on the catalog forms page, or split the request into two catalog items.",
       "limitOutOfRange": "A limit must be a whole number between {{min}} and {{max}}.",
@@ -4442,7 +4441,8 @@
       "sectionTitleRequired": "The section «{{section}}» has no title in {{language}}: a section without a name is an anonymous block on the form.",
       "sectionColumns": "{{where}}: a section has one or two columns, nothing else.",
       "readOnlyRequired": "The field «{{field}}» is read-only and required, and it has no formula: nobody could fill it, so the request would never be created. Drop the requirement, or give it a formula.",
-      "answerReadOnly": "The field «{{field}}» is read-only in this form: its value does not come from whoever fills it."
+      "answerReadOnly": "The field «{{field}}» is read-only in this form: its value does not come from whoever fills it.",
+      "referenceEndUserNeedsTypes": "The field «{{field}}» is a reference ({{fieldType}}) with no declared CI types: in the portal one picks from a list, not by searching the CMDB. Declare which CI types it points to, or untick «Visible in the service request»."
     },
     "serviceCatalog": {
       "workflowNotFound": "That workflow does not exist here, or it is not active.",
