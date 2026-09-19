@@ -20,6 +20,7 @@ import { getSession } from '@opengraphity/neo4j'
 import fs from 'node:fs/promises'
 import { sendSlackMessage, sseManager, loadNotificationLocale, notificationText, formatNotificationDate, escapeHtml } from '@opengraphity/notifications'
 import { executeReportSection } from '../lib/reportExecutor.js'
+import { isLingua } from '../lib/tenantLanguage.js'
 import { loadTemplateSections } from '../lib/reportTemplates.js'
 import { logger } from '../lib/logger.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
@@ -236,14 +237,17 @@ async function reportSchedulerProcessor(_job: Job) {
       let sections
       try { sections = await loadTemplateSections(readSession, tpl.id, tpl.tenantId) }
       finally { await readSession.close() }
+      // Nella lingua del CLIENTE: un report che arriva da solo non ha davanti
+      // nessuno che scelga la lingua, e le intestazioni delle colonne le
+      // compone il server (senza, uscivano in inglese).
+      const locale = await loadNotificationLocale(tpl.tenantId)
       const results  = await Promise.all(
-        sections.map(sec => executeReportSection(sec, tpl.tenantId)),
+        sections.map(sec => executeReportSection(sec, tpl.tenantId, { language: isLingua(locale.language) ? locale.language : undefined })),
       )
 
       // ── SSE in-app notification (always) ────────────────────────────────────
       // CO-2: titolo e messaggio come chiavi (il pannello li traduce) e, per
       // chi non ha la chiave, nella lingua del cliente. Erano in italiano fisso.
-      const locale = await loadNotificationLocale(tpl.tenantId)
       const reportParams = { name: tpl.name, count: String(results.length) }
       sseManager.sendToTenant(tpl.tenantId, {
         id:          randomUUID(),

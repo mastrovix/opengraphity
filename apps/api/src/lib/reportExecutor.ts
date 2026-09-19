@@ -132,7 +132,7 @@ export async function executeReportSection(
     // Le etichette dei campi per le intestazioni delle colonne: dallo stesso
     // metamodello che il costruttore di report mostra all'amministratore, così
     // la colonna si chiama come la casella che ha spuntato.
-    const fieldLabels = await reportFieldLabels(tenantId)
+    const fieldLabels = await reportFieldLabels(tenantId, opts.language)
     const { query, params, columns, groupSource } = buildReportQuery(section, tenantId, whitelist, { fieldLabels })
     const chartType = assertChartType(section.chartType, `section ${JSON.stringify(section.id)}`)
 

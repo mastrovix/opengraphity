@@ -4,6 +4,7 @@ import type ExcelJS from 'exceljs'
 import { v4 as uuidv4 } from 'uuid'
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError } from '../../lib/errors.js'
+import { isLingua } from '../../lib/tenantLanguage.js'
 import { audit } from '../../lib/audit.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
 import type { ReportSectionDef } from '../../lib/reportQueryBuilder.js'
@@ -88,7 +89,10 @@ interface SectionData {
 
 async function fetchSectionData(sections: ReportSectionDef[], tenantId: string, lingua: string): Promise<SectionData[]> {
   const sezioni = sections
-  const results = await Promise.all(sections.map(s => executeReportSection(s, tenantId)))
+  // La lingua serve anche QUI, non solo a schermo: le intestazioni delle
+  // colonne le compone il server, e senza lingua il PDF e l'Excel uscivano in
+  // inglese («TITLE», «NUMBER») mentre il costruttore diceva «Titolo».
+  const results = await Promise.all(sections.map(s => executeReportSection(s, tenantId, { language: isLingua(lingua) ? lingua : undefined })))
   return results.map((r, i) => {
     // A failed section must appear AS FAILED in the exported document — an
     // empty page in a delivered audit PDF is a lie.

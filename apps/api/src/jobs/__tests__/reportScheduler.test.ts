@@ -209,7 +209,9 @@ describe('report-scheduler — claim atomico', () => {
     expect(claim.p).toEqual({ id: 'tpl-1', tenantId: 't1', dueAt: DUE_AT, now: NOW })
 
     expect(loadTemplateSections).toHaveBeenCalledWith(expect.anything(), 'tpl-1', 't1')
-    expect(executeReportSection).toHaveBeenCalledWith(SECTION, 't1')
+    // Nella lingua del CLIENTE: le intestazioni delle colonne le compone il
+    // server, e un report che arriva da solo non ha davanti nessuno che scelga.
+    expect(executeReportSection).toHaveBeenCalledWith(SECTION, 't1', { language: 'en' })
     expect(sendToTenant).toHaveBeenCalledWith('t1', expect.objectContaining({
       type: 'scheduled_report', entity_id: 'tpl-1', entity_type: 'ReportTemplate', severity: 'info', timestamp: NOW, read: false,
       // CO-2: titolo e messaggio come chiavi, e il ripiego nella lingua del cliente.
