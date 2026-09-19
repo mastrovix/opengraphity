@@ -2330,7 +2330,7 @@
     },
     "catalogForms": {
       "title": "Service Request Designer",
-      "intro": "Qui si disegna una richiesta di servizio: il MODULO che chi la apre compila — sezioni, campi condizionali, testo d’aiuto — e il WORKFLOW che la richiesta segue. I campi vengono dalla libreria, così la stessa domanda è una colonna sola in ogni report.",
+      "intro": "Qui si disegna una richiesta di servizio: il modulo che chi la apre compila e il workflow che segue.",
       "tabs": {
         "forms": "Designer",
         "library": "Libreria dei campi",

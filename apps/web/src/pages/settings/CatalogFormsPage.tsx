@@ -35,7 +35,15 @@ export function CatalogFormsPage() {
         <PageTitle icon={<ClipboardList size={22} color="var(--color-icon-accent)" />}>
           {t('pages.catalogForms.title')}
         </PageTitle>
-        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0, maxWidth: '75ch' }}>
+        {/*
+          `110ch` e non `75ch` come altrove (19 set 2026). La misura di lettura
+          classica e 75 caratteri, e su un testo di tre righe serve; qui il
+          testo e stato ridotto a una frase, e su uno schermo largo quel tetto
+          la faceva finire a meta pagina — «perche la frase finisce a meta
+          schermo?». Un tetto resta comunque: su un monitor ultralargo una riga
+          di duecento caratteri non si rilegge.
+        */}
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0, maxWidth: '110ch' }}>
           {t('pages.catalogForms.intro')}
         </p>
       </div>

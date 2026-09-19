@@ -2330,7 +2330,7 @@
     },
     "catalogForms": {
       "title": "Service Request Designer",
-      "intro": "This is where a service request is designed: the FORM whoever opens it fills in — sections, conditional fields, help text — and the WORKFLOW the request follows. Fields come from the library, so the same question is a single column in every report.",
+      "intro": "This is where a service request is designed: the form whoever opens it fills in, and the workflow it follows.",
       "tabs": {
         "forms": "Designer",
         "library": "Field library",
