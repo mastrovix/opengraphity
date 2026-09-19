@@ -147,6 +147,23 @@ function ControlloFinto({ tipo, segnaposto }: { tipo: string; segnaposto: string
   return <span style={scatola} />
 }
 
+/**
+ * IN UNA GRIGLIA A DUE COLONNE, L'ULTIMA RIGA HA UNA CELLA LIBERA?
+ *
+ * Serve al riquadro «lascia qui»: se c'è un buco ci si infila (e la griglia
+ * non resta monca), se no prende la riga intera. Il conto segue le stesse
+ * regole del disegno: un campo pieno occupa la riga, uno a metà una cella.
+ */
+export function cellaLibera(sezione: { columns?: 1 | 2; items: readonly CatalogFormItem[] }): boolean {
+  if ((sezione.columns ?? 1) !== 2) return false
+  let colonna = 0
+  for (const item of sezione.items) {
+    if (larghezzaEffettiva({ columns: 2 }, item) === 'full') colonna = 0
+    else colonna = colonna === 0 ? 1 : 0
+  }
+  return colonna === 1
+}
+
 function CampoSullaTela({
   item, campo, colonne, zona, selezionato, bersaglio, onSeleziona, maniglia,
 }: {
@@ -341,11 +358,7 @@ export function FormCanvas({
               </span>
             </div>
 
-            {sezione.items.length === 0 ? (
-              <p style={{ margin: 0, padding: '14px 0', textAlign: 'center', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', border: `1px dashed ${colors.border}`, borderRadius: 8 }}>
-                {t('pages.catalogForms.builder.dropHere')}
-              </p>
-            ) : (
+            {(
               <div style={{
                 display: 'grid',
                 gridTemplateColumns: (sezione.columns ?? 1) === 2 ? '1fr 1fr' : '1fr',
@@ -364,6 +377,28 @@ export function FormCanvas({
                     maniglia={maniglia(iSez, iVoce)}
                   />
                 ))}
+                {/*
+                  IL RIQUADRO TRATTEGGIATO C'È SEMPRE (18 set 2026).
+
+                  Prima compariva solo nelle sezioni vuote, e in una sezione
+                  già piena non si vedeva più DOVE si può lasciar cadere un
+                  campo: il bersaglio c'era (tutta la sezione) ma non si
+                  vedeva, e un bersaglio invisibile è come non averlo. «Il box
+                  tratteggiato lascialo sempre, fa capire dove trascinare.»
+
+                  In due colonne riempie anche il BUCO: se l'ultima riga ha una
+                  cella libera il riquadro ci si infila, se no prende la riga
+                  intera. Così la griglia non resta mai monca.
+                */}
+                <p style={{
+                  gridColumn: cellaLibera(sezione) ? 'auto' : '1 / -1',
+                  margin: 0, padding: '14px 8px', textAlign: 'center',
+                  fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)',
+                  border: `1px dashed ${bersaglio === `sec-${String(iSez)}` ? 'var(--color-brand)' : colors.border}`,
+                  borderRadius: 8,
+                }}>
+                  {t('pages.catalogForms.builder.dropHere')}
+                </p>
               </div>
             )}
           </section>

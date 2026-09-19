@@ -9,6 +9,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { vocabolariUnici } from '../FieldEditor'
+import { cellaLibera } from '../FormCanvas'
 
 const v = (name: string, label: string, isShipped: boolean) => ({ name, label, isShipped })
 
@@ -33,5 +34,38 @@ describe('vocabolariUnici', () => {
   it('le ordina per etichetta: è l’unico ordine cercabile a occhio', () => {
     const out = vocabolariUnici([v('z', 'Zeta', true), v('a', 'Alfa', true), v('m', 'Mike', true)])
     expect(out.map((x) => x.label)).toEqual(['Alfa', 'Mike', 'Zeta'])
+  })
+})
+
+/*
+ * IL BUCO NELLA GRIGLIA A DUE COLONNE.
+ *
+ * Il riquadro «lascia qui» ci si infila quando c'è, e prende la riga intera
+ * quando non c'è: sbagliare il conto lascia la griglia monca o spinge il
+ * riquadro su una riga sua con una cella vuota accanto.
+ */
+describe('cellaLibera', () => {
+  const mezzo = { field: 'x', width: 'half' as const }
+  const pieno = { field: 'y', width: 'full' as const }
+
+  it('una colonna: non esiste nessun buco da riempire', () => {
+    expect(cellaLibera({ items: [mezzo] })).toBe(false)
+    expect(cellaLibera({ columns: 1, items: [mezzo, mezzo, mezzo] })).toBe(false)
+  })
+
+  it('due colonne, campi dispari → la riga finale ha una cella libera', () => {
+    expect(cellaLibera({ columns: 2, items: [mezzo] })).toBe(true)
+    expect(cellaLibera({ columns: 2, items: [mezzo, mezzo, mezzo] })).toBe(true)
+  })
+
+  it('due colonne, campi pari → nessun buco', () => {
+    expect(cellaLibera({ columns: 2, items: [] })).toBe(false)
+    expect(cellaLibera({ columns: 2, items: [mezzo, mezzo] })).toBe(false)
+  })
+
+  it('un campo a larghezza piena chiude la riga', () => {
+    // mezzo + pieno: il pieno va su una riga sua, e la successiva riparte da zero.
+    expect(cellaLibera({ columns: 2, items: [mezzo, pieno] })).toBe(false)
+    expect(cellaLibera({ columns: 2, items: [pieno, mezzo] })).toBe(true)
   })
 })
