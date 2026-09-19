@@ -362,6 +362,10 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // L'interruttore «Designer | Anteprima» dentro la pagina: stesso nome della
   // scheda, e per la stessa ragione — e il nome della cosa, non una frase.
   'pages.catalogForms.builder.viewCanvas',
+  // «Service request» e il nome dell'oggetto, e in italiano si dice cosi: la
+  // pagina si chiama Service Request Designer, e chiamare «voce di catalogo»
+  // la stessa cosa in una tendina era il solito secondo nome.
+  'pages.catalogForms.builder.item',
   // «Service Request Designer» e il nome della pagina, nella stessa famiglia di
   // «CI Type Designer» e «Workflow Designer» che stanno gia nella barra
   // laterale: un nome, non una frase (scelto dal proprietario, 18 set 2026).
