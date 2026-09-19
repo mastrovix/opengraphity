@@ -31,11 +31,16 @@ const SPECIAL_STEP_TYPES = [
   // medesimo menu («Passo», «Fork», «Join», «Timer Wait», «Sub-Workflow»). Per
   // un cliente inglese «Passo» restava «Passo». Il simbolo resta qui — e
   // grafica, non testo — e la parola viene dal vocabolario delle traduzioni.
+  //
+  // ONDATA 10: qui c'erano anche «Biforcazione», «Ricongiunzione» e
+  // «Sotto-workflow». Il motore non li esegue — un `parallel_fork` seguiva UNA
+  // transizione come un passo normale, e chi aveva disegnato due rami ne
+  // vedeva partire uno solo, senza un errore. Offrire un attrezzo che non fa
+  // quello che disegna è peggio che non averlo. L'elenco di quello che il
+  // motore sa fare è `ADDABLE_STEP_TYPES` in `@opengraphity/types`, e un test
+  // tiene insieme le due sponde.
   { type: 'standard',      glyph: '▢', labelKey: 'workflow.stepType.standard',      name: 'step'          },
-  { type: 'parallel_fork', glyph: '⑂', labelKey: 'workflow.stepType.parallel_fork', name: 'parallel_fork' },
-  { type: 'parallel_join', glyph: '⑂', labelKey: 'workflow.stepType.parallel_join', name: 'parallel_join' },
   { type: 'timer_wait',    glyph: '⏱', labelKey: 'workflow.stepType.timer_wait',    name: 'timer_wait'    },
-  { type: 'sub_workflow',  glyph: '⊞', labelKey: 'workflow.stepType.sub_workflow',  name: 'sub_workflow'  },
 ]
 
 interface WorkflowToolbarProps {

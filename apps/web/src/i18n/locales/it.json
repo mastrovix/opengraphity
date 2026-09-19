@@ -3905,7 +3905,8 @@
       "copyNameRequired": "La copia ha bisogno di un nome.",
       "copyNameTaken": "Un workflow {{entityType}} chiamato «{{name}}» esiste già.",
       "noApproverTarget": "L'approvazione non può partire: le persone o le squadre indicate non hanno nessun membro attivo in questa organizzazione.",
-      "lastActiveDefinition": "«{{name}}» è l'ultimo iter {{entityType}} attivo senza categoria: spegnendolo non nascerebbe più nessun {{entityType}}. Attivane un altro prima."
+      "lastActiveDefinition": "«{{name}}» è l'ultimo iter {{entityType}} attivo senza categoria: spegnendolo non nascerebbe più nessun {{entityType}}. Attivane un altro prima.",
+      "stepTypeNotImplemented": "Il tipo di passo «{{type}}» non è eseguito dal motore dei processi: un passo così si comporterebbe come un passo normale, seguendo una sola transizione. Non si può aggiungere finché il motore non lo implementa."
     },
     "channel": {
       "platform": "La piattaforma «{{platform}}» non è supportata. Ammesse: {{allowed}}."

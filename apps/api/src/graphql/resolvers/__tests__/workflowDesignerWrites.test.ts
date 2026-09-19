@@ -123,6 +123,20 @@ describe('addWorkflowStep (B2-1 / B-3): il passo nasce con il dato completo', ()
     expect(params['category']).toBe('active')
   })
 
+  /*
+   * ONDATA 10: un tipo che il motore non esegue non si aggiunge. Il
+   * disegnatore offriva «Biforcazione»: il motore la trattava come un passo
+   * normale e ne seguiva UNA transizione sola, in silenzio.
+   */
+  it('un tipo che il motore non esegue si rifiuta, dicendo perché, senza scrivere niente', async () => {
+    results = [{ records: [makeRecord({ entityType: 'incident' })] }]
+    for (const tipo of ['parallel_fork', 'parallel_join', 'sub_workflow']) {
+      await expect(M.addWorkflowStep(null, { definitionId: 'def-1', name: 'x', label: 'X', type: tipo }, ctx))
+        .rejects.toThrow(/is not executed by the workflow engine/)
+    }
+    expect(calls.filter((c) => c.cypher.includes('CREATE (s:WorkflowStep'))).toHaveLength(0)
+  })
+
   it('marchia la definizione come personalizzata e invalida la cache', async () => {
     results = [{ records: [makeRecord({ entityType: 'incident' })] }]
     await M.addWorkflowStep(null, { definitionId: 'def-1', name: 'x', label: 'X', type: 'standard' }, ctx)

@@ -138,6 +138,7 @@ const ACCENT_COLOR = colors.brand
 // ── Custom Node ───────────────────────────────────────────────────────────────
 
 const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: NodeProps) {
+  const { t } = useTranslation()
   const { step, accentColor } = data as StepNodeData
   const [hovered, setHovered] = useState(false)
   const bg = lookupOrError(STEP_BG, step.type, 'STEP_BG', 'var(--color-danger)')
@@ -176,12 +177,18 @@ const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: Node
         borderRadius:    4,
         marginBottom:    6,
       }}>
+        {/*
+          * I tipi speciali si dicono nella lingua del cliente: erano
+          * letterali inglesi («FORK», «SUB»). I tre che il motore NON esegue
+          * restano disegnabili a schermo — un'installazione che li ha salvati
+          * deve poterli leggere — ma dall'ondata 10 non si aggiungono più.
+          */}
         {step.type === 'start'         ? 'START'
         : step.type === 'end'           ? 'END'
-        : step.type === 'parallel_fork' ? '⑂ FORK'
-        : step.type === 'parallel_join' ? '⑂ JOIN'
-        : step.type === 'timer_wait'    ? '⏱ TIMER'
-        : step.type === 'sub_workflow'  ? '⊞ SUB'
+        : step.type === 'parallel_fork' ? `⑂ ${t('workflow.stepType.parallel_fork')}`
+        : step.type === 'parallel_join' ? `⑂ ${t('workflow.stepType.parallel_join')}`
+        : step.type === 'timer_wait'    ? `⏱ ${t('workflow.stepType.timer_wait')}`
+        : step.type === 'sub_workflow'  ? `⊞ ${t('workflow.stepType.sub_workflow')}`
         : step.name.replace(/_/g, ' ')}
       </div>
 

@@ -1,11 +1,11 @@
 import type { Session } from 'neo4j-driver'
 
 // Unica sorgente per i tipi di step: engine (timer_wait, sub_workflow), API e
-// web (parallel_fork/join) usavano liste diverse dello stesso enum.
-export type WorkflowStepType =
-  | 'start' | 'standard' | 'end'
-  | 'timer_wait' | 'sub_workflow'
-  | 'parallel_fork' | 'parallel_join'
+// web (parallel_fork/join) usavano liste diverse dello stesso enum. Dall'ondata
+// 10 vive in `@opengraphity/types`, che leggono anche il disegnatore e l'API:
+// là accanto c'è scritto QUALI il motore esegue davvero.
+import type { WorkflowStepType } from '@opengraphity/types'
+export type { WorkflowStepType }
 
 // ── Condizioni di transizione ────────────────────────────────────────────────
 // L'engine non conosce il dominio: le condizioni (has_linked_change,
