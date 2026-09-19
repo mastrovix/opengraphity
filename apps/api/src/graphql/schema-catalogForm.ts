@@ -283,10 +283,14 @@ export function catalogFormSDL(): string {
   """
   Quello che la proposta ha SCARTATO, e perche: \`key\` e una chiave i18n che il
   designer rende nella lingua del cliente. Uno scarto silenzioso sarebbe il
-  difetto peggiore — l'utente accetterebbe una tela diversa da quella che ha
+  difetto peggiore — l'utente accetterebbe un disegno diverso da quello che ha
   chiesto senza sapere dove.
+
+  Il tipo è di TUTTI i progettisti AI, non solo di quello dei moduli: lo usa
+  anche la proposta di sezione di report. Si chiamava \`FormDesignDiscard\` e
+  il nome mentiva a chi leggeva lo schema dei report.
   """
-  type FormDesignDiscard {
+  type AIDesignDiscard {
     """Il pezzo di proposta a cui lo scarto si riferisce: l'etichetta di un campo, il nome di un elenco."""
     what:   String!
     key:    String!
@@ -295,8 +299,8 @@ export function catalogFormSDL(): string {
   }
 
   """
-  La proposta di progetto per una service request: NON scrive niente. Atterra
-  sulla tela del designer come bozza, e si applica accettandola — i campi nuovi
+  La proposta di progetto per una service request: NON scrive niente. Arriva
+  nel modulo del designer come bozza, e si applica accettandola — i campi nuovi
   con \`createFormField\`, i vocabolari con \`createEnumType\`, il modulo con
   \`saveCatalogForm\`.
   """
@@ -307,7 +311,7 @@ export function catalogFormSDL(): string {
     sections:        [FormDesignSection!]!
     newFields:       [FormDesignFieldProposal!]!
     newVocabularies: [FormDesignVocabularyProposal!]!
-    discarded:       [FormDesignDiscard!]!
+    discarded:       [AIDesignDiscard!]!
     """Quello che il modello dice di non aver potuto fare."""
     notes:           [String!]!
     """Il tetto di campi per modulo: per spiegare un troncamento."""

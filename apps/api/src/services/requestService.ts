@@ -6,6 +6,7 @@ import {
   type FormAnswerInput, type FormReferenceWrite, type FormTableWrite,
 } from '../lib/catalogForm.js'
 import { catalogFormLimits as leggiTetti } from '../lib/catalogFormLimits.js'
+import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
 import { catalogFormFieldNames } from '@opengraphity/types'
 import { creationStepContext } from '../lib/customFieldSteps.js'
 import { withTicketProps } from '../lib/ticketProps.js'
@@ -124,6 +125,25 @@ export async function createRequest(
       attachmentFields: esito.attachmentFields.map((a) => a.field),
     }
   })
+
+  /*
+   * UN CI DI UN TIPO ESCLUSO NON SI COLLEGA «DA NESSUNA STRADA» (ondata 9).
+   *
+   * `lib/ticketCIExclusions.ts` lo dice per esteso, e tutte le strade note lo
+   * rispettavano: creazione, `addCIToServiceRequest`, REST, portale, Slack,
+   * gli incident aperti dal prodotto. Tutte tranne una — un campo `ref_ci` del
+   * MODULO, che nasce dopo le esclusioni e scrive la sua relazione senza
+   * chiedere niente a nessuno. Bastava mettere nel modulo un riferimento alla
+   * CMDB per rimettere nel ticket un tipo di CI che l'amministratore aveva
+   * escluso, e da lì tornava in filtri, report e widget.
+   *
+   * Il controllo sta FUORI dalla transazione perché `assertCIsLinkable` apre
+   * la sua sessione: dentro sarebbe la collisione «queries cannot be run
+   * directly on a session with an open transaction», già pagata due volte.
+   */
+  const ciRiferiti = formReferences.filter((r) => r.fieldType === 'ref_ci').flatMap((r) => [...r.ids])
+  if (ciRiferiti.length > 0) await assertCIsLinkable(ctx.tenantId, 'service_request', ciRiferiti)
+
   const id  = uuidv4()
   const now = new Date().toISOString()
 

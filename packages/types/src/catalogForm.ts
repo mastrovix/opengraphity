@@ -609,3 +609,72 @@ export function formTableColumnLabel(column: FormTableColumn, language?: string 
 export function isFormTableRowEmpty(row: FormTableRow): boolean {
   return Object.values(row).every((v) => v == null || String(v).trim() === '')
 }
+
+/**
+ * UNA PROPOSTA DEL PROGETTISTA AI, LETTA NELLO STESSO MODO DALLE DUE SPONDE
+ * (revisione AI, ondata 9).
+ *
+ * La proposta viaggia «piatta» (titoli come due stringhe, condizione come
+ * JSON) perché così la descrive lo schema GraphQL, e diventa sezioni di
+ * modulo in DUE posti: nel server, che monta la proposta come modulo per
+ * chiedere a `assertCatalogForm` se sarebbe salvabile, e nel browser, che la
+ * mette davvero nel modulo quando l'utente accetta.
+ *
+ * Erano due copie della stessa mappa. Non divergevano oggi, ma il giorno in
+ * cui una voce del modulo prende una proprietà nuova la divergenza è
+ * silenziosa nel modo peggiore: il server validerebbe un documento e l'utente
+ * ne salverebbe un altro — cioè la rete di sicurezza controllerebbe una cosa
+ * diversa da quella che finisce nel grafo.
+ */
+export interface ProposedFormSection {
+  readonly id: string
+  readonly titleIt: string
+  readonly titleEn: string
+  readonly columns: number
+  readonly items: readonly {
+    readonly field: string
+    readonly required: boolean
+    readonly width: string
+    readonly endUser: boolean
+    readonly readOnly: boolean
+    /** La condizione come JSON, o `null` se il campo si vede sempre. */
+    readonly visibleWhen: string | null
+  }[]
+}
+
+/**
+ * Le sezioni proposte come sezioni di modulo. `idPresi` sono gli id già in
+ * uso nel documento che le accoglierà: un id che collide viene rinumerato,
+ * perché due sezioni con lo stesso id sono un modulo che non si salva.
+ */
+export function sectionsFromProposal(
+  sections: readonly ProposedFormSection[], idPresi: readonly string[] = [],
+): CatalogFormSection[] {
+  const presi = [...idPresi]
+  return sections.map((sez) => {
+    const id = presi.includes(sez.id) ? freeSectionId(presi) : sez.id
+    presi.push(id)
+    return {
+      id,
+      title: { it: sez.titleIt, en: sez.titleEn },
+      columns: sez.columns === 2 ? 2 : 1,
+      items: sez.items.map((i) => ({
+        field: i.field,
+        required: i.required,
+        width: i.width === 'half' ? 'half' : 'full',
+        endUser: i.endUser,
+        readOnly: i.readOnly,
+        ...(i.visibleWhen === null ? {} : { visibleWhen: JSON.parse(i.visibleWhen) as FormCondition }),
+      })),
+    } satisfies CatalogFormSection
+  })
+}
+
+/** Il primo `section_N` libero. Anche il pulsante «Aggiungi una sezione» usa questo. */
+export function freeSectionId(esistenti: readonly string[]): string {
+  for (let i = 1; i < 999; i++) {
+    const candidato = `section_${String(i)}`
+    if (!esistenti.includes(candidato)) return candidato
+  }
+  return `section_${String(Date.now())}`
+}

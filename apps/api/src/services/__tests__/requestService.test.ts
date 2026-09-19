@@ -36,6 +36,9 @@ const h = vi.hoisted(() => {
 // I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
 // Ondata 6 di «Nulla cablato»: il formato dei numeri è del cliente; qui quello di fabbrica.
 vi.mock('../../lib/ticketNumbering.js', () => import('../../lib/__tests__/ticketNumberingFake.js'))
+// Le esclusioni CI: il doppio non esclude niente e REGISTRA le chiamate, che è
+// quello che il test dell'ondata 9 pretende.
+vi.mock('../../lib/ticketCIExclusions.js', () => import('../../lib/__tests__/ticketCIExclusionsFake.js'))
 vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession:  vi.fn(),
@@ -73,6 +76,8 @@ const { publishEvent } = await import('../../lib/publishEvent.js')
 const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
 
 const ctx = { tenantId: 'tenant-1', userId: 'user-1' }
+// Il doppio delle esclusioni, per pretendere che il controllo ci sia (ondata 9).
+const esclusioniFinte = await import('../../lib/__tests__/ticketCIExclusionsFake.js')
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 type Call = [string, Record<string, unknown>]
@@ -297,5 +302,61 @@ describe('createRequest: atomicità', () => {
   it('se l\'istanza di workflow non si crea, la creazione FALLISCE (niente ticket senza iter)', async () => {
     vi.mocked(workflowEngine.createInstance).mockRejectedValueOnce(new Error('nessuna definizione attiva'))
     await expect(createRequest({ title: 'T', priority: 'medium' }, ctx)).rejects.toThrow(/nessuna definizione attiva/)
+  })
+})
+
+
+/**
+ * UN CAMPO «RIFERIMENTO ALLA CMDB» È UNA STRADA PER COLLEGARE UN CI (ondata 9).
+ *
+ * `lib/ticketCIExclusions.ts` promette che un CI di un tipo escluso non si
+ * collega al ticket «da nessuna strada». I campi `ref_ci` dei moduli sono nati
+ * dopo quella promessa e scrivevano `FORM_REFERS_TO_CI` senza chiedere niente:
+ * bastava mettere un riferimento nel modulo per rimettere nel ticket un tipo
+ * che l'amministratore aveva escluso, e da lì tornava in filtri e report.
+ */
+describe('createRequest e le esclusioni dei tipi di CI', () => {
+  const moduloConRiferimento = JSON.stringify({
+    version: 1, revision: 1,
+    sections: [{ id: 's1', title: { it: 'Sezione' }, items: [{ field: 'server_interessato', required: false }] }],
+  })
+
+  function libreriaConRefCi() {
+    const precedente = vi.mocked(runQuery).getMockImplementation()!
+    vi.mocked(runQuery).mockImplementation(async (s: unknown, cypher: string, params?: Record<string, unknown>) => {
+      if (cypher.includes('MATCH (f:FormField')) {
+        return [{
+          id: 'f1', name: 'server_interessato', fieldType: 'ref_ci', label: 'Server', labels: null,
+          help: null, helps: null, required: false, vocabulary: null, validationScript: null, formula: null,
+          tableDefinition: null, inList: false, refTypes: null, shared: false, refFilter: null,
+          createdAt: null, updatedAt: null,
+        }]
+      }
+      // Il CI esiste: `assertRiferimentoEsiste` lo cerca per id.
+      if (cypher.includes('MATCH (n:ConfigurationItem')) return [{ id: 'ci-1' }]
+      return precedente(s, cypher, params)
+    })
+  }
+
+  it('i CI puntati dai campi di riferimento passano dal controllo delle esclusioni', async () => {
+    moduloDellaVoce = [{ form: moduloConRiferimento, name: 'Accesso al server' }]
+    libreriaConRefCi()
+    await createRequest({
+      title: 'T', priority: 'medium', catalogItemId: 'cat-1', formRevision: 1,
+      formAnswers: [{ name: 'server_interessato', refIds: ['ci-1'] }],
+    }, ctx)
+    expect(esclusioniFinte.assertCIsLinkable).toHaveBeenCalledWith(ctx.tenantId, 'service_request', ['ci-1'])
+  })
+
+  it('un CI di tipo escluso ferma la creazione: niente ticket a metà', async () => {
+    moduloDellaVoce = [{ form: moduloConRiferimento, name: 'Accesso al server' }]
+    libreriaConRefCi()
+    esclusioniFinte.assertCIsLinkable.mockRejectedValueOnce(new Error('These CIs cannot be linked to this service_request'))
+    await expect(createRequest({
+      title: 'T', priority: 'medium', catalogItemId: 'cat-1', formRevision: 1,
+      formAnswers: [{ name: 'server_interessato', refIds: ['ci-1'] }],
+    }, ctx)).rejects.toThrow(/cannot be linked/)
+    // Il controllo sta PRIMA della transazione: nessuna CREATE è partita.
+    expect(vi.mocked(runQuery).mock.calls.some((c) => String(c[1]).includes('CREATE (r:ServiceRequest'))).toBe(false)
   })
 })

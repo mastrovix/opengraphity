@@ -209,7 +209,7 @@ export function reportSDL(): string {
     metricField:   String
     groupByNodeId: ID
     groupByField:  String
-    """day (difetto), week o month: senza, una serie su sei mesi è un punto al giorno."""
+    """day (difetto), week, month o year: senza, una serie su sei mesi è un punto al giorno."""
     groupByGranularity: String
     limit:         Int!
     sortDir:       String!
@@ -217,7 +217,7 @@ export function reportSDL(): string {
     edges:         [ReportDesignEdge!]!
     """Perche questo disegno: il pezzo della descrizione da cui nasce."""
     why:           String!
-    discarded:     [FormDesignDiscard!]!
+    discarded:     [AIDesignDiscard!]!
     """Quello che il modello dice di non aver potuto fare."""
     notes:         [String!]!
   }

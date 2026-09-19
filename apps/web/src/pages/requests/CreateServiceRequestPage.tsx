@@ -11,6 +11,7 @@ import { useEnumValues } from '@/hooks/useEnumValues'
 import { colors, palette } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
 import {
@@ -234,6 +235,9 @@ export function CreateServiceRequestPage() {
   const [righeTabelle, setRigheTabelle] = useState<Record<string, readonly CatalogFormTableRow[]>>({})
   const [cancellaAllegato] = useMutation(DELETE_ATTACHMENT, { onError: (e) => showError(e) })
   const apollo = useApolloClient()
+  // I tipi di CI che una service request non può coinvolgere: servono alla
+  // ricerca dei campi «riferimento alla CMDB» (ondata 9).
+  const { excluded: ciEsclusi } = useTicketCIExclusions('service_request')
 
   const caricaFile = async (campo: string, file: File) => {
     setInCaricamento(campo)
@@ -268,9 +272,23 @@ export function CreateServiceRequestPage() {
       /* Il FILTRO del campo (19 set 2026): lo interpreta `allCIs`, che usa il
          costruttore condiviso della CMDB — qui si passa e basta. */
       const filtro = campo.refFilter != null && campo.refFilter !== '' ? campo.refFilter : undefined
+      /*
+       * LE ESCLUSIONI VALGONO ANCHE QUI (ondata 9). Un tipo di CI escluso per
+       * le service request non si offre: il server rifiuta comunque la
+       * creazione, ma offrire un CI che verrà rifiutato è una trappola —
+       * l'utente compila tutto e scopre il no all'invio. Se la lettura non è
+       * ancora arrivata (`undefined`) non si esclude niente, che è il
+       * comportamento di prima: il rifiuto del server resta la difesa vera.
+       */
+      const esclusi = ciEsclusi && ciEsclusi.length > 0 ? [...ciEsclusi] : undefined
       const r = await apollo.query<{ allCIs: { items: Array<{ id: string; name: string }> } }>({
         query: GET_ALL_CIS,
-        variables: { limit: 20, offset: 0, search: query, ...(tipi ? { ciTypes: tipi } : {}), ...(filtro ? { filters: filtro } : {}) },
+        variables: {
+          limit: 20, offset: 0, search: query,
+          ...(tipi ? { ciTypes: tipi } : {}),
+          ...(esclusi ? { excludeCiTypes: esclusi } : {}),
+          ...(filtro ? { filters: filtro } : {}),
+        },
         fetchPolicy: 'network-only',
       })
       return (r.data?.allCIs?.items ?? []).map((c) => ({ id: c.id, label: c.name }))

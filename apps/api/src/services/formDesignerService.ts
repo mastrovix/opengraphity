@@ -32,7 +32,7 @@
  */
 import { GraphQLError } from 'graphql'
 import { getSession, runQuery } from '@opengraphity/neo4j'
-import { CATALOG_FORM_VERSION, type CatalogFormDefinition } from '@opengraphity/types'
+import { CATALOG_FORM_VERSION, sectionsFromProposal, type CatalogFormDefinition } from '@opengraphity/types'
 import { config } from '../lib/config.js'
 import { logger } from '../lib/logger.js'
 import { assertAIFeature } from '../lib/aiSettings.js'
@@ -506,22 +506,16 @@ export async function proponiModulo(req: RichiestaDiProgetto): Promise<EsitoProp
 export function propostaComeDefinizione(
   proposta: PropostaValidata, esistente: CatalogFormDefinition | null,
 ): CatalogFormDefinition {
-  const sezioniNuove = proposta.sezioni.map((s) => ({
-    id: s.id,
-    title: { it: s.titleIt, en: s.titleEn },
-    columns: s.columns,
-    items: s.items.map((i) => ({
-      field: i.field,
-      required: i.required,
-      width: i.width,
-      endUser: i.endUser,
-      readOnly: i.readOnly,
-      ...(i.visibleWhen === null ? {} : { visibleWhen: JSON.parse(i.visibleWhen) as CatalogFormDefinition['sections'][number]['items'][number]['visibleWhen'] }),
-    })),
-  }))
+  /*
+   * La mappa è la STESSA del browser (`sectionsFromProposal` di
+   * @opengraphity/types, ondata 9): erano due copie, e il giorno in cui una
+   * voce del modulo prende una proprietà nuova due copie vogliono dire
+   * validare qui un documento e salvarne un altro di là.
+   */
+  const idEsistenti = (esistente?.sections ?? []).map((s) => s.id)
   return {
     version: CATALOG_FORM_VERSION,
     revision: esistente?.revision ?? 0,
-    sections: [...(esistente?.sections ?? []), ...sezioniNuove],
+    sections: [...(esistente?.sections ?? []), ...sectionsFromProposal(proposta.sezioni, idEsistenti)],
   }
 }

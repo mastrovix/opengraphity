@@ -1530,7 +1530,7 @@
         "postIncident": "Drafts resolution notes and groups similar incidents into problem candidates.",
         "kbArticles": "Drafts a knowledge base article from a resolved incident.",
         "embeddings": "Turns ticket and article texts into vectors for similar incidents and article suggestions. Off: nothing is computed, and the features that need it say so.",
-        "formDesigner": "Designs the sections and fields of a service request from a plain description. The proposal saves nothing: you review it on the canvas and accept it.",
+        "formDesigner": "Designs the sections and fields of a service request from a plain description. The proposal saves nothing: you review it in the form and accept it.",
         "reportDesigner": "Designs a report section from a plain description: entities, filters, grouping and chart. The proposal saves nothing: you review it in the builder, with the live preview."
       },
       "aiClusterGroup": "Problem candidates",
@@ -2588,7 +2588,7 @@
       },
       "ai": {
         "title": "Describe the service request and I will design it",
-        "subtitleNew": "Write what the request must ask. I propose sections and fields: nothing is saved until you put them on the canvas.",
+        "subtitleNew": "Write what the request must ask. I propose sections and fields: nothing is saved until you add them to the form.",
         "subtitleExisting": "Write what «{{item}}» is missing. I add the fields you describe, without touching the ones already there.",
         "button": "Design it with AI",
         "addButton": "Add fields with AI",
@@ -2622,17 +2622,17 @@
         "vocabulariesHelp": "If you accept, these land in your Dictionary and any field will be able to use them.",
         "discardedHeading": "What I discarded",
         "notesHeading": "What I could not do",
-        "apply": "Put it on the canvas",
+        "apply": "Add to the form",
         "again": "Rewrite the description",
-        "applyHelp": "I create the fields (and the value lists) in the library and put the sections on the canvas. The form is NOT published: you review it and then press «Save and publish».",
-        "applied_one": "One field on the canvas: review it and publish when you are happy.",
-        "applied_other": "{{count}} fields on the canvas: review them and publish when you are happy.",
-        "partial": "I stopped: only {{done}} were created. The canvas was not touched.",
-        "appliedPending_one": "One field created in the library. Now confirm the service request: the design lands on the canvas right after.",
-        "appliedPending_other": "{{count}} fields created in the library. Now confirm the service request: the design lands on the canvas right after.",
+        "applyHelp": "I create the fields (and the value lists) in the library and add the sections to the form. The form is NOT published: you review it and then press «Save and publish».",
+        "applied_one": "One field added to the form: review it and publish when you are happy.",
+        "applied_other": "{{count}} fields added to the form: review them and publish when you are happy.",
+        "partial": "I stopped: only {{done}} were created. The form was not touched.",
+        "appliedPending_one": "One field created in the library. Now confirm the service request: the design lands in the form right after.",
+        "appliedPending_other": "{{count}} fields created in the library. Now confirm the service request: the design lands in the form right after.",
         "abandoned_one": "Service request not created: the field already added to the library stays there, in the «Field library» tab.",
         "abandoned_other": "Service request not created: the {{count}} fields already added to the library stay there, in the «Field library» tab.",
-        "landingFailed": "All the fields were created, but the design did not reach the canvas. Try putting it there again: the fields already exist and will not be created twice."
+        "landingFailed": "All the fields were created, but the design did not reach the form. Try adding it again: the fields already exist and will not be created twice."
       }
     }
   },

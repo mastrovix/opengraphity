@@ -41,7 +41,8 @@ import { ChevronDown, ChevronRight, GripVertical, Plus, Sparkles, Trash2 } from 
 import { toast } from 'sonner'
 import {
   CATALOG_FORM_VERSION, FORM_CONDITION_OPS, FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_FIELD_TYPES,
-  canBeConditionSubject, emptyCatalogForm, isFormReferenceType, localizedText, nomeDaEtichetta,
+  canBeConditionSubject, emptyCatalogForm, freeSectionId, isFormReferenceType, localizedText, nomeDaEtichetta,
+  sectionsFromProposal,
   type CatalogFormDefinition, type CatalogFormItem, type CatalogFormSection,
   type FormAnswerValue, type FormAnswers, type FormCondition, type FormConditionOp,
 } from '@opengraphity/types'
@@ -396,14 +397,6 @@ function Maniglia({ etichetta, onAfferra, onSu, onGiu, evidenziata }: {
 }
 
 /** Un identificativo di sezione stabile e valido (minuscole, cifre, trattino basso). */
-function idSezione(esistenti: readonly string[]): string {
-  for (let i = 1; i < 999; i++) {
-    const candidato = `section_${i}`
-    if (!esistenti.includes(candidato)) return candidato
-  }
-  return `section_${Date.now()}`
-}
-
 export function FormBuilderPanel() {
   const { t, i18n } = useTranslation()
   const confirm = useConfirm()
@@ -1370,7 +1363,7 @@ export function FormBuilderPanel() {
           />
 
           <button type="button" style={{ ...bottone, marginTop: 14 }}
-            onClick={() => cambia((d) => ({ ...d, sections: [...d.sections, { id: idSezione(d.sections.map((s) => s.id)), title: {}, items: [] }] }))}>
+            onClick={() => cambia((d) => ({ ...d, sections: [...d.sections, { id: freeSectionId(d.sections.map((s) => s.id)), title: {}, items: [] }] }))}>
             <Plus size={14} /> {t('pages.catalogForms.builder.addSection')}
           </button>
             </div>
@@ -1464,21 +1457,14 @@ function haTitolo(sezione: CatalogFormSection): boolean {
  * aggiunte a mano e non ancora pubblicate: due `ai_1` sulla stessa tela
  * fanno rifiutare il salvataggio dopo che i campi sono stati creati.
  */
+/**
+ * Le sezioni del progetto AI, mappate dalla FUNZIONE CONDIVISA di
+ * `@opengraphity/types`: il server monta la stessa proposta per chiedersi se
+ * sarebbe salvabile, e due copie di questa mappa avrebbero voluto dire
+ * validare un documento e salvarne un altro (ondata 9).
+ */
 function sezioniDaProgetto(progetto: Progetto, giaSullaTela: readonly string[] = []): CatalogFormSection[] {
-  const presi = [...giaSullaTela]
-  return progetto.sections.map((sez) => ({
-    id: (() => { const id = presi.includes(sez.id) ? idSezione(presi) : sez.id; presi.push(id); return id })(),
-    title: { it: sez.titleIt, en: sez.titleEn },
-    columns: sez.columns === 2 ? 2 : 1,
-    items: sez.items.map((i) => ({
-      field: i.field,
-      required: i.required,
-      width: i.width,
-      endUser: i.endUser,
-      readOnly: i.readOnly,
-      ...(i.visibleWhen === null ? {} : { visibleWhen: JSON.parse(i.visibleWhen) as FormCondition }),
-    })),
-  }))
+  return sectionsFromProposal(progetto.sections, giaSullaTela)
 }
 
 function sposta<T>(list: readonly T[], da: number, a: number): T[] {
