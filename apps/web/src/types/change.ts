@@ -216,19 +216,11 @@ export interface MeData {
   teams: { id: string }[]
 }
 
-// ── MyTasks / TaskView combined row ───────────────────────────────────────────
-
-export interface TaskData {
-  id:         string
-  code:       string
-  kind:       string
-  role:       string
-  action:     string
-  status:     string
-  changeId:   string
-  changeCode: string
-  ciId:       string
-  ciName:     string
-  phase:      string
-  createdAt:  string
-}
+/*
+ * Qui stava `TaskData`, «MyTasks / TaskView combined row». Non la usava più
+ * nessuno — `MyTasksPage` ha la sua interfaccia locale — e dal 20 set 2026
+ * era anche BUGIARDA: `changeId`/`changeCode` non esistono più (le righe
+ * parlano di entità, perché ci sono anche i compiti di incident, problem e
+ * richieste) e il CI può mancare. Un tipo condiviso che mente è peggio di
+ * nessun tipo: il prossimo che tocca la pagina ci si fida.
+ */

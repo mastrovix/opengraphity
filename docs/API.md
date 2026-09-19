@@ -426,7 +426,7 @@ RFC-based change process. A change is created against one or more CIs (each CI m
 | `GET` | `/api/v1/changes` | `changes:read` | Paginated list. Query: `page`, `limit`, `phase` (filter by current workflow step) |
 | `GET` | `/api/v1/changes/:id` | `changes:read` | Change detail, including `affectedCIs` with per-CI task states |
 | `POST` | `/api/v1/changes` | `changes:write` | Create an RFC change (same logic as the GraphQL `createChange` mutation) |
-| `GET` | `/api/v1/changes/:id/tasks` | `changes:read` | All tasks of the change (functional/technical assessment, planning, validation, deployment, review) |
+| `GET` | `/api/v1/changes/:id/tasks` | `changes:read` | All tasks of the change: the per-CI ones (functional/technical assessment, planning, validation, deployment, review) plus the generic ones a workflow step created (`type: "task"`, with `title` and `step`, no CI) |
 | `POST` | `/api/v1/changes/:id/transition` | `changes:write` | Execute a workflow transition (guards apply; `400` if not available) |
 | `GET` | `/api/v1/changes/:id/status` | `changes:read` | Compact status: `code`, `phase`, `approvalStatus`, `deployApproved` |
 

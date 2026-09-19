@@ -197,7 +197,10 @@ describe('globalSearch', () => {
     await globalSearch(null, { query: 'serv' }, ctx)
 
     const calls = vi.mocked(runQuery).mock.calls
-    expect(calls.length).toBe(4) // fulltext + ci-by-id + tasks + kb
+    // fulltext + ci-by-id + task di change + task generici + kb (20 set 2026:
+    // i compiti generici condividono la numerazione TASK…, quindi un codice
+    // ricevuto per telefono deve trovarli).
+    expect(calls.length).toBe(5)
     for (const call of calls) {
       expect((call[2] as Record<string, unknown>)['tenantId']).toBe('tenant-1')
     }

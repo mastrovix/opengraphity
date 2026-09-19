@@ -200,15 +200,50 @@ async function globalSearch(
       ORDER BY t.code
       LIMIT toInteger($limit)
     `, { q, tenantId: ctx.tenantId, limit })
-    res.tasks = taskRows.map((r) => ({
-      id:         r.id,
-      code:       r.code,
-      taskType:   TASK_KIND[r.label] ?? r.label.toLowerCase(),
-      status:     r.status,
-      changeCode: r.changeCode,
-      changeId:   r.changeId,
-      ciName:     r.ciName,
-    }))
+    /**
+     * I COMPITI GENERICI (20 set 2026), quelli che un passo di workflow crea
+     * su un ticket qualunque. Condividono la numerazione `TASK…` con i
+     * compiti di change — per chi lavora sono la stessa cosa — quindi un
+     * codice ricevuto per telefono deve trovarli. Prima la ricerca guardava
+     * solo le cinque relazioni delle change, e `TASK00000042` non dava
+     * niente pur esistendo, scritto sul ticket e nell'audit.
+     *
+     * Il badge è il NUMERO DEL TICKET, che è quello che porta da qualche
+     * parte: un compito generico non ha una pagina sua.
+     */
+    const compitiRows = !puo('tasks') ? [] : await runQuery<{
+      id: string; code: string; state: string; titolo: string
+      entityNumber: string; entityId: string
+    }>(session, `
+      MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
+      WHERE coalesce(ticket.deleted, false) = false
+        AND k.code IS NOT NULL AND toLower(k.code) CONTAINS toLower($q)
+      RETURN k.id AS id, k.code AS code, coalesce(k.state, '') AS state, k.title AS titolo,
+             coalesce(ticket.number, ticket.code, '') AS entityNumber, ticket.id AS entityId
+      ORDER BY k.code
+      LIMIT toInteger($limit)
+    `, { q, tenantId: ctx.tenantId, limit })
+
+    res.tasks = [
+      ...taskRows.map((r) => ({
+        id:         r.id,
+        code:       r.code,
+        taskType:   TASK_KIND[r.label] ?? r.label.toLowerCase(),
+        status:     r.status,
+        changeCode: r.changeCode,
+        changeId:   r.changeId,
+        ciName:     r.ciName,
+      })),
+      ...compitiRows.map((r) => ({
+        id:         r.id,
+        code:       r.code,
+        taskType:   'task',
+        status:     r.state,
+        changeCode: r.entityNumber,
+        changeId:   r.entityId,
+        ciName:     r.titolo,
+      })),
+    ]
 
     // 4. KB articles: re-fetch by id with the canonical RETURN so the shared
     //    mapArticle mapper (incl. workflow instance fields) can be reused.

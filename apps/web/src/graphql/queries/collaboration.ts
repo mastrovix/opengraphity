@@ -46,3 +46,14 @@ export const GET_TICKET_TASKS = gql`
     }
   }
 `
+
+/**
+ * I campi RIFERIMENTO dei moduli, per la tendina «prendi la squadra dal
+ * campo» del disegnatore. Non `formFields`, che porta anche gli script di
+ * validazione e le formule del cliente: per una tendina bastano tre stringhe.
+ */
+export const GET_FORM_REFERENCE_FIELDS = gql`
+  query GetFormReferenceFields {
+    formReferenceFields { name label fieldType }
+  }
+`

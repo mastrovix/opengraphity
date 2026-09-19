@@ -9,7 +9,7 @@
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useQuery } from '@apollo/client/react'
-import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS, GET_FORM_FIELDS } from '@/graphql/queries'
+import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS, GET_FORM_REFERENCE_FIELDS } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { useEntityFieldMetas, useFormFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
 import { isStepFieldWritable, AUTOMATION_NOTIFICATION_CHANNELS } from '@opengraphity/types'
@@ -73,8 +73,8 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
    * squadra da lì invece che sceglierla una volta per tutte. Si chiedono solo
    * quando servono — è una query in più su ogni apertura del pannello.
    */
-  const { data: campiModulo } = useQuery<{ formFields: { name: string; label: string; fieldType: string }[] }>(
-    GET_FORM_FIELDS, { skip: actionType !== 'create_task', fetchPolicy: METAMODEL_FETCH_POLICY },
+  const { data: campiModulo } = useQuery<{ formReferenceFields: { name: string; label: string; fieldType: string }[] }>(
+    GET_FORM_REFERENCE_FIELDS, { skip: actionType !== 'create_task', fetchPolicy: METAMODEL_FETCH_POLICY },
   )
   /**
    * I campi da cui si può ricavare una squadra: quelli SQUADRA (la risposta
@@ -82,7 +82,7 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
    * tendina sola, perché per chi disegna è la stessa domanda: «da dove la
    * prendo?».
    */
-  const campiSquadra = (campiModulo?.formFields ?? []).filter((f) => f.fieldType === 'ref_team' || f.fieldType === 'ref_ci')
+  const campiSquadra = (campiModulo?.formReferenceFields ?? []).filter((f) => f.fieldType === 'ref_team' || f.fieldType === 'ref_ci')
 
   const teams = teamsData?.teams ?? []
   const users = usersData?.users ?? []

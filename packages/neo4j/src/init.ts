@@ -136,6 +136,29 @@ const CONSTRAINTS: SchemaStatement[] = [
     cypher: 'CREATE CONSTRAINT change_code_unique IF NOT EXISTS FOR (n:Change) REQUIRE (n.tenant_id, n.code) IS UNIQUE',
   },
   /**
+   * IL COMPITO GENERICO (20 set 2026). Tre invarianti che il codice già
+   * rispetta e che qui diventano dichiarate — e imposte dal database, che è
+   * l'unico posto dove una regola non si aggira:
+   *  - l'id è unico, come per ogni altra entità;
+   *  - la CHIAVE NATURALE `ticket + passo + azione` è unica: è quella che
+   *    impedisce i doppioni quando un ticket rientra in un passo. La MERGE
+   *    da sola regge (provato con cinque scritture simultanee: un compito
+   *    solo), ma con il vincolo l'invariante è scritta invece che sperata;
+   *  - il numero leggibile è unico nel cliente, come per i ticket.
+   */
+  {
+    label:  'Task.id unique',
+    cypher: 'CREATE CONSTRAINT task_id_unique IF NOT EXISTS FOR (k:Task) REQUIRE k.id IS UNIQUE',
+  },
+  {
+    label:  'Task(tenant_id, task_key) unique',
+    cypher: 'CREATE CONSTRAINT task_key_unique IF NOT EXISTS FOR (k:Task) REQUIRE (k.tenant_id, k.task_key) IS UNIQUE',
+  },
+  {
+    label:  'Task(tenant_id, code) unique',
+    cypher: 'CREATE CONSTRAINT task_code_unique IF NOT EXISTS FOR (k:Task) REQUIRE (k.tenant_id, k.code) IS UNIQUE',
+  },
+  /**
    * Il nome di un calendario di servizio è unico DAVVERO (revisione totale ·
    * C-34): l'unicità era controllata da una lettura fuori dalla transazione di
    * creazione, quindi due admin che salvavano «Ufficio» nello stesso istante
@@ -324,6 +347,14 @@ const INDEXES: SchemaStatement[] = [
   // WorkflowDefinition
   { label: 'WorkflowDefinition(tenant_id, entity_type)', cypher: 'CREATE INDEX wf_tenant_type IF NOT EXISTS FOR (w:WorkflowDefinition) ON (w.tenant_id, w.entity_type)' },
   { label: 'WorkflowDefinition(tenant_id, active)',       cypher: 'CREATE INDEX wf_tenant_active IF NOT EXISTS FOR (w:WorkflowDefinition) ON (w.tenant_id, w.active)' },
+  /**
+   * IL COMPITO GENERICO (20 set 2026), quello che un passo di workflow crea
+   * su un ticket qualunque. Senza indici «I miei compiti» scandiva TUTTI i
+   * compiti del cliente a ogni apertura della pagina, e ogni chiusura di un
+   * compito faceva una scansione per etichetta su `{id}`.
+   */
+  { label: 'Task(tenant_id, state)',                    cypher: 'CREATE INDEX task_tenant_state IF NOT EXISTS FOR (k:Task) ON (k.tenant_id, k.state)' },
+  { label: 'Task(tenant_id, step_name)',                cypher: 'CREATE INDEX task_tenant_step IF NOT EXISTS FOR (k:Task) ON (k.tenant_id, k.step_name)' },
   // ChangeTask
   { label: 'ChangeTask(change_id)',                     cypher: 'CREATE INDEX change_task_change IF NOT EXISTS FOR (t:ChangeTask) ON (t.change_id)' },
   { label: 'ChangeTask(tenant_id, status)',              cypher: 'CREATE INDEX change_task_tenant_status IF NOT EXISTS FOR (t:ChangeTask) ON (t.tenant_id, t.status)' },

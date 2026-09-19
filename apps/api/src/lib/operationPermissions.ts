@@ -75,12 +75,12 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
     query: ['ticketTasks'],
   },
   /**
-   * La LIBRERIA DEI CAMPI dei moduli la legge anche chi disegna un workflow
-   * (20 set 2026): l'azione «crea un compito» offre di prendere la squadra
-   * da un campo del modulo, e per offrirlo deve sapere quali campi squadra
-   * esistono. È una lettura di metamodello, non di dati di un cliente.
+   * I CAMPI RIFERIMENTO dei moduli, per il disegnatore dei workflow: nome,
+   * etichetta e tipo, niente altro. Prima si allargava `formFields` a
+   * `config.workflow`, ma quella porta anche gli script di validazione e le
+   * formule del cliente — per una tendina bastano tre stringhe (20 set 2026).
    */
-  { anyOf: ['config.catalog', 'config.workflow'], query: ['formFields'] },
+  { anyOf: ['config.workflow', 'config.catalog'], query: ['formReferenceFields'] },
   {
     anyOf: ['incident.write', 'problem.write', 'change.write', 'request.write', 'kb.write'],
     mutation: ['claimTicketTask', 'completeTicketTask', 'cancelTicketTask'],
@@ -263,7 +263,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   {
     anyOf: ['config.catalog'],
-    query: ['assessmentQuestionsAdmin', 'questionCITypeAssignments', 'catalogForm', 'catalogFormLimits'],
+    query: ['assessmentQuestionsAdmin', 'questionCITypeAssignments', 'formFields', 'catalogForm', 'catalogFormLimits'],
     mutation: ['saveCatalogForm',
       // La PROPOSTA dell'AI non scrive niente, quindi basta poter comporre un
       // modulo; se chi chiede non ha anche `config.metamodel` la proposta

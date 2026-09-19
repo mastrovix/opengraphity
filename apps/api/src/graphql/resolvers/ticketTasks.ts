@@ -16,7 +16,7 @@
 import { requirePermission } from '../../lib/permissions.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { getSession } from '@opengraphity/neo4j'
-import { runQueryOne } from './ci-utils.js'
+import { runQuery, runQueryOne } from './ci-utils.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import {
@@ -246,4 +246,34 @@ export async function cancelTicketTask(
   await riprovaLeTransizioniAutomatiche(ctx, prima)
   void audit(ctx, 'task.cancelled', 'Task', args.taskId, { code: prima.code, entityId: prima.entityId, reason: motivo })
   return (await compito(ctx.tenantId, args.taskId))!
+}
+
+/**
+ * I CAMPI RIFERIMENTO dei moduli, per il disegnatore dei workflow (20 set
+ * 2026).
+ *
+ * L'azione «crea un compito» offre «prendi la squadra dal campo X», e per
+ * offrirlo deve sapere quali campi esistono. Prima si allargava il permesso
+ * di `formFields`, che però porta anche `validationScript` e `formula` —
+ * gli script del cliente — per una tendina che ha bisogno di tre stringhe.
+ * Questa query dà quelle tre e basta.
+ */
+export async function formReferenceFields(
+  _: unknown,
+  __: unknown,
+  ctx: GraphQLContext,
+): Promise<{ name: string; label: string; fieldType: string }[]> {
+  requirePermission(ctx, 'config.workflow')
+  const session = getSession(undefined, 'READ')
+  try {
+    const righe = await runQuery<{ name: string; label: string | null; fieldType: string }>(session, `
+      MATCH (f:FormField {tenant_id: $tenantId})
+      WHERE f.field_type IN $tipi
+      RETURN f.name AS name, f.label AS label, f.field_type AS fieldType
+      ORDER BY coalesce(f.label, f.name)
+    `, { tenantId: ctx.tenantId, tipi: ['ref_ci', 'ref_user', 'ref_team'] })
+    return righe.map((r) => ({ name: r.name, label: r.label || r.name, fieldType: r.fieldType }))
+  } finally {
+    await session.close()
+  }
 }

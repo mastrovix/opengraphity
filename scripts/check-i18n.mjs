@@ -409,6 +409,15 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // disegnatori del prodotto — «Workflow Designer», «CI Type Designer»,
   // «Service Request Designer»: e il nome della cosa, non una frase.
   'pages.reportBuilder.title',
+  /**
+   * «Task» è la parola che il PRODOTTO usa già in italiano per questa cosa:
+   * la voce di menu è «I miei task», il conteggio dice «{{total}} task», la
+   * change ha «Task attivi». Il compito generico nuovo (20 set 2026) si
+   * chiama così per non avere due parole per la stessa cosa nella stessa
+   * schermata. Se un giorno si decide di dire «compito», si cambia
+   * dappertutto insieme, non qui da solo.
+   */
+  'tasks.kindOne',
   // «Designer» e «Workflow» nominano due cose del prodotto e si chiamano cosi
   // anche in italiano: il primo e la parola che il prodotto usa gia nella barra
   // laterale («Workflow Designer», «CI Type Designer»), il secondo e il nome

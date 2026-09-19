@@ -7341,18 +7341,18 @@
     }
   },
   "tasks": {
-    "title": "Compiti",
+    "title": "Task",
     "complete": "Fatto",
     "cancel": "Annulla",
-    "completed": "Compito {{code}} chiuso.",
-    "cancelled": "Compito {{code}} annullato.",
+    "completed": "Task {{code}} chiuso.",
+    "cancelled": "Task {{code}} annullato.",
     "noTeam": "nessuna squadra",
     "due": "entro il {{date}}",
     "cancelledBecause": "Annullato: {{reason}}",
     "cancelTitle": "Annullare {{code}}?",
-    "cancelExplain": "Il compito resta nella storia del ticket, annullato. Scrivi perché non serve più: chi lo aspettava deve saperlo.",
+    "cancelExplain": "Il task resta nella storia del ticket, annullato. Scrivi perché non serve più: chi lo aspettava deve saperlo.",
     "cancelReasonPlaceholder": "Es. la macchina era già pronta in magazzino",
-    "cancelConfirm": "Annulla il compito",
+    "cancelConfirm": "Annulla il task",
     "state": {
       "open": "Da fare",
       "completed": "Fatto",
@@ -7360,7 +7360,7 @@
       "waiting": "In attesa"
     },
     "waitingFor": "aspetta «{{title}}»",
-    "kindOne": "Compito",
-    "titleStep": "Compiti del passo"
+    "kindOne": "Task",
+    "titleStep": "Task del passo"
   }
 }

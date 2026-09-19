@@ -57,6 +57,15 @@ export function buildBaseSDL(): string {
     serviceCatalogItems(activeOnly: Boolean): [ServiceCatalogItem!]!
     """La libreria dei campi dei moduli (ondata 1 dei moduli del catalogo)."""
     formFields: [FormField!]!
+    """
+    I soli campi RIFERIMENTO dei moduli — nome, etichetta, tipo — per chi
+    disegna un workflow: l'azione «crea un compito» offre di prendere la
+    squadra da un campo, e per offrirlo deve sapere quali campi esistono.
+    Esiste separata da \`formFields\` perché quella porta anche gli script di
+    validazione e le formule del cliente, e per una tendina non servono (20
+    set 2026).
+    """
+    formReferenceFields: [FormReferenceField!]!
     """Il modulo di una voce, per il costruttore."""
     catalogForm(itemId: ID!): CatalogForm!
     """Il tetto tecnico sui moduli e quanto ne e' gia' occupato (ondata 4)."""

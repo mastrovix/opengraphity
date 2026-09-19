@@ -41,6 +41,14 @@ export function ticketTasksSDL(): string {
     cancelReason:  String
   }
 
+  """Un campo «riferimento» di un modulo, ridotto a quello che serve a una tendina."""
+  type FormReferenceField {
+    name:      String!
+    label:     String!
+    """ref_ci | ref_user | ref_team."""
+    fieldType: String!
+  }
+
   extend type Query {
     """I compiti di un ticket, dal primo creato."""
     ticketTasks(entityId: ID!): [TicketTask!]!
