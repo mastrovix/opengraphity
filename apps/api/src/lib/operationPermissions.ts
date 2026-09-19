@@ -229,6 +229,10 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
     anyOf: ['config.catalog'],
     query: ['assessmentQuestionsAdmin', 'questionCITypeAssignments', 'formFields', 'catalogForm', 'catalogFormLimits'],
     mutation: ['saveCatalogForm',
+      // La PROPOSTA dell'AI non scrive niente, quindi basta poter comporre un
+      // modulo; se chi chiede non ha anche `config.metamodel` la proposta
+      // esce di solo riuso, perche' i campi nuovi non potrebbe crearli.
+      'proposeServiceRequestDesign',
       'createServiceCatalogItem', 'updateServiceCatalogItem', 'createAssessmentQuestion', 'updateAssessmentQuestion',
       'deleteAssessmentQuestion', 'assignQuestionToCIType', 'removeQuestionFromCIType', 'setQuestionCore'],
   },

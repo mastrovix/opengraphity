@@ -18,6 +18,14 @@
  * e dice chi può riaccenderla. La proprietà assente è «tutto acceso, 0,72 e 3»,
  * cioè il comportamento di prima, e la migrazione `20260927_1020_ai_settings`
  * lo scrive esplicito.
+ *
+ * ## Una funzione che nasce dopo (19 set 2026)
+ * `formDesigner` — l'AI che disegna il modulo di una service request da una
+ * descrizione — è il settimo interruttore, e i tenant che avevano già salvato
+ * le loro impostazioni non ce l'hanno. In LETTURA l'interruttore assente vale
+ * fabbrica (acceso), che è la regola di questo file; la migrazione
+ * `20261005_1090` lo scrive esplicito su chi aveva già salvato, così nel
+ * Dizionario delle impostazioni non resta un buco che nessuno sa spiegare.
  */
 import { GraphQLError } from 'graphql'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
@@ -25,7 +33,7 @@ import { NotFoundError, ValidationError } from './errors.js'
 import { createMetamodelCache } from './metamodelCache.js'
 import { invalidateSchema } from './schemaInvalidator.js'
 
-export const AI_FEATURES = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings'] as const
+export const AI_FEATURES = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner'] as const
 export type AIFeature = (typeof AI_FEATURES)[number]
 
 export interface AISettings {
@@ -37,7 +45,7 @@ export interface AISettings {
 }
 
 export const FACTORY_AI_SETTINGS: Readonly<AISettings> = {
-  features: { triage: true, assistant: true, reportAnalysis: true, postIncident: true, kbArticles: true, embeddings: true },
+  features: { triage: true, assistant: true, reportAnalysis: true, postIncident: true, kbArticles: true, embeddings: true, formDesigner: true },
   clusterMinSimilarity: 0.72,
   clusterMinSize: 3,
 }
@@ -74,7 +82,15 @@ export async function assertAIFeature(tenantId: string, feature: AIFeature): Pro
   if (!(await aiFeatureEnabled(tenantId, feature))) throw aiDisabledError(feature)
 }
 
-export function assertAISettings(raw: unknown): AISettings {
+/**
+ * `tollerante` serve a LEGGERE impostazioni scritte prima che una funzione
+ * esistesse (19 set 2026: `formDesigner`). In scrittura no: l'interruttore
+ * mancante in un input verrebbe da un client che non conosce quella funzione, e
+ * accettarlo vorrebbe dire spegnere in silenzio quello che l'utente vede acceso.
+ * In lettura l'assenza vale quello che vale dappertutto qui: il valore di
+ * fabbrica, cioè il comportamento di prima.
+ */
+export function assertAISettings(raw: unknown, opts: { tollerante?: boolean } = {}): AISettings {
   const obj = (raw ?? {}) as Record<string, unknown>
   const features = (obj['features'] ?? null) as Record<string, unknown> | null
   if (!features || typeof features !== 'object') {
@@ -83,6 +99,7 @@ export function assertAISettings(raw: unknown): AISettings {
   const out = {} as Record<AIFeature, boolean>
   for (const f of AI_FEATURES) {
     if (typeof features[f] !== 'boolean') {
+      if (opts.tollerante === true && !(f in features)) { out[f] = FACTORY_AI_SETTINGS.features[f]; continue }
       throw new ValidationError(`AI settings: "${f}" must be on or off`, { key: 'errors.aiSettings.shape', params: {} })
     }
     out[f] = features[f] as boolean
@@ -109,7 +126,7 @@ async function loadSettings(tenantId: string): Promise<AISettings & { isDefault:
     let parsed: unknown
     try { parsed = JSON.parse(String(row.raw)) }
     catch (e) { throw new Error(`Tenant ${tenantId}: ai_settings is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
-    return { ...assertAISettings(parsed), isDefault: false }
+    return { ...assertAISettings(parsed, { tollerante: true }), isDefault: false }
   } finally {
     await session.close()
   }

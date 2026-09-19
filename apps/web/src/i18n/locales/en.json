@@ -1519,7 +1519,8 @@
         "reportAnalysis": "Report analysis",
         "postIncident": "Post-incident notes and problem candidates",
         "kbArticles": "Knowledge base drafts",
-        "embeddings": "Similarity (embeddings)"
+        "embeddings": "Similarity (embeddings)",
+        "formDesigner": "Service request designer"
       },
       "aiFeatureHelp": {
         "triage": "Suggests severity, category and team while an incident is being opened.",
@@ -1527,7 +1528,8 @@
         "reportAnalysis": "Answers questions on your data in AI Analysis.",
         "postIncident": "Drafts resolution notes and groups similar incidents into problem candidates.",
         "kbArticles": "Drafts a knowledge base article from a resolved incident.",
-        "embeddings": "Turns ticket and article texts into vectors for similar incidents and article suggestions. Off: nothing is computed, and the features that need it say so."
+        "embeddings": "Turns ticket and article texts into vectors for similar incidents and article suggestions. Off: nothing is computed, and the features that need it say so.",
+        "formDesigner": "Designs the sections and fields of a service request from a plain description. The proposal saves nothing: you review it on the canvas and accept it."
       },
       "aiClusterGroup": "Problem candidates",
       "aiClusterSimilarity": "Minimum similarity (0.50–0.99)",
@@ -4404,6 +4406,11 @@
       "cellVocabularyEmpty": "Row {{row}} of \"{{field}}\": the column \"{{column}}\" chooses from a Dictionary that is still empty. Fill it in Settings → Dictionary.",
       "rowRequired": "The table \"{{field}}\" needs at least one row.",
       "notATable": "A {{fieldType}} field takes no table columns: only a table field does."
+    },
+    "formDesigner": {
+      "emptyPrompt": "Write what the service request must ask: with no description there is nothing to design.",
+      "promptTooLong": "The description is too long (max {{max}} characters). Describe what you need, not the full specification.",
+      "badAnswer": "The model answer cannot be read. Try again: if it happens twice, describe the request in simpler words."
     }
   },
   "errorBoundary": {
@@ -6994,5 +7001,35 @@
   "entities": {
     "incident": "incident",
     "problem": "problem"
+  },
+  "proposal": {
+    "discard": {
+      "newVocabularyNotAllowed": "New value list not created: creating one needs the metamodel permission.",
+      "vocabularyName": "«{{name}}» is not a valid name for a value list.",
+      "vocabularyExists": "The Dictionary already has a list called «{{name}}»: that one is used, with its own values.",
+      "vocabularyValues": "The list «{{name}}» had fewer than two values: a choice with one value is not a choice.",
+      "noLabel": "Field with no label: discarded, because the label decides the property name.",
+      "formFull": "The form is at its ceiling of {{max}} fields: the rest did not fit.",
+      "reuseUnknown": "The field «{{name}}» is not in the library: a new one was proposed instead.",
+      "reuseTypeKept": "«{{name}}» already exists as {{kept}}: it stays {{kept}} and not {{asked}}, because the type of a field with answers already collected does not change.",
+      "alreadyInForm": "«{{name}}» is already in this form: added only once.",
+      "newFieldNotAllowed": "New field not proposed: creating a field needs the metamodel permission. The library fields were reused instead.",
+      "unknownType": "«{{fieldType}}» is not a field type the designer can draw.",
+      "vocabularyUnknown": "The value list «{{name}}» does not exist in the Dictionary.",
+      "choiceWithoutVocabulary": "A {{fieldType}} field with no value list would offer no choice at all.",
+      "vocabularyNotAllowed": "A {{fieldType}} field does not read the Dictionary: the list was dropped.",
+      "ciTypeUnknown": "The CI type «{{name}}» does not exist in your CMDB.",
+      "formulaNotAllowed": "A {{fieldType}} field cannot be computed: the formula was dropped.",
+      "scriptNotAllowed": "A {{fieldType}} field takes no validation script.",
+      "scriptingOff": "Your organization's scripts are switched off: the proposed code ({{kind}}) was not kept.",
+      "scriptInvalid": "The proposed code ({{kind}}) does not pass the check: {{message}}.",
+      "conditionField": "Visibility rule discarded: it looked at «{{name}}», which this form does not have.",
+      "conditionSubject": "Visibility rule discarded: a {{fieldType}} field like «{{name}}» cannot be evaluated.",
+      "conditionOp": "Visibility rule discarded: «{{op}}» is not a comparison the form can make.",
+      "conditionValue": "Visibility rule discarded: «{{op}}» on «{{name}}» needs a value to compare with.",
+      "categoryUnknown": "The category «{{name}}» is not one of the Dictionary's: pick one by hand.",
+      "priorityUnknown": "The priority «{{name}}» is not one of the Dictionary's: pick one by hand.",
+      "workflowUnknown": "The workflow «{{name}}» does not exist: the AI creates none, pick one of yours."
+    }
   }
 }

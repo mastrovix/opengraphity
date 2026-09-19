@@ -39,7 +39,7 @@ export const GET_ATTACHMENT_POLICY = gql`
 export const GET_AI_SETTINGS = gql`
   query GetAISettings {
     aiSettings {
-      features { triage assistant reportAnalysis postIncident kbArticles embeddings }
+      features { triage assistant reportAnalysis postIncident kbArticles embeddings formDesigner }
       clusterMinSimilarity clusterMinSize platformConfigured isDefault
     }
   }

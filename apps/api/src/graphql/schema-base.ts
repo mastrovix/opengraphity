@@ -439,6 +439,19 @@ export function buildBaseSDL(): string {
     """Salva E pubblica il modulo della voce: la revision sale di uno."""
     saveCatalogForm(itemId: ID!, definition: String!): CatalogForm!
     """
+    PROGETTA una service request da una descrizione a parole (19 set 2026).
+    Non scrive niente: restituisce una proposta che atterra sulla tela del
+    designer, e si applica accettandola (createFormField / createEnumType /
+    createServiceCatalogItem / saveCatalogForm). Con \`itemId\` aggiunge campi al
+    modulo di una voce esistente senza toccare quelli che ci sono.
+
+    Si ferma prima del modello se la funzione e spenta in Organizzazione -> AI.
+    Chi non puo' creare campi (\`config.metamodel\`) riceve una proposta di solo
+    RIUSO: una proposta che il richiedente non puo' applicare sarebbe una
+    promessa che l'interfaccia non tiene.
+    """
+    proposeServiceRequestDesign(prompt: String!, itemId: ID): FormDesignProposal!
+    """
     Cambia il tetto tecnico sui moduli. Non abbassa nulla di gia' scritto: una
     libreria gia' oltre il nuovo tetto resta, ma non cresce piu'.
     """

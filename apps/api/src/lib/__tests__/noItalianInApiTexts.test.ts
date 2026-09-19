@@ -19,7 +19,8 @@
  *    per valore spedite): contengono l'italiano di proposito;
  *  - le descrizioni SDL (`schema*.ts`): documentazione dello schema;
  *  - le righe di log: diagnostica per chi gestisce l'installazione;
- *  - i prompt dei modelli (assistente, triage, report AI, post-incident):
+ *  - i prompt dei modelli (assistente, triage, report AI, post-incident,
+ *    progettista dei moduli):
  *    istruzioni al modello, che risponde nella lingua che gli si chiede;
  *  - script e migrazioni.
  */
@@ -34,6 +35,10 @@ const EXCLUDED_DIRS = new Set(['__tests__', 'scripts', 'migrations'])
 const EXCLUDED_FILES = new Set([
   'lib/systemText.ts', 'lib/pdf/texts.ts', 'lib/enumValueLabels.ts',
   'services/assistantService.ts', 'services/triageService.ts', 'services/reportAgent.ts', 'services/postIncidentService.ts',
+  // Il progettista dei moduli (19 set 2026): prompt di sistema e `description`
+  // dello schema JSON sono istruzioni AL MODELLO, che poi scrive etichette e
+  // spiegazioni nella lingua del cliente (gliela si chiede nel system).
+  'services/formDesignerService.ts',
 ])
 
 function files(dir: string, out: string[] = []): string[] {

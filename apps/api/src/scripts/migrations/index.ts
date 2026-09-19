@@ -125,6 +125,7 @@ import { portalSeveritiesSeed } from './20261005_1050_portal_severities_seed.js'
 import { defaultLanguageSeed } from './20261005_1060_default_language_seed.js'
 import { enumIdenticalCopies } from './20261005_1070_enum_identical_copies.js'
 import { formFieldsShared } from './20261005_1080_form_fields_shared.js'
+import { aiSettingsFormDesigner } from './20261005_1090_ai_settings_form_designer.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -235,4 +236,5 @@ export const MIGRATIONS: readonly Migration[] = [
   defaultLanguageSeed,
   enumIdenticalCopies,
   formFieldsShared,
+  aiSettingsFormDesigner,
 ]

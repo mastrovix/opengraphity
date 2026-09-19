@@ -16,7 +16,17 @@ import { Button } from '@/components/Button'
 import { colors } from '@/lib/tokens'
 import { OrgSection, Hint, GroupLabel } from './shared'
 
-export const AI_FEATURE_KEYS = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings'] as const
+/**
+ * Le funzioni AI, nell'ordine in cui si leggono.
+ *
+ * ATTENZIONE: questo elenco vive in quattro posti — `AI_FEATURES` nell'API, il
+ * tipo e l'input GraphQL, e qui — e aggiungerne una in tre su quattro dava un
+ * interruttore che non si vedeva (trovato il 19 set 2026 aggiungendo
+ * `formDesigner`). Il guardiano che li tiene allineati sta in
+ * `apps/api/src/graphql/__tests__/aiFeatureSwitches.test.ts`; la selezione
+ * della query in `graphql/queries/organization.ts` va aggiornata con questa.
+ */
+export const AI_FEATURE_KEYS = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner'] as const
 export type AIFeatureKey = (typeof AI_FEATURE_KEYS)[number]
 
 interface Settings { features: Record<AIFeatureKey, boolean>; clusterMinSimilarity: number; clusterMinSize: number; platformConfigured: boolean; isDefault: boolean }

@@ -1519,7 +1519,8 @@
         "reportAnalysis": "Analisi dei report",
         "postIncident": "Note post-incident e candidati problem",
         "kbArticles": "Bozze della knowledge base",
-        "embeddings": "Somiglianze (embedding)"
+        "embeddings": "Somiglianze (embedding)",
+        "formDesigner": "Designer delle service request"
       },
       "aiFeatureHelp": {
         "triage": "Propone severità, categoria e team mentre si apre un incident.",
@@ -1527,7 +1528,8 @@
         "reportAnalysis": "Risponde alle domande sui tuoi dati in AI Analysis.",
         "postIncident": "Scrive la bozza delle note di risoluzione e raggruppa gli incident simili in candidati problem.",
         "kbArticles": "Scrive la bozza di un articolo della knowledge base da un incident risolto.",
-        "embeddings": "Trasforma i testi di ticket e articoli in vettori per gli incident simili e i suggerimenti di articoli. Spenta: non si calcola niente, e le funzioni che ne hanno bisogno lo dicono."
+        "embeddings": "Trasforma i testi di ticket e articoli in vettori per gli incident simili e i suggerimenti di articoli. Spenta: non si calcola niente, e le funzioni che ne hanno bisogno lo dicono.",
+        "formDesigner": "Disegna sezioni e campi di una service request da una descrizione a parole. La proposta non salva niente: la rivedi sulla tela e la accetti tu."
       },
       "aiClusterGroup": "Candidati problem",
       "aiClusterSimilarity": "Somiglianza minima (0,50–0,99)",
@@ -4404,6 +4406,11 @@
       "cellVocabularyEmpty": "Riga {{row}} di «{{field}}»: la colonna «{{column}}» sceglie da un Dizionario ancora vuoto. Riempilo in Configurazione → Dizionario.",
       "rowRequired": "La tabella «{{field}}» vuole almeno una riga.",
       "notATable": "Un campo {{fieldType}} non vuole colonne: le ha solo un campo tabella."
+    },
+    "formDesigner": {
+      "emptyPrompt": "Scrivi cosa deve chiedere la service request: senza descrizione non c'è niente da disegnare.",
+      "promptTooLong": "La descrizione è troppo lunga (massimo {{max}} caratteri). Descrivi cosa serve, non il capitolato.",
+      "badAnswer": "La risposta del modello non è leggibile. Riprova: se succede di nuovo, descrivi la richiesta con parole più semplici."
     }
   },
   "errorBoundary": {
@@ -6994,5 +7001,35 @@
   "entities": {
     "incident": "incident",
     "problem": "problem"
+  },
+  "proposal": {
+    "discard": {
+      "newVocabularyNotAllowed": "Elenco di valori nuovo non creato: per crearne uno serve il permesso sul metamodello.",
+      "vocabularyName": "«{{name}}» non è un nome valido per un elenco di valori.",
+      "vocabularyExists": "Nel Dizionario esiste già un elenco chiamato «{{name}}»: si usa quello, con i suoi valori.",
+      "vocabularyValues": "L'elenco «{{name}}» aveva meno di due valori: una scelta con un valore solo non è una scelta.",
+      "noLabel": "Campo senza etichetta: scartato, perché l'etichetta decide il nome della proprietà.",
+      "formFull": "Il modulo è al suo tetto di {{max}} campi: gli altri non sono entrati.",
+      "reuseUnknown": "Il campo «{{name}}» non è in libreria: ne è stato proposto uno nuovo.",
+      "reuseTypeKept": "«{{name}}» esiste già come {{kept}}: resta {{kept}} e non {{asked}}, perché il tipo di un campo con risposte già raccolte non si cambia.",
+      "alreadyInForm": "«{{name}}» è già in questo modulo: aggiunto una volta sola.",
+      "newFieldNotAllowed": "Campo nuovo non proposto: per creare un campo serve il permesso sul metamodello. Sono stati riusati quelli in libreria.",
+      "unknownType": "«{{fieldType}}» non è un tipo di campo che il designer sa disegnare.",
+      "vocabularyUnknown": "L'elenco di valori «{{name}}» non esiste nel Dizionario.",
+      "choiceWithoutVocabulary": "Un campo {{fieldType}} senza elenco di valori non offrirebbe nessuna scelta.",
+      "vocabularyNotAllowed": "Un campo {{fieldType}} non pesca dal Dizionario: l'elenco è stato tolto.",
+      "ciTypeUnknown": "Il tipo di CI «{{name}}» non esiste nella tua CMDB.",
+      "formulaNotAllowed": "Un campo {{fieldType}} non si può calcolare: la formula è stata tolta.",
+      "scriptNotAllowed": "Un campo {{fieldType}} non prende uno script di validazione.",
+      "scriptingOff": "Gli script della tua organizzazione sono spenti: il codice proposto ({{kind}}) non è stato tenuto.",
+      "scriptInvalid": "Il codice proposto ({{kind}}) non passa il controllo: {{message}}.",
+      "conditionField": "Regola di visibilità scartata: guardava «{{name}}», che in questo modulo non c'è.",
+      "conditionSubject": "Regola di visibilità scartata: un campo {{fieldType}} come «{{name}}» non si può valutare.",
+      "conditionOp": "Regola di visibilità scartata: «{{op}}» non è un confronto che il modulo sa fare.",
+      "conditionValue": "Regola di visibilità scartata: «{{op}}» su «{{name}}» ha bisogno di un valore da confrontare.",
+      "categoryUnknown": "La categoria «{{name}}» non è fra quelle del Dizionario: da scegliere a mano.",
+      "priorityUnknown": "La priorità «{{name}}» non è fra quelle del Dizionario: da scegliere a mano.",
+      "workflowUnknown": "Il workflow «{{name}}» non esiste: l'AI non ne crea, scegline uno dei tuoi."
+    }
   }
 }

@@ -24,6 +24,7 @@ import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { assertFormSize, assertLibraryRoom, assertLimitValue, CATALOG_FORM_LIMIT_MAX, CATALOG_FORM_LIMIT_MIN, catalogFormLimits as leggiTetti } from '../../lib/catalogFormLimits.js'
 import { assertFormTable, etichetteDeiValori, parseFormTable } from '../../lib/catalogForm.js'
 import { ticketPropsOf } from '../../lib/ticketProps.js'
+import { proponiModulo } from '../../services/formDesignerService.js'
 import { labelFor, type EnumValueLabels } from '../../lib/enumValueLabels.js'
 import { isLingua, languageFor } from '../../lib/tenantLanguage.js'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
@@ -544,6 +545,39 @@ export const catalogFormResolvers = {
         if (!row) throw new Error(`Tenant ${ctx.tenantId} has no :Tenant node: fix the tenant before changing the catalog form limits`)
         return { maxLibraryFields, maxFieldsPerForm, maxTableRows, libraryFieldsUsed: Number(row.n ?? 0), min: CATALOG_FORM_LIMIT_MIN, max: CATALOG_FORM_LIMIT_MAX }
       } finally { await write.close() }
+    },
+
+    /**
+     * «DESCRIVIMI LA SERVICE REQUEST E TE LA DISEGNO» (19 set 2026).
+     *
+     * Non scrive niente: la proposta atterra sulla tela del designer e si
+     * applica accettandola, con le mutation di sempre — cosi ogni scrittura
+     * passa dai controlli che gia esistono, e l'AI non ha una porta sua.
+     *
+     * `consentiNuovi` guarda `config.metamodel`: chi puo solo COMPORRE un
+     * modulo riceve una proposta di solo riuso, perche una proposta che il
+     * richiedente non potrebbe applicare sarebbe una promessa a vuoto.
+     */
+    proposeServiceRequestDesign: async (_: unknown, args: { prompt: string; itemId?: string | null }, ctx: GraphQLContext) => {
+      const esito = await proponiModulo({
+        tenantId: ctx.tenantId,
+        prompt: args.prompt,
+        itemId: args.itemId ?? null,
+        consentiNuovi: ctx.permissions.has('config.metamodel'),
+      })
+      return {
+        prompt: esito.prompt,
+        maxFieldsPerForm: esito.maxFieldsPerForm,
+        item: esito.voce,
+        sections: esito.sezioni,
+        newFields: esito.campiNuovi,
+        newVocabularies: esito.vocabolariNuovi,
+        // I parametri viaggiano come JSON: sono una mappa aperta (nomi di
+        // campi, tipi, messaggi di un validatore) e tipizzarla vorrebbe dire
+        // un tipo GraphQL per ogni scarto.
+        discarded: esito.scartati.map((x) => ({ cosa: x.cosa, key: x.key, params: JSON.stringify(x.params) })),
+        notes: esito.note,
+      }
     },
 
     saveCatalogForm: async (_: unknown, args: { itemId: string; definition: string }, ctx: GraphQLContext) => {

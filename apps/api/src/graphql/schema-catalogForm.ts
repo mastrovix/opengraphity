@@ -212,6 +212,107 @@ export function catalogFormSDL(): string {
     max:               Int!
   }
 
+  # ── La proposta dell'AI (19 set 2026) ─────────────────────────────────────
+  #
+  # Tipizzata e non una stringa JSON, al contrario della definizione del
+  # modulo: questa forma e NOSTRA, non dato del cliente, e il designer deve
+  # poter rendere pezzo per pezzo (accetta questo campo, non quel vocabolario).
+  # Una condizione di visibilita resta JSON perche quella si, e dato del
+  # cliente con la forma che cambia per ondate.
+
+  """Perche questo pezzo esiste: il pezzo della descrizione da cui nasce."""
+  type FormDesignItemProposal {
+    name:                   String!
+    description:            String
+    """Un valore del vocabolario \`category\`, o null se quello proposto non esisteva."""
+    category:               String
+    priority:               String
+    requiresApproval:       Boolean!
+    workflowDefinitionId:   ID
+    workflowDefinitionName: String
+    why:                    String!
+  }
+
+  """Un vocabolario che la proposta vorrebbe CREARE nel Dizionario: si crea solo accettando."""
+  type FormDesignVocabularyProposal {
+    name:   String!
+    label:  String!
+    values: [String!]!
+    why:    String!
+  }
+
+  """Un campo NUOVO da creare in libreria accettando la proposta."""
+  type FormDesignFieldProposal {
+    name:             String!
+    fieldType:        String!
+    labelIt:          String!
+    labelEn:          String!
+    helpIt:           String
+    helpEn:           String
+    vocabulary:       String
+    refTypes:         [String!]!
+    """La formula di un campo calcolato, se proposta: JavaScript, da leggere prima di accettarla."""
+    formula:          String
+    """Lo script di validazione, se proposto: JavaScript, da leggere prima di accettarlo."""
+    validationScript: String
+    why:              String!
+  }
+
+  """Un campo dentro una sezione proposta."""
+  type FormDesignSectionItem {
+    field:    String!
+    """\`library\` = campo che esisteva gia (riuso), \`new\` = da creare."""
+    source:   String!
+    required: Boolean!
+    width:    String!
+    endUser:  Boolean!
+    readOnly: Boolean!
+    """La condizione di visibilita come JSON, o null se il campo si vede sempre."""
+    visibleWhen: String
+    why:      String!
+  }
+
+  type FormDesignSection {
+    id:       ID!
+    titleIt:  String!
+    titleEn:  String!
+    columns:  Int!
+    items:    [FormDesignSectionItem!]!
+  }
+
+  """
+  Quello che la proposta ha SCARTATO, e perche: \`key\` e una chiave i18n che il
+  designer rende nella lingua del cliente. Uno scarto silenzioso sarebbe il
+  difetto peggiore — l'utente accetterebbe una tela diversa da quella che ha
+  chiesto senza sapere dove.
+  """
+  type FormDesignDiscard {
+    cosa:   String!
+    key:    String!
+    """I parametri della chiave, come JSON."""
+    params: String!
+  }
+
+  """
+  La proposta di progetto per una service request: NON scrive niente. Atterra
+  sulla tela del designer come bozza, e si applica accettandola — i campi nuovi
+  con \`createFormField\`, i vocabolari con \`createEnumType\`, il modulo con
+  \`saveCatalogForm\`.
+  """
+  type FormDesignProposal {
+    """La descrizione da cui e nata, per rileggerla accanto al risultato."""
+    prompt:          String!
+    item:            FormDesignItemProposal
+    sections:        [FormDesignSection!]!
+    newFields:       [FormDesignFieldProposal!]!
+    newVocabularies: [FormDesignVocabularyProposal!]!
+    discarded:       [FormDesignDiscard!]!
+    """Quello che il modello dice di non aver potuto fare."""
+    notes:           [String!]!
+    """Il tetto di campi per modulo: per spiegare un troncamento."""
+    maxFieldsPerForm: Int!
+  }
+
   # ── Il modulo di una voce di catalogo ─────────────────────────────────────
 
   type CatalogForm {
