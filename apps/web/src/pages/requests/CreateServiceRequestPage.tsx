@@ -126,7 +126,22 @@ export function CreateServiceRequestPage() {
        */
       const automatico = title.trim() === '' || catalogItems.some((i) => i.name === title)
       if (automatico) setTitle(item.name)
-      if (item.description && !description.trim()) setDescription(item.description)
+      /*
+       * LA DESCRIZIONE SEGUE LA STESSA REGOLA DEL TITOLO (20 set 2026, dal
+       * giro nel browser).
+       *
+       * Era protetta solo dal «vuoto»: quella messa automaticamente dalla
+       * voce di PRIMA sopravviveva al cambio di voce, e una richiesta di
+       * accesso a un'applicazione nasceva con scritto «Richiesta di un
+       * portatile aziendale». Chi guarda due voci prima di decidere manda una
+       * descrizione che parla di un altro servizio, e nessuno se ne accorge.
+       *
+       * Il commento qui sopra diceva «la descrizione era già protetta così»:
+       * era protetta di PIÙ, ed è esattamente da lì che veniva il difetto.
+       */
+      const descrizioneAutomatica = description.trim() === ''
+        || catalogItems.some((i) => (i.description ?? '') === description)
+      if (descrizioneAutomatica) setDescription(item.description ?? '')
       if (item.priority) setPriority(item.priority)
     }
   }

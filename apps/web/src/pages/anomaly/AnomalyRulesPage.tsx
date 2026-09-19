@@ -11,7 +11,7 @@
  * cliente): nessuna lista copiata nel web. Una regola che cita un tipo tolto
  * dopo il salvataggio mostra il problema invece di sembrare a posto.
  */
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { showError } from '@/lib/showError'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -28,7 +28,7 @@ import { Select, Input, LabelledField } from '@/components/ui/FormControls'
 import { AnomalySeverityBadge } from '@/components/ui/badges'
 import { GET_ANOMALY_RULES, UPDATE_ANOMALY_RULE } from '@/graphql/queries'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
-import { ciTypeLabelKey } from '@/lib/ciEnums'
+import { useCILabels } from '@/hooks/useCILabels'
 import { colors } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
 import { RULE_LABEL_KEYS } from './AnomalyPage'
@@ -164,11 +164,9 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
     onError: (e) => showError(e),
   })
 
-  const typeLabel = useMemo(() => {
-    const byName = new Map(options.ciTypes.map((c) => [c.name, c.label]))
-    // F-22: prima l'etichetta del cliente, poi la chiave dei tipi spediti.
-    return (name: string) => { const key = ciTypeLabelKey(name); return byName.get(name) || (key ? t(key) : name) }
-  }, [options.ciTypes, t])
+  // F-22 (prima l'etichetta del cliente, poi la chiave dei tipi spediti) vive
+  // in `useCILabels`: qui era una copia della stessa regola.
+  const { typeLabel } = useCILabels()
   const title = t(RULE_LABEL_KEYS[rule.ruleKey] ?? rule.ruleKey)
   const thresholdId = `anomaly-threshold-${rule.ruleKey}`
   const severityId = `anomaly-severity-${rule.ruleKey}`

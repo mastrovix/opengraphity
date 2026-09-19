@@ -8,7 +8,7 @@ import {
 import { colors, palette } from '@/lib/tokens'
 import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
-import { ciTypeLabelKey } from '@/lib/ciEnums'
+import { useCILabels } from '@/hooks/useCILabels'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -59,10 +59,11 @@ export function WidgetFilterConfig({
   // cablato»): i suoi tipi di ticket e di CI, anche quelli creati da lui.
   const { t } = useTranslation()
   const { labelOf: itilLabel } = useItilTypeLabels()
+  // Il nome di un tipo CI: una funzione sola per tutta l'app (20 set 2026).
+  const { typeLabel } = useCILabels()
   const entityLabel = (e: WidgetCatalogEntity) => {
     if (e.group === 'itsm') return itilLabel(e.entityType)
-    const key = ciTypeLabelKey(e.entityType)
-    return key ? t(key) : e.label
+    return typeLabel(e.entityType)
   }
   const itsm = entities.filter((e) => e.group === 'itsm')
   const cmdb = entities.filter((e) => e.group !== 'itsm')

@@ -33,11 +33,11 @@ const MY_PENDING = gql`
 /** Approvazioni che si decidono nella pagina del ticket (requisiti delle change, richieste in approvazione). */
 const PENDING_TICKET_APPROVALS = gql`
   query PendingTicketApprovals {
-    pendingTicketApprovals { kind entityId number title detail requestedAt }
+    pendingTicketApprovals { kind entityId number title detail approvalKind requestedAt }
   }
 `
 
-interface PendingTicketApproval { kind: string; entityId: string; number: string | null; title: string; detail: string | null; requestedAt: string | null }
+interface PendingTicketApproval { kind: string; entityId: string; number: string | null; title: string; detail: string | null; approvalKind: string | null; requestedAt: string | null }
 
 const ALL_APPROVALS = gql`
   query AllApprovals($page: Int, $pageSize: Int, $filters: String, $sortField: String, $sortDirection: String) {
@@ -168,6 +168,17 @@ function TicketApprovalCard({ item }: { item: PendingTicketApproval }) {
         {item.detail && (
           <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
             {t(item.kind === 'change' ? 'pages.approvals.forTeam' : 'pages.approvals.inStep', { value: item.detail })}
+          </span>
+        )}
+        {/*
+          * QUALE PARTE si sta approvando (20 set 2026, dal giro nel browser).
+          * Una change ne pretende due, dello STESSO team: senza questa
+          * pastiglia la pagina mostrava due righe identiche — stesso ticket,
+          * stessa ora — e chi approva non sapeva né cosa né perché due volte.
+          */}
+        {item.approvalKind && (
+          <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-brand)', background: palette.info.light, padding: '2px 6px', borderRadius: 4 }}>
+            {t(`changeTasks.approvalKind.${item.approvalKind}`, { defaultValue: item.approvalKind })}
           </span>
         )}
       </div>
@@ -541,7 +552,7 @@ export function ApprovalsPage() {
               <ApprovalCard key={req.id} req={req} onApprove={handleApprove} onReject={handleReject} showActions />
             ))}
             {ticketItems.map((item) => (
-              <TicketApprovalCard key={`${item.kind}-${item.entityId}-${item.detail ?? ''}`} item={item} />
+              <TicketApprovalCard key={`${item.kind}-${item.entityId}-${item.detail ?? ''}-${item.approvalKind ?? ''}`} item={item} />
             ))}
           </>
         )

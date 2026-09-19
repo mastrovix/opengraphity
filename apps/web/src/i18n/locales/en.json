@@ -3782,7 +3782,8 @@
       "typeDeleteUsedByServiceMaps_other": "«{{name}}» was not deleted: it is the only type that declares {{relationshipTypes}}, which {{count}} service maps follow ({{maps}}). Remove {{relationshipTypes}} from those maps first (service detail → Change scope).",
       "inTicketsDelete": "Type \"{{label}}\" ({{name}}) was not deleted: {{cis}} of its CIs are linked to {{tickets}} ticket(s) (incidents, problems, changes or requests, closed ones included). Without the type those CIs would disappear from the tickets' history.",
       "inTicketsDeactivate": "Type \"{{label}}\" ({{name}}) was not deactivated: {{cis}} of its CIs are linked to {{tickets}} ticket(s) (incidents, problems, changes or requests, closed ones included). Without the type those CIs would disappear from the tickets' history.",
-      "hasCIsDeactivate": "Type \"{{label}}\" ({{name}}) was not deactivated: there are still {{count}} CIs of type {{type}}, and a deactivated type disappears from reads as if it were deleted. Delete the type instead (its CIs go with it), or move those CIs first."
+      "hasCIsDeactivate": "Type \"{{label}}\" ({{name}}) was not deactivated: there are still {{count}} CIs of type {{type}}, and a deactivated type disappears from reads as if it were deleted. Delete the type instead (its CIs go with it), or move those CIs first.",
+      "labelWithoutLanguage": "A label arrived without the language it belongs to: the change was not saved."
     },
     "titleRequired": "The title is required.",
     "assignment": {
@@ -6619,7 +6620,8 @@
       "preview": "Preview"
     },
     "previewNoFields": "No specific field. Add fields in the \"Fields\" tab.",
-    "createType": "Create the type"
+    "createType": "Create the type",
+    "labelForLanguage": "Label in {{language}}"
   },
   "automation": {
     "params": {
@@ -6767,6 +6769,20 @@
       "relation": {
         "dependencies": "Dependencies",
         "dependents": "Dependents"
+      },
+      "type": {
+        "application": "Application",
+        "business_application": "Business Application",
+        "business_capability": "Business Capability",
+        "certificate": "Certificate",
+        "change": "Change",
+        "database": "Database",
+        "database_instance": "Database Instance",
+        "dynamic_ci_group": "Dynamic CI Group",
+        "incident": "Incident",
+        "problem": "Problem",
+        "server": "Server",
+        "service_request": "Service Request"
       }
     }
   },

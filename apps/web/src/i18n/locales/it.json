@@ -3782,7 +3782,8 @@
       "typeDeleteUsedByServiceMaps_other": "«{{name}}» non è stato eliminato: è l'unico tipo che dichiara {{relationshipTypes}}, che {{count}} mappe di servizio seguono ({{maps}}). Togli prima {{relationshipTypes}} da quelle mappe (dettaglio del servizio → Modifica ambito).",
       "inTicketsDelete": "Il tipo «{{label}}» ({{name}}) non è stato eliminato: {{cis}} suoi CI sono collegati a {{tickets}} ticket (incident, problem, change o richieste, anche chiusi). Senza il tipo quei CI sparirebbero dallo storico dei ticket.",
       "inTicketsDeactivate": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: {{cis}} suoi CI sono collegati a {{tickets}} ticket (incident, problem, change o richieste, anche chiusi). Senza il tipo quei CI sparirebbero dallo storico dei ticket.",
-      "hasCIsDeactivate": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: ci sono ancora {{count}} CI di tipo {{type}}, e un tipo disattivato sparisce dalle letture come se fosse cancellato. Elimina invece il tipo (i suoi CI se ne vanno con lui), oppure sposta prima quei CI."
+      "hasCIsDeactivate": "Il tipo «{{label}}» ({{name}}) non è stato disattivato: ci sono ancora {{count}} CI di tipo {{type}}, e un tipo disattivato sparisce dalle letture come se fosse cancellato. Elimina invece il tipo (i suoi CI se ne vanno con lui), oppure sposta prima quei CI.",
+      "labelWithoutLanguage": "Un'etichetta è arrivata senza la lingua a cui appartiene: la modifica non è stata salvata."
     },
     "titleRequired": "Il titolo è obbligatorio.",
     "assignment": {
@@ -6619,7 +6620,8 @@
       "preview": "Preview"
     },
     "previewNoFields": "Nessun campo specifico. Aggiungi campi nella tab «Campi».",
-    "createType": "Crea tipo"
+    "createType": "Crea tipo",
+    "labelForLanguage": "Etichetta in {{language}}"
   },
   "automation": {
     "params": {
@@ -6767,6 +6769,20 @@
       "relation": {
         "dependencies": "Dipendenze",
         "dependents": "Dipendenti"
+      },
+      "type": {
+        "application": "Applicazione",
+        "business_application": "Applicazione di business",
+        "business_capability": "Capacità di business",
+        "certificate": "Certificato",
+        "change": "Change",
+        "database": "Database",
+        "database_instance": "Istanza di database",
+        "dynamic_ci_group": "Gruppo dinamico di CI",
+        "incident": "Incident",
+        "problem": "Problem",
+        "server": "Server",
+        "service_request": "Richiesta di servizio"
       }
     }
   },

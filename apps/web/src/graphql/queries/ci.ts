@@ -97,7 +97,7 @@ export const GET_BASE_CI_TYPE = gql`
 export const GET_CI_TYPES = gql`
   query GetCITypes {
     ciTypes {
-      id name label icon color active
+      id name label labels { language label } icon color active
       scope tenantId
       validationScript chainFamilies serviceRole
       fields {

@@ -5,6 +5,7 @@ import { Layers, Layout, Plus, Trash2 } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { PageContainer } from '@/components/PageContainer'
 import { toast } from 'sonner'
+import { useLingue } from '@/hooks/useLingue'
 import { GET_CI_TYPES, GET_BASE_CI_TYPE, GET_ENUM_TYPES, GET_CI_TYPE_DELETION_IMPACT, GET_CI_FIELD_VALUE_COUNT } from '@/graphql/queries'
 import {
   CREATE_CI_TYPE, UPDATE_CI_TYPE, DELETE_CI_TYPE,
@@ -86,7 +87,7 @@ export function CITypeDesignerPage() {
   const [showRelModal, setShowRelModal] = useState(false)
   const ids = { serviceRole: useId() }
 
-  const [settingsForm, setSettingsForm] = useState<{ label: string; icon: string; color: string; validationScript: string; chainFamilies: string[]; serviceRole: string } | null>(null)
+  const [settingsForm, setSettingsForm] = useState<{ label: string; labels: Record<string, string>; icon: string; color: string; validationScript: string; chainFamilies: string[]; serviceRole: string } | null>(null)
   const [settingsSaving, setSettingsSaving] = useState(false)
 
   const selected = ciTypes.find((t) => t.id === selectedId) ?? null
@@ -99,6 +100,8 @@ export function CITypeDesignerPage() {
   // rifiuta a voce alta, e qui le azioni sono disattivate con il perché:
   // meglio non farle nemmeno provare.
   const shipped = selected ? isShippedType(selected) : false
+  // Le lingue in cui il cliente scrive le sue etichette (hooks/useLingue).
+  const lingue = useLingue()
   const shippedNote = selected ? t('citypeDesigner.shippedNote', { type: selected.label }) : ''
   const readOnlyIf = (on: boolean) => (on ? { opacity: 0.5, cursor: 'not-allowed' as const } : {})
 
@@ -108,7 +111,7 @@ export function CITypeDesignerPage() {
     setActiveTab('settings')
     setEditingFieldId(null)
     setAddingField(false)
-    setSettingsForm({ label: t.label, icon: t.icon ?? 'box', color: t.color ?? 'var(--color-brand)', validationScript: t.validationScript ?? '', chainFamilies: t.chainFamilies ?? [], serviceRole: t.serviceRole ?? '' })
+    setSettingsForm({ label: t.label, labels: Object.fromEntries((t.labels ?? []).map((l) => [l.language, l.label])), icon: t.icon ?? 'box', color: t.color ?? 'var(--color-brand)', validationScript: t.validationScript ?? '', chainFamilies: t.chainFamilies ?? [], serviceRole: t.serviceRole ?? '' })
   }
 
   const [createType]    = useMutation(CREATE_CI_TYPE,    { onCompleted: () => { void refetch(); toast.success(t('toast.citype.typeCreated')) }, onError: (e) => showError(e) })
@@ -318,6 +321,23 @@ export function CITypeDesignerPage() {
                       <Input style={inputS} value={settingsForm.label}
                         onChange={(e) => setSettingsForm((p) => p && ({ ...p, label: e.target.value }))} />
                     </FormField>
+                    {/*
+                      * IL NOME DEL TIPO PER LINGUA (20 set 2026). Il tipo
+                      * aveva una sola etichetta, e quelli spediti col
+                      * prodotto ce l'hanno in inglese: il web rimediava con
+                      * una tabella di traduzioni cablate, che ignorava i tipi
+                      * del cliente. Ora la lingua è dato, e si scrive qui —
+                      * come le etichette dei valori nel Dizionario. Vuoto =
+                      * vale l'etichetta qui sopra.
+                      */}
+                    {lingue.map(({ codice, nome }) => (
+                      <FormField key={codice} label={t('citypeDesigner.labelForLanguage', { language: nome })}>
+                        <Input style={inputS} value={settingsForm.labels[codice] ?? ''}
+                          placeholder={settingsForm.label}
+                          disabled={shipped}
+                          onChange={(e) => setSettingsForm((p) => p && ({ ...p, labels: { ...p.labels, [codice]: e.target.value } }))} />
+                      </FormField>
+                    ))}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, marginBottom: 14 }}>
                       <FormField label={t('citypeDesigner.icon')}>
                         <Select style={selectS} value={settingsForm.icon}
@@ -397,7 +417,13 @@ export function CITypeDesignerPage() {
                           setSettingsSaving(true)
                           try {
                             await updateType({ variables: { id: selected.id, input: {
-                              label: settingsForm.label, icon: settingsForm.icon,
+                              label: settingsForm.label,
+                              // Le etichette per lingua si sostituiscono in
+                              // blocco: le vuote non si mandano.
+                              labels: Object.entries(settingsForm.labels)
+                                .filter(([, v]) => v.trim() !== '')
+                                .map(([language, label]) => ({ language, label })),
+                              icon: settingsForm.icon,
                               color: settingsForm.color, validationScript: settingsForm.validationScript || null,
                               chainFamilies: settingsForm.chainFamilies,
                               // A-10: stringa vuota = «non dichiarato», cioè

@@ -45,7 +45,7 @@ import { Button } from '@/components/Button'
 import { Input } from '@/components/ui/FormControls'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
-import { ciTypeLabelKey, enumLabel } from '@/lib/ciEnums'
+import { useCILabels } from '@/hooks/useCILabels'
 import { alpha, colors, palette } from '@/lib/tokens'
 import { srOnlyStyle } from '@/lib/a11y'
 import {
@@ -141,10 +141,10 @@ export function ServiceMapCanvas({ map, selectedId, onSelect, isolatedId = null,
   const isolated = isolatedId === null ? null : map.nodes.find((n) => n.ci.id === isolatedId) ?? null
   const hiddenByIsolate = isolated === null ? 0 : map.nodes.length - layout.nodes.filter((p) => p.node !== null).length
 
-  const typeLabel = (type: string) => {
-    const key = ciTypeLabelKey(type)
-    return key ? t(key) : (getCIType(type)?.label ?? enumLabel(type))
-  }
+  // La stessa funzione della CMDB e delle anomalie (ondata del 20 set): qui
+  // la chiave i18n veniva prima dell'etichetta del disegnatore, cioè il
+  // contrario della regola F-22.
+  const { typeLabel } = useCILabels()
   /** L'etichetta della riga è il livello e basta, servizio compreso: «Livello 0», «Livello 1», … */
   const levelLabel = (level: number) => t('monitoring.services.map.level', { level })
   const marker = (sev: PathSeverity | null) => `url(#${markerBase}-${sev ?? 'edge'})`

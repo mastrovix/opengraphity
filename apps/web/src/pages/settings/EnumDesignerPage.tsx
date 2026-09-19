@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import {useState, useEffect, useRef } from 'react'
 import { useApolloClient, useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
@@ -9,8 +9,8 @@ import { Button } from '@/components/Button'
 import { Input, Select } from '@/components/ui/FormControls'
 import { inputS, labelS, btnSecondary, btnDanger, readOnlyInputS, btnPrimary as sharedBtnPrimary } from '@/components/ui/styles'
 import { toast } from 'sonner'
-import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT, GET_ENUM_VALUE_USAGE, GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
-import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT, GET_ENUM_VALUE_USAGE } from '@/graphql/queries'
+import { useLingue } from '@/hooks/useLingue'
 import { useConfirm } from '@/hooks/useConfirm'
 import { dictionaryList } from '@/lib/dictionaryList'
 import {
@@ -34,30 +34,6 @@ import { errorMessage, showError } from '@/lib/showError'
 interface LocalizedLabel { language: string; label: string }
 interface EnumValueLabel { value: string; label: string; labels: LocalizedLabel[] }
 
-/**
- * Le lingue del prodotto. Il Dizionario mostra un campo per ciascuna: le
- * etichette sono parole del CLIENTE, quindi le scrive lui — e chi usa l'altra
- * lingua le legge nell'altra se ne ha compilata una sola (il ripiego è
- * dichiarato, e la diagnostica lo segnala).
- *
- * L'ELENCO viene dall'API (`tenantLanguageSettings.available`), come per la
- * pagina Organizzazione e per le severità del portale: era una costante del
- * web, quindi una terza lingua aggiunta lato server sarebbe stata offerta dal
- * portale e non dal Dizionario (revisione totale · G-12). I nomi delle lingue
- * restano qui: sono nomi propri, non si traducono.
- */
-const NOMI_LINGUA: Record<string, string> = { it: 'Italiano', en: 'English' }
-
-/** Le lingue del cliente, nell'ordine dichiarato dall'API. */
-function useLingue(): { codice: string; nome: string }[] {
-  const { data } = useQuery<{ tenantLanguageSettings: { available: string[] } }>(
-    GET_TENANT_LANGUAGE_SETTINGS, { fetchPolicy: METAMODEL_FETCH_POLICY },
-  )
-  return useMemo(
-    () => (data?.tenantLanguageSettings.available ?? []).map((codice) => ({ codice, nome: NOMI_LINGUA[codice] ?? codice })),
-    [data],
-  )
-}
 
 interface EnumType {
   id:        string

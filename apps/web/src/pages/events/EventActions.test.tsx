@@ -100,7 +100,7 @@ describe('EventActions — dialoghi dentro una riga cliccabile', () => {
     await user.type(within(dialog).getByLabelText('Search CI'), 'db-99')
     const results = await within(dialog).findByRole('list', { name: 'CI search results' })
     const first = (await within(results).findByText('db-99')).closest('button')!
-    expect(first).toHaveTextContent('server · production')
+    expect(first).toHaveTextContent('db-99Server · production')
     await user.click(first)
     expect(first).toHaveAttribute('aria-pressed', 'true')
     expect(onRow).not.toHaveBeenCalled()

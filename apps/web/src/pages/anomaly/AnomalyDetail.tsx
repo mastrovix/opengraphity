@@ -7,6 +7,7 @@ import { colors, alpha } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
 import { RULE_LABEL_KEYS, AnomalyStatusBadge, anomalyEntityTypeLabel, anomalyTitle, anomalyDescription } from './AnomalyPage'
 import { ResolutionForm } from './AnomalyModal'
+import { useCILabels } from '@/hooks/useCILabels'
 import type { Anomaly } from '@/types/anomaly'
 
 export function Field({ label, value }: { label: string; value: string }) {
@@ -42,6 +43,7 @@ export function DetailPanel({
   resolveError: string | null
 }) {
   const { t } = useTranslation()
+  const { typeLabel: etichettaDelTipo } = useCILabels()
   const [showForm, setShowForm] = useState(false)
   /**
    * G-ANO-13: il pannello è un dialogo — si annuncia, prende il fuoco e si
@@ -108,7 +110,7 @@ export function DetailPanel({
 
       {/* Fields */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
-        <Field label={t('pages.anomalies.entity')} value={`${anomaly.entityName} (${anomalyEntityTypeLabel(t, anomaly)})`} />
+        <Field label={t('pages.anomalies.entity')} value={`${anomaly.entityName} (${anomalyEntityTypeLabel(etichettaDelTipo, anomaly)})`} />
         <Field label={t('common.description')} value={anomalyDescription(t, anomaly)} />
         <Field label={t('pages.anomalies.detectedAtCol')} value={formatDateTime(anomaly.detectedAt)} />
         {anomaly.resolvedReason === 'rule_disabled' && (

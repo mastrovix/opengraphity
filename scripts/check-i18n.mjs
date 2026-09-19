@@ -399,6 +399,17 @@ for (const k of [...defined].sort()) {
 // quelli sono difetti veri (`Sync triggered`, `Heap Memory`, `Auto-refresh
 // 10s`, `External ID`): l'elenco puo solo accorciarsi.
 const IT_EN_IDENTICHE_ACCETTATE = new Set([
+  // I NOMI DEI TIPI SPEDITI che in italiano si dicono in inglese (20 set
+  // 2026): «Server», «Database», «Incident», «Problem» e «Change» NOMINANO la
+  // cosa — sono le parole che chi fa ITSM usa parlando italiano, e tradurle
+  // («Cambiamento», «Banca dati») darebbe un prodotto che nessuno riconosce.
+  // Gli altri tipi spediti sono tradotti: «Applicazione», «Certificato»,
+  // «Richiesta di servizio», «Istanza di database».
+  'metamodel.shipped.type.server',
+  'metamodel.shipped.type.database',
+  'metamodel.shipped.type.incident',
+  'metamodel.shipped.type.problem',
+  'metamodel.shipped.type.change',
   // «Designer» e «Workflow» nominano due cose del prodotto e si chiamano cosi
   // anche in italiano: il primo e la parola che il prodotto usa gia nella barra
   // laterale («Workflow Designer», «CI Type Designer»), il secondo e il nome

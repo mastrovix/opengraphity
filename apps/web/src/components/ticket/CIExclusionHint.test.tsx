@@ -7,7 +7,7 @@ import { CIExclusionHint } from './CIExclusionHint'
 describe('CIExclusionHint', () => {
   it('con tipi esclusi li nomina; senza (o finché non si sa) non dice nulla', () => {
     const { rerender } = renderWithProviders(<CIExclusionHint excluded={['application']} />)
-    expect(screen.getByTestId('ci-exclusion-hint')).toHaveTextContent('CIs of type application are not offered: that type is excluded for this kind of ticket.')
+    expect(screen.getByTestId('ci-exclusion-hint')).toHaveTextContent('CIs of type Application are not offered: that type is excluded for this kind of ticket.')
     rerender(<CIExclusionHint excluded={[]} />)
     expect(screen.queryByTestId('ci-exclusion-hint')).toBeNull()
     rerender(<CIExclusionHint excluded={undefined} />)

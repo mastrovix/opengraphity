@@ -15,7 +15,7 @@ import {
 } from '@/graphql/queries'
 import { colors, lookupOrError } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
-import { ciTypeLabelKey } from '@/lib/ciEnums'
+import { useCILabels } from '@/hooks/useCILabels'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
 import { QueryError } from '@/components/QueryError'
@@ -37,8 +37,21 @@ const PAGE_SIZE = 10
 const SCAN_POLL_MS    = 2_000
 const SCAN_TIMEOUT_MS = 120_000
 
-/** Etichetta del tipo CI dell'entità: chiave i18n fissa (lib/ciEnums) o il nome grezzo. */
-export function anomalyEntityTypeLabel(t: (k: string) => string, a: Pick<Anomaly, 'entitySubtype' | 'entityType'>): string {
+/**
+ * Etichetta del tipo CI dell'entità, dal METAMODELLO (20 set 2026, dal giro
+ * nel browser).
+ *
+ * Prima veniva da una tabella cablata di sei tipi in `lib/ciEnums`: ogni
+ * altro tipo — compresi tutti quelli creati dal cliente — usciva col nome
+ * interno, e dal vivo si leggeva «Portale clienti — businessapplication»
+ * mentre la CMDB, che il metamodello lo legge, diceva «Business Application».
+ * Ora le due pagine dicono la stessa cosa, e il nome di un tipo lo decide chi
+ * lo crea.
+ */
+export function anomalyEntityTypeLabel(
+  etichettaDelTipo: (nome: string) => string,
+  a: Pick<Anomaly, 'entitySubtype' | 'entityType'>,
+): string {
   /**
    * G-ANO-15: `entitySubtype` è `String!` nello schema, quindi non è mai null
    * e il ripiego `?? entityType` non scattava mai — un CI senza sottotipo
@@ -46,8 +59,7 @@ export function anomalyEntityTypeLabel(t: (k: string) => string, a: Pick<Anomaly
    * bianca. Il vuoto vale come assente.
    */
   const subtype = a.entitySubtype?.trim() ? a.entitySubtype : null
-  const key = subtype ? ciTypeLabelKey(subtype) : null
-  return key ? t(key) : (subtype ?? a.entityType)
+  return subtype ? etichettaDelTipo(subtype) : a.entityType
 }
 
 /**
@@ -157,6 +169,7 @@ function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | nul
 export function AnomalyPage() {
   const { t } = useTranslation()
   const { can } = useMe()
+  const { typeLabel: etichettaDelTipo } = useCILabels()
   const [selected, setSelected]         = useState<Anomaly | null>(null)
 
   const columns: ColumnDef<Anomaly>[] = [
@@ -195,7 +208,7 @@ export function AnomalyPage() {
         <div>
           <div style={{ color: 'var(--color-slate-dark)' }}>{String(v)}</div>
           <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-            {anomalyEntityTypeLabel(t, row)}
+            {anomalyEntityTypeLabel(etichettaDelTipo, row)}
           </div>
         </div>
       ),

@@ -52,7 +52,7 @@ import { useMetamodel } from '@/contexts/MetamodelContext'
 import { useCILabels } from '@/hooks/useCILabels'
 import { CIIcon } from '@/lib/ciIcon'
 import { ciPath } from '@/lib/ciPath'
-import { ciTypeLabelKey, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
+import { useCIBaseEnums } from '@/lib/ciEnums'
 import { timeAgo, formatDateTime, formatDuration, currentLocale } from '@/lib/datetime'
 import { pausedWhenHidden } from '@/lib/polling'
 import { GET_CI_HEALTH_OVERVIEW, GET_EVENT_POLICY, GET_TEAMS } from '@/graphql/queries'
@@ -292,10 +292,9 @@ function HealthRowView({ row, highImpact }: { row: CIHealthRow; highImpact: numb
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { getCIType } = useMetamodel()
-  const { environmentLabel } = useCILabels()
+  const { environmentLabel, typeLabel: etichettaTipo } = useCILabels()
   const ciType = getCIType(row.type)
-  const typeKey = ciTypeLabelKey(row.type)
-  const typeLabel = typeKey ? t(typeKey) : (ciType?.label ?? enumLabel(row.type))
+  const typeLabel = etichettaTipo(row.type)
   const accent = CI_HEALTH_ACCENT[row.health]
   const since = row.healthSince ? formatDuration(Date.now() - new Date(row.healthSince).getTime()) : null
   const to = ciPath(row)
@@ -368,7 +367,7 @@ export function CIHealthPage() {
   const { ciTypes } = useMetamodel()
   const baseEnums = useCIBaseEnums()
   // Secondo giro UI del 15 set 2026 · V-21: ambienti con l'etichetta del Dizionario, non umanizzati
-  const { environmentLabel } = useCILabels()
+  const { environmentLabel, typeLabel } = useCILabels()
 
   // Filtri e pagina vivono nell'URL; qui si legge e si scrive solo quello.
   const [searchParams, setSearchParams] = useSearchParams()
@@ -588,7 +587,7 @@ export function CIHealthPage() {
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <Select aria-label={t('monitoring.health.filters.type')} value={filter.type} onChange={(e) => setParams({ type: e.target.value })} style={{ width: 180 }}>
           <option value="">{t('monitoring.health.filters.allTypes')}</option>
-          {typeOptions.map((ct) => { const k = ciTypeLabelKey(ct.name); return <option key={ct.name} value={ct.name}>{k ? t(k) : ct.label}</option> })}
+          {typeOptions.map((ct) => <option key={ct.name} value={ct.name}>{typeLabel(ct.name)}</option>)}
         </Select>
         <Select aria-label={t('monitoring.health.filters.environment')} value={filter.environment} onChange={(e) => setParams({ environment: e.target.value })} style={{ width: 170 }}>
           <option value="">{t('monitoring.health.filters.allEnvironments')}</option>

@@ -8,6 +8,7 @@ import { assertNewCITypeName, assertNewCIFieldName, type ExistingCIType } from '
 import { CHAIN_FAMILIES, chainFamiliesToJSON } from '../../lib/chainCalculator.js'
 import { assertRelationshipTypeName, defaultServiceRoleOf, splitRelationshipTypes } from '../../lib/ciMetamodelForTenant.js'
 import { assertFieldName, assertLabel } from '../../lib/cypherIdentifiers.js'
+import { parseLocalizedLabels, serializeLocalizedLabels } from '@opengraphity/types'
 import { toSnakeCase } from '@opengraphity/schema-generator'
 import { cache } from '../../lib/cache.js'
 import { audit } from '../../lib/audit.js'
@@ -140,6 +141,27 @@ function assertRelationCardinality(value: unknown, what: string): string {
  * i tipi: una relazione verso il nulla sarebbe inerte in silenzio.
  */
 export const ANY_TARGET_TYPE = 'any'
+
+/**
+ * Le etichette per lingua come le vuole il grafo: un JSON, o `null` quando
+ * non ce ne sono (Neo4j non ha mappe annidate). Una lingua vuota o
+ * un'etichetta vuota si rifiuta invece di finire nel dato: un'etichetta che
+ * non si legge è peggio di nessuna etichetta.
+ */
+function etichettePerLingua(
+  input: readonly { language: string; label: string }[] | undefined, dove: string,
+): string | null {
+  if (input === undefined) return null
+  const mappa: Record<string, string> = {}
+  for (const { language, label } of input) {
+    const lingua = language.trim()
+    const testo = label.trim()
+    if (lingua === '') throw new ValidationError(`${dove}: a label without a language`, { key: 'errors.ciType.labelWithoutLanguage' })
+    if (testo === '') continue
+    mappa[lingua] = testo
+  }
+  return serializeLocalizedLabels(mappa)
+}
 
 async function assertRelationTargetType(
   session: Session, value: unknown, tenantId: string, what: string,
@@ -383,6 +405,9 @@ export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[]
     id:               t['id'],
     name:             t['name'],
     label:            t['label'],
+    // L'etichetta per lingua (20 set 2026): fail-loud se il JSON è corrotto,
+    // come per i passi di workflow e i valori dei vocabolari.
+    labels:           parseLocalizedLabels(t['labels'], `CITypeDefinition ${String(t['name'])}`),
     icon:             t['icon'],
     color:            t['color'],
     active:           t['active'] ?? true,
@@ -665,6 +690,12 @@ export function buildCITypesResolver() {
           id:    t['id'],
           name:  t['name'],
           label: t['label'],
+          // L'etichetta per lingua, come in `mapCITypeNode` (20 set 2026):
+          // questa è la SECONDA costruzione di un tipo, e dimenticarla qui
+          // ha fatto fallire l'intera query `ciTypes` — «Cannot return null
+          // for non-nullable field CITypeDefinition.labels», e con lei il
+          // metamodello di TUTTE le pagine.
+          labels: parseLocalizedLabels(t['labels'], `CITypeDefinition ${String(t['name'])}`),
           icon:  t['icon'],
           color: t['color'],
           active: t['active'],
@@ -800,13 +831,14 @@ export function buildMetamodelMutations() {
   return {
     createCIType: async (
       _: unknown,
-      args: { input: { name: string; label: string; icon?: string; color?: string; chainFamilies?: string[]; serviceRole?: string | null } },
+      args: { input: { name: string; label: string; labels?: { language: string; label: string }[]; icon?: string; color?: string; chainFamilies?: string[]; serviceRole?: string | null } },
       ctx: GraphQLContext,
     ) => {
       requireMetamodelPermission(ctx)
       // CM-11: niente colore scritto nel codice. Senza colore il tipo si mostra
       // col colore neutro dell'interfaccia; il disegnatore lo manda sempre.
       const { name, label, icon = 'box', color = null } = args.input
+      const labels = etichettePerLingua(args.input.labels, `createCIType(${name})`)
       const chainFamilies = assertChainFamilies(args.input.chainFamilies)
       // A-10: il ruolo nella mappa di un servizio nasce col tipo. Se non lo
       // dichiara, lo propone il prodotto dalle famiglie di catena — scritto
@@ -842,14 +874,16 @@ export function buildMetamodelMutations() {
               t.neo4j_label      = $neo4jLabel,
               t.tenant_id        = $tenantId,
               t.chain_families   = $chainFamilies,
-              t.service_role     = $serviceRole
+              t.service_role     = $serviceRole,
+              t.labels           = $labels
             ON MATCH SET
               t.label            = $label,
+              t.labels           = $labels,
               t.icon             = $icon,
               t.color            = $color,
               t.chain_families   = coalesce($chainFamilies, t.chain_families),
               t.service_role     = coalesce($serviceRole, t.service_role)
-          `, { name, tenantId: ctx.tenantId, id, label, icon, color, neo4jLabel, chainFamilies, serviceRole }),
+          `, { name, tenantId: ctx.tenantId, id, label, icon, color, neo4jLabel, chainFamilies, serviceRole, labels }),
         )
 
         // LE DOMANDE CORE DELL'ASSESSMENT, anche al tipo appena nato (terza
@@ -875,7 +909,7 @@ export function buildMetamodelMutations() {
 
     updateCIType: async (
       _: unknown,
-      args: { id: string; input: { label?: string; icon?: string; color?: string; active?: boolean; validationScript?: string; chainFamilies?: string[]; serviceRole?: string | null } },
+      args: { id: string; input: { label?: string; labels?: { language: string; label: string }[]; icon?: string; color?: string; active?: boolean; validationScript?: string; chainFamilies?: string[]; serviceRole?: string | null } },
       ctx: GraphQLContext,
     ) => {
       requireMetamodelPermission(ctx)
@@ -883,6 +917,9 @@ export function buildMetamodelMutations() {
       const { label, icon, color, active, validationScript, chainFamilies } = args.input
       const serviceRole = assertServiceRoleInput(args.input.serviceRole)
       if (label             !== undefined) updates['label']             = label
+      // Le etichette per lingua si sostituiscono in blocco, come per i
+      // vocabolari: la lista che arriva è quella che resta.
+      if (args.input.labels !== undefined) updates['labels']            = etichettePerLingua(args.input.labels, `updateCIType(${args.id})`)
       if (icon              !== undefined) updates['icon']              = icon
       if (color             !== undefined) updates['color']             = color
       if (active            !== undefined) updates['active']            = active

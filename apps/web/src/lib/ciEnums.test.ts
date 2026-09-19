@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { enumLabel, toEnumOptions, ciStatusStyle, ciTypeLabelKey, CI_TYPE_LABEL_KEYS } from './ciEnums'
+import { enumLabel, toEnumOptions, ciStatusStyle } from './ciEnums'
 import { palette } from './tokens'
 import { NEUTRAL_VALUE_STYLE } from './domainStyle'
 
@@ -54,13 +54,3 @@ describe('ciStatusStyle', () => {
   })
 })
 
-describe('ciTypeLabelKey', () => {
-  it('tipo storico → chiave i18n; tipo custom / assente → null (si usa ciType.label)', () => {
-    expect(ciTypeLabelKey('server')).toBe('sidebar.server')
-    expect(ciTypeLabelKey('ssl_certificate')).toBe(CI_TYPE_LABEL_KEYS['certificate'])
-    expect(ciTypeLabelKey('kubernetes_cluster')).toBeNull()
-    expect(ciTypeLabelKey(null)).toBeNull()
-    expect(ciTypeLabelKey(undefined)).toBeNull()
-    expect(ciTypeLabelKey('')).toBeNull()
-  })
-})

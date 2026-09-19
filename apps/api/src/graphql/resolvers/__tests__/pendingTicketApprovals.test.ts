@@ -30,15 +30,20 @@ beforeEach(() => { runs.length = 0; righe = {} })
 describe('pendingTicketApprovals', () => {
   it('requisiti delle change in attesa e richieste in un passo di approvazione, col link al ticket', async () => {
     righe = {
-      change:  [{ entityId: 'chg-2', number: 'CHG00000002', title: 'Log', detail: 'Operazioni di rete', requestedAt: '2026-09-13T22:55:51Z' }],
+      // `approvalKind` (20 set 2026): una change ne pretende due dello STESSO
+      // team, e senza questo la pagina mostrava due righe identiche.
+      change:  [{ entityId: 'chg-2', number: 'CHG00000002', title: 'Log', detail: 'Operazioni di rete', approvalKind: 'change_manager', requestedAt: '2026-09-13T22:55:51Z' }],
       request: [{ entityId: 'req-2', number: 'REQ00000002', title: 'Portatile', detail: 'Approvazione', requestedAt: '2026-09-13T23:00:00Z' }],
     }
     const out = await pendingTicketApprovals(null, null, ctx('admin'))
     expect(out).toEqual([
-      { kind: 'change', entityId: 'chg-2', number: 'CHG00000002', title: 'Log', detail: 'Operazioni di rete', requestedAt: '2026-09-13T22:55:51Z' },
-      { kind: 'service_request', entityId: 'req-2', number: 'REQ00000002', title: 'Portatile', detail: 'Approvazione', requestedAt: '2026-09-13T23:00:00Z' },
+      { kind: 'change', entityId: 'chg-2', number: 'CHG00000002', title: 'Log', detail: 'Operazioni di rete', approvalKind: 'change_manager', requestedAt: '2026-09-13T22:55:51Z' },
+      // Una richiesta ha un passo solo: nessuna parte da distinguere.
+      { kind: 'service_request', entityId: 'req-2', number: 'REQ00000002', title: 'Portatile', detail: 'Approvazione', approvalKind: null, requestedAt: '2026-09-13T23:00:00Z' },
     ])
     expect(runs[0]!.q).toContain("ChangeApproval {status: 'pending'}")
+    // La parte viene dal nodo dell'approvazione, non dal team.
+    expect(runs[0]!.q).toContain('a.kind AS approvalKind')
     expect(runs[1]!.q).toContain("purpose: 'approval'")
   })
 

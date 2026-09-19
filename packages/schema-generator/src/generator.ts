@@ -373,6 +373,8 @@ export const METAMODEL_INPUTS = `
 input CreateCITypeInput {
   name: String!
   label: String!
+  """Le etichette per lingua, SOSTITUITE in blocco (la lista che si manda è quella che resta)."""
+  labels: [CITypeLabelInput!]
   icon: String
   color: String
   """Famiglie di catena del tipo (Application / Infrastructure): scritte in \`chain_families\`."""
@@ -383,6 +385,8 @@ input CreateCITypeInput {
 
 input UpdateCITypeInput {
   label: String
+  """Le etichette per lingua, SOSTITUITE in blocco (la lista che si manda è quella che resta)."""
+  labels: [CITypeLabelInput!]
   icon: String
   color: String
   active: Boolean
@@ -391,6 +395,12 @@ input UpdateCITypeInput {
   chainFamilies: [String!]
   """Ruolo nella mappa di un servizio: component | infrastructure | certificate."""
   serviceRole: String
+}
+
+"""Un'etichetta di un tipo CI per UNA lingua. Un tipo con due lingue manda due voci."""
+input CITypeLabelInput {
+  language: String!
+  label:    String!
 }
 
 input CIFieldInput {

@@ -24,7 +24,8 @@ import { apolloClient } from '@/lib/apollo'
 
 import { toPascalCase, pluralize } from '@/lib/stringUtils'
 import { formatDate } from '@/lib/datetime'
-import { ciTypeLabelKey, toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
+import { toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
+import { useCILabels } from '@/hooks/useCILabels'
 import { palette } from '@/lib/tokens'
 import { Plus } from 'lucide-react'
 import { showError } from '@/lib/showError'
@@ -56,11 +57,12 @@ export function CIListPage() {
     setSortField(field); setSortDir(dir); setPage(0)
   }
 
+  const { typeLabel } = useCILabels()
   const ciType = typeName ? getCIType(typeName) : undefined
-  // F-22: l'etichetta scritta nel disegnatore vince sulla chiave i18n dei tipi
-  // spediti, che resta il ripiego per chi non l'ha cambiata.
-  const labelKey = ciTypeLabelKey(typeName)
-  const ciTypeLabel = ciType?.label || (labelKey ? t(labelKey) : (typeName ?? ''))
+  // F-22 (l'etichetta del disegnatore vince sulla chiave i18n) vive in
+  // `useCILabels`, che la applica anche alle anomalie e alla mappa dei
+  // servizi: qui era una terza copia della stessa regola.
+  const ciTypeLabel = typeName ? typeLabel(typeName) : ''
   const baseEnums = useCIBaseEnums()
   /**
    * NESSUNA euristica di genere (revisione totale · F-44): «finisce per A
