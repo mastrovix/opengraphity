@@ -546,6 +546,19 @@ function CampoDelModulo({ campo, item, valore, errore, erroreFormula, computedLa
         <input
           {...comune}
           type={campo.fieldType === 'number' ? 'number' : campo.fieldType === 'date' ? 'date' : campo.fieldType === 'datetime' ? 'datetime-local' : 'text'}
+          /*
+           * LA TASTIERA GIUSTA SU UN CAMPO NUMERO (19 set 2026).
+           *
+           * Su un telefono e su un iPad `type="number"` da solo non basta: la
+           * tastiera che si apre è quella delle lettere, e le lettere in un
+           * campo numero il browser le rifiuta in silenzio. Il proprietario ha
+           * scritto «Pppplkmmmmm» in un campo Numero e non ha visto comparire
+           * niente: il campo non era rotto, stava facendo il suo mestiere —
+           * ma non c'era modo di capirlo.
+           *
+           * `decimal` e non `numeric`: un numero può avere la virgola.
+           */
+          {...(campo.fieldType === 'number' ? { inputMode: 'decimal' as const } : {})}
           value={testoDi(valore)}
           required={obbligatorio}
           onChange={(e) => onChange(campo.name, e.target.value === '' ? null : e.target.value)}
@@ -800,7 +813,9 @@ function CellaDellaTabella({ colonna, valore, onChange, disabled, emptyChoiceLab
   const comune = { disabled, className: 'og-form-input og-form-table-input' }
   switch (colonna.fieldType) {
     case 'number':
-      return <input {...comune} type="number" value={valore} onChange={(e) => { onChange(e.target.value) }} />
+      // Stessa ragione della casella singola: su un dispositivo a tocco serve
+      // la tastiera dei numeri, se no le lettere spariscono senza spiegazione.
+      return <input {...comune} type="number" inputMode="decimal" value={valore} onChange={(e) => { onChange(e.target.value) }} />
     case 'date':
       return <input {...comune} type="date" value={valore} onChange={(e) => { onChange(e.target.value) }} />
     case 'boolean':
