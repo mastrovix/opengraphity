@@ -92,7 +92,15 @@ const labelStyle: React.CSSProperties = {
  * Gli operatori senza valore mandano `null`: un valore lasciato in giro
  * sarebbe un dato che nessuno usa ma che chi rilegge il JSON deve spiegare.
  */
-function normalizzaFiltro(f: FilterState): { field: string; operator: string; value: string | number | string[] | null } {
+function normalizzaFiltro(f: FilterState, campi: readonly NavigableField[] = []): { field: string; operator: string; value: string | number | string[] | boolean | null } {
+  /*
+   * IL TIPO DEL CAMPO decide la forma del valore (19 set 2026, dalla
+   * revisione): in Cypher `n.porta = "443"` su una proprietà intera non
+   * corrisponde MAI, e il report resta vuoto senza un errore. Il costruttore
+   * il tipo ce l'ha — lo porta `NavigableField` — e finora lo ignorava,
+   * mandando tutto come testo.
+   */
+  const tipo = campi.find((c) => c.name === f.field)?.fieldType
   if (f.operator === 'is_null' || f.operator === 'is_not_null') return { field: f.field, operator: f.operator, value: null }
   if (f.operator === 'last_n_days') {
     const giorni = Number(Array.isArray(f.value) ? f.value[0] : f.value)
@@ -104,7 +112,13 @@ function normalizzaFiltro(f: FilterState): { field: string; operator: string; va
       : String(f.value).split(',').map((x) => x.trim()).filter((x) => x !== '')
     return { field: f.field, operator: f.operator, value: valori }
   }
-  return { field: f.field, operator: f.operator, value: Array.isArray(f.value) ? (f.value[0] ?? '') : String(f.value) }
+  const grezzo = Array.isArray(f.value) ? (f.value[0] ?? '') : String(f.value)
+  if (tipo === 'number') {
+    const n = Number(grezzo)
+    return { field: f.field, operator: f.operator, value: Number.isFinite(n) ? n : grezzo }
+  }
+  if (tipo === 'boolean') return { field: f.field, operator: f.operator, value: grezzo.toLowerCase() === 'true' }
+  return { field: f.field, operator: f.operator, value: grezzo }
 }
 
 export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props) {
@@ -405,7 +419,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         id: n.id, entityType: nd?.entityType ?? '', neo4jLabel: nd?.neo4jLabel ?? '', label: nd?.label ?? '',
         isResult: nd?.isResult ?? false, isRoot: nd?.isRoot ?? false,
         positionX: n.position.x, positionY: n.position.y,
-        filters: nd?.filters?.length ? JSON.stringify(nd.filters.map(normalizzaFiltro)) : null,
+        filters: nd?.filters?.length ? JSON.stringify(nd.filters.map((f) => normalizzaFiltro(f, nd.fields))) : null,
         selectedFields: nd?.selectedFields ?? [],
       }
     }),

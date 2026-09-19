@@ -7138,7 +7138,10 @@
       "filterEmpty": "«{{op}}» filter discarded: the value to compare is missing.",
       "filterValueUnknown": "Filter discarded: «{{value}}» is not an allowed value. Allowed: {{allowed}}.",
       "granularityUnknown": "«{{name}}» is not a period (day, week, month): the series stays daily.",
-      "granularityNotADate": "The period does not apply: «{{name}}» is not a date, and grouping by status or team has no periods."
+      "granularityNotADate": "The period does not apply: «{{name}}» is not a date, and grouping by status or team has no periods.",
+      "operatorForType": "Filter discarded: «{{op}}» cannot be used on a {{fieldType}} field — the query would fail.",
+      "filterNotANumber": "Filter discarded: «{{value}}» is not a number, and the field is.",
+      "filterNotABoolean": "Filter discarded: «{{value}}» is not a yes/no, and the field is."
     }
   },
   "reportAI": {

@@ -420,6 +420,27 @@ function filtriValidi(entita: NavigableEntity, raw: unknown, scartati: ScartoRep
       scartati.push({ what: campo.label, key: 'reportProposal.discard.operatorUnknown', params: { op: operatore, allowed: FILTER_OPERATORS.join(', ') } })
       continue
     }
+    /*
+     * L'OPERATORE DEVE AVERE SENSO SUL TIPO DEL CAMPO (19 set 2026).
+     *
+     * Il tipo qui lo conosciamo (`NavigableField.fieldType`) e non lo si
+     * guardava: «ultimi N giorni» su uno `status` diventava
+     * `datetime(n.status)`, che non è un report vuoto — è la query che
+     * ESPLODE, e l'errore del driver arriva in faccia a chi guarda
+     * l'anteprima. «contiene» su un numero idem (`toLower(<numero>)`).
+     */
+    const tipo = campo.fieldType
+    const eData = tipo === 'date' || tipo === 'datetime'
+    const eNumero = tipo === 'number'
+    if (operatore === 'last_n_days' && !eData) {
+      scartati.push({ what: campo.label, key: 'reportProposal.discard.operatorForType', params: { op: operatore, fieldType: tipo } })
+      continue
+    }
+    if (operatore === 'contains' && (eNumero || tipo === 'boolean')) {
+      scartati.push({ what: campo.label, key: 'reportProposal.discard.operatorForType', params: { op: operatore, fieldType: tipo } })
+      continue
+    }
+
     const senzaValore = operatore === 'is_null' || operatore === 'is_not_null'
     const valoreGrezzo = f['valore']
     if (senzaValore) {
@@ -449,9 +470,32 @@ function filtriValidi(entita: NavigableEntity, raw: unknown, scartati: ScartoRep
       buoni.push({ field: campo.name, operator: operatore, value: valoriAmmessi(campo, valori, scartati) })
       continue
     }
-    const valore = testo(valoreGrezzo)
+    const valore = typeof valoreGrezzo === 'number' ? String(valoreGrezzo) : testo(valoreGrezzo)
     if (valore === '') {
       scartati.push({ what: campo.label, key: 'reportProposal.discard.filterEmpty', params: { op: operatore } })
+      continue
+    }
+    /*
+     * UN CAMPO NUMERICO VUOLE UN NUMERO: in Cypher `n.porta = "443"` su una
+     * proprietà intera non corrisponde MAI, e il report resta vuoto senza un
+     * errore. Il tipo lo sappiamo: si converte qui.
+     */
+    if (eNumero) {
+      const n = Number(valore)
+      if (!Number.isFinite(n)) {
+        scartati.push({ what: campo.label, key: 'reportProposal.discard.filterNotANumber', params: { value: valore } })
+        continue
+      }
+      buoni.push({ field: campo.name, operator: operatore, value: n })
+      continue
+    }
+    if (tipo === 'boolean') {
+      const v = valore.toLowerCase()
+      if (v !== 'true' && v !== 'false') {
+        scartati.push({ what: campo.label, key: 'reportProposal.discard.filterNotABoolean', params: { value: valore } })
+        continue
+      }
+      buoni.push({ field: campo.name, operator: operatore, value: v === 'true' })
       continue
     }
     const ammessi = valoriAmmessi(campo, [valore], scartati)

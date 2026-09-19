@@ -7138,7 +7138,10 @@
       "filterEmpty": "Filtro «{{op}}» scartato: manca il valore da confrontare.",
       "filterValueUnknown": "Filtro scartato: «{{value}}» non è un valore ammesso. Ammessi: {{allowed}}.",
       "granularityUnknown": "«{{name}}» non è un periodo (giorno, settimana, mese): la serie resta per giorno.",
-      "granularityNotADate": "Il periodo non si applica: «{{name}}» non è una data, e raggruppare per stato o per team non ha periodi."
+      "granularityNotADate": "Il periodo non si applica: «{{name}}» non è una data, e raggruppare per stato o per team non ha periodi.",
+      "operatorForType": "Filtro scartato: «{{op}}» non si può usare su un campo {{fieldType}} — la query fallirebbe.",
+      "filterNotANumber": "Filtro scartato: «{{value}}» non è un numero, e il campo lo è.",
+      "filterNotABoolean": "Filtro scartato: «{{value}}» non è sì/no, e il campo lo è."
     }
   },
   "reportAI": {

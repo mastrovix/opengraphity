@@ -567,3 +567,47 @@ describe('una tabella non ha una misura', () => {
     }), 't1', whitelist)).toThrow(/a table lists rows/)
   })
 })
+
+/**
+ * IL VALORE DI UN FILTRO NON PASSA PIÙ SENZA GUARDARLO (19 set 2026).
+ *
+ * Tre esiti muti: «ultimi N giorni» vuoto = 0 giorni (solo il futuro), «è
+ * fra» vuoto = `IN []` (mai vero), e un operatore senza valore. Nessuno dava
+ * un errore: davano zero righe, che è una risposta plausibile.
+ */
+describe('i valori dei filtri', () => {
+  const conFiltro = (filtro: Record<string, unknown>) => section({
+    nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'], filters: JSON.stringify([filtro]) })],
+  })
+  const costruisci = (filtro: Record<string, unknown>) => () => buildReportQuery(conFiltro(filtro), 't1', whitelist)
+
+  it('«ultimi N giorni» senza numero si rifiuta invece di diventare zero giorni', () => {
+    expect(costruisci({ field: 'created_at', operator: 'last_n_days', value: '' })).toThrow(/whole number of days/)
+    expect(costruisci({ field: 'created_at', operator: 'last_n_days', value: 'un mese' })).toThrow(/whole number of days/)
+    expect(costruisci({ field: 'created_at', operator: 'last_n_days', value: 0 })).toThrow(/whole number of days/)
+  })
+
+  it('un numero di giorni scritto come testo si accetta: è quello che manda una casella', () => {
+    const { params } = buildReportQuery(conFiltro({ field: 'created_at', operator: 'last_n_days', value: '30' }), 't1', whitelist)
+    expect(Object.values(params)).toContain(30)
+  })
+
+  it('«è fra» senza valori si rifiuta: una lista vuota non corrisponde mai', () => {
+    expect(costruisci({ field: 'status', operator: 'in', value: [] })).toThrow(/at least one value/)
+    expect(costruisci({ field: 'status', operator: 'in', value: ['', '  '] })).toThrow(/at least one value/)
+  })
+
+  it('un confronto senza valore si rifiuta', () => {
+    expect(costruisci({ field: 'status', operator: 'eq', value: '' })).toThrow(/needs a value/)
+    expect(costruisci({ field: 'status', operator: 'eq', value: null })).toThrow(/needs a value/)
+  })
+
+  it('«è vuoto» non vuole nessun valore e non si lamenta', () => {
+    expect(costruisci({ field: 'resolved_at', operator: 'is_null', value: null })).not.toThrow()
+  })
+
+  it('un numero resta un numero: `n.porta = "443"` non troverebbe mai niente', () => {
+    const { params } = buildReportQuery(conFiltro({ field: 'port', operator: 'eq', value: 443 }), 't1', whitelist)
+    expect(Object.values(params)).toContain(443)
+  })
+})

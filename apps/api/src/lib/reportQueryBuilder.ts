@@ -206,8 +206,46 @@ function parseFilters(filtersJson: string | null, what: string): FilterClause[] 
     if (!(FILTER_OPERATORS as readonly string[]).includes(String(f.operator))) {
       throw new ValidationError(`${what}: filter #${i} unknown operator ${JSON.stringify(f.operator)}`)
     }
-    return { field, operator: f.operator as string, value: f.value }
+    return { field, operator: f.operator as string, value: valoreDelFiltro(f.operator as string, f.value, `${what}: filter #${String(i)}`) }
   })
+}
+
+/**
+ * IL VALORE DI UN FILTRO, VALIDATO (19 set 2026, dalla revisione).
+ *
+ * `parseFilters` controllava il campo e l'operatore e lasciava passare
+ * QUALUNQUE valore. Tre esiti muti, tutti visti nella revisione:
+ *  - «ultimi N giorni» con valore vuoto → `Number('')` = 0 → solo il futuro,
+ *    cioè un report sempre vuoto;
+ *  - «è fra» con una lista vuota → `IN []` → mai vero;
+ *  - un numero mandato come testo → `n.porta = "443"`, che su una proprietà
+ *    intera non corrisponde mai.
+ * Nessuno dei tre dava un errore: davano zero righe, e zero righe è una
+ * risposta plausibile.
+ *
+ * Il controllo sta QUI e non nel costruttore perché da qui passano tutte le
+ * strade — costruttore, AI, API, dashboard, esportazione e pianificazione.
+ */
+function valoreDelFiltro(operator: string, value: unknown, where: string): unknown {
+  if (operator === 'is_null' || operator === 'is_not_null') return null
+  if (operator === 'last_n_days') {
+    const days = typeof value === 'number' ? value : Number(String(value ?? '').trim())
+    if (!Number.isFinite(days) || !Number.isInteger(days) || days < 1) {
+      throw new ValidationError(`${where}: "last_n_days" needs a whole number of days (got ${JSON.stringify(value)})`)
+    }
+    return days
+  }
+  if (operator === 'in') {
+    const list = Array.isArray(value) ? value.filter((v) => String(v).trim() !== '') : []
+    if (list.length === 0) {
+      throw new ValidationError(`${where}: "in" needs at least one value — an empty list never matches`)
+    }
+    return list
+  }
+  if (value === null || value === undefined || String(value).trim() === '') {
+    throw new ValidationError(`${where}: operator "${operator}" needs a value to compare with`)
+  }
+  return value
 }
 
 function buildWhereClause(
