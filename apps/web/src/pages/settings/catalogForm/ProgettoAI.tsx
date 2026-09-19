@@ -163,6 +163,14 @@ export function ModaleProgettoAI({ itemId, nomeVoce, etichettaDi, onChiudi, onAp
     void (async () => {
       setApplicando(true)
       const fatti: string[] = []
+      /*
+       * `creati` distingue i due fallimenti (19 set 2026, dalla revisione).
+       * Se a rompersi era l'ATTERRAGGIO sulla tela — non la creazione — il
+       * messaggio diceva lo stesso «creati solo A, B, C. La tela non è stata
+       * toccata», mandando a cercare in libreria dei campi che c'erano già:
+       * e chi non li trova li rifà, con `_2` in coda.
+       */
+      let creati = false
       try {
         for (const v of progetto.newVocabularies) {
           // `shared`: un elenco di valori nato per un modulo non appartiene né
@@ -196,6 +204,7 @@ export function ModaleProgettoAI({ itemId, nomeVoce, etichettaDi, onChiudi, onAp
           } } })
           fatti.push(c.labelIt || c.name)
         }
+        creati = true
         const esito = await onApplicato(progetto)
         toast.success(esito === 'done'
           ? t('pages.catalogForms.ai.applied', { count: progetto.sections.reduce((n, s) => n + s.items.length, 0) })
@@ -204,7 +213,8 @@ export function ModaleProgettoAI({ itemId, nomeVoce, etichettaDi, onChiudi, onAp
       } catch {
         // Si dice cosa è stato creato prima di fermarsi: senza, resterebbero
         // campi in libreria che nessuno sa da dove vengono.
-        if (fatti.length > 0) toast.error(t('pages.catalogForms.ai.partial', { done: fatti.join(', ') }))
+        if (creati) toast.error(t('pages.catalogForms.ai.landingFailed'))
+        else if (fatti.length > 0) toast.error(t('pages.catalogForms.ai.partial', { done: fatti.join(', ') }))
       } finally { setApplicando(false) }
     })()
   }

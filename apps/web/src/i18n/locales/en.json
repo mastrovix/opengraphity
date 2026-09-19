@@ -2629,7 +2629,10 @@
         "applied_other": "{{count}} fields on the canvas: review them and publish when you are happy.",
         "partial": "I stopped: only {{done}} were created. The canvas was not touched.",
         "appliedPending_one": "One field created in the library. Now confirm the service request: the design lands on the canvas right after.",
-        "appliedPending_other": "{{count}} fields created in the library. Now confirm the service request: the design lands on the canvas right after."
+        "appliedPending_other": "{{count}} fields created in the library. Now confirm the service request: the design lands on the canvas right after.",
+        "abandoned_one": "Service request not created: the field already added to the library stays there, in the «Field library» tab.",
+        "abandoned_other": "Service request not created: the {{count}} fields already added to the library stay there, in the «Field library» tab.",
+        "landingFailed": "All the fields were created, but the design did not reach the canvas. Try putting it there again: the fields already exist and will not be created twice."
       }
     }
   },

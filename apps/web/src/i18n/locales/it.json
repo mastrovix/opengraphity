@@ -2629,7 +2629,10 @@
         "applied_other": "{{count}} campi messi sulla tela: rivedili e pubblica quando ti vanno bene.",
         "partial": "Mi sono fermato: creati solo {{done}}. La tela non è stata toccata.",
         "appliedPending_one": "Un campo creato in libreria. Ora conferma la service request: il disegno arriva sulla tela subito dopo.",
-        "appliedPending_other": "{{count}} campi creati in libreria. Ora conferma la service request: il disegno arriva sulla tela subito dopo."
+        "appliedPending_other": "{{count}} campi creati in libreria. Ora conferma la service request: il disegno arriva sulla tela subito dopo.",
+        "abandoned_one": "Service request non creata: il campo già aggiunto alla libreria resta lì, nella scheda «Libreria dei campi».",
+        "abandoned_other": "Service request non creata: i {{count}} campi già aggiunti alla libreria restano lì, nella scheda «Libreria dei campi».",
+        "landingFailed": "I campi sono stati creati tutti, ma il disegno non è arrivato sulla tela. Riprova a metterlo: i campi ci sono già e non verranno creati due volte."
       }
     }
   },

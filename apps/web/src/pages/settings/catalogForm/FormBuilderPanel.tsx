@@ -466,7 +466,7 @@ export function FormBuilderPanel() {
    * configura conferma quello che manca — e appena la voce c'è le sezioni
    * atterrano sulla tela.
    */
-  const [progettoInAttesa, setProgettoInAttesa] = useState<Progetto | null>(null)
+  const [progettoInAttesa, setProgettoInAttesa] = useState<{ progetto: Progetto; itemId: string } | null>(null)
 
   useEffect(() => {
     if (!formData?.catalogForm) return
@@ -476,23 +476,48 @@ export function FormBuilderPanel() {
   }, [formData])
 
   /*
-   * IL PROGETTO CHE ASPETTA LA VOCE (19 set 2026).
+   * IL PROGETTO CHE ASPETTA LA SUA VOCE (19 set 2026, corretto dalla revisione).
    *
    * Per una service request NUOVA le sezioni non possono atterrare subito: la
    * voce si crea col suo modale (la priorità è obbligatoria e l'AI può non
    * averla scelta), e selezionarla ricarica il modulo dal server. Se
-   * mettessimo le sezioni prima, quella lettura le cancellerebbe. Quindi si
-   * aspetta che il modulo della voce nuova sia arrivato — `formData` — e si
-   * mette la proposta sopra: il modulo di una voce appena creata è vuoto,
-   * quindi «sopra» vuol dire «al posto di niente».
+   * mettessimo le sezioni prima, quella lettura le cancellerebbe.
+   *
+   * IL DIFETTO che questa guardia chiude: la condizione era «c'è un progetto
+   * in attesa E `formData` esiste», e `formData` esiste GIÀ — è il modulo
+   * della voce aperta in quel momento. Chi aveva aperto una service request
+   * per darle un'occhiata e poi chiedeva all'AI una richiesta NUOVA si
+   * ritrovava le sezioni proposte sulla tela di QUELL'ALTRA, con un toast che
+   * diceva il contrario. Ora il progetto porta con sé a quale voce appartiene
+   * e si aspetta che il modulo arrivato sia il suo.
    */
+  /**
+   * BUTTARE IL PROGETTO IN ATTESA, dicendolo.
+   *
+   * Chiudendo il modale della voce senza crearla, i campi che l'AI ha già
+   * creato in libreria RESTANO — è l'unica cosa che era già stata scritta.
+   * Prima il progetto restava anche armato: mezz'ora dopo si apriva una voce
+   * qualunque e le sezioni di un disegno abbandonato ci atterravano sopra
+   * (revisione del 19 set). Adesso si scarta e si dice dove sono finiti i
+   * campi, invece di lasciarli trovare per caso.
+   */
+  const scartaProgettoInAttesa = () => {
+    setProgettoInAttesa((p) => {
+      if (p !== null && p.progetto.newFields.length > 0) {
+        toast.info(t('pages.catalogForms.ai.abandoned', { count: p.progetto.newFields.length }))
+      }
+      return null
+    })
+  }
+
   useEffect(() => {
     if (progettoInAttesa === null || !formData?.catalogForm) return
-    const p = progettoInAttesa
+    if (progettoInAttesa.itemId === '' || formData.catalogForm.itemId !== progettoInAttesa.itemId) return
+    const p = progettoInAttesa.progetto
     setProgettoInAttesa(null)
     void (async () => {
       await rileggiLibreria()
-      setBozza((d) => ({ ...d, sections: [...d.sections.filter((x) => x.items.length > 0), ...sezioniDaProgetto(p)] }))
+      setBozza((d) => ({ ...d, sections: [...d.sections.filter((x) => x.items.length > 0 || haTitolo(x)), ...sezioniDaProgetto(p, d.sections.map((x) => x.id))] }))
       setToccato(true)
     })()
   }, [formData, progettoInAttesa, rileggiLibreria])
@@ -752,7 +777,7 @@ export function FormBuilderPanel() {
    */
   const mettiSullaTela = async (progetto: Progetto) => {
     await rileggiLibreria()
-    cambia((d) => ({ ...d, sections: [...d.sections.filter((x) => x.items.length > 0), ...sezioniDaProgetto(progetto)] }))
+    cambia((d) => ({ ...d, sections: [...d.sections.filter((x) => x.items.length > 0 || haTitolo(x)), ...sezioniDaProgetto(progetto, d.sections.map((x) => x.id))] }))
   }
 
   /**
@@ -777,7 +802,7 @@ export function FormBuilderPanel() {
         titolo={t('pages.catalogForms.builder.newItemTitle')}
         sottotitolo={t('pages.catalogForms.builder.newItemHelp')}
         largo={560}
-        onChiudi={() => { setNuovaVoce(null) }}
+        onChiudi={() => { setNuovaVoce(null); scartaProgettoInAttesa() }}
       >
         <div style={{ display: 'grid', gap: 12 }}>
           <LabelledField label={t('pages.catalogForms.builder.newItemName')}>
@@ -825,6 +850,9 @@ export function FormBuilderPanel() {
                     } } })
                     const creata = (r.data as { createServiceCatalogItem?: { id: string } } | null | undefined)?.createServiceCatalogItem
                     if (!creata) return
+                    // Il progetto dell'AI aspettava proprio questa voce: da
+                    // adesso sa qual è, e atterrerà solo sul suo modulo.
+                    setProgettoInAttesa((p) => (p === null ? null : { ...p, itemId: creata.id }))
                     await rileggiVoci()
                     // Si apre SUBITO sul modulo della voce appena creata: e il
                     // motivo per cui la si crea da qui.
@@ -848,7 +876,7 @@ export function FormBuilderPanel() {
             >
               {creandoVoce ? t('common.saving') : t('pages.catalogForms.builder.newItemCreate')}
             </button>
-            <button type="button" onClick={() => { setNuovaVoce(null) }} style={bottone}>{t('common.cancel')}</button>
+            <button type="button" onClick={() => { setNuovaVoce(null); scartaProgettoInAttesa() }} style={bottone}>{t('common.cancel')}</button>
           </div>
         </div>
       </ModaleCentrato>
@@ -1393,7 +1421,8 @@ export function FormBuilderPanel() {
              * proposto — la priorita e obbligatoria e l'AI puo non averla
              * scelta — e le sezioni atterrano appena la voce c'e.
              */
-            setProgettoInAttesa(progetto)
+            // Ancora senza voce: l'id arriva quando la voce si crea.
+            setProgettoInAttesa({ progetto, itemId: '' })
             setNuovaVoce({
               name: progetto.item?.name ?? '',
               description: progetto.item?.description ?? '',
@@ -1418,9 +1447,27 @@ export function FormBuilderPanel() {
  * caso «voce nuova», che passa da un effetto — e dentro un effetto una
  * funzione che legge lo stato darebbe una chiusura vecchia.
  */
-function sezioniDaProgetto(progetto: Progetto): CatalogFormSection[] {
+/**
+ * Una sezione ha un titolo in almeno una lingua? Quella senza è la `main` che
+ * ogni modulo nuovo porta con sé: si può buttare. Una che il cliente ha
+ * creato e intitolato NO, nemmeno se è ancora vuota — buttarla vuol dire
+ * fargli riscrivere due titoli senza un annulla (revisione del 19 set).
+ */
+function haTitolo(sezione: CatalogFormSection): boolean {
+  return Object.values(sezione.title).some((x) => x.trim() !== '')
+}
+
+/**
+ * Le sezioni della proposta, con id che non ripetono quelli GIÀ SULLA TELA.
+ *
+ * Il server evita gli id del modulo SALVATO, ma la bozza può avere sezioni
+ * aggiunte a mano e non ancora pubblicate: due `ai_1` sulla stessa tela
+ * fanno rifiutare il salvataggio dopo che i campi sono stati creati.
+ */
+function sezioniDaProgetto(progetto: Progetto, giaSullaTela: readonly string[] = []): CatalogFormSection[] {
+  const presi = [...giaSullaTela]
   return progetto.sections.map((sez) => ({
-    id: sez.id,
+    id: (() => { const id = presi.includes(sez.id) ? idSezione(presi) : sez.id; presi.push(id); return id })(),
     title: { it: sez.titleIt, en: sez.titleEn },
     columns: sez.columns === 2 ? 2 : 1,
     items: sez.items.map((i) => ({
