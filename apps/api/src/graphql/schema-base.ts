@@ -618,6 +618,14 @@ export function buildBaseSDL(): string {
     createReportTemplate(input: CreateReportTemplateInput!): ReportTemplate!
     updateReportTemplate(id: ID!, input: UpdateReportTemplateInput!): ReportTemplate!
     deleteReportTemplate(id: ID!): Boolean!
+    """
+    PROGETTA una sezione di report da una descrizione a parole (19 set 2026).
+    Non scrive niente: restituisce una proposta che riempie il costruttore, dove
+    si vede l'anteprima e si salva a mano con \`addReportSection\`.
+
+    Si ferma prima del modello se la funzione e spenta in Organizzazione -> AI.
+    """
+    proposeReportSection(prompt: String!): ReportDesignProposal!
     addReportSection(templateId: ID!, input: ReportSectionInput!): ReportTemplate!
     updateReportSection(sectionId: ID!, input: ReportSectionInput!): ReportTemplate!
     removeReportSection(templateId: ID!, sectionId: ID!): ReportTemplate!

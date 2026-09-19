@@ -126,6 +126,7 @@ import { defaultLanguageSeed } from './20261005_1060_default_language_seed.js'
 import { enumIdenticalCopies } from './20261005_1070_enum_identical_copies.js'
 import { formFieldsShared } from './20261005_1080_form_fields_shared.js'
 import { aiSettingsFormDesigner } from './20261005_1090_ai_settings_form_designer.js'
+import { aiSettingsMissingFeatures } from './20261005_1100_ai_settings_missing_features.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -237,4 +238,5 @@ export const MIGRATIONS: readonly Migration[] = [
   enumIdenticalCopies,
   formFieldsShared,
   aiSettingsFormDesigner,
+  aiSettingsMissingFeatures,
 ]

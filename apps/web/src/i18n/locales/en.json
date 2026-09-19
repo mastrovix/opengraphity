@@ -1520,7 +1520,8 @@
         "postIncident": "Post-incident notes and problem candidates",
         "kbArticles": "Knowledge base drafts",
         "embeddings": "Similarity (embeddings)",
-        "formDesigner": "Service request designer"
+        "formDesigner": "Service request designer",
+        "reportDesigner": "Report designer"
       },
       "aiFeatureHelp": {
         "triage": "Suggests severity, category and team while an incident is being opened.",
@@ -1529,7 +1530,8 @@
         "postIncident": "Drafts resolution notes and groups similar incidents into problem candidates.",
         "kbArticles": "Drafts a knowledge base article from a resolved incident.",
         "embeddings": "Turns ticket and article texts into vectors for similar incidents and article suggestions. Off: nothing is computed, and the features that need it say so.",
-        "formDesigner": "Designs the sections and fields of a service request from a plain description. The proposal saves nothing: you review it on the canvas and accept it."
+        "formDesigner": "Designs the sections and fields of a service request from a plain description. The proposal saves nothing: you review it on the canvas and accept it.",
+        "reportDesigner": "Designs a report section from a plain description: entities, filters, grouping and chart. The proposal saves nothing: you review it in the builder, with the live preview."
       },
       "aiClusterGroup": "Problem candidates",
       "aiClusterSimilarity": "Minimum similarity (0.50–0.99)",
@@ -4456,6 +4458,14 @@
       "emptyPrompt": "Write what the service request must ask: with no description there is nothing to design.",
       "promptTooLong": "The description is too long (max {{max}} characters). Describe what you need, not the full specification.",
       "badAnswer": "The model answer cannot be read. Try again: if it happens twice, describe the request in simpler words."
+    },
+    "reportDesigner": {
+      "emptyPrompt": "Write what report you need: with no description there is nothing to design.",
+      "promptTooLong": "The description is too long (max {{max}} characters).",
+      "badAnswer": "The model answer cannot be read. Try again, perhaps in simpler words.",
+      "noEntities": "This organization has nothing to report on yet.",
+      "nothingUsable": "The proposal names no entity of this organization: try again saying what the report is about.",
+      "invalidProposal": "The proposal would not be saveable ({{message}}). That is a defect on our side: try again, and report it if it happens twice."
     }
   },
   "errorBoundary": {
@@ -7079,6 +7089,28 @@
       "priorityUnknown": "The priority «{{name}}» is not one of the Dictionary's: pick one by hand.",
       "workflowUnknown": "The workflow «{{name}}» does not exist: the AI creates none, pick one of yours.",
       "referenceNotRequired": "A reference ({{fieldType}}) cannot be required: it is not offered in the portal, and a field the portal never asks for cannot be demanded. You will find it optional."
+    }
+  },
+  "reportProposal": {
+    "discard": {
+      "entityUnknown": "«{{name}}» is not an entity this organization can report on.",
+      "tooManyNodes": "Past {{max}} entities the report graph stops being readable: the rest did not fit.",
+      "edgeEnds": "Link «{{name}}» discarded: it was unclear which entities it joined.",
+      "relationUnknown": "«{{name}}» is not a relationship going from {{from}} to {{to}}.",
+      "nodeUnreachable": "«{{name}}» was not joined to the rest: a detached entity would multiply the numbers instead of filtering them.",
+      "chartUnknown": "«{{name}}» is not a chart type ({{allowed}}): I used bars, change it yourself.",
+      "groupFieldUnknown": "The field «{{name}}» does not exist on {{entity}}: pick the grouping by hand.",
+      "metricUnknown": "«{{name}}» is not a measure ({{allowed}}): it falls back to a count.",
+      "metricFieldUnknown": "The field «{{name}}» does not exist on the main entity: the measure falls back to a count.",
+      "metricFieldNotNumber": "«{{name}}» is not a numeric field: average and sum cannot be computed, so it falls back to a count.",
+      "limitCapped": "The limit was capped at {{max}}: it is the most the builder can show.",
+      "columnsGuessed": "A table with no columns shows nothing: I used the first fields ({{fields}}).",
+      "fieldUnknown": "The column «{{name}}» does not exist on {{entity}}.",
+      "filterFieldUnknown": "Filter discarded: the field «{{name}}» does not exist on {{entity}}.",
+      "operatorUnknown": "Filter discarded: «{{op}}» is not a comparison reports can make ({{allowed}}).",
+      "filterDays": "«last N days» filter discarded: «{{value}}» is not a number of days.",
+      "filterEmpty": "«{{op}}» filter discarded: the value to compare is missing.",
+      "filterValueUnknown": "Filter discarded: «{{value}}» is not an allowed value. Allowed: {{allowed}}."
     }
   }
 }

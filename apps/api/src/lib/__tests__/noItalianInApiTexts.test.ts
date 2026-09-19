@@ -20,7 +20,7 @@
  *  - le descrizioni SDL (`schema*.ts`): documentazione dello schema;
  *  - le righe di log: diagnostica per chi gestisce l'installazione;
  *  - i prompt dei modelli (assistente, triage, report AI, post-incident,
- *    progettista dei moduli):
+ *    progettista dei moduli, progettista dei report):
  *    istruzioni al modello, che risponde nella lingua che gli si chiede;
  *  - script e migrazioni.
  */
@@ -39,6 +39,9 @@ const EXCLUDED_FILES = new Set([
   // dello schema JSON sono istruzioni AL MODELLO, che poi scrive etichette e
   // spiegazioni nella lingua del cliente (gliela si chiede nel system).
   'services/formDesignerService.ts',
+  // Il progettista dei report (19 set 2026): stessa ragione — prompt di
+  // sistema e `description` dello schema JSON sono istruzioni al modello.
+  'services/reportDesignerService.ts',
 ])
 
 function files(dir: string, out: string[] = []): string[] {

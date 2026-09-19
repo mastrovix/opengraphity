@@ -1520,7 +1520,8 @@
         "postIncident": "Note post-incident e candidati problem",
         "kbArticles": "Bozze della knowledge base",
         "embeddings": "Somiglianze (embedding)",
-        "formDesigner": "Designer delle service request"
+        "formDesigner": "Designer delle service request",
+        "reportDesigner": "Designer dei report"
       },
       "aiFeatureHelp": {
         "triage": "Propone severità, categoria e team mentre si apre un incident.",
@@ -1529,7 +1530,8 @@
         "postIncident": "Scrive la bozza delle note di risoluzione e raggruppa gli incident simili in candidati problem.",
         "kbArticles": "Scrive la bozza di un articolo della knowledge base da un incident risolto.",
         "embeddings": "Trasforma i testi di ticket e articoli in vettori per gli incident simili e i suggerimenti di articoli. Spenta: non si calcola niente, e le funzioni che ne hanno bisogno lo dicono.",
-        "formDesigner": "Disegna sezioni e campi di una service request da una descrizione a parole. La proposta non salva niente: la rivedi sulla tela e la accetti tu."
+        "formDesigner": "Disegna sezioni e campi di una service request da una descrizione a parole. La proposta non salva niente: la rivedi sulla tela e la accetti tu.",
+        "reportDesigner": "Disegna una sezione di report da una descrizione a parole: entità, filtri, raggruppamento e grafico. La proposta non salva niente: la rivedi nel costruttore, con l'anteprima."
       },
       "aiClusterGroup": "Candidati problem",
       "aiClusterSimilarity": "Somiglianza minima (0,50–0,99)",
@@ -4456,6 +4458,14 @@
       "emptyPrompt": "Scrivi cosa deve chiedere la service request: senza descrizione non c'è niente da disegnare.",
       "promptTooLong": "La descrizione è troppo lunga (massimo {{max}} caratteri). Descrivi cosa serve, non il capitolato.",
       "badAnswer": "La risposta del modello non è leggibile. Riprova: se succede di nuovo, descrivi la richiesta con parole più semplici."
+    },
+    "reportDesigner": {
+      "emptyPrompt": "Scrivi che report ti serve: senza descrizione non c'è niente da disegnare.",
+      "promptTooLong": "La descrizione è troppo lunga (massimo {{max}} caratteri).",
+      "badAnswer": "La risposta del modello non è leggibile. Riprova, magari con parole più semplici.",
+      "noEntities": "Questa organizzazione non ha ancora niente su cui fare report.",
+      "nothingUsable": "La proposta non nomina nessuna entità di questa organizzazione: riprova dicendo di cosa vuoi il report.",
+      "invalidProposal": "La proposta non sarebbe salvabile ({{message}}). È un difetto nostro: riprova, e se succede ancora segnalalo."
     }
   },
   "errorBoundary": {
@@ -7079,6 +7089,28 @@
       "priorityUnknown": "La priorità «{{name}}» non è fra quelle del Dizionario: da scegliere a mano.",
       "workflowUnknown": "Il workflow «{{name}}» non esiste: l'AI non ne crea, scegline uno dei tuoi.",
       "referenceNotRequired": "Un riferimento ({{fieldType}}) non può essere obbligatorio: non si offre nel portale, e un campo che il portale non chiede non si può pretendere. Lo trovi facoltativo."
+    }
+  },
+  "reportProposal": {
+    "discard": {
+      "entityUnknown": "«{{name}}» non è un'entità che si possa interrogare in questa organizzazione.",
+      "tooManyNodes": "Oltre {{max}} entità il grafo del report non si legge più: le altre non sono entrate.",
+      "edgeEnds": "Collegamento «{{name}}» scartato: non si capiva fra quali entità andava.",
+      "relationUnknown": "«{{name}}» non è una relazione che parte da {{from}} e arriva a {{to}}.",
+      "nodeUnreachable": "«{{name}}» non era collegata al resto: un'entità staccata moltiplicherebbe i numeri invece di filtrarli.",
+      "chartUnknown": "«{{name}}» non è un tipo di grafico ({{allowed}}): ho messo le barre, cambialo tu.",
+      "groupFieldUnknown": "Il campo «{{name}}» non esiste su {{entity}}: il raggruppamento va scelto a mano.",
+      "metricUnknown": "«{{name}}» non è una misura ({{allowed}}): torna un conteggio.",
+      "metricFieldUnknown": "Il campo «{{name}}» non esiste sull'entità principale: la misura torna un conteggio.",
+      "metricFieldNotNumber": "«{{name}}» non è un campo numerico: media e somma non si possono calcolare, torna un conteggio.",
+      "limitCapped": "Il limite è stato portato a {{max}}: è il massimo che il costruttore sa mostrare.",
+      "columnsGuessed": "Una tabella senza colonne non mostra niente: ho messo i primi campi ({{fields}}).",
+      "fieldUnknown": "La colonna «{{name}}» non esiste su {{entity}}.",
+      "filterFieldUnknown": "Filtro scartato: il campo «{{name}}» non esiste su {{entity}}.",
+      "operatorUnknown": "Filtro scartato: «{{op}}» non è un confronto che i report sanno fare ({{allowed}}).",
+      "filterDays": "Filtro «ultimi giorni» scartato: «{{value}}» non è un numero di giorni.",
+      "filterEmpty": "Filtro «{{op}}» scartato: manca il valore da confrontare.",
+      "filterValueUnknown": "Filtro scartato: «{{value}}» non è un valore ammesso. Ammessi: {{allowed}}."
     }
   }
 }

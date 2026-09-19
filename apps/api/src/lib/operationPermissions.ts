@@ -160,7 +160,10 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   {
     anyOf: ['report.write'],
     mutation: ['createReportTemplate', 'updateReportTemplate', 'deleteReportTemplate', 'duplicateReportTemplate',
-      'addReportSection', 'updateReportSection', 'removeReportSection', 'reorderReportSections', 'exportReportPDF', 'exportReportExcel'],
+      'addReportSection', 'updateReportSection',
+      // La PROPOSTA dell'AI non scrive niente, ma costa una chiamata al
+      // modello e riempie il costruttore: la puo chiedere chi salva i report.
+      'proposeReportSection', 'removeReportSection', 'reorderReportSections', 'exportReportPDF', 'exportReportExcel'],
   },
   { anyOf: ['report.schedule'], mutation: ['updateReportSchedule'] },
   { anyOf: ['report.ai'], mutation: ['askReport'] },

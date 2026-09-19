@@ -162,6 +162,62 @@ export function reportSDL(): string {
     scheduleChannelId: String
   }
 
+  # ── La proposta dell'AI per una sezione (19 set 2026) ─────────────────────
+  #
+  # Tipizzata: e forma NOSTRA, non dato del cliente, e il costruttore deve
+  # poterla leggere pezzo per pezzo. I filtri restano una stringa JSON, come
+  # nel nodo salvato: quella e la forma che il costruttore gia scrive.
+
+  """Un nodo proposto: l'entita, il suo posto nel grafo e il perche."""
+  type ReportDesignNode {
+    id:             ID!
+    entityType:     String!
+    neo4jLabel:     String!
+    label:          String!
+    isRoot:         Boolean!
+    isResult:       Boolean!
+    selectedFields: [String!]!
+    """I filtri come JSON \`[{field, operator, value}]\`, o null."""
+    filters:        String
+    positionX:      Float!
+    positionY:      Float!
+    why:            String!
+  }
+
+  type ReportDesignEdge {
+    id:               ID!
+    sourceNodeId:     ID!
+    targetNodeId:     ID!
+    relationshipType: String!
+    direction:        String!
+    label:            String!
+  }
+
+  """
+  Il progetto di UNA sezione di report: non scrive niente. I campi hanno gli
+  stessi nomi di \`ReportSectionInput\`, perche il costruttore li usa per
+  riempire il wizard e per chiedere l'anteprima.
+  """
+  type ReportDesignProposal {
+    """La descrizione da cui e nata, per rileggerla accanto al risultato."""
+    prompt:        String!
+    title:         String!
+    chartType:     String!
+    metric:        String!
+    metricField:   String
+    groupByNodeId: ID
+    groupByField:  String
+    limit:         Int!
+    sortDir:       String!
+    nodes:         [ReportDesignNode!]!
+    edges:         [ReportDesignEdge!]!
+    """Perche questo disegno: il pezzo della descrizione da cui nasce."""
+    why:           String!
+    discarded:     [FormDesignDiscard!]!
+    """Quello che il modello dice di non aver potuto fare."""
+    notes:         [String!]!
+  }
+
   input ReportNodeInput {
     id: String!
     entityType: String!

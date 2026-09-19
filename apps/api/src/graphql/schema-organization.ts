@@ -78,6 +78,8 @@ export function organizationSDL(): string {
     embeddings:     Boolean!
     """Disegna il modulo di una service request da una descrizione (19 set 2026)."""
     formDesigner:   Boolean!
+    """Disegna una sezione di report da una descrizione (19 set 2026)."""
+    reportDesigner: Boolean!
   }
 
   type AISettings {
@@ -97,6 +99,7 @@ export function organizationSDL(): string {
     kbArticles:     Boolean!
     embeddings:     Boolean!
     formDesigner:   Boolean!
+    reportDesigner: Boolean!
   }
 
   input AISettingsInput {

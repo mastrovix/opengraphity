@@ -13,6 +13,6 @@
  * `AI_FEATURES` e lo schema.
  */
 export const AI_FEATURE_KEYS = [
-  'triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner',
+  'triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner', 'reportDesigner',
 ] as const
 export type AIFeatureKey = (typeof AI_FEATURE_KEYS)[number]

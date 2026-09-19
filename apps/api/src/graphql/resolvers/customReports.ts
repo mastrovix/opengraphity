@@ -4,6 +4,7 @@ import type { Session, ManagedTransaction } from 'neo4j-driver'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
+import { proponiSezioneDiReport } from '../../services/reportDesignerService.js'
 import { getNavigableEntities, getNavigableRelations } from '../../lib/navigableGraph.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
 import { validateReportSection, type ReportSectionDef } from '../../lib/reportQueryBuilder.js'
@@ -451,6 +452,35 @@ async function updateReportSchedule(
   }, true)
 }
 
-const Mutation = { ...ReportMutation, updateReportSchedule }
+/**
+ * «DESCRIVIMI IL REPORT E TE LO DISEGNO» (19 set 2026).
+ *
+ * Non scrive niente: la proposta riempie il costruttore, dove si vede
+ * l'anteprima (che passa dalla validazione vera) e si salva a mano con
+ * `addReportSection`. Cosi l'AI non ha una porta sua per scrivere.
+ */
+const proposeReportSection = async (_: unknown, args: { prompt: string }, ctx: GraphQLContext) => {
+  const esito = await proponiSezioneDiReport({ tenantId: ctx.tenantId, prompt: args.prompt })
+  return {
+    prompt: esito.prompt,
+    title: esito.title,
+    chartType: esito.chartType,
+    metric: esito.metric,
+    metricField: esito.metricField,
+    groupByNodeId: esito.groupByNodeId,
+    groupByField: esito.groupByField,
+    limit: esito.limit,
+    sortDir: esito.sortDir,
+    nodes: esito.nodes,
+    edges: esito.edges,
+    why: esito.why,
+    // I parametri come JSON: sono una mappa aperta (nomi di campi, entita,
+    // valori ammessi) e tipizzarla vorrebbe dire un tipo per ogni scarto.
+    discarded: esito.scartati.map((x) => ({ what: x.what, key: x.key, params: JSON.stringify(x.params) })),
+    notes: esito.note,
+  }
+}
+
+const Mutation = { ...ReportMutation, updateReportSchedule, proposeReportSection }
 
 export const customReportResolvers = { Query, Mutation }

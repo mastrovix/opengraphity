@@ -21,11 +21,13 @@
  *
  * ## Una funzione che nasce dopo (19 set 2026)
  * `formDesigner` — l'AI che disegna il modulo di una service request da una
- * descrizione — è il settimo interruttore, e i tenant che avevano già salvato
- * le loro impostazioni non ce l'hanno. In LETTURA l'interruttore assente vale
- * fabbrica (acceso), che è la regola di questo file; la migrazione
- * `20261005_1090` lo scrive esplicito su chi aveva già salvato, così nel
- * Dizionario delle impostazioni non resta un buco che nessuno sa spiegare.
+ * descrizione — è il settimo interruttore, e `reportDesigner` — quella che
+ * disegna una sezione di report — l'ottavo. I tenant che avevano già salvato
+ * le loro impostazioni non ce li hanno. In LETTURA l'interruttore assente vale
+ * fabbrica (acceso), che è la regola di questo file; le migrazioni
+ * `20261005_1090` e `20261005_1100` li scrivono espliciti su chi aveva già
+ * salvato, così nel documento delle impostazioni non resta un buco che nessuno
+ * sa spiegare.
  */
 import { GraphQLError } from 'graphql'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
@@ -33,7 +35,7 @@ import { NotFoundError, ValidationError } from './errors.js'
 import { createMetamodelCache } from './metamodelCache.js'
 import { invalidateSchema } from './schemaInvalidator.js'
 
-export const AI_FEATURES = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner'] as const
+export const AI_FEATURES = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner', 'reportDesigner'] as const
 export type AIFeature = (typeof AI_FEATURES)[number]
 
 export interface AISettings {
@@ -45,7 +47,7 @@ export interface AISettings {
 }
 
 export const FACTORY_AI_SETTINGS: Readonly<AISettings> = {
-  features: { triage: true, assistant: true, reportAnalysis: true, postIncident: true, kbArticles: true, embeddings: true, formDesigner: true },
+  features: { triage: true, assistant: true, reportAnalysis: true, postIncident: true, kbArticles: true, embeddings: true, formDesigner: true, reportDesigner: true },
   clusterMinSimilarity: 0.72,
   clusterMinSize: 3,
 }
