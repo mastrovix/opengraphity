@@ -520,6 +520,22 @@ export const metamodelCacheClearFailuresTotal = createCounter('metamodel_cache_c
 export const metamodelBusSubscribed = createGauge('metamodel_bus_subscribed', 'This process is subscribed to the metamodel channel (1) or not (0): at 0 it is not told about changes made elsewhere', [])
 
 /** Metriche del canale del metamodello, nell'ordine di esposizione. */
+/**
+ * L'AI COSTA E SI MISURA (revisione AI, ondata 8).
+ *
+ * Sei funzioni chiamavano il modello e nessuna era contata: quanto spende un
+ * cliente, quante risposte arrivano tagliate, quanto del prompt rilegge la
+ * cache — niente. `ai_tokens_total{kind="cache_read"}` in particolare è il
+ * numero che dice se il punto di cache è messo dove serve: se resta a zero,
+ * il prefisso non si ripete e la cache non sta lavorando.
+ */
+export const aiCallsTotal = createCounter('ai_calls_total', 'Calls to the language model by AI feature and outcome (ok, truncated, refused, unreadable, failed)', ['feature', 'outcome'])
+export const aiTokensTotal = createCounter('ai_tokens_total', 'Tokens exchanged with the language model by AI feature and kind (input, output, cache_read, cache_write)', ['feature', 'kind'])
+export const aiDiscardsTotal = createCounter('ai_discards_total', 'Pieces of a model proposal thrown away by the validation filter, by AI feature: it measures how well the prompt matches what the product accepts', ['feature'])
+export const aiCallDurationSeconds = createHistogram('ai_call_duration_seconds', 'Wall time of a model call by AI feature', ['feature'], [1, 2, 5, 10, 20, 40, 80])
+
+export const AI_METRICS = [aiCallsTotal, aiTokensTotal, aiDiscardsTotal, aiCallDurationSeconds] as const
+
 export const METAMODEL_BUS_METRICS = [
   metamodelPublishedTotal, metamodelReceivedTotal, metamodelCacheClearFailuresTotal, metamodelBusSubscribed,
 ] as const
@@ -539,6 +555,7 @@ export function renderMetrics(): string {
     ...EVENT_MANAGEMENT_METRICS.map((m) => m.collect()),
     ...SCHEMA_METRICS.map((m) => m.collect()),
     ...METAMODEL_BUS_METRICS.map((m) => m.collect()),
+    ...AI_METRICS.map((m) => m.collect()),
   ].join('\n\n')
 }
 

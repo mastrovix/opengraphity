@@ -26,11 +26,11 @@
  *    icona, condivisione e pianificazione;
  *  - qualunque scrittura: la proposta è una proposta.
  */
-import Anthropic from '@anthropic-ai/sdk'
 import { GraphQLError } from 'graphql'
 import { config } from '../lib/config.js'
 import { logger } from '../lib/logger.js'
 import { assertAIFeature } from '../lib/aiSettings.js'
+import { bloccoDiContesto, getAnthropic, leggiJSONDalModello, registraChiamataFallita, registraDurata, registraScarti } from '../lib/aiClient.js'
 import { getNavigableEntities, type NavigableEntity } from '../lib/navigableGraph.js'
 import { getReportWhitelist } from '../lib/reportWhitelist.js'
 import { validateReportSection, CHART_TYPES, FILTER_OPERATORS, REPORT_METRICS, REPORT_GRANULARITIES } from '../lib/reportQueryBuilder.js'
@@ -153,17 +153,6 @@ function schemaProposta(entita: readonly NavigableEntity[]) {
   } as const
 }
 
-let _client: Anthropic | null = null
-function getClient(): Anthropic {
-  if (!config.anthropicApiKey) {
-    throw new GraphQLError('AI report designer not configured: ANTHROPIC_API_KEY missing', {
-      extensions: { code: 'FAILED_PRECONDITION', i18n: { key: 'errors.ai.notConfigured' } },
-    })
-  }
-  _client ??= new Anthropic()
-  return _client
-}
-
 export interface EsitoPropostaReport extends PropostaReport {
   /** La frase da cui è nata: torna indietro perché si rilegga accanto al risultato. */
   readonly prompt: string
@@ -202,7 +191,7 @@ export async function proponiSezioneDiReport(req: RichiestaDiReport): Promise<Es
 
   // La chiave PRIMA del lavoro: leggere tutto il metamodello per poi dire
   // «non configurato» è il contrario del fail-fast (revisione del 19 set).
-  getClient()
+  getAnthropic()
 
   const entita = await getNavigableEntities(req.tenantId)
   if (entita.length === 0) {
@@ -214,7 +203,6 @@ export async function proponiSezioneDiReport(req: RichiestaDiReport): Promise<Es
   // Quello che il modello vede: le stesse entità del costruttore, coi campi e
   // le relazioni. I valori dei vocabolari troncati (vedi MAX_VALORI_PER_CAMPO).
   const contesto = {
-    richiesta: prompt,
     entita: entita.map((e) => ({
       id: e.entityType,
       nome: e.label,
@@ -235,44 +223,38 @@ export async function proponiSezioneDiReport(req: RichiestaDiReport): Promise<Es
     massimo_limite: MAX_LIMITE_PROPONIBILE,
   }
 
-  const client = getClient()
+  const client = getAnthropic()
   const t0 = Date.now()
-  const response = await client.messages.create({
-    model: config.anthropicModel,
-    max_tokens: 6000,
-    thinking: { type: 'adaptive' },
-    output_config: {
-      effort: 'medium',
-      format: { type: 'json_schema', schema: schemaProposta(entita) },
-    },
-    system: [
-      { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: `Write the title and the "perche" explanations in ${await modelLanguageFor(req.tenantId)}.` },
-    ],
-    messages: [{ role: 'user', content: JSON.stringify(contesto, null, 1) }],
+  // Contesto in coda ai blocchi di sistema col punto di cache, richiesta nel
+  // messaggio: qui il contesto è il metamodello del cliente, che fra due
+  // chiamate è identico. Vedi `lib/aiClient.ts`.
+  let response
+  try {
+    response = await client.messages.create({
+      model: config.anthropicModel,
+      max_tokens: 6000,
+      thinking: { type: 'adaptive' },
+      output_config: {
+        effort: 'medium',
+        format: { type: 'json_schema', schema: schemaProposta(entita) },
+      },
+      system: [
+        { type: 'text', text: SYSTEM_PROMPT },
+        { type: 'text', text: `Write the title and the "perche" explanations in ${await modelLanguageFor(req.tenantId)}.` },
+        bloccoDiContesto(contesto),
+      ],
+      messages: [{ role: 'user', content: prompt }],
+    })
+  } catch (err) {
+    registraChiamataFallita('reportDesigner', err)
+    throw err
+  }
+  registraDurata('reportDesigner', Date.now() - t0)
+
+  const grezza = leggiJSONDalModello(response, 'reportDesigner', {
+    troncata: 'errors.reportDesigner.truncated',
+    illeggibile: 'errors.reportDesigner.badAnswer',
   })
-
-  // Troncato non è «non è JSON»: vedi il gemello dei moduli.
-  if (response.stop_reason === 'max_tokens') {
-    throw new GraphQLError('The model answer was cut off (max_tokens)', {
-      extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.reportDesigner.truncated' } },
-    })
-  }
-  if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('The model refused the design request', {
-      extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.ai.modelRefused' } },
-    })
-  }
-  const blocco = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
-  if (!blocco) throw new Error('[report-designer] response without a text block')
-
-  let grezza: unknown
-  try { grezza = JSON.parse(blocco.text) }
-  catch (err) {
-    throw new GraphQLError(`The model answer is not valid JSON: ${err instanceof Error ? err.message : String(err)}`, {
-      extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.reportDesigner.badAnswer' } },
-    })
-  }
 
   const proposta = validaPropostaReport(grezza, entita)
   if (proposta === null) {
@@ -285,11 +267,13 @@ export async function proponiSezioneDiReport(req: RichiestaDiReport): Promise<Es
      * moduli restituisce la proposta vuota con i suoi scarti, e chi guarda
      * capisce se riscrivere la frase o creare quel tipo di CI.
      */
+    const scarti = scartiDelRifiuto(grezza, entita)
+    registraScarti('reportDesigner', scarti.length)
     return {
       prompt, title: '', chartType: 'bar', metric: 'count', metricField: null,
       groupByNodeId: null, groupByField: null, groupByGranularity: null, limit: 20, sortDir: 'DESC',
       nodes: [], edges: [], why: '',
-      scartati: scartiDelRifiuto(grezza, entita),
+      scartati: scarti,
       note: [],
     }
   }
@@ -314,6 +298,7 @@ export async function proponiSezioneDiReport(req: RichiestaDiReport): Promise<Es
     })
   }
 
+  registraScarti('reportDesigner', proposta.scartati.length)
   log.info({
     ms: Date.now() - t0,
     chartType: proposta.chartType,

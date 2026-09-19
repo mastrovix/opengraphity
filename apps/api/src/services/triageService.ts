@@ -11,13 +11,13 @@
  * automatically. No-fallback: missing API key, provider errors and schema
  * violations all throw.
  */
-import Anthropic from '@anthropic-ai/sdk'
 import { config } from '../lib/config.js'
 import { GraphQLError } from 'graphql'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
 import { vectorSearchForTenant } from '../lib/vectorSearch.js'
 import { aiFeatureEnabled, assertAIFeature } from '../lib/aiSettings.js'
+import { bloccoDiContesto, getAnthropic, leggiJSONDalModello, registraChiamataFallita, registraDurata } from '../lib/aiClient.js'
 import { logger } from '../lib/logger.js'
 import { enumScopeClause, loadTenantEnumOverrides, applyEnumOverride } from '../lib/enumScope.js'
 import { modelLanguageFor } from '../lib/systemText.js'
@@ -169,17 +169,6 @@ function suggestionSchema(severities: string[], categories: string[]) {
   } as const
 }
 
-let _client: Anthropic | null = null
-function getClient(): Anthropic {
-  if (!config.anthropicApiKey) {
-    throw new GraphQLError('AI triage not configured: ANTHROPIC_API_KEY missing', {
-      extensions: { code: 'FAILED_PRECONDITION', i18n: { key: 'errors.ai.notConfigured' } },
-    })
-  }
-  _client ??= new Anthropic()
-  return _client
-}
-
 export async function suggestTriage(input: TriageInput): Promise<TriageSuggestion> {
   // Funzione spenta dall'organizzazione: nessuna chiamata al modello (ondata 6).
   await assertAIFeature(input.tenantId, 'triage')
@@ -208,31 +197,37 @@ export async function suggestTriage(input: TriageInput): Promise<TriageSuggestio
     impatto_ci: impact,
   }
 
-  const client = getClient()
+  const client = getAnthropic()
   const t0 = Date.now()
-  const response = await client.messages.create({
-    model: config.anthropicModel,
-    max_tokens: 2000,
-    thinking: { type: 'adaptive' },
-    output_config: {
-      effort: 'low',
-      format: { type: 'json_schema', schema: suggestionSchema(severities, categories) },
-    },
-    system: [
-      { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
-      // La motivazione la legge l'operatore: nella lingua del cliente.
-      { type: 'text', text: `Write the reasoning in ${await modelLanguageFor(input.tenantId)}.` },
-    ],
-    messages: [{ role: 'user', content: JSON.stringify(context, null, 1) }],
-  })
-
-  if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('The model refused the triage request', { extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.ai.modelRefused' } } })
+  let response
+  try {
+    response = await client.messages.create({
+      model: config.anthropicModel,
+      max_tokens: 2000,
+      thinking: { type: 'adaptive' },
+      output_config: {
+        effort: 'low',
+        format: { type: 'json_schema', schema: suggestionSchema(severities, categories) },
+      },
+      system: [
+        { type: 'text', text: SYSTEM_PROMPT },
+        // La motivazione la legge l'operatore: nella lingua del cliente.
+        { type: 'text', text: `Write the reasoning in ${await modelLanguageFor(input.tenantId)}.` },
+        // Il contesto (bozza, incident simili, impatto dei CI) col punto di
+        // cache: vedi `lib/aiClient.ts`.
+        bloccoDiContesto(context),
+      ],
+      messages: [{ role: 'user', content: 'Triage this draft.' }],
+    })
+  } catch (err) {
+    registraChiamataFallita('triage', err)
+    throw err
   }
-  const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
-  if (!textBlock) throw new Error('[triage] response without a text block')
+  registraDurata('triage', Date.now() - t0)
 
-  const parsed = JSON.parse(textBlock.text) as Omit<TriageSuggestion, 'similarUsed'>
+  const parsed = leggiJSONDalModello(response, 'triage', {
+    troncata: 'errors.ai.truncated', illeggibile: 'errors.ai.badAnswer',
+  }) as Omit<TriageSuggestion, 'similarUsed'>
   log.info({ ms: Date.now() - t0, severity: parsed.severity, confidence: parsed.confidence }, '[triage] suggestion generated')
 
   return { ...parsed, similarUsed: similar.slice(0, 5) }

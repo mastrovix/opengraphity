@@ -4085,7 +4085,9 @@
     "ai": {
       "notConfigured": "The AI is not configured: the service key is missing.",
       "modelRefused": "The AI model refused the request: try rephrasing it.",
-      "disabled": "The AI feature «{{feature}}» is turned off for this organization. An administrator can turn it on in Organization → AI."
+      "disabled": "The AI feature «{{feature}}» is turned off for this organization. An administrator can turn it on in Organization → AI.",
+      "truncated": "The model answer was cut off halfway: the request was too big. Try again, or ask for less.",
+      "badAnswer": "The model answer could not be read. Try again: if it happens again, report it to whoever administers the platform."
     },
     "kb": {
       "onlyFromConcluded": "The Knowledge Base draft is generated only from resolved or closed incidents: this one is in step \"{{step}}\". Concluding steps of the incident workflow: {{concluded}}.",

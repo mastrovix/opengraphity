@@ -10,6 +10,7 @@
  * optional `stream` callback.
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { getAnthropic, registraRisposta } from '../lib/aiClient.js'
 import { getSession, toNumber } from '@opengraphity/neo4j'
 import { config } from '../lib/config.js'
 import { logger } from '../lib/logger.js'
@@ -276,7 +277,7 @@ export interface RunReportAgentOptions {
   messages: Anthropic.MessageParam[]
   /** When given, text deltas and tool calls are emitted as they happen. */
   stream?: (event: ReportAgentEvent) => void
-  /** Test seam; defaults to `new Anthropic()` (credentials from the environment). */
+  /** Test seam; defaults to the shared client of `lib/aiClient.ts`. */
   client?: Anthropic
 }
 
@@ -291,7 +292,7 @@ export async function runReportAgent(opts: RunReportAgentOptions): Promise<strin
   if (!process.env['ANTHROPIC_API_KEY']) throw new Error('ANTHROPIC_API_KEY not set')
   if (!opts.messages.length) throw new Error(`${LOG_LABEL} no messages to send`)
 
-  const client = opts.client ?? new Anthropic()
+  const client = opts.client ?? getAnthropic()
   const system = buildSystemPrompt(await getCachedSchema(opts.tenantId))
   const budget = new ToolLoopBudget()
   const messages: Anthropic.MessageParam[] = [...opts.messages]
@@ -330,6 +331,8 @@ export async function runReportAgent(opts: RunReportAgentOptions): Promise<strin
   while (true) {
     budget.beforeModelCall()
     const message = await runTurn()
+    // Ogni turno dell'anello è una chiamata pagata: si conta, come le altre.
+    registraRisposta('reportAnalysis', message.stop_reason === 'refusal' ? 'refused' : 'ok', message)
     budget.recordUsage(message.usage.output_tokens)
 
     for (const block of message.content) {

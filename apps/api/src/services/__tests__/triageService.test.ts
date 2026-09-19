@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
+import { resetAnthropicForTests } from '../../lib/aiClient.js'
 
 const h = vi.hoisted(() => {
   const cfg = { anthropicApiKey: undefined as string | undefined }
@@ -95,6 +96,9 @@ async function failure(promise: Promise<unknown>): Promise<unknown> {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Il client è un singleton condiviso (ondata 8): senza dimenticarlo, il
+  // secondo test di questo file conterebbe la costruzione del primo.
+  resetAnthropicForTests()
   h.constructed.length = 0
   h.ownEnums.length = 0
   h.cfg.anthropicApiKey = 'sk-test'
@@ -134,7 +138,10 @@ describe('suggestTriage — precondizioni', () => {
     h.cfg.anthropicApiKey = undefined
     const err = await failure(suggestTriage(input))
     expect(err).toBeInstanceOf(GraphQLError)
-    expect((err as GraphQLError).message).toBe('AI triage not configured: ANTHROPIC_API_KEY missing')
+    // Ondata 8: il messaggio è uno per tutte le funzioni AI, perché il client
+    // è uno solo (`lib/aiClient.ts`). Quale funzione ha fallito lo dice il
+    // resolver che alza l'errore, non il controllo della chiave.
+    expect((err as GraphQLError).message).toBe('AI is not configured on this platform: ANTHROPIC_API_KEY missing')
     expect((err as GraphQLError).extensions['code']).toBe('FAILED_PRECONDITION')
     expect(h.constructed).toHaveLength(0)
     expect(h.create).not.toHaveBeenCalled()
@@ -163,7 +170,16 @@ describe('suggestTriage — chiamata al modello', () => {
       category: { enum: ['network', 'database'] },
       confidence: { enum: ['low', 'medium', 'high'] },
     })
-    const userContent = JSON.parse((params['messages'] as Array<{ content: string }>)[0]!.content) as Record<string, unknown>
+    /*
+     * Il CONTESTO viaggia nell'ultimo blocco di sistema, col punto di cache, e
+     * non nel messaggio (ondata 8): attaccato alla frase dell'utente cambiava
+     * a ogni chiamata e rendeva la cache impossibile per costruzione.
+     */
+    const sistema = params['system'] as Array<{ text: string; cache_control?: unknown }>
+    const ultimo = sistema[sistema.length - 1]!
+    expect(ultimo.cache_control).toEqual({ type: 'ephemeral' })
+    expect(sistema.filter((b) => b.cache_control !== undefined)).toHaveLength(1)
+    const userContent = JSON.parse(ultimo.text) as Record<string, unknown>
     expect(userContent['bozza']).toEqual({ titolo: 'VPN lenta', descrizione: 'da stamattina' })
     expect(userContent['incident_simili']).toHaveLength(6)
     expect((userContent['incident_simili'] as unknown[])[0]).toEqual({ numero: 'INC00000001', titolo: 'Simile 1', severity: 'high', categoria: 'network', stato: 'resolved', team: 'NOC', similarita: 0.91 })
@@ -221,13 +237,22 @@ describe('suggestTriage — chiamata al modello', () => {
   it('senza CI non interroga l\'impatto e passa impatto_ci vuoto', async () => {
     await suggestTriage({ ...input, ciIds: [] })
     expect(vi.mocked(runQuery).mock.calls.some(c => (c[1] as string).includes('BusinessCapability'))).toBe(false)
-    const userContent = JSON.parse((h.create.mock.calls[0]![0]['messages'] as Array<{ content: string }>)[0]!.content) as Record<string, unknown>
+    const sistema = h.create.mock.calls[0]![0]['system'] as Array<{ text: string }>
+    const userContent = JSON.parse(sistema[sistema.length - 1]!.text) as Record<string, unknown>
     expect(userContent['impatto_ci']).toEqual([])
   })
 
-  it('output JSON non parsabile → errore esplicito (nessun triage vuoto)', async () => {
+  it('output JSON non parsabile → errore con una chiave da leggere (nessun triage vuoto)', async () => {
+    /*
+     * Prima usciva il `SyntaxError` crudo di `JSON.parse`: un 500 con un
+     * messaggio che parla di posizioni in una stringa che l'utente non ha mai
+     * visto. Dall'ondata 8 passa dal client condiviso, che alza un errore con
+     * la sua chiave i18n — ed è la stessa per tutte le funzioni AI.
+     */
     h.create.mockResolvedValue(modelReply('{"severity": "high", '))
-    await expect(suggestTriage(input)).rejects.toThrow(SyntaxError)
+    const err = await failure(suggestTriage(input))
+    expect(err).toBeInstanceOf(GraphQLError)
+    expect((err as GraphQLError).extensions['i18n']).toEqual({ key: 'errors.ai.badAnswer' })
   })
 
   it('refusal → INTERNAL_SERVER_ERROR; risposta senza blocco testo → errore', async () => {

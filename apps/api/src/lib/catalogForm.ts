@@ -30,7 +30,7 @@ import {
   FORM_FIELD_TYPES_WITHOUT_ANSWER, FORM_FIELD_TYPES_WITH_VOCABULARY, FORM_CONDITION_OPS,
   FORM_CONDITION_OPS_WITHOUT_VALUE, FORM_DRAFT_ENTITY_TYPE, FORM_FIELD_TYPES_AS_PROPERTY,
   canBeConditionSubject, catalogFormConditionFieldNames, catalogFormFieldNames, catalogFormForEndUser,
-  evaluateFormCondition, formItemsToFill, formulaInput, isFormTableColumnType, isFormTableType,
+  formItemsToFill, formulaInput, isFormTableColumnType, isFormTableType,
   FORM_TABLE_COLUMN_TYPES, FORM_TABLE_VERSION, FORM_TABLE_V1_KEYS,
   isFormAnswerEmpty, isFormAttachmentType, isFormConditionOp, isFormFieldType, isFormReferenceType,
   isFormTableRowEmpty,

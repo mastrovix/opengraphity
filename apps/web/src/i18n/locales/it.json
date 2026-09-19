@@ -4085,7 +4085,9 @@
     "ai": {
       "notConfigured": "L'AI non è configurata: manca la chiave del servizio.",
       "modelRefused": "Il modello AI ha rifiutato la richiesta: prova a riformularla.",
-      "disabled": "La funzione AI «{{feature}}» è spenta per questa organizzazione. Un amministratore può accenderla in Organizzazione → AI."
+      "disabled": "La funzione AI «{{feature}}» è spenta per questa organizzazione. Un amministratore può accenderla in Organizzazione → AI.",
+      "truncated": "La risposta del modello si è interrotta a metà: la richiesta era troppo grande. Riprova, o riduci quello che stai chiedendo.",
+      "badAnswer": "La risposta del modello non è leggibile. Riprova: se succede ancora, segnalalo a chi amministra la piattaforma."
     },
     "kb": {
       "onlyFromConcluded": "La bozza per la Knowledge Base si genera solo da incident risolti o chiusi: questo è nel passo «{{step}}». Passi conclusivi del workflow incident: {{concluded}}.",

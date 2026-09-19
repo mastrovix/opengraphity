@@ -30,13 +30,13 @@
  *  - i workflow NUOVI: l'AI scegli fra quelli che esistono, non ne disegna;
  *  - qualunque SCRITTURA: la proposta è una proposta.
  */
-import Anthropic from '@anthropic-ai/sdk'
 import { GraphQLError } from 'graphql'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { CATALOG_FORM_VERSION, type CatalogFormDefinition } from '@opengraphity/types'
 import { config } from '../lib/config.js'
 import { logger } from '../lib/logger.js'
 import { assertAIFeature } from '../lib/aiSettings.js'
+import { bloccoDiContesto, getAnthropic, leggiJSONDalModello, registraChiamataFallita, registraDurata, registraScarti } from '../lib/aiClient.js'
 import { catalogFormLimits } from '../lib/catalogFormLimits.js'
 import { assertCatalogForm, formFields, parseCatalogForm, type FormFieldDef } from '../lib/catalogForm.js'
 import { getScriptingPlan } from '../lib/scriptingPlan.js'
@@ -345,17 +345,6 @@ function schemaProposta(tipi: readonly string[]) {
   } as const
 }
 
-let _client: Anthropic | null = null
-function getClient(): Anthropic {
-  if (!config.anthropicApiKey) {
-    throw new GraphQLError('AI form designer not configured: ANTHROPIC_API_KEY missing', {
-      extensions: { code: 'FAILED_PRECONDITION', i18n: { key: 'errors.ai.notConfigured' } },
-    })
-  }
-  _client ??= new Anthropic()
-  return _client
-}
-
 export interface EsitoProposta extends PropostaValidata {
   /** La frase da cui è nata: torna indietro perché si rilegga accanto al risultato. */
   readonly prompt: string
@@ -385,7 +374,7 @@ export async function proponiModulo(req: RichiestaDiProgetto): Promise<EsitoProp
    * `ANTHROPIC_API_KEY` si pagava tutto il catalogo per poi dire «non
    * configurato». Fail-fast è la regola di casa, e qui costa una riga.
    */
-  getClient()
+  getAnthropic()
 
   const catalogo = await leggiCatalogo(req)
   const campiEsistenti = catalogo.campiDiLibreria
@@ -394,7 +383,6 @@ export async function proponiModulo(req: RichiestaDiProgetto): Promise<EsitoProp
   // TUTTI (anche i non condivisi): qui non si sta offrendo il riuso a un altro
   // modulo, si sta evitando di creare un doppione di qualcosa che esiste.
   const contesto = {
-    richiesta: prompt,
     sto_aggiungendo_a: catalogo.nomeVoce,
     modulo_esistente: catalogo.moduloEsistente === null ? null : {
       campi_gia_presenti: catalogo.campiGiaNelModulo,
@@ -415,50 +403,41 @@ export async function proponiModulo(req: RichiestaDiProgetto): Promise<EsitoProp
     campi_ancora_disponibili: Math.max(0, catalogo.maxCampiPerModulo - catalogo.campiGiaNelModulo.length),
   }
 
-  const client = getClient()
+  const client = getAnthropic()
   const t0 = Date.now()
-  const response = await client.messages.create({
-    model: config.anthropicModel,
-    max_tokens: 8000,
-    thinking: { type: 'adaptive' },
-    output_config: {
-      effort: 'medium',
-      format: { type: 'json_schema', schema: schemaProposta(TIPI_PROPONIBILI) },
-    },
-    system: [
-      { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
-      // Etichette, aiuti e spiegazioni le legge chi configura: nella sua lingua.
-      { type: 'text', text: `Write labels, help texts, section titles and the "perche" explanations in ${await modelLanguageFor(req.tenantId)}, and always fill both etichetta_it and etichetta_en.` },
-    ],
-    messages: [{ role: 'user', content: JSON.stringify(contesto, null, 1) }],
-  })
-
   /*
-   * TRONCATO NON È «NON È JSON» (19 set 2026, dalla revisione). Con
-   * `max_tokens` esaurito l'uscita arriva a metà, `JSON.parse` fallisce e
-   * l'utente leggeva «la risposta del modello non è leggibile» — una
-   * diagnosi sbagliata che manda a cercare il difetto nel posto sbagliato.
+   * Il CONTESTO sta nei blocchi di sistema con il punto di cache, la RICHIESTA
+   * nel messaggio: è l'unico ordine in cui due chiamate dello stesso cliente
+   * condividono un prefisso. Vedi `lib/aiClient.ts`.
    */
-  if (response.stop_reason === 'max_tokens') {
-    throw new GraphQLError('The model answer was cut off (max_tokens)', {
-      extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.formDesigner.truncated' } },
+  let response
+  try {
+    response = await client.messages.create({
+      model: config.anthropicModel,
+      max_tokens: 8000,
+      thinking: { type: 'adaptive' },
+      output_config: {
+        effort: 'medium',
+        format: { type: 'json_schema', schema: schemaProposta(TIPI_PROPONIBILI) },
+      },
+      system: [
+        { type: 'text', text: SYSTEM_PROMPT },
+        // Etichette, aiuti e spiegazioni le legge chi configura: nella sua lingua.
+        { type: 'text', text: `Write labels, help texts, section titles and the "perche" explanations in ${await modelLanguageFor(req.tenantId)}, and always fill both etichetta_it and etichetta_en.` },
+        bloccoDiContesto(contesto),
+      ],
+      messages: [{ role: 'user', content: prompt }],
     })
+  } catch (err) {
+    registraChiamataFallita('formDesigner', err)
+    throw err
   }
-  if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('The model refused the design request', {
-      extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.ai.modelRefused' } },
-    })
-  }
-  const blocco = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
-  if (!blocco) throw new Error('[form-designer] response without a text block')
+  registraDurata('formDesigner', Date.now() - t0)
 
-  let grezza: unknown
-  try { grezza = JSON.parse(blocco.text) }
-  catch (err) {
-    throw new GraphQLError(`The model answer is not valid JSON: ${err instanceof Error ? err.message : String(err)}`, {
-      extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.formDesigner.badAnswer' } },
-    })
-  }
+  const grezza = leggiJSONDalModello(response, 'formDesigner', {
+    troncata: 'errors.formDesigner.truncated',
+    illeggibile: 'errors.formDesigner.badAnswer',
+  })
 
   const proposta = validaProposta(grezza, catalogo)
 
@@ -504,6 +483,7 @@ export async function proponiModulo(req: RichiestaDiProgetto): Promise<EsitoProp
     })
   }
 
+  registraScarti('formDesigner', proposta.scartati.length)
   log.info({
     ms: Date.now() - t0,
     sezioni: proposta.sezioni.length,

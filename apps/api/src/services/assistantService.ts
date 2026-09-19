@@ -11,7 +11,6 @@
  */
 import { kbArticlePublishedCypher } from '../lib/kbPublished.js'
 import { vectorSearchForTenant } from '../lib/vectorSearch.js'
-import Anthropic from '@anthropic-ai/sdk'
 import type { Permission } from '@opengraphity/types'
 
 /** Limite chiesto dal modello: intero in [1, max]; assente/NaN/negativo → default (mai LIMIT NaN o negativo in Cypher). */
@@ -24,6 +23,7 @@ import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
 import { aiDisabledError, aiFeatureEnabled } from '../lib/aiSettings.js'
+import { getAnthropic, registraChiamataFallita, registraDurata, registraRisposta } from '../lib/aiClient.js'
 // Le etichette dei CI vengono dal metamodello del tenant (A-9): con la lista
 // fissa l'assistente non trovava i CI dei tipi creati dal cliente e rispondeva
 // «non trovato» — un buco invisibile a chi fa la domanda.
@@ -348,7 +348,7 @@ export async function streamAssistantChat(
     return
   }
 
-  const client = new Anthropic()
+  const client = getAnthropic()
   const t0 = Date.now()
   let fullText = ''
 
@@ -380,15 +380,21 @@ export async function streamAssistantChat(
         }
       }
       const message = await messageStream.finalMessage()
+      // Ogni giro dell'agente è una chiamata al modello e si conta come tale:
+      // l'assistente ne fa fino a `max_iterations`, ed è la funzione AI che
+      // può costare di più senza che nessuno se ne accorga.
+      registraRisposta('assistant', message.stop_reason === 'refusal' ? 'refused' : 'ok', message)
       if (message.stop_reason === 'refusal') {
         emit.error('Il modello ha rifiutato la richiesta')
         return
       }
     }
 
+    registraDurata('assistant', Date.now() - t0)
     log.info({ ms: Date.now() - t0, turns: messages.length }, '[assistant] chat completed')
     emit.done(fullText)
   } catch (err) {
+    registraChiamataFallita('assistant', err)
     const msg = err instanceof Error ? err.message : String(err)
     log.error({ err, tenantId }, '[assistant] chat failed')
     emit.error(msg)
