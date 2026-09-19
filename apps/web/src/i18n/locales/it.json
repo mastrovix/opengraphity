@@ -1718,7 +1718,7 @@
       "recipients": "Destinatari email",
       "removeRecipient": "Rimuovi {{email}}",
       "recipientsPlaceholder": "email@esempio.com, Invio",
-      "recipientsHint": "Premi Invio o virgola per aggiungere. (L'invio SMTP non è ancora implementato: gli indirizzi sono conservati per quando lo sarà.)",
+      "recipientsHint": "Premi Invio o virgola per aggiungere. A ogni esecuzione il report arriva a questi indirizzi, in allegato, nel formato scelto qui sotto.",
       "format": "Formato del report",
       "saving": "Salvataggio...",
       "save": "Salva le impostazioni"

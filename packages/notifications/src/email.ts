@@ -86,11 +86,25 @@ function getResend(): Resend {
   return _resend
 }
 
+/**
+ * Un file allegato al messaggio (ondata 11: il report schedulato).
+ * `content` sono i byte: il mittente legge il file, questo modulo non tocca il
+ * disco — così un allegato può nascere anche da qualcosa che non è un file.
+ */
+export interface EmailAttachment {
+  filename: string
+  content: Buffer
+  /** Tipo MIME; Resend lo deduce dall'estensione se manca. */
+  contentType?: string
+}
+
 export interface EmailMessage {
   to: string | string[]
   subject: string
   html: string
   from?: string
+  /** Allegati del messaggio. Vuoto o assente = nessuno. */
+  attachments?: readonly EmailAttachment[]
   /** Il nome del mittente scelto dall'organizzazione (l'indirizzo resta quello della piattaforma). */
   senderName?: string
   /** Dove vanno le risposte, se l'organizzazione l'ha scelto. */
@@ -111,7 +125,10 @@ export async function sendEmail(msg: EmailMessage): Promise<void> {
     return
   }
   if (isMock) {
-    console.log(`[email:mock] To: ${to.join(', ')} | Subject: ${msg.subject}`)
+    // Gli allegati si dicono anche in mock: «l'email è partita» senza sapere
+    // se portava il file è metà informazione.
+    const conAllegati = msg.attachments?.length ? ` | Attachments: ${msg.attachments.map((a) => a.filename).join(', ')}` : ''
+    console.log(`[email:mock] To: ${to.join(', ')} | Subject: ${msg.subject}${conAllegati}`)
     return
   }
 
@@ -122,6 +139,9 @@ export async function sendEmail(msg: EmailMessage): Promise<void> {
       subject: msg.subject,
       html: msg.html,
       ...(msg.replyTo ? { reply_to: msg.replyTo } : {}),
+      ...(msg.attachments?.length
+        ? { attachments: msg.attachments.map((a) => ({ filename: a.filename, content: a.content, ...(a.contentType ? { contentType: a.contentType } : {}) })) }
+        : {}),
     })
 
     if (error) {

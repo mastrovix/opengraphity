@@ -134,6 +134,10 @@ export const TEXTS = {
   digestNoEvents:       { en: 'No recent events', it: 'Nessun evento recente' },
   goToDashboard:        { en: 'Go to the dashboard', it: 'Vai alla dashboard' },
   reportExecuted:       { en: 'Scheduled report "{name}" ran ({count} sections).', it: 'Il report schedulato «{name}» è stato eseguito ({count} sezioni).' },
+  // Il report che ARRIVA per posta (ondata 11): destinatari e formato erano
+  // raccolti dall'interfaccia e nessuno li usava.
+  reportEmailSubject:   { en: 'Report "{name}" — {date}', it: 'Report «{name}» — {date}' },
+  reportEmailBody:      { en: 'The scheduled report "{name}" ran on {date}. The document is attached ({sections} sections).', it: 'Il report schedulato «{name}» è stato eseguito il {date}. Il documento è in allegato ({sections} sezioni).' },
   /**
    * I CORPI dei messaggi che escono (revisione totale · E-13): erano inglese
    * fisso anche per un cliente con il prodotto in italiano — «29 min left

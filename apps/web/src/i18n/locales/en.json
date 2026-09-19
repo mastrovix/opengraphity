@@ -1718,7 +1718,7 @@
       "recipients": "Email recipients",
       "removeRecipient": "Remove {{email}}",
       "recipientsPlaceholder": "email@example.com, Enter",
-      "recipientsHint": "Press Enter or comma to add. (SMTP sending is not implemented yet: the addresses are kept for when it is.)",
+      "recipientsHint": "Press Enter or comma to add. On every run the report reaches these addresses as an attachment, in the format chosen below.",
       "format": "Report format",
       "saving": "Saving...",
       "save": "Save settings"

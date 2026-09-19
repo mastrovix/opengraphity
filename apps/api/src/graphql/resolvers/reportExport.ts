@@ -219,21 +219,29 @@ export async function generateExcel(templateName: string, data: SectionData[], f
   await workbook.xlsx.writeFile(filePath)
 }
 
-async function exportReport(format: 'pdf' | 'excel', args: { templateId: string }, ctx: GraphQLContext): Promise<string> {
-  const accessSession = getSession(undefined, 'READ')
-  try {
-    await assertReportTemplateAccess(accessSession, args.templateId, ctx, 'read')
-  } finally {
-    await accessSession.close()
-  }
+/**
+ * IL FILE, SENZA CHI LO CHIEDE (ondata 11).
+ *
+ * Era dentro il resolver, quindi esisteva solo per chi premeva «Esporta»: il
+ * report SCHEDULATO raccoglieva destinatari e formato dall'interfaccia e non
+ * produceva niente — «i generatori PDF/Excel vivono dentro i resolver e non
+ * sono riusabili qui», diceva il commento dello scheduler. Ora la produzione
+ * del file è una funzione sola, e la usano tutti e due.
+ *
+ * Il controllo dei permessi NON sta qui: lo fa chi chiama. Il resolver
+ * verifica che l'utente possa leggere il template; lo scheduler esegue un
+ * report che un amministratore ha già programmato.
+ */
+export async function generateReportFile(
+  format: 'pdf' | 'excel', templateId: string, tenantId: string,
+): Promise<{ filename: string; filePath: string; templateName: string }> {
+  const tpl = await loadTemplateForExport(templateId, tenantId)
+  if (!tpl) throw new NotFoundError('ReportTemplate', templateId)
 
-  const tpl = await loadTemplateForExport(args.templateId, ctx.tenantId)
-  if (!tpl) throw new NotFoundError('ReportTemplate', args.templateId)
-
-  const data = await fetchSectionData(tpl.sections, ctx.tenantId)
+  const data = await fetchSectionData(tpl.sections, tenantId)
   const ext  = format === 'pdf' ? 'pdf' : 'xlsx'
   const filename = `${uuidv4()}.${ext}`
-  const dir      = tenantReportDir(ctx.tenantId)
+  const dir      = tenantReportDir(tenantId)
   fs.mkdirSync(dir, { recursive: true })
   const filePath = path.join(dir, filename)
 
@@ -243,8 +251,20 @@ async function exportReport(format: 'pdf' | 'excel', args: { templateId: string 
     await generateExcel(tpl.name, data, filePath)
   }
 
-  logger.info({ filename, templateId: args.templateId }, `[report-export] ${ext} generated`)
-  void audit(ctx, `report.export_${ext}`, 'ReportTemplate', args.templateId)
+  logger.info({ filename, templateId }, `[report-export] ${ext} generated`)
+  return { filename, filePath, templateName: tpl.name }
+}
+
+async function exportReport(format: 'pdf' | 'excel', args: { templateId: string }, ctx: GraphQLContext): Promise<string> {
+  const accessSession = getSession(undefined, 'READ')
+  try {
+    await assertReportTemplateAccess(accessSession, args.templateId, ctx, 'read')
+  } finally {
+    await accessSession.close()
+  }
+
+  const { filename } = await generateReportFile(format, args.templateId, ctx.tenantId)
+  void audit(ctx, `report.export_${format === 'pdf' ? 'pdf' : 'xlsx'}`, 'ReportTemplate', args.templateId)
   return `/api/reports/${filename}`
 }
 
