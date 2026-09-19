@@ -100,7 +100,21 @@ function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
       limit,
       offset,
     }
-    const advWhere = filters ? buildAdvancedWhere(filters, params, ALL_CIS_ALLOWED_FIELDS, 'n') : ''
+    /*
+     * I CAMPI FILTRABILI DIPENDONO DAI TIPI CERCATI (19 set 2026).
+     *
+     * `ALL_CIS_ALLOWED_FIELDS` sono i cinque comuni a tutti i CI (nome, stato,
+     * ambiente, salute, data). Cercando dentro tipi PRECISI — ed è quello che
+     * fa un campo del modulo che punta alla CMDB con i suoi `refTypes` — si
+     * possono filtrare anche le loro proprietà: «costruttore = Dell» su un
+     * tipo che ha il costruttore. Fuori da quei tipi il campo non esiste, e
+     * infatti l'elenco si costruisce sui tipi DAVVERO cercati.
+     */
+    const allowedFields = new Set([
+      ...ALL_CIS_ALLOWED_FIELDS,
+      ...filteredTypes.flatMap((t) => t.fields.filter((f) => !f.isSystem).map((f) => f.name)),
+    ])
+    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'n') : ''
     // B-9: l'ordinamento chiesto dalla CMDB veniva ignorato.
     const orderBy = allCIsOrderBy(args.sortField, args.sortDirection)
     const baseFilter = `(${labelFilter}) AND n.tenant_id = $tenantId

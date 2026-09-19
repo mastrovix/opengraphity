@@ -54,6 +54,12 @@ export function catalogFormSDL(): string {
     """
     shared:           Boolean!
     """
+    Il filtro sui CI offerti, come JSON \`{rules:[…]}\`: lo stesso documento
+    delle liste della CMDB. Solo per \`ref_ci\`, e solo sui campi che i tipi
+    scelti hanno davvero.
+    """
+    refFilter:        String
+    """
     La FORMULA di un campo calcolato (ondata 6): JavaScript che riceve in
     \`input\` le risposte dei campi non calcolati e RESTITUISCE il valore
     (\`return input.costo * input.quantita\`). Assente = campo normale, lo
@@ -140,6 +146,12 @@ export function catalogFormSDL(): string {
     moduli. Assente o falso = resta del modulo in cui e nato.
     """
     shared:           Boolean
+    """
+    Il filtro sui CI offerti, come JSON \`{rules:[…]}\`: lo stesso documento
+    delle liste della CMDB. Solo per \`ref_ci\`, e solo sui campi che i tipi
+    scelti hanno davvero.
+    """
+    refFilter:        String
   }
 
   """Nome e tipo non si cambiano: il nome è la proprietà sul ticket e cambiarlo perderebbe i dati già raccolti."""
@@ -169,6 +181,12 @@ export function catalogFormSDL(): string {
     moduli. Assente o falso = resta del modulo in cui e nato.
     """
     shared:           Boolean
+    """
+    Il filtro sui CI offerti, come JSON \`{rules:[…]}\`: lo stesso documento
+    delle liste della CMDB. Solo per \`ref_ci\`, e solo sui campi che i tipi
+    scelti hanno davvero.
+    """
+    refFilter:        String
   }
 
   """

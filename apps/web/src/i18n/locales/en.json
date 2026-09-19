@@ -2495,6 +2495,10 @@
         "refTypes": "Which CI types",
         "refTypesHelp": "Nothing ticked: the whole CMDB. Tick some and the search only offers those.",
         "refTypesNone": "No CI type is defined yet.",
+        "refFilter": "Which CIs to offer",
+        "refFilterNone": "No filter: the search offers every CI of the chosen types.",
+        "refFilterActive_one": "One rule: the search only offers the CIs that match it.",
+        "refFilterActive_other": "{{count}} rules: the search only offers the CIs that match them.",
         "help": {
           "title": "Examples and available fields",
           "insert": "Insert",
@@ -4338,7 +4342,9 @@
       "requiredNotClearable": "The field \"{{field}}\" is required: it cannot be cleared.",
       "hidesUnclearable": "Answering \"{{field}}\" this way would stop the form from asking \"{{other}}\", whose files, references or rows cannot be cleared from here: empty that field first.",
       "refTypesNotAllowed": "A {{fieldType}} field takes no CI types: only a CMDB reference picks from the CMDB.",
-      "refTypesUnknown": "These CI types do not exist: {{types}}."
+      "refTypesUnknown": "These CI types do not exist: {{types}}.",
+      "refFilterNotAllowed": "A {{fieldType}} field takes no CI filter: only a CMDB reference picks from the CMDB.",
+      "refFilterInvalid": "The CI filter is not usable: {{message}}. A rule can use the fields every CI has and the properties of the chosen types."
     },
     "catalogForm": {
       "shape": "The form definition has the wrong shape at {{where}}.",

@@ -265,9 +265,12 @@ export function CreateServiceRequestPage() {
       /* I TIPI AMMESSI, se il campo li dichiara: `allCIs` li filtra già lato
          server (`ciTypes`). Vuoto = tutta la CMDB, com'era prima. */
       const tipi = campo.refTypes && campo.refTypes.length > 0 ? [...campo.refTypes] : undefined
+      /* Il FILTRO del campo (19 set 2026): lo interpreta `allCIs`, che usa il
+         costruttore condiviso della CMDB — qui si passa e basta. */
+      const filtro = campo.refFilter != null && campo.refFilter !== '' ? campo.refFilter : undefined
       const r = await apollo.query<{ allCIs: { items: Array<{ id: string; name: string }> } }>({
         query: GET_ALL_CIS,
-        variables: { limit: 20, offset: 0, search: query, ...(tipi ? { ciTypes: tipi } : {}) },
+        variables: { limit: 20, offset: 0, search: query, ...(tipi ? { ciTypes: tipi } : {}), ...(filtro ? { filters: filtro } : {}) },
         fetchPolicy: 'network-only',
       })
       return (r.data?.allCIs?.items ?? []).map((c) => ({ id: c.id, label: c.name }))

@@ -31,6 +31,7 @@ import { TableColumnsEditor } from './TableColumnsEditor'
 import { colors, fontWeight } from '@/lib/tokens'
 import { Input, Select, LabelledField } from '@/components/ui/FormControls'
 import { GET_CI_TYPES } from '@/graphql/queries'
+import { FilterBuilder, type FieldConfig, type FilterRule } from '@/components/FilterBuilder'
 
 /** Il campo che si sta scrivendo. Le etichette sono due lingue fisse: it ed en. */
 export interface Bozza {
@@ -45,6 +46,8 @@ export interface Bozza {
   inList: boolean
   /** I tipi di CI ammessi da un `ref_ci`: vuoto = tutta la CMDB. */
   refTypes: string[]
+  /** Il filtro sui CI offerti, come JSON `{rules:[…]}`; vuoto = nessun filtro. */
+  refFilter: string
   /** Condiviso nella libreria: si può riusare su altri moduli. */
   shared: boolean
   formula: string
@@ -55,7 +58,7 @@ export interface Bozza {
 
 export const BOZZA_VUOTA: Bozza = {
   name: '', fieldType: 'text', labelIt: '', labelEn: '', helpIt: '', helpEn: '',
-  required: false, vocabulary: '', inList: false, refTypes: [], shared: false, formula: '', validationScript: '',
+  required: false, vocabulary: '', inList: false, refTypes: [], refFilter: '', shared: false, formula: '', validationScript: '',
   tabella: emptyFormTable(),
 }
 
@@ -101,7 +104,7 @@ export function bozzaDaCampo(c: {
   helps: ReadonlyArray<{ language: string; label: string }>
   required: boolean; vocabulary: string | null; inList: boolean
   formula: string | null; validationScript: string | null
-  tableDefinition?: string | null; refTypes?: string[]; shared?: boolean
+  tableDefinition?: string | null; refTypes?: string[]; refFilter?: string | null; shared?: boolean
 }): Bozza {
   /* Il ripiego sull'etichetta BASE non è un vezzo: un campo può avere
      l'etichetta in una lingua sola, e mostrare vuoto farebbe cancellare
@@ -118,6 +121,7 @@ export function bozzaDaCampo(c: {
   return {
     name: c.name, fieldType: c.fieldType,
     refTypes: c.refTypes ?? [],
+    refFilter: c.refFilter ?? '',
     shared: c.shared === true,
     labelIt: perLingua(c.labels, 'it', c.label),
     labelEn: perLingua(c.labels, 'en', c.label),
@@ -160,9 +164,59 @@ export function inputDaBozza(b: Bozza, tipoEffettivo: string) {
     // Solo un `ref_ci` li porta: mandarli su un altro tipo è un rifiuto
     // dell'API, e ha ragione lei (un filtro che non filtra inganna).
     refTypes: tipoEffettivo === 'ref_ci' ? b.refTypes : [],
+    refFilter: tipoEffettivo === 'ref_ci' ? (b.refFilter.trim() === '' ? null : b.refFilter) : null,
     shared: b.shared,
     help: b.helpIt.trim() || b.helpEn.trim() || null,
   }
+}
+
+/** Le regole salvate, rilette; un documento illeggibile non ferma l'editor. */
+function regoleDaJson(json: string): FilterRule[] {
+  if (json.trim() === '') return []
+  try {
+    const d = JSON.parse(json) as { rules?: FilterRule[] }
+    return Array.isArray(d.rules) ? d.rules : []
+  } catch (err) {
+    console.error('Unreadable CMDB filter on a reference field', err)
+    return []
+  }
+}
+
+/**
+ * I CAMPI SU CUI SI PUÒ FILTRARE UN CI.
+ *
+ * I cinque comuni a ogni CI, più le proprietà dei TIPI scelti — perché fuori
+ * da quei tipi quella proprietà non esiste, e il server la rifiuterebbe. Senza
+ * tipi scelti si guarda l'unione di tutti: è quello che la ricerca cercherà.
+ */
+export function campiFiltrabili(
+  tipi: readonly { name: string; label: string; fields?: { name: string; label: string; fieldType: string; enumValues?: string[] | null; isSystem?: boolean }[] }[],
+  scelti: readonly string[],
+  etichette: { nome: string; stato: string; ambiente: string; salute: string; creato: string },
+): FieldConfig[] {
+  const base: FieldConfig[] = [
+    { key: 'name',        label: etichette.nome,     type: 'text' },
+    { key: 'status',      label: etichette.stato,    type: 'text' },
+    { key: 'environment', label: etichette.ambiente, type: 'text' },
+    { key: 'health',      label: etichette.salute,   type: 'text' },
+    { key: 'createdAt',   label: etichette.creato,   type: 'date' },
+  ]
+  const perNome = new Map<string, FieldConfig>()
+  for (const t of tipi) {
+    if (scelti.length > 0 && !scelti.includes(t.name)) continue
+    for (const f of t.fields ?? []) {
+      if (f.isSystem === true || perNome.has(f.name)) continue
+      perNome.set(f.name, {
+        key: f.name,
+        label: f.label || f.name,
+        type: f.fieldType === 'date' ? 'date' : f.fieldType === 'enum' ? 'enum' : 'text',
+        ...(f.enumValues && f.enumValues.length > 0
+          ? { options: f.enumValues.map((v) => ({ value: v, label: v })) }
+          : {}),
+      })
+    }
+  }
+  return [...base, ...[...perNome.values()].sort((a, b) => a.label.localeCompare(b.label))]
 }
 
 export function FieldEditor({
@@ -188,7 +242,7 @@ export function FieldEditor({
   const [nomeAMano, setNomeAMano] = useState(false)
   /* I tipi di CI servono solo a un `ref_ci`: la query si salta per tutti gli
      altri campi, che sono la maggioranza. */
-  const { data: tipiData } = useQuery<{ ciTypes: Array<{ name: string; label: string; active: boolean }> }>(GET_CI_TYPES, {
+  const { data: tipiData } = useQuery<{ ciTypes: Array<{ name: string; label: string; active: boolean; fields?: { name: string; label: string; fieldType: string; enumValues?: string[] | null; isSystem?: boolean }[] }> }>(GET_CI_TYPES, {
     fetchPolicy: 'cache-first',
     skip: (inModifica?.fieldType ?? bozza.fieldType) !== 'ref_ci',
   })
@@ -398,6 +452,39 @@ export function FieldEditor({
             </span>
           </span>
         </label>
+
+        {/*
+          IL FILTRO SUI CI OFFERTI (19 set 2026).
+
+          I tipi dicono QUALI CI; questo dice quali di quelli — «solo in
+          produzione», «costruttore = Dell». È lo stesso editor che filtra le
+          liste della CMDB e produce lo stesso documento, quindi una regola
+          che qui si può scrivere è una regola che là sa già cercare.
+        */}
+        {(inModifica?.fieldType ?? bozza.fieldType) === 'ref_ci' && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginBottom: 4 }}>
+              {t('pages.catalogForms.library.refFilter')}
+            </div>
+            <FilterBuilder
+              fields={campiFiltrabili(tipiDiCI, bozza.refTypes, {
+                nome: t('pages.cmdb.name'), stato: t('pages.cmdb.status'), ambiente: t('pages.cmdb.environment'),
+                salute: t('pages.cmdb.health'), creato: t('pages.cmdb.createdAt'),
+              })}
+              initialRules={regoleDaJson(bozza.refFilter)}
+              onApply={(gruppo) => {
+                // `null` è «nessun filtro»: il costruttore lo manda sia
+                // svuotando le regole sia col pulsante che azzera tutto.
+                onBozza({ ...bozza, refFilter: gruppo == null || gruppo.rules.length === 0 ? '' : JSON.stringify(gruppo) })
+              }}
+            />
+            <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+              {bozza.refFilter.trim() === ''
+                ? t('pages.catalogForms.library.refFilterNone')
+                : t('pages.catalogForms.library.refFilterActive', { count: regoleDaJson(bozza.refFilter).length })}
+            </p>
+          </div>
+        )}
 
         {/* Le colonne, solo per una tabella (ondata 7). */}
         {isFormTableType(inModifica?.fieldType ?? bozza.fieldType) && (

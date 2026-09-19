@@ -56,6 +56,13 @@ export interface CatalogFormFieldView {
    * una domanda «quale stampante?» proponeva anche i firewall.
    */
   refTypes?: readonly string[]
+  /**
+   * IL FILTRO sui CI offerti, come JSON `{rules:[…]}` (19 set 2026): lo stesso
+   * documento delle liste della CMDB. Chi cerca lo passa ad `allCIs`, che sa
+   * gia interpretarlo — cosi «solo i CI di produzione» vale identico nel
+   * portale, nell'area di lavoro e nella CMDB.
+   */
+  refFilter?: string | null
 }
 
 /** Un file caricato su una bozza: lo stato è del chiamante, il renderer lo mostra. */

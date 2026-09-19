@@ -2495,6 +2495,10 @@
         "refTypes": "Quali tipi di CI",
         "refTypesHelp": "Nessuna spunta: tutta la CMDB. Spuntandone qualcuno, la ricerca offre solo quelli.",
         "refTypesNone": "Non c’è ancora nessun tipo di CI.",
+        "refFilter": "Quali CI offrire",
+        "refFilterNone": "Nessun filtro: la ricerca offre tutti i CI dei tipi scelti.",
+        "refFilterActive_one": "Una regola: la ricerca offre solo i CI che la rispettano.",
+        "refFilterActive_other": "{{count}} regole: la ricerca offre solo i CI che le rispettano.",
         "help": {
           "title": "Esempi e campi disponibili",
           "insert": "Inserisci",
@@ -4338,7 +4342,9 @@
       "requiredNotClearable": "Il campo «{{field}}» è obbligatorio: non si può svuotare.",
       "hidesUnclearable": "Rispondere «{{field}}» così farebbe smettere al modulo di chiedere «{{other}}», e i suoi file, riferimenti o righe non si possono svuotare da qui: svuota prima quel campo.",
       "refTypesNotAllowed": "Un campo {{fieldType}} non prende tipi di CI: solo un riferimento alla CMDB sceglie da lì.",
-      "refTypesUnknown": "Questi tipi di CI non esistono: {{types}}."
+      "refTypesUnknown": "Questi tipi di CI non esistono: {{types}}.",
+      "refFilterNotAllowed": "Un campo {{fieldType}} non prende un filtro sui CI: solo un riferimento alla CMDB pesca da lì.",
+      "refFilterInvalid": "Il filtro sui CI non è utilizzabile: {{message}}. Una regola può usare i campi comuni a ogni CI e le proprietà dei tipi scelti."
     },
     "catalogForm": {
       "shape": "La definizione del modulo ha una forma sbagliata in {{where}}.",

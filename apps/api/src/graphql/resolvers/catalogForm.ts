@@ -181,6 +181,58 @@ async function assertTipiDiCI(session: Session, tenantId: string, fieldType: str
   return [...new Set(lista)]
 }
 
+/**
+ * IL FILTRO SUI CI DI UN CAMPO `ref_ci` (19 set 2026).
+ *
+ * «Su un controllo campo da CMDB devo avere la possibilità di filtrare i
+ * valori»: i tipi non bastano, serve poter dire «solo i CI di produzione» o
+ * «costruttore = Dell». Il documento è lo STESSO delle liste della CMDB
+ * (`{rules:[…]}`), così la semantica è una sola e non ne inventiamo una
+ * seconda che il giorno dopo diverge.
+ *
+ * La validazione la fa il costruttore vero (`buildAdvancedWhere`): se quel
+ * documento non produce una WHERE valida qui, non la produrrebbe nemmeno al
+ * momento di cercare — e un filtro rotto scoperto da chi compila sarebbe una
+ * ricerca che non trova mai niente, senza dire perché.
+ *
+ * I campi ammessi sono quelli comuni a ogni CI più le proprietà dei TIPI
+ * scelti: fuori da quei tipi il campo non esiste.
+ */
+async function assertFiltroCI(
+  session: Session, tenantId: string, fieldType: string, refTypes: readonly string[], refFilter: unknown,
+): Promise<string | null> {
+  const testo = refFilter == null || String(refFilter).trim() === '' ? null : String(refFilter)
+  if (fieldType !== 'ref_ci') {
+    if (testo) {
+      throw new ValidationError(`A ${fieldType} field takes no CMDB filter: only ref_ci picks from the CMDB.`,
+        { key: 'errors.formField.refFilterNotAllowed', params: { fieldType } })
+    }
+    return null
+  }
+  if (!testo) return null
+
+  const { ALL_CIS_ALLOWED_FIELDS, buildAdvancedWhere } = await import('./buildCIQuery.js')
+  // `tenant-ok`: i tipi `base` sono condivisi, quelli del cliente filtrati.
+  const campi = await runQuery<{ name: string }>(session, `
+    MATCH (t:CITypeDefinition)-[:HAS_FIELD]->(f:CIFieldDefinition)
+    WHERE (t.scope = 'base' OR (t.scope = 'tenant' AND t.tenant_id = $tenantId))
+      AND ($tipi = [] OR t.name IN $tipi)
+      AND coalesce(f.is_system, false) = false
+    RETURN DISTINCT f.name AS name
+  `, { tenantId, tipi: [...refTypes] })
+
+  const ammessi = new Set([...ALL_CIS_ALLOWED_FIELDS, ...campi.map((c) => c.name)])
+  try {
+    buildAdvancedWhere(testo, {}, ammessi, 'n')
+  } catch (err) {
+    throw new ValidationError(
+      `The CMDB filter is not usable: ${err instanceof Error ? err.message : String(err)}`,
+      { key: 'errors.formField.refFilterInvalid', params: { message: err instanceof Error ? err.message : String(err) } },
+    )
+  }
+  return testo
+}
+
 async function assertVocabolario(tenantId: string, fieldType: string, vocabulary: string | null | undefined): Promise<string | null> {
   const serve = FORM_FIELD_TYPES_WITH_VOCABULARY.includes(fieldType as never)
   const nome = vocabulary == null || vocabulary.trim() === '' ? null : vocabulary.trim()
@@ -336,7 +388,7 @@ export const catalogFormResolvers = {
             label: $label, labels: $labels, help: $help, helps: $helps,
             required: $required, vocabulary: $vocabulary, validation_script: $validationScript,
             in_list: $inList, formula: $formula, table_definition: $tableDefinition,
-            ref_types: $refTypes, shared: $shared,
+            ref_types: $refTypes, shared: $shared, ref_filter: $refFilter,
             created_at: $now, updated_at: $now
           })`, {
           id: randomUUID(), tenantId: ctx.tenantId, name, fieldType, label,
@@ -350,6 +402,8 @@ export const catalogFormResolvers = {
           formula: assertFormulaPossibile(fieldType, input['formula']),
           tableDefinition: assertTabella(fieldType, input['tableDefinition'], label || name),
           refTypes: await assertTipiDiCI(write, ctx.tenantId, fieldType, input['refTypes']),
+          refFilter: await assertFiltroCI(write, ctx.tenantId, fieldType,
+            Array.isArray(input['refTypes']) ? (input['refTypes']).map((x) => String(x)) : [], input['refFilter']),
           // Per difetto NON condiviso: un campo nasce del modulo in cui si crea.
           shared: input['shared'] === true,
           now,
@@ -392,6 +446,7 @@ export const catalogFormResolvers = {
               f.table_definition = CASE WHEN $tableSet THEN $tableDefinition ELSE f.table_definition END,
               f.ref_types = CASE WHEN $refTypesSet THEN $refTypes ELSE f.ref_types END,
               f.shared = CASE WHEN $sharedSet THEN $shared ELSE coalesce(f.shared, false) END,
+              f.ref_filter = CASE WHEN $refFilterSet THEN $refFilter ELSE f.ref_filter END,
               f.updated_at = $now`, {
           id: args.id, tenantId: ctx.tenantId,
           label: input['label'] == null ? null : String(input['label']).trim(),
@@ -411,6 +466,14 @@ export const catalogFormResolvers = {
             ? assertTabella(corrente.fieldType, input['tableDefinition'], corrente.label)
             : null,
           sharedSet: 'shared' in input, shared: input['shared'] === true,
+          refFilterSet: 'refFilter' in input,
+          refFilter: 'refFilter' in input
+            ? await assertFiltroCI(write, ctx.tenantId, corrente.fieldType,
+                'refTypes' in input && Array.isArray(input['refTypes'])
+                  ? (input['refTypes']).map((x) => String(x))
+                  : corrente.refTypes,
+                input['refFilter'])
+            : null,
           refTypesSet: 'refTypes' in input,
           refTypes: 'refTypes' in input
             ? await assertTipiDiCI(write, ctx.tenantId, corrente.fieldType, input['refTypes'])

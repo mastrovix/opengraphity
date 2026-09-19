@@ -90,6 +90,12 @@ export interface FormFieldDef {
    */
   refTypes: string[]
   /**
+   * IL FILTRO sui CI offerti da un `ref_ci`, come JSON `{rules:[…]}` — lo
+   * stesso documento che la CMDB usa nelle sue liste, quindi la semantica e
+   * una sola (`buildAdvancedWhere`). Null = nessun filtro oltre ai tipi.
+   */
+  refFilter: string | null
+  /**
    * CONDIVISO NELLA LIBRERIA (18 set 2026).
    *
    * Un campo nasce DENTRO un modulo e, per difetto, resta suo: non compare
@@ -115,6 +121,7 @@ const FIELD_RETURN = `
   f.help AS help, f.helps AS helps, f.required AS required, f.vocabulary AS vocabulary,
   f.validation_script AS validationScript, f.formula AS formula,
   f.table_definition AS tableDefinition, f.in_list AS inList, f.ref_types AS refTypes, f.shared AS shared,
+  f.ref_filter AS refFilter,
   f.created_at AS createdAt, f.updated_at AS updatedAt`
 
 function mapField(row: Record<string, unknown>): FormFieldDef {
@@ -141,6 +148,7 @@ function mapField(row: Record<string, unknown>): FormFieldDef {
     // esattamente quello che facevano.
     refTypes: Array.isArray(row['refTypes']) ? (row['refTypes']).map((x) => String(x)) : [],
     shared: row['shared'] === true,
+    refFilter: row['refFilter'] == null || row['refFilter'] === '' ? null : String(row['refFilter']),
     // Assente sui campi nati prima dell'ondata 4: fuori dalle liste, che è la
     // scelta prudente — una colonna in più la si chiede, non la si subisce.
     inList: row['inList'] === true,
