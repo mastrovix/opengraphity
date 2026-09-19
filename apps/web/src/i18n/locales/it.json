@@ -2389,7 +2389,7 @@
         "libraryEmpty": "La libreria dei campi è vuota: apri l'altra scheda e definisci il primo campo.",
         "referenceStaffOnly": "Solo area di lavoro",
         "referenceStaffOnlyWhy": "Un riferimento non si può offrire nel portale: scegliere un CI o una persona vuol dire cercare nella CMDB o nell'elenco del personale, cosa che un utente finale non fa. Il campo resta compilabile dall'area di lavoro.",
-        "chooseItem": "— Scegli una service request —",
+        "chooseItem": "Scegli una service request",
         "publishConfirmTitle": "Pubblicare questo modulo?",
         "publishConfirmBody": "Il modulo di «{{item}}» viene sostituito da questo disegno, e la revisione sale. Chi lo sta compilando adesso dovrà rifare la richiesta.",
         "sectionTitleIn": "Titolo della sezione ({{language}})",

@@ -2389,7 +2389,7 @@
         "libraryEmpty": "The field library is empty: open the other tab and define the first field.",
         "referenceStaffOnly": "Workspace only",
         "referenceStaffOnlyWhy": "A reference cannot be offered in the portal: choosing one means searching the CMDB or the staff list, which an end user does not do. The field stays fillable from the workspace.",
-        "chooseItem": "— Choose a service request —",
+        "chooseItem": "Choose a service request",
         "publishConfirmTitle": "Publish this form?",
         "publishConfirmBody": "The form of «{{item}}» is replaced by this design, and the revision goes up. Anyone filling it right now will have to start again.",
         "sectionTitleIn": "Section title ({{language}})",
