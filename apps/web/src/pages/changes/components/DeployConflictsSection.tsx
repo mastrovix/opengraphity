@@ -37,7 +37,15 @@ function perCI(conflitti: readonly ChangeDeployConflict[]): { ciId: string; ciNa
   return [...gruppi.values()].sort((a, b) => a.ciName.localeCompare(b.ciName))
 }
 
-export function DeployConflictsSection({ conflitti }: { conflitti: readonly ChangeDeployConflict[] }) {
+export function DeployConflictsSection({ conflitti, illeggibili = [] }: {
+  conflitti: readonly ChangeDeployConflict[]
+  /**
+   * I piani che non si sono potuti leggere. Senza questa riga, un piano
+   * rotto diventava «Nessun conflitto di rilascio» — la frase che la sezione
+   * esiste per poter dire con certezza (19 set 2026).
+   */
+  illeggibili?: readonly string[]
+}) {
   const { t } = useTranslation()
   const gruppi = perCI(conflitti)
 
@@ -58,6 +66,15 @@ export function DeployConflictsSection({ conflitti }: { conflitti: readonly Chan
          «nessun conflitto» insegna che il colore non vuol dire niente. */
       {...(conflitti.length > 0 ? { activeColor: 'var(--color-danger)' } : {})}
     >
+      {illeggibili.length > 0 && (
+        <p style={{
+          margin: '0 0 12px', padding: '8px 10px', borderRadius: 6,
+          background: 'var(--color-warning-bg)', color: 'var(--color-warning-text)',
+          fontSize: 'var(--font-size-label)', lineHeight: 1.5,
+        }}>
+          {t('pages.changeDetail.deployConflicts.unreadable', { plans: illeggibili.join(', '), count: illeggibili.length })}
+        </p>
+      )}
       {conflitti.length === 0 ? (
         <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
           {t('pages.changeDetail.deployConflicts.none')}

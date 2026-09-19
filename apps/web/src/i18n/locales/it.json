@@ -1656,7 +1656,9 @@
         "lede": "Queste change rilasciano sullo stesso CI mentre questa è in rilascio. Le finestre di validazione non si confrontano: due prove sullo stesso CI non si disturbano, due rilasci sì.",
         "mine": "Questa change",
         "theirs": "L’altra change",
-        "overlap": "Sovrapposizione"
+        "overlap": "Sovrapposizione",
+        "unreadable_one": "Attenzione: {{count}} piano di rilascio non si è potuto leggere ({{plans}}), quindi il confronto non è completo — «nessun conflitto» qui sotto vale per i piani che si sono aperti.",
+        "unreadable_other": "Attenzione: {{count}} piani di rilascio non si sono potuti leggere ({{plans}}), quindi il confronto non è completo — «nessun conflitto» qui sotto vale per i piani che si sono aperti."
       }
     },
     "changeCalendar": {

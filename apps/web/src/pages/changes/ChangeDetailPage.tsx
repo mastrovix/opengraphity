@@ -381,7 +381,7 @@ export function ChangeDetailPage() {
           una finestra sovrapposta (18 set 2026). Sta accanto al piano e sopra
           gli allarmi silenziati, perché è la domanda che si fa prima di
           approvare — non un dettaglio da cercare. */}
-      <DeployConflictsSection conflitti={change.deployConflicts ?? []} />
+      <DeployConflictsSection conflitti={change.deployConflicts?.items ?? []} illeggibili={change.deployConflicts?.unreadablePlans ?? []} />
 
       {/* Allarmi silenziati dalla finestra di rilascio (Event Management, ondata 3) */}
       <SuppressedAlarmsSection events={change.suppressedEvents ?? []} total={change.suppressedEventCount} changeId={change.id} />

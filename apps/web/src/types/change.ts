@@ -64,7 +64,7 @@ export interface ChangeData {
    * sovrapposta (18 set 2026). Lista vuota = nessun conflitto, ed è una
    * risposta: la sezione lo dice invece di non comparire.
    */
-  deployConflicts?:     ChangeDeployConflict[]
+  deployConflicts?:     { items: ChangeDeployConflict[]; unreadablePlans: string[] }
 }
 
 /** Una finestra del piano: due istanti ISO. */

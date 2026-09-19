@@ -44,7 +44,19 @@ export function changeSDL(): string {
     pagina che la chiede. Vuoto = nessun conflitto, ed è una risposta —
     non «non calcolato».
     """
-    deployConflicts:      [ChangeDeployConflict!]!
+    deployConflicts:      ChangeDeployConflicts!
+  }
+
+  """
+  L'esito del confronto: i conflitti, E i piani che non si sono potuti
+  leggere. Un piano illeggibile non deve diventare «nessun conflitto»: chi
+  approva ha chiesto se ce ne sono, e «non ho potuto guardare» è una risposta
+  diversa da «no» (19 set 2026).
+  """
+  type ChangeDeployConflicts {
+    items:           [ChangeDeployConflict!]!
+    """I piani che non si sono aperti, per nome: «CHG00000002 · srv-web-01»."""
+    unreadablePlans: [String!]!
   }
 
   """Due change che si incontrano sullo stesso CI mentre rilasciano."""

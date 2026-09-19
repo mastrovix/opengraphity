@@ -86,7 +86,7 @@ interface RigaPiano {
 }
 
 /** Le finestre di RILASCIO di un piano, per CI. Le validazioni non entrano. */
-function rilasciDi(steps: unknown, dove: string): FinestraDiRilascio[] {
+function rilasciDi(steps: unknown, dove: string, illeggibili?: string[]): FinestraDiRilascio[] {
   try {
     return parseDeploySteps(steps)
       .map((s) => s.releaseWindow)
@@ -98,6 +98,13 @@ function rilasciDi(steps: unknown, dove: string): FinestraDiRilascio[] {
      * me lo dice. Si annota, e chi legge i log trova quale piano guardare.
      */
     log.warn({ dove, err }, 'piano di rilascio illeggibile: escluso dal confronto dei conflitti')
+    /*
+     * …e lo si dice anche a CHI GUARDA (19 set 2026, dalla revisione). Una
+     * riga nei log non è una risposta a una domanda posta davanti a
+     * un'approvazione: per il CAB «piano illeggibile» diventava «nessun
+     * conflitto», che è la frase che esiste per togliere quel dubbio.
+     */
+    illeggibili?.push(dove)
     return []
   }
 }
@@ -106,9 +113,19 @@ function rilasciDi(steps: unknown, dove: string): FinestraDiRilascio[] {
  * I conflitti di rilascio della change, ordinati per inizio della
  * sovrapposizione: il primo della lista è quello che arriva prima.
  */
+/** I conflitti, e i piani che non si sono potuti leggere per calcolarli. */
+export interface EsitoConflitti {
+  readonly items: ConflittoDiRilascio[]
+  /**
+   * I piani illeggibili incontrati: chi approva deve sapere che una parte del
+   * confronto non è stata fatta, invece di leggere «nessun conflitto».
+   */
+  readonly unreadablePlans: string[]
+}
+
 export async function deployConflictsForChange(
   session: Session, tenantId: string, changeId: string,
-): Promise<ConflittoDiRilascio[]> {
+): Promise<EsitoConflitti> {
   // I MIEI piani. `tenant-ok`: il filtro di tenant è sulla change e sul piano.
   const miei = await runQuery<{ ciId: string; steps: unknown }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {tenant_id: $tenantId})
@@ -117,18 +134,35 @@ export async function deployConflictsForChange(
   `, { changeId, tenantId })
 
   /** ciId → le mie finestre di rilascio su quel CI. */
+  const illeggibili: string[] = []
   const mieFinestre = new Map<string, FinestraDiRilascio[]>()
   for (const p of miei) {
-    const f = rilasciDi(p.steps, `change ${changeId}, CI ${p.ciId}`)
+    const f = rilasciDi(p.steps, `change ${changeId}, CI ${p.ciId}`, illeggibili)
     if (f.length > 0) mieFinestre.set(p.ciId, [...(mieFinestre.get(p.ciId) ?? []), ...f])
   }
   // Nessun rilascio pianificato: non c'è niente con cui confliggere, e non si
   // interroga il database una seconda volta.
-  if (mieFinestre.size === 0) return []
+  if (mieFinestre.size === 0) return { items: [], unreadablePlans: illeggibili }
 
+  /*
+   * L'INTERVALLO SI CALCOLA SUI MILLISECONDI, NON SULLE STRINGHE (19 set 2026).
+   *
+   * `window_start`/`window_end` sono scritti sempre in `Z` (`planEnvelope` fa
+   * `new Date(x).toISOString()`), mentre una finestra nel JSON del piano può
+   * portare un offset — `assertWindowDate` accetta `+09:00` di proposito.
+   * Confrontando le STRINGHE, `'2026-10-02T00:00:00.000Z' >= '2026-10-02T06:00:00+09:00'`
+   * è falso pur essendo la stessa ora: il candidato veniva scartato nel
+   * DATABASE, e il CAB leggeva «Nessun conflitto di rilascio» su due change
+   * che rilasciano sullo stesso CI nelle stesse ore.
+   *
+   * È la trappola che `changeCalendar` aveva già trovato e chiuso allo stesso
+   * modo, il giorno prima, col commento «confrontarlo con un `+02:00` darebbe
+   * un ordine alfabetico senza senso».
+   */
   const tutte = [...mieFinestre.values()].flat()
-  const inizio = tutte.reduce((min, f) => (f.start < min ? f.start : min), tutte[0]!.start)
-  const fine   = tutte.reduce((max, f) => (f.end   > max ? f.end   : max), tutte[0]!.end)
+  const ms = (x: string): number => Date.parse(x)
+  const inizio = new Date(Math.min(...tutte.map((f) => ms(f.start)))).toISOString()
+  const fine   = new Date(Math.max(...tutte.map((f) => ms(f.end)))).toISOString()
 
   /*
    * I CANDIDATI, scartati nel DATABASE su tre condizioni indicizzate o a
@@ -156,7 +190,7 @@ export async function deployConflictsForChange(
   for (const r of candidati) {
     if (r.categoria !== null && CATEGORIE_CONCLUSE.includes(r.categoria)) continue
     const mieSulCI = mieFinestre.get(r.ciId) ?? []
-    for (const loro of rilasciDi(r.steps, `change ${r.code}, CI ${r.ciId}`)) {
+    for (const loro of rilasciDi(r.steps, `${r.code} · ${r.ciName}`, illeggibili)) {
       for (const mia of mieSulCI) {
         const comune = sovrapposizione(mia, loro)
         if (!comune || !finestreSiSovrappongono(mia, loro)) continue
@@ -170,5 +204,8 @@ export async function deployConflictsForChange(
 
   // Per inizio della sovrapposizione: chi legge vuole sapere cosa arriva
   // prima, non chi ha il codice più basso.
-  return out.sort((a, b) => (a.overlap.start < b.overlap.start ? -1 : a.overlap.start > b.overlap.start ? 1 : a.code.localeCompare(b.code)))
+  return {
+    items: out.sort((a, b) => (a.overlap.start < b.overlap.start ? -1 : a.overlap.start > b.overlap.start ? 1 : a.code.localeCompare(b.code))),
+    unreadablePlans: illeggibili,
+  }
 }

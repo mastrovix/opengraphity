@@ -53,8 +53,13 @@ export const GET_CHANGE = gql`
       # Release conflicts: other changes deploying on the same CI in an
       # overlapping window. Validation windows are not compared.
       deployConflicts {
-        changeId code title currentStep ciId ciName
-        mine { start end } theirs { start end } overlap { start end }
+        items {
+          changeId code title currentStep ciId ciName
+          mine { start end } theirs { start end } overlap { start end }
+        }
+        # Plans that could not be read: "no conflict" and "I could not look"
+        # are different answers in front of an approval.
+        unreadablePlans
       }
       suppressedEvents { ...EventRowFields }
       suppressedEventCount

@@ -1656,7 +1656,9 @@
         "lede": "These changes deploy on the same CI while this one is releasing. Validation windows are not compared: two tests on the same CI do not disturb each other, two releases do.",
         "mine": "This change",
         "theirs": "The other change",
-        "overlap": "Overlap"
+        "overlap": "Overlap",
+        "unreadable_one": "Careful: {{count}} release plan could not be read ({{plans}}), so the comparison is incomplete — «no conflict» below only covers the plans that opened.",
+        "unreadable_other": "Careful: {{count}} release plans could not be read ({{plans}}), so the comparison is incomplete — «no conflict» below only covers the plans that opened."
       }
     },
     "changeCalendar": {
