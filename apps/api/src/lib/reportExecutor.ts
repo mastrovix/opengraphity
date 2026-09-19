@@ -21,6 +21,38 @@ interface ExecutedData { data: unknown; total: number }
  * the RETURN shape produced by buildReportQuery for each type is the contract
  * this function relies on (see the comment on CHART_TYPES).
  */
+/**
+ * L'ETICHETTA DI UN PUNTO DI UNA SERIE, che non diventi mai «[object Object]».
+ *
+ * Il Cypher la converte già in testo (`toString(date…)`), e questa è la rete:
+ * se un giorno arrivasse di nuovo un oggetto temporale — una query scritta a
+ * mano, un driver che cambia — una data va scritta come data invece di
+ * lasciare all'utente la parola che l'asse ha mostrato per mesi.
+ */
+export function etichettaTemporale(raw: unknown): string {
+  if (raw == null) return ''
+  if (typeof raw === 'string') return raw
+  if (typeof raw === 'object') {
+    const o = raw as Record<string, unknown>
+    const n = (v: unknown): number | null => {
+      if (typeof v === 'number') return v
+      if (typeof v === 'bigint') return Number(v)
+      // I numeri «lossless» del driver: {low, high}.
+      if (v !== null && typeof v === 'object' && 'low' in (v as object)) return Number((v as { low: number }).low)
+      return null
+    }
+    const anno = n(o['year']), mese = n(o['month']), giorno = n(o['day'])
+    if (anno !== null && mese !== null && giorno !== null) {
+      const due = (x: number) => String(x).padStart(2, '0')
+      return `${String(anno)}-${due(mese)}-${due(giorno)}`
+    }
+    // Un oggetto con un `toString` suo (il tipo del driver) lo sa fare da sé.
+    const testo = String(raw)
+    return testo === '[object Object]' ? JSON.stringify(raw) : testo
+  }
+  return String(raw)
+}
+
 export function mapSectionRecords(
   chartType: ChartType,
   section: Pick<ReportSectionDef, 'title'>,
@@ -54,7 +86,7 @@ export function mapSectionRecords(
     case 'line':
     case 'area': {
       const data = records.map(r => ({
-        date:  String(r.get('label') ?? ''),
+        date:  etichettaTemporale(r.get('label')),
         value: toNumber(r.get('value')),
       }))
       return { data, total: data.length }

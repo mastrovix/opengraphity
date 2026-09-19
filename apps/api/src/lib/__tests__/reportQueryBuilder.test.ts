@@ -232,7 +232,10 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     const { query } = buildReportQuery(section({ chartType: 'line' }), TENANT, whitelist)
     expect(query).toBe([
       'MATCH (n0:Incident {tenant_id: $tenantId})',
-      'RETURN date(datetime(n0.created_at)) AS label, count(n0) AS value',
+      // `toString(...)`: senza, l'asse di ogni serie diceva «[object Object]»
+      // (19 set 2026) — una data di Neo4j perde il suo `toString` passando
+      // dalla serializzazione JSON.
+      'RETURN toString(date(datetime(n0.created_at))) AS label, count(n0) AS value',
       'ORDER BY label ASC',
     ].join('\n'))
   })
@@ -299,8 +302,8 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     bar:            ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
     bar_horizontal: ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
     top_n:          ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
-    line:           ['RETURN date(datetime(n0.created_at)) AS label, count(n0) AS value', 'ORDER BY label ASC'],
-    area:           ['RETURN date(datetime(n0.created_at)) AS label, count(n0) AS value', 'ORDER BY label ASC'],
+    line:           ['RETURN toString(date(datetime(n0.created_at))) AS label, count(n0) AS value', 'ORDER BY label ASC'],
+    area:           ['RETURN toString(date(datetime(n0.created_at))) AS label, count(n0) AS value', 'ORDER BY label ASC'],
     table:          ['RETURN n0.title AS c0', 'LIMIT toInteger($limit)'],
   }
 
@@ -416,17 +419,17 @@ describe('la granularità di una serie', () => {
   })
 
   it('senza periodo resta il comportamento di prima: un punto al giorno', () => {
-    expect(buildReportQuery(serie({}), 't1', whitelist).query).toContain('date(datetime(n0.resolved_at))')
+    expect(buildReportQuery(serie({}), 't1', whitelist).query).toContain('toString(date(datetime(n0.resolved_at)))')
   })
 
   it('per mese porta ogni data al primo del mese', () => {
     expect(buildReportQuery(serie({ groupByGranularity: 'month' }), 't1', whitelist).query)
-      .toContain("date.truncate('month', datetime(n0.resolved_at))")
+      .toContain("toString(date.truncate('month', datetime(n0.resolved_at)))")
   })
 
   it('per settimana idem', () => {
     expect(buildReportQuery(serie({ groupByGranularity: 'week' }), 't1', whitelist).query)
-      .toContain("date.truncate('week', datetime(n0.resolved_at))")
+      .toContain("toString(date.truncate('week', datetime(n0.resolved_at)))")
   })
 
   it('un periodo inventato si rifiuta invece di finire nel Cypher', () => {

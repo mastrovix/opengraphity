@@ -491,9 +491,22 @@ export function buildReportQuery(
        * punto al giorno.
        */
       const granularita = isReportGranularity(section.groupByGranularity) ? section.groupByGranularity : 'day'
-      const etichetta = granularita === 'day'
+      const periodo = granularita === 'day'
         ? `date(datetime(${groupVar}.${field}))`
         : `date.truncate('${granularita}', datetime(${groupVar}.${field}))`
+      /*
+       * `toString(...)`: SENZA, l'asse di ogni serie diceva «[object Object]».
+       *
+       * Una data di Neo4j arriva come oggetto temporale; il suo `toString()`
+       * darebbe «2026-04-01», ma l'oggetto passa da una serializzazione JSON
+       * prima di essere letto e a quel punto il prototipo — e con lui il
+       * `toString` — non c'è più: resta `{year, month, day}`, che stampato
+       * diventa «[object Object]». Il difetto c'era da sempre su line e area;
+       * si è visto quando il proprietario ha chiesto i suoi sei mesi
+       * (19 set 2026). La conversione la fa Cypher, che è il posto dove la
+       * data è ancora una data.
+       */
+      const etichetta = `toString(${periodo})`
       returnClause = [
         // `date('2026-09-09T10:00:00Z')` non si parsa («Text cannot be parsed
         // to a Date»): la data va estratta dal datetime (C-7).

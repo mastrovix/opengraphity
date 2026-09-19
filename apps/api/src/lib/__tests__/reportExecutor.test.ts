@@ -27,7 +27,7 @@ vi.mock('../reportValueLabels.js', () => ({
   loadReportValueLabeler: (...args: unknown[]) => loadReportValueLabeler(...(args as [])),
 }))
 
-const { mapSectionRecords, executeReportSection } = await import('../reportExecutor.js')
+const { mapSectionRecords, executeReportSection, etichettaTemporale } = await import('../reportExecutor.js')
 const { CHART_TYPES } = await import('../reportQueryBuilder.js')
 const { getSession } = await import('@opengraphity/neo4j')
 import type { ChartType, ReportSectionDef } from '../reportQueryBuilder.js'
@@ -139,5 +139,36 @@ describe('executeReportSection', () => {
     const res = await executeReportSection(section({ chartType: 'gauge' }), 't1')
     expect(res.error).toContain('unsupported chartType "gauge"')
     expect(s.run).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * L'ASSE DI UNA SERIE NON DICE «[object Object]» (19 set 2026).
+ *
+ * Una data di Neo4j arriva come oggetto temporale; dopo la serializzazione
+ * JSON perde il prototipo, e `String(...)` dava «[object Object]». È quello
+ * che il proprietario ha visto sull'asse chiedendo gli incident degli ultimi
+ * sei mesi — ed era così su OGNI serie, da sempre.
+ */
+describe('etichettaTemporale', () => {
+  it('un testo resta il testo', () => {
+    expect(etichettaTemporale('2026-04-01')).toBe('2026-04-01')
+  })
+
+  it('una data che ha perso il prototipo si scrive come data', () => {
+    expect(etichettaTemporale({ year: 2026, month: 4, day: 1 })).toBe('2026-04-01')
+  })
+
+  it('i numeri «lossless» del driver si leggono', () => {
+    expect(etichettaTemporale({ year: { low: 2026, high: 0 }, month: { low: 12, high: 0 }, day: { low: 31, high: 0 } }))
+      .toBe('2026-12-31')
+  })
+
+  it('un oggetto che non è una data non diventa MAI «[object Object]»', () => {
+    expect(etichettaTemporale({ qualcosa: 1 })).toBe('{"qualcosa":1}')
+  })
+
+  it('niente resta vuoto', () => {
+    expect(etichettaTemporale(null)).toBe('')
   })
 })
