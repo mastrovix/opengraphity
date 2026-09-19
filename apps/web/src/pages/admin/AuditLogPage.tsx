@@ -14,6 +14,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { alpha, colors, palette } from '@/lib/tokens'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { formatDateTime } from '@/lib/datetime'
+import { auditActionLabel } from '@/lib/auditActionText'
 
 /**
  * Le azioni presenti nel registro di audit, con quante voci ciascuna: la
@@ -70,8 +71,17 @@ interface AuditEntry {
 const PAGE_SIZE = 50
 
 export function AuditLogPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { labelOf: typeLabel } = useItilTypeLabels()
+  /**
+   * Il nome dell'azione si LEGGE (decisione del proprietario, 20 set 2026):
+   * `enum_type.value_renamed` diventa «Valore di un vocabolario rinominato».
+   * Le voci `mutation.*` del registro unico restano col nome tecnico, che lì
+   * è l'informazione. Vedi `lib/auditActionText.ts`.
+   */
+  const azione = (a: string) => auditActionLabel(a, {
+    t, exists: (k) => i18n.exists(k), labelOf: typeLabel,
+  })
 
   const [page, setPage]             = useState(0)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -89,7 +99,7 @@ export function AuditLogPage() {
     GET_AUDIT_ACTIONS, { fetchPolicy: METAMODEL_FETCH_POLICY },
   )
   const actionOptions = (actionsQuery.data?.auditActions ?? [])
-    .map(({ action, count }) => ({ value: action, label: `${action} (${count})` }))
+    .map(({ action, count }) => ({ value: action, label: `${azione(action)} (${count})` }))
   /** G-20: le etichette dei tipi ITIL sono quelle del cliente, le altre il nome tecnico. */
   const ITIL_AUDIT_LABELS: Record<string, string> = {
     Incident: typeLabel('incident'), Change: typeLabel('change'),
@@ -143,7 +153,14 @@ export function AuditLogPage() {
       ),
     },
     { key: 'userEmail',  label: t('pages.audit.colUser'),       sortable: true },
-    { key: 'action',     label: t('pages.audit.colAction'),     sortable: true },
+    {
+      key: 'action', label: t('pages.audit.colAction'), sortable: true,
+      // Sotto la frase resta il nome tecnico: chi indaga su una riga di
+      // conformità deve poterla cercare nel codice e nei log.
+      render: (v) => (
+        <span title={String(v)}>{azione(String(v))}</span>
+      ),
+    },
     { key: 'entityType', label: t('pages.audit.colEntityType'), sortable: true },
     {
       key: 'entityId', label: t('pages.audit.colEntityId'), sortable: false,
@@ -207,7 +224,7 @@ export function AuditLogPage() {
             try { parsed = JSON.parse(entry.details) } catch { parsed = entry.details }
             return (
               <div style={{ marginTop: 12, padding: 16, background: 'var(--color-slate-bg)', borderRadius: 8, border: `1px solid ${colors.border}` }}>
-                <strong style={{ fontSize: 'var(--font-size-body)' }}>{t('pages.audit.details', { action: entry.action })}</strong>
+                <strong style={{ fontSize: 'var(--font-size-body)' }}>{t('pages.audit.details', { action: azione(entry.action) })}</strong>
                 <pre style={{ marginTop: 8, fontSize: 'var(--font-size-body)', overflowX: 'auto', margin: '8px 0 0 0' }}>
                   {JSON.stringify(parsed, null, 2)}
                 </pre>
