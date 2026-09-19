@@ -47,3 +47,19 @@ export const ADD_ENTITY_COMMENT = gql`
     }
   }
 `
+
+export const COMPLETE_TICKET_TASK = gql`
+  mutation CompleteTicketTask($taskId: ID!, $note: String) {
+    completeTicketTask(taskId: $taskId, note: $note) {
+      id state completedAt completedById
+    }
+  }
+`
+
+export const CANCEL_TICKET_TASK = gql`
+  mutation CancelTicketTask($taskId: ID!, $reason: String!) {
+    cancelTicketTask(taskId: $taskId, reason: $reason) {
+      id state completedAt cancelReason
+    }
+  }
+`

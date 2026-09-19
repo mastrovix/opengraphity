@@ -46,6 +46,16 @@ import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSever
 import { catalogItemsWithLegacyCategory, catalogItemsWithoutPriority } from './catalogItemPriority.js'
 import { tenantInAppRetentionDays } from './tenantInAppRetention.js'
 import { getSchemaState } from './schemaCache.js'
+import { ENTITY_NEO4J_LABELS } from '@opengraphity/types'
+import { TASK_STATE } from './ticketTasks.js'
+import { runQuery } from '../graphql/resolvers/ci-utils.js'
+
+/**
+ * Le coppie «tipo dichiarato :: etichetta Neo4j» ammesse per un compito,
+ * dall'allowlist del prodotto. Una coppia che non è qui è un compito appeso a
+ * un ticket che non è del suo tipo.
+ */
+const COPPIE_TIPO_ETICHETTA: string[] = Object.entries(ENTITY_NEO4J_LABELS).map(([tipo, etichetta]) => `${tipo}::${etichetta}`)
 import { tenantProvisioningGaps, type ProvisioningGap } from './provisionTenantData.js'
 import { DOMAIN_MATRIX_KINDS, domainVocabulary, loadDomainMatrix, matrixInputValues, matrixKey, matrixOutputValues, type DomainMatrixKind } from './domainMatrix.js'
 import { CI_STATUS_VOCABULARY } from './eventVocabularies.js'
@@ -114,6 +124,8 @@ export type ConfigurationIssueKind =
   | 'formulas_with_scripting_off'
   | 'metamodel_duplicate_field'
   | 'catalog_form_to_fix'
+  | 'task_type_mismatch'
+  | 'tasks_without_team'
   | 'changes_stuck'
 
 export interface ConfigurationIssue {
@@ -166,7 +178,7 @@ async function computeConfigurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkRedundantVocabularyCopies, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms, checkStuckChanges]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkRedundantVocabularyCopies, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms, checkStuckChanges, checkTaskIntegrity]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -681,6 +693,66 @@ async function checkCatalogItemPriorities(tenantId: string, session: Session): P
  * dice qui, con i nomi, finché qualcuno non lo sceglie dalla pagina del team.
  * I team nuovi non possono finire in questa lista: l'API pretende il valore.
  */
+/**
+ * LA TERZA DIFESA sui compiti (20 set 2026).
+ *
+ * `Task.entity_type` deve coincidere col tipo del ticket a cui il compito è
+ * appeso. Due difese vengono prima: il tipo non è esprimibile nel disegnatore
+ * (lo eredita dalla definizione di workflow) e la scrittura lo verifica
+ * contro l'etichetta del nodo. Questo conteggio **deve quindi essere sempre
+ * zero**: se un giorno non lo è, l'ha scritto una strada che nessuno aveva
+ * previsto, e si scopre qui invece che dentro un report sbagliato.
+ *
+ * Insieme, i compiti APERTI senza squadra: nascono così quando la squadra
+ * nominata nel passo non esiste più (cancellata dopo aver scritto il
+ * workflow). Non si ripiega su una squadra a caso — sarebbe lavoro assegnato
+ * a gente che non sa di averlo — quindi il compito resta lì, e lo si dice.
+ */
+async function checkTaskIntegrity(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const out: ConfigurationIssue[] = []
+
+  /**
+   * Il confronto è fra la coppia (tipo dichiarato, etichetta vera): un
+   * compito è sano se una delle etichette del suo ticket è quella del tipo
+   * che dichiara. Le coppie ammesse arrivano dall'allowlist del motore, la
+   * stessa che usa per scrivere lo status — non se ne inventa una seconda.
+   */
+  const rotti = await runQuery<{ code: string; declared: string; actual: string }>(session, `
+    MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
+    WITH k, ticket, [l IN labels(ticket) | k.entity_type + '::' + l] AS coppie
+    WHERE none(c IN coppie WHERE c IN $ammesse)
+    RETURN k.code AS code, k.entity_type AS declared, head(labels(ticket)) AS actual
+    LIMIT 20
+  `, { tenantId, ammesse: COPPIE_TIPO_ETICHETTA })
+  if (rotti.length > 0) {
+    out.push({
+      kind: 'task_type_mismatch', severity: 'error', where: null,
+      params: {
+        count: String(rotti.length),
+        examples: rotti.slice(0, 5).map((r) => `${r.code} (${r.declared} → ${r.actual})`).join(', '),
+      },
+    })
+  }
+
+  const senzaSquadra = await runQuery<{ code: string }>(session, `
+    MATCH (k:Task {tenant_id: $tenantId, state: $aperto})
+    WHERE NOT EXISTS { (k)-[:ASSIGNED_TO_TEAM]->(:Team) }
+      AND NOT EXISTS { (k)-[:ASSIGNED_TO]->(:User) }
+    RETURN k.code AS code
+    LIMIT 20
+  `, { tenantId, aperto: TASK_STATE.OPEN })
+  if (senzaSquadra.length > 0) {
+    out.push({
+      kind: 'tasks_without_team', severity: 'warning', where: null,
+      params: {
+        count: String(senzaSquadra.length),
+        codes: senzaSquadra.slice(0, 5).map((r) => r.code).join(', '),
+      },
+    })
+  }
+  return out
+}
+
 async function checkTeamSourcing(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
   const { count, names } = await teamsWithoutSourcing(session, tenantId)
   if (count === 0) return []

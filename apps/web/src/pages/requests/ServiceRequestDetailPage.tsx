@@ -18,6 +18,7 @@ import { WatcherBar } from '@/components/WatcherBar'
 import { EntityCommentsSection } from '@/components/ticket/EntityCommentsSection'
 import { timeAgo, formatDate } from '@/lib/datetime'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
+import { TicketTasksSection } from '@/components/ticket/TicketTasksSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
@@ -248,6 +249,7 @@ export function ServiceRequestDetailPage() {
           </div>
 
           {/* Allegati */}
+          <TicketTasksSection entityId={sr.id} />
           <AttachmentsSection entityType="service_request" entityId={sr.id} />
 
           {/* F13: le richieste non avevano commenti. */}

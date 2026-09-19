@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid'
 import pino from 'pino'
 import { runQuery } from '@opengraphity/neo4j'
 import { publish } from '@opengraphity/events'
-import { isNotificationTarget, AUTOMATION_NOTIFICATION_CHANNELS, TICKET_TEAM_ASSIGNED_EVENT, type AutomationNotificationPayload, type DomainEvent } from '@opengraphity/types'
+import { isNotificationTarget, AUTOMATION_NOTIFICATION_CHANNELS, TICKET_TEAM_ASSIGNED_EVENT, ENTITY_NEO4J_LABELS, TICKET_ENTITY_TYPES, type AutomationNotificationPayload, type DomainEvent } from '@opengraphity/types'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import { ValidationError } from './errors.js'
 import { assertSafeOutboundUrl, loggableUrl } from './safeUrl.js'
@@ -67,10 +67,16 @@ export interface Action {
   params: Record<string, unknown>
 }
 
-/** Le etichette dei ticket su cui un'azione può scrivere: allowlist, finisce nel Cypher. */
-const TICKET_LABELS: Record<string, 'Incident' | 'Problem' | 'Change' | 'ServiceRequest'> = {
-  incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'ServiceRequest',
-}
+/**
+ * Le etichette dei ticket su cui un'azione può scrivere: allowlist, finisce
+ * nel Cypher. I nomi vengono dalla mappa unica in `@opengraphity/types` (20
+ * set 2026, prima erano scritti qui una seconda volta); il PERIMETRO resta
+ * quello di prima — i quattro ticket, non l'articolo della knowledge base,
+ * che non è un ticket e su cui queste azioni non scrivono.
+ */
+const TICKET_LABELS: Readonly<Record<string, string>> = Object.fromEntries(
+  TICKET_ENTITY_TYPES.map((t) => [t, ENTITY_NEO4J_LABELS[t]!]),
+)
 
 export interface ActionExecutionContext {
   tenantId:   string

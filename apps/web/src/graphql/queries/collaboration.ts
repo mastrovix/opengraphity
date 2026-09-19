@@ -31,3 +31,18 @@ export const GET_ENTITY_COMMENTS = gql`
     }
   }
 `
+
+/**
+ * I COMPITI DI UN TICKET (20 set 2026): quelli che un passo del workflow ha
+ * fatto partire. Generici — valgono per incident, problem, change e richieste
+ * — a differenza dei cinque compiti delle change, che hanno le loro query.
+ */
+export const GET_TICKET_TASKS = gql`
+  query GetTicketTasks($entityId: ID!) {
+    ticketTasks(entityId: $entityId) {
+      id code title description state entityType entityId stepName
+      dueAt teamId teamName assigneeId assigneeName
+      createdAt completedAt completedById cancelReason
+    }
+  }
+`

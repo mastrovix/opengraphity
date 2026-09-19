@@ -60,6 +60,25 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   { anyOf: ['workspace.use', 'portal.read'], query: ['ticketCategories', 'fieldVisibilityRules', 'fieldRequirementRules'] },
   { anyOf: ['portal.submit'], mutation: ['createTicket', 'addTicketComment', 'reopenTicket'] },
 
+  /**
+   * I COMPITI DI UN TICKET non hanno un permesso proprio: vale quello del
+   * ticket a cui sono appesi. Qui la regola è l'UNIONE dei permessi dei tipi
+   * che possono avere compiti — questo guardiano pretende una regola per ogni
+   * campo dello schema, e il tipo del ticket si sa solo a runtime — mentre il
+   * controllo PRECISO lo fa il resolver (`resolvers/ticketTasks.ts`), sul
+   * tipo che il compito ha davvero. Un permesso «task.read» a sé sarebbe la
+   * strada per cui un giorno qualcuno legge dai titoli dei compiti quello che
+   * il ticket non gli mostra.
+   */
+  {
+    anyOf: ['incident.read', 'problem.read', 'change.read', 'request.read', 'kb.read'],
+    query: ['ticketTasks'],
+  },
+  {
+    anyOf: ['incident.write', 'problem.write', 'change.write', 'request.write', 'kb.write'],
+    mutation: ['completeTicketTask', 'cancelTicketTask'],
+  },
+
   // ── Ticket ─────────────────────────────────────────────────────────────────
   {
     anyOf: ['incident.read'],

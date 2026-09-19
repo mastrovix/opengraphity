@@ -22,6 +22,7 @@ import { discoverySDL } from './schema-discovery.js'
 import { adminSDL } from './schema-admin.js'
 import { monitoringSDL } from './schema-monitoring.js'
 import { approvalSDL } from './schema-approval.js'
+import { ticketTasksSDL } from './schema-tasks.js'
 import { attachmentsSDL } from './schema-attachments.js'
 import { commentsSDL } from './schema-comments.js'
 import { customFieldsSDL } from './schema-customFields.js'
@@ -809,6 +810,7 @@ export function buildBaseSDL(): string {
   ${enumTypeSDL()}
   ${domainMatrixSDL()}
   ${approvalSDL()}
+  ${ticketTasksSDL()}
   ${attachmentsSDL()}
   ${commentsSDL()}
   ${customFieldsSDL()}

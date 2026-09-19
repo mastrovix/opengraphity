@@ -35,6 +35,7 @@ import { CommentsSection } from '@/components/ticket/CommentsSection'
 import { WatcherBar } from '@/components/WatcherBar'
 import { SlaBadge, type SlaStatusInfo } from '@/components/SlaBadge'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
+import { TicketTasksSection } from '@/components/ticket/TicketTasksSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { keycloak } from '@/lib/keycloak'
 import { downloadPdf } from '@/lib/downloadPdf'
@@ -826,6 +827,7 @@ export function IncidentDetailPage() {
           </SectionCard>
 
           {/* Allegati */}
+          <TicketTasksSection entityId={incident.id} />
           <AttachmentsSection entityType="incident" entityId={incident.id} defaultOpen={false} />
 
           {/* Commenti */}

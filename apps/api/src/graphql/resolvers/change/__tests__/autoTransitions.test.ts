@@ -24,6 +24,9 @@ import { perms } from '../../../../lib/__tests__/testPermissions.js'
 // I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
 vi.mock('../../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 vi.mock('@opengraphity/workflow', () => ({
+  // `conditions.js` registra anche chi scrive i compiti (20 set 2026): senza
+  // questa, importarlo fa fallire tutta la suite prima del primo test.
+  registerTaskCreator: vi.fn(),
   workflowEngine: {
     createInstance:    vi.fn().mockResolvedValue({ id: 'wi-1' }),
     transition:        vi.fn().mockResolvedValue({ success: true }),

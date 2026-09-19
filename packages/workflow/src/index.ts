@@ -12,4 +12,8 @@ export { seedWorkflowForTenant, INCIDENT_WORKFLOW_BASE, INCIDENT_SECURITY_WORKFL
 export { seedProblemWorkflowForTenant, PROBLEM_WORKFLOW } from './seed-problem.js'
 export { seedKBWorkflowForTenant, KB_ARTICLE_WORKFLOW_BASE } from './seed-kb.js'
 export * from './types.js'
+export {
+  registerTaskCreator, currentTaskCreator, clearTaskCreator,
+  type TaskCreator, type TaskToCreate,
+} from './taskCreator.js'
 export { parseLocalizedLabels, serializeLocalizedLabels, localizedLabel, type LocalizedLabel } from './labels.js'

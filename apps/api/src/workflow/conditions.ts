@@ -7,7 +7,7 @@
  * transizioni li ha. L'engine li valuta per OGNI trigger, manuale o automatico:
  * non esiste più il bypass "automatic salta le condizioni".
  */
-import { workflowEngine } from '@opengraphity/workflow'
+import { workflowEngine, registerTaskCreator } from '@opengraphity/workflow'
 import type { ConditionEvaluator } from '@opengraphity/workflow'
 import { runQueryOne } from '../graphql/resolvers/ci-utils.js'
 import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT } from '../lib/taskStatus.js'
@@ -107,3 +107,23 @@ export function registerWorkflowConditions(): void {
 }
 
 registerWorkflowConditions()
+
+/**
+ * CHI SCRIVE I COMPITI, registrato qui accanto alle condizioni e per la
+ * stessa ragione (20 set 2026).
+ *
+ * L'azione `create_task` di un passo non può prendere il suo scrittore dal
+ * contesto della chiamata: tre dei cinque punti che costruiscono un
+ * `ActionContext` lo costruiscono povero (l'approvazione, due cammini delle
+ * change), e fra quelli c'è proprio «richiesta approvata → partono i
+ * compiti». Lì il ticket sarebbe avanzato SENZA i suoi compiti, e il motore
+ * raccoglie gli errori delle azioni invece di annullare la transizione,
+ * quindi nessuno se ne sarebbe accorto.
+ *
+ * Questo modulo è importato (per effetto) da ogni processo che esegue
+ * transizioni: le condizioni valgono dappertutto, e da oggi anche i compiti.
+ */
+registerTaskCreator(async (task) => {
+  const { creaCompito } = await import('../lib/ticketTasks.js')
+  return creaCompito(task)
+})

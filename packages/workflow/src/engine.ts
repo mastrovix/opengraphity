@@ -3,6 +3,7 @@ import { parseLocalizedLabels } from './labels.js'
 import type { Session, ManagedTransaction } from 'neo4j-driver'
 import pino from 'pino'
 import { toNumber as neo4jToNumber } from '@opengraphity/neo4j'
+import { ENTITY_NEO4J_LABELS } from '@opengraphity/types'
 import type {
   WorkflowInstance,
   WorkflowActionConfig,
@@ -29,13 +30,14 @@ function isSession(s: Session | ManagedTransaction): s is Session {
  * Allowlist esplicita: la label finisce nel Cypher (non parametrizzabile) e
  * un match senza label scriverebbe lo status su qualunque nodo con quell'id.
  */
-export const ENTITY_LABELS: Record<string, string> = {
-  incident:        'Incident',
-  problem:         'Problem',
-  change:          'Change',
-  service_request: 'ServiceRequest',
-  kb_article:      'KBArticle',
-}
+/**
+ * L'allowlist delle entità che il motore sa muovere. La mappa vive in
+ * `@opengraphity/types` (20 set 2026): ce n'erano due copie — questa e
+ * `TICKET_LABELS` dell'esecutore delle automazioni — e sono allowlist che
+ * finiscono dentro al Cypher, quindi divergendo avrebbero fatto funzionare un
+ * tipo di qua e non di là. Qui resta il nome con cui il motore la conosce.
+ */
+export const ENTITY_LABELS: Readonly<Record<string, string>> = ENTITY_NEO4J_LABELS
 
 // Neo4j Integer (o numero nativo) → number: helper unico di @opengraphity/neo4j (D-22).
 const toNumber = neo4jToNumber

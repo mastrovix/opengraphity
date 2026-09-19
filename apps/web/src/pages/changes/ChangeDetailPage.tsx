@@ -24,6 +24,7 @@ import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { FieldLabel } from '@/components/ui/FormControls'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
+import { TicketTasksSection } from '@/components/ticket/TicketTasksSection'
 import { EntityCommentsSection } from '@/components/ticket/EntityCommentsSection'
 import { WatcherBar } from '@/components/WatcherBar'
 import { EmptyState } from '@/components/EmptyState'
@@ -723,7 +724,8 @@ export function ChangeDetailPage() {
         </Modal>
       )}
 
-      <AttachmentsSection entityType="change" entityId={change.id} defaultOpen={false} />
+      <TicketTasksSection entityId={change.id} />
+          <AttachmentsSection entityType="change" entityId={change.id} defaultOpen={false} />
       {/* F13: le change avevano solo l'audit, nessun commento. */}
       <EntityCommentsSection entityType="change" entityId={change.id} />
 

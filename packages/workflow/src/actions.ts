@@ -13,8 +13,10 @@ import type {
   UpdateFieldParams,
   CallWebhookParams,
   CreateApprovalRequestParams,
+  CreateTaskParams,
 } from './types.js'
 import { stepFieldRejection } from '@opengraphity/types'
+import { currentTaskCreator } from './taskCreator.js'
 
 const log = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'workflow:actions' })
 
@@ -318,6 +320,55 @@ export async function runAction(
         approvalType: p.approval_type,
       })
       log.info({ approvalId, entityId: instance.entityId }, 'workflow-action: create_approval_request succeeded')
+      break
+    }
+
+    // ── New: create_task ─────────────────────────────────────────────────────
+
+    /**
+     * UN COMPITO DA FARE per una squadra, creato entrando nel passo.
+     *
+     * Chi lo scrive nel grafo è il REGISTRO (`taskCreator.ts`), non un
+     * callback del contesto: tre dei cinque punti che costruiscono un
+     * `ActionContext` lo costruiscono povero, e fra quelli c'è il cammino
+     * dell'approvazione — cioè proprio «richiesta approvata → partono i
+     * compiti». Con un callback, lì i compiti non sarebbero nati e la
+     * transizione sarebbe riuscita lo stesso.
+     *
+     * Il TIPO del compito non è un parametro: è `instance.entityType`, cioè
+     * il tipo dell'entità di questo workflow. È la prima delle tre difese
+     * sulla regola «un compito di tipo incident non sta su una change» —
+     * qui non si può nemmeno esprimere.
+     */
+    case 'create_task': {
+      const creaCompito = currentTaskCreator()
+      if (!creaCompito) {
+        throw new Error('create_task: nobody registered a task creator in this process (registerTaskCreator)')
+      }
+      const p     = action.params as unknown as CreateTaskParams
+      const title = resolveTemplate(p.title_template ?? '', buildTemplateCtx(instance, ctx.entityData)).trim()
+      // Un compito senza titolo è una riga vuota in «I miei compiti»: chi la
+      // trova non sa cosa deve fare, e non c'è modo di indovinarlo.
+      if (!title) throw new Error('create_task: empty title — the task would say nothing to whoever has to do it')
+
+      const giorni = p.due_in_days == null || p.due_in_days === '' ? null : Number(p.due_in_days)
+      if (giorni !== null && (!Number.isFinite(giorni) || giorni < 0)) {
+        throw new Error(`create_task: "due_in_days" is not a number of days (${String(p.due_in_days)})`)
+      }
+
+      const taskId = await creaCompito({
+        tenantId:    instance.tenantId,
+        entityId:    instance.entityId,
+        entityType:  instance.entityType,
+        stepName:    instance.currentStep,
+        actionIndex: ctx.actionIndex ?? 0,
+        title,
+        description: p.description?.trim() || null,
+        teamId:      p.team_id?.trim() || null,
+        dueInDays:   giorni,
+        createdBy:   ctx.userId,
+      })
+      log.info({ taskId, entityId: instance.entityId, entityType: instance.entityType }, 'workflow-action: create_task succeeded')
       break
     }
 

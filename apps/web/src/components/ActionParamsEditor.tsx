@@ -278,6 +278,29 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
       )
     }
 
+    /**
+     * UN COMPITO DA FARE per una squadra, all'ingresso nel passo (20 set 2026).
+     *
+     * Il TIPO del compito non si sceglie qui: lo eredita dalla definizione di
+     * workflow che contiene il passo. È la prima delle tre difese sulla regola
+     * «un compito di tipo incident non sta su una change» — qui non è
+     * nemmeno esprimibile.
+     */
+    case 'create_task':
+      return (
+        <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
+          {text('title_template', 'title_template', t('workflow.actionParams.taskTitleExample'))}
+          <Labeled label="team_id">
+            <Select style={selectS} value={params['team_id'] ?? ''} onChange={(e) => onChange('team_id', e.target.value)}>
+              <option value="">{t('automation.params.selectTeam')}</option>
+              {teams.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          </Labeled>
+          {text('due_in_days', 'due_in_days', t('workflow.actionParams.taskDueExample'), 'number')}
+          {text('description', 'description', t('workflow.actionParams.taskDescriptionExample'))}
+        </div>
+      )
+
     case 'create_approval_request':
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>

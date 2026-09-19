@@ -54,6 +54,7 @@ export const WORKFLOW_ACTION_TYPES = [
   'update_field',
   'call_webhook',
   'create_approval_request',
+  'create_task',
 ] as const
 
 export type WorkflowActionType = (typeof WORKFLOW_ACTION_TYPES)[number]
@@ -92,6 +93,38 @@ export interface UpdateFieldParams {
  * ri-esporta per i chiamanti del motore: una definizione sola.
  */
 export { stepFieldRejection, isStepFieldWritable } from '@opengraphity/types'
+
+/**
+ * UN COMPITO DA FARE, creato entrando in un passo (20 set 2026).
+ *
+ * Nasce dalle richieste di servizio: «Nuovo portatile» approvata deve far
+ * partire del lavoro vero — il Desk prepara la macchina, i Sistemi creano
+ * l'utenza — e finché quel lavoro non è fatto la richiesta non è evasa.
+ * L'azione è del MOTORE, quindi vale per qualunque entità: incident, problem
+ * e change la ereditano senza che nessuno scriva una riga in più.
+ *
+ * `team_id` è la squadra scelta disegnando il workflow: il caso base, e il
+ * più frequente («crea l'utenza» va sempre ai Sistemi). Le altre due strade
+ * decise dal proprietario — la squadra che sta in un campo del modulo e
+ * quella che supporta il CI scelto — arrivano nelle ondate 4 e 5, e sono
+ * altri parametri accanto a questo.
+ */
+export interface CreateTaskParams {
+  /** Il titolo del compito, con i segnaposto `{{campo}}` come gli altri template. */
+  title_template: string
+  /** Facoltativa: cosa c'è da fare, per chi lo trova in «I miei compiti». */
+  description?:   string
+  /** La squadra che lo deve fare. */
+  team_id?:       string
+  /** Fra quanti giorni scade. Vuoto = nessuna scadenza. */
+  due_in_days?:   string | number
+  /**
+   * La SEQUENZA («parte quando quell'altro è chiuso») arriva nell'ondata 2,
+   * insieme alla guardia che tiene fermo il passo: un compito «in attesa» che
+   * nessuno sa aprire sarebbe una trappola, quindi qui non si può nemmeno
+   * scrivere.
+   */
+}
 
 export interface CallWebhookParams {
   url:               string

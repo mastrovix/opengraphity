@@ -206,6 +206,8 @@ export function automationActionKey(type: string): string {
 export const WORKFLOW_STEP_ACTION_TYPES = [
   'sla_start', 'sla_stop',
   'create_entity', 'assign_to', 'update_field', 'call_webhook', 'create_approval_request',
+  // Un compito da fare per una squadra, creato entrando nel passo (20 set 2026).
+  'create_task',
 ] as const
 
 export type WorkflowStepActionType = typeof WORKFLOW_STEP_ACTION_TYPES[number]

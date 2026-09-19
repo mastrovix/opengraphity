@@ -43,6 +43,7 @@ import { CommentsSection } from '@/components/ticket/CommentsSection'
 import { UnifiedLinkedTickets, type LinkedTicketItem } from '@/components/UnifiedLinkedTickets'
 import { WatcherBar } from '@/components/WatcherBar'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
+import { TicketTasksSection } from '@/components/ticket/TicketTasksSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { keycloak } from '@/lib/keycloak'
 import { downloadPdf } from '@/lib/downloadPdf'
@@ -580,6 +581,7 @@ export function ProblemDetailPage() {
           />
 
           {/* Allegati */}
+          <TicketTasksSection entityId={problem.id} />
           <AttachmentsSection entityType="problem" entityId={problem.id} defaultOpen={false} />
 
           {/* Commenti */}

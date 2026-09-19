@@ -2814,7 +2814,8 @@
       "assign_to": "Assign to",
       "update_field": "Update field",
       "call_webhook": "Call webhook",
-      "create_approval_request": "Create approval request"
+      "create_approval_request": "Create approval request",
+      "create_task": "Create a task"
     },
     "deleteBlockedInitial": "This is the process's initial step: deleting it would stop any new ticket from being created. Mark another step as initial first.",
     "deleteBlockedInstances_one": "{{count}} ticket is currently on this step: deleting it would leave it with no current step and unable to move on. Move it to another step first.",
@@ -2917,7 +2918,10 @@
       },
       "addApprover": "Add a person…",
       "addApproverTeam": "Add a team…",
-      "approverRoleIgnored": "People or teams are set, so the role above is ignored."
+      "approverRoleIgnored": "People or teams are set, so the role above is ignored.",
+      "taskTitleExample": "E.g. Prepare the machine for {title}",
+      "taskDueExample": "Days, e.g. 2",
+      "taskDescriptionExample": "What has to be done (optional)"
     },
     "deadline": {
       "intro": "How long a ticket can stay in this step. When the time is up the ticket moves on its own along one of the arcs that leave the step, and the fields you choose are set.",
@@ -3955,7 +3959,9 @@
     "task": {
       "resultOneOf": "The result must be one of: {{allowed}}.",
       "notOnChange": "{{task}} for CI {{ci}} is not on the change: wrong phase, or task reopened?",
-      "alreadyCompleted": "This task is already completed."
+      "alreadyCompleted": "This task is already completed.",
+      "notOpen": "Task {{code}} is not open any more ({{state}}): reload the page.",
+      "cancelNeedsReason": "Cancelling a task needs a reason: whoever was waiting for it must know why it is gone."
     },
     "plan": {
       "endBeforeStart": "{{window}}: the end must come after the start.",
@@ -6287,7 +6293,11 @@
       "catalog_form_to_fix_other": "{{count}} catalog forms cannot be filled as configured ({{forms}}): whoever opens those requests gets a refusal they cannot fix. **Open them in Settings → Catalog forms**: `fieldsMissing` = they name a field no longer in the library, `requiredNotForEndUser` = they require a field the portal never asks for.",
       "changes_stuck": "{{count}} changes are stuck although the way is open ({{changes}}): their automatic transition is waiting on a condition that is already satisfied. Automatic transitions are only evaluated while someone works the change, so one that missed its chance never restarts on its own. **Open those changes and move the step forward**: the work is done, only the move is missing.",
       "vocabulary_copy_without_changes_one": "You have a vocabulary copy identical to the shipped one: {{names}}. It adds nothing and costs you something — a copy is never overwritten, so it will not receive the values the product adds later. **Delete it from the Dictionary**: the shipped one takes over again.",
-      "vocabulary_copy_without_changes_other": "You have {{count}} vocabulary copies identical to the shipped ones: {{names}}. They add nothing and cost you something — a copy is never overwritten, so it will not receive the values the product adds later. **Delete them from the Dictionary**: the shipped ones take over again."
+      "vocabulary_copy_without_changes_other": "You have {{count}} vocabulary copies identical to the shipped ones: {{names}}. They add nothing and cost you something — a copy is never overwritten, so it will not receive the values the product adds later. **Delete them from the Dictionary**: the shipped ones take over again.",
+      "task_type_mismatch_one": "1 task hangs from a ticket that is not of its type ({{examples}}). This should not be possible: the type is inherited from the workflow and checked on write. If it is here, some path nobody foresaw wrote it — **report it**, and until then do not trust that task.",
+      "task_type_mismatch_other": "{{count}} tasks hang from tickets that are not of their type ({{examples}}). This should not be possible: the type is inherited from the workflow and checked on write. If they are here, some path nobody foresaw wrote them — **report it**, and until then do not trust those tasks.",
+      "tasks_without_team_one": "1 open task has no team ({{codes}}): **nobody knows they have to do it**. This happens when the team chosen in the workflow step was deleted afterwards. Assign it, or fix the step.",
+      "tasks_without_team_other": "{{count}} open tasks have no team ({{codes}}): **nobody knows they have to do them**. This happens when the team chosen in the workflow step was deleted afterwards. Assign them, or fix the step."
     },
     "gap": {
       "tenant_missing": "no row: the tenant does not exist",
@@ -7278,6 +7288,8 @@
       "sync_source.created": "Sync source created",
       "sync_source.deleted": "Sync source deleted",
       "sync_source.updated": "Sync source changed",
+      "task.cancelled": "Task cancelled",
+      "task.completed": "Task closed",
       "team.change_manager_set": "Team appointed Change Manager",
       "team.created": "Team created",
       "team.manager_removed": "Team manager removed",
@@ -7313,6 +7325,25 @@
       "workflow.duplicated": "Workflow duplicated",
       "workflow.step_deadline_moved": "Step deadline: ticket moved on",
       "workflow.updated": "Workflow changed"
+    }
+  },
+  "tasks": {
+    "title": "Tasks",
+    "complete": "Done",
+    "cancel": "Cancel",
+    "completed": "Task {{code}} closed.",
+    "cancelled": "Task {{code}} cancelled.",
+    "noTeam": "no team",
+    "due": "by {{date}}",
+    "cancelledBecause": "Cancelled: {{reason}}",
+    "cancelTitle": "Cancel {{code}}?",
+    "cancelExplain": "The task stays in the ticket history, cancelled. Write why it is no longer needed: whoever was waiting for it must know.",
+    "cancelReasonPlaceholder": "E.g. the machine was already in the store room",
+    "cancelConfirm": "Cancel the task",
+    "state": {
+      "open": "To do",
+      "completed": "Done",
+      "cancelled": "Cancelled"
     }
   }
 }
