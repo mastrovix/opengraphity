@@ -195,6 +195,13 @@ for (const file of files) {
   l'API, questo controllo le dichiarava tutte «mai usate»: 410 avvisi che
   nascondevano quelli veri.
 */
+/**
+ * `key:` non e sempre una chiave i18n: `olaChangeUnits.ts` compone
+ * `key: ${m.kind}:${p.id}` (un identificativo di tratto), e ci sono chiavi di
+ * cache e di mappa. Questi prefissi restano fuori dal controllo di esistenza.
+ */
+const PREFISSI_NON_I18N = ['cache.', 'queue.', 'metric.']
+
 const API_SRC = path.join(ROOT, 'apps/api/src')
 /**
  * Anche i PACCHETTI mandano chiavi (revisione totale · H-23):
@@ -216,7 +223,47 @@ function sorgentiApi(dir, out = []) {
 }
 for (const p of [API_SRC, ...PKG_SRCS].flatMap((d) => sorgentiApi(d))) {
   const src = fs.readFileSync(p, 'utf8')
-  for (const m of src.matchAll(/key: '([A-Za-z0-9_.]+)'/g)) usedKeys.add(m[1])
+  const catalogoPermessi = p.endsWith(path.join('types', 'src', 'permissions.ts'))
+  for (const m of src.matchAll(/key: '([A-Za-z0-9_.]+)'/g)) {
+    usedKeys.add(m[1])
+    if (catalogoPermessi) {
+      // Un permesso senza etichetta compare nell'editor dei ruoli come
+      // «permissions.items.incident_write.label»: si controllano entrambe le
+      // parti, perché la descrizione è quello che l'amministratore legge per
+      // decidere se dare o no quel permesso.
+      for (const parte of ['label', 'description']) {
+        const chiave = `permissions.items.${m[1].replace('.', '_')}.${parte}`
+        usedKeys.add(chiave)
+        if (!keyExists(chiave)) {
+          err(`[missing] ${path.relative(ROOT, p)} — il permesso «${m[1]}» non ha «${chiave}»: nell'editor dei ruoli si leggerebbe la chiave`)
+        }
+      }
+    }
+    /*
+     * E SI CONTROLLA CHE ESISTA (19 set 2026, dalla revisione).
+     *
+     * Questo blocco serviva solo a non dichiarare «mai usate» le chiavi che
+     * manda il server: l'esistenza si verificava soltanto per i `t('...')`
+     * del web. Cosi una chiave mandata dall'API e mai definita arrivava a
+     * schermo COME CHIAVE — ed e successo: `proposal.discard.fieldName`, una
+     * su 614, trovata dalla revisione e non dal guardiano. Le chiavi degli
+     * scarti dei progettisti AI nascono tutte qui e nessun `tsc` le vede.
+     */
+    /*
+     * Solo le chiavi PUNTATE: `key: 'responseSubmitted'` è il tipo di una voce
+     * d'audit, non una frase da tradurre. Una chiave i18n ha sempre un punto —
+     * «errors.*», «pages.*», «proposal.discard.*».
+     *
+     * Il CATALOGO DEI PERMESSI è l'altra eccezione, e non si salta: le sue
+     * `key` sono identificativi («incident.write»), ma il web ne mostra
+     * l'etichetta come `permissions.items.<chiave con _>.label`. Quelle sono
+     * le chiavi da verificare, e si verificano sotto.
+     */
+    if (catalogoPermessi) continue
+    if (m[1].includes('.') && !keyExists(m[1]) && !PREFISSI_NON_I18N.some((x) => m[1].startsWith(x))) {
+      err(`[missing] ${path.relative(ROOT, p)} — l'API manda la chiave «${m[1]}» e nessun file di lingua la definisce: a schermo si leggerebbe la chiave`)
+    }
+  }
   /**
    * Qualunque letterale che SIA una chiave definita (revisione totale · H-23).
    * `key: '...'` non copre tutte le forme con cui l'API manda una chiave:

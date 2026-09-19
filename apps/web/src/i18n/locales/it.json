@@ -4463,7 +4463,8 @@
       "emptyPrompt": "Scrivi cosa deve chiedere la service request: senza descrizione non c'è niente da disegnare.",
       "promptTooLong": "La descrizione è troppo lunga (massimo {{max}} caratteri). Descrivi cosa serve, non il capitolato.",
       "badAnswer": "La risposta del modello non è leggibile. Riprova: se succede di nuovo, descrivi la richiesta con parole più semplici.",
-      "invalidProposal": "La proposta non sarebbe salvabile ({{message}}). È un difetto nostro: riprova, e se succede ancora segnalalo."
+      "invalidProposal": "La proposta non sarebbe salvabile ({{message}}). È un difetto nostro: riprova, e se succede ancora segnalalo.",
+      "truncated": "La risposta del modello si è interrotta a metà: la richiesta era troppo grande. Descrivi meno cose, o dividila in due."
     },
     "reportDesigner": {
       "emptyPrompt": "Scrivi che report ti serve: senza descrizione non c'è niente da disegnare.",
@@ -4471,7 +4472,8 @@
       "badAnswer": "La risposta del modello non è leggibile. Riprova, magari con parole più semplici.",
       "noEntities": "Questa organizzazione non ha ancora niente su cui fare report.",
       "nothingUsable": "La proposta non nomina nessuna entità di questa organizzazione: riprova dicendo di cosa vuoi il report.",
-      "invalidProposal": "La proposta non sarebbe salvabile ({{message}}). È un difetto nostro: riprova, e se succede ancora segnalalo."
+      "invalidProposal": "La proposta non sarebbe salvabile ({{message}}). È un difetto nostro: riprova, e se succede ancora segnalalo.",
+      "truncated": "La risposta del modello si è interrotta a metà: la richiesta era troppo grande. Descrivi meno cose, o dividila in due."
     }
   },
   "errorBoundary": {

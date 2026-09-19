@@ -4463,7 +4463,8 @@
       "emptyPrompt": "Write what the service request must ask: with no description there is nothing to design.",
       "promptTooLong": "The description is too long (max {{max}} characters). Describe what you need, not the full specification.",
       "badAnswer": "The model answer cannot be read. Try again: if it happens twice, describe the request in simpler words.",
-      "invalidProposal": "The proposal would not be saveable ({{message}}). That is a defect on our side: try again, and report it if it happens twice."
+      "invalidProposal": "The proposal would not be saveable ({{message}}). That is a defect on our side: try again, and report it if it happens twice.",
+      "truncated": "The model answer was cut off: the request was too big. Describe fewer things, or split it in two."
     },
     "reportDesigner": {
       "emptyPrompt": "Write what report you need: with no description there is nothing to design.",
@@ -4471,7 +4472,8 @@
       "badAnswer": "The model answer cannot be read. Try again, perhaps in simpler words.",
       "noEntities": "This organization has nothing to report on yet.",
       "nothingUsable": "The proposal names no entity of this organization: try again saying what the report is about.",
-      "invalidProposal": "The proposal would not be saveable ({{message}}). That is a defect on our side: try again, and report it if it happens twice."
+      "invalidProposal": "The proposal would not be saveable ({{message}}). That is a defect on our side: try again, and report it if it happens twice.",
+      "truncated": "The model answer was cut off: the request was too big. Describe fewer things, or split it in two."
     }
   },
   "errorBoundary": {

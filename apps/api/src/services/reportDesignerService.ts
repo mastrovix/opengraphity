@@ -252,6 +252,12 @@ export async function proponiSezioneDiReport(req: RichiestaDiReport): Promise<Es
     messages: [{ role: 'user', content: JSON.stringify(contesto, null, 1) }],
   })
 
+  // Troncato non è «non è JSON»: vedi il gemello dei moduli.
+  if (response.stop_reason === 'max_tokens') {
+    throw new GraphQLError('The model answer was cut off (max_tokens)', {
+      extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.reportDesigner.truncated' } },
+    })
+  }
   if (response.stop_reason === 'refusal') {
     throw new GraphQLError('The model refused the design request', {
       extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.ai.modelRefused' } },

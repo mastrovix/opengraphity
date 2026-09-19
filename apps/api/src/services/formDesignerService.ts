@@ -50,6 +50,19 @@ const log = logger.child({ module: 'form-designer' })
 /** Quanto testo accetto: una descrizione, non un capitolato. */
 export const MAX_PROMPT_CHARS = 4000
 
+/**
+ * Quanti valori di un vocabolario passo al modello.
+ *
+ * Il gemello dei report ce l'aveva e questo no: un tenant con un vocabolario
+ * importato da 5.000 voci (comuni, codici prodotto) mandava centinaia di
+ * migliaia di token a ogni proposta — costo fuori controllo, e oltre la
+ * finestra del modello un 400 che arrivava all'utente come errore interno
+ * nudo (19 set 2026, dalla revisione). I valori troncati restano validabili
+ * dal filtro, che li conosce tutti; al modello si dice quanti ne mancano,
+ * così non crede che l'elenco finisca lì.
+ */
+const MAX_VALORI_PER_CAMPO = 12
+
 export interface RichiestaDiProgetto {
   readonly tenantId: string
   /** La frase di chi configura. */
@@ -388,7 +401,11 @@ export async function proponiModulo(req: RichiestaDiProgetto): Promise<EsitoProp
       sezioni: catalogo.moduloEsistente.sections.map((s) => ({ titolo: s.title, campi: s.items.map((i) => i.field) })),
     },
     campi_in_libreria: [...catalogo.campiLibreria.entries()].map(([nome, d]) => ({ nome, tipo: d.fieldType, etichetta: d.label })),
-    vocabolari: [...catalogo.vocabolari.entries()].map(([nome, valori]) => ({ nome, valori })),
+    vocabolari: [...catalogo.vocabolari.entries()].map(([nome, valori]) => ({
+      nome,
+      valori: valori.slice(0, MAX_VALORI_PER_CAMPO),
+      ...(valori.length > MAX_VALORI_PER_CAMPO ? { altri: valori.length - MAX_VALORI_PER_CAMPO } : {}),
+    })),
     tipi_di_ci: [...catalogo.tipiCI],
     categorie: catalogo.categorie,
     priorita: catalogo.priorita,
@@ -416,6 +433,17 @@ export async function proponiModulo(req: RichiestaDiProgetto): Promise<EsitoProp
     messages: [{ role: 'user', content: JSON.stringify(contesto, null, 1) }],
   })
 
+  /*
+   * TRONCATO NON È «NON È JSON» (19 set 2026, dalla revisione). Con
+   * `max_tokens` esaurito l'uscita arriva a metà, `JSON.parse` fallisce e
+   * l'utente leggeva «la risposta del modello non è leggibile» — una
+   * diagnosi sbagliata che manda a cercare il difetto nel posto sbagliato.
+   */
+  if (response.stop_reason === 'max_tokens') {
+    throw new GraphQLError('The model answer was cut off (max_tokens)', {
+      extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.formDesigner.truncated' } },
+    })
+  }
   if (response.stop_reason === 'refusal') {
     throw new GraphQLError('The model refused the design request', {
       extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.ai.modelRefused' } },
