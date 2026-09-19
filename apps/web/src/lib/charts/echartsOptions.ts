@@ -125,16 +125,19 @@ function itemColor(style: ChartStyle, i: number, palette: string[]): string {
 
 // ── Builder ──────────────────────────────────────────────────────────────────
 
-export function buildBarOption(points: ChartPoint[], style: ChartStyle = {}) {
+export function buildBarOption(points: ChartPoint[], style: ChartStyle & { locale?: string } = {}) {
   const t = theme()
   const compact = style.compact ?? false
   const palette = chartPalette()
+  // Anche un istogramma può essere raggruppato per mese: stesse etichette.
+  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en')
+    ?? points.map((p) => p.label)
   return {
     tooltip: tooltip('axis', { axisPointer: { type: 'shadow' } }),
     grid: compact
       ? { top: 12, right: 12, bottom: 20, left: 40, containLabel: true }
       : { left: 16, right: 16, bottom: 48, top: 16, containLabel: true },
-    xAxis: categoryAxis(points.map((p) => p.label), compact, points.length > 6 ? 30 : 0),
+    xAxis: categoryAxis(etichette, compact, points.length > 6 ? 30 : 0),
     yAxis: valueAxis(compact),
     series: [{
       type: 'bar',
@@ -168,16 +171,59 @@ export function buildHorizontalBarOption(points: ChartPoint[], style: ChartStyle
   }
 }
 
-export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area?: boolean } = {}) {
+/**
+ * LE ETICHETTE DI UN ASSE TEMPORALE, come le scrive un foglio di calcolo
+ * (19 set 2026).
+ *
+ * Il server manda date ISO — `2026-01-01`, `2026-02-01`, … — e l'asse le
+ * stampava tutte per intero, una sopra l'altra: nove etichette da dieci
+ * caratteri in uno spazio da tre. Il proprietario: «non si capisce nulla, in
+ * questi casi l'anno dovrebbe stare in basso e ogni mese mostrare solo il
+ * mese, come farebbe Excel».
+ *
+ * Quindi: il PERIODO sulla prima riga (gen, feb… oppure «6 apr» per i giorni)
+ * e l'ANNO sulla seconda, ma SOLO quando cambia — cioè sul primo punto e a
+ * ogni capodanno. È esattamente l'asse a due livelli dei fogli di calcolo, e
+ * si ottiene con un `\n` dentro l'etichetta.
+ *
+ * Il periodo si riconosce dai DATI e non da un parametro: se ogni data è il
+ * primo del mese la serie è mensile. Così vale anche per un grafico salvato
+ * prima che il periodo esistesse, e per i widget della dashboard, che la
+ * configurazione della sezione non ce l'hanno.
+ */
+export function etichetteTemporali(labels: readonly string[], locale: string): string[] | null {
+  const ISO = /^(\d{4})-(\d{2})-(\d{2})$/
+  const pezzi = labels.map((l) => ISO.exec(l))
+  if (labels.length === 0 || pezzi.some((m) => m === null)) return null
+
+  const mensile = pezzi.every((m) => m![3] === '01')
+  let annoPrecedente = ''
+  return pezzi.map((m) => {
+    const [, anno, mese, giorno] = m!
+    // Mezzogiorno UTC: costruire la data a mezzanotte la farebbe scivolare al
+    // giorno prima nei fusi a ovest, e un «1 gennaio» diventerebbe dicembre.
+    const d = new Date(Date.UTC(Number(anno), Number(mese) - 1, Number(giorno), 12))
+    const periodo = mensile
+      ? d.toLocaleDateString(locale, { month: 'short', timeZone: 'UTC' })
+      : d.toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' })
+    const nuovo = anno !== annoPrecedente
+    annoPrecedente = anno!
+    return nuovo ? `${periodo}\n${anno!}` : periodo
+  })
+}
+
+export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area?: boolean; locale?: string } = {}) {
   const t = theme()
   const compact = style.compact ?? false
   const color = style.color ?? t.brand
+  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en')
+    ?? points.map((p) => p.label)
   return {
     tooltip: tooltip('axis'),
     grid: compact
       ? { top: 12, right: 12, bottom: 20, left: 40, containLabel: true }
       : { left: 16, right: 16, bottom: 48, top: 16, containLabel: true },
-    xAxis: categoryAxis(points.map((p) => p.label), compact),
+    xAxis: categoryAxis(etichette, compact),
     yAxis: valueAxis(compact),
     series: [{
       type: 'line',

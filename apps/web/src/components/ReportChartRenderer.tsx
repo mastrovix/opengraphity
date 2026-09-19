@@ -96,7 +96,7 @@ export function ReportChartRenderer({ chartType, data, title, error, valueLabel 
     }
 
     case 'bar':
-      return <ReactECharts option={buildBarOption(points(), REPORT_STYLE)} {...echartsProps} />
+      return <ReactECharts option={buildBarOption(points(), { ...REPORT_STYLE, locale: i18n.language })} {...echartsProps} />
 
     case 'bar_horizontal':
       return <ReactECharts option={buildHorizontalBarOption(points(), REPORT_STYLE)} {...echartsProps} />
@@ -118,10 +118,10 @@ export function ReportChartRenderer({ chartType, data, title, error, valueLabel 
       return <ReactECharts option={buildHorizontalBarOption(points(), REPORT_STYLE)} {...echartsProps} />
 
     case 'line':
-      return <ReactECharts option={buildLineOption(points())} {...echartsProps} />
+      return <ReactECharts option={buildLineOption(points(), { locale: i18n.language })} {...echartsProps} />
 
     case 'area':
-      return <ReactECharts option={buildLineOption(points(), { area: true })} {...echartsProps} />
+      return <ReactECharts option={buildLineOption(points(), { area: true, locale: i18n.language })} {...echartsProps} />
 
     case 'table': {
       const d = parsed as TableData

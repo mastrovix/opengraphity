@@ -423,7 +423,10 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     const timer = setTimeout(() => { runPreview({ variables: { input: buildInput(), language: i18n.resolvedLanguage ?? i18n.language } }) }, 500)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wizardStep, chartType, groupByNodeId, groupByField, metric, metricField, limit, sortDir, nodes.length, edges.length])
+    // `granularita` fra le dipendenze (19 set 2026): senza, si cambiava
+    // «Periodo» in «Per mese» e l'anteprima restava quella per giorno —
+    // l'unico posto dove si verifica il disegno mostrava un altro disegno.
+  }, [wizardStep, chartType, groupByNodeId, groupByField, granularita, metric, metricField, limit, sortDir, nodes.length, edges.length])
 
   // ── Wizard navigation ────────────────────────────────────────────────────────
 
