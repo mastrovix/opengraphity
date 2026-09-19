@@ -13,6 +13,7 @@ import { logger } from '../../lib/logger.js'
 import { ValidationError } from '../../lib/errors.js'
 import { assertReportTemplateAccess } from './reportAccess.js'
 import { config } from '../../lib/config.js'
+import { loadNotificationLocale, notificationText, formatNotificationDate, type NotificationLocale } from '@opengraphity/notifications'
 
 const REPORT_DIR = config.reportDir
 
@@ -85,9 +86,10 @@ interface SectionData {
   error: string | null
 }
 
-async function fetchSectionData(sections: ReportSectionDef[], tenantId: string): Promise<SectionData[]> {
+async function fetchSectionData(sections: ReportSectionDef[], tenantId: string, lingua: string): Promise<SectionData[]> {
+  const sezioni = sections
   const results = await Promise.all(sections.map(s => executeReportSection(s, tenantId)))
-  return results.map(r => {
+  return results.map((r, i) => {
     // A failed section must appear AS FAILED in the exported document — an
     // empty page in a delivered audit PDF is a lie.
     if (r.error) {
@@ -112,10 +114,40 @@ async function fetchSectionData(sections: ReportSectionDef[], tenantId: string):
     }
     return {
       title: r.title, chartType: r.chartType,
-      rows: Array.isArray(parsed) ? righeDiSerie(parsed as unknown[], r.chartType) : null,
+      rows: Array.isArray(parsed)
+        ? righeDiSerie(parsed as unknown[], r.chartType, { granularita: sezioni[i]?.groupByGranularity, lingua })
+        : null,
       kpiValue: null, tableRows: null, error: null,
     }
   })
+}
+
+/**
+ * IL PERIODO SI SCRIVE COME SUL GRAFICO (20 set 2026, dal giro nel browser:
+ * «in teoria non dovrebbe contenere la data… intera»).
+ *
+ * La query tronca al periodo e restituisce una data ISO: un raggruppamento
+ * PER ANNO esce «2026-01-01», per mese «2026-09-01». Sul grafico il browser
+ * le rende «2026» e «set 2026»; nel foglio e nel PDF finiva la data intera,
+ * che per un raggruppamento annuale dice pure una cosa falsa — «il primo
+ * gennaio», non «il 2026». Lo stesso report deve leggersi allo stesso modo a
+ * schermo e nel file che si allega.
+ *
+ * Una riga per cella: il foglio non ha l'asse a due righe del grafico, quindi
+ * l'anno c'è sempre.
+ */
+export function etichettaDelPeriodo(raw: string, granularita: string | null | undefined, lingua: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw)
+  if (!m) return raw
+  const [, anno, mese, giorno] = m
+  if (granularita === 'year') return anno!
+  const locale = lingua === 'it' ? 'it-IT' : 'en-GB'
+  // Mezzogiorno UTC: a mezzanotte un «1 gennaio» scivolerebbe a dicembre nei
+  // fusi a ovest.
+  const d = new Date(Date.UTC(Number(anno), Number(mese) - 1, Number(giorno), 12))
+  return granularita === 'month'
+    ? `${d.toLocaleDateString(locale, { month: 'short', timeZone: 'UTC' })} ${anno!}`
+    : d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
 }
 
 /**
@@ -133,18 +165,24 @@ async function fetchSectionData(sections: ReportSectionDef[], tenantId: string):
  * etichetta è un errore dichiarato: una cella vuota in un foglio consegnato
  * non si distingue da un dato che vale davvero niente.
  */
-export function righeDiSerie(parsed: readonly unknown[], chartType: string): Array<{ name: string; value: number }> {
+export function righeDiSerie(
+  parsed: readonly unknown[], chartType: string,
+  periodo: { granularita?: string | null; lingua: string } = { lingua: 'en' },
+): Array<{ name: string; value: number }> {
   return parsed.map((raw, i) => {
     const r = (raw ?? {}) as { name?: unknown; date?: unknown; value?: unknown }
     const etichetta = r.name ?? r.date
     if (etichetta === undefined || etichetta === null || String(etichetta) === '') {
       throw new Error(`[report-export] row ${String(i)} of a "${chartType}" section has no label (neither "name" nor "date")`)
     }
-    return { name: String(etichetta), value: Number(r.value ?? 0) }
+    return {
+      name: etichettaDelPeriodo(String(etichetta), periodo.granularita, periodo.lingua),
+      value: Number(r.value ?? 0),
+    }
   })
 }
 
-async function generatePDF(templateName: string, data: SectionData[], filePath: string): Promise<void> {
+async function generatePDF(templateName: string, data: SectionData[], filePath: string, locale: NotificationLocale): Promise<void> {
   const PDFDocument = (await import('pdfkit')).default
   const doc = new PDFDocument({ margin: 50, size: 'A4' })
   const stream = fs.createWriteStream(filePath)
@@ -153,7 +191,7 @@ async function generatePDF(templateName: string, data: SectionData[], filePath: 
   // Title
   doc.fontSize(20).fillColor('#1a2332').text(templateName, { align: 'center' })
   doc.moveDown(0.5)
-  doc.fontSize(10).fillColor('#94a3b8').text(new Date().toLocaleString(), { align: 'center' })
+  doc.fontSize(10).fillColor('#94a3b8').text(formatNotificationDate(locale), { align: 'center' })
   doc.moveDown(1.5)
 
   for (const sec of data) {
@@ -199,7 +237,7 @@ export function excelJsFrom(mod: { default?: typeof ExcelJS } & Partial<typeof E
   throw new Error('exceljs: no Workbook export found (neither default.Workbook nor Workbook)')
 }
 
-export async function generateExcel(templateName: string, data: SectionData[], filePath: string): Promise<void> {
+export async function generateExcel(templateName: string, data: SectionData[], filePath: string, locale: NotificationLocale): Promise<void> {
   const Excel = excelJsFrom(await import('exceljs') as never)
   const workbook = new Excel.Workbook()
   workbook.creator = 'OpenGraphity'
@@ -208,9 +246,11 @@ export async function generateExcel(templateName: string, data: SectionData[], f
   const summary = workbook.addWorksheet('Summary')
   summary.getCell('A1').value = templateName
   summary.getCell('A1').font = { bold: true, size: 14 }
-  summary.getCell('A2').value = new Date().toLocaleString()
+  summary.getCell('A2').value = formatNotificationDate(locale)
   summary.getCell('A2').font = { color: { argb: 'FF94A3B8' } }
-  summary.getCell('A3').value = `${data.length} sezione/i`
+  summary.getCell('A3').value = data.length === 1
+    ? notificationText(locale, 'exportSectionsOne')
+    : notificationText(locale, 'exportSectionsMany', { count: String(data.length) })
   summary.columns = [{ width: 40 }]
 
   for (const sec of data) {
@@ -225,11 +265,11 @@ export async function generateExcel(templateName: string, data: SectionData[], f
       sheet.getCell('A2').value = `ERROR: ${sec.error}`
       sheet.getCell('A2').font = { color: { argb: 'FFDC2626' }, bold: true }
     } else if (sec.chartType === 'kpi' && sec.kpiValue !== null) {
-      sheet.getCell('A2').value = 'Valore'
+      sheet.getCell('A2').value = notificationText(locale, 'exportValue')
       sheet.getCell('B2').value = sec.kpiValue
       sheet.getCell('B2').font = { bold: true, size: 16 }
     } else if (sec.rows && sec.rows.length > 0) {
-      sheet.getRow(2).values = ['Label', 'Valore']
+      sheet.getRow(2).values = [notificationText(locale, 'exportLabel'), notificationText(locale, 'exportValue')]
       sheet.getRow(2).font = { bold: true }
       sheet.columns = [{ key: 'name', width: 30 }, { key: 'value', width: 15 }]
       sec.rows.forEach((row, i) => { sheet.getRow(i + 3).values = [row.name, row.value] })
@@ -268,7 +308,16 @@ export async function generateReportFile(
   const tpl = await loadTemplateForExport(templateId, tenantId)
   if (!tpl) throw new NotFoundError('ReportTemplate', templateId)
 
-  const data = await fetchSectionData(tpl.sections, tenantId)
+  /*
+   * LINGUA E FUSO DEL CLIENTE (20 set 2026). Il documento che si allega esce
+   * dal prodotto come un'e-mail: si legge nella lingua dell'organizzazione e
+   * le sue date sono nel suo fuso. Prima l'intestazione portava
+   * `new Date().toLocaleString()` — cioè il formato e l'ora del PROCESSO, che
+   * in un container è en-US su UTC: «9/19/2026, 12:42:48 PM» in un foglio
+   * italiano.
+   */
+  const locale = await loadNotificationLocale(tenantId)
+  const data = await fetchSectionData(tpl.sections, tenantId, locale.language)
   const ext  = format === 'pdf' ? 'pdf' : 'xlsx'
   const filename = `${uuidv4()}.${ext}`
   const dir      = tenantReportDir(tenantId)
@@ -276,9 +325,9 @@ export async function generateReportFile(
   const filePath = path.join(dir, filename)
 
   if (format === 'pdf') {
-    await generatePDF(tpl.name, data, filePath)
+    await generatePDF(tpl.name, data, filePath, locale)
   } else {
-    await generateExcel(tpl.name, data, filePath)
+    await generateExcel(tpl.name, data, filePath, locale)
   }
 
   logger.info({ filename, templateId }, `[report-export] ${ext} generated`)

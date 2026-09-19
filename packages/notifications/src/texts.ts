@@ -136,6 +136,13 @@ export const TEXTS = {
   reportExecuted:       { en: 'Scheduled report "{name}" ran ({count} sections).', it: 'Il report schedulato «{name}» è stato eseguito ({count} sezioni).' },
   // Il report che ARRIVA per posta (ondata 11): destinatari e formato erano
   // raccolti dall'interfaccia e nessuno li usava.
+  // I testi del DOCUMENTO esportato (foglio ed PDF): escono dal prodotto come
+  // un'e-mail, quindi stanno qui e non in un letterale (20 set 2026 — nel
+  // foglio si leggeva «Label» e «Valore», una inglese e una italiana).
+  exportLabel:          { en: 'Label', it: 'Etichetta' },
+  exportValue:          { en: 'Value', it: 'Valore' },
+  exportSectionsOne:    { en: '1 section', it: '1 sezione' },
+  exportSectionsMany:   { en: '{count} sections', it: '{count} sezioni' },
   reportEmailSubject:   { en: 'Report "{name}" — {date}', it: 'Report «{name}» — {date}' },
   reportEmailBody:      { en: 'The scheduled report "{name}" ran on {date}. The document is attached ({sections} sections).', it: 'Il report schedulato «{name}» è stato eseguito il {date}. Il documento è in allegato ({sections} sezioni).' },
   /**
