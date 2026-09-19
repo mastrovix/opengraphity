@@ -183,16 +183,27 @@ export async function creaCompito(task: TaskToCreate): Promise<string> {
      */
     let squadra = task.teamId
     if (task.teamFromField) {
+      /**
+       * DUE MODI, UN PARAMETRO SOLO (ondata 5). Il campo nominato può essere:
+       *  - un campo SQUADRA, e allora la squadra è quella scelta;
+       *  - un campo CI, e allora è chi SUPPORTA quel CI.
+       * Nel disegnatore è una tendina sola — «prendi la squadra dal campo
+       * ‹Applicazione›» — perché per chi la scrive è la stessa domanda. Due
+       * parametri avrebbero voluto dire spiegare la differenza a chi non ha
+       * motivo di conoscerla.
+       */
       const riga = await runQueryOne<{ teamId: string | null }>(session, `
-        MATCH (ticket {id: $entityId, tenant_id: $tenantId})-[r:FORM_REFERS_TO_TEAM {field: $campo}]->(team:Team {tenant_id: $tenantId})
-        RETURN team.id AS teamId
+        MATCH (ticket {id: $entityId, tenant_id: $tenantId})
+        OPTIONAL MATCH (ticket)-[:FORM_REFERS_TO_TEAM {field: $campo}]->(diretta:Team {tenant_id: $tenantId})
+        OPTIONAL MATCH (ticket)-[:FORM_REFERS_TO_CI {field: $campo}]->(:ConfigurationItem)-[:SUPPORTED_BY]->(delCi:Team {tenant_id: $tenantId})
+        RETURN coalesce(diretta.id, delCi.id) AS teamId
         LIMIT 1
       `, { entityId: task.entityId, tenantId: task.tenantId, campo: task.teamFromField })
       squadra = riga?.teamId ?? null
       if (!squadra) {
         logger.warn(
           { entityId: task.entityId, campo: task.teamFromField, tenantId: task.tenantId },
-          '[tasks] the form field named by the step action has no team in it: the task has no assignee',
+          '[tasks] the form field named by the step action gives no team (empty, or the chosen CI has no support group): the task has no assignee',
         )
       }
     }

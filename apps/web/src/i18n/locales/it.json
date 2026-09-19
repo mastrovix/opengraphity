@@ -2925,9 +2925,9 @@
       "taskDescriptionExample": "Cosa c’è da fare (facoltativo)",
       "taskAfter": "parte quando è chiuso",
       "taskAfterNone": "subito, in parallelo",
-      "taskTeamFromField": "oppure la squadra nel campo",
+      "taskTeamFromField": "oppure la squadra dal campo",
       "taskTeamFromFieldNone": "nessun campo: vale la squadra qui accanto",
-      "taskTeamFieldWins": "Sono indicati sia una squadra sia un campo: vince il CAMPO, perché è il dato della singola richiesta. Se il campo è vuoto il compito nasce senza destinatario, e la Diagnostica lo dice."
+      "taskTeamFieldWins": "Sono indicati sia una squadra sia un campo: vince il CAMPO, perché è il dato della singola richiesta. Da un campo squadra si prende la squadra scelta, da un campo CI chi lo supporta. Se non se ne ricava nessuna, il compito nasce senza destinatario e la Diagnostica lo dice."
     },
     "deadline": {
       "intro": "Per quanto tempo un ticket può restare in questo passo. Allo scadere il ticket si sposta da solo lungo uno degli archi che escono dal passo, e i campi che scegli vengono impostati.",

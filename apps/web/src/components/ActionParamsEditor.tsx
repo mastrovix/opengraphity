@@ -76,7 +76,13 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
   const { data: campiModulo } = useQuery<{ formFields: { name: string; label: string; fieldType: string }[] }>(
     GET_FORM_FIELDS, { skip: actionType !== 'create_task', fetchPolicy: METAMODEL_FETCH_POLICY },
   )
-  const campiSquadra = (campiModulo?.formFields ?? []).filter((f) => f.fieldType === 'ref_team')
+  /**
+   * I campi da cui si può ricavare una squadra: quelli SQUADRA (la risposta
+   * è la squadra) e quelli CI (la squadra è chi supporta il CI scelto). Una
+   * tendina sola, perché per chi disegna è la stessa domanda: «da dove la
+   * prendo?».
+   */
+  const campiSquadra = (campiModulo?.formFields ?? []).filter((f) => f.fieldType === 'ref_team' || f.fieldType === 'ref_ci')
 
   const teams = teamsData?.teams ?? []
   const users = usersData?.users ?? []

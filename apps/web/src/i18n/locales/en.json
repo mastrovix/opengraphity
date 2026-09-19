@@ -2925,9 +2925,9 @@
       "taskDescriptionExample": "What has to be done (optional)",
       "taskAfter": "starts when this is closed",
       "taskAfterNone": "right away, in parallel",
-      "taskTeamFromField": "or the team in the field",
+      "taskTeamFromField": "or the team from the field",
       "taskTeamFromFieldNone": "no field: the team chosen here applies",
-      "taskTeamFieldWins": "Both a team and a field are set: the FIELD wins, because it is the data of this one request. If the field is empty the task is created with no assignee, and Diagnostics says so."
+      "taskTeamFieldWins": "Both a team and a field are set: the FIELD wins, because it is the data of this one request. A team field gives the chosen team, a CI field gives whoever supports it. If no team comes out, the task is created with no assignee and Diagnostics says so."
     },
     "deadline": {
       "intro": "How long a ticket can stay in this step. When the time is up the ticket moves on its own along one of the arcs that leave the step, and the fields you choose are set.",

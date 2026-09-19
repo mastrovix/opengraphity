@@ -117,11 +117,17 @@ export interface CreateTaskParams {
   /** La squadra che lo deve fare, scelta disegnando il workflow. */
   team_id?:       string
   /**
-   * …oppure il nome di un CAMPO SQUADRA del modulo: la squadra è quella che
-   * sta nella risposta. È la strada per cui «Sede: Milano» finisce al Desk
-   * di Milano — il campo si riempie a mano da chi smista, o da solo con una
-   * formula. Se ci sono entrambi vince il campo: è il dato della singola
-   * richiesta, e batte la scelta fatta una volta per tutte.
+   * …oppure il nome di un CAMPO del modulo da cui leggere la squadra. Il
+   * campo può essere di due generi, e per chi disegna è la stessa domanda:
+   *  - un campo SQUADRA → la squadra scelta nella risposta. È la strada per
+   *    cui «Sede: Milano» finisce al Desk di Milano, col campo riempito a
+   *    mano da chi smista o da una formula;
+   *  - un campo CI → chi SUPPORTA il CI scelto. «Accesso ad applicazione»
+   *    con Applicazione = App portale clienti manda il compito a chi la
+   *    tiene su.
+   *
+   * Se ci sono sia questo sia `team_id` vince il campo: è il dato della
+   * singola richiesta, e batte la scelta fatta una volta per tutte.
    */
   team_from_field?: string
   /** Fra quanti giorni scade. Vuoto = nessuna scadenza. */
