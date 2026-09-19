@@ -2330,7 +2330,7 @@
     },
     "catalogForms": {
       "title": "Service Request Designer",
-      "intro": "This is where a service request is designed: the form whoever opens it fills in, and the workflow it follows.",
+      "intro": "Here you decide what a service request asks (the form) and how it gets handled (the workflow).",
       "tabs": {
         "forms": "Designer",
         "library": "Field library",
