@@ -118,6 +118,15 @@ export function reportSDL(): string {
     data: String!
     total: Int
     error: String
+    """
+    La chiave i18n dell'errore, quando l'errore è di quelli che l'utente può
+    causare (20 set 2026, dal giro nel browser): l'anteprima mostrava il
+    messaggio inglese del server — «a table section needs at least one
+    selected field on a result node (isResult = true)» — a chi legge il
+    prodotto in italiano. Assente per gli errori che non sono suoi: lì il
+    messaggio tecnico è l'unica cosa utile.
+    """
+    errorKey: String
   }
 
   # ── AI Report Conversations ────────────────────────────────────────────────

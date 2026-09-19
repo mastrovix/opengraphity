@@ -19,6 +19,8 @@ interface Props {
   data:      string
   title:     string
   error?:    string | null
+  /** La chiave i18n dell'errore: se c'è, si legge quella. */
+  errorKey?: string | null
   /** L'etichetta di un valore raggruppato (Dizionario, passi del workflow): giro del 14 set 2026, #11. */
   valueLabel?: (value: string) => string
   /**
@@ -59,10 +61,20 @@ function ChartError({ title, message }: { title: string; message: string }) {
 
 const REPORT_STYLE = { showValueLabels: true } as const
 
-export function ReportChartRenderer({ chartType, data, title, error, valueLabel, granularita }: Props) {
+export function ReportChartRenderer({ chartType, data, title, error, errorKey, valueLabel, granularita }: Props) {
   const { t, i18n } = useTranslation()
   const locale = i18n.language
-  if (error) return <ChartError title={t('components.reportChart.computeError')} message={error} />
+  /*
+   * Con la chiave si legge la frase nella lingua di chi guarda (20 set 2026):
+   * l'anteprima mostrava «a table section needs at least one selected field
+   * on a result node (isResult = true)» a chi usa il prodotto in italiano.
+   * Senza chiave resta il messaggio tecnico, che per un difetto nostro è
+   * l'unica cosa utile.
+   */
+  if (error) {
+    const messaggio = errorKey && i18n.exists(errorKey) ? t(errorKey) : error
+    return <ChartError title={t('components.reportChart.computeError')} message={messaggio} />
+  }
   if (!data) return <EmptyChart />
 
   let parsed: unknown

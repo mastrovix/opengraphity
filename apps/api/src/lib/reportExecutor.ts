@@ -12,6 +12,8 @@ export interface ReportSectionResult {
   data:      string  // JSON
   total:     number | null
   error:     string | null
+  /** La chiave i18n, se l'errore è di quelli che l'utente può causare. */
+  errorKey:  string | null
 }
 
 interface ExecutedData { data: unknown; total: number }
@@ -109,6 +111,13 @@ export function mapSectionRecords(
   }
 }
 
+/** La chiave i18n dentro `extensions.i18n.key` di un errore GraphQL, se c'è. */
+function chiaveI18n(err: unknown): string | null {
+  const ext = (err as { extensions?: { i18n?: { key?: unknown } } } | null)?.extensions
+  const key = ext?.i18n?.key
+  return typeof key === 'string' ? key : null
+}
+
 export async function executeReportSection(
   section: ReportSectionDef,
   tenantId: string,
@@ -144,6 +153,7 @@ export async function executeReportSection(
       data:      JSON.stringify(executed.data),
       total:     executed.total,
       error:     null,
+      errorKey:  null,
     }
   } catch (err) {
     return {
@@ -153,6 +163,9 @@ export async function executeReportSection(
       data:      '{}',
       total:     null,
       error:     err instanceof Error ? err.message : String(err),
+      // La chiave viaggia con l'errore: il browser la traduce, e se non c'è
+      // mostra il messaggio tecnico, che per un difetto nostro è il dato utile.
+      errorKey:  chiaveI18n(err),
     }
   }
 }

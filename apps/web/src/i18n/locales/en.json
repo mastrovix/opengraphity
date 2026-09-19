@@ -2952,7 +2952,8 @@
       "summaryCalendar": "After {{amount}} {{unit}} in «{{step}}», counted with the «{{calendar}}» calendar, the ticket moves to «{{target}}».",
       "summaryFields": "It also sets {{fields}}.",
       "corrupted": "The stored deadline of this step cannot be read ({{error}}). Saving is disabled so it is not lost: fix the stored data first."
-    }
+    },
+    "orphanStep": "«{{step}}» is not (any more) a step of this process: the ticket is stuck on a step that was renamed or removed in the designer."
   },
   "designerFieldRow": {
     "required": "required",
@@ -4479,6 +4480,9 @@
       "nothingUsable": "The proposal names no entity of this organization: try again saying what the report is about.",
       "invalidProposal": "The proposal would not be saveable ({{message}}). That is a defect on our side: try again, and report it if it happens twice.",
       "truncated": "The model answer was cut off: the request was too big. Describe fewer things, or split it in two."
+    },
+    "report": {
+      "tableWithoutColumns": "A table needs at least one column: choose the fields to show."
     }
   },
   "errorBoundary": {

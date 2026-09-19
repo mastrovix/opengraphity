@@ -380,7 +380,17 @@ export function validateReportSection(section: ReportSectionDef, whitelist: Repo
       .filter(n => n.isResult)
       .reduce((acc, n) => acc + (n.selectedFields?.length ?? 0), 0)
     if (columnCount === 0) {
-      throw new ValidationError(`${where}: a table section needs at least one selected field on a result node (isResult = true)`)
+      /*
+       * Con la chiave i18n (20 set 2026, dal giro nel browser): l'anteprima
+       * mostrava questa frase COSÌ COM'È — in inglese e con «isResult =
+       * true» dentro — sotto l'avviso italiano che diceva già la stessa cosa
+       * in modo comprensibile. Un errore che l'utente può causare si legge
+       * nella sua lingua.
+       */
+      throw new ValidationError(
+        `${where}: a table section needs at least one selected field on a result node (isResult = true)`,
+        { key: 'errors.report.tableWithoutColumns' },
+      )
     }
   }
 

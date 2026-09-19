@@ -2952,7 +2952,8 @@
       "summaryCalendar": "Dopo {{amount}} {{unit}} in «{{step}}», contati con il calendario «{{calendar}}», il ticket passa a «{{target}}».",
       "summaryFields": "Imposta anche {{fields}}.",
       "corrupted": "La scadenza salvata di questo passo non si riesce a leggere ({{error}}). Il salvataggio è spento per non perderla: correggi prima il dato salvato."
-    }
+    },
+    "orphanStep": "«{{step}}» non è (più) un passo di questo processo: il ticket è rimasto su un passo rinominato o tolto dal disegnatore."
   },
   "designerFieldRow": {
     "required": "obbligatorio",
@@ -4479,6 +4480,9 @@
       "nothingUsable": "La proposta non nomina nessuna entità di questa organizzazione: riprova dicendo di cosa vuoi il report.",
       "invalidProposal": "La proposta non sarebbe salvabile ({{message}}). È un difetto nostro: riprova, e se succede ancora segnalalo.",
       "truncated": "La risposta del modello si è interrotta a metà: la richiesta era troppo grande. Descrivi meno cose, o dividila in due."
+    },
+    "report": {
+      "tableWithoutColumns": "Una tabella ha bisogno di almeno una colonna: scegli i campi da mostrare."
     }
   },
   "errorBoundary": {

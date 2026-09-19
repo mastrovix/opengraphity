@@ -66,7 +66,7 @@ export const GET_REACHABLE_ENTITIES = gql`
 export const EXECUTE_REPORT = gql`
   query ExecuteReport($templateId: ID!, $language: String) {
     executeReport(templateId: $templateId, language: $language) {
-      sections { sectionId title chartType data total error }
+      sections { sectionId title chartType data total error errorKey }
     }
   }
 `
@@ -74,7 +74,7 @@ export const EXECUTE_REPORT = gql`
 export const PREVIEW_REPORT_SECTION = gql`
   query PreviewReportSection($input: ReportSectionInput!, $language: String) {
     previewReportSection(input: $input, language: $language) {
-      sectionId title chartType data total error
+      sectionId title chartType data total error errorKey
     }
   }
 `

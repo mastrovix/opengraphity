@@ -9,6 +9,8 @@ export interface SectionResult {
   data:       string
   total:      number | null
   error:      string | null
+  /** La chiave i18n dell'errore, quando è di quelli che l'utente può causare. */
+  errorKey?:  string | null
 }
 
 interface Props {
@@ -38,6 +40,7 @@ export function ReportPreview({ loading, data, title, placeholder, granularita }
           data={data.data}
           title={title ?? data.title}
           error={data.error}
+          errorKey={data.errorKey}
           granularita={granularita}
         />
       ) : (
