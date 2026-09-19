@@ -5,6 +5,7 @@ import {
 } from './cypherIdentifiers.js'
 import type { ReportWhitelist } from './reportWhitelist.js'
 import type { ReportValueSource } from './reportValueLabels.js'
+import { isTemporalField } from '@opengraphity/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -396,6 +397,53 @@ export function validateReportSection(section: ReportSectionDef, whitelist: Repo
 
   if (section.groupByNodeId != null && !ids.has(section.groupByNodeId)) {
     throw new ValidationError(`${where}: groupByNodeId ${JSON.stringify(section.groupByNodeId)} does not match any section node — stale report config`)
+  }
+
+  /*
+   * UN PERIODO SI CHIEDE SOLO SU UNA DATA (20 set 2026, visto per strada
+   * costruendo un report sui task).
+   *
+   * Il pannello NASCONDE la tendina del periodo quando il campo scelto non è
+   * una data, ma il valore resta nello stato e viene salvato lo stesso: si
+   * sceglie «Creato il» + «Mese», si cambia il raggruppamento in «Stato», e
+   * la sezione parte con `groupByGranularity: 'month'` su un campo di testo.
+   * Il Cypher diventa `date.truncate('month', datetime(n.status))` e Neo4j
+   * risponde «Text cannot be parsed to a DateTime "completed"» — a
+   * ESECUZIONE, quando il report è salvato e magari schedulato.
+   *
+   * Si rifiuta qui, che è il punto attraversato sia dal salvataggio sia
+   * dall'esecuzione: le sezioni già salvate così danno un errore che si
+   * capisce, invece di uno del motore del database.
+   *
+   * Si guarda il campo EFFETTIVO, cioè quello che il costruttore userà se non
+   * ce n'è uno scelto — altrimenti una sezione a barre senza raggruppamento
+   * passerebbe la validazione e poi cadrebbe su `status`. Numero totale e
+   * tabella non raggruppano: lì un periodo rimasto per strada non fa danno e
+   * non si tocca.
+   */
+  if (isReportGranularity(section.groupByGranularity)) {
+    const CON_PERIODO: Record<string, string> = {
+      bar: 'status', bar_horizontal: 'status', pie: 'status', donut: 'status', top_n: 'status',
+      line: 'created_at', area: 'created_at',
+    }
+    const predefinito = CON_PERIODO[chartType]
+    if (predefinito != null) {
+      const campo = toSnakeCase(section.groupByField ?? '') || predefinito
+      const nodoDelGruppo = section.groupByNodeId != null
+        ? section.nodes.find(n => n.id === section.groupByNodeId)
+        : section.nodes.find(n => n.isRoot)
+      const dichiarate = whitelist.temporalFields.get(nodoDelGruppo?.neo4jLabel ?? '')
+      if (!isTemporalField(campo, null) && !(dichiarate?.has(campo) ?? false)) {
+        throw new ValidationError(
+          `${where}: groupByGranularity ${JSON.stringify(section.groupByGranularity)} needs a date field to group by — ${JSON.stringify(campo)} is not one`,
+          // Senza `params`: chi mostra questa frase (`ReportChartRenderer`)
+          // risolve la chiave SENZA interpolare, e un `{{campo}}` rimasto
+          // dentro si leggerebbe a schermo. Il nome del campo resta nel
+          // messaggio tecnico qui sopra.
+          { key: 'errors.report.granularityNeedsDate' },
+        )
+      }
+    }
   }
 
   for (const e of (section.edges ?? [])) {

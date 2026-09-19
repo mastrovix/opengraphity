@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { isLingua } from '../../lib/tenantLanguage.js'
+import { reportSectionErrorIn } from '../../lib/systemText.js'
 import { audit } from '../../lib/audit.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
 import type { ReportSectionDef } from '../../lib/reportQueryBuilder.js'
@@ -97,7 +98,18 @@ async function fetchSectionData(sections: ReportSectionDef[], tenantId: string, 
     // A failed section must appear AS FAILED in the exported document — an
     // empty page in a delivered audit PDF is a lie.
     if (r.error) {
-      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: null, tableRows: null, error: r.error }
+      /*
+       * L'errore si legge nella LINGUA DEL DOCUMENTO (20 set 2026,
+       * segnalato dal proprietario: «il pdf dà errore»). Qui finiva il
+       * messaggio tecnico — «section "942cc018-…": groupByGranularity
+       * "month" needs a date field to group by» — in inglese e con l'id
+       * interno della sezione, stampato in rosso dentro un PDF che
+       * qualcuno allega. `reportSectionErrorIn` traduce quello che ha una
+       * frase per chi legge; per un difetto nostro resta il tecnico, che
+       * in quel caso è l'unica cosa utile.
+       */
+      const leggibile = reportSectionErrorIn(isLingua(lingua) ? lingua : 'en', r.errorKey)
+      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: null, tableRows: null, error: leggibile ?? r.error }
     }
     let parsed: unknown
     try { parsed = JSON.parse(r.data) }
@@ -203,7 +215,7 @@ async function generatePDF(templateName: string, data: SectionData[], filePath: 
     doc.moveDown(0.5)
 
     if (sec.error) {
-      doc.fontSize(10).fillColor('#dc2626').text(`ERROR: ${sec.error}`)
+      doc.fontSize(10).fillColor('#dc2626').text(`${notificationText(locale, 'exportSectionError')}: ${sec.error}`)
     } else if (sec.chartType === 'kpi' && sec.kpiValue !== null) {
       doc.fontSize(28).fillColor('#0f172a').text(String(sec.kpiValue), { align: 'center' })
     } else if (sec.rows) {
@@ -266,7 +278,7 @@ export async function generateExcel(templateName: string, data: SectionData[], f
     sheet.getRow(1).height = 24
 
     if (sec.error) {
-      sheet.getCell('A2').value = `ERROR: ${sec.error}`
+      sheet.getCell('A2').value = `${notificationText(locale, 'exportSectionError')}: ${sec.error}`
       sheet.getCell('A2').font = { color: { argb: 'FFDC2626' }, bold: true }
     } else if (sec.chartType === 'kpi' && sec.kpiValue !== null) {
       sheet.getCell('A2').value = notificationText(locale, 'exportValue')

@@ -32,7 +32,10 @@ export interface ReportEdge { id: string; sourceNodeId: string; targetNodeId: st
 export interface ReportSection { id: string; order: number; title: string; chartType: string; groupByNodeId: string | null; groupByField: string | null; groupByGranularity: string | null; metric: string; metricField: string | null; limit: number | null; sortDir: string | null; nodes: ReportNode[]; edges: ReportEdge[] }
 export interface ReportTemplate { id: string; name: string; description: string | null; icon: string | null; visibility: string; scheduleEnabled: boolean; scheduleCron: string | null; scheduleChannelId?: string | null; scheduleRecipients: string[]; scheduleFormat: string | null; lastScheduledRun: string | null; createdAt: string; updatedAt?: string; createdBy: { id: string; name: string } | null; sharedWith: { id: string; name: string }[]; sections: ReportSection[] }
 export interface Channel { id: string; name: string; platform: string }
-export interface SectionResult { sectionId: string; title: string; chartType: string; data: string; total: number | null; error: string | null }
+// `errorKey` c'era nella query e NON nel tipo: la pagina non poteva
+// passarla al renderer nemmeno volendo, e ogni errore di sezione si leggeva
+// in inglese (20 set 2026).
+export interface SectionResult { sectionId: string; title: string; chartType: string; data: string; total: number | null; error: string | null; errorKey: string | null }
 
 export type View = 'list' | 'detail' | 'add-section' | 'edit-section' | 'settings'
 

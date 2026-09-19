@@ -355,10 +355,15 @@ const INDEXES: SchemaStatement[] = [
    */
   { label: 'Task(tenant_id, state)',                    cypher: 'CREATE INDEX task_tenant_state IF NOT EXISTS FOR (k:Task) ON (k.tenant_id, k.state)' },
   { label: 'Task(tenant_id, step_name)',                cypher: 'CREATE INDEX task_tenant_step IF NOT EXISTS FOR (k:Task) ON (k.tenant_id, k.step_name)' },
-  // ChangeTask
-  { label: 'ChangeTask(change_id)',                     cypher: 'CREATE INDEX change_task_change IF NOT EXISTS FOR (t:ChangeTask) ON (t.change_id)' },
-  { label: 'ChangeTask(tenant_id, status)',              cypher: 'CREATE INDEX change_task_tenant_status IF NOT EXISTS FOR (t:ChangeTask) ON (t.tenant_id, t.status)' },
-  { label: 'ChangeTask(tenant_id, task_type)',           cypher: 'CREATE INDEX change_task_type IF NOT EXISTS FOR (t:ChangeTask) ON (t.tenant_id, t.task_type)' },
+  /*
+   * `ChangeTask` NON C'È PIÙ (20 set 2026). Qui stavano tre indici su
+   * quell'etichetta: nessun nodo la porta (zero su questa installazione),
+   * nessuna query la nomina, e i task delle change hanno da tempo le cinque
+   * etichette dei loro tipi. Lo stesso fantasma era già stato tolto dal
+   * contatore dei task nella revisione del 14 set (CH-2); questi tre erano
+   * rimasti, e ogni `init-schema` li ricreava. Chi li ha ancora se li vede
+   * togliere dalla migrazione `20261005_1120_drop_change_task_indexes`.
+   */
   // ReportConversation
   { label: 'ReportConversation(tenant_id)',             cypher: 'CREATE INDEX report_tenant IF NOT EXISTS FOR (r:ReportConversation) ON (r.tenant_id)' },
   // NotificationChannel

@@ -173,6 +173,15 @@ function SectionChart({ section, result }: { section: ReportSection; result: Sec
   const node = section.nodes.find((n) => n.id === section.groupByNodeId) ?? null
   const entity = node ? node.entityType.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase() : null
   const valueLabel = useFieldValueLabel(entity, section.groupByField)
-  return <ReportChartRenderer chartType={result.chartType} data={result.data} title={result.title} error={result.error} valueLabel={valueLabel} granularita={section.groupByGranularity} />
+  /*
+   * `errorKey` ANCHE QUI (20 set 2026). Il renderer sa tradurre l'errore di
+   * una sezione da quando l'ANTEPRIMA mostrava «a table section needs at
+   * least one selected field on a result node (isResult = true)» in
+   * italiano — ma la pagina che ESEGUE il report, cioè quella che l'errore
+   * lo fa vedere davvero, la chiave non la passava: ogni errore di sezione
+   * arrivava in inglese e con l'id interno della sezione dentro. La
+   * correzione di allora era finita su un cammino solo.
+   */
+  return <ReportChartRenderer chartType={result.chartType} data={result.data} title={result.title} error={result.error} errorKey={result.errorKey} valueLabel={valueLabel} granularita={section.groupByGranularity} />
 }
 

@@ -39,6 +39,7 @@ const ENTITA: NavigableEntity[] = [
 const WHITELIST: ReportWhitelist = {
   labels: new Set(['Incident', 'Team']),
   relationshipTypes: new Set(['ASSIGNED_TO_TEAM']),
+  temporalFields: new Map(),
 }
 
 function nodo(over: Record<string, unknown> = {}): Record<string, unknown> {

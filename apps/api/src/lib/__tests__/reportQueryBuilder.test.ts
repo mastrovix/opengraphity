@@ -9,6 +9,9 @@ import { FIELD_NAME_RE } from '../cypherIdentifiers.js'
 const whitelist: ReportWhitelist = {
   labels:            new Set(['Incident', 'Team', 'User', 'Server', 'CIBase']),
   relationshipTypes: new Set(['ASSIGNED_TO_TEAM', 'AFFECTS', 'MEMBER_OF']),
+  // I campi data DICHIARATI dal metamodello: quelli che finiscono per `_at`
+  // li riconosce `isTemporalField` per nome, qui sta il campo del cliente.
+  temporalFields:    new Map([['Incident', new Set(['data_di_consegna'])]]),
 }
 
 function node(overrides: Partial<ReportNodeDef> & { id: string }): ReportNodeDef {
@@ -342,6 +345,7 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     const wl: ReportWhitelist = {
       labels: new Set([...whitelist.labels, 'CustomBox']),
       relationshipTypes: new Set([...whitelist.relationshipTypes, 'CONTAINS_BOX']),
+      temporalFields: whitelist.temporalFields,
     }
     const sec = section({
       nodes: [node({ id: 'root', isRoot: true, neo4jLabel: 'Server' }), node({ id: 'b', neo4jLabel: 'CustomBox' })],
@@ -513,6 +517,77 @@ describe('la granularità di una serie', () => {
   it('una classifica per mese si raggruppa come le barre', () => {
     const classifica = buildReportQuery(serie({ chartType: 'top_n', groupByField: 'created_at', groupByGranularity: 'month' }), 't1', whitelist).query
     expect(classifica).toContain("toString(date.truncate('month', datetime(n0.created_at)))")
+  })
+})
+
+/**
+ * UN PERIODO SU UN CAMPO CHE DATA NON È (20 set 2026).
+ *
+ * Il wizard mandava `groupByGranularity: 'day'` SEMPRE — anche per «Incident
+ * per stato», dove la tendina del periodo è nascosta e nessuno l'ha scelta.
+ * Il costruttore lo prendeva sul serio: `date(datetime(n0.status))`, e Neo4j
+ * rispondeva «Text cannot be parsed to a DateTime "completed"». A
+ * ESECUZIONE: la sezione si salvava senza un lamento, e cadeva quando
+ * qualcuno apriva il report — o quando lo apriva lo schedulatore, di notte,
+ * per mandarlo per email.
+ *
+ * Il wizard è corretto, ma non basta: la stessa sezione la può scrivere il
+ * progettista AI, e quelle già salvate così esistono. Si rifiuta QUI, che è
+ * il punto attraversato sia dal salvataggio sia dall'esecuzione.
+ */
+describe('il periodo vuole una data', () => {
+  const conPeriodo = (over: Partial<ReportSectionDef>): ReportSectionDef => section({
+    nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] })],
+    groupByGranularity: 'month', ...over,
+  })
+
+  for (const chartType of ['bar', 'bar_horizontal', 'pie', 'donut', 'top_n', 'line', 'area']) {
+    it(`${chartType}: per stato con un periodo si RIFIUTA`, () => {
+      expect(() => buildReportQuery(conPeriodo({ chartType, groupByField: 'status' }), 't1', whitelist))
+        .toThrow(/needs a date field/)
+    })
+  }
+
+  it('senza campo scelto vale il predefinito del grafico: le barre cadrebbero su `status`', () => {
+    expect(() => buildReportQuery(conPeriodo({ chartType: 'bar', groupByField: null }), 't1', whitelist))
+      .toThrow(/needs a date field/)
+    // Una serie invece cade su `created_at`, che una data lo è: passa.
+    expect(buildReportQuery(conPeriodo({ chartType: 'line', groupByField: null }), 't1', whitelist).query)
+      .toContain("date.truncate('month', datetime(n0.created_at))")
+  })
+
+  it('su una data passa, e il periodo si applica', () => {
+    expect(buildReportQuery(conPeriodo({ chartType: 'bar', groupByField: 'resolved_at' }), 't1', whitelist).query)
+      .toContain("date.truncate('month', datetime(n0.resolved_at))")
+  })
+
+  it('un campo data DEL CLIENTE lo dice il metamodello, non il nome', () => {
+    // `data_di_consegna` non finisce per `_at`: passa solo perché la
+    // whitelist di questo tenant lo dichiara `date`.
+    expect(buildReportQuery(conPeriodo({ chartType: 'bar', groupByField: 'data_di_consegna' }), 't1', whitelist).query)
+      .toContain("date.truncate('month', datetime(n0.data_di_consegna))")
+    expect(() => buildReportQuery(conPeriodo({ chartType: 'bar', groupByField: 'altro_campo' }), 't1', whitelist))
+      .toThrow(/needs a date field/)
+  })
+
+  it('l\'errore si legge nella lingua di chi lo causa', () => {
+    try {
+      buildReportQuery(conPeriodo({ chartType: 'bar', groupByField: 'status' }), 't1', whitelist)
+      throw new Error('doveva rifiutare')
+    } catch (e) {
+      const ext = (e as { extensions?: { i18n?: { key: string; params?: Record<string, unknown> } } }).extensions
+      expect(ext?.i18n?.key).toBe('errors.report.granularityNeedsDate')
+      // Nessun parametro: la frase si risolve senza interpolazione (vedi il
+      // commento accanto al `throw`), e il nome del campo resta nel
+      // messaggio tecnico.
+      expect(ext?.i18n?.params).toBeUndefined()
+      expect((e as Error).message).toContain('"status"')
+    }
+  })
+
+  it('numero totale e tabella non raggruppano: un periodo rimasto per strada non fa danno', () => {
+    expect(() => buildReportQuery(conPeriodo({ chartType: 'kpi', groupByField: 'status' }), 't1', whitelist)).not.toThrow()
+    expect(() => buildReportQuery(conPeriodo({ chartType: 'table', groupByField: 'status' }), 't1', whitelist)).not.toThrow()
   })
 })
 

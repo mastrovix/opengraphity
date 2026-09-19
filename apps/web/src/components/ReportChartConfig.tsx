@@ -8,6 +8,7 @@ import { ReportPreview } from './ReportPreview'
 import type { SectionResult } from './ReportPreview'
 import { navigableLabel } from './ReportFlowNodes'
 import type { NavigableField } from './ReportFlowNodes'
+import { isTemporalField } from '@opengraphity/types'
 import { colors, palette } from '@/lib/tokens'
 
 /*
@@ -49,7 +50,35 @@ export const GRANULARITIES = [
   { value: 'year',  labelKey: 'reportChart.granularity.year' },
 ]
 
-export const DATE_FIELD_NAMES = ['created_at', 'updated_at', 'resolved_at', 'expires_at', 'scheduled_start', 'scheduled_end', 'implemented_at']
+/**
+ * «Questo campo è una data?» — la risposta sta in `packages/types`
+ * (`isTemporalField`), la stessa che usa l'API per rifiutare un periodo su un
+ * campo che data non è. Qui c'era un elenco scritto a mano che già divergeva
+ * da quello dell'API (che non c'era affatto) e dimenticava `datetime`: un
+ * campo `resolved_at` tipizzato `datetime` non faceva comparire la tendina
+ * del periodo.
+ */
+export const eUnaData = (f: { name: string; fieldType?: string | null }): boolean =>
+  isTemporalField(f.name, f.fieldType ?? null)
+
+/**
+ * IL PERIODO CHE SI SALVA — `null` quando non c'è una data su cui applicarlo.
+ *
+ * Il wizard mandava `granularita || 'day'`, cioè SEMPRE: un istogramma
+ * «Incident per stato» nasceva con «per giorno» addosso, e il costruttore di
+ * query lo prendeva sul serio — `date(datetime(n0.status))`. Neo4j: «Text
+ * cannot be parsed to a DateTime "completed"», all'esecuzione. La tendina
+ * era già nascosta: quel valore non era la scelta di nessuno, era quello
+ * rimasto nello stato dal grafico di prima.
+ */
+export function periodoDaSalvare(
+  granularita: string,
+  campo: string,
+  fieldType?: string | null,
+): string | null {
+  if (campo === '' || !eUnaData({ name: campo, fieldType })) return null
+  return granularita || 'day'
+}
 
 interface NodeDataEntry {
   label:          string
@@ -124,10 +153,8 @@ export function ReportChartConfig({
    * non tipizza.
    */
   const campoDelGruppo = (nodeDataMap[groupByNodeId]?.fields ?? []).find((f) => f.name === groupByField)
-  const raggruppaPerData = groupByField !== '' && (
-    campoDelGruppo?.fieldType === 'date' || campoDelGruppo?.fieldType === 'datetime'
-    || DATE_FIELD_NAMES.includes(groupByField)
-  )
+  const raggruppaPerData = groupByField !== ''
+    && eUnaData({ name: groupByField, fieldType: campoDelGruppo?.fieldType })
 
   const campiNumericiDellaRadice = (Object.values(nodeDataMap).find((nd) => nd.isRoot)?.fields ?? [])
     .filter((f) => f.fieldType === 'number')
@@ -181,7 +208,7 @@ export function ReportChartConfig({
                   <option value="">{t('reportChart.fieldOption')}</option>
                   {groupByNodeId && nodeDataMap[groupByNodeId]
                     ? nodeDataMap[groupByNodeId].fields
-                        .filter(f => !isTimeSeries || f.fieldType === 'date' || DATE_FIELD_NAMES.includes(f.name))
+                        .filter(f => !isTimeSeries || eUnaData(f))
                         .map(f => (
                           <option key={f.name} value={f.name}>{navigableLabel(t, f)}</option>
                         ))

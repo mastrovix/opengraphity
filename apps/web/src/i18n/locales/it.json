@@ -4503,7 +4503,8 @@
       "truncated": "La risposta del modello si è interrotta a metà: la richiesta era troppo grande. Descrivi meno cose, o dividila in due."
     },
     "report": {
-      "tableWithoutColumns": "Una tabella ha bisogno di almeno una colonna: scegli i campi da mostrare."
+      "tableWithoutColumns": "Una tabella ha bisogno di almeno una colonna: scegli i campi da mostrare.",
+      "granularityNeedsDate": "Per raggruppare per periodo serve un campo data, e quello scelto non lo è. Scegli un campo data, oppure togli il periodo."
     }
   },
   "errorBoundary": {

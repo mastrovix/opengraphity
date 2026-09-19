@@ -4503,7 +4503,8 @@
       "truncated": "The model answer was cut off: the request was too big. Describe fewer things, or split it in two."
     },
     "report": {
-      "tableWithoutColumns": "A table needs at least one column: choose the fields to show."
+      "tableWithoutColumns": "A table needs at least one column: choose the fields to show.",
+      "granularityNeedsDate": "Grouping by period needs a date field, and the field chosen is not one. Pick a date field, or remove the period."
     }
   },
   "errorBoundary": {

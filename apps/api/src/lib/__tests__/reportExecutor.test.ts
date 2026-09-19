@@ -9,6 +9,7 @@ vi.mock('../reportWhitelist.js', () => ({
   getReportWhitelist: vi.fn().mockResolvedValue({
     labels: new Set(['Incident', 'Team']),
     relationshipTypes: new Set(['ASSIGNED_TO_TEAM']),
+    temporalFields: new Map(),
   }),
 }))
 

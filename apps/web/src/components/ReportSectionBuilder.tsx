@@ -19,7 +19,7 @@ import { Button } from '@/components/Button'
 import { ModaleProgettoReportAI, type ProgettoReport } from './ProgettoReportAI'
 import { useAIFeature } from '@/hooks/useAIFeature'
 import { ReportQueryBuilder } from './ReportQueryBuilder'
-import { ReportChartConfig, CHART_TYPES, DATE_FIELD_NAMES } from './ReportChartConfig'
+import { ReportChartConfig, CHART_TYPES, eUnaData, periodoDaSalvare } from './ReportChartConfig'
 import { useCIBaseEnums } from '@/lib/ciEnums'
 import { colors, palette } from '@/lib/tokens'
 import { showError } from '@/lib/showError'
@@ -399,6 +399,16 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
   // ── Build output ─────────────────────────────────────────────────────────────
 
+  /**
+   * Il periodo da salvare: `null` se il campo del raggruppamento non è una
+   * data. Stessa risposta del pannello e dell'API (`isTemporalField`).
+   */
+  const periodo = periodoDaSalvare(
+    granularita,
+    groupByField,
+    (nodeDataMap[groupByNodeId]?.fields ?? []).find(f => f.name === groupByField)?.fieldType,
+  )
+
   const buildInput = useCallback((): ReportSectionInput => ({
     title, chartType,
     /*
@@ -413,7 +423,18 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     metricField:   chartType === 'table' ? null : (metricField || null),
     groupByNodeId: groupByNodeId || null,
     groupByField:  groupByField || null,
-    groupByGranularity: granularita || 'day',
+    /*
+     * IL PERIODO SI MANDA SOLO SE C'È UNA DATA SU CUI APPLICARLO (20 set
+     * 2026). Qui c'era `granularita || 'day'`, cioè SEMPRE: un istogramma
+     * «Incident per stato» partiva con `groupByGranularity: 'day'`, e il
+     * costruttore lo prendeva sul serio —
+     * `toString(date(datetime(n0.status)))`. Neo4j: «Text cannot be parsed
+     * to a DateTime "completed"». Ogni grafico a categorie salvato dal
+     * wizard dal 19 set in poi nasceva così, morto, e l'errore arrivava
+     * all'esecuzione. La tendina del periodo, intanto, era già nascosta:
+     * quello che si mandava non era una scelta di nessuno.
+     */
+    groupByGranularity: periodo,
     limit, sortDir,
     nodes: nodes.map(n => {
       const nd = nodeDataMap[n.id]
@@ -436,7 +457,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         label:            d?.label || d?.relationshipType || '',
       }
     }),
-  }), [nodes, edges, nodeDataMap, title, chartType, metric, metricField, groupByNodeId, groupByField, granularita, limit, sortDir])
+  }), [nodes, edges, nodeDataMap, title, chartType, metric, metricField, groupByNodeId, groupByField, periodo, limit, sortDir])
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
@@ -459,7 +480,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
   const lastNode        = nodes[nodes.length - 1]
   const lastEntity      = entities.find(e => e.neo4jLabel === (lastNode?.data as NodeData | undefined)?.neo4jLabel)
-  const step3DateFields = (lastEntity?.fields ?? []).filter(f => f.fieldType === 'date' || DATE_FIELD_NAMES.includes(f.name))
+  const step3DateFields = (lastEntity?.fields ?? []).filter(eUnaData)
   const canProceedStep3 = !isTimeSeries || step3DateFields.length > 0
 
   // ── Auto-preview on step 3 ───────────────────────────────────────────────────

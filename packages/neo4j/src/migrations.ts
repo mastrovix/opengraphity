@@ -40,8 +40,12 @@ export interface Migration {
   description: string
   /**
    * Run `up` on the auto-commit session instead of inside a managed write
-   * transaction. Required for `CALL { … } IN TRANSACTIONS`. The migration
-   * must be idempotent (the marker is written in a separate statement).
+   * transaction. Required for `CALL { … } IN TRANSACTIONS` and for any
+   * SCHEMA change (`CREATE`/`DROP INDEX` or `CONSTRAINT`): Neo4j refuses to
+   * write a node after a schema modification in the same transaction, so
+   * without this the change lands and the marker does NOT — the migration
+   * then re-runs for ever. The migration must be idempotent (the marker is
+   * written in a separate statement).
    */
   autocommit?: boolean
   up(session: Queryable): Promise<void>

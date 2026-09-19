@@ -141,6 +141,10 @@ export const TEXTS = {
   // foglio si leggeva «Label» e «Valore», una inglese e una italiana).
   exportLabel:          { en: 'Label', it: 'Etichetta' },
   exportValue:          { en: 'Value', it: 'Valore' },
+  // L'etichetta davanti a una sezione fallita, nel PDF e nel foglio: era
+  // «ERROR:» cablata in inglese dentro un documento che per il resto era
+  // tradotto (20 set 2026, segnalato dal proprietario: «il pdf dà errore»).
+  exportSectionError:   { en: 'ERROR', it: 'ERRORE' },
   exportSectionsOne:    { en: '1 section', it: '1 sezione' },
   exportSectionsMany:   { en: '{count} sections', it: '{count} sezioni' },
   reportEmailSubject:   { en: 'Report "{name}" — {date}', it: 'Report «{name}» — {date}' },

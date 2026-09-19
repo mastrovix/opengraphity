@@ -43,6 +43,22 @@ export const SYSTEM_TEXTS = {
   // L'escalation che una guardia ha fermato: si scrive SUL TICKET, perché
   // chi l'aspettava non ha modo di leggere i log del server.
   'escalation.refusedByGuard': { en: 'Escalation to "{step}" was not carried out: {reason}', it: 'L\'escalation verso "{step}" non è stata eseguita: {reason}' },
+  /*
+   * GLI ERRORI DI SEZIONE CHE FINISCONO IN UN DOCUMENTO CONSEGNATO (20 set
+   * 2026, segnalato dal proprietario: «il pdf dà errore»).
+   *
+   * Una sezione che fallisce si stampa nel PDF e nel foglio — giustamente,
+   * perché una pagina vuota in un documento allegato è una bugia. Ma si
+   * stampava il messaggio TECNICO: «section "942cc018-7bf2-…":
+   * groupByGranularity "month" needs a date field to group by», in inglese e
+   * con l'id interno della sezione, dentro un documento che qualcuno manda a
+   * un cliente. Le stesse frasi le ha già il browser; qui stanno nella
+   * lingua del documento, e `systemText.test.ts` pretende che siano IDENTICHE
+   * a quelle del web (chiavi `errors.report.*`), perché due copie della
+   * stessa frase divergono.
+   */
+  'report.error.granularityNeedsDate': { en: "Grouping by period needs a date field, and the field chosen is not one. Pick a date field, or remove the period.", it: "Per raggruppare per periodo serve un campo data, e quello scelto non lo è. Scegli un campo data, oppure togli il periodo." },
+  'report.error.tableWithoutColumns': { en: "A table needs at least one column: choose the fields to show.", it: "Una tabella ha bisogno di almeno una colonna: scegli i campi da mostrare." },
   'portal.reopened':            { en: 'Reopened from the portal',                             it: 'Riaperto dal portale' },
   'notification.escalationDefault': { en: '{title}: not resolved after {minutes} minutes',      it: '{title}: non risolto dopo {minutes} minuti' },
   'approval.publicationRejected': { en: 'Publication rejected',                               it: 'Pubblicazione rifiutata' },
@@ -199,3 +215,21 @@ export async function modelLanguageFor(tenantId: string): Promise<string> {
 }
 
 export { LINGUE }
+
+/**
+ * La frase di un errore di sezione nella lingua del documento, o `null`.
+ *
+ * `errorKey` è la chiave i18n che l'esecutore attacca all'errore
+ * (`errors.report.granularityNeedsDate`). Qui si traduce solo quello che ha
+ * una frase scritta per chi legge: per un difetto NOSTRO — una chiave che
+ * non c'è — si ricade sul messaggio tecnico, che in quel caso è l'unico
+ * dato utile. È la stessa regola del browser (`ReportChartRenderer`).
+ */
+export function reportSectionErrorIn(lingua: Lingua, errorKey: string | null): string | null {
+  if (errorKey == null) return null
+  const prefisso = 'errors.report.'
+  if (!errorKey.startsWith(prefisso)) return null
+  const chiave = `report.error.${errorKey.slice(prefisso.length)}`
+  if (!(chiave in SYSTEM_TEXTS)) return null
+  return systemTextIn(lingua, chiave as SystemTextKey)
+}
