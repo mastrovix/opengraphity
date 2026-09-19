@@ -574,6 +574,28 @@ code, kbd, samp, pre {
 }
 
 /*
+  LA BARRA DEL DESIGNER: APPICCICATA SOLO DOVE CI STA (19 set 2026).
+
+  La barra (service request, viste, salva) e `sticky` per restare a portata
+  mentre si scorre un modulo lungo. Su uno schermo stretto pero va a capo e
+  diventa alta duecento pixel: il contenuto le scorre SOTTO, e i campi che
+  finiscono in quella fascia non si possono nemmeno toccare — il tocco arriva
+  alla barra. Il proprietario l'ha trovato cosi, da iPad: «in anteprima non
+  riesco a compilare i campi».
+
+  Sotto i 900px quindi scorre via con la pagina: risalire di uno scorrimento
+  costa meno che avere un quarto dello schermo occupato e inerte.
+*/
+.og-designer-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+@media (max-width: 900px) {
+  .og-designer-bar { position: static; }
+}
+
+/*
   IL COSTRUTTORE DEI MODULI: ATTREZZI A SINISTRA, TELA A DESTRA (18 set 2026).
 
   La prima versione aveva la barra degli strumenti in alto; il proprietario l'ha

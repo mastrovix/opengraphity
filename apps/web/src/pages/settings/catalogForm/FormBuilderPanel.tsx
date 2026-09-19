@@ -991,8 +991,7 @@ export function FormBuilderPanel() {
         vede il MODULO, e le impostazioni di una cosa si aprono quando quella
         cosa è selezionata.
       */}
-      <div style={{
-        position: 'sticky', top: 0, zIndex: 3,
+      <div className="og-designer-bar" style={{
         background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 12,
         boxShadow: `0 1px 2px ${alpha.black06}`,
         display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap',
