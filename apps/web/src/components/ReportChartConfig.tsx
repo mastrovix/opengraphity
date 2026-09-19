@@ -36,6 +36,17 @@ export const METRIC_TYPES = [
   { value: 'max',   labelKey: 'reportChart.metric.max' },
 ]
 
+/**
+ * Il PERIODO di una serie temporale (19 set 2026). Mancava: una serie
+ * raggruppava per GIORNO e basta, quindi «gli ultimi 6 mesi» erano 180 punti
+ * appiccicati. Chi chiede sei mesi vuole i mesi.
+ */
+export const GRANULARITIES = [
+  { value: 'day',   labelKey: 'reportChart.granularity.day' },
+  { value: 'week',  labelKey: 'reportChart.granularity.week' },
+  { value: 'month', labelKey: 'reportChart.granularity.month' },
+]
+
 export const DATE_FIELD_NAMES = ['created_at', 'updated_at', 'resolved_at', 'expires_at', 'scheduled_start', 'scheduled_end', 'implemented_at']
 
 interface NodeDataEntry {
@@ -58,6 +69,8 @@ interface Props {
   onGroupByNodeIdChange:  (v: string) => void
   groupByField:           string
   onGroupByFieldChange:   (v: string) => void
+  groupByGranularity:     string
+  onGroupByGranularityChange: (v: string) => void
   limit:                  number
   onLimitChange:          (v: number) => void
   sortDir:                string
@@ -85,6 +98,7 @@ export function ReportChartConfig({
   metricField, onMetricFieldChange,
   groupByNodeId, onGroupByNodeIdChange,
   groupByField, onGroupByFieldChange,
+  groupByGranularity, onGroupByGranularityChange,
   limit, onLimitChange,
   sortDir, onSortDirChange,
   nodeDataMap, onSelectedFieldsChange,
@@ -93,7 +107,7 @@ export function ReportChartConfig({
 }: Props) {
   const { t } = useTranslation()
   const uid = useId()
-  const ids = { metric: `${uid}-metric`, metricField: `${uid}-metric-field`, limit: `${uid}-limit`, sortDir: `${uid}-sort-dir` }
+  const ids = { granularity: `${uid}-granularity`, metric: `${uid}-metric`, metricField: `${uid}-metric-field`, limit: `${uid}-limit`, sortDir: `${uid}-sort-dir` }
   const isKpi        = chartType === 'kpi'
   const isTable      = chartType === 'table'
   const isTimeSeries = chartType === 'line' || chartType === 'area'
@@ -203,6 +217,18 @@ export function ReportChartConfig({
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Il periodo: solo per una serie, che è l'unico posto dove una data
+              si raggruppa. Fuori da lì non vuol dire niente. */}
+          {isTimeSeries && (
+            <div>
+              <label htmlFor={ids.granularity} style={labelStyle}>{t('reportChart.granularityLabel')}</label>
+              <select id={ids.granularity} value={groupByGranularity || 'day'}
+                onChange={e => onGroupByGranularityChange(e.target.value)} style={selectStyle}>
+                {GRANULARITIES.map(g => <option key={g.value} value={g.value}>{t(g.labelKey)}</option>)}
+              </select>
             </div>
           )}
 

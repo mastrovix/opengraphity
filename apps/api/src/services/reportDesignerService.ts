@@ -33,7 +33,7 @@ import { logger } from '../lib/logger.js'
 import { assertAIFeature } from '../lib/aiSettings.js'
 import { getNavigableEntities, type NavigableEntity } from '../lib/navigableGraph.js'
 import { getReportWhitelist } from '../lib/reportWhitelist.js'
-import { validateReportSection, CHART_TYPES, FILTER_OPERATORS, REPORT_METRICS } from '../lib/reportQueryBuilder.js'
+import { validateReportSection, CHART_TYPES, FILTER_OPERATORS, REPORT_METRICS, REPORT_GRANULARITIES } from '../lib/reportQueryBuilder.js'
 import {
   MAX_LIMITE_PROPONIBILE, MAX_NODI_PROPONIBILI, sezioneDaProposta, validaPropostaReport,
   type PropostaReport,
@@ -65,6 +65,7 @@ Regole, in ordine di importanza:
 1. NON INVENTARE niente: entità, campi, relazioni e valori dei vocabolari esistono solo se te li ho passati. Un campo che non c'è fa sparire il filtro o la colonna che lo usa.
 2. Il PRIMO nodo è la RADICE: l'entità che si conta o si misura («gli incident per team» ha radice Incident, non Team). Gli altri nodi servono solo se il report deve passare per una relazione, e ognuno deve essere collegato da un "collegamento" — al massimo ${String(MAX_NODI_PROPONIBILI)} nodi in tutto.
 3. Un collegamento usa una relazione che l'entità di partenza HA DAVVERO, verso il bersaglio che quella relazione raggiunge.
+4bis. Una serie nel tempo ha SEMPRE un periodo ("raggruppa_per_periodo"): giorni per una settimana o due, settimane per qualche mese, mesi per un anno o più. «gli incident degli ultimi 6 mesi» raggruppati vuol dire per MESE: per giorno sarebbero 180 punti illeggibili.
 4. Il grafico segue la domanda: "quanti" senza confronto = kpi; una ripartizione = pie/donut/bar/bar_horizontal; un andamento nel tempo = line/area (raggruppa per un campo data); una classifica = top_n; un elenco di record = table (e allora scegli le colonne).
 5. La METRICA: "count" per contare i record; avg/sum/min/max SOLO su un campo NUMERICO della radice, e allora indica "metrica_campo". Se il campo che servirebbe non è numerico o non esiste, usa "count" e dillo nelle note.
 6. I FILTRI restringono: "ultimi 30 giorni" = operatore last_n_days con valore 30 su un campo data; uno stato o una categoria = eq (o "in" con più valori) usando i VALORI del vocabolario che ti ho passato, non le loro etichette.
@@ -104,6 +105,13 @@ function schemaProposta(entita: readonly NavigableEntity[]) {
       metrica_campo: { type: ['string', 'null'], description: 'Campo NUMERICO della radice, solo per avg/sum/min/max.' },
       raggruppa_per_entita: { type: ['string', 'null'], description: "L'id del nodo su cui raggruppare; null = la radice." },
       raggruppa_per_campo:  { type: ['string', 'null'] },
+      /*
+       * `enum` senza `null` nel tipo: l'API rifiuta uno schema dove un valore
+       * dell'enum non rientra nei tipi dichiarati («Enum value 'day' does not
+       * match declared type ['string','null']»). Fuori dalle serie il campo
+       * non si guarda, quindi una stringa basta.
+       */
+      raggruppa_per_periodo: { type: 'string', enum: [...REPORT_GRANULARITIES], description: 'Per una serie su un campo data: day, week o month. «ultimi 6 mesi» vuole month; fuori da line/area si ignora.' },
       limite:   { type: 'integer', description: `Da 1 a ${String(MAX_LIMITE_PROPONIBILE)}.` },
       ordine:   { type: 'string', enum: ['ASC', 'DESC'] },
       nodi: {
@@ -139,7 +147,7 @@ function schemaProposta(entita: readonly NavigableEntity[]) {
     },
     required: [
       'titolo', 'perche', 'grafico', 'metrica', 'metrica_campo', 'raggruppa_per_entita',
-      'raggruppa_per_campo', 'limite', 'ordine', 'nodi', 'collegamenti', 'note',
+      'raggruppa_per_campo', 'raggruppa_per_periodo', 'limite', 'ordine', 'nodi', 'collegamenti', 'note',
     ],
     additionalProperties: false,
   } as const
@@ -220,6 +228,7 @@ export async function proponiSezioneDiReport(req: RichiestaDiReport): Promise<Es
       relazioni: e.relations.map((r) => ({ relazione: r.relationshipType, verso: r.targetEntityType, etichetta: r.label })),
     })),
     grafici: CHART_TYPES,
+    periodi: REPORT_GRANULARITIES,
     metriche: REPORT_METRICS,
     operatori_di_filtro: FILTER_OPERATORS,
     massimo_nodi: MAX_NODI_PROPONIBILI,
@@ -272,7 +281,7 @@ export async function proponiSezioneDiReport(req: RichiestaDiReport): Promise<Es
      */
     return {
       prompt, title: '', chartType: 'bar', metric: 'count', metricField: null,
-      groupByNodeId: null, groupByField: null, limit: 20, sortDir: 'DESC',
+      groupByNodeId: null, groupByField: null, groupByGranularity: null, limit: 20, sortDir: 'DESC',
       nodes: [], edges: [], why: '',
       scartati: scartiDelRifiuto(grezza, entita),
       note: [],

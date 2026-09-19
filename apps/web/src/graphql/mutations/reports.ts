@@ -98,7 +98,7 @@ export const PROPOSE_REPORT_SECTION = gql`
   mutation ProposeReportSection($prompt: String!) {
     proposeReportSection(prompt: $prompt) {
       prompt title chartType metric metricField
-      groupByNodeId groupByField limit sortDir why
+      groupByNodeId groupByField groupByGranularity limit sortDir why
       nodes { id entityType neo4jLabel label isRoot isResult selectedFields filters positionX positionY why }
       edges { id sourceNodeId targetNodeId relationshipType direction label }
       discarded { what key params }

@@ -400,3 +400,42 @@ describe('le metriche', () => {
       .toThrow()
   })
 })
+
+/**
+ * IL PERIODO DI UNA SERIE (19 set 2026).
+ *
+ * «gli incident resolved negli ultimi 6 mesi»: il proprietario intendeva il
+ * numero PER MESE, e il motore sapeva raggruppare solo per giorno — 180 punti
+ * appiccicati. Non c'era modo di chiedere altro, da nessuna parte.
+ */
+describe('la granularità di una serie', () => {
+  const serie = (over: Partial<ReportSectionDef>): ReportSectionDef => section({
+    chartType: 'line', groupByField: 'resolved_at',
+    nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] })],
+    ...over,
+  })
+
+  it('senza periodo resta il comportamento di prima: un punto al giorno', () => {
+    expect(buildReportQuery(serie({}), 't1', whitelist).query).toContain('date(datetime(n0.resolved_at))')
+  })
+
+  it('per mese porta ogni data al primo del mese', () => {
+    expect(buildReportQuery(serie({ groupByGranularity: 'month' }), 't1', whitelist).query)
+      .toContain("date.truncate('month', datetime(n0.resolved_at))")
+  })
+
+  it('per settimana idem', () => {
+    expect(buildReportQuery(serie({ groupByGranularity: 'week' }), 't1', whitelist).query)
+      .toContain("date.truncate('week', datetime(n0.resolved_at))")
+  })
+
+  it('un periodo inventato si rifiuta invece di finire nel Cypher', () => {
+    expect(() => buildReportQuery(serie({ groupByGranularity: "day') RETURN 1 //" }), 't1', whitelist))
+      .toThrow(/unsupported groupByGranularity/)
+  })
+
+  it('fuori dalle serie il periodo non cambia niente', () => {
+    const barre = buildReportQuery(serie({ chartType: 'bar', groupByField: 'status', groupByGranularity: 'month' }), 't1', whitelist).query
+    expect(barre).not.toContain('date.truncate')
+  })
+})

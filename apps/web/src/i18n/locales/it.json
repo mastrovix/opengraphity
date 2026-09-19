@@ -6511,7 +6511,13 @@
     "configureToPreview": "Configura il grafico per vedere l'anteprima",
     "fieldOption": "Campo…",
     "total": "totale",
-    "noNumericField": "Questa entità non ha campi numerici: con la media o la somma non c'è niente da calcolare."
+    "noNumericField": "Questa entità non ha campi numerici: con la media o la somma non c'è niente da calcolare.",
+    "granularityLabel": "Periodo",
+    "granularity": {
+      "day": "Per giorno",
+      "week": "Per settimana",
+      "month": "Per mese"
+    }
   },
   "citypeDesigner": {
     "relation": {
@@ -7124,7 +7130,8 @@
       "operatorUnknown": "Filtro scartato: «{{op}}» non è un confronto che i report sanno fare ({{allowed}}).",
       "filterDays": "Filtro «ultimi giorni» scartato: «{{value}}» non è un numero di giorni.",
       "filterEmpty": "Filtro «{{op}}» scartato: manca il valore da confrontare.",
-      "filterValueUnknown": "Filtro scartato: «{{value}}» non è un valore ammesso. Ammessi: {{allowed}}."
+      "filterValueUnknown": "Filtro scartato: «{{value}}» non è un valore ammesso. Ammessi: {{allowed}}.",
+      "granularityUnknown": "«{{name}}» non è un periodo (giorno, settimana, mese): la serie resta per giorno."
     }
   },
   "reportAI": {

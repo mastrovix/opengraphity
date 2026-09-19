@@ -35,7 +35,7 @@
  */
 import {
   CHART_TYPES, FILTER_OPERATORS, MAX_REPORT_LIMIT, REPORT_METRICS, REPORT_METRICS_WITH_FIELD,
-  isChartType, isReportMetric,
+  isChartType, isReportGranularity, isReportMetric,
   type ReportEdgeDef, type ReportNodeDef, type ReportSectionDef,
 } from './reportQueryBuilder.js'
 import type { NavigableEntity, NavigableField } from './navigableGraph.js'
@@ -88,6 +88,8 @@ export interface PropostaReport {
   readonly metricField: string | null
   readonly groupByNodeId: string | null
   readonly groupByField: string | null
+  /** Il periodo di una serie: `day`, `week`, `month`; `null` fuori dalle serie. */
+  readonly groupByGranularity: string | null
   readonly limit: number
   readonly sortDir: 'ASC' | 'DESC'
   readonly nodes: readonly NodoProposto[]
@@ -334,6 +336,24 @@ export function validaPropostaReport(
     return { ...n, selectedFields: primi }
   })
 
+  /*
+   * IL PERIODO DI UNA SERIE (19 set 2026).
+   *
+   * Solo per `line`/`area`, ed è lì che serve: senza, «gli incident degli
+   * ultimi 6 mesi» diventava un punto al giorno. Un periodo non riconosciuto
+   * ricade su `month` quando la finestra del filtro è lunga, perché è quello
+   * che chiede chi parla di mesi — e si dice.
+   */
+  const serie = chartType === 'line' || chartType === 'area'
+  const periodoChiesto = testo(doc['raggruppa_per_periodo'])
+  let granularita: string | null = null
+  if (serie) {
+    granularita = isReportGranularity(periodoChiesto) ? periodoChiesto : 'day'
+    if (periodoChiesto !== '' && !isReportGranularity(periodoChiesto)) {
+      scartati.push({ what: periodoChiesto, key: 'reportProposal.discard.granularityUnknown', params: { name: periodoChiesto } })
+    }
+  }
+
   return {
     title: testo(doc['titolo']) || entitaRadice.label,
     chartType,
@@ -341,6 +361,7 @@ export function validaPropostaReport(
     metricField,
     groupByNodeId: chartType === 'kpi' || chartType === 'table' ? null : nodoGruppoTenuto,
     groupByField,
+    groupByGranularity: granularita,
     limit,
     sortDir: testo(doc['ordine']).toUpperCase() === 'ASC' ? 'ASC' : 'DESC',
     nodes: nodiFiniti,
@@ -491,6 +512,7 @@ export function sezioneDaProposta(p: PropostaReport): ReportSectionDef {
     chartType: p.chartType,
     groupByNodeId: p.groupByNodeId,
     groupByField: p.groupByField,
+    groupByGranularity: p.groupByGranularity,
     metric: p.metric,
     metricField: p.metricField,
     limit: p.limit,

@@ -50,6 +50,8 @@ export function reportSDL(): string {
     chartType: String!
     groupByNodeId: String
     groupByField: String
+    """Come si raggruppa una data in una serie: day (difetto), week, month."""
+    groupByGranularity: String
     metric: String!
     metricField: String
     limit: Int
@@ -207,6 +209,8 @@ export function reportSDL(): string {
     metricField:   String
     groupByNodeId: ID
     groupByField:  String
+    """day (difetto), week o month: senza, una serie su sei mesi è un punto al giorno."""
+    groupByGranularity: String
     limit:         Int!
     sortDir:       String!
     nodes:         [ReportDesignNode!]!
@@ -245,6 +249,8 @@ export function reportSDL(): string {
     chartType: String!
     groupByNodeId: String
     groupByField: String
+    """Come raggruppare una data in una serie: day (difetto), week, month."""
+    groupByGranularity: String
     metric: String!
     metricField: String
     limit: Int

@@ -39,6 +39,8 @@ export interface ReportSectionDef {
   groupByField:  string | null
   metric:        string
   metricField:   string | null
+  /** Come si raggruppa una data in una serie: giorno (difetto), settimana, mese. */
+  groupByGranularity?: string | null
   limit:         number | null
   sortDir:       string | null
   nodes:         ReportNodeDef[]
@@ -122,6 +124,27 @@ export const REPORT_METRICS_WITH_FIELD: readonly ReportMetric[] = ['avg', 'sum',
 
 export function isReportMetric(v: unknown): v is ReportMetric {
   return typeof v === 'string' && (REPORT_METRICS as readonly string[]).includes(v)
+}
+
+/**
+ * LA GRANULARITÀ DI UNA SERIE TEMPORALE (19 set 2026).
+ *
+ * Mancava, e si vedeva solo chiedendo la cosa più normale del mondo: «gli
+ * incident risolti negli ultimi 6 mesi». Il raggruppamento su un campo data
+ * era `date(datetime(x))`, cioè UN PUNTO AL GIORNO: su sei mesi sono 180
+ * punti appiccicati, illeggibili — e nessuna parte dell'interfaccia diceva
+ * che «per mese» non si poteva chiedere. Il progettista AI ci ha creduto
+ * pure lui: nelle sue note scriveva «l'aggregazione per mese dipende dalla
+ * granularità applicata dal motore», che era una granularità inesistente.
+ *
+ * `day` è il comportamento di prima ed è il valore di chi non sceglie:
+ * nessuna sezione salvata cambia aspetto.
+ */
+export const REPORT_GRANULARITIES = ['day', 'week', 'month'] as const
+export type ReportGranularity = typeof REPORT_GRANULARITIES[number]
+
+export function isReportGranularity(v: unknown): v is ReportGranularity {
+  return typeof v === 'string' && (REPORT_GRANULARITIES as readonly string[]).includes(v)
 }
 
 export const FILTER_OPERATORS = ['eq', 'neq', 'contains', 'in', 'last_n_days', 'is_null', 'is_not_null'] as const
@@ -266,6 +289,9 @@ export function validateReportSection(section: ReportSectionDef, whitelist: Repo
    * prima `avg` senza campo diventava un conteggio in silenzio, che è
    * esattamente la bugia che questa correzione toglie.
    */
+  if (section.groupByGranularity != null && section.groupByGranularity !== '' && !isReportGranularity(section.groupByGranularity)) {
+    throw new ValidationError(`${where}: unsupported groupByGranularity ${JSON.stringify(section.groupByGranularity)} (valid: ${REPORT_GRANULARITIES.join(', ')})`)
+  }
   if (section.metric != null && section.metric !== '') {
     if (!isReportMetric(section.metric)) {
       throw new ValidationError(`${where}: unsupported metric ${JSON.stringify(section.metric)} (valid: ${REPORT_METRICS.join(', ')})`)
@@ -458,10 +484,20 @@ export function buildReportQuery(
     case 'line':
     case 'area': {
       const field = groupField ?? 'created_at'
+      /*
+       * `date.truncate` porta la data all'inizio del periodo: tutti i giorni
+       * di aprile diventano il 1° aprile, e il conteggio li somma. È il pezzo
+       * che mancava per «per mese» — senza, una serie su sei mesi era un
+       * punto al giorno.
+       */
+      const granularita = isReportGranularity(section.groupByGranularity) ? section.groupByGranularity : 'day'
+      const etichetta = granularita === 'day'
+        ? `date(datetime(${groupVar}.${field}))`
+        : `date.truncate('${granularita}', datetime(${groupVar}.${field}))`
       returnClause = [
         // `date('2026-09-09T10:00:00Z')` non si parsa («Text cannot be parsed
         // to a Date»): la data va estratta dal datetime (C-7).
-        `RETURN date(datetime(${groupVar}.${field})) AS label, ${misura} AS value`,
+        `RETURN ${etichetta} AS label, ${misura} AS value`,
         `ORDER BY label ASC`,
       ].join('\n')
       break

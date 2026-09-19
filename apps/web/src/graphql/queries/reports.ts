@@ -12,7 +12,7 @@ export const GET_REPORT_TEMPLATES = gql`
       sharedWith { id name }
       sections {
         id order title chartType
-        groupByNodeId groupByField metric metricField
+        groupByNodeId groupByField groupByGranularity metric metricField
         limit sortDir
         nodes { id entityType neo4jLabel label isResult isRoot positionX positionY filters selectedFields }
         edges { id sourceNodeId targetNodeId relationshipType direction label }
@@ -32,7 +32,7 @@ export const GET_REPORT_TEMPLATE = gql`
       sharedWith { id name }
       sections {
         id order title chartType
-        groupByNodeId groupByField metric metricField limit sortDir
+        groupByNodeId groupByField groupByGranularity metric metricField limit sortDir
         nodes { id entityType neo4jLabel label isResult isRoot positionX positionY filters selectedFields }
         edges { id sourceNodeId targetNodeId relationshipType direction label }
       }

@@ -98,6 +98,7 @@ export interface SectionInput {
   chartType:     string
   groupByNodeId?: string | null
   groupByField?:  string | null
+  groupByGranularity?: string | null
   metric:        string
   metricField?:  string | null
   limit?:        number | null
@@ -122,6 +123,7 @@ export function sectionInputToDef(input: SectionInput, id: string, order = 0): R
     chartType:     input.chartType,
     groupByNodeId: input.groupByNodeId ?? null,
     groupByField:  input.groupByField ?? null,
+    groupByGranularity: input.groupByGranularity ?? null,
     metric:        input.metric,
     metricField:   input.metricField ?? null,
     limit:         input.limit ?? null,
@@ -194,6 +196,7 @@ export async function createSectionWithNodesEdges(
         chart_type:        $chartType,
         group_by_node_id:  $groupByNodeId,
         group_by_field:    $groupByField,
+        group_by_granularity: $groupByGranularity,
         metric:            $metric,
         metric_field:      $metricField,
         limit_val:         $limit,
@@ -205,6 +208,7 @@ export async function createSectionWithNodesEdges(
       title: input.title, chartType: input.chartType,
       groupByNodeId,
       groupByField:  input.groupByField ?? null,
+      groupByGranularity: input.groupByGranularity ?? null,
       metric: input.metric,
       metricField: input.metricField ?? null,
       limit: input.limit ?? null, sortDir: input.sortDir ?? null,
@@ -469,6 +473,7 @@ const proposeReportSection = async (_: unknown, args: { prompt: string }, ctx: G
     metricField: esito.metricField,
     groupByNodeId: esito.groupByNodeId,
     groupByField: esito.groupByField,
+    groupByGranularity: esito.groupByGranularity,
     limit: esito.limit,
     sortDir: esito.sortDir,
     nodes: esito.nodes,

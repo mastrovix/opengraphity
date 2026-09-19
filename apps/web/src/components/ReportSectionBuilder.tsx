@@ -31,6 +31,7 @@ export interface ReportSectionInput {
   chartType:     string
   groupByNodeId: string | null
   groupByField:  string | null
+  groupByGranularity?: string | null
   metric:        string
   metricField:   string | null
   limit:         number | null
@@ -116,6 +117,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   const [metricField,   setMetricField]   = useState(initialValues?.metricField ?? '')
   const [groupByNodeId, setGroupByNodeId] = useState(initialValues?.groupByNodeId ?? '')
   const [groupByField,  setGroupByField]  = useState(initialValues?.groupByField ?? '')
+  const [granularita,   setGranularita]   = useState(initialValues?.groupByGranularity ?? 'day')
   const [limit,         setLimit]         = useState<number>(initialValues?.limit ?? 20)
   const [sortDir,       setSortDir]       = useState(initialValues?.sortDir ?? 'DESC')
 
@@ -326,6 +328,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     setMetricField(v.metricField ?? '')
     setGroupByNodeId(v.groupByNodeId ?? '')
     setGroupByField(v.groupByField ?? '')
+    setGranularita(v.groupByGranularity ?? 'day')
     setLimit(v.limit ?? 20)
     setSortDir(v.sortDir ?? 'DESC')
     setNodeDataMap(newNodeDataMap)
@@ -364,6 +367,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     metricField:   metricField || null,
     groupByNodeId: groupByNodeId || null,
     groupByField:  groupByField || null,
+    groupByGranularity: granularita || 'day',
     limit, sortDir,
     nodes: nodes.map(n => {
       const nd = nodeDataMap[n.id]
@@ -386,7 +390,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         label:            d?.label || d?.relationshipType || '',
       }
     }),
-  }), [nodes, edges, nodeDataMap, title, chartType, metric, metricField, groupByNodeId, groupByField, limit, sortDir])
+  }), [nodes, edges, nodeDataMap, title, chartType, metric, metricField, groupByNodeId, groupByField, granularita, limit, sortDir])
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
@@ -708,6 +712,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                 metricField={metricField}       onMetricFieldChange={setMetricField}
                 groupByNodeId={groupByNodeId}   onGroupByNodeIdChange={setGroupByNodeId}
                 groupByField={groupByField}     onGroupByFieldChange={setGroupByField}
+                groupByGranularity={granularita} onGroupByGranularityChange={setGranularita}
                 limit={limit}                   onLimitChange={setLimit}
                 sortDir={sortDir}               onSortDirChange={setSortDir}
                 nodeDataMap={nodeDataMap}
@@ -740,6 +745,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
             applicaSezione({
               title: p.title, chartType: p.chartType, metric: p.metric, metricField: p.metricField,
               groupByNodeId: p.groupByNodeId, groupByField: p.groupByField,
+              groupByGranularity: p.groupByGranularity,
               limit: p.limit, sortDir: p.sortDir,
               nodes: p.nodes.map((n) => ({
                 id: n.id, entityType: n.entityType, neo4jLabel: n.neo4jLabel, label: n.label,

@@ -35,6 +35,7 @@ export interface ProgettoReport {
   metricField: string | null
   groupByNodeId: string | null
   groupByField: string | null
+  groupByGranularity: string | null
   limit: number
   sortDir: string
   nodes: {
@@ -128,6 +129,9 @@ export function ModaleProgettoReportAI({ onChiudi, onApplica }: {
             />
             {progetto.groupByField !== null && (
               <Riga etichetta={t('reportAI.groupedBy')} valore={etichettaRaggruppamento(progetto)} />
+            )}
+            {progetto.groupByGranularity !== null && (
+              <Riga etichetta={t('reportChart.granularityLabel')} valore={t(`reportChart.granularity.${progetto.groupByGranularity}`)} />
             )}
             <Riga etichetta={t('reportAI.order')} valore={`${String(progetto.limit)} · ${progetto.sortDir}`} />
             {progetto.why !== '' && (

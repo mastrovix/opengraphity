@@ -6511,7 +6511,13 @@
     "configureToPreview": "Configure the chart to see the preview",
     "fieldOption": "Field…",
     "total": "total",
-    "noNumericField": "This entity has no numeric field: there is nothing for an average or a sum to compute."
+    "noNumericField": "This entity has no numeric field: there is nothing for an average or a sum to compute.",
+    "granularityLabel": "Period",
+    "granularity": {
+      "day": "By day",
+      "week": "By week",
+      "month": "By month"
+    }
   },
   "citypeDesigner": {
     "relation": {
@@ -7124,7 +7130,8 @@
       "operatorUnknown": "Filter discarded: «{{op}}» is not a comparison reports can make ({{allowed}}).",
       "filterDays": "«last N days» filter discarded: «{{value}}» is not a number of days.",
       "filterEmpty": "«{{op}}» filter discarded: the value to compare is missing.",
-      "filterValueUnknown": "Filter discarded: «{{value}}» is not an allowed value. Allowed: {{allowed}}."
+      "filterValueUnknown": "Filter discarded: «{{value}}» is not an allowed value. Allowed: {{allowed}}.",
+      "granularityUnknown": "«{{name}}» is not a period (day, week, month): the series stays daily."
     }
   },
   "reportAI": {
