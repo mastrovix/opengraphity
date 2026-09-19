@@ -18,6 +18,7 @@ import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { getSession } from '@opengraphity/neo4j'
 import { runQueryOne } from './ci-utils.js'
 import { audit } from '../../lib/audit.js'
+import { logger } from '../../lib/logger.js'
 import {
   compitiDelTicket, compito, apriDipendenti, TASK_STATE, isOpenState, isPendingState,
   type TicketTask,
@@ -127,6 +128,35 @@ export async function claimTicketTask(
   return (await compito(ctx.tenantId, args.taskId))!
 }
 
+/**
+ * FAR RIPARTIRE IL TICKET quando l'ultimo compito si chiude (rimedio, 20 set
+ * 2026).
+ *
+ * «Il passo aspetta» non serve a niente se, chiuso l'ultimo compito, nessuno
+ * riprova la transizione. Tutte e cinque le mutation dei compiti di change
+ * chiamano `evaluateAutoTransitions`; le due nuove non lo facevano, quindi
+ * un arco automatico guardato da `all_tasks_complete` non scattava mai al
+ * momento giusto: si vedeva «Fatto» dappertutto e la change ferma.
+ *
+ * Solo per le CHANGE, perché il camminatore delle auto-transizioni è loro
+ * (`change/autoTransitions.ts`): per incident, problem e richieste il
+ * prodotto non ne ha uno, e fingere il contrario sarebbe peggio che dirlo.
+ * Un fallimento qui non annulla la chiusura del compito, che è già scritta e
+ * giusta: si logga.
+ */
+async function riprovaLeTransizioniAutomatiche(ctx: GraphQLContext, task: TicketTask): Promise<void> {
+  if (task.entityType !== 'change') return
+  try {
+    const { evaluateAutoTransitions } = await import('./change/autoTransitions.js')
+    const session = getSession(undefined, 'WRITE')
+    try { await evaluateAutoTransitions(session, task.entityId, ctx) }
+    finally { await session.close() }
+  } catch (err) {
+    logger.error({ err, taskId: task.id, changeId: task.entityId, tenantId: ctx.tenantId },
+      '[tasks] the task was closed but the change did not re-evaluate its automatic transitions')
+  }
+}
+
 export async function completeTicketTask(
   _: unknown,
   args: { taskId: string; note?: string | null },
@@ -161,6 +191,7 @@ export async function completeTicketTask(
   } finally {
     await session.close()
   }
+  await riprovaLeTransizioniAutomatiche(ctx, prima)
   void audit(ctx, 'task.completed', 'Task', args.taskId, { code: prima.code, entityId: prima.entityId })
   return (await compito(ctx.tenantId, args.taskId))!
 }
@@ -210,6 +241,9 @@ export async function cancelTicketTask(
   } finally {
     await session.close()
   }
+  // Anche annullando: un compito annullato non conta più per la guardia,
+  // quindi può essere lui l'ultimo che teneva fermo il passo.
+  await riprovaLeTransizioniAutomatiche(ctx, prima)
   void audit(ctx, 'task.cancelled', 'Task', args.taskId, { code: prima.code, entityId: prima.entityId, reason: motivo })
   return (await compito(ctx.tenantId, args.taskId))!
 }

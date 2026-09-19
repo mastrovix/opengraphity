@@ -3925,7 +3925,8 @@
       "copyNameTaken": "A {{entityType}} workflow called \"{{name}}\" already exists.",
       "noApproverTarget": "Approval cannot start: the people or teams configured to approve have no active member in this organization.",
       "lastActiveDefinition": "\"{{name}}\" is the last active {{entityType}} workflow without a category: switching it off would stop every new {{entityType}} from being created. Activate another one first.",
-      "stepTypeNotImplemented": "Step type «{{type}}» is not executed by the workflow engine: such a step would behave like a standard step, following a single transition. It cannot be added until the engine implements it."
+      "stepTypeNotImplemented": "Step type «{{type}}» is not executed by the workflow engine: such a step would behave like a standard step, following a single transition. It cannot be added until the engine implements it.",
+      "taskOnlyOnEnter": "A task can only be created ENTERING a step, not leaving one ({{field}}): on exit it would be stamped with the next step, and would hold the wrong one."
     },
     "channel": {
       "platform": "Platform \"{{platform}}\" is not supported. Allowed: {{allowed}}."

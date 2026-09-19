@@ -191,7 +191,7 @@ async function publishNotifyRuleActions(
  * pannello del designer offriva `role:admin, role:manager`: il secondo non è un
  * ruolo che l'autenticazione conosce.
  */
-export function assertStepActions(raw: string | null | undefined, label: string): void {
+export function assertStepActions(raw: string | null | undefined, label: string, fase: 'enter' | 'exit' = 'enter'): void {
   if (raw == null) return
   let parsed: unknown
   try { parsed = JSON.parse(raw) }
@@ -235,6 +235,20 @@ export function assertStepActions(raw: string | null | undefined, label: string)
       if (params['entity_type'] === 'change' && (params['change_type'] == null || String(params['change_type']).trim() === '')) {
         throw new GraphQLError(`${label}[${i}]: create_entity of a change needs the change type (params.change_type).`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.createChangeNeedsType', params: { field: `${label}[${i}]` } } } })
       }
+    }
+    /**
+     * UN COMPITO SI CREA SOLO ENTRANDO in un passo (rimedio, 20 set 2026). Le
+     * azioni di USCITA girano con l'istanza già spostata sul passo nuovo:
+     * un compito creato lì nascerebbe timbrato col passo sbagliato, non
+     * bloccherebbe l'uscita che doveva bloccare e bloccherebbe quella dopo.
+     * Il rifiuto arriva qui, nel disegnatore, e non dentro un log a ticket
+     * rotto.
+     */
+    if (type === 'create_task' && fase === 'exit') {
+      throw new GraphQLError(
+        `${label}[${i}]: a task can only be created entering a step, not leaving one.`,
+        { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.taskOnlyOnEnter', params: { field: `${label}[${i}]` } } } },
+      )
     }
     if (type === 'notify_rule') {
       // I CANALI del passo: la scheda «Notifiche» del disegnatore offriva
@@ -603,7 +617,7 @@ export async function updateWorkflowStep(
   ctx: GraphQLContext,
 ) {
   assertStepActions(enterActions, `enter_actions of step "${stepName}"`)
-  assertStepActions(exitActions,  `exit_actions of step "${stepName}"`)
+  assertStepActions(exitActions,  `exit_actions of step "${stepName}"`, 'exit')
   await assertRolesExist(ctx.tenantId, [...roleKeysInActions(enterActions), ...roleKeysInActions(exitActions)])
   const purposeValue = normalizeStepPurpose(purpose, `step "${stepName}"`)
   return withSession(async (session) => {
@@ -1292,7 +1306,7 @@ export async function saveWorkflowChanges(
   await assertRolesExist(ctx.tenantId, (steps ?? []).flatMap((st) => [...roleKeysInActions(st.enterActions), ...roleKeysInActions(st.exitActions)]))
   const stepRows = (steps ?? []).map((st) => {
     assertStepActions(st.enterActions, `enter_actions of step "${st.stepName}"`)
-    assertStepActions(st.exitActions,  `exit_actions of step "${st.stepName}"`)
+    assertStepActions(st.exitActions,  `exit_actions of step "${st.stepName}"`, 'exit')
     const purposeValue = normalizeStepPurpose(st.purpose, `step "${st.stepName}"`)
     const category     = normalizeStepCategory(st.category, `step "${st.stepName}"`)
     const deadline     = normalizeStepDeadlineInput(st.deadline, `deadline of step "${st.stepName}"`)

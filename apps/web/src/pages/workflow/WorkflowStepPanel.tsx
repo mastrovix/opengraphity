@@ -413,7 +413,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
     return [...new Set(tutti)].filter((titolo) => titolo && titolo !== (draft.params['title_template'] ?? '').trim())
   }
 
-  const renderDraftEditor = (draft: ActionDraft, setDraft: (updater: (d: ActionDraft) => ActionDraft) => void) => (
+  const renderDraftEditor = (draft: ActionDraft, setDraft: (updater: (d: ActionDraft) => ActionDraft) => void, fase: 'enter' | 'exit' = 'enter') => (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={sectionLabelStyle}>{t('workflow.actionType')}</span>
@@ -422,7 +422,15 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
           onChange={(e) => setDraft((d) => ({ ...d, type: e.target.value, params: {} }))}
           style={inputStyle}
         >
-          {WORKFLOW_STEP_ACTION_TYPES.map((ty) => <option key={ty} value={ty}>{ty}</option>)}
+          {/*
+            «Crea un compito» solo fra le azioni d'INGRESSO: il motore esegue
+            quelle di uscita con l'istanza già sul passo nuovo, quindi un
+            compito creato uscendo nascerebbe col nome del passo sbagliato.
+            L'API lo rifiuta comunque; qui non si offre nemmeno.
+          */}
+          {WORKFLOW_STEP_ACTION_TYPES
+            .filter((ty) => ty !== 'create_task' || fase === 'enter')
+            .map((ty) => <option key={ty} value={ty}>{ty}</option>)}
         </Select>
       </div>
       <ActionParamsEditor
@@ -503,7 +511,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                   <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: palette.teal.base }}>
                     {actionLabel(t, a.type, a.params)}
                   </div>
-                  {renderDraftEditor(editingAction, (updater) => setEditingAction((prev) => prev ? { ...prev, ...updater(prev) } : null))}
+                  {renderDraftEditor(editingAction, (updater) => setEditingAction((prev) => prev ? { ...prev, ...updater(prev) } : null), forKey)}
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
                       type="button"
@@ -533,7 +541,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
         const blocked = conditionsError(newAction.conditions) !== null
         return (
           <div style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: 'var(--color-slate-bg)' }}>
-            {renderDraftEditor(newAction, (updater) => setNewAction((d) => updater(d)))}
+            {renderDraftEditor(newAction, (updater) => setNewAction((d) => updater(d)), forKey)}
             <div style={{ display: 'flex', gap: 6 }}>
               <button type="button" disabled={blocked} onClick={() => handleConfirmAdd(forKey)} style={{ ...saveButtonStyle(blocked), flex: 1, padding: '6px 0' }}>
                 {t('common.confirm')}

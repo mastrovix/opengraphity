@@ -460,3 +460,61 @@ describe('WorkflowEngine — ingresso nel passo', () => {
     expect(session.txRun.mock.calls.map((c) => String(c[0])).join('\n')).not.toMatch(/published_at/)
   })
 })
+
+/**
+ * L'IDENTITÀ DI UN'AZIONE (rimedio, 20 set 2026).
+ *
+ * `actionIndex` conta sulla lista CONCATENATA `[…uscita, …ingresso]`, ed è
+ * giusto così: lo usa il retry del webhook per rileggere gli header dal
+ * passo. Il guaio era che quell'indice sembrava un'identità dell'azione e
+ * non lo è — la stessa azione d'ingresso vale 0 arrivando da un passo senza
+ * azioni di uscita e 2 arrivando da uno che ne ha due. I compiti lo usavano
+ * come chiave contro i doppioni, e si duplicavano a ogni rientro nel passo.
+ *
+ * Ora accanto viaggiano FASE e POSIZIONE NELLA PROPRIA LISTA, che non
+ * dipendono da dove si arriva. Questi test lo tengono fermo eseguendo una
+ * transizione vera sul motore.
+ */
+describe('fase e posizione delle azioni', () => {
+  const eseguite: { tipo: string; actionIndex?: number; phase?: string; position?: number }[] = []
+
+  vi.mock('../actions.js', async (importOriginal) => {
+    const vero = await importOriginal<typeof import('../actions.js')>()
+    return {
+      ...vero,
+      runAction: vi.fn(async (action: { type: string }, _i: unknown, ctx: { actionIndex?: number; actionPhase?: string; actionPosition?: number }) => {
+        const g = globalThis as { __azioni?: unknown[] }
+        g.__azioni ??= []
+        g.__azioni.push({ tipo: action.type, actionIndex: ctx.actionIndex, phase: ctx.actionPhase, position: ctx.actionPosition })
+      }),
+    }
+  })
+
+  const azioniEseguite = () => ((globalThis as { __azioni?: typeof eseguite }).__azioni ?? [])
+
+  it('la posizione di un\'azione d\'ingresso NON dipende dalle azioni di uscita del passo che si lascia', async () => {
+    (globalThis as { __azioni?: unknown[] }).__azioni = []
+    const engine = new WorkflowEngine()
+    const due = JSON.stringify([{ type: 'sla_stop', params: { sla_type: 'response' } }, { type: 'sla_stop', params: { sla_type: 'resolve' } }])
+    const uno = JSON.stringify([{ type: 'notify', params: {} }])
+    const s = makeWritableSession([stateRow({ exitActions: due, nextEnterActions: uno })], 1)
+    await engine.transition(s as never, manual, actx)
+
+    const ingresso = azioniEseguite().find((a) => a.tipo === 'notify')!
+    // Concatenata: è la terza. Nella sua lista: è la prima.
+    expect(ingresso.actionIndex).toBe(2)
+    expect(ingresso.position).toBe(0)
+    expect(ingresso.phase).toBe('enter')
+  })
+
+  it('le azioni di USCITA si riconoscono come tali', async () => {
+    (globalThis as { __azioni?: unknown[] }).__azioni = []
+    const engine = new WorkflowEngine()
+    const s = makeWritableSession([stateRow({
+      exitActions: JSON.stringify([{ type: 'sla_stop', params: { sla_type: 'response' } }]),
+      nextEnterActions: null,
+    })], 1)
+    await engine.transition(s as never, manual, actx)
+    expect(azioniEseguite()[0]).toMatchObject({ tipo: 'sla_stop', phase: 'exit', position: 0 })
+  })
+})

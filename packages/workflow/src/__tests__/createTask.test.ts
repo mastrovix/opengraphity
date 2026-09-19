@@ -64,8 +64,40 @@ describe('create_task', () => {
   })
 
   it('porta il PASSO che l\'ha creato: la guardia dovrà sapere quali compiti sono suoi', async () => {
-    await runAction(azione({ title_template: 'X' }), istanza({ currentStep: 'fulfilment' }), { ...contesto, actionIndex: 3 })
-    expect(scritti[0]).toMatchObject({ stepName: 'fulfilment', actionIndex: 3 })
+    await runAction(azione({ title_template: 'X' }), istanza({ currentStep: 'fulfilment' }),
+      { ...contesto, actionPhase: 'enter', actionPosition: 1, actionIndex: 3 })
+    expect(scritti[0]).toMatchObject({ stepName: 'fulfilment', actionIndex: 1 })
+  })
+
+  /**
+   * IL DIFETTO DELLA CHIAVE (trovato in revisione, 20 set 2026).
+   *
+   * `actionIndex` è la posizione nella lista CONCATENATA `[…uscita,
+   * …ingresso]`: la stessa azione d'ingresso vale 0 arrivando da un passo
+   * senza azioni di uscita e 2 arrivando da uno che ne ha due. Siccome
+   * quell'indice finiva nella chiave naturale, il compito si DUPLICAVA al
+   * rientro nel passo — rifiuto di un'approvazione, ritorno indietro,
+   * riavanzamento — che è esattamente il caso che la chiave dichiarava di
+   * impedire. Ora si usa la posizione nella PROPRIA lista, che non dipende
+   * da dove si arriva.
+   */
+  it('la posizione non cambia con le azioni di USCITA del passo che si lascia', async () => {
+    await runAction(azione({ title_template: 'X' }), istanza(), { ...contesto, actionPhase: 'enter', actionPosition: 0, actionIndex: 0 })
+    await runAction(azione({ title_template: 'X' }), istanza(), { ...contesto, actionPhase: 'enter', actionPosition: 0, actionIndex: 2 })
+    // Due arrivi diversi, stessa azione: stessa chiave, quindi lo stesso compito.
+    expect(scritti.map((k) => k.actionIndex)).toEqual([0, 0])
+  })
+
+  /**
+   * Un compito creato USCENDO da un passo nascerebbe timbrato col passo che
+   * si sta ENTRANDO (il motore sposta l'istanza prima di eseguire anche le
+   * azioni di uscita): non bloccherebbe l'uscita che doveva bloccare, e
+   * bloccherebbe quella dopo.
+   */
+  it('un compito non si crea USCENDO da un passo', async () => {
+    await expect(runAction(azione({ title_template: 'X' }), istanza(), { ...contesto, actionPhase: 'exit', actionPosition: 0 }))
+      .rejects.toThrow(/ENTERING a step/)
+    expect(scritti).toHaveLength(0)
   })
 
   it('il titolo passa dai segnaposto, come le altre azioni', async () => {

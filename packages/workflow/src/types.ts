@@ -205,7 +205,19 @@ export interface ActionContext {
   userId:           string
   /** Il passo che esegue l'azione e la sua posizione: servono al retry del webhook per rileggere gli header. */
   stepId?:          string
+  /**
+   * La posizione nella lista CONCATENATA `[…uscita, …ingresso]`: è quella che
+   * il retry del webhook usa per rileggere gli header dal passo, e non si
+   * tocca. NON è un'identità stabile dell'azione: dipende da quante azioni di
+   * uscita ha il passo che si sta lasciando, quindi la stessa azione
+   * d'ingresso cambia numero a seconda da dove si arriva. Chi ha bisogno di
+   * riconoscere un'azione usa `actionPhase` + `actionPosition`.
+   */
   actionIndex?:     number
+  /** Se l'azione è fra quelle di USCITA dal passo lasciato o d'INGRESSO in quello nuovo. */
+  actionPhase?:     'enter' | 'exit'
+  /** La posizione dentro la PROPRIA lista: stabile, non dipende dall'altro passo. */
+  actionPosition?:  number
   notes?:           string
   entityData:       Record<string, unknown>      // entity properties for template/condition eval
   isWebhookRetry?:  boolean

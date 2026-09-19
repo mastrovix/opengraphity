@@ -341,6 +341,21 @@ export async function runAction(
      * qui non si può nemmeno esprimere.
      */
     case 'create_task': {
+      /**
+       * SOLO ALL'INGRESSO (rimedio, 20 set 2026). Il motore esegue le azioni
+       * di uscita con l'istanza già spostata sul passo NUOVO, quindi un
+       * compito creato uscendo da A nascerebbe timbrato «passo B»: non
+       * bloccherebbe l'uscita da A — che è il senso della guardia — e
+       * bloccherebbe quella da B. Chi disegna non ha modo di accorgersene,
+       * quindi la strada si chiude qui, in scrittura (`assertStepActions`) e
+       * nel disegnatore, che non la offre più fra le azioni di uscita.
+       */
+      if (ctx.actionPhase === 'exit') {
+        throw new Error(
+          'create_task: a task can only be created ENTERING a step, not leaving one — ' +
+          'on exit it would be stamped with the step being entered, and would guard the wrong step',
+        )
+      }
       const creaCompito = currentTaskCreator()
       if (!creaCompito) {
         throw new Error('create_task: nobody registered a task creator in this process (registerTaskCreator)')
@@ -361,7 +376,9 @@ export async function runAction(
         entityId:    instance.entityId,
         entityType:  instance.entityType,
         stepName:    instance.currentStep,
-        actionIndex: ctx.actionIndex ?? 0,
+        // La posizione nella PROPRIA lista, non nella concatenata: è l'unica
+        // stabile, e finisce nella chiave naturale contro i doppioni.
+        actionIndex: ctx.actionPosition ?? ctx.actionIndex ?? 0,
         title,
         description: p.description?.trim() || null,
         teamId:        p.team_id?.trim() || null,
