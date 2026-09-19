@@ -978,36 +978,6 @@ export async function resolveFormWrites(
      * transazione.
      */
     if (isFormReferenceType(campo.fieldType)) {
-      /**
-       * UNA SQUADRA CALCOLATA (ondata 4): la formula restituisce il NOME, il
-       * server lo risolve in un nodo `Team`. È l'unico riferimento che una
-       * formula può produrre, e la ragione è precisa: «se la sede è Milano
-       * allora il Desk di Milano», che poi decide a chi vanno i compiti.
-       *
-       * Il nome che non si risolve è un RIFIUTO, non un campo vuoto: un
-       * refuso nella formula darebbe compiti senza destinatario che nessuno
-       * vede. Vale la stessa regola di un valore fuori vocabolario.
-       */
-      if (campo.formula) {
-        const esito = formule.get(campo.name)
-        if (esito && 'error' in esito) {
-          throw new ValidationError(`The formula of field "${nome(campo)}" failed: ${esito.error}`,
-            { key: 'errors.formField.formulaFailed', params: { field: nome(campo), name: campo.name, message: esito.error } })
-        }
-        const atteso = esito && 'value' in esito && esito.value != null ? String(esito.value).trim() : ''
-        if (atteso === '') continue
-        const riga = await runQueryOne<{ id: string }>(session, `
-          MATCH (t:Team {tenant_id: $tenantId}) WHERE t.name = $nomeSquadra RETURN t.id AS id LIMIT 1
-        `, { tenantId, nomeSquadra: atteso })
-        if (!riga) {
-          throw new ValidationError(
-            `The formula of "${nome(campo)}" returned the team "${atteso}", which does not exist.`,
-            { key: 'errors.formField.teamNotFound', params: { field: nome(campo), name: campo.name, team: atteso } },
-          )
-        }
-        riferimenti.push({ field: campo.name, fieldType: campo.fieldType, ids: [riga.id] })
-        continue
-      }
       const ids = (input.refIds ?? []).map((v) => String(v).trim()).filter((v) => v !== '')
       if (ids.length === 0) continue
       if (ids.length > 1) {
@@ -1062,11 +1032,6 @@ export async function resolveFormWrites(
   for (const item of visibili) {
     const campo = library.get(item.field)!
     if (!campo.formula) continue
-    // Una SQUADRA calcolata non è una proprietà: è una relazione, e l'ha già
-    // scritta il giro sopra risolvendo il nome in un nodo `Team`. Scriverla
-    // anche qui metterebbe il nome della squadra fra le proprietà del ticket,
-    // dove nessuno lo cerca e dove resterebbe indietro a ogni rinomina.
-    if (isFormReferenceType(campo.fieldType)) continue
     const esito = formule.get(campo.name)
     // Il modulo cita il campo, quindi la formula è stata eseguita sopra: se
     // manca è un difetto nostro, e si dice invece di scrivere un null.
@@ -1089,6 +1054,37 @@ export async function resolveFormWrites(
     // sia scritta e non un effetto collaterale di come si serializza.
     if (valore == null || (typeof valore === 'number' && !Number.isFinite(valore)) || String(valore).trim() === '') {
       out[campo.name] = null
+      continue
+    }
+    /**
+     * UNA SQUADRA CALCOLATA non è una proprietà: è una RELAZIONE.
+     *
+     * La formula restituisce il NOME e il server lo risolve in un nodo
+     * `Team`. È l'unico riferimento che una formula può produrre, e serve a
+     * una cosa precisa: «se la sede è Milano allora il Desk di Milano», che
+     * poi decide a chi va il task del workflow.
+     *
+     * Il nome che non si risolve è un RIFIUTO, non un campo vuoto: un refuso
+     * nella formula darebbe task senza destinatario che nessuno vede. Vale la
+     * stessa regola di un valore fuori vocabolario.
+     *
+     * Sta QUI e non nel giro sugli input mandati dal client: un campo
+     * calcolato il client non lo manda mai — il renderer lo esclude e l'API
+     * lo rifiuterebbe — quindi là il ramo era codice morto, e la squadra non
+     * veniva scritta. Trovato provando dal portale, non dai test.
+     */
+    if (isFormReferenceType(campo.fieldType)) {
+      const nomeSquadra = String(valore).trim()
+      const riga = await runQueryOne<{ id: string }>(session, `
+        MATCH (t:Team {tenant_id: $tenantId}) WHERE t.name = $nomeSquadra RETURN t.id AS id LIMIT 1
+      `, { tenantId, nomeSquadra })
+      if (!riga) {
+        throw new ValidationError(
+          `The formula of "${nome(campo)}" returned the team "${nomeSquadra}", which does not exist.`,
+          { key: 'errors.formField.teamNotFound', params: { field: nome(campo), name: campo.name, team: nomeSquadra } },
+        )
+      }
+      riferimenti.push({ field: campo.name, fieldType: campo.fieldType, ids: [riga.id] })
       continue
     }
     const allowed = campo.vocabulary ? await vocabolarioDi(campo.vocabulary) : null

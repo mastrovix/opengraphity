@@ -1945,7 +1945,7 @@
     },
     "myTasks": {
       "emptyTitle": "Nessun task per te",
-      "emptyDescription": "Quando un passo di un workflow crea un compito per te o per la tua squadra, lo trovi qui.",
+      "emptyDescription": "Quando un passo di un workflow crea un task per te o per la tua squadra, lo trovi qui.",
       "assignedToMe": "Assegnati a me",
       "unassigned": "Da assegnare",
       "count": "{{total}} task ({{mine}} assegnati a te · {{free}} da prendere in carico)",
@@ -2815,7 +2815,7 @@
       "update_field": "Aggiorna campo",
       "call_webhook": "Chiama webhook",
       "create_approval_request": "Crea richiesta di approvazione",
-      "create_task": "Crea un compito"
+      "create_task": "Crea un task"
     },
     "deleteBlockedInitial": "Questo è lo step iniziale del processo: eliminandolo nessun nuovo ticket potrebbe più nascere. Marca prima un altro step come iniziale.",
     "deleteBlockedInstances_one": "{{count}} ticket si trova ora su questo step: eliminandolo resterebbe senza step corrente e non potrebbe più avanzare. Spostalo prima su un altro step.",
@@ -2861,7 +2861,7 @@
       "all_deployments_complete": "Tutti i rilasci e le verifiche completati",
       "all_reviews_confirmed": "Tutte le revisioni confermate",
       "rootCause != null": "La causa radice è compilata",
-      "all_tasks_complete": "Tutti i compiti del passo completati"
+      "all_tasks_complete": "Tutti i task del passo completati"
     },
     "triggerHint": "Chi percorre l'arco: «manuale» una persona dal ticket, «automatico» il motore quando la condizione è soddisfatta, «timer» la fine di un'attesa, «sfondamento SLA» l'escalation.",
     "addStepStandardHint": "Nasce «in lavorazione» e senza scopo: apri il pannello del passo per assegnargli categoria e scopo, altrimenti le regole di dominio non lo riconoscono.",
@@ -2927,7 +2927,7 @@
       "taskAfterNone": "subito, in parallelo",
       "taskTeamFromField": "oppure la squadra dal campo",
       "taskTeamFromFieldNone": "nessun campo: vale la squadra qui accanto",
-      "taskTeamFieldWins": "Sono indicati sia una squadra sia un campo: vince il CAMPO, perché è il dato della singola richiesta. Da un campo squadra si prende la squadra scelta, da un campo CI chi lo supporta. Se non se ne ricava nessuna, il compito nasce senza destinatario e la Diagnostica lo dice."
+      "taskTeamFieldWins": "Sono indicati sia una squadra sia un campo: vince il CAMPO, perché è il dato della singola richiesta. Da un campo squadra si prende la squadra scelta, da un campo CI chi lo supporta. Se non se ne ricava nessuna, il task nasce senza destinatario e la Diagnostica lo dice."
     },
     "deadline": {
       "intro": "Per quanto tempo un ticket può restare in questo passo. Allo scadere il ticket si sposta da solo lungo uno degli archi che escono dal passo, e i campi che scegli vengono impostati.",
@@ -3913,7 +3913,7 @@
         "all_assessments_complete": "Le valutazioni o il piano di rilascio non sono ancora completi per tutti i CI: servono l’assessment funzionale, quello tecnico e il piano.",
         "all_deployments_complete": "Validazione o deploy non ancora completati per tutti i CI.",
         "all_reviews_confirmed": "Le review non sono ancora confermate per tutti i CI.",
-        "all_tasks_complete": "Ci sono ancora compiti da fare in questo passo: chiudili o annullali prima di andare avanti."
+        "all_tasks_complete": "Ci sono ancora task da fare in questo passo: chiudili o annullali prima di andare avanti."
       },
       "changeUsesChangeTransition": "Una change si muove con le sue transizioni (con i controlli di approvazione), non con questa generica.",
       "unknownActionType": "Il tipo di azione «{{type}}» non esiste. Disponibili: {{allowed}}.",
@@ -3927,7 +3927,7 @@
       "noApproverTarget": "L'approvazione non può partire: le persone o le squadre indicate non hanno nessun membro attivo in questa organizzazione.",
       "lastActiveDefinition": "«{{name}}» è l'ultimo iter {{entityType}} attivo senza categoria: spegnendolo non nascerebbe più nessun {{entityType}}. Attivane un altro prima.",
       "stepTypeNotImplemented": "Il tipo di passo «{{type}}» non è eseguito dal motore dei processi: un passo così si comporterebbe come un passo normale, seguendo una sola transizione. Non si può aggiungere finché il motore non lo implementa.",
-      "taskOnlyOnEnter": "Un compito si può creare solo ENTRANDO in un passo, non uscendone ({{field}}): uscendo nascerebbe col nome del passo successivo, e terrebbe fermo quello sbagliato."
+      "taskOnlyOnEnter": "Un task si può creare solo ENTRANDO in un passo, non uscendone ({{field}}): uscendo nascerebbe col nome del passo successivo, e terrebbe fermo quello sbagliato."
     },
     "channel": {
       "platform": "La piattaforma «{{platform}}» non è supportata. Ammesse: {{allowed}}."
@@ -3969,8 +3969,8 @@
       "resultOneOf": "Il risultato deve essere uno di: {{allowed}}.",
       "notOnChange": "{{task}} per il CI {{ci}} non si trova sulla change: fase sbagliata, o task riaperto?",
       "alreadyCompleted": "Questa task è già completata.",
-      "notOpen": "Il compito {{code}} non è più aperto ({{state}}): ricarica la pagina.",
-      "cancelNeedsReason": "Per annullare un compito serve il motivo: chi lo aspettava deve sapere perché non c'è più."
+      "notOpen": "Il task {{code}} non è più aperto ({{state}}): ricarica la pagina.",
+      "cancelNeedsReason": "Per annullare un task serve il motivo: chi lo aspettava deve sapere perché non c’è più."
     },
     "plan": {
       "endBeforeStart": "{{window}}: la fine deve venire dopo l'inizio.",
@@ -4425,7 +4425,7 @@
       "refTypesUnknown": "Questi tipi di CI non esistono: {{types}}.",
       "refFilterNotAllowed": "Un campo {{fieldType}} non prende un filtro sui CI: solo un riferimento alla CMDB pesca da lì.",
       "refFilterInvalid": "Il filtro sui CI non è utilizzabile: {{message}}. Una regola può usare i campi comuni a ogni CI e le proprietà dei tipi scelti.",
-      "teamNotFound": "La formula del campo «{{field}}» ha restituito la squadra «{{team}}», che non esiste. Correggi la formula o crea la squadra: un compito senza destinatario non lo vede nessuno."
+      "teamNotFound": "La formula del campo «{{field}}» ha restituito la squadra «{{team}}», che non esiste. Correggi la formula o crea la squadra: un task senza destinatario non lo vede nessuno."
     },
     "catalogForm": {
       "shape": "La definizione del modulo ha una forma sbagliata in {{where}}.",
@@ -6304,12 +6304,12 @@
       "changes_stuck": "{{count}} change sono ferme pur avendo la strada aperta ({{changes}}): la loro transizione automatica aspetta una condizione che è già soddisfatta. Le transizioni automatiche si valutano solo quando qualcuno lavora la change, quindi una che si è persa l'occasione non riparte da sé. **Apri quelle change e fai avanzare il passo**: il lavoro è già finito, manca solo il movimento.",
       "vocabulary_copy_without_changes_one": "Hai una copia di un vocabolario identica a quella di fabbrica: {{names}}. Non aggiunge niente e ti costa un prezzo — una copia non viene mai sovrascritta, quindi non riceverà i valori che il prodotto aggiungerà. **Cancellala dal Dizionario**: si torna a usare quella di fabbrica.",
       "vocabulary_copy_without_changes_other": "Hai {{count}} copie di vocabolario identiche a quelle di fabbrica: {{names}}. Non aggiungono niente e costano un prezzo — una copia non viene mai sovrascritta, quindi non riceverà i valori che il prodotto aggiungerà. **Cancellale dal Dizionario**: si torna a usare quelle di fabbrica.",
-      "task_type_mismatch_one": "1 compito è appeso a un ticket che non è del suo tipo ({{examples}}). Non dovrebbe poter succedere: il tipo lo eredita dal workflow e la scrittura lo verifica. Se è qui, l'ha scritto una strada che nessuno aveva previsto — **segnalalo**, e nel frattempo quel compito non si fida.",
-      "task_type_mismatch_other": "{{count}} compiti sono appesi a ticket che non sono del loro tipo ({{examples}}). Non dovrebbe poter succedere: il tipo lo eredita dal workflow e la scrittura lo verifica. Se sono qui, li ha scritti una strada che nessuno aveva previsto — **segnalalo**, e nel frattempo quei compiti non si fidano.",
-      "tasks_without_team_one": "1 compito aperto non ha nessuna squadra ({{codes}}): **nessuno sa di doverlo fare**. Succede quando la squadra scelta nel passo del workflow è stata cancellata dopo. Assegnalo, o correggi il passo.",
-      "tasks_without_team_other": "{{count}} compiti aperti non hanno nessuna squadra ({{codes}}): **nessuno sa di doverli fare**. Succede quando la squadra scelta nel passo del workflow è stata cancellata dopo. Assegnali, o correggi il passo.",
-      "tasks_waiting_forever_one": "1 compito aspetta un compito che sul suo ticket non esiste ({{examples}}): **non partirà mai**, e tiene fermo anche il passo. Nel disegnatore, il campo «parte quando è chiuso» nomina un compito che quel passo non crea.",
-      "tasks_waiting_forever_other": "{{count}} compiti aspettano compiti che sui loro ticket non esistono ({{examples}}): **non partiranno mai**, e tengono fermi anche i passi. Nel disegnatore, il campo «parte quando è chiuso» nomina compiti che quei passi non creano."
+      "task_type_mismatch_one": "1 task è appeso a un ticket che non è del suo tipo ({{examples}}). Non dovrebbe poter succedere: il tipo lo eredita dal workflow e la scrittura lo verifica. Se è qui, l'ha scritto una strada che nessuno aveva previsto — **segnalalo**, e nel frattempo quel task non si fida.",
+      "task_type_mismatch_other": "{{count}} task sono appesi a ticket che non sono del loro tipo ({{examples}}). Non dovrebbe poter succedere: il tipo lo eredita dal workflow e la scrittura lo verifica. Se sono qui, li ha scritti una strada che nessuno aveva previsto — **segnalalo**, e nel frattempo quei task non si fidano.",
+      "tasks_without_team_one": "1 task aperto non ha nessuna squadra ({{codes}}): **nessuno sa di doverlo fare**. Succede quando la squadra scelta nel passo del workflow è stata cancellata dopo. Assegnalo, o correggi il passo.",
+      "tasks_without_team_other": "{{count}} task aperti non hanno nessuna squadra ({{codes}}): **nessuno sa di doverli fare**. Succede quando la squadra scelta nel passo del workflow è stata cancellata dopo. Assegnali, o correggi il passo.",
+      "tasks_waiting_forever_one": "1 task aspetta un task che sul suo ticket non esiste ({{examples}}): **non partirà mai**, e tiene fermo anche il passo. Nel disegnatore, il campo «parte quando è chiuso» nomina un task che quel passo non crea.",
+      "tasks_waiting_forever_other": "{{count}} task aspettano task che sui loro ticket non esistono ({{examples}}): **non partiranno mai**, e tengono fermi anche i passi. Nel disegnatore, il campo «parte quando è chiuso» nomina task che quei passi non creano."
     },
     "gap": {
       "tenant_missing": "nessuna riga: il tenant non esiste",
@@ -6868,7 +6868,7 @@
       },
       "change_read": {
         "label": "Change: vedere",
-        "description": "Liste, dettagli, CI impattati, analisi d'impatto, audit, compiti."
+        "description": "Liste, dettagli, CI impattati, analisi d'impatto, audit, task."
       },
       "change_write": {
         "label": "Change: lavorare",
@@ -6892,7 +6892,7 @@
       },
       "ticket_assignable": {
         "label": "Ricevere ticket",
-        "description": "Comparire fra le persone a cui assegnare un ticket o un compito; ricevere le e-mail a tutti e il riepilogo giornaliero."
+        "description": "Comparire fra le persone a cui assegnare un ticket o un task; ricevere le e-mail a tutti e il riepilogo giornaliero."
       },
       "ticket_moderateComments": {
         "label": "Moderare i commenti",
@@ -6908,7 +6908,7 @@
       },
       "approval_override": {
         "label": "Agire per qualunque team",
-        "description": "Decidere un'approvazione senza essere nel team, lavorare e riaprire i compiti delle change di qualunque team, far avanzare una change a mano."
+        "description": "Decidere un'approvazione senza essere nel team, lavorare e riaprire i task delle change di qualunque team, far avanzare una change a mano."
       },
       "kb_read": {
         "label": "Knowledge base: leggere",
@@ -7170,7 +7170,7 @@
       "change.impact_weights.updated": "Pesi dell'impatto cambiati (rischio delle change)",
       "change.pre_approved_types.updated": "Tipi di change pre-approvati cambiati",
       "change.risk_band_thresholds.updated": "Soglie delle fasce di rischio cambiate",
-      "change.task_reminder_sent": "Sollecito mandato per un compito di una change",
+      "change.task_reminder_sent": "Sollecito mandato per un task di una change",
       "change_created": "Change aperta",
       "change_transition": "Change passata a un altro passo",
       "ci.created": "CI creato",
@@ -7300,9 +7300,9 @@
       "sync_source.created": "Sorgente di sincronizzazione creata",
       "sync_source.deleted": "Sorgente di sincronizzazione cancellata",
       "sync_source.updated": "Sorgente di sincronizzazione modificata",
-      "task.cancelled": "Compito annullato",
-      "task.claimed": "Compito preso in carico",
-      "task.completed": "Compito chiuso",
+      "task.cancelled": "Task annullato",
+      "task.claimed": "Task preso in carico",
+      "task.completed": "Task chiuso",
       "team.change_manager_set": "Squadra designata Change Manager",
       "team.created": "Squadra creata",
       "team.manager_removed": "Responsabile di una squadra tolto",

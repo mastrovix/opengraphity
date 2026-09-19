@@ -37,9 +37,9 @@ export const SYSTEM_TEXTS = {
   'change.preApproved':         { en: 'Standard: pre-approved',                               it: 'Standard: pre-approvata' },
   'change.approvalsComplete':   { en: 'Approvals complete',                                   it: 'Approvazioni complete' },
   'change.approvalRejected':    { en: 'Approval rejected: {note}',                            it: 'Approvazione rifiutata: {note}' },
-  // Il motivo con cui il prodotto annulla i compiti rimasti aperti quando il
+  // Il motivo con cui il prodotto annulla i task rimasti aperti quando il
   // ticket si conclude: chi li ritrova deve sapere perché sono spariti.
-  'task.cancelledTicketClosed': { en: 'The ticket was closed: this task is no longer needed', it: 'Il ticket è stato chiuso: questo compito non serve più' },
+  'task.cancelledTicketClosed': { en: 'The ticket was closed: this task is no longer needed', it: 'Il ticket è stato chiuso: questo task non serve più' },
   // L'escalation che una guardia ha fermato: si scrive SUL TICKET, perché
   // chi l'aspettava non ha modo di leggere i log del server.
   'escalation.refusedByGuard': { en: 'Escalation to "{step}" was not carried out: {reason}', it: 'L\'escalation verso "{step}" non è stata eseguita: {reason}' },
