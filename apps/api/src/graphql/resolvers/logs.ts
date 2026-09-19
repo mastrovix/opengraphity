@@ -45,7 +45,7 @@ async function logs(
 ) {
   requirePermission(ctx, 'admin.audit')
 
-  let entries = getLogs() // already newest-first
+  let entries = getLogs(ctx.tenantId) // already newest-first
 
   // Apply advanced filters. Malformed filters must error — silently ignoring
   // them would show the admin ALL logs while they believe the list is filtered.

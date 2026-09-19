@@ -1,5 +1,6 @@
 import express, { type Application, type Request, type Response, type NextFunction } from 'express'
 import { auditMutationsPlugin } from './graphql/auditMutationsPlugin.js'
+import { runInLogTenantScope } from './lib/logTenantScope.js'
 import { runInAuditScope } from './lib/auditScope.js'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -534,7 +535,9 @@ export async function startServer(): Promise<http.Server> {
         const { handler } = await apolloFor(ctx.tenantId, state.schema)
         // Il conto delle voci d'Audit Log della richiesta (lib/auditScope.ts):
         // lo legge il registro delle mutation per non scriverne una seconda.
-        runInAuditScope(() => handler(req, res, next))
+        // Di chi è ogni riga di log scritta da qui in poi (lib/logTenantScope.ts):
+        // senza, la pagina Log di un cliente mostrava le righe di tutti.
+        runInLogTenantScope(ctx.tenantId, () => runInAuditScope(() => handler(req, res, next)))
       } catch (err) {
         next(err)
       }

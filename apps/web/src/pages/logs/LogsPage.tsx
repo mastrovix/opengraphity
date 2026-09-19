@@ -50,6 +50,23 @@ interface LogEntry {
  * must show up as the raw line with a visible badge, not crash the render
  * (an exception here would replace the whole app with the ErrorBoundary — E-07).
  */
+/**
+ * I primi campi di `data` in una riga sola: «method=POST url=/ status=200».
+ * Serve a distinguere due righe con lo stesso messaggio, non a sostituire il
+ * dettaglio — quello si apre espandendo.
+ */
+function riassuntoDati(data: string | null): string {
+  if (!data) return ''
+  let parsed: unknown
+  try { parsed = JSON.parse(data) } catch { return '' }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return ''
+  const voci = Object.entries(parsed as Record<string, unknown>)
+    .filter(([, v]) => v !== null && typeof v !== 'object')
+    .slice(0, 3)
+    .map(([k, v]) => `${k}=${String(v).slice(0, 40)}`)
+  return voci.length > 0 ? voci.join(' · ') : ''
+}
+
 function LogDataView({ data, notJsonLabel }: { data: string; notJsonLabel: string }) {
   let pretty: string | null = null
   try { pretty = JSON.stringify(JSON.parse(data), null, 2) } catch { pretty = null }
@@ -136,7 +153,22 @@ function logColumns(t: TFunction): ColumnDef<LogEntry>[] {
       key: 'message',
       label: t('pages.logs.message'),
       sortable: true,
-      render: (_val, row) => <span style={{ color: 'var(--color-slate-dark)' }}>{row.message}</span>,
+      /*
+       * IL MESSAGGIO PIÙ UN RIASSUNTO DEI SUOI DATI (20 set 2026, dal giro
+       * nel browser): la pagina mostrava 132 righe tutte uguali — «HTTP
+       * request» — mentre metodo, percorso ed esito erano lì, nel campo
+       * `data`, visibili solo espandendo la riga. Una pagina di log dove
+       * ogni riga dice la stessa cosa non si legge: il riassunto la rende
+       * scorribile, e il dettaglio resta un clic sotto.
+       */
+      render: (_val, row) => (
+        <span style={{ color: 'var(--color-slate-dark)' }}>
+          {row.message}
+          {riassuntoDati(row.data) && (
+            <span style={{ color: 'var(--color-slate-light)', marginLeft: 8 }}>{riassuntoDati(row.data)}</span>
+          )}
+        </span>
+      ),
     },
   ]
 }

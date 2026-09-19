@@ -1,6 +1,7 @@
 import pino from 'pino'
 import { randomUUID } from 'node:crypto'
 import { pushLog } from './logBuffer.js'
+import { currentLogTenant } from './logTenantScope.js'
 import { config } from './config.js'
 import { serviceNameFor } from './serviceName.js'
 
@@ -26,6 +27,12 @@ function bufferLog(raw: Record<string, unknown>): void {
     module:    (raw['module'] as string | undefined) ?? 'api',
     message:   (raw['msg'] as string) ?? '',
     data:      Object.keys(extra).length > 0 ? JSON.stringify(extra) : null,
+    /*
+     * DI CHI È LA RIGA (20 set 2026): la richiesta in corso, se c'è;
+     * altrimenti il `tenantId` che la riga stessa porta — i job di sfondo lo
+     * scrivono già. Nessuno dei due = riga di piattaforma.
+     */
+    tenantId:  currentLogTenant() ?? (typeof raw['tenantId'] === 'string' ? raw['tenantId'] : null),
   })
 }
 
