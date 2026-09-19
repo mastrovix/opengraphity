@@ -6516,7 +6516,8 @@
     "granularity": {
       "day": "Per giorno",
       "week": "Per settimana",
-      "month": "Per mese"
+      "month": "Per mese",
+      "year": "Per anno"
     }
   },
   "citypeDesigner": {

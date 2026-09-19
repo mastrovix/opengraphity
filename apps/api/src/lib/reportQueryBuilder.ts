@@ -138,9 +138,11 @@ export function isReportMetric(v: unknown): v is ReportMetric {
  * granularità applicata dal motore», che era una granularità inesistente.
  *
  * `day` è il comportamento di prima ed è il valore di chi non sceglie:
- * nessuna sezione salvata cambia aspetto.
+ * nessuna sezione salvata cambia aspetto. `year` è arrivato subito dopo, con
+ * la richiesta del proprietario: «quando si raggruppa per data devo poter
+ * specificare sempre se per giorno, mese o anno, in TUTTI i grafici».
  */
-export const REPORT_GRANULARITIES = ['day', 'week', 'month'] as const
+export const REPORT_GRANULARITIES = ['day', 'week', 'month', 'year'] as const
 export type ReportGranularity = typeof REPORT_GRANULARITIES[number]
 
 export function isReportGranularity(v: unknown): v is ReportGranularity {

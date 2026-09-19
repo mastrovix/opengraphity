@@ -45,6 +45,7 @@ export const GRANULARITIES = [
   { value: 'day',   labelKey: 'reportChart.granularity.day' },
   { value: 'week',  labelKey: 'reportChart.granularity.week' },
   { value: 'month', labelKey: 'reportChart.granularity.month' },
+  { value: 'year',  labelKey: 'reportChart.granularity.year' },
 ]
 
 export const DATE_FIELD_NAMES = ['created_at', 'updated_at', 'resolved_at', 'expires_at', 'scheduled_start', 'scheduled_end', 'implemented_at']
@@ -237,12 +238,14 @@ export function ReportChartConfig({
             Stava solo sulle serie, e intanto il costruttore offriva i campi
             data anche agli istogrammi: raggruppare le barre per «Creato il»
             dava una barra per timestamp — dodici barre alte 1 con sotto
-            «2026-07-15T11:05:33.963Z». O si toglievano i campi data dal
-            raggruppamento degli altri grafici, o si dava anche a loro il
-            periodo: la seconda, perché «gli incident per mese a barre» è una
-            domanda normale.
+            «2026-07-15T11:05:33.963Z».
+
+            `needsGroupBy` e non il tipo di grafico: dove il raggruppamento
+            non c'è (numero totale, tabella) il periodo non vuol dire niente,
+            e il campo scelto prima resterebbe nello stato a far comparire una
+            tendina che non governa niente.
           */}
-          {(isTimeSeries || raggruppaPerData) && (
+          {needsGroupBy && raggruppaPerData && (
             <div>
               <label htmlFor={ids.granularity} style={labelStyle}>{t('reportChart.granularityLabel')}</label>
               <select id={ids.granularity} value={groupByGranularity || 'day'}
@@ -304,7 +307,7 @@ export function ReportChartConfig({
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={labelStyle}>{t('reportChart.livePreview')}</div>
-          <ReportPreview loading={previewLoading} data={previewData} />
+          <ReportPreview loading={previewLoading} data={previewData} granularita={raggruppaPerData ? groupByGranularity : null} />
         </div>
       </div>
     </div>

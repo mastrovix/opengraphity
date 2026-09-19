@@ -21,6 +21,11 @@ interface Props {
   error?:    string | null
   /** L'etichetta di un valore raggruppato (Dizionario, passi del workflow): giro del 14 set 2026, #11. */
   valueLabel?: (value: string) => string
+  /**
+   * Il periodo del raggruppamento (`day`/`week`/`month`/`year`), quando chi
+   * disegna lo conosce: toglie l'indovinello sulle etichette temporali.
+   */
+  granularita?: string | null
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -54,7 +59,7 @@ function ChartError({ title, message }: { title: string; message: string }) {
 
 const REPORT_STYLE = { showValueLabels: true } as const
 
-export function ReportChartRenderer({ chartType, data, title, error, valueLabel }: Props) {
+export function ReportChartRenderer({ chartType, data, title, error, valueLabel, granularita }: Props) {
   const { t, i18n } = useTranslation()
   const locale = i18n.language
   if (error) return <ChartError title={t('components.reportChart.computeError')} message={error} />
@@ -87,19 +92,19 @@ export function ReportChartRenderer({ chartType, data, title, error, valueLabel 
     }
 
     case 'pie':
-      return <ReactECharts option={buildPieOption(points(), REPORT_STYLE)} {...echartsProps} />
+      return <ReactECharts option={buildPieOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
 
     case 'donut': {
       const pts = points()
       const total = pts.reduce((s, p) => s + p.value, 0)
-      return <ReactECharts option={buildPieOption(pts, { ...REPORT_STYLE, donut: true, centerText: total.toLocaleString(locale) })} {...echartsProps} />
+      return <ReactECharts option={buildPieOption(pts, { ...REPORT_STYLE, donut: true, centerText: total.toLocaleString(locale), locale: i18n.language, granularita })} {...echartsProps} />
     }
 
     case 'bar':
-      return <ReactECharts option={buildBarOption(points(), { ...REPORT_STYLE, locale: i18n.language })} {...echartsProps} />
+      return <ReactECharts option={buildBarOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
 
     case 'bar_horizontal':
-      return <ReactECharts option={buildHorizontalBarOption(points(), REPORT_STYLE)} {...echartsProps} />
+      return <ReactECharts option={buildHorizontalBarOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
 
     /*
      * LA CLASSIFICA si disegna come una barra ORIZZONTALE (19 set 2026).
@@ -115,13 +120,13 @@ export function ReportChartRenderer({ chartType, data, title, error, valueLabel 
      * barre ({label, value} già ordinati e tagliati dal server).
      */
     case 'top_n':
-      return <ReactECharts option={buildHorizontalBarOption(points(), REPORT_STYLE)} {...echartsProps} />
+      return <ReactECharts option={buildHorizontalBarOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
 
     case 'line':
-      return <ReactECharts option={buildLineOption(points(), { locale: i18n.language })} {...echartsProps} />
+      return <ReactECharts option={buildLineOption(points(), { locale: i18n.language, granularita })} {...echartsProps} />
 
     case 'area':
-      return <ReactECharts option={buildLineOption(points(), { area: true, locale: i18n.language })} {...echartsProps} />
+      return <ReactECharts option={buildLineOption(points(), { area: true, locale: i18n.language, granularita })} {...echartsProps} />
 
     case 'table': {
       const d = parsed as TableData

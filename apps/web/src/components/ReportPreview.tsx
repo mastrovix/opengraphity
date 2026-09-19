@@ -16,9 +16,11 @@ interface Props {
   data:        SectionResult | null
   title?:      string
   placeholder?: string
+  /** Il periodo del raggruppamento: lo sa il costruttore, e toglie l'indovinello sulle date. */
+  granularita?: string | null
 }
 
-export function ReportPreview({ loading, data, title, placeholder }: Props) {
+export function ReportPreview({ loading, data, title, placeholder, granularita }: Props) {
   const { t } = useTranslation()
   return (
     <div style={{
@@ -36,6 +38,7 @@ export function ReportPreview({ loading, data, title, placeholder }: Props) {
           data={data.data}
           title={title ?? data.title}
           error={data.error}
+          granularita={granularita}
         />
       ) : (
         <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', textAlign: 'center' }}>

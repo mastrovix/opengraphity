@@ -6516,7 +6516,8 @@
     "granularity": {
       "day": "By day",
       "week": "By week",
-      "month": "By month"
+      "month": "By month",
+      "year": "By year"
     }
   },
   "citypeDesigner": {

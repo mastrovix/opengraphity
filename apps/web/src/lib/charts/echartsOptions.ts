@@ -125,12 +125,12 @@ function itemColor(style: ChartStyle, i: number, palette: string[]): string {
 
 // ── Builder ──────────────────────────────────────────────────────────────────
 
-export function buildBarOption(points: ChartPoint[], style: ChartStyle & { locale?: string } = {}) {
+export function buildBarOption(points: ChartPoint[], style: ChartStyle & { locale?: string; granularita?: string | null } = {}) {
   const t = theme()
   const compact = style.compact ?? false
   const palette = chartPalette()
   // Anche un istogramma può essere raggruppato per mese: stesse etichette.
-  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en')
+  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en', { granularita: style.granularita })
     ?? points.map((p) => p.label)
   return {
     tooltip: tooltip('axis', { axisPointer: { type: 'shadow' } }),
@@ -150,11 +150,13 @@ export function buildBarOption(points: ChartPoint[], style: ChartStyle & { local
   }
 }
 
-export function buildHorizontalBarOption(points: ChartPoint[], style: ChartStyle = {}) {
+export function buildHorizontalBarOption(points: ChartPoint[], style: ChartStyle & { locale?: string; granularita?: string | null } = {}) {
   const t = theme()
   const compact = style.compact ?? false
   const palette = chartPalette()
-  const rev = [...points].reverse()
+  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en', { unaRiga: true, granularita: style.granularita })
+  const conEtichette = etichette === null ? points : points.map((p, i) => ({ ...p, label: etichette[i]! }))
+  const rev = [...conEtichette].reverse()
   return {
     tooltip: tooltip('axis', { axisPointer: { type: 'shadow' } }),
     grid: { left: 16, right: 60, bottom: 16, top: 16, containLabel: true },
@@ -191,32 +193,57 @@ export function buildHorizontalBarOption(points: ChartPoint[], style: ChartStyle
  * prima che il periodo esistesse, e per i widget della dashboard, che la
  * configurazione della sezione non ce l'hanno.
  */
-export function etichetteTemporali(labels: readonly string[], locale: string): string[] | null {
+export function etichetteTemporali(
+  labels: readonly string[], locale: string,
+  opts: { unaRiga?: boolean; granularita?: string | null } = {},
+): string[] | null {
   const ISO = /^(\d{4})-(\d{2})-(\d{2})$/
   const pezzi = labels.map((l) => ISO.exec(l))
   if (labels.length === 0 || pezzi.some((m) => m === null)) return null
 
-  const mensile = pezzi.every((m) => m![3] === '01')
+  /*
+   * IL PERIODO, SE LO SAPPIAMO, LO DICE CHI CHIAMA.
+   *
+   * Il costruttore e il dettaglio del report conoscono `groupByGranularity`:
+   * passarlo toglie ogni indovinello. Con un solo punto l'inferenza sbagliava
+   * — una torta raggruppata PER ANNO con un anno solo di dati mostrava «gen
+   * 2026» invece di «2026» (visto nel browser il 19 set).
+   *
+   * L'inferenza resta per chi quel dato non ce l'ha: i widget della dashboard
+   * e le sezioni salvate prima che il periodo esistesse.
+   */
+  const annuale = opts.granularita === 'year'
+    || (opts.granularita == null && pezzi.length >= 2 && pezzi.every((m) => m![2] === '01' && m![3] === '01'))
+  const mensile = !annuale && (opts.granularita === 'month'
+    || (opts.granularita == null && pezzi.every((m) => m![3] === '01')))
   let annoPrecedente = ''
   return pezzi.map((m) => {
     const [, anno, mese, giorno] = m!
+    if (annuale) return anno!
     // Mezzogiorno UTC: costruire la data a mezzanotte la farebbe scivolare al
     // giorno prima nei fusi a ovest, e un «1 gennaio» diventerebbe dicembre.
     const d = new Date(Date.UTC(Number(anno), Number(mese) - 1, Number(giorno), 12))
     const periodo = mensile
       ? d.toLocaleDateString(locale, { month: 'short', timeZone: 'UTC' })
       : d.toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' })
+    /*
+     * Due righe solo dove c'è un ASSE condiviso (linea, barre verticali): lì
+     * l'anno vale per tutte le etichette che seguono. In una torta o in una
+     * barra orizzontale ogni etichetta sta per conto suo — una riga, con
+     * l'anno sempre, altrimenti «gen» da solo non dice di quale anno è.
+     */
+    if (opts.unaRiga === true) return `${periodo} ${anno!}`
     const nuovo = anno !== annoPrecedente
     annoPrecedente = anno!
     return nuovo ? `${periodo}\n${anno!}` : periodo
   })
 }
 
-export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area?: boolean; locale?: string } = {}) {
+export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area?: boolean; locale?: string; granularita?: string | null } = {}) {
   const t = theme()
   const compact = style.compact ?? false
   const color = style.color ?? t.brand
-  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en')
+  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en', { granularita: style.granularita })
     ?? points.map((p) => p.label)
   return {
     tooltip: tooltip('axis'),
@@ -240,11 +267,12 @@ export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area
   }
 }
 
-export function buildPieOption(points: ChartPoint[], style: ChartStyle & { donut?: boolean; centerText?: string } = {}) {
+export function buildPieOption(points: ChartPoint[], style: ChartStyle & { donut?: boolean; centerText?: string; locale?: string; granularita?: string | null } = {}) {
   const t = theme()
   const compact = style.compact ?? false
   const palette = chartPalette()
   const donut = style.donut ?? false
+  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en', { unaRiga: true, granularita: style.granularita })
   return {
     tooltip: tooltip('item', { formatter: '{b}: {c} ({d}%)' }),
     legend: legend(compact),
@@ -261,7 +289,9 @@ export function buildPieOption(points: ChartPoint[], style: ChartStyle & { donut
       radius: donut ? (compact ? ['40%', '70%'] : ['40%', '65%']) : (compact ? '65%' : ['0%', '65%']),
       center: ['50%', '45%'],
       data: points.map((p, i) => ({
-        name: p.label,
+        // Le fette non hanno un asse: l'etichetta temporale va su una riga
+        // sola, con l'anno (vedi `etichetteTemporali`).
+        name: etichette?.[i] ?? p.label,
         value: p.value,
         itemStyle: { color: palette[i % palette.length], borderRadius: 4, borderWidth: 2, borderColor: cssVar('--color-white') },
       })),

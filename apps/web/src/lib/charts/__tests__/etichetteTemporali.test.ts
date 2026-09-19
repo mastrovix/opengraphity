@@ -31,9 +31,40 @@ describe('etichetteTemporali', () => {
     expect(etichetteTemporali(['2026-01-01'], 'it')).toEqual(['gen\n2026'])
   })
 
+  it('una serie annuale mostra solo l\'anno: «gen» sopra ogni anno sarebbe rumore', () => {
+    expect(etichetteTemporali(['2024-01-01', '2025-01-01', '2026-01-01'], 'it')).toEqual(['2024', '2025', '2026'])
+  })
+
+  it('un solo mese di gennaio non diventa una serie annuale', () => {
+    // Gennaio e febbraio: è mensile, non annuale.
+    expect(etichetteTemporali(['2026-01-01', '2026-02-01'], 'it')).toEqual(['gen\n2026', 'feb'])
+  })
+
   it('etichette che non sono date restano com\'erano (null = non è una serie)', () => {
     expect(etichetteTemporali(['alta', 'bassa'], 'it')).toBeNull()
     expect(etichetteTemporali(['2026-01-01', 'alta'], 'it')).toBeNull()
     expect(etichetteTemporali([], 'it')).toBeNull()
+  })
+})
+
+/**
+ * SENZA UN ASSE CONDIVISO l'etichetta sta su una riga e porta sempre l'anno:
+ * in una torta ogni fetta è per conto sua, e «gen» da solo non dice di quale
+ * anno sia. «Ma anche per le torte non ha senso vedere la data completa»
+ * (19 set 2026).
+ */
+describe('etichette a una riga (torte, barre orizzontali)', () => {
+  it('per mese: mese e anno, senza a capo', () => {
+    expect(etichetteTemporali(['2026-01-01', '2026-02-01'], 'it', { unaRiga: true }))
+      .toEqual(['gen 2026', 'feb 2026'])
+  })
+
+  it('per anno: solo l\'anno', () => {
+    expect(etichetteTemporali(['2025-01-01', '2026-01-01'], 'it', { unaRiga: true }))
+      .toEqual(['2025', '2026'])
+  })
+
+  it('per giorno: giorno, mese e anno', () => {
+    expect(etichetteTemporali(['2026-04-06'], 'it', { unaRiga: true })).toEqual(['6 apr 2026'])
   })
 })

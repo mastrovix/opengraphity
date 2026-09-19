@@ -29,7 +29,7 @@ import { showError } from '@/lib/showError'
 
 export interface ReportNode { id: string; entityType: string; neo4jLabel: string; label: string; isResult: boolean; isRoot: boolean; positionX: number; positionY: number; filters: string | null; selectedFields: string[] }
 export interface ReportEdge { id: string; sourceNodeId: string; targetNodeId: string; relationshipType: string; direction: string; label: string }
-export interface ReportSection { id: string; order: number; title: string; chartType: string; groupByNodeId: string | null; groupByField: string | null; metric: string; metricField: string | null; limit: number | null; sortDir: string | null; nodes: ReportNode[]; edges: ReportEdge[] }
+export interface ReportSection { id: string; order: number; title: string; chartType: string; groupByNodeId: string | null; groupByField: string | null; groupByGranularity: string | null; metric: string; metricField: string | null; limit: number | null; sortDir: string | null; nodes: ReportNode[]; edges: ReportEdge[] }
 export interface ReportTemplate { id: string; name: string; description: string | null; icon: string | null; visibility: string; scheduleEnabled: boolean; scheduleCron: string | null; scheduleChannelId?: string | null; scheduleRecipients: string[]; scheduleFormat: string | null; lastScheduledRun: string | null; createdAt: string; updatedAt?: string; createdBy: { id: string; name: string } | null; sharedWith: { id: string; name: string }[]; sections: ReportSection[] }
 export interface Channel { id: string; name: string; platform: string }
 export interface SectionResult { sectionId: string; title: string; chartType: string; data: string; total: number | null; error: string | null }
@@ -249,7 +249,7 @@ export function useCustomReports() {
   function sectionToInput(s: ReportSection): ReportSectionInput {
     return {
       title: s.title, chartType: s.chartType,
-      groupByNodeId: s.groupByNodeId, groupByField: s.groupByField,
+      groupByNodeId: s.groupByNodeId, groupByField: s.groupByField, groupByGranularity: s.groupByGranularity,
       metric: s.metric, metricField: s.metricField,
       limit: s.limit, sortDir: s.sortDir,
       nodes: s.nodes.map(n => ({

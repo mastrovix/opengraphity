@@ -173,6 +173,6 @@ function SectionChart({ section, result }: { section: ReportSection; result: Sec
   const node = section.nodes.find((n) => n.id === section.groupByNodeId) ?? null
   const entity = node ? node.entityType.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase() : null
   const valueLabel = useFieldValueLabel(entity, section.groupByField)
-  return <ReportChartRenderer chartType={result.chartType} data={result.data} title={result.title} error={result.error} valueLabel={valueLabel} />
+  return <ReportChartRenderer chartType={result.chartType} data={result.data} title={result.title} error={result.error} valueLabel={valueLabel} granularita={section.groupByGranularity} />
 }
 

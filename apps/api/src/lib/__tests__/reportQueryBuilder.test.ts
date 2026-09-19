@@ -462,3 +462,24 @@ describe('la granularità di una serie', () => {
     expect(classifica).toContain("toString(date.truncate('month', datetime(n0.created_at)))")
   })
 })
+
+/**
+ * PER ANNO (19 set 2026): «quando si raggruppa per data devo poter
+ * specificare sempre se per giorno, mese o anno, in tutti i grafici in cui
+ * ha senso farlo».
+ */
+describe('il periodo per anno', () => {
+  const sez = (over: Partial<ReportSectionDef>): ReportSectionDef => section({
+    nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] })], ...over,
+  })
+
+  it('una serie per anno', () => {
+    expect(buildReportQuery(sez({ chartType: 'line', groupByField: 'created_at', groupByGranularity: 'year' }), 't1', whitelist).query)
+      .toContain("toString(date.truncate('year', datetime(n0.created_at)))")
+  })
+
+  it('una torta per anno', () => {
+    expect(buildReportQuery(sez({ chartType: 'pie', groupByField: 'resolved_at', groupByGranularity: 'year' }), 't1', whitelist).query)
+      .toContain("toString(date.truncate('year', datetime(n0.resolved_at)))")
+  })
+})

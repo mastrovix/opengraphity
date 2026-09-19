@@ -637,7 +637,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={labelStyle}>{t('reportBuilder.finalPreview')}</div>
-            <ReportPreview loading={previewLoading} data={previewData} title={title || undefined} placeholder={t('reportBuilder.noPreview')} />
+            <ReportPreview loading={previewLoading} data={previewData} title={title || undefined} placeholder={t('reportBuilder.noPreview')} granularita={granularita} />
           </div>
         </div>
       </div>
