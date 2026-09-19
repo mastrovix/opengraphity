@@ -2434,7 +2434,10 @@
         "newItemPriority": "Priority",
         "newItemApproval": "Needs an approval",
         "newItemCreate": "Create and design",
-        "endUserHelp": "Whoever opens the request from the portal sees it. Off, the field stays with whoever works the request from the workspace."
+        "endUserHelp": "Whoever opens the request from the portal sees it. Off, the field stays with whoever works the request from the workspace.",
+        "visibilityTitle": "Visibility",
+        "visibilityHelp": "The field appears only when the condition is true. The browser evaluates it while filling in and the server checks it again on save: an answer to a hidden field is refused.",
+        "visibilityNoSubjects": "A condition looks at ANOTHER field’s answer, and this form has none that can be looked at yet. Add a field that carries an answer — text, number, date, yes/no or a choice — and the condition will show up here."
       },
       "library": {
         "intro": "A field is defined once and reused by every form. Its name becomes the property on the ticket, which is why it can be filtered and reported on — and why it cannot be renamed.",

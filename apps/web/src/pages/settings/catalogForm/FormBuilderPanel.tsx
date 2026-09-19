@@ -1391,15 +1391,39 @@ function EditorCondizione({ condizione, soggetti, etichettaDi, campoDi, onChange
   const { t } = useTranslation()
   const regole = condizione?.rules ?? []
 
-  if (soggetti.length === 0 && regole.length === 0) return null
-
   return (
     <div style={{ marginTop: 8, paddingLeft: 10, borderLeft: `2px solid ${colors.slateBg}` }}>
-      {regole.length === 0 ? (
+      {/*
+        LA VISIBILITÀ SI VEDE SEMPRE, ANCHE QUANDO NON SI PUÒ USARE
+        (19 set 2026).
+
+        Prima, senza nessun campo da guardare, questo blocco non disegnava
+        NIENTE: nelle proprietà di un campo non c'era traccia delle regole di
+        visibilità, e il proprietario le ha cercate — «non vedo le regole di
+        visibilità». Una funzione che sparisce quando non è disponibile si
+        legge come una funzione che non esiste.
+
+        Adesso il titolo c'è comunque, e quando manca il presupposto lo dice:
+        una condizione guarda la RISPOSTA DI UN ALTRO CAMPO, quindi serve
+        almeno un altro campo che porti una risposta.
+      */}
+      <div style={{ fontSize: 'var(--font-size-table)', fontWeight: fontWeight.medium, color: 'var(--color-slate)', marginBottom: 4 }}>
+        {t('pages.catalogForms.builder.visibilityTitle')}
+      </div>
+      {soggetti.length === 0 && regole.length === 0 ? (
+        <p style={{ margin: 0, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', maxWidth: '62ch' }}>
+          {t('pages.catalogForms.builder.visibilityNoSubjects')}
+        </p>
+      ) : regole.length === 0 ? (
         <button type="button" style={{ ...bottone, padding: '3px 8px', fontSize: 'var(--font-size-table)' }}
           onClick={() => onChange({ match: 'all', rules: [{ field: soggetti[0]!, op: 'eq', value: '' }] })}>
           <Plus size={12} /> {t('pages.catalogForms.builder.addCondition')}
         </button>
+      ) : null}
+      {soggetti.length > 0 && regole.length === 0 ? (
+        <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', maxWidth: '62ch' }}>
+          {t('pages.catalogForms.builder.visibilityHelp')}
+        </p>
       ) : (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: 'var(--font-size-table)', color: 'var(--color-slate)' }}>
