@@ -373,6 +373,18 @@ export interface CatalogFormItem {
    * visibile e compilabile dall'area di lavoro). Assente = offerto.
    */
   readonly endUser?: boolean
+  /**
+   * SOLA LETTURA in questo modulo (19 set 2026).
+   *
+   * Il campo si vede ma non si compila: il valore arriva da fuori — una
+   * automazione che lo scrive, un dato che si vuole mostrare a chi guarda la
+   * richiesta. Non e la stessa cosa di un campo CALCOLATO, che il suo valore
+   * se lo fa da se con la formula; qui il valore puo anche non esserci.
+   *
+   * Sta sulla VOCE e non sul campo: lo stesso campo puo essere compilabile in
+   * un modulo e solo da leggere in un altro.
+   */
+  readonly readOnly?: boolean
 }
 
 export interface CatalogFormSection {

@@ -112,6 +112,22 @@ export function ProprietaVoce({
         </label>
       )}
 
+      {/*
+        SOLA LETTURA (19 set 2026). Sta con le proprietà di QUESTO modulo, non
+        col campo: lo stesso campo può essere compilabile in un modulo e solo
+        da leggere in un altro — «manca la possibilità di renderlo read only».
+      */}
+      <label style={spunta}>
+        <input type="checkbox" checked={item.readOnly === true}
+          onChange={(e) => { onItem({ ...item, readOnly: e.target.checked }) }} style={{ marginTop: 3 }} />
+        <span>
+          {t('pages.catalogForms.builder.readOnly')}
+          <span style={{ display: 'block', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+            {t('pages.catalogForms.builder.readOnlyHelp')}
+          </span>
+        </span>
+      </label>
+
       <div style={{ marginTop: 14 }}>{editorCondizione}</div>
 
       {campoDiLibreria}

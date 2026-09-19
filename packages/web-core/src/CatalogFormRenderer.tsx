@@ -446,7 +446,16 @@ function CampoDelModulo({ campo, item, valore, errore, erroreFormula, computedLa
    * valore, perché un campo vuoto senza spiegazione sembrerebbe un dato che
    * manca.
    */
-  if (campo.formula && campo.formula.trim() !== '') {
+  /*
+   * SOLA LETTURA: si mostra il VALORE, come per un campo calcolato.
+   *
+   * Una casella spenta dice «qui potresti scrivere, ma no»; il valore scritto
+   * dice quello che c'è, che è l'unica cosa che interessa a chi legge. Il
+   * valore di un campo in sola lettura arriva da fuori — un'automazione, una
+   * formula — e può benissimo non esserci ancora: allora si vede un trattino,
+   * non una casella vuota che invita a scriverci.
+   */
+  if (item.readOnly === true || (campo.formula && campo.formula.trim() !== '')) {
     const mostrato = valore == null || valore === '' ? '—'
       : typeof valore === 'boolean' ? (valore ? (yesLabel ?? 'yes') : (noLabel ?? 'no'))
       : Array.isArray(valore) ? valore.join(', ')

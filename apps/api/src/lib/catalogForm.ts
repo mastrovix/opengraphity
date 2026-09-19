@@ -345,6 +345,10 @@ function voce(raw: unknown, where: string): CatalogFormItem {
     if (typeof o['defaultValue'] !== 'string') throw new ValidationError(`${where}: defaultValue must be text.`, { key: 'errors.catalogForm.shape', params: { where } })
     item['defaultValue'] = o['defaultValue']
   }
+  if (o['readOnly'] != null) {
+    if (typeof o['readOnly'] !== 'boolean') throw new ValidationError(`${where}: readOnly must be true or false.`, { key: 'errors.catalogForm.shape', params: { where } })
+    item['readOnly'] = o['readOnly']
+  }
   if (o['endUser'] != null) {
     if (typeof o['endUser'] !== 'boolean') throw new ValidationError(`${where}: endUser must be true or false.`, { key: 'errors.catalogForm.shape', params: { where } })
     item['endUser'] = o['endUser']
@@ -540,6 +544,20 @@ export function assertCatalogForm(def: CatalogFormDefinition, library: ReadonlyM
        * sopra): un riferimento obbligatorio non si pubblica, e questo è il
        * modo giusto di scoprirlo.
        */
+      /*
+       * SOLA LETTURA + OBBLIGATORIO = un dato che nessuno puo mettere.
+       *
+       * Un campo in sola lettura non si compila: se e anche obbligatorio, la
+       * richiesta non nasce — e chi compila si trova bloccato davanti a un
+       * campo che non puo toccare. L'eccezione e il campo CALCOLATO: li il
+       * valore ce lo mette la formula, quindi obbligatorio ha senso.
+       */
+      if (i.readOnly === true && (i.required ?? f.required) && !f.formula) {
+        throw new ValidationError(
+          `The field "${i.field}" is read-only and required, and it has no formula: nobody could ever fill it, so the request could not be created. Either drop the requirement, or give the field a formula.`,
+          { key: 'errors.catalogForm.readOnlyRequired', params: { field: i.field } },
+        )
+      }
       if ((i.required ?? f.required) && i.endUser === false) {
         throw new ValidationError(
           `The field "${i.field}" is required but it is not offered in the portal: a request opened from the portal would never be asked for it, and nothing can fill it afterwards. Either offer it in the portal, or stop requiring it.`,
@@ -894,6 +912,16 @@ export async function resolveFormWrites(
     if (campo.formula) {
       throw new ValidationError(`The field "${nome(campo)}" is computed: its value comes from its formula, it cannot be sent.`,
         { key: 'errors.catalogForm.answerComputed', params: { field: nome(campo), name: campo.name } })
+    }
+    /*
+     * Un campo in SOLA LETTURA non si riceve da chi compila, per la stessa
+     * ragione: il modulo non gliel'ha nemmeno offerto, quindi un valore che
+     * arriva viene da un client che non rispetta il documento. Le automazioni
+     * passano da un'altra strada (`writeFormAnswer`) e non da qui.
+     */
+    if (item.readOnly === true) {
+      throw new ValidationError(`The field "${nome(campo)}" is read-only in this form: its value does not come from whoever fills it.`,
+        { key: 'errors.catalogForm.answerReadOnly', params: { field: nome(campo), name: campo.name } })
     }
 
     const multi = FORM_FIELD_TYPES_MULTI.includes(campo.fieldType)

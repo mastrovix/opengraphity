@@ -2437,7 +2437,9 @@
         "endUserHelp": "Whoever opens the request from the portal sees it. Off, the field stays with whoever works the request from the workspace.",
         "visibilityTitle": "Visibility",
         "visibilityHelp": "The field appears only when the condition is true. The browser evaluates it while filling in and the server checks it again on save: an answer to a hidden field is refused.",
-        "visibilityNoSubjects": "A condition looks at ANOTHER field’s answer, and this form has none that can be looked at yet. Add a field that carries an answer — text, number, date, yes/no or a choice — and the condition will show up here."
+        "visibilityNoSubjects": "A condition looks at ANOTHER field’s answer, and this form has none that can be looked at yet. Add a field that carries an answer — text, number, date, yes/no or a choice — and the condition will show up here.",
+        "readOnly": "Read-only in this form",
+        "readOnlyHelp": "It is shown but not filled in: the value comes from elsewhere, for instance an automation. A read-only field cannot be required unless it has a formula."
       },
       "library": {
         "intro": "A field is defined once and reused by every form. Its name becomes the property on the ticket, which is why it can be filtered and reported on — and why it cannot be renamed.",
@@ -4372,7 +4374,9 @@
       "answerNotATable": "The field \"{{field}}\" is not a table: it takes a value, not rows. Whatever sent it has a defect.",
       "revisionChanged": "The form of \"{{item}}\" changed while you were filling it (it was revision {{filled}}, now it is {{current}}): these answers belong to another form. Start the request again.",
       "sectionTitleRequired": "The section «{{section}}» has no title in {{language}}: a section without a name is an anonymous block on the form.",
-      "sectionColumns": "{{where}}: a section has one or two columns, nothing else."
+      "sectionColumns": "{{where}}: a section has one or two columns, nothing else.",
+      "readOnlyRequired": "The field «{{field}}» is read-only and required, and it has no formula: nobody could fill it, so the request would never be created. Drop the requirement, or give it a formula.",
+      "answerReadOnly": "The field «{{field}}» is read-only in this form: its value does not come from whoever fills it."
     },
     "serviceCatalog": {
       "workflowNotFound": "That workflow does not exist here, or it is not active.",

@@ -2437,7 +2437,9 @@
         "endUserHelp": "Lo vede chi apre la richiesta dal portale. Spento, il campo resta a chi la lavora dall’area di lavoro.",
         "visibilityTitle": "Visibilità",
         "visibilityHelp": "Il campo compare solo se la condizione è vera. La valuta il browser mentre si compila e la ricontrolla il server quando si salva: una risposta a un campo nascosto viene rifiutata.",
-        "visibilityNoSubjects": "Una condizione guarda la risposta di un ALTRO campo, e in questo modulo non ce n’è ancora nessuno che possa essere guardato. Aggiungi un campo che porti una risposta — testo, numero, data, sì/no o una scelta — e qui comparirà la condizione."
+        "visibilityNoSubjects": "Una condizione guarda la risposta di un ALTRO campo, e in questo modulo non ce n’è ancora nessuno che possa essere guardato. Aggiungi un campo che porti una risposta — testo, numero, data, sì/no o una scelta — e qui comparirà la condizione.",
+        "readOnly": "Sola lettura in questo modulo",
+        "readOnlyHelp": "Si vede ma non si compila: il valore arriva da fuori, per esempio da un’automazione. Un campo in sola lettura non può essere obbligatorio, se non ha una formula."
       },
       "library": {
         "intro": "Un campo si definisce una volta e lo riusano tutti i moduli. Il suo nome diventa la proprietà sul ticket — è il motivo per cui si può filtrare e riportare, e il motivo per cui non si può rinominare.",
@@ -4372,7 +4374,9 @@
       "answerNotATable": "Il campo «{{field}}» non è una tabella: vuole un valore, non delle righe. Chi l'ha mandato ha un difetto.",
       "revisionChanged": "Il modulo di «{{item}}» è cambiato mentre lo compilavi (era la revisione {{filled}}, ora è la {{current}}): queste risposte sono di un altro modulo. Rifai la richiesta.",
       "sectionTitleRequired": "La sezione «{{section}}» non ha un titolo in {{language}}: una sezione senza nome, sul modulo, è un blocco anonimo.",
-      "sectionColumns": "{{where}}: una sezione ha una o due colonne, nient’altro."
+      "sectionColumns": "{{where}}: una sezione ha una o due colonne, nient’altro.",
+      "readOnlyRequired": "Il campo «{{field}}» è in sola lettura e obbligatorio, e non ha una formula: nessuno potrebbe riempirlo, quindi la richiesta non nascerebbe. Togli l’obbligo, oppure dagli una formula.",
+      "answerReadOnly": "Il campo «{{field}}» è in sola lettura in questo modulo: il suo valore non viene da chi compila."
     },
     "serviceCatalog": {
       "workflowNotFound": "Quel workflow qui non esiste, oppure è spento.",

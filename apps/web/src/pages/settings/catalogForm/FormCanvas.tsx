@@ -22,7 +22,7 @@
  */
 import { useTranslation } from 'react-i18next'
 import {
-  AlignLeft, Calendar, CalendarClock, CalendarDays, ChevronDown, Eye, Hash, Info, List, ListChecks,
+  AlignLeft, Calendar, CalendarClock, CalendarDays, ChevronDown, Eye, Hash, Info, List, ListChecks, Lock,
   Paperclip, Search, Server, Table2, ToggleLeft, Type, User, Users,
 } from 'lucide-react'
 import { larghezzaEffettiva, localizedText, type CatalogFormDefinition, type CatalogFormItem } from '@opengraphity/types'
@@ -269,7 +269,14 @@ function CampoSullaTela({
               <Eye size={12} />
             </span>
           )}
-          {campo?.formula != null && campo.formula !== '' && (
+          {/* Il lucchetto: un campo che non si compila si deve riconoscere
+            sulla tela, se no lo si scopre solo in anteprima. */}
+        {item.readOnly === true && (
+          <span title={t('pages.catalogForms.builder.readOnly')} style={{ display: 'flex', color: 'var(--color-slate-light)' }}>
+            <Lock size={12} />
+          </span>
+        )}
+        {campo?.formula != null && campo.formula !== '' && (
             <span style={{ color: 'var(--color-slate-light)', fontFamily: 'var(--font-mono)' }}>ƒ</span>
           )}
         </span>

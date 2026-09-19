@@ -446,6 +446,39 @@ describe('ondata 2: riferimenti e allegati', () => {
     expect(() => assertCatalogForm(def, lib)).toThrow(/required but it is not offered in the portal/)
   })
 
+  /*
+   * SOLA LETTURA (19 set 2026). Un campo che si vede ma non si compila e
+   * legittimo — il valore lo scrive un'automazione — ma OBBLIGATORIO e senza
+   * formula diventa una richiesta che nessuno puo creare: si rifiuta dove si
+   * puo rimediare, cioe alla pubblicazione.
+   */
+  it('sola lettura + obbligatorio senza formula non si pubblica', () => {
+    const def: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'costo', readOnly: true, required: true }] }],
+    }
+    expect(() => assertCatalogForm(def, LIBRERIA)).toThrow(/read-only and required/)
+    expect(() => assertCatalogForm(def, LIBRERIA)).toThrow(/costo/)
+  })
+
+  it('sola lettura CON formula si pubblica: il valore ce lo mette la formula', () => {
+    const lib = new Map(LIBRERIA)
+    lib.set('costo', campo('costo', 'number', { formula: 'return 1' }))
+    const def: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'costo', readOnly: true, required: true }] }],
+    }
+    expect(() => assertCatalogForm(def, lib)).not.toThrow()
+  })
+
+  it('sola lettura senza obbligo si pubblica: il valore arriva da fuori', () => {
+    const def: CatalogFormDefinition = {
+      version: 1, revision: 1,
+      sections: [{ id: 'a', title: { it: 'Sezione', en: 'Section' }, items: [{ field: 'costo', readOnly: true }] }],
+    }
+    expect(() => assertCatalogForm(def, LIBRERIA)).not.toThrow()
+  })
+
   it('una condizione non può guardare un allegato né un riferimento', () => {
     const suFile: CatalogFormDefinition = {
       version: 1, revision: 1,
