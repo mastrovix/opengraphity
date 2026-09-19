@@ -261,11 +261,11 @@ export const GET_MY_TASKS = gql`
     myTasks {
       assignedToMe {
         id code kind role action status
-        changeId changeCode ciId ciName phase createdAt
+        entityType entityId entityNumber ciId ciName phase createdAt
       }
       unassigned {
         id code kind role action status
-        changeId changeCode ciId ciName phase createdAt
+        entityType entityId entityNumber ciId ciName phase createdAt
       }
     }
   }

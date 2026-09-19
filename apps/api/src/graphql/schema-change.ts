@@ -251,17 +251,29 @@ export function changeSDL(): string {
     detailParams: String
   }
 
+  """
+  Qualcosa da fare, per «I miei compiti». Erano solo i cinque compiti delle
+  CHANGE; dal 20 set 2026 c'è anche il compito generico (\`kind: "task"\`),
+  che un passo di workflow crea su qualunque ticket. Per questo i campi
+  parlano di ENTITÀ e non di change, e quelli che valgono solo per le change
+  (il CI) possono mancare.
+  """
   type MyTask {
     id:         ID!
     code:       String!
+    """assessment | deploy-plan | validation | deployment | review | task."""
     kind:       String!
     role:       String!
     action:     String!
     status:     String!
-    changeId:   ID!
-    changeCode: String!
-    ciId:       ID!
-    ciName:     String!
+    """Il tipo del ticket: dove porta il link, e come si chiama quello che si apre."""
+    entityType: String!
+    entityId:   ID!
+    """Il numero leggibile del ticket (CHG00000012, INC00000026)."""
+    entityNumber: String!
+    """Il CI del compito: solo per i compiti delle change, che nascono per CI."""
+    ciId:       ID
+    ciName:     String
     phase:      String!
     createdAt:  String!
   }

@@ -1945,7 +1945,7 @@
     },
     "myTasks": {
       "emptyTitle": "Nessun task per te",
-      "emptyDescription": "Quando una change entra in una fase che ti coinvolge, i task appariranno qui.",
+      "emptyDescription": "Quando un passo di un workflow crea un compito per te o per la tua squadra, lo trovi qui.",
       "assignedToMe": "Assegnati a me",
       "unassigned": "Da assegnare",
       "count": "{{total}} task ({{mine}} assegnati a te · {{free}} da prendere in carico)",
@@ -7295,6 +7295,7 @@
       "sync_source.deleted": "Sorgente di sincronizzazione cancellata",
       "sync_source.updated": "Sorgente di sincronizzazione modificata",
       "task.cancelled": "Compito annullato",
+      "task.claimed": "Compito preso in carico",
       "task.completed": "Compito chiuso",
       "team.change_manager_set": "Squadra designata Change Manager",
       "team.created": "Squadra creata",
@@ -7352,6 +7353,7 @@
       "cancelled": "Annullato",
       "waiting": "In attesa"
     },
-    "waitingFor": "aspetta «{{title}}»"
+    "waitingFor": "aspetta «{{title}}»",
+    "kindOne": "Compito"
   }
 }

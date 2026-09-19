@@ -387,10 +387,13 @@ type MyTaskRow = {
   role:       string
   action:     string
   status:     string
-  changeId:   string
-  changeCode: string
-  ciId:       string
-  ciName:     string
+  /** Il tipo del TICKET: i compiti delle change dicono 'change', i generici quello del loro. */
+  entityType: string
+  entityId:   string
+  entityNumber: string
+  /** Solo per i compiti delle change, che nascono per CI. */
+  ciId:       string | null
+  ciName:     string | null
   phase:      string
   createdAt:  string
 }
@@ -414,8 +417,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         coalesce(t.code, '') AS code,
         t.responder_role AS role,
         t.status         AS status,
-        c.id             AS changeId,
-        c.code           AS changeCode,
+        'change'         AS entityType,
+        c.id             AS entityId,
+        c.code           AS entityNumber,
         ci.id            AS ciId,
         ci.name          AS ciName,
         wi.current_step  AS phase,
@@ -437,8 +441,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         coalesce(t.code, '') AS code,
         t.responder_role AS role,
         t.status         AS status,
-        c.id             AS changeId,
-        c.code           AS changeCode,
+        'change'         AS entityType,
+        c.id             AS entityId,
+        c.code           AS entityNumber,
         ci.id            AS ciId,
         ci.name          AS ciName,
         wi.current_step  AS phase,
@@ -458,8 +463,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         vt.id          AS id,
         coalesce(vt.code, '') AS code,
         vt.status      AS status,
-        c.id           AS changeId,
-        c.code         AS changeCode,
+        'change'           AS entityType,
+        c.id           AS entityId,
+        c.code         AS entityNumber,
         ci.id          AS ciId,
         ci.name        AS ciName,
         wi.current_step AS phase,
@@ -478,8 +484,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         dp.id          AS id,
         coalesce(dp.code, '') AS code,
         dp.status      AS status,
-        c.id           AS changeId,
-        c.code         AS changeCode,
+        'change'           AS entityType,
+        c.id           AS entityId,
+        c.code         AS entityNumber,
         ci.id          AS ciId,
         ci.name        AS ciName,
         wi.current_step AS phase,
@@ -500,8 +507,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         dp.id          AS id,
         coalesce(dp.code, '') AS code,
         dp.status      AS status,
-        c.id           AS changeId,
-        c.code         AS changeCode,
+        'change'           AS entityType,
+        c.id           AS entityId,
+        c.code         AS entityNumber,
         ci.id          AS ciId,
         ci.name        AS ciName,
         wi.current_step AS phase,
@@ -521,8 +529,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         dt.id          AS id,
         coalesce(dt.code, '') AS code,
         dt.status      AS status,
-        c.id           AS changeId,
-        c.code         AS changeCode,
+        'change'           AS entityType,
+        c.id           AS entityId,
+        c.code         AS entityNumber,
         ci.id          AS ciId,
         ci.name        AS ciName,
         wi.current_step AS phase,
@@ -542,8 +551,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         rv.id          AS id,
         coalesce(rv.code, '') AS code,
         rv.status      AS status,
-        c.id           AS changeId,
-        c.code         AS changeCode,
+        'change'           AS entityType,
+        c.id           AS entityId,
+        c.code         AS entityNumber,
         ci.id          AS ciId,
         ci.name        AS ciName,
         wi.current_step AS phase,
@@ -601,6 +611,49 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         action: 'Confirm the outcome (Confirmed/Rejected)',
       })),
     ]
+
+    /**
+     * I COMPITI GENERICI (20 set 2026): quelli che un passo di workflow crea
+     * su qualunque ticket, non solo sulle change. Una query sola invece di
+     * sei, perché il nodo è uno solo.
+     *
+     * Chi li vede: chi li ha presi in carico (`ASSIGNED_TO`) fra i propri,
+     * e chi è nella squadra a cui sono assegnati fra quelli da prendere.
+     * Quelli IN ATTESA non compaiono: il loro turno non è arrivato, e una
+     * riga su cui non si può fare niente è rumore.
+     */
+    const compitiRows = await runQuery<Omit<MyTaskRow, 'kind'> & { miei: boolean }>(session, `
+      MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId, state: 'open'})
+      OPTIONAL MATCH (k)-[:ASSIGNED_TO]->(mio:User {id: $userId, tenant_id: $tenantId})
+      OPTIONAL MATCH (k)-[:ASSIGNED_TO_TEAM]->(:Team)<-[:MEMBER_OF]-(membro:User {id: $userId, tenant_id: $tenantId})
+      WITH k, ticket, mio, membro
+      WHERE mio IS NOT NULL OR (membro IS NOT NULL AND NOT EXISTS { (k)-[:ASSIGNED_TO]->(:User) })
+      RETURN
+        k.id          AS id,
+        k.code        AS code,
+        ''            AS role,
+        k.title       AS action,
+        k.state       AS status,
+        k.entity_type AS entityType,
+        ticket.id     AS entityId,
+        coalesce(ticket.number, ticket.code, '') AS entityNumber,
+        null          AS ciId,
+        null          AS ciName,
+        k.step_name   AS phase,
+        k.created_at  AS createdAt,
+        mio IS NOT NULL AS miei
+      ORDER BY k.created_at DESC
+    `, params)
+
+    for (const r of compitiRows) {
+      const { miei, ...riga } = r
+      // Il titolo del compito È l'azione (`k.title AS action`): l'ha scritto
+      // chi ha disegnato il passo, e dice esattamente cosa c'è da fare. Le
+      // altre righe hanno una frase del prodotto perché quei compiti non
+      // hanno un nome proprio.
+      const voce = { ...riga, kind: 'task' }
+      ;(miei ? assignedToMe : unassigned).push(voce)
+    }
 
     assignedToMe.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
     unassigned.sort((a, b)   => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))

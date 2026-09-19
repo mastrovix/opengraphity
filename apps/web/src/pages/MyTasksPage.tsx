@@ -12,7 +12,7 @@ import { QueryError } from '@/components/QueryError'
 import { colors, palette, lookupOrError } from '@/lib/tokens'
 import { GET_MY_TASKS } from '@/graphql/queries'
 import { useMe } from '@/hooks/useMe'
-import { ASSIGN_ASSESSMENT_TASK_TO_USER } from '@/graphql/mutations'
+import { ASSIGN_ASSESSMENT_TASK_TO_USER, CLAIM_TICKET_TASK } from '@/graphql/mutations'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '@/lib/taskStatus'
 import { formatDate } from '@/lib/datetime'
 import type { TFunction } from 'i18next'
@@ -25,12 +25,23 @@ interface MyTask {
   role:       string
   action:     string
   status:     string
-  changeId:   string
-  changeCode: string
-  ciId:       string
-  ciName:     string
+  /** Il tipo del ticket: decide dove porta il link. */
+  entityType: string
+  entityId:   string
+  entityNumber: string
+  /** Solo per i compiti delle change, che nascono per CI. */
+  ciId:       string | null
+  ciName:     string | null
   phase:      string
   createdAt:  string
+}
+
+/** Dove sta il ticket di un compito, per tipo. */
+const PAGINA_DEL_TICKET: Record<string, string> = {
+  incident:        '/incidents',
+  problem:         '/problems',
+  change:          '/changes',
+  service_request: '/requests',
 }
 
 interface MyTasksResult {
@@ -40,6 +51,7 @@ interface MyTasksResult {
 
 /** Chiavi, non etichette: la lingua la decide il client. */
 const KIND_LABEL_KEY: Record<string, string> = {
+  task:          'tasks.kindOne',
   assessment:    'changeTasks.kind.assessment',
   'deploy-plan': 'changeTasks.kind.deployPlan',
   validation:    'changeTasks.kind.validation',
@@ -48,6 +60,7 @@ const KIND_LABEL_KEY: Record<string, string> = {
 }
 
 const KIND_COLOR: Record<string, { bg: string; color: string }> = {
+  task:          { bg: colors.slateBg, color: 'var(--color-slate-dark)' },
   assessment:    { bg: palette.info.tint, color: colors.brand },
   'deploy-plan': { bg: palette.purple.tint, color: palette.purple.base },
   validation:    { bg: palette.warning.tint, color: palette.warning.text },
@@ -56,6 +69,8 @@ const KIND_COLOR: Record<string, { bg: string; color: string }> = {
 }
 
 const STATE_COLOR: Record<string, { bg: string; color: string; labelKey: string }> = {
+  // Il compito generico è «aperto», non «pending»: è il suo ciclo di vita.
+  open:          { bg: palette.info.tint, color: colors.brand, labelKey: 'tasks.state.open' },
   pending:       { bg: colors.slateBg, color: 'var(--color-slate-light)', labelKey: 'changeTasks.state.todo' },
   'in-progress': { bg: palette.warning.tint, color: palette.warning.text, labelKey: 'changeTasks.dot.inProgress' },
   in_progress:   { bg: palette.warning.tint, color: palette.warning.text, labelKey: 'changeTasks.dot.inProgress' },
@@ -81,6 +96,12 @@ interface TaskRowProps {
 
 function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
   const { t } = useTranslation()
+  /**
+   * Dove porta la riga. I compiti delle change hanno una pagina propria
+   * (`/tasks/:id`, dove si compila l'assessment); il compito generico no — e
+   * non gli serve: vive sul ticket, insieme agli altri suoi, e lì si chiude.
+   */
+  const dove = task.kind === 'task' ? (stradaDelTicket(task) ?? '/my-tasks') : `/tasks/${task.id}`
   const kindColor  = lookupOrError(KIND_COLOR,  task.kind,   'KIND_COLOR',  KIND_COLOR['assessment']!)
   const stateColor = lookupOrError(STATE_COLOR, task.status, 'STATE_COLOR', STATE_COLOR[TASK_STATUS.PENDING]!)
   return (
@@ -94,7 +115,7 @@ function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
       }}
     >
       <Link
-        to={`/tasks/${task.id}`}
+        to={dove}
         style={{
           textDecoration: 'none',
           fontSize:        'var(--font-size-label)',
@@ -113,18 +134,25 @@ function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
         {kindWithRole(task, t)}
       </Link>
       <Link
-        to={`/tasks/${task.id}`}
+        to={dove}
         style={{ flex: 1, minWidth: 0, textDecoration: 'none' }}
       >
         <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>
           <span style={{ color: 'var(--color-slate-light)', fontWeight: 400, marginRight: 6 }}>{task.code}</span>
           {/* CH-5: l'azione nella lingua di chi legge, da tipo e ruolo dell'attività (l'API la dà in inglese). */}
-          {t(`pages.myTasks.actionText.${task.kind === 'assessment' ? `assessment_${task.role}` : task.kind}`, { defaultValue: task.action })}
+          {/* Il compito generico porta il titolo che ha scritto chi ha
+              disegnato il passo: dice già cosa c'è da fare, meglio di
+              qualunque frase del prodotto. */}
+          {task.kind === 'task'
+            ? task.action
+            : t(`pages.myTasks.actionText.${task.kind === 'assessment' ? `assessment_${task.role}` : task.kind}`, { defaultValue: task.action })}
         </div>
         <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
-          <strong style={{ color: 'var(--color-slate)' }}>{task.changeCode}</strong>
-          {' · '}
-          CI: <strong style={{ color: 'var(--color-slate)' }}>{task.ciName}</strong>
+          <strong style={{ color: 'var(--color-slate)' }}>{task.entityNumber}</strong>
+          {/* Il CI c'è solo sui compiti delle change, che nascono per CI:
+              scrivere «CI: —» su un compito di una richiesta sarebbe
+              inventarsi un dato mancante che mancante non è. */}
+          {task.ciName && <>{' · '}CI: <strong style={{ color: 'var(--color-slate)' }}>{task.ciName}</strong></>}
           {' · '}
           {t('changeTasks.createdOn', { date: fmtDate(task.createdAt) })}
         </div>
@@ -160,14 +188,25 @@ function TaskRow({ task, onClaim, claimLoading }: TaskRowProps) {
   )
 }
 
-function groupByChange(tasks: MyTask[]): Array<{ changeId: string; changeCode: string; tasks: MyTask[] }> {
-  const m = new Map<string, { changeId: string; changeCode: string; tasks: MyTask[] }>()
+/** Dove porta il numero del ticket, secondo il suo tipo. */
+function stradaDelTicket(t: MyTask): string | null {
+  const base = PAGINA_DEL_TICKET[t.entityType]
+  return base ? `${base}/${t.entityId}` : null
+}
+
+/**
+ * I compiti raggruppati per TICKET (prima era «per change»): dal 20 set 2026
+ * la pagina elenca anche i compiti generici, che stanno su incident, problem
+ * e richieste di servizio.
+ */
+function groupByTicket(tasks: MyTask[]): Array<{ entityNumber: string; strada: string | null; tasks: MyTask[] }> {
+  const m = new Map<string, { entityNumber: string; strada: string | null; tasks: MyTask[] }>()
   for (const t of tasks) {
-    const g = m.get(t.changeCode) ?? { changeId: t.changeId, changeCode: t.changeCode, tasks: [] }
+    const g = m.get(t.entityNumber) ?? { entityNumber: t.entityNumber, strada: stradaDelTicket(t), tasks: [] }
     g.tasks.push(t)
-    m.set(t.changeCode, g)
+    m.set(t.entityNumber, g)
   }
-  return Array.from(m.values()).sort((a, b) => b.changeCode.localeCompare(a.changeCode))
+  return Array.from(m.values()).sort((a, b) => b.entityNumber.localeCompare(a.entityNumber))
 }
 
 export function MyTasksPage() {
@@ -179,6 +218,11 @@ export function MyTasksPage() {
     fetchPolicy: 'cache-and-network',
   })
 
+  const [claimTicketTask, { loading: prendendo }] = useMutation(CLAIM_TICKET_TASK, {
+    onCompleted: async () => { toast.success(t('toast.task.claimed')); await refetch() },
+    onError:     (e) => showError(e),
+  })
+
   const [claimTask, { loading: claiming }] = useMutation(ASSIGN_ASSESSMENT_TASK_TO_USER, {
     onCompleted: async () => { toast.success(t('toast.task.claimed')); await refetch() },
     onError:     (e) => showError(e),
@@ -188,14 +232,23 @@ export function MyTasksPage() {
   const unassigned   = data?.myTasks?.unassigned ?? []
   const total        = assignedToMe.length + unassigned.length
 
-  const assignedGroups   = groupByChange(assignedToMe)
-  const unassignedGroups = groupByChange(unassigned)
+  const assignedGroups   = groupByTicket(assignedToMe)
+  const unassignedGroups = groupByTicket(unassigned)
 
+  /**
+   * «Lo prendo io». Due mutation diverse perché sono due nodi diversi: i
+   * compiti delle change hanno la loro, i compiti generici la propria — che
+   * non chiede l'utente, perché è sempre chi clicca.
+   */
   const handleClaim = (task: MyTask) => {
+    if (task.kind === 'task') { void claimTicketTask({ variables: { taskId: task.id } }); return }
     if (!currentUserId) { toast.error(t('toast.task.userUnknown')); return }
     if (task.kind !== 'assessment' && task.kind !== 'deploy-plan') return
     void claimTask({ variables: { taskId: task.id, userId: currentUserId } })
   }
+
+  /** Si può prendere: i compiti delle change che lo prevedono, e quelli generici. */
+  const siPuoPrendere = (t: MyTask) => t.kind === 'assessment' || t.kind === 'deploy-plan' || t.kind === 'task'
 
   return (
     <PageContainer>
@@ -228,7 +281,7 @@ export function MyTasksPage() {
           {assignedToMe.length > 0 && (
             <SectionCard title={t('pages.myTasks.assignedToMe')} count={assignedToMe.length} defaultOpen>
               {assignedGroups.map((g) => (
-                <div key={g.changeId} style={{ marginBottom: 4 }}>
+                <div key={g.entityNumber} style={{ marginBottom: 4 }}>
                   {g.tasks.map((t) => (
                     <TaskRow
                       key={t.id}
@@ -244,13 +297,13 @@ export function MyTasksPage() {
           {unassigned.length > 0 && (
             <SectionCard title={t('pages.myTasks.unassigned')} count={unassigned.length} defaultOpen>
               {unassignedGroups.map((g) => (
-                <div key={g.changeId} style={{ marginBottom: 4 }}>
+                <div key={g.entityNumber} style={{ marginBottom: 4 }}>
                   {g.tasks.map((t) => (
                     <TaskRow
                       key={t.id}
                       task={t}
-                      onClaim={(t.kind === 'assessment' || t.kind === 'deploy-plan') ? () => handleClaim(t) : undefined}
-                      claimLoading={claiming}
+                      onClaim={siPuoPrendere(t) ? () => handleClaim(t) : undefined}
+                      claimLoading={claiming || prendendo}
                     />
                   ))}
                 </div>

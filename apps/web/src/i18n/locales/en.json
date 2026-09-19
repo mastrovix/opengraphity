@@ -1945,7 +1945,7 @@
     },
     "myTasks": {
       "emptyTitle": "No task for you",
-      "emptyDescription": "When a change reaches a stage that involves you, the tasks will show up here.",
+      "emptyDescription": "When a workflow step creates a task for you or for your team, you find it here.",
       "assignedToMe": "Assigned to me",
       "unassigned": "To be assigned",
       "count": "{{total}} tasks ({{mine}} assigned to you · {{free}} to pick up)",
@@ -7295,6 +7295,7 @@
       "sync_source.deleted": "Sync source deleted",
       "sync_source.updated": "Sync source changed",
       "task.cancelled": "Task cancelled",
+      "task.claimed": "Task taken on",
       "task.completed": "Task closed",
       "team.change_manager_set": "Team appointed Change Manager",
       "team.created": "Team created",
@@ -7352,6 +7353,7 @@
       "cancelled": "Cancelled",
       "waiting": "Waiting"
     },
-    "waitingFor": "waits for «{{title}}»"
+    "waitingFor": "waits for «{{title}}»",
+    "kindOne": "Task"
   }
 }

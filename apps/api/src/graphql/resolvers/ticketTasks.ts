@@ -90,6 +90,43 @@ async function compitoScrivibile(ctx: GraphQLContext, taskId: string): Promise<T
   return trovato
 }
 
+/**
+ * «LO PRENDO IO»: il compito prende un nome, restando della squadra.
+ *
+ * Non serve essere della squadra per prenderlo — chi può scrivere il ticket
+ * può farsene carico, e capita che lo faccia chi sta già lavorando il
+ * ticket. Serve invece che sia APERTO: prendersi un compito in attesa
+ * significa metterci sopra un nome e poi non poterlo fare.
+ */
+export async function claimTicketTask(
+  _: unknown,
+  args: { taskId: string },
+  ctx: GraphQLContext,
+): Promise<TicketTask> {
+  const prima = await compitoScrivibile(ctx, args.taskId)
+  if (!isOpenState(prima.state)) {
+    throw new ValidationError(
+      `Task ${prima.code} is not open any more (${prima.state}): reload the page.`,
+      { key: 'errors.task.notOpen', params: { code: prima.code, state: prima.state } },
+    )
+  }
+  const session = getSession(undefined, 'WRITE')
+  try {
+    await session.executeWrite((tx) => tx.run(`
+      MATCH (k:Task {id: $taskId, tenant_id: $tenantId})
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      OPTIONAL MATCH (k)-[vecchio:ASSIGNED_TO]->(:User)
+      DELETE vecchio
+      WITH DISTINCT k, u
+      MERGE (k)-[:ASSIGNED_TO]->(u)
+    `, { taskId: args.taskId, tenantId: ctx.tenantId, userId: ctx.userId }))
+  } finally {
+    await session.close()
+  }
+  void audit(ctx, 'task.claimed', 'Task', args.taskId, { code: prima.code, entityId: prima.entityId })
+  return (await compito(ctx.tenantId, args.taskId))!
+}
+
 export async function completeTicketTask(
   _: unknown,
   args: { taskId: string; note?: string | null },

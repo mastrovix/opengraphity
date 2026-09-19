@@ -41,7 +41,7 @@ import { notificationRuleResolvers } from './notificationRules.js'
 import { queueStatsResolvers } from './queueStats.js'
 import { syncResolvers } from './sync.js'
 import { auditLog, auditActions, auditEntityTypes } from './auditLog.js'
-import { ticketTasks, completeTicketTask, cancelTicketTask } from './ticketTasks.js'
+import { ticketTasks, claimTicketTask, completeTicketTask, cancelTicketTask } from './ticketTasks.js'
 import { enumTypeResolvers } from './enumType.js'
 import { domainMatrixResolvers } from './domainMatrix.js'
 import { monitoringResolvers } from './monitoring.js'
@@ -367,6 +367,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       user: userById,
     },
     Mutation: {
+      claimTicketTask,
       completeTicketTask,
       cancelTicketTask,
       ...incidentResolvers.Mutation,

@@ -63,3 +63,11 @@ export const CANCEL_TICKET_TASK = gql`
     }
   }
 `
+
+export const CLAIM_TICKET_TASK = gql`
+  mutation ClaimTicketTask($taskId: ID!) {
+    claimTicketTask(taskId: $taskId) {
+      id assigneeId assigneeName
+    }
+  }
+`

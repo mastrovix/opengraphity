@@ -47,6 +47,12 @@ export function ticketTasksSDL(): string {
   }
 
   extend type Mutation {
+    """
+    «Lo prendo io»: il compito resta della squadra e prende un nome. Senza,
+    in «I miei compiti» due persone della stessa squadra lo vedono
+    entrambe e lo fanno in due.
+    """
+    claimTicketTask(taskId: ID!): TicketTask!
     """Chiude un compito: il lavoro è fatto."""
     completeTicketTask(taskId: ID!, note: String): TicketTask!
     """

@@ -76,7 +76,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   {
     anyOf: ['incident.write', 'problem.write', 'change.write', 'request.write', 'kb.write'],
-    mutation: ['completeTicketTask', 'cancelTicketTask'],
+    mutation: ['claimTicketTask', 'completeTicketTask', 'cancelTicketTask'],
   },
 
   // ── Ticket ─────────────────────────────────────────────────────────────────
