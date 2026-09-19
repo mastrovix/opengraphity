@@ -29,7 +29,29 @@ export function navigableLabel(
   return item.labelKey ? t(item.labelKey, { defaultValue: item.label }) : item.label
 }
 
-export interface FilterState { field: string; operator: string; value: string }
+/**
+ * Un filtro nel costruttore.
+ *
+ * `value` non è solo testo (19 set 2026): «ultimi N giorni» porta un numero e
+ * «fra questi» una lista. Prima era dichiarato `string` e conteneva altro —
+ * funzionava per caso, e il costruttore non sapeva mostrare né l'uno né
+ * l'altra.
+ */
+export interface FilterState { field: string; operator: string; value: string | number | string[] }
+
+/**
+ * GLI OPERATORI CHE IL COSTRUTTORE SA MOSTRARE (19 set 2026).
+ *
+ * Erano sette nell'API e UNO nell'interfaccia: `addFilter` scriveva `eq` e non
+ * c'era modo di cambiarlo, quindi «gli incident degli ultimi 30 giorni» non si
+ * poteva costruire — e una sezione che lo usava (scritta via API, o proposta
+ * dall'AI) non si poteva né leggere né correggere. Adesso si scelgono, e ogni
+ * operatore ha il controllo di valore che gli serve.
+ */
+export const REPORT_FILTER_OPERATORS = ['eq', 'neq', 'contains', 'in', 'last_n_days', 'is_null', 'is_not_null'] as const
+
+/** Gli operatori che non guardano nessun valore. */
+export const REPORT_OPERATORS_WITHOUT_VALUE: readonly string[] = ['is_null', 'is_not_null']
 
 export interface NodeData {
   entityType:      string
@@ -121,36 +143,86 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
                   style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', border: `1px solid ${colors.border}`, borderRadius: 4, flex: 1 }}
                 >
                   <option value="">{t('automation.params.selectFieldOption')}</option>
-                  {(d.fields as NavigableField[]).filter(fld => fld.fieldType === 'enum' || fld.fieldType === 'date').map(fld => (
+                  {/* TUTTI i campi, non solo scelte e date: con gli operatori
+                      scegliibili un «contiene» su un testo e un «ultimi N
+                      giorni» su una data-e-ora hanno senso, e un filtro
+                      proposto su `created_at` (che è `datetime`) prima non
+                      compariva nemmeno nell'elenco. */}
+                  {(d.fields as NavigableField[]).map(fld => (
                     <option key={fld.name} value={fld.name}>{navigableLabel(t, fld)}</option>
                   ))}
                 </select>
-                {(d.fields as NavigableField[]).find(fld => fld.name === f.field)?.fieldType === 'enum' ? (
-                  <select
-                    className="nodrag nopan"
-                    onMouseDown={e => e.stopPropagation()}
-                    value={f.value}
-                    onChange={e => d.onFilterChange(i, 'value', e.target.value)}
-                    style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', border: `1px solid ${colors.border}`, borderRadius: 4, flex: 1 }}
-                  >
-                    <option value="">{t('automation.params.selectValue')}</option>
-                    {(() => {
-                      const fld = (d.fields as NavigableField[]).find(x => x.name === f.field)
-                      return (fld?.enumValues ?? []).map(v => (
-                        <option key={v} value={v}>{(fld?.enumTypeName ? labelOf(fld.enumTypeName, v) : null) ?? v}</option>
-                      ))
-                    })()}
-                  </select>
-                ) : (
-                  <input
-                    className="nodrag nopan"
-                    onMouseDown={e => e.stopPropagation()}
-                    value={f.value}
-                    onChange={e => d.onFilterChange(i, 'value', e.target.value)}
-                    placeholder={t('reportBuilder.valuePlaceholder')}
-                    style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', border: `1px solid ${colors.border}`, borderRadius: 4, width: 60 }}
-                  />
-                )}
+                <select
+                  className="nodrag nopan"
+                  aria-label={t('reportBuilder.filterOperator')}
+                  onMouseDown={e => e.stopPropagation()}
+                  value={f.operator}
+                  onChange={e => d.onFilterChange(i, 'operator', e.target.value)}
+                  style={{ fontSize: 'var(--font-size-body)', padding: '3px 6px', border: `1px solid ${colors.border}`, borderRadius: 4 }}
+                >
+                  {REPORT_FILTER_OPERATORS.map(op => (
+                    <option key={op} value={op}>{t(`reportBuilder.op.${op}`)}</option>
+                  ))}
+                </select>
+                {(() => {
+                  const fld = (d.fields as NavigableField[]).find(x => x.name === f.field)
+                  const stile = { fontSize: 'var(--font-size-body)', padding: '3px 6px', border: `1px solid ${colors.border}`, borderRadius: 4, flex: 1, minWidth: 60 }
+                  // Niente valore da mostrare: «è vuoto» non confronta niente.
+                  if (REPORT_OPERATORS_WITHOUT_VALUE.includes(f.operator)) return null
+                  if (f.operator === 'last_n_days') {
+                    return (
+                      <input
+                        className="nodrag nopan" type="number" min={1}
+                        aria-label={t('reportBuilder.op.last_n_days')}
+                        onMouseDown={e => e.stopPropagation()}
+                        value={typeof f.value === 'number' ? f.value : String(f.value)}
+                        onChange={e => d.onFilterChange(i, 'value', e.target.value)}
+                        style={{ ...stile, width: 70, flex: '0 0 auto' }}
+                      />
+                    )
+                  }
+                  if (f.operator === 'in') {
+                    // I valori separati da virgola: si leggono e si correggono,
+                    // che è quello che serve a chi rivede una proposta.
+                    return (
+                      <input
+                        className="nodrag nopan"
+                        aria-label={t('reportBuilder.op.in')}
+                        onMouseDown={e => e.stopPropagation()}
+                        value={Array.isArray(f.value) ? f.value.join(', ') : String(f.value)}
+                        onChange={e => d.onFilterChange(i, 'value', e.target.value)}
+                        placeholder={t('reportBuilder.valuesPlaceholder')}
+                        style={stile}
+                      />
+                    )
+                  }
+                  if (fld?.fieldType === 'enum') {
+                    return (
+                      <select
+                        className="nodrag nopan"
+                        onMouseDown={e => e.stopPropagation()}
+                        value={String(f.value)}
+                        onChange={e => d.onFilterChange(i, 'value', e.target.value)}
+                        style={stile}
+                      >
+                        <option value="">{t('automation.params.selectValue')}</option>
+                        {(fld.enumValues ?? []).map(v => (
+                          <option key={v} value={v}>{(fld.enumTypeName ? labelOf(fld.enumTypeName, v) : null) ?? v}</option>
+                        ))}
+                      </select>
+                    )
+                  }
+                  return (
+                    <input
+                      className="nodrag nopan"
+                      onMouseDown={e => e.stopPropagation()}
+                      value={String(f.value)}
+                      onChange={e => d.onFilterChange(i, 'value', e.target.value)}
+                      placeholder={t('reportBuilder.valuePlaceholder')}
+                      style={stile}
+                    />
+                  )
+                })()}
                 <button
                   type="button"
                   className="nodrag nopan"

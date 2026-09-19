@@ -85,3 +85,24 @@ export const UPDATE_REPORT_SCHEDULE = gql`
     }
   }
 `
+
+/**
+ * L'AI PROGETTA UNA SEZIONE DI REPORT da una descrizione (19 set 2026).
+ *
+ * Mutation e non query per le stesse due ragioni del progettista dei moduli:
+ * costa una chiamata al modello e va nell'Audit Log, e una query si sarebbe
+ * messa in cache come se la risposta fosse un dato del grafo. Non SCRIVE
+ * niente: riempie il costruttore, e a salvare ci pensa `addReportSection`.
+ */
+export const PROPOSE_REPORT_SECTION = gql`
+  mutation ProposeReportSection($prompt: String!) {
+    proposeReportSection(prompt: $prompt) {
+      prompt title chartType metric metricField
+      groupByNodeId groupByField limit sortDir why
+      nodes { id entityType neo4jLabel label isRoot isResult selectedFields filters positionX positionY why }
+      edges { id sourceNodeId targetNodeId relationshipType direction label }
+      discarded { what key params }
+      notes
+    }
+  }
+`

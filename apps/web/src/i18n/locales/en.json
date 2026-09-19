@@ -6450,7 +6450,18 @@
       "owner": "Owner",
       "member": "Member"
     },
-    "removeNode": "Remove «{{node}}» from the query"
+    "removeNode": "Remove «{{node}}» from the query",
+    "filterOperator": "Comparison",
+    "valuesPlaceholder": "Values separated by commas",
+    "op": {
+      "eq": "is",
+      "neq": "is not",
+      "contains": "contains",
+      "in": "is one of",
+      "last_n_days": "last N days",
+      "is_null": "is empty",
+      "is_not_null": "is not empty"
+    }
   },
   "reportChart": {
     "chartType": "Chart type",
@@ -7112,5 +7123,30 @@
       "filterEmpty": "«{{op}}» filter discarded: the value to compare is missing.",
       "filterValueUnknown": "Filter discarded: «{{value}}» is not an allowed value. Allowed: {{allowed}}."
     }
+  },
+  "reportAI": {
+    "title": "Describe the report and I will design it",
+    "subtitle": "Write what you want to see. I build it in the builder as if you had done it by hand: nothing is saved.",
+    "button": "Design it with AI",
+    "promptLabel": "What report do you need?",
+    "promptPlaceholder": "E.g. Open incidents of the last 30 days grouped by team, as bars. Or: how many changes by risk, or the trend of service requests created per day.",
+    "promptHelp": "I use the entities, fields and relationships of your metamodel — custom fields and catalog form answers included. I invent nothing: what is missing, I tell you.",
+    "design": "Design",
+    "thinking": "Designing…",
+    "youAsked": "You asked",
+    "whatIUnderstood": "What I understood",
+    "chart": "Chart",
+    "measure": "Measure",
+    "groupedBy": "Grouped by",
+    "order": "Limit and order",
+    "entities": "Where the data comes from",
+    "root": "main",
+    "columns": "columns: {{fields}}",
+    "link": "{{from}} → {{to}} ({{relation}})",
+    "discarded": "What I discarded",
+    "notes": "What I could not do",
+    "apply": "Put it in the builder",
+    "again": "Rewrite the description",
+    "applyHelp": "I fill the builder with the design: you see the preview on your real data, change what you want and then save the section yourself."
   }
 }

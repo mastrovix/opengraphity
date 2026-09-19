@@ -8,13 +8,16 @@ import {
   type Node, type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Star, X, Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Star, X, Check, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
 import { GET_NAVIGABLE_ENTITIES, GET_REACHABLE_ENTITIES, PREVIEW_REPORT_SECTION } from '@/graphql/queries'
 import {
   nodeTypes, edgeTypes, navigableLabel,
   type FilterState, type NodeData, type NavigableEntity, type ReachableEntity, type NavigableField,
 } from './ReportFlowNodes'
 import { ReportPreview, type SectionResult } from './ReportPreview'
+import { Button } from '@/components/Button'
+import { ModaleProgettoReportAI, type ProgettoReport } from './ProgettoReportAI'
+import { useAIFeature } from '@/hooks/useAIFeature'
 import { ReportQueryBuilder } from './ReportQueryBuilder'
 import { ReportChartConfig, CHART_TYPES, DATE_FIELD_NAMES } from './ReportChartConfig'
 import { useCIBaseEnums } from '@/lib/ciEnums'
@@ -76,6 +79,33 @@ const labelStyle: React.CSSProperties = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+/**
+ * UN FILTRO COME LO VUOLE IL SERVER (19 set 2026).
+ *
+ * L'interfaccia scrive sempre testo — è quello che una casella produce — ma
+ * «ultimi N giorni» è un NUMERO e «è fra» una LISTA, e il Cypher li usa così
+ * (`duration({days: $p})`, `IN $p`). Prima il costruttore sapeva scrivere solo
+ * `eq`, quindi la differenza non si vedeva; da quando gli operatori si possono
+ * scegliere, va tradotta qui — una volta, sul confine.
+ *
+ * Gli operatori senza valore mandano `null`: un valore lasciato in giro
+ * sarebbe un dato che nessuno usa ma che chi rilegge il JSON deve spiegare.
+ */
+function normalizzaFiltro(f: FilterState): { field: string; operator: string; value: string | number | string[] | null } {
+  if (f.operator === 'is_null' || f.operator === 'is_not_null') return { field: f.field, operator: f.operator, value: null }
+  if (f.operator === 'last_n_days') {
+    const giorni = Number(Array.isArray(f.value) ? f.value[0] : f.value)
+    return { field: f.field, operator: f.operator, value: Number.isFinite(giorni) ? giorni : 0 }
+  }
+  if (f.operator === 'in') {
+    const valori = Array.isArray(f.value)
+      ? f.value
+      : String(f.value).split(',').map((x) => x.trim()).filter((x) => x !== '')
+    return { field: f.field, operator: f.operator, value: valori }
+  }
+  return { field: f.field, operator: f.operator, value: Array.isArray(f.value) ? (f.value[0] ?? '') : String(f.value) }
+}
+
 export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props) {
   const { t, i18n } = useTranslation()
   const titleInputId = useId()
@@ -93,6 +123,15 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [connectingNodeId, setConnectingNodeId] = useState<string | null>(null)
+  /*
+   * IL PROGETTISTA AI (19 set 2026): una casella dove descrivere il report a
+   * parole, e il disegno entra qui come se fosse stato fatto a mano.
+   *
+   * `aiAccesa` è `null` finché non si sa: in quel momento il bottone non si
+   * mostra e non si mostra nemmeno l'avviso, invece di indovinare.
+   */
+  const aiAccesa = useAIFeature('reportDesigner')
+  const [progettoAI, setProgettoAI] = useState(false)
 
   const { data: entitiesData } = useQuery<{ navigableEntities: NavigableEntity[] }>(GET_NAVIGABLE_ENTITIES)
   const entities: NavigableEntity[] = useMemo(() => entitiesData?.navigableEntities ?? [], [entitiesData])
@@ -237,14 +276,24 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     }, 0)
   }, [addNode, getNodeFields]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Reconstruct graph from initialValues ────────────────────────────────────
-
-  useEffect(() => {
-    if (!initialValues?.nodes?.length || !entities.length || nodes.length > 0) return
+  /**
+   * METTE UNA SEZIONE NEL WIZARD — riaperta a mano, o PROPOSTA DALL'AI.
+   *
+   * Una funzione sola per due strade (19 set 2026): la proposta dell'AI ha la
+   * stessa forma di una sezione salvata, e farla atterrare per una strada sua
+   * vorrebbe dire due ricostruzioni da tenere d'accordo — e la seconda che si
+   * dimentica un pezzo (i filtri, il nodo risultato) senza che nessuno se ne
+   * accorga.
+   *
+   * Non salva niente: riempie il costruttore. `passo` dice dove portare chi
+   * guarda — al grafo quando riapre, alla visualizzazione quando arriva una
+   * proposta (lì c'è l'anteprima, che è il modo di verificarla).
+   */
+  const applicaSezione = useCallback((v: ReportSectionInput, passo: 2 | 3) => {
     // Se i filtri salvati di un nodo non sono JSON valido NON ricostruiamo il
     // grafo senza filtri (un salvataggio li perderebbe in silenzio): blocchiamo
     // l'apertura e rendiamo l'errore visibile.
-    for (const n of initialValues.nodes) {
+    for (const n of v.nodes) {
       if (!n.filters) continue
       try {
         JSON.parse(n.filters)
@@ -254,7 +303,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       }
     }
     const newNodeDataMap: Record<string, NodeDataEntry> = {}
-    const newNodes: Node[] = initialValues.nodes.map(n => {
+    const newNodes: Node[] = v.nodes.map(n => {
       let filters: FilterState[] = []
       if (n.filters) filters = JSON.parse(n.filters) as FilterState[]
       const nd: NodeDataEntry = {
@@ -266,15 +315,30 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       newNodeDataMap[n.id] = nd
       return { id: n.id, type: 'reportEntity', dragHandle: '.node-drag-handle', position: { x: n.positionX, y: n.positionY }, data: makeNodeData(n.id, nd, n.neo4jLabel) }
     })
-    const newEdges: Edge[] = initialValues.edges.map(e => ({
+    const newEdges: Edge[] = v.edges.map(e => ({
       id: e.id, type: 'reportEdge',
       source: e.sourceNodeId, target: e.targetNodeId,
       data: { relationshipType: e.relationshipType, direction: e.direction, label: e.label },
     }))
+    setTitle(v.title)
+    setChartType(v.chartType)
+    setMetric(v.metric)
+    setMetricField(v.metricField ?? '')
+    setGroupByNodeId(v.groupByNodeId ?? '')
+    setGroupByField(v.groupByField ?? '')
+    setLimit(v.limit ?? 20)
+    setSortDir(v.sortDir ?? 'DESC')
     setNodeDataMap(newNodeDataMap)
     setNodes(newNodes)
     setEdges(newEdges)
-    setWizardStep(2)
+    setWizardStep(passo)
+  }, [getNodeFields, makeNodeData, setNodes, setEdges, t])
+
+  // ── Reconstruct graph from initialValues ────────────────────────────────────
+
+  useEffect(() => {
+    if (!initialValues?.nodes?.length || !entities.length || nodes.length > 0) return
+    applicaSezione(initialValues, 2)
   }, [entities.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Connect reachable entity ─────────────────────────────────────────────────
@@ -307,7 +371,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         id: n.id, entityType: nd?.entityType ?? '', neo4jLabel: nd?.neo4jLabel ?? '', label: nd?.label ?? '',
         isResult: nd?.isResult ?? false, isRoot: nd?.isRoot ?? false,
         positionX: n.position.x, positionY: n.position.y,
-        filters: nd?.filters?.length ? JSON.stringify(nd.filters.map(f => ({ field: f.field, operator: f.operator, value: f.value }))) : null,
+        filters: nd?.filters?.length ? JSON.stringify(nd.filters.map(normalizzaFiltro)) : null,
         selectedFields: nd?.selectedFields ?? [],
       }
     }),
@@ -608,6 +672,27 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {wizardStep === 2 ? renderStep2() : (
           <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+            {wizardStep === 1 && aiAccesa === true && (
+              /* Sopra la scelta a mano, non invece: chi sa già cosa vuole
+                 clicca l'entità e va avanti come prima. */
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                border: `1px solid ${colors.border}`, borderRadius: 8, padding: '12px 14px', marginBottom: 20,
+              }}>
+                <div style={{ flex: '1 1 260px' }}>
+                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
+                    {t('reportAI.title')}
+                  </div>
+                  <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+                    {t('reportAI.subtitle')}
+                  </div>
+                </div>
+                <Button onClick={() => { setProgettoAI(true) }}>
+                  <Sparkles size={14} style={{ marginRight: 6 }} />
+                  {t('reportAI.button')}
+                </Button>
+              </div>
+            )}
             {wizardStep === 1 && (
               <ReportQueryBuilder
                 entities={entities}
@@ -642,6 +727,34 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       <div style={{ flexShrink: 0, padding: '12px 32px', borderTop: `1px solid ${colors.border}`, background: colors.white }}>
         {navConfig && renderNavButtons(navConfig.onBack, navConfig.onNext, navConfig.nextDisabled, (navConfig as { nextLabel?: string }).nextLabel, (navConfig as { isLastStep?: boolean }).isLastStep)}
       </div>
+
+      {progettoAI && (
+        <ModaleProgettoReportAI
+          onChiudi={() => { setProgettoAI(false) }}
+          onApplica={(p: ProgettoReport) => {
+            /*
+             * Il progetto entra dalla STESSA porta di una sezione riaperta a
+             * mano (`applicaSezione`), e si va al passo della visualizzazione:
+             * lì c'è l'anteprima sui dati veri, che è il modo di verificarlo.
+             */
+            applicaSezione({
+              title: p.title, chartType: p.chartType, metric: p.metric, metricField: p.metricField,
+              groupByNodeId: p.groupByNodeId, groupByField: p.groupByField,
+              limit: p.limit, sortDir: p.sortDir,
+              nodes: p.nodes.map((n) => ({
+                id: n.id, entityType: n.entityType, neo4jLabel: n.neo4jLabel, label: n.label,
+                isResult: n.isResult, isRoot: n.isRoot, positionX: n.positionX, positionY: n.positionY,
+                filters: n.filters, selectedFields: n.selectedFields,
+              })),
+              edges: p.edges.map((e) => ({
+                id: e.id, sourceNodeId: e.sourceNodeId, targetNodeId: e.targetNodeId,
+                relationshipType: e.relationshipType, direction: e.direction, label: e.label,
+              })),
+            }, 3)
+          }}
+        />
+      )}
     </div>
+
   )
 }

@@ -6450,7 +6450,18 @@
       "owner": "Responsabile",
       "member": "Membro"
     },
-    "removeNode": "Togli «{{node}}» dalla query"
+    "removeNode": "Togli «{{node}}» dalla query",
+    "filterOperator": "Confronto",
+    "valuesPlaceholder": "Valori separati da virgola",
+    "op": {
+      "eq": "è",
+      "neq": "non è",
+      "contains": "contiene",
+      "in": "è fra",
+      "last_n_days": "ultimi N giorni",
+      "is_null": "è vuoto",
+      "is_not_null": "non è vuoto"
+    }
   },
   "reportChart": {
     "chartType": "Tipo di visualizzazione",
@@ -7112,5 +7123,30 @@
       "filterEmpty": "Filtro «{{op}}» scartato: manca il valore da confrontare.",
       "filterValueUnknown": "Filtro scartato: «{{value}}» non è un valore ammesso. Ammessi: {{allowed}}."
     }
+  },
+  "reportAI": {
+    "title": "Descrivi il report e te lo disegno",
+    "subtitle": "Scrivi cosa vuoi vedere. Te lo costruisco nel costruttore come se l'avessi fatto a mano: niente viene salvato.",
+    "button": "Disegnalo con l'AI",
+    "promptLabel": "Che report ti serve?",
+    "promptPlaceholder": "Es. Gli incident aperti negli ultimi 30 giorni raggruppati per team, a barre. Oppure: quante change per rischio, oppure l'andamento delle service request create per giorno.",
+    "promptHelp": "Uso le entità, i campi e le relazioni del tuo metamodello — anche i campi personalizzati e le risposte dei moduli. Non invento niente: quello che non c'è te lo dico.",
+    "design": "Disegna",
+    "thinking": "Sto disegnando…",
+    "youAsked": "Hai chiesto",
+    "whatIUnderstood": "Cosa ho capito",
+    "chart": "Grafico",
+    "measure": "Misura",
+    "groupedBy": "Raggruppato per",
+    "order": "Limite e ordine",
+    "entities": "Da dove prendo i dati",
+    "root": "principale",
+    "columns": "colonne: {{fields}}",
+    "link": "{{from}} → {{to}} ({{relation}})",
+    "discarded": "Cosa ho scartato",
+    "notes": "Cosa non ho potuto fare",
+    "apply": "Mettilo nel costruttore",
+    "again": "Riscrivi la descrizione",
+    "applyHelp": "Riempio il costruttore col disegno: vedi l'anteprima coi tuoi dati veri, cambi quello che vuoi e poi salvi tu la sezione."
   }
 }
