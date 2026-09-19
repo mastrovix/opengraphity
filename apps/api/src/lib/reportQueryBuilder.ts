@@ -300,7 +300,16 @@ export function validateReportSection(section: ReportSectionDef, whitelist: Repo
     }
     const serveCampo = (REPORT_METRICS_WITH_FIELD as readonly string[]).includes(section.metric)
     const campo = section.metricField == null ? '' : String(section.metricField).trim()
-    if (serveCampo && campo === '' && chartType !== 'table') {
+    /*
+     * UNA TABELLA NON HA UNA MISURA: elenca righe, non aggrega. La metrica
+     * si salvava, la scheda scriveva «Media · Costo» e il Cypher la
+     * ignorava — la stessa bugia che la correzione delle metriche ha tolto,
+     * rientrata dalla porta della tabella (19 set 2026).
+     */
+    if (chartType === 'table' && section.metric !== 'count') {
+      throw new ValidationError(`${where}: a table lists rows, it has no measure — remove the "${section.metric}" metric or pick another chart`)
+    }
+    if (serveCampo && campo === '') {
       throw new ValidationError(`${where}: metric "${section.metric}" needs a metricField to compute on`)
     }
   }
@@ -396,6 +405,20 @@ export function buildReportQuery(
   if (rootWhere) matchLines.push(rootWhere)
   visited.add(rootNode.id)
 
+  /**
+   * GLI ARCHI CHE L'ALBERO NON PERCORRE non si perdono più (19 set 2026).
+   *
+   * La BFS visita ogni nodo UNA volta: un arco fra due nodi già visitati —
+   * un triangolo, o due relazioni diverse fra la stessa coppia — non
+   * diventava nessun MATCH e spariva in silenzio. Il costruttore lo disegnava
+   * e lo salvava, la query non lo applicava: un numero PLAUSIBILE e sbagliato,
+   * che è peggio di un report vuoto perché nessuno se ne accorge.
+   *
+   * Adesso quelli fuori dall'albero diventano un `EXISTS`, che è esattamente
+   * quello che significano: «e fra questi due c'è anche quella relazione».
+   */
+  const archiConsumati = new Set<string>()
+
   const addChild = (parentId: string, childNode: ReportNodeDef, relType: string, outgoing: boolean) => {
     const parentVar = v(parentId)
     const childVar  = v(childNode.id)
@@ -417,13 +440,36 @@ export function buildReportQuery(
       const childNode = nodes.find(n => n.id === edge.targetNodeId)
       if (!childNode || visited.has(childNode.id)) continue
       addChild(currentId, childNode, edge.relationshipType, edge.direction === 'outgoing')
+      archiConsumati.add(edge.id)
     }
 
     for (const edge of inEdges) {
       const childNode = nodes.find(n => n.id === edge.sourceNodeId)
       if (!childNode || visited.has(childNode.id)) continue
-      addChild(currentId, childNode, edge.relationshipType, edge.direction !== 'incoming')
+      /*
+       * `=== 'incoming'` e non `!==`: qui parent e child sono SCAMBIATI
+       * rispetto a source/target, quindi il verso della relazione si
+       * ribalta. Con `!==` un arco percorso dal lato del bersaglio produceva
+       * la relazione AL CONTRARIO — e un report che non trova mai niente,
+       * senza un errore (19 set 2026).
+       */
+      addChild(currentId, childNode, edge.relationshipType, edge.direction === 'incoming')
+      archiConsumati.add(edge.id)
     }
+  }
+
+  /*
+   * Gli archi che l'albero non ha percorso: si applicano come EXISTS, dopo i
+   * MATCH, quando entrambi i loro estremi sono nella query.
+   */
+  for (const edge of edges) {
+    if (archiConsumati.has(edge.id)) continue
+    if (!visited.has(edge.sourceNodeId) || !visited.has(edge.targetNodeId)) continue
+    const a = v(edge.sourceNodeId)
+    const b = v(edge.targetNodeId)
+    matchLines.push(edge.direction === 'incoming'
+      ? `WHERE EXISTS { (${a})<-[:${edge.relationshipType}]-(${b}) }`
+      : `WHERE EXISTS { (${a})-[:${edge.relationshipType}]->(${b}) }`)
   }
 
   // 3. Group node (validation guarantees groupByNodeId, when set, exists)
@@ -487,6 +533,25 @@ export function buildReportQuery(
      */
     return `toString(${troncata})`
   }
+
+  /*
+   * `WITH DISTINCT` QUANDO C'È UN JOIN (19 set 2026).
+   *
+   * `count(n0)` conta RIGHE, non nodi: con un secondo MATCH un incident che
+   * tocca tre CI compare tre volte. Sul conteggio era un numero gonfiato —
+   * difetto vecchio; da quando le metriche funzionano davvero è una SOMMA
+   * sbagliata, cioè una cifra economica che qualcuno stamperà.
+   *
+   * Si scremano le righe prima di aggregare, tenendo le variabili che
+   * servono a valle: la radice, il nodo del raggruppamento e i nodi che
+   * portano colonne in una tabella.
+   */
+  const variabiliDaTenere = [...new Set([
+    rootVar,
+    ...(groupByNodeId ? [v(groupByNodeId)] : []),
+    ...nodes.filter((n) => n.isResult).map((n) => v(n.id)),
+  ])]
+  const withDistinct = edges.length > 0 ? `WITH DISTINCT ${variabiliDaTenere.join(', ')}` : null
 
   let returnClause: string
   const columns: ReportColumn[] = []
@@ -557,6 +622,6 @@ export function buildReportQuery(
     }
   }
 
-  const query = [...matchLines, returnClause].join('\n')
+  const query = [...matchLines, ...(withDistinct === null ? [] : [withDistinct]), returnClause].join('\n')
   return { query, params, columns, groupSource }
 }

@@ -197,6 +197,9 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
       'MATCH (n0:Incident {tenant_id: $tenantId})',
       'WHERE n0.status IN $n0_f0 AND datetime(n0.created_at) > datetime() - duration({days: $n0_f1}) AND toLower(n0.title) CONTAINS toLower($n0_f2) AND n0.resolved_at IS NULL',
       'MATCH (n0)-[:ASSIGNED_TO_TEAM]->(n1:Team)',
+      // `WITH DISTINCT` (19 set 2026): con un join `count(n0)` contava RIGHE,
+      // non nodi — un incident che tocca tre CI valeva tre.
+      'WITH DISTINCT n0, n1',
       'RETURN n1.name AS label, count(n0) AS value',
       'ORDER BY value ASC',
       'LIMIT toInteger($limit)',
@@ -207,7 +210,20 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     })
   })
 
-  it('edge stored from child to root: direction is interpreted relative to the BFS parent (legacy semantics preserved)', () => {
+  /**
+   * UNA CONVENZIONE SOLA: `direction` vale rispetto a SORGENTE → BERSAGLIO,
+   * comunque la BFS arrivi all'arco (19 set 2026).
+   *
+   * Questo test fissava il contrario — «legacy semantics preserved», cioè il
+   * verso interpretato rispetto al PADRE nell'albero — e quella era una
+   * seconda convenzione, mai scritta e opposta a quella del generatore
+   * quando l'arco si percorre dal lato della sorgente. Le due si annullavano
+   * finché il grafo si costruiva sempre dalla radice in giù; il progettista
+   * AI, che orienta gli archi secondo il metamodello, ha prodotto il caso in
+   * cui non si annullano: la relazione al contrario, e un report che non
+   * trova mai niente senza dirlo.
+   */
+  it('la direzione di un arco vale rispetto a sorgente → bersaglio, da qualunque lato lo si percorra', () => {
     const build = (direction: string) => buildReportQuery(section({
       chartType: 'pie',
       nodes: [
@@ -217,15 +233,11 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
       edges: [edge({ id: 'e1', sourceNodeId: 'user', targetNodeId: 'team', relationshipType: 'MEMBER_OF', direction })],
     }), TENANT, whitelist).query
 
-    expect(build('incoming')).toBe([
-      'MATCH (n0:Team {tenant_id: $tenantId})',
-      'MATCH (n0)<-[:MEMBER_OF]-(n1:User)',
-      'WHERE n1.role <> $n1_f0',
-      'RETURN n0.status AS label, count(n0) AS value',
-      'ORDER BY value DESC',
-      'LIMIT toInteger($limit)',
-    ].join('\n'))
-    expect(build('outgoing')).toContain('MATCH (n0)-[:MEMBER_OF]->(n1:User)')
+    // L'arco dice «user -[:MEMBER_OF]-> team»: la radice è `team`, quindi si
+    // percorre all'indietro, e il pattern deve restare quello.
+    expect(build('outgoing')).toContain('MATCH (n0)<-[:MEMBER_OF]-(n1:User)')
+    // «team -[:MEMBER_OF]-> user», letto dallo stesso lato.
+    expect(build('incoming')).toContain('MATCH (n0)-[:MEMBER_OF]->(n1:User)')
   })
 
   it('line chart defaults to created_at', () => {
@@ -263,6 +275,8 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     expect(query).toBe([
       'MATCH (n0:Incident {tenant_id: $tenantId})',
       'MATCH (n0)-[:ASSIGNED_TO_TEAM]->(n1:Team)',
+      // Anche una tabella con un join duplicava le righe.
+      'WITH DISTINCT n0, n1',
       'RETURN n0.title AS c0, n0.created_at AS c1, n1.name AS c2',
       'LIMIT toInteger($limit)',
     ].join('\n'))
@@ -481,5 +495,75 @@ describe('il periodo per anno', () => {
   it('una torta per anno', () => {
     expect(buildReportQuery(sez({ chartType: 'pie', groupByField: 'resolved_at', groupByGranularity: 'year' }), 't1', whitelist).query)
       .toContain("toString(date.truncate('year', datetime(n0.resolved_at)))")
+  })
+})
+
+/**
+ * I NUMERI CON UN JOIN (19 set 2026, dalla revisione).
+ *
+ * `count(n0)` conta righe, non nodi: con un secondo MATCH un incident che
+ * tocca tre CI compare tre volte. Sul conteggio era un numero gonfiato — da
+ * quando le metriche funzionano davvero è una SOMMA sbagliata, cioè una cifra
+ * che qualcuno stamperà.
+ */
+describe('i join non moltiplicano i numeri', () => {
+  const conJoin = (over: Partial<ReportSectionDef> = {}): ReportSectionDef => section({
+    chartType: 'bar', groupByField: 'status',
+    nodes: [
+      node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] }),
+      node({ id: 'n2', neo4jLabel: 'Team' }),
+    ],
+    edges: [edge({ id: 'e1', sourceNodeId: 'n1', targetNodeId: 'n2' })],
+    ...over,
+  })
+
+  it('con un join le righe si scremano prima di aggregare', () => {
+    expect(buildReportQuery(conJoin(), 't1', whitelist).query).toContain('WITH DISTINCT n0')
+  })
+
+  it('senza join non si aggiunge niente: la query resta quella di sempre', () => {
+    const semplice = buildReportQuery(section({
+      nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] })],
+    }), 't1', whitelist).query
+    expect(semplice).not.toContain('WITH DISTINCT')
+  })
+
+  it('la somma di un campo passa dal DISTINCT: è la cifra che qualcuno stampa', () => {
+    const q = buildReportQuery(conJoin({ metric: 'sum', metricField: 'cost' }), 't1', whitelist).query
+    expect(q).toContain('WITH DISTINCT n0')
+    expect(q).toContain('sum(toFloat(n0.cost))')
+  })
+})
+
+/**
+ * UN ARCO IN PIÙ È UN VINCOLO, non un disegno: il triangolo.
+ */
+describe('gli archi fuori dall\'albero', () => {
+  it('diventano un EXISTS invece di sparire', () => {
+    const q = buildReportQuery(section({
+      chartType: 'kpi',
+      nodes: [
+        node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] }),
+        node({ id: 'n2', neo4jLabel: 'Team' }),
+        node({ id: 'n3', neo4jLabel: 'User' }),
+      ],
+      edges: [
+        edge({ id: 'e1', sourceNodeId: 'n1', targetNodeId: 'n2', relationshipType: 'ASSIGNED_TO_TEAM' }),
+        edge({ id: 'e2', sourceNodeId: 'n1', targetNodeId: 'n3', relationshipType: 'AFFECTS' }),
+        // Il terzo lato: prima spariva, e il report contava anche le coppie
+        // che quella relazione non hanno.
+        edge({ id: 'e3', sourceNodeId: 'n3', targetNodeId: 'n2', relationshipType: 'MEMBER_OF' }),
+      ],
+    }), 't1', whitelist).query
+    expect(q).toContain('WHERE EXISTS { (n2)-[:MEMBER_OF]->(n1) }')
+  })
+})
+
+describe('una tabella non ha una misura', () => {
+  it('una media su una tabella si rifiuta invece di essere ignorata', () => {
+    expect(() => buildReportQuery(section({
+      chartType: 'table', metric: 'avg', metricField: 'cost',
+      nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] })],
+    }), 't1', whitelist)).toThrow(/a table lists rows/)
   })
 })

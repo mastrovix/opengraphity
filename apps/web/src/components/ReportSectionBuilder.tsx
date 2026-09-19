@@ -351,11 +351,32 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     const sourceNode = nodes.find(n => n.id === connectingNodeId)
     const newPos = { x: (sourceNode?.position.x ?? 300) + (Math.random() * 200 - 100), y: (sourceNode?.position.y ?? 100) + 200 }
     const newNodeId = addNode(re.entityType, re.neo4jLabel, navigableLabel(t, re), getNodeFields(re.neo4jLabel), false, newPos)
+    /*
+     * UNA CONVENZIONE SOLA PER LA DIREZIONE (19 set 2026).
+     *
+     * `sorgente → bersaglio` È il verso della relazione, sempre: chi
+     * collega una relazione ENTRANTE ottiene un arco che parte dal nodo
+     * nuovo e arriva su quello di prima. `direction` resta per l'etichetta e
+     * per chi chiama l'API, e vale rispetto a sorgente→bersaglio.
+     *
+     * Prima ce n'erano DUE, e non si incontravano mai: l'interfaccia scriveva
+     * `direction` dal punto di vista del nodo da cui si collegava, il
+     * generatore Cypher lo leggeva rispetto a sorgente/bersaglio. Finché il
+     * grafo si costruiva sempre dalla radice in giù i due errori si
+     * annullavano; il progettista AI, che gli archi li orienta secondo il
+     * metamodello, ha fatto emergere la differenza — una relazione percorsa
+     * al contrario, cioè un report che non trova mai niente.
+     */
+    const entrante = re.direction !== 'outgoing'
     setEdges(prev => [...prev, {
       id: `edge_${Date.now()}`, type: 'reportEdge',
-      source: re.direction === 'outgoing' ? connectingNodeId : newNodeId,
-      target: re.direction === 'outgoing' ? newNodeId : connectingNodeId,
-      data: { relationshipType: re.relationshipType, direction: re.direction, label: `${re.direction === 'outgoing' ? '→' : '←'} ${re.relationshipType}` },
+      source: entrante ? newNodeId : connectingNodeId,
+      target: entrante ? connectingNodeId : newNodeId,
+      data: {
+        relationshipType: re.relationshipType,
+        direction: 'outgoing',
+        label: `${entrante ? '←' : '→'} ${re.relationshipType}`,
+      },
     }])
     setConnectingNodeId(null)
   }, [connectingNodeId, nodes, addNode, getNodeFields]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -363,8 +384,17 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   // ── Build output ─────────────────────────────────────────────────────────────
 
   const buildInput = useCallback((): ReportSectionInput => ({
-    title, chartType, metric,
-    metricField:   metricField || null,
+    title, chartType,
+    /*
+     * Una TABELLA elenca righe e non aggrega: la misura non le appartiene.
+     * Restava nello stato passando da un istogramma «Media · Costo» a una
+     * tabella, e la scheda dichiarava una media che il Cypher non calcolava
+     * (19 set 2026). Adesso il server la rifiuta: qui si manda quello che la
+     * tabella è, invece di far fallire un salvataggio per una tendina
+     * nascosta.
+     */
+    metric: chartType === 'table' ? 'count' : metric,
+    metricField:   chartType === 'table' ? null : (metricField || null),
     groupByNodeId: groupByNodeId || null,
     groupByField:  groupByField || null,
     groupByGranularity: granularita || 'day',
