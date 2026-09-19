@@ -186,7 +186,15 @@ export async function getNavigableEntities(tenantId: string): Promise<NavigableE
         label:      t['label'] as string,
         neo4jLabel: (t['neo4j_label'] as string | null) ?? toPascalCase(entityType),
         group:      'cmdb' as const,
-        fields,
+        // Il NOME del CI, per la stessa ragione del numero di un ticket: è
+        // una proprietà del prodotto, non un campo del tipo, e senza non si
+        // può dire in tabella DI QUALE CI parla la riga.
+        fields: [
+          ...(fields.some((f) => f.name === 'name') ? [] : [
+            { name: 'name', label: 'Name', labelKey: 'reportBuilder.field.name', fieldType: 'string', enumValues: [] as string[], enumTypeName: null },
+          ]),
+          ...fields,
+        ],
         relations,
       }
     })
@@ -256,13 +264,30 @@ async function ticketEntities(session: Session, tenantId: string): Promise<Navig
       label:      type.label,
       neo4jLabel,
       group:      'itsm',
-      fields: type.fields.map((f) => ({
-        name:         f.name as string,
-        label:        f.label as string,
-        fieldType:    f.fieldType as string,
-        enumValues:   f.name === 'status' ? stepNames : (f.enumValues as string[]),
-        enumTypeName: f.name === 'status' ? null : (f.enumTypeName as string | null),
-      })),
+      fields: [
+        /*
+         * IL NUMERO DEL TICKET (20 set 2026, dal giro nel browser: «tra le
+         * colonne non c'è l'id del ci (in questo caso il numero del ticket)»).
+         *
+         * `number` è del PRODOTTO — il metamodello ITIL non lo dichiara, come
+         * non dichiara `id` — quindi non arrivava fra i campi navigabili: una
+         * tabella di incident si poteva costruire con titolo, stato e
+         * severità, e non con INC00000024. Cioè senza la colonna che dice a
+         * QUALE ticket si riferisce la riga, che è la prima che si guarda e
+         * l'unica con cui si va ad aprirlo.
+         */
+        // Se un domani il metamodello lo dichiarasse, vince quello del cliente.
+        ...(type.fields.some((f) => f.name === 'number') ? [] : [
+          { name: 'number', label: 'Number', labelKey: 'reportBuilder.field.number', fieldType: 'string', enumValues: [] as string[], enumTypeName: null },
+        ]),
+        ...type.fields.map((f) => ({
+          name:         f.name as string,
+          label:        f.label as string,
+          fieldType:    f.fieldType as string,
+          enumValues:   f.name === 'status' ? stepNames : (f.enumValues as string[]),
+          enumTypeName: f.name === 'status' ? null : (f.enumTypeName as string | null),
+        })),
+      ],
       relations: relationsOf(neo4jLabel),
     })
   }

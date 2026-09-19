@@ -540,6 +540,27 @@ code, kbd, samp, pre {
    ────────────────────────────────────────────────────────────────────────── */
 
 /* La soglia. Sotto, due colonne diventano una. */
+
+/*
+ * L'ALTEZZA VERA DEL VIEWPORT (20 set 2026, dal giro su iPad: «non si vede il
+ * pulsante avanti in basso a destra»).
+ *
+ * Su Safari di iOS/iPadOS `100vh` è l'altezza della finestra CON le barre del
+ * browser NASCOSTE: è più alta di quello che si vede. Un guscio alto `100vh`
+ * con `overflow: hidden` finisce sotto la barra di Safari, e con lui la
+ * barra dei pulsanti del wizard dei report: «Avanti» c'era, non si poteva né
+ * vedere né raggiungere, perché la pagina non scorre e il canvas si prende il
+ * dito.
+ *
+ * `100dvh` è l'altezza VISIBILE, e cambia quando le barre compaiono. Sta
+ * dietro a `@supports` perché un browser che non la conosce deve restare con
+ * `100vh`, che è il comportamento di prima.
+ */
+:root { --vh-app: 100vh; }
+@supports (height: 100dvh) {
+  :root { --vh-app: 100dvh; }
+}
+
 :root { --og-split-min: 900px; }
 
 /*

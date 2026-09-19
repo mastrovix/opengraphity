@@ -319,7 +319,7 @@ export function WorkflowCanvas({
   const accentColor = ACCENT_COLOR
 
   return (
-    <div style={{ flex: 1, position: 'relative', overflow: 'hidden', width: '100%', height: 'calc(100vh - 120px)' }}>
+    <div style={{ flex: 1, position: 'relative', overflow: 'hidden', width: '100%', height: 'calc(var(--vh-app) - 120px)' }}>
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
           {t('pages.workflow.loading')}

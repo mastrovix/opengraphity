@@ -74,7 +74,8 @@ describe('getNavigableEntities — i ticket dal metamodello ITIL', () => {
     const entities = await load('c-two')
     expect(entities.filter((e) => e.group === 'itsm').map((e) => e.entityType)).toEqual(['Incident', 'Change', 'Problem', 'ServiceRequest'])
     const incident = entities.find((e) => e.entityType === 'Incident')!
-    expect(incident.fields.map((f) => f.name)).toEqual(['title', 'status', 'category'])
+    // `number` in testa: è del prodotto, non del metamodello (20 set 2026).
+    expect(incident.fields.map((f) => f.name)).toEqual(['number', 'title', 'status', 'category'])
     expect(incident.fields.find((f) => f.name === 'category')!.enumTypeName).toBe('category')
     expect(entities.filter((e) => e.group === 'organization').map((e) => e.entityType)).toEqual(['Team', 'User'])
   })
@@ -152,5 +153,34 @@ describe('i campi della libreria dei moduli (ondata 4)', () => {
     for (const tipo of ['Incident', 'Change', 'Problem']) {
       expect(entities.find((e) => e.entityType === tipo)!.fields.map((f) => f.name)).not.toContain('ambienti_coinvolti')
     }
+  })
+})
+
+/**
+ * L'IDENTIFICATIVO FRA I CAMPI (20 set 2026, dal giro nel browser: «tra le
+ * colonne non c'è l'id del ci (in questo caso il numero del ticket)»).
+ *
+ * `number` di un ticket e `name` di un CI sono proprietà del PRODOTTO: il
+ * metamodello non le dichiara, quindi non arrivavano fra i campi navigabili e
+ * non si potevano mettere in colonna. Una tabella di incident senza
+ * INC00000024 è un elenco di righe che non si sa a cosa si riferiscono.
+ */
+describe('i campi identificativi delle entità navigabili', () => {
+  it('ogni ticket offre «number» e ogni CI offre «name»', async () => {
+    const entita = await load('t1')
+    const ticket = entita.filter((e) => e.group === 'itsm')
+    expect(ticket.length).toBeGreaterThan(0)
+    for (const e of ticket) {
+      expect(e.fields.map((f) => f.name)).toContain('number')
+    }
+    for (const e of entita.filter((x) => x.group === 'cmdb')) {
+      expect(e.fields.map((f) => f.name)).toContain('name')
+    }
+  })
+
+  it('«number» porta la chiave i18n del prodotto, non una etichetta inglese fissa', async () => {
+    const entita = await load('t1')
+    const numero = entita.find((e) => e.group === 'itsm')!.fields.find((f) => f.name === 'number')!
+    expect(numero.labelKey).toBe('reportBuilder.field.number')
   })
 })

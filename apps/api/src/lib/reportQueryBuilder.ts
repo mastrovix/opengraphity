@@ -608,11 +608,41 @@ export function buildReportQuery(
       // top_n is a ranked bar: same { label, value } contract, limited + sorted.
       const field = groupField ?? 'status'
       groupSource = { neo4jLabel: groupNode.neo4jLabel, field: groupByField ?? 'status' }
-      returnClause = [
-        `RETURN ${periodoDi(groupVar, field)} AS label, ${misura} AS value`,
-        `ORDER BY value ${sortDirVal}`,
-        `LIMIT toInteger($limit)`,
-      ].join('\n')
+      /*
+       * UN ASSE DI DATE SI LEGGE IN ORDINE DI DATA (20 set 2026, dal giro nel
+       * browser: «usando le barre l'ordinamento sull'asse x è sbagliato»).
+       *
+       * Le barre erano ordinate per VALORE come ogni altro raggruppamento, e
+       * con un raggruppamento per periodo l'asse usciva 13, 15, 16, 14 set:
+       * gli stessi dati che la LINEA — che ordina per etichetta — mostrava in
+       * ordine. Due grafici della stessa sezione dicevano due storie, e quella
+       * delle barre era una storia falsa: un istogramma nel tempo si legge da
+       * sinistra a destra, e chi lo guarda non controlla le etichette.
+       *
+       * Con un limite si tengono i periodi PIÙ RECENTI e si mostrano dal più
+       * vecchio, come farebbe un foglio di calcolo: ordinare per etichetta e
+       * poi tagliare darebbe i dodici mesi più vecchi, buttando in silenzio
+       * proprio quelli che interessano.
+       *
+       * Torta e ciambella restano ordinate per valore: non hanno un asse, e la
+       * fetta più grande davanti è quello che serve. `top_n` è per definizione
+       * una classifica.
+       */
+      const asseTemporale = isReportGranularity(section.groupByGranularity)
+        && (chartType === 'bar' || chartType === 'bar_horizontal')
+      returnClause = asseTemporale
+        ? [
+            `WITH ${periodoDi(groupVar, field)} AS label, ${misura} AS value`,
+            `ORDER BY label DESC`,
+            `LIMIT toInteger($limit)`,
+            `RETURN label, value`,
+            `ORDER BY label ASC`,
+          ].join('\n')
+        : [
+            `RETURN ${periodoDi(groupVar, field)} AS label, ${misura} AS value`,
+            `ORDER BY value ${sortDirVal}`,
+            `LIMIT toInteger($limit)`,
+          ].join('\n')
       break
     }
 

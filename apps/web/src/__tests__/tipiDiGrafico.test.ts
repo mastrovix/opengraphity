@@ -60,3 +60,28 @@ describe('i tipi di grafico', () => {
     expect(mancanti).toEqual([])
   })
 })
+
+/**
+ * LE ETICHETTE DEL VALORE ARRIVANO A TUTTI (20 set 2026, dal giro nel
+ * browser: «nella linea dove ci sono i puntini dovrebbe esserci anche il
+ * valore»).
+ *
+ * `REPORT_STYLE = { showValueLabels: true }` è la scelta della PAGINA: in un
+ * report il numero si legge. Linea e area erano gli unici due rami del
+ * renderer a non riceverlo — una dimenticanza che nessun tipo vede, perché il
+ * grafico si disegna lo stesso, solo muto. Il test guarda i rami, non il
+ * pixel: chi aggiunge un tipo nuovo se ne accorge qui.
+ */
+describe('lo stile dei report raggiunge ogni grafico', () => {
+  it('ogni chiamata a un costruttore di opzioni riceve REPORT_STYLE', () => {
+    const src = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../components/ReportChartRenderer.tsx'),
+      'utf8',
+    )
+    // Una riga per chiamata: le opzioni stanno tutte sulla stessa riga.
+    const chiamate = src.split('\n').filter((riga) => /build[A-Za-z]*Option\(/.test(riga))
+    expect(chiamate.length).toBeGreaterThan(4)
+    const senzaStile = chiamate.filter((c) => !c.includes('REPORT_STYLE')).map((c) => c.trim())
+    expect(senzaStile).toEqual([])
+  })
+})

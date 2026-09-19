@@ -110,7 +110,37 @@ async function fetchSectionData(sections: ReportSectionDef[], tenantId: string):
         error: tableRows ? null : 'Formato dati tabella inatteso',
       }
     }
-    return { title: r.title, chartType: r.chartType, rows: Array.isArray(parsed) ? parsed as Array<{ name: string; value: number }> : null, kpiValue: null, tableRows: null, error: null }
+    return {
+      title: r.title, chartType: r.chartType,
+      rows: Array.isArray(parsed) ? righeDiSerie(parsed as unknown[], r.chartType) : null,
+      kpiValue: null, tableRows: null, error: null,
+    }
+  })
+}
+
+/**
+ * LE DUE FORME DI UNA SERIE (20 set 2026, dal giro nel browser: «esportando in
+ * excel la colonna label è vuota»).
+ *
+ * `reportExecutor` produce `{name, value}` per barre, torte e classifiche e
+ * `{date, value}` per linee e aree — due contratti, perché i grafici del
+ * browser leggono l'uno o l'altro. L'esportazione ne conosceva UNO SOLO:
+ * `row.name`. Su una sezione a linea la colonna «Label» del foglio usciva
+ * vuota e il PDF stampava «undefined: 5» — il documento che si allega a un
+ * rapporto mensile.
+ *
+ * Qui le due forme si uniscono in una, e una riga che non porta NESSUNA
+ * etichetta è un errore dichiarato: una cella vuota in un foglio consegnato
+ * non si distingue da un dato che vale davvero niente.
+ */
+export function righeDiSerie(parsed: readonly unknown[], chartType: string): Array<{ name: string; value: number }> {
+  return parsed.map((raw, i) => {
+    const r = (raw ?? {}) as { name?: unknown; date?: unknown; value?: unknown }
+    const etichetta = r.name ?? r.date
+    if (etichetta === undefined || etichetta === null || String(etichetta) === '') {
+      throw new Error(`[report-export] row ${String(i)} of a "${chartType}" section has no label (neither "name" nor "date")`)
+    }
+    return { name: String(etichetta), value: Number(r.value ?? 0) }
   })
 }
 

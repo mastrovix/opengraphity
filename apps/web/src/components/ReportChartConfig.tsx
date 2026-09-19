@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { ReportPreview } from './ReportPreview'
 import type { SectionResult } from './ReportPreview'
+import { navigableLabel } from './ReportFlowNodes'
 import type { NavigableField } from './ReportFlowNodes'
 import { colors, palette } from '@/lib/tokens'
 
@@ -182,7 +183,7 @@ export function ReportChartConfig({
                     ? nodeDataMap[groupByNodeId].fields
                         .filter(f => !isTimeSeries || f.fieldType === 'date' || DATE_FIELD_NAMES.includes(f.name))
                         .map(f => (
-                          <option key={f.name} value={f.name}>{f.label}</option>
+                          <option key={f.name} value={f.name}>{navigableLabel(t, f)}</option>
                         ))
                     : null}
                 </select>
@@ -219,7 +220,7 @@ export function ReportChartConfig({
                   <select id={ids.metricField} value={metricField} onChange={e => onMetricFieldChange(e.target.value)} style={selectStyle}>
                     <option value="">{t('common.select')}</option>
                     {campiNumericiDellaRadice.map((f) => (
-                      <option key={f.name} value={f.name}>{f.label}</option>
+                      <option key={f.name} value={f.name}>{navigableLabel(t, f)}</option>
                     ))}
                   </select>
                   {campiNumericiDellaRadice.length === 0 && (
@@ -295,7 +296,7 @@ export function ReportChartConfig({
                             onSelectedFieldsChange(nid, updated)
                           }}
                         />
-                        {f.label}
+                        {navigableLabel(t, f)}
                       </label>
                     ))}
                   </div>

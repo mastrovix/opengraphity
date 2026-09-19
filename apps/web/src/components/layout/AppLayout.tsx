@@ -47,7 +47,7 @@ export function AppLayout() {
 
   return (
     <ConfirmProvider>
-      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: 'var(--color-slate-bg)' }}>
+      <div style={{ display: 'flex', height: 'var(--vh-app)', overflow: 'hidden', backgroundColor: 'var(--color-slate-bg)' }}>
         {/* Skip to main content — visibile solo su focus */}
         <a
           href="#main-content"
@@ -82,7 +82,7 @@ export function AppLayout() {
             flex:           1,
             display:        'flex',
             flexDirection:  'column',
-            height:         '100vh',
+            height:         'var(--vh-app)',
             overflow:       'hidden',
             transition:     'margin-left 200ms ease',
             minWidth:       0,

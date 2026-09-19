@@ -148,7 +148,7 @@ export function AssistantPage() {
   }
 
   return (
-    <PageContainer style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 56px)' }}>
+    <PageContainer style={{ display: 'flex', flexDirection: 'column', height: 'calc(var(--vh-app) - 56px)' }}>
       <div style={{ maxWidth: 780, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0 12px' }}>
           {/* Il titolo passa da PageTitle come le altre pagine: era un <h1> scritto a mano, con l'icona piu piccola e di un altro colore. */}

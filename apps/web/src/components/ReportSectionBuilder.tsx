@@ -148,6 +148,8 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
    */
   const aiAccesa = useAIFeature('reportDesigner')
   const [progettoAI, setProgettoAI] = useState(false)
+  /** L'ultima descrizione data all'AI: riaprendo il modale si riparte da lì. */
+  const [descrizioneAI, setDescrizioneAI] = useState('')
 
   const { data: entitiesData } = useQuery<{ navigableEntities: NavigableEntity[] }>(GET_NAVIGABLE_ENTITIES)
   const entities: NavigableEntity[] = useMemo(() => entitiesData?.navigableEntities ?? [], [entitiesData])
@@ -462,15 +464,33 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
   // ── Auto-preview on step 3 ───────────────────────────────────────────────────
 
+  /*
+   * L'ANTEPRIMA DIPENDE DA TUTTO QUELLO CHE MANDA, NON DA UN ELENCO SCRITTO A
+   * MANO (20 set 2026, dal giro nel browser: «se scelgo tabella, selezionando
+   * le colonne non si aggiorna automaticamente»).
+   *
+   * Le dipendenze erano una lista compilata a mano che copriva le tendine e
+   * si fermava a `nodes.length`. Tutto quello che vive in `nodeDataMap` — le
+   * COLONNE di una tabella e i FILTRI di un nodo — cambiava senza che
+   * l'anteprima se ne accorgesse: si spuntava una colonna e sotto restava la
+   * tabella di prima. Già successo con «Periodo» a settembre, e la toppa fu
+   * aggiungere una voce alla lista: la lista era il difetto.
+   *
+   * Ora si dipende da `buildInput`, che è la memo di TUTTO ciò che l'anteprima
+   * spedisce: un pezzo nuovo della sezione è coperto il giorno in cui nasce.
+   * `runPreview` sta in un ref perché è l'unica cosa che non descrive la
+   * sezione, e metterla fra le dipendenze rischia di riarmare il timer a ogni
+   * render della query.
+   */
+  const runPreviewRef = useRef(runPreview)
+  runPreviewRef.current = runPreview
+
   useEffect(() => {
     if (wizardStep !== 3 || nodes.length === 0) return
-    const timer = setTimeout(() => { runPreview({ variables: { input: buildInput(), language: i18n.resolvedLanguage ?? i18n.language } }) }, 500)
+    const lingua = i18n.resolvedLanguage ?? i18n.language
+    const timer = setTimeout(() => { runPreviewRef.current({ variables: { input: buildInput(), language: lingua } }) }, 500)
     return () => clearTimeout(timer)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-    // `granularita` fra le dipendenze (19 set 2026): senza, si cambiava
-    // «Periodo» in «Per mese» e l'anteprima restava quella per giorno —
-    // l'unico posto dove si verifica il disegno mostrava un altro disegno.
-  }, [wizardStep, chartType, groupByNodeId, groupByField, granularita, metric, metricField, limit, sortDir, nodes.length, edges.length])
+  }, [wizardStep, nodes, buildInput, i18n.resolvedLanguage, i18n.language])
 
   // ── Wizard navigation ────────────────────────────────────────────────────────
 
@@ -782,8 +802,12 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
       {progettoAI && (
         <ModaleProgettoReportAI
+          descrizioneIniziale={descrizioneAI}
           onChiudi={() => { setProgettoAI(false) }}
           onApplica={(p: ProgettoReport) => {
+            // La frase da cui è nato il disegno: riaprendo l'AI si riparte da
+            // lì invece che da una casella vuota.
+            setDescrizioneAI(p.prompt)
             /*
              * Il progetto entra dalla STESSA porta di una sezione riaperta a
              * mano (`applicaSezione`), e si va al passo della visualizzazione:

@@ -11,7 +11,7 @@ export const panelStyle: React.CSSProperties = {
   width:           360,
   maxWidth:        'calc(100vw - 48px)',
   // Il pannello galleggia sul disegno: se il contenuto è lungo scorre dentro, non esce dallo schermo.
-  maxHeight:       'calc(100vh - 220px)',
+  maxHeight:       'calc(var(--vh-app) - 220px)',
   overflowY:       'auto',
   backgroundColor: colors.white,
   border:          '1px solid var(--color-border)',

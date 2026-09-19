@@ -973,7 +973,7 @@ export function EnumDesignerPage() {
             </button>
           </div>
 
-          <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
+          <div style={{ maxHeight: 'calc(var(--vh-app) - 220px)', overflowY: 'auto' }}>
             {loading && !allEnums.length && (
               <p style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('pages.dictionary.loading')}</p>
             )}

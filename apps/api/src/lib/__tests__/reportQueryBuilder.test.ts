@@ -465,6 +465,45 @@ describe('la granularità di una serie', () => {
     expect(barre).toContain("toString(date.truncate('month', datetime(n0.created_at)))")
   })
 
+  /*
+   * L'ORDINE DELL'ASSE (20 set 2026, dal giro nel browser).
+   *
+   * «Usando le barre l'ordinamento sull'asse x è sbagliato»: le barre erano
+   * ordinate per valore come ogni altro raggruppamento, e con un periodo
+   * l'asse usciva 13, 15, 16, 14 set — gli stessi dati che la linea mostrava
+   * in ordine. Un istogramma nel tempo si legge da sinistra a destra.
+   */
+  it('un istogramma per periodo si ordina per DATA, non per valore', () => {
+    const q = buildReportQuery(serie({ chartType: 'bar', groupByField: 'created_at', groupByGranularity: 'month' }), 't1', whitelist).query
+    expect(q).toContain('ORDER BY label ASC')
+    expect(q).not.toContain('ORDER BY value')
+  })
+
+  it('col limite tiene i periodi PIÙ RECENTI e li mostra dal più vecchio', () => {
+    // Ordinare per etichetta e poi tagliare darebbe i dodici mesi più vecchi,
+    // buttando in silenzio proprio quelli che interessano.
+    const q = buildReportQuery(serie({ chartType: 'bar', groupByField: 'created_at', groupByGranularity: 'month' }), 't1', whitelist).query
+    expect(q.indexOf('ORDER BY label DESC')).toBeLessThan(q.indexOf('LIMIT toInteger($limit)'))
+    expect(q.indexOf('LIMIT toInteger($limit)')).toBeLessThan(q.lastIndexOf('ORDER BY label ASC'))
+  })
+
+  it('le barre orizzontali per periodo seguono la stessa regola', () => {
+    expect(buildReportQuery(serie({ chartType: 'bar_horizontal', groupByField: 'created_at', groupByGranularity: 'month' }), 't1', whitelist).query)
+      .toContain('ORDER BY label ASC')
+  })
+
+  it('torta e classifica restano ordinate per valore: non hanno un asse', () => {
+    for (const chartType of ['pie', 'donut', 'top_n'] as const) {
+      expect(buildReportQuery(serie({ chartType, groupByField: 'created_at', groupByGranularity: 'month' }), 't1', whitelist).query)
+        .toContain('ORDER BY value')
+    }
+  })
+
+  it('un istogramma SENZA periodo resta una classifica per valore', () => {
+    expect(buildReportQuery(serie({ chartType: 'bar', groupByField: 'status' }), 't1', whitelist).query)
+      .toContain('ORDER BY value')
+  })
+
   it('senza periodo un raggruppamento resta la proprietà grezza: stato, categoria, team', () => {
     const barre = buildReportQuery(serie({ chartType: 'bar', groupByField: 'status' }), 't1', whitelist).query
     expect(barre).toContain('RETURN n0.status AS label')

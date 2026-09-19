@@ -79,6 +79,29 @@ describe('buildBarOption', () => {
     expect(compact.grid).toEqual({ top: 12, right: 12, bottom: 20, left: 40, containLabel: true })
   })
 
+  /*
+   * IL VALORE SUI PUNTI (20 set 2026, dal giro nel browser: «nella linea dove
+   * ci sono i puntini dovrebbe esserci anche il valore»). `showValueLabels`
+   * arriva acceso da ogni sezione di report e la linea era l'unico grafico
+   * che lo ignorava.
+   */
+  it('la linea scrive il valore sui punti quando le etichette sono accese', () => {
+    const acceso = buildLineOption(POINTS, { showValueLabels: true }) as { series: Array<{ label?: { show?: boolean } }> }
+    expect(acceso.series[0]!.label?.show).toBe(true)
+    const spento = buildLineOption(POINTS) as { series: Array<{ label?: { show?: boolean } }> }
+    expect(spento.series[0]!.label?.show).toBe(false)
+  })
+
+  it('con le etichette accese la griglia lascia spazio sopra, così il valore più alto non si taglia', () => {
+    // «La linea mostra i valori ma non si vedono bene, alcuni tagliati».
+    const senza = buildLineOption(POINTS) as unknown as { grid: { top: number } }
+    const con   = buildLineOption(POINTS, { showValueLabels: true }) as unknown as { grid: { top: number } }
+    expect(con.grid.top).toBeGreaterThan(senza.grid.top)
+    const barreSenza = buildBarOption(POINTS) as unknown as { grid: { top: number } }
+    const barreCon   = buildBarOption(POINTS, { showValueLabels: true }) as unknown as { grid: { top: number } }
+    expect(barreCon.grid.top).toBeGreaterThan(barreSenza.grid.top)
+  })
+
   it('color forza un colore unico; showValueLabels attiva le etichette valore', () => {
     const opt = buildBarOption(POINTS, { color: '#123456', showValueLabels: true })
     expect(opt.series[0]!.data.every((d) => d.itemStyle.color === '#123456')).toBe(true)

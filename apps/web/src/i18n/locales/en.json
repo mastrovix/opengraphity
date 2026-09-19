@@ -6449,7 +6449,8 @@
       "name": "Name",
       "type": "Type",
       "email": "Email",
-      "role": "Role"
+      "role": "Role",
+      "number": "Number"
     },
     "relation": {
       "affectedCI": "Affected CI",
@@ -7171,7 +7172,7 @@
     "discarded": "What I discarded",
     "notes": "What I could not do",
     "apply": "Put it in the builder",
-    "again": "Rewrite the description",
+    "again": "Edit the description",
     "applyHelp": "I fill the builder with the design: you see the preview on your real data, change what you want and then save the section yourself."
   }
 }

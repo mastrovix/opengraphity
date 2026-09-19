@@ -52,13 +52,25 @@ export interface ProgettoReport {
   notes: string[]
 }
 
-export function ModaleProgettoReportAI({ onChiudi, onApplica }: {
+export function ModaleProgettoReportAI({ onChiudi, onApplica, descrizioneIniziale }: {
   onChiudi: () => void
   /** Mette il progetto nel costruttore: non salva. */
   onApplica: (progetto: ProgettoReport) => void
+  /**
+   * L'ULTIMA DESCRIZIONE TORNA (20 set 2026, dal giro nel browser: «in caso di
+   * utilizzo dell'AI, manca la possibilità di modificare la descrizione e
+   * ricalcolare»).
+   *
+   * Dentro al modale la descrizione era già tenuta: «Riscrivi la descrizione»
+   * torna alla casella con quello che c'era. Ma DOPO «Mettilo nel
+   * costruttore» il modale si chiudeva, e riaprirlo ne montava uno nuovo con
+   * la casella VUOTA: per cambiare una parola di tre righe bisognava
+   * riscriverle tutte. Il costruttore ora si ricorda l'ultima e la ripropone.
+   */
+  descrizioneIniziale?: string
 }) {
   const { t } = useTranslation()
-  const [descrizione, setDescrizione] = useState('')
+  const [descrizione, setDescrizione] = useState(descrizioneIniziale ?? '')
   const [progetto, setProgetto] = useState<ProgettoReport | null>(null)
   const [proponi, { loading: pensando }] = useMutation(PROPOSE_REPORT_SECTION, { onError: (e) => showError(e) })
 

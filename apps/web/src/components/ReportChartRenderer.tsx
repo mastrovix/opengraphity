@@ -123,10 +123,13 @@ export function ReportChartRenderer({ chartType, data, title, error, valueLabel,
       return <ReactECharts option={buildHorizontalBarOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
 
     case 'line':
-      return <ReactECharts option={buildLineOption(points(), { locale: i18n.language, granularita })} {...echartsProps} />
+      // `REPORT_STYLE` anche qui (20 set 2026): linea e area erano gli unici
+      // due grafici che non lo ricevevano, quindi i punti restavano senza il
+      // loro valore mentre barre e torte lo scrivevano.
+      return <ReactECharts option={buildLineOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
 
     case 'area':
-      return <ReactECharts option={buildLineOption(points(), { area: true, locale: i18n.language, granularita })} {...echartsProps} />
+      return <ReactECharts option={buildLineOption(points(), { ...REPORT_STYLE, area: true, locale: i18n.language, granularita })} {...echartsProps} />
 
     case 'table': {
       const d = parsed as TableData

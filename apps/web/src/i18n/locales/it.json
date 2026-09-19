@@ -6449,7 +6449,8 @@
       "name": "Nome",
       "type": "Tipo",
       "email": "E-mail",
-      "role": "Ruolo"
+      "role": "Ruolo",
+      "number": "Numero"
     },
     "relation": {
       "affectedCI": "CI impattato",
@@ -7171,7 +7172,7 @@
     "discarded": "Cosa ho scartato",
     "notes": "Cosa non ho potuto fare",
     "apply": "Mettilo nel costruttore",
-    "again": "Riscrivi la descrizione",
+    "again": "Modifica la descrizione",
     "applyHelp": "Riempio il costruttore col disegno: vedi l'anteprima coi tuoi dati veri, cambi quello che vuoi e poi salvi tu la sezione."
   }
 }

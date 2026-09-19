@@ -334,7 +334,7 @@ export default function ReportsPage() {
   const hasMessages = localMessages.length > 0
 
   return (
-    <div className="card-border" style={{ display: 'flex', height: 'calc(100vh - 56px - 48px)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", overflow: 'hidden' }}>
+    <div className="card-border" style={{ display: 'flex', height: 'calc(var(--vh-app) - 56px - 48px)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", overflow: 'hidden' }}>
 
       {/* ── Sidebar sinistra ────────────────────────────────────────────── */}
       <div style={{

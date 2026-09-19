@@ -123,6 +123,28 @@ function itemColor(style: ChartStyle, i: number, palette: string[]): string {
   return style.color ?? palette[i % palette.length]!
 }
 
+
+/*
+ * SPAZIO PER L'ETICHETTA DEL VALORE (20 set 2026, dal giro nel browser: «la
+ * linea mostra i valori ma non si vedono bene, alcuni tagliati»).
+ *
+ * L'etichetta sta SOPRA il punto, e la griglia arrivava fin sotto il bordo:
+ * il valore del punto più alto finiva mezzo fuori. Con le etichette accese
+ * la griglia si abbassa di una riga di testo — e ai lati un po' d'aria, se
+ * no il primo e l'ultimo valore escono dal riquadro.
+ */
+function grigliaConEtichette(
+  griglia: Record<string, unknown>, mostraValori: boolean | undefined,
+): Record<string, unknown> {
+  if (!mostraValori) return griglia
+  return {
+    ...griglia,
+    top:   Number(griglia['top'] ?? 0) + 20,
+    left:  Number(griglia['left'] ?? 0) + 8,
+    right: Number(griglia['right'] ?? 0) + 8,
+  }
+}
+
 // ── Builder ──────────────────────────────────────────────────────────────────
 
 export function buildBarOption(points: ChartPoint[], style: ChartStyle & { locale?: string; granularita?: string | null } = {}) {
@@ -134,9 +156,9 @@ export function buildBarOption(points: ChartPoint[], style: ChartStyle & { local
     ?? points.map((p) => p.label)
   return {
     tooltip: tooltip('axis', { axisPointer: { type: 'shadow' } }),
-    grid: compact
+    grid: grigliaConEtichette(compact
       ? { top: 12, right: 12, bottom: 20, left: 40, containLabel: true }
-      : { left: 16, right: 16, bottom: 48, top: 16, containLabel: true },
+      : { left: 16, right: 16, bottom: 48, top: 16, containLabel: true }, style.showValueLabels),
     xAxis: categoryAxis(etichette, compact, points.length > 6 ? 30 : 0),
     yAxis: valueAxis(compact),
     series: [{
@@ -247,9 +269,9 @@ export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area
     ?? points.map((p) => p.label)
   return {
     tooltip: tooltip('axis'),
-    grid: compact
+    grid: grigliaConEtichette(compact
       ? { top: 12, right: 12, bottom: 20, left: 40, containLabel: true }
-      : { left: 16, right: 16, bottom: 48, top: 16, containLabel: true },
+      : { left: 16, right: 16, bottom: 48, top: 16, containLabel: true }, style.showValueLabels),
     xAxis: categoryAxis(etichette, compact),
     yAxis: valueAxis(compact),
     series: [{
@@ -258,6 +280,25 @@ export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area
       smooth: true,
       symbol: 'circle',
       symbolSize: 6,
+      /*
+       * IL VALORE SUI PUNTI (20 set 2026, dal giro nel browser: «nella linea
+       * dove ci sono i puntini dovrebbe esserci anche il valore»).
+       *
+       * `showValueLabels` arriva acceso da ogni sezione di report
+       * (`ReportChartRenderer`) e la linea era l'unico grafico che lo
+       * ignorava: barre e torte scrivevano il numero, la linea no. Lo stesso
+       * dato cambiava leggibilità cambiando disegno, e su una serie di pochi
+       * punti — che è il caso normale di un report mensile — il numero è
+       * proprio quello che si va a leggere.
+       */
+      label: style.showValueLabels
+        ? { show: true, position: 'top', distance: 8, color: t.text, fontSize: t.fsBody, fontWeight: 600, fontFamily: t.font }
+        : { show: false },
+      // Fuori dal riquadro non si taglia, e due valori vicini non si
+      // sovrappongono: sparisce il secondo invece di diventare illeggibili
+      // tutti e due.
+      labelLayout: { hideOverlap: true },
+      clip: false,
       lineStyle: { color, width: 2.5 },
       itemStyle: { color, borderWidth: 2, borderColor: cssVar('--color-white') },
       ...(style.area
