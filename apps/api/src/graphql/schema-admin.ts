@@ -13,7 +13,12 @@ export function adminSDL(): string {
 
   type LogsResult {
     entries: [LogEntry!]!
+    """Quante righe ci sono nella finestra letta, dopo i filtri. Non quante ne esistono in archivio."""
     total:   Int!
+    """Vero quando l'archivio è più grande della finestra: esiste dell'altro più indietro di così."""
+    truncated: Boolean!
+    """Quanto è profonda la finestra, per riga d'origine."""
+    windowSize: Int!
   }
 
   type QueueJobCounts {

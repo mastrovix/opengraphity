@@ -191,6 +191,8 @@ const intere = []
 const tettiParametrici = []
 let composte = 0
 let esempi = 0
+const formeComposte = new Map()
+const composteDettaglio = []
 for (const dir of SCAN) {
   for (const file of walk(dir)) {
     /**
@@ -207,7 +209,17 @@ for (const dir of SCAN) {
       // problema, e il controllo e testuale — non ha bisogno di EXPLAIN.
       const tetto = /\b(LIMIT|SKIP)\s+\$([A-Za-z_][A-Za-z0-9_]*)/i.exec(t)
       if (tetto) tettiParametrici.push({ file: relative(ROOT, file), clausola: `${tetto[1].toUpperCase()} $${tetto[2]}` })
-      if (t.includes('${')) { composte++; continue }
+      if (t.includes('${')) {
+        composte++
+        // Le forme di interpolazione, per poterle guardare invece che contarle.
+        for (const m of t.matchAll(/\$\{([^}]*)\}/g)) {
+          const forma = m[1].trim().slice(0, 60)
+          const chiave = /^[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(forma) ? forma.replace(/\(.*$/, '()') : '<espressione>'
+          formeComposte.set(chiave, (formeComposte.get(chiave) ?? 0) + 1)
+        }
+        composteDettaglio.push({ file: relative(ROOT, file), query: t.trim() })
+        continue
+      }
       /**
        * Un ESEMPIO dentro un commento, non una query. Si riconosce da tre
        * segni: i puntini di sospensione, un segnaposto fra parentesi angolari,
@@ -376,4 +388,11 @@ if (tettiParametrici.length > 0) {
   console.error('\nInterpola la costante nel template (`LIMIT ${MAX}`), come topology.ts e services.ts.')
   process.exit(1)
 }
+if (process.argv.includes('--composte')) {
+  console.log('\nLe forme di interpolazione nelle query composte, per frequenza:')
+  for (const [forma, n] of [...formeComposte.entries()].sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${String(n).padStart(4)}  ${forma}`)
+  }
+}
+
 console.log(`check-cypher: ${intere.length - frammenti} query verificate con EXPLAIN, tutte valide; nessun tetto parametrico. Fuori perimetro: ${composte} composte con \${…}, ${esempi} esempi nei commenti, ${frammenti} pezzi di query che si concludono altrove.`)

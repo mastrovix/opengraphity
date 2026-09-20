@@ -437,7 +437,9 @@
       "count_one": "{{count}} log",
       "count_other": "{{count}} log",
       "notJson": "Non JSON — valore grezzo",
-      "module": "Modulo"
+      "module": "Modulo",
+      "window_one": "Si leggono le {{count}} riga più recente: più indietro di così l'archivio continua, e i filtri non ci arrivano.",
+      "window_other": "Si leggono le {{count}} righe più recenti: più indietro di così l'archivio continua, e i filtri non ci arrivano."
     },
     "aiAnalysis": {
       "title": "Analisi con l'AI",

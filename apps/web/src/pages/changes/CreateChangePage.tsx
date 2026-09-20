@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, useEffect } from 'react'
+import { useId, useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
 import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -168,8 +168,27 @@ export function CreateChangePage() {
    */
   const apollo = useApolloClient()
   const [rechecking, setRechecking] = useState(false)
-  const recheckGroups = async () => {
-    const stale = selectedCIs.filter(missingGroups)
+  /*
+   * LA SELEZIONE DI ADESSO, NON QUELLA DI QUANDO L'ASCOLTATORE È NATO
+   * (20 set 2026).
+   *
+   * `recheckGroups` legge `selectedCIs`, e gli ascoltatori di `focus` e
+   * `visibilitychange` si registrano una volta sola (F-26: prima si
+   * registravano a ogni render, due ascoltatori per ogni tasto premuto nel
+   * form). Le due cose insieme facevano un difetto: la funzione catturata
+   * dagli ascoltatori portava con sé la selezione di quel momento, e al
+   * ritorno sulla scheda rileggeva i CI di PRIMA — non quelli che ci sono
+   * adesso. Il lint lo segnalava da allora, come dipendenza mancante.
+   *
+   * Un ref tiene la selezione corrente senza rendere instabile la funzione:
+   * così `recheckGroups` non cambia identità, gli ascoltatori restano
+   * registrati come voleva F-26, e leggono il presente.
+   */
+  const selezioneCorrente = useRef(selectedCIs)
+  useEffect(() => { selezioneCorrente.current = selectedCIs }, [selectedCIs])
+
+  const recheckGroups = useCallback(async () => {
+    const stale = selezioneCorrente.current.filter(missingGroups)
     if (stale.length === 0) return
     setRechecking(true)
     try {
@@ -186,7 +205,9 @@ export function CreateChangePage() {
     } finally {
       setRechecking(false)
     }
-  }
+    // `showError` è un import, non un valore del componente: non è una dipendenza.
+  }, [apollo])
+
   useEffect(() => {
     if (ciWithoutGroups.length === 0) return
     // `focus` quando torna la finestra, `visibilitychange` quando torna la scheda:
@@ -201,8 +222,10 @@ export function CreateChangePage() {
     }
     // F-26: l'array di dipendenze mancava, quindi l'effetto si ri-registrava a
     // OGNI render — due ascoltatori aggiunti e togliati a ogni digitazione nel
-    // form. Dipende solo da quanti CI sono senza gruppo.
-  }, [ciWithoutGroups.length])
+    // form. Dipende da quanti CI sono senza gruppo, e da `recheckGroups`, che
+    // ora è stabile (vedi il ref qui sopra): quindi si registra ancora una
+    // volta sola, ma senza portarsi dietro una selezione vecchia.
+  }, [ciWithoutGroups.length, recheckGroups])
   const canSubmit = title.trim() !== '' && why.trim() !== '' && what.trim() !== '' && changeType !== '' && selectedCIs.length > 0 && ciWithoutGroups.length === 0 && !loading
 
   const handleSubmit = () => {

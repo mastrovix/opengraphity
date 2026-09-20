@@ -17,7 +17,7 @@ import { Pill } from '@/components/ui/Pill'
 const GET_LOGS = gql`
   query GetLogs($limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
     logs(limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
-      total
+      total truncated windowSize
       entries {
         id timestamp level module message data
       }
@@ -215,7 +215,7 @@ export function LogsPage() {
 
   // `error` va letto: un filtro rifiutato lasciava la pagina vuota senza dire
   // niente (revisione totale · F-11).
-  const { data, loading, error, refetch } = useQuery<{ logs: { entries: LogEntry[]; total: number } }>(GET_LOGS, {
+  const { data, loading, error, refetch } = useQuery<{ logs: { entries: LogEntry[]; total: number; truncated: boolean; windowSize: number } }>(GET_LOGS, {
     variables: {
       limit:   PAGE_SIZE,
       offset,
@@ -238,6 +238,11 @@ export function LogsPage() {
 
   const entries: LogEntry[] = data?.logs.entries ?? []
   const total:   number     = data?.logs.total   ?? 0
+  /* La lista è una FINESTRA sulle righe più recenti: quando l'archivio è più
+     grande, i filtri cercano dentro la finestra e non in tutto. Dirlo è la
+     differenza fra «non c'è» e «non l'ho guardato». */
+  const truncated  = data?.logs.truncated  ?? false
+  const windowSize = data?.logs.windowSize ?? 0
   const totalPages  = Math.ceil(total / PAGE_SIZE)
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1
 
@@ -251,6 +256,11 @@ export function LogsPage() {
         <p style={{ color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)', margin: '4px 0 0' }}>
           {loading ? '—' : total > 0 ? t('pages.logs.count', { count: total }) : t('common.noResults')}
         </p>
+        {!loading && truncated && (
+          <p style={{ color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-caption)', margin: '4px 0 0' }}>
+            {t('pages.logs.window', { count: windowSize })}
+          </p>
+        )}
       </div>
 
       {/* Advanced Filters + controls */}
