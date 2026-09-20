@@ -24,7 +24,7 @@
  * Uso: node scripts/check-cypher.mjs [--verbose]
  * Richiede il Neo4j dello stack locale in piedi (container `infra-neo4j-1`).
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
@@ -61,7 +61,37 @@ function* walk(dir) {
  * parentesi e un minimo di lunghezza.
  */
 const PAROLE_CYPHER = /\b(MATCH|MERGE|CREATE|OPTIONAL MATCH|DETACH DELETE|UNWIND|CALL \{)\b/
-const sembraQuery = (t) => PAROLE_CYPHER.test(t) && t.includes('(') && t.trim().length > 24
+/**
+ * UN FRAMMENTO NON E UNA QUERY (20 set 2026).
+ *
+ * Alcuni template sono PEZZI che vengono concatenati altrove: cominciano con
+ * `OPTIONAL MATCH`, `RETURN`, `WITH`, e citano variabili legate dalla parte
+ * che li precede. Mandarli a EXPLAIN da soli produce «Variable `c` not
+ * defined» — un errore vero su una query che non esiste, cioe rumore.
+ *
+ * La regola: una query intera COMINCIA con una clausola che puo cominciare.
+ * Finche il guardiano riconosceva solo gli errori di sintassi la cosa non si
+ * vedeva, perche quegli errori erano semantici e passavano inosservati
+ * insieme a tutti gli altri.
+ */
+const INIZIO_DI_QUERY = /^\s*(?:\/\/[^\n]*\n\s*)*(MATCH|MERGE|CREATE|UNWIND|CALL|EXPLAIN|PROFILE|SHOW|DROP|ALTER)\b/i
+const sembraQuery = (t) => PAROLE_CYPHER.test(t) && t.includes('(') && t.trim().length > 24 && INIZIO_DI_QUERY.test(t)
+
+/**
+ * QUALI RIGHE DELL'USCITA SONO UN ERRORE (20 set 2026).
+ *
+ * Prima qui c'era `/Invalid input|SyntaxError|…SyntaxError/`: solo la
+ * SINTASSI. Un errore SEMANTICO — «Type mismatch: expected Float but was
+ * List<Float>», che EXPLAIN rifiuta eccome — non corrispondeva a nessuno dei
+ * tre, e il guardiano stampava «tutte valide» con la query rotta sotto il
+ * naso. Preso sul fatto una seconda volta, il 20 set, scrivendo gli aggregati
+ * del lavoro quotidiano: `percentileCont` e una funzione di aggregazione e
+ * non accetta una lista, Neo4j lo diceva, e questo controllo taceva.
+ *
+ * La lezione e la stessa della prima volta, un piano piu in la: non basta che
+ * il guardiano guardi nel posto giusto, deve RICONOSCERE quello che vede.
+ */
+const ERRORE_DI_NEO4J = /Invalid input|SyntaxError|SemanticError|Type mismatch|Neo\.ClientError\.Statement\.|Unknown function|not defined|Expected/
 
 /**
  * VIA I COMMENTI A BLOCCO, MA NON QUELLO CHE STA IN UNA STRINGA (17 set 2026).
@@ -226,6 +256,7 @@ function spiega(queries) {
     .map((q, i) => `EXPLAIN ${suUnaRiga(q.query)};\nRETURN '§CC§${i}' AS m;`)
     .join('\n')
   let uscita
+  let uscitaMalata = false
   try {
     /**
      * `2>&1` NON e un dettaglio: gli errori vanno nell'errore standard e i
@@ -236,32 +267,82 @@ function spiega(queries) {
      */
     uscita = execFileSync('docker', ['exec', '-i', CONTAINER, 'sh', '-c',
       'cypher-shell -u neo4j -p "${NEO4J_AUTH#neo4j/}" --format plain --fail-at-end 2>&1'],
-    { input: script, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
+    {
+      input: script, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+      /*
+       * `maxBuffer` per prudenza, non per un difetto osservato (20 set 2026).
+       * 1240 EXPLAIN producono ~9.900 righe di piano, circa 600 KB, e il
+       * limite predefinito di `execFileSync` e UN megabyte: non e stato
+       * superato, ma il margine e sottile e cresce col codice. Superandolo,
+       * Node ucciderebbe il figlio e lo script leggerebbe l'uscita TRONCATA,
+       * dichiarando valide query che non ha mai visto.
+       */
+      maxBuffer: 256 * 1024 * 1024,
+    })
   } catch (e) {
     if (e.status === undefined) throw e            // docker non c'e: lo dice il chiamante
     uscita = String(e.stdout ?? '')
+    uscitaMalata = true
   }
   // Si cammina l'uscita in ordine: ogni marcatore chiude la query di quell'indice.
   const rotte = []
+  const frammenti = new Set()
   let i = 0
+  let errori = 0
   for (const riga of uscita.split('\n')) {
     const m = /§CC§(\d+)/.exec(riga)
     if (m) { i = Number(m[1]) + 1; continue }
-    if (/Invalid input|SyntaxError|Neo\.ClientError\.Statement\.SyntaxError/.test(riga)) {
+    /*
+     * UN PEZZO DI QUERY, non una query rotta (20 set 2026). Alcuni template
+     * cominciano con `MATCH` e NON finiscono: sono la prima meta di una query
+     * che viene composta altrove, e Neo4j dice «Query cannot conclude with
+     * MATCH». Non e un difetto del prodotto, e questo guardiano non puo
+     * verificarli — quindi li CONTA e lo dice, invece di spacciarli per
+     * errori o di tacerli.
+     */
+    if (/Query cannot conclude with/.test(riga)) { frammenti.add(i); continue }
+    if (ERRORE_DI_NEO4J.test(riga)) {
+      errori++
       const q = queries[i]
       if (q && !rotte.some((r) => r.file === q.file && r.query === q.query)) {
         rotte.push({ ...q, errore: riga.trim().slice(0, 150) })
       }
     }
   }
-  return rotte
+  /*
+   * L'ULTIMA RETE: se cypher-shell è uscito male e non siamo riusciti ad
+   * attribuire nemmeno un errore, questo guardiano NON dice «tutte valide».
+   * Dice che non ha capito, e mostra l'uscita grezza.
+   *
+   * Senza, un errore di una classe che `ERRORE_DI_NEO4J` non conosce ancora
+   * diventa silenzio — ed è esattamente il modo in cui un guardiano smette di
+   * proteggere senza che nessuno se ne accorga.
+   */
+  if (uscitaMalata && errori === 0 && frammenti.size === 0) {
+    if (process.env['CC_DUMP_USCITA']) writeFileSync('/tmp/cc-uscita.txt', uscita)
+    return { rotte, frammenti: frammenti.size, nonAttribuito: uscita.split('\n').filter((r) => r.trim() !== '').slice(-12).join('\n') }
+  }
+  return { rotte, frammenti: frammenti.size, nonAttribuito: null }
 }
 
 let rotte = []
+let frammenti = 0
+let nonAttribuito = null
 try {
-  rotte = spiega(intere)
+  ;({ rotte, frammenti, nonAttribuito } = spiega(intere))
 } catch (e) {
-  console.error(`check-cypher: Neo4j non raggiungibile nel container "${CONTAINER}" (${e instanceof Error ? e.message : String(e)}).`)
+  /*
+   * Un difetto DI QUESTO SCRIPT non si spaccia per «Neo4j irraggiungibile»:
+   * chi legge andrebbe a controllare i container invece del codice. Si
+   * distingue dal messaggio di docker.
+   */
+  const messaggio = e instanceof Error ? e.message : String(e)
+  const eDocker = /docker|ENOENT|container|connection refused/i.test(messaggio)
+  if (!eDocker) {
+    console.error(`check-cypher: questo controllo si e rotto da solo — ${messaggio}`)
+    process.exit(2)
+  }
+  console.error(`check-cypher: Neo4j non raggiungibile nel container "${CONTAINER}" (${messaggio}).`)
   console.error('Questo controllo ha bisogno dello stack locale in piedi: `docker compose -f infra/docker-compose.yml up -d neo4j`.')
   process.exit(2)
 }
@@ -270,6 +351,13 @@ if (process.argv.includes('--dump')) {
   for (const q of intere) console.log('---\n' + suUnaRiga(q.query) + '\n    @ ' + q.file)
 }
 if (verbose) for (const q of intere) console.log(`  ${q.file}: ${q.query.slice(0, 70).replace(/\s+/g, ' ')}…`)
+
+if (nonAttribuito) {
+  console.error('check-cypher: Neo4j ha rifiutato qualcosa e non sono riuscito ad attribuirlo a una query.')
+  console.error('Non dico «tutte valide» quando non ho capito. Uscita grezza (ultime righe):')
+  console.error(nonAttribuito)
+  process.exit(1)
+}
 
 if (rotte.length > 0) {
   console.error(`check-cypher: ${rotte.length} query NON valide (EXPLAIN le rifiuta):`)
@@ -288,4 +376,4 @@ if (tettiParametrici.length > 0) {
   console.error('\nInterpola la costante nel template (`LIMIT ${MAX}`), come topology.ts e services.ts.')
   process.exit(1)
 }
-console.log(`check-cypher: ${intere.length} query scritte per intero, tutte valide (EXPLAIN); nessun tetto parametrico. Fuori perimetro: ${composte} composte con \${…}, ${esempi} esempi nei commenti.`)
+console.log(`check-cypher: ${intere.length - frammenti} query verificate con EXPLAIN, tutte valide; nessun tetto parametrico. Fuori perimetro: ${composte} composte con \${…}, ${esempi} esempi nei commenti, ${frammenti} pezzi di query che si concludono altrove.`)
