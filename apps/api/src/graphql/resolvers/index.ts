@@ -35,6 +35,7 @@ import { dashboardResolvers } from './dashboard.js'
 import { buildDynamicCIResolvers, dynamicCIRootFields } from './dynamic-ci.js'
 import { anomalyResolvers } from './anomaly.js'
 import { proposalResolvers } from './proposals.js'
+import { dailyWorkResolvers } from './dailyWork.js'
 import { eventResolvers } from './events.js'
 import { serviceResolvers } from './services.js'
 import { topologyResolvers } from './topology.js'
@@ -322,6 +323,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...dashboardResolvers.Query,
       ...anomalyResolvers.Query,
       ...proposalResolvers.Query,
+      ...dailyWorkResolvers.Query,
       ...eventResolvers.Query,
       ...serviceResolvers.Query,
       ...topologyResolvers.Query,

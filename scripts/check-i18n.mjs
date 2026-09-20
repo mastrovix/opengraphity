@@ -399,6 +399,10 @@ for (const k of [...defined].sort()) {
 // quelli sono difetti veri (`Sync triggered`, `Heap Memory`, `Auto-refresh
 // 10s`, `External ID`): l'elenco puo solo accorciarsi.
 const IT_EN_IDENTICHE_ACCETTATE = new Set([
+  // «p90» e un termine statistico, non una parola: si scrive cosi in ogni
+  // lingua, come «SLA» o «p95». Tradurlo sarebbe inventare un nome che
+  // nessuno usa. (Ondata 2 di «Miglioramento continuo», 20 set 2026.)
+  'pages.dailyWork.steps.p90',
   // I nomi dei TIPI SPEDITI non sono più qui: dal 20 set 2026 stanno in
   // `packages/types/src/shippedLabels.ts`, perché le legge anche il server
   // (le intestazioni delle colonne dei report). Quelli che in italiano si

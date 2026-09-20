@@ -30,34 +30,50 @@ export const TEAM_NOW_PARAM = '__teamNow'
  * Il frammento Cypher che assegna il ticket `e` al team `t` (entrambi già nel
  * `MATCH`): toglie il team di prima, crea quello nuovo, chiude il tratto aperto
  * di un altro team e ne apre uno se il team nuovo non ce l'ha già. Dopo il
- * frammento restano in scope `e` e `t`. Serve il parametro `$__teamNow`.
+ * frammento restano in scope `e`, `t` e ciò che è stato dichiarato in `carry`.
+ * Serve il parametro `$__teamNow`.
  *
  * `startedAt`: l'espressione Cypher dell'inizio del tratto (default l'istante
  * del cambio); `inferred` per i tratti ricostruiti.
+ *
+ * `carry`: LE VARIABILI DA PORTARE DALL'ALTRA PARTE (20 set 2026).
+ *
+ * Il frammento comincia con un `WITH ${e}, ${t}`, e un `WITH` non elenca: taglia.
+ * Qualunque variabile letta PRIMA — e leggere prima è obbligatorio per il team
+ * di partenza, visto che qui dentro viene cancellato — moriva sulla prima riga
+ * del frammento, e la query falliva a tempo di esecuzione con «Variable ... not
+ * defined». Trovato assegnando un team dal browser: il guardiano delle query
+ * non lo vede, perché questa è una delle query COMPOSTE che non manda in
+ * EXPLAIN. Chi ha bisogno di un valore di prima lo dichiara qui, e il frammento
+ * lo ripete in ogni `WITH`.
  */
-export function assignTeamCypher(e: string, t: string, opts: { startedAt?: string; inferred?: boolean } = {}): string {
+export function assignTeamCypher(
+  e: string, t: string,
+  opts: { startedAt?: string; inferred?: boolean; carry?: string[] } = {},
+): string {
   const start = opts.startedAt ?? `$${TEAM_NOW_PARAM}`
+  const anche = (opts.carry ?? []).map((v) => `, ${v}`).join('')
   return `
-    WITH ${e}, ${t}
+    WITH ${e}, ${t}${anche}
     OPTIONAL MATCH (${e})-[__oldTeam:ASSIGNED_TO_TEAM]->(:Team)
     DELETE __oldTeam
-    WITH DISTINCT ${e}, ${t}
+    WITH DISTINCT ${e}, ${t}${anche}
     CREATE (${e})-[:ASSIGNED_TO_TEAM]->(${t})
-    WITH ${e}, ${t}
+    WITH ${e}, ${t}${anche}
     OPTIONAL MATCH (${e})-[:TEAM_SEGMENT]->(__openSeg:TicketTeamSegment)
       WHERE __openSeg.ended_at IS NULL AND __openSeg.team_id <> ${t}.id
     SET __openSeg.ended_at = $${TEAM_NOW_PARAM}
-    WITH DISTINCT ${e}, ${t}
+    WITH DISTINCT ${e}, ${t}${anche}
     OPTIONAL MATCH (${e})-[:TEAM_SEGMENT]->(__sameSeg:TicketTeamSegment {team_id: ${t}.id})
       WHERE __sameSeg.ended_at IS NULL
-    WITH ${e}, ${t}, count(__sameSeg) AS __hasOpenSeg
+    WITH ${e}, ${t}${anche}, count(__sameSeg) AS __hasOpenSeg
     FOREACH (_ IN CASE WHEN __hasOpenSeg = 0 THEN [1] ELSE [] END |
       CREATE (${e})-[:TEAM_SEGMENT]->(:TicketTeamSegment {
         id: randomUUID(), tenant_id: ${e}.tenant_id, team_id: ${t}.id,
         started_at: ${start}, ended_at: null, inferred: ${opts.inferred === true}
       })
     )
-    WITH ${e}, ${t}`
+    WITH ${e}, ${t}${anche}`
 }
 
 /**

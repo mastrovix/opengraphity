@@ -272,22 +272,29 @@ export function IncidentDetailPage() {
     refetchQueries: ['GetIncident'],
   })
 
+  /*
+   * CHI STACCA L'ASSEGNATARIO È IL SERVER, NON QUESTA PAGINA (20 set 2026).
+   *
+   * Qui, dopo ogni cambio di team, partiva un secondo giro `assignToUser(null)`
+   * che toglieva SEMPRE la persona. Due cose non andavano. La prima è una
+   * regola contraddetta: `setTicketTeam` stacca l'assegnatario solo se non è
+   * membro del team nuovo, e lascia stare chi lo è ancora (un team allargato
+   * non perde il suo lavoro) — questa riga lo staccava comunque. La seconda è
+   * il registro: scriveva un `incident.unassigned_user` con `from: null` e
+   * `to: null` a ogni assegnazione di squadra, cioè il racconto di un distacco
+   * che non è avvenuto. Il server fa la cosa giusta da solo; qui si rilegge e
+   * basta.
+   */
   const [assignToTeam, { loading: assigningTeam }] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
-    onCompleted: (_data, opts) => {
+    onCompleted: () => {
       toast.success(t('toast.incident.teamAssigned'))
       setSelectedTeamId('')
       setShowReassign(false)
       setSelectedUserId('')
-      const incidentId = (opts?.variables as { id?: string } | undefined)?.id
-      if (incidentId) {
-        void assignToUser({ variables: { id: incidentId, userId: null } })
-          .then(() => { setAwaitingUserAssign(true); void refetch() })
-          // Un un-assign fallito NON è "in attesa di utente": va detto.
-          .catch((e: { message?: string }) => { showError(e, e.message ?? t('toast.incident.unassignFailed')); void refetch() })
-      } else {
-        setAwaitingUserAssign(true)
-        void refetch()
-      }
+      // Nessuna previsione su chi resta assegnato: lo decide `setTicketTeam` e
+      // lo dice la rilettura. Mettere qui «ora non c'è nessuno» mostrerebbe un
+      // riquadro vuoto anche quando la persona è rimasta.
+      void refetch()
     },
     onError: (err) => showError(err),
   })

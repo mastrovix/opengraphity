@@ -423,8 +423,16 @@ export async function assignIncidentToTeam(
   // la persona ha chiesto, ed è già scritta), l'evento parte, e poi l'errore
   // dice che il ticket non è avanzato e perché.
   let advanceRefused: { result: Awaited<ReturnType<typeof workflowEngine.transition>>; toStep: string } | null = null
+  /*
+   * I nomi escono dal servizio perché il REGISTRO li vuole (20 set 2026,
+   * ondata 2): `incident.assigned` non diceva né a chi né da chi, e le due
+   * mutation — a squadra e a persona — scrivevano la stessa identica riga.
+   */
+  let nomi: { teamName: string; previousTeamName: string | null; unassignedUserName: string | null } =
+    { teamName: '', previousTeamName: null, unassignedUserName: null }
   const assigned = await withSession(async (session) => {
-    const { teamName, unassignedUserName } = await setTicketTeam(session, 'Incident', id, teamId, ctx.tenantId)
+    const { teamName, previousTeamName, unassignedUserName } = await setTicketTeam(session, 'Incident', id, teamId, ctx.tenantId)
+    nomi = { teamName, previousTeamName, unassignedUserName }
     const transitionNotes = await systemText(ctx.tenantId, 'incident.reassignedTeam', { team: teamName })
     // M-10: l'assegnatario che non è nel gruppo nuovo è stato staccato. Non è
     // un dettaglio tecnico: chi guarda il ticket deve sapere che non ha più un
@@ -499,7 +507,7 @@ export async function assignIncidentToTeam(
     return assigned
   }, true)
   if (advanceRefused) throw assignedButNotAdvanced(id, advanceRefused)
-  return assigned
+  return { incident: assigned, ...nomi }
 }
 
 /**
@@ -544,10 +552,14 @@ export async function assignIncidentToUser(
 ) {
   const now = new Date().toISOString()
   let advanceRefused: { result: Awaited<ReturnType<typeof workflowEngine.transition>>; toStep: string } | null = null
+  // I nomi escono dal servizio perché il registro li vuole: vedi
+  // `assignIncidentToTeam`.
+  let nomi: { userName: string | null; previousUserName: string | null } = { userName: null, previousUserName: null }
 
   const assigned = await withSession(async (session) => {
     if (!userId) {
-      await setTicketUser(session, 'Incident', id, null, ctx.tenantId)
+      const { previousUserName } = await setTicketUser(session, 'Incident', id, null, ctx.tenantId)
+      nomi = { userName: null, previousUserName }
       const r = await session.executeRead((tx) => tx.run(
         `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
         { id, tenantId: ctx.tenantId },
@@ -559,8 +571,9 @@ export async function assignIncidentToUser(
     // Regola ITSM condivisa con il problem (services/ticketAssignment.ts):
     // prima il gruppo, poi un utente di quel gruppo.
     await assertUserInAssignedTeam(session, 'Incident', id, userId, ctx.tenantId)
-    const { userName: assignedName } = await setTicketUser(session, 'Incident', id, userId, ctx.tenantId)
+    const { userName: assignedName, previousUserName } = await setTicketUser(session, 'Incident', id, userId, ctx.tenantId)
     const userName = assignedName ?? userId
+    nomi = { userName: assignedName, previousUserName }
 
     const wiResult = await session.executeRead((tx) => tx.run(`
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
@@ -620,7 +633,7 @@ export async function assignIncidentToUser(
     return assigned
   }, true)
   if (advanceRefused) throw assignedButNotAdvanced(id, advanceRefused)
-  return assigned
+  return { incident: assigned, ...nomi }
 }
 
 export async function inProgressIncident(

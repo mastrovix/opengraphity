@@ -237,14 +237,44 @@ async function resolveIncident(
   return incidentService.resolveIncident(args.id, ctx, args.rootCause)
 }
 
+/*
+ * LE ASSEGNAZIONI DICONO CHI, DA CHI E A COSA (20 set 2026, ondata 2 di
+ * «Miglioramento continuo»).
+ *
+ * Prima queste due scrivevano la STESSA riga — `incident.assigned` senza
+ * dettagli — e dal registro non si poteva sapere né a chi era andato il
+ * ticket, né da chi veniva, né se l'assegnazione era a una squadra o a una
+ * persona. Su c-one tutte e 34 le voci avevano `details = NULL`.
+ *
+ * Adesso sono due azioni distinte con il valore prima e dopo. Le voci
+ * storiche restano povere: un registro di conformità non si riscrive.
+ */
 async function assignIncidentToTeam(
   _: unknown,
   args: { id: string; teamId: string },
   ctx: GraphQLContext,
 ) {
-  const result = await incidentService.assignIncidentToTeam(args.id, args.teamId, ctx)
-  void audit(ctx, 'incident.assigned', 'Incident', args.id)
-  return result
+  const { incident, teamName, previousTeamName, unassignedUserName } =
+    await incidentService.assignIncidentToTeam(args.id, args.teamId, ctx)
+  void audit(ctx, 'incident.assigned_team', 'Incident', args.id, {
+    teamId: args.teamId, to: teamName, from: previousTeamName,
+  })
+  /*
+   * CHI PERDE IL TICKET LO DICE IL REGISTRO (20 set 2026).
+   *
+   * Cambiare squadra stacca l'assegnatario che nella squadra nuova non c'è
+   * (`setTicketTeam`, regola M-10). Finora lo diceva solo la timeline del
+   * ticket: dal registro, una persona si vedeva sparire il lavoro senza che
+   * nessuna riga lo raccontasse, e «quante assegnazioni cadono per un cambio
+   * di squadra» non era una domanda rispondibile. `reason` distingue questa
+   * voce dal distacco che qualcuno ha chiesto a mano.
+   */
+  if (unassignedUserName) {
+    void audit(ctx, 'incident.unassigned_user', 'Incident', args.id, {
+      userId: null, to: null, from: unassignedUserName, reason: 'team_changed',
+    })
+  }
+  return incident
 }
 
 async function assignIncidentToUser(
@@ -252,9 +282,21 @@ async function assignIncidentToUser(
   args: { id: string; userId: string | null },
   ctx: GraphQLContext,
 ) {
-  const result = await incidentService.assignIncidentToUser(args.id, args.userId, ctx)
-  void audit(ctx, 'incident.assigned', 'Incident', args.id)
-  return result
+  const { incident, userName, previousUserName } = await incidentService.assignIncidentToUser(args.id, args.userId, ctx)
+  /*
+   * Un distacco che non stacca nessuno non si scrive (20 set 2026): togliere
+   * l'assegnatario a un ticket che non ne aveva è un'operazione legittima e
+   * senza effetto, e una voce `unassigned_user` con `from: null` e `to: null`
+   * racconta un fatto che non è successo. Il registro dell'ondata 2 esiste
+   * perché lo si possa leggere: il rumore che assomiglia a un evento è peggio
+   * di una voce in meno.
+   */
+  if (args.userId !== null || previousUserName !== null) {
+    void audit(ctx, args.userId === null ? 'incident.unassigned_user' : 'incident.assigned_user', 'Incident', args.id, {
+      userId: args.userId, to: userName, from: previousUserName,
+    })
+  }
+  return incident
 }
 
 async function addAffectedCI(

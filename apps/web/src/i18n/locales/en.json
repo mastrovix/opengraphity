@@ -146,7 +146,8 @@
     "catalogForms": "Service Request Designer",
     "changeCalendar": "Change calendar",
     "configurationDiagnostics": "Diagnostics",
-    "proposals": "Proposals"
+    "proposals": "Proposals",
+    "dailyWork": "Daily work"
   },
   "pages": {
     "incidents": {
@@ -2702,6 +2703,57 @@
       "runCreated_one": "{{count}} new proposal",
       "occurrences_one": "{{count}} case",
       "hiddenRefs_one": "{{count}} not visible with your permissions"
+    },
+    "dailyWork": {
+      "title": "Daily work",
+      "subtitle": "The numbers the proposals will be built on. Look at them before anything is.",
+      "window": "Window",
+      "days_one": "{{count}} day",
+      "days_other": "{{count}} days",
+      "coverage": {
+        "tickets": "Tickets",
+        "withEntry": "the log sees {{pct}}% of them",
+        "entries": "Log entries",
+        "window": "in the last {{days}} days",
+        "human": "By people",
+        "humanPct": "{{pct}}% of the total",
+        "generic": "Generic entries",
+        "genericHelp": "they say less than the others"
+      },
+      "lowCoverage": "The log has a creation entry for only {{pct}}% of tickets: the rest came in by import. Everything below speaks about that part.",
+      "unreadActions_one": "{{count}} entry has an action I cannot read: it is not in the counts.",
+      "unreadActions_other": "{{count}} entries have actions I cannot read: they are not in the counts.",
+      "steps": {
+        "title": "How long tickets sit",
+        "criterion": "Median and p90, never the mean. Only steps with at least {{min}} completed runs; the import zeros are excluded.",
+        "step": "Step",
+        "n": "Runs",
+        "median": "Median",
+        "p90": "p90",
+        "over48": "Over 48 h"
+      },
+      "actions": {
+        "title": "What people do",
+        "criterion": "Human actions only: the product, the event correlator and the automated tests are excluded.",
+        "object": "Object",
+        "verb": "Action",
+        "n": "Times",
+        "people": "People",
+        "objects": "Objects"
+      },
+      "pairs": {
+        "title": "Things always done back to back",
+        "criterion": "Two actions on the same object, by the same person, within {{minuti}} minutes. At least {{n}} times, across {{oggetti}} distinct objects, by {{persone}} people.",
+        "first": "First",
+        "then": "Then"
+      },
+      "ai": {
+        "title": "The AI features that already exist",
+        "criterion": "How much this customer uses them. Nobody knew before: the metrics carry no tenant.",
+        "feature": "Feature"
+      },
+      "empty": "Nothing to measure yet",
+      "emptyHelp": "In the last {{days}} days the log has no human work to aggregate."
     }
   },
   "filter": {
@@ -4831,7 +4883,6 @@
       "workflowRulesNotLoaded": "Workflow rules not loaded: {{error}}",
       "majorUpdated": "Major Incident status updated",
       "teamAssigned": "Team assigned",
-      "unassignFailed": "Could not remove assignee",
       "commentAdded": "Comment added",
       "ciAdded": "CI added",
       "ciRemoved": "CI removed",
@@ -7462,7 +7513,10 @@
       "proposal.postponed": "Improvement proposal postponed",
       "proposal.undone": "Improvement proposal undone",
       "proposal.execution_failed": "Improvement proposal execution failed",
-      "proposal.analysis_run": "Improvement analysis run"
+      "proposal.analysis_run": "Improvement analysis run",
+      "incident.assigned_team": "Incident assigned to a team",
+      "incident.assigned_user": "Incident assigned to a person",
+      "incident.unassigned_user": "Incident unassigned"
     }
   },
   "tasks": {

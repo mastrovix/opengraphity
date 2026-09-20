@@ -146,7 +146,8 @@
     "catalogForms": "Service Request Designer",
     "changeCalendar": "Calendario change",
     "configurationDiagnostics": "Diagnostica",
-    "proposals": "Proposte"
+    "proposals": "Proposte",
+    "dailyWork": "Lavoro quotidiano"
   },
   "pages": {
     "incidents": {
@@ -2702,6 +2703,57 @@
       "runCreated_one": "{{count}} proposta nuova",
       "occurrences_one": "{{count}} caso",
       "hiddenRefs_one": "{{count}} non visibile con i tuoi permessi"
+    },
+    "dailyWork": {
+      "title": "Lavoro quotidiano",
+      "subtitle": "I numeri su cui si fonderanno le proposte. Guardali prima che ci si fondi qualcosa.",
+      "window": "Finestra",
+      "days_one": "{{count}} giorno",
+      "days_other": "{{count}} giorni",
+      "coverage": {
+        "tickets": "Ticket",
+        "withEntry": "il registro ne vede il {{pct}}%",
+        "entries": "Voci del registro",
+        "window": "negli ultimi {{days}} giorni",
+        "human": "Di persone",
+        "humanPct": "il {{pct}}% del totale",
+        "generic": "Voci generiche",
+        "genericHelp": "dicono meno delle altre"
+      },
+      "lowCoverage": "Il registro ha la voce di creazione solo per il {{pct}}% dei ticket: il resto è entrato per import. Tutto quello che segue parla di quella parte.",
+      "unreadActions_one": "{{count}} voce ha un'azione che non so leggere: non è nei conteggi.",
+      "unreadActions_other": "{{count}} voci hanno azioni che non so leggere: non sono nei conteggi.",
+      "steps": {
+        "title": "Quanto stanno fermi i ticket",
+        "criterion": "Mediana e p90, mai la media. Solo i passi con almeno {{min}} esecuzioni concluse; gli zeri dell'import sono esclusi.",
+        "step": "Passo",
+        "n": "Esecuzioni",
+        "median": "Mediana",
+        "p90": "p90",
+        "over48": "Oltre 48 h"
+      },
+      "actions": {
+        "title": "Che cosa fanno le persone",
+        "criterion": "Solo azioni di persone: il prodotto, il correlatore degli eventi e i test automatici sono esclusi.",
+        "object": "Oggetto",
+        "verb": "Azione",
+        "n": "Volte",
+        "people": "Persone",
+        "objects": "Oggetti"
+      },
+      "pairs": {
+        "title": "Cose fatte sempre di fila",
+        "criterion": "Due azioni sullo stesso oggetto, della stessa persona, entro {{minuti}} minuti. Almeno {{n}} volte, su {{oggetti}} oggetti diversi, per mano di {{persone}} persone.",
+        "first": "Prima",
+        "then": "Poi"
+      },
+      "ai": {
+        "title": "Le funzioni AI che esistono già",
+        "criterion": "Quanto vengono usate da questo cliente. Prima non lo sapeva nessuno: le metriche non hanno il cliente.",
+        "feature": "Funzione"
+      },
+      "empty": "Non c'è ancora niente da misurare",
+      "emptyHelp": "Negli ultimi {{days}} giorni il registro non ha lavoro di persone da aggregare."
     }
   },
   "filter": {
@@ -4831,7 +4883,6 @@
       "workflowRulesNotLoaded": "Regole di workflow non caricate: {{error}}",
       "majorUpdated": "Stato Major Incident aggiornato",
       "teamAssigned": "Team assegnato",
-      "unassignFailed": "Rimozione assegnatario non riuscita",
       "commentAdded": "Commento aggiunto",
       "ciAdded": "CI aggiunto",
       "ciRemoved": "CI rimosso",
@@ -7462,7 +7513,10 @@
       "proposal.postponed": "Proposta di miglioramento rimandata",
       "proposal.undone": "Proposta di miglioramento disfatta",
       "proposal.execution_failed": "Esecuzione di una proposta fallita",
-      "proposal.analysis_run": "Analisi delle proposte lanciata"
+      "proposal.analysis_run": "Analisi delle proposte lanciata",
+      "incident.assigned_team": "Incident assegnato a una squadra",
+      "incident.assigned_user": "Incident assegnato a una persona",
+      "incident.unassigned_user": "Incident senza assegnatario"
     }
   },
   "tasks": {

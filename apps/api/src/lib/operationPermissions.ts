@@ -189,6 +189,9 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   // STESSO permesso: rifiutare scrive la lapide che zittisce l'impronta, e
   // zittire una proposta è una decisione quanto accettarla.
   { anyOf: ['proposal.read'],   query: ['proposals', 'proposal'] },
+  // Gli aggregati del lavoro quotidiano: misure della squadra, non dati di un
+  // ticket — stesso permesso delle anomalie.
+  { anyOf: ['analysis.read'],   query: ['dailyWorkAggregates'] },
   { anyOf: ['proposal.accept'], mutation: ['acceptProposal', 'rejectProposal', 'postponeProposal', 'undoProposal'] },
   { anyOf: ['proposal.run'],    mutation: ['runProposalAnalysis'] },
   {

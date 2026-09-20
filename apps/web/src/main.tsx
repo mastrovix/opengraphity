@@ -36,6 +36,7 @@ import { CIByIdRedirect } from '@/pages/ci/CIByIdRedirect'
 const WhatIfPage = lazy(() => import('@/pages/analysis/WhatIfPage').then(m => ({ default: m.WhatIfPage })))
 import { AnomalyPage } from '@/pages/anomaly/AnomalyPage'
 const ProposalsPage = lazy(() => import('@/pages/proposals/ProposalsPage').then(m => ({ default: m.ProposalsPage })))
+const DailyWorkPage = lazy(() => import('@/pages/proposals/DailyWorkPage').then(m => ({ default: m.DailyWorkPage })))
 import { AnomalyRulesPage } from '@/pages/anomaly/AnomalyRulesPage'
 import { EventsPage } from '@/pages/events/EventsPage'
 import { EventDetailPage } from '@/pages/events/EventDetailPage'
@@ -185,6 +186,7 @@ const router = createBrowserRouter([
       guarded('analysis/what-if', <Suspense fallback={<PageLoader />}><WhatIfPage /></Suspense>),
       guarded('anomalies', <AnomalyPage />),
       guarded('proposals', <Suspense fallback={<PageLoader />}><ProposalsPage /></Suspense>),
+      guarded('analysis/daily-work', <Suspense fallback={<PageLoader />}><DailyWorkPage /></Suspense>),
       // Event Management (console allarmi): le azioni si vedono con event.work.
       guarded('events', <EventsPage />),
       guarded('events/:id', <Keyed Page={EventDetailPage} />),

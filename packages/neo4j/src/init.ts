@@ -484,6 +484,19 @@ const INDEXES: SchemaStatement[] = [
   // Attachments / audit trail — always read per entity
   { label: 'Attachment(tenant_id, entity_id)', cypher: 'CREATE INDEX attachment_tenant_entity IF NOT EXISTS FOR (n:Attachment) ON (n.tenant_id, n.entity_id)' },
   { label: 'AuditEntry(tenant_id, entity_id)', cypher: 'CREATE INDEX audit_entry_tenant_entity IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.entity_id)' },
+  /*
+   * GLI AGGREGATI DEL LAVORO QUOTIDIANO (20 set 2026, ondata 2 di
+   * «Miglioramento continuo»).
+   *
+   * L'unico indice era quello per entità. Ogni domanda «che cosa è successo
+   * in questa finestra», «chi ha fatto cosa», «quali azioni si ripetono» era
+   * una scansione piena di un registro che non si purga mai — e `created_at`
+   * è una stringa ISO, quindi l'ordinamento e i confronti sono lessicali e
+   * l'indice serve davvero.
+   */
+  { label: 'AuditEntry(tenant_id, created_at)', cypher: 'CREATE INDEX audit_entry_tenant_created IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.created_at)' },
+  { label: 'AuditEntry(tenant_id, action)',     cypher: 'CREATE INDEX audit_entry_tenant_action IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.action)' },
+  { label: 'AuditEntry(tenant_id, user_id)',    cypher: 'CREATE INDEX audit_entry_tenant_user IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.user_id)' },
   // Event Management: la console lista per (tenant, status) ordinando per last_seen_at.
   { label: 'Event(tenant_id, status, last_seen_at)', cypher: 'CREATE INDEX event_tenant_status_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.status, n.last_seen_at)' },
   // Tempeste per sorgente (eventStorm.ts: MATCH (e:Event {tenant_id, source_id})) e

@@ -79,7 +79,7 @@ describe('setTicketTeam', () => {
 
   it('sostituisce il gruppo (DELETE del vecchio, CREATE del nuovo), aggiorna updated_at, ritorna il nome', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ teamName: 'DBA' })
-    await expect(setTicketTeam(session, 'Problem', 'prb-1', 'team-2', 't-1')).resolves.toEqual({ teamName: 'DBA', unassignedUserName: null })
+    await expect(setTicketTeam(session, 'Problem', 'prb-1', 'team-2', 't-1')).resolves.toEqual({ teamName: 'DBA', previousTeamName: null, unassignedUserName: null })
     const { cypher, params } = lastQuery()
     expect(cypher).toContain('MATCH (e:Problem {id: $id, tenant_id: $tenantId})')
     expect(cypher).toContain('MATCH (t:Team {id: $teamId, tenant_id: $tenantId})')
@@ -102,7 +102,7 @@ describe('setTicketTeam', () => {
   it('l\'assegnatario che non è nel gruppo nuovo viene staccato, e si dice chi era (M-10)', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ teamName: 'DBA', unassignedUserName: 'Mario' })
     await expect(setTicketTeam(session, 'Incident', 'inc-1', 'team-2', 't-1'))
-      .resolves.toEqual({ teamName: 'DBA', unassignedUserName: 'Mario' })
+      .resolves.toEqual({ teamName: 'DBA', previousTeamName: null, unassignedUserName: 'Mario' })
     const { cypher } = lastQuery()
     expect(cypher).toContain('OPTIONAL MATCH (e)-[__assignee:ASSIGNED_TO]->(u:User)')
     expect(cypher).toContain('WHERE NOT exists((u)-[:MEMBER_OF]->(t))')
@@ -113,9 +113,9 @@ describe('setTicketTeam', () => {
 describe('setTicketUser', () => {
   it('userId null → rimuove l\'assegnatario; ticket inesistente → NotFoundError', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ id: 'inc-1' })
-    await expect(setTicketUser(session, 'Incident', 'inc-1', null, 't-1')).resolves.toEqual({ userName: null })
+    await expect(setTicketUser(session, 'Incident', 'inc-1', null, 't-1')).resolves.toEqual({ userName: null, previousUserName: null })
     const { cypher, params } = lastQuery()
-    expect(cypher).toContain('OPTIONAL MATCH (e)-[old:ASSIGNED_TO]->()')
+    expect(cypher).toContain('OPTIONAL MATCH (e)-[old:ASSIGNED_TO]->(__prima:User)')
     expect(cypher).toContain('DELETE old')
     expect(cypher).not.toContain('CREATE')
     expect(params).toMatchObject({ id: 'inc-1', tenantId: 't-1' })
@@ -127,7 +127,7 @@ describe('setTicketUser', () => {
 
   it('userId valorizzato → sostituisce ASSIGNED_TO con l\'utente del tenant e ritorna il nome', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ userName: 'Mario' })
-    await expect(setTicketUser(session, 'Problem', 'prb-1', 'u-1', 't-1')).resolves.toEqual({ userName: 'Mario' })
+    await expect(setTicketUser(session, 'Problem', 'prb-1', 'u-1', 't-1')).resolves.toEqual({ userName: 'Mario', previousUserName: null })
     const { cypher, params } = lastQuery()
     expect(cypher).toContain('MATCH (e:Problem {id: $id, tenant_id: $tenantId})')
     expect(cypher).toContain('MATCH (u:User {id: $userId, tenant_id: $tenantId})')

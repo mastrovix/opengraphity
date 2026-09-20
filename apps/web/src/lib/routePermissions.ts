@@ -59,6 +59,7 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, readonly Permission[]>> 
 
   'anomalies':                     ['analysis.read'],
   'proposals':                     ['proposal.read'],
+  'analysis/daily-work':           ['analysis.read'],
   'analysis/what-if':              ['analysis.read'],
   'reports':                       ['report.read'],
   'reports/sla':                   ['report.read'],

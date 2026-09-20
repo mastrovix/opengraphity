@@ -23,6 +23,7 @@ export const NAV_ITEM_DEFS = [
 export const ANALYSIS_ITEM_DEFS = [
   { to: '/anomalies',        labelKey: 'sidebar.anomalies',   icon: ShieldAlert  },
   { to: '/proposals',        labelKey: 'sidebar.proposals',   icon: Lightbulb    },
+  { to: '/analysis/daily-work', labelKey: 'sidebar.dailyWork', icon: Gauge      },
   { to: '/topology',         labelKey: 'sidebar.topologyMap', icon: Share2       },
   { to: '/analysis/what-if', labelKey: 'sidebar.whatIf',      icon: FlaskConical },
 ]
