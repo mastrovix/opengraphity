@@ -125,3 +125,28 @@ describe('la firma', () => {
     expect(f).toMatch(/^[0-9a-f]{32}$/)
   })
 })
+
+/**
+ * I NUMERI DEI TICKET (20 set 2026, sera).
+ *
+ * Difetto trovato da un test scritto per un'altra cosa: la regola sui numeri
+ * pretende un confine di parola, e in `INC00000042` le cifre sono attaccate
+ * alle lettere. Quindi il numero di un ticket di un cliente entrava nel
+ * template — cioè nell'unico archivio che attraversa i clienti.
+ */
+describe('un identificativo con le lettere attaccate alle cifre', () => {
+  it.each(['INC00000042', 'CHG00000003', 'PRB00012', 'SRV-001', 'srv_042'])(
+    '«%s» non passa', (id) => {
+      expect(t(`qualcosa su ${id} è andato storto`)).not.toContain(id)
+      expect(t(`qualcosa su ${id} è andato storto`)).toContain(SEGNAPOSTO.id)
+    })
+
+  it('il messaggio vero che l\'ha fatto scoprire', () => {
+    expect(t('SLA engine failed on INC00000042')).toBe('SLA engine failed on <id>')
+  })
+
+  it('ma una parola con una cifra sola resta quella che è', () => {
+    // `utf8`, `p90`: due lettere e DUE cifre come minimo.
+    expect(t('codifica utf8 con p90 alto')).toBe('codifica utf8 con p90 alto')
+  })
+})

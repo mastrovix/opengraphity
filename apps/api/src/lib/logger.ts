@@ -25,7 +25,7 @@ const SKIP_KEYS = new Set(['level', 'time', 'msg', 'module', 'pid', 'hostname', 
  * `index.ts` lo collega all'avvio — e finché nessuno lo collega, qui non
  * succede niente: è il caso dei test e degli script.
  */
-type SinkDeiLog = (raw: Record<string, unknown>, livello: string) => void
+type SinkDeiLog = (raw: Record<string, unknown>, livello: string, tenantId: string | null) => void
 let sinkDeiLog: SinkDeiLog | null = null
 
 export function collegaSinkDeiLog(fn: SinkDeiLog | null): void { sinkDeiLog = fn }
@@ -41,7 +41,14 @@ function bufferLog(raw: Record<string, unknown>): void {
    * sapere quale processo ha sbagliato — era il difetto che `serviceName.ts`
    * ha chiuso nei log di Loki, e ripeterlo nel grafo sarebbe stato comico.
    */
-  if (sinkDeiLog) { try { sinkDeiLog(raw, livello) } catch { /* mai far cadere una riga di log */ } }
+  /*
+   * DI CHI È LA RIGA: lo stesso calcolo che fa `pushLog` qui sotto, fatto una
+   * volta sola. Serve al sink per sapere se questa riga va anche nella pagina
+   * Log di un cliente (20 set 2026, sera): prima il tenant lo buttavamo via e
+   * gli errori dei job di sfondo di un cliente sparivano al riavvio.
+   */
+  const tenantDellaRiga = currentLogTenant() ?? (typeof raw['tenantId'] === 'string' ? raw['tenantId'] : null)
+  if (sinkDeiLog) { try { sinkDeiLog(raw, livello, tenantDellaRiga) } catch { /* mai far cadere una riga di log */ } }
   pushLog({
     id:        randomUUID(),
     timestamp: new Date(raw['time'] as number).toISOString(),
@@ -54,7 +61,7 @@ function bufferLog(raw: Record<string, unknown>): void {
      * altrimenti il `tenantId` che la riga stessa porta — i job di sfondo lo
      * scrivono già. Nessuno dei due = riga di piattaforma.
      */
-    tenantId:  currentLogTenant() ?? (typeof raw['tenantId'] === 'string' ? raw['tenantId'] : null),
+    tenantId:  tenantDellaRiga,
   })
 }
 

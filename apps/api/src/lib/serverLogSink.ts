@@ -35,6 +35,32 @@
  * cliente solo. L'incident si apre comunque, perché si apre sul CI della
  * piattaforma, non su quello di un cliente.
  *
+ * ## I DUE ARCHIVI, e perché sono due (20 set 2026, la sera)
+ * Il proprietario ha chiesto: «in un tenant cliente, l'admin non può vedere
+ * che errori si sono verificati?». La risposta era «sì, ma solo dall'ultimo
+ * riavvio» — e per gli errori dei job di sfondo (SLA, consumer, notifiche)
+ * nemmeno quello: nessun browser li vede e l'anello li perde. Per il cliente
+ * non erano mai esistiti. È la stessa famiglia del difetto peggiore della
+ * storia di questo prodotto: il motore SLA fermo per un giorno intero senza
+ * che nessuno se ne accorgesse.
+ *
+ * Quindi una riga di errore che PORTA un tenant finisce in due posti, che
+ * sono due cose diverse e non una copia:
+ *
+ *  - `:ServerLogEntry` — senza tenant, template scrubbato, aggregato per
+ *    (firma, giorno). È la diagnostica della PIATTAFORMA, la legge solo
+ *    l'identità di piattaforma, e fonde i clienti apposta.
+ *  - `:LogEntry` col `tenant_id` — il messaggio VERO, una riga per
+ *    occorrenza, dentro il perimetro di quel cliente e visibile solo a lui
+ *    nella sua pagina Log. Qui non si scrubba niente, e il motivo è che non
+ *    serve: sono i suoi dati, e un template («Variable <str> not defined»)
+ *    non direbbe al suo amministratore quale ticket è andato storto.
+ *
+ * Si riusa `:LogEntry`, l'etichetta dei log del browser, invece di
+ * inventarne una terza: è già per tenant, ha già l'indice, la retention la
+ * copre già e la pagina Log la legge già. `module` distingue chi ha scritto
+ * («frontend» il browser, il nome del modulo il server).
+ *
  * ## L'anello: il sink non deve poter parlare di sé stesso
  * Se la scrittura su Neo4j fallisse e il fallimento venisse loggato con
  * `logger`, quella riga rientrerebbe nel sink, che riproverebbe, che
@@ -77,8 +103,23 @@ export interface RigaDaScrivere {
   stackHead:   string | null
 }
 
+/** Una riga di errore di un cliente: il testo vero, per la sua pagina Log. */
+export interface RigaDelCliente {
+  tenantId:  string
+  timestamp: string
+  level:     string
+  module:    string
+  message:   string
+  data:      string | null
+}
+
+/** Gli stessi tetti di `rest/client-logs.ts`: le due metà della pagina si somigliano. */
+export const MAX_MESSAGGIO = 4_000
+export const MAX_DATI      = 8_000
+
 interface StatoInterno {
   inAttesa:    RigaDaScrivere[]
+  inAttesaCliente: RigaDelCliente[]
   scartate:    number
   scritte:     number
   fallimenti:  number
@@ -87,17 +128,17 @@ interface StatoInterno {
 }
 
 const stato: StatoInterno = {
-  inAttesa: [], scartate: 0, scritte: 0, fallimenti: 0, ultimoErrore: null, ultimaLamentela: 0,
+  inAttesa: [], inAttesaCliente: [], scartate: 0, scritte: 0, fallimenti: 0, ultimoErrore: null, ultimaLamentela: 0,
 }
 
 let timer: NodeJS.Timeout | null = null
 /** Iniettato all'avvio: il sink non importa il driver, così `logger.ts` resta senza dipendenze pesanti. */
-let scriviLotto: ((righe: RigaDaScrivere[]) => Promise<number>) | null = null
+let scriviLotto: ((righe: RigaDaScrivere[], delCliente: RigaDelCliente[]) => Promise<number>) | null = null
 
 /** Lo stato leggibile del sink: «funziona» deve essere una cosa che si può sapere. */
-export function statoDelSink(): Readonly<Omit<StatoInterno, 'inAttesa' | 'ultimaLamentela'>> & { inAttesa: number } {
+export function statoDelSink(): Readonly<Omit<StatoInterno, 'inAttesa' | 'inAttesaCliente' | 'ultimaLamentela'>> & { inAttesa: number } {
   return {
-    inAttesa: stato.inAttesa.length,
+    inAttesa: stato.inAttesa.length + stato.inAttesaCliente.length,
     scartate: stato.scartate,
     scritte: stato.scritte,
     fallimenti: stato.fallimenti,
@@ -108,6 +149,7 @@ export function statoDelSink(): Readonly<Omit<StatoInterno, 'inAttesa' | 'ultima
 /** Solo per i test: riporta il sink allo stato di partenza. */
 export function azzeraSink(): void {
   stato.inAttesa = []
+  stato.inAttesaCliente = []
   stato.scartate = 0; stato.scritte = 0; stato.fallimenti = 0
   stato.ultimoErrore = null; stato.ultimaLamentela = 0
 }
@@ -146,22 +188,77 @@ export function rigaDaLog(raw: Record<string, unknown>, livello: string): RigaDa
   }
 }
 
+/** Taglia dichiarando il taglio, come `rest/client-logs.ts`. */
+const TRONCATO = '… [troncato]'
+function taglia(testo: string, max: number): string {
+  return testo.length <= max ? testo : testo.slice(0, max - TRONCATO.length) + TRONCATO
+}
+
+/**
+ * La riga per la pagina Log del cliente: il messaggio VERO, non il template.
+ *
+ * `null` quando la riga non è di nessun cliente — un avvio, una coda, il bus
+ * del metamodello. Quelle restano diagnostica di piattaforma e non entrano in
+ * casa di nessuno.
+ */
+export function rigaDelCliente(
+  raw: Record<string, unknown>, livello: string, tenantId: string | null,
+): RigaDelCliente | null {
+  if (tenantId === null || tenantId === '') return null
+  if (!LIVELLI_PERSISTITI.has(livello)) return null
+  const module = typeof raw['module'] === 'string' ? raw['module'] : 'api'
+  if (MODULI_ESCLUSI.has(module)) return null
+
+  /*
+   * I campi in più, meno quelli che pino mette su ogni riga: è la stessa
+   * regola di `bufferLog`, così la riga persistita e quella in memoria hanno
+   * lo stesso contenuto. Quello che la pagina mostrava e perdeva al riavvio,
+   * adesso resta.
+   */
+  const extra = Object.fromEntries(
+    Object.entries(raw).filter(([k]) => !SALTA_NEI_DATI.has(k)),
+  )
+  return {
+    tenantId,
+    timestamp: new Date(typeof raw['time'] === 'number' ? raw['time'] : Date.now()).toISOString(),
+    level: livello,
+    module,
+    message: taglia(typeof raw['msg'] === 'string' ? raw['msg'] : '', MAX_MESSAGGIO),
+    data: Object.keys(extra).length > 0 ? taglia(JSON.stringify(extra), MAX_DATI) : null,
+  }
+}
+
+/** Gli stessi di `SKIP_KEYS` in `logger.ts`: pino li mette su ogni riga. */
+const SALTA_NEI_DATI = new Set(['level', 'time', 'msg', 'module', 'pid', 'hostname', 'service', 'env'])
+
 /**
  * Il punto d'ingresso, chiamato da `lib/logger.ts` per ogni riga.
  *
  * Non fa I/O e non può lanciare: una riga di log non deve mai far cadere il
  * gesto che l'ha prodotta.
  */
-export function registraRigaDelServer(raw: Record<string, unknown>, livello: string): void {
+export function registraRigaDelServer(
+  raw: Record<string, unknown>, livello: string, tenantId: string | null = null,
+): void {
   try {
     const riga = rigaDaLog(raw, livello)
-    if (!riga) return
-    if (stato.inAttesa.length >= MAX_IN_ATTESA) {
-      stato.inAttesa.shift()
-      stato.scartate++
-    }
-    stato.inAttesa.push(riga)
+    if (riga) accoda(stato.inAttesa, riga)
+    /*
+     * Una riga di un cliente va in TUTT'E DUE: nella diagnostica di
+     * piattaforma come template aggregato, e in casa sua col testo vero. Non
+     * è una copia — sono due cose per due lettori diversi (vedi la testa del
+     * file). E la piattaforma deve continuare a vedere anche gli errori nati
+     * servendo un cliente, che sono la maggior parte.
+     */
+    const suo = rigaDelCliente(raw, livello, tenantId)
+    if (suo) accoda(stato.inAttesaCliente, suo)
   } catch { /* una riga di log non rompe niente: vedi l'anello, in testa al file */ }
+}
+
+/** Accoda con il tetto: oltre, si scarta la più vecchia e la si conta. */
+function accoda<T>(coda: T[], riga: T): void {
+  if (coda.length >= MAX_IN_ATTESA) { coda.shift(); stato.scartate++ }
+  coda.push(riga)
 }
 
 /** La lamentela di chi non può usare il logger. Al massimo una al minuto. */
@@ -175,18 +272,21 @@ function lamentati(messaggio: string): void {
 
 /** Svuota la coda. Esportata perché i test e l'arresto la chiamino a mano. */
 export async function svuota(): Promise<void> {
-  if (stato.inAttesa.length === 0 || !scriviLotto) return
+  if (!scriviLotto) return
+  if (stato.inAttesa.length === 0 && stato.inAttesaCliente.length === 0) return
   const lotto = stato.inAttesa
+  const delCliente = stato.inAttesaCliente
   stato.inAttesa = []
+  stato.inAttesaCliente = []
   try {
-    stato.scritte += await scriviLotto(lotto)
+    stato.scritte += await scriviLotto(lotto, delCliente)
   } catch (e) {
     stato.fallimenti++
     // Le righe si perdono: rimetterle in coda farebbe crescere la memoria
     // mentre il database è giù, ed è il modo in cui un sink di log uccide il
     // processo che doveva osservare.
-    stato.scartate += lotto.length
-    lamentati(`write failed, ${String(lotto.length)} lines lost: ${e instanceof Error ? e.message : String(e)}`)
+    stato.scartate += lotto.length + delCliente.length
+    lamentati(`write failed, ${String(lotto.length + delCliente.length)} lines lost: ${e instanceof Error ? e.message : String(e)}`)
   }
 }
 
@@ -213,7 +313,7 @@ export const LOTTO_CYPHER = `
  * Accende il sink. `scrittore` fa l'I/O: lo passa `index.ts`, così questo
  * modulo non importa il driver e `logger.ts` può importarlo senza cicli.
  */
-export function avviaSink(scrittore: (righe: RigaDaScrivere[]) => Promise<number>): void {
+export function avviaSink(scrittore: (righe: RigaDaScrivere[], delCliente: RigaDelCliente[]) => Promise<number>): void {
   scriviLotto = scrittore
   if (timer) return
   timer = setInterval(() => { void svuota() }, INTERVALLO_MS)
@@ -227,6 +327,24 @@ export async function fermaSink(): Promise<void> {
   await svuota()
   scriviLotto = null
 }
+
+/**
+ * Le righe di un cliente: una per occorrenza.
+ *
+ * Non si aggrega per (firma, giorno) come l'archivio di piattaforma, ed è
+ * deliberato: il suo amministratore vuole sapere che cosa è successo alle tre
+ * di notte, non quante volte in tutto. La stessa forma dei log del browser,
+ * così la pagina Log le legge senza sapere da dove vengono.
+ */
+export const LOTTO_CLIENTE_CYPHER = `
+  UNWIND $righe AS r
+  CREATE (l:LogEntry {
+    id: randomUUID(), tenant_id: r.tenantId, timestamp: r.timestamp,
+    level: r.level, module: r.module, message: r.message, data: r.data,
+    created_at: r.timestamp
+  })
+  RETURN count(*) AS n
+`
 
 /**
  * Accende il sink con lo scrittore vero e lo collega al logger.
@@ -243,13 +361,23 @@ export async function accendiSinkDeiLog(): Promise<void> {
     import('@opengraphity/neo4j'),
     import('./logger.js'),
   ])
-  avviaSink(async (righe) => {
+  avviaSink(async (righe, delCliente) => {
     // Sessione di scrittura in auto-commit: il `MERGE` è una scrittura sola e
     // un fallimento qui non deve trascinarsi dietro una transazione aperta.
     const session = getSession(undefined, 'WRITE')
     try {
-      const r = await session.run(LOTTO_CYPHER, { righe })
-      return toNumber(r.records[0]?.get('n') ?? 0)
+      let scritte = 0
+      // Una alla volta sulla stessa sessione: due `run` insieme non si
+      // possono (già visto in `persistedLogs.ts`).
+      if (righe.length > 0) {
+        const r = await session.run(LOTTO_CYPHER, { righe })
+        scritte += toNumber(r.records[0]?.get('n') ?? 0)
+      }
+      if (delCliente.length > 0) {
+        const r = await session.run(LOTTO_CLIENTE_CYPHER, { righe: delCliente })
+        scritte += toNumber(r.records[0]?.get('n') ?? 0)
+      }
+      return scritte
     } finally {
       await session.close()
     }

@@ -15,6 +15,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   rigaDaLog, registraRigaDelServer, svuota, avviaSink, fermaSink, statoDelSink, azzeraSink,
   LIVELLI_PERSISTITI, MODULI_ESCLUSI, MAX_IN_ATTESA, LOTTO_CYPHER,
+  rigaDelCliente, LOTTO_CLIENTE_CYPHER, MAX_MESSAGGIO,
 } from '../serverLogSink.js'
 
 const ORA = Date.parse('2026-09-20T11:34:23.632Z')
@@ -142,5 +143,61 @@ describe('la query del lotto', () => {
     expect(LOTTO_CYPHER).not.toContain('tenant_id')
     expect(LOTTO_CYPHER).not.toContain('message')
     expect(LOTTO_CYPHER).not.toMatch(/\bl\.data\b/)
+  })
+})
+
+/**
+ * I DUE ARCHIVI (20 set 2026, sera).
+ *
+ * Nati da una domanda del proprietario: «in un tenant cliente, l'admin non
+ * può vedere che errori si sono verificati?». Poteva, ma solo dall'ultimo
+ * riavvio — e gli errori dei job di sfondo del suo tenant non li vedeva mai,
+ * perché nessun browser li riporta e l'anello li perde.
+ */
+describe('una riga di un cliente va in due posti diversi', () => {
+  const rigaCliente = (extra: Record<string, unknown> = {}) =>
+    ({ time: ORA, service: 'opengrafo-worker', module: 'sla', msg: 'SLA engine failed on INC00000042', ...extra })
+
+  it('nella diagnostica di piattaforma come TEMPLATE, e in casa sua col testo VERO', async () => {
+    const scritte: { piattaforma: unknown[]; cliente: unknown[] }[] = []
+    avviaSink(async (righe, delCliente) => {
+      scritte.push({ piattaforma: righe, cliente: delCliente })
+      return righe.length + delCliente.length
+    })
+    registraRigaDelServer(rigaCliente(), 'error', 'c-test')
+    await fermaSink()
+
+    const [lotto] = scritte
+    expect(lotto!.piattaforma).toHaveLength(1)
+    expect(lotto!.cliente).toHaveLength(1)
+    // Il numero del ticket sparisce dal template di piattaforma…
+    expect((lotto!.piattaforma[0] as { template: string }).template).not.toContain('INC00000042')
+    // …e resta nella pagina del cliente, che è la sua e a cui serve.
+    expect((lotto!.cliente[0] as { message: string }).message).toContain('INC00000042')
+  })
+
+  it('una riga SENZA tenant non entra in casa di nessuno', () => {
+    // Avvio, code, bus del metamodello: diagnostica di piattaforma e basta.
+    expect(rigaDelCliente(rigaCliente(), 'error', null)).toBeNull()
+    expect(rigaDelCliente(rigaCliente(), 'error', '')).toBeNull()
+  })
+
+  it('e valgono le stesse due esclusioni della piattaforma', () => {
+    expect(rigaDelCliente(rigaCliente(), 'info', 'c-test'), 'solo error e fatal').toBeNull()
+    expect(rigaDelCliente(rigaCliente({ module: 'server-log-sink' }), 'error', 'c-test'), 'l\'anello').toBeNull()
+  })
+
+  it('il messaggio si taglia dichiarando il taglio', () => {
+    const r = rigaDelCliente(rigaCliente({ msg: 'x'.repeat(MAX_MESSAGGIO * 2) }), 'error', 'c-test')!
+    expect(r.message).toHaveLength(MAX_MESSAGGIO)
+    expect(r.message.endsWith('… [troncato]')).toBe(true)
+  })
+
+  it('la query del cliente scrive UNA riga per occorrenza, non un aggregato', () => {
+    // Il suo amministratore vuole sapere che cosa è successo alle tre di
+    // notte, non quante volte in tutto.
+    expect(LOTTO_CLIENTE_CYPHER).toContain('CREATE (l:LogEntry {')
+    expect(LOTTO_CLIENTE_CYPHER).toContain('tenant_id: r.tenantId')
+    expect(LOTTO_CLIENTE_CYPHER).not.toContain('MERGE')
   })
 })

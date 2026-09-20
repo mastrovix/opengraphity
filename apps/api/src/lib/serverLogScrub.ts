@@ -37,6 +37,7 @@ import { createHash } from 'node:crypto'
 /** I segnaposto. Dichiarati, perché un template si legge e si confronta a occhio. */
 export const SEGNAPOSTO = {
   url:   '<url>',
+  id:    '<id>',
   email: '<email>',
   uuid:  '<uuid>',
   ts:    '<ts>',
@@ -72,6 +73,21 @@ const REGOLE: ReadonlyArray<{ nome: keyof typeof SEGNAPOSTO; re: RegExp }> = [
   { nome: 'ts',    re: /\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b/g },
   { nome: 'ip',    re: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g },
   { nome: 'hex',   re: /\b[0-9a-f]{8,}\b/gi },
+  /*
+   * LETTERE ATTACCATE A CIFRE: `INC00000042`, `CHG00000003`, `SRV-001`.
+   *
+   * La regola sui numeri qui sotto pretende un confine di parola, e in
+   * `INC00000042` le cifre sono attaccate alle lettere: non scattava. Quindi
+   * il NUMERO DI UN TICKET DI UN CLIENTE entrava nel template — cioè
+   * nell'unico archivio che attraversa i clienti. Trovato il 20 set 2026
+   * sera, da un test scritto per un'altra cosa (i due archivi), con il
+   * messaggio vero di un job di sfondo: «SLA engine failed on INC00000042».
+   *
+   * Due lettere e due cifre come minimo, così `utf8` e `p90` restano quello
+   * che sono. Sacrifica qualche termine tecnico (`sha256` → `<id>`), ed è il
+   * verso giusto in cui sbagliare.
+   */
+  { nome: 'id',    re: /\b[A-Za-z]{2,}[-_]?\d{2,}\b/g },
   // Virgolette singole, doppie e backtick: il contenuto di una stringa citata
   // in un messaggio d'errore è sempre un valore, mai la frase.
   { nome: 'str',   re: /(['"`])(?:\\.|(?!\1)[^\\])*\1/g },
