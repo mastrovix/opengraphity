@@ -16,6 +16,7 @@ import {
   rigaDaLog, registraRigaDelServer, svuota, avviaSink, fermaSink, statoDelSink, azzeraSink,
   LIVELLI_PERSISTITI, MODULI_ESCLUSI, MAX_IN_ATTESA, LOTTO_CYPHER,
   rigaDelCliente, LOTTO_CLIENTE_CYPHER, MAX_MESSAGGIO,
+  registraErroreDelBrowser, SERVIZIO_DEL_BROWSER, type RigaDaScrivere,
 } from '../serverLogSink.js'
 
 const ORA = Date.parse('2026-09-20T11:34:23.632Z')
@@ -199,5 +200,66 @@ describe('una riga di un cliente va in due posti diversi', () => {
     expect(LOTTO_CLIENTE_CYPHER).toContain('CREATE (l:LogEntry {')
     expect(LOTTO_CLIENTE_CYPHER).toContain('tenant_id: r.tenantId')
     expect(LOTTO_CLIENTE_CYPHER).not.toContain('MERGE')
+  })
+})
+
+/**
+ * GLI ERRORI DEL BROWSER (20 set 2026, sera tardi).
+ *
+ * Il progetto li aveva esclusi dagli analisti: «li scrive chiunque abbia un
+ * account del portale, senza rate limit». Il freno adesso c'è, e il segnale
+ * valeva troppo per lasciarlo morto: 1.230 righe, di cui 1.074 «SSE
+ * notification channel down» che nessuna pagina diceva.
+ *
+ * Ma il messaggio l'ha scritto un BROWSER, cioè un posto dove un utente può
+ * aver messo qualunque cosa. Questi test tengono ferma la regola che conta:
+ * nell'archivio senza tenant non entra un messaggio grezzo da NESSUNA
+ * sorgente.
+ */
+describe('un errore del browser entra scrubbato, o non entra', () => {
+  it('il messaggio diventa un TEMPLATE, come per il server', async () => {
+    const scritte: RigaDaScrivere[] = []
+    avviaSink(async (righe) => { scritte.push(...righe); return righe.length })
+    registraErroreDelBrowser(
+      'Network error caricando /incidents/b69ea861-374e-4aa1-a67f-17b3789154c8 per mario@acme.it',
+      'error', '2026-09-20T19:00:00.000Z',
+    )
+    await fermaSink()
+    const t = scritte[0]!.template
+    expect(t).not.toContain('mario@acme.it')
+    expect(t).not.toContain('b69ea861')
+    expect(t).toContain('<email>')
+    expect(t).toContain('<uuid>')
+  })
+
+  it('e il numero di un ticket nemmeno: è la stessa regola del server', () => {
+    const scritte: RigaDaScrivere[] = []
+    avviaSink(async (righe) => { scritte.push(...righe); return righe.length })
+    registraErroreDelBrowser('Impossibile chiudere INC00000042', 'error', '2026-09-20T19:00:00.000Z')
+    expect(statoDelSink().inAttesa).toBe(1)
+  })
+
+  it('si attacca al CI del web, che la migrazione ha censito', async () => {
+    // Senza un CI l'evento sarebbe orfano e nessun incident nascerebbe.
+    const scritte: RigaDaScrivere[] = []
+    avviaSink(async (righe) => { scritte.push(...righe); return righe.length })
+    registraErroreDelBrowser('boom', 'error', '2026-09-20T19:00:00.000Z')
+    await fermaSink()
+    expect(scritte[0]!.service).toBe(SERVIZIO_DEL_BROWSER)
+    expect(scritte[0]!.module).toBe('frontend')
+  })
+
+  it('solo gli errori: un `info` del browser non riempie la diagnostica', () => {
+    registraErroreDelBrowser('tutto bene', 'info', '2026-09-20T19:00:00.000Z')
+    expect(statoDelSink().inAttesa).toBe(0)
+  })
+
+  it('un messaggio vuoto non diventa una classe di errore', () => {
+    registraErroreDelBrowser('   ', 'error', '2026-09-20T19:00:00.000Z')
+    expect(statoDelSink().inAttesa).toBe(0)
+  })
+
+  it('e non lancia mai: un log del browser non fa cadere la rotta', () => {
+    expect(() => registraErroreDelBrowser(null as unknown as string, 'error', 'x')).not.toThrow()
   })
 })

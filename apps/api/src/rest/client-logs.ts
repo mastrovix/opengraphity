@@ -3,6 +3,8 @@ import { asyncHandler, restErrorHandler } from './errorHandler.js'
 import { type Router as ExpressRouter } from 'express'
 import { getSession } from '@opengraphity/neo4j'
 import { authMiddleware } from '../middleware/auth.js'
+import { consumeMinuteRate } from '../lib/webhookRateLimit.js'
+import { registraErroreDelBrowser } from '../lib/serverLogSink.js'
 
 const VALID_LEVELS = ['error', 'warn', 'info'] as const
 type LogLevel = (typeof VALID_LEVELS)[number]
@@ -48,12 +50,43 @@ router.post(
 )
 router.use(restErrorHandler)
 
+/**
+ * IL FRENO (20 set 2026, sera tardi).
+ *
+ * Questa rotta la chiama CHIUNQUE abbia un account, ed è sempre stata senza
+ * limiti: bastava un ciclo per riempire il grafo. Finché nessuno leggeva
+ * quelle righe il danno era solo spazio; da stasera le legge un analista, e
+ * un archivio che si può riempire a piacere è un archivio che si può
+ * avvelenare.
+ *
+ * Sessanta al minuto per persona: una pagina che va in crisi ne manda una
+ * manciata (il canale delle notifiche che cade e si riconnette ne produce
+ * una ogni pochi minuti), e chi ne manda una al secondo non sta segnalando
+ * un problema.
+ */
+const LOG_AL_MINUTO_PER_PERSONA = 60
+
 async function handleClientLog(req: Request, res: Response): Promise<void> {
   const body = req.body as ClientLogBody
   // authMiddleware always sets req.user before we get here; a missing user is
   // a wiring bug, never a reason to file the entry under a made-up tenant.
   const user = req.user
   if (!user) throw new Error('client-logs reached without authMiddleware — req.user missing')
+
+  /*
+   * Il freno DOPO l'autenticazione: solo il traffico legittimo consuma il
+   * secchiello, com'è già per i webhook in ingresso (A-20).
+   */
+  const ora = Date.now()
+  const rate = await consumeMinuteRate(
+    `og:clientlog:rate:${user.tenantId}:${user.userId}:${String(Math.floor(ora / 60_000))}`,
+    LOG_AL_MINUTO_PER_PERSONA, ora,
+  )
+  if (!rate.allowed) {
+    res.setHeader('Retry-After', String(rate.retryAfterSeconds))
+    res.status(429).json({ error: `too many client log entries: ${String(rate.limit)} per minute` })
+    return
+  }
 
   if (!VALID_LEVELS.includes(body.level as LogLevel)) {
     res.status(400).json({ error: `level must be one of: ${VALID_LEVELS.join(', ')}` })
@@ -74,6 +107,7 @@ async function handleClientLog(req: Request, res: Response): Promise<void> {
     userId: user.userId,
   })
 
+  const timestamp = body.timestamp ?? new Date().toISOString()
   const session = getSession(undefined, 'WRITE')
   try {
     await session.executeWrite((tx) =>
@@ -90,13 +124,21 @@ async function handleClientLog(req: Request, res: Response): Promise<void> {
         })`,
         {
           tenantId:  user.tenantId,
-          timestamp: body.timestamp ?? new Date().toISOString(),
+          timestamp,
           level:     body.level,
           message:   cut(body.message, MAX_MESSAGE_CHARS),
           data:      cut(data, MAX_DATA_CHARS),
         },
       ),
     )
+    /*
+     * E la stessa riga, SCRUBBATA, entra nella diagnostica di piattaforma:
+     * lì diventa un template senza tenant, e da lì la vedono il connettore
+     * degli eventi e l'Autoanalisi. Prima di stasera 1.230 errori di browser
+     * non li leggeva nessun analista — e dentro c'era «SSE notification
+     * channel down», 1.074 volte, che nessuna pagina diceva.
+     */
+    registraErroreDelBrowser(body.message, body.level, timestamp, body.stack)
     res.status(204).end()
   } finally {
     await session.close()

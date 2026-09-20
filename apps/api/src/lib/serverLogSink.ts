@@ -261,6 +261,56 @@ function accoda<T>(coda: T[], riga: T): void {
   coda.push(riga)
 }
 
+/**
+ * IL NOME DEL «SERVIZIO» DEL BROWSER.
+ *
+ * Non è un processo nostro, ma nell'archivio di piattaforma occupa lo stesso
+ * posto: una sorgente di errori con un CI censito a cui attaccarli
+ * (`opengrafo-web`, migrazione `20261006_1010`). Così il connettore apre gli
+ * incident dove vanno, senza sapere che questa sorgente è fatta di browser.
+ */
+export const SERVIZIO_DEL_BROWSER = 'opengrafo-web'
+
+/**
+ * UN ERRORE DEL BROWSER ENTRA NELLA DIAGNOSTICA DI PIATTAFORMA
+ * (20 set 2026, sera tardi).
+ *
+ * Fino a stasera i log del browser erano scritti, da oggi anche letti da una
+ * persona — ma nessun analista li guardava. Erano 1.230 righe, e dentro c'era
+ * il segnale più vicino all'utente che abbiamo: «SSE notification channel
+ * down — reconnecting», 1.074 volte. Nessuna pagina lo diceva.
+ *
+ * Il progetto li aveva esclusi con una ragione scritta: «li scrive chiunque
+ * abbia un account del portale, senza rate limit». La seconda metà non è più
+ * vera (ora la rotta ha un freno) e la prima pesa meno di quanto pesava: il
+ * testo non fidato ha il suo recinto (`datiNonFidati`), e le proposte di
+ * quest'area non portano azioni. Chi volesse avvelenare l'archivio sprecherebbe
+ * gettoni per farsi rifiutare una proposta da una persona.
+ *
+ * Resta che il messaggio l'ha scritto un browser, quindi passa dallo STESSO
+ * scrubbing del server: nell'archivio senza tenant non entra un messaggio
+ * grezzo, mai, da nessuna sorgente.
+ */
+export function registraErroreDelBrowser(
+  messaggio: string, livello: string, quando: string, stack?: unknown,
+): void {
+  try {
+    if (!LIVELLI_PERSISTITI.has(livello)) return
+    const { template } = normalizzaMessaggio(messaggio)
+    if (template === '') return
+    accoda(stato.inAttesa, {
+      fingerprint: firmaDi({ service: SERVIZIO_DEL_BROWSER, module: 'frontend', level: livello, template }),
+      day:       quando.slice(0, 10),
+      timestamp: quando,
+      service:   SERVIZIO_DEL_BROWSER,
+      module:    'frontend',
+      level:     livello,
+      template,
+      stackHead: primaRigaDiStack(stack),
+    })
+  } catch { /* un log non rompe niente */ }
+}
+
 /** La lamentela di chi non può usare il logger. Al massimo una al minuto. */
 function lamentati(messaggio: string): void {
   stato.ultimoErrore = messaggio

@@ -17,6 +17,15 @@ vi.mock('@opengraphity/neo4j', () => ({
   }),
 }))
 vi.mock('../../middleware/auth.js', () => ({ authMiddleware: (_r: unknown, _s: unknown, next: () => void) => next() }))
+/*
+ * Il freno vive su Redis (20 set 2026): qui si lascia passare tutto, perché
+ * quello che questi test provano sono i TETTI sul contenuto. Il freno ha i
+ * suoi, e la scelta di far propagare un Redis irraggiungibile — invece di
+ * disattivare il limite in silenzio — è la stessa dei webhook in ingresso.
+ */
+vi.mock('../../lib/webhookRateLimit.js', () => ({
+  consumeMinuteRate: async () => ({ allowed: true, count: 1, limit: 60, retryAfterSeconds: 1 }),
+}))
 
 const { clientLogRouter } = await import('../client-logs.js')
 
