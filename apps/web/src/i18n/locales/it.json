@@ -1941,7 +1941,16 @@
       "ciWithoutGroups": "Questo CI non ha Owner Group o Support Group: la change sarebbe rifiutata.",
       "recheckGroups": "Ricontrolla",
       "removeCI": "Togli {{name}}",
-      "ciWithoutGroupsList": "Questi CI non hanno Owner Group o Support Group, e su di loro non si apre una change: {{names}}. Imposta i gruppi sul CI o toglilo."
+      "ciWithoutGroupsList": "Questi CI non hanno Owner Group o Support Group, e su di loro non si apre una change: {{names}}. Imposta i gruppi sul CI o toglilo.",
+      "pickType": "Che tipo di change è?",
+      "pickTypeHelp": "Il tipo decide come la change viene trattata: se passa dalla catena di approvazioni e con quale urgenza. Si può cambiare dopo, prima di creare la change.",
+      "changeTypeChange": "Cambia",
+      "preApprovedBadge": "Pre-approvata",
+      "typeHelp": {
+        "standard": "Intervento ripetuto e a basso rischio, già valutato una volta per tutte: non passa dalle approvazioni, ma i suoi CI passano comunque dall'assessment.",
+        "normal": "Il caso ordinario: si descrive, si valuta e passa dalla catena di approvazioni prima di andare in esercizio.",
+        "emergency": "Serve subito, di solito per rimettere in piedi un servizio: si apre con l'urgenza, e la valutazione la si fa comunque — non la si salta."
+      }
     },
     "myTasks": {
       "emptyTitle": "Nessun task per te",

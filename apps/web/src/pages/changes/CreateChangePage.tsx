@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
+import { ChangeTypeModal } from './components/ChangeTypeModal'
 import { CREATE_CHANGE } from '@/graphql/mutations'
 import { GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT, GET_PRE_APPROVED_CHANGE_TYPES, GET_CI_GROUPS_BY_ID } from '@/graphql/queries'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
@@ -86,6 +87,13 @@ export function CreateChangePage() {
   // default: si sceglie (verifica «Cosa resta cablato», ondata 1). Prima tre
   // bottoni fissi standard/normal/emergency con `normal` preselezionato.
   const [changeType, setChangeType]   = useState('')
+  /*
+   * IL TIPO SI SCEGLIE PRIMA (20 set 2026, richiesta del proprietario).
+   * Il modale si apre arrivando qui e non si chiude finché non si sceglie o
+   * non si esce: il tipo decide se la change salta la catena di
+   * approvazioni, e non è una domanda da mettere in mezzo alle altre.
+   */
+  const [modaleTipoAperto, setModaleTipoAperto] = useState(true)
   const { entriesOf } = useDomainVocabularies()
   const changeTypes = entriesOf('change_type')
   const { data: preApprovedData } = useQuery<{ preApprovedChangeTypes: { types: string[] } }>(
@@ -224,6 +232,18 @@ export function CreateChangePage() {
 
   return (
     <PageContainer style={{ minHeight: '100%', backgroundColor: 'var(--color-slate-bg)', paddingBottom: 64 }}>
+      {/*
+        Il tipo PRIMA della form. Uscire senza scegliere riporta alla lista:
+        una change senza tipo non esiste, e lasciare la form aperta e vuota
+        sarebbe peggio che tornare indietro.
+      */}
+      <ChangeTypeModal
+        open={modaleTipoAperto}
+        types={changeTypes}
+        preApproved={preApproved}
+        onPick={(v) => { setChangeType(v); setModaleTipoAperto(false) }}
+        onCancel={() => { if (changeType === '') navigate('/changes'); else setModaleTipoAperto(false) }}
+      />
       <div style={{ maxWidth: 620, margin: '0 auto' }}>
         <button
           type="button"
@@ -290,28 +310,19 @@ export function CreateChangePage() {
             />
           </div>
 
-          {/* TIPO DI CHANGE */}
+          {/* TIPO DI CHANGE — scelto nel modale, qui si legge e si cambia */}
           <div style={{ marginBottom: 20 }}>
             <div style={fieldLabel}>{t('pages.createChange.changeType')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
-            <div role="radiogroup" aria-label={t('pages.createChange.changeType')} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {changeTypes === null && (
-                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</span>
-              )}
-              {changeTypes?.length === 0 && (
-                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>{t('pages.createChange.noChangeTypes')}</span>
-              )}
-              {changeTypes?.map(({ value, label }) => {
-                const sel = changeType === value
-                return (
-                  <button key={value} type="button" role="radio" aria-checked={sel} onClick={() => setChangeType(value)}
-                    style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                      border: `1.5px solid ${sel ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                      background: sel ? palette.info.light : 'var(--color-slate-bg)',
-                      color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
-                    {label}
-                  </button>
-                )
-              })}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 600,
+                border: '1.5px solid var(--color-brand)', background: palette.info.light, color: 'var(--color-brand)' }}>
+                {changeTypes?.find((e) => e.value === changeType)?.label ?? changeType}
+              </span>
+              <button type="button" onClick={() => setModaleTipoAperto(true)}
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                  fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', textDecoration: 'underline' }}>
+                {t('pages.createChange.changeTypeChange')}
+              </button>
             </div>
             <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginTop: 6 }}>
               {preApproved !== null && changeTypes !== null && preApproved.length > 0

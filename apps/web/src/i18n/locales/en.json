@@ -1941,7 +1941,16 @@
       "ciWithoutGroups": "This CI has no Owner Group or Support Group: the change would be refused.",
       "recheckGroups": "Check again",
       "removeCI": "Remove {{name}}",
-      "ciWithoutGroupsList": "These CIs have no Owner Group or Support Group, and a change cannot be opened on them: {{names}}. Set the groups on the CI or remove it."
+      "ciWithoutGroupsList": "These CIs have no Owner Group or Support Group, and a change cannot be opened on them: {{names}}. Set the groups on the CI or remove it.",
+      "pickType": "What kind of change is this?",
+      "pickTypeHelp": "The type decides how the change is handled: whether it goes through the approval chain, and with what urgency. You can change it later, before creating the change.",
+      "changeTypeChange": "Change",
+      "preApprovedBadge": "Pre-approved",
+      "typeHelp": {
+        "standard": "A repeated, low-risk piece of work, assessed once and for all: it skips approvals, but its CIs still go through assessment.",
+        "normal": "The ordinary case: described, assessed, and through the approval chain before it goes live.",
+        "emergency": "Needed now, usually to bring a service back: it opens with the urgency, and the assessment still happens — it is not skipped."
+      }
     },
     "myTasks": {
       "emptyTitle": "No task for you",
