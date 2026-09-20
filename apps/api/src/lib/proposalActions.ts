@@ -41,6 +41,7 @@ import {
   type ProposalActionType,
 } from '@opengraphity/types'
 import { assertAzioniAmmesseDaProposta } from './automationOrigin.js'
+import { riempiEtichette, ripristinaEtichette } from './configurationAssistActions.js'
 import { runQueryOne } from '../graphql/resolvers/ci-utils.js'
 import { NotFoundError, ValidationError } from './errors.js'
 import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSeverityOptions.js'
@@ -304,6 +305,10 @@ const CATALOGO: Readonly<Record<ProposalActionType, { esegui: Esecutore; disfa: 
   'automation.create_disabled': {
     esegui: creaAutomazioneDaProposta,
     disfa:  cancellaAutomazioneDaProposta,
+  },
+  'enum_value_labels.fill': {
+    esegui: riempiEtichette,
+    disfa:  ripristinaEtichette,
   },
 }
 

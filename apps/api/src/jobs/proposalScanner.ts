@@ -35,6 +35,7 @@ import { logger } from '../lib/logger.js'
 import { analizzaConfigurazione } from '../lib/proposalAnalysts.js'
 import { analizzaPiattaforma } from '../lib/platformAnalyst.js'
 import { analizzaLavoroQuotidiano } from '../lib/dailyWorkAnalyst.js'
+import { analizzaConfigurazioneConIlModello } from '../lib/configurationAnalyst.js'
 import { scriviProposta, scadiLeVecchie, risvegliaLeRimandate, type ProposalToWrite } from '../lib/proposals.js'
 
 export const PROPOSAL_SCANNER_QUEUE = 'proposal-scanner'
@@ -79,6 +80,7 @@ const ANALISTI: ReadonlyArray<(tenantId: string) => Promise<ProposalToWrite[]>> 
   analizzaConfigurazione,
   analizzaPiattaforma,
   analizzaLavoroQuotidiano,
+  analizzaConfigurazioneConIlModello,
 ]
 
 export async function analizzaCliente(tenantId: string): Promise<{ create: number; saltate: Record<string, number> }> {

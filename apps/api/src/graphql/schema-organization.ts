@@ -84,6 +84,8 @@ export function organizationSDL(): string {
     platformSelfAnalysis: Boolean!
     """Il prodotto guarda il registro di questo cliente e propone come velocizzare il lavoro (20 set 2026). Spento di fabbrica."""
     dailyWorkAnalysis: Boolean!
+    """Il prodotto guarda la configurazione di questo cliente e propone come completarla (20 set 2026). Spento di fabbrica."""
+    configurationAssist: Boolean!
   }
 
   type AISettings {
@@ -106,6 +108,7 @@ export function organizationSDL(): string {
     reportDesigner: Boolean!
     platformSelfAnalysis: Boolean!
     dailyWorkAnalysis: Boolean!
+    configurationAssist: Boolean!
   }
 
   input AISettingsInput {

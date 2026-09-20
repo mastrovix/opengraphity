@@ -35,6 +35,7 @@ describe('il catalogo è chiuso', () => {
     expect(PROPOSAL_ACTION_TYPES).toEqual([
       'portal_severities.remove_stale',
       'automation.create_disabled',
+      'enum_value_labels.fill',
     ])
   })
 })

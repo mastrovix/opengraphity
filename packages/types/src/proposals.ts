@@ -100,6 +100,15 @@ export const PROPOSAL_ACTION_TYPES = [
    * la proposta stessa aveva messo.
    */
   'automation.create_disabled',
+  /*
+   * `enum_value_labels.fill` (20 set 2026, ondata 6). L'unica voce del
+   * catalogo in cui il MODELLO scrive testo che le persone leggeranno. Tre
+   * regole la rendono accettabile, e sono in `lib/configurationAssistActions.ts`:
+   * non sovrascrive mai un'etichetta scritta da una persona, rilegge lo stato
+   * di adesso invece di fidarsi di quello di quando la proposta è nata, e si
+   * disfa per intero rimettendo il documento di prima.
+   */
+  'enum_value_labels.fill',
 ] as const
 export type ProposalActionType = (typeof PROPOSAL_ACTION_TYPES)[number]
 

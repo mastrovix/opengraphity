@@ -1530,7 +1530,8 @@
         "formDesigner": "Service request designer",
         "reportDesigner": "Report designer",
         "platformSelfAnalysis": "Platform self-analysis",
-        "dailyWorkAnalysis": "Daily work analysis"
+        "dailyWorkAnalysis": "Daily work analysis",
+        "configurationAssist": "Configuration assistant"
       },
       "aiFeatureHelp": {
         "triage": "Suggests severity, category and team while an incident is being opened.",
@@ -1542,7 +1543,8 @@
         "formDesigner": "Designs the sections and fields of a service request from a plain description. The proposal saves nothing: you review it in the form and accept it.",
         "reportDesigner": "Designs a report section from a plain description: entities, filters, grouping and chart. The proposal saves nothing: you review it in the builder, with the live preview.",
         "platformSelfAnalysis": "The product reads the templates of its own errors and proposes remedies. It is the only feature that ships turned off, because the archive it reads covers the whole platform and not a single customer: you turn it on knowing that. It only makes sense on the platform tenant; elsewhere it finds nothing to analyse and says so.",
-        "dailyWorkAnalysis": "Reads the aggregates of this organization's audit log — repeated actions, time spent in steps, use of the AI features — and proposes how to make the work faster. It reads only NUMBERS, never the text of your tickets. Off by default: it is one of the two features that write on their own initiative, at night. Proposals change nothing until you accept them."
+        "dailyWorkAnalysis": "Reads the aggregates of this organization's audit log — repeated actions, time spent in steps, use of the AI features — and proposes how to make the work faster. It reads only NUMBERS, never the text of your tickets. Off by default: it is one of the two features that write on their own initiative, at night. Proposals change nothing until you accept them.",
+        "configurationAssist": "Looks at this organization's configuration — dictionaries without labels, workflow steps without a role — and proposes how to complete it. It is the only feature whose proposals, once accepted, let the model write text that people will read: the labels of your values. It never overwrites a label a person wrote, and every proposal can be undone. Off by default."
       },
       "aiClusterGroup": "Problem candidates",
       "aiClusterSimilarity": "Minimum similarity (0.50–0.99)",
@@ -4648,7 +4650,9 @@
       "automationName": "The proposed automation has no name.",
       "automationEntity": "“{{value}}” is not a ticket type an automation can watch.",
       "automationEvent": "“{{value}}” is not an automation event.",
-      "automationEventEntity": "An automation on “{{entity}}” does not run on “{{event}}”: that combination is never evaluated."
+      "automationEventEntity": "An automation on “{{entity}}” does not run on “{{event}}”: that combination is never evaluated.",
+      "labelsVocabulary": "The proposal does not say which dictionary it is about.",
+      "labelsUnreadable": "The labels of the “{{vocabulary}}” dictionary cannot be read: they must be fixed by hand before anything writes to them."
     }
   },
   "errorBoundary": {
@@ -7569,7 +7573,8 @@
       "proposal.platformSharedFault": "“{{template}}”: {{service}} · {{module}} fails together with other processes ({{count}} times)",
       "proposal.dailyWorkPairToAutomation": "“{{then}}” almost always follows “{{first}}”: {{count}} times, by {{actors}} people",
       "proposal.dailyWorkSlowStep": "In step “{{step}}” tickets sit for {{median, number}} h (p90 {{p90, number}} h) over {{count}} runs",
-      "proposal.dailyWorkInstantStep": "Step “{{step}}” is crossed in {{median, number}} h over {{count}} runs: is it a step or a formality?"
+      "proposal.dailyWorkInstantStep": "Step “{{step}}” is crossed in {{median, number}} h over {{count}} runs: is it a step or a formality?",
+      "proposal.configMissingLabels": "Write the {{count}} labels missing from the “{{vocabulary}}” dictionary ({{values}})"
     },
     "rejection": {
       "wrong_analysis": "The analysis is wrong",

@@ -1530,7 +1530,8 @@
         "formDesigner": "Designer delle service request",
         "reportDesigner": "Designer dei report",
         "platformSelfAnalysis": "Autoanalisi della piattaforma",
-        "dailyWorkAnalysis": "Analisi del lavoro quotidiano"
+        "dailyWorkAnalysis": "Analisi del lavoro quotidiano",
+        "configurationAssist": "Aiuto alla configurazione"
       },
       "aiFeatureHelp": {
         "triage": "Propone severità, categoria e team mentre si apre un incident.",
@@ -1542,7 +1543,8 @@
         "formDesigner": "Disegna sezioni e campi di una service request da una descrizione a parole. La proposta non salva niente: la rivedi nel modulo e la accetti tu.",
         "reportDesigner": "Disegna una sezione di report da una descrizione a parole: entità, filtri, raggruppamento e grafico. La proposta non salva niente: la rivedi nel costruttore, con l'anteprima.",
         "platformSelfAnalysis": "Il prodotto legge i template dei propri errori e propone rimedi. È l'unica funzione spenta di fabbrica, perché l'archivio che legge riguarda la piattaforma intera e non un solo cliente: si accende sapendolo. Ha senso solo sul tenant di piattaforma; altrove non trova niente da analizzare e lo dice.",
-        "dailyWorkAnalysis": "Legge gli aggregati del registro di questa organizzazione — azioni ripetute, tempi nei passi, uso delle funzioni AI — e propone come velocizzare il lavoro. Legge solo NUMERI, mai il testo dei ticket. Spenta di fabbrica: è una delle due funzioni che scrivono di propria iniziativa, di notte. Le proposte non cambiano niente finché non le accetti."
+        "dailyWorkAnalysis": "Legge gli aggregati del registro di questa organizzazione — azioni ripetute, tempi nei passi, uso delle funzioni AI — e propone come velocizzare il lavoro. Legge solo NUMERI, mai il testo dei ticket. Spenta di fabbrica: è una delle due funzioni che scrivono di propria iniziativa, di notte. Le proposte non cambiano niente finché non le accetti.",
+        "configurationAssist": "Guarda la configurazione di questa organizzazione — vocabolari senza etichette, passi di workflow senza ruolo — e propone come completarla. È l'unica funzione le cui proposte, se accettate, fanno scrivere al modello del testo che le persone leggeranno: le etichette dei valori. Non sovrascrive mai un'etichetta scritta da una persona, e ogni proposta si può disfare. Spenta di fabbrica."
       },
       "aiClusterGroup": "Candidati problem",
       "aiClusterSimilarity": "Somiglianza minima (0,50–0,99)",
@@ -4648,7 +4650,9 @@
       "automationName": "L'automazione proposta non ha un nome.",
       "automationEntity": "«{{value}}» non è un tipo di ticket su cui un'automazione possa girare.",
       "automationEvent": "«{{value}}» non è un evento di automazione.",
-      "automationEventEntity": "Un'automazione su «{{entity}}» non gira su «{{event}}»: quella combinazione non viene valutata da nessuna parte."
+      "automationEventEntity": "Un'automazione su «{{entity}}» non gira su «{{event}}»: quella combinazione non viene valutata da nessuna parte.",
+      "labelsVocabulary": "La proposta non dice di quale Dizionario si tratta.",
+      "labelsUnreadable": "Le etichette del Dizionario «{{vocabulary}}» non si riescono a leggere: vanno riparate a mano prima che qualcosa ci scriva sopra."
     }
   },
   "errorBoundary": {
@@ -7569,7 +7573,8 @@
       "proposal.platformSharedFault": "«{{template}}»: {{service}} · {{module}} sbaglia insieme ad altri processi ({{count}} volte)",
       "proposal.dailyWorkPairToAutomation": "Dopo «{{first}}» arriva quasi sempre «{{then}}»: {{count}} volte, per mano di {{actors}} persone",
       "proposal.dailyWorkSlowStep": "Nel passo «{{step}}» i ticket stanno fermi {{median, number}} h (p90 {{p90, number}} h) su {{count}} passaggi",
-      "proposal.dailyWorkInstantStep": "Il passo «{{step}}» viene attraversato in {{median, number}} h su {{count}} passaggi: è un passo o una formalità?"
+      "proposal.dailyWorkInstantStep": "Il passo «{{step}}» viene attraversato in {{median, number}} h su {{count}} passaggi: è un passo o una formalità?",
+      "proposal.configMissingLabels": "Scrivi le {{count}} etichette che mancano al Dizionario «{{vocabulary}}» ({{values}})"
     },
     "rejection": {
       "wrong_analysis": "L'analisi è sbagliata",

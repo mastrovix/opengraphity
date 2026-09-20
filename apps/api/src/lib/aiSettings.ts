@@ -47,7 +47,7 @@ import { invalidateSchema } from './schemaInvalidator.js'
  * sapendo la conseguenza: finché nessuno lo accende, l'area D non gira e lo
  * dice invece di tacere.
  */
-export const AI_FEATURES = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner', 'reportDesigner', 'platformSelfAnalysis', 'dailyWorkAnalysis'] as const
+export const AI_FEATURES = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner', 'reportDesigner', 'platformSelfAnalysis', 'dailyWorkAnalysis', 'configurationAssist'] as const
 export type AIFeature = (typeof AI_FEATURES)[number]
 
 export interface AISettings {
@@ -77,6 +77,15 @@ export const FACTORY_AI_SETTINGS: Readonly<AISettings> = {
      */
     platformSelfAnalysis: false,
     dailyWorkAnalysis: false,
+    /*
+     * Il terzo, e l'ultimo del programma. Legge la CONFIGURAZIONE di questo
+     * cliente — vocabolari, workflow — e propone di completarla. È l'unico
+     * dei tre le cui proposte, se accettate, fanno scrivere al modello del
+     * TESTO che le persone leggeranno sullo schermo: le etichette dei valori.
+     * Per questo nasce spento come gli altri due, e per questo l'azione non
+     * sovrascrive MAI un'etichetta che una persona ha già scritto.
+     */
+    configurationAssist: false,
   },
   clusterMinSimilarity: 0.72,
   clusterMinSize: 3,
