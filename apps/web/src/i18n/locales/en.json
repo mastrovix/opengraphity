@@ -2757,8 +2757,8 @@
         "then": "Then"
       },
       "ai": {
-        "title": "The AI features that already exist",
-        "criterion": "How much this customer uses them. Nobody knew before: the metrics carry no tenant.",
+        "title": "AI actions the audit log can see",
+        "criterion": "Careful: this is NOT AI feature adoption. The audit log only records mutations, and most of the AI features next to a ticket (triage, similar articles, draft notes) are queries: a zero here means “the log cannot see it”, not “nobody uses it”.",
         "feature": "Feature"
       },
       "empty": "Nothing to measure yet",

@@ -2757,8 +2757,8 @@
         "then": "Poi"
       },
       "ai": {
-        "title": "Le funzioni AI che esistono già",
-        "criterion": "Quanto vengono usate da questo cliente. Prima non lo sapeva nessuno: le metriche non hanno il cliente.",
+        "title": "Azioni AI viste dal registro",
+        "criterion": "Attenzione: NON è l'adozione delle funzioni AI. Il registro vede solo le mutation, e quasi tutte le funzioni AI accanto al ticket (triage, articoli simili, bozza delle note) sono query: uno zero qui vuol dire «il registro non la vede», non «nessuno la usa».",
         "feature": "Funzione"
       },
       "empty": "Non c'è ancora niente da misurare",

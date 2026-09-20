@@ -359,16 +359,28 @@ export interface AdozioneAI {
 }
 
 /**
- * Quanto vengono usate le otto funzioni AI esistenti, PER CLIENTE.
+ * Le AZIONI AI che il registro ha visto, per cliente.
  *
- * Oggi non lo sa nessuno: le metriche Prometheus hanno le etichette `feature`
- * e `kind`, mai il tenant, e vivono in memoria del processo. L'Audit Log
- * invece è per cliente, persistito e mai cancellato — quindi la domanda «il
- * triage lo usa qualcuno?» ha già una risposta scritta da settimane, e
- * bastava leggerla.
+ * ## Attenzione: NON è l'adozione delle funzioni AI, e il perché conta
+ * Scrivendo questo aggregato (ondata 2) avevo messo qui sopra: «la domanda
+ * "il triage lo usa qualcuno?" ha già una risposta scritta da settimane, e
+ * bastava leggerla». **Era falso**, e l'ho scoperto nell'ondata 6 provando a
+ * costruirci sopra una proposta.
  *
- * Serve a decidere dove investire, e a non «migliorare» una funzione che
- * nessuno apre.
+ * `auditMutationsPlugin` registra le MUTATION e basta — esce subito su
+ * qualunque altra operazione. Ma le funzioni AI accanto al ticket sono
+ * QUERY: `triageSuggestion`, `suggestedArticles`, `resolutionDraft`,
+ * `problemCandidates`. Il registro non le vede, e non le ha mai viste.
+ *
+ * Quindi uno zero qui dentro NON vuol dire «nessuno la usa»: vuol dire «il
+ * registro non la vede». Sono due cose diverse, e confonderle porterebbe a
+ * spegnere una funzione che qualcuno usa ogni giorno. Per questo l'ondata 6
+ * NON ha costruito la proposta «funzione inutilizzata» che il progetto
+ * prevedeva: la misura su cui sarebbe poggiata è cieca.
+ *
+ * Quello che si vede davvero: le AI invocate da una mutation — oggi la bozza
+ * di articolo KB da un incident — e i cambi di configurazione AI. È poco, ed
+ * è detto invece che gonfiato.
  */
 export async function adozioneFunzioniAI(
   tenantId: string,
