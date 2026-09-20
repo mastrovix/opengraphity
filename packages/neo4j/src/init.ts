@@ -179,6 +179,20 @@ const CONSTRAINTS: SchemaStatement[] = [
     cypher: 'CREATE CONSTRAINT proposal_fingerprint_unique IF NOT EXISTS FOR (p:Proposal) REQUIRE (p.tenant_id, p.area, p.fingerprint) IS UNIQUE',
   },
   /**
+   * I LOG DEL SERVER: un nodo per (firma, giorno) — 20 set 2026, ondata 3.
+   *
+   * Il vincolo non è un'ottimizzazione, è ciò che rende vero il modello:
+   * `lib/serverLogSink.ts` scrive con un `MERGE` su questa coppia, e due
+   * processi (API e worker condividono il database) che sbagliano nello
+   * stesso istante devono incrementare lo stesso nodo, non crearne due.
+   * Senza vincolo il `MERGE` concorrente duplica, ed è esattamente il difetto
+   * che `:Anomaly` aveva e che il progetto dice di non ripetere.
+   */
+  {
+    label:  'ServerLogEntry(fingerprint, day) unique',
+    cypher: 'CREATE CONSTRAINT server_log_fingerprint_day_unique IF NOT EXISTS FOR (l:ServerLogEntry) REQUIRE (l.fingerprint, l.day) IS UNIQUE',
+  },
+  /**
    * Il nome di un calendario di servizio è unico DAVVERO (revisione totale ·
    * C-34): l'unicità era controllata da una lettura fuori dalla transazione di
    * creazione, quindi due admin che salvavano «Ufficio» nello stesso istante
@@ -497,6 +511,22 @@ const INDEXES: SchemaStatement[] = [
   { label: 'AuditEntry(tenant_id, created_at)', cypher: 'CREATE INDEX audit_entry_tenant_created IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.created_at)' },
   { label: 'AuditEntry(tenant_id, action)',     cypher: 'CREATE INDEX audit_entry_tenant_action IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.action)' },
   { label: 'AuditEntry(tenant_id, user_id)',    cypher: 'CREATE INDEX audit_entry_tenant_user IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.user_id)' },
+  /*
+   * I LOG DEL SERVER (ondata 3). Due domande sole, e sono queste:
+   * «questa firma su quanti giorni distinti?» (il connettore) e «cosa è
+   * successo in questa finestra?» (la retention e la lettura di piattaforma).
+   * `:LogEntry`, il registro dei log del BROWSER, non ha mai avuto un indice
+   * in tre anni: 270.000 nodi scritti e mai letti. Qui si parte con l'indice.
+   */
+  { label: 'ServerLogEntry(fingerprint, day)', cypher: 'CREATE INDEX server_log_fingerprint_day IF NOT EXISTS FOR (n:ServerLogEntry) ON (n.fingerprint, n.day)' },
+  { label: 'ServerLogEntry(day)',              cypher: 'CREATE INDEX server_log_day IF NOT EXISTS FOR (n:ServerLogEntry) ON (n.day)' },
+  /*
+   * E finalmente uno su `:LogEntry` — i log del browser. Li scrive
+   * `rest/client-logs.ts`, non li legge nessuno e non li purga nessuno; la
+   * retention dell'ondata 3 li raggiunge, e per cancellarli per età serve
+   * poter cercare per (tenant, giorno) senza scandire tutto.
+   */
+  { label: 'LogEntry(tenant_id, timestamp)',   cypher: 'CREATE INDEX log_entry_tenant_timestamp IF NOT EXISTS FOR (n:LogEntry) ON (n.tenant_id, n.timestamp)' },
   // Event Management: la console lista per (tenant, status) ordinando per last_seen_at.
   { label: 'Event(tenant_id, status, last_seen_at)', cypher: 'CREATE INDEX event_tenant_status_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.status, n.last_seen_at)' },
   // Tempeste per sorgente (eventStorm.ts: MATCH (e:Event {tenant_id, source_id})) e

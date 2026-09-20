@@ -27,6 +27,7 @@ import { getAllQueues, getQueue, closeAllQueues } from './lib/bullmq.js'
 import { QUEUE_REGISTRY } from './lib/queueRegistry.js'
 import { wireDomainEventFailureMetric } from './lib/domainEventFailures.js'
 import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
+import { accendiSinkDeiLog, spegniSinkDeiLog } from './lib/serverLogSink.js'
 // Canale del metamodello (A-16): l'import registra i clearer dei moduli che
 // tengono cache derivate dal metamodello; `startMetamodelBus()` apre la
 // sottoscrizione Redis e registra il publisher usato da invalidateSchema.
@@ -151,6 +152,16 @@ async function main() {
   // Start maintenance worker (backup scheduler)
   const maintenanceWorker = await startMaintenanceWorker()
 
+  /*
+   * IL SINK DEI LOG DEL SERVER (20 set 2026, ondata 3). Da qui in poi ogni
+   * riga `error`/`fatal` di QUESTO processo finisce nel grafo come template
+   * scrubbato. Si accende dopo il driver, perché la prima cosa che fa è
+   * aprire una sessione; le righe di avvio precedenti restano solo su stdout,
+   * ed è un limite dichiarato — un errore che impedisce l'avvio non si legge
+   * in un database a cui il processo non è ancora arrivato.
+   */
+  await accendiSinkDeiLog()
+
   // BullMQ queue-depth gauges for /metrics and the admin "System metrics" page
   // (A-14). Every queue of the registry is opened here as a producer handle so
   // the gauge covers ALL of them — the consumer queues of packages/events and
@@ -194,6 +205,9 @@ async function main() {
       workers: closables,
       // Code singleton (lib/bullmq), poi SLA scheduler, poi publisher (D-24, A-13), poi il driver
       resources: [
+        // Per primo: scrive le righe in attesa, e ha bisogno del driver che
+        // viene chiuso in fondo a questa stessa lista.
+        { name: 'server-log-sink',  close: () => spegniSinkDeiLog() },
         { name: 'metamodel-bus',    close: () => stopMetamodelBus() },
         { name: 'inapp-bus',        close: () => stopInAppBus() },
         { name: 'bullmq-queues',    close: () => closeAllQueues() },

@@ -22,6 +22,7 @@ import { reportStreamRouter } from './rest/report-stream.js'
 import { assistantRouter } from './rest/assistant.js'
 import { clientLogRouter } from './rest/client-logs.js'
 import { platformTenantsRouter } from './rest/platform-tenants.js'
+import { platformServerLogsRouter } from './rest/platform-server-logs.js'
 import { handleSlackCommands, handleSlackActions, handleSlackOAuthCallback } from './rest/slack.js'
 import { attachmentRouter } from './rest/attachments.js'
 import { brandRouter } from './rest/brand.js'
@@ -229,6 +230,8 @@ app.use('/api', clientLogRouter)
  * esiste dove nessuno l'ha configurata.
  */
 app.use(platformTenantsRouter)
+// Ondata 3: l'archivio dei log del server, leggibile solo dall'identità di piattaforma.
+app.use(platformServerLogsRouter)
 app.use('/api', attachmentRouter)
 app.use('/api', brandRouter)
 app.use('/api', incidentPdfRouter)

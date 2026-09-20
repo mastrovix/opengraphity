@@ -41,6 +41,7 @@ import { closeAllQueues } from './lib/bullmq.js'
 import { wireDomainEventFailureMetric } from './lib/domainEventFailures.js'
 import { startMetricsServer } from './lib/metricsServer.js'
 import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
+import { accendiSinkDeiLog, spegniSinkDeiLog } from './lib/serverLogSink.js'
 // Canale del metamodello (A-16): questo processo ha la SUA copia delle cache
 // derivate dal metamodello e prima non veniva mai avvisato dei cambiamenti.
 import { startMetamodelBus, stopMetamodelBus } from './lib/metamodelBus.js'
@@ -90,6 +91,15 @@ async function main() {
   }
 
   const metricsServer = await startMetricsServer(config.port)
+
+  /*
+   * Il sink dei log vive anche QUI (ondata 3): metà dei log del prodotto sono
+   * dei worker — code, correlazione degli eventi, impatto sui servizi — e un
+   * sink che stesse solo nell'API vedrebbe metà dei guasti. Il campo
+   * `service` (lib/serviceName.ts) tiene separati i tre processi.
+   */
+  await accendiSinkDeiLog()
+
   logger.info({ profile: config.workerProfile, workGroups, workers: workers.map((w) => w.name), consumers: consumers.map((c) => c.name) }, 'Worker process started')
 
   // ── Graceful shutdown (lib/shutdown.ts, revisione 2 · D1.2) ───────────────
@@ -105,6 +115,7 @@ async function main() {
         ...consumers,
       ],
       resources: [
+        { name: 'server-log-sink',  close: () => spegniSinkDeiLog() },
         { name: 'metamodel-bus',    close: () => stopMetamodelBus() },
         { name: 'inapp-bus',        close: () => stopInAppBus() },
         { name: 'bullmq-queues',    close: () => closeAllQueues() },

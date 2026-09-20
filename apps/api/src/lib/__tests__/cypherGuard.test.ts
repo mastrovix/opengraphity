@@ -109,3 +109,31 @@ describe('stripCypherLiterals', () => {
     expect(stripCypherLiterals("'a\\\\' DELETE n //")).toBe("'' DELETE n ")
   })
 })
+
+/*
+ * I REGISTRI NON SI LEGGONO CON UN REPORT (20 set 2026, ondata 3).
+ *
+ * Buco preesistente, trovato rileggendo il progetto «Miglioramento continuo»:
+ * l'ondata 1 doveva chiuderlo e non l'ha fatto. Si chiude ADESSO, prima che
+ * l'ondata 3 cominci a persistere i log del server: da quel momento in poi il
+ * grafo contiene il racconto di tutto quello che succede dentro la
+ * piattaforma, e `askReport` è raggiungibile da un'iniezione nel titolo di un
+ * ticket.
+ */
+describe('i registri sono fuori portata di un report', () => {
+  it.each([
+    ['le voci di Audit',        'MATCH (a:AuditEntry {tenant_id: $tenantId}) RETURN a.action'],
+    ['i log del browser',       'MATCH (l:LogEntry {tenant_id: $tenantId}) RETURN l.message'],
+    ['i log del server',        'MATCH (l:ServerLogEntry {tenant_id: $tenantId}) RETURN l.template'],
+  ])('rifiuta %s', (_nome, q) => rejects(q, 'label'))
+
+  it.each([
+    ['details', 'MATCH (i:Incident {tenant_id: $tenantId}) RETURN i.details'],
+    ['data',    'MATCH (i:Incident {tenant_id: $tenantId}) RETURN i.data'],
+  ])('rifiuta la proprietà %s anche su un nodo qualunque', (_nome, q) => rejects(q, 'property'))
+
+  it('e la seconda linea le toglie comunque da una riga già tornata', () => {
+    expect(redactSensitiveValue({ labels: ['AuditEntry'], properties: { action: 'x' } })).toBe('[redacted]')
+    expect(redactSensitiveValue([{ title: 'ok', details: '{"url":"https://hook"}' }])).toEqual([{ title: 'ok' }])
+  })
+})

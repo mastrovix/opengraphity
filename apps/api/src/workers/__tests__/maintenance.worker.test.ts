@@ -139,10 +139,15 @@ describe('startMaintenanceWorker', () => {
       ['purge_inapp_notifications', '45 3 * * *'],
       // Moduli del catalogo, ondata 2: le bozze di modulo mai reclamate.
       ['purge_form_drafts', '15 4 * * *'],
+      // Miglioramento continuo, ondata 3: i due registri di log si purgano...
+      ['purge_server_logs', '0 5 * * *'],
+      // ...e le firme degli errori diventano eventi ogni quarto d'ora, perché
+      // un guasto in corso non aspetta la notte.
+      ['server_logs_to_events', '*/15 * * * *'],
     ])
     expect(queue.removeRepeatableByKey.mock.calls.map((c) => c[0]).sort()).toEqual(['stale-backup', 'stale-purge'])
     expect(queue.add).toHaveBeenCalledWith('purge_events', {}, { repeat: { pattern: '30 3 * * *' } })
-    expect(queue.add).toHaveBeenCalledTimes(4)
+    expect(queue.add).toHaveBeenCalledTimes(REPEATABLE_JOBS.length)
   })
 
   it('registrazione del repeatable che fallisce → errore di startup, nessun worker creato', async () => {

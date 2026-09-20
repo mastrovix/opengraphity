@@ -11,6 +11,8 @@ import { backupRunsTotal, backupLastSuccessTimestamp } from '../middleware/metri
 import { purgeResolvedEvents } from '../services/eventRetention.js'
 import { pruneInbox } from '@opengraphity/notifications'
 import { inAppRetentionByTenant } from '../lib/tenantInAppRetention.js'
+import { purgaIRegistriDeiLog, leggiGiorniDiRetention } from '../services/serverLogRetention.js'
+import { immettiEventiDaiLog } from '../lib/serverLogEvents.js'
 
 const maintenanceLogger = logger.child({ module: 'maintenance' })
 
@@ -54,6 +56,22 @@ export const REPEATABLE_JOBS: ReadonlyArray<{ name: string; pattern: string; des
    * Senza questa passata crescerebbero per sempre — su disco e nel grafo.
    */
   { name: 'purge_form_drafts', pattern: '15 4 * * *', description: 'daily at 04:15' },
+  /**
+   * I DUE REGISTRI DEI LOG (20 set 2026, ondata 3). `:ServerLogEntry` è
+   * l'archivio nuovo su cui il prodotto guarda sé stesso; `:LogEntry` sono i
+   * log del browser, che esistono da sempre e non sono MAI stati purgati —
+   * 270.000 nodi, nessun lettore, nessun indice. Un registro che cresce senza
+   * che nessuno abbia deciso per quanto è un difetto, non un archivio.
+   */
+  { name: 'purge_server_logs', pattern: '0 5 * * *', description: 'daily at 05:00' },
+  /**
+   * DA ERRORE A EVENTO (ondata 3). Ogni quarto d'ora, non di notte: un guasto
+   * in corso non aspetta le cinque del mattino. Un quarto d'ora è il
+   * compromesso fra «te ne accorgi presto» e «non apri un incident per un
+   * errore isolato» — la soglia acuta (20 occorrenze in un giorno) fa il
+   * resto del filtro, e la pipeline degli eventi ha già la sua deduplica.
+   */
+  { name: 'server_logs_to_events', pattern: '*/15 * * * *', description: 'every 15 minutes' },
 ]
 
 /**
@@ -191,6 +209,18 @@ async function processMaintenanceJob(job: Job): Promise<void> {
       break
     }
 
+    case 'server_logs_to_events': {
+      const { immessi, esaminate } = await immettiEventiDaiLog()
+      if (immessi > 0) maintenanceLogger.info({ immessi, esaminate }, 'Server log signatures turned into monitoring events')
+      break
+    }
+
+    case 'purge_server_logs': {
+      const { server, browser, giorni } = await purgaIRegistriDeiLog()
+      maintenanceLogger.info({ server, browser, retentionDays: giorni }, 'Server and browser log registries pruned')
+      break
+    }
+
     default:
       throw new Error(`Unknown maintenance job "${job.name}"`)
   }
@@ -223,6 +253,9 @@ export async function startMaintenanceWorker(): Promise<Worker> {
   // Fail at boot on a malformed value, not at midnight.
   const retention = readBackupRetention()
   readSkipKeycloak()
+  // Stessa regola per la durata dei log: se è scritta male lo si scopre ora,
+  // non alle cinque del mattino con il job che fallisce in silenzio.
+  leggiGiorniDiRetention()
   await scheduleRepeatableJobs()
 
   const worker = createWorker(MAINTENANCE_QUEUE, processMaintenanceJob, { concurrency: 1 })

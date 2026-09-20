@@ -16,14 +16,36 @@ const LEVEL_MAP: Record<number, string> = {
 
 const SKIP_KEYS = new Set(['level', 'time', 'msg', 'module', 'pid', 'hostname', 'service', 'env'])
 
+/*
+ * IL SINK PERSISTENTE, COLLEGATO DA FUORI (20 set 2026, ondata 3).
+ *
+ * `logger.ts` è importato da quasi tutto il codice: se importasse il sink, e
+ * il sink il driver di Neo4j, si aprirebbe un ciclo e ogni test che tocca un
+ * logger si porterebbe dietro il database. Quindi è il sink a presentarsi —
+ * `index.ts` lo collega all'avvio — e finché nessuno lo collega, qui non
+ * succede niente: è il caso dei test e degli script.
+ */
+type SinkDeiLog = (raw: Record<string, unknown>, livello: string) => void
+let sinkDeiLog: SinkDeiLog | null = null
+
+export function collegaSinkDeiLog(fn: SinkDeiLog | null): void { sinkDeiLog = fn }
+
 function bufferLog(raw: Record<string, unknown>): void {
   const extra = Object.fromEntries(
     Object.entries(raw).filter(([k]) => !SKIP_KEYS.has(k)),
   )
+  const livello = LEVEL_MAP[raw['level'] as number] ?? 'info'
+  /*
+   * Il sink riceve la riga GREZZA, non quella bufferizzata: `SKIP_KEYS` qui
+   * sotto butta via `service` ed `env`, e il sink ha bisogno di `service` per
+   * sapere quale processo ha sbagliato — era il difetto che `serviceName.ts`
+   * ha chiuso nei log di Loki, e ripeterlo nel grafo sarebbe stato comico.
+   */
+  if (sinkDeiLog) { try { sinkDeiLog(raw, livello) } catch { /* mai far cadere una riga di log */ } }
   pushLog({
     id:        randomUUID(),
     timestamp: new Date(raw['time'] as number).toISOString(),
-    level:     LEVEL_MAP[raw['level'] as number] ?? 'info',
+    level:     livello,
     module:    (raw['module'] as string | undefined) ?? 'api',
     message:   (raw['msg'] as string) ?? '',
     data:      Object.keys(extra).length > 0 ? JSON.stringify(extra) : null,

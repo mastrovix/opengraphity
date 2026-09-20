@@ -405,6 +405,8 @@ services:
       # Backup notturno (maintenance worker, che gira in QUESTO processo)
       BACKUP_RETENTION: ${BACKUP_RETENTION:-14}
       BACKUP_SKIP_KEYCLOAK: ${BACKUP_SKIP_KEYCLOAK:-false}
+      # Durata dei due registri di log (ondata 3): quello del server e quello del browser
+      SERVER_LOG_RETENTION_DAYS: ${SERVER_LOG_RETENTION_DAYS:-90}
 
       # Optional integrations
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
