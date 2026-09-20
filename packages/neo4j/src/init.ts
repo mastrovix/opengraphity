@@ -188,6 +188,16 @@ const CONSTRAINTS: SchemaStatement[] = [
    * Senza vincolo il `MERGE` concorrente duplica, ed è esattamente il difetto
    * che `:Anomaly` aveva e che il progetto dice di non ripetere.
    */
+  /**
+   * IL REGISTRO DEL COSTO AI (20 set 2026, ondata 4). Il vincolo è ciò che
+   * rende vero il `MERGE` di `lib/aiCostLedger.ts`: due processi che contano
+   * la stessa funzione nello stesso mese devono sommare sullo stesso nodo,
+   * non crearne due che poi nessuno somma.
+   */
+  {
+    label:  'AIUsage(tenant_id, month, feature) unique',
+    cypher: 'CREATE CONSTRAINT ai_usage_unique IF NOT EXISTS FOR (u:AIUsage) REQUIRE (u.tenant_id, u.month, u.feature) IS UNIQUE',
+  },
   {
     label:  'ServerLogEntry(fingerprint, day) unique',
     cypher: 'CREATE CONSTRAINT server_log_fingerprint_day_unique IF NOT EXISTS FOR (l:ServerLogEntry) REQUIRE (l.fingerprint, l.day) IS UNIQUE',

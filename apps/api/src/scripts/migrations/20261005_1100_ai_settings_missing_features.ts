@@ -26,11 +26,18 @@
 import type { Migration } from '@opengraphity/neo4j'
 import { AI_FEATURES, FACTORY_AI_SETTINGS } from '../../lib/aiSettings.js'
 
-export const aiSettingsMissingFeatures: Migration = {
-  id: '20261005_1100_ai_settings_missing_features',
-  description: 'Add every missing AI feature switch to tenants that already saved their AI settings',
-
-  async up(session) {
+/**
+ * Il corpo, estratto per essere riusato (20 set 2026).
+ *
+ * Una migrazione gira una volta sola: l'id è la sua identità. Quando
+ * `AI_FEATURES` cresce di nuovo — ed è successo con `platformSelfAnalysis` —
+ * serve una migrazione NUOVA, che però deve fare esattamente questo. Copiarla
+ * vorrebbe dire due copie della regola «se ha spento tutto, la funzione nuova
+ * nasce spenta», e quella regola è il motivo per cui il file esiste.
+ */
+export async function aggiungiInterruttoriMancanti(
+  session: Parameters<NonNullable<Migration['up']>>[0], etichetta: string,
+): Promise<void> {
     const righe = await session.run(`
       MATCH (t:Tenant)
       WHERE t.ai_settings IS NOT NULL AND t.ai_settings <> ''
@@ -46,12 +53,12 @@ export const aiSettingsMissingFeatures: Migration = {
         // NON «ripiega su fabbrica»: `aiSettings.ts` lancia su un documento
         // illeggibile, e lancia anche la pagina che lo riparerebbe. Si dice
         // forte, perché quel tenant ha bisogno di una mano a parte.
-        console.error(`[${aiSettingsMissingFeatures.id}] ${id}: ai_settings is NOT valid JSON — left alone; every AI read will fail for this tenant until it is fixed`)
+        console.error(`[${etichetta}] ${id}: ai_settings is NOT valid JSON — left alone; every AI read will fail for this tenant until it is fixed`)
         continue
       }
       const features = doc.features
       if (!features || typeof features !== 'object') {
-        console.log(`[${aiSettingsMissingFeatures.id}] ${id}: ai_settings has no features object — left alone`)
+        console.log(`[${etichetta}] ${id}: ai_settings has no features object — left alone`)
         continue
       }
       /*
@@ -78,12 +85,12 @@ export const aiSettingsMissingFeatures: Migration = {
         aggiunte.push(`${f}=${String(valore)}${tutteSpente ? ' (tutte le altre erano spente)' : ' (factory)'}`)
       }
       if (aggiunte.length === 0) continue
-      console.log(`[${aiSettingsMissingFeatures.id}] ${id}: adding ${aggiunte.join(', ')}`)
+      console.log(`[${etichetta}] ${id}: adding ${aggiunte.join(', ')}`)
       daScrivere.push({ id, json: JSON.stringify(doc) })
     }
 
     if (daScrivere.length === 0) {
-      console.log(`[${aiSettingsMissingFeatures.id}] nothing to add: every saved AI setting lists all ${String(AI_FEATURES.length)} features`)
+      console.log(`[${etichetta}] nothing to add: every saved AI setting lists all ${String(AI_FEATURES.length)} features`)
       return
     }
     const esito = await session.run(`
@@ -93,6 +100,11 @@ export const aiSettingsMissingFeatures: Migration = {
       RETURN count(t) AS n
     `, { righe: daScrivere, now: new Date().toISOString() })
     const n = esito.records[0]?.get('n') as { toNumber?: () => number } | number | undefined
-    console.log(`[${aiSettingsMissingFeatures.id}] ${String(typeof n === 'number' ? n : (n?.toNumber?.() ?? 0))} tenants updated`)
-  },
+  console.log(`[${etichetta}] ${String(typeof n === 'number' ? n : (n?.toNumber?.() ?? 0))} tenants updated`)
+}
+
+export const aiSettingsMissingFeatures: Migration = {
+  id: '20261005_1100_ai_settings_missing_features',
+  description: 'Add every missing AI feature switch to tenants that already saved their AI settings',
+  up: (session) => aggiungiInterruttoriMancanti(session, '20261005_1100_ai_settings_missing_features'),
 }

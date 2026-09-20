@@ -35,7 +35,19 @@ import { NotFoundError, ValidationError } from './errors.js'
 import { createMetamodelCache } from './metamodelCache.js'
 import { invalidateSchema } from './schemaInvalidator.js'
 
-export const AI_FEATURES = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner', 'reportDesigner'] as const
+/*
+ * `platformSelfAnalysis` È IL PRIMO SPENTO DI FABBRICA (20 set 2026, ondata 4).
+ *
+ * Gli altri otto nascono accesi perché sono aiuti dentro il perimetro di un
+ * cliente: leggono i suoi ticket e rispondono a lui. Questo no. L'analista
+ * della piattaforma legge la proiezione dei log del SERVER, che è l'unico
+ * archivio del prodotto che attraversa il perimetro fra i clienti — scelta
+ * dichiarata nel progetto, e per questo l'unica che nessuno si trova accesa
+ * senza averla scelta. È anche la decisione del proprietario, presa il 20 set
+ * sapendo la conseguenza: finché nessuno lo accende, l'area D non gira e lo
+ * dice invece di tacere.
+ */
+export const AI_FEATURES = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner', 'reportDesigner', 'platformSelfAnalysis'] as const
 export type AIFeature = (typeof AI_FEATURES)[number]
 
 export interface AISettings {
@@ -47,7 +59,12 @@ export interface AISettings {
 }
 
 export const FACTORY_AI_SETTINGS: Readonly<AISettings> = {
-  features: { triage: true, assistant: true, reportAnalysis: true, postIncident: true, kbArticles: true, embeddings: true, formDesigner: true, reportDesigner: true },
+  features: {
+    triage: true, assistant: true, reportAnalysis: true, postIncident: true,
+    kbArticles: true, embeddings: true, formDesigner: true, reportDesigner: true,
+    // L'unico `false` di questo oggetto. Vedi il commento su AI_FEATURES.
+    platformSelfAnalysis: false,
+  },
   clusterMinSimilarity: 0.72,
   clusterMinSize: 3,
 }

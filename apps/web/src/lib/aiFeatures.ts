@@ -14,5 +14,6 @@
  */
 export const AI_FEATURE_KEYS = [
   'triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner', 'reportDesigner',
+  'platformSelfAnalysis',
 ] as const
 export type AIFeatureKey = (typeof AI_FEATURE_KEYS)[number]

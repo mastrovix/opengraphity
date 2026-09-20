@@ -1526,7 +1526,8 @@
         "kbArticles": "Knowledge base drafts",
         "embeddings": "Similarity (embeddings)",
         "formDesigner": "Service request designer",
-        "reportDesigner": "Report designer"
+        "reportDesigner": "Report designer",
+        "platformSelfAnalysis": "Platform self-analysis"
       },
       "aiFeatureHelp": {
         "triage": "Suggests severity, category and team while an incident is being opened.",
@@ -1536,7 +1537,8 @@
         "kbArticles": "Drafts a knowledge base article from a resolved incident.",
         "embeddings": "Turns ticket and article texts into vectors for similar incidents and article suggestions. Off: nothing is computed, and the features that need it say so.",
         "formDesigner": "Designs the sections and fields of a service request from a plain description. The proposal saves nothing: you review it in the form and accept it.",
-        "reportDesigner": "Designs a report section from a plain description: entities, filters, grouping and chart. The proposal saves nothing: you review it in the builder, with the live preview."
+        "reportDesigner": "Designs a report section from a plain description: entities, filters, grouping and chart. The proposal saves nothing: you review it in the builder, with the live preview.",
+        "platformSelfAnalysis": "The product reads the templates of its own errors and proposes remedies. It is the only feature that ships turned off, because the archive it reads covers the whole platform and not a single customer: you turn it on knowing that. It only makes sense on the platform tenant; elsewhere it finds nothing to analyse and says so."
       },
       "aiClusterGroup": "Problem candidates",
       "aiClusterSimilarity": "Minimum similarity (0.50–0.99)",
@@ -2673,7 +2675,6 @@
         "ofMax": "of {{max}} at most"
       },
       "occurrences_other": "{{count}} cases",
-      "window": "over {{days}} days",
       "evidence": "What it is based on",
       "hiddenRefs_other": "{{count}} not visible with your permissions",
       "writtenIn": "written in {{lang}}",
@@ -2702,7 +2703,9 @@
       "noAiKey": "The platform has no Anthropic key: only the proposals the product works out by itself are left.",
       "runCreated_one": "{{count}} new proposal",
       "occurrences_one": "{{count}} case",
-      "hiddenRefs_one": "{{count}} not visible with your permissions"
+      "hiddenRefs_one": "{{count}} not visible with your permissions",
+      "window_one": "over {{count}} day",
+      "window_other": "over {{count}} days"
     },
     "dailyWork": {
       "title": "Daily work",
@@ -7550,7 +7553,10 @@
       "platform": "Platform"
     },
     "kind": {
-      "proposal.portalSeveritiesStale": "Remove {{count}} portal severities the dictionary no longer has: \"{{values}}\""
+      "proposal.portalSeveritiesStale": "Remove {{count}} portal severities the dictionary no longer has: \"{{values}}\"",
+      "proposal.platformRecurringError": "“{{template}}” in {{service}} · {{module}}: {{count}} times, and nobody has looked at it",
+      "proposal.platformErrorSpike": "“{{template}}” in {{service}} · {{module}}: {{count}} times, concentrated",
+      "proposal.platformSharedFault": "“{{template}}”: {{service}} · {{module}} fails together with other processes ({{count}} times)"
     },
     "rejection": {
       "wrong_analysis": "The analysis is wrong",

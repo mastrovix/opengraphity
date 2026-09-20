@@ -222,7 +222,7 @@ export function ProposalsPage() {
                   </div>
                   <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginTop: 4 }}>
                     {t(`proposals.area.${p.area}`)} · {dataBreve(p.createdAt, i18n.language)}
-                    {p.windowDays > 0 && ` · ${t('pages.proposals.window', { days: p.windowDays })}`}
+                    {p.windowDays > 0 && ` · ${t('pages.proposals.window', { count: p.windowDays })}`}
                   </div>
                 </div>
                 <span style={{

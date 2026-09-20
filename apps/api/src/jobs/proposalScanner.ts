@@ -33,7 +33,8 @@ import { getSession } from '@opengraphity/neo4j'
 import { getQueue, createWorker } from '../lib/bullmq.js'
 import { logger } from '../lib/logger.js'
 import { analizzaConfigurazione } from '../lib/proposalAnalysts.js'
-import { scriviProposta, scadiLeVecchie, risvegliaLeRimandate } from '../lib/proposals.js'
+import { analizzaPiattaforma } from '../lib/platformAnalyst.js'
+import { scriviProposta, scadiLeVecchie, risvegliaLeRimandate, type ProposalToWrite } from '../lib/proposals.js'
 
 export const PROPOSAL_SCANNER_QUEUE = 'proposal-scanner'
 
@@ -63,8 +64,36 @@ async function clientiDaAnalizzare(): Promise<string[]> {
 }
 
 /** Il giro di un cliente solo. Restituisce quante proposte sono nate. */
+/**
+ * Gli analisti, in ordine. Ognuno guarda dei dati e consegna proposte; chi
+ * non ha niente da dire torna una lista vuota.
+ *
+ * L'analista della piattaforma (ondata 4) è il primo con un modello dentro, e
+ * decide DA SÉ di non girare: tenant sbagliato, interruttore spento, poche
+ * firme, nessuna chiave. Non alza mai per una di queste ragioni — sono stati
+ * normali, e qui dentro un'eccezione farebbe risultare fallito il giro di un
+ * cliente che sta funzionando come configurato.
+ */
+const ANALISTI: ReadonlyArray<(tenantId: string) => Promise<ProposalToWrite[]>> = [
+  analizzaConfigurazione,
+  analizzaPiattaforma,
+]
+
 export async function analizzaCliente(tenantId: string): Promise<{ create: number; saltate: Record<string, number> }> {
-  const proposte = await analizzaConfigurazione(tenantId)
+  const proposte: ProposalToWrite[] = []
+  for (const analista of ANALISTI) {
+    try {
+      proposte.push(...await analista(tenantId))
+    } catch (err) {
+      // Un analista che cade non porta via gli altri: le proposte di chi ha
+      // funzionato si scrivono comunque, e il giro del cliente fallisce solo
+      // se a cadere è tutto (l'eccezione risale da `proposalScannerProcessor`).
+      logger.error(
+        { module: 'proposals', tenantId, analista: analista.name, err: err instanceof Error ? err.message : String(err) },
+        'proposal-scanner: analista fallito',
+      )
+    }
+  }
   const saltate: Record<string, number> = {}
   let create = 0
   for (const p of proposte) {

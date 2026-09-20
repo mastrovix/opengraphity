@@ -80,6 +80,8 @@ export function organizationSDL(): string {
     formDesigner:   Boolean!
     """Disegna una sezione di report da una descrizione (19 set 2026)."""
     reportDesigner: Boolean!
+    """Il prodotto analizza i propri errori e propone rimedi (20 set 2026). L'unico spento di fabbrica: legge un archivio che attraversa il perimetro fra i clienti."""
+    platformSelfAnalysis: Boolean!
   }
 
   type AISettings {
@@ -100,6 +102,7 @@ export function organizationSDL(): string {
     embeddings:     Boolean!
     formDesigner:   Boolean!
     reportDesigner: Boolean!
+    platformSelfAnalysis: Boolean!
   }
 
   input AISettingsInput {
