@@ -29,12 +29,14 @@
  * lingua guarda chi legge.
  */
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Lightbulb, Check, X, Clock, RotateCcw, Play, AlertTriangle } from 'lucide-react'
 import {
   GET_PROPOSALS, ACCEPT_PROPOSAL, REJECT_PROPOSAL, POSTPONE_PROPOSAL,
   UNDO_PROPOSAL, RUN_PROPOSAL_ANALYSIS,
+  ACKNOWLEDGE_PROPOSAL, OPEN_PROBLEM_FROM_PROPOSAL,
 } from '@/graphql/queries/proposals'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
@@ -44,6 +46,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { QueryError } from '@/components/QueryError'
 import { StatTile } from '@/components/ui/StatTile'
 import { useMe } from '@/hooks/useMe'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { showError } from '@/lib/showError'
 import { toast } from 'sonner'
 import { colors, palette } from '@/lib/tokens'
@@ -59,6 +62,8 @@ interface Proposal {
   decidedAt: string | null; decidedBy: string | null; decidedByName: string | null
   rejectedKind: string | null; rejectedNote: string | null; notNowUntil: string | null
   auditEntryId: string | null; executionError: string | null; undoable: boolean
+  acknowledgeable: boolean; problemOpenable: boolean
+  openedProblemId: string | null; openedProblemNumber: string | null
 }
 interface Risultato {
   total: number; maxOpen: number; lastRunAt: string | null; aiAvailable: boolean
@@ -146,6 +151,21 @@ export function ProposalsPage() {
   const [motivo, setMotivo] = useState('wrong_analysis')
   const [nota, setNota] = useState('')
   const [inCorso, setInCorso] = useState<string | null>(null)
+  /*
+   * IL DIALOGO DEL PROBLEM (20 set 2026).
+   *
+   * Impatto e urgenza li sceglie chi apre. Il prodotto non ha un impatto
+   * predefinito — nessun Dizionario dichiara un `default_value` — e la
+   * priorità nasce dalla matrice del cliente: sceglierne uno noi avrebbe
+   * voluto dire cablare una decisione sua. Finché non sceglie, il bottone
+   * che apre non si accende.
+   */
+  const [inProblem, setInProblem] = useState<Proposal | null>(null)
+  const [impatto, setImpatto] = useState('')
+  const [urgenza, setUrgenza] = useState('')
+  const { entriesOf } = useDomainVocabularies()
+  const vocImpatto = entriesOf('impact')
+  const vocUrgenza = entriesOf('urgency')
 
   const stato = vista === 'open' ? DA_DECIDERE : DECISE
   const { data, loading, error, refetch } = useQuery<{ proposals: Risultato }>(GET_PROPOSALS, {
@@ -157,6 +177,8 @@ export function ProposalsPage() {
   const [rifiuta] = useMutation(REJECT_PROPOSAL)
   const [rimanda] = useMutation(POSTPONE_PROPOSAL)
   const [disfa]   = useMutation(UNDO_PROPOSAL)
+  const [prendiAtto]  = useMutation(ACKNOWLEDGE_PROPOSAL)
+  const [apriProblem] = useMutation(OPEN_PROBLEM_FROM_PROPOSAL)
   const [analizza, { loading: inAnalisi }] = useMutation<{ runProposalAnalysis: { created: number; skipped: Param[] } }>(RUN_PROPOSAL_ANALYSIS)
 
   const r = data?.proposals
@@ -320,6 +342,18 @@ export function ProposalsPage() {
                 </div>
               )}
 
+              {/*
+                Dalla proposta si arriva al LAVORO: senza questo, «apri un
+                Problem» produrrebbe un ticket che nessuno ritrova da qui.
+              */}
+              {p.openedProblemNumber && (
+                <div style={{ marginTop: 10, fontSize: 'var(--font-size-body)' }}>
+                  <Link to={`/problems/${p.openedProblemId ?? ''}`} style={{ color: 'var(--color-brand)', fontWeight: 600 }}>
+                    {t('pages.proposals.openedProblem', { number: p.openedProblemNumber })}
+                  </Link>
+                </div>
+              )}
+
               {p.executionError && (
                 <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 6,
                   background: palette.danger.tint, color: 'var(--color-trigger-sla-breach)',
@@ -347,6 +381,32 @@ export function ProposalsPage() {
                     <Button onClick={() => void conAttesa(p.id, () => accetta({ variables: { id: p.id } }))}
                       disabled={occupato} icon={<Check size={15} aria-hidden="true" />}>
                       {t('pages.proposals.accept')}
+                    </Button>
+                  )}
+                  {/*
+                    I DUE GESTI DI CHI È D'ACCORDO (20 set 2026).
+
+                    Segnalazione del proprietario davanti a due proposte di
+                    piattaforma: «come faccio ad accettare???». Non poteva: sei
+                    generi su otto non portano un'azione, e il bottone
+                    «Accetta» qui sopra compare solo se ce n'è una. Essere
+                    d'accordo voleva dire rifiutare.
+
+                    Quale dei due si può fare lo dice il SERVER
+                    (`acknowledgeable`, `problemOpenable`): la regola sta in un
+                    posto solo, e la pagina non la indovina dal genere.
+                  */}
+                  {p.acknowledgeable && (
+                    <Button onClick={() => void conAttesa(p.id, () => prendiAtto({ variables: { id: p.id } }))}
+                      disabled={occupato} icon={<Check size={15} aria-hidden="true" />}>
+                      {t('pages.proposals.acknowledge')}
+                    </Button>
+                  )}
+                  {p.problemOpenable && (
+                    <Button variant="secondary" disabled={occupato}
+                      onClick={() => { setInProblem(p); setImpatto(''); setUrgenza('') }}
+                      icon={<AlertTriangle size={15} aria-hidden="true" />}>
+                      {t('pages.proposals.openProblem')}
                     </Button>
                   )}
                   <Button variant="secondary" disabled={occupato}
@@ -426,6 +486,58 @@ export function ProposalsPage() {
         <textarea id="proposal-reject-note" value={nota} onChange={(e) => setNota(e.target.value)}
           rows={3} placeholder={t('pages.proposals.rejectNotePlaceholder')}
           style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+      </Modal>
+
+      {/*
+        IL DIALOGO DEL PROBLEM (20 set 2026).
+
+        Due tendine e basta: il resto del Problem lo compone il server dai
+        dati della proposta. Impatto e urgenza vengono dal Dizionario DI
+        QUESTO cliente, e finché non sono scelti il bottone resta spento —
+        nessun valore preselezionato, perché un impatto predefinito questo
+        prodotto non ce l'ha e sceglierlo per lui sarebbe cablare una sua
+        decisione.
+      */}
+      <Modal
+        open={inProblem != null}
+        onClose={() => setInProblem(null)}
+        title={t('pages.proposals.openProblemTitle')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setInProblem(null)}>{t('common.cancel')}</Button>
+            <Button
+              disabled={impatto === '' || urgenza === ''}
+              onClick={() => {
+                const p = inProblem
+                if (!p) return
+                setInProblem(null)
+                void conAttesa(p.id, () => apriProblem({ variables: { id: p.id, impact: impatto, urgency: urgenza } }))
+              }}>
+              {t('pages.proposals.openProblem')}
+            </Button>
+          </>
+        }
+      >
+        <p style={{ margin: '0 0 14px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+          {t('pages.proposals.openProblemHelp')}
+        </p>
+        {[
+          { id: 'proposal-problem-impact',  etichetta: t('pages.proposals.impact'),  voci: vocImpatto, valore: impatto, set: setImpatto },
+          { id: 'proposal-problem-urgency', etichetta: t('pages.proposals.urgency'), voci: vocUrgenza, valore: urgenza, set: setUrgenza },
+        ].map((campo) => (
+          <div key={campo.id} style={{ marginBottom: 12 }}>
+            <label htmlFor={campo.id} style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, marginBottom: 6 }}>
+              {campo.etichetta}
+            </label>
+            <select id={campo.id} value={campo.valore} onChange={(e) => campo.set(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 'var(--font-size-body)', boxSizing: 'border-box', fontFamily: 'inherit' }}>
+              <option value="">{t('pages.proposals.pickOne')}</option>
+              {(campo.voci ?? []).map((v) => (
+                <option key={v.value} value={v.value}>{v.label ?? v.value}</option>
+              ))}
+            </select>
+          </div>
+        ))}
       </Modal>
     </PageContainer>
   )

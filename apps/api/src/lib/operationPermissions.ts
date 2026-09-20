@@ -192,7 +192,15 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   // Gli aggregati del lavoro quotidiano: misure della squadra, non dati di un
   // ticket — stesso permesso delle anomalie.
   { anyOf: ['analysis.read'],   query: ['dailyWorkAggregates'] },
-  { anyOf: ['proposal.accept'], mutation: ['acceptProposal', 'rejectProposal', 'postponeProposal', 'undoProposal'] },
+  { anyOf: ['proposal.accept'], mutation: ['acceptProposal', 'rejectProposal', 'postponeProposal', 'undoProposal', 'acknowledgeProposal'] },
+  /*
+   * «Apri un Problem» vuole DUE permessi (20 set 2026): decidere sulle
+   * proposte e scrivere un problem. Chi decide non è automaticamente chi può
+   * aprire ticket, e questo gesto ne apre uno vero. Qui sta la porta
+   * d'ingresso; il secondo controllo è nel resolver, dove si vede accanto a
+   * ciò che fa.
+   */
+  { anyOf: ['proposal.accept'], mutation: ['openProblemFromProposal'] },
   { anyOf: ['proposal.run'],    mutation: ['runProposalAnalysis'] },
   {
     anyOf: ['report.read'],

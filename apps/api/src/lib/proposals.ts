@@ -82,6 +82,15 @@ export interface ProposalRow {
    * l'accettazione e il ripensamento.
    */
   undoState: Record<string, unknown> | null
+  /**
+   * Il Problem aperto da questa proposta (20 set 2026).
+   *
+   * Non sta in `undoState`, che è «lo stato PRECEDENTE da cui si ripristina»:
+   * un Problem aperto è il contrario, è quello che è nato dopo. Mescolarli
+   * avrebbe fatto sembrare disfabile una cosa che non lo è — un Problem non
+   * si «annulla», si chiude nel suo processo.
+   */
+  openedProblem: { id: string; number: string } | null
   /** True quando l'azione è stata disfatta: non si disfa due volte. */
   undone: boolean
 }
@@ -142,6 +151,7 @@ function mappa(r: Record<string, unknown>): ProposalRow {
     auditEntryId: r['auditEntryId'] == null ? null : String(r['auditEntryId']),
     executionError: r['executionError'] == null ? null : String(r['executionError']),
     undoState: leggiJson<Record<string, unknown>>(r['undoState'], 'undoState'),
+    openedProblem: leggiJson<{ id: string; number: string }>(r['openedProblem'], 'openedProblem'),
     undone: r['undone'] === true,
   }
 }
@@ -157,7 +167,7 @@ const CAMPI = `
   p.rejected_kind AS rejectedKind, p.rejected_note AS rejectedNote,
   p.not_now_until AS notNowUntil, p.audit_entry_id AS auditEntryId,
   p.execution_error AS executionError, p.undo_state AS undoState,
-  coalesce(p.undone, false) AS undone
+  coalesce(p.undone, false) AS undone, p.opened_problem AS openedProblem
 `
 
 /** Perché una proposta non è stata scritta: si dice, non si tace. */
@@ -341,6 +351,7 @@ export async function segnaDecisa(
     executionError?: string | null
     undoState?: Record<string, unknown> | null
     undone?: boolean
+    openedProblem?: { id: string; number: string } | null
   },
   adesso: Date = new Date(),
 ): Promise<ProposalRow | null> {
@@ -357,7 +368,8 @@ export async function segnaDecisa(
           p.audit_entry_id = $auditEntryId,
           p.execution_error = $executionError,
           p.undo_state = $undoState,
-          p.undone = $undone
+          p.undone = $undone,
+          p.opened_problem = $openedProblem
       RETURN ${CAMPI}
     `, {
       tenantId, id, status: campi.status, now: adesso.toISOString(),
@@ -369,6 +381,7 @@ export async function segnaDecisa(
       executionError: campi.executionError ?? null,
       undoState: campi.undoState ? JSON.stringify(campi.undoState) : null,
       undone: campi.undone ?? false,
+      openedProblem: campi.openedProblem ? JSON.stringify(campi.openedProblem) : null,
     })
     return righe[0] ? mappa(righe[0]) : null
   } finally {

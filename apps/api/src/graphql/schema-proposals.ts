@@ -68,6 +68,13 @@ export function proposalsSDL(): string {
     executionError: String
     """Se «Disfa» ha senso adesso: accettata, non già disfatta, con lo stato precedente salvato e un'azione che sa disfarsi. Un bottone che fallirà non si offre."""
     undoable: Boolean!
+    """Se si può dire «preso atto»: sei generi su otto non hanno niente da eseguire, e senza questo chi è d'accordo dovrebbe rifiutare per dirlo."""
+    acknowledgeable: Boolean!
+    """Se da qui si può aprire un Problem. Solo i guasti ricorrenti: un passo lento non è un Problem, e sporcare quella lista la rende inutile."""
+    problemOpenable: Boolean!
+    """Il Problem aperto da questa proposta, quando c'è: dalla proposta si arriva al lavoro."""
+    openedProblemId: String
+    openedProblemNumber: String
   }
 
   type ProposalCounts {
@@ -112,6 +119,17 @@ export function proposalsSDL(): string {
     postponeProposal(id: ID!, until: String!): Proposal!
     """Disfa l'azione di una proposta accettata, se l'azione sa come si disfa."""
     undoProposal(id: ID!): Proposal!
+    """«Preso atto»: sono d'accordo e non serve altro. Esce dalla lista, resta nell'Audit Log, nessun effetto sul resto."""
+    acknowledgeProposal(id: ID!): Proposal!
+    """
+    «Sono d'accordo, e qualcuno ci lavori»: apre un Problem con dentro l'analisi e le prove, e segna la proposta accettata.
+
+    Impatto e urgenza li sceglie CHI APRE, e non sono opzionali: il prodotto
+    non ha un impatto predefinito (nessun Dizionario lo dichiara) e la
+    priorità nasce dalla matrice del cliente. Sceglierne uno qui avrebbe
+    voluto dire cablare una decisione che è sua.
+    """
+    openProblemFromProposal(id: ID!, impact: String!, urgency: String!): Proposal!
     """Fa girare l'analisi adesso, per questo cliente."""
     runProposalAnalysis: ProposalRunResult!
   }

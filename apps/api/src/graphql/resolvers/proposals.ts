@@ -34,6 +34,10 @@ import {
   type ProposalRow,
 } from '../../lib/proposals.js'
 import { eseguiAzione, disfaAzione, azioneDisfabile } from '../../lib/proposalActions.js'
+import {
+  puoPrendereAtto, puoAprireUnProblem, titoloDelProblem, descrizioneDelProblem,
+} from '../../lib/proposalAgreement.js'
+import { createProblem } from '../../services/problemService.js'
 import { analizzaCliente, conIlLucchetto } from '../../jobs/proposalScanner.js'
 import { PERMESSO_LETTURA } from './ticketTasks.js'
 import { getSession } from '@opengraphity/neo4j'
@@ -102,6 +106,17 @@ function mappaGql(row: ProposalRow, ctx: GraphQLContext) {
     /** Serve alla pagina per decidere se offrire «disfa»: non si offre un bottone che fallirà. */
     undoable: row.status === 'accepted' && !row.undone && row.undoState != null
       && row.action != null && azioneDisfabile(row.action.type),
+    /*
+     * I DUE GESTI DI CHI È D'ACCORDO (20 set 2026).
+     *
+     * La regola sta in `lib/proposalAgreement.ts` e non qui, perché la
+     * decidono in due — questa pagina per mostrare il bottone, e la mutation
+     * per rifiutarlo se qualcuno lo chiama lo stesso.
+     */
+    acknowledgeable: puoPrendereAtto(row),
+    problemOpenable: puoAprireUnProblem(row),
+    openedProblemId:     row.openedProblem?.id ?? null,
+    openedProblemNumber: row.openedProblem?.number ?? null,
   }
 }
 
@@ -317,6 +332,97 @@ async function undoProposal(_: unknown, args: { id: string }, ctx: GraphQLContex
 }
 
 /**
+ * «PRESO ATTO»: sono d'accordo, e non serve altro.
+ *
+ * Esiste perché fino a oggi non c'era modo di essere d'accordo con le sei
+ * proposte su otto che non portano un'azione: restavano «rifiuta» — cioè
+ * dire il falso, e per giunta piantare una lapide che blocca quell'impronta
+ * per trenta giorni — «non ora», o la scadenza.
+ *
+ * Non esegue niente e non finge di farlo: la proposta diventa `accepted`,
+ * esce dalla lista, e nell'Audit Log resta chi è stato d'accordo e quando.
+ */
+async function acknowledgeProposal(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+  requirePermission(ctx, 'proposal.accept')
+  const row = await caricaAperta(ctx, args.id, ['open', 'not_now'])
+
+  if (!puoPrendereAtto(row)) {
+    // Una proposta che PORTA un'azione si accetta eseguendola: due bottoni
+    // che vogliono dire quasi la stessa cosa sulla stessa riga confondono.
+    throw new ValidationError(
+      'this proposal carries an action: accept it to run it',
+      { key: 'errors.proposal.acknowledgeHasAction' },
+    )
+  }
+
+  const aggiornata = await segnaDecisa(ctx.tenantId, row.id, {
+    status: 'accepted', decidedBy: ctx.userId,
+  })
+  await audit(ctx, 'proposal.acknowledged', 'Proposal', row.id, { area: row.area, kind: row.kind })
+  return mappaGql(aggiornata ?? row, ctx)
+}
+
+/**
+ * «SONO D'ACCORDO, E QUALCUNO CI LAVORI»: apre un Problem.
+ *
+ * Il Problem nasce nel tenant della proposta, con dentro il rationale del
+ * modello dichiarato come tale e le misure. Da lì in poi lo segue il processo
+ * che il cliente ha già: priorità dalla sua matrice, SLA dalle sue policy,
+ * workflow dal suo disegnatore. Questa mutation non ne sa niente ed è
+ * giusto — chiama `createProblem` come lo chiama la pagina dei problem.
+ *
+ * NON si disfa. `undoState` resta vuoto e `undoable` falso: un Problem aperto
+ * non si «annulla», si chiude nel suo processo, e offrire un bottone che
+ * cancella un ticket a cui qualcuno può già aver lavorato sarebbe peggio del
+ * problema che risolve.
+ */
+async function openProblemFromProposal(
+  _: unknown, args: { id: string; impact: string; urgency: string }, ctx: GraphQLContext,
+) {
+  requirePermission(ctx, 'proposal.accept')
+  /*
+   * E anche il permesso di SCRIVERE un problem: chi decide sulle proposte non è
+   * automaticamente chi può aprire ticket, e questo gesto ne apre uno vero.
+   */
+  requirePermission(ctx, 'problem.write')
+  const row = await caricaAperta(ctx, args.id, ['open', 'not_now'])
+
+  if (!puoAprireUnProblem(row)) {
+    throw new ValidationError(
+      'a problem cannot be opened from this proposal',
+      { key: 'errors.proposal.notProblemMaterial' },
+    )
+  }
+
+  /*
+   * Impatto e urgenza vengono da chi apre, e `createProblem` li valida contro
+   * i vocabolari del cliente e ne ricava la priorità dalla sua matrice. Qui
+   * non si sceglie niente al posto suo: nessun Dizionario dichiara un impatto
+   * predefinito, e inventarne uno avrebbe messo in mano al prodotto una
+   * decisione che è del cliente.
+   */
+  const problem = await createProblem({
+    title:       titoloDelProblem(row.params),
+    description: descrizioneDelProblem(row),
+    impact:      args.impact,
+    urgency:     args.urgency,
+  }, { tenantId: ctx.tenantId, userId: ctx.userId })
+
+  const aggiornata = await segnaDecisa(ctx.tenantId, row.id, {
+    status: 'accepted', decidedBy: ctx.userId,
+    openedProblem: { id: problem.id as string, number: problem.number as string },
+  })
+  await audit(ctx, 'proposal.problem_opened', 'Proposal', row.id, {
+    area: row.area, kind: row.kind, problemId: problem.id as string, problemNumber: problem.number as string,
+  })
+  logger.info(
+    { module: 'proposals', tenantId: ctx.tenantId, proposal: row.id, problem: problem.number },
+    'proposals: a problem was opened from a proposal',
+  )
+  return mappaGql(aggiornata ?? row, ctx)
+}
+
+/**
  * «Analizza adesso».
  *
  * Il giro notturno fa la stessa cosa per tutti i clienti; questo la fa per uno
@@ -366,6 +472,8 @@ export const proposalResolvers = {
     rejectProposal,
     postponeProposal,
     undoProposal,
+    acknowledgeProposal,
+    openProblemFromProposal,
     runProposalAnalysis,
   },
   Proposal: {

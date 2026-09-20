@@ -30,6 +30,7 @@ export const GET_PROPOSALS = gql`
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
       auditEntryId executionError undoable
+      acknowledgeable problemOpenable openedProblemId openedProblemNumber
       }
     }
   }
@@ -49,6 +50,7 @@ export const ACCEPT_PROPOSAL = gql`
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
       auditEntryId executionError undoable
+      acknowledgeable problemOpenable openedProblemId openedProblemNumber
     }
   }
 `
@@ -67,6 +69,7 @@ export const REJECT_PROPOSAL = gql`
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
       auditEntryId executionError undoable
+      acknowledgeable problemOpenable openedProblemId openedProblemNumber
     }
   }
 `
@@ -85,6 +88,7 @@ export const POSTPONE_PROPOSAL = gql`
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
       auditEntryId executionError undoable
+      acknowledgeable problemOpenable openedProblemId openedProblemNumber
     }
   }
 `
@@ -103,6 +107,7 @@ export const UNDO_PROPOSAL = gql`
       status createdAt decidedAt decidedBy decidedByName
       rejectedKind rejectedNote notNowUntil
       auditEntryId executionError undoable
+      acknowledgeable problemOpenable openedProblemId openedProblemNumber
     }
   }
 `
@@ -110,5 +115,31 @@ export const UNDO_PROPOSAL = gql`
 export const RUN_PROPOSAL_ANALYSIS = gql`
   mutation RunProposalAnalysis {
     runProposalAnalysis { created skipped { name value } }
+  }
+`
+
+/**
+ * I DUE GESTI DI CHI È D'ACCORDO (20 set 2026).
+ *
+ * Sei generi di proposta su otto non portano un'azione eseguibile, e fino a
+ * oggi per quelli non esisteva un modo di dire «sì»: restavano «rifiuta»,
+ * «non ora» o la scadenza. `acknowledgeProposal` è «l'ho vista, è vera, non
+ * serve altro»; `openProblemFromProposal` è «è vera e qualcuno ci lavori».
+ */
+export const ACKNOWLEDGE_PROPOSAL = gql`
+  mutation AcknowledgeProposal($id: ID!) {
+    acknowledgeProposal(id: $id) {
+      id status decidedAt decidedBy decidedByName
+      acknowledgeable problemOpenable openedProblemId openedProblemNumber
+    }
+  }
+`
+
+export const OPEN_PROBLEM_FROM_PROPOSAL = gql`
+  mutation OpenProblemFromProposal($id: ID!, $impact: String!, $urgency: String!) {
+    openProblemFromProposal(id: $id, impact: $impact, urgency: $urgency) {
+      id status decidedAt decidedBy decidedByName
+      acknowledgeable problemOpenable openedProblemId openedProblemNumber
+    }
   }
 `

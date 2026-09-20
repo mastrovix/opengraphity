@@ -2723,7 +2723,15 @@
         "tetto_aperte_other": "{{count}} oltre il tetto delle proposte aperte",
         "tetto_giornaliero_one": "{{count}} oltre il tetto di oggi",
         "tetto_giornaliero_other": "{{count}} oltre il tetto di oggi"
-      }
+      },
+      "acknowledge": "Preso atto",
+      "openProblem": "Apri un Problem",
+      "openedProblem": "Problem aperto: {{number}}",
+      "openProblemTitle": "Apri un Problem da questa proposta",
+      "openProblemHelp": "Nasce un Problem con dentro l’analisi e le misure. Impatto e urgenza li scegli tu: da lì il prodotto ricava la priorità con la matrice della tua organizzazione.",
+      "impact": "Impatto",
+      "urgency": "Urgenza",
+      "pickOne": "Scegli…"
     },
     "dailyWork": {
       "title": "Lavoro quotidiano",
@@ -4665,7 +4673,9 @@
       "automationEventEntity": "Un'automazione su «{{entity}}» non gira su «{{event}}»: quella combinazione non viene valutata da nessuna parte.",
       "labelsVocabulary": "La proposta non dice di quale Dizionario si tratta.",
       "labelsUnreadable": "Le etichette del Dizionario «{{vocabulary}}» non si riescono a leggere: vanno riparate a mano prima che qualcosa ci scriva sopra.",
-      "analysisAlreadyRunning": "Un'analisi è già in corso per questa organizzazione. Riprova fra un momento."
+      "analysisAlreadyRunning": "Un'analisi è già in corso per questa organizzazione. Riprova fra un momento.",
+      "acknowledgeHasAction": "Questa proposta porta un’azione: per essere d’accordo, accettala e falla eseguire.",
+      "notProblemMaterial": "Da questa proposta non si apre un Problem: un Problem è la causa di guasti, e questa non lo è."
     }
   },
   "errorBoundary": {
@@ -7546,7 +7556,9 @@
       "proposal.analysis_run": "Analisi delle proposte lanciata",
       "incident.assigned_team": "Incident assegnato a una squadra",
       "incident.assigned_user": "Incident assegnato a una persona",
-      "incident.unassigned_user": "Incident senza assegnatario"
+      "incident.unassigned_user": "Incident senza assegnatario",
+      "proposal.acknowledged": "Preso atto di una proposta di miglioramento",
+      "proposal.problem_opened": "Problem aperto da una proposta di miglioramento"
     }
   },
   "tasks": {
