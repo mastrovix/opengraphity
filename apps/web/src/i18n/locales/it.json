@@ -1925,7 +1925,13 @@
       "pickGroupFirst": "Assegna prima un gruppo, poi potrai scegliere un utente.",
       "noteRequired": "Aggiungi una nota per questo passaggio (almeno 10 caratteri).",
       "noUserInTeam": "Nessun utente nel gruppo {{team}}.",
-      "deleteTitle": "Eliminare definitivamente il problem {{number}}?"
+      "deleteTitle": "Eliminare definitivamente il problem {{number}}?",
+      "dossier": "Fascicolo d’indagine",
+      "dossierTitle": "Fascicolo d’indagine",
+      "dossierHelp": "Tutto quello che serve a indagare, raccolto qui: firme di errore, moduli da cercare nel codice, processi toccati e l’analisi del modello. Copialo in una sessione di sviluppo, dove i sorgenti ci sono.",
+      "dossierCopy": "Copia il fascicolo",
+      "dossierCopied": "Fascicolo copiato.",
+      "dossierCopyFailed": "Non sono riuscito a copiare: selezionalo a mano."
     },
     "createChange": {
       "titlePlaceholder": "Es. Aggiornamento del database di produzione a PostgreSQL 16",

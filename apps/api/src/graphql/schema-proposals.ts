@@ -108,6 +108,13 @@ export function proposalsSDL(): string {
   extend type Query {
     proposals(status: [String!], area: [String!], limit: Int, offset: Int): ProposalsResult!
     proposal(id: ID!): Proposal
+    """
+    Il fascicolo d'indagine di un Problem nato dall'Autoanalisi: firme di
+    errore, moduli da cercare nel codice, processi toccati, analisi del
+    modello. Markdown, da copiare. Vuoto quando questo Problem non è nato
+    da una proposta di piattaforma — cioè quasi sempre.
+    """
+    problemDossier(problemId: ID!): String
   }
 
   extend type Mutation {

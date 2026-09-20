@@ -143,3 +143,18 @@ export const OPEN_PROBLEM_FROM_PROPOSAL = gql`
     }
   }
 `
+
+/**
+ * IL FASCICOLO D'INDAGINE (20 set 2026).
+ *
+ * Domanda del proprietario: «una volta aperto il problem come faccio a dire
+ * ad Anthropic di risolverlo?». Questo è il ponte: tutto quello che serve a
+ * indagare, in un testo solo che si copia in una sessione di sviluppo dove i
+ * sorgenti ci sono. Nessuna chiamata al modello — sono fatti, non una
+ * seconda interpretazione degli stessi fatti.
+ */
+export const GET_PROBLEM_DOSSIER = gql`
+  query ProblemDossier($problemId: ID!) {
+    problemDossier(problemId: $problemId)
+  }
+`

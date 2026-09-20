@@ -38,6 +38,7 @@ import {
   puoPrendereAtto, puoAprireUnProblem, titoloDelProblem, descrizioneDelProblem,
 } from '../../lib/proposalAgreement.js'
 import { createProblem } from '../../services/problemService.js'
+import { legaAllaProposta, fascicoloDelProblem } from '../../lib/problemDossier.js'
 import { analizzaCliente, conIlLucchetto } from '../../jobs/proposalScanner.js'
 import { PERMESSO_LETTURA } from './ticketTasks.js'
 import { getSession } from '@opengraphity/neo4j'
@@ -408,6 +409,14 @@ async function openProblemFromProposal(
     urgency:     args.urgency,
   }, { tenantId: ctx.tenantId, userId: ctx.userId })
 
+  /*
+   * Il legame si scrive SUL PROBLEM, non solo sulla proposta: è da lì che il
+   * fascicolo d'indagine risale all'analisi e alle firme di errore, e un
+   * legame che vive solo dentro la frase della descrizione si rompe la prima
+   * volta che qualcuno riscrive la frase.
+   */
+  await legaAllaProposta(ctx.tenantId, problem.id as string, row.id)
+
   const aggiornata = await segnaDecisa(ctx.tenantId, row.id, {
     status: 'accepted', decidedBy: ctx.userId,
     openedProblem: { id: problem.id as string, number: problem.number as string },
@@ -462,10 +471,23 @@ async function runProposalAnalysis(_: unknown, __: unknown, ctx: GraphQLContext)
   return { created: create, skipped: paramList(saltate) }
 }
 
+/**
+ * IL FASCICOLO D'INDAGINE di un Problem nato dall'Autoanalisi.
+ *
+ * `null` quando non se ne fa uno, che è il caso normale: quasi tutti i
+ * problem nascono da una persona e non dall'archivio dei log. La pagina usa
+ * il `null` per non mostrare un bottone che non avrebbe niente da dare.
+ */
+async function problemDossierQuery(_: unknown, args: { problemId: string }, ctx: GraphQLContext) {
+  requirePermission(ctx, 'problem.read')
+  return fascicoloDelProblem(ctx.tenantId, args.problemId)
+}
+
 export const proposalResolvers = {
   Query: {
     proposals: proposalsQuery,
     proposal:  proposalQuery,
+    problemDossier: problemDossierQuery,
   },
   Mutation: {
     acceptProposal,
