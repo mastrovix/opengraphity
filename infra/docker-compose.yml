@@ -407,6 +407,11 @@ services:
       BACKUP_SKIP_KEYCLOAK: ${BACKUP_SKIP_KEYCLOAK:-false}
       # Durata dei due registri di log (ondata 3): quello del server e quello del browser
       SERVER_LOG_RETENTION_DAYS: ${SERVER_LOG_RETENTION_DAYS:-90}
+      # Tetto mensile di gettoni degli analisti autonomi (rimedio c): la chiave
+      # Anthropic è una sola per tutta la piattaforma, e senza tetto un cliente
+      # solo poteva prosciugare il budget di tutti gli altri.
+      AI_MONTHLY_TOKEN_BUDGET_TENANT: ${AI_MONTHLY_TOKEN_BUDGET_TENANT:-2000000}
+      AI_MONTHLY_TOKEN_BUDGET_PLATFORM: ${AI_MONTHLY_TOKEN_BUDGET_PLATFORM:-20000000}
 
       # Optional integrations
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

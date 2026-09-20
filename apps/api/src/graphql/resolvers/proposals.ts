@@ -34,7 +34,7 @@ import {
   type ProposalRow,
 } from '../../lib/proposals.js'
 import { eseguiAzione, disfaAzione, azioneDisfabile } from '../../lib/proposalActions.js'
-import { analizzaCliente } from '../../jobs/proposalScanner.js'
+import { analizzaCliente, conIlLucchetto } from '../../jobs/proposalScanner.js'
 import { PERMESSO_LETTURA } from './ticketTasks.js'
 import { getSession } from '@opengraphity/neo4j'
 import { runQueryOne } from './ci-utils.js'
@@ -329,13 +329,25 @@ async function runProposalAnalysis(_: unknown, __: unknown, ctx: GraphQLContext)
   /*
    * Si analizza QUI e non solo in coda, perché chi ha cliccato deve vedere
    * l'esito adesso: un «ho accodato, ricarica fra un po'» è il genere di
-   * risposta che fa smettere di usare un bottone. La coda serve al giro
-   * notturno; per il click basta il lock, che è il `jobId` per minuto.
+   * risposta che fa smettere di usare un bottone.
+   *
+   * Il lucchetto è quello di `conIlLucchetto` (20 set 2026, rimedio c).
+   * Prima questo commento diceva «per il click basta il lock, che è il
+   * `jobId` per minuto» — e quel lock stava su `enqueueProposalScan`, che
+   * non chiamava nessuno. Due click ravvicinati, o un click durante il giro
+   * notturno, facevano partire tre chiamate al modello due volte.
    *
    * Il giro notturno ripasserà comunque: se questa analisi cade a metà, le
    * proposte che mancano nascono stanotte.
    */
-  const { create, saltate } = await analizzaCliente(ctx.tenantId)
+  const esito = await conIlLucchetto(ctx.tenantId, () => analizzaCliente(ctx.tenantId))
+  if (esito === null) {
+    throw new ValidationError(
+      'an analysis is already running for this organization',
+      { key: 'errors.proposal.analysisAlreadyRunning' },
+    )
+  }
+  const { create, saltate } = esito
 
   await audit(ctx, 'proposal.analysis_run', 'Proposal', ctx.tenantId, {
     created: create, skipped: saltate, analysts: ['configuration'], source: 'manual',

@@ -4652,7 +4652,8 @@
       "automationEvent": "“{{value}}” is not an automation event.",
       "automationEventEntity": "An automation on “{{entity}}” does not run on “{{event}}”: that combination is never evaluated.",
       "labelsVocabulary": "The proposal does not say which dictionary it is about.",
-      "labelsUnreadable": "The labels of the “{{vocabulary}}” dictionary cannot be read: they must be fixed by hand before anything writes to them."
+      "labelsUnreadable": "The labels of the “{{vocabulary}}” dictionary cannot be read: they must be fixed by hand before anything writes to them.",
+      "analysisAlreadyRunning": "An analysis is already running for this organization. Try again in a moment."
     }
   },
   "errorBoundary": {

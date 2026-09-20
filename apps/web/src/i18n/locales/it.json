@@ -4652,7 +4652,8 @@
       "automationEvent": "«{{value}}» non è un evento di automazione.",
       "automationEventEntity": "Un'automazione su «{{entity}}» non gira su «{{event}}»: quella combinazione non viene valutata da nessuna parte.",
       "labelsVocabulary": "La proposta non dice di quale Dizionario si tratta.",
-      "labelsUnreadable": "Le etichette del Dizionario «{{vocabulary}}» non si riescono a leggere: vanno riparate a mano prima che qualcosa ci scriva sopra."
+      "labelsUnreadable": "Le etichette del Dizionario «{{vocabulary}}» non si riescono a leggere: vanno riparate a mano prima che qualcosa ci scriva sopra.",
+      "analysisAlreadyRunning": "Un'analisi è già in corso per questa organizzazione. Riprova fra un momento."
     }
   },
   "errorBoundary": {

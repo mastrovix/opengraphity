@@ -35,6 +35,7 @@ import {
 } from './aiClient.js'
 import { aiFeatureEnabled } from './aiSettings.js'
 import { registraCosto } from './aiCostLedger.js'
+import { puoSpendere } from './aiBudget.js'
 import { config } from './config.js'
 import { messaggioConDatiNonFidati } from './datiNonFidati.js'
 import { rigaDelGlossario } from './glossarioModello.js'
@@ -230,6 +231,16 @@ export function validaProposte(
 
 export async function analizzaConfigurazioneConIlModello(tenantId: string): Promise<ProposalToWrite[]> {
   if (!(await aiFeatureEnabled(tenantId, FUNZIONE))) return []
+  /*
+   * IL TETTO DI SPESA (20 set 2026, rimedio c). Prima della chiamata, mai
+   * dopo: `aiCostLedger` conta ciò che è già stato pagato.
+   */
+  const budget = await puoSpendere(tenantId, FUNZIONE)
+  if (!budget.consentito) {
+    log.warn({ tenantId, tetto: budget.tetto, usati: budget.usati, limite: budget.limite },
+      'configuration-analyst: monthly AI budget reached, no analysis')
+    return []
+  }
   if (!config.anthropicApiKey) {
     log.warn({ tenantId }, 'configuration-analyst: no model configured on this platform')
     return []

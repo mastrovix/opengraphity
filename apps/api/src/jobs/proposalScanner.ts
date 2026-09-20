@@ -29,8 +29,9 @@
  * altri sei di avere le loro proposte.
  */
 import type { Job, Worker } from 'bullmq'
+import { randomUUID } from 'node:crypto'
 import { getSession } from '@opengraphity/neo4j'
-import { getQueue, createWorker } from '../lib/bullmq.js'
+import { getQueue, createWorker, getSharedRedis } from '../lib/bullmq.js'
 import { logger } from '../lib/logger.js'
 import { analizzaConfigurazione } from '../lib/proposalAnalysts.js'
 import { analizzaPiattaforma } from '../lib/platformAnalyst.js'
@@ -130,7 +131,16 @@ export async function proposalScannerProcessor(job: Job<ProposalScanJobData>): P
   const falliti: string[] = []
   for (const tenantId of clienti) {
     try {
-      await analizzaCliente(tenantId)
+      /*
+       * Anche il giro notturno passa dal lucchetto: se un amministratore ha
+       * appena cliccato «Analizza adesso», rifarlo costa il doppio e non
+       * produce niente di nuovo — `scriviProposta` scarterebbe tutto come
+       * già presente, ma i gettoni sono già spesi.
+       */
+      const esito = await conIlLucchetto(tenantId, () => analizzaCliente(tenantId))
+      if (esito === null) {
+        logger.info({ module: 'proposals', tenantId }, 'proposal-scanner: already running, skipped')
+      }
     } catch (err) {
       falliti.push(tenantId)
       logger.error(
@@ -149,17 +159,65 @@ export function getProposalScannerQueue() {
 }
 
 /**
- * «Analizza adesso» per un cliente solo.
+ * IL LUCCHETTO, QUELLO VERO (20 set 2026, rimedio c).
  *
- * Il `jobId` per minuto è il lock che impedisce il doppio costo: due click
- * ravvicinati, o un click mentre il giro notturno sta già lavorando su quel
- * cliente, producono un job solo.
+ * Qui c'era `enqueueProposalScan`, che accodava un job con un `jobId` per
+ * minuto — e aveva ZERO chiamanti. Il commento in `resolvers/proposals.ts`
+ * diceva «per il click basta il lock, che è il `jobId` per minuto»: il lock
+ * esisteva, il cammino che lo usava no. `runProposalAnalysis` chiamava
+ * `analizzaCliente` in linea, quindi due click ravvicinati — o un click
+ * mentre il giro notturno lavorava sullo stesso cliente — facevano partire
+ * tre chiamate al modello due volte.
+ *
+ * Adesso è un lucchetto di Redis con scadenza, preso da TUTTI i cammini che
+ * analizzano un cliente. La scadenza serve perché un processo che muore a
+ * metà non lasci un cliente bloccato per sempre; il token serve perché a
+ * rilasciarlo sia solo chi l'ha preso, e non un secondo giro che nel
+ * frattempo l'ha riacquisito dopo la scadenza.
  */
-export async function enqueueProposalScan(tenantId: string): Promise<void> {
-  await getProposalScannerQueue().add('scan-manual', { tenantId }, {
-    jobId:            `proposal-manual-${tenantId}-${String(Math.floor(Date.now() / 60_000))}`,
-    removeOnComplete: true,
-  })
+export const LUCCHETTO_SECONDI = 300
+
+function chiaveDelLucchetto(tenantId: string): string {
+  return `proposal-scan-lock:${tenantId}`
+}
+
+/**
+ * Esegue `lavoro` se il cliente non è già in analisi.
+ *
+ * Restituisce `null` quando il lucchetto è di qualcun altro: chi chiama
+ * decide se è un errore da mostrare (il bottone) o una riga di log (il giro
+ * notturno). Se Redis non risponde si PROCEDE — il lucchetto evita una spesa
+ * doppia, e rinunciare all'analisi perché il lucchetto è irraggiungibile
+ * sarebbe spegnere la funzione per proteggere un'ottimizzazione. È il verso
+ * opposto del varco dell'archivio (rimedio a), e per una ragione diversa:
+ * là si protegge il dato di un cliente, qui solo un costo.
+ */
+export async function conIlLucchetto<T>(
+  tenantId: string, lavoro: () => Promise<T>,
+): Promise<T | null> {
+  const chiave = chiaveDelLucchetto(tenantId)
+  const token = randomUUID()
+  let preso = false
+  try {
+    preso = (await getSharedRedis().set(chiave, token, 'EX', LUCCHETTO_SECONDI, 'NX')) === 'OK'
+  } catch (err) {
+    logger.warn(
+      { module: 'proposals', tenantId, err: err instanceof Error ? err.message : String(err) },
+      'proposal-scanner: lock unavailable, analysing anyway',
+    )
+    return lavoro()
+  }
+  if (!preso) return null
+  try {
+    return await lavoro()
+  } finally {
+    try {
+      // Si rilascia solo se è ancora IL NOSTRO: dopo la scadenza il lucchetto
+      // può essere di un altro giro, e cancellarlo lo lascerebbe scoperto.
+      const attuale = await getSharedRedis().get(chiave)
+      if (attuale === token) await getSharedRedis().del(chiave)
+    } catch { /* scade da solo: non vale un errore */ }
+  }
 }
 
 /**
