@@ -13,6 +13,7 @@ import { reportSDL } from './schema-report.js'
 import { olaSDL } from './schema-ola.js'
 import { dashboardSDL } from './schema-dashboard.js'
 import { anomalySDL } from './schema-anomaly.js'
+import { proposalsSDL } from './schema-proposals.js'
 import { organizationSDL } from './schema-organization.js'
 import { rolesSDL } from './schema-roles.js'
 import { slackSDL } from './schema-slack.js'
@@ -805,6 +806,7 @@ export function buildBaseSDL(): string {
   ${olaSDL()}
   ${dashboardSDL()}
   ${anomalySDL()}
+  ${proposalsSDL()}
   ${organizationSDL()}
   ${rolesSDL()}
   ${slackSDL()}

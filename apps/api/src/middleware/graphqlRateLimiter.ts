@@ -28,6 +28,11 @@ export const MUTATION_LIMITS: Readonly<Record<string, number>> = {
   // Heavy — max 5/min per tenant
   triggerSync:             5,
   runAnomalyScanner:       5,
+  // «Analizza adesso»: oggi non spende token (l'analista dell'ondata 1 è
+  // deterministico), ma il tetto si mette adesso — quando entrerà un analista
+  // AI, questo sarà il solo cammino il cui costo dipende da quante volte
+  // qualcuno clicca.
+  runProposalAnalysis:     5,
   createSyncSource:        5,
   deleteSyncSource:        5,
   exportReportPDF:         5,

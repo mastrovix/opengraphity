@@ -159,6 +159,26 @@ const CONSTRAINTS: SchemaStatement[] = [
     cypher: 'CREATE CONSTRAINT task_code_unique IF NOT EXISTS FOR (k:Task) REQUIRE (k.tenant_id, k.code) IS UNIQUE',
   },
   /**
+   * LE PROPOSTE DI MIGLIORAMENTO (20 set 2026) — e il vincolo che il modello
+   * copiato NON aveva.
+   *
+   * Il progetto dice «modellata su `:Anomaly`». Lo è, tranne qui: su
+   * `:Anomaly` c'è un `MERGE (a {tenant_id, rule_key, entity_id})` con tre
+   * indici e NESSUN vincolo, quindi due scansioni sovrapposte — l'oraria e
+   * quella a richiesta — possono duplicare. La promessa «stessa osservazione
+   * = stessa impronta = nessun doppione» senza vincolo è vuota, e qui la
+   * promessa regge il tetto di cinque proposte aperte: un doppione ruba uno
+   * slot a una proposta vera.
+   */
+  {
+    label:  'Proposal.id unique',
+    cypher: 'CREATE CONSTRAINT proposal_id_unique IF NOT EXISTS FOR (p:Proposal) REQUIRE p.id IS UNIQUE',
+  },
+  {
+    label:  'Proposal(tenant_id, area, fingerprint) unique',
+    cypher: 'CREATE CONSTRAINT proposal_fingerprint_unique IF NOT EXISTS FOR (p:Proposal) REQUIRE (p.tenant_id, p.area, p.fingerprint) IS UNIQUE',
+  },
+  /**
    * Il nome di un calendario di servizio è unico DAVVERO (revisione totale ·
    * C-34): l'unicità era controllata da una lettura fuori dalla transazione di
    * creazione, quindi due admin che salvavano «Ufficio» nello stesso istante
@@ -377,6 +397,14 @@ const INDEXES: SchemaStatement[] = [
   { label: 'Anomaly(tenant_id)',                        cypher: 'CREATE INDEX anomaly_tenant IF NOT EXISTS FOR (a:Anomaly) ON (a.tenant_id)' },
   { label: 'Anomaly(tenant_id, status)',                cypher: 'CREATE INDEX anomaly_tenant_status IF NOT EXISTS FOR (a:Anomaly) ON (a.tenant_id, a.status)' },
   { label: 'Anomaly(tenant_id, rule_key)',              cypher: 'CREATE INDEX anomaly_tenant_rule IF NOT EXISTS FOR (a:Anomaly) ON (a.tenant_id, a.rule_key)' },
+  // Proposte di miglioramento: la pagina filtra per stato e per area, e il
+  // giro notturno cerca per impronta prima di scrivere.
+  { label: 'Proposal(tenant_id, status)',               cypher: 'CREATE INDEX proposal_tenant_status IF NOT EXISTS FOR (p:Proposal) ON (p.tenant_id, p.status)' },
+  { label: 'Proposal(tenant_id, area)',                 cypher: 'CREATE INDEX proposal_tenant_area IF NOT EXISTS FOR (p:Proposal) ON (p.tenant_id, p.area)' },
+  { label: 'Proposal(tenant_id, created_at)',           cypher: 'CREATE INDEX proposal_tenant_created IF NOT EXISTS FOR (p:Proposal) ON (p.tenant_id, p.created_at)' },
+  // La lapide di un rifiuto: sopravvive alla purga della proposta, e il giro
+  // la cerca per impronta per non riproporre ciò che è già stato respinto.
+  { label: 'ProposalRejection(tenant_id, fingerprint)', cypher: 'CREATE INDEX proposal_rejection_fp IF NOT EXISTS FOR (r:ProposalRejection) ON (r.tenant_id, r.fingerprint)' },
   // Configurazione delle regole (ondata 5 di «Nulla cablato»): una per regola per tenant.
   // Ruoli dell'organizzazione (ondata 7 di «Nulla cablato»): una chiave per tenant.
   // Tipi di CI esclusi per tipo di ticket (revisione del 15 set 2026 · CM-8): un'esclusione per coppia.

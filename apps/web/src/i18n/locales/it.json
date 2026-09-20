@@ -145,7 +145,8 @@
     "loginSecurity": "Accesso e password",
     "catalogForms": "Service Request Designer",
     "changeCalendar": "Calendario change",
-    "configurationDiagnostics": "Diagnostica"
+    "configurationDiagnostics": "Diagnostica",
+    "proposals": "Proposte"
   },
   "pages": {
     "incidents": {
@@ -479,7 +480,8 @@
         "anomaly-scanner": "Passa in rassegna CI e ticket in cerca delle anomalie dichiarate dalle regole.",
         "discovery-sync": "Importa i CI dalle sorgenti di discovery e li riconcilia con la CMDB.",
         "embeddings": "Calcola gli embedding di incident e articoli KB, che alimentano gli incident simili e gli articoli suggeriti.",
-        "maintenance": "Manutenzione notturna: backup del database, pulizia degli eventi risolti e retention delle notifiche in-app."
+        "maintenance": "Manutenzione notturna: backup del database, pulizia degli eventi risolti e retention delle notifiche in-app.",
+        "proposal-scanner": "Proposte di miglioramento"
       },
       "queueNoDescription": "Questa coda non ha una descrizione",
       "consumerNote": "Le code dei consumer di dominio (notifiche, SLA, escalation, impatto sui servizi) non si rigiocano dall'interfaccia: un evento esaurito va riprodotto dal suo produttore.",
@@ -2649,6 +2651,57 @@
     "configurationDiagnostics": {
       "title": "Diagnostica della configurazione",
       "subtitle": "Quello che manca o non torna nella configurazione di questa organizzazione, con la strada per rimediarlo."
+    },
+    "proposals": {
+      "title": "Proposte di miglioramento",
+      "subtitle": "Quello che il prodotto ha notato, e che una persona decide se fare.",
+      "runNow": "Analizza adesso",
+      "running": "Analisi in corso…",
+      "runCreated_other": "{{count}} proposte nuove",
+      "runNothing": "Niente di nuovo da proporre.",
+      "runFailed": "L'analisi non è andata a buon fine.",
+      "actionFailed": "L'operazione non è andata a buon fine.",
+      "viewLabel": "Che cosa mostrare",
+      "viewOpen": "Da decidere",
+      "viewDecided": "Già decise",
+      "counts": {
+        "open": "Aperte",
+        "accepted": "Accettate",
+        "rejected": "Rifiutate",
+        "expired": "Scadute",
+        "ofMax": "su {{max}} al massimo"
+      },
+      "occurrences_other": "{{count}} casi",
+      "window": "in {{days}} giorni",
+      "evidence": "Su cosa si fonda",
+      "hiddenRefs_other": "{{count}} non visibili con i tuoi permessi",
+      "writtenIn": "scritto in {{lang}}",
+      "executionFailed": "L'esecuzione è fallita: {{error}}",
+      "accept": "Accetta",
+      "reject": "Rifiuta",
+      "notNow": "Non ora",
+      "undo": "Disfa",
+      "rejectTitle": "Perché la rifiuti?",
+      "rejectHelp": "Quello che scrivi qui è tutto quello che avrà chi rilegge, e serve a non riproporti la stessa cosa.",
+      "rejectReason": "Motivo del rifiuto",
+      "rejectNote": "Nota",
+      "rejectNotePlaceholder": "Almeno dieci caratteri…",
+      "theProduct": "il prodotto",
+      "decided": {
+        "accepted": "Accettata da {{who}} il {{date}}",
+        "rejected": "Rifiutata da {{who}} il {{date}}",
+        "expired": "Scaduta il {{date}} senza che nessuno la leggesse",
+        "superseded": "Superata il {{date}}"
+      },
+      "emptyDecided": "Nessuna proposta è ancora stata decisa.",
+      "emptyNeverRun": "L'analisi non è mai girata",
+      "emptyNeverRunHelp": "Gira ogni notte. Se non vuoi aspettare, lanciala adesso.",
+      "emptyAllGood": "Niente da proporre",
+      "emptyAllGoodHelp": "L'ultima analisi è del {{date}} e non ha trovato niente da migliorare.",
+      "noAiKey": "La piattaforma non ha una chiave Anthropic: restano solo le proposte che il prodotto calcola da sé.",
+      "runCreated_one": "{{count}} proposta nuova",
+      "occurrences_one": "{{count}} caso",
+      "hiddenRefs_one": "{{count}} non visibile con i tuoi permessi"
     }
   },
   "filter": {
@@ -4514,6 +4567,23 @@
     "report": {
       "tableWithoutColumns": "Una tabella ha bisogno di almeno una colonna: scegli i campi da mostrare.",
       "granularityNeedsDate": "Per raggruppare per periodo serve un campo data, e quello scelto non lo è. Scegli un campo data, oppure togli il periodo."
+    },
+    "proposal": {
+      "actionUnknown": "«{{action}}» non è un'azione del catalogo: la proposta non si può eseguire.",
+      "actionForbidden": "Una proposta non può portare «{{action}}», nemmeno dentro i suoi parametri.",
+      "actionNotUndoable": "«{{action}}» non si può disfare.",
+      "undoStateUnreadable": "Lo stato precedente salvato non si legge: non è stato ripristinato niente.",
+      "alreadyDecided": "Questa proposta è «{{status}}»: è già stata decisa.",
+      "nothingToExecute": "Questa proposta non ha niente da eseguire: è lì da leggere.",
+      "nothingToUndo": "Su questa proposta non c'è niente da disfare.",
+      "rejectionKindUnknown": "«{{kind}}» non è un motivo di rifiuto.",
+      "rejectionNoteTooShort": "Scrivi almeno {{min}} caratteri: la nota è quello che avrà chi rilegge.",
+      "rejectionNoteTooLong": "La nota supera i {{max}} caratteri.",
+      "postponeDateInvalid": "Questa non è una data.",
+      "postponeDatePast": "La data del risveglio deve essere nel futuro, altrimenti rimandare non cambia niente.",
+      "portalSeveritiesEmpty": "Il portale non ha nessuna severità impostata: non c'è niente di stantio da togliere.",
+      "portalSeveritiesAlreadyClean": "Tutte le severità del portale sono ancora nel Dizionario: non c'è niente da fare.",
+      "portalSeveritiesWouldEmpty": "Toglierle lascerebbe il portale senza nessuna severità, e nessuno potrebbe più aprire un ticket."
     }
   },
   "errorBoundary": {
@@ -7074,6 +7144,18 @@
       "admin_system": {
         "label": "Salute della piattaforma",
         "description": "Code, metriche, tracce, diagnostica della configurazione."
+      },
+      "proposal_read": {
+        "label": "Proposte: vedere",
+        "description": "Leggere le proposte di miglioramento e le prove su cui si fondano."
+      },
+      "proposal_accept": {
+        "label": "Proposte: decidere",
+        "description": "Accettare, rifiutare o rimandare. Accettare ESEGUE l'azione della proposta: darlo a un ruolo vuol dire dargli tutto il catalogo."
+      },
+      "proposal_run": {
+        "label": "Proposte: lanciare l'analisi",
+        "description": "Far girare subito l'analisi, senza aspettare la notte."
       }
     }
   },
@@ -7374,7 +7456,13 @@
       "workflow.deactivated": "Workflow disattivato",
       "workflow.duplicated": "Workflow duplicato",
       "workflow.step_deadline_moved": "Scadenza del passo: ticket spostato",
-      "workflow.updated": "Workflow modificato"
+      "workflow.updated": "Workflow modificato",
+      "proposal.accepted": "Proposta di miglioramento accettata",
+      "proposal.rejected": "Proposta di miglioramento rifiutata",
+      "proposal.postponed": "Proposta di miglioramento rimandata",
+      "proposal.undone": "Proposta di miglioramento disfatta",
+      "proposal.execution_failed": "Esecuzione di una proposta fallita",
+      "proposal.analysis_run": "Analisi delle proposte lanciata"
     }
   },
   "tasks": {
@@ -7399,5 +7487,24 @@
     "waitingFor": "aspetta «{{title}}»",
     "kindOne": "Task",
     "titleStep": "Task del passo"
+  },
+  "proposals": {
+    "area": {
+      "configuration": "Configurazione",
+      "daily_work": "Lavoro quotidiano",
+      "operator": "Operatore",
+      "platform": "Piattaforma"
+    },
+    "kind": {
+      "proposal.portalSeveritiesStale": "Togli dal portale {{count}} severità che il Dizionario non ha più: «{{values}}»"
+    },
+    "rejection": {
+      "wrong_analysis": "L'analisi è sbagliata",
+      "valid_but_declined": "Ha senso, ma non lo facciamo"
+    },
+    "rejectionHelp": {
+      "wrong_analysis": "I dati o la conclusione non tornano. Serve a capire che la proposta era rumore.",
+      "valid_but_declined": "La proposta è giusta, ma non è quello che vogliamo fare."
+    }
   }
 }

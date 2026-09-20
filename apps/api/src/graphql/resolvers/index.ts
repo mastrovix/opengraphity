@@ -34,6 +34,7 @@ import { logsResolvers } from './logs.js'
 import { dashboardResolvers } from './dashboard.js'
 import { buildDynamicCIResolvers, dynamicCIRootFields } from './dynamic-ci.js'
 import { anomalyResolvers } from './anomaly.js'
+import { proposalResolvers } from './proposals.js'
 import { eventResolvers } from './events.js'
 import { serviceResolvers } from './services.js'
 import { topologyResolvers } from './topology.js'
@@ -320,6 +321,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...logsResolvers.Query,
       ...dashboardResolvers.Query,
       ...anomalyResolvers.Query,
+      ...proposalResolvers.Query,
       ...eventResolvers.Query,
       ...serviceResolvers.Query,
       ...topologyResolvers.Query,
@@ -386,6 +388,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...customReportResolvers.Mutation,
       ...dashboardResolvers.Mutation,
       ...anomalyResolvers.Mutation,
+      ...proposalResolvers.Mutation,
       ...eventResolvers.Mutation,
       ...serviceResolvers.Mutation,
       ...similarityResolvers.Mutation,
@@ -489,6 +492,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     // Il nome di chi ha risolto l'anomalia, letto solo se il client lo chiede
     // (revisione totale · ANO-8): il campo c'era ma la mappa non era unita qui.
     Anomaly:            anomalyResolvers.Anomaly,
+    Proposal:           proposalResolvers.Proposal,
     Event:              eventResolvers.Event,
     EventHistoryEntry:  eventResolvers.EventHistoryEntry,   // cronologia dell'allarme (Event Management)
     ServiceMap:         serviceResolvers.ServiceMap,        // servizi monitorati: nodes/edges/history sono field resolver

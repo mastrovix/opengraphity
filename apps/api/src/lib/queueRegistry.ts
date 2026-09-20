@@ -72,6 +72,7 @@ export const QUEUE_REGISTRY: readonly QueueRegistryEntry[] = [
   { name: 'webhook-delivery',   group: 'platform', retryable: true, consumer: false, owner: 'jobs/webhookDeliveryWorker.ts' },
   { name: 'report-scheduler',   group: 'platform', retryable: true, consumer: false, owner: 'jobs/reportScheduler.ts' },
   { name: 'anomaly-scanner',    group: 'platform', retryable: true, consumer: false, owner: 'anomaly/anomalyEngine.ts' },
+  { name: 'proposal-scanner',   group: 'platform', retryable: true, consumer: false, owner: 'jobs/proposalScanner.ts' },
   { name: 'discovery-sync',     group: 'platform', retryable: true, consumer: false, owner: 'discovery/syncWorker.ts' },
   { name: 'embeddings',         group: 'platform', retryable: true, consumer: false, owner: 'jobs/embeddingWorker.ts' },
   { name: 'maintenance',        group: 'platform', retryable: true, consumer: false, owner: 'workers/maintenance.worker.ts' },

@@ -130,6 +130,7 @@ import { aiSettingsMissingFeatures } from './20261005_1100_ai_settings_missing_f
 import { reportEdgeDirection } from './20261005_1110_report_edge_direction.js'
 import { dropChangeTaskIndexes } from './20261005_1120_drop_change_task_indexes.js'
 import { changeTypeLabelsTechnical } from './20261005_1130_change_type_labels_technical.js'
+import { proposalPermissions } from './20261005_1140_proposal_permissions.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -245,4 +246,5 @@ export const MIGRATIONS: readonly Migration[] = [
   reportEdgeDirection,
   dropChangeTaskIndexes,
   changeTypeLabelsTechnical,
+  proposalPermissions,
 ]

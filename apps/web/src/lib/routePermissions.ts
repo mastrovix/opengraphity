@@ -58,6 +58,7 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, readonly Permission[]>> 
   'settings/anomaly-rules':        ['config.monitoring'],
 
   'anomalies':                     ['analysis.read'],
+  'proposals':                     ['proposal.read'],
   'analysis/what-if':              ['analysis.read'],
   'reports':                       ['report.read'],
   'reports/sla':                   ['report.read'],

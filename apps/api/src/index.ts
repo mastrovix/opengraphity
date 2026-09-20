@@ -43,6 +43,7 @@ registerSessionTracker((durationMs, query) => {
 })
 import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
+import { startProposalScanner } from './jobs/proposalScanner.js'
 import { startWorkflowJobWorker, startNotificationJobWorker, scheduleStepDeadlineSweep, scheduleOLASweep } from './jobs/workflowJobWorker.js'
 import { startWebhookDeliveryWorker } from './jobs/webhookDeliveryWorker.js'
 import { startEventIngestWorker } from './jobs/eventIngestWorker.js'
@@ -98,6 +99,9 @@ async function main() {
 
   // Start anomaly scanner (BullMQ, every 1h)
   const anomalyWorker = await startAnomalyScanner()
+
+  // Le proposte di miglioramento: un giro a notte, un job per cliente.
+  const proposalWorker = await startProposalScanner()
 
   // Start workflow job worker (BullMQ: step deadlines, webhook retries, timed triggers)
   const workflowWorker = startWorkflowJobWorker()
@@ -162,7 +166,7 @@ async function main() {
   // redelivered at-least-once on the next boot (idempotency in BaseConsumer and
   // the SLAStatus MERGE keep that safe, but draining cleanly avoids the churn).
   const bullWorkers: Worker[] = [
-    anomalyWorker, workflowWorker, syncWorker, maintenanceWorker,
+    anomalyWorker, proposalWorker, workflowWorker, syncWorker, maintenanceWorker,
     notificationWorker, webhookDeliveryWorker, ...eventWorkers,
     emailDigestWorker, reportScheduler,
     ...(embeddingWorker ? [embeddingWorker] : []),

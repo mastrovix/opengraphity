@@ -145,7 +145,8 @@
     "loginSecurity": "Login & passwords",
     "catalogForms": "Service Request Designer",
     "changeCalendar": "Change calendar",
-    "configurationDiagnostics": "Diagnostics"
+    "configurationDiagnostics": "Diagnostics",
+    "proposals": "Proposals"
   },
   "pages": {
     "incidents": {
@@ -479,7 +480,8 @@
         "anomaly-scanner": "Goes through CIs and tickets looking for the anomalies declared by the rules.",
         "discovery-sync": "Imports the CIs from the discovery sources and reconciles them with the CMDB.",
         "embeddings": "Computes the embeddings of incidents and KB articles, which power the similar incidents and the suggested articles.",
-        "maintenance": "Nightly maintenance: database backup, purge of the resolved events and retention of the in-app notifications."
+        "maintenance": "Nightly maintenance: database backup, purge of the resolved events and retention of the in-app notifications.",
+        "proposal-scanner": "Improvement proposals"
       },
       "queueNoDescription": "No description for this queue",
       "consumerNote": "Domain consumer queues (notifications, SLA, escalation, service impact) cannot be retried from the UI: an exhausted event must be re-emitted by its producer.",
@@ -2649,6 +2651,57 @@
     "configurationDiagnostics": {
       "title": "Configuration diagnostics",
       "subtitle": "What is missing or inconsistent in this organization’s configuration, and where to fix it."
+    },
+    "proposals": {
+      "title": "Improvement proposals",
+      "subtitle": "What the product noticed, for a person to decide on.",
+      "runNow": "Analyse now",
+      "running": "Analysing…",
+      "runCreated_other": "{{count}} new proposals",
+      "runNothing": "Nothing new to propose.",
+      "runFailed": "The analysis did not complete.",
+      "actionFailed": "That did not work.",
+      "viewLabel": "What to show",
+      "viewOpen": "To decide",
+      "viewDecided": "Already decided",
+      "counts": {
+        "open": "Open",
+        "accepted": "Accepted",
+        "rejected": "Rejected",
+        "expired": "Expired",
+        "ofMax": "of {{max}} at most"
+      },
+      "occurrences_other": "{{count}} cases",
+      "window": "over {{days}} days",
+      "evidence": "What it is based on",
+      "hiddenRefs_other": "{{count}} not visible with your permissions",
+      "writtenIn": "written in {{lang}}",
+      "executionFailed": "The action failed: {{error}}",
+      "accept": "Accept",
+      "reject": "Reject",
+      "notNow": "Not now",
+      "undo": "Undo",
+      "rejectTitle": "Why are you rejecting it?",
+      "rejectHelp": "What you write is all the next reader gets, and it is what stops the same thing coming back.",
+      "rejectReason": "Rejection reason",
+      "rejectNote": "Note",
+      "rejectNotePlaceholder": "At least ten characters…",
+      "theProduct": "the product",
+      "decided": {
+        "accepted": "Accepted by {{who}} on {{date}}",
+        "rejected": "Rejected by {{who}} on {{date}}",
+        "expired": "Expired on {{date}} with nobody reading it",
+        "superseded": "Superseded on {{date}}"
+      },
+      "emptyDecided": "No proposal has been decided yet.",
+      "emptyNeverRun": "The analysis has never run",
+      "emptyNeverRunHelp": "It runs every night. If you do not want to wait, run it now.",
+      "emptyAllGood": "Nothing to propose",
+      "emptyAllGoodHelp": "The last analysis ran on {{date}} and found nothing to improve.",
+      "noAiKey": "The platform has no Anthropic key: only the proposals the product works out by itself are left.",
+      "runCreated_one": "{{count}} new proposal",
+      "occurrences_one": "{{count}} case",
+      "hiddenRefs_one": "{{count}} not visible with your permissions"
     }
   },
   "filter": {
@@ -4514,6 +4567,23 @@
     "report": {
       "tableWithoutColumns": "A table needs at least one column: choose the fields to show.",
       "granularityNeedsDate": "Grouping by period needs a date field, and the field chosen is not one. Pick a date field, or remove the period."
+    },
+    "proposal": {
+      "actionUnknown": "\"{{action}}\" is not an action of the catalogue: this proposal cannot be executed.",
+      "actionForbidden": "A proposal may never carry \"{{action}}\", not even inside its parameters.",
+      "actionNotUndoable": "\"{{action}}\" cannot be undone.",
+      "undoStateUnreadable": "The saved previous state cannot be read: nothing was restored.",
+      "alreadyDecided": "This proposal is \"{{status}}\": it has already been decided.",
+      "nothingToExecute": "This proposal has nothing to execute: it is there to be read.",
+      "nothingToUndo": "There is nothing to undo on this proposal.",
+      "rejectionKindUnknown": "\"{{kind}}\" is not a rejection reason.",
+      "rejectionNoteTooShort": "Write at least {{min}} characters: the note is all the next reader gets.",
+      "rejectionNoteTooLong": "The note is longer than {{max}} characters.",
+      "postponeDateInvalid": "That is not a date.",
+      "postponeDatePast": "The wake-up date must be in the future, otherwise postponing changes nothing.",
+      "portalSeveritiesEmpty": "The portal has no severities set: there is nothing stale to remove.",
+      "portalSeveritiesAlreadyClean": "Every portal severity is still in the dictionary: nothing to do.",
+      "portalSeveritiesWouldEmpty": "Removing them would leave the portal with no severity at all, and nobody could open a ticket."
     }
   },
   "errorBoundary": {
@@ -7074,6 +7144,18 @@
       "admin_system": {
         "label": "Platform health",
         "description": "Queues, metrics, traces, configuration diagnostics."
+      },
+      "proposal_read": {
+        "label": "Proposals: view",
+        "description": "Read improvement proposals and the evidence behind them."
+      },
+      "proposal_accept": {
+        "label": "Proposals: decide",
+        "description": "Accept, reject or postpone. Accepting EXECUTES the proposal's action: granting it means granting the whole catalogue."
+      },
+      "proposal_run": {
+        "label": "Proposals: run the analysis",
+        "description": "Run the analysis now, without waiting for the night."
       }
     }
   },
@@ -7374,7 +7456,13 @@
       "workflow.deactivated": "Workflow switched off",
       "workflow.duplicated": "Workflow duplicated",
       "workflow.step_deadline_moved": "Step deadline: ticket moved on",
-      "workflow.updated": "Workflow changed"
+      "workflow.updated": "Workflow changed",
+      "proposal.accepted": "Improvement proposal accepted",
+      "proposal.rejected": "Improvement proposal rejected",
+      "proposal.postponed": "Improvement proposal postponed",
+      "proposal.undone": "Improvement proposal undone",
+      "proposal.execution_failed": "Improvement proposal execution failed",
+      "proposal.analysis_run": "Improvement analysis run"
     }
   },
   "tasks": {
@@ -7399,5 +7487,24 @@
     "waitingFor": "waits for «{{title}}»",
     "kindOne": "Task",
     "titleStep": "Step tasks"
+  },
+  "proposals": {
+    "area": {
+      "configuration": "Configuration",
+      "daily_work": "Daily work",
+      "operator": "Operator",
+      "platform": "Platform"
+    },
+    "kind": {
+      "proposal.portalSeveritiesStale": "Remove {{count}} portal severities the dictionary no longer has: \"{{values}}\""
+    },
+    "rejection": {
+      "wrong_analysis": "The analysis is wrong",
+      "valid_but_declined": "Fair, but we will not do it"
+    },
+    "rejectionHelp": {
+      "wrong_analysis": "The data or the conclusion do not add up. This is how we learn the proposal was noise.",
+      "valid_but_declined": "The proposal is right, but it is not what we want to do."
+    }
   }
 }

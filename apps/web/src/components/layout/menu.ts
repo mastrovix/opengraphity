@@ -7,7 +7,7 @@
  * /reports/sla scriveva «AI Analysis / Sla»: /reports è l'indirizzo di AI
  * Analysis, ma SLA Report non ne è una sottopagina.
  */
-import { LayoutDashboard, AlertCircle, Search, GitPullRequest, CalendarDays, HelpCircle, ClipboardList, Inbox, Route, UsersRound, User, BrainCircuit, LayoutGrid, ScrollText, Layers, Settings2, Activity, ShieldAlert, ShieldCheck, Share2, Bell, UserCircle, Tag, CheckSquare, BookOpen, Zap, GitBranch, Clock, Plug, FlaskConical, Sparkles, ShoppingCart, Gauge, Radar, HeartPulse, Boxes, Table2, Building2, Handshake, KeyRound, Stethoscope } from 'lucide-react'
+import { LayoutDashboard, AlertCircle, Search, GitPullRequest, CalendarDays, HelpCircle, ClipboardList, Inbox, Route, UsersRound, User, BrainCircuit, LayoutGrid, ScrollText, Layers, Settings2, Activity, ShieldAlert, ShieldCheck, Share2, Bell, UserCircle, Tag, CheckSquare, BookOpen, Zap, GitBranch, Clock, Plug, FlaskConical, Sparkles, ShoppingCart, Gauge, Radar, HeartPulse, Boxes, Table2, Building2, Handshake, KeyRound, Stethoscope, Lightbulb } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { voceAttiva } from './menuActive'
 
@@ -22,6 +22,7 @@ export const NAV_ITEM_DEFS = [
 
 export const ANALYSIS_ITEM_DEFS = [
   { to: '/anomalies',        labelKey: 'sidebar.anomalies',   icon: ShieldAlert  },
+  { to: '/proposals',        labelKey: 'sidebar.proposals',   icon: Lightbulb    },
   { to: '/topology',         labelKey: 'sidebar.topologyMap', icon: Share2       },
   { to: '/analysis/what-if', labelKey: 'sidebar.whatIf',      icon: FlaskConical },
 ]

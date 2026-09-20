@@ -185,6 +185,12 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   { anyOf: ['analysis.read'], query: ['anomalies', 'anomaly', 'anomalyStats', 'anomalyScanStatus', 'whatIfAnalysis', 'whatIfCompare'] },
   { anyOf: ['anomaly.resolve'], mutation: ['resolveAnomaly'] },
   { anyOf: ['anomaly.scan'], mutation: ['runAnomalyScanner'] },
+  // Le proposte di miglioramento. Accettare e rifiutare stanno sotto lo
+  // STESSO permesso: rifiutare scrive la lapide che zittisce l'impronta, e
+  // zittire una proposta è una decisione quanto accettarla.
+  { anyOf: ['proposal.read'],   query: ['proposals', 'proposal'] },
+  { anyOf: ['proposal.accept'], mutation: ['acceptProposal', 'rejectProposal', 'postponeProposal', 'undoProposal'] },
+  { anyOf: ['proposal.run'],    mutation: ['runProposalAnalysis'] },
   {
     anyOf: ['report.read'],
     query: ['reportTemplates', 'reportTemplate', 'executeReport', 'previewReportSection', 'slaReport', 'reportConversations', 'reportConversation'],
