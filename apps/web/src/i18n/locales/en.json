@@ -2711,7 +2711,19 @@
       "occurrences_one": "{{count}} case",
       "hiddenRefs_one": "{{count}} not visible with your permissions",
       "window_one": "over {{count}} day",
-      "window_other": "over {{count}} days"
+      "window_other": "over {{count}} days",
+      "runSkipped": {
+        "intro_one": "The model produced {{count}}, and it did not reach this page: {{reasons}}.",
+        "intro_other": "The model produced {{count}}, and none reached this page: {{reasons}}.",
+        "gia_presente_one": "{{count}} is already here",
+        "gia_presente_other": "{{count}} are already here",
+        "rifiutata_di_recente_one": "{{count}} rejected recently",
+        "rifiutata_di_recente_other": "{{count}} rejected recently",
+        "tetto_aperte_one": "{{count}} over the open-proposals cap",
+        "tetto_aperte_other": "{{count}} over the open-proposals cap",
+        "tetto_giornaliero_one": "{{count}} over today's cap",
+        "tetto_giornaliero_other": "{{count}} over today's cap"
+      }
     },
     "dailyWork": {
       "title": "Daily work",

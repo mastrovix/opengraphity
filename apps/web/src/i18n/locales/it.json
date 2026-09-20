@@ -2711,7 +2711,19 @@
       "occurrences_one": "{{count}} caso",
       "hiddenRefs_one": "{{count}} non visibile con i tuoi permessi",
       "window_one": "in {{count}} giorno",
-      "window_other": "in {{count}} giorni"
+      "window_other": "in {{count}} giorni",
+      "runSkipped": {
+        "intro_one": "Il modello ne ha prodotta {{count}}, non è arrivata sulla pagina: {{reasons}}.",
+        "intro_other": "Il modello ne ha prodotte {{count}}, nessuna è arrivata sulla pagina: {{reasons}}.",
+        "gia_presente_one": "{{count}} è già qui",
+        "gia_presente_other": "{{count}} sono già qui",
+        "rifiutata_di_recente_one": "{{count}} rifiutata di recente",
+        "rifiutata_di_recente_other": "{{count}} rifiutate di recente",
+        "tetto_aperte_one": "{{count}} oltre il tetto delle proposte aperte",
+        "tetto_aperte_other": "{{count}} oltre il tetto delle proposte aperte",
+        "tetto_giornaliero_one": "{{count}} oltre il tetto di oggi",
+        "tetto_giornaliero_other": "{{count}} oltre il tetto di oggi"
+      }
     },
     "dailyWork": {
       "title": "Lavoro quotidiano",

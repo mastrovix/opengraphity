@@ -98,6 +98,43 @@ export function valoreDelParametro(grezzo: string): string | number {
 const paramsDi = (p: Param[]): Record<string, string | number> =>
   Object.fromEntries(p.map((x) => [x.name, valoreDelParametro(x.value)]))
 
+/**
+ * CHE COSA È SUCCESSO DAVVERO (20 set 2026).
+ *
+ * Segnalazione del proprietario: «ho cliccato analyze now ma non dà nulla».
+ * Il giro aveva funzionato — su `opengrafo` il modello aveva prodotto QUATTRO
+ * proposte — e la pagina diceva «Niente di nuovo da proporre». Due erano già
+ * sulla pagina, e le altre due erano state BUTTATE dal tetto giornaliero.
+ *
+ * «Niente di nuovo» era falso in un modo che costa: chi legge crede che non
+ * ci fosse niente da dire, mentre il modello è stato chiamato e pagato, e due
+ * proposte esistevano e sono sparite. È la stessa regola già scritta in
+ * `resolvers/proposals.ts`: «una proposta accettata che non ha fatto niente,
+ * e non lo dice, è la bugia peggiore di tutte».
+ *
+ * I motivi arrivavano già dall'API (`skipped { name value }`): la pagina li
+ * buttava. Qui si leggono.
+ */
+export function esitoDelGiro(
+  create: number,
+  scartate: ReadonlyArray<{ name: string; value: string }>,
+  t: (chiave: string, opzioni?: Record<string, unknown>) => string,
+): string {
+  const motivi = scartate
+    .map((s) => ({ nome: s.name, quante: Number(s.value) }))
+    .filter((s) => Number.isFinite(s.quante) && s.quante > 0)
+  const testa = create > 0 ? t('pages.proposals.runCreated', { count: create }) : ''
+  if (motivi.length === 0) return testa || t('pages.proposals.runNothing')
+
+  const elenco = motivi
+    .map((m) => t(`pages.proposals.runSkipped.${m.nome}`, { count: m.quante }))
+    .join(', ')
+  const coda = t('pages.proposals.runSkipped.intro', {
+    count: motivi.reduce((s, m) => s + m.quante, 0), reasons: elenco,
+  })
+  return testa ? `${testa} · ${coda}` : coda
+}
+
 const dataBreve = (iso: string | null, lingua: string): string =>
   iso ? new Date(iso).toLocaleDateString(lingua === 'it' ? 'it-IT' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''
 
@@ -120,7 +157,7 @@ export function ProposalsPage() {
   const [rifiuta] = useMutation(REJECT_PROPOSAL)
   const [rimanda] = useMutation(POSTPONE_PROPOSAL)
   const [disfa]   = useMutation(UNDO_PROPOSAL)
-  const [analizza, { loading: inAnalisi }] = useMutation<{ runProposalAnalysis: { created: number } }>(RUN_PROPOSAL_ANALYSIS)
+  const [analizza, { loading: inAnalisi }] = useMutation<{ runProposalAnalysis: { created: number; skipped: Param[] } }>(RUN_PROPOSAL_ANALYSIS)
 
   const r = data?.proposals
   const puoDecidere = can('proposal.accept')
@@ -138,11 +175,10 @@ export function ProposalsPage() {
       const esito = await analizza()
       await refetch()
       const create = Number(esito.data?.runProposalAnalysis?.created ?? 0)
+      const scartate = esito.data?.runProposalAnalysis?.skipped ?? []
       // Un esito riuscito è un successo, non un errore: `showError` lo
       // mostrava in rosso con la crocetta, e a schermo sembrava un guasto.
-      toast.success(create > 0
-        ? t('pages.proposals.runCreated', { count: create })
-        : t('pages.proposals.runNothing'))
+      toast.success(esitoDelGiro(create, scartate, t))
     } catch (e) { showError(e, t('pages.proposals.runFailed')) }
   }
 
