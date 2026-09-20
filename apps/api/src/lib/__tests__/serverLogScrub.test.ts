@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   normalizzaMessaggio, primaRigaDiStack, firmaDi, SEGNAPOSTO, MAX_TEMPLATE, MAX_STACK_HEAD,
+  sopravvive,
 } from '../serverLogScrub.js'
 
 const t = (s: string) => normalizzaMessaggio(s).template
@@ -66,12 +67,26 @@ describe('il template è la FORMA, non il contenuto', () => {
 })
 
 describe('il tetto sulla lunghezza', () => {
-  it('un payload loggato per sbaglio viene tagliato, e la riga lo dichiara', () => {
-    const lungo = `errore ${'x'.repeat(MAX_TEMPLATE * 2)}`
-    const r = normalizzaMessaggio(lungo)
+  it('un messaggio lunghissimo viene tagliato, e la riga lo dichiara', () => {
+    // Fatto di parole NOTE, perché a provare il tetto sia il tetto: un blob
+    // di caratteri oggi sparisce prima, ed è il test qui sotto.
+    const r = normalizzaMessaggio(`connection error ${'retry timeout '.repeat(40)}`)
     expect(r.tagliato).toBe(true)
     expect(r.template.length).toBe(MAX_TEMPLATE + 1) // + il carattere di taglio
     expect(r.template.endsWith('…')).toBe(true)
+  })
+
+  it('un payload loggato per sbaglio non viene tagliato: viene TOLTO', () => {
+    /*
+     * Cambiato il 20 set 2026 (rimedio b), e in meglio. Prima un blob finiva
+     * nel grafo per i suoi primi 300 caratteri; adesso non è una parola che
+     * il prodotto sa di scrivere, quindi diventa `<w>` e nel grafo non entra
+     * affatto. Il tetto resta per i messaggi fatti di parole vere.
+     */
+    const r = normalizzaMessaggio(`errore ${'x'.repeat(MAX_TEMPLATE * 2)}`)
+    expect(r.template).toBe('errore <w>')
+    expect(r.tagliato).toBe(false)
+    expect(r.mascherate).toBe(1)
   })
 
   it('una frase normale non è tagliata', () => {
@@ -146,7 +161,99 @@ describe('un identificativo con le lettere attaccate alle cifre', () => {
   })
 
   it('ma una parola con una cifra sola resta quella che è', () => {
-    // `utf8`, `p90`: due lettere e DUE cifre come minimo.
-    expect(t('codifica utf8 con p90 alto')).toBe('codifica utf8 con p90 alto')
+    // `utf8`, `p90`: la regola `<id>` vuole due lettere e DUE cifre.
+    // (Le parole intorno sono scelte fra quelle del vocabolario: dal 20 set
+    // 2026 quello che il prodotto non sa di scrivere diventa `<w>`, e qui si
+    // prova la regola sugli identificativi, non il vocabolario.)
+    expect(t('encoding utf8 con p90 alto')).toBe('encoding utf8 con p90 alto')
+  })
+})
+
+/**
+ * L'INVERSIONE: DA LISTA DI CATTIVI A LISTA DI BUONI (20 set 2026, rimedio b).
+ *
+ * La revisione adversarial ha eseguito la catena vera e ha mostrato che tutto
+ * ciò che è fatto di PAROLE passava intero — ragioni sociali, cognomi,
+ * hostname interni, codici fiscali, IBAN, token. Zero sostituzioni, testo
+ * identico. Il commento in testa al modulo dichiarava il rischio solo per il
+ * testo «costante», e non era vero: passava anche l'interpolato.
+ *
+ * Questi sono gli stessi casi, eseguiti allora a mano. Se uno di questi cade,
+ * non si aggiusta il test: nell'archivio che attraversa i clienti è appena
+ * rientrato il nome di qualcuno.
+ */
+describe('quello che è fatto di parole non passa più', () => {
+  it.each([
+    ['una ragione sociale',   'SLA engine failed for tenant Comune di Bolzano', ['Comune', 'Bolzano']],
+    ['un nome e un cognome',  'Field assegnatario = Mario Rossi non valido',    ['Mario', 'Rossi']],
+    ['una fondazione',        'Contract renewal for Fondazione Cariplo expired',['Fondazione', 'Cariplo']],
+    ['una banca',             'Cannot parse the ticket for Banca Sella',        ['Banca', 'Sella']],
+    ['uno slug di cliente',   'user not found in tenant acme-corp',             ['acme']],
+    ['un hostname interno',   'host db-prod-milano.acme.internal unreachable',  ['milano', 'acme']],
+    ['un IBAN',               'IBAN IT60X0542811101000000123456 rifiutato',     ['IT60X0542811101000000123456']],
+    ['un codice fiscale',     'Codice fiscale RSSMRA85M01H501Z non valido',     ['RSSMRA85M01H501Z']],
+    ['un token JWT',          'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NSJ9', ['eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9']],
+  ])('%s sparisce', (_nome, riga, pezzi) => {
+    const uscita = t(riga)
+    for (const p of pezzi) {
+      expect(uscita, `«${p}» è rimasto in «${uscita}»`).not.toContain(p)
+    }
+  })
+
+  it('una fila di parole ignote è UNA cosa ignota, non tre', () => {
+    // Leggere «<w> <w> <w>» invece di «<w>» non aggiunge niente a chi indaga,
+    // e dice quante parole aveva il nome di qualcuno.
+    expect(t('error for Fondazione Teatro Comunale here')).not.toContain('<w> <w>')
+  })
+})
+
+describe('la maiuscola conta, ed è la metà che regge', () => {
+  it('un cognome che è anche una parola comune non passa maiuscolo', () => {
+    // «costa», «conti», «greco» sono parole italiane e stanno nel vocabolario;
+    // «Costa», «Conti», «Greco» sono cognomi. Il vocabolario tiene la FORMA.
+    for (const cognome of ['Costa', 'Conti', 'Greco', 'Monti']) {
+      expect(t(`ticket assigned to ${cognome} today`), cognome).not.toContain(cognome)
+    }
+  })
+
+  it('ma a inizio frase la maiuscola è grammatica, non un nome proprio', () => {
+    expect(sopravvive('Connection', true)).toBe(true)
+    expect(sopravvive('Connection', false)).toBe(true) // sta nel vocabolario così
+  })
+
+  it('una sigla intera passa: SLA, HTTP, CI', () => {
+    for (const sigla of ['SLA', 'HTTP', 'CI']) {
+      expect(sopravvive(sigla, false), sigla).toBe(true)
+    }
+  })
+})
+
+describe('e quello che il prodotto SA di scrivere resta leggibile', () => {
+  it('i messaggi veri del prodotto passano intatti', () => {
+    // Presi dall'archivio vero il 20 set 2026: 9 su 10 passano identici.
+    for (const vero of [
+      '[bullmq] worker error (connection/internal) — worker keeps running',
+      '[bullmq] queue connection error',
+      '[inapp] listening connection error — ioredis reconnects; until then this process does not receive notifications delivered elsewhere',
+      'SSE notification channel down — reconnecting',
+      'Database driver error masked for the client',
+      'proposals: accepted action failed',
+    ]) {
+      expect(t(vero), vero).toBe(vero)
+    }
+  })
+
+  it('il nome di una nostra funzione sopravvive nello stack: è il DOVE', () => {
+    // Trovato facendo cadere un test esistente: il vocabolario nasceva dai
+    // soli letterali, e i nomi di funzione stanno nel codice. `stack_head`
+    // perdeva l'unica informazione per cui esiste.
+    const riga = primaRigaDiStack('Error: x\n    at scriviProposta (/app/dist/lib/proposals.js:120:15)')
+    expect(riga).toContain('scriviProposta')
+  })
+
+  it('i due contatori sono distinti: le forme e le parole', () => {
+    const r = normalizzaMessaggio('user mario@acme.it from Fondazione Cariplo')
+    expect(r.sostituzioni).toBe(1)          // l'email
+    expect(r.mascherate).toBeGreaterThan(0) // le parole ignote
   })
 })

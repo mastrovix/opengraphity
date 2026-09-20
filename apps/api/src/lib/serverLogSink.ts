@@ -101,6 +101,21 @@ export interface RigaDaScrivere {
   level:       string
   template:    string
   stackHead:   string | null
+  /*
+   * I DUE CONTATORI, nel grafo (20 set 2026, rimedio b).
+   *
+   * La testa di `serverLogScrub.ts` dichiarava: «`sostituzioni` dice quanti
+   * pezzi sono stati tolti: un template con zero sostituzioni è una frase
+   * costante del codice, ed è il caso in cui vale la pena guardare». Era
+   * vero e non si poteva fare: `rigaDaLog` buttava il numero e la query non
+   * lo scriveva. Il rischio residuo numero uno era anche l'unico che
+   * nessuno poteva interrogare.
+   *
+   * `sostituzioni` = pezzi tolti dalle regole di FORMA (url, email, id…).
+   * `mascherate`   = parole che il vocabolario non conosceva.
+   */
+  sostituzioni: number
+  mascherate:   number
 }
 
 /** Una riga di errore di un cliente: il testo vero, per la sua pagina Log. */
@@ -193,7 +208,7 @@ export function rigaDaLog(raw: Record<string, unknown>, livello: string): RigaDa
 
   const service = typeof raw['service'] === 'string' ? raw['service'] : 'opengrafo-api'
   const quando  = new Date(typeof raw['time'] === 'number' ? raw['time'] : Date.now())
-  const { template } = normalizzaMessaggio(typeof raw['msg'] === 'string' ? raw['msg'] : '')
+  const { template, sostituzioni, mascherate } = normalizzaMessaggio(typeof raw['msg'] === 'string' ? raw['msg'] : '')
   /*
    * Lo stack sta dove pino lo mette quando gli si passa un Error: `err.stack`.
    * Si guarda anche `stack` nudo, perché diversi punti del codice loggano
@@ -210,6 +225,7 @@ export function rigaDaLog(raw: Record<string, unknown>, livello: string): RigaDa
     timestamp:   quando.toISOString(),
     service, module, level: livello, template,
     stackHead:   primaRigaDiStack(stackGrezzo),
+    sostituzioni, mascherate,
   }
 }
 
@@ -321,7 +337,7 @@ export function registraErroreDelBrowser(
 ): void {
   try {
     if (!LIVELLI_PERSISTITI.has(livello)) return
-    const { template } = normalizzaMessaggio(messaggio)
+    const { template, sostituzioni, mascherate } = normalizzaMessaggio(messaggio)
     if (template === '') return
     accoda(stato.inAttesa, {
       fingerprint: firmaDi({ service: SERVIZIO_DEL_BROWSER, module: 'frontend', level: livello, template }),
@@ -332,6 +348,7 @@ export function registraErroreDelBrowser(
       level:     livello,
       template,
       stackHead: primaRigaDiStack(stack),
+      sostituzioni, mascherate,
     })
   } catch { /* un log non rompe niente */ }
 }
@@ -396,7 +413,8 @@ export const LOTTO_CYPHER = `
     ON CREATE SET
       l.id = randomUUID(), l.first_at = r.timestamp, l.count = 0,
       l.service = r.service, l.module = r.module, l.level = r.level,
-      l.template = r.template, l.stack_head = r.stackHead
+      l.template = r.template, l.stack_head = r.stackHead,
+      l.substitutions = r.sostituzioni, l.masked_words = r.mascherate
   SET l.count = l.count + 1,
       l.last_at = CASE WHEN l.last_at IS NULL OR r.timestamp > l.last_at THEN r.timestamp ELSE l.last_at END
   RETURN count(*) AS n

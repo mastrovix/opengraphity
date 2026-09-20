@@ -58,6 +58,12 @@ jobs:
       - name: Check i18n
         run: node scripts/check-i18n.mjs
 
+      # Il vocabolario dei log è GENERATO dai sorgenti: se qualcuno aggiunge un
+      # messaggio d'errore e non lo rigenera, quelle parole diventano `<w>` nella
+      # diagnostica di piattaforma e nessuno capisce più i template.
+      - name: Check vocabolario dei log
+        run: node scripts/genera-vocabolario-log.mjs --check
+
       - name: Lint
         run: pnpm lint
 

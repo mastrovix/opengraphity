@@ -15,24 +15,51 @@
  * pezzi variabili sostituiti da segnaposto. Non c'è un percorso che scrive
  * il messaggio grezzo e uno che lo oscura dopo: ce n'è uno solo.
  *
+ * ## Le DUE metà, e perché la prima da sola non bastava
+ * **Le forme** (`REGOLE`): URL, email, UUID, data, IP, esadecimale,
+ * identificativo, stringa citata, numero. Riconoscono ciò che ha una
+ * struttura sintattica.
+ *
+ * **Le parole** (`mascheraParoleIgnote`): tutto il resto. Sopravvive solo una
+ * parola che il prodotto SA di scrivere — il vocabolario generato dai
+ * letterali e dagli identificatori del repository — e ogni altra diventa
+ * `<w>`.
+ *
+ * La seconda metà è arrivata il 20 set 2026, dopo che una revisione
+ * adversarial ha ESEGUITO la prima e ha mostrato che non teneva:
+ *
+ *   0 sostituzioni | SLA engine failed for tenant Comune di Bolzano
+ *   0 sostituzioni | Contract renewal for Fondazione Cariplo expired
+ *   0 sostituzioni | Codice fiscale RSSMRA85M01H501Z non valido
+ *   0 sostituzioni | Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…
+ *
+ * Ragioni sociali, cognomi, hostname interni, codici fiscali e token
+ * passavano interi. Una lista di cattivi non si può completare: per ogni
+ * forma che aggiungi resta tutto il resto. Quindi si è invertita.
+ *
  * ## Che cosa vuol dire «ispezionabile»
  * Quello che viene salvato È quello che si ispeziona: il `template` sul nodo
  * è letteralmente l'uscita di `normalizzaMessaggio()`, non una sua versione
- * accorciata per la vista. Chi vuole sapere cosa il prodotto conserva di sé
- * stesso apre la riga e lo legge. `sostituzioni` dice quanti pezzi sono
- * stati tolti: un template con zero sostituzioni è una frase costante del
- * codice, ed è il caso in cui vale la pena guardare.
+ * accorciata per la vista. `sostituzioni` dice quanti pezzi di FORMA sono
+ * stati tolti, `mascherate` quante parole non erano nel vocabolario. Dal 20
+ * set 2026 sono anche SCRITTI sul nodo (`substitutions`, `masked_words`):
+ * prima questa frase era vera e non si poteva usare, perché il sink li
+ * buttava e la query non li salvava — il rischio residuo numero uno era
+ * anche l'unico che nessuno poteva interrogare.
  *
  * ## Il rischio che RESTA, detto invece che negato
- * Un messaggio il cui testo COSTANTE contiene già dati di un cliente passa
- * indenne: `logger.error(\`Ticket ACME-Backup non chiuso\`)` è una stringa
- * sola quando pino la vede, senza virgolette e senza numeri. Non è un buco
- * di questo modulo — è la regola già scritta in `lib/logger.ts` («never log
- * raw job.data / request bodies») applicata male da chi scrive quella riga.
- * Qui si tagliano i pezzi variabili e si dichiara il limite; il tetto sulla
- * lunghezza (`MAX_TEMPLATE`) limita quanto può uscire da una riga sola.
+ * Una frase costruita interamente con parole del vocabolario passa intera.
+ * Il caso concreto è un dato di un cliente che coincide con una parola che
+ * il prodotto scrive: minuscola («costa»), oppure maiuscola se anche il
+ * prodotto la scrive maiuscola. La regola sulla maiuscola (vedi
+ * `sopravvive`) chiude la forma in cui un cognome compare davvero.
+ *
+ * Il verso in cui si sbaglia è dichiarato: una parola tecnica che il
+ * vocabolario non ha diventa `<w>` — si perde leggibilità, non
+ * riservatezza. Rigenerare il vocabolario è `pnpm vocabolario:log`.
  */
 import { createHash } from 'node:crypto'
+import { VOCABOLARIO_DEI_LOG } from './vocabolarioDeiLog.js'
 
 /** I segnaposto. Dichiarati, perché un template si legge e si confronta a occhio. */
 export const SEGNAPOSTO = {
@@ -45,6 +72,8 @@ export const SEGNAPOSTO = {
   hex:   '<hex>',
   str:   '<str>',
   num:   '<n>',
+  /** Una parola che il prodotto non sa di scrivere. Vedi `mascheraParoleIgnote`. */
+  w:     '<w>',
 } as const
 
 /**
@@ -74,6 +103,22 @@ const REGOLE: ReadonlyArray<{ nome: keyof typeof SEGNAPOSTO; re: RegExp }> = [
   { nome: 'ip',    re: /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g },
   { nome: 'hex',   re: /\b[0-9a-f]{8,}\b/gi },
   /*
+   * LETTERE E CIFRE MESCOLATE, LUNGHE: IBAN, codice fiscale, segmenti JWT.
+   *
+   * Trovato rieseguendo la catena dopo aver invertito lo scrub (20 set 2026):
+   * `IBAN IT60X0542811101000000123456` usciva quasi intero. Il motivo è che
+   * dentro un blocco alfanumerico NON ci sono confini di parola, quindi né
+   * la regola sui numeri né quella sugli identificativi scattavano, e il
+   * vocabolario vedeva solo `IT` — una sigla legittima — lasciando le cifre
+   * dov'erano.
+   *
+   * Otto caratteri, e devono esserci SIA una lettera SIA una cifra: così
+   * `notifications` (tutte lettere) e `p90` (troppo corto) restano quello che
+   * sono, mentre un codice fiscale (16), un IBAN (27) e un segmento di token
+   * spariscono interi.
+   */
+  { nome: 'id',    re: /\b(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{8,}\b/g },
+  /*
    * LETTERE ATTACCATE A CIFRE: `INC00000042`, `CHG00000003`, `SRV-001`.
    *
    * La regola sui numeri qui sotto pretende un confine di parola, e in
@@ -94,9 +139,76 @@ const REGOLE: ReadonlyArray<{ nome: keyof typeof SEGNAPOSTO; re: RegExp }> = [
   { nome: 'num',   re: /\b\d+(?:[.,]\d+)?\b/g },
 ]
 
+/*
+ * LA SECONDA METÀ: DA LISTA DI CATTIVI A LISTA DI BUONI
+ * (20 set 2026, rimedio b).
+ *
+ * Le nove regole qui sopra riconoscono una FORMA. Tutto ciò che è fatto di
+ * parole passava intero, e la revisione l'ha provato eseguendo la catena:
+ *
+ *   0 sostituzioni | SLA engine failed for tenant Comune di Bolzano
+ *   0 sostituzioni | Codice fiscale RSSMRA85M01H501Z non valido
+ *   0 sostituzioni | Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *
+ * Una lista di cattivi non si può completare: per ogni forma che aggiungi
+ * resta tutto il resto, e il «rischio che RESTA» dichiarato in testa a questo
+ * file era molto più grande di come l'avevo scritto — diceva «il testo
+ * costante», ed era vero anche per quello interpolato.
+ *
+ * Quindi si inverte. Nel template sopravvive solo una parola che il prodotto
+ * SA di scrivere — quelle di `vocabolarioDeiLog.ts`, estratte dai letterali
+ * del repository — e ogni altra diventa `<w>`.
+ *
+ * LA MAIUSCOLA CONTA, ed è la metà che rende la regola forte: molti cognomi
+ * italiani sono anche parole comuni («Costa», «Conti», «Greco»). Il
+ * vocabolario tiene la forma ESATTA, quindi `costa` passa come parola e
+ * `Costa` no — a meno che non sia la prima parola della frase, dove la
+ * maiuscola è grammatica e non un nome proprio.
+ */
+const MINUSCOLE: ReadonlySet<string> =
+  new Set([...VOCABOLARIO_DEI_LOG].map((w) => w.toLowerCase()))
+
+/**
+ * Dopo questi caratteri una maiuscola è grammatica, non un nome proprio.
+ * La stringa vuota è l'inizio del messaggio.
+ */
+const APERTURE: ReadonlySet<string> = new Set(['', '.', ':', '!', '?', '—', '-', '(', '[', '"', '«', '’'])
+
+/** Una parola sopravvive? `inizioFrase` decide se la maiuscola è scusata. */
+export function sopravvive(parola: string, inizioFrase: boolean): boolean {
+  if (VOCABOLARIO_DEI_LOG.has(parola)) return true
+  const basso = parola.toLowerCase()
+  if (!MINUSCOLE.has(basso)) return false
+  // Il vocabolario ha la parola, ma non in QUESTA forma.
+  if (parola === basso) return true                    // minuscola: sempre il verso sicuro
+  if (parola === parola.toUpperCase()) return true     // sigla intera: SLA, HTTP, CI
+  return inizioFrase                                   // Maiuscola: solo dove è grammatica
+}
+
+/** I segnaposto già piazzati dalle regole di forma non si toccano. */
+const PAROLA_O_SEGNAPOSTO = /<[a-z]+>|[A-Za-zÀ-ÖØ-öø-ÿ]+/g
+/** Una fila di parole ignote è UNA cosa ignota: leggerla come tre non aggiunge niente. */
+const FILA_DI_IGNOTE = /<w>(?:[ ]+<w>)+/g
+
+export function mascheraParoleIgnote(testo: string): { testo: string; mascherate: number } {
+  let mascherate = 0
+  const mascherato = testo.replace(PAROLA_O_SEGNAPOSTO, (token, posizione: number) => {
+    if (token.startsWith('<')) return token
+    let i = posizione - 1
+    while (i >= 0 && testo[i] === ' ') i--
+    const precedente = i < 0 ? '' : testo[i]!
+    if (sopravvive(token, APERTURE.has(precedente))) return token
+    mascherate++
+    return SEGNAPOSTO.w
+  })
+  return { testo: mascherato.replace(FILA_DI_IGNOTE, SEGNAPOSTO.w), mascherate }
+}
+
 export interface RigaNormalizzata {
   template:      string
   sostituzioni:  number
+  /** Quante parole non stavano nel vocabolario. Vedi `mascheraParoleIgnote`. */
+  mascherate:    number
   /** `true` quando il messaggio era più lungo di `MAX_TEMPLATE` ed è stato tagliato. */
   tagliato:      boolean
 }
@@ -115,9 +227,13 @@ export function normalizzaMessaggio(messaggio: string): RigaNormalizzata {
   for (const { nome, re } of REGOLE) {
     testo = testo.replace(re, () => { sostituzioni++; return SEGNAPOSTO[nome] })
   }
+  // Le forme prima, le parole dopo: una email va riconosciuta come email,
+  // non smontata in tre parole ignote.
+  const { testo: mascherato, mascherate } = mascheraParoleIgnote(testo)
+  testo = mascherato
   const tagliato = testo.length > MAX_TEMPLATE
   if (tagliato) testo = `${testo.slice(0, MAX_TEMPLATE)}…`
-  return { template: testo, sostituzioni, tagliato }
+  return { template: testo, sostituzioni, mascherate, tagliato }
 }
 
 /**
