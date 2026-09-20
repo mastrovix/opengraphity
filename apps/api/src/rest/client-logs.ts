@@ -25,6 +25,8 @@ const MAX_MESSAGE_CHARS = 4_000
 const MAX_STACK_CHARS   = 8_000
 const MAX_URL_CHARS     = 2_000
 const MAX_DATA_CHARS    = 8_000
+/** L'ora dichiarata dal client si conserva, ma non governa niente: basta lo spazio di una data ISO. */
+const MAX_TIMESTAMP_CHARS = 40
 /** Il segno del taglio: chi legge il log vede che manca un pezzo. */
 const TRUNCATED = '… [troncato]'
 
@@ -99,15 +101,36 @@ async function handleClientLog(req: Request, res: Response): Promise<void> {
     return
   }
 
+  /*
+   * L'ORA LA DECIDE IL SERVER (20 set 2026, rimedio a).
+   *
+   * Prima era `body.timestamp ?? now`, senza nessuna validazione, e quel
+   * valore finiva in `created_at`, nel `day` dell'archivio di piattaforma e
+   * quindi nelle soglie che aprono gli incident e nella finestra della
+   * purga. Tre conseguenze, tutte alla portata di qualunque utente
+   * autenticato di qualunque cliente: venti POST con lo stesso messaggio
+   * aprivano un incident `critical` sulla piattaforma col titolo scelto da
+   * chi li mandava; `day: "9999-01-01"` rendeva una riga immortale (sempre
+   * dentro la finestra, mai dentro la retention); tre date diverse
+   * facevano scattare la soglia «cronico» senza che fosse successo niente.
+   *
+   * Adesso l'orologio del server è l'unica ora che conta. Quella del client
+   * si conserva accanto, perché un browser con l'ora sbagliata è a sua
+   * volta un'informazione diagnostica — ma non governa più niente.
+   */
+  const timestamp = new Date().toISOString()
+
   // M-24: i tetti si applicano qui, una volta, prima di scrivere.
   const data = JSON.stringify({
     ...(body.data ?? {}),
     ...(body.url   ? { url:   cut(body.url, MAX_URL_CHARS) }     : {}),
     ...(body.stack ? { stack: cut(body.stack, MAX_STACK_CHARS) } : {}),
+    ...(typeof body.timestamp === 'string' && body.timestamp !== ''
+      ? { clientTimestamp: cut(body.timestamp, MAX_TIMESTAMP_CHARS) }
+      : {}),
     userId: user.userId,
   })
 
-  const timestamp = body.timestamp ?? new Date().toISOString()
   const session = getSession(undefined, 'WRITE')
   try {
     await session.executeWrite((tx) =>

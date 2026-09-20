@@ -123,17 +123,41 @@ interface StatoInterno {
   scartate:    number
   scritte:     number
   fallimenti:  number
+  /** Righe di piattaforma buttate perché l'interruttore è spento. Vedi `consenso`. */
+  senzaConsenso: number
   ultimoErrore: string | null
   ultimaLamentela: number
 }
 
 const stato: StatoInterno = {
-  inAttesa: [], inAttesaCliente: [], scartate: 0, scritte: 0, fallimenti: 0, ultimoErrore: null, ultimaLamentela: 0,
+  inAttesa: [], inAttesaCliente: [], scartate: 0, scritte: 0, fallimenti: 0, senzaConsenso: 0,
+  ultimoErrore: null, ultimaLamentela: 0,
 }
 
 let timer: NodeJS.Timeout | null = null
 /** Iniettato all'avvio: il sink non importa il driver, così `logger.ts` resta senza dipendenze pesanti. */
 let scriviLotto: ((righe: RigaDaScrivere[], delCliente: RigaDelCliente[]) => Promise<number>) | null = null
+
+/**
+ * IL CONSENSO ALL'ARCHIVIO CHE ATTRAVERSA I CLIENTI (20 set 2026, rimedio a).
+ *
+ * `:ServerLogEntry` esiste per una cosa sola: l'Autoanalisi della
+ * piattaforma. Quella funzione ha un interruttore, spento di fabbrica per
+ * decisione del proprietario — ma la RACCOLTA girava comunque, per tutti i
+ * clienti, compresi quelli che avevano spento tutto. Costruivamo l'archivio
+ * che attraversa il perimetro anche quando nessuno aveva chiesto di poterlo
+ * leggere: l'interruttore governava la lettura e non la scrittura, che è il
+ * verso sbagliato.
+ *
+ * Il predicato è INIETTATO come lo scrittore, e per lo stesso motivo: qui
+ * dentro non si importa il driver. È anche il motivo per cui l'assenza del
+ * predicato vale «no»: uno script o un test che non ha dichiarato il
+ * consenso non costruisce un archivio che attraversa i clienti.
+ *
+ * Le righe del singolo cliente (`:LogEntry`) NON passano da qui: sono i suoi
+ * dati, restano in casa sua, e la sua pagina Log le deve avere comunque.
+ */
+let consenso: (() => Promise<boolean>) | null = null
 
 /** Lo stato leggibile del sink: «funziona» deve essere una cosa che si può sapere. */
 export function statoDelSink(): Readonly<Omit<StatoInterno, 'inAttesa' | 'inAttesaCliente' | 'ultimaLamentela'>> & { inAttesa: number } {
@@ -142,6 +166,7 @@ export function statoDelSink(): Readonly<Omit<StatoInterno, 'inAttesa' | 'inAtte
     scartate: stato.scartate,
     scritte: stato.scritte,
     fallimenti: stato.fallimenti,
+    senzaConsenso: stato.senzaConsenso,
     ultimoErrore: stato.ultimoErrore,
   }
 }
@@ -150,7 +175,7 @@ export function statoDelSink(): Readonly<Omit<StatoInterno, 'inAttesa' | 'inAtte
 export function azzeraSink(): void {
   stato.inAttesa = []
   stato.inAttesaCliente = []
-  stato.scartate = 0; stato.scritte = 0; stato.fallimenti = 0
+  stato.scartate = 0; stato.scritte = 0; stato.fallimenti = 0; stato.senzaConsenso = 0
   stato.ultimoErrore = null; stato.ultimaLamentela = 0
 }
 
@@ -324,10 +349,28 @@ function lamentati(messaggio: string): void {
 export async function svuota(): Promise<void> {
   if (!scriviLotto) return
   if (stato.inAttesa.length === 0 && stato.inAttesaCliente.length === 0) return
-  const lotto = stato.inAttesa
+  let lotto = stato.inAttesa
   const delCliente = stato.inAttesaCliente
   stato.inAttesa = []
   stato.inAttesaCliente = []
+  /*
+   * Il varco, chiesto UNA volta per lotto e non per riga: la risposta è
+   * dietro una cache da 60 s e questo giro avviene ogni 10 s.
+   *
+   * Se la domanda non si può fare — database giù, tenant di piattaforma
+   * assente — la risposta vale «no». Un archivio che attraversa il
+   * perimetro fra i clienti si costruisce quando qualcuno ha detto di sì,
+   * non quando non si è riusciti a chiedere.
+   */
+  if (lotto.length > 0) {
+    let permesso = false
+    try { permesso = consenso !== null && await consenso() } catch { permesso = false }
+    if (!permesso) {
+      stato.senzaConsenso += lotto.length
+      lotto = []
+    }
+  }
+  if (lotto.length === 0 && delCliente.length === 0) return
   try {
     stato.scritte += await scriviLotto(lotto, delCliente)
   } catch (e) {
@@ -363,8 +406,12 @@ export const LOTTO_CYPHER = `
  * Accende il sink. `scrittore` fa l'I/O: lo passa `index.ts`, così questo
  * modulo non importa il driver e `logger.ts` può importarlo senza cicli.
  */
-export function avviaSink(scrittore: (righe: RigaDaScrivere[], delCliente: RigaDelCliente[]) => Promise<number>): void {
+export function avviaSink(
+  scrittore: (righe: RigaDaScrivere[], delCliente: RigaDelCliente[]) => Promise<number>,
+  chiediIlConsenso: (() => Promise<boolean>) | null = null,
+): void {
   scriviLotto = scrittore
+  consenso = chiediIlConsenso
   if (timer) return
   timer = setInterval(() => { void svuota() }, INTERVALLO_MS)
   // Il timer non deve tenere in vita il processo: un'uscita pulita passa da `fermaSink`.
@@ -376,6 +423,7 @@ export async function fermaSink(): Promise<void> {
   if (timer) { clearInterval(timer); timer = null }
   await svuota()
   scriviLotto = null
+  consenso = null
 }
 
 /**
@@ -407,10 +455,13 @@ export const LOTTO_CLIENTE_CYPHER = `
  * regola dell'anello: qui dentro un errore si conta, non si racconta.
  */
 export async function accendiSinkDeiLog(): Promise<void> {
-  const [{ getSession, toNumber }, { collegaSinkDeiLog }] = await Promise.all([
-    import('@opengraphity/neo4j'),
-    import('./logger.js'),
-  ])
+  const [{ getSession, toNumber }, { collegaSinkDeiLog }, { aiFeatureEnabled }, { TENANT_DI_PIATTAFORMA }] =
+    await Promise.all([
+      import('@opengraphity/neo4j'),
+      import('./logger.js'),
+      import('./aiSettings.js'),
+      import('./serverLogEvents.js'),
+    ])
   avviaSink(async (righe, delCliente) => {
     // Sessione di scrittura in auto-commit: il `MERGE` è una scrittura sola e
     // un fallimento qui non deve trascinarsi dietro una transazione aperta.
@@ -431,7 +482,7 @@ export async function accendiSinkDeiLog(): Promise<void> {
     } finally {
       await session.close()
     }
-  })
+  }, () => aiFeatureEnabled(TENANT_DI_PIATTAFORMA, 'platformSelfAnalysis'))
   collegaSinkDeiLog(registraRigaDelServer)
 }
 

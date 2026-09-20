@@ -41,6 +41,7 @@
 import { getSession, toNumber } from '@opengraphity/neo4j'
 import type { NormalizedEvent } from '../services/events/normalize.js'
 import { enqueueEvents } from '../jobs/eventIngestWorker.js'
+import { aiFeatureEnabled } from './aiSettings.js'
 import { logger } from './logger.js'
 
 const log = logger.child({ module: 'server-log-events' })
@@ -227,6 +228,21 @@ export async function immettiEventiDaiLog(adessoMs: number = Date.now()): Promis
     if (toNumber(t.records[0]?.get('n') ?? 0) === 0) return { immessi: 0, esaminate: 0 }
   } finally {
     await session.close()
+  }
+
+  /*
+   * IL SECONDO VARCO (20 set 2026, rimedio a).
+   *
+   * Il primo sta nel sink: a interruttore spento l'archivio non si scrive.
+   * Questo serve per l'archivio che ESISTE GIÀ — chi spegne `platformSelfAnalysis`
+   * dopo averlo tenuto acceso si aspetta che il prodotto smetta di aprire
+   * incident su di sé, non che continui a farlo per novanta giorni con quello
+   * che aveva raccolto prima. Spegnere deve fermare, non solo smettere di
+   * raccogliere.
+   */
+  if (!(await aiFeatureEnabled(TENANT_DI_PIATTAFORMA, 'platformSelfAnalysis'))) {
+    log.info('server-log-events: platform self-analysis is off, no events enqueued')
+    return { immessi: 0, esaminate: 0 }
   }
 
   const firme = await aggregatiPerFirma(adessoMs)

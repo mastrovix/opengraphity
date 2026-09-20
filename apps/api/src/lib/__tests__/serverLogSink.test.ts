@@ -24,6 +24,16 @@ const riga = (extra: Record<string, unknown> = {}) => ({
   time: ORA, service: 'opengrafo-api', module: 'graphql', msg: 'boom', ...extra,
 })
 
+/**
+ * Il consenso all'archivio che attraversa i clienti, acceso.
+ *
+ * Ogni test che si aspetta righe di PIATTAFORMA deve dirlo: da qui in poi
+ * l'archivio senza tenant si scrive solo quando qualcuno ha detto di sì, e
+ * un test che non lo dice è un test che descrive un prodotto con
+ * l'interruttore spento.
+ */
+const ACCESO = async (): Promise<boolean> => true
+
 beforeEach(() => { azzeraSink() })
 
 describe('che cosa si persiste, e che cosa no', () => {
@@ -99,7 +109,7 @@ describe('la coda', () => {
     // Rimetterle in coda vuol dire che il sink dei log uccide il processo che
     // doveva osservare, proprio mentre quel processo è già in difficoltà.
     const scrittore = vi.fn().mockRejectedValue(new Error('Neo4j irraggiungibile'))
-    avviaSink(scrittore)
+    avviaSink(scrittore, ACCESO)
     registraRigaDelServer(riga(), 'error')
     registraRigaDelServer(riga({ msg: 'altro' }), 'error')
     await svuota()
@@ -112,7 +122,7 @@ describe('la coda', () => {
 
   it('lo spegnimento scrive quello che resta', async () => {
     const scritte: unknown[][] = []
-    avviaSink(async (righe) => { scritte.push(righe); return righe.length })
+    avviaSink(async (righe) => { scritte.push(righe); return righe.length }, ACCESO)
     registraRigaDelServer(riga(), 'error')
     await fermaSink()
     expect(scritte).toHaveLength(1)
@@ -164,7 +174,7 @@ describe('una riga di un cliente va in due posti diversi', () => {
     avviaSink(async (righe, delCliente) => {
       scritte.push({ piattaforma: righe, cliente: delCliente })
       return righe.length + delCliente.length
-    })
+    }, ACCESO)
     registraRigaDelServer(rigaCliente(), 'error', 'c-test')
     await fermaSink()
 
@@ -219,7 +229,7 @@ describe('una riga di un cliente va in due posti diversi', () => {
 describe('un errore del browser entra scrubbato, o non entra', () => {
   it('il messaggio diventa un TEMPLATE, come per il server', async () => {
     const scritte: RigaDaScrivere[] = []
-    avviaSink(async (righe) => { scritte.push(...righe); return righe.length })
+    avviaSink(async (righe) => { scritte.push(...righe); return righe.length }, ACCESO)
     registraErroreDelBrowser(
       'Network error caricando /incidents/b69ea861-374e-4aa1-a67f-17b3789154c8 per mario@acme.it',
       'error', '2026-09-20T19:00:00.000Z',
@@ -234,7 +244,7 @@ describe('un errore del browser entra scrubbato, o non entra', () => {
 
   it('e il numero di un ticket nemmeno: è la stessa regola del server', () => {
     const scritte: RigaDaScrivere[] = []
-    avviaSink(async (righe) => { scritte.push(...righe); return righe.length })
+    avviaSink(async (righe) => { scritte.push(...righe); return righe.length }, ACCESO)
     registraErroreDelBrowser('Impossibile chiudere INC00000042', 'error', '2026-09-20T19:00:00.000Z')
     expect(statoDelSink().inAttesa).toBe(1)
   })
@@ -242,7 +252,7 @@ describe('un errore del browser entra scrubbato, o non entra', () => {
   it('si attacca al CI del web, che la migrazione ha censito', async () => {
     // Senza un CI l'evento sarebbe orfano e nessun incident nascerebbe.
     const scritte: RigaDaScrivere[] = []
-    avviaSink(async (righe) => { scritte.push(...righe); return righe.length })
+    avviaSink(async (righe) => { scritte.push(...righe); return righe.length }, ACCESO)
     registraErroreDelBrowser('boom', 'error', '2026-09-20T19:00:00.000Z')
     await fermaSink()
     expect(scritte[0]!.service).toBe(SERVIZIO_DEL_BROWSER)
@@ -261,5 +271,72 @@ describe('un errore del browser entra scrubbato, o non entra', () => {
 
   it('e non lancia mai: un log del browser non fa cadere la rotta', () => {
     expect(() => registraErroreDelBrowser(null as unknown as string, 'error', 'x')).not.toThrow()
+  })
+})
+
+/**
+ * IL VARCO SULL'ARCHIVIO CHE ATTRAVERSA I CLIENTI (20 set 2026, rimedio a).
+ *
+ * Rilievo della revisione, verificato: la RACCOLTA girava anche con
+ * `platformSelfAnalysis` spento. L'interruttore governava la lettura e non la
+ * scrittura, quindi il prodotto costruiva l'archivio che attraversa il
+ * perimetro fra i clienti anche per chi aveva spento tutto.
+ *
+ * Le due metà della regola, e sono diverse: la riga di PIATTAFORMA ha bisogno
+ * del consenso, quella del CLIENTE no — sono i suoi dati, e la sua pagina Log
+ * li deve avere comunque.
+ */
+describe('a interruttore spento l\'archivio di piattaforma non si scrive', () => {
+  const SPENTO = async (): Promise<boolean> => false
+
+  it('le righe di piattaforma si buttano, e si CONTANO', async () => {
+    const scritte: RigaDaScrivere[] = []
+    avviaSink(async (righe) => { scritte.push(...righe); return righe.length }, SPENTO)
+    registraRigaDelServer(riga(), 'error')
+    await fermaSink()
+    expect(scritte).toHaveLength(0)
+    // Non è una perdita silenziosa: «stiamo buttando» resta una cosa che si sa.
+    expect(statoDelSink().senzaConsenso).toBe(1)
+  })
+
+  it('ma la riga del CLIENTE passa lo stesso: è casa sua', async () => {
+    const delCliente: unknown[] = []
+    avviaSink(async (righe, suoi) => { delCliente.push(...suoi); return righe.length + suoi.length }, SPENTO)
+    registraRigaDelServer(riga({ msg: 'SLA engine failed' }), 'error', 'c-test')
+    await fermaSink()
+    expect(delCliente).toHaveLength(1)
+    expect(statoDelSink().senzaConsenso).toBe(1)
+  })
+
+  it('se il consenso non si può CHIEDERE, la risposta è no', async () => {
+    // Database giù, tenant di piattaforma assente: un archivio che attraversa
+    // il perimetro si costruisce su un sì, non sull'impossibilità di chiedere.
+    const scritte: RigaDaScrivere[] = []
+    avviaSink(
+      async (righe) => { scritte.push(...righe); return righe.length },
+      async () => { throw new Error('Neo4j irraggiungibile') },
+    )
+    registraRigaDelServer(riga(), 'error')
+    await fermaSink()
+    expect(scritte).toHaveLength(0)
+    expect(statoDelSink().senzaConsenso).toBe(1)
+    // E non è contato come un GUASTO del sink: il sink ha funzionato.
+    expect(statoDelSink().fallimenti).toBe(0)
+  })
+
+  it('senza predicato vale no: uno script che non dichiara il consenso non archivia', async () => {
+    const scritte: RigaDaScrivere[] = []
+    avviaSink(async (righe) => { scritte.push(...righe); return righe.length })
+    registraRigaDelServer(riga(), 'error')
+    await fermaSink()
+    expect(scritte).toHaveLength(0)
+  })
+
+  it('anche l\'errore del BROWSER passa dal varco', async () => {
+    const scritte: RigaDaScrivere[] = []
+    avviaSink(async (righe) => { scritte.push(...righe); return righe.length }, SPENTO)
+    registraErroreDelBrowser('boom', 'error', '2026-09-20T19:00:00.000Z')
+    await fermaSink()
+    expect(scritte).toHaveLength(0)
   })
 })
