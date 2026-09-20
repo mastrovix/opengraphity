@@ -30,6 +30,28 @@ export interface InAppNotification {
 const MAX_NOTIFICATIONS = 50
 const RECONNECT_DELAY_MS = 5_000
 
+/**
+ * DOPO QUANTE CADUTE DI FILA È UN GUASTO (20 set 2026).
+ *
+ * Una connessione SSE cade: un proxy che chiude, un portatile che si
+ * sospende, la rete che salta un colpo. Si riconnette, e il fatto che si sia
+ * riconnessa dice che NON era un guasto. Fino a stasera ogni caduta veniva
+ * scritta come `error`, e su `c-one` si erano accumulate 1.074 righe di
+ * «SSE notification channel down — reconnecting»: l'87% di tutti gli errori
+ * del browser di quel cliente.
+ *
+ * Non era un problema finché non le leggeva nessuno. Da oggi le legge
+ * l'admin del cliente nella sua pagina Log, e le legge l'Autoanalisi: la
+ * prima cosa che avrebbe trovato sarebbe stato quel rumore, e avrebbe aperto
+ * un incident su una riconnessione riuscita.
+ *
+ * Quindi: le prime cadute sono `warn` — è successo, si vede, non è un
+ * guasto. Dalla terza di fila senza mai riuscire a riconnettersi diventa
+ * `error`, ed è vero: il canale è giù davvero. Il contatore si azzera alla
+ * prima riconnessione riuscita.
+ */
+const CADUTE_PRIMA_DI_CHIAMARLO_GUASTO = 3
+
 /*
   Revisione del 14 set 2026 · F10: le notifiche sono salvate sul server. Il
   pannello le carica all'avvio e a ogni riconnessione (quelle arrivate mentre
@@ -100,6 +122,8 @@ export function useNotifications() {
   const abortRef       = useRef<AbortController | null>(null)
   const mountedRef     = useRef(true)
   const connectedRef   = useRef(false)
+  /** Cadute consecutive senza riuscire a riconnettersi. Zero = il canale sta su. */
+  const caduteDiFilaRef = useRef(0)
 
   const loadSaved = useCallback(async () => {
     try {
@@ -133,6 +157,8 @@ export function useNotifications() {
       // eslint-disable-next-line @typescript-eslint/require-await
       async onopen(res) {
         if (res.ok) {
+          // Riconnessa: quello che è successo prima non era un guasto.
+          caduteDiFilaRef.current = 0
           if (mountedRef.current) setConnected(true)
           void loadSaved()
           return
@@ -172,9 +198,17 @@ export function useNotifications() {
       if (mountedRef.current) setConnected(false)
       // Schedule reconnect only if not intentionally aborted — and say so.
       if (mountedRef.current && !controller.signal.aborted) {
-        clientLogger.error('SSE notification channel down — reconnecting', {
-          error: err instanceof Error ? err.message : String(err),
-        })
+        caduteDiFilaRef.current += 1
+        const cadute = caduteDiFilaRef.current
+        const dettagli = { error: err instanceof Error ? err.message : String(err), consecutive: cadute }
+        if (cadute >= CADUTE_PRIMA_DI_CHIAMARLO_GUASTO) {
+          // Tre volte di fila senza mai riuscire: il canale è giù davvero.
+          clientLogger.error('SSE notification channel down — not recovering', dettagli)
+        } else {
+          // Una caduta che si riconnette non è un errore, ed è quello che è
+          // stato fino a stasera: 1.074 righe di rumore su un tenant solo.
+          clientLogger.warn('SSE notification channel dropped — reconnecting', dettagli)
+        }
         setTimeout(connect, RECONNECT_DELAY_MS)
       }
     })
