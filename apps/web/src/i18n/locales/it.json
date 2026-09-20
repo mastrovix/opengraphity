@@ -4065,7 +4065,9 @@
       "changePriorityDerived": "La priorità di una change deriva da tipo e rischio: un'automazione non può impostare «{{field}}».",
       "fieldNotOnEntity": "Il tipo di ticket «{{entityType}}» non ha il campo «{{field}}».",
       "entityNotWritable": "Le automazioni non possono scrivere i campi di «{{entityType}}».",
-      "fieldRequired": "{{field}} ({{type}}): il nome del campo è obbligatorio."
+      "fieldRequired": "{{field}} ({{type}}): il nome del campo è obbligatorio.",
+      "actionsUnreadable": "Le azioni di questa automazione non si riescono a leggere: non può essere accesa finché non vengono corrette.",
+      "originActionsForbidden": "Un'automazione nata da una proposta di miglioramento non può contenere «{{actions}}»: può solo scrivere campi del ticket."
     },
     "matrix": {
       "cellOutOfVocabulary": "Matrice «{{matrix}}», cella «{{cell}}»: «{{value}}» non è nel vocabolario «{{vocabulary}}» di questo cliente. Ammessi: {{allowed}}.",
@@ -4640,7 +4642,11 @@
       "postponeDatePast": "La data del risveglio deve essere nel futuro, altrimenti rimandare non cambia niente.",
       "portalSeveritiesEmpty": "Il portale non ha nessuna severità impostata: non c'è niente di stantio da togliere.",
       "portalSeveritiesAlreadyClean": "Tutte le severità del portale sono ancora nel Dizionario: non c'è niente da fare.",
-      "portalSeveritiesWouldEmpty": "Toglierle lascerebbe il portale senza nessuna severità, e nessuno potrebbe più aprire un ticket."
+      "portalSeveritiesWouldEmpty": "Toglierle lascerebbe il portale senza nessuna severità, e nessuno potrebbe più aprire un ticket.",
+      "automationName": "L'automazione proposta non ha un nome.",
+      "automationEntity": "«{{value}}» non è un tipo di ticket su cui un'automazione possa girare.",
+      "automationEvent": "«{{value}}» non è un evento di automazione.",
+      "automationEventEntity": "Un'automazione su «{{entity}}» non gira su «{{event}}»: quella combinazione non viene valutata da nessuna parte."
     }
   },
   "errorBoundary": {

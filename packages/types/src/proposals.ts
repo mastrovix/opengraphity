@@ -88,7 +88,19 @@ export const PROPOSAL_REJECTION_NOTE_MAX = 2000
  * (`changesStuck.ts` ha già deciso «si segnala, non si ripara»), e
  * l'accensione dello scripting del cliente.
  */
-export const PROPOSAL_ACTION_TYPES = ['portal_severities.remove_stale'] as const
+export const PROPOSAL_ACTION_TYPES = [
+  'portal_severities.remove_stale',
+  /*
+   * `automation.create_disabled` (20 set 2026, prerequisito dell'ondata 6).
+   *
+   * La prima voce che CREA qualcosa. Nasce spenta, porta `origin:
+   * 'ai_proposal'` — che non è un'etichetta ma la regola per cui ogni
+   * accensione rivalida le sue azioni contro un'allowlist ristretta — e la
+   * sua inversa è cancellarla, che qui è legittimo perché si toglie ciò che
+   * la proposta stessa aveva messo.
+   */
+  'automation.create_disabled',
+] as const
 export type ProposalActionType = (typeof PROPOSAL_ACTION_TYPES)[number]
 
 export function isProposalActionType(v: unknown): v is ProposalActionType {

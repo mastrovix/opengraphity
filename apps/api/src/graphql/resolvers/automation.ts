@@ -21,6 +21,8 @@ import {
   type AutomationEventType, isNotificationTarget, AUTOMATION_NOTIFICATION_CHANNELS, DEFAULT_SLA_WARNING_MINUTES,
 } from '@opengraphity/types'
 import { assertRolesExist, roleKeysInActions } from '../../lib/roles.js'
+import { assertAccensioneAmmessa, origineDi } from '../../lib/automationOrigin.js'
+import type { AutomationOrigin } from '@opengraphity/types'
 
 type Props = Record<string, unknown>
 
@@ -297,6 +299,9 @@ function mapTrigger(p: Props) {
     enabled:           p['enabled']         ?? false,
     executionCount:    Number(p['execution_count'] ?? 0),
     lastExecutedAt:    p['last_executed_at'] ?? null,
+    // Chi l'ha scritta. Un nodo senza la proprietà è di prima di questo
+    // campo, quindi l'ha scritta una persona: `origineDi` lo dice.
+    origin:            origineDi(p),
   }
 }
 
@@ -380,6 +385,16 @@ async function createAutoTrigger(_: unknown, args: { input: Props }, ctx: GraphQ
   assertEventSupported(eventType, entityType)
   assertChangedOperatorEvent(conditions, eventType)
   await assertRolesExist(ctx.tenantId, roleKeysInActions(actions))
+  /*
+   * L'ORIGINE NON ARRIVA DALL'INPUT GraphQL (20 set 2026).
+   *
+   * `createAutoTrigger` è la mutation che usa una persona dalla pagina, e una
+   * persona non può dichiararsi «proposta AI»: sarebbe un modo di far nascere
+   * un'automazione con meno controlli invece che con più. L'origine
+   * `ai_proposal` la scrive solo il catalogo delle azioni delle proposte,
+   * che passa da `creaAutomazioneDaProposta` (lib/proposalActions.ts).
+   */
+  const origin: AutomationOrigin = 'manual'
   return withSession(async (session) => {
     await assertStepTargets(session, ctx.tenantId, entityType, { actions, conditions })
     const rows = await runQuery<{ props: Props }>(session, `
@@ -388,6 +403,7 @@ async function createAutoTrigger(_: unknown, args: { input: Props }, ctx: GraphQ
         name: $name, entity_type: $entityType, event_type: $eventType,
         conditions: $conditions, timer_delay_minutes: $timerDelayMinutes,
         actions: $actions, enabled: $enabled,
+        origin: $origin,
         execution_count: 0, last_executed_at: null,
         created_at: $now, updated_at: $now
       })
@@ -398,7 +414,7 @@ async function createAutoTrigger(_: unknown, args: { input: Props }, ctx: GraphQ
       conditions,
       timerDelayMinutes,
       actions,
-      enabled: input['enabled'] ?? true, now,
+      enabled: input['enabled'] ?? true, origin, now,
     })
     invalidateTriggerCache(ctx.tenantId)
     return mapTrigger(rows[0]!.props)
@@ -442,6 +458,26 @@ async function updateAutoTrigger(_: unknown, args: { id: string; input: Props },
         actions:    params['actions']    as string | null | undefined,
         conditions: params['conditions'] as string | null | undefined,
       })
+    }
+    /*
+     * L'ACCENSIONE RIVALIDA (20 set 2026, prerequisito dell'ondata 6).
+     *
+     * Il momento pericoloso di un'automazione nata da una proposta non è la
+     * creazione — nasce spenta e con le azioni già filtrate — ma
+     * l'ACCENSIONE, perché fra i due momenti il contenuto può essere
+     * cambiato. Qui si rileggono origine e azioni come saranno DOPO questo
+     * aggiornamento, e se l'origine è una proposta le azioni ripassano dalla
+     * sbarra ristretta.
+     */
+    if (args.input['enabled'] === true) {
+      const attuale = await runQuery<{ props: Props }>(session, `
+        MATCH (t:AutoTrigger {id: $id, tenant_id: $tenantId}) RETURN properties(t) AS props
+      `, { id: args.id, tenantId: ctx.tenantId })
+      const props = attuale[0]?.props
+      if (props) {
+        const azioniDopo = args.input['actions'] !== undefined ? params['actions'] : props['actions']
+        assertAccensioneAmmessa(origineDi(props), azioniDopo)
+      }
     }
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (t:AutoTrigger {id: $id, tenant_id: $tenantId})

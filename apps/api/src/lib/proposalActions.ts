@@ -34,10 +34,13 @@
  * l'unica parte rischiosa della spina.
  */
 import { getSession } from '@opengraphity/neo4j'
+import { randomUUID } from 'node:crypto'
 import {
   PROPOSAL_FORBIDDEN_ACTION_TYPES, isProposalActionType,
+  AUTOMATION_ENTITY_TYPES, TRIGGER_EVENT_TYPES, automationEventSupported,
   type ProposalActionType,
 } from '@opengraphity/types'
+import { assertAzioniAmmesseDaProposta } from './automationOrigin.js'
 import { runQueryOne } from '../graphql/resolvers/ci-utils.js'
 import { NotFoundError, ValidationError } from './errors.js'
 import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSeverityOptions.js'
@@ -167,6 +170,129 @@ async function scriviOpzioni(tenantId: string, grezzo: string): Promise<void> {
   }
 }
 
+/**
+ * `automation.create_disabled` — crea un'automazione SPENTA (20 set 2026).
+ *
+ * La seconda voce del catalogo, e la prima che CREA qualcosa. Tre cose la
+ * rendono accettabile, e vanno lette insieme:
+ *
+ *  1. **nasce spenta**, sempre: accettare la proposta non mette in moto
+ *     niente, mette a disposizione qualcosa da leggere e poi accendere;
+ *  2. **porta `origin: 'ai_proposal'`**, che non è un'etichetta ma una
+ *     regola: da quel momento ogni accensione rivalida le sue azioni contro
+ *     l'allowlist ristretta (`lib/automationOrigin.ts`);
+ *  3. **l'inversa è cancellarla.** È l'unico caso in cui «disfare» vuol dire
+ *     eliminare, ed è legittimo proprio perché la proposta l'aveva creata:
+ *     si toglie ciò che si era messo, non qualcosa che c'era prima. Questo
+ *     corrigge il «non cancellerà nulla» della prima stesura del progetto.
+ *
+ * I parametri NON li compone un modello: li calcola il codice dagli aggregati
+ * (vedi `lib/dailyWorkAnalyst.ts`). Qui si rivalida comunque tutto, perché una
+ * sbarra che si fida di chi la chiama non è una sbarra.
+ */
+/**
+ * La cache dei trigger, scordata con un import PIGRO.
+ *
+ * `triggerEngine` tira dentro BullMQ, che apre connessioni Redis al solo
+ * essere importato. Importarlo in cima a questo file renderebbe pesante un
+ * modulo che era leggero: ogni test che tocca il catalogo delle azioni si
+ * porterebbe dietro la coda — ed è successo davvero, `proposalActions.test.ts`
+ * è caduto sul `logger.child` di `bullmq.ts`. Qui serve solo nel momento in
+ * cui un'automazione viene creata o cancellata, e in quel momento il processo
+ * ha già tutto acceso.
+ */
+async function scordaLaCacheDeiTrigger(tenantId: string): Promise<void> {
+  const { invalidateTriggerCache } = await import('./triggerEngine.js')
+  invalidateTriggerCache(tenantId)
+}
+
+async function creaAutomazioneDaProposta(
+  tenantId: string, params: Record<string, unknown>,
+): Promise<EsitoAzione> {
+  const nome       = String(params['name'] ?? '').trim()
+  const entityType = String(params['entityType'] ?? '')
+  const eventType  = String(params['eventType'] ?? '')
+  const actions    = params['actions']
+  const conditions = params['conditions'] ?? null
+
+  if (nome === '') {
+    throw new ValidationError('The proposed automation has no name', { key: 'errors.proposal.automationName', params: {} })
+  }
+  if (!(AUTOMATION_ENTITY_TYPES as readonly string[]).includes(entityType)) {
+    throw new ValidationError(`"${entityType}" is not a ticket type an automation can watch`, {
+      key: 'errors.proposal.automationEntity', params: { value: entityType },
+    })
+  }
+  if (!(TRIGGER_EVENT_TYPES as readonly string[]).includes(eventType)) {
+    throw new ValidationError(`"${eventType}" is not an automation event`, {
+      key: 'errors.proposal.automationEvent', params: { value: eventType },
+    })
+  }
+  /*
+   * La combinazione evento×ticket deve essere una di quelle che il motore
+   * valuta davvero: `automationEventSupported` è la stessa tabella che usa la
+   * pagina. Una regola «su aggiornamento di una change» si salverebbe, e non
+   * girerebbe mai — il difetto AU-1, che qui non si ripete.
+   */
+  if (!automationEventSupported(eventType, entityType)) {
+    throw new ValidationError(
+      `An automation on "${entityType}" does not run on "${eventType}"`,
+      { key: 'errors.proposal.automationEventEntity', params: { event: eventType, entity: entityType } },
+    )
+  }
+  // La sbarra ristretta, la prima delle due volte: l'altra è l'accensione.
+  assertAzioniAmmesseDaProposta(actions)
+
+  const id  = randomUUID()
+  const now = new Date().toISOString()
+  const session = getSession(undefined, 'WRITE')
+  try {
+    await session.run(`
+      MATCH (t:Tenant {id: $tenantId})
+      CREATE (a:AutoTrigger {
+        id: $id, tenant_id: $tenantId,
+        name: $nome, entity_type: $entityType, event_type: $eventType,
+        conditions: $conditions, timer_delay_minutes: null,
+        actions: $actions, enabled: false,
+        origin: 'ai_proposal',
+        execution_count: 0, last_executed_at: null,
+        created_at: $now, updated_at: $now
+      })
+    `, { tenantId, id, nome, entityType, eventType, conditions, actions: actions ?? null, now })
+  } finally {
+    await session.close()
+  }
+  await scordaLaCacheDeiTrigger(tenantId)
+  return {
+    details:   { automationId: id, name: nome, entityType, eventType, enabled: false },
+    undoState: { automationId: id, name: nome },
+  }
+}
+
+/** Disfare = cancellare quello che la proposta aveva creato, e solo quello. */
+async function cancellaAutomazioneDaProposta(
+  tenantId: string, undoState: Record<string, unknown>,
+): Promise<void> {
+  const id = String(undoState['automationId'] ?? '')
+  if (id === '') return
+  const session = getSession(undefined, 'WRITE')
+  try {
+    /*
+     * Si cancella SOLO se è ancora di quell'origine: se nel frattempo
+     * qualcuno l'avesse adottata come propria — cioè se fosse cambiata
+     * origine — disfare vorrebbe dire portargli via una regola sua.
+     */
+    await session.run(`
+      MATCH (a:AutoTrigger {id: $id, tenant_id: $tenantId})
+      WHERE a.origin = 'ai_proposal'
+      DETACH DELETE a
+    `, { tenantId, id })
+  } finally {
+    await session.close()
+  }
+  await scordaLaCacheDeiTrigger(tenantId)
+}
+
 type Esecutore = (tenantId: string, params: Record<string, unknown>) => Promise<EsitoAzione>
 type Ripristino = (tenantId: string, undoState: Record<string, unknown>) => Promise<void>
 
@@ -174,6 +300,10 @@ const CATALOGO: Readonly<Record<ProposalActionType, { esegui: Esecutore; disfa: 
   'portal_severities.remove_stale': {
     esegui: (tenantId) => togliSeveritaStantie(tenantId),
     disfa:  ripristinaSeverita,
+  },
+  'automation.create_disabled': {
+    esegui: creaAutomazioneDaProposta,
+    disfa:  cancellaAutomazioneDaProposta,
   },
 }
 

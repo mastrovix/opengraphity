@@ -134,6 +134,7 @@ import { proposalPermissions } from './20261005_1140_proposal_permissions.js'
 import { opengrafoPlatformCI } from './20261006_1010_opengrafo_platform_ci.js'
 import { aiSettingsPlatformSelfAnalysis } from './20261006_1020_ai_settings_platform_self_analysis.js'
 import { aiSettingsDailyWork } from './20261006_1030_ai_settings_daily_work.js'
+import { automationOrigin } from './20261006_1040_automation_origin.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -253,4 +254,5 @@ export const MIGRATIONS: readonly Migration[] = [
   opengrafoPlatformCI,
   aiSettingsPlatformSelfAnalysis,
   aiSettingsDailyWork,
+  automationOrigin,
 ]

@@ -4065,7 +4065,9 @@
       "changePriorityDerived": "A change's priority is derived from its type and risk: an automation cannot set «{{field}}».",
       "fieldNotOnEntity": "The ticket type «{{entityType}}» has no «{{field}}» field.",
       "entityNotWritable": "Automations cannot write fields of «{{entityType}}».",
-      "fieldRequired": "{{field}} ({{type}}): the field name is required."
+      "fieldRequired": "{{field}} ({{type}}): the field name is required.",
+      "actionsUnreadable": "The actions of this automation cannot be read: it cannot be enabled until they are fixed.",
+      "originActionsForbidden": "An automation created from an improvement proposal cannot contain “{{actions}}”: it may only write ticket fields."
     },
     "matrix": {
       "cellOutOfVocabulary": "Matrix \"{{matrix}}\", cell \"{{cell}}\": \"{{value}}\" is not in this tenant's \"{{vocabulary}}\" dictionary. Allowed: {{allowed}}.",
@@ -4640,7 +4642,11 @@
       "postponeDatePast": "The wake-up date must be in the future, otherwise postponing changes nothing.",
       "portalSeveritiesEmpty": "The portal has no severities set: there is nothing stale to remove.",
       "portalSeveritiesAlreadyClean": "Every portal severity is still in the dictionary: nothing to do.",
-      "portalSeveritiesWouldEmpty": "Removing them would leave the portal with no severity at all, and nobody could open a ticket."
+      "portalSeveritiesWouldEmpty": "Removing them would leave the portal with no severity at all, and nobody could open a ticket.",
+      "automationName": "The proposed automation has no name.",
+      "automationEntity": "“{{value}}” is not a ticket type an automation can watch.",
+      "automationEvent": "“{{value}}” is not an automation event.",
+      "automationEventEntity": "An automation on “{{entity}}” does not run on “{{event}}”: that combination is never evaluated."
     }
   },
   "errorBoundary": {

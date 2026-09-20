@@ -28,9 +28,14 @@ describe('il catalogo è chiuso', () => {
   })
 
   it('le voci ammesse oggi sono quelle dichiarate, e sono poche apposta', () => {
-    // Se questo numero cresce senza che qualcuno ci pensi, il catalogo ha
-    // smesso di essere chiuso e ha cominciato a essere un elenco.
-    expect(PROPOSAL_ACTION_TYPES).toEqual(['portal_severities.remove_stale'])
+    // Se questo elenco cresce senza che qualcuno ci pensi, il catalogo ha
+    // smesso di essere chiuso e ha cominciato a essere un elenco. Questo
+    // test è caduto quando è entrata la seconda voce — che è esattamente il
+    // suo mestiere: costringere chi la aggiunge a dichiararla qui.
+    expect(PROPOSAL_ACTION_TYPES).toEqual([
+      'portal_severities.remove_stale',
+      'automation.create_disabled',
+    ])
   })
 })
 

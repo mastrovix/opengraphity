@@ -537,6 +537,12 @@ const INDEXES: SchemaStatement[] = [
    * poter cercare per (tenant, giorno) senza scandire tutto.
    */
   { label: 'LogEntry(tenant_id, timestamp)',   cypher: 'CREATE INDEX log_entry_tenant_timestamp IF NOT EXISTS FOR (n:LogEntry) ON (n.tenant_id, n.timestamp)' },
+  /*
+   * LA COPERTURA DELLA KNOWLEDGE BASE (20 set 2026). `coperturaPerCategoria`
+   * raggruppa gli incident per `category` dentro una finestra: senza indice è
+   * una scansione di tutti gli incident del cliente a ogni giro notturno.
+   */
+  { label: 'Incident(tenant_id, category)',    cypher: 'CREATE INDEX incident_tenant_category IF NOT EXISTS FOR (n:Incident) ON (n.tenant_id, n.category)' },
   // Event Management: la console lista per (tenant, status) ordinando per last_seen_at.
   { label: 'Event(tenant_id, status, last_seen_at)', cypher: 'CREATE INDEX event_tenant_status_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.status, n.last_seen_at)' },
   // Tempeste per sorgente (eventStorm.ts: MATCH (e:Event {tenant_id, source_id})) e
