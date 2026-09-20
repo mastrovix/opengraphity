@@ -15,13 +15,25 @@
  * `EXPLAIN` a Neo4j, che ANALIZZA e pianifica senza eseguire — e senza bisogno
  * dei parametri. Una query che non si parsa è un errore.
  *
- * PERIMETRO DICHIARATO: solo le query scritte per intero. Quelle composte con
- * `${...}` (un WHERE costruito, un'etichetta che viene dal metamodello del
- * cliente) non esistono finché non si sa cosa ci va dentro, e qui non si
- * possono giudicare: si contano e si dice quante sono. Il difetto che ha fatto
- * nascere questo controllo era in una query scritta per intero.
+ * PERIMETRO (20 set 2026: allargato). Le query scritte per intero si mandano
+ * tutte in EXPLAIN. Quelle COMPOSTE con `${...}` restavano fuori — 368, e da
+ * quel buco è passato il difetto del `WITH` di `assignTeamCypher`, che
+ * tagliava una variabile letta prima. Adesso si risolvono, ma solo dove è
+ * lecito essere certi:
  *
- * Uso: node scripts/check-cypher.mjs [--verbose]
+ *   - `${nomeFunzione(argomenti letterali)}` con la funzione esportata da un
+ *     sorgente di questo repo: si IMPORTA e si CHIAMA sul serio;
+ *   - `${identificatore}` in posizione di etichetta o di tipo di relazione.
+ *
+ * Il resto resta fuori e si dice perché, motivo per motivo. La strada ovvia —
+ * un segnaposto al posto di ogni `${...}` — è sbagliata e vale la pena
+ * scrivere il motivo: verificherebbe una query DIVERSA da quella vera, e un
+ * guardiano che dice «valida» dopo aver guardato un'altra cosa è peggio di
+ * uno che tace. Con un segnaposto, proprio il difetto che ha allargato questo
+ * perimetro sarebbe risultato valido.
+ *
+ * Uso: node scripts/check-cypher.mjs [--verbose] [--composte] [--dump]
+ * `--composte` elenca le forme di interpolazione per frequenza.
  * Richiede il Neo4j dello stack locale in piedi (container `infra-neo4j-1`).
  */
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
@@ -193,6 +205,7 @@ let composte = 0
 let esempi = 0
 const formeComposte = new Map()
 const composteDettaglio = []
+const daRisolvere = []
 for (const dir of SCAN) {
   for (const file of walk(dir)) {
     /**
@@ -211,6 +224,7 @@ for (const dir of SCAN) {
       if (tetto) tettiParametrici.push({ file: relative(ROOT, file), clausola: `${tetto[1].toUpperCase()} $${tetto[2]}` })
       if (t.includes('${')) {
         composte++
+        daRisolvere.push({ file: relative(ROOT, file), assoluto: file, query: t })
         // Le forme di interpolazione, per poterle guardare invece che contarle.
         for (const m of t.matchAll(/\$\{([^}]*)\}/g)) {
           const forma = m[1].trim().slice(0, 60)
@@ -337,11 +351,200 @@ function spiega(queries) {
   return { rotte, frammenti: frammenti.size, nonAttribuito: null }
 }
 
+/*
+ * ── LE QUERY COMPOSTE, RISOLTE PER DAVVERO ─────────────────────────────────
+ *
+ * Fino al 20 set 2026 qui c'era una resa: le query con `${…}` si contavano e
+ * si dichiaravano fuori perimetro. Da quel buco è passato il difetto del
+ * `WITH` di `assignTeamCypher`, che tagliava una variabile letta prima e
+ * faceva fallire la query solo a tempo di esecuzione.
+ *
+ * La strada ovvia — mettere un segnaposto al posto di ogni `${…}` — è
+ * SBAGLIATA, e vale la pena scrivere perché: produrrebbe una query DIVERSA da
+ * quella vera, e un guardiano che dice «verificata» dopo aver verificato
+ * un'altra cosa è peggio di uno che tace. Con un segnaposto al posto del
+ * frammento, proprio il difetto di stamattina sarebbe risultato valido.
+ *
+ * Quindi si risolve solo ciò di cui è lecito essere certi, e sono due casi:
+ *
+ *  1. `${nomeFunzione(argomenti letterali)}` dove la funzione è esportata da
+ *     un sorgente di questo repo: si IMPORTA e si CHIAMA (scripts/cypher-fragment.mts,
+ *     sotto tsx, sui sorgenti e non su `dist`). Quello che torna è il testo
+ *     vero, non una sua imitazione.
+ *  2. `${identificatore}` subito dopo un `:` — cioè in posizione di etichetta
+ *     o di tipo di relazione. Lì qualunque nome valido va bene: EXPLAIN non
+ *     pretende che l'etichetta esista.
+ *
+ * Tutto il resto — un WHERE costruito, un elenco di campi, una condizione —
+ * resta fuori, e si dice quante sono e perché. Una query si verifica solo se
+ * TUTTE le sue interpolazioni sono risolte: una sola non risolta e la query
+ * intera resta fuori.
+ */
+
+/** Gli span `${…}` di un template, con le graffe bilanciate (dentro ci sono oggetti). */
+function interpolazioni(t) {
+  const out = []
+  for (let i = 0; i < t.length - 1; i++) {
+    if (t[i] !== '$' || t[i + 1] !== '{') continue
+    let prof = 1
+    let j = i + 2
+    for (; j < t.length && prof > 0; j++) {
+      if (t[j] === '{') prof++
+      else if (t[j] === '}') prof--
+    }
+    if (prof !== 0) return null                    // template malformato: non si tocca
+    out.push({ inizio: i, fine: j, testo: t.slice(i + 2, j - 1) })
+    i = j - 1
+  }
+  return out
+}
+
+/**
+ * Gli argomenti di una chiamata, SOLO se sono tutti letterali.
+ *
+ * Il test è il parse: si porta il testo a JSON (chiavi nude fra virgolette,
+ * apici in virgolette) e si prova. Se passa, dentro non c'era nient'altro che
+ * letterali — niente variabili, niente chiamate, niente da valutare. Se non
+ * passa, la query resta fuori perimetro: meglio non verificarla che chiamare
+ * una funzione con argomenti inventati.
+ */
+function argomentiLetterali(testo) {
+  const grezzo = testo.trim()
+  if (grezzo === '') return []
+  const jsonish = ('[' + grezzo + ']')
+    .replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:/g, '$1"$2":')
+    .replace(/'([^'\\]*)'/g, '"$1"')
+  try {
+    const v = JSON.parse(jsonish)
+    return Array.isArray(v) ? v : null
+  } catch { return null }
+}
+
+/** Nome della funzione → file che la esporta. */
+const compositori = new Map()
+for (const dir of SCAN) {
+  for (const file of walk(dir)) {
+    if (!file.endsWith('.ts') || file.endsWith('.test.ts')) continue
+    for (const m of readFileSync(file, 'utf8').matchAll(/export function ([A-Za-z0-9_]+)\s*\(/g)) {
+      compositori.set(m[1], file)
+    }
+  }
+}
+
+/** L'etichetta che si mette al posto di un `${…}` in posizione di etichetta. */
+const ETICHETTA_FINTA = 'Incident'
+
+/**
+ * Se l'interpolazione che comincia a `pos` sta in posizione di ETICHETTA o di
+ * tipo di relazione — `(n:${x})`, `(:${x})`, `[r:${x}]`, `:A|:${x}` — e non in
+ * posizione di valore dentro una mappa di proprietà, `{id: ${x}}`.
+ *
+ * La prima versione guardava solo «il carattere prima è `:`», e la prima
+ * corsa ha prodotto un falso positivo su `CREATE (:EventHistoryEntry {id:
+ * ${f.id}, …})`: là i due punti separano una chiave dal suo valore, e
+ * mettendoci un'etichetta la query diventava assurda. Un guardiano che alza
+ * un errore su una query sana è peggio di uno che tace, quindi la regola è
+ * diventata stretta: si risale il `:`, si salta l'eventuale nome di
+ * variabile, e quello che resta deve aprire un pattern — `(`, `[` o `|`.
+ */
+function inPosizioneDiEtichetta(query, pos) {
+  let prima = query.slice(0, pos).replace(/\s+$/, '')
+  if (!prima.endsWith(':')) return false
+  prima = prima.slice(0, -1).replace(/\s+$/, '')          // via i due punti
+  prima = prima.replace(/[A-Za-z_][A-Za-z0-9_]*$/, '')    // via il nome della variabile, se c'è
+  prima = prima.replace(/\s+$/, '')
+  const ultimo = prima[prima.length - 1]
+  return ultimo === '(' || ultimo === '[' || ultimo === '|'
+}
+
+const nonRisolte = new Map()   // motivo → quante
+const risolvibili = []         // { file, pezzi, chiamate }
+for (const c of daRisolvere) {
+  const spans = interpolazioni(c.query)
+  if (!spans) { nonRisolte.set('template malformato', (nonRisolte.get('template malformato') ?? 0) + 1); continue }
+  const pezzi = []
+  const chiamate = []
+  let resa = null
+  let ultimo = 0
+  for (const sp of spans) {
+    pezzi.push({ tipo: 'testo', valore: c.query.slice(ultimo, sp.inizio) })
+    ultimo = sp.fine
+    const testo = sp.testo.trim()
+
+    const chiamata = /^([A-Za-z_][A-Za-z0-9_]*)\s*\(([\s\S]*)\)$/.exec(testo)
+    if (chiamata && compositori.has(chiamata[1])) {
+      const args = argomentiLetterali(chiamata[2])
+      if (args === null) { resa = 'argomenti non letterali'; break }
+      pezzi.push({ tipo: 'chiamata', indice: chiamate.length })
+      chiamate.push({ file: compositori.get(chiamata[1]), fn: chiamata[1], args })
+      continue
+    }
+    if (chiamata) { resa = 'funzione non esportata dai sorgenti'; break }
+
+    if (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(testo) && inPosizioneDiEtichetta(c.query, sp.inizio)) {
+      pezzi.push({ tipo: 'testo', valore: ETICHETTA_FINTA })
+      continue
+    }
+    resa = /^[A-Za-z_][A-Za-z0-9_.]*$/.test(testo)
+      ? 'identificatore in posizione non riconosciuta'
+      : 'espressione da valutare'
+    break
+  }
+  if (resa) { nonRisolte.set(resa, (nonRisolte.get(resa) ?? 0) + 1); continue }
+  pezzi.push({ tipo: 'testo', valore: c.query.slice(ultimo) })
+  risolvibili.push({ file: c.file, pezzi, chiamate })
+}
+
+/** Chiama i compositori: UN processo `tsx` per tutte le chiamate di tutte le query. */
+function risolviFrammenti(richieste) {
+  if (richieste.length === 0) return []
+  // `.bin/tsx` è uno script di shell, non un file JS: si esegue, non si dà in pasto a `node`.
+  const out = execFileSync(join(ROOT, 'node_modules', '.bin', 'tsx'), [join(ROOT, 'scripts', 'cypher-fragment.mts')], {
+    input: JSON.stringify(richieste), encoding: 'utf8', cwd: ROOT, maxBuffer: 64 * 1024 * 1024,
+    /*
+     * Un tetto al tempo: importare i moduli dell'API accende code e driver, e
+     * un import che si impianta non deve appendere il guardiano. Scaduto il
+     * tempo, le composte restano fuori perimetro e lo si dice — che è il
+     * comportamento di prima, non un silenzio.
+     */
+    timeout: 180_000,
+  })
+  return JSON.parse(out)
+}
+
+const composteRisolte = []
+if (risolvibili.length > 0) {
+  const tutte = []
+  for (const r of risolvibili) for (const ch of r.chiamate) tutte.push(ch)
+  let risposte
+  try {
+    risposte = risolviFrammenti(tutte)
+  } catch (e) {
+    console.error(`check-cypher: non sono riuscito a risolvere i frammenti — ${e instanceof Error ? e.message : String(e)}`)
+    process.exit(2)
+  }
+  let k = 0
+  for (const r of risolvibili) {
+    const mie = risposte.slice(k, k + r.chiamate.length)
+    k += r.chiamate.length
+    const rotta = mie.find((x) => !x.ok)
+    if (rotta) { nonRisolte.set('il compositore ha alzato', (nonRisolte.get('il compositore ha alzato') ?? 0) + 1); continue }
+    const query = r.pezzi.map((p) => p.tipo === 'testo' ? p.valore : mie[p.indice].cypher).join('')
+    if (query.includes('${')) {
+      // Un frammento che porta dentro un'altra interpolazione: non si finge
+      // di averla risolta.
+      nonRisolte.set('il frammento contiene altre interpolazioni', (nonRisolte.get('il frammento contiene altre interpolazioni') ?? 0) + 1)
+      continue
+    }
+    composteRisolte.push({ file: r.file + ' (composta)', query })
+  }
+}
+
 let rotte = []
 let frammenti = 0
 let nonAttribuito = null
 try {
-  ;({ rotte, frammenti, nonAttribuito } = spiega(intere))
+  ;({ rotte, frammenti, nonAttribuito } = spiega([...intere, ...composteRisolte]))
 } catch (e) {
   /*
    * Un difetto DI QUESTO SCRIPT non si spaccia per «Neo4j irraggiungibile»:
@@ -395,4 +598,22 @@ if (process.argv.includes('--composte')) {
   }
 }
 
-console.log(`check-cypher: ${intere.length - frammenti} query verificate con EXPLAIN, tutte valide; nessun tetto parametrico. Fuori perimetro: ${composte} composte con \${…}, ${esempi} esempi nei commenti, ${frammenti} pezzi di query che si concludono altrove.`)
+const fuoriPerimetro = [...nonRisolte.entries()].sort((a, b) => b[1] - a[1])
+const totaleFuori = fuoriPerimetro.reduce((n, [, q]) => n + q, 0)
+
+console.log(
+  `check-cypher: ${intere.length + composteRisolte.length - frammenti} query verificate con EXPLAIN, tutte valide`
+  + ` (${composteRisolte.length} delle quali COMPOSTE, risolte chiamando i compositori veri);`
+  + ` nessun tetto parametrico.`
+  + ` Fuori perimetro: ${totaleFuori} composte su ${composte}, ${esempi} esempi nei commenti,`
+  + ` ${frammenti} pezzi di query che si concludono altrove.`,
+)
+if (totaleFuori > 0) {
+  /*
+   * Le non risolte si ELENCANO col motivo, non si contano e basta: «368
+   * composte» era un numero che non diceva su cosa lavorare. Un motivo dice
+   * anche quale pezzo di guardiano varrebbe la pena costruire dopo.
+   */
+  console.log('  Perché restano fuori:')
+  for (const [motivo, quante] of fuoriPerimetro) console.log(`    ${String(quante).padStart(4)}  ${motivo}`)
+}
