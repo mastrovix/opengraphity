@@ -82,6 +82,8 @@ export function organizationSDL(): string {
     reportDesigner: Boolean!
     """Il prodotto analizza i propri errori e propone rimedi (20 set 2026). L'unico spento di fabbrica: legge un archivio che attraversa il perimetro fra i clienti."""
     platformSelfAnalysis: Boolean!
+    """Il prodotto guarda il registro di questo cliente e propone come velocizzare il lavoro (20 set 2026). Spento di fabbrica."""
+    dailyWorkAnalysis: Boolean!
   }
 
   type AISettings {
@@ -103,6 +105,7 @@ export function organizationSDL(): string {
     formDesigner:   Boolean!
     reportDesigner: Boolean!
     platformSelfAnalysis: Boolean!
+    dailyWorkAnalysis: Boolean!
   }
 
   input AISettingsInput {

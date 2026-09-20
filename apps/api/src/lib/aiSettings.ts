@@ -47,7 +47,7 @@ import { invalidateSchema } from './schemaInvalidator.js'
  * sapendo la conseguenza: finché nessuno lo accende, l'area D non gira e lo
  * dice invece di tacere.
  */
-export const AI_FEATURES = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner', 'reportDesigner', 'platformSelfAnalysis'] as const
+export const AI_FEATURES = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner', 'reportDesigner', 'platformSelfAnalysis', 'dailyWorkAnalysis'] as const
 export type AIFeature = (typeof AI_FEATURES)[number]
 
 export interface AISettings {
@@ -62,8 +62,21 @@ export const FACTORY_AI_SETTINGS: Readonly<AISettings> = {
   features: {
     triage: true, assistant: true, reportAnalysis: true, postIncident: true,
     kbArticles: true, embeddings: true, formDesigner: true, reportDesigner: true,
-    // L'unico `false` di questo oggetto. Vedi il commento su AI_FEATURES.
+    /*
+     * I DUE SPENTI DI FABBRICA, e non sono lo stesso interruttore (20 set 2026).
+     *
+     * `platformSelfAnalysis` legge l'archivio degli errori del SERVER, che
+     * attraversa il perimetro fra i clienti: esiste solo sul tenant di
+     * piattaforma. `dailyWorkAnalysis` legge il registro DI QUESTO cliente e
+     * propone dentro casa sua. Rischi diversi, perimetri diversi, decisioni
+     * diverse — un interruttore solo avrebbe costretto a sceglierli insieme.
+     *
+     * Entrambi spenti, e per la stessa ragione: sono gli unici due che
+     * SCRIVONO qualcosa di propria iniziativa, di notte, senza che nessuno
+     * clicchi. Decisione del proprietario.
+     */
     platformSelfAnalysis: false,
+    dailyWorkAnalysis: false,
   },
   clusterMinSimilarity: 0.72,
   clusterMinSize: 3,

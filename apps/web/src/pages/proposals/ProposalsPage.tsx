@@ -70,8 +70,33 @@ interface Risultato {
 const DA_DECIDERE = ['open', 'not_now']
 const DECISE      = ['accepted', 'rejected', 'expired', 'superseded']
 
-const paramsDi = (p: Param[]): Record<string, string> =>
-  Object.fromEntries(p.map((x) => [x.name, x.value]))
+/**
+ * I NUMERI SI FORMATTANO QUI, NON NELL'API (20 set 2026, ondata 5).
+ *
+ * L'API manda `params` come stringhe, ed è giusto: non sa in che lingua
+ * leggerà chi guarda — la lingua è di ogni persona, non del cliente. Ma una
+ * stringa già formattata porta con sé il separatore decimale di chi l'ha
+ * scritta, e su `c-one` si vedeva: il titolo diceva «29.1 h» col punto dentro
+ * una frase italiana che diceva «29,12 ore».
+ *
+ * Quindi qui si torna indietro al numero, e la frase lo formatta con
+ * `{{x, number}}`, che i18next risolve con la lingua corrente.
+ *
+ * La conversione è prudente: solo stringhe corte che tornano IDENTICHE da un
+ * giro `Number()` → `String()`. Così uno zero iniziale, un'impronta di sole
+ * cifre o un id restano quello che sono, e non diventano un numero con i
+ * punti delle migliaia.
+ */
+const NUMERO = /^-?\d{1,9}(\.\d{1,3})?$/
+
+export function valoreDelParametro(grezzo: string): string | number {
+  if (!NUMERO.test(grezzo)) return grezzo
+  const n = Number(grezzo)
+  return String(n) === grezzo ? n : grezzo
+}
+
+const paramsDi = (p: Param[]): Record<string, string | number> =>
+  Object.fromEntries(p.map((x) => [x.name, valoreDelParametro(x.value)]))
 
 const dataBreve = (iso: string | null, lingua: string): string =>
   iso ? new Date(iso).toLocaleDateString(lingua === 'it' ? 'it-IT' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''

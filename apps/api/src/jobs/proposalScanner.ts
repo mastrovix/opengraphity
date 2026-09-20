@@ -34,6 +34,7 @@ import { getQueue, createWorker } from '../lib/bullmq.js'
 import { logger } from '../lib/logger.js'
 import { analizzaConfigurazione } from '../lib/proposalAnalysts.js'
 import { analizzaPiattaforma } from '../lib/platformAnalyst.js'
+import { analizzaLavoroQuotidiano } from '../lib/dailyWorkAnalyst.js'
 import { scriviProposta, scadiLeVecchie, risvegliaLeRimandate, type ProposalToWrite } from '../lib/proposals.js'
 
 export const PROPOSAL_SCANNER_QUEUE = 'proposal-scanner'
@@ -77,6 +78,7 @@ async function clientiDaAnalizzare(): Promise<string[]> {
 const ANALISTI: ReadonlyArray<(tenantId: string) => Promise<ProposalToWrite[]>> = [
   analizzaConfigurazione,
   analizzaPiattaforma,
+  analizzaLavoroQuotidiano,
 ]
 
 export async function analizzaCliente(tenantId: string): Promise<{ create: number; saltate: Record<string, number> }> {
