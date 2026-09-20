@@ -28,6 +28,11 @@
  * una matrice già presenti vengono LASCIATI COM'ERANO, perché potrebbero
  * essere personalizzazioni del cliente. Rilanciarla su un tenant esistente è
  * sicuro, e lo dice passo per passo.
+ *
+ * L'unica eccezione, e resta additiva: gli INDIRIZZI DI RITORNO dei due
+ * client. Se mancano, il tenant non è raggiungibile affatto — quindi si
+ * aggiungono quelli che servono, senza togliere niente di quello che c'era.
+ * Vedi `assicuraRitorni` più sotto.
  */
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, toNumber } from '@opengraphity/neo4j'
@@ -104,43 +109,93 @@ export async function onboardTenant(
   passo(realm.created ? `realm "${spec.slug}" created` : `realm "${spec.slug}" already existed — left as it was`)
 
   // ── Keycloak: i due client delle app ───────────────────────────────────────
+  /*
+   * IL CLIENT CHE C'ERA GIÀ (20 set 2026, trovato creando `opengrafo` su un
+   * realm rimasto da una vecchia installazione).
+   *
+   * «Non riallinea quello che trova» è la regola giusta — un client può
+   * portare personalizzazioni del cliente — ma ha una conseguenza che rende
+   * il tenant INUTILIZZABILE: se il client esisteva con altri indirizzi di
+   * ritorno, l'onboarding scrive «already existed — left as it was», dichiara
+   * il tenant creato, e chi ci entra riceve da Keycloak «Invalid parameter:
+   * redirect_uri». Il tenant in Neo4j c'è, l'utente c'è, e non si accede.
+   *
+   * La correzione resta ADDITIVA, che è il punto della regola: non si
+   * sostituisce niente, si AGGIUNGONO gli indirizzi mancanti. Aggiungere non
+   * può togliere una personalizzazione. E si dice nel passo, perché un
+   * onboarding che tocca qualcosa in silenzio è peggio di uno che non tocca.
+   */
+  const assicuraRitorni = async (
+    clientId: string,
+    redirectUris: readonly string[],
+    webOrigins: readonly string[],
+  ): Promise<void> => {
+    const trovati = await kc.get<Array<{ id: string; redirectUris?: string[]; webOrigins?: string[] }>>(
+      token, `/admin/realms/${spec.slug}/clients?clientId=${encodeURIComponent(clientId)}`,
+    )
+    const cliente = trovati[0]
+    if (cliente == null) {
+      passo(`client "${clientId}" not found after creation — nothing to reconcile`)
+      return
+    }
+    const mancanti = redirectUris.filter((u) => !(cliente.redirectUris ?? []).includes(u))
+    const originiMancanti = webOrigins.filter((o) => !(cliente.webOrigins ?? []).includes(o))
+    if (mancanti.length === 0 && originiMancanti.length === 0) {
+      passo(`client "${clientId}": redirect URIs already complete`)
+      return
+    }
+    await kc.put(token, `/admin/realms/${spec.slug}/clients/${cliente.id}`, {
+      redirectUris: [...(cliente.redirectUris ?? []), ...mancanti],
+      webOrigins:   [...(cliente.webOrigins ?? []), ...originiMancanti],
+    })
+    passo(`client "${clientId}": ${mancanti.length} redirect URI(s) added — it existed with a different configuration and the tenant would not have been reachable`)
+  }
+
+  const ritorniWeb = [
+    `https://${spec.slug}.${spec.domain}/*`,
+    ...(spec.piIp ? [`https://${spec.slug}.${spec.piIp}.nip.io/*`] : []),
+    ...(spec.production ? [] : [
+      `http://${spec.slug}.localhost/*`,
+      `http://${spec.slug}.localhost:5173/*`,
+      'http://*.localhost/*',
+      'http://*.localhost:5173/*',
+      'http://*.localhost:8080/*',
+    ]),
+  ]
+  const originiWeb = spec.production ? [`https://${spec.slug}.${spec.domain}`] : ['+']
+
   const web = await kc.post(token, `/admin/realms/${spec.slug}/clients`, {
     clientId:     'opengrafo-web',
     publicClient: true,
     enabled:      true,
-    redirectUris: [
-      `https://${spec.slug}.${spec.domain}/*`,
-      ...(spec.piIp ? [`https://${spec.slug}.${spec.piIp}.nip.io/*`] : []),
-      ...(spec.production ? [] : [
-        `http://${spec.slug}.localhost/*`,
-        `http://${spec.slug}.localhost:5173/*`,
-        'http://*.localhost/*',
-        'http://*.localhost:5173/*',
-        'http://*.localhost:8080/*',
-      ]),
-    ],
-    webOrigins: spec.production ? [`https://${spec.slug}.${spec.domain}`] : ['+'],
+    redirectUris: ritorniWeb,
+    webOrigins:   originiWeb,
   })
   passo(web.created ? 'client "opengrafo-web" created' : 'client "opengrafo-web" already existed — left as it was')
+  if (!web.created) await assicuraRitorni('opengrafo-web', ritorniWeb, originiWeb)
+
+  const ritorniPortale = [
+    `https://portal.${spec.slug}.${spec.domain}/*`,
+    ...(spec.piIp ? [`https://portal.${spec.slug}.${spec.piIp}.nip.io/*`] : []),
+    ...(spec.production ? [] : [
+      `http://portal.${spec.slug}.localhost/*`,
+      `http://portal.${spec.slug}.localhost:5174/*`,
+      'http://*.localhost/*',
+      'http://*.localhost:5174/*',
+      'http://localhost:5174/*',
+    ]),
+  ]
+  const originiPortale = spec.production ? [`https://portal.${spec.slug}.${spec.domain}`] : ['+']
 
   const portal = await kc.post(token, `/admin/realms/${spec.slug}/clients`, {
     clientId:     'opengrafo-portal',
     publicClient: true,
     enabled:      true,
-    redirectUris: [
-      `https://portal.${spec.slug}.${spec.domain}/*`,
-      ...(spec.piIp ? [`https://portal.${spec.slug}.${spec.piIp}.nip.io/*`] : []),
-      ...(spec.production ? [] : [
-        `http://portal.${spec.slug}.localhost/*`,
-        `http://portal.${spec.slug}.localhost:5174/*`,
-        'http://*.localhost/*',
-        'http://*.localhost:5174/*',
-        'http://localhost:5174/*',
-      ]),
-    ],
-    webOrigins: spec.production ? [`https://portal.${spec.slug}.${spec.domain}`] : ['+'],
+    redirectUris: ritorniPortale,
+    webOrigins:   originiPortale,
   })
   passo(portal.created ? 'client "opengrafo-portal" created' : 'client "opengrafo-portal" already existed — left as it was')
+  if (!portal.created) await assicuraRitorni('opengrafo-portal', ritorniPortale, originiPortale)
 
   // ── Keycloak: il primo amministratore ──────────────────────────────────────
   const utente = await kc.post(token, `/admin/realms/${spec.slug}/users`, {
