@@ -68,6 +68,21 @@ export function LocationSpy() {
  * Qui si aspetta finché l'URL arriva, e si confrontano i PARAMETRI, non la
  * stringa. Quello che il prodotto promette è «nell'URL c'è lo stato e c'è la
  * ricerca», e quello si verifica.
+ *
+ * E si confronta anche il PERCORSO per intero, non come sottostringa:
+ * `toHaveTextContent('/monitoring/sources')` è vero anche su
+ * `/monitoring/sources/new`, e un test che dice sì quando la navigazione non
+ * è ancora avvenuta non si accorge di niente (difetto vero, `NewSourceWizard`
+ * riga 359).
+ *
+ * ## L'attesa è di 4 secondi, non uno
+ * Il secondo giro di rimedio è tornato rosso proprio qui: l'attesa di
+ * `waitFor` è un secondo, e una ricerca ha 300 ms di debounce PRIMA che
+ * l'URL cambi. Su un runner che fa girare tutti i pacchetti insieme quel
+ * margine non c'è. Quattro secondi non rallentano niente quando la
+ * condizione arriva subito — `waitFor` esce appena è vera — e tolgono di
+ * mezzo l'unica cosa che questi test non devono misurare: la velocità della
+ * macchina. Chi ne vuole meno lo passa in `opzioni`.
  */
 export async function attendiURL(
   percorso: string,
@@ -80,7 +95,7 @@ export async function attendiURL(
     const [via, query = ''] = grezzo.split('?')
     expect(via).toBe(percorso)
     expect([...new URLSearchParams(query).entries()].sort()).toEqual(atteso)
-  }, opzioni)
+  }, { timeout: 4_000, ...opzioni })
 }
 
 /**

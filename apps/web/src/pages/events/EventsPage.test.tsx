@@ -402,7 +402,9 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
     await user.click(screen.getByRole('button', { name: /Critical\s*2/ }))
     await attendiURL('/events', { q: 'cpu', stat: 'critical' })
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['firing'], severity: ['critical'], search: 'cpu' }))
-  })
+  // Tre interazioni con 300 ms di debounce in mezzo: il tempo si dichiara,
+  // invece di lasciarlo dipendere da quanto è carico il runner.
+  }, 30_000)
 
   it('CONTRATTO RINEGOZIATO (G-EVT-3): ?stat=resolved24h filtra su resolvedSince, come conta il riquadro', async () => {
     /**
