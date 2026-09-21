@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 interface Call { cypher: string; params: Record<string, unknown> }
 const calls: Call[] = []
@@ -36,7 +37,6 @@ vi.mock('../ci-utils.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../../lib/requireRole.js', () => ({ requireRole: vi.fn() }))
 // I passi del workflow di questo cliente: nomi SUOI, nessuno factory.
 vi.mock('../../../lib/workflowHelpers.js', () => ({
   getWorkflowSteps: vi.fn(async () => [
@@ -47,7 +47,7 @@ vi.mock('../../../lib/workflowHelpers.js', () => ({
 const { fieldRulesResolvers } = await import('../fieldRules.js')
 const { getWorkflowSteps } = await import('../../../lib/workflowHelpers.js')
 
-const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'user-1', userEmail: 'u@test.io', role: 'admin' }
+const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'user-1', userEmail: 'u@test.io', role: 'admin', permissions: perms('admin') }
 const set = (args: Record<string, unknown>) =>
   fieldRulesResolvers.Mutation.setFieldRequirement(null, args as never, ctx)
 

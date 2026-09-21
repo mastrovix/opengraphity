@@ -27,6 +27,8 @@ export const API_KEY_PERMISSIONS = [
   'incidents:read', 'incidents:write',
   'changes:read',   'changes:write',
   'problems:read',  'problems:write',
+  // Import storico delle richieste (ondata 5 di «Nulla cablato»): nessuna rotta le legge ancora.
+  'requests:write',
   'ci:read',
   'kb:read',        'kb:write',
 ] as const

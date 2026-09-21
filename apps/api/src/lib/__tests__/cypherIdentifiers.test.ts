@@ -43,7 +43,7 @@ describe('assertWritableCIPropertyKey — la rete sulla scrittura di un CI', () 
     expect(err).toBeInstanceOf(ValidationError)
     expect(err.message).toContain('"tenantId"')
     expect(err.message).toContain('"tenant_id"')
-    expect(err.message).toContain('disegnatore')
+    expect(err.message).toContain('designer')
   })
 
   it.each(['id', 'name_key', 'health', 'chain', 'created_at'])('rifiuta «%s»', (key) => {

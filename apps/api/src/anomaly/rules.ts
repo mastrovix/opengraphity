@@ -2,35 +2,60 @@
  * Anomaly Detection Rules
  *
  * CI nodes use Neo4j labels; the `type` property is null — always use
- * `toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))` for entitySubtype.
+ * `[l IN labels(ci) WHERE l <> 'ConfigurationItem']` for entitySubtype (the engine maps the labels to the type name).
  *
- * Each query MUST RETURN: entityId, entityType, entitySubtype, entityName, description, severity
+ * Each query MUST RETURN: entityId, entityType, entitySubtype, entityName, description, params, severity
+ *
+ * ## Lingua (giro nel browser del 14 set 2026, #57)
+ * Titoli e descrizioni sono inglesi (log, Slack, integrazioni) e ogni risultato
+ * porta i suoi `params`: la pagina compone la frase nella lingua di chi guarda
+ * con le chiavi `anomaly.hits.<key>`.
  *
  * ## «Un CI» è `:ConfigurationItem`, non un elenco di tipi (ondata 6, A-9)
- * Le regole elencavano cinque etichette (`Application`, `Server`, `Database`,
- * `DatabaseInstance`, `Certificate`): fuori restavano non solo i tipi creati
- * dal cliente ma anche tre tipi **spediti col prodotto**
- * (`BusinessApplication`, `BusinessCapability`, `DynamicCIGroup`). Un CI fuori
- * da quell'elenco non era mai orfano, mai SPOF, mai senza owner: le anomalie
- * non venivano trovate, in silenzio.
+ * Ogni CI porta quell'etichetta (migrazione `20260908_1010`): una regola senza
+ * tipi scelti lavora su tutti i tipi del cliente, anche quelli che creerà.
  *
- * Qui si usa `:ConfigurationItem` e non `ciLabelPredicateForTenant` per due
- * motivi: (1) queste sono Cypher **costanti di modulo**, senza tenant e senza
- * `await` (le esegue `anomalyEngine` per ogni tenant e anche
- * `scripts/run-anomaly-scan.ts`); (2) la domanda che pongono è esattamente «è
- * un Configuration Item?», e ogni CI porta quella etichetta (migrazione
- * `20260908_1010`; dal vivo 2049 su 2049). Le due regole che parlano di tipi
- * precisi (`unauthorized_relation`: `Server -DEPENDS_ON-> Application`, e il
- * candidato di `isolated_cluster`) restano sui loro tipi: è la loro semantica,
- * non una lista di comodo.
+ * ## La logica è del prodotto, le scelte del cliente (ondata 5 di «Nulla cablato»)
+ * Prima le Cypher erano costanti con soglie, relazioni, tipi e gravità scritti
+ * dentro. Adesso ogni regola è una funzione della sua configurazione
+ * (`ruleConfig.ts`): i numeri e le severità viaggiano come parametri, e i nomi
+ * di etichette e relazioni — che Cypher non accetta come parametri nei pattern
+ * — sono interpolati solo dopo la validazione contro il metamodello del cliente
+ * (`RELATIONSHIP_TYPE_RE`, etichette dei tipi attivi).
  */
+import type { AnomalyRuleKey, AnomalyRuleSettings } from './ruleConfig.js'
 
 export interface AnomalyRule {
-  key:         string
+  key:         AnomalyRuleKey
   title:       string
-  severity:    'low' | 'medium' | 'high' | 'critical'
   description: string
   cypher:      string
+  params:      Record<string, unknown>
+}
+
+/** La configurazione con i tipi già tradotti in etichette Neo4j (li traduce l'engine, dal metamodello). */
+export interface ResolvedRuleSettings extends AnomalyRuleSettings {
+  ciLabels:        string[]
+  forbiddenLabels: Array<{ fromLabel: string; relation: string; toLabel: string }>
+}
+
+const LABEL_RE = /^[A-Za-z][A-Za-z0-9_]*$/
+const REL_RE = /^[A-Z][A-Z0-9_]*$/
+
+function label(l: string): string {
+  if (!LABEL_RE.test(l)) throw new Error(`anomaly rules: "${l}" is not a valid label`)
+  return l
+}
+
+function relPattern(relations: readonly string[], ruleKey: string): string {
+  if (relations.length === 0) throw new Error(`anomaly rule ${ruleKey}: no relation to follow`)
+  for (const r of relations) if (!REL_RE.test(r)) throw new Error(`anomaly rule ${ruleKey}: "${r}" is not a valid relation`)
+  return relations.join('|')
+}
+
+/** `AND (ci:A OR ci:B)` per i tipi scelti; niente se la regola lavora su tutti i CI. */
+function typeFilter(alias: string, labels: readonly string[]): string {
+  return labels.length ? `AND (${labels.map((l) => `${alias}:${label(l)}`).join(' OR ')})` : ''
 }
 
 // Shared predicate reused in every rule
@@ -39,175 +64,204 @@ const CI_MATCH = `
     AND ci.tenant_id = $tenantId
 `
 
-export const ANOMALY_RULES: AnomalyRule[] = [
+/**
+ * Le label del CI: il nome del tipo lo ricava il motore con `ciTypeFromLabels`
+ * (secondo giro UI del 15 set 2026 · V-3). `toLower(head(labels))` dava
+ * «businessapplication» per BusinessApplication, che non è il nome di nessun tipo.
+ */
+const SUBTYPE = `[l IN labels(ci) WHERE l <> 'ConfigurationItem']`
+
+type Builder = (s: ResolvedRuleSettings) => Omit<AnomalyRule, 'key' | 'params'> & { params?: Record<string, unknown> }
+
+const BUILDERS: Record<AnomalyRuleKey, Builder> = {
   // ── 1. Orphan CI ─────────────────────────────────────────────────────────────
-  {
-    key:         'orphan_ci',
-    title:       'CI Orfano',
-    severity:    'medium',
-    description: 'Configuration Item senza alcuna relazione nel grafo CMDB',
+  orphan_ci: (s) => ({
+    title:       'Orphan CI',
+    description: 'Configuration Item with no relation in the CMDB graph',
     cypher: `
       MATCH (ci)
       ${CI_MATCH}
+        ${typeFilter('ci', s.ciLabels)}
         AND NOT (ci)-[]-()
       RETURN
         ci.id                      AS entityId,
         'CI'                       AS entityType,
-        toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
+        ${SUBTYPE}                 AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
-        'Il CI non ha relazioni con altri nodi nel grafo CMDB' AS description,
-        'medium'                   AS severity
+        'The CI has no relation with other nodes of the CMDB graph' AS description,
+        {}                         AS params,
+        $severity                  AS severity
     `,
-  },
+  }),
 
   // ── 2. Single Point of Failure ───────────────────────────────────────────────
-  // CI with ≥5 direct dependents (other CIs that DEPENDS_ON it)
-  {
-    key:         'spof',
+  // CI with at least `threshold` direct dependents (other CIs that point to it)
+  spof: (s) => ({
     title:       'Single Point of Failure',
-    severity:    'critical',
-    description: 'CI con ≥5 dipendenti diretti nel grafo',
+    description: 'CI with many direct dependents in the graph',
     cypher: `
       MATCH (ci)
       ${CI_MATCH}
-      MATCH (dep)-[:DEPENDS_ON]->(ci)
+        ${typeFilter('ci', s.ciLabels)}
+      MATCH (dep)-[:${relPattern(s.relations, 'spof')}]->(ci)
       WHERE dep:ConfigurationItem
         AND dep.tenant_id = $tenantId
-      WITH ci, count(dep) AS depCount
-      WHERE depCount >= 5
+      WITH ci, count(DISTINCT dep) AS depCount
+      WHERE depCount >= $threshold
       RETURN
         ci.id                      AS entityId,
         'CI'                       AS entityType,
-        toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
+        ${SUBTYPE}                 AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
-        'CI con ' + toString(depCount) + ' dipendenti diretti — potenziale SPOF' AS description,
-        'critical'                 AS severity
+        'CI with ' + toString(depCount) + ' direct dependents: potential SPOF' AS description,
+        { count: depCount }        AS params,
+        $severity                  AS severity
     `,
-  },
+  }),
 
   // ── 3. Dependency Cycle ───────────────────────────────────────────────────────
-  {
-    key:         'dependency_cycle',
-    title:       'Ciclo di Dipendenza',
-    severity:    'high',
-    description: 'Dipendenza circolare rilevata tra Configuration Items',
-    cypher: `
-      MATCH (ci)
-      ${CI_MATCH}
-      MATCH path = (ci)-[:DEPENDS_ON*2..6]->(ci)
-      WITH ci, length(path) AS cycleLen
-      RETURN DISTINCT
-        ci.id                      AS entityId,
-        'CI'                       AS entityType,
-        toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
-        coalesce(ci.name, ci.id)   AS entityName,
-        'Ciclo di dipendenza di lunghezza ' + toString(cycleLen) + ' rilevato' AS description,
-        'high'                     AS severity
-    `,
+  // The upper bound of a variable-length pattern cannot be a parameter: it is a
+  // validated integer (ruleConfig: 2..10).
+  dependency_cycle: (s) => {
+    const max = s.threshold
+    if (max == null || !Number.isInteger(max) || max < 2) throw new Error('anomaly rule dependency_cycle: invalid maximum length')
+    return {
+      title:       'Dependency Cycle',
+      description: 'Circular dependency between Configuration Items',
+      cypher: `
+        MATCH (ci)
+        ${CI_MATCH}
+          ${typeFilter('ci', s.ciLabels)}
+        MATCH path = (ci)-[:${relPattern(s.relations, 'dependency_cycle')}*2..${String(max)}]->(ci)
+        WITH ci, min(length(path)) AS cycleLen
+        RETURN DISTINCT
+          ci.id                      AS entityId,
+          'CI'                       AS entityType,
+          ${SUBTYPE}                 AS entitySubtype,
+          coalesce(ci.name, ci.id)   AS entityName,
+          'Dependency cycle of length ' + toString(cycleLen) AS description,
+          { length: cycleLen }       AS params,
+          $severity                  AS severity
+      `,
+    }
   },
 
   // ── 4. Missing Owner ──────────────────────────────────────────────────────────
-  {
-    key:         'missing_owner',
-    title:       'CI Senza Owner',
-    severity:    'low',
-    description: 'Configuration Item non assegnato ad alcun team',
+  // OWNED_BY → Team is the product's ownership structure, not a CMDB relation.
+  missing_owner: (s) => ({
+    title:       'CI Without Owner',
+    description: 'Configuration Item not assigned to any team',
     cypher: `
       MATCH (ci)
       ${CI_MATCH}
+        ${typeFilter('ci', s.ciLabels)}
         AND NOT (ci)-[:OWNED_BY]->()
       RETURN
         ci.id                      AS entityId,
         'CI'                       AS entityType,
-        toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
+        ${SUBTYPE}                 AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
-        'Il CI non ha un owner o team assegnato' AS description,
-        'low'                      AS severity
+        'The CI has no owner team' AS description,
+        {}                         AS params,
+        $severity                  AS severity
     `,
-  },
+  }),
 
   // ── 5. Unauthorized Relation ──────────────────────────────────────────────────
-  // Server that DEPENDS_ON an Application (wrong direction)
-  {
-    key:         'unauthorized_relation',
-    title:       'Relazione Non Autorizzata',
-    severity:    'medium',
-    description: 'Server dipende da un Application — direzione non consentita',
-    cypher: `
-      MATCH (a:Server)-[:DEPENDS_ON]->(b:Application)
-      WHERE a.tenant_id = $tenantId AND b.tenant_id = $tenantId
+  // One MATCH per forbidden relation declared by the tenant, joined by UNION ALL.
+  unauthorized_relation: (s) => {
+    if (s.forbiddenLabels.length === 0) throw new Error('anomaly rule unauthorized_relation: no forbidden relation declared')
+    const parts = s.forbiddenLabels.map((f) => `
+      MATCH (ci:${label(f.fromLabel)})-[:${relPattern([f.relation], 'unauthorized_relation')}]->(b:${label(f.toLabel)})
+      WHERE ci.tenant_id = $tenantId AND b.tenant_id = $tenantId
       RETURN
-        a.id                                                          AS entityId,
+        ci.id                                                         AS entityId,
         'CI'                                                          AS entityType,
-        'server'                                                      AS entitySubtype,
-        coalesce(a.name, a.id)                                        AS entityName,
-        'DEPENDS_ON inverso: Server → Application (' + coalesce(b.name, b.id) + ')' AS description,
-        'medium'                                                      AS severity
-    `,
+        ${SUBTYPE}                                                    AS entitySubtype,
+        coalesce(ci.name, ci.id)                                      AS entityName,
+        'Forbidden ${f.relation}: ${f.fromLabel} → ${f.toLabel} (' + coalesce(b.name, b.id) + ')' AS description,
+        { target: coalesce(b.name, b.id), relation: '${f.relation}', fromType: '${f.fromLabel}', toType: '${f.toLabel}' } AS params,
+        $severity                                                     AS severity
+    `)
+    return {
+      title:       'Unauthorized Relation',
+      description: 'A relation the tenant declared as not allowed',
+      cypher:      parts.join('\n      UNION ALL\n'),
+    }
   },
 
   // ── 6. Isolated Cluster ────────────────────────────────────────────────────────
   // A genuinely isolated cluster: a small group of CIs connected to each other
   // but cut off from the main graph. Detected by requiring that ALL members of
-  // the candidate's reachable set also have a small neighbourhood (≤5). This
-  // excludes CI nodes that are part of the main graph but happen to have few
-  // direct CI-to-CI edges themselves (their neighbors can reach many others).
-  // Orphans (reachable=0) are handled separately by the orphan_ci rule.
-  {
-    key:         'isolated_cluster',
-    title:       'Cluster Isolato',
-    severity:    'medium',
-    description: 'Gruppo di CI disconnesso dal grafo principale del tenant',
-    cypher: `
-      MATCH (ci)
-      ${CI_MATCH}
-        // Candidati di proposito i due tipi «foglia» del grafo spedito: non è
-        // una lista di comodo, è il perimetro della regola (un cluster isolato
-        // si cerca partendo da un'applicazione o da un certificato).
-        AND (ci:Application OR ci:Certificate)
-      OPTIONAL MATCH (ci)-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..6]-(reached)
-      WHERE reached:ConfigurationItem
-        AND reached.tenant_id = $tenantId
-      WITH ci, count(DISTINCT reached) AS reachable, collect(DISTINCT reached) AS peers
-      WHERE reachable >= 1 AND reachable <= 5
-      UNWIND peers AS p
-      OPTIONAL MATCH (p)-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE*1..6]-(pr)
-      WHERE pr:ConfigurationItem
-        AND pr.tenant_id = $tenantId
-      WITH ci, reachable, p, count(DISTINCT pr) AS peerReachable
-      WITH ci, reachable, max(peerReachable) AS maxPeerReachable
-      WHERE maxPeerReachable <= 5
-      RETURN DISTINCT
-        ci.id                      AS entityId,
-        'CI'                       AS entityType,
-        toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
-        coalesce(ci.name, ci.id)   AS entityName,
-        'CI in cluster isolato: raggiunge solo ' + toString(reachable) + ' altri nodi CI' AS description,
-        'medium'                   AS severity
-    `,
+  // the candidate's reachable set also have a small neighbourhood (≤ threshold).
+  // Orphans (reachable=0) are handled separately by the orphan_ci rule. The
+  // search depth (6) is the rule's own definition of «reachable».
+  isolated_cluster: (s) => {
+    const rels = relPattern(s.relations, 'isolated_cluster')
+    return {
+      title:       'Isolated Cluster',
+      description: 'Group of CIs cut off from the main graph of the tenant',
+      cypher: `
+        MATCH (ci)
+        ${CI_MATCH}
+          ${typeFilter('ci', s.ciLabels)}
+        OPTIONAL MATCH (ci)-[:${rels}*1..6]-(reached)
+        WHERE reached:ConfigurationItem
+          AND reached.tenant_id = $tenantId
+        WITH ci, count(DISTINCT reached) AS reachable, collect(DISTINCT reached) AS peers
+        WHERE reachable >= 1 AND reachable <= $threshold
+        UNWIND peers AS p
+        OPTIONAL MATCH (p)-[:${rels}*1..6]-(pr)
+        WHERE pr:ConfigurationItem
+          AND pr.tenant_id = $tenantId
+        WITH ci, reachable, p, count(DISTINCT pr) AS peerReachable
+        WITH ci, reachable, max(peerReachable) AS maxPeerReachable
+        WHERE maxPeerReachable <= $threshold
+        RETURN DISTINCT
+          ci.id                      AS entityId,
+          'CI'                       AS entityType,
+          ${SUBTYPE}                 AS entitySubtype,
+          coalesce(ci.name, ci.id)   AS entityName,
+          'CI in an isolated cluster: it reaches only ' + toString(reachable) + ' other CIs' AS description,
+          { count: reachable }       AS params,
+          $severity                  AS severity
+      `,
+    }
   },
 
   // ── 7. Risk Concentration ─────────────────────────────────────────────────────
-  // CI linked to ≥5 open critical incidents
-  {
-    key:         'risk_concentration',
-    title:       'Concentrazione di Rischio',
-    severity:    'high',
-    description: 'CI con ≥5 incidenti critici aperti',
+  // CI linked to at least `threshold` open incidents of the severities the tenant counts as critical
+  risk_concentration: (s) => ({
+    title:       'Risk Concentration',
+    description: 'CI with many open critical incidents',
     cypher: `
       MATCH (ci)
       ${CI_MATCH}
+        ${typeFilter('ci', s.ciLabels)}
       MATCH (inc:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci)
-      WHERE inc.severity = 'critical' AND NOT inc.status IN $incidentTerminal
+      WHERE inc.severity IN $incidentSeverities AND NOT inc.status IN $incidentTerminal
       WITH ci, count(inc) AS criticalCount
-      WHERE criticalCount >= 5
+      WHERE criticalCount >= $threshold
       RETURN
         ci.id                      AS entityId,
         'CI'                       AS entityType,
-        toLower(head([l IN labels(ci) WHERE l <> 'ConfigurationItem']))     AS entitySubtype,
+        ${SUBTYPE}                 AS entitySubtype,
         coalesce(ci.name, ci.id)   AS entityName,
-        'CI con ' + toString(criticalCount) + ' incidenti critici aperti' AS description,
-        'high'                     AS severity
+        'CI with ' + toString(criticalCount) + ' open critical incidents' AS description,
+        { count: criticalCount }   AS params,
+        $severity                  AS severity
     `,
-  },
-]
+  }),
+}
+
+/** La regola pronta da eseguire per questa configurazione. */
+export function buildAnomalyRule(key: AnomalyRuleKey, settings: ResolvedRuleSettings): AnomalyRule {
+  const built = BUILDERS[key](settings)
+  return {
+    key,
+    title:       built.title,
+    description: built.description,
+    cypher:      built.cypher,
+    params:      { severity: settings.severity, threshold: settings.threshold, incidentSeverities: settings.incidentSeverities },
+  }
+}

@@ -30,7 +30,7 @@ import { Button } from '@/components/Button'
 import { Input, FieldLabel } from '@/components/ui/FormControls'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
-import { GET_MONITORING_SOURCES } from '@/graphql/queries'
+import { GET_MONITORING_SOURCE } from '@/graphql/queries'
 import { CREATE_MONITORING_SOURCE, SEND_SAMPLE_EVENT } from '@/graphql/mutations'
 import { formatDateTime } from '@/lib/datetime'
 import { colors, palette } from '@/lib/tokens'
@@ -40,6 +40,7 @@ import { PresetRulesEditor } from './PresetRules'
 import { DEFAULT_RATE_LIMIT_PER_MINUTE, EMPTY_MAPPING, EMPTY_PRESET_RULES, RATE_LIMIT_MAX, RATE_LIMIT_MIN, buildPresetConfig, buildSourceConfig, isMappingComplete, isPresetRulesComplete, parseRateLimit, type GenericMapping, type PresetRules } from './sourceConfig'
 import { configSnippet, sourceEndpointUrl, ZABBIX_FIELDS } from './configSnippets'
 import { TOOL_META, SecretBox, SnippetBox, hintStyle, sectionTitleStyle } from './monitoringShared'
+import { showError } from '@/lib/showError'
 
 const STEPS = ['tool', 'rules', 'connect', 'test'] as const
 type Step = (typeof STEPS)[number]
@@ -86,7 +87,14 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
 
   const [createSource, { loading: creating }] = useMutation<{ createInboundWebhook: CreatedSource }>(CREATE_MONITORING_SOURCE)
   const [sendSample, { loading: sending }] = useMutation<{ sendSampleEvent: number }>(SEND_SAMPLE_EVENT)
-  const [loadSources] = useLazyQuery<{ monitoringSources: MonitoringSource[] }>(GET_MONITORING_SOURCES, { fetchPolicy: 'network-only' })
+  /**
+   * La verifica legge UNA sorgente, non tutte (revisione totale · G-MON-9):
+   * caricava `monitoringSources` — ogni sorgente con la sua configurazione
+   * completa, script di trasformazione e mappature comprese — per leggere
+   * l'ultimo errore di quella appena creata. Con 40 sorgenti ogni «Verifica
+   * ora» trasferiva 40 configurazioni.
+   */
+  const [loadSource] = useLazyQuery<{ monitoringSource: MonitoringSource | null }>(GET_MONITORING_SOURCE, { fetchPolicy: 'network-only' })
 
   const step: Step = STEPS[stepIdx]!
   const isGeneric = kind === 'generic'
@@ -114,7 +122,7 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
       toast.success(t('toast.monitoring.sourceCreated'))
       setStepIdx(2)
     } catch (e) {
-      toast.error(t('monitoring.wizard.createFailed', { error: errorMessage(e) }))
+      showError(e, t('monitoring.wizard.createFailed', { error: errorMessage(e) }))
     }
   }
 
@@ -125,10 +133,10 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
   async function checkReception(sourceId: string) {
     setCheck({ status: 'checking' })
     try {
-      const res = await loadSources()
+      const res = await loadSource({ variables: { id: sourceId } })
       if (res.error) throw res.error
-      if (!res.data) throw new Error(t('monitoring.errors.emptyResponse', { operation: 'monitoringSources' }))
-      const src = res.data.monitoringSources.find((s) => s.id === sourceId)
+      if (!res.data) throw new Error(t('monitoring.errors.emptyResponse', { operation: 'monitoringSource' }))
+      const src = res.data.monitoringSource
       if (!src) { setCheck({ status: 'notFound' }); return }
       // lastError è il motivo dell'ULTIMO payload rifiutato e torna null al primo batch accettato.
       if (src.lastError) setCheck({ status: 'error', error: src.lastError })
@@ -142,7 +150,11 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
   async function handleSample() {
     if (!created) return
     try {
-      const res = await sendSample({ variables: { sourceId: created.id } })
+      // Revisione totale · G-MON-1: per una sorgente «generic» la prova usa
+      // l'esempio su cui il passo 2 ha preteso l'anteprima verde, non il
+      // campione fisso del connettore (che non ha i percorsi mappati).
+      const ownPayload = isGeneric && payload.trim() ? payload : null
+      const res = await sendSample({ variables: { sourceId: created.id, payload: ownPayload } })
       const n = res.data?.sendSampleEvent
       if (typeof n !== 'number') throw new Error(t('monitoring.errors.emptyResponse', { operation: 'sendSampleEvent' }))
       setSampleCount(n)
@@ -152,7 +164,7 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
       const id = created.id
       checkTimer.current = setTimeout(() => { void checkReception(id) }, sampleCheckDelayMs)
     } catch (e) {
-      toast.error(t('toast.monitoring.sampleFailed', { error: errorMessage(e) }))
+      showError(e, t('toast.monitoring.sampleFailed', { error: errorMessage(e) }))
     }
   }
 

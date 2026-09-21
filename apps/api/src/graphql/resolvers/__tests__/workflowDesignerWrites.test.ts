@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 // ── Sessione finta che ESEGUE le callback e registra il Cypher ────────────────
 
@@ -41,6 +42,11 @@ const mockSession = {
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+// Le fotografie per l'Audit Log leggono il grafo: qui non consumano le risposte in coda delle query sotto prova.
+vi.mock('../../../lib/workflowAuditDetails.js', () => ({
+  workflowSnapshot: vi.fn().mockResolvedValue({ steps: {}, transitions: {} }),
+  workflowChangeDetails: vi.fn(() => ({})),
+}))
 vi.mock('@opengraphity/events', () => ({ publish: vi.fn().mockResolvedValue(undefined), getRedisOptions: vi.fn(() => ({})) }))
 
 const WORKFLOW_ACTION_TYPES_MOCK = ['publish_event', 'notify_rule'] as const
@@ -66,6 +72,9 @@ const fakeLog = () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi
 vi.mock('../../../lib/logger.js', () => ({ logger: fakeLog(), workflowLogger: fakeLog() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/validateRequiredFields.js', () => ({ validateRequiredFields: vi.fn().mockResolvedValue(undefined) }))
+// Le scadenze dei passi (ondata 3) hanno i loro test (stepDeadlines.test.ts): qui la
+// lettura del loro controllo sposterebbe i risultati in coda di questo doppio.
+vi.mock('../../../lib/stepDeadlineWrite.js', async (importOriginal) => ({ ...(await importOriginal<object>()), assertDefinitionDeadlines: vi.fn(async () => {}) }))
 vi.mock('../../../lib/workflowHelpers.js', () => ({ invalidateWorkflowCache: vi.fn() }))
 // I tipi di change pre-approvati: li legge la guardia che impedisce di lasciare
 // il workflow delle change senza un posto dove approvare (revisione · B·N-1).
@@ -82,7 +91,7 @@ const { workflowLogger } = await import('../../../lib/logger.js')
 const { audit } = await import('../../../lib/audit.js')
 
 const M = workflowResolvers.Mutation
-const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'user-1', userEmail: 'u@test.io', role: 'admin' }
+const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'user-1', userEmail: 'u@test.io', role: 'admin', permissions: perms('admin') }
 
 /** Ogni Cypher scritto in questa chiamata, concatenato. */
 const writtenCypher = () => calls.filter((c) => c.mode === 'write').map((c) => c.cypher).join('\n---\n')
@@ -112,6 +121,20 @@ describe('addWorkflowStep (B2-1 / B-3): il passo nasce con il dato completo', ()
     const params = paramsOf('CREATE (s:WorkflowStep')!
     expect(params['tenantId']).toBe('c-two')
     expect(params['category']).toBe('active')
+  })
+
+  /*
+   * ONDATA 10: un tipo che il motore non esegue non si aggiunge. Il
+   * disegnatore offriva «Biforcazione»: il motore la trattava come un passo
+   * normale e ne seguiva UNA transizione sola, in silenzio.
+   */
+  it('un tipo che il motore non esegue si rifiuta, dicendo perché, senza scrivere niente', async () => {
+    results = [{ records: [makeRecord({ entityType: 'incident' })] }]
+    for (const tipo of ['parallel_fork', 'parallel_join', 'sub_workflow']) {
+      await expect(M.addWorkflowStep(null, { definitionId: 'def-1', name: 'x', label: 'X', type: tipo }, ctx))
+        .rejects.toThrow(/is not executed by the workflow engine/)
+    }
+    expect(calls.filter((c) => c.cypher.includes('CREATE (s:WorkflowStep'))).toHaveLength(0)
   })
 
   it('marchia la definizione come personalizzata e invalida la cache', async () => {
@@ -238,12 +261,25 @@ describe('removeWorkflowStep (B2-2 / B-1): non si cancella un passo con dei tick
  */
 describe('la versione della definizione si muove a ogni modifica (ondata 8)', () => {
   it('aggiungere, modificare e togliere una transizione incrementano wd.version', async () => {
+    /**
+     * CONTRATTO RINEGOZIATO (revisione totale · B-26/B-27):
+     *  - `addWorkflowTransition` interroga PRIMA il grafo per rifiutare un
+     *    arco identico (stessa coppia di passi, stesso innesco): la prima
+     *    risposta del mock deve dire «nessun duplicato».
+     *  - `updateWorkflowTransition` vuole la definizione, perché la
+     *    transizione deve essere di QUELLA definizione e non di un'altra
+     *    dello stesso tenant.
+     */
     for (const run of [
       () => M.addWorkflowTransition(null, { definitionId: 'def-1', fromStepName: 'a', toStepName: 'b', trigger: 'manual' }, ctx),
-      () => M.updateWorkflowTransition(null, { transitionId: 't-1', label: 'x' }, ctx),
+      () => M.updateWorkflowTransition(null, { definitionId: 'def-1', transitionId: 't-1', input: { requiresInput: false, label: 'x' } }, ctx),
       () => M.removeWorkflowTransition(null, { definitionId: 'def-1', transitionId: 't-1' }, ctx),
     ]) {
-      results = [{ records: [makeRecord({ tr: { properties: { id: 't-1' } }, fromStep: 'a', toStep: 'b', entityType: 'incident', deletedId: 't-1' } )] }, { records: [] }]
+      results = [
+        { records: [] },   // nessun arco identico / nessuna riga da leggere
+        { records: [makeRecord({ tr: { properties: { id: 't-1' } }, fromStep: 'a', toStep: 'b', entityType: 'incident', deletedId: 't-1', id: 't-1' })] },
+        { records: [] },
+      ]
       await run().catch(() => undefined)   // alcune rispondono NOT_FOUND col mock minimo: conta il Cypher
       expect(writtenCypher(), 'la versione deve essere incrementata').toContain('wd.version = wd.version + 1')
       expect(writtenCypher()).toContain('wd.customized_at = $customizedAt')
@@ -328,7 +364,11 @@ describe('saveWorkflowChanges (B2-3 / B-8): lo step iniziale non può essere ter
 
 describe('marchio di personalizzazione (contratto con i seed)', () => {
   it('addWorkflowTransition, removeWorkflowTransition e updateWorkflowTransition marchiano', async () => {
-    results = [{ records: [makeRecord({ tr: { properties: { trigger: 'manual', label: 'x' } }, fromStep: 'a', toStep: 'b', entityType: 'incident' })] }]
+    // B-27: la prima risposta è il controllo dei duplicati (nessuno).
+    results = [
+      { records: [] },
+      { records: [makeRecord({ tr: { properties: { trigger: 'manual', label: 'x' } }, fromStep: 'a', toStep: 'b', entityType: 'incident' })] },
+    ]
     await M.addWorkflowTransition(null, { definitionId: 'def-1', fromStepName: 'a', toStepName: 'b' }, ctx)
     expect(writtenCypher()).toContain('wd.customized_at = $customizedAt')
 
@@ -338,8 +378,9 @@ describe('marchio di personalizzazione (contratto con i seed)', () => {
     expect(writtenCypher()).toContain('wd.customized_at = $customizedAt')
 
     calls.length = 0
+    // B-26: la SET restituisce l'id toccato — se non tocca niente, NOT_FOUND.
     results = [
-      { records: [] },
+      { records: [makeRecord({ id: 'tr-1' })] },
       { records: [makeRecord({ wd: { properties: { id: 'def-1', entity_type: 'incident' } }, steps: [] })] },
     ]
     await M.updateWorkflowTransition(null, {
@@ -349,11 +390,48 @@ describe('marchio di personalizzazione (contratto con i seed)', () => {
     expect(writtenCypher()).toContain('wd.customized_at = $customizedAt')
   })
 
+  /**
+   * Revisione totale · M-9: `coalesce($condition, t.condition)` non permetteva
+   * di CANCELLARE una condizione: passare null lasciava quella vecchia, e una
+   * condizione sbagliata su una transizione restava per sempre a bloccarla.
+   * Ora conta se il campo è presente nell'input.
+   */
+  it('updateWorkflowTransition: null CANCELLA il campo presente, l\'assenza lo lascia (M-9)', async () => {
+    const paramsOf = () => calls.find((c) => /SET t\.label/.test(c.cypher))!.params as Record<string, unknown>
+
+    calls.length = 0
+    results = [{ records: [makeRecord({ id: 'tr-1' })] }, { records: [makeRecord({ wd: { properties: { id: 'def-1', entity_type: 'incident' } }, steps: [] })] }]
+    await M.updateWorkflowTransition(null, { definitionId: 'def-1', transitionId: 'tr-1', input: { requiresInput: false, condition: null, timerHours: null } }, ctx)
+    expect(paramsOf()).toMatchObject({ conditionGiven: true, condition: null, timerHoursGiven: true, timerHours: null })
+
+    calls.length = 0
+    results = [{ records: [makeRecord({ id: 'tr-1' })] }, { records: [makeRecord({ wd: { properties: { id: 'def-1', entity_type: 'incident' } }, steps: [] })] }]
+    await M.updateWorkflowTransition(null, { definitionId: 'def-1', transitionId: 'tr-1', input: { requiresInput: false } }, ctx)
+    expect(paramsOf()).toMatchObject({ conditionGiven: false, timerHoursGiven: false, triggerGiven: false })
+
+    // L'etichetta vuota NON cancella: un arco senza etichetta non si clicca.
+    calls.length = 0
+    results = [{ records: [makeRecord({ id: 'tr-1' })] }, { records: [makeRecord({ wd: { properties: { id: 'def-1', entity_type: 'incident' } }, steps: [] })] }]
+    await M.updateWorkflowTransition(null, { definitionId: 'def-1', transitionId: 'tr-1', input: { requiresInput: false, label: null } }, ctx)
+    expect(paramsOf()).toMatchObject({ labelGiven: false })
+  })
+
   it('updateWorkflowStep marchia e invalida la cache', async () => {
     results = [{ records: [makeRecord({ s: { properties: { id: 's1', name: 'assigned', label: 'L', type: 'standard' } }, entityType: 'incident' })] }]
     await M.updateWorkflowStep(null, { definitionId: 'def-1', stepName: 'assigned', label: 'L' }, ctx)
     expect(writtenCypher()).toContain('wd.customized_at = $customizedAt')
     expect(invalidateWorkflowCache).toHaveBeenCalledWith('c-two', 'incident')
+  })
+
+  /** Giro del 14 set 2026 (#22): un'etichetta cambiata è del cliente, le traduzioni spedite non valgono più. */
+  it('updateWorkflowStep toglie le traduzioni solo se l\'etichetta CAMBIA', async () => {
+    results = [{ records: [makeRecord({ s: { properties: { id: 's1', name: 'assigned', label: 'L', type: 'standard' } }, entityType: 'incident' })] }]
+    await M.updateWorkflowStep(null, { definitionId: 'def-1', stepName: 'assigned', label: 'L' }, ctx)
+    const cypher = writtenCypher()
+    // Secondo giro UI · V-5: le traduzioni si mettono da parte al primo cambio e tornano con l'etichetta d'origine.
+    expect(cypher).toContain('SET s.labels = CASE WHEN s.label = $label THEN s.labels WHEN s.labels_origin_label = $label THEN s.labels_origin ELSE null END')
+    expect(cypher.indexOf('s.labels_origin_label = CASE WHEN s.label <> $label')).toBeLessThan(cypher.indexOf('SET s.labels = CASE'))
+    expect(cypher.indexOf('SET s.labels = CASE')).toBeLessThan(cypher.indexOf('SET s.label        = $label'))
   })
 
   it('saveWorkflowLayout NON marchia: la posizione sul canvas non è configurazione di processo', async () => {
@@ -551,6 +629,23 @@ describe('gli scopi che il workflow delle change non puo perdere (B·N-1 + terza
       { records: [makeRecord({ version: 4, id: 'def-1', entityType: 'incident', name: 'Incident', steps: [], transitions: [] })] },
     ]
     expectVarchiAperti(await esegui([step()]))
+  })
+
+  /**
+   * Giro UI del 15 set 2026 · U-18. Il test qui sopra finge che una
+   * definizione non-change dia «nessuna riga», ma in Neo4j `RETURN count(s)`
+   * senza chiave di raggruppamento restituisce SEMPRE una riga (0): la guardia
+   * dell'approvazione rifiutava ogni salvataggio di passo nel workflow degli
+   * incident. Visto dal vivo nel disegnatore e con cypher-shell. Le due letture
+   * devono raggruppare per la definizione, così «nessuna riga» è vero.
+   */
+  it('U-18: le due letture raggruppano per la definizione (un count da solo dà sempre una riga)', async () => {
+    results = coda({ approvalSteps: 1 })
+    await esegui([step()])
+    const cypher = writtenCypher()
+    expect(cypher).toContain('RETURN wd.id AS definitionId, count(s) AS approvalSteps')
+    expect(cypher).toContain('RETURN wd.id AS definitionId, count(s) AS n')
+    expect(cypher).not.toMatch(/RETURN count\(s\) AS (approvalSteps|n)\b/)
   })
 
   /**

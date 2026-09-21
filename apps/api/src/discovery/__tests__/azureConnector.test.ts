@@ -99,21 +99,21 @@ beforeEach(() => {
 describe('azureConnector.scan — config e credenziali', () => {
   it('credenziali mancanti → errore esplicito, nessun client istanziato', async () => {
     await expect(collect(azureConnector.scan(source(CFG), { tenant_id: 't', client_id: 'c' })))
-      .rejects.toThrow('[azure] credentials failed: credenziali mancanti: client_secret')
+      .rejects.toThrow('[azure] credentials failed: missing credentials: client_secret')
     await expect(collect(azureConnector.scan(source(CFG), {})))
-      .rejects.toThrow('credenziali mancanti: tenant_id, client_id, client_secret')
+      .rejects.toThrow('missing credentials: tenant_id, client_id, client_secret')
     expect(h.ctors).toHaveLength(0)
   })
 
   it('subscription_id mancante → errore esplicito', async () => {
     await expect(collect(azureConnector.scan(source({}), CREDS)))
-      .rejects.toThrow('[azure] config failed: campo di configurazione obbligatorio mancante: subscription_id')
+      .rejects.toThrow('[azure] config failed: required configuration field missing: subscription_id')
     expect(h.ctors).toHaveLength(0)
   })
 
   it('resource_types sconosciuti → errore esplicito', async () => {
     await expect(collect(azureConnector.scan(source({ ...CFG, resource_types: 'vm, ec2, rds' }), CREDS)))
-      .rejects.toThrow('[azure] config failed: resource_types sconosciuti: ec2, rds (ammessi: vm, sql, aks, lb)')
+      .rejects.toThrow('[azure] config failed: unknown resource_types: ec2, rds (allowed: vm, sql, aks, lb)')
     expect(h.ctors).toHaveLength(0)
   })
 
@@ -283,9 +283,9 @@ describe('azureConnector.testConnection', () => {
 
   it('ko: subscription/credenziali mancanti → { ok:false } senza chiamare l\'SDK', async () => {
     await expect(azureConnector.testConnection(source({}), CREDS))
-      .resolves.toEqual({ ok: false, message: 'Azure connection failed: [azure] config failed: campo di configurazione obbligatorio mancante: subscription_id' })
+      .resolves.toEqual({ ok: false, message: 'Azure connection failed: [azure] config failed: required configuration field missing: subscription_id' })
     await expect(azureConnector.testConnection(source(CFG), { tenant_id: 't' }))
-      .resolves.toEqual({ ok: false, message: 'Azure connection failed: [azure] credentials failed: credenziali mancanti: client_id, client_secret' })
+      .resolves.toEqual({ ok: false, message: 'Azure connection failed: [azure] credentials failed: missing credentials: client_id, client_secret' })
     expect(h.subGet).not.toHaveBeenCalled()
   })
 })

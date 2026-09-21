@@ -33,26 +33,45 @@ export async function loadMetamodel(tenantId: string, enumScope: EnumScope): Pro
     const enumScopeClause = enumScope.clause
     const result = await session.executeRead(tx =>
       tx.run(`
+        // OGNI PARTE nella sua sottoquery (revisione totale · E-36): i sette
+        // OPTIONAL MATCH in fila prima del RETURN facevano il prodotto
+        // cartesiano campi × vocabolari × relazioni × relazioni di sistema ×
+        // campi base — per un tipo con 20 campi, 5 relazioni, 3 relazioni di
+        // sistema e 15 campi base sono 4.500 righe intermedie, a ogni
+        // ricostruzione dello schema di ogni tenant. Con le sottoquery ogni
+        // insieme si raccoglie per conto suo e il DISTINCT non serve più a
+        // rimediare a una moltiplicazione.
         MATCH (t:CITypeDefinition)
         WHERE (t.scope = 'base' OR (t.scope = 'tenant' AND t.tenant_id = $tenantId))
           AND t.active = true
           AND t.name <> '__base__'
-        OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
-          WHERE f.scope = 'base' OR (f.scope = 'tenant' AND f.tenant_id = $tenantId)
-        OPTIONAL MATCH (f)-[:USES_ENUM]->(fEnum:EnumTypeDefinition)
-          ${enumScopeClause('fEnum')}
-        OPTIONAL MATCH (t)-[:HAS_RELATION]->(r:CIRelationDefinition)
-        OPTIONAL MATCH (t)-[:HAS_SYSTEM_RELATION]->(sr:CISystemRelationDefinition)
-        OPTIONAL MATCH (base:CITypeDefinition {name: '__base__'})
-          WHERE base.tenant_id = $tenantId OR base.tenant_id = 'system'
-        OPTIONAL MATCH (base)-[:HAS_FIELD]->(bf:CIFieldDefinition)
-        OPTIONAL MATCH (bf)-[:USES_ENUM]->(bfEnum:EnumTypeDefinition)
-          ${enumScopeClause('bfEnum')}
-        RETURN t,
-          collect(DISTINCT {props: f,  enumId: fEnum.id,  enumName: fEnum.name,  enumValues: fEnum.values})  AS typeFieldData,
-          collect(DISTINCT {props: bf, enumId: bfEnum.id, enumName: bfEnum.name, enumValues: bfEnum.values}) AS baseFieldData,
-          collect(DISTINCT r)  AS relations,
-          collect(DISTINCT sr) AS systemRelations
+        CALL {
+          WITH t
+          OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
+            WHERE f.scope = 'base' OR (f.scope = 'tenant' AND f.tenant_id = $tenantId)
+          OPTIONAL MATCH (f)-[:USES_ENUM]->(fEnum:EnumTypeDefinition)
+            ${enumScopeClause('fEnum')}
+          RETURN collect({props: f, enumId: fEnum.id, enumName: fEnum.name, enumValues: fEnum.values}) AS typeFieldData
+        }
+        CALL {
+          OPTIONAL MATCH (base:CITypeDefinition {name: '__base__'})
+            WHERE base.tenant_id = $tenantId OR base.tenant_id = 'system'
+          OPTIONAL MATCH (base)-[:HAS_FIELD]->(bf:CIFieldDefinition)
+          OPTIONAL MATCH (bf)-[:USES_ENUM]->(bfEnum:EnumTypeDefinition)
+            ${enumScopeClause('bfEnum')}
+          RETURN collect(DISTINCT {props: bf, enumId: bfEnum.id, enumName: bfEnum.name, enumValues: bfEnum.values}) AS baseFieldData
+        }
+        CALL {
+          WITH t
+          OPTIONAL MATCH (t)-[:HAS_RELATION]->(r:CIRelationDefinition)
+          RETURN collect(r) AS relations
+        }
+        CALL {
+          WITH t
+          OPTIONAL MATCH (t)-[:HAS_SYSTEM_RELATION]->(sr:CISystemRelationDefinition)
+          RETURN collect(sr) AS systemRelations
+        }
+        RETURN t, typeFieldData, baseFieldData, relations, systemRelations
         ORDER BY t.name
       `, { tenantId }),
     )
@@ -219,6 +238,14 @@ export interface EnumScope {
  *
  * `enumScope` è obbligatorio: vedi `EnumScope` sopra.
  */
+/**
+ * DUE implementazioni omonime (revisione totale · E-37): questa e
+ * `apps/api/src/lib/itilTypes.ts#loadITILTypes`, che è quella che il prodotto
+ * usa (resolver dei tipi ITIL e disegnatore). Questa serviva solo a
+ * `generateITILEnumsSDL`, che non produce niente: oggi non ha chiamanti.
+ * Chi deve leggere i tipi ITIL usi quella dell'API — se due copie divergono,
+ * la pagina e lo schema raccontano cose diverse.
+ */
 export async function loadITILTypes(tenantId: string, enumScope: EnumScope): Promise<CITypeWithDefinitions[]> {
   const session = getSession(undefined, 'READ')
   try {
@@ -294,6 +321,13 @@ export async function loadITILTypes(tenantId: string, enumScope: EnumScope): Pro
  * status values come from configurable workflows and must not be
  * constrained by a fixed enum.
  */
+/**
+ * SENZA CHIAMANTI (revisione totale · E-37): restituiva sempre stringa vuota
+ * e `schemaCache.ts` la chiamava a ogni ricostruzione dello schema, con una
+ * lettura del metamodello (`loadITILTypes`) fatta solo per passarle un
+ * argomento che non guardava. Ora non la chiama più nessuno. Resta esportata
+ * perché è nell'interfaccia pubblica del pacchetto, e dice cosa è.
+ */
 export function generateITILEnumsSDL(_itilTypes: CITypeWithDefinitions[]): string {
   return ''
 }
@@ -339,6 +373,8 @@ export const METAMODEL_INPUTS = `
 input CreateCITypeInput {
   name: String!
   label: String!
+  """Le etichette per lingua, SOSTITUITE in blocco (la lista che si manda è quella che resta)."""
+  labels: [CITypeLabelInput!]
   icon: String
   color: String
   """Famiglie di catena del tipo (Application / Infrastructure): scritte in \`chain_families\`."""
@@ -349,6 +385,8 @@ input CreateCITypeInput {
 
 input UpdateCITypeInput {
   label: String
+  """Le etichette per lingua, SOSTITUITE in blocco (la lista che si manda è quella che resta)."""
+  labels: [CITypeLabelInput!]
   icon: String
   color: String
   active: Boolean
@@ -357,6 +395,12 @@ input UpdateCITypeInput {
   chainFamilies: [String!]
   """Ruolo nella mappa di un servizio: component | infrastructure | certificate."""
   serviceRole: String
+}
+
+"""Un'etichetta di un tipo CI per UNA lingua. Un tipo con due lingue manda due voci."""
+input CITypeLabelInput {
+  language: String!
+  label:    String!
 }
 
 input CIFieldInput {

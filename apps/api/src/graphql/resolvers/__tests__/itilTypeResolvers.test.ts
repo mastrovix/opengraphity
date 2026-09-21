@@ -27,6 +27,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
@@ -35,13 +36,18 @@ vi.mock('../ci-utils.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
 }))
 vi.mock('../../../lib/schemaInvalidator.js', () => ({ invalidateSchema: vi.fn() }))
+vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// Il nome di un campo dei ticket ha il suo test (customFieldName.test.ts).
+const assertCustomFieldName = vi.fn(async () => {})
+vi.mock('../../../lib/customFieldName.js', () => ({ assertCustomFieldName: (...a: unknown[]) => assertCustomFieldName(...a) }))
 
-const { buildITILMutations, buildITILTypesResolver, buildITILTypeFieldsResolver, fetchITILTypeById } = await import('../itilTypeResolvers.js')
+const { buildITILMutations, buildITILFieldValueCountResolver, buildITILTypesResolver, buildITILTypeFieldsResolver, fetchITILTypeById } = await import('../itilTypeResolvers.js')
 const { withSession } = await import('../ci-utils.js')
 const { invalidateSchema } = await import('../../../lib/schemaInvalidator.js')
+const { audit } = await import('../../../lib/audit.js')
 
-const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
-const operator: GraphQLContext = { ...admin, role: 'operator' }
+const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
+const operator: GraphQLContext = { ...admin, role: 'operator', permissions: perms('operator') }
 
 const requireAdmin = (ctx: GraphQLContext) => {
   if (ctx.role !== 'admin') throw new GraphQLError('Accesso negato: richiesto ruolo admin', { extensions: { code: 'FORBIDDEN' } })
@@ -177,6 +183,8 @@ describe('updateITILType', () => {
 
 describe('createITILField', () => {
   beforeEach(() => reset())
+  // Ondata 4: prima lettura = il nome del tipo, per il controllo del nome del campo.
+  const typeNameRow = { records: [{ get: () => 'incident' }] }
 
   it('enum senza enumTypeId → BAD_USER_INPUT senza sessione', async () => {
     const err = await mutations.createITILField(null, { typeId: 'it-1', input: { name: 'x', label: 'X', fieldType: 'enum' } }, admin).then(() => null, (e: unknown) => e)
@@ -187,9 +195,10 @@ describe('createITILField', () => {
   it('campo creato con tenant_id = $tenantId, scope itil, is_system false; enum linkato solo se del tenant/sistema; enum_values inline azzerati se c\'è enumTypeId', async () => {
     // Ondata 8 · D-17: la CREATE ritorna il campo creato — zero righe ora vuol
     // dire «il tipo ha già un campo con questo nome», non «riuscito».
-    reset([enumRow(), fieldCreated, noOverrides, { records: [typeRecord()] }])
+    reset([typeNameRow, enumRow(), fieldCreated, noOverrides, { records: [typeRecord()] }])
     await mutations.createITILField(null, { typeId: 'it-1', input: { name: 'origine', label: 'Origine', fieldType: 'enum', enumTypeId: 'e-1', enumValues: ['a'] } }, admin)
-    const { cypher, params } = call(1)
+    expect(assertCustomFieldName).toHaveBeenCalledWith(mockSession, 'tenant-1', 'incident', 'origine')
+    const { cypher, params } = call(2)
     expect(cypher).toContain('dup.name = $name')
     expect(cypher).toContain(`WHERE ${ITIL_SCOPE}`)
     expect(cypher).toContain("scope:             'itil'")
@@ -200,15 +209,16 @@ describe('createITILField', () => {
   })
 
   it('enum inline (senza enumTypeId, fieldType non enum) → enum_values serializzato, nessuna lettura del vocabolario', async () => {
-    reset([fieldCreated, noOverrides, { records: [typeRecord()] }])
+    reset([typeNameRow, fieldCreated, noOverrides, { records: [typeRecord()] }])
     await mutations.createITILField(null, { typeId: 'it-1', input: { name: 'x', label: 'X', fieldType: 'string', enumValues: ['a', 'b'] } }, admin)
-    expect(call(0).params['enumValues']).toBe('["a","b"]')
+    expect(call(1).params['enumValues']).toBe('["a","b"]')
+    expect(call(1).params['visibleToEndUser']).toBe(false)
   })
 
   // A1-1: il campo nuovo è DEL TENANT anche su un tipo condiviso, quindi il
   // vocabolario del tenant si può agganciare; quello di un altro cliente no.
   it('vocabolario di un altro cliente → rifiutato con il messaggio, nessuna CREATE', async () => {
-    reset([enumRow({ name: 'severity', tenantId: 'tenant-altrui' })])
+    reset([typeNameRow, enumRow({ name: 'severity', tenantId: 'tenant-altrui' })])
     await expect(mutations.createITILField(null, { typeId: 'it-1', input: { name: 'x', label: 'X', fieldType: 'enum', enumTypeId: 'e-altrui' } }, admin))
       .rejects.toThrow(/belongs to another tenant/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
@@ -219,7 +229,7 @@ describe('createITILField', () => {
   // disegnatore ne mostra due. La chiave naturale è (tipo, nome) e passa per
   // HAS_FIELD: un vincolo di nodo non la esprime, la guardia sta nella CREATE.
   it('nome già presente sul tipo (la guardia morde, zero righe) → rifiuto esplicito, schema non invalidato', async () => {
-    reset([enumRow(), { records: [] }])
+    reset([typeNameRow, enumRow(), { records: [] }])
     const err = await mutations.createITILField(null, { typeId: 'it-1', input: { name: 'origine', label: 'Origine', fieldType: 'enum', enumTypeId: 'e-1' } }, admin)
       .then(() => null, (e: unknown) => e as GraphQLError)
     expect(err).not.toBeNull()
@@ -229,7 +239,7 @@ describe('createITILField', () => {
   })
 
   it('vocabolario inesistente → NOT_FOUND, nessuna CREATE', async () => {
-    reset([{ records: [] }])
+    reset([typeNameRow, { records: [] }])
     const err = await mutations.createITILField(null, { typeId: 'it-1', input: { name: 'x', label: 'X', fieldType: 'enum', enumTypeId: 'e-ghost' } }, admin).then(() => null, (e: unknown) => e)
     expect((err as GraphQLError).extensions['code']).toBe('NOT_FOUND')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
@@ -238,6 +248,7 @@ describe('createITILField', () => {
 
 describe('updateITILField / deleteITILField — solo i campi del tenant (A1-2 / A-4)', () => {
   beforeEach(() => reset())
+  const storedRow = () => ({ records: [{ get: (k: string) => ({ name: 'origine', fieldType: 'enum' } as Record<string, unknown>)[k] }] })
 
   // RINEGOZIATO: prima i `CASE WHEN f.is_system` coprivano solo
   // name/field_type/required e lasciavano scrivibili etichetta, ordine e i tre
@@ -253,13 +264,24 @@ describe('updateITILField / deleteITILField — solo i campi del tenant (A1-2 / 
   })
 
   it('updateITILField su un campo del tenant: SET senza CASE WHEN, MATCH vincolato a f.tenant_id', async () => {
-    reset([fieldRow(), enumRow(), { records: [] }, noOverrides, { records: [typeRecord()] }])
+    reset([fieldRow(), enumRow(), storedRow(), { records: [] }, noOverrides, { records: [typeRecord()] }])
     await mutations.updateITILField(null, { typeId: 'it-1', fieldId: 'f-2', input: { name: 'origine', label: 'L', fieldType: 'enum', enumTypeId: 'e-1', required: true } }, admin)
-    const { cypher, params } = call(2)
+    const { cypher, params } = call(3)
     expect(cypher).toContain('MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId, tenant_id: $tenantId})')
     expect(cypher).not.toContain('CASE WHEN f.is_system')
     expect(params).toMatchObject({ typeId: 'it-1', fieldId: 'f-2', tenantId: 'tenant-1', name: 'origine', enumTypeId: 'e-1' })
     expect(invalidateSchema).toHaveBeenCalledWith('tenant-1')
+  })
+
+  // Ondata 4: il nome è la proprietà sui ticket e il tipo la forma dei valori già scritti.
+  it('updateITILField: cambiare nome o tipo di un campo → rifiutato, nessuna scrittura', async () => {
+    reset([fieldRow(), enumRow(), storedRow()])
+    await expect(mutations.updateITILField(null, { typeId: 'it-1', fieldId: 'f-2', input: { name: 'provenienza', label: 'L', fieldType: 'enum', enumTypeId: 'e-1' } }, admin))
+      .rejects.toThrow(/cannot change/)
+    reset([fieldRow(), enumRow(), storedRow()])
+    await expect(mutations.updateITILField(null, { typeId: 'it-1', fieldId: 'f-2', input: { name: 'origine', label: 'L', fieldType: 'string' } }, admin))
+      .rejects.toThrow(/cannot change/)
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
   it('updateITILField: vocabolario di un altro cliente sul proprio campo → rifiutato, nessuna scrittura', async () => {
@@ -287,15 +309,51 @@ describe('updateITILField / deleteITILField — solo i campi del tenant (A1-2 / 
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
+  /** La sequenza di `deleteITILField` su un campo del tenant: controllo, nome del tipo, valori, DELETE, REMOVE dei valori, rilettura. */
+  const deleteSeq = (values = { count: 2, sample: [{ number: 'INC1', value: 'a' }, { number: 'INC2', value: 'b' }] }, removed = 2) => [
+    fieldRow({ name: 'origine' }), { records: [rec({ name: 'incident' })] }, { records: [rec(values)] },
+    { records: [rec({ deleted: 1 })] }, { records: [rec({ removed })] }, noOverrides, { records: [typeRecord()] },
+  ]
+
   it('deleteITILField: campo del tenant → DETACH DELETE vincolato a f.tenant_id, invalidateSchema', async () => {
-    reset([fieldRow(), { records: [] }, noOverrides, { records: [typeRecord()] }])
+    reset(deleteSeq())
     await mutations.deleteITILField(null, { typeId: 'it-1', fieldId: 'f-2' }, admin)
-    const { cypher, params } = call(1)
+    const { cypher, params } = call(3)
     expect(cypher).toContain('DETACH DELETE f')
     expect(cypher).toContain('{id: $fieldId, tenant_id: $tenantId}')
     expect(cypher).toContain(`WHERE ${ITIL_SCOPE}`)
     expect(params).toEqual({ typeId: 'it-1', fieldId: 'f-2', tenantId: 'tenant-1' })
     expect(invalidateSchema).toHaveBeenCalledWith('tenant-1')
+  })
+
+  /**
+   * Giro UI del 15 set 2026 · U-28: cancellato «asset_tag», RICH-000006 aveva
+   * ancora `asset_tag = AT-0042` nel grafo. Come per i campi dei CI (CM-4), i
+   * valori se ne vanno con il campo, e i valori di prima restano nell'Audit Log.
+   */
+  it('U-28: i valori del campo spariscono dai ticket nella stessa transazione, e l\'Audit Log tiene quelli di prima', async () => {
+    reset(deleteSeq())
+    await mutations.deleteITILField(null, { typeId: 'it-1', fieldId: 'f-2' }, admin)
+    const count = call(2)
+    expect(count.cypher).toContain('MATCH (e:Incident {tenant_id: $tenantId}) WHERE e[$name] IS NOT NULL')
+    const remove = call(4)
+    expect(remove.cypher).toContain('REMOVE e.`origine`')
+    expect(remove.params).toEqual({ tenantId: 'tenant-1', name: 'origine' })
+    expect(mockSession.executeWrite).toHaveBeenCalledTimes(1)
+    expect(audit).toHaveBeenCalledWith(admin, 'itil_type.field_removed', 'CITypeDefinition', 'it-1', { entityType: 'incident', field: 'origine', valuesRemoved: 2, previousValues: { INC1: 'a', INC2: 'b' } })
+  })
+
+  it('U-28: un nome di campo fuori forma non finisce mai in una REMOVE', async () => {
+    reset([fieldRow({ name: 'x` REMOVE e.tenant_id //' }), { records: [rec({ name: 'incident' })] }])
+    await expect(mutations.deleteITILField(null, { typeId: 'it-1', fieldId: 'f-2' }, admin)).rejects.toThrow(/does not match the field name rule/)
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('U-28: itilFieldValueCount conta i ticket che portano un valore, per chiederlo prima di cancellare', async () => {
+    reset(deleteSeq({ count: 7, sample: [] }))
+    const n = await buildITILFieldValueCountResolver()(null, { typeId: 'it-1', fieldId: 'f-2' }, admin)
+    expect(n).toBe(7)
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
   it('deleteITILField: campo inesistente → "Campo non trovato" senza DELETE', async () => {
@@ -305,7 +363,7 @@ describe('updateITILField / deleteITILField — solo i campi del tenant (A1-2 / 
   })
 
   it('la lettura di controllo scopa sia il tipo sia il campo', async () => {
-    reset([fieldRow(), { records: [] }, noOverrides, { records: [typeRecord()] }])
+    reset(deleteSeq())
     await mutations.deleteITILField(null, { typeId: 'it-1', fieldId: 'f-2' }, admin)
     const { cypher, params } = call(0)
     expect(cypher).toContain(`WHERE ${ITIL_SCOPE}`)

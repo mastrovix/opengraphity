@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest'
 import i18n from '@/i18n/i18n'
-import { currentLocale, formatDate, formatDateTime, formatDateShort, timeAgo, formatDuration, fmtDate, fmtShort } from './datetime'
+import { currentLocale, formatDate, formatDateTime, timeAgo, formatDuration, fmtDate } from './datetime'
 
 // TZ = Europe/Rome (vitest.config.ts): 12:05Z in settembre (CEST) → 14:05 locali.
 // Lingua: il setup forza `en`; i blocchi "it" la cambiano e la ripristinano.
@@ -43,8 +43,9 @@ describe('formatDateTime', () => {
 })
 
 describe('formatDate', () => {
-  it('en: solo data in en-GB (gg/mm/aaaa)', () => {
-    expect(formatDate(ISO)).toBe('08/09/2026')
+  it('en: giorno, mese abbreviato e anno, come formatDateTime (#27)', () => {
+    expect(formatDate(ISO)).toMatch(/^08 Sept? 2026$/)
+    expect(formatDateTime(ISO).startsWith(formatDate(ISO))).toBe(true)
   })
   it('assente → "—", non parsabile → invariata; fmtDate è un alias', () => {
     expect(formatDate(null)).toBe('—')
@@ -54,22 +55,11 @@ describe('formatDate', () => {
   describe('in italiano', () => {
     withLanguage('it')
     it('segue il locale it-IT', () => {
-      expect(formatDate(ISO)).toBe(new Date(ISO).toLocaleDateString('it-IT'))
+      expect(formatDate(ISO)).toBe('08 set 2026')
     })
   })
 })
 
-describe('formatDateShort', () => {
-  it('"gg/mm/aaaa hh:mm" a larghezza fissa con zero padding, indipendente dalla lingua', () => {
-    expect(formatDateShort(ISO)).toBe('08/09/2026 14:05')
-    expect(formatDateShort('2026-01-02T03:04:00Z')).toBe('02/01/2026 04:04')  // CET +1
-  })
-  it('assente → "—", non parsabile → invariata; fmtShort è un alias', () => {
-    expect(formatDateShort(undefined)).toBe('—')
-    expect(formatDateShort('nope')).toBe('nope')
-    expect(fmtShort).toBe(formatDateShort)
-  })
-})
 
 describe('timeAgo (orologio finto)', () => {
   beforeEach(() => { vi.useFakeTimers({ now: new Date('2026-09-08T12:00:00Z') }) })

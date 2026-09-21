@@ -18,10 +18,17 @@
  * a salute invariata (un punteggio stantio sarebbe un dato falso); voce di
  * cronologia ed evento `service.health_changed` solo se la salute cambia.
  *
- * Ondata 3: dopo la scrittura, se la valutazione è rilevante (salute cambiata
- * oppure insieme delle cause diverso da quello dell'ultima spiegazione),
- * `reconcileServiceIncident` (incident.ts) porta l'incident del servizio nello
- * stato coerente — apertura, commento, riapertura, chiusura automatica.
+ * Ondata 3: dopo la scrittura `reconcileServiceIncident` (incident.ts) porta
+ * l'incident del servizio nello stato coerente — apertura, commento,
+ * riapertura, chiusura automatica. Revisione del 15 set 2026 · SV-1/SV-2: lo fa
+ * a OGNI valutazione non sospesa, dallo stato e non dal cambiamento. Prima
+ * partiva solo se salute o cause erano cambiate: una riconciliazione fallita
+ * (la salute era già scritta), una bozza attivata a servizio già giù o una
+ * soglia abbassata non aprivano più nessun incident, e né il retry né la
+ * passata periodica né «Rivaluta ora» lo recuperavano. Se la riconciliazione
+ * fallisce il motivo resta sulla mappa (`incident_problem`, lo mostrano la
+ * pagina del servizio e la diagnostica) e l'errore propaga; la prima
+ * riconciliazione riuscita lo toglie.
  *
  * Un nodo incluso che non esiste più (`node_ids` della mappa ⊄ INCLUDES:
  * cancellare un CI porta via la relazione) marca la mappa `stale` con
@@ -53,6 +60,9 @@ import { getSession, runQuery, runQueryOne, type Queryable } from '@opengraphity
 import type { ServiceHealthChangedPayload } from '@opengraphity/types'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { audit } from '../../lib/audit.js'
+import { SYSTEM_PERMISSIONS } from '../../lib/permissions.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
+import { systemTextIn } from '../../lib/systemText.js'
 import { logger } from '../../lib/logger.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
@@ -69,9 +79,9 @@ import { MONITORING_ACTOR, monitoringContext, toNumber, toStr, type Props } from
 import { getEventPolicy } from '../events/policy.js'
 import { changeWindowParams, changeWindowSubqueryCypher, pickChangeWindow, resolveChangeWindowSteps, suppressionRelTypes, type ChangeWindow, type ChangeWindowRow, type ChangeWindowSteps } from '../events/suppression.js'
 import { evaluateImpact, serviceHealthNote, type ImpactCause, type ImpactNodeInput, type UpstreamWindowRef } from './rules.js'
-import { causeIdsOf, sameCauseIds, serviceHistoryParams, serviceHistoryWriteCypher, type StoredCause } from './history.js'
+import { serviceHistoryParams, serviceHistoryWriteCypher, type StoredCause } from './history.js'
 import { buildServiceMap, createServiceMapNode, type ServiceMapProposal } from './build.js'
-import { reconcileServiceIncident, type ServiceIncidentResult } from './incident.js'
+import { clearServiceIncidentProblem, reconcileServiceIncident, recordServiceIncidentProblem, type ServiceIncidentResult } from './incident.js'
 
 const log = logger.child({ module: 'service-impact' })
 
@@ -269,7 +279,7 @@ export interface EvaluateResult {
   /** Salute senza le finestre di change in corso; valorizzata solo con `health = maintenance`. */
   healthIfActive: ServiceHealth | null
   causes:         StoredCause[]
-  /** Esito della riconciliazione dell'incident del servizio; null se la valutazione non era rilevante (salute e cause invariate) o se è stata sospesa. */
+  /** Esito della riconciliazione dell'incident del servizio (a ogni valutazione, SV-1); null solo se la valutazione è stata sospesa. */
   incident:       ServiceIncidentResult | null
   /**
    * Valutazione SOSPESA (revisione 2 · D6.4): una sorgente degli allarmi dei
@@ -281,7 +291,7 @@ export interface EvaluateResult {
   healthNote:     string | null
 }
 
-interface WriteRow { id: string; previous: string | null; previousExplanation: unknown; changed: boolean; wasStale: boolean; serviceId: string; name: string; criticality: string | null }
+interface WriteRow { id: string; previous: string | null; changed: boolean; wasStale: boolean; serviceId: string; name: string; criticality: string | null; incidentProblem: unknown }
 
 /**
  * Scrittura della valutazione: stato + voce (se la salute cambia) + voce
@@ -299,28 +309,41 @@ interface WriteRow { id: string; previous: string | null; previousExplanation: u
  * supera il tetto (`over_limit`) resta finché la sincronizzazione non riesce:
  * spegnerlo qui nasconderebbe una mappa che nessuno ha ancora sistemato.
  *
- * La riga porta anche la spiegazione PRECEDENTE (letta prima del SET) e la
- * criticità del servizio: servono all'incident del servizio (incident.ts) —
- * la prima per sapere se l'insieme delle cause è cambiato, la seconda per
- * l'impatto dell'incident — senza una lettura in più.
+ * La riga porta anche la criticità del servizio (l'impatto dell'incident,
+ * incident.ts) e il problema d'incident registrato (SV-4: si toglie solo se
+ * c'è), senza una lettura in più.
  */
 export function evaluationWriteCypher(): string {
   return `
       MATCH (m:ServiceMap {id: $mapId, tenant_id: $tenantId})
       WHERE m.version = toInteger($version)
-      WITH m, m.health AS previous, m.explanation AS previousExplanation, coalesce(m.stale, false) AS wasStale,
+      // IL LOCK PRIMA DELLA LETTURA (revisione totale · D-16): la salute
+      // precedente si leggeva nel WITH e il lock arrivava solo al SET, quindi
+      // due valutazioni concorrenti della stessa mappa (il worker ha
+      // concorrenza 2, e «rivaluta» si somma al cambio di stato) leggevano
+      // entrambe la salute vecchia: due voci di cronologia e due
+      // service.health_changed, cioè due notifiche per un cambio solo.
+      // Questo SET prende il lock sul nodo; il WITH dopo legge già serializzato.
+      SET m.evaluated_at = $now
+      WITH m, m.health AS previous, coalesce(m.stale, false) AS wasStale,
            coalesce(m.stale_reason = '${SERVICE_STALE_OVER_LIMIT}', false) AS overLimit
-      WITH m, previous, previousExplanation, wasStale, overLimit,
+      WITH m, previous, wasStale, overLimit,
            ($stale OR overLimit) AS stale,
            CASE WHEN overLimit THEN '${SERVICE_STALE_OVER_LIMIT}' WHEN $stale THEN '${SERVICE_STALE_MISSING_CI}' ELSE null END AS staleReason
-      WITH m, previous, previousExplanation, wasStale, stale, staleReason,
+      WITH m, previous, wasStale, stale, staleReason,
            (previous IS NULL OR previous <> $health) AS changed, (stale AND NOT wasStale) AS becameStale
       SET m.health = $health, m.impact_score = toInteger($impactScore), m.explanation = $explanation, m.evaluated_at = $now,
+          // G-MON-6: quanti componenti sono non operativi in tutto, non solo
+          // quelli entrati nelle prime 20 cause.
+          m.unhealthy_count = toInteger($unhealthyCount),
           m.stale = stale, m.stale_reason = staleReason, m.health_if_active = $healthIfActive, m.health_note = $healthNote,
           m.health_since = CASE WHEN changed THEN $now ELSE m.health_since END
-      ${serviceHistoryWriteCypher({ when: 'changed', prefix: 'h', fields: { previousHealth: 'previous' }, cap: false })}
+      ${
+        // Secondo giro UI del 15 set 2026 · V-13: la mappa nasce già «unknown», quindi la prima
+        // valutazione non «cambiava» la salute e la voce \`created\` non veniva mai scritta.
+        serviceHistoryWriteCypher({ when: "(changed OR $hTrigger = 'created')", prefix: 'h', fields: { previousHealth: 'previous' }, cap: false })}
       ${serviceHistoryWriteCypher({ when: 'becameStale', prefix: 'st', fields: { previousHealth: 'previous' }, imports: ['previous', 'wasStale', 'changed', 'becameStale'], capWhen: 'changed OR becameStale' })}
-      RETURN m.id AS id, previous, previousExplanation, changed, wasStale, m.service_id AS serviceId, m.name AS name,
+      RETURN m.id AS id, previous, changed, wasStale, m.service_id AS serviceId, m.name AS name, m.incident_problem AS incidentProblem,
              head([(ba:BusinessApplication {tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m) | ba.criticality]) AS criticality`
 }
 
@@ -339,20 +362,6 @@ export function evaluationHoldWriteCypher(): string {
       WHERE m.version = toInteger($version)
       SET m.evaluated_at = $now, m.health_note = $healthNote
       RETURN m.id AS id, m.health AS health, m.impact_score AS impactScore`
-}
-
-/**
- * Gli id delle cause di una spiegazione salvata (`ServiceMap.explanation`),
- * per il confronto con quelle appena calcolate. Assente o corrotta = non
- * scritta dal motore: errore, mai un insieme vuoto per comodità.
- */
-export function explanationCauseIds(raw: unknown, mapId: string): string[] {
-  if (typeof raw !== 'string') throw new Error(`ServiceMap ${mapId} explanation is not a JSON string (got ${typeof raw}) — run the 20260910_1080_service_maps_bootstrap migration`)
-  let parsed: unknown
-  try { parsed = JSON.parse(raw) }
-  catch (e) { throw new Error(`ServiceMap ${mapId} explanation is corrupt JSON: ${e instanceof Error ? e.message : String(e)}`) }
-  if (!Array.isArray(parsed)) throw new Error(`ServiceMap ${mapId} explanation is not a JSON array`)
-  return causeIdsOf(parsed as StoredCause[])
 }
 
 /** Quante volte si rilegge e ricalcola quando la versione è cambiata sotto le mani (E1): una gara è normale, due di fila no. */
@@ -404,6 +413,7 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
   const startedAt = performance.now()
   const logCtx = { tenantId, mapId, trigger, jobId: input.jobId }
   try {
+    const lingua = await languageFor(tenantId)
     const session = getSession(undefined, 'WRITE')
     // `!`: il ciclo qui sotto gira sempre almeno una volta (o lancia), ma il
     // compilatore non lo sa.
@@ -426,7 +436,7 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
         // D6.4: sorgente in tempesta e regola `hold` → la valutazione è
         // sospesa. Si scrive solo la nota (e `evaluated_at`, così la passata
         // periodica non ci ritorna sopra ogni minuto).
-        healthNote = serviceHealthNote({ held: state.rules.during_storm === 'hold' && stormSources.length > 0, stormSources, upstreamWindows: upstreamWindowsOf(state.nodes) })
+        healthNote = serviceHealthNote(lingua, { held: state.rules.during_storm === 'hold' && stormSources.length > 0, stormSources, upstreamWindows: upstreamWindowsOf(state.nodes) })
         if (state.rules.during_storm === 'hold' && stormSources.length > 0) {
           held = await holdEvaluation(session, { tenantId, mapId, now, version: state.version, healthNote, stormSources, logCtx })
           if (held) break
@@ -437,11 +447,12 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
           continue
         }
         const stale = state.missing.length > 0
-        const staleNote = stale ? `Componenti non più presenti nella CMDB: ${state.missing.join(', ')}` : null
+        const staleNote = stale ? systemTextIn(lingua, 'serviceMap.missingComponents', { names: state.missing.join(', ') }) : null
         const explanation = JSON.stringify(causes)
         row = await runQueryOne<WriteRow>(session, evaluationWriteCypher(), {
           mapId, tenantId, now, stale, version: state.version, healthNote,
           health: result.health, healthIfActive: result.healthIfActive, impactScore: result.impactScore, explanation,
+          unhealthyCount: result.unhealthyCount,
           ...serviceHistoryParams({ trigger, health: result.health, previousHealth: null, impactScore: result.impactScore, causes }, now, 'h'),
           ...serviceHistoryParams({ trigger: 'map_changed', health: result.health, previousHealth: null, impactScore: result.impactScore, causes, note: staleNote }, now, 'st'),
         })
@@ -480,27 +491,34 @@ export async function evaluateServiceMap(input: EvaluateInput): Promise<Evaluate
         previous_health: previous, new_health: result.health, impact_score: result.impactScore,
       }
       await publishEvent('service.health_changed', tenantId, actorId, payload, now)
-      void audit(actorId === MONITORING_ACTOR ? monitoringContext(tenantId) : { tenantId, userId: actorId, userEmail: actorId, role: 'admin' }, 'service.health_changed', 'ServiceMap', mapId, {
+      void audit(actorId === MONITORING_ACTOR ? monitoringContext(tenantId) : { tenantId, userId: actorId, userEmail: actorId, role: 'admin', permissions: SYSTEM_PERMISSIONS }, 'service.health_changed', 'ServiceMap', mapId, {
         trigger, previousHealth: previous, health: result.health, impactScore: result.impactScore, causes: causes.map((c) => c.ciId), stale,
       })
       log.info({ ...logCtx, previousHealth: previous, health: result.health, impactScore: result.impactScore, causes: causes.length }, 'Service health changed')
     } else {
       log.debug({ ...logCtx, health: result.health, impactScore: result.impactScore }, 'Service health unchanged')
     }
-    // Incident del servizio (ondata 3): si riconcilia solo quando la
-    // valutazione è rilevante — salute cambiata, oppure stesso stato ma cause
-    // diverse (un componente malato al posto di un altro: se un incident è
-    // aperto va aggiornato). Una raffica di valutazioni che non cambia nulla
-    // non prende nemmeno il lock.
-    const causesChanged = !sameCauseIds(causeIdsOf(causes), explanationCauseIds(row.previousExplanation, mapId))
-    const incident = changed || causesChanged
-      ? await reconcileServiceIncident({
+    // Incident del servizio: a ogni valutazione, dallo stato (SV-1/SV-2).
+    // Ogni ramo della riconciliazione è idempotente, quindi una valutazione
+    // che non cambia nulla non scrive nulla; in cambio si prende il lock e si
+    // legge l'incident collegato ogni volta — il prezzo di non perdere mai
+    // un'apertura.
+    let incident: ServiceIncidentResult
+    try {
+      incident = await reconcileServiceIncident({
         tenantId, mapId, serviceId: row.serviceId, serviceName: row.name, criticality: row.criticality ?? null,
         status: assertEnum<ServiceMapStatus>(state.props['status'], SERVICE_MAP_STATUSES, `ServiceMap ${mapId} status`),
         rules: state.rules, health: result.health, impactScore: result.impactScore, causes,
         actorId, now, jobId: input.jobId,
       })
-      : null
+    } catch (err) {
+      // SV-4: il motivo resta sulla mappa finché una riconciliazione non
+      // riesce — prima si leggeva solo nel log del worker. L'errore propaga
+      // comunque: il job fallisce, visibile, e ritenta.
+      await recordServiceIncidentProblem(tenantId, mapId, err, now)
+      throw err
+    }
+    if (row.incidentProblem != null) await clearServiceIncidentProblem(tenantId, mapId)
     // La metrica si incrementa alla FINE: una riconciliazione fallita conta
     // come `error` (il catch), non anche come `changed`.
     serviceEvaluationsTotal.inc({ result: changed ? 'changed' : 'unchanged' })

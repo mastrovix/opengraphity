@@ -13,18 +13,59 @@
 //      in a WHERE (accepted only when the query has no OR/XOR/NOT that could
 //      neutralise it), or re-uses an alias already bound by an anchored path.
 //
+//   5. what the tenant's graph holds but a report must never read (revisione
+//      totale · D-1): every node pattern names its labels (or re-uses an alias
+//      that does), no label is one of SENSITIVE_LABELS, no `!`/`%` label
+//      expression, no access to a SENSITIVE_PROPERTY_KEYS property and no dynamic
+//      `x['…']` access. Before, an operator with `report.ai` (or a prompt
+//      injection in a ticket title) could read OutboundWebhook.secret/headers,
+//      Slack webhook URLs and transform scripts through the tool.
+//      `redactSensitiveValue` is the second line on the rows the query returns.
+//
 // The check is deliberately strict: a legitimate query it rejects costs the
 // model one retry; a malicious query it accepts costs a cross-tenant leak.
 
 export class UnsafeCypherError extends Error {
   readonly code = 'UNSAFE_CYPHER'
   constructor(message: string) {
-    super(`Query rifiutata dal guard di sicurezza: ${message}`)
+    super(`Query rejected by the security guard: ${message}`)
     this.name = 'UnsafeCypherError'
   }
 }
 
 export const MAX_CYPHER_LENGTH = 4000
+
+/**
+ * Nodes holding integration secrets, credentials or configuration code: never readable by a report.
+ *
+ * I REGISTRI NON SONO DATI DI DOMINIO (20 set 2026, ondata 3).
+ *
+ * `AuditEntry`, `LogEntry` e `ServerLogEntry` sono entrati qui perché un
+ * report non deve poterli leggere. Non contengono ticket: contengono il
+ * RACCONTO di tutto quello che è successo, con i parametri delle mutation
+ * (`auditableArgs()` oscura per NOME di chiave, quindi `url` e `headers` di
+ * un webhook passano) e, nei log, il payload libero di chi ha scritto la
+ * riga. Un operatore con `report.ai` poteva già chiederli oggi — buco
+ * preesistente, trovato rileggendo il progetto. Si chiude PRIMA di
+ * persistere i log del server, non dopo.
+ */
+export const SENSITIVE_LABELS: ReadonlySet<string> = new Set([
+  'OutboundWebhook', 'InboundWebhook', 'ApiKey', 'NotificationChannel', 'SlackInstallation',
+  'SyncSource', 'SyncConflict', 'SyncChangeRecord', 'MigrationLock', 'Migration', 'LoginProvider',
+  'AuditEntry', 'LogEntry', 'ServerLogEntry',
+])
+
+/** Property names that hold secrets on any node. */
+export const SENSITIVE_PROPERTY_KEYS: ReadonlySet<string> = new Set([
+  'secret', 'headers', 'key_hash', 'key_prefix', 'webhook_url', 'transform_script', 'token', 'password',
+  'credentials', 'encrypted_credentials', 'signing_secret', 'signing_secret_enc', 'bot_token', 'bot_token_enc',
+  'client_secret', 'embedding',
+  // Il corpo libero di una voce di registro: `AuditEntry.details` e
+  // `LogEntry.data` sono JSON scritto da chi ha generato l'evento, e nessuno
+  // ne ha mai promesso il contenuto. Vietati per nome anche fuori dai nodi
+  // di sopra, perché la stessa chiave può ricomparire altrove.
+  'details', 'data',
+])
 
 const WRITE_KEYWORD_RE = /(?<![\w.$])(CREATE|MERGE|SET|DELETE|DETACH|REMOVE|DROP|FOREACH|LOAD|USING|ALTER|GRANT|DENY|REVOKE|START|STOP|TERMINATE|INSTALL|IMPORT|EXPORT|SHOW|USE|ENABLE|RENAME|DEALLOCATE|ASSIGN|PERIODIC|COMMIT)(?!\w)/i
 const CALL_RE          = /(?<![\w.])CALL(?!\w)\s*([^\s]*)/gi
@@ -41,6 +82,31 @@ const INLINE_TENANT_RE = /(?<!\w)tenant_id\s*:\s*\$tenantId(?!\w)/
 const WHERE_TENANT_RE  = /(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\.tenant_id\s*=\s*\$tenantId(?!\w)|\$tenantId\s*=\s*(?<![\w.])([A-Za-z_][A-Za-z0-9_]*)\.tenant_id(?!\w)/g
 const BOOLEAN_NEUTRALISER_RE = /(?<![\w.])(OR|XOR|NOT)(?!\w)/i
 const IS_NOT_RE = /(?<![\w.])IS\s+NOT(?!\w)/gi
+
+const SENSITIVE_PROPERTY_RE = new RegExp(`(?<![\\w$])[A-Za-z_][A-Za-z0-9_]*\\s*\\.\\s*(${[...SENSITIVE_PROPERTY_KEYS].join('|')})(?!\\w)|\\{[^}]*(?<![\\w$])(${[...SENSITIVE_PROPERTY_KEYS].join('|')})\\s*:`, 'i')
+const DYNAMIC_PROPERTY_RE = /[A-Za-z0-9_)\]]\s*\[\s*(''|""|\$)/
+
+/**
+ * Seconda linea di D-1 sulle righe restituite: un nodo con un'etichetta
+ * sensibile diventa `"[redacted]"`, una chiave sensibile di una mappa o di un
+ * nodo sparisce. Ricorsiva su liste e mappe; i valori primitivi passano.
+ */
+export function redactSensitiveValue(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(redactSensitiveValue)
+  const v = value as Record<string, unknown>
+  if (Array.isArray(v['labels']) && typeof v['properties'] === 'object' && v['properties'] !== null) {
+    if ((v['labels'] as unknown[]).some((l) => typeof l === 'string' && SENSITIVE_LABELS.has(l))) return '[redacted]'
+    return { ...v, properties: redactSensitiveValue(v['properties']) }
+  }
+  if ('toNumber' in v && typeof v['toNumber'] === 'function') return value
+  const out: Record<string, unknown> = {}
+  for (const [k, inner] of Object.entries(v)) {
+    if (SENSITIVE_PROPERTY_KEYS.has(k.toLowerCase())) continue
+    out[k] = redactSensitiveValue(inner)
+  }
+  return out
+}
 
 /** Words after which a `(` opens a pattern, not a function call. */
 const PATTERN_KEYWORDS = new Set([
@@ -67,7 +133,7 @@ export function stripCypherLiterals(query: string): string {
         if (query[j] === ch) { closed = true; break }
         j++
       }
-      if (!closed) throw new UnsafeCypherError('string literal non terminato')
+      if (!closed) throw new UnsafeCypherError('unterminated string literal')
       out += ch + ch
       i = j + 1
       continue
@@ -79,14 +145,14 @@ export function stripCypherLiterals(query: string): string {
     }
     if (ch === '/' && query[i + 1] === '*') {
       const end = query.indexOf('*/', i + 2)
-      if (end === -1) throw new UnsafeCypherError('commento non terminato')
+      if (end === -1) throw new UnsafeCypherError('unterminated comment')
       out += ' '
       i = end + 2
       continue
     }
-    if (ch === '\\') throw new UnsafeCypherError('backslash fuori da una stringa')
-    if (ch === '`') throw new UnsafeCypherError('identificatori tra backtick non ammessi')
-    if (ch === ';') throw new UnsafeCypherError('una sola istruzione per query (";" non ammesso)')
+    if (ch === '\\') throw new UnsafeCypherError('backslash outside a string')
+    if (ch === '`') throw new UnsafeCypherError('backtick identifiers are not allowed')
+    if (ch === ';') throw new UnsafeCypherError('one statement per query (";" is not allowed)')
     out += ch
     i++
   }
@@ -107,6 +173,8 @@ function precedingToken(text: string, index: number): { word: string | null; cha
 interface NodePattern {
   alias:        string | null
   hasLabel:     boolean
+  labels:       string[]
+  labelExpr:    string
   inlineTenant: boolean
   continues:    boolean   // preceded by `-` / `>` → same path as previous node
 }
@@ -124,6 +192,8 @@ function extractNodePatterns(text: string): NodePattern[] {
     nodes.push({
       alias:        m[1] ?? null,
       hasLabel:     (m[2] ?? '').length > 0,
+      labels:       (m[2] ?? '').split(/[:|&!%\s]+/).filter(Boolean),
+      labelExpr:    m[2] ?? '',
       inlineTenant: m[3] ? INLINE_TENANT_RE.test(m[3]) : false,
       continues:    char === '-' || char === '>',
     })
@@ -136,17 +206,17 @@ function extractNodePatterns(text: string): NodePattern[] {
  * Cypher statement. Never mutates or executes anything.
  */
 export function assertSafeReadOnlyCypher(query: string): void {
-  if (typeof query !== 'string' || !query.trim()) throw new UnsafeCypherError('query vuota')
-  if (query.length > MAX_CYPHER_LENGTH) throw new UnsafeCypherError(`query troppo lunga (> ${MAX_CYPHER_LENGTH} caratteri)`)
+  if (typeof query !== 'string' || !query.trim()) throw new UnsafeCypherError('empty query')
+  if (query.length > MAX_CYPHER_LENGTH) throw new UnsafeCypherError(`query too long (> ${MAX_CYPHER_LENGTH} characters)`)
 
   const text = stripCypherLiterals(query)
 
   const write = WRITE_KEYWORD_RE.exec(text)
-  if (write) throw new UnsafeCypherError(`clausola non ammessa: ${write[1]!.toUpperCase()} (sono consentite solo letture)`)
-  if (DB_NAMESPACE_RE.test(text)) throw new UnsafeCypherError('procedure/funzioni db.* e dbms.* non ammesse')
-  if (APOC_RE.test(text)) throw new UnsafeCypherError('apoc.* non ammesso (eccetto apoc.text/coll/map/date)')
-  if (AUTH_RE.test(text)) throw new UnsafeCypherError('":auth" non ammesso')
-  if (INLINE_WHERE_RE.test(text)) throw new UnsafeCypherError('WHERE dentro il pattern di nodo non supportato: usa {tenant_id: $tenantId}')
+  if (write) throw new UnsafeCypherError(`clause not allowed: ${write[1]!.toUpperCase()} (only reads are allowed)`)
+  if (DB_NAMESPACE_RE.test(text)) throw new UnsafeCypherError('db.* and dbms.* procedures/functions are not allowed')
+  if (APOC_RE.test(text)) throw new UnsafeCypherError('apoc.* is not allowed (except apoc.text/coll/map/date)')
+  if (AUTH_RE.test(text)) throw new UnsafeCypherError('":auth" is not allowed')
+  if (INLINE_WHERE_RE.test(text)) throw new UnsafeCypherError('WHERE inside a node pattern is not supported: use {tenant_id: $tenantId}')
 
   CALL_RE.lastIndex = 0
   let call: RegExpExecArray | null
@@ -154,13 +224,13 @@ export function assertSafeReadOnlyCypher(query: string): void {
     const target = call[1] ?? ''
     if (target.startsWith('{')) continue                 // CALL { subquery }
     if (SAFE_PROC_RE.test(target)) continue
-    throw new UnsafeCypherError(`CALL ${target || '<procedura>'} non ammesso`)
+    throw new UnsafeCypherError(`CALL ${target || '<procedure>'} is not allowed`)
   }
 
   PARAM_RE.lastIndex = 0
   let param: RegExpExecArray | null
   while ((param = PARAM_RE.exec(text)) !== null) {
-    if (param[1] !== 'tenantId') throw new UnsafeCypherError(`parametro $${param[1]} non disponibile: l'unico parametro è $tenantId`)
+    if (param[1] !== 'tenantId') throw new UnsafeCypherError(`parameter $${param[1]} is not available: the only parameter is $tenantId`)
   }
 
   // Aliases scoped via WHERE alias.tenant_id = $tenantId — only trusted when no
@@ -170,11 +240,11 @@ export function assertSafeReadOnlyCypher(query: string): void {
   let ws: RegExpExecArray | null
   while ((ws = WHERE_TENANT_RE.exec(text)) !== null) whereScoped.add(ws[1] ?? ws[2]!)
   if (whereScoped.size > 0 && BOOLEAN_NEUTRALISER_RE.test(text.replace(IS_NOT_RE, 'IS_NOT'))) {
-    throw new UnsafeCypherError('con OR/XOR/NOT nella query il vincolo tenant deve essere inline nel pattern: (x:Label {tenant_id: $tenantId})')
+    throw new UnsafeCypherError('with OR/XOR/NOT in the query the tenant constraint must be inline in the pattern: (x:Label {tenant_id: $tenantId})')
   }
 
   const nodes = extractNodePatterns(text)
-  if (nodes.length === 0) throw new UnsafeCypherError('nessun pattern di nodo trovato: ogni query deve partire da MATCH (x:Label {tenant_id: $tenantId})')
+  if (nodes.length === 0) throw new UnsafeCypherError('no node pattern found: every query must start from MATCH (x:Label {tenant_id: $tenantId})')
 
   // Group into paths and require each one to be anchored.
   const paths: NodePattern[][] = []
@@ -191,9 +261,25 @@ export function assertSafeReadOnlyCypher(query: string): void {
     )
     if (!anchored) {
       const first = path[0]!
-      const desc = first.alias ?? (first.hasLabel ? '<senza alias>' : '()')
-      throw new UnsafeCypherError(`pattern non vincolato al tenant a partire da (${desc}): aggiungi {tenant_id: $tenantId} nel nodo o ${first.alias ?? 'x'}.tenant_id = $tenantId`)
+      const desc = first.alias ?? (first.hasLabel ? '<no alias>' : '()')
+      throw new UnsafeCypherError(`pattern not bound to the tenant starting from (${desc}): add {tenant_id: $tenantId} to the node or ${first.alias ?? 'x'}.tenant_id = $tenantId`)
     }
     for (const n of path) if (n.alias) bound.add(n.alias)
   }
+
+  // 5. What a report must never read (D-1).
+  const labeledAliases = new Set(nodes.filter((n) => n.hasLabel && n.alias).map((n) => n.alias!))
+  for (const n of nodes) {
+    if (/[!%]/.test(n.labelExpr)) throw new UnsafeCypherError('label expressions with ! or % are not allowed: name the labels')
+    const denied = n.labels.find((l) => SENSITIVE_LABELS.has(l))
+    if (denied) throw new UnsafeCypherError(`label ${denied} is not readable by reports`)
+    if (!n.hasLabel && !(n.alias && labeledAliases.has(n.alias))) {
+      throw new UnsafeCypherError(`every node needs a label: (${n.alias ?? ''}) has none — write (${n.alias ?? 'x'}:Label)`)
+    }
+  }
+  SENSITIVE_PROPERTY_RE.lastIndex = 0
+  const prop = SENSITIVE_PROPERTY_RE.exec(text)
+  if (prop) throw new UnsafeCypherError(`property ${prop[1]} is not readable by reports`)
+  if (DYNAMIC_PROPERTY_RE.test(text)) throw new UnsafeCypherError('dynamic property access x[\'…\'] is not allowed: use x.property')
+
 }

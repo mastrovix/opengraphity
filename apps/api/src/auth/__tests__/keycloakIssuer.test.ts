@@ -44,7 +44,7 @@ type GetKey = (header: jwt.JwtHeader, cb: jwt.SigningKeyCallback) => void
 type VerifyCb = (err: Error | null, decoded?: unknown) => void
 type VerifyOpts = { algorithms: string[]; issuer: string }
 
-const PAYLOAD = { sub: 'u-1', email: 'alice@acme.io', preferred_username: 'alice', realm_access: { roles: ['operator'] } }
+const PAYLOAD = { sub: 'u-1', email: 'alice@acme.io', preferred_username: 'alice', realm_access: { roles: ['operator'] }, azp: 'opengrafo-web' }
 
 /** jwt.verify stub: resolves the key through getKey (like the real one) then answers with PAYLOAD. */
 function verifySucceeds() {

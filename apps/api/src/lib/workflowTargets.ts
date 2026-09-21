@@ -93,9 +93,9 @@ export async function targetStepByCategory(
   const names = await stepNamesByCategory(session, tenantId, entityType, categories)
   if (names.length === 0) {
     throw new Error(
-      `${what}: nel workflow "${entityType}" del tenant ${tenantId} nessun passo ha la categoria ` +
-      `[${categories.join(', ')}]. Assegna la categoria ai passi nel disegnatore: senza, questa regola non ` +
-      `sa dove portare il ticket.`,
+      `${what}: in the "${entityType}" workflow of tenant ${tenantId} no step has the category ` +
+      `[${categories.join(', ')}]. Give the category to the steps in the designer: without it this rule ` +
+      `does not know where to take the ticket.`,
     )
   }
   return pick(names, preferAvailable)

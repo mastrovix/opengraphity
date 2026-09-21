@@ -4,12 +4,14 @@ import { useQuery } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
+import { useMe } from '@/hooks/useMe'
 import { BookOpen, Search, Eye, ThumbsUp, Tag } from 'lucide-react'
 import { EmptyState } from '@/components/EmptyState'
 import { Pagination } from '@/components/ui/Pagination'
 import { QueryError } from '@/components/QueryError'
 import { Pill } from '@/components/ui/Pill'
-import { kbCategoryColor, kbCategoryIcon } from '@/lib/kbCategories'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useValueStyle } from '@/hooks/useValueStyle'
 import { formatDate } from '@/lib/datetime'
 import { colors, alpha } from '@/lib/tokens'
 
@@ -38,6 +40,13 @@ const PAGE_SIZE = 15
 
 export function KnowledgeBasePage() {
   const { t } = useTranslation()
+  // F5: etichetta e colore della categoria vengono dal vocabolario `kb_category`.
+  const { labelOf } = useDomainVocabularies()
+  const styleOf = useValueStyle()
+  const categoryLabel = (name: string) => labelOf('kb_category', name) ?? name
+  const { can } = useMe()
+  // Giro del 14 set 2026 (#45): dalla Knowledge Base non si poteva scrivere un articolo.
+  const canWrite = can('kb.write')
   const [search,   setSearch]   = useState('')
   const [category, setCategory] = useState('')
   const [page,     setPage]     = useState(0)
@@ -49,7 +58,8 @@ export function KnowledgeBasePage() {
     fetchPolicy: 'cache-and-network',
   })
 
-  const categories = catData?.kbCategories ?? []
+  // Nella griglia solo le categorie con articoli pubblicati: una tessera vuota non porta a niente.
+  const categories = (catData?.kbCategories ?? []).filter((c) => c.count > 0)
   const articles   = data?.kbArticles?.items ?? []
   const total      = data?.kbArticles?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -71,6 +81,11 @@ export function KnowledgeBasePage() {
           </h1>
         </div>
         <p style={{ fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate)', margin: '0 0 24px' }}>{t('pages.kb.subtitle')}</p>
+        {canWrite && (
+          <Link to="/admin/knowledge-base?new=1" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 20, padding: '8px 14px', borderRadius: 8, background: 'var(--color-brand)', color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: 600, textDecoration: 'none' }}>
+            + {t('pages.kb.newArticle')}
+          </Link>
+        )}
         <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, maxWidth: 500, margin: '0 auto' }}>
           <div style={{ position: 'relative', flex: 1 }}>
             <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-slate-light)' }} />
@@ -79,6 +94,7 @@ export function KnowledgeBasePage() {
               value={inputVal}
               onChange={(e) => setInputVal(e.target.value)}
               placeholder={t('pages.kb.searchPlaceholder')}
+              aria-label={t('pages.kb.searchPlaceholder')}
               style={{ width: '100%', padding: '10px 12px 10px 36px', borderRadius: 8, border: `2px solid ${colors.border}`, fontSize: 'var(--font-size-body)', boxSizing: 'border-box', outline: 'none' }}
               onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--color-brand)' }}
               onBlur={(e)  => { e.currentTarget.style.borderColor = colors.border }}
@@ -116,11 +132,11 @@ export function KnowledgeBasePage() {
                   background: colors.white, cursor: 'pointer', textAlign: 'center',
                   transition: 'all 150ms',
                 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = kbCategoryColor(cat.name) }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = styleOf('kb_category', cat.name).accent }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
               >
-                <div style={{ fontSize: 'var(--font-size-page-title)', marginBottom: 6 }}>{kbCategoryIcon(cat.name)}</div>
-                <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slateDark, marginBottom: 2 }}>{cat.name}</div>
+                <span aria-hidden="true" style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: styleOf('kb_category', cat.name).accent, marginBottom: 8 }} />
+                <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slateDark, marginBottom: 2 }}>{categoryLabel(cat.name)}</div>
                 <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('pages.kbAdmin.articleCount', { count: cat.count })}</div>
               </button>
             ))}
@@ -132,9 +148,9 @@ export function KnowledgeBasePage() {
       {category && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{t('pages.kb.category')}:</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 12, background: kbCategoryColor(category), color: colors.white, fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
-            {kbCategoryIcon(category)} {category}
-            <button type="button" onClick={() => { setCategory(''); setPage(0) }} style={{ marginLeft: 4, background: 'none', border: 'none', color: colors.white, cursor: 'pointer', padding: 0, fontSize: 'var(--font-size-body)' }}>✕</button>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 12, background: styleOf('kb_category', category).bg, color: styleOf('kb_category', category).color, fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
+            {categoryLabel(category)}
+            <button type="button" onClick={() => { setCategory(''); setPage(0) }} aria-label={t('common.reset')} style={{ marginLeft: 4, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, fontSize: 'var(--font-size-body)' }}>✕</button>
           </span>
         </div>
       )}
@@ -171,8 +187,8 @@ export function KnowledgeBasePage() {
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <Pill bg={kbCategoryColor(a.category) + '20'} color={kbCategoryColor(a.category)} radius={10}>
-                          {kbCategoryIcon(a.category)} {a.category}
+                        <Pill bg={styleOf('kb_category', a.category).bg} color={styleOf('kb_category', a.category).color} radius={10}>
+                          {categoryLabel(a.category)}
                         </Pill>
                         {a.tags.slice(0, 3).map((tag) => (
                           <span key={tag} style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 8, background: colors.slateBg, color: 'var(--color-slate)' }}>

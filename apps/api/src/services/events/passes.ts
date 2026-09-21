@@ -28,6 +28,7 @@ import { isStable, type EventStablePayload } from './flapping.js'
 import { runEventPipeline } from './pipeline.js'
 import { STUCK_FIRING_WHERE, stuckEventParams } from './stuck.js'
 import type { EventRecord } from './types.js'
+import { systemText } from '../../lib/systemText.js'
 
 const log = logger.child({ module: 'event-correlation' })
 
@@ -194,7 +195,7 @@ async function stabilizeEvent(tenantId: string, ev: EventRecord, policy: EventPo
       RETURN e.id AS id
     `, {
       eventId, tenantId, status: last, now, correlation: last === 'firing' ? 'pending' : 'none', dueAt: last === 'firing' ? now : null,
-      ...historyParams({ kind: 'stable', note: `nessun passaggio in ${policy.flap_stable_minutes} min` }, now),
+      ...historyParams({ kind: 'stable', note: await systemText(tenantId, 'event.history.stable', { minutes: policy.flap_stable_minutes }) }, now),
     })
     if (!row) throw new Error(`Event ${eventId} vanished while stabilising (tenant ${tenantId})`)
   } finally { await session.close() }

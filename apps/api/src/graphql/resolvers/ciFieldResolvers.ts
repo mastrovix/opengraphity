@@ -34,78 +34,96 @@ function mapCIForRelation(props: Props, typeName: string): Record<string, unknow
   }
 }
 
+/**
+ * Il metamodello dichiara l'arco `relType` da un CI con etichetta `sourceLabel`
+ * a uno con etichetta `targetLabel`? O come relazione in uscita del tipo
+ * sorgente, o come relazione in entrata del tipo destinazione; `targetType` è
+ * l'etichetta dell'altro capo o `any`. È lo stesso predicato di
+ * `relationDeclared` (ciRelationships.ts), qui sui tipi già caricati.
+ */
+export function relationDeclaredBy(
+  types: readonly CITypeWithDefinitions[], relType: string, sourceLabel: string, targetLabel: string,
+): boolean {
+  const lists = (t: CITypeWithDefinitions, dir: 'outgoing' | 'incoming', other: string) =>
+    t.relations.some((r) => r.direction === dir
+      && r.relationshipType.split('|').map((x) => x.trim()).includes(relType)
+      && (r.targetType === 'any' || r.targetType === other))
+  return types.some((t) => (t.neo4jLabel === sourceLabel && lists(t, 'outgoing', targetLabel))
+    || (t.neo4jLabel === targetLabel && lists(t, 'incoming', sourceLabel)))
+}
+
+/**
+ * Le dipendenze e i dipendenti di un CI.
+ *
+ * ## Il difetto (revisione del 15 set 2026 · CM-5)
+ * Si leggevano solo i tipi di relazione dichiarati dal tipo DEL CI. Ma un arco
+ * è legittimo anche quando lo dichiara l'altro capo: l'applicazione dichiara
+ * `DEPENDS_ON → any`, e l'arco verso un firewall veniva creato; il firewall non
+ * dichiara relazioni in entrata, e nel suo dettaglio non si vedeva niente.
+ * Adesso si leggono gli archi verso CI del tenant e si tengono quelli che il
+ * metamodello dichiara da una parte o dall'altra.
+ */
+async function relatedCIs(
+  ciType: CITypeWithDefinitions, allTypes: CITypeWithDefinitions[], id: string, tenantId: string, direction: 'outgoing' | 'incoming',
+) {
+  const labels = allTypes.map((t) => t.neo4jLabel).filter(Boolean)
+  return withSession(async session => {
+    const pattern = direction === 'outgoing' ? '(n)-[rel]->(d)' : '(n)<-[rel]-(d)'
+    const r = await session.executeRead(tx =>
+      tx.run(
+        `MATCH (n {id: $id, tenant_id: $tenantId})
+         MATCH ${pattern}
+         WHERE d.tenant_id = $tenantId AND ANY(l IN labels(d) WHERE l IN $labels)
+         RETURN properties(d) AS props, head([l IN labels(d) WHERE l <> 'ConfigurationItem']) AS label, type(rel) AS relation
+         ORDER BY d.name`,
+        { id, tenantId, labels },
+      ),
+    )
+    return r.records.map(rec => {
+      const props = rec.get('props') as Props
+      const label = rec.get('label') as string
+      const relation = rec.get('relation') as string
+      const otherType = allTypes.find(t => t.neo4jLabel === label)
+      if (!otherType) return null
+      const declared = direction === 'outgoing'
+        ? relationDeclaredBy(allTypes, relation, ciType.neo4jLabel, label)
+        : relationDeclaredBy(allTypes, relation, label, ciType.neo4jLabel)
+      if (!declared) return null
+      return { ci: mapCIForRelation(props, otherType.name), relation }
+    }).filter(Boolean)
+  })
+}
+
 export function buildFieldResolvers(ciType: CITypeWithDefinitions, allTypes: CITypeWithDefinitions[]) {
   return {
-    ownerGroup: async (parent: { id: string } & PrefetchedCI) => {
+    ownerGroup: async (parent: { id: string } & PrefetchedCI, _: unknown, ctx: GraphQLContext) => {
       if (parent._prefetched) return parent._ownerGroup ?? null
       return withSession(async session => {
         const r = await session.executeRead(tx =>
-          tx.run('MATCH (n {id: $id})-[:OWNED_BY]->(t:Team) RETURN properties(t) AS p',
-            { id: parent.id }),
+          tx.run('MATCH (n {id: $id, tenant_id: $tenantId})-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) RETURN properties(t) AS p',
+            { id: parent.id, tenantId: ctx.tenantId }),
         )
         if (!r.records.length) return null
         return mapTeamProps(r.records[0].get('p') as Props)
       })
     },
 
-    supportGroup: async (parent: { id: string } & PrefetchedCI) => {
+    supportGroup: async (parent: { id: string } & PrefetchedCI, _: unknown, ctx: GraphQLContext) => {
       if (parent._prefetched) return parent._supportGroup ?? null
       return withSession(async session => {
         const r = await session.executeRead(tx =>
-          tx.run('MATCH (n {id: $id})-[:SUPPORTED_BY]->(t:Team) RETURN properties(t) AS p',
-            { id: parent.id }),
+          tx.run('MATCH (n {id: $id, tenant_id: $tenantId})-[:SUPPORTED_BY]->(t:Team {tenant_id: $tenantId}) RETURN properties(t) AS p',
+            { id: parent.id, tenantId: ctx.tenantId }),
         )
         if (!r.records.length) return null
         return mapTeamProps(r.records[0].get('p') as Props)
       })
     },
 
-    dependencies: async (parent: { id: string }, _: unknown, ctx: GraphQLContext) =>
-      withSession(async session => {
-        const outgoing = ciType.relations.filter(r => r.direction === 'outgoing')
-        if (!outgoing.length) return []
-        const relTypes = [...new Set(outgoing.flatMap(r => r.relationshipType.split('|')))].join('|')
-        const r = await session.executeRead(tx =>
-          tx.run(
-            `MATCH (n {id: $id})-[rel:${relTypes}]->(d)
-             WHERE d.tenant_id = $tenantId
-             RETURN properties(d) AS props, head([l IN labels(d) WHERE l <> 'ConfigurationItem']) AS label, type(rel) AS relation
-             ORDER BY d.name`,
-            { id: parent.id, tenantId: ctx.tenantId },
-          ),
-        )
-        return r.records.map(rec => {
-          const props = rec.get('props') as Props
-          const label = rec.get('label') as string
-          const relation = rec.get('relation') as string
-          const targetType = allTypes.find(t => t.neo4jLabel === label)
-          if (!targetType) return null
-          return { ci: mapCIForRelation(props, targetType.name), relation }
-        }).filter(Boolean)
-      }),
+    dependencies: (parent: { id: string }, _: unknown, ctx: GraphQLContext) =>
+      relatedCIs(ciType, allTypes, parent.id, ctx.tenantId, 'outgoing'),
 
-    dependents: async (parent: { id: string }, _: unknown, ctx: GraphQLContext) =>
-      withSession(async session => {
-        const incoming = ciType.relations.filter(r => r.direction === 'incoming')
-        if (!incoming.length) return []
-        const relTypes = [...new Set(incoming.flatMap(r => r.relationshipType.split('|')))].join('|')
-        const r = await session.executeRead(tx =>
-          tx.run(
-            `MATCH (n {id: $id})<-[rel:${relTypes}]-(d)
-             WHERE d.tenant_id = $tenantId
-             RETURN properties(d) AS props, head([l IN labels(d) WHERE l <> 'ConfigurationItem']) AS label, type(rel) AS relation
-             ORDER BY d.name`,
-            { id: parent.id, tenantId: ctx.tenantId },
-          ),
-        )
-        return r.records.map(rec => {
-          const props = rec.get('props') as Props
-          const label = rec.get('label') as string
-          const relation = rec.get('relation') as string
-          const targetType = allTypes.find(t => t.neo4jLabel === label)
-          if (!targetType) return null
-          return { ci: mapCIForRelation(props, targetType.name), relation }
-        }).filter(Boolean)
-      }),
+    dependents: (parent: { id: string }, _: unknown, ctx: GraphQLContext) =>
+      relatedCIs(ciType, allTypes, parent.id, ctx.tenantId, 'incoming'),
   }
 }

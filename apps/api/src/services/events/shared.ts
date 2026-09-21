@@ -12,6 +12,7 @@
  */
 import type { MonitoringEventPayload } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
+import { SYSTEM_PERMISSIONS } from '../../lib/permissions.js'
 import { EVENT_SEVERITIES, type EventSeverity } from '../../lib/eventVocabularies.js'
 import { resolveDomainValue } from '../../lib/domainValue.js'
 
@@ -57,7 +58,7 @@ export function toNumber(v: unknown): number {
 
 /** Contesto sintetico per audit e servizi: l'attore è il monitoraggio. */
 export function monitoringContext(tenantId: string): GraphQLContext {
-  return { tenantId, userId: MONITORING_ACTOR, userEmail: MONITORING_ACTOR, role: 'admin' }
+  return { tenantId, userId: MONITORING_ACTOR, userEmail: MONITORING_ACTOR, role: 'admin', permissions: SYSTEM_PERMISSIONS }
 }
 
 export function assertSeverity(value: unknown, eventId: string): EventSeverity {

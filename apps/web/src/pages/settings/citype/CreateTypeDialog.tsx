@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal } from '@/components/Modal'
 import { toast } from 'sonner'
@@ -10,6 +10,7 @@ import {
 import { Input, Select } from '@/components/ui/FormControls'
 import { FormField } from './CIFieldInlineEditor'
 import { checkCITypeName, type KnownCIType } from '@/lib/ciTypeNames'
+import { ColorField } from '@/components/ui/ColorField'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,15 @@ export function CreateTypeDialog({
   const id = useId()
   const [form, setForm] = useState({ name: '', label: '', icon: 'box', color: 'var(--color-brand)' })
   const [saving, setSaving] = useState(false)
+  /**
+   * Il modale RIPARTE VUOTO ogni volta che si apre (revisione totale · G-13):
+   * è sempre montato, quindi riaprendo «Nuovo tipo» si ritrovavano nome ed
+   * etichetta di quello appena creato, con l'avviso «nome già esistente»
+   * addosso — e sembrava un difetto del salvataggio.
+   */
+  useEffect(() => {
+    if (open) setForm({ name: '', label: '', icon: 'box', color: 'var(--color-brand)' })
+  }, [open])
   const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }))
 
   // A-12: il nome non è un'etichetta, è un identificatore. Da qui nascono il
@@ -81,11 +91,7 @@ export function CreateTypeDialog({
         </div>
       </div>
       <FormField label={t('citypeDesigner.color')} htmlFor={`${id}-color`}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input id={`${id}-color`} type="color" value={form.color} onChange={(e) => set('color', e.target.value)}
-            style={{ width: 36, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer', padding: 0 }} />
-          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{form.color}</span>
-        </div>
+        <ColorField id={`${id}-color`} value={form.color} onChange={(hex) => set('color', hex)} />
       </FormField>
     </Modal>
   )

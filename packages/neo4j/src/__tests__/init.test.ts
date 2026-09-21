@@ -175,9 +175,17 @@ describe('initSchema — clean database', () => {
       expect(writes.some(c => c.includes(`kind: '${kind}'`))).toBe(true)
     }
 
-    // sessions: 1 READ (prechecks) + 3 WRITE (constraints/indexes/seeds), all closed
-    expect(fake.state.opened).toBe(4)
-    expect(fake.state.closed).toBe(4)
+    /**
+     * CONTRATTO RINEGOZIATO (revisione totale · E-26): i contatori si
+     * seminano una volta sola. La semina è cinque `max()` su tutti i ticket,
+     * cioè cinque scansioni complete, e girava a ogni esecuzione; ora un
+     * marcatore nel grafo la ricorda. Quindi due sessioni in più: la lettura
+     * del marcatore e la sua scrittura.
+     * Sessioni: 1 READ prechecks + 1 READ marcatore + 3 WRITE
+     * (vincoli/indici/semina) + 1 WRITE marcatore.
+     */
+    expect(fake.state.opened).toBe(6)
+    expect(fake.state.closed).toBe(6)
     expect(log[0]).toContain('Starting schema initialisation')
     expect(log.some(m => m.includes('Schema initialisation complete'))).toBe(true)
     expect(log.some(m => m.includes('No migrations passed'))).toBe(true)
@@ -290,16 +298,16 @@ describe('initSchema — migrations', () => {
     // schema finished before the migrations started
     expect(log.indexOf('[neo4j:init] Schema initialisation complete.')).toBeLessThan(log.findIndex(m => m.includes('Migrations: 1 applied')))
     expect(log.some(m => m.includes('No migrations passed'))).toBe(false)
-    // READ + 3 WRITE + 1 migration session, all closed
-    expect(fake.state.opened).toBe(5)
-    expect(fake.state.closed).toBe(5)
+    // E-26: READ prechecks + READ marcatore + 3 WRITE + WRITE marcatore + 1 migrazione
+    expect(fake.state.opened).toBe(7)
+    expect(fake.state.closed).toBe(7)
   })
 
   it('a migration failure propagates and the migration session is still closed', async () => {
     runMigrationsMock.mockRejectedValueOnce(new Error('migration 20260901_1000_seed failed'))
     await expect(initSchema({ migrations, log: () => {} })).rejects.toThrow('migration 20260901_1000_seed failed')
-    expect(fake.state.opened).toBe(5)
-    expect(fake.state.closed).toBe(5)
+    expect(fake.state.opened).toBe(7)
+    expect(fake.state.closed).toBe(7)
   })
 
   it('migrations are not run when a precheck fails', async () => {

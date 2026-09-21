@@ -14,12 +14,11 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { GraphQLError } from 'graphql'
-import { UPDATE_FIELD_ALLOWED } from '@opengraphity/types'
 
 vi.mock('@opengraphity/events', () => ({ publish: vi.fn().mockResolvedValue(undefined), getRedisOptions: vi.fn(() => ({})) }))
 // Vocabolario del motore COMPLETO per la parte che serve qui: `update_field`
 // deve superare il controllo di tipo e arrivare a quello sul campo.
-const ACTIONS = ['publish_event', 'notify_rule', 'update_field', 'sla_start'] as const
+const ACTIONS = ['publish_event', 'notify_rule', 'update_field', 'sla_start', 'create_entity'] as const
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: { createInstance: vi.fn(), transition: vi.fn(), registerCondition: vi.fn(), getAvailableTransitions: vi.fn() },
   WORKFLOW_ACTION_TYPES: ACTIONS,
@@ -46,8 +45,11 @@ const thrown = (raw: string): GraphQLError => {
 }
 
 describe('assertStepActions — campi di update_field', () => {
-  it('i campi ammessi passano', () => {
-    for (const field of UPDATE_FIELD_ALLOWED) {
+  // Verifica «Cosa resta cablato», ondata 3: «ogni campo non riservato». La
+  // forma dell'azione e le riserve si controllano qui, senza leggere il grafo;
+  // il campo del metamodello e il vocabolario li controlla assertStepActionFields.
+  it('un campo non riservato passa, anche se non è fra i quattro di prima', () => {
+    for (const field of ['severity', 'priority', 'description', 'category', 'outcome', 'workaround']) {
       expect(() => assertStepActions(json(field), 'enter_actions')).not.toThrow()
     }
   })
@@ -57,29 +59,47 @@ describe('assertStepActions — campi di update_field', () => {
     expect(err).toBeInstanceOf(GraphQLError)
     expect(err.extensions['code']).toBe('BAD_USER_INPUT')
     expect(err.message).toContain('enter_actions dello step "chiusura"[0]')
-    expect(err.message).toContain('lo scrive il motore dei workflow')
-    expect(err.message).toContain('usa una transizione')
-    expect(err.extensions['allowedFields']).toEqual([...UPDATE_FIELD_ALLOWED])
+    expect(err.message).toContain('is written by the workflow engine')
+    expect(err.message).toContain('use a transition')
+    expect((err.extensions['i18n'] as { key: string }).key).toBe('errors.stepField.engine_owned')
   })
 
-  it('workflow_step e workflow_instance_id, che sono del motore, ricevono lo stesso rifiuto', () => {
-    for (const field of ['workflow_step', 'workflow_instance_id']) {
-      expect(thrown(json(field)).message).toContain('lo scrive il motore dei workflow')
+  it('workflow_step, workflow_instance_id e le date del motore ricevono lo stesso rifiuto', () => {
+    for (const field of ['workflow_step', 'workflow_instance_id', 'resolved_at', 'completed_at']) {
+      expect(thrown(json(field)).message).toContain('is written by the workflow engine')
     }
   })
 
-  it('un campo qualunque fuori lista è rifiutato nominando i campi ammessi', () => {
-    const err = thrown(json('tenant_id'))
-    expect(err.message).toContain('non è fra quelli che update_field può scrivere')
-    expect(err.message).toContain(UPDATE_FIELD_ALLOWED.join(', '))
+  it('identità e traccia sono rifiutate con la loro ragione', () => {
+    for (const field of ['tenant_id', 'id', 'number', 'created_at']) {
+      const err = thrown(json(field))
+      expect(err.message).toContain('identifies or traces the ticket')
+      expect((err.extensions['i18n'] as { key: string }).key).toBe('errors.stepField.identity')
+    }
   })
 
   it('update_field senza campo è configurazione incompleta, non un no-op', () => {
-    expect(thrown(JSON.stringify([{ type: 'update_field', params: {} }])).message).toContain('richiede il campo da scrivere')
-    expect(thrown(JSON.stringify([{ type: 'update_field', params: { field: '  ' } }])).message).toContain('richiede il campo da scrivere')
+    expect(thrown(JSON.stringify([{ type: 'update_field', params: {} }])).message).toContain('needs the field to write')
+    expect(thrown(JSON.stringify([{ type: 'update_field', params: { field: '  ' } }])).message).toContain('needs the field to write')
   })
 
   it('le altre azioni non sono toccate da questo controllo', () => {
     expect(() => assertStepActions(JSON.stringify([{ type: 'sla_start', params: { sla_type: 'resolve' } }]), 'x')).not.toThrow()
+  })
+})
+
+/** Verifica «Cosa resta cablato», ondata 1: una change creata da un passo non ha un tipo di ripiego. */
+describe('assertStepActions — create_entity di una change', () => {
+  const create = (params: Record<string, unknown>) => JSON.stringify([{ type: 'create_entity', params: { title_template: '{title}', link_to_current: true, ...params } }])
+
+  it('senza change_type è rifiutata nel disegnatore, non a ticket aperto', () => {
+    const err = thrown(create({ entity_type: 'change' }))
+    expect(err.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err.message).toMatch(/needs the change type \(params\.change_type\)/)
+  })
+
+  it('con change_type, o per un altro tipo di ticket, passa', () => {
+    expect(() => assertStepActions(create({ entity_type: 'change', change_type: 'normal' }), 'enter_actions')).not.toThrow()
+    expect(() => assertStepActions(create({ entity_type: 'incident' }), 'enter_actions')).not.toThrow()
   })
 })

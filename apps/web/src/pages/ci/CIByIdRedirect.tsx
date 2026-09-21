@@ -23,7 +23,7 @@ export function CIByIdRedirect() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { data, loading, error, refetch } = useQuery<{ ciById: { id: string; type: string } | null }>(GET_CI_BY_ID_REF, { variables: { id } })
-  if (loading) return <PageLoader />
+  if (loading && !data) return <PageLoader />
   if (error) return <PageContainer><QueryError message={error.message} onRetry={() => void refetch()} /></PageContainer>
   if (!data?.ciById) {
     return (

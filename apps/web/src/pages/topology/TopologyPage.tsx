@@ -7,10 +7,12 @@ import { GET_TOPOLOGY, GET_ALL_CIS, GET_CI_TYPES } from '@/graphql/queries'
 import { fontFamily, alpha, colors, palette } from '@/lib/tokens'
 import { pausedWhenHidden } from '@/lib/polling'
 import { Pill } from '@/components/ui/Pill'
-import { ciStatusStyle, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
+import { ciStatusStyle, useCIBaseEnums } from '@/lib/ciEnums'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import TopologyGraph, { TopologyLegend, type TopologyNode } from '@/components/topology/TopologyGraph'
 import { CIHealthBadge } from '@/pages/events/eventShared'
 import type { CIHealth } from '@/types/events'
+import { useCILabels } from '@/hooks/useCILabels'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,6 +55,7 @@ interface Filters {
 
 export function TopologyPage() {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const navigate  = useNavigate()
   // `?health=1` accende l'evidenziazione della salute; `?ciId=` è il CI di
   // partenza (la pagina Salute CI manda qui con entrambi, D·1.3: senza un CI
@@ -215,13 +218,13 @@ export function TopologyPage() {
           {/* Environment filter */}
           <select aria-label={t('pages.cmdb.environment')} value={filters.environment} onChange={(e) => setFilters((f) => ({ ...f, environment: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
             <option value="">{t('pages.topology.allEnvironments')}</option>
-            {baseEnums.environments.map((v) => <option key={v} value={v}>{enumLabel(v)}</option>)}
+            {baseEnums.environments.map((v) => <option key={v} value={v}>{ciLabels.environmentLabel(v)}</option>)}
           </select>
 
           {/* Status filter */}
           <select aria-label={t('pages.cmdb.status')} value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
             <option value="">{t('pages.topology.allStatuses')}</option>
-            {baseEnums.statuses.map((v) => <option key={v} value={v}>{enumLabel(v)}</option>)}
+            {baseEnums.statuses.map((v) => <option key={v} value={v}>{ciLabels.statusLabel(v)}</option>)}
           </select>
           {baseEnums.error && (
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)' }} title={baseEnums.error}>
@@ -291,9 +294,10 @@ export function TopologyPage() {
                 fontFamily,
                 textAlign: 'center',
               }}>
+                {/* Giro del 14 set 2026 (#58): «0 nodes · 0 relationships» senza dire cosa fare. */}
                 {loading
                   ? t('pages.topology.loading')
-                  : t('pages.topology.emptyHint')}
+                  : focusNodeId ? t('pages.topology.noRelations') : t('pages.topology.chooseCIHint')}
               </div>
             </div>
           )}
@@ -338,7 +342,7 @@ export function TopologyPage() {
           )}
 
           {/* Stats bar */}
-          <div style={{
+          {nodes.length > 0 && <div style={{
             position:    'absolute', bottom: 16, right: selectedNode ? 316 : 16,
             background:  alpha.white92, backdropFilter: 'blur(4px)',
             border:      '1px solid var(--color-border)', borderRadius: 6,
@@ -357,7 +361,7 @@ export function TopologyPage() {
             {totalChange   > 0 && <span style={{ color: palette.purple.light, marginLeft: 8 }}>{t('pages.topology.changesInProgress', { count: totalChange })}</span>}
             {highlightHealth && totalDown     > 0 && <span style={{ color: palette.danger.dark, marginLeft: 8 }}>{t('components.topologyGraph.healthDown')}: {totalDown}</span>}
             {highlightHealth && totalDegraded > 0 && <span style={{ color: palette.warning.dark, marginLeft: 8 }}>{t('components.topologyGraph.healthDegraded')}: {totalDegraded}</span>}
-          </div>
+          </div>}
         </div>
 
         {/* ── Detail panel ─────────────────────────────────────────────── */}
@@ -377,7 +381,7 @@ export function TopologyPage() {
                   {selectedNode.name}
                 </div>
                 <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-                  {selectedNode.type.replace(/_/g, ' ')}
+                  {ciLabels.typeLabel(selectedNode.type)}
                 </div>
               </div>
               <button
@@ -393,7 +397,7 @@ export function TopologyPage() {
             {/* Fields */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <DetailField label={t('pages.cmdb.status')}>
-                <StatusBadge status={selectedNode.status} statuses={baseEnums.loading || baseEnums.error ? null : baseEnums.statuses} />
+                {selectedNode.status ? <StatusBadge status={selectedNode.status} statuses={baseEnums.loading || baseEnums.error ? null : baseEnums.statuses} /> : '—'}
               </DetailField>
 
               {selectedNode.health && (
@@ -404,7 +408,7 @@ export function TopologyPage() {
 
               {selectedNode.environment && (
                 <DetailField label={t('pages.cmdb.environment')}>
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{selectedNode.environment}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{ciLabels.environmentLabel(selectedNode.environment)}</span>
                 </DetailField>
               )}
 
@@ -414,12 +418,16 @@ export function TopologyPage() {
                 </DetailField>
               )}
 
-              {/* Incident count */}
+              {/* Incident count — porta al CI, che elenca i SUOI ticket
+                  (revisione totale · F-10): `/incidents?ci=<id>` non esisteva
+                  come filtro e la lista si apriva con TUTTI gli incident del
+                  cliente, facendo credere che fossero quelli del CI. */}
               <DetailField label={t('pages.topology.openIncidents')}>
                 {selectedNode.incidentCount > 0 ? (
                   <button
                     type="button"
-                    onClick={() => navigate(`/incidents?ci=${selectedNode.id}`)}
+                    title={t('pages.topology.openCIForTickets')}
+                    onClick={() => navigate(`/cis/${selectedNode.id}`)}
                     style={{
                       fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-trigger-sla-breach)',
                       background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline',
@@ -432,12 +440,13 @@ export function TopologyPage() {
                 )}
               </DetailField>
 
-              {/* Change count */}
+              {/* Change count — vedi F-10 sopra. */}
               <DetailField label={t('pages.topology.changeInProgress')}>
                 {selectedNode.changeCount > 0 ? (
                   <button
                     type="button"
-                    onClick={() => navigate(`/changes?ci=${selectedNode.id}`)}
+                    title={t('pages.topology.openCIForTickets')}
+                    onClick={() => navigate(`/cis/${selectedNode.id}`)}
                     style={{
                       fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: palette.orange.base,
                       background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline',
@@ -507,6 +516,7 @@ interface CIComboboxProps {
  */
 function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxProps) {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const [search, setSearch]   = useState('')
   const [debounced, setDebounced] = useState('')
   const [open, setOpen]       = useState(false)
@@ -642,7 +652,7 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
               <span>{o.name}</span>
               {o.environment && (
                 <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
-                  {o.environment}
+                  {ciLabels.environmentLabel(o.environment)}
                 </span>
               )}
             </button>
@@ -659,11 +669,13 @@ function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxPro
 }
 
 /**
- * Stato CI colorato: palette unica in lib/ciEnums (CI_STATUS_STYLE). `statuses`
+ * Stato CI colorato col colore del Dizionario (`ci_status`, F9). `statuses`
  * è il vocabolario `ci_status` del cliente (ondata 7 · D-15): uno stato suo
  * senza colore assegnato è neutro, uno fuori vocabolario resta rosso.
  */
 function StatusBadge({ status, statuses }: { status: string; statuses: readonly string[] | null }) {
-  const s = ciStatusStyle(status, statuses)
-  return <Pill bg={s.bg} color={s.color} radius={10} style={{ fontSize: 'var(--font-size-body)' }}>{status}</Pill>
+  const { colorOf } = useDomainVocabularies()
+  const { statusLabel } = useCILabels()
+  const s = ciStatusStyle(status, statuses, colorOf('ci_status', status))
+  return <Pill bg={s.bg} color={s.color} radius={10} style={{ fontSize: 'var(--font-size-body)' }}>{statusLabel(status)}</Pill>
 }

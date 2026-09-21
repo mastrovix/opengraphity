@@ -45,9 +45,9 @@ describe('ServiceHealthWidget', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 
-  it('end user: nessun contatore né link (la pagina Servizi è riservata allo staff), ma un messaggio in chiaro', async () => {
+  it('end user: nessun contatore né link (senza service.read), ma un messaggio in chiaro', async () => {
     renderWithProviders(<ServiceHealthWidget color={WIDGET_COLOR} />, { mocks: [meMock('end_user'), countsMock()] })
-    expect(await screen.findByText(/reserved to staff/)).toBeInTheDocument()
+    expect(await screen.findByText(/Your role cannot open/)).toBeInTheDocument()
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 

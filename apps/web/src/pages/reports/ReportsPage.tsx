@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useAIFeature } from '@/hooks/useAIFeature'
+import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
-import { keycloak } from '@/lib/keycloak'
+import { PageTitle } from '@/components/PageTitle'
+import { apiUrl, authHeader } from '@/lib/apiBase'
 import { timeAgo } from '@/lib/datetime'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -12,6 +15,7 @@ import { SkeletonLine } from '@/components/SkeletonLoader'
 import { EmptyState } from '@/components/EmptyState'
 import { keyActivate } from '@/lib/a11y'
 import { colors } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 // ── GraphQL ────────────────────────────────────────────────────────────────
 
@@ -65,6 +69,7 @@ function extractCSV(content: string): string | null {
 
 export default function ReportsPage() {
   const { t } = useTranslation()
+  const reportAnalysisOn = useAIFeature('reportAnalysis')
   const { data, refetch } = useQuery<{ reportConversations: ReportConversation[] }>(GET_CONVERSATIONS)
   const [deleteConv]                  = useMutation(DELETE_CONVERSATION)
 
@@ -122,15 +127,15 @@ export default function ReportsPage() {
     const abort = new AbortController()
     abortRef.current = abort
 
-    const apiUrl = import.meta.env['VITE_API_BASE_URL'] ?? ''
-    const token = keycloak.token ?? ''
-
     try {
-      const res = await fetch(`${apiUrl}/api/report/stream`, {
+      // La base comune (apiUrl) e il token (authHeader): prima una variabile di
+      // build puntata sul cliente del bundle faceva rifiutare il token su ogni
+      // altro cliente (giro nel browser del 14 set 2026).
+      const res = await fetch(apiUrl('/api/report/stream'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: token ? `Bearer ${token}` : '',
+          ...authHeader(),
         },
         body: JSON.stringify({ question, conversationId: activeId }),
         signal: abort.signal,
@@ -296,7 +301,7 @@ export default function ReportsPage() {
     try {
       await deleteConv({ variables: { id } })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      showError(err)
       return
     }
     if (activeId === id) { setActiveId(null); setLocalMessages([]) }
@@ -320,7 +325,7 @@ export default function ReportsPage() {
   // hide the area too — the old rule printed a blank page).
   const handlePrint = () => {
     const previousTitle = document.title
-    document.title = active?.title ?? 'Report ITSM'
+    document.title = active?.title ?? t('pages.aiAnalysis.documentTitle')
     const restore = () => { document.title = previousTitle; window.removeEventListener('afterprint', restore) }
     window.addEventListener('afterprint', restore)
     window.print()
@@ -329,7 +334,7 @@ export default function ReportsPage() {
   const hasMessages = localMessages.length > 0
 
   return (
-    <div className="card-border" style={{ display: 'flex', height: 'calc(100vh - 56px - 48px)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", overflow: 'hidden' }}>
+    <div className="card-border" style={{ display: 'flex', height: 'calc(var(--vh-app) - 56px - 48px)', fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", overflow: 'hidden' }}>
 
       {/* ── Sidebar sinistra ────────────────────────────────────────────── */}
       <div style={{
@@ -337,7 +342,19 @@ export default function ReportsPage() {
         borderRight: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column',
       }}>
         <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>{t('pages.reportsAI.title')}</span>
+          {/**
+            * L'INTESTAZIONE della pagina (giro nel browser di fine revisione).
+            *
+            * Era l'unica pagina dell'app senza nessun h1: il titolo del
+            * benvenuto era un `div` con la misura di un titolo — a schermo si
+            * vedeva, nella struttura della pagina non esisteva — e compariva
+            * solo finché non c'era una conversazione attiva. Chi naviga per
+            * intestazioni non trovava niente. Sta qui perché questo pannello
+            * c'è sempre, e porta il nome con cui si arriva dal menu.
+            */}
+          <PageTitle icon={<BrainCircuit />} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 700 }}>
+            {t('sidebar.aiAnalysis')}
+          </PageTitle>
           <button
             type="button"
             onClick={handleNewConversation}
@@ -394,8 +411,13 @@ export default function ReportsPage() {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, gap: 16 }}>
             <BarChart2 size={48} color={colors.slateLight} strokeWidth={1.5} />
             <div style={{ textAlign: 'center' }}>
+              {/**
+                * Stato VUOTO, non una sezione: resta un `div`, come
+                * `EmptyState`. Fosse un h2 ripeterebbe l'h1 del pannello, e
+                * l'elenco delle intestazioni direbbe due volte la stessa cosa.
+                */}
               <div style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', marginBottom: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                <BrainCircuit size={22} color="var(--color-icon-accent)" />
+                <BrainCircuit size={22} color="var(--color-icon-accent)" aria-hidden="true" />
                 {t('pages.aiAnalysis.title')}
               </div>
               <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('pages.aiAnalysis.subtitle')}</div>
@@ -547,6 +569,8 @@ export default function ReportsPage() {
 
         {/* Input area */}
         <div style={{ borderTop: '1px solid var(--color-border)', padding: '12px 24px', background: colors.white }}>
+          {/* Analisi AI spenta dall'organizzazione (ondata 6 di «Nulla cablato»): lo si dice al posto della domanda. */}
+          {reportAnalysisOn === false ? <AIDisabledNotice feature="reportAnalysis" /> : <>
           {hasMessages && (
             <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
               <button type="button" onClick={handlePrint} style={exportBtnStyle}>↓ PDF</button>
@@ -560,6 +584,7 @@ export default function ReportsPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t('pages.aiAnalysis.placeholder')}
+              aria-label={t('pages.aiAnalysis.title')}
               rows={1}
               style={{
                 flex: 1, fontSize: 'var(--font-size-body)', padding: '10px 14px',
@@ -589,6 +614,7 @@ export default function ReportsPage() {
             </button>
           </div>
           <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 6 }}>{t('pages.reportsAI.sendHint')}</div>
+          </>}
         </div>
       </div>
 

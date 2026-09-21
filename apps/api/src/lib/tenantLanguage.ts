@@ -27,8 +27,9 @@
  * manca. Fra un ripiego muto e un ripiego che si annuncia, la differenza è chi
  * scopre il problema: noi o il cliente.
  */
-import { getSession, runQueryOne } from '@opengraphity/neo4j'
+import { getSession, runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import { NotFoundError, ValidationError } from './errors.js'
+import { registerMetamodelCacheClearer, invalidateSchema } from './schemaInvalidator.js'
 import { LINGUE, type Lingua } from './enumValueLabels.js'
 import { logger } from './logger.js'
 
@@ -49,6 +50,28 @@ const cache = new Map<string, { lingua: Lingua | null; scade: number }>()
 export function invalidateTenantLanguageCache(tenantId?: string): void {
   if (tenantId === undefined) cache.clear()
   else cache.delete(tenantId)
+}
+
+/**
+ * La lingua del cliente passa dal canale fra processi (revisione totale ·
+ * A-15): l'invalidazione era locale, e un allarme arrivato subito dopo il
+ * cambio generava incident e notifiche ancora nella lingua vecchia nel
+ * processo `events-worker`.
+ */
+registerMetamodelCacheClearer('tenant-language', (tenantId: string) => { cache.delete(tenantId) }, () => { cache.clear() })
+
+/**
+ * La lingua di chi guarda, come la manda il client (`language`). Vuota o assente
+ * = quella del cliente (`undefined`). Una lingua che il prodotto non ha è un
+ * errore, non un ripiego in silenzio (come le etichette del Dizionario).
+ */
+export function viewerLanguage(v: unknown): Lingua | undefined {
+  if (v == null || v === '') return undefined
+  if (isLingua(v)) return v
+  throw new ValidationError(
+    `Language "${String(v)}" not recognised: the product has ${LINGUE.join(', ')}.`,
+    { key: 'errors.enum.unknownLanguage', params: { language: String(v), available: LINGUE.join(', ') } },
+  )
 }
 
 /** Vero quando la stringa è una delle lingue del prodotto. */
@@ -103,7 +126,65 @@ export async function languageFor(tenantId: string): Promise<Lingua> {
   return (await tenantDefaultLanguage(tenantId)) ?? LINGUA_DI_ULTIMA_ISTANZA
 }
 
+/**
+ * LA LINGUA DI CHI LEGGE IL MESSAGGIO, non quella dell'organizzazione.
+ *
+ * `languageFor` dà la lingua predefinita del cliente, e va bene per i testi
+ * che non hanno un destinatario. Ma un RIFIUTO lo legge una persona, e quella
+ * persona può avere scelto un'altra lingua (`setMyLanguage`, che scrive
+ * `u.language`): su un tenant italiano un utente inglese leggeva metà frase
+ * tradotta dal client e l'etichetta del campo nell'altra lingua — il difetto
+ * che un commento dichiarava chiuso ed era chiuso a metà (revisione del 17 set
+ * 2026).
+ *
+ * Senza utente (una chiave API, un worker) resta la lingua del cliente.
+ */
+export async function languageForUser(tenantId: string, userId: string | null | undefined): Promise<Lingua> {
+  if (!userId) return languageFor(tenantId)
+  const session = getSession(undefined, 'READ')
+  try {
+    const rows = await runQuery<{ language: string | null }>(session, `
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      RETURN u.language AS language`, { userId, tenantId })
+    const scelta = rows[0]?.language
+    if (scelta && isLingua(scelta)) return scelta
+  } finally { await session.close() }
+  return languageFor(tenantId)
+}
+
 /** Configura la lingua predefinita del cliente. Rifiuta tutto ciò che non è una lingua del prodotto. */
+/**
+ * IL SEME: alla nascita di un tenant, la lingua del prodotto (17 set 2026).
+ *
+ * `LINGUA_DI_ULTIMA_ISTANZA` è già quello che il prodotto MOSTRA a chi non ha
+ * scelto — inglese, la lingua del prodotto — ma mostrarla senza che nessuno
+ * l'abbia scritta lascia addosso a ogni tenant nuovo il rilievo
+ * `default_language_not_set`, e sposta la domanda «in che lingua parla questo
+ * cliente?» dentro un ripiego. Scriverla alla nascita non cambia una riga di
+ * quello che si legge a schermo: cambia che ora è una scelta, visibile in
+ * Organizzazione, e cambiabile in italiano con un clic.
+ *
+ * Additiva e idempotente: scrive solo dove la proprietà è assente. Un cliente
+ * che ha scelto l'italiano non torna all'inglese — sarebbe il difetto peggiore
+ * che un seme può fare.
+ */
+export async function seedDefaultLanguage(
+  session: Queryable, tenantId: string,
+): Promise<{ seeded: Lingua | null }> {
+  const row = await runQueryOne<{ id: string }>(session, `
+    MATCH (t:Tenant {id: $tenantId})
+    WHERE t.default_language IS NULL
+    SET t.default_language = $lingua, t.updated_at = $now
+    RETURN t.id AS id
+  `, { tenantId, lingua: LINGUA_DI_ULTIMA_ISTANZA, now: new Date().toISOString() })
+
+  if (!row) return { seeded: null }   // già scelta, o tenant inesistente
+  // La cache tiene anche i «null»: senza questo, il tenant continuerebbe a
+  // risultare senza lingua per la durata del TTL.
+  invalidateTenantLanguageCache(tenantId)
+  return { seeded: LINGUA_DI_ULTIMA_ISTANZA }
+}
+
 export async function setTenantDefaultLanguage(tenantId: string, lingua: string): Promise<Lingua> {
   if (!isLingua(lingua)) {
     throw new ValidationError(
@@ -122,6 +203,11 @@ export async function setTenantDefaultLanguage(tenantId: string, lingua: string)
   } finally {
     await session.close()
   }
-  invalidateTenantLanguageCache(tenantId)
+  // Il canale avvisa TUTTI i processi (A-15), non solo questo.
+  invalidateSchema(tenantId)
+  // Le notifiche che escono (e-mail, Slack, Teams) tengono la loro copia: anche
+  // lei. Import differito: questo modulo è letto ovunque, il dispatcher no.
+  const { invalidateNotificationLocale } = await import('@opengraphity/notifications')
+  invalidateNotificationLocale(tenantId)
   return lingua
 }

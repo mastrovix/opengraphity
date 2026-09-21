@@ -30,6 +30,19 @@ const NO_HARDCODED_COLOR_RULES = [
   { selector: 'TemplateElement[value.raw=/rgba?\\(/]', message: 'rgba() scritto a mano in un template: usa var(--color-*-a…) di index.css.' },
 ]
 
+/**
+ * Il FONT scritto a mano, come i colori: `fontFamily: 'monospace'` prende il
+ * carattere predefinito del BROWSER, che non e quello del prodotto — e a
+ * schermo si vede, perche la riga accanto ha un altro carattere. Il sistema di
+ * design ha il suo token, `--font-mono` in index.css, e ogni punto
+ * dell'interfaccia deve passare da li: cambiarlo una volta cambia tutto.
+ * Trovato guardando la pagina delle code: 14 punti lo scrivevano a mano.
+ */
+const NO_HARDCODED_FONT_RULES = [
+  { selector: "Literal[value='monospace']", message: "Font scritto a mano: usa var(--font-mono) (index.css), non il monospace del browser." },
+  { selector: 'TemplateElement[value.raw=/monospace/]', message: 'Font scritto a mano in un template: usa var(--font-mono) di index.css.' },
+]
+
 module.exports = {
   plugins: ['jsx-a11y'],
   extends: ['plugin:jsx-a11y/recommended'],
@@ -63,6 +76,6 @@ module.exports = {
     },
   ],
   rules: {
-    'no-restricted-syntax': ['error', BUTTON_TYPE_RULE, ...NO_HARDCODED_COLOR_RULES],
+    'no-restricted-syntax': ['error', BUTTON_TYPE_RULE, ...NO_HARDCODED_COLOR_RULES, ...NO_HARDCODED_FONT_RULES],
   },
 }

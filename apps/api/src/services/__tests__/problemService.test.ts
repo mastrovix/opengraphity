@@ -15,6 +15,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
 // dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
 // fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+// Le note si compongono nella lingua del cliente: qui italiano, come le attese.
+// Ondata 6 di «Nulla cablato»: il formato dei numeri è del cliente; qui quello di fabbrica.
+vi.mock('../../lib/ticketCIExclusions.js', () => import('../../lib/__tests__/ticketCIExclusionsFake.js'))
+vi.mock('../../lib/ticketNumbering.js', () => import('../../lib/__tests__/ticketNumberingFake.js'))
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
 
 vi.mock('../../lib/ciLabelsForTenant.js', () => ({
@@ -54,6 +59,7 @@ vi.mock('../../lib/triggerEngine.js', () => ({
 }))
 vi.mock('../../lib/rulesEngine.js', () => ({ evaluateBusinessRules: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../lib/stepEnteredPublisher.js', () => ({ publishStepEnteredForEntity: vi.fn() }))
 vi.mock('../../lib/workflowHelpers.js', () => ({
   getInitialStepName: vi.fn().mockResolvedValue('new'),
   getWorkflowSteps:   vi.fn().mockResolvedValue([]),
@@ -63,9 +69,10 @@ vi.mock('../../lib/logger.js', () => ({
 }))
 
 const { createProblem, publishProblemTransition } = await import('../problemService.js')
-const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
+const { runQuery } = await import('@opengraphity/neo4j')
 const { workflowEngine } = await import('@opengraphity/workflow')
 const { publishEvent } = await import('../../lib/publishEvent.js')
+const { publishStepEnteredForEntity } = await import('../../lib/stepEnteredPublisher.js')
 const { evaluateTriggers } = await import('../../lib/triggerEngine.js')
 const { derivePriority, invertPriority } = await import('../../lib/priority.js')
 
@@ -213,13 +220,33 @@ describe('createProblem — numero, workflow, evento e link', () => {
   })
 
   it('crea l\'istanza di workflow "problem" con la categoria (o null)', async () => {
-    await createProblem({ title: 'P', priority: 'high', category: 'storage' }, ctx)
+    await createProblem({ title: 'P', priority: 'high', category: 'network' }, ctx)
     expect(workflowEngine.createInstance).toHaveBeenCalledTimes(1)
-    expect(workflowEngine.createInstance).toHaveBeenCalledWith(h.session, 'tenant-1', expect.stringMatching(UUID_RE), 'problem', undefined, 'storage')
+    expect(workflowEngine.createInstance).toHaveBeenCalledWith(h.session, 'tenant-1', expect.stringMatching(UUID_RE), 'problem', undefined, 'network')
 
     vi.clearAllMocks()
     await createProblem({ title: 'P', priority: 'high' }, ctx)
     expect(workflowEngine.createInstance).toHaveBeenCalledWith(h.session, 'tenant-1', expect.any(String), 'problem', undefined, null)
+  })
+
+  /**
+   * Revisione totale · B-3: la categoria sceglieva il workflow e poi spariva —
+   * il CREATE non la scriveva, il tipo non la esponeva, e una policy SLA
+   * «problem, categoria X» non sceglieva mai nessun problem (il motore legge
+   * `e.category` dal nodo).
+   */
+  it('la categoria resta sul nodo, ed è un valore del vocabolario del cliente', async () => {
+    await createProblem({ title: 'P', priority: 'high', category: 'network' }, ctx)
+    const [[cypher, params]] = queriesWith('CREATE (p:Problem')
+    expect(cypher).toContain('category:    $category')
+    expect(params).toMatchObject({ category: 'network' })
+
+    vi.clearAllMocks()
+    await createProblem({ title: 'P', priority: 'high' }, ctx)
+    expect(queriesWith('CREATE (p:Problem')[0]![1]).toMatchObject({ category: null })
+
+    await expect(createProblem({ title: 'P', priority: 'high', category: 'storage' }, ctx))
+      .rejects.toThrow(/category: "storage" is not in the dictionary/)
   })
 
   it('pubblica problem.created con tenant, attore e payload (priorità derivata, stato iniziale)', async () => {
@@ -230,10 +257,12 @@ describe('createProblem — numero, workflow, evento e link', () => {
     })
   })
 
-  it('valuta trigger on_create con i dati dell\'entità (fire-and-forget)', async () => {
-    await createProblem({ title: 'P', priority: 'medium', category: 'net' }, ctx)
-    expect(evaluateTriggers).toHaveBeenCalledWith('tenant-1', 'problem', 'on_create',
-      expect.objectContaining({ title: 'P', priority: 'medium', status: 'new', category: 'net' }), 'user-1')
+  // AU-1 (revisione del 14 set 2026): le automazioni non si valutano più qui
+  // dentro, ma dal consumatore di `problem.created` (consumers/automationConsumer.ts),
+  // come per ogni ticket e ogni evento.
+  it('non valuta trigger né regole in linea: li mette in moto problem.created', async () => {
+    await createProblem({ title: 'P', priority: 'medium', category: 'network' }, ctx)
+    expect(evaluateTriggers).not.toHaveBeenCalled()
   })
 
   it('affectedCIs → un MERGE AFFECTS per CI, tenant-scoped; relatedIncidents → CAUSED_BY', async () => {
@@ -270,41 +299,21 @@ describe('createProblem — numero, workflow, evento e link', () => {
 
 // ── publishProblemTransition ──────────────────────────────────────────────────
 
-describe('publishProblemTransition', () => {
-  const row = (map: Record<string, unknown>) => ({ get: (k: string) => (k in map ? map[k] : null) })
-
-  it('problem inesistente nel tenant → errore esplicito, nessun evento', async () => {
-    h.session.executeRead.mockResolvedValue({ records: [] })
-    await expect(publishProblemTransition('prb-x', 'in_progress', ctx))
-      .rejects.toThrow('Problem prb-x not found while building event payload')
-    expect(publishEvent).not.toHaveBeenCalled()
-  })
-
-  /**
-   * CONTRATTO RINEGOZIATO (ondata 4, D-22). Prima il test pinnava UN evento
-   * col nome del passo nel tipo (`problem.in_progress`). Ora ne vengono
-   * pubblicati DUE con lo stesso payload: il tipo **stabile**
-   * `problem.step_entered` (che una rinomina del passo non tocca) e l'**alias**
-   * storico `problem.in_progress`, mantenuto perché a lui sono agganciate le
-   * regole di notifica factory e quelle già scritte dai tenant. Il nome del
-   * passo, con etichetta, scopo e categoria, è nel payload.
-   */
-  it('pubblica il tipo stabile E l\'alias col nome del passo, con i fatti del passo nel payload', async () => {
-    h.session.executeRead.mockResolvedValue({ records: [row({ id: 'prb-1', title: 'T', priority: 'high', status: 'in_progress', assignedTo: null, teamName: 'NOC' })] })
-    vi.mocked(runQueryOne).mockResolvedValue({ stepId: 'st-1', label: 'In lavorazione', purpose: 'investigation', category: 'active' })
+/**
+ * Revisione totale · C-1: i due eventi dell'ingresso nel passo (il tipo
+ * stabile `problem.step_entered` e l'alias `problem.<passo>`) nascono
+ * dall'hook `onStepEntered` del motore, che vede anche i cammini automatici —
+ * prima li pubblicava solo questa funzione, chiamata dalla sola transizione
+ * manuale. Il contratto è pinnato in
+ * `src/lib/__tests__/stepEnteredPublisher.test.ts`; qui resta la delega.
+ */
+describe('publishProblemTransition — delega al publisher condiviso (C-1)', () => {
+  it('non pubblica eventi di suo', async () => {
+    vi.clearAllMocks()
     await publishProblemTransition('prb-1', 'in_progress', ctx)
-    const body = {
-      id: 'prb-1', title: 'T', priority: 'high', status: 'in_progress', assignedTo: 'NOC',
-      step_id: 'st-1', step_name: 'in_progress', step_label: 'In lavorazione',
-      step_purpose: 'investigation', step_category: 'active',
-    }
-    expect(publishEvent).toHaveBeenCalledWith('problem.step_entered', 'tenant-1', 'user-1', body)
-    expect(publishEvent).toHaveBeenCalledWith('problem.in_progress',  'tenant-1', 'user-1', body)
-    expect(publishEvent).toHaveBeenCalledTimes(2)
-    // la query è tenant-scoped
-    const tx = { run: vi.fn().mockResolvedValue({ records: [] }) }
-    await (h.session.executeRead.mock.calls[0]![0] as (t: typeof tx) => Promise<unknown>)(tx)
-    expect(tx.run.mock.calls[0]![0]).toContain('MATCH (p:Problem {id: $id, tenant_id: $tenantId})')
-    expect(tx.run.mock.calls[0]![1]).toEqual({ id: 'prb-1', tenantId: 'tenant-1' })
+    expect(publishStepEnteredForEntity).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-1', actorId: 'user-1', entityType: 'problem', entityId: 'prb-1', stepName: 'in_progress',
+    }))
+    expect(publishEvent).not.toHaveBeenCalled()
   })
 })

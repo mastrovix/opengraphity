@@ -280,7 +280,7 @@ export function RichTextEditor({
           padding: 16px;
           outline: none;
           font-size: 14px;
-          font-family: system-ui, -apple-system, sans-serif;
+          font-family: var(--font-sans);
           color: var(--color-slate-dark);
           line-height: 1.6;
         }
@@ -292,7 +292,7 @@ export function RichTextEditor({
         .tiptap-editor .ProseMirror h2 { font-size: 20px; font-weight: 600; color: var(--color-slate-dark); }
         .tiptap-editor .ProseMirror h3 { font-size: 16px; font-weight: 600; color: var(--color-slate-dark); }
         .tiptap-editor .ProseMirror a { color: var(--color-brand); text-decoration: underline; }
-        .tiptap-editor .ProseMirror code { background: var(--color-slate-bg); font-family: monospace; font-size: 13px; padding: 2px 4px; border-radius: 3px; }
+        .tiptap-editor .ProseMirror code { background: var(--color-slate-bg); font-family: var(--font-mono); font-size: 13px; padding: 2px 4px; border-radius: 3px; }
         .tiptap-editor .ProseMirror pre { background: var(--color-slate-bg); padding: 12px; border-radius: 6px; overflow-x: auto; }
         .tiptap-editor .ProseMirror pre code { background: none; padding: 0; font-size: 13px; }
         .tiptap-editor .ProseMirror blockquote { border-left: 3px solid var(--color-brand); padding-left: 12px; color: var(--color-slate); font-style: italic; margin: 0; }

@@ -22,7 +22,7 @@
 import { getSession } from '@opengraphity/neo4j'
 import {
   NOTIFICATION_TARGET_ALL, NOTIFICATION_TARGET_ASSIGNEE, NOTIFICATION_TARGET_TEAM,
-  NOTIFICATION_TARGETS, notificationTargetRole,
+  NOTIFICATION_BASE_TARGETS, isNotificationTarget, notificationTargetRole,
 } from '@opengraphity/types'
 
 export interface NotificationRecipient {
@@ -32,9 +32,12 @@ export interface NotificationRecipient {
   notificationsEnabled: boolean
 }
 
+// Le persone disattivate (revisione totale · M-6) non ricevono notifiche: nessuna query qui le seleziona.
+
 /** L'assegnatario dell'entità dell'evento. */
 export const ASSIGNEE_RECIPIENTS_CYPHER = `
   MATCH (e {id: $entityId, tenant_id: $tenantId})-[:ASSIGNED_TO]->(u:User {tenant_id: $tenantId})
+  WHERE coalesce(u.active, true) = true
   RETURN DISTINCT u.id AS id, u.email AS email, coalesce(u.notifications_enabled, true) AS notificationsEnabled`
 
 /**
@@ -48,12 +51,13 @@ export const TEAM_RECIPIENTS_CYPHER = `
   OPTIONAL MATCH (t)-[:MANAGED_BY]->(g:User {tenant_id: $tenantId})
   WITH collect(DISTINCT m) + collect(DISTINCT g) AS people
   UNWIND people AS u
+  WITH u WHERE coalesce(u.active, true) = true
   RETURN DISTINCT u.id AS id, u.email AS email, coalesce(u.notifications_enabled, true) AS notificationsEnabled`
 
 /** Gli utenti del tenant con un ruolo preciso (il vocabolario è USER_ROLES). */
 export const ROLE_RECIPIENTS_CYPHER = `
   MATCH (u:User {tenant_id: $tenantId})
-  WHERE u.role = $role
+  WHERE u.role = $role AND coalesce(u.active, true) = true
   RETURN DISTINCT u.id AS id, u.email AS email, coalesce(u.notifications_enabled, true) AS notificationsEnabled`
 
 export interface TargetEntity {
@@ -107,10 +111,10 @@ export async function resolveNotificationRecipients(
   target: string,
   entity: TargetEntity,
 ): Promise<NotificationRecipient[]> {
-  if (!NOTIFICATION_TARGETS.includes(target)) {
+  if (!isNotificationTarget(target)) {
     throw new Error(
-      `${entity.eventType} notification rule has target "${target}", which is not one of [${NOTIFICATION_TARGETS.join(', ')}] — ` +
-      `fix the rule (Impostazioni → Regole di notifica): nobody would receive it`,
+      `${entity.eventType} notification rule has target "${target}", which is not one of [${NOTIFICATION_BASE_TARGETS.join(', ')}] nor role:<role> — ` +
+      `fix the rule (Settings → Notification rules): nobody would receive it`,
     )
   }
   if (target === NOTIFICATION_TARGET_ALL) {

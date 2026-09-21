@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { Button } from '@/components/Button'
 import { useTranslation } from 'react-i18next'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { PageContainer } from '@/components/PageContainer'
 import { AlertCircle, GitPullRequest, Route, BookOpen, Search, Inbox } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
@@ -13,6 +14,7 @@ import { PROVISION_TENANT_DATA } from '@/graphql/mutations'
 import { lookupOrError, colors, palette } from '@/lib/tokens'
 import { Pill } from '@/components/ui/Pill'
 import { gapText, type GapData } from '@/lib/configurationIssueText'
+import { showError } from '@/lib/showError'
 
 interface WorkflowDef {
   id:             string
@@ -23,18 +25,24 @@ interface WorkflowDef {
   version:        number
 }
 
-const ENTITY_META: Record<string, { label: string; Icon: typeof AlertCircle; color: string }> = {
-  incident:        { label: 'Incident',        Icon: AlertCircle,    color: 'var(--color-danger)' },
-  change:          { label: 'Change',          Icon: GitPullRequest, color: palette.purple.light },
-  problem:         { label: 'Problem',         Icon: Search,         color: 'var(--color-warning)' },
-  service_request: { label: 'Service Request', Icon: Inbox,          color: 'var(--color-brand)' },
-  kb_article:      { label: 'Knowledge Base',  Icon: BookOpen,       color: palette.success.base },
+/**
+ * Icona e colore per tipo. L'ETICHETTA non sta qui: per i tipi ITIL è quella
+ * del metamodello del cliente (`useItilTypeLabels`, revisione del 14 set 2026 ·
+ * F16), per gli articoli KB è una traduzione.
+ */
+const ENTITY_META: Record<string, { Icon: typeof AlertCircle; color: string }> = {
+  incident:        { Icon: AlertCircle,    color: 'var(--color-danger)' },
+  change:          { Icon: GitPullRequest, color: palette.purple.light },
+  problem:         { Icon: Search,         color: 'var(--color-warning)' },
+  service_request: { Icon: Inbox,          color: 'var(--color-brand)' },
+  kb_article:      { Icon: BookOpen,       color: palette.success.base },
 }
 
 const ENTITY_ORDER = ['incident', 'change', 'problem', 'service_request', 'kb_article']
 
 export function WorkflowListPage() {
   const { t, i18n } = useTranslation()
+  const { labelOf: typeLabel } = useItilTypeLabels()
   const navigate = useNavigate()
   const { data, loading } = useQuery<{ workflowDefinitions: WorkflowDef[] }>(GET_WORKFLOW_LIST)
 
@@ -65,7 +73,7 @@ export function WorkflowListPage() {
       if (r.remainingGaps.length === 0) toast.success(t('pages.workflow.provisionDone'))
       else toast.warning(t('pages.workflow.provisionPartial', { gaps: r.remainingGaps.map(gapLine).join('; ') }))
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const defs = data?.workflowDefinitions ?? []
@@ -99,7 +107,7 @@ export function WorkflowListPage() {
             {t('pages.workflow.title', 'Workflow')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${defs.length} workflow`}
+            {loading ? '—' : t('pages.workflow.count', { count: defs.length })}
           </p>
         </div>
       </div>
@@ -138,7 +146,8 @@ export function WorkflowListPage() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(columnKeys.length, 4)}, 1fr)`, gap: 24 }}>
           {columnKeys.map((entityType) => {
-            const meta = lookupOrError(ENTITY_META, entityType, 'ENTITY_META', { label: entityType, Icon: Route, color: 'var(--color-danger)' })
+            const meta = lookupOrError(ENTITY_META, entityType, 'ENTITY_META', { Icon: Route, color: 'var(--color-danger)' })
+            const columnLabel = entityType === 'kb_article' ? t('pages.approvals.entity.kb_article') : typeLabel(entityType)
             const items = grouped.get(entityType)!
 
             return (
@@ -146,7 +155,7 @@ export function WorkflowListPage() {
                 {/* Column header */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: '2px solid var(--color-border)' }}>
                   <meta.Icon size={18} color={meta.color} />
-                  <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{meta.label}</span>
+                  <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{columnLabel}</span>
                   <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginLeft: 'auto' }}>{items.length}</span>
                 </div>
 

@@ -32,7 +32,7 @@
  */
 import { makeExecutableSchema } from '@graphql-tools/schema'
 import type { GraphQLSchema } from 'graphql'
-import { loadMetamodel, generateSDL, loadITILTypes, generateITILEnumsSDL } from '@opengraphity/schema-generator'
+import { loadMetamodel, generateSDL } from '@opengraphity/schema-generator'
 import type { ReservedSchemaNames } from '@opengraphity/schema-generator'
 import { reservedNamesOfBaseSchema } from './metamodelNames.js'
 import { ENUM_SCOPE } from './enumScope.js'
@@ -65,6 +65,26 @@ const TTL = 5 * 60 * 1000  // 5 minuti
 
 /** Costruzioni in corso, per tenant: due richieste insieme non generano due schemi. */
 const inFlight = new Map<string, Promise<SchemaCacheEntry>>()
+
+/**
+ * La generazione del metamodello di ogni tenant, in questo processo
+ * (revisione del 15 set 2026 · CM-10). L'invalidazione la incrementa; una
+ * costruzione partita prima (metamodello già letto) al termine NON entra in
+ * cache, altrimenti il tenant resterebbe con lo schema vecchio fino al TTL di
+ * 5 minuti. Chi l'ha chiesta riceve comunque il suo schema: la richiesta
+ * successiva ne costruisce uno nuovo.
+ */
+const generation = new Map<string, number>()
+const generationOf = (tenantId: string): number => generation.get(tenantId) ?? 0
+
+function store(tenantId: string, startedAt: number, entry: SchemaCacheEntry): void {
+  if (generationOf(tenantId) !== startedAt) {
+    logger.info({ tenantId }, 'Schema costruito su un metamodello nel frattempo cambiato: non entra in cache')
+    return
+  }
+  touch(tenantId, entry)
+  evictIfNeeded()
+}
 
 function touch(tenantId: string, entry: SchemaCacheEntry): void {
   cache.delete(tenantId)
@@ -99,11 +119,25 @@ function evictIfNeeded(): void {
 // Il log dice la VERITÀ: prima affermava «verrà rigenerato» anche quando in
 // cache non c'era nessuna voce per quel tenant (ed era il caso normale).
 registerSchemaInvalidator((tenantId: string) => {
+  generation.set(tenantId, generationOf(tenantId) + 1)
   const had = cache.delete(tenantId)
   inFlight.delete(tenantId)
   graphqlSchemaCacheEntries.set({}, cache.size)
   if (had) logger.info({ tenantId }, 'Schema invalidato: verrà rigenerato alla prossima richiesta')
   else     logger.debug({ tenantId }, 'Schema invalidato: non era in cache in questo processo, niente da togliere')
+}, () => {
+  // Lo schema di OGNI tenant (PRB00000003): è la cache col TTL più lungo (5
+  // minuti), quindi quella che pagherebbe di più un'invalidazione perduta.
+  // La generazione si incrementa per ognuno, altrimenti una costruzione già
+  // partita rimetterebbe in cache lo schema appena buttato.
+  for (const tenantId of new Set([...cache.keys(), ...inFlight.keys(), ...generation.keys()])) {
+    generation.set(tenantId, generationOf(tenantId) + 1)
+  }
+  const svuotati = cache.size
+  cache.clear()
+  inFlight.clear()
+  graphqlSchemaCacheEntries.set({}, cache.size)
+  logger.info({ svuotati }, 'Schemi invalidati per tutti i tenant: verranno rigenerati alla prossima richiesta')
 })
 
 /** La voce di cache del tenant (schema + stato), costruendola se serve. */
@@ -136,6 +170,7 @@ export async function getSchemaState(tenantId: string): Promise<{ schema: GraphQ
 
 async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
   logger.info({ tenantId }, 'Generando schema GraphQL')
+  const startedAt = generationOf(tenantId)
 
   // IL CARICAMENTO DEL METAMODELLO STA DENTRO LA RETE (terza revisione · G5b).
   // `loadMetamodel` e `loadITILTypes` erano FUORI dal `try` che degrada, e
@@ -150,15 +185,17 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
   // Adesso un dato corrotto degrada come un tipo che non si assembla: lo
   // schema di base viene servito, il motivo finisce nell'intestazione, nel
   // log e nel banner, e l'admin ha una pagina da cui rimediare.
+  /**
+   * I tipi ITIL NON si rileggono per costruire lo schema (revisione totale ·
+   * E-37): servivano solo a `generateITILEnumsSDL`, che restituisce sempre
+   * stringa vuota da quando gli stati vengono dai workflow configurabili.
+   * Era una lettura del metamodello in più a ogni ricostruzione dello schema,
+   * per un contributo nullo. Chi ha bisogno dei tipi ITIL li legge dal
+   * resolver (`lib/itilTypes.ts`), che è l'implementazione viva.
+   */
   let ciTypes: Awaited<ReturnType<typeof loadMetamodel>> = []
-  let itilTypes: Awaited<ReturnType<typeof loadITILTypes>> = []
   try {
-    const caricati = await Promise.all([
-      loadMetamodel(tenantId, ENUM_SCOPE),
-      loadITILTypes(tenantId, ENUM_SCOPE),
-    ])
-    ciTypes   = caricati[0]
-    itilTypes = caricati[1]
+    ciTypes = await loadMetamodel(tenantId, ENUM_SCOPE)
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e)
     logger.error({ tenantId, err: e }, 'Metamodello del tenant illeggibile: si serve lo schema di base')
@@ -169,12 +206,12 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
       schema, generatedAt: Date.now(), tenantId, degraded: true,
       reason: `il metamodello del cliente non e leggibile: ${reason}`,
     }
-    touch(tenantId, entry)
-    evictIfNeeded()
+    store(tenantId, startedAt, entry)
     return entry
   }
 
-  const itilEnumsSDL = generateITILEnumsSDL(itilTypes)
+  // E-37: nessun SDL dagli enum ITIL (la funzione restituiva sempre '').
+  const itilEnumsSDL = ''
   const baseSDL      = buildBaseSDL()
   // I nomi già occupati dallo schema di base: senza, un tipo CI del cliente
   // omonimo di un tipo base non verrebbe intercettato — graphql-tools non
@@ -186,9 +223,8 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
     registerCITypes(tenantId, ciTypes)
     graphqlSchemaBuildsTotal.inc({})
     const entry: SchemaCacheEntry = { schema, generatedAt: Date.now(), tenantId, degraded: false, reason: null }
-    touch(tenantId, entry)
-    evictIfNeeded()
-    logger.info({ tenantId, ciTypes: ciTypes.length, itilTypes: itilTypes.length }, 'Schema generato')
+    store(tenantId, startedAt, entry)
+    logger.info({ tenantId, ciTypes: ciTypes.length }, 'Schema generato')
     return entry
   } catch (e) {
     // Lo schema del tenant non si assembla: quasi sempre un tipo o un campo
@@ -242,8 +278,7 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
     registerCITypes(tenantId, excluded.length ? kept : ciTypes.filter((t) => t.scope !== 'tenant'))
     graphqlSchemaBuildsTotal.inc({})
     const entry: SchemaCacheEntry = { schema, generatedAt: Date.now(), tenantId, degraded: true, reason }
-    touch(tenantId, entry)
-    evictIfNeeded()
+    store(tenantId, startedAt, entry)
     return entry
   }
 }

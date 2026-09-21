@@ -75,6 +75,10 @@ export const palette = {
     bg: v('--color-info-bg'), light: v('--color-info-light'), tint: v('--color-info-tint'), border: v('--color-info-border'),
     text: v('--color-info-text'), strong: v('--color-info-strong'), base: v('--color-brand'), dark: v('--color-brand-hover'),
   },
+  purple: {
+    bg: v('--color-purple-bg'), tint: v('--color-purple-tint'), border: v('--color-purple-border'),
+    text: v('--color-purple-dark'), strong: v('--color-purple-dark'), base: v('--color-purple'), dark: v('--color-purple-dark'),
+  } satisfies ColorFamily,
   orange: {
     bg: v('--color-orange-bg'), tint: v('--color-orange-tint'), border: v('--color-orange-border'),
     text: v('--color-orange-text'), strong: v('--color-orange-text'), base: v('--color-orange'), dark: v('--color-orange-dark'),

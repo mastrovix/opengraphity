@@ -1,0 +1,1637 @@
+{
+ "Query.aiSettings": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.allCIs": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.allITILCIRelationRules": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.anomalies": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.anomaly": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.anomalyRuleOptions": [
+  "admin"
+ ],
+ "Query.anomalyRules": [
+  "admin"
+ ],
+ "Query.anomalyScanStatus": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.anomalyStats": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.apiKeys": [
+  "admin"
+ ],
+ "Query.approvalRequests": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.assessmentQuestionCatalog": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.assessmentQuestionsAdmin": [
+  "admin"
+ ],
+ "Query.attachmentPolicy": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.attachments": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.auditActions": [
+  "admin"
+ ],
+ "Query.auditLog": [
+  "admin"
+ ],
+ "Query.autoTriggers": [
+  "admin"
+ ],
+ "Query.availableConnectors": [
+  "admin"
+ ],
+ "Query.baseCIType": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.blastRadius": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.businessCapabilitiesHealth": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.businessRules": [
+  "admin"
+ ],
+ "Query.change": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.changeAffectedCIs": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.changeAuditTrail": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.changeEnvironmentWeight": [
+  "admin"
+ ],
+ "Query.changeImpactAnalysis": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.changeImpactedCIs": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.changes": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.ciAliases": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.ciById": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.ciChanges": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.ciGroupMembers": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.ciHealth": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.ciHealthOverview": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.ciIncidents": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.ciProblems": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.ciTypes": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.comments": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.configurationIssues": [
+  "admin"
+ ],
+ "Query.criticalServiceCriticalities": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.customWidgets": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.dashboard": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.domainMatrices": [
+  "admin"
+ ],
+ "Query.entityFilterFields": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.enumType": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.enumTypes": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.event": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.eventPolicy": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.eventStats": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.events": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.executeReport": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.fieldRequirementRules": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.fieldVisibilityRules": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.globalSearch": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.impactAnalysisWeights": [
+  "admin"
+ ],
+ "Query.inboundWebhooks": [
+  "admin"
+ ],
+ "Query.incident": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.incidentAvailableTransitions": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.incidentWorkflow": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.incidentWorkflowHistory": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.incidents": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.internalMessages": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.isWatching": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.itilCIRelationRules": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.itilTypeFields": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.itilTypes": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.kbArticle": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.kbArticleBySlug": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.kbArticleVersions": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.kbArticles": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.kbCategories": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.knownErrors": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.logs": [
+  "admin"
+ ],
+ "Query.me": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.monitoringSource": [
+  "admin"
+ ],
+ "Query.monitoringSourceRefs": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.monitoringSources": [
+  "admin"
+ ],
+ "Query.myDashboard": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.myDashboards": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.myNotifications": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.myPendingApprovals": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.myTasks": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.myTicket": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.myTicketStats": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.myTickets": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.navigableEntities": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.navigableRelations": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.notificationChannels": [
+  "admin"
+ ],
+ "Query.notificationRouting": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.notificationRules": [
+  "admin"
+ ],
+ "Query.olaContracts": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.outboundWebhooks": [
+  "admin"
+ ],
+ "Query.payloadKeys": [
+  "admin"
+ ],
+ "Query.pendingTicketApprovals": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.portalCustomFields": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.portalSeverityChoices": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.portalSeverityOptions": [
+  "admin"
+ ],
+ "Query.preApprovedChangeTypes": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.previewReportSection": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.problem": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.problemCandidates": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.problems": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.questionCITypeAssignments": [
+  "admin"
+ ],
+ "Query.queueJobs": [
+  "admin"
+ ],
+ "Query.queueStats": [
+  "admin"
+ ],
+ "Query.reachableEntities": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.reportConversation": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.reportConversations": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.reportTemplate": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.reportTemplates": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.resolutionDraft": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.riskBandThresholds": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.sampleInboundPayload": [
+  "admin"
+ ],
+ "Query.searchUsers": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.serviceCalendars": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.serviceCatalogItems": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.serviceImpactPreview": [
+  "admin"
+ ],
+ "Query.serviceMap": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.serviceMapCandidates": [
+  "admin"
+ ],
+ "Query.serviceMapProposal": [
+  "admin"
+ ],
+ "Query.serviceMaps": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.serviceRelationshipTypes": [
+  "admin"
+ ],
+ "Query.serviceRequest": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.serviceRequests": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.servicesImpactedByCI": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.similarIncidents": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.slaCoverage": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.slaPolicies": [
+  "admin"
+ ],
+ "Query.slaReport": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.suggestedArticles": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.syncChangeHistory": [
+  "admin"
+ ],
+ "Query.syncConflicts": [
+  "admin"
+ ],
+ "Query.syncRuns": [
+  "admin"
+ ],
+ "Query.syncSource": [
+  "admin"
+ ],
+ "Query.syncSources": [
+  "admin"
+ ],
+ "Query.syncStats": [
+  "admin"
+ ],
+ "Query.systemHealth": [
+  "admin"
+ ],
+ "Query.systemMetrics": [
+  "admin"
+ ],
+ "Query.taskById": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.team": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.teams": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.tenantBrand": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.tenantBrandSettings": [
+  "admin"
+ ],
+ "Query.tenantInAppRetentionDays": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.tenantLanguageSettings": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.tenantName": [
+  "admin"
+ ],
+ "Query.tenantProvisioningGaps": [
+  "admin"
+ ],
+ "Query.tenantTimezoneSettings": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.ticketCategories": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Query.ticketNumbering": [
+  "admin"
+ ],
+ "Query.topology": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.traceInfo": [
+  "admin"
+ ],
+ "Query.triageSuggestion": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.user": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.users": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.watchers": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.whatIfAnalysis": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.whatIfCompare": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.widgetCatalog": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.widgetData": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.widgetDataPreview": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.workflowDefinition": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.workflowDefinitionById": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.workflowDefinitions": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Query.workflowEventTypes": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.acknowledgeEvent": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.acknowledgeShippedValues": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.addAffectedCI": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.addCIField": [
+  "admin"
+ ],
+ "Mutation.addCIRelation": [
+  "admin"
+ ],
+ "Mutation.addCIRelationship": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.addCIToChange": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.addCIToProblem": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.addComment": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.addDashboardWidget": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.addIncidentComment": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.addProblemComment": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.addReportSection": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.addTicketComment": [
+  "admin",
+  "operator",
+  "end_user"
+ ],
+ "Mutation.addWatcher": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.addWorkflowStep": [
+  "admin"
+ ],
+ "Mutation.addWorkflowTransition": [
+  "admin"
+ ],
+ "Mutation.adoptShippedValues": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.applyServiceMapProposal": [
+  "admin"
+ ],
+ "Mutation.approveChangeApproval": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.approveRequest": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.askReport": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.assignAssessmentTaskToTeam": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.assignAssessmentTaskToUser": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.assignCIOwner": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.assignCISupportGroup": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.assignDeployPlanTaskToUser": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.assignIncidentToTeam": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.assignIncidentToUser": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.assignProblemToTeam": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.assignProblemToUser": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.assignQuestionToCIType": [
+  "admin"
+ ],
+ "Mutation.assignServiceRequestToUser": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.cancelApprovalRequest": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.cloneDashboard": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.completeAssessmentTask": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.completeDeployPlanTask": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.completeDeployment": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.completeReview": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.completeValidationTest": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.createApiKey": [
+  "admin"
+ ],
+ "Mutation.createApprovalRequest": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.createAssessmentQuestion": [
+  "admin"
+ ],
+ "Mutation.createAutoTrigger": [
+  "admin"
+ ],
+ "Mutation.createBusinessRule": [
+  "admin"
+ ],
+ "Mutation.createCIAlias": [
+  "admin"
+ ],
+ "Mutation.createCIType": [
+  "admin"
+ ],
+ "Mutation.createChange": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.createCustomWidget": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.createDashboard": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.createEnumType": [
+  "admin"
+ ],
+ "Mutation.createFieldVisibilityRule": [
+  "admin"
+ ],
+ "Mutation.createITILCIRelationRule": [
+  "admin"
+ ],
+ "Mutation.createITILField": [
+  "admin"
+ ],
+ "Mutation.createInboundWebhook": [
+  "admin"
+ ],
+ "Mutation.createIncident": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.createIncidentFromEvent": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.createKBArticle": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.createKbDraftFromIncident": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.createNotificationChannel": [
+  "admin"
+ ],
+ "Mutation.createNotificationRule": [
+  "admin"
+ ],
+ "Mutation.createOLAContract": [
+  "admin"
+ ],
+ "Mutation.createOutboundWebhook": [
+  "admin"
+ ],
+ "Mutation.createProblem": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.createReportTemplate": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.createSLAPolicy": [
+  "admin"
+ ],
+ "Mutation.createServiceCalendar": [
+  "admin"
+ ],
+ "Mutation.createServiceCatalogItem": [
+  "admin"
+ ],
+ "Mutation.createServiceMap": [
+  "admin"
+ ],
+ "Mutation.createServiceRequest": [
+  "admin",
+  "operator",
+  "end_user"
+ ],
+ "Mutation.createSyncSource": [
+  "admin"
+ ],
+ "Mutation.createTeam": [
+  "admin"
+ ],
+ "Mutation.createTicket": [
+  "admin",
+  "operator",
+  "end_user"
+ ],
+ "Mutation.createUser": [
+  "admin"
+ ],
+ "Mutation.customizeEnumType": [
+  "admin"
+ ],
+ "Mutation.deleteApiKey": [
+  "admin"
+ ],
+ "Mutation.deleteAssessmentQuestion": [
+  "admin"
+ ],
+ "Mutation.deleteAttachment": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.deleteAutoTrigger": [
+  "admin"
+ ],
+ "Mutation.deleteBusinessRule": [
+  "admin"
+ ],
+ "Mutation.deleteCIAlias": [
+  "admin"
+ ],
+ "Mutation.deleteCIType": [
+  "admin"
+ ],
+ "Mutation.deleteChange": [
+  "admin"
+ ],
+ "Mutation.deleteComment": [
+  "admin",
+  "operator",
+  "end_user"
+ ],
+ "Mutation.deleteCustomWidget": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.deleteDashboard": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.deleteEnumType": [
+  "admin"
+ ],
+ "Mutation.deleteFieldRequirement": [
+  "admin"
+ ],
+ "Mutation.deleteFieldVisibilityRule": [
+  "admin"
+ ],
+ "Mutation.deleteITILCIRelationRule": [
+  "admin"
+ ],
+ "Mutation.deleteITILField": [
+  "admin"
+ ],
+ "Mutation.deleteInboundWebhook": [
+  "admin"
+ ],
+ "Mutation.deleteInternalMessage": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.deleteKBArticle": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.deleteNotificationChannel": [
+  "admin"
+ ],
+ "Mutation.deleteNotificationRule": [
+  "admin"
+ ],
+ "Mutation.deleteOutboundWebhook": [
+  "admin"
+ ],
+ "Mutation.deleteProblem": [
+  "admin"
+ ],
+ "Mutation.deleteReportConversation": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.deleteReportTemplate": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.deleteSLAPolicy": [
+  "admin"
+ ],
+ "Mutation.deleteServiceCalendar": [
+  "admin"
+ ],
+ "Mutation.deleteServiceMap": [
+  "admin"
+ ],
+ "Mutation.deleteSyncSource": [
+  "admin"
+ ],
+ "Mutation.dismissAllNotifications": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.duplicateReportTemplate": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.editInternalMessage": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.executeChangeTransition": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.executeProblemTransition": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.executeWorkflowTransition": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.exportReportExcel": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.exportReportPDF": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.linkEventToCI": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.linkIncidentToProblem": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.linkRelatedTicket": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.linkResolvedTicket": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.linkSlackAccount": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.markAllNotificationsRead": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.markNotificationRead": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.previewInboundEvents": [
+  "admin"
+ ],
+ "Mutation.provisionTenantData": [
+  "admin"
+ ],
+ "Mutation.rateKBArticle": [
+  "admin",
+  "operator",
+  "viewer",
+  "end_user"
+ ],
+ "Mutation.reevaluateEvent": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.reevaluateServiceMap": [
+  "admin"
+ ],
+ "Mutation.regenerateApiKey": [
+  "admin"
+ ],
+ "Mutation.regenerateWebhookToken": [
+  "admin"
+ ],
+ "Mutation.rejectChangeApproval": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.rejectRequest": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.removeAffectedCI": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.removeCIField": [
+  "admin"
+ ],
+ "Mutation.removeCIFromChange": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.removeCIFromProblem": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.removeCIRelation": [
+  "admin"
+ ],
+ "Mutation.removeCIRelationship": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.removeDashboardWidget": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.removeQuestionFromCIType": [
+  "admin"
+ ],
+ "Mutation.removeReportSection": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.removeServiceMapExclusion": [
+  "admin"
+ ],
+ "Mutation.removeTeamManager": [
+  "admin"
+ ],
+ "Mutation.removeWatcher": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.removeWorkflowStep": [
+  "admin"
+ ],
+ "Mutation.removeWorkflowTransition": [
+  "admin"
+ ],
+ "Mutation.renameEnumValue": [
+  "admin"
+ ],
+ "Mutation.reopenAssessmentTask": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.reopenDeployPlanTask": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.reopenDeploymentTask": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.reopenReviewTask": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.reopenTicket": [
+  "admin",
+  "operator",
+  "end_user"
+ ],
+ "Mutation.reopenValidationTest": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.reorderBusinessRules": [
+  "admin"
+ ],
+ "Mutation.reorderCustomWidgets": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.reorderDashboardWidgets": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.reorderEnumValues": [
+  "admin"
+ ],
+ "Mutation.reorderReportSections": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.resolveAnomaly": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.resolveConflict": [
+  "admin"
+ ],
+ "Mutation.resolveEvent": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.resolveIncident": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.restoreKBArticleVersion": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.retryQueueJob": [
+  "admin"
+ ],
+ "Mutation.runAnomalyScanner": [
+  "admin"
+ ],
+ "Mutation.saveDashboardLayout": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.saveDeployPlan": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.saveWorkflowChanges": [
+  "admin"
+ ],
+ "Mutation.saveWorkflowLayout": [
+  "admin"
+ ],
+ "Mutation.sendInternalMessage": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.sendSampleEvent": [
+  "admin"
+ ],
+ "Mutation.sendTaskReminder": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.setAISettings": [
+  "admin"
+ ],
+ "Mutation.setAttachmentPolicy": [
+  "admin"
+ ],
+ "Mutation.setCIHealthOverride": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.setChangeManagerTeam": [
+  "admin"
+ ],
+ "Mutation.setFieldRequirement": [
+  "admin"
+ ],
+ "Mutation.setIncidentMajor": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.setMyEmailNotifications": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.setPortalSeverityOptions": [
+  "admin"
+ ],
+ "Mutation.setQuestionCore": [
+  "admin"
+ ],
+ "Mutation.setServiceMapAutoSync": [
+  "admin"
+ ],
+ "Mutation.setServiceMapStatus": [
+  "admin"
+ ],
+ "Mutation.setTeamManager": [
+  "admin"
+ ],
+ "Mutation.setTeamMember": [
+  "admin"
+ ],
+ "Mutation.setTenantBrand": [
+  "admin"
+ ],
+ "Mutation.setTenantDefaultLanguage": [
+  "admin"
+ ],
+ "Mutation.setTenantInAppRetentionDays": [
+  "admin"
+ ],
+ "Mutation.setTenantName": [
+  "admin"
+ ],
+ "Mutation.setTenantTimezone": [
+  "admin"
+ ],
+ "Mutation.setTicketCustomFields": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.setTicketNumbering": [
+  "admin"
+ ],
+ "Mutation.submitAssessmentResponse": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.syncServiceMap": [
+  "admin"
+ ],
+ "Mutation.testNotificationChannel": [
+  "admin"
+ ],
+ "Mutation.testOutboundWebhook": [
+  "admin"
+ ],
+ "Mutation.testSyncConnection": [
+  "admin"
+ ],
+ "Mutation.triggerSync": [
+  "admin"
+ ],
+ "Mutation.unlinkIncidentFromProblem": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.unlinkRelatedTicket": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.unlinkResolvedTicket": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.unwatchEntity": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.updateAnomalyRule": [
+  "admin"
+ ],
+ "Mutation.updateApiKey": [
+  "admin"
+ ],
+ "Mutation.updateAssessmentQuestion": [
+  "admin"
+ ],
+ "Mutation.updateAutoTrigger": [
+  "admin"
+ ],
+ "Mutation.updateBusinessRule": [
+  "admin"
+ ],
+ "Mutation.updateCIField": [
+  "admin"
+ ],
+ "Mutation.updateCIFields": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.updateCIType": [
+  "admin"
+ ],
+ "Mutation.updateChangeEnvironmentWeight": [
+  "admin"
+ ],
+ "Mutation.updateComment": [
+  "admin",
+  "operator",
+  "end_user"
+ ],
+ "Mutation.updateCustomWidget": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.updateDashboard": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.updateDashboardWidget": [
+  "admin",
+  "operator",
+  "viewer"
+ ],
+ "Mutation.updateDomainMatrix": [
+  "admin"
+ ],
+ "Mutation.updateEnumType": [
+  "admin"
+ ],
+ "Mutation.updateEventPolicy": [
+  "admin"
+ ],
+ "Mutation.updateFieldVisibilityRule": [
+  "admin"
+ ],
+ "Mutation.updateITILField": [
+  "admin"
+ ],
+ "Mutation.updateITILType": [
+  "admin"
+ ],
+ "Mutation.updateImpactAnalysisWeights": [
+  "admin"
+ ],
+ "Mutation.updateInboundWebhook": [
+  "admin"
+ ],
+ "Mutation.updateIncident": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.updateKBArticle": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.updateNotificationChannel": [
+  "admin"
+ ],
+ "Mutation.updateNotificationRule": [
+  "admin"
+ ],
+ "Mutation.updateOLAContract": [
+  "admin"
+ ],
+ "Mutation.updateOutboundWebhook": [
+  "admin"
+ ],
+ "Mutation.updatePreApprovedChangeTypes": [
+  "admin"
+ ],
+ "Mutation.updateProblem": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.updateReportSchedule": [
+  "admin"
+ ],
+ "Mutation.updateReportSection": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.updateReportTemplate": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.updateRiskBandThresholds": [
+  "admin"
+ ],
+ "Mutation.updateSLAPolicy": [
+  "admin"
+ ],
+ "Mutation.updateServiceCalendar": [
+  "admin"
+ ],
+ "Mutation.updateServiceCatalogItem": [
+  "admin"
+ ],
+ "Mutation.updateServiceImpactRules": [
+  "admin"
+ ],
+ "Mutation.updateServiceMapNodes": [
+  "admin"
+ ],
+ "Mutation.updateServiceRequest": [
+  "admin",
+  "operator"
+ ],
+ "Mutation.updateSyncSource": [
+  "admin"
+ ],
+ "Mutation.updateTeam": [
+  "admin"
+ ],
+ "Mutation.updateUserTeams": [
+  "admin"
+ ],
+ "Mutation.updateWorkflowStep": [
+  "admin"
+ ],
+ "Mutation.updateWorkflowTransition": [
+  "admin"
+ ],
+ "Mutation.watchEntity": [
+  "admin",
+  "operator",
+  "viewer"
+ ]
+}

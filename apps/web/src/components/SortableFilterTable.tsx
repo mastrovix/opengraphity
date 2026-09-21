@@ -10,6 +10,15 @@ export interface ColumnDef<T> {
   sortable?: boolean
   width?:   string
   render?:  (value: unknown, row: T) => React.ReactNode
+  /**
+   * La SCALA della colonna, dal valore piu grave al meno grave (revisione
+   * totale · G-EVT-7). Quando c'e, l'ordinamento la segue invece di confrontare
+   * il testo: «severita crescente» dava critical, info, warning.
+   * Va dichiarata colonna per colonna, mai indovinata dal nome: «resolved» e
+   * uno stato degli eventi ma anche uno stato dei ticket, e le due scale non
+   * hanno lo stesso ordine.
+   */
+  rank?:    readonly string[]
 }
 
 const getRawValue = (row: object, key: string): unknown => (row as Record<string, unknown>)[key]
@@ -21,19 +30,34 @@ function getSortValue(row: object, key: string): unknown {
   return v
 }
 
+function rankOf(value: unknown, scale?: readonly string[]): number | null {
+  if (!scale) return null
+  const i = scale.indexOf(String(value))
+  return i === -1 ? null : i
+}
+
 /**
  * L'ordinamento lato client della tabella, esportato perché una pagina che
  * tiene l'ordinamento nell'URL (modalità «controllata») deve ordinare le righe
  * con la STESSA regola con cui le ordinerebbe la tabella: null in fondo,
- * confronto testuale con i numeri in ordine numerico. Non muta `rows`.
+ * confronto testuale con i numeri in ordine numerico, o la `rank` della
+ * colonna quando quella colonna e una scala. Non muta `rows`.
  */
-export function sortRowsBy<T extends object>(rows: T[], key: string, dir: 'asc' | 'desc'): T[] {
+export function sortRowsBy<T extends object>(
+  rows: T[], key: string, dir: 'asc' | 'desc', rank?: readonly string[],
+): T[] {
   return [...rows].sort((a, b) => {
     const av = getSortValue(a, key)
     const bv = getSortValue(b, key)
     if (av == null) return 1
     if (bv == null) return -1
-    const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true })
+    const ar = rankOf(av, rank)
+    const br = rankOf(bv, rank)
+    // Un valore fuori scala (aggiunto a mano, arrivato da un import) va in
+    // fondo invece di mescolarsi: si vede che non è della scala.
+    const cmp = ar !== null || br !== null
+      ? (ar ?? Number.MAX_SAFE_INTEGER) - (br ?? Number.MAX_SAFE_INTEGER)
+      : String(av).localeCompare(String(bv), undefined, { numeric: true })
     return dir === 'asc' ? cmp : -cmp
   })
 }
@@ -141,7 +165,10 @@ export function SortableFilterTable<T extends object>({
   // Only sort client-side when in uncontrolled mode
   const sorted = isControlled || localSortKey == null
     ? data
-    : sortRowsBy(data, String(localSortKey), localSortDir)
+    : sortRowsBy(
+        data, String(localSortKey), localSortDir,
+        columns.find((c) => c.key === localSortKey)?.rank,
+      )
 
   const rowIds = selectable
     ? sorted.map((row, i) => String((row as Record<string, unknown>)['id'] ?? i))

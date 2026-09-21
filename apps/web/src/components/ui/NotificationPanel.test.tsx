@@ -56,3 +56,22 @@ describe('NotificationPanel — dove porta il click', () => {
     }
   })
 })
+
+/**
+ * Revisione del 14 set 2026 · CO-2: menzioni e osservatori erano frasi italiane
+ * composte dal server per tutti. Ora la notifica porta chiave e dati, e il
+ * pannello compone la frase nella lingua di chi legge.
+ */
+describe('NotificationPanel — messaggio nella lingua di chi legge', () => {
+  it('con message_key la frase si compone dalla traduzione; senza, si mostra il messaggio', () => {
+    notifications = [
+      notif('m1', 'incident', 'inc-1', { title: 'notification.mention.title', message: 'Bob ti ha menzionato', message_key: 'inApp.mention.message', message_params: { author: 'Bob', entity: 'incident', title: 'DB down' } }),
+      notif('m2', 'incident', 'inc-2', { message: 'testo scritto da una persona' }),
+    ]
+    renderWithProviders(<NotificationPanel onClose={vi.fn()} />, { route: '/dashboard' })
+    expect(screen.getByText('Bob mentioned you in incident «DB down»')).toBeInTheDocument()
+    expect(screen.getByText('You were mentioned')).toBeInTheDocument()
+    expect(screen.getByText('testo scritto da una persona')).toBeInTheDocument()
+  })
+})
+

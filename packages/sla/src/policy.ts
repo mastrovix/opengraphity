@@ -1,8 +1,11 @@
+import { minutesOfDay, type ServiceCalendar } from './calendar.js'
 export interface SLATier {
   severity: string
   response_minutes: number
   resolve_minutes: number
   business_hours: boolean
+  /** Minuti di preavviso prima della scadenza di risoluzione (dalla policy). */
+  warning_minutes: number
 }
 
 export interface SLAPolicy {
@@ -11,6 +14,8 @@ export interface SLAPolicy {
   name: string
   entity_type: 'incident' | 'change' | 'service_request' | 'problem'
   timezone: string
+  /** Il calendario di servizio del cliente (F6); `null` se non configurato. Serve ai tier in orario lavorativo. */
+  calendar: ServiceCalendar | null
   tiers: SLATier[]
 }
 
@@ -24,10 +29,8 @@ export interface SLAPolicy {
 */
 
 // ── Business hours helpers ───────────────────────────────────────────────────
-
-const BUSINESS_START = 8   // 08:00
-const BUSINESS_END   = 18  // 18:00
-const MINUTES_PER_BUSINESS_DAY = (BUSINESS_END - BUSINESS_START) * 60
+// L'orario lavorativo è il calendario di servizio del cliente (calendar.ts):
+// prima erano tre costanti qui (08:00, 18:00, lunedì–venerdì).
 
 /**
  * A wall-clock instant in the policy timezone. `day` is the local calendar
@@ -131,28 +134,42 @@ function fromLocal(local: LocalDateTime, timezone: string): Date {
   )
 }
 
-function isWeekend(day: number): boolean {
-  const dow = new Date(day).getUTCDay()
-  return dow === 0 || dow === 6
-}
+/** La forma del calendario comoda per il calcolo: minuti e giorni già decodificati. */
+interface CalendarRule { days: ReadonlySet<number>; start: number; end: number; holidays: ReadonlySet<number> }
 
-/** 08:00 of the next business (Mon–Fri) calendar day strictly after `day`. */
-function nextBusinessDayStart(day: number): LocalDateTime {
-  let next = day + DAY_MS
-  while (isWeekend(next)) next += DAY_MS
-  return { day: next, minuteOfDay: BUSINESS_START * 60 }
-}
-
-/**
- * Advances a local wall-clock time to the next moment within business hours
- * (Mon–Fri, 08:00–18:00). Already inside business hours → unchanged.
- */
-function advanceToBusinessStart(local: LocalDateTime): LocalDateTime {
-  if (isWeekend(local.day) || local.minuteOfDay >= BUSINESS_END * 60) {
-    return nextBusinessDayStart(local.day)
+function calendarRule(calendar: ServiceCalendar): CalendarRule {
+  return {
+    days: new Set(calendar.days),
+    start: minutesOfDay(calendar.start),
+    end: minutesOfDay(calendar.end),
+    holidays: new Set(calendar.holidays.map((h) => Date.UTC(Number(h.slice(0, 4)), Number(h.slice(5, 7)) - 1, Number(h.slice(8, 10))))),
   }
-  if (local.minuteOfDay < BUSINESS_START * 60) {
-    return { day: local.day, minuteOfDay: BUSINESS_START * 60 }
+}
+
+function isWorkingDay(day: number, rule: CalendarRule): boolean {
+  return rule.days.has(new Date(day).getUTCDay()) && !rule.holidays.has(day)
+}
+
+/** L'inizio della fascia del primo giorno lavorativo strettamente dopo `day`. */
+function nextBusinessDayStart(day: number, rule: CalendarRule): LocalDateTime {
+  let next = day + DAY_MS
+  // Un calendario valido ha almeno un giorno lavorativo a settimana, ma le
+  // festività possono coprire periodi lunghi: il limite dice che il calendario
+  // non lascia giorni lavorativi invece di girare per sempre.
+  for (let guard = 0; !isWorkingDay(next, rule); guard++) {
+    if (guard > 3660) throw new Error('[sla:policy] the service calendar has no working day in the next ten years')
+    next += DAY_MS
+  }
+  return { day: next, minuteOfDay: rule.start }
+}
+
+/** Porta un istante locale al primo momento dentro l'orario lavorativo. Già dentro → invariato. */
+function advanceToBusinessStart(local: LocalDateTime, rule: CalendarRule): LocalDateTime {
+  if (!isWorkingDay(local.day, rule) || local.minuteOfDay >= rule.end) {
+    return nextBusinessDayStart(local.day, rule)
+  }
+  if (local.minuteOfDay < rule.start) {
+    return { day: local.day, minuteOfDay: rule.start }
   }
   return local
 }
@@ -161,16 +178,18 @@ function advanceToBusinessStart(local: LocalDateTime): LocalDateTime {
  * Calculates the deadline by adding `minutes` of (optionally business-hours)
  * time to `startedAt`.
  *
- * Business hours: Mon–Fri 08:00–18:00 local time in `timezone`. The
- * computation runs on the local calendar (day + minute-of-day) and is
- * converted to UTC once at the end, so a DST transition between start and
- * deadline does not shift the result by an hour. O(days), not O(minutes).
+ * Business hours: the tenant's service calendar (days, time band, holidays)
+ * in local time in `timezone`. The computation runs on the local calendar (day
+ * + minute-of-day) and is converted to UTC once at the end, so a DST
+ * transition between start and deadline does not shift the result by an hour.
+ * O(days), not O(minutes).
  */
 export function calculateDeadline(
   startedAt: Date,
   minutes: number,
   businessHours: boolean,
   timezone: string,
+  calendar: ServiceCalendar | null,
 ): Date {
   if (!Number.isFinite(minutes) || minutes < 0) {
     throw new Error(`[sla:policy] calculateDeadline: invalid minutes ${String(minutes)}`)
@@ -178,27 +197,66 @@ export function calculateDeadline(
   if (!businessHours) {
     return new Date(startedAt.getTime() + minutes * 60_000)
   }
+  if (!calendar) {
+    throw new Error('[sla:policy] business-hours deadline without a service calendar: configure it in Settings → Organization')
+  }
+  const rule = calendarRule(calendar)
+  const minutesPerDay = rule.end - rule.start
 
-  let current   = advanceToBusinessStart(toLocal(startedAt, timezone))
+  let current   = advanceToBusinessStart(toLocal(startedAt, timezone), rule)
   let remaining = minutes
 
-  // Skip whole business days first (keeps the loop O(remaining days) but cheap).
   while (remaining > 0) {
-    const minsLeftToday = BUSINESS_END * 60 - current.minuteOfDay
+    const minsLeftToday = rule.end - current.minuteOfDay
 
     if (remaining <= minsLeftToday) {
       current   = { day: current.day, minuteOfDay: current.minuteOfDay + remaining }
       remaining = 0
     } else {
       remaining -= minsLeftToday
-      current = nextBusinessDayStart(current.day)
+      current = nextBusinessDayStart(current.day, rule)
       // Fast-forward full days while more than a business day remains.
-      while (remaining > MINUTES_PER_BUSINESS_DAY) {
-        remaining -= MINUTES_PER_BUSINESS_DAY
-        current = nextBusinessDayStart(current.day)
+      while (remaining > minutesPerDay) {
+        remaining -= minutesPerDay
+        current = nextBusinessDayStart(current.day, rule)
       }
     }
   }
 
   return fromLocal(current, timezone)
+}
+
+/**
+ * I minuti (in orario di servizio, se `businessHours`) fra due istanti: il
+ * rovescio di `calculateDeadline`. Serve a sommare il tempo in cui un ticket è
+ * stato di un team (OLA come «tempo del team», secondo giro UI del 15 set 2026).
+ * `to` prima di `from` → 0. O(giorni), come `calculateDeadline`.
+ */
+export function businessMinutesBetween(
+  from: Date,
+  to: Date,
+  businessHours: boolean,
+  timezone: string,
+  calendar: ServiceCalendar | null,
+): number {
+  if (to.getTime() <= from.getTime()) return 0
+  if (!businessHours) return (to.getTime() - from.getTime()) / 60_000
+  if (!calendar) {
+    throw new Error('[sla:policy] business-hours interval without a service calendar: configure it in Settings → Organization')
+  }
+  const rule = calendarRule(calendar)
+  const end = toLocal(to, timezone)
+  let current = advanceToBusinessStart(toLocal(from, timezone), rule)
+  let minutes = 0
+  for (let guard = 0; current.day < end.day || (current.day === end.day && current.minuteOfDay < end.minuteOfDay); guard++) {
+    if (guard > 36600) throw new Error('[sla:policy] businessMinutesBetween: interval longer than a hundred years')
+    if (current.day === end.day) {
+      // L'ultimo giorno: fino a `to`, dentro la fascia.
+      if (isWorkingDay(current.day, rule)) minutes += Math.max(0, Math.min(end.minuteOfDay, rule.end) - current.minuteOfDay)
+      break
+    }
+    if (isWorkingDay(current.day, rule)) minutes += Math.max(0, rule.end - current.minuteOfDay)
+    current = nextBusinessDayStart(current.day, rule)
+  }
+  return minutes
 }

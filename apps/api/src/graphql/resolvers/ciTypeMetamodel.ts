@@ -1,12 +1,21 @@
 import { withSession } from './ci-utils.js'
+import { assertNoServiceMapFollows, serviceMapsBlockingRemoval } from '../../lib/serviceMapRelationUsage.js'
 import type { GraphQLContext } from '../../context.js'
 import { GraphQLError } from 'graphql'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import { toPascalCase, CI_FIELD_TYPES, isCIFieldType } from '@opengraphity/schema-generator'
 import { assertNewCITypeName, assertNewCIFieldName, type ExistingCIType } from '../../lib/metamodelNames.js'
 import { CHAIN_FAMILIES, chainFamiliesToJSON } from '../../lib/chainCalculator.js'
-import { assertRelationshipTypeName, defaultServiceRoleOf } from '../../lib/ciMetamodelForTenant.js'
-import { describeCITypeUsage, loadCITypeUsage, type CITypeUsage } from '../../lib/ciTypeUsage.js'
+import { assertRelationshipTypeName, defaultServiceRoleOf, splitRelationshipTypes } from '../../lib/ciMetamodelForTenant.js'
+import { assertFieldName, assertLabel } from '../../lib/cypherIdentifiers.js'
+import { parseLocalizedLabels, serializeLocalizedLabels } from '@opengraphity/types'
+import { toSnakeCase } from '@opengraphity/schema-generator'
+import { cache } from '../../lib/cache.js'
+import { audit } from '../../lib/audit.js'
+import { assertCITypeHasNoCIsToHide, assertCITypeNotInTickets, deleteCITypeDependents, loadCITypeDeletionImpact } from '../../lib/ciTypeDeletion.js'
+import { invalidateTriggerCache } from '../../lib/triggerEngine.js'
+import { invalidateRulesCache } from '../../lib/rulesEngine.js'
+import { notifyCIGraphChanged } from '../../services/serviceImpact/sync.js'
 import { SETTABLE_SERVICE_NODE_ROLES } from '../../lib/serviceVocabularies.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import {
@@ -15,6 +24,7 @@ import {
 import type { Session } from 'neo4j-driver'
 import { toNumber } from '@opengraphity/neo4j'
 import { config } from '../../lib/config.js'
+import { requirePermission } from '../../lib/permissions.js'
 
 type Props = Record<string, unknown>
 
@@ -41,21 +51,21 @@ type TypeAction = 'add' | 'remove' | 'update' | 'addRelation' | 'removeRelation'
 
 const CONSEQUENCE: Record<TypeAction, string> = {
   add:
-    'Aggiungere un campo qui lo farebbe comparire nella CMDB di ogni cliente, e siccome lo schema non lo dichiara ' +
-    'romperebbe la pagina di dettaglio di tutti i CI. Crea un tuo tipo CI e mettici il campo, oppure usa un campo già spedito.',
+    'Adding a field here would make it appear in the CMDB of every tenant, and since the schema does not declare it ' +
+    'it would break the detail page of every CI. Create your own CI type and put the field there, or use a shipped field.',
   remove:
-    'I suoi campi sono in sola lettura: togliere un campo da qui lo toglierebbe a ogni cliente. ' +
-    'Si possono eliminare solo i campi dei tuoi tipi.',
+    'Its fields are read-only: removing a field here would remove it for every tenant. ' +
+    'Only the fields of your own types can be deleted.',
   update:
-    'Etichetta, icona, colore, script e famiglie di catena sono in sola lettura: cambiarli qui li cambierebbe a ogni ' +
-    'cliente. Per un tipo con le tue etichette, creane uno tuo.',
+    'Label, icon, colour, scripts and chain families are read-only: changing them here would change them for every ' +
+    'tenant. For a type with your own labels, create your own.',
   addRelation:
-    'Le sue relazioni sono in sola lettura: aggiungerne una qui la aggiungerebbe a ogni cliente. ' +
-    'Le relazioni si definiscono sui tuoi tipi.',
+    'Its relations are read-only: adding one here would add it for every tenant. ' +
+    'Relations are defined on your own types.',
   removeRelation:
-    'Le sue relazioni sono in sola lettura: togliere una relazione da qui la toglierebbe a ogni cliente.',
+    'Its relations are read-only: removing a relation here would remove it for every tenant.',
   delete:
-    'Non si elimina: sparirebbe dalla CMDB di ogni cliente. Puoi solo non usarlo.',
+    'It cannot be deleted: it would disappear from the CMDB of every tenant. You can only not use it.',
 }
 
 /**
@@ -109,39 +119,77 @@ function assertRelationCardinality(value: unknown, what: string): string {
   const allowed = ['one', 'many']
   if (typeof value === 'string' && allowed.includes(value)) return value
   throw new GraphQLError(
-    `${what}: cardinalità "${String(value)}" sconosciuta. Ammesse: ${allowed.join(', ')}.`,
-    { extensions: { code: 'BAD_USER_INPUT' } },
+    `${what}: unknown cardinality "${String(value)}". Allowed: ${allowed.join(', ')}.`,
+    { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.unknownCardinality', params: { value: String(value), allowed: allowed.join(', ') } } } },
   )
 }
 
 /**
- * Il tipo di arrivo deve esistere: fra i tipi spediti col prodotto o fra quelli
- * di questo cliente. Una relazione verso un tipo inesistente non produce
- * nessun campo nello SDL — la si vede nel disegnatore e non esiste per l'API.
+ * Il tipo di arrivo di una relazione, nella forma che la legge chi crea gli
+ * archi: l'ETICHETTA Neo4j del tipo (`Server`) oppure `any`.
+ *
+ * ## Il difetto (revisione del 15 set 2026 · CM-1)
+ * Qui si accettava solo il NOME del tipo (`server`) e si rifiutava `any`, che
+ * è il valore predefinito del disegnatore; `addCIRelationship` invece confronta
+ * `target_type` con le etichette dei due CI, come fanno le relazioni spedite
+ * col prodotto. Una relazione definita dal cliente non combaciava mai: si
+ * salvava nel disegnatore e l'arco fra due CI veniva sempre rifiutato come
+ * «non dichiarato nel metamodello».
+ *
+ * Adesso si accetta il nome, l'etichetta o `any`, e si salva sempre la forma
+ * unica (etichetta o `any`). Un tipo che non esiste resta un errore che elenca
+ * i tipi: una relazione verso il nulla sarebbe inerte in silenzio.
  */
+export const ANY_TARGET_TYPE = 'any'
+
+/**
+ * Le etichette per lingua come le vuole il grafo: un JSON, o `null` quando
+ * non ce ne sono (Neo4j non ha mappe annidate). Una lingua vuota o
+ * un'etichetta vuota si rifiuta invece di finire nel dato: un'etichetta che
+ * non si legge è peggio di nessuna etichetta.
+ */
+function etichettePerLingua(
+  input: readonly { language: string; label: string }[] | undefined, dove: string,
+): string | null {
+  if (input === undefined) return null
+  const mappa: Record<string, string> = {}
+  for (const { language, label } of input) {
+    const lingua = language.trim()
+    const testo = label.trim()
+    if (lingua === '') throw new ValidationError(`${dove}: a label without a language`, { key: 'errors.ciType.labelWithoutLanguage' })
+    if (testo === '') continue
+    mappa[lingua] = testo
+  }
+  return serializeLocalizedLabels(mappa)
+}
+
 async function assertRelationTargetType(
   session: Session, value: unknown, tenantId: string, what: string,
 ): Promise<string> {
-  const name = typeof value === 'string' ? value.trim() : ''
-  if (name === '') {
+  const given = typeof value === 'string' ? value.trim() : ''
+  if (given === '') {
     throw new GraphQLError(`${what}: the target type is required.`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.targetRequired', params: { what } } } })
   }
+  if (given === ANY_TARGET_TYPE) return ANY_TARGET_TYPE
   // Una lettura sola: l'elenco serve sia a decidere sia a dirlo nel messaggio,
   // e un rifiuto che non elenca le alternative non aiuta nessuno a rimediare.
+  // Solo i tipi CI: i tipi ITIL (incident, change…) non sono estremi di un arco fra CI.
   const r = await session.executeRead((tx) =>
     tx.run(`
       MATCH (t:CITypeDefinition)
-      WHERE (t.scope IN ['base', 'itil'] OR t.tenant_id = $tenantId)
+      WHERE (t.scope = 'base' OR (t.scope = 'tenant' AND t.tenant_id = $tenantId))
         AND t.active = true AND t.name <> '__base__'
-      RETURN collect(t.name) AS names
+      RETURN t.name AS name, t.neo4j_label AS label
     `, { tenantId }),
   )
-  const names = (r.records[0]?.get('names') ?? []) as string[]
-  if (names.includes(name)) return name
+  const types = r.records.map((rec) => ({ name: rec.get('name') as string, label: rec.get('label') as string }))
+  const hit = types.find((t) => t.name === given || t.label === given)
+  if (hit?.label) return hit.label
+  const available = [ANY_TARGET_TYPE, ...types.map((t) => t.name).sort()].join(', ')
   throw new GraphQLError(
-    `${what}: type "${name}" does not exist among the types of this tenant. `
-    + `Available: ${[...names].sort().join(', ')}.`,
-    { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.notAmongTypes', params: { what, name, available: [...names].sort().join(', ') } } } },
+    `${what}: type "${given}" does not exist among the types of this tenant. `
+    + `Available: ${available}.`,
+    { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.notAmongTypes', params: { what, name: given, available } } } },
   )
 }
 
@@ -187,7 +235,7 @@ async function assertTenantOwnedType(
   const name  = r.records[0]!.get('name')  as string
   const label = (r.records[0]!.get('label') as string | null) ?? name
   if (scope === 'tenant') return { name, label }
-  throw new ValidationError(`Type "${label}" (${name}) ships with the product: it is one type for every tenant. ${CONSEQUENCE[action]}`, { key: 'errors.ciType.shipped', params: { label, name, consequence: CONSEQUENCE[action] } })
+  throw new ValidationError(`Type "${label}" (${name}) ships with the product: it is one type for every tenant. ${CONSEQUENCE[action]}`, { key: 'errors.ciType.shipped', params: { label, name, consequenceKey: `errors.ciType.consequence.${action}` } })
 }
 
 /**
@@ -213,7 +261,7 @@ type Updates = { propertiesSet?: number; nodesCreated?: number; nodesDeleted?: n
 function updatesOf(result: unknown, what: string): Updates {
   const counters = (result as { summary?: { counters?: { updates?: () => Updates } } }).summary?.counters
   if (typeof counters?.updates !== 'function') {
-    throw new Error(`${what}: il driver Neo4j non ha restituito i contatori della scrittura, non si può sapere se ha scritto.`)
+    throw new Error(`${what}: the Neo4j driver returned no write counters, so whether it wrote cannot be known.`)
   }
   return counters.updates()
 }
@@ -331,7 +379,7 @@ export type CIFieldRow = { f: { properties: Props } | null; enumId: string | nul
 
 function parseEnumValues(raw: string[] | string | null | undefined): string[] {
   if (Array.isArray(raw)) return raw
-  if (typeof raw === 'string') { const parsed: unknown = JSON.parse(raw); if (!Array.isArray(parsed)) throw new Error(`enum_values non è un array JSON valido: ${raw.slice(0, 80)}`); return parsed as string[] }
+  if (typeof raw === 'string') { const parsed: unknown = JSON.parse(raw); if (!Array.isArray(parsed)) throw new Error(`enum_values is not a valid JSON array: ${raw.slice(0, 80)}`); return parsed as string[] }
   return []
 }
 
@@ -357,6 +405,9 @@ export function mapCITypeNode(t: Props, fields: CIFieldRow[], relations: Props[]
     id:               t['id'],
     name:             t['name'],
     label:            t['label'],
+    // L'etichetta per lingua (20 set 2026): fail-loud se il JSON è corrotto,
+    // come per i passi di workflow e i valori dei vocabolari.
+    labels:           parseLocalizedLabels(t['labels'], `CITypeDefinition ${String(t['name'])}`),
     icon:             t['icon'],
     color:            t['color'],
     active:           t['active'] ?? true,
@@ -454,14 +505,11 @@ export async function fetchCITypeById(id: string, tenantId: string) {
   })
 }
 
-// ── requireAdmin ──────────────────────────────────────────────────────────────
+// ── requireMetamodelPermission ────────────────────────────────────────────────
 
-export function requireAdmin(ctx: GraphQLContext) {
-  if (ctx.role !== 'admin') {
-    throw new GraphQLError('Accesso negato: richiesto ruolo admin', {
-      extensions: { code: 'FORBIDDEN' },
-    })
-  }
+/** Tipi di CI e ITIL, campi, relazioni: il permesso Metamodello (ondata 7). */
+export function requireMetamodelPermission(ctx: GraphQLContext) {
+  requirePermission(ctx, 'config.metamodel')
 }
 
 // ── assertChainFamilies ───────────────────────────────────────────────────────
@@ -484,11 +532,86 @@ export function assertChainFamilies(value: string[] | undefined): string | null 
       throw new GraphQLError(`chainFamilies: ${JSON.stringify(f)} is not a valid chain family (${CHAIN_FAMILIES.join(', ')})`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.chainFamilyUnknown', params: { got: JSON.stringify(f), allowed: CHAIN_FAMILIES.join(', ') } } } })
     }
     if (seen.has(f)) {
-      throw new GraphQLError(`chainFamilies: ${f} compare due volte`, { extensions: { code: 'BAD_USER_INPUT' } })
+      throw new GraphQLError(`chainFamilies: ${f} appears twice`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.chainFamilyRepeated', params: { family: f } } } })
     }
     seen.add(f)
   }
   return chainFamiliesToJSON(value)
+}
+
+// ── Campi del cliente e loro valori (V-15) ───────────────────────────────────
+
+/** Quanti valori di un campo mettere nell'Audit Log quando il campo si cancella. */
+const CI_FIELD_VALUE_SAMPLE = 50
+
+/**
+ * Il campo del cliente su un suo tipo, con la label Neo4j e le chiavi sotto cui
+ * il valore può stare sul CI. Un campo spedito o di un altro tenant è un rifiuto
+ * (A-5): prima la mutation non faceva nulla dicendo «fatto».
+ */
+async function ciFieldTarget(session: Session, typeId: string, fieldId: string, tenantId: string) {
+  await assertTenantOwnedType(session, typeId, tenantId, 'remove')
+  const found = await session.executeRead(tx =>
+    tx.run(`
+      MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
+      WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
+        AND f.scope = 'tenant' AND f.tenant_id = $tenantId
+      RETURN f.name AS name, t.neo4j_label AS label
+    `, { typeId, fieldId, tenantId }),
+  )
+  if (!found.records.length) {
+    throw new ValidationError(
+      `Field ${fieldId} is not a field of yours on this type: it was not deleted. `
+      + `The fields that ship with the product are read-only.`,
+      { key: 'errors.ciType.fieldNotYours', params: { field: fieldId } },
+    )
+  }
+  const name  = found.records[0]!.get('name') as string
+  const label = assertLabel(found.records[0]!.get('label'), `removeCIField(${fieldId}): label of the type`)
+  const snake = assertFieldName(toSnakeCase(name), `removeCIField(${name})`)
+  // La lettura (`mapCI`) guarda anche la chiave camelCase.
+  const camelIsProperty = name !== snake && /^[a-z][A-Za-z0-9]*$/.test(name)
+  return { name, label, snake, camelIsProperty }
+}
+
+/** I CI del tipo che hanno un valore nel campo: quanti, e i primi valori per nome del CI. */
+async function ciFieldValues(
+  session: Session, tenantId: string, f: { label: string; snake: string; name: string; camelIsProperty: boolean },
+): Promise<{ count: number; sample: Record<string, string> }> {
+  const value = f.camelIsProperty ? `coalesce(n.${f.snake}, n.${f.name})` : `n.${f.snake}`
+  const res = await session.executeRead(tx => tx.run(`
+    MATCH (n:${f.label} {tenant_id: $tenantId})
+    WHERE ${value} IS NOT NULL
+    WITH n, toString(${value}) AS value ORDER BY n.name
+    WITH collect({name: coalesce(n.name, n.id), value: value}) AS rows
+    RETURN size(rows) AS count, rows[0..$limit] AS sample
+  `, { tenantId, limit: CI_FIELD_VALUE_SAMPLE }))
+  const rec = res.records[0]
+  const sample = (rec?.get('sample') as Array<{ name: string; value: string }> | undefined) ?? []
+  return { count: toNumber(rec?.get('count') ?? 0), sample: Object.fromEntries(sample.map((r) => [String(r.name), r.value])) }
+}
+
+/** Quanti CI hanno un valore nel campo: la conferma di cancellazione del disegnatore lo dice (V-15). */
+export async function ciFieldValueCount(_: unknown, args: { typeId: string; fieldId: string }, ctx: GraphQLContext) {
+  requireMetamodelPermission(ctx)
+  return withSession(async (session) => {
+    const target = await ciFieldTarget(session, args.typeId, args.fieldId, ctx.tenantId)
+    return (await ciFieldValues(session, ctx.tenantId, target)).count
+  })
+}
+
+// ── ciTypeDeletionImpact ─────────────────────────────────────────────────────
+
+/** La conferma del disegnatore: cosa porterebbe via la cancellazione del tipo (lib/ciTypeDeletion.ts). */
+export async function ciTypeDeletionImpact(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+  requireMetamodelPermission(ctx)
+  return withSession(async (session) => {
+    const owned = await assertTenantOwnedType(session, args.id, ctx.tenantId, 'delete')
+    const impact = await loadCITypeDeletionImpact(session, ctx.tenantId, args.id, owned.name, toPascalCase(owned.name))
+    // U-16: le mappe di servizio che bloccano (SV-6) si dicono qui, non dopo la conferma.
+    const { maps } = await serviceMapsBlockingRemoval(session, ctx.tenantId, { typeId: args.id })
+    return { ...impact, blockingServiceMaps: maps }
+  })
 }
 
 // ── buildCITypesResolver ──────────────────────────────────────────────────────
@@ -567,6 +690,12 @@ export function buildCITypesResolver() {
           id:    t['id'],
           name:  t['name'],
           label: t['label'],
+          // L'etichetta per lingua, come in `mapCITypeNode` (20 set 2026):
+          // questa è la SECONDA costruzione di un tipo, e dimenticarla qui
+          // ha fatto fallire l'intera query `ciTypes` — «Cannot return null
+          // for non-nullable field CITypeDefinition.labels», e con lei il
+          // metamodello di TUTTE le pagine.
+          labels: parseLocalizedLabels(t['labels'], `CITypeDefinition ${String(t['name'])}`),
           icon:  t['icon'],
           color: t['color'],
           active: t['active'],
@@ -652,52 +781,48 @@ export function assertServiceRoleInput(value: string | null | undefined): string
 }
 
 /**
- * A-8 / D-10 — non si cancella (né si disattiva) un tipo che è ancora in uso.
- *
- * Prima `deleteCIType` faceva `DETACH DELETE` senza contare niente, e
- * `active = false` aveva lo stesso effetto sulle letture: i CI restavano nel
- * grafo e non comparivano più da nessuna parte. Qui si conta e si dice, con il
- * numero e con l'elenco di chi cita il tipo per nome.
+ * Gli archi fra CI di questo tenant che SOLO la definizione `relationId`
+ * dichiara (CM-4). Un arco dichiarato anche da un'altra definizione — dello
+ * stesso tipo o dell'altro capo, spedita o del cliente — resta valido dopo la
+ * rimozione e non conta. `null` se la definizione non c'è.
  */
-async function assertCITypeNotInUse(
-  session: Session, tenantId: string, typeId: string, type: { name: string; label: string }, action: 'delete' | 'deactivate',
-): Promise<void> {
-  const neo4jLabel = toPascalCase(type.name)
-  const usage: CITypeUsage = await loadCITypeUsage(session, tenantId, typeId, type.name, neo4jLabel)
-  const refs = describeCITypeUsage(usage)
-  /*
-    Il MESSAGGIO e per i log e per chi chiama l'API: inglese, e composto qui.
-    La FRASE per la persona no — e una chiave, e le quattro combinazioni
-    (elimina/disattiva × con o senza altri riferimenti) sono quattro chiavi
-    dichiarate, non pezzi di prosa incollati e passati come parametri: un
-    parametro che contiene una frase e prosa travestita da dato, e resta nella
-    lingua di chi l'ha scritta.
-  */
-  const what = action === 'delete'
-    ? `Type "${type.label}" (${type.name}) was not deleted`
-    : `Type "${type.label}" (${type.name}) was not deactivated`
-  const consequence = action === 'delete'
-    ? `their data and their relationships would stay in the graph without appearing anywhere any more (lists, impact, service maps, search): a silent loss.`
-    : `a deactivated type disappears from reads as if it were deleted, so those CIs would not appear anywhere any more.`
-  const suffisso = action === 'delete' ? 'Delete' : 'Deactivate'
-
-  if (usage.cis > 0) {
-    throw new ValidationError(
-      `${what}: there are still ${String(usage.cis)} CIs of type ${neo4jLabel} in this tenant, and ${consequence} `
-      + `Move or delete those CIs first.` + (refs ? ` The type is also referenced by: ${refs}.` : ''),
-      {
-        key: `errors.ciType.inUse${suffisso}${refs ? 'WithRefs' : ''}`,
-        params: { label: type.label, name: type.name, count: usage.cis, type: neo4jLabel, refs },
-      },
-    )
+async function countEdgesOnlyThisRelationDeclares(
+  session: Session, tenantId: string, typeId: string, relationId: string,
+): Promise<{ name: string; relationshipType: string; count: number } | null> {
+  const defRow = await session.executeRead((tx) => tx.run(`
+    MATCH (t:CITypeDefinition {id: $typeId, tenant_id: $tenantId})-[:HAS_RELATION]->(rel:CIRelationDefinition {id: $relationId})
+    RETURN t.neo4j_label AS label, rel.name AS name, rel.relationship_type AS relationshipType,
+           rel.direction AS direction, rel.target_type AS targetType
+  `, { typeId, tenantId, relationId }))
+  const d = defRow.records[0]
+  if (!d) return null
+  const label = assertLabel(d.get('label'), `removeCIRelation(${relationId}): label of the type`)
+  const outgoing = d.get('direction') === 'outgoing'
+  let count = 0
+  for (const relType of splitRelationshipTypes(String(d.get('relationshipType')), `CIRelationDefinition "${String(d.get('name'))}"`)) {
+    // `me` è il CI del tipo che dichiara, `other` l'altro capo.
+    const pattern = outgoing ? `(me)-[e:${relType}]->(other)` : `(other)-[e:${relType}]->(me)`
+    const r = await session.executeRead((tx) => tx.run(`
+      MATCH ${pattern}
+      WHERE me:${label} AND me.tenant_id = $tenantId AND other.tenant_id = $tenantId
+        AND ($target = 'any' OR $target IN labels(other))
+      WITH startNode(e) AS s, endNode(e) AS x
+      WHERE NOT EXISTS {
+        MATCH (st:CITypeDefinition)-[:HAS_RELATION]->(o:CIRelationDefinition)
+        WHERE o.id <> $relationId AND st.tenant_id IN ['system', $tenantId] AND st.neo4j_label IN labels(s)
+          AND o.direction = 'outgoing' AND $relType IN [v IN split(o.relationship_type, '|') | trim(v)]
+          AND (o.target_type = 'any' OR o.target_type IN labels(x))
+      } AND NOT EXISTS {
+        MATCH (tt:CITypeDefinition)-[:HAS_RELATION]->(o:CIRelationDefinition)
+        WHERE o.id <> $relationId AND tt.tenant_id IN ['system', $tenantId] AND tt.neo4j_label IN labels(x)
+          AND o.direction = 'incoming' AND $relType IN [v IN split(o.relationship_type, '|') | trim(v)]
+          AND (o.target_type = 'any' OR o.target_type IN labels(s))
+      }
+      RETURN count(*) AS n
+    `, { tenantId, relationId, relType, target: d.get('targetType') }))
+    count += toNumber(r.records[0]?.get('n'))
   }
-  if (refs) {
-    throw new ValidationError(
-      `${what}: no CI of this type, but the type is still referenced by ${refs}. `
-      + `Those references are BY NAME: they would hang off a type that no longer exists. Remove the references first.`,
-      { key: `errors.ciType.onlyRefs${suffisso}`, params: { label: type.label, name: type.name, refs } },
-    )
-  }
+  return { name: String(d.get('name')), relationshipType: String(d.get('relationshipType')), count }
 }
 
 // ── buildMetamodelMutations ───────────────────────────────────────────────────
@@ -706,11 +831,14 @@ export function buildMetamodelMutations() {
   return {
     createCIType: async (
       _: unknown,
-      args: { input: { name: string; label: string; icon?: string; color?: string; chainFamilies?: string[]; serviceRole?: string | null } },
+      args: { input: { name: string; label: string; labels?: { language: string; label: string }[]; icon?: string; color?: string; chainFamilies?: string[]; serviceRole?: string | null } },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
-      const { name, label, icon = 'box', color = '#0284c7' } = args.input
+      requireMetamodelPermission(ctx)
+      // CM-11: niente colore scritto nel codice. Senza colore il tipo si mostra
+      // col colore neutro dell'interfaccia; il disegnatore lo manda sempre.
+      const { name, label, icon = 'box', color = null } = args.input
+      const labels = etichettePerLingua(args.input.labels, `createCIType(${name})`)
       const chainFamilies = assertChainFamilies(args.input.chainFamilies)
       // A-10: il ruolo nella mappa di un servizio nasce col tipo. Se non lo
       // dichiara, lo propone il prodotto dalle famiglie di catena — scritto
@@ -746,14 +874,16 @@ export function buildMetamodelMutations() {
               t.neo4j_label      = $neo4jLabel,
               t.tenant_id        = $tenantId,
               t.chain_families   = $chainFamilies,
-              t.service_role     = $serviceRole
+              t.service_role     = $serviceRole,
+              t.labels           = $labels
             ON MATCH SET
               t.label            = $label,
+              t.labels           = $labels,
               t.icon             = $icon,
               t.color            = $color,
               t.chain_families   = coalesce($chainFamilies, t.chain_families),
               t.service_role     = coalesce($serviceRole, t.service_role)
-          `, { name, tenantId: ctx.tenantId, id, label, icon, color, neo4jLabel, chainFamilies, serviceRole }),
+          `, { name, tenantId: ctx.tenantId, id, label, icon, color, neo4jLabel, chainFamilies, serviceRole, labels }),
         )
 
         // LE DOMANDE CORE DELL'ASSESSMENT, anche al tipo appena nato (terza
@@ -779,14 +909,17 @@ export function buildMetamodelMutations() {
 
     updateCIType: async (
       _: unknown,
-      args: { id: string; input: { label?: string; icon?: string; color?: string; active?: boolean; validationScript?: string; chainFamilies?: string[]; serviceRole?: string | null } },
+      args: { id: string; input: { label?: string; labels?: { language: string; label: string }[]; icon?: string; color?: string; active?: boolean; validationScript?: string; chainFamilies?: string[]; serviceRole?: string | null } },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const updates: Props = {}
       const { label, icon, color, active, validationScript, chainFamilies } = args.input
       const serviceRole = assertServiceRoleInput(args.input.serviceRole)
       if (label             !== undefined) updates['label']             = label
+      // Le etichette per lingua si sostituiscono in blocco, come per i
+      // vocabolari: la lista che arriva è quella che resta.
+      if (args.input.labels !== undefined) updates['labels']            = etichettePerLingua(args.input.labels, `updateCIType(${args.id})`)
       if (icon              !== undefined) updates['icon']              = icon
       if (color             !== undefined) updates['color']             = color
       if (active            !== undefined) updates['active']            = active
@@ -814,7 +947,17 @@ export function buildMetamodelMutations() {
         const owned = await assertTenantOwnedType(session, args.id, ctx.tenantId, 'update')
         // A-8: disattivare è come cancellare, per chi legge. Non si fa mentre
         // ci sono CI di quel tipo (o riferimenti al suo nome).
-        if (active === false) await assertCITypeNotInUse(session, ctx.tenantId, args.id, owned, 'deactivate')
+        if (active === false) {
+          // Regola del proprietario (15 set 2026): blocca un ticket che cita i
+          // CI del tipo, e i CI stessi (sparirebbero dalle letture, A-8). I
+          // riferimenti per nome no: il tipo esiste ancora.
+          const neo4jLabel = toPascalCase(owned.name)
+          const impact = await loadCITypeDeletionImpact(session, ctx.tenantId, args.id, owned.name, neo4jLabel)
+          assertCITypeNotInTickets(impact, owned, 'deactivate')
+          assertCITypeHasNoCIsToHide(impact, { ...owned, neo4jLabel })
+          // SV-6: un tipo disattivato non dichiara più le sue relazioni.
+          await assertNoServiceMapFollows(session, ctx.tenantId, { typeId: args.id }, 'deactivateType')
+        }
         const r = await session.executeWrite(tx =>
           tx.run(
             `MATCH (t:CITypeDefinition {id: $id})
@@ -831,37 +974,55 @@ export function buildMetamodelMutations() {
     },
 
     deleteCIType: async (_: unknown, args: { id: string }, ctx: GraphQLContext) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
+      let deleted: Awaited<ReturnType<typeof deleteCITypeDependents>> | null = null
+      let neo4jLabel = ''
       await withSession(async session => {
         // A-6: prima il controllo esplicito era solo su `scope = 'base'`, e un
         // tipo ITIL rispondeva `true` senza eliminare niente.
         const owned = await assertTenantOwnedType(session, args.id, ctx.tenantId, 'delete')
-        // A-8 / D-10: prima si conta. `DETACH DELETE` porterebbe via anche le
-        // domande di assessment agganciate, e lascerebbe i CI nel grafo
-        // invisibili a tutto il prodotto.
-        await assertCITypeNotInUse(session, ctx.tenantId, args.id, owned, 'delete')
-        const r = await session.executeWrite(tx =>
-          tx.run(`
+        neo4jLabel = toPascalCase(owned.name)
+        // SV-6: le relazioni del tipo spariscono con lui.
+        await assertNoServiceMapFollows(session, ctx.tenantId, { typeId: args.id }, 'deleteType')
+        // Regola del proprietario (15 set 2026): il solo impedimento è un
+        // ticket che cita un CI del tipo, anche chiuso. CI, gruppi dinamici,
+        // esclusioni, regole, trigger, widget e sezioni di report vanno via con
+        // il tipo, nella stessa transazione (lib/ciTypeDeletion.ts). Prima
+        // bastavano le domande core dell'assessment, che `createCIType`
+        // collega da sé, per rendere un tipo appena nato non cancellabile.
+        deleted = await session.executeWrite(async tx => {
+          const out = await deleteCITypeDependents(tx, ctx.tenantId, { id: args.id, ...owned, neo4jLabel })
+          const r = await tx.run(`
             MATCH (t:CITypeDefinition {id: $id})
             WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
             OPTIONAL MATCH (t)-[:HAS_FIELD]->(f)
             OPTIONAL MATCH (t)-[:HAS_RELATION]->(rel)
             OPTIONAL MATCH (t)-[:HAS_SYSTEM_RELATION]->(sr)
             DETACH DELETE t, f, rel, sr
-          `, { id: args.id, tenantId: ctx.tenantId }),
-        )
-        assertWrote(r, `deleteCIType(${args.id})`)
+          `, { id: args.id, tenantId: ctx.tenantId })
+          assertWrote(r, `deleteCIType(${args.id})`)
+          return out
+        })
       }, true)
+      const result = deleted as Awaited<ReturnType<typeof deleteCITypeDependents>> | null
+      if (!result) throw new Error(`deleteCIType(${args.id}): the deletion did not return its outcome`)
       invalidateSchema(ctx.tenantId)
+      invalidateTriggerCache(ctx.tenantId)
+      invalidateRulesCache(ctx.tenantId)
+      cache.invalidate(`ci:${ctx.tenantId}:${neo4jLabel}:`)
+      cache.invalidate(`topology:${ctx.tenantId}:`)
+      // Le mappe vive che includevano quei CI si risincronizzano (non lancia).
+      if (result.deletedCIIds.length) await notifyCIGraphChanged(ctx.tenantId, result.deletedCIIds, 'ci_type.deleted')
+      void audit(ctx, 'ci_type.deleted', 'CITypeDefinition', args.id, { ...result.impact })
       return true
     },
 
-    addCIField: async (
+        addCIField: async (
       _: unknown,
       args: { typeId: string; input: Record<string, unknown> },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const { typeId, input } = args
       const fieldId    = crypto.randomUUID()
       const enumTypeId = (input['enumTypeId'] as string | null | undefined) ?? null
@@ -995,7 +1156,7 @@ export function buildMetamodelMutations() {
       args: { typeId: string; fieldId: string; input: Record<string, unknown> },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const { typeId, fieldId, input } = args
       const enumTypeId = (input['enumTypeId'] as string | null | undefined) ?? null
 
@@ -1019,10 +1180,17 @@ export function buildMetamodelMutations() {
         const fieldName = existing.records[0]!.get('name') as string
         const fieldType = existing.records[0]!.get('fieldType') as string
 
-        // Un campo `enum` senza vocabolario non ha valori ammessi: la
-        // validazione non avrebbe niente con cui confrontare, che è il difetto
-        // A·3.3 dall'altro capo.
-        if (fieldType === 'enum' && enumTypeId) {
+        // CM-9 (revisione del 15 set 2026): il controllo girava solo sui campi
+        // `enum`, e per gli altri il CALL qui sotto agganciava comunque il
+        // vocabolario — anche di un altro cliente. Un vocabolario si aggancia
+        // solo a un campo enum, e sempre passando dal nucleo.
+        if (enumTypeId) {
+          if (fieldType !== 'enum') {
+            throw new ValidationError(
+              `Field "${fieldName}" is of type ${fieldType}: only an enum field uses a dictionary.`,
+              { key: 'errors.ciType.dictionaryOnNonEnum', params: { field: fieldName, fieldType } },
+            )
+          }
           await assertEnumTypeLinkable(session, enumTypeId, fieldName, ctx.tenantId)
         }
 
@@ -1082,31 +1250,38 @@ export function buildMetamodelMutations() {
       args: { typeId: string; fieldId: string },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
+      let removed: { name: string; values: number; previousValues: Record<string, string> } | null = null
       await withSession(async session => {
         // A-5: sui tipi spediti il `WHERE t.scope = 'tenant'` rendeva questa
         // mutation un no-op silenzioso — l'interfaccia diceva «fatto» e il
         // campo restava. Ora si ferma e dice perché.
-        await assertTenantOwnedType(session, args.typeId, ctx.tenantId, 'remove')
-        const r = await session.executeWrite(tx =>
-          tx.run(`
+        const { name, label, snake, camelIsProperty } = await ciFieldTarget(session, args.typeId, args.fieldId, ctx.tenantId)
+        // Secondo giro UI · V-15: i valori di prima nell'Audit Log, come per i campi ITIL (U-28).
+        const before = await ciFieldValues(session, ctx.tenantId, { label, snake, name, camelIsProperty })
+        const r = await session.executeWrite(async tx => {
+          const cleared = await tx.run(`
+            MATCH (n:${label} {tenant_id: $tenantId})
+            WHERE n.${snake} IS NOT NULL${camelIsProperty ? ` OR n.${name} IS NOT NULL` : ''}
+            REMOVE n.${snake}${camelIsProperty ? `, n.${name}` : ''}
+            RETURN count(n) AS n
+          `, { tenantId: ctx.tenantId })
+          await tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId})
             WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId
               AND f.scope = 'tenant' AND f.tenant_id = $tenantId
-            WITH f, f.name AS name
             DETACH DELETE f
-            RETURN name
-          `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId }),
-        )
-        if (!r.records.length) {
-          throw new ValidationError(
-            `Field ${args.fieldId} is not a field of yours on this type: it was not deleted. `
-            + `The fields that ship with the product are read-only.`,
-            { key: 'errors.ciType.fieldNotYours', params: { field: args.fieldId } },
-          )
-        }
+          `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId })
+          return toNumber(cleared.records[0]?.get('n'))
+        })
+        removed = { name, values: r, previousValues: before.sample }
+        cache.invalidate(`ci:${ctx.tenantId}:${label}:`)
       }, true)
       invalidateSchema(ctx.tenantId)
+      if (removed) {
+        const done = removed as { name: string; values: number; previousValues: Record<string, string> }
+        void audit(ctx, 'ci_type.field_removed', 'CITypeDefinition', args.typeId, { field: done.name, valuesRemoved: done.values, previousValues: done.previousValues })
+      }
       return fetchCITypeById(args.typeId, ctx.tenantId)
     },
 
@@ -1115,7 +1290,7 @@ export function buildMetamodelMutations() {
       args: { typeId: string; input: Record<string, unknown> },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const { typeId, input } = args
       const relId = crypto.randomUUID()
 
@@ -1137,7 +1312,7 @@ export function buildMetamodelMutations() {
         // percorrevano, e nessuno diceva perché.
         assertRelationDirection(input['direction'],   `addCIRelation(${typeId}).direction`)
         assertRelationCardinality(input['cardinality'], `addCIRelation(${typeId}).cardinality`)
-        await assertRelationTargetType(session, input['targetType'], ctx.tenantId, `addCIRelation(${typeId}).targetType`)
+        const targetType = await assertRelationTargetType(session, input['targetType'], ctx.tenantId, `addCIRelation(${typeId}).targetType`)
         // D-17: le relazioni non avevano NESSUN controllo di nome duplicato —
         // due omonime sullo stesso tipo e `loadMetamodel` ne scarta una in
         // silenzio, mentre il disegnatore continua a mostrarne due. Come per i
@@ -1172,7 +1347,7 @@ export function buildMetamodelMutations() {
             name:             input['name'],
             label:            input['label'],
             relationshipType,
-            targetType:       input['targetType'],
+            targetType,
             cardinality:      input['cardinality'],
             direction:        input['direction'],
             order:            input['order'] ?? 0,
@@ -1191,11 +1366,26 @@ export function buildMetamodelMutations() {
       args: { typeId: string; relationId: string },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       await withSession(async session => {
         // A-6: idem in rimozione — la DELETE non girava e l'interfaccia diceva
         // «Relazione rimossa».
         await assertTenantOwnedType(session, args.typeId, ctx.tenantId, 'removeRelation')
+        // CM-4 (revisione del 15 set 2026): gli archi che solo questa
+        // definizione dichiara restavano nel grafo invisibili — le dipendenze
+        // del CI e le mappe non li leggevano più — e non si potevano nemmeno
+        // cancellare. Come per i tipi: prima si conta, e si dice.
+        // SV-6 (revisione del 15 set 2026): una mappa di servizio che segue un
+        // tipo dichiarato solo da questa relazione non si sincronizzerebbe più.
+        await assertNoServiceMapFollows(session, ctx.tenantId, { relationId: args.relationId })
+        const inUse = await countEdgesOnlyThisRelationDeclares(session, ctx.tenantId, args.typeId, args.relationId)
+        if (inUse && inUse.count > 0) {
+          throw new ValidationError(
+            `Relationship "${inUse.name}" was not removed: ${String(inUse.count)} ${inUse.relationshipType} link(s) between CIs `
+            + `are declared only by it, and would stay in the graph without appearing anywhere. Remove those links first.`,
+            { key: 'errors.ciType.relationInUse', params: { name: inUse.name, relationshipType: inUse.relationshipType, count: inUse.count } },
+          )
+        }
         const r = await session.executeWrite(tx =>
           tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_RELATION]->(rel:CIRelationDefinition {id: $relationId})

@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { pausedWhenHidden } from '@/lib/polling'
+import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery, useLazyQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useNavigate } from 'react-router-dom'
@@ -23,6 +25,9 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { colors, palette } from '@/lib/tokens'
 import { formatDate } from '@/lib/datetime'
+import { useAIFeature } from '@/hooks/useAIFeature'
+import { useAIDisabledText } from '@/components/ai/AIDisabledNotice'
+import { showError } from '@/lib/showError'
 
 const PROBLEM_CANDIDATES = gql`
   query ProblemCandidates {
@@ -40,6 +45,7 @@ interface Candidate {
 }
 
 interface Problem {
+  customFields?: { name: string; value: string | null }[]
   id:        string
   number:    string
   title:     string
@@ -52,17 +58,31 @@ const PAGE_SIZE = 50
 
 export function ProblemListPage() {
   const { t } = useTranslation()
+  // Il raggruppamento usa embedding e modello (ondata 6): servono le due funzioni accese.
+  const postIncidentOn = useAIFeature('postIncident')
+  const embeddingsOn = useAIFeature('embeddings')
+  const candidatesOffText = useAIDisabledText(postIncidentOn === false ? 'postIncident' : 'embeddings')
   const navigate = useNavigate()
 
-  const columns: ColumnDef<Problem>[] = [
-    { key: 'number',   label: 'Number',                               width: '120px', sortable: true },
+  // Campi del cliente (verifica «Cosa resta cablato», ondata 4): una colonna per campo.
+  const customColumns = useCustomFieldColumns<Problem>('problem')
+  const baseColumns: ColumnDef<Problem>[] = [
+    // Intestazione TRADOTTA (revisione totale · i 29 warning): era la stringa
+    // inglese «Number» scritta nel codice, in mezzo a colonne che passano da
+    // i18n — e nessun guardiano poteva vederla, perché per quella colonna una
+    // chiave non era mai stata scritta.
+    { key: 'number',   label: t('common.number'),                               width: '120px', sortable: true },
     { key: 'title',    label: t('pages.problems.title_col'), sortable: true },
     {
       key:     'priority',
       label:   t('pages.problems.priority'),
       width:   '130px',
       sortable: true,
-      render:  (v) => <SeverityBadge value={String(v)} />,
+      // La priorità viene dal vocabolario `priority` (le uscite della matrice),
+      // non da `severity`: col vocabolario sbagliato un cliente con `p1..p4`
+      // vedeva la pill rossa «valore fuori vocabolario» su ogni riga, con un
+      // `console.error` per riga (revisione totale · F-5).
+      render:  (v) => <SeverityBadge value={String(v)} vocabulary="priority" />,
     },
     {
       key:     'status',
@@ -83,6 +103,8 @@ export function ProblemListPage() {
       ),
     },
   ]
+  const columns = [...baseColumns, ...customColumns]
+
 
   const { fields: filterFields } = useEntityFields('Problem')
   const [page, setPage] = useState(0)
@@ -99,7 +121,8 @@ export function ProblemListPage() {
   const { data, loading, error, refetch } = useQuery<{ problems: { items: Problem[]; total: number } }>(GET_PROBLEMS, {
     variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
-    pollInterval: 30_000,   // keep the list fresh without manual reload
+    // F-21: il polling si ferma quando la scheda è in background.
+    ...pausedWhenHidden(30_000),
   })
 
   const items      = data?.problems?.items ?? []
@@ -120,11 +143,12 @@ export function ProblemListPage() {
           <div style={{ display: 'flex', gap: 8 }}>
             <Button
               variant="secondary"
-              disabled={candidatesLoading}
+              disabled={candidatesLoading || postIncidentOn !== true || embeddingsOn !== true}
+              title={postIncidentOn === false || embeddingsOn === false ? candidatesOffText : undefined}
               icon={<Sparkles size={13} />}
               onClick={() => {
                 void runCandidates().then((res) => {
-                  if (res.error) toast.error(t('toast.problem.analysisFailed', { error: res.error.message }))
+                  if (res.error) showError(res.error, t('toast.problem.analysisFailed', { error: res.error.message }))
                   else if (res.data) setCandidates(res.data.problemCandidates)
                   else toast.error(t('toast.problem.analysisNoResponse'))
                 })
@@ -178,7 +202,7 @@ export function ProblemListPage() {
               variables: { limit: 10000, offset: 0, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
               fetchPolicy: 'network-only',
             })
-            exportToCsv('problems', columns, res.data?.problems?.items ?? [])
+            exportToCsv('problems', columns, withCustomFieldCells(res.data?.problems?.items ?? []))
           }}
         />
       </div>
@@ -189,7 +213,7 @@ export function ProblemListPage() {
         <>
           <SortableFilterTable<Problem>
             columns={columns}
-            data={items}
+            data={withCustomFieldCells(items)}
             loading={loading}
             emptyComponent={<EmptyState icon={<Search size={32} />} title={t('pages.problems.noResults')} description={t('pages.problems.noResultsDesc')} />}
             onRowClick={(row) => navigate(`/problems/${row.id}`)}

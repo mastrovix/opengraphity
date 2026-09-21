@@ -7,8 +7,8 @@ import { toNumber } from '@opengraphity/neo4j'
  * (INC/PRB/REQ/CHG/TASK…).
  *
  * The old `count()+1` / `max()+1` pattern is a race: two concurrent creates read
- * the same value and mint the same number. A `MERGE (c:Counter{...}) SET c.value
- * = c.value + N` takes a write lock on the single Counter node, so concurrent
+ * the same value and mint the same number. Merging the per-tenant Counter node
+ * and setting `value = value + N` takes a write lock on it, so concurrent
  * increments serialise and every caller gets a distinct value. The uniqueness
  * constraints on (tenant_id, number)/(tenant_id, code) remain the safety net.
  *
@@ -57,4 +57,19 @@ export async function nextSequenceBlock(sessionOrTx: SessionOrTx, tenantId: stri
     { tenantId, kind, count: neo4j.int(count) },
   )
   return toNumber(res.records[0]!.get('value'))
+}
+
+/**
+ * Raise the counter to at least `value` (never lowers it). Used by the ticket
+ * importer after it preserves historical numbers, so the next ticket created
+ * by the app does not mint a number the import already wrote.
+ */
+export async function raiseSequenceTo(sessionOrTx: SessionOrTx, tenantId: string, kind: string, value: number): Promise<void> {
+  await runCounter(
+    sessionOrTx,
+    `MERGE (c:Counter {tenant_id: $tenantId, kind: $kind})
+     ON CREATE SET c.value = $value
+     ON MATCH  SET c.value = CASE WHEN c.value < $value THEN $value ELSE c.value END`,
+    { tenantId, kind, value: neo4j.int(value) },
+  )
 }

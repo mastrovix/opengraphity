@@ -10,14 +10,22 @@ import { ServiceOpenIncidentCard } from './ServiceOpenIncidentCard'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { workflowDefinitionMock } from '@/test/mocks/gql'
 import { openIncident } from '@/test/mocks/services'
-import type { ServiceOpenIncident } from '@/types/services'
+import type { ServiceIncidentProblem, ServiceOpenIncident } from '@/types/services'
 
-const render = (incident: ServiceOpenIncident | null, openIncidentFrom = 'down', mocks: GqlMock[] = [workflowDefinitionMock()]) =>
-  renderWithProviders(<ServiceOpenIncidentCard incident={incident} openIncidentFrom={openIncidentFrom} />, { mocks })
+const render = (incident: ServiceOpenIncident | null, openIncidentFrom = 'down', mocks: GqlMock[] = [workflowDefinitionMock()], problem: ServiceIncidentProblem | null = null) =>
+  renderWithProviders(<ServiceOpenIncidentCard incident={incident} openIncidentFrom={openIncidentFrom} problem={problem} />, { mocks })
 
 const asIncident = (over: Record<string, unknown> = {}) => openIncident(over) as unknown as ServiceOpenIncident
 
 describe('ServiceOpenIncidentCard', () => {
+  /** Secondo giro UI del 15 set 2026 · V-10: «Incident aperto» sopra un incident già risolto. */
+  it('V-10: un incident in un passo di categoria «resolved» non è intitolato «aperto»', async () => {
+    const steps = [{ name: 'new', label: 'New' }, { name: 'resolved', label: 'Resolved', category: 'resolved' }, { name: 'closed', label: 'Closed', category: 'closed' }]
+    render(asIncident({ status: 'resolved', workflowInstance: { __typename: 'WorkflowInstance', id: 'wi-1', currentStep: 'resolved', status: 'active' } }), 'down', [workflowDefinitionMock('incident', steps)])
+    expect(await screen.findByText('Incident resolved, not yet closed')).toBeInTheDocument()
+    expect(screen.queryByText('Open incident')).toBeNull()
+  })
+
   it('C-12: stato e passo con l\'etichetta del workflow dell\'app, non «in progress» tradotto a mano', async () => {
     render(asIncident())
     expect(screen.getByText('Open incident')).toBeInTheDocument()
@@ -60,5 +68,23 @@ describe('ServiceOpenIncidentCard', () => {
     render(null, 'degraded')
     expect(screen.getByText('No open incident for this service.')).toBeInTheDocument()
     expect(screen.queryByText('Incidents are turned off for this service.')).not.toBeInTheDocument()
+  })
+
+  it('SV-4: l\'incident non si riesce ad aprire → il motivo nella lingua di chi guarda, dalla chiave dell\'errore', () => {
+    render(null, 'down', [workflowDefinitionMock()], {
+      key: 'errors.ticketCI.excluded', params: [{ name: 'ticketType', value: 'incident' }, { name: 'cis', value: 'App portale (Application)' }],
+      message: 'These CIs cannot be linked to this incident', since: '2026-09-15T10:00:00Z',
+    })
+    const alert = screen.getByTestId('service-incident-problem')
+    expect(alert).toHaveAttribute('role', 'alert')
+    expect(alert.textContent).toContain('because their type is excluded for incident: App portale (Application)')
+    expect(alert.textContent).toContain('The monitoring cannot bring this service')
+    // il riquadro dice comunque che non c'è un incident: le due cose insieme
+    expect(screen.getByText('No open incident for this service.')).toBeInTheDocument()
+  })
+
+  it('SV-4: una chiave che il bundle non conosce → il messaggio dell\'API, mai una riga vuota', () => {
+    render(null, 'down', [workflowDefinitionMock()], { key: 'errors.delFuturo', params: [], message: 'lock busy', since: '2026-09-15T10:00:00Z' })
+    expect(screen.getByTestId('service-incident-problem').textContent).toContain(': lock busy (since')
   })
 })

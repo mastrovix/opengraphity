@@ -67,3 +67,21 @@ export const REORDER_ENUM_VALUES = gql`
     }
   }
 `
+
+/** Aggiunge alla copia i valori spediti che non aveva visto, con etichette e colori spediti (F20). */
+export const ADOPT_SHIPPED_VALUES = gql`
+  mutation AdoptShippedValues($id: ID!) {
+    adoptShippedValues(id: $id) {
+      id name label values defaultValue isSystem isShipped scope createdAt updatedAt
+    }
+  }
+`
+
+/** Tiene fuori dalla copia i valori spediti non ancora visti: smettono di essere segnalati (F20). */
+export const ACKNOWLEDGE_SHIPPED_VALUES = gql`
+  mutation AcknowledgeShippedValues($id: ID!) {
+    acknowledgeShippedValues(id: $id) {
+      id name label values defaultValue isSystem isShipped scope createdAt updatedAt
+    }
+  }
+`

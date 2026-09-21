@@ -6,6 +6,7 @@
  * Every resolver now returns the same superset.
  */
 import type { Session } from 'neo4j-driver'
+import { parseLocalizedLabels, type LocalizedLabel } from '@opengraphity/types'
 
 type Props = Record<string, unknown>
 
@@ -15,6 +16,7 @@ export interface TransitionRow {
   toStep:        string
   trigger:       string
   label:         string
+  labels:        LocalizedLabel[]
   requiresInput: boolean
   inputField:    string | null
   condition:     string | null
@@ -32,7 +34,7 @@ export async function loadTransitionRows(session: Session, definitionId: string,
     tx.run(`
       MATCH (from:WorkflowStep {definition_id: $defId, tenant_id: $tenantId})-[tr:TRANSITIONS_TO]->(to:WorkflowStep)
       RETURN from.name AS fromStep, to.name AS toStep,
-             tr.id AS id, tr.trigger AS trigger, tr.label AS label,
+             tr.id AS id, tr.trigger AS trigger, tr.label AS label, tr.labels AS labels,
              tr.requires_input AS requiresInput,
              tr.input_field AS inputField,
              tr.condition AS condition,
@@ -47,6 +49,7 @@ export async function loadTransitionRows(session: Session, definitionId: string,
     toStep:        r.get('toStep')        as string,
     trigger:       r.get('trigger')       as string,
     label:         r.get('label')         as string,
+    labels:        parseLocalizedLabels(r.get('labels'), `transition ${String(r.get('id'))}`),
     requiresInput: r.get('requiresInput') as boolean,
     inputField:    (r.get('inputField')   ?? null) as string | null,
     condition:     (r.get('condition')    ?? null) as string | null,
@@ -65,6 +68,7 @@ export function mapWorkflowStep(s: Props) {
     definitionId:      s['definition_id'] as string,
     name:              s['name']  as string,
     label:             s['label'] as string,
+    labels:            parseLocalizedLabels(s['labels'], `step ${String(s['id'])}`),
     type:              s['type']  as string,
     enterActions:      (s['enter_actions'] ?? null) as string | null,
     exitActions:       (s['exit_actions']  ?? null) as string | null,
@@ -78,6 +82,7 @@ export function mapWorkflowStep(s: Props) {
     // lo legge e lo scrive; `null` = il cliente non l'ha dichiarato, e non si
     // indovina dal nome.
     purpose:           (s['purpose'] ?? null) as string | null,
+    deadline:          (s['deadline'] ?? null) as string | null,
     order:             s['step_order'] != null ? Number(s['step_order']) : 999,
     // Designer layout: written by saveWorkflowChanges.positions, read back
     // here so the canvas does not fall back to the default layout.
@@ -93,6 +98,7 @@ export function mapWorkflowTransition(r: TransitionRow) {
     toStepName:    r.toStep,
     trigger:       r.trigger,
     label:         r.label,
+    labels:        r.labels,
     requiresInput: r.requiresInput,
     inputField:    r.inputField,
     condition:     r.condition,

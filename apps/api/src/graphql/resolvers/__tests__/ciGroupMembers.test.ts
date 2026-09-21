@@ -24,6 +24,7 @@ vi.mock('@opengraphity/schema-generator', () => ({
   ]),
 }))
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 // ── Session mock usato da withSession ─────────────────────────────────────────
 
@@ -59,7 +60,7 @@ const ciGroupMembers = ciGroupResolvers.Query.ciGroupMembers
 
 // ── Test context / helpers ────────────────────────────────────────────────────
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'operator', permissions: perms('operator') }
 
 type Row = Record<string, unknown>
 

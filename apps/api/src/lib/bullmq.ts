@@ -22,6 +22,8 @@ import { Redis } from 'ioredis'
 import { getRedisConnection } from '@opengraphity/events'
 import { logger } from './logger.js'
 
+import { guastoDi, ripresaDi } from './dipendenzaGiu.js'
+
 const log = logger.child({ module: 'bullmq' })
 
 // ── Queues ───────────────────────────────────────────────────────────────────
@@ -33,9 +35,35 @@ export function getQueue<D = unknown>(name: string, opts?: Omit<QueueOptions, 'c
   let q = queues.get(name)
   if (!q) {
     q = new Queue(name, { ...opts, connection: getRedisConnection() })
+    /*
+     * UN GUASTO È UN CAMBIO DI STATO, NON UN EVENTO PER TENTATIVO (21 set
+     * 2026, `PRB00000002`). Prima qui c'era un `log.error` secco: ioredis
+     * riprova senza sosta, e un solo guasto di Redis ha scritto 728 righe su
+     * questo processo in un giorno. Vedi `lib/dipendenzaGiu.ts`.
+     */
     q.on('error', (err: Error) => {
-      log.error({ err, queue: name }, '[bullmq] queue connection error')
+      guastoDi(log, `bullmq:queue:${name}`, err, { queue: name })
     })
+    /*
+     * `Queue` non emette `ready` (emette solo `error` e `ioredis:close`), ma
+     * espone la connessione sottostante: è da lì che si sa che è rientrata.
+     * Senza questo il prodotto direbbe quando cade e mai quando torna, che è
+     * l'informazione che serve davvero durante un guasto.
+     */
+    const connessione: unknown = q.client
+    if (connessione instanceof Promise) {
+      void connessione.then((c: { on: (e: string, f: () => void) => void }) => {
+        c.on('ready', () => { ripresaDi(log, `bullmq:queue:${name}`, { queue: name }) })
+      }).catch((err: unknown) => {
+        log.error({ err, queue: name }, '[bullmq] could not attach the recovery listener to the queue connection')
+      })
+    }
+    /*
+     * La guardia non è pedanteria: senza, un `client` assente farebbe
+     * fallire `getQueue` e con essa OGNI coda del processo. Una riga di
+     * ripresa che manca è una scomodità; una coda che non nasce è il
+     * prodotto fermo. Fra i due, si perde la riga.
+     */
     queues.set(name, q)
   }
   return q as Queue<D>
@@ -54,9 +82,10 @@ let redis: Redis | null = null
 export function getSharedRedis(): Redis {
   if (!redis) {
     redis = new Redis({ ...getRedisConnection(), maxRetriesPerRequest: 3, lazyConnect: false })
-    redis.on('error', (err: Error) => {
-      log.error({ err }, '[bullmq] shared redis client error')
-    })
+    // Stessa regola delle code: la prima caduta si grida, le ripetizioni si
+    // contano, e la ripresa si dice. Qui `ready` lo dà ioredis direttamente.
+    redis.on('error', (err: Error) => { guastoDi(log, 'bullmq:shared-redis', err, {}) })
+    redis.on('ready', () => { ripresaDi(log, 'bullmq:shared-redis', {}) })
   }
   return redis
 }
@@ -110,8 +139,11 @@ export function createWorker<D = unknown, R = unknown, N extends string = string
   const worker = new Worker<D, R, N>(name, processor, { ...workerOpts, connection: getRedisConnection() })
 
   worker.on('error', (err: Error) => {
-    log.error({ err, worker: name }, '[bullmq] worker error (connection/internal) — worker keeps running')
+    guastoDi(log, `bullmq:worker:${name}`, err, { worker: name })
   })
+  // `Worker` emette `ready` quando la connessione bloccante è pronta: è il
+  // segnale di ripresa, e prima non lo ascoltava nessuno.
+  worker.on('ready', () => { ripresaDi(log, `bullmq:worker:${name}`, { worker: name }) })
 
   worker.on('failed', (job, err) => {
     log.error({

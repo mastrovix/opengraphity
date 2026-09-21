@@ -1,5 +1,6 @@
 export { getTenantSlug, requireTenantSlug, type RequireTenantSlugOptions } from './tenantSlug.js'
-export { createKeycloak, type CreateKeycloakOptions, type KeycloakHandle } from './keycloak.js'
+export { mostraSchermataDiStop, resetSchermataDiStop, type SchermataDiStop } from './stopScreen.js'
+export { createKeycloak, redirectUriPulito, type CreateKeycloakOptions, type KeycloakHandle } from './keycloak.js'
 export { type ClientLogger, consoleLogger } from './logger.js'
 export { createClientLogger } from './clientLogger.js'
 export {
@@ -15,12 +16,16 @@ export {
 export {
   createApolloClient,
   createErrorLink,
+  wasNotifiedCentrally,
+  errorFieldName,
+  errorHasKey,
   createAuthLink,
   createI18nLink,
   type TraduciErrore,
   createDeduper,
   DEFAULT_DEDUPE_MS,
   NETWORK_DEDUPE_KEY,
+  TENANT_SUSPENDED_CODE,
   type CreateApolloClientOptions,
   type ErrorLinkOptions,
   type GraphQLErrorInfo,
@@ -40,3 +45,19 @@ export {
   type VisibilityRule,
   type RequirementRule,
 } from './useFormFieldRules.js'
+export {
+  CatalogFormRenderer,
+  visibleCatalogFormItems,
+  catalogFormAnswersToSend,
+  catalogFormTableAnswers,
+  type CatalogFormAnswerToSend,
+  type CatalogFormRendererProps,
+  type CatalogFormTableRow,
+  type CatalogFormTableColumnView,
+  type CatalogFormFieldView,
+  type CatalogFormFile,
+  type CatalogFormReference,
+} from './CatalogFormRenderer.js'
+// Le formule dei campi calcolati (ondata 6): il renderer le usa da sé, e la
+// pagina della libreria le usa per il pulsante «Prova».
+export { runFormula, computeFormulas, type FormulaEsito } from './formulaRunner.js'

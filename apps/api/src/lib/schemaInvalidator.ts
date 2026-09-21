@@ -42,6 +42,16 @@
  * E le cache hanno **tutte** una scadenza (60 s quelle del metamodello, 5 min
  * lo schema): il canale è la via normale, il TTL è la rete per quando tace.
  *
+ * ## Lo svuotamento totale (PRB00000003)
+ * Un clearer sa svuotare UN tenant, perché il messaggio dice quale. Quando la
+ * connessione di ascolto cade, però, i messaggi pubblicati nel frattempo sono
+ * perduti — il pub/sub di Redis non ha arretrato — e alla ripresa questo
+ * processo non sa più QUALI tenant siano cambiati: sa solo di aver perso
+ * qualcosa. Perciò ogni cache può registrare anche un `clearAll` senza
+ * argomenti, e `clearAllMetamodelCaches()` li chiama tutti. Chi non ce l'ha
+ * viene NOMINATO in `withoutClearAll`: uno svuotamento parziale che si crede
+ * totale sarebbe il difetto di prima travestito da rimedio.
+ *
  * Niente silenzi: un clearer che lancia non ferma gli altri ed è raccolto in
  * `failed`; se nessun publisher è registrato (processo senza bus, script,
  * test) `invalidateSchema` lo dice a chi lo osserva attraverso
@@ -53,6 +63,16 @@
 export type MetamodelCacheClearer = (tenantId: string) => void
 
 /**
+ * Svuota la cache di TUTTI i tenant (PRB00000003).
+ *
+ * Non è `clear(tenantId)` ripetuto: quando serve, i tenant cambiati non si
+ * sanno. Il pub/sub di Redis non ha arretrato — i messaggi pubblicati mentre
+ * questo processo era staccato sono perduti, e con loro l'elenco di CHI è
+ * cambiato. L'unica reazione onesta è buttare tutto e ricaricare.
+ */
+export type MetamodelCacheClearAll = () => void
+
+/**
  * Porta il cambiamento agli altri processi. Riceve anche l'esito locale, così
  * il bus scrive UNA riga di log con tutto: cosa è stato svuotato qui, cosa ha
  * fallito, e quanti processi hanno ricevuto il messaggio. Non deve lanciare né
@@ -61,6 +81,12 @@ export type MetamodelCacheClearer = (tenantId: string) => void
 export type MetamodelPublisher = (tenantId: string, local: LocalInvalidation) => void
 
 const clearers = new Map<string, MetamodelCacheClearer>()
+/**
+ * Secondo registro, deliberatamente separato: una cache può sapersi svuotare
+ * per tenant e non per intero, e la differenza NON deve sparire. Chi non è
+ * qui dentro viene nominato in `withoutClearAll`, non saltato in silenzio.
+ */
+const clearAlls = new Map<string, MetamodelCacheClearAll>()
 let publisher: MetamodelPublisher | null = null
 
 /** Esito dello svuotamento delle cache di questo processo. */
@@ -83,22 +109,42 @@ let last: InvalidationOutcome | null = null
  * Registra una cache da svuotare quando il metamodello di un tenant cambia.
  * Idempotente per `name`: due caricamenti dello stesso modulo non registrano
  * due clearer.
+ *
+ * `clearAll` è lo svuotamento totale, e si passa quando la cache sa farlo:
+ * serve solo alla ripresa dopo una sottoscrizione persa, quando i tenant
+ * cambiati non si sanno più (PRB00000003). Ometterlo è lecito — una cache che
+ * non sa svuotarsi per intero resta vecchia fino al suo TTL — ma non è
+ * gratuito: quel nome finisce in `withoutClearAll` e il canale lo logga.
  */
-export function registerMetamodelCacheClearer(name: string, clear: MetamodelCacheClearer): void {
+export function registerMetamodelCacheClearer(
+  name: string,
+  clear: MetamodelCacheClearer,
+  clearAll?: MetamodelCacheClearAll,
+): void {
   clearers.set(name, clear)
+  // I due registri non devono mai divergere: ri-registrarsi senza `clearAll`
+  // toglie quello di prima, invece di lasciarne in giro uno che punta alla
+  // cache di un modulo ricaricato.
+  if (clearAll) clearAlls.set(name, clearAll)
+  else clearAlls.delete(name)
 }
 
 /**
  * Compatibilità: `schemaCache.ts` chiama questa al proprio caricamento. È il
  * clearer di nome `schema` — uno dei tanti, non più l'unico.
  */
-export function registerSchemaInvalidator(fn: MetamodelCacheClearer): void {
-  registerMetamodelCacheClearer('schema', fn)
+export function registerSchemaInvalidator(fn: MetamodelCacheClearer, clearAll?: MetamodelCacheClearAll): void {
+  registerMetamodelCacheClearer('schema', fn, clearAll)
 }
 
 /** I nomi delle cache registrate in QUESTO processo (log di avvio del bus, test). */
 export function registeredMetamodelCacheClearers(): string[] {
   return [...clearers.keys()]
+}
+
+/** I nomi delle cache registrate che NON sanno svuotarsi per intero. */
+export function metamodelCacheClearersWithoutClearAll(): string[] {
+  return [...clearers.keys()].filter((name) => !clearAlls.has(name))
 }
 
 /** Registra (o rimuove, con `null`) il canale verso gli altri processi. */
@@ -137,6 +183,60 @@ export function clearLocalMetamodelCaches(tenantId: string): LocalInvalidation {
     )
   }
   return { tenantId, cleared, failed }
+}
+
+/** Esito dello svuotamento TOTALE delle cache di questo processo. */
+export interface GlobalInvalidation {
+  /** Nomi delle cache svuotate per intero, nell'ordine di registrazione. */
+  cleared:         string[]
+  /** Clearer che hanno lanciato: non fermano gli altri e non restano nascosti. */
+  failed:          { name: string; error: string }[]
+  /**
+   * Cache registrate senza svuotamento totale: NON sono state svuotate, e
+   * restano vecchie fino alla scadenza del loro TTL. Dichiararle è il punto:
+   * uno svuotamento parziale che si crede totale è il difetto di prima.
+   */
+  withoutClearAll: string[]
+}
+
+/**
+ * Svuota TUTTE le cache di questo processo, per ogni tenant, senza pubblicare
+ * niente (PRB00000003).
+ *
+ * La chiama il canale quando si ri-sottoscrive DOPO aver perso la
+ * sottoscrizione: in quella finestra il pub/sub di Redis — che non ha
+ * arretrato — ha buttato i messaggi destinati a questo processo, e nessuno
+ * glieli riconsegnerà. Non si sa quali tenant siano cambiati, quindi si butta
+ * tutto: ricaricare cache ancora buone costa una query, servire un metamodello
+ * vecchio per 5 minuti costa un «Invalid relation type» all'utente.
+ */
+export function clearAllMetamodelCaches(): GlobalInvalidation {
+  const cleared: string[] = []
+  const failed: { name: string; error: string }[] = []
+  const withoutClearAll: string[] = []
+  for (const name of clearers.keys()) {
+    const clearAll = clearAlls.get(name)
+    if (!clearAll) {
+      withoutClearAll.push(name)
+      continue
+    }
+    try {
+      clearAll()
+      cleared.push(name)
+    } catch (err) {
+      failed.push({ name, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+  if (failed.length > 0 || withoutClearAll.length > 0) {
+    // Import differito: questo modulo deve restare una foglia (vedi il commento
+    // in testa). Una cache non svuotata qui è una cache che resta vecchia senza
+    // che nessuno le dica più di buttarsi: non può passare in silenzio.
+    void import('./logger.js').then(({ logger }) =>
+      logger.error({ failed, withoutClearAll, cleared },
+        '[metamodel] svuotamento totale incompleto: queste cache restano vecchie, per TUTTI i tenant, fino alla scadenza del loro TTL (60 s le cache del metamodello, 5 min lo schema)'),
+    )
+  }
+  return { cleared, failed, withoutClearAll }
 }
 
 /**

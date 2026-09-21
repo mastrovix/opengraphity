@@ -65,6 +65,7 @@ export const UPDATE_EVENT_POLICY = gql`
       suppressUpstreamHops flapThreshold flapWindowMinutes flapStableMinutes
       stormThresholdPerMinute stormCooldownMinutes retentionDays matchShortHostname severityMap
       ignoreLifecycleStatuses retiredStatuses maintenanceStatuses
+      highImpactDependents
     }
   }
 `
@@ -87,10 +88,15 @@ export const PREVIEW_INBOUND_EVENTS = gql`
   }
 `
 
-/** Ingerisce il payload di esempio del connettore attraverso la pipeline reale: torna il numero di eventi accodati. */
+/**
+ * Ingerisce un payload di esempio attraverso la pipeline reale: torna il numero
+ * di eventi accodati. `payload` è l'esempio incollato dall'admin (sorgenti
+ * «generic»): senza di esso l'API usa il campione fisso del connettore, che non
+ * ha i percorsi mappati a mano (revisione totale · G-MON-1).
+ */
 export const SEND_SAMPLE_EVENT = gql`
-  mutation SendSampleEvent($sourceId: ID!) {
-    sendSampleEvent(sourceId: $sourceId)
+  mutation SendSampleEvent($sourceId: ID!, $payload: String) {
+    sendSampleEvent(sourceId: $sourceId, payload: $payload)
   }
 `
 

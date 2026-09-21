@@ -33,6 +33,8 @@ export const EXECUTE_WORKFLOW_TRANSITION = gql`
     executeWorkflowTransition(instanceId: $instanceId, toStep: $toStep, notes: $notes) {
       success
       error
+      errorKey
+      errorParams { name value }
       instance { id currentStep status }
     }
   }

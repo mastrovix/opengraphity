@@ -11,7 +11,8 @@
  *    5 minuti → cinque passate (finestre chiuse, pending, sfarfallio,
  *    tempeste raffreddate, gauge di salute), ciascuna eseguita e misurata
  *    (event_pass_total/duration) anche se un'altra fallisce, con errore
- *    cumulativo alla fine; il job `correlate` misura il ritardo dalla scadenza.
+ *    cumulativo alla fine, con le passate che condividono la causa accorpate
+ *    in una voce sola; il job `correlate` misura il ritardo dalla scadenza.
  * BullMQ è mockato attraverso lib/bullmq.ts; i processori sono catturati da createWorker.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -223,5 +224,32 @@ describe('worker events-maintenance (periodico)', () => {
       { pass: 'closed_windows', result: 'failed' }, { pass: 'pending', result: 'failed' }, { pass: 'flapping', result: 'ok' }, { pass: 'storms', result: 'failed' }, { pass: 'gauges', result: 'ok' },
     ])
     expect(metrics.eventPassDurationSeconds.observe).toHaveBeenCalledTimes(5)
+  })
+
+  it('le passate fallite per la stessa causa (database irraggiungibile) sono elencate insieme una volta sola', async () => {
+    // Il testo del driver Neo4j è lungo 200 caratteri: ripetuto per ciascuna
+    // delle cinque passate rendeva illeggibile il motivo nella pagina delle code.
+    const giu = () => new Error('Failed to connect to server. Caused by: connect ECONNREFUSED 172.19.0.15:7687')
+    vi.mocked(reevaluateClosedWindows).mockRejectedValueOnce(giu())
+    vi.mocked(reevaluatePendingEvents).mockRejectedValueOnce(giu())
+    vi.mocked(reevaluateFlappingEvents).mockRejectedValueOnce(giu())
+    vi.mocked(endCooledStorms).mockRejectedValueOnce(giu())
+    vi.mocked(refreshEventGauges).mockRejectedValueOnce(giu())
+    const err = await runPeriodicPasses(NOW).catch((e: Error) => e)
+    expect(err).toBeInstanceOf(Error)
+    const message = (err as Error).message
+    expect(message).toBe('[events-maintenance] events-maintenance: closed_windows, pending, flapping, storms, gauges: Failed to connect to server. Caused by: connect ECONNREFUSED 172.19.0.15:7687')
+    expect(message.match(/ECONNREFUSED/g)).toHaveLength(1)
+    // Tutte e cinque restano contate come fallite: accorpiamo il testo, non le misure.
+    expect(vi.mocked(metrics.eventPassTotal.inc).mock.calls.map((c) => c[0])).toEqual(
+      ['closed_windows', 'pending', 'flapping', 'storms', 'gauges'].map((pass) => ({ pass, result: 'failed' })))
+  })
+
+  it('cause diverse restano separate: il dato di una passata non si confonde col database giù', async () => {
+    vi.mocked(reevaluateClosedWindows).mockRejectedValueOnce(new Error('connect ECONNREFUSED'))
+    vi.mocked(reevaluatePendingEvents).mockRejectedValueOnce(new Error('2/2 pending events failed'))
+    vi.mocked(refreshEventGauges).mockRejectedValueOnce(new Error('connect ECONNREFUSED'))
+    await expect(runPeriodicPasses(NOW)).rejects.toThrow(
+      'closed_windows, gauges: connect ECONNREFUSED; pending: 2/2 pending events failed')
   })
 })

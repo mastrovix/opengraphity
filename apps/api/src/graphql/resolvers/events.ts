@@ -19,8 +19,8 @@
  * Ogni query è scopata per tenant; ogni mutation scrive l'audit. Le mutation
  * amministrative (alias, policy, prova di una sorgente, anteprima) e le query
  * di configurazione (sorgenti complete, chiavi/campione del wizard) sono
- * admin-only in lib/authorization.ts e hanno un requireRole locale come
- * seconda linea. Revisione (ondata 2): guardie di stato su acknowledge/resolve/
+ * chiuse dal permesso `config.monitoring` (lib/operationPermissions.ts) e hanno
+ * un `requirePermission` locale come seconda linea. Revisione (ondata 2): guardie di stato su acknowledge/resolve/
  * createIncidentFromEvent (serializzata col lock del gruppo di correlazione),
  * alias mai ri-puntati in silenzio, `Event.source` come riferimento leggero.
  *
@@ -34,11 +34,12 @@
  * paginate con un contatore separato (P-5).
  */
 import { v4 as uuidv4 } from 'uuid'
+import { impactRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
 import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { ciLabelForTypeName, ciTypeNamesForTenant } from '../../lib/ciTypeNameToLabel.js'
@@ -58,7 +59,7 @@ import { GROUP_LOCK_OPTS, groupIdOf, groupLockKey, openIncidentFromEvent, runEve
 import { EVENT_HISTORY_MAX, appendEventHistory, historyParams, historyWriteCypher } from '../../services/events/history.js'
 import { listStormSources } from '../../services/eventStorm.js'
 import { enqueueEvents } from '../../jobs/eventIngestWorker.js'
-import { sampleInboundPayload as samplePayloadOf } from '../../lib/eventSamples.js'
+import { sampleInboundPayload as samplePayloadOf, genericSamplePayload } from '../../lib/eventSamples.js'
 import { mapInbound } from './integrations.js'
 import { change as loadChange } from './change/queries.js'
 import type { CIHealthChangedPayload } from '@opengraphity/types'
@@ -252,6 +253,8 @@ interface EventFilter {
   orphan?: boolean | null
   search?: string | null
   since?: string | null
+  /** G-EVT-3: filtro su `resolved_at`, la stessa domanda del riquadro «Risolti 24h». */
+  resolvedSince?: string | null
   incidentId?: string | null
   suppressedByChangeId?: string | null
 }
@@ -320,6 +323,12 @@ async function events(_: unknown, args: { filter?: EventFilter | null; limit?: n
     const ms = Date.parse(f.since)
     if (Number.isNaN(ms)) throw new ValidationError(`since must be an ISO date, got ${JSON.stringify(f.since)}`)
     conditions.push('e.last_seen_at >= $since'); params['since'] = new Date(ms).toISOString()
+  }
+  if (f.resolvedSince) {
+    // G-EVT-3: la stessa domanda del riquadro, sulla stessa proprietà.
+    const ms = Date.parse(f.resolvedSince)
+    if (Number.isNaN(ms)) throw new ValidationError(`resolvedSince must be an ISO date, got ${JSON.stringify(f.resolvedSince)}`)
+    conditions.push('e.resolved_at >= $resolvedSince'); params['resolvedSince'] = new Date(ms).toISOString()
   }
   const where = 'WHERE ' + conditions.join(' AND ')
   // Con `search` la sorgente delle righe è l'indice full-text (P-4), poi lo
@@ -437,13 +446,13 @@ async function eventPolicy(_: unknown, __: unknown, ctx: GraphQLContext) {
 
 /** Strumento del wizard delle sorgenti: admin-only (policy centrale + seconda linea qui). */
 function sampleInboundPayload(_: unknown, args: { connectorKind: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   return JSON.stringify(samplePayloadOf(args.connectorKind), null, 2)
 }
 
 /** JSON incollato dall'amministratore → chiavi con percorso puntato (non valido, troppo grande o troppo profondo → ValidationError). */
 function payloadKeys(_: unknown, args: { payload: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   validateStringLength(args.payload, 'payload', 1, PAYLOAD_MAX_CHARS)
   let parsed: unknown
   try { parsed = JSON.parse(args.payload) }
@@ -458,7 +467,7 @@ const MONITORING_SOURCES_QUERY = `
 
 /** Sorgenti con la configurazione completa (pagina Sorgenti): admin-only. */
 async function monitoringSources(_: unknown, __: unknown, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   const session = getSession()
   try {
     const rows = await runQuery<{ props: Props }>(session, MONITORING_SOURCES_QUERY, { tenantId: ctx.tenantId })
@@ -474,7 +483,7 @@ async function monitoringSources(_: unknown, __: unknown, ctx: GraphQLContext) {
  * sorgente di monitoraggio e qui non si vede. Null se non esiste nel tenant.
  */
 async function monitoringSource(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   const session = getSession()
   try {
     const row = await runQueryOne<{ props: Props }>(session, `
@@ -619,6 +628,15 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
 
   const session = getSession()
   try {
+    /**
+     * I DIPENDENTI si contano lungo le relazioni del CLIENTE (revisione
+     * totale · D-19): qui `DEPENDS_ON` era cablato, mentre impatto,
+     * soppressione e mappe di servizio passano da `impactRelPatternForTenant`.
+     * Un cliente con relazioni proprie (per esempio `RUNS_ON`) vedeva la
+     * colonna «dipendenti» e l'ordinamento per impatto sottostimati, in
+     * silenzio.
+     */
+    const relPattern = await impactRelPatternForTenant(ctx.tenantId)
     const row = await runQueryOne<Record<string, unknown> & { items: CIHealthOverviewRow[] }>(session, `
       CALL {
         MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
@@ -627,8 +645,8 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
           count(CASE WHEN ci.health = 'degraded'    THEN 1 END) AS degraded,
           count(CASE WHEN ci.health = 'operational' THEN 1 END) AS operational,
           count(CASE WHEN ci.health IS NULL         THEN 1 END) AS unmonitored,
-          sum(CASE WHEN ci.health = 'down'     THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci) } ELSE 0 END) AS downDependents,
-          sum(CASE WHEN ci.health = 'degraded' THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci) } ELSE 0 END) AS degradedDependents
+          sum(CASE WHEN ci.health = 'down'     THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:${relPattern}]->(ci) } ELSE 0 END) AS downDependents,
+          sum(CASE WHEN ci.health = 'degraded' THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:${relPattern}]->(ci) } ELSE 0 END) AS degradedDependents
       }
       CALL {
         MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
@@ -638,7 +656,7 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
       CALL {
         MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
         ${where}
-        WITH ci, COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci) } AS dependents
+        WITH ci, COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:${relPattern}]->(ci) } AS dependents
         ORDER BY ${CI_HEALTH_SEVERITY_ORDER}, dependents DESC, ci.name
         SKIP toInteger($offset) LIMIT toInteger($limit)
         RETURN collect({
@@ -683,7 +701,7 @@ function toPreview(ev: NormalizedEvent) {
 
 /** Stessa normalizzazione del webhook, nessuna scrittura: anteprima per il mappatore (strumento del wizard: admin-only). */
 async function previewInboundEvents(_: unknown, args: { input: PreviewInput }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   const { input } = args
   assertConnectorKind(input.connectorKind, 'connectorKind')
   validateStringLength(input.payload, 'payload', 1, PAYLOAD_MAX_CHARS)
@@ -696,7 +714,23 @@ async function previewInboundEvents(_: unknown, args: { input: PreviewInput }, c
     default_values: input.defaultValues ?? null,
     value_mapping:  input.valueMapping ?? null,
   })
-  return normalizeWithConfig(config, payload).map(toPreview)
+  /**
+   * Con il FUSO del cliente, come in produzione (revisione totale · D-25): il
+   * webhook e la prova della sorgente lo passano, l'anteprima del wizard no —
+   * quindi lo stesso payload Zabbix mostrava `startsAt` vuoto nell'anteprima e
+   * valorizzato dal vivo, e l'admin tarava la mappatura su un comportamento
+   * che non era quello vero.
+   */
+  const tzSession = getSession(undefined, 'READ')
+  let timezone: string | null
+  try {
+    const row = await runQueryOne<{ timezone: unknown }>(tzSession,
+      'MATCH (t:Tenant {id: $tenantId}) RETURN t.timezone AS timezone', { tenantId: ctx.tenantId })
+    timezone = typeof row?.timezone === 'string' && row.timezone.trim() ? row.timezone : null
+  } finally {
+    await tzSession.close()
+  }
+  return normalizeWithConfig(config, payload, timezone ? { timezone } : {}).map(toPreview)
 }
 
 /** Etichetta che marca un evento di prova (sendSampleEvent) nei `labels`; l'ingest conserva i labels tali e quali (JSON su Event.labels). */
@@ -716,8 +750,18 @@ export const SAMPLE_LABEL = 'sample'
  * (rest/webhooks-inbound.ts): il campione Zabbix ha `event_date`/`event_time`
  * in ora locale e senza fuso `startsAt` resterebbe vuoto.
  */
-async function sendSampleEvent(_: unknown, args: { sourceId: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+async function sendSampleEvent(_: unknown, args: { sourceId: string; payload?: string | null }, ctx: GraphQLContext) {
+  requirePermission(ctx, 'config.monitoring')
+  // Revisione totale · G-MON-1: il campione fisso del connettore non ha i
+  // percorsi che l'admin ha mappato a mano su una sorgente «generic», e la
+  // prova finiva sempre con «field_mapping.title (…) is missing». Con
+  // `payload` la prova usa lo stesso esempio su cui l'anteprima era verde.
+  let ownPayload: unknown = null
+  if (args.payload != null) {
+    validateStringLength(args.payload, 'payload', 1, PAYLOAD_MAX_CHARS)
+    try { ownPayload = JSON.parse(args.payload) }
+    catch (e) { throw new ValidationError(`payload is not valid JSON: ${e instanceof Error ? e.message : String(e)}`) }
+  }
   let wh: Props
   let timezone: string | null
   const read = getSession()
@@ -735,7 +779,15 @@ async function sendSampleEvent(_: unknown, args: { sourceId: string }, ctx: Grap
     throw new ValidationError(`Inbound webhook ${args.sourceId} is not a monitoring source (entityType ${JSON.stringify(wh['entity_type'])})`)
   }
   const config = sourceConfigOf(wh)
-  const events: NormalizedEvent[] = normalizeWithConfig(config, samplePayloadOf(config.connectorKind), { timezone })
+  // Senza payload: per i preset il campione del connettore, per «generic» un
+  // campione costruito sulla mappatura della sorgente (il campione fisso ha i
+  // percorsi dell'esempio, non i suoi → la prova falliva sempre · G-MON-1).
+  const sample = args.payload != null
+    ? ownPayload
+    : config.connectorKind === 'generic'
+      ? genericSamplePayload(config.fieldMapping, config.valueMapping, config.defaults)
+      : samplePayloadOf(config.connectorKind)
+  const events: NormalizedEvent[] = normalizeWithConfig(config, sample, { timezone })
     .map((ev) => ({ ...ev, labels: { ...ev.labels, [SAMPLE_LABEL]: 'true' } }))
   const receivedAt = new Date().toISOString()
   const accepted = await enqueueEvents(ctx.tenantId, args.sourceId, events, receivedAt)
@@ -748,7 +800,7 @@ async function sendSampleEvent(_: unknown, args: { sourceId: string }, ctx: Grap
           w.last_received_at = $now
     `, { id: args.sourceId, tenantId: ctx.tenantId, n: accepted, now: receivedAt })
   } finally { await write.close() }
-  void audit(ctx, 'event_source.sample_sent', 'InboundWebhook', args.sourceId, { connectorKind: config.connectorKind, accepted })
+  void audit(ctx, 'event_source.sample_sent', 'InboundWebhook', args.sourceId, { connectorKind: config.connectorKind, accepted, ownPayload: args.payload != null })
   return accepted
 }
 
@@ -759,7 +811,7 @@ async function sendSampleEvent(_: unknown, args: { sourceId: string }, ctx: Grap
  * null toglie la forzatura e ricalcola dagli eventi firing.
  */
 async function setCIHealthOverride(_: unknown, args: { ciId: string; health?: string | null }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin', 'operator')
+  requirePermission(ctx, 'event.work')
   const now = new Date().toISOString()
   if (args.health != null) {
     if (!(CI_HEALTHS as readonly string[]).includes(args.health)) {
@@ -1007,7 +1059,7 @@ async function openIncidentOfEvent(eventId: string, tenantId: string): Promise<{
  * evento risolto, in sfarfallio, o già agganciato a un incident ancora aperto.
  */
 async function reevaluateEvent(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin', 'operator')
+  requirePermission(ctx, 'event.work')
   const current = await loadEvent(args.id, ctx.tenantId)
   const status = toStr(current.props['status'])
   const correlation = toStr(current.props['correlation'])
@@ -1087,7 +1139,7 @@ async function createIncidentFromEvent(_: unknown, args: { eventId: string }, ct
 }
 
 async function createCIAlias(_: unknown, args: { ciId: string; kind: string; value: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   if (!(CI_ALIAS_KINDS as readonly string[]).includes(args.kind)) {
     throw new ValidationError(`kind must be one of: ${CI_ALIAS_KINDS.join(', ')}. Got: ${JSON.stringify(args.kind)}`)
   }
@@ -1118,7 +1170,7 @@ async function createCIAlias(_: unknown, args: { ciId: string; kind: string; val
 }
 
 async function deleteCIAlias(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   const session = getSession(undefined, 'WRITE')
   try {
     const row = await runQueryOne<{ deleted: unknown }>(session, `
@@ -1141,7 +1193,7 @@ async function deleteCIAlias(_: unknown, args: { id: string }, ctx: GraphQLConte
  * ValidationError (modifica concorrente di un altro amministratore).
  */
 async function updateEventPolicy(_: unknown, args: { input: EventPolicyInputGQL }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.monitoring')
   const current = await getEventPolicy(ctx.tenantId)
   const next = await applyEventPolicyInput(ctx.tenantId, current, args.input ?? {})
   await setEventPolicy(ctx.tenantId, next)

@@ -70,4 +70,41 @@ describe('seedSystemEnumTypes', () => {
     expect(SYSTEM_ENUMS.find((e) => e.name === 'urgency')!.values)
       .toEqual(SYSTEM_ENUMS.find((e) => e.name === 'impact')!.values)
   })
+
+  /**
+   * Revisione del 14 set 2026 · F5: le categorie della Knowledge Base avevano
+   * tre fonti (colori nel web, vocabolario `category` degli incident nella
+   * pagina admin, categorie usate nella lista pubblica). Ora sono il
+   * vocabolario spedito `kb_category`, con etichette per lingua e colori.
+   */
+  it('kb_category è un vocabolario spedito, con etichette in entrambe le lingue e un colore per valore', () => {
+    const kb = SYSTEM_ENUMS.find((e) => e.name === 'kb_category')
+    expect(kb).toBeDefined()
+    expect(kb!.values).toEqual(expect.arrayContaining(['hardware', 'software', 'network', 'security', 'database', 'how-to', 'faq', 'general']))
+    for (const v of kb!.values) {
+      expect(kb!.valueLabels?.[v]?.it, v).toBeTruthy()
+      expect(kb!.valueLabels?.[v]?.en, v).toBeTruthy()
+      expect(kb!.valueColors?.[v], v).toBeTruthy()
+    }
+  })
+
+  /** Revisione del 14 set 2026 · F9: i colori che il web aveva nelle sue tabelle diventano il seme del Dizionario. */
+  it('i colori di fabbrica: priorità e severità, stato del CI, severità degli allarmi', () => {
+    const colors = (name: string) => SYSTEM_ENUMS.find((e) => e.name === name)!.valueColors
+    for (const name of ['priority', 'severity']) {
+      expect(colors(name)).toEqual({ critical: 'danger', high: 'orange', medium: 'warning', low: 'success' })
+    }
+    expect(colors('ci_status')).toMatchObject({ active: 'success', inactive: 'danger', maintenance: 'warning', decommissioned: 'neutral' })
+    expect(colors('event_severity')).toEqual({ critical: 'danger', warning: 'warning', info: 'info' })
+  })
+
+  it('il seme scrive i colori (del prodotto) e le etichette solo dove mancano', async () => {
+    const { calls, session } = fakeSession()
+    await seedSystemEnumTypes(session)
+    const kb = calls.find((c) => c.params['name'] === 'kb_category')!
+    expect(kb.cypher).toContain('e.value_colors = $valueColors')
+    expect(kb.cypher).toContain('e.value_labels = coalesce(e.value_labels, $valueLabels)')
+    expect(JSON.parse(String(kb.params['valueColors']))).toMatchObject({ security: 'danger' })
+  })
 })
+

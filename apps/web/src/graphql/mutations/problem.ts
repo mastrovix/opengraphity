@@ -41,8 +41,8 @@ export const CREATE_PROBLEM = gql`
 `
 
 export const ADD_CI_TO_PROBLEM = gql`
-  mutation AddCIToProblem($problemId: ID!, $ciId: ID!, $relationType: String) {
-    addCIToProblem(problemId: $problemId, ciId: $ciId, relationType: $relationType) {
+  mutation AddCIToProblem($problemId: ID!, $ciId: ID!) {
+    addCIToProblem(problemId: $problemId, ciId: $ciId) {
       id affectedCIs { id name type environment status }
     }
   }
@@ -64,8 +64,9 @@ export const ASSIGN_PROBLEM_TO_TEAM = gql`
   }
 `
 
+/** `userId: null` toglie l'assegnazione (revisione totale · B-18). */
 export const ASSIGN_PROBLEM_TO_USER = gql`
-  mutation AssignProblemToUser($problemId: ID!, $userId: ID!) {
+  mutation AssignProblemToUser($problemId: ID!, $userId: ID) {
     assignProblemToUser(problemId: $problemId, userId: $userId) {
       id assignee { id name email }
     }
@@ -76,15 +77,15 @@ export const EXECUTE_PROBLEM_TRANSITION = gql`
   mutation ExecuteProblemTransition($problemId: ID!, $toStep: String!, $notes: String) {
     executeProblemTransition(problemId: $problemId, toStep: $toStep, notes: $notes) {
       id status actionErrors workflowInstance { id currentStep status }
-      availableTransitions { toStep label requiresInput inputField condition }
+      availableTransitions { toStep label labels { language label } requiresInput inputField condition }
     }
   }
 `
 
 export const ADD_PROBLEM_COMMENT = gql`
-  mutation AddProblemComment($problemId: ID!, $text: String!) {
-    addProblemComment(problemId: $problemId, text: $text) {
-      id text type createdAt author { id name }
+  mutation AddProblemComment($problemId: ID!, $text: String!, $isInternal: Boolean) {
+    addProblemComment(problemId: $problemId, text: $text, isInternal: $isInternal) {
+      id text type isInternal createdAt author { id name }
     }
   }
 `

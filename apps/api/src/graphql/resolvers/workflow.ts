@@ -1,4 +1,6 @@
 import { GraphQLError } from 'graphql'
+import { assertDefinitionDeadlines } from '../../lib/stepDeadlineWrite.js'
+import { ADDABLE_STEP_TYPES, isUnimplementedStepType } from '@opengraphity/types'
 import { ValidationError } from '../../lib/errors.js'
 import { randomUUID } from 'crypto'
 import { withSession } from './ci-utils.js'
@@ -8,7 +10,7 @@ import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
 import type { GraphQLContext } from '../../context.js'
 import type { Queryable } from '@opengraphity/neo4j'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { provisionTenantData, tenantProvisioningGaps } from '../../lib/provisionTenantData.js'
 import { mapGaps } from '../issueShape.js'
 import {
@@ -18,6 +20,7 @@ import {
   incidentAvailableTransitions,
   incidentWorkflowHistory,
   workflowDefinition,
+  workflowStepLabels,
   workflowDefinitionById,
   workflowDefinitions,
   incidentWorkflowInstance,
@@ -35,12 +38,28 @@ import {
   removeWorkflowTransition,
   executeWorkflowTransition,
   saveWorkflowChanges,
+  duplicateWorkflowDefinition,
+  setWorkflowDefinitionActive,
   MARK_CUSTOMIZED,
   customizedParams,
 } from './workflowMutations.js'
 
 export * from './workflowQueries.js'
 export * from './workflowMutations.js'
+
+/**
+ * Le traduzioni dell'etichetta le carica chi produce l'oggetto (workflowMapping,
+ * engine.getAvailableTransitions). Un produttore che se ne dimentica è un
+ * errore detto, non una lista vuota che farebbe vedere solo l'etichetta di base.
+ */
+function loadedLabels(typeName: string) {
+  return (parent: { labels?: unknown; label?: unknown }) => {
+    if (!Array.isArray(parent.labels)) {
+      throw new Error(`${typeName} "${String(parent.label)}": the producer did not load its labels`)
+    }
+    return parent.labels
+  }
+}
 
 // ── saveWorkflowLayout (kept here as it's a thin wrapper) ────────────────────
 
@@ -77,8 +96,23 @@ async function addWorkflowStep(
   },
   ctx: GraphQLContext,
 ) {
-  const ALLOWED_TYPES = new Set(['standard', 'parallel_fork', 'parallel_join', 'timer_wait', 'sub_workflow'])
-  if (!ALLOWED_TYPES.has(type)) throw new ValidationError(`Invalid step type: ${type}`)
+  /*
+   * SI AGGIUNGE SOLO QUELLO CHE IL MOTORE ESEGUE (ondata 10).
+   *
+   * `parallel_fork`, `parallel_join` e `sub_workflow` si potevano aggiungere e
+   * il motore li trattava come passi normali: una biforcazione disegnata
+   * seguiva UNA transizione sola, in silenzio. L'elenco di quello che il
+   * motore sa fare sta in `@opengraphity/types`, e il rifiuto lo nomina invece
+   * di dire «tipo non valido» a chi ha appena visto quel tipo nella palette.
+   */
+  if (isUnimplementedStepType(type)) {
+    throw new ValidationError(
+      `Step type "${type}" is not executed by the workflow engine: a step of this type would behave like a standard step, `
+      + `following a single transition. It cannot be added until the engine implements it.`,
+      { key: 'errors.workflow.stepTypeNotImplemented', params: { type } },
+    )
+  }
+  if (!(ADDABLE_STEP_TYPES as readonly string[]).includes(type)) throw new ValidationError(`Invalid step type: ${type}`)
   // Il nome del passo diventa lo `status` dell'entità (`engine.ts`), e da lì va
   // nei filtri, nei report e nel vocabolario `status_*`: ha la stessa forma di
   // ogni altro identificatore di dominio. Non era validato — dall'interfaccia
@@ -202,7 +236,7 @@ async function removeWorkflowStep(
       .filter((r) => r.n > 0)
     const live = byStatus.reduce((acc, r) => acc + r.n, 0)
     if (live > 0) {
-      const detail = byStatus.map((r) => `${r.status ?? 'senza stato'}: ${r.n}`).join(', ')
+      const detail = byStatus.map((r) => `${r.status ?? 'no status'}: ${r.n}`).join(', ')
       throw new GraphQLError(
         `Step "${stepName}" cannot be deleted: ${live} workflow instances are on this step right now (${detail}). `
         + `Move them to another step first — deleting it would leave them without a current step, unable to transition.`,
@@ -236,6 +270,9 @@ async function removeWorkflowStep(
         SET wd.version = wd.version + 1, wd.updated_at = $now
         ${MARK_CUSTOMIZED}
       `, { definitionId, tenantId: ctx.tenantId, stepName, now: new Date().toISOString(), ...customizedParams(ctx) })
+      // Un passo che è l'arrivo di una scadenza non si elimina: la scadenza
+      // resterebbe senza strada (verifica «Cosa resta cablato», ondata 3).
+      await assertDefinitionDeadlines(tx, ctx.tenantId, definitionId)
       if (elsewhere > 0) return { deleted: 0, fields: [] as string[] }
       const rules = await tx.run(`
         MATCH (r:FieldRequirementRule {tenant_id: $tenantId, entity_type: $entityType, workflow_step: $stepName})
@@ -280,13 +317,13 @@ async function removeWorkflowStep(
  * sovrascritta): mancava solo la porta per chiamarla.
  */
 async function tenantProvisioningGapsQuery(_: unknown, __: unknown, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'admin.system')
   const gaps = await withSession((session) => tenantProvisioningGaps(session as unknown as Queryable, ctx.tenantId))
   return mapGaps(gaps)
 }
 
 async function provisionTenantDataMutation(_: unknown, __: unknown, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'admin.system')
   const result = await withSession((session) => provisionTenantData(session, ctx.tenantId, { userId: ctx.userId }), true)
   // I workflow nuovi cambiano i metadata dei passi che tutto il resto legge.
   invalidateWorkflowCache(ctx.tenantId)
@@ -299,6 +336,7 @@ async function provisionTenantDataMutation(_: unknown, __: unknown, ctx: GraphQL
   // proprio questa mutation.
   invalidateSchema(ctx.tenantId)
   void audit(ctx, 'tenant.provisioned', 'Tenant', ctx.tenantId, {
+    roles: result.rolesCreated,
     dashboard: result.dashboardCreated,
     notificationRules: result.notificationRulesCreated,
     matrices: result.matricesCreated,
@@ -306,6 +344,7 @@ async function provisionTenantDataMutation(_: unknown, __: unknown, ctx: GraphQL
   })
   const gaps = await withSession((session) => tenantProvisioningGaps(session as unknown as Queryable, ctx.tenantId))
   return {
+    rolesCreated:             result.rolesCreated,
     dashboardCreated:         result.dashboardCreated,
     notificationRulesCreated: result.notificationRulesCreated,
     matricesCreated:          [...result.matricesCreated],
@@ -321,6 +360,7 @@ export const workflowResolvers = {
     incidentAvailableTransitions,
     incidentWorkflowHistory,
     workflowDefinition,
+    workflowStepLabels,
     workflowDefinitionById,
     workflowDefinitions,
   },
@@ -335,10 +375,16 @@ export const workflowResolvers = {
     executeWorkflowTransition,
     saveWorkflowLayout,
     saveWorkflowChanges,
+    // Duplicare una definizione (moduli del catalogo, ondata 3).
+    duplicateWorkflowDefinition,
+    setWorkflowDefinitionActive,
   },
   WorkflowStep: {
     currentInstances: workflowStepCurrentInstances,
+    labels:           loadedLabels('WorkflowStep'),
   },
+  WorkflowTransition:    { labels: loadedLabels('WorkflowTransition') },
+  WorkflowTransitionDef: { labels: loadedLabels('WorkflowTransitionDef') },
   Incident: {
     workflowInstance:     incidentWorkflowInstance,
     availableTransitions: incidentAvailableTransitionsField,

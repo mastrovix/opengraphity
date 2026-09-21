@@ -114,3 +114,30 @@ describe('sectionInputToDef', () => {
     expect(def.nodes[0]!.selectedFields).toEqual([])
   })
 })
+
+/**
+ * Il nodo del raggruppamento e l'id del nodo salvato devono coincidere.
+ *
+ * Giro nel browser del 14 set 2026: una sezione appena creata dal Report
+ * Builder falliva al primo Run con «groupByNodeId "node_…" does not match any
+ * section node — stale report config». Il nodo veniva salvato con un uuid
+ * nuovo e la sezione ricordava l'id del client; il loader restituisce l'uuid.
+ */
+describe('createSectionWithNodesEdges — groupByNodeId punta al nodo salvato', () => {
+  beforeEach(() => { vi.clearAllMocks(); clearReportWhitelistCache() })
+
+  it('la sezione salva come group_by_node_id lo stesso id con cui salva il nodo', async () => {
+    const session = makeWriteSession()
+    await createSectionWithNodesEdges(session as never, 'tpl-1', 'sec-1', 0, input({ groupByNodeId: 'node_1' }), 'tenant-1')
+    const calls = session.executeWrite.mock.calls.map((c) => {
+      let captured: { q: string; p: Record<string, unknown> } | null = null
+      ;(c[0] as (tx: unknown) => unknown)({ run: (q: string, p: Record<string, unknown>) => { captured = { q, p }; return Promise.resolve({ records: [] }) } })
+      return captured as unknown as { q: string; p: Record<string, unknown> }
+    })
+    const sezione = calls.find((x) => x.q.includes('CREATE (s:ReportSection'))!
+    const nodo = calls.find((x) => x.q.includes('CREATE (s)-[:HAS_NODE]->(n:ReportNode'))!
+    expect(nodo.p['tempId']).toBe('node_1')
+    expect(nodo.p['id']).not.toBe('node_1')
+    expect(sezione.p['groupByNodeId']).toBe(nodo.p['id'])
+  })
+})
