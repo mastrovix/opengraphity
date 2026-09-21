@@ -180,7 +180,7 @@ export function createAutomationCache<T>(prefix: string, ttlMs = 60_000): Automa
   // processo che aveva servito la mutation, e il worker che esegue le
   // automazioni teneva la regola vecchia fino a 60 s — compreso il caso in cui
   // l'admin la spegne perché sta facendo danni.
-  registerMetamodelCacheClearer(`automation:${prefix}`, clear)
+  registerMetamodelCacheClearer(`automation:${prefix}`, clear, () => { cache.clear() })
   return {
     async get(tenantId, entityType, eventType, loader) {
       const k = key(tenantId, entityType, eventType)

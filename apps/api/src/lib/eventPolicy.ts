@@ -478,7 +478,7 @@ export function invalidateEventPolicyCache(tenantId?: string): void {
  * apriva incident su macchine spente di proposito. E il difetto C-4
  * dell'ondata 7, in una finestra di mezzo minuto.
  */
-registerMetamodelCacheClearer('event_policy', (tenantId?: string) => { invalidateEventPolicyCache(tenantId) })
+registerMetamodelCacheClearer('event_policy', (tenantId?: string) => { invalidateEventPolicyCache(tenantId) }, () => { invalidateEventPolicyCache() })
 
 // ── GraphQL ↔ persistita ─────────────────────────────────────────────────────
 

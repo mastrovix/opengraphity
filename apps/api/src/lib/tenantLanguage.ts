@@ -58,7 +58,7 @@ export function invalidateTenantLanguageCache(tenantId?: string): void {
  * cambio generava incident e notifiche ancora nella lingua vecchia nel
  * processo `events-worker`.
  */
-registerMetamodelCacheClearer('tenant-language', (tenantId: string) => { cache.delete(tenantId) })
+registerMetamodelCacheClearer('tenant-language', (tenantId: string) => { cache.delete(tenantId) }, () => { cache.clear() })
 
 /**
  * La lingua di chi guarda, come la manda il client (`language`). Vuota o assente

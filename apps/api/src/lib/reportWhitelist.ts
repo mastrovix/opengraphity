@@ -92,7 +92,10 @@ export async function getReportWhitelist(tenantId: string): Promise<ReportWhitel
   return value
 }
 
-/** Test hook: drop every cached whitelist. */
+/**
+ * Ogni whitelist in cache, di ogni tenant. La chiamano i test e il canale del
+ * metamodello alla ripresa dopo una sottoscrizione persa (PRB00000003).
+ */
 export function clearReportWhitelistCache(): void {
   cache.clear()
 }
@@ -107,4 +110,4 @@ export function invalidateReportWhitelist(tenantId: string): void {
   cache.delete(tenantId)
 }
 
-registerMetamodelCacheClearer('report-whitelist', invalidateReportWhitelist)
+registerMetamodelCacheClearer('report-whitelist', invalidateReportWhitelist, clearReportWhitelistCache)
