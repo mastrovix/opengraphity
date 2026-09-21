@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { CIHealthPage } from './CIHealthPage'
 import { GET_CI_HEALTH_OVERVIEW, GET_BASE_CI_TYPE, GET_TEAMS, GET_EVENT_POLICY } from '@/graphql/queries'
-import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { renderWithProviders, type GqlMock, attendiURL } from '@/test/utils'
 import { withVocabularyLabels, type VocabularyLabels } from '@/test/vocabularies'
 import { meMock, teamsMock } from '@/test/mocks/gql'
 import type { CIHealthOverview, CIHealthRow } from '@/types/events'
@@ -186,10 +186,10 @@ describe('CIHealthPage', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Team' }), 't1')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging', team: 't1' }))
     // La query parte già in fase di render (variabili viste dal mock prima del commit): la posizione va attesa, non letta al volo.
-    await waitFor(() => expect(location()).toBe('/monitoring/health?env=staging&team=t1'))
+    await attendiURL('/monitoring/health', { env: 'staging', team: 't1' })
     await user.type(screen.getByRole('textbox', { name: 'Search a CI by name' }), 'db')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging', team: 't1', search: 'db' }))
-    await waitFor(() => expect(location()).toBe('/monitoring/health?env=staging&team=t1&q=db'))
+    await attendiURL('/monitoring/health', { env: 'staging', team: 't1', q: 'db' })
   })
 
   it('D·1.7 — l\'URL è la sorgente dei filtri e della pagina: ?health=degraded&type=server&env=staging&team=t1&q=db&page=2 → variabili e controlli allineati', async () => {

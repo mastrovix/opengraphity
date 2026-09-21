@@ -358,7 +358,12 @@ describe('NewSourceWizard — strumenti noti', () => {
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Leave anyway' }))
     expect(screen.getByTestId('location')).toHaveTextContent('/monitoring/sources')
     expect(screen.getByTestId('location')).not.toHaveTextContent('/monitoring/sources/new')
-  })
+  /*
+   * Procedura a più passi con attese vere fra l'uno e l'altro: 30 secondi
+   * perché la CI è più lenta di un portatile, non perché sia lenta lei
+   * (21 set 2026, stessa ragione del test della barra laterale).
+   */
+  }, 30_000)
 
   it('Dynatrace: istruzioni, header Bearer e payload personalizzato con {ImpactedEntities} senza virgolette', async () => {
     const creates: CreateInput[] = []

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { EventsPage } from './EventsPage'
 import { GET_EVENTS, GET_EVENT_STATS, GET_ENTITY_FILTER_FIELDS, GET_MONITORING_SOURCE_REFS, GET_EVENT_POLICY } from '@/graphql/queries'
-import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { renderWithProviders, type GqlMock, attendiURL } from '@/test/utils'
 import { withVocabularyLabels } from '@/test/vocabularies'
 import { meMock } from '@/test/mocks/gql'
 import { serviceMapsMock, criticalCriticalitiesMock, mapRow } from '@/test/mocks/services'
@@ -385,7 +385,7 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
 
     await user.click(chip)
     expect(screen.queryByRole('button', { name: 'Only this CI' })).not.toBeInTheDocument()
-    expect(location()).toBe('/events?status=firing')
+    await attendiURL('/events', { status: 'firing' })
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['firing'] }))
   })
 
@@ -394,13 +394,13 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
     const { user } = renderPage('viewer', seen)
     await screen.findByText('CPU high on web-01')
     await user.click(screen.getByRole('button', { name: 'Resolved' }))
-    expect(location()).toBe('/events?status=resolved')
+    await attendiURL('/events', { status: 'resolved' })
     await user.type(screen.getByLabelText('Search'), 'cpu')
-    await waitFor(() => expect(location()).toBe('/events?status=resolved&q=cpu'))
+    await attendiURL('/events', { status: 'resolved', q: 'cpu' })
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['resolved'], search: 'cpu' }))
 
     await user.click(screen.getByRole('button', { name: /Critical\s*2/ }))
-    expect(location()).toBe('/events?q=cpu&stat=critical')
+    await attendiURL('/events', { q: 'cpu', stat: 'critical' })
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['firing'], severity: ['critical'], search: 'cpu' }))
   })
 

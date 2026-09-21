@@ -194,7 +194,21 @@ describe('Sidebar — una voce accesa sola', () => {
       expect({ pagina: href, accese }).toEqual({ pagina: href, accese: [href] })
       r.unmount()
     }
-  })
+  /*
+   * IL TEMPO, DICHIARATO (21 set 2026).
+   *
+   * Questo test monta la barra una volta per OGNI voce del menu — decine di
+   * render con il metamodello e i provider dentro. Sul mio Mac finisce in
+   * poco; sul runner della CI, che fa girare tutti i pacchetti insieme, ha
+   * misurato 5055 ms contro i 5000 del default, ed era rosso per 55
+   * millisecondi.
+   *
+   * Non si accorcia il test — quello che prova (su ogni pagina è accesa una
+   * voce sola, e la sua) vale esattamente perché le guarda tutte. Si dice
+   * invece quanto tempo gli serve, invece di lasciarlo dipendere da quanto è
+   * scattante la macchina di turno.
+   */
+  }, 60_000)
 
   it('una pagina interna accende la voce da cui discende, e solo quella', async () => {
     const { container } = renderSidebar('admin', { route: '/reports/sla/qualcosa' })

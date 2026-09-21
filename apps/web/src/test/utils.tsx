@@ -8,7 +8,8 @@
  * montato come route parametrica (`/users/:id`) così `useParams` funziona.
  */
 import type { ReactElement, ReactNode } from 'react'
-import { render, type RenderOptions } from '@testing-library/react'
+import { render, screen, waitFor, type RenderOptions } from '@testing-library/react'
+import { expect } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { InMemoryCache } from '@apollo/client'
 import { MockedProvider } from '@apollo/client/testing/react'
@@ -40,6 +41,46 @@ export interface ProvidersOptions {
 export function LocationSpy() {
   const loc = useLocation()
   return <span data-testid="location" hidden>{loc.pathname + loc.search}</span>
+}
+
+/**
+ * L'URL SI ASPETTA, E NON SI CONFRONTA COME STRINGA (21 set 2026).
+ *
+ * Quattro test del web erano rossi sulla CI e verdi su ogni Mac, e il modo
+ * in cui sbagliavano diceva tutto:
+ *
+ *     expected '/events?status=resolved' to be '/events?status=resolved&q=cpu'
+ *
+ * Due difetti in uno, e nessuno dei due era nel prodotto.
+ *
+ * **L'attesa.** `expect(location()).toBe(...)` scritto subito dopo un
+ * `user.click` legge l'URL PRIMA che il router l'abbia aggiornato. Su un Mac
+ * il commit di React arriva in tempo e il test passa; su un runner carico
+ * no. Un test che dipende da quanto è scattante la macchina non prova
+ * niente: dice «forse».
+ *
+ * **L'ordine.** Confrontare `?status=resolved&q=cpu` come stringa fissa
+ * l'ORDINE in cui i parametri sono stati scritti, che non è una promessa
+ * del prodotto verso nessuno. Cambiare l'ordine in cui si costruisce la
+ * query — una cosa che non si vede e non rompe niente — avrebbe tinto di
+ * rosso dei test che non c'entrano.
+ *
+ * Qui si aspetta finché l'URL arriva, e si confrontano i PARAMETRI, non la
+ * stringa. Quello che il prodotto promette è «nell'URL c'è lo stato e c'è la
+ * ricerca», e quello si verifica.
+ */
+export async function attendiURL(
+  percorso: string,
+  parametri: Record<string, string> = {},
+  opzioni?: { timeout?: number },
+): Promise<void> {
+  const atteso = [...Object.entries(parametri)].sort()
+  await waitFor(() => {
+    const grezzo = screen.getByTestId('location').textContent ?? ''
+    const [via, query = ''] = grezzo.split('?')
+    expect(via).toBe(percorso)
+    expect([...new URLSearchParams(query).entries()].sort()).toEqual(atteso)
+  }, opzioni)
 }
 
 /**
