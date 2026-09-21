@@ -111,12 +111,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Il token che GitHub dà già a questo lavoro, invece dell'app
-          # «Claude Code»: senza, l'action prova a scambiare un token d'app e
-          # muore con «401 — Claude Code is not installed on this repository»
-          # (primo giro vero del 21 set 2026). Così non serve installare
-          # niente, e i diritti restano quelli dichiarati qui sopra e basta.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
           # Senza questo, il terzo giro vero (21 set 2026) ha lavorato per 26
           # turni e 0,79 $ e non ha pubblicato NIENTE: né PR, né commento. Il
           # lavoro c'era, il canale per raccontarlo no. `track_progress` apre
