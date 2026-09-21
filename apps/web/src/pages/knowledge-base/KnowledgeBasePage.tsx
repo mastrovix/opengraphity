@@ -13,7 +13,7 @@ import { Pill } from '@/components/ui/Pill'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useValueStyle } from '@/hooks/useValueStyle'
 import { formatDate } from '@/lib/datetime'
-import { colors, alpha } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 
 const GET_CATEGORIES = gql`
   query KBCategories { kbCategories { name count } }
@@ -179,10 +179,16 @@ export function KnowledgeBasePage() {
                 to={`/knowledge-base/${a.slug}`}
                 style={{ display: 'block', textDecoration: 'none', marginBottom: 8 }}
               >
+                {/*
+                  * Il bordo si accendeva con `onMouseEnter`/`onMouseLeave` che
+                  * scrivevano nello stile: chi arriva qui col tasto Tab non ha
+                  * un puntatore e non vedeva NIENTE. Ora sta in `.og-kb-card`
+                  * (index.css), agganciata sia a `:hover` sia al fuoco del
+                  * collegamento che la contiene.
+                  */}
                 <div
-                  style={{ padding: '16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, transition: 'all 150ms' }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)'; (e.currentTarget as HTMLElement).style.boxShadow = `0 2px 8px ${alpha.iconAccent12}` }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = colors.border; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}
+                  className="og-kb-card"
+                  style={{ padding: '16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white }}
                 >
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                     <div style={{ flex: 1 }}>

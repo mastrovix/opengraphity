@@ -8,6 +8,31 @@ export default defineConfig({
     // compiled copies of the tests under dist/ (tsc output of an older
     // tsconfig) would run too, against stale imports.
     exclude: [...configDefaults.exclude, '**/dist/**'],
+    /*
+     * I LOG DEI TEST VANNO DRITTI A stdout (21 set 2026, vitest 5).
+     *
+     * Di suo vitest INTERCETTA `console` dentro il worker e manda ogni riga
+     * al processo principale con una chiamata rpc (`onUserConsoleLog`). La 5
+     * chiude quel canale alla fine di un file di test anche se ha ancora
+     * righe in coda, e allora alza «EnvironmentTeardownError: Closing rpc
+     * while "onUserConsoleLog" was pending» — che la 5, a differenza della 4,
+     * CONTA come errore e fa fallire la corsa.
+     *
+     * Qui succedeva un giro su tre, su un file di test sempre diverso, con
+     * tutti e 422 i file passati: la corsa rossa non diceva niente sul
+     * prodotto. Questa suite logga moltissimo di proposito — quasi ogni riga
+     * e' un messaggio fail-loud del prodotto che il test sta esercitando — e
+     * quella coda non si svuota mai in tempo.
+     *
+     * Senza intercettazione il worker scrive direttamente su stdout: i log
+     * restano visibili (e servono, quando un test cade), ma non passano piu'
+     * da una chiamata che puo' restare a meta'. Cinque corse su cinque
+     * pulite, dove prima ne cadevano tre.
+     *
+     * Il prezzo: le righe dei worker in parallelo si mescolano e perdono il
+     * prefisso «stderr | file > test». Si paga volentieri.
+     */
+    disableConsoleIntercept: true,
     coverage: {
       provider: 'v8',
       reporter: ['text-summary', 'json-summary', 'json', 'html'],

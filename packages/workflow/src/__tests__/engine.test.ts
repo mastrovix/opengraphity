@@ -499,10 +499,17 @@ describe('WorkflowEngine — ingresso nel passo', () => {
  * transizione vera sul motore.
  */
 describe('fase e posizione delle azioni', () => {
-  const eseguite: { tipo: string; actionIndex?: number; phase?: string; position?: number }[] = []
+  /*
+   * Un TIPO, non un valore (21 set 2026): le azioni eseguite le raccoglie il
+   * mock su `globalThis.__azioni`, e questa riga serviva solo a dare un nome
+   * alla loro forma. typescript-eslint 8 lo dice — «assigned a value but only
+   * used as a type» — e ha ragione: un array vuoto che nessuno legge sembra
+   * un accumulatore, e chi legge lo cerca.
+   */
+  type AzioneEseguita = { tipo: string; actionIndex?: number; phase?: string; position?: number }
 
 
-  const azioniEseguite = () => ((globalThis as { __azioni?: typeof eseguite }).__azioni ?? [])
+  const azioniEseguite = () => ((globalThis as { __azioni?: AzioneEseguita[] }).__azioni ?? [])
 
   it('la posizione di un\'azione d\'ingresso NON dipende dalle azioni di uscita del passo che si lascia', async () => {
     (globalThis as { __azioni?: unknown[] }).__azioni = []

@@ -25,7 +25,10 @@
     "jsx": "react-jsx",
 
     /* Paths */
-    "baseUrl": ".",
+    /*
+      Niente `baseUrl`: TypeScript 7 l'ha tolta. Non serviva comunque, i
+      `paths` si risolvono rispetto alla cartella di questo file.
+    */
     "paths": {
       "@/*": ["./src/*"]
     },

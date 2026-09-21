@@ -154,7 +154,6 @@ export function useNotifications() {
       signal:         controller.signal,
       openWhenHidden: true,
 
-      // eslint-disable-next-line @typescript-eslint/require-await
       async onopen(res) {
         if (res.ok) {
           // Riconnessa: quello che è successo prima non era un guasto.
