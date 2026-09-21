@@ -122,9 +122,21 @@ jobs:
           # lavoro c'era, il canale per raccontarlo no. `track_progress` apre
           # il commento di tracciamento su cui l'agente riferisce.
           track_progress: true
-          # `--max-turns` è il tetto di spesa di questo giro: senza, una
-          # indagine che non converge costa finché non se ne accorge qualcuno.
-          claude_args: "--max-turns 40"
+          # IL TETTO DI SPESA, e la misura viene dal vero (21 set 2026).
+          #
+          # A 40 turni il quarto giro si è fermato A METÀ implementazione:
+          # diagnosi giusta e scritta sulla issue, poi `error_max_turns` e
+          # nessuna PR. In questo repository un lavoro fatto bene chiede
+          # test, `pnpm lint`, `pnpm typecheck` e i controlli i18n: 40 turni
+          # bastano per capire, non per finire.
+          #
+          # 120 è il numero che consente di chiudere. Il conto misurato è
+          # ~0,09 $ a turno (3,60 $ per 41 turni), quindi un giro che va fino
+          # in fondo può costare intorno ai 10 $. È un tetto, non una spesa:
+          # un'indagine che finisce in venti turni costa venti turni. Ma è
+          # denaro vero, e per questo il workflow parte solo quando una
+          # persona mette l'etichetta.
+          claude_args: "--max-turns 120"
           prompt: |
             Sei nel repository di OpenGrafo. La issue #${{ github.event.issue.number || inputs.issue }}
             contiene un FASCICOLO D'INDAGINE prodotto dall'Autoanalisi della
