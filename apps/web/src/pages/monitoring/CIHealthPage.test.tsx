@@ -190,7 +190,8 @@ describe('CIHealthPage', () => {
     await user.type(screen.getByRole('textbox', { name: 'Search a CI by name' }), 'db')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging', team: 't1', search: 'db' }))
     await attendiURL('/monitoring/health', { env: 'staging', team: 't1', q: 'db' })
-  })
+  // Tre interazioni con 300 ms di debounce in mezzo: il tempo si dichiara.
+  }, 30_000)
 
   it('D·1.7 — l\'URL è la sorgente dei filtri e della pagina: ?health=degraded&type=server&env=staging&team=t1&q=db&page=2 → variabili e controlli allineati', async () => {
     const seen: Vars[] = []
@@ -212,7 +213,7 @@ describe('CIHealthPage', () => {
     renderPage('operator', { seen, route: '/monitoring/health?page=3' })
     await screen.findByRole('heading', { name: 'CI health' })
     await waitFor(() => expect(seen.some((v) => v.offset === 100)).toBe(true))
-    await waitFor(() => expect(location()).toBe('/monitoring/health'))
+    await attendiURL('/monitoring/health')
     await waitFor(() => expect(seen.at(-1)!.offset).toBe(0))
   })
 
@@ -221,7 +222,7 @@ describe('CIHealthPage', () => {
     const btn = await screen.findByRole('button', { name: 'View on the map' })
     expect(btn).toHaveAttribute('title', 'View db-01 on the map')
     await user.click(btn)
-    expect(location()).toBe('/topology?health=1&ciId=ci-1')
+    await attendiURL('/topology', { health: '1', ciId: 'ci-1' })
   })
 
   it('senza righe il pulsante "Vedi sulla mappa" è disabilitato con il motivo', async () => {

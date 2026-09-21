@@ -395,14 +395,46 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
     await screen.findByText('CPU high on web-01')
     await user.click(screen.getByRole('button', { name: 'Resolved' }))
     await attendiURL('/events', { status: 'resolved' })
+    /*
+     * DUE ASSERZIONI E NON UNA (21 set 2026), e il motivo è diagnostico.
+     *
+     * Su CI questo punto falliva con l'URL fermo a `?status=resolved`, senza
+     * la ricerca — e non si capiva se fosse la CASELLA a non ricevere il
+     * testo o il DEBOUNCE a non scriverlo nell'URL. Le due cose si rompono
+     * per ragioni diverse e si correggono in due posti diversi, quindi il
+     * test dice quale delle due è.
+     *
+     * Riprodotto in locale non riesce: cinque giri di fila verdi, e verdi
+     * anche forzando 400 ms fra un tasto e l'altro — più del debounce.
+     */
     await user.type(screen.getByLabelText('Search'), 'cpu')
-    await attendiURL('/events', { status: 'resolved', q: 'cpu' })
+    await waitFor(() => expect(screen.getByLabelText('Search')).toHaveValue('cpu'))
+    /*
+     * QUINDICI SECONDI, e sono una domanda (21 set 2026).
+     *
+     * La riga qui sopra ha già risposto alla prima metà: sulla CI il testo
+     * ARRIVA nella casella. Quello che non arriva è l'URL — il debounce di
+     * 300 ms non scrive `q=cpu` entro quattro secondi. Intermittente: un
+     * giro di CI su due passa, e in locale non cade mai (cinque giri di
+     * fila, e nemmeno forzando 400 ms fra un tasto e l'altro).
+     *
+     * Se con quindici secondi passa, è lentezza del runner e qui finisce.
+     * Se NON passa nemmeno così, allora quel timer su una macchina carica
+     * non scatta affatto — e non è un test da aggiustare, è un difetto del
+     * prodotto: chi cerca da una macchina lenta non otterrebbe niente. In
+     * quel caso si guarda `EventsPage.tsx:346`, l'effetto del debounce, e
+     * le sue dipendenze (`updateFilter` → `filter` → `[searchParams,
+     * clock]`).
+     */
+    await attendiURL('/events', { status: 'resolved', q: 'cpu' }, { timeout: 15_000 })
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['resolved'], search: 'cpu' }))
 
     await user.click(screen.getByRole('button', { name: /Critical\s*2/ }))
     await attendiURL('/events', { q: 'cpu', stat: 'critical' })
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['firing'], severity: ['critical'], search: 'cpu' }))
-  })
+  // Tre interazioni con 300 ms di debounce in mezzo: il tempo si dichiara,
+  // invece di lasciarlo dipendere da quanto è carico il runner.
+  }, 30_000)
 
   it('CONTRATTO RINEGOZIATO (G-EVT-3): ?stat=resolved24h filtra su resolvedSince, come conta il riquadro', async () => {
     /**
