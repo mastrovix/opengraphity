@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM node:20-slim AS builder
+FROM node:26-slim AS builder
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 ARG VITE_GRAPHQL_URL=/graphql
 ARG VITE_KEYCLOAK_URL
