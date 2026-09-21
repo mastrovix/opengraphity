@@ -5,13 +5,18 @@
  * index. Truth-telling contract: `ready: false` when the embedding has not
  * been computed yet (async pipeline) — never conflated with "no results".
  */
+import { kbArticlePublishedCypher } from '../../lib/kbPublished.js'
 import { NotFoundError } from '../../lib/errors.js'
-import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
+import { getSession, runQueryOne, toNumber } from '@opengraphity/neo4j'
+import { vectorSearchForTenant } from '../../lib/vectorSearch.js'
 import type { GraphQLContext } from '../../context.js'
 import { vectorIndexName } from '../../services/embeddings.js'
+import { aiFeatureEnabled } from '../../lib/aiSettings.js'
 import { suggestTriage } from '../../services/triageService.js'
 import { draftResolutionNotes, problemCandidates as findProblemCandidates, draftKbContent } from '../../services/postIncidentService.js'
 import { createKBArticle } from './knowledgeBase.js'
+import { collegaArticoloAIncident } from '../../lib/kbCoverage.js'
+import { logger } from '../../lib/logger.js'
 
 const num = toNumber
 
@@ -38,33 +43,32 @@ async function similarIncidents(
   ctx: GraphQLContext,
 ) {
   const limit = Math.min(Math.max(args.limit ?? 5, 1), 20)
+  // Embedding spenti dall'organizzazione (ondata 6): lo si dice, non «non ancora pronto».
+  if (!(await aiFeatureEnabled(ctx.tenantId, 'embeddings'))) return { ready: false, disabled: true, items: [] }
   const embedding = await loadEmbedding(args.incidentId, ctx.tenantId)
-  if (!embedding) return { ready: false, items: [] }
+  if (!embedding) return { ready: false, disabled: false, items: [] }
 
   const session = getSession(undefined, 'READ')
   try {
-    // Over-fetch: the index is cross-tenant and includes the source incident,
-    // both filtered out below.
-    const rows = await runQuery<{
+    // L'indice è cross-tenant e contiene l'incident di partenza: K cresce
+    // finché i vicini DEL TENANT bastano (revisione totale · B-12).
+    const rows = await vectorSearchForTenant<{
       id: string; number: string | null; title: string; status: string
       severity: string; createdAt: string | null; resolvedAt: string | null; score: number
-    }>(session, `
-      CALL db.index.vector.queryNodes($index, ${limit * 4 + 10}, $embedding)
-      YIELD node, score
-      WHERE node.tenant_id = $tenantId AND node.id <> $incidentId
-      RETURN node.id AS id, node.number AS number, node.title AS title,
-             node.status AS status, node.severity AS severity,
-             node.created_at AS createdAt, node.resolved_at AS resolvedAt,
-             score
-      ORDER BY score DESC
-      LIMIT ${limit}
-    `, {
+    }>(session, {
       index: vectorIndexName('Incident'),
       embedding,
       tenantId: ctx.tenantId,
-      incidentId: args.incidentId,
+      limit,
+      where: 'node.id <> $incidentId',
+      returns: `node.id AS id, node.number AS number, node.title AS title,
+             node.status AS status, node.severity AS severity,
+             node.created_at AS createdAt, node.resolved_at AS resolvedAt,
+             score`,
+      params: { incidentId: args.incidentId },
+      what: 'similarIncidents',
     })
-    return { ready: true, items: rows.map(r => ({ ...r, score: num(r.score) })) }
+    return { ready: true, disabled: false, items: rows.map(r => ({ ...r, score: num(r.score) })) }
   } finally {
     await session.close()
   }
@@ -76,27 +80,25 @@ async function suggestedArticles(
   ctx: GraphQLContext,
 ) {
   const limit = Math.min(Math.max(args.limit ?? 3, 1), 10)
+  if (!(await aiFeatureEnabled(ctx.tenantId, 'embeddings'))) return { ready: false, disabled: true, items: [] }
   const embedding = await loadEmbedding(args.incidentId, ctx.tenantId)
-  if (!embedding) return { ready: false, items: [] }
+  if (!embedding) return { ready: false, disabled: false, items: [] }
 
   const session = getSession(undefined, 'READ')
   try {
-    const rows = await runQuery<{
+    const rows = await vectorSearchForTenant<{
       id: string; title: string; slug: string | null; category: string | null; score: number
-    }>(session, `
-      CALL db.index.vector.queryNodes($index, ${limit * 4 + 10}, $embedding)
-      YIELD node, score
-      WHERE node.tenant_id = $tenantId AND node.status = 'published'
-      RETURN node.id AS id, node.title AS title, node.slug AS slug,
-             node.category AS category, score
-      ORDER BY score DESC
-      LIMIT ${limit}
-    `, {
+    }>(session, {
       index: vectorIndexName('KBArticle'),
       embedding,
       tenantId: ctx.tenantId,
+      limit,
+      where: kbArticlePublishedCypher('node'),
+      returns: `node.id AS id, node.title AS title, node.slug AS slug,
+             node.category AS category, score`,
+      what: 'suggestedArticles',
     })
-    return { ready: true, items: rows.map(r => ({ ...r, score: num(r.score) })) }
+    return { ready: true, disabled: false, items: rows.map(r => ({ ...r, score: num(r.score) })) }
   } finally {
     await session.close()
   }
@@ -134,7 +136,32 @@ async function createKbDraftFromIncident(
 ): Promise<unknown> {
   const content = await draftKbContent(ctx.tenantId, args.incidentId)
   // Reuses the standard KB creation path: slug, initial (draft) workflow step, audit.
-  return createKBArticle(null, { title: content.title, body: content.body, category: content.category, tags: content.tags }, ctx)
+  const article = await createKBArticle(
+    null, { title: content.title, body: content.body, category: content.category, tags: content.tags }, ctx,
+  ) as { id?: unknown }
+
+  /*
+   * DA DOVE VIENE QUESTO ARTICOLO (20 set 2026).
+   *
+   * Fin qui l'informazione più preziosa di questa mutation veniva buttata un
+   * istante dopo essere stata usata: sapevamo da quale incident stavamo
+   * scrivendo e non lo scrivevamo da nessuna parte. Senza, «questa categoria
+   * di problemi ricorre e non ha un articolo» non era una domanda
+   * rispondibile — ed era il prerequisito mancante dell'ondata 6.
+   *
+   * Non alza e non è dentro la transazione dell'articolo: un collegamento
+   * mancato è un'informazione persa, non un motivo per togliere all'utente
+   * l'articolo che aveva chiesto.
+   */
+  const id = typeof article.id === 'string' ? article.id : null
+  if (id) {
+    const collegato = await collegaArticoloAIncident(ctx.tenantId, id, args.incidentId)
+    if (!collegato) {
+      logger.warn({ module: 'kb', tenantId: ctx.tenantId, articleId: id, incidentId: args.incidentId },
+        'kb: article created but not linked to its incident — coverage will not see it')
+    }
+  }
+  return article
 }
 
 export const similarityResolvers = {

@@ -159,7 +159,9 @@ export const integrationsSchema = `
   input CreateApiKeyInput {
     name: String!
     permissions: [String!]!
-    rateLimit: Int
+    """Richieste al minuto, obbligatorio (1..100000)."""
+    rateLimit: Int!
+    """Vuoto o null = nessuna scadenza. Una data AAAA-MM-GG vale fino alla fine di quel giorno nel fuso dell'organizzazione; un istante ISO vale così com'è."""
     expiresAt: String
   }
 

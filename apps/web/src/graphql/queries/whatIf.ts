@@ -10,7 +10,7 @@ export const WHAT_IF_ANALYSIS = gql`
       impactedCIs { id name type environment status impactLevel impactPath isRedundant }
       impactedServices { id name type impactLevel impactPath isRedundant }
       impactedTeams { id name role impactedCICount }
-      totalImpacted riskScore hasRedundancy openIncidents summary
+      totalImpacted riskScore hasRedundancy openIncidents
     }
   }
 `

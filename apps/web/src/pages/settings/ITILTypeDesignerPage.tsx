@@ -7,7 +7,7 @@ import { useITILTypeDesigner } from './useITILTypeDesigner'
 import type { Tab } from './useITILTypeDesigner'
 import { ITILTypeSettings } from './ITILTypeSettings'
 import { ITILTypeFields } from './ITILTypeFields'
-import { ITILTypeCIRelations } from './ITILTypeCIRelations'
+import { ITILTypeCIExclusions } from './ITILTypeCIExclusions'
 import { ITILTypeRules } from './ITILTypeRules'
 import { ITILTypePreview } from './ITILTypePreview'
 import { lookupOrError, colors, palette } from '@/lib/tokens'
@@ -80,24 +80,24 @@ export function ITILTypeDesignerPage() {
                       <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{selectedType.label}</div>
                       <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{selectedType.name}</div>
                     </div>
-                    <button type="button" style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: 'default', background: palette.success.tint, color: 'var(--color-success)', fontWeight: 500 }}>● active</button>
+                    <span style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 100, fontSize: 'var(--font-size-body)', background: palette.success.tint, color: 'var(--color-success)', fontWeight: 500 }}>● {t('common.active')}</span>
                   </div>
                 </div>
                 {/* Tabs */}
                 <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 20px' }}>
-                  {(['settings', 'fields', 'relations', 'rules', 'preview'] as Tab[]).map((tab) => (
+                  {(['settings', 'fields', 'ciExclusions', 'rules', 'preview'] as Tab[]).map((tab) => (
                     <button type="button" key={tab} onClick={() => h.handleTabChange(tab)}
                       style={{ padding: '10px 14px', border: 'none', borderBottom: h.activeTab === tab ? '2px solid var(--color-brand)' : '2px solid transparent', marginBottom: -1, background: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer', color: h.activeTab === tab ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: h.activeTab === tab ? 600 : 400 }}>
-                      {t(`citypeDesigner.tab.${tab}`)}
+                      {tab === 'ciExclusions' ? t('itilDesigner.ciExclusions.tab') : t(`citypeDesigner.tab.${tab}`)}
                     </button>
                   ))}
                 </div>
                 {/* Tab content */}
                 <div style={{ padding: '20px 24px' }}>
                   {h.activeTab === 'settings' && <ITILTypeSettings settingsForm={settingsForm} setSettingsForm={h.setSettingsForm} settingsSaving={h.settingsSaving} onSaveSettings={h.handleSaveSettings} FallbackIcon={FallbackIcon} />}
-                  {h.activeTab === 'fields' && <ITILTypeFields typeId={selectedType.id} fields={selectedType.fields} editingFieldId={h.editingFieldId} setEditingFieldId={h.setEditingFieldId} addingField={h.addingField} setAddingField={h.setAddingField} onSaveField={h.handleSaveField} onDeleteField={h.handleDeleteField} enumTypesData={h.enumTypesData} />}
-                  {h.activeTab === 'relations' && <ITILTypeCIRelations typeName={selectedType.name} rules={h.ciRulesData?.itilCIRelationRules ?? []} ciTypes={h.ciTypesData?.ciTypes ?? []} showRelForm={h.showRelForm} setShowRelForm={h.setShowRelForm} relForm={h.relForm} setRelForm={h.setRelForm} onCreateRule={h.handleCreateRule} onDeleteRule={h.handleDeleteRule} />}
-                  {h.activeTab === 'rules' && <ITILTypeRules entityType={selectedType.name} fields={selectedType.fields.map((f) => ({ name: f.name, label: f.label, fieldType: f.fieldType, enumValues: f.enumValues }))} workflowSteps={h.ITIL_WORKFLOW_STEPS[selectedType.name] ?? []} />}
+                  {h.activeTab === 'fields' && <ITILTypeFields typeId={selectedType.id} typeName={selectedType.name} fields={selectedType.fields} editingFieldId={h.editingFieldId} setEditingFieldId={h.setEditingFieldId} addingField={h.addingField} setAddingField={h.setAddingField} onSaveField={h.handleSaveField} onDeleteField={h.handleDeleteField} enumTypesData={h.enumTypesData} />}
+                  {h.activeTab === 'ciExclusions' && <ITILTypeCIExclusions ticketType={selectedType.name} ciTypes={h.ciTypesData?.ciTypes ?? []} />}
+                  {h.activeTab === 'rules' && <ITILTypeRules entityType={selectedType.name} fields={selectedType.fields.map((f) => ({ name: f.name, label: f.label, fieldType: f.fieldType, enumValues: f.enumValues, enumTypeName: f.enumTypeName }))} />}
                   {h.activeTab === 'preview' && <ITILTypePreview selectedType={selectedType} setActiveTab={h.handleTabChange} />}
                 </div>
               </div>

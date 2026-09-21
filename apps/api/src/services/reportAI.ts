@@ -5,6 +5,7 @@
  */
 import type Anthropic from '@anthropic-ai/sdk'
 import { runReportAgent } from './reportAgent.js'
+import { assertAIFeature } from '../lib/aiSettings.js'
 
 export {
   REPORT_AI_LIMITS, ToolLoopBudget, runGuardedCypherTool,
@@ -32,6 +33,7 @@ export async function streamReportAI(
   onChunk: (text: string) => void,
   onToolUse: (description: string) => void,
 ): Promise<string> {
+  await assertAIFeature(tenantId, 'reportAnalysis')
   return runReportAgent({
     tenantId,
     messages: toAgentMessages(history, question),
@@ -47,5 +49,6 @@ export async function callReportAI(
   history: HistoryMessage[],
   question: string,
 ): Promise<string> {
+  await assertAIFeature(tenantId, 'reportAnalysis')
   return runReportAgent({ tenantId, messages: toAgentMessages(history, question) })
 }

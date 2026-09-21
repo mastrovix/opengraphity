@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
+import { MAX_ENVIRONMENT_WEIGHT } from '@opengraphity/types'
 import { AlertTriangle, Save, Table2, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
@@ -26,9 +27,13 @@ import { PageTitle } from '@/components/PageTitle'
 import { Button } from '@/components/Button'
 import { Select, Input } from '@/components/ui/FormControls'
 import { inputS, labelS } from '@/components/ui/styles'
-import { GET_DOMAIN_MATRICES, GET_PRE_APPROVED_CHANGE_TYPES, GET_RISK_BAND_THRESHOLDS } from '@/graphql/queries'
-import { UPDATE_DOMAIN_MATRIX, UPDATE_PRE_APPROVED_CHANGE_TYPES, UPDATE_RISK_BAND_THRESHOLDS } from '@/graphql/mutations'
+import { GET_DOMAIN_MATRICES, GET_PRE_APPROVED_CHANGE_TYPES, GET_RISK_BAND_THRESHOLDS, GET_CHANGE_ENVIRONMENT_WEIGHT } from '@/graphql/queries'
+import { UPDATE_DOMAIN_MATRIX, UPDATE_PRE_APPROVED_CHANGE_TYPES, UPDATE_RISK_BAND_THRESHOLDS, UPDATE_CHANGE_ENVIRONMENT_WEIGHT } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
+import { formatDateTime } from '@/lib/datetime'
+import { ImpactWeightsCard } from './ImpactWeightsCard'
+import { showError } from '@/lib/showError'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
 // ── Tipi ──────────────────────────────────────────────────────────────────────
 
@@ -67,13 +72,38 @@ const warnBox: React.CSSProperties = {
 
 // ── Una matrice ───────────────────────────────────────────────────────────────
 
+/**
+ * Giro UI del 15 set 2026 · U-20: righe, colonne e tendine mostravano i valori
+ * interni («high», «risk_band»). Qui le etichette del Dizionario; un valore che
+ * il vocabolario non ha resta com'è (è il dato vero, e la pagina lo segnala).
+ */
+function useVocabularyText() {
+  const { labelOf, vocabularyLabelOf } = useDomainVocabularies()
+  return {
+    vocab: (name: string) => vocabularyLabelOf(name) || name,
+    value: (vocabulary: string, value: string) => labelOf(vocabulary, value) || value,
+  }
+}
+
 function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
   const { t } = useTranslation()
+  const text = useVocabularyText()
+  const [inVocab, colVocab] = [matrix.inputs[0] ?? '', matrix.inputs[1] ?? '']
   const [draft, setDraft] = useState<Draft>({})
 
-  // Quando il server ristampa la matrice (salvataggio, o vocabolario cambiato)
-  // le modifiche locali non hanno più senso: si riparte dal dato vero.
-  useEffect(() => { setDraft({}) }, [matrix])
+  /**
+   * Le modifiche locali si scartano quando la matrice CAMBIA DAVVERO, non a
+   * ogni oggetto nuovo (revisione totale · G-5). `DomainMatrix` non ha `id`,
+   * quindi ogni `refetch` produceva oggetti nuovi per TUTTE le matrici: dopo
+   * il salvataggio di una card, le celle modificate e non salvate delle altre
+   * tornavano al valore vecchio in silenzio. Il confronto è sul CONTENUTO
+   * (le celle salvate), non sull'identità dell'oggetto.
+   */
+  const matrixFingerprint = useMemo(
+    () => JSON.stringify([matrix.kind, matrix.cells.map((c) => [c.key, c.value]), matrix.outputValues]),
+    [matrix.kind, matrix.cells, matrix.outputValues],
+  )
+  useEffect(() => { setDraft({}) }, [matrixFingerprint])
 
   const valueOf = (cell: Cell): string => draft[cell.key] ?? cell.value ?? ''
 
@@ -86,7 +116,7 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
   const [save, { loading }] = useMutation(UPDATE_DOMAIN_MATRIX, {
     refetchQueries: [GET_DOMAIN_MATRICES],
     onCompleted: () => { toast.success(t('pages.domainMatrices.saved')); setDraft({}) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const missingNow = matrix.cells
@@ -123,7 +153,7 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
         {valueOf(cell) !== '' && !matrix.outputValues.includes(valueOf(cell)) && (
           <option value={valueOf(cell)} disabled>{t('pages.domainMatrices.outOfVocabulary', { value: valueOf(cell) })}</option>
         )}
-        {matrix.outputValues.map((v) => <option key={v} value={v}>{v}</option>)}
+        {matrix.outputValues.map((v) => <option key={v} value={v}>{text.value(matrix.output, v)}</option>)}
       </Select>
     )
   }
@@ -147,7 +177,7 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
         {' · '}
         {matrix.isDefault
           ? t('pages.domainMatrices.factory')
-          : t('pages.domainMatrices.editedAt', { at: matrix.updatedAt ?? '—' })}
+          : t('pages.domainMatrices.editedAt', { at: matrix.updatedAt ? formatDateTime(matrix.updatedAt) : '—' })}
       </p>
 
       {missingNow.length > 0 && (
@@ -168,21 +198,21 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
         {twoDimensions ? (
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <caption style={{ captionSide: 'top', textAlign: 'left', ...th }}>
-              {t('pages.domainMatrices.tableCaption', { rows: matrix.inputs[0], cols: matrix.inputs[1] })}
+              {t('pages.domainMatrices.tableCaption', { rows: text.vocab(inVocab), cols: text.vocab(colVocab) })}
             </caption>
             <thead>
               <tr>
-                <th scope="col" style={th}>{matrix.inputs[0]}</th>
-                {colValues.map((c) => <th key={c} scope="col" style={th}>{c}</th>)}
+                <th scope="col" style={th}>{text.vocab(inVocab)}</th>
+                {colValues.map((c) => <th key={c} scope="col" style={th}>{text.value(colVocab, c)}</th>)}
               </tr>
             </thead>
             <tbody>
               {rowValues.map((r) => (
                 <tr key={r}>
-                  <th scope="row" style={{ ...th, fontWeight: 500 }}>{r}</th>
+                  <th scope="row" style={{ ...th, fontWeight: 500 }}>{text.value(inVocab, r)}</th>
                   {colValues.map((c) => (
                     <td key={c} style={td}>
-                      {cellSelect(byKey.get(`${r}|${c}`), `${matrix.inputs[0]!} ${r}, ${matrix.inputs[1]!} ${c}`)}
+                      {cellSelect(byKey.get(`${r}|${c}`), `${text.vocab(inVocab)} ${text.value(inVocab, r)}, ${text.vocab(colVocab)} ${text.value(colVocab, c)}`)}
                     </td>
                   ))}
                 </tr>
@@ -195,15 +225,15 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
           <table style={{ borderCollapse: 'collapse', width: '100%' }}>
             <thead>
               <tr>
-                <th scope="col" style={th}>{matrix.inputs[0]}</th>
-                <th scope="col" style={th}>{matrix.output}</th>
+                <th scope="col" style={th}>{text.vocab(inVocab)}</th>
+                <th scope="col" style={th}>{text.vocab(matrix.output)}</th>
               </tr>
             </thead>
             <tbody>
               {(matrix.inputValues[0] ?? []).map((v) => (
                 <tr key={v}>
-                  <th scope="row" style={{ ...th, fontWeight: 500 }}>{v}</th>
-                  <td style={td}>{cellSelect(byKey.get(v), `${matrix.inputs[0]!} ${v}`)}</td>
+                  <th scope="row" style={{ ...th, fontWeight: 500 }}>{text.value(inVocab, v)}</th>
+                  <td style={td}>{cellSelect(byKey.get(v), `${text.vocab(inVocab)} ${text.value(inVocab, v)}`)}</td>
                 </tr>
               ))}
             </tbody>
@@ -239,6 +269,7 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
 
 function PreApprovedChangeTypesCard() {
   const { t } = useTranslation()
+  const text = useVocabularyText()
   const { data, loading, error } = useQuery<{ preApprovedChangeTypes: { types: string[]; vocabulary: string[] } }>(
     GET_PRE_APPROVED_CHANGE_TYPES, { fetchPolicy: 'cache-and-network' },
   )
@@ -253,7 +284,7 @@ function PreApprovedChangeTypesCard() {
   const [savePreApproved, { loading: saving }] = useMutation(UPDATE_PRE_APPROVED_CHANGE_TYPES, {
     refetchQueries: [GET_PRE_APPROVED_CHANGE_TYPES],
     onCompleted: () => { toast.success(t('pages.domainMatrices.preApproved.saved')); setDraft(null) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const toggle = (value: string) =>
@@ -277,7 +308,7 @@ function PreApprovedChangeTypesCard() {
                   onChange={() => toggle(value)}
                   style={{ accentColor: 'var(--color-brand)' }}
                 />
-                {value}
+                {text.value('change_type', value)}
               </label>
             ))}
           </div>
@@ -307,6 +338,7 @@ interface RiskBandThreshold { band: string; upTo: number }
 
 function RiskBandsCard() {
   const { t } = useTranslation()
+  const text = useVocabularyText()
   const { data, loading, error } = useQuery<{ riskBandThresholds: { thresholds: RiskBandThreshold[]; vocabulary: string[]; isDefault: boolean } }>(
     GET_RISK_BAND_THRESHOLDS, { fetchPolicy: 'cache-and-network' },
   )
@@ -318,7 +350,7 @@ function RiskBandsCard() {
   const [saveRiskBands, { loading: savingBands }] = useMutation(UPDATE_RISK_BAND_THRESHOLDS, {
     refetchQueries: [GET_RISK_BAND_THRESHOLDS],
     onCompleted: () => { toast.success(t('pages.domainMatrices.riskBands.saved')); setDraft(null) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const setRow = (i: number, patch: Partial<RiskBandThreshold>) =>
@@ -358,10 +390,10 @@ function RiskBandsCard() {
                   value={row.band}
                   onChange={(ev) => setRow(i, { band: ev.target.value })}
                   style={{ flex: 1 }}
-                  aria-label={t('pages.domainMatrices.riskBands.band')}
+                  aria-label={t('pages.domainMatrices.riskBands.bandN', { n: i + 1 })}
                 >
                   <option value="">—</option>
-                  {saved.vocabulary.map((v) => <option key={v} value={v}>{v}</option>)}
+                  {saved.vocabulary.map((v) => <option key={v} value={v}>{text.value('risk_band', v)}</option>)}
                 </Select>
                 <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight }}>
                   {t('pages.domainMatrices.riskBands.upTo')}
@@ -371,11 +403,14 @@ function RiskBandsCard() {
                   value={String(row.upTo)}
                   onChange={(ev) => setRow(i, { upTo: Number(ev.target.value) })}
                   style={{ width: 90 }}
-                  aria-label={t('pages.domainMatrices.riskBands.upTo')}
+                  // U-20: tre campi con lo stesso nome «Up to»: ognuno dice di quale fascia è.
+                  aria-label={row.band
+                    ? t('pages.domainMatrices.riskBands.upToBand', { band: text.value('risk_band', row.band) })
+                    : t('pages.domainMatrices.riskBands.upToN', { n: i + 1 })}
                 />
                 <button type="button" onClick={() => removeRow(i)}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', display: 'flex' }}
-                  aria-label={t('pages.domainMatrices.riskBands.removeBand', { band: row.band })}>
+                  aria-label={t('pages.domainMatrices.riskBands.removeBand', { band: row.band ? text.value('risk_band', row.band) : String(i + 1) })}>
                   <X size={13} aria-hidden="true" />
                 </button>
               </div>
@@ -387,10 +422,64 @@ function RiskBandsCard() {
             <Button variant="secondary" onClick={addRow}>
               <Plus size={14} /> {t('pages.domainMatrices.riskBands.addBand')}
             </Button>
-            <Button onClick={() => void saveRiskBands({ variables: { entries: current } })} disabled={!canSave}>
+            <Button onClick={() => void saveRiskBands({ variables: { entries: current.map(({ band, upTo }) => ({ band, upTo })) } })} disabled={!canSave}>
               <Save size={14} /> {t('common.save')}
             </Button>
           </div>
+        </>
+      )}
+    </SectionCard>
+  )
+}
+
+// Giro nel browser del 14 set 2026 (#32): il peso dell'ambiente era 5 nel
+// codice, contro 1 per domanda, e ogni change in produzione risultava ad alto
+// rischio qualunque fossero le risposte.
+// G-25: il tetto è quello dell'API (@opengraphity/types), non una copia.
+
+function EnvironmentWeightCard() {
+  const { t } = useTranslation()
+  const { data, loading, error } = useQuery<{ changeEnvironmentWeight: { weight: number; isDefault: boolean } }>(
+    GET_CHANGE_ENVIRONMENT_WEIGHT, { fetchPolicy: 'cache-and-network' },
+  )
+  const [draft, setDraft] = useState<string | null>(null)
+  const saved = data?.changeEnvironmentWeight
+  const current = draft ?? (saved ? String(saved.weight) : '')
+  const parsed = Number(current)
+  const valid = current !== '' && Number.isInteger(parsed) && parsed >= 0 && parsed <= MAX_ENVIRONMENT_WEIGHT
+  const [saveWeight, { loading: savingWeight }] = useMutation(UPDATE_CHANGE_ENVIRONMENT_WEIGHT, {
+    refetchQueries: [GET_CHANGE_ENVIRONMENT_WEIGHT],
+    onCompleted: () => { toast.success(t('pages.domainMatrices.environmentWeight.saved')); setDraft(null) },
+    onError: (e) => showError(e),
+  })
+
+  return (
+    <SectionCard title={t('pages.domainMatrices.environmentWeight.title')} defaultOpen>
+      <p style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, marginTop: 0 }}>
+        {t('pages.domainMatrices.environmentWeight.help', { max: MAX_ENVIRONMENT_WEIGHT })}
+      </p>
+      {loading && !data && <p>{t('common.loading')}</p>}
+      {error && <p style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
+      {saved && (
+        <>
+          {saved.isDefault && (
+            <p style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight, marginTop: 0 }}>
+              {t('pages.domainMatrices.environmentWeight.usingFactory')}
+            </p>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Input
+              type="number" min={0} max={MAX_ENVIRONMENT_WEIGHT} step={1}
+              value={current}
+              onChange={(ev) => setDraft(ev.target.value)}
+              style={{ width: 90 }}
+              aria-label={t('pages.domainMatrices.environmentWeight.title')}
+            />
+            <Button onClick={() => void saveWeight({ variables: { weight: parsed } })} disabled={draft === null || !valid || savingWeight}>
+              <Save size={14} /> {t('common.save')}
+            </Button>
+          </div>
+          {!valid && <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger-text)' }}>{t('pages.domainMatrices.environmentWeight.range', { max: MAX_ENVIRONMENT_WEIGHT })}</p>}
         </>
       )}
     </SectionCard>
@@ -419,6 +508,8 @@ export function DomainMatricesPage() {
       {error && <p style={{ color: 'var(--color-danger-text)' }}>{error.message}</p>}
       {data?.domainMatrices.map((m) => <MatrixCard key={m.kind} matrix={m} />)}
       <RiskBandsCard />
+      <EnvironmentWeightCard />
+      <ImpactWeightsCard />
       <PreApprovedChangeTypesCard />
     </PageContainer>
   )

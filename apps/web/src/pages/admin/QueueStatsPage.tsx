@@ -9,6 +9,8 @@ import { GET_QUEUE_STATS, GET_QUEUE_JOBS } from '@/graphql/queries'
 import { RETRY_QUEUE_JOB } from '@/graphql/mutations'
 import { alpha, colors, fontSize, fontWeight, layoutPalette, palette } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
+import { showError } from '@/lib/showError'
+import { motivoLeggibile } from '@/lib/failureReason'
 
 interface QueueJobCounts {
   waiting: number
@@ -91,6 +93,21 @@ function JobDetail({ job, retryable, onRetry, retrying }: { job: QueueJob; retry
   let prettyData = job.data
   try { prettyData = JSON.stringify(JSON.parse(job.data), null, 2) } catch { /* keep raw */ }
 
+  /**
+   * Un job che NON porta dati. Metà delle code della piattaforma gira su
+   * passate periodiche — `events-maintenance`, il giro dei servizi, il backup,
+   * il tick del digest, il controllo dei report, la scansione delle anomalie —
+   * e una passata e un battito, non un messaggio: il suo payload e `{}` per
+   * costruzione, non perche qualcosa si sia perso per strada.
+   *
+   * Prima la scheda offriva comunque il pulsante «Payload», che apriva una
+   * graffa vuota. Il proprietario, che nelle code con job conservati vede
+   * quasi solo passate periodiche, ne ha concluso che i payload fossero
+   * «sempre vuoti» — cioe che il prodotto li stesse perdendo. Ora la scheda
+   * lo DICE, e il pulsante resta solo dove c'e davvero qualcosa da aprire.
+   */
+  const senzaDati = ['{}', '', 'null', '[]'].includes(prettyData.trim())
+
   return (
     <div style={{ padding: '12px 16px', background: 'var(--color-slate-bg)', borderTop: '1px solid var(--border)', fontSize: 'var(--font-size-body)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 12 }}>
@@ -130,17 +147,30 @@ function JobDetail({ job, retryable, onRetry, retrying }: { job: QueueJob; retry
             <AlertCircle size={13} color={palette.danger.base} />
             <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 700, color: 'var(--color-danger)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('pages.queueStats.error')}</span>
           </div>
-          <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', wordBreak: 'break-all' }}>{job.failedReason}</code>
+          {/**
+            * La stessa causa ripetuta per ogni passata si scioglie in lettura
+            * (lib/failureReason.ts): `failedReason` non cambia piu dopo il
+            * fallimento, quindi un job fallito prima del rimedio porta ancora
+            * il testo lungo. Il testo originale resta a portata di mano nel
+            * suggerimento: nulla viene buttato.
+            */}
+          <code title={job.failedReason} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', wordBreak: 'break-all' }}>{motivoLeggibile(job.failedReason)}</code>
         </div>
       )}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button type="button"
-          onClick={() => setShowPayload((p) => !p)}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: palette.neutral.textStrong }}
-        >
-          {showPayload ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {t('pages.queueStats.payload')}
-        </button>
+        {senzaDati ? (
+          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', padding: '4px 10px' }}>
+            {t('pages.queueStats.noPayload')}
+          </span>
+        ) : (
+          <button type="button"
+            onClick={() => setShowPayload((p) => !p)}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: palette.neutral.textStrong }}
+          >
+            {showPayload ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {t('pages.queueStats.payload')}
+          </button>
+        )}
         {job.stacktrace.length > 0 && (
           <button type="button"
             onClick={() => setShowStack((p) => !p)}
@@ -202,7 +232,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
       void refetchJobs?.()
       onQueueRefetch()
     },
-    onError: (e) => { toast.error(e.message); setRetryingId(null) },
+    onError: (e) => { showError(e); setRetryingId(null) },
   })
 
   function handleExpand() {
@@ -233,23 +263,54 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
         <div style={{ color: 'var(--color-slate-light)', flexShrink: 0 }}>
           {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </div>
-        <div style={{ minWidth: 180, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'monospace' }}>
-            {queue.name}
-          </span>
-          {!queue.retryable && (
-            <span title={t('pages.queueStats.notRetryable')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', padding: '1px 6px', background: colors.slateBg, borderRadius: 4, whiteSpace: 'nowrap' }}>
-              {t('pages.queueStats.notRetryable')}
+        {/**
+          * Il nome di una coda (`events-maintenance`, `sla-jobs`) dice a chi
+          * l'ha scritta cosa fa, e a nessun altro: sotto il nome c'e la
+          * descrizione, una frase per coda in `pages.queueStats.queue.<nome>`.
+          *
+          * Il perimetro NON e questa pagina: `scripts/check-i18n.mjs` legge i
+          * nomi da `apps/api/src/lib/queueRegistry.ts` e pretende la
+          * descrizione, nelle due lingue, per ognuno — una coda nuova senza
+          * descrizione fa fallire il guardiano. A schermo, una coda che il
+          * server dichiara e questo bundle non conosce lo DICE, invece di
+          * dipingere il nome della chiave o un vuoto che sembra normale.
+          */}
+        <div style={{ flex: '0 1 340px', minWidth: 240 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'var(--font-mono)' }}>
+              {queue.name}
             </span>
-          )}
+            {!queue.retryable && (
+              <span title={t('pages.queueStats.notRetryable')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', padding: '1px 6px', background: colors.slateBg, borderRadius: 4, whiteSpace: 'nowrap' }}>
+                {t('pages.queueStats.notRetryable')}
+              </span>
+            )}
+          </div>
+          <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', lineHeight: 1.4, fontWeight: 400 }}>
+            {t(`pages.queueStats.queue.${queue.name}`, { defaultValue: t('pages.queueStats.queueNoDescription') })}
+          </p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, flex: 1 }}>
+          {/**
+            * `completed` e `failed` NON sono totali: sono i job che la coda
+            * conserva. `events-maintenance` tiene gli ultimi 20 completati,
+            * quindi rigiocare un job riuscito NON fa salire il contatore —
+            * il piu vecchio esce mentre il nuovo entra. Il proprietario ha
+            * rigiocato un job e cercato la conferma proprio qui: il numero
+            * era fermo a 20 e sembrava che il rigioco non avesse funzionato
+            * (era riuscito: il conto dei falliti era passato da 1 a 0).
+            * Adesso i due contatori lo dicono nel suggerimento.
+            */}
           {COUNTER_ORDER.map((key) => {
             const s   = COUNTER_STYLE[key]!
             const val = queue.counts[key]
+            const aiuto = key === 'completed' || key === 'failed'
+              ? t(`pages.queueStats.keptHelp.${key}`)
+              : undefined
             return (
               <span
                 key={key}
+                title={aiuto}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
                   padding: '3px 10px', borderRadius: 20, background: s.bg, fontSize: 'var(--font-size-body)',
@@ -316,11 +377,31 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
                 <div style={{ color: 'var(--color-slate-light)', flexShrink: 0 }}>
                   {expandedJob === job.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                 </div>
-                <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', minWidth: 120 }}>{job.id}</code>
-                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: colors.slateDark, flex: 1 }}>{job.name}</span>
+                {/**
+                  * TRE TESTI IN UNA RIGA, e uno e lungo: l'id di un job
+                  * ripetibile e `repeat:<32 esadecimali>:<millisecondi>`,
+                  * cinquanta caratteri senza spazi. L'id non aveva ne un tetto
+                  * ne il divieto di restringersi, il nome aveva `flex: 1` (che
+                  * con `min-width: auto` non scende sotto il contenuto) e il
+                  * motivo del fallimento un `maxWidth` fisso: la riga sforava
+                  * e i tre testi si SOVRAPPONEVANO a schermo.
+                  *
+                  * Ora ognuno ha il suo posto: l'id non supera un terzo della
+                  * riga e taglia con i puntini, il nome e il motivo possono
+                  * restringersi (`minWidth: 0`, che e cio che serve dentro un
+                  * flex), e niente esce dai bordi.
+                  */}
+                <code
+                  title={job.id}
+                  style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', flex: '0 1 auto', minWidth: 0, maxWidth: '33%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >{job.id}</code>
+                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: colors.slateDark, flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.name}</span>
                 {job.failedReason && (
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {job.failedReason}
+                  <span
+                    title={job.failedReason}
+                    style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', flex: '0 1 300px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  >
+                    {motivoLeggibile(job.failedReason)}
                   </span>
                 )}
                 <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>

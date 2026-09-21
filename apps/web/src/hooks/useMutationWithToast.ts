@@ -1,7 +1,8 @@
 /**
  * `useMutation` with the two things every CRUD page repeats by hand:
- *   - onError   → `toast.error(error.message)` (the real server message, never
- *                 a generic "Errore aggiornamento");
+ *   - onError   → `showError(error)`: the error link already shows GraphQL and
+ *                 network errors, translated; anything else is shown here
+ *                 with its real message, never a generic "Errore aggiornamento";
  *   - onCompleted → optional `toast.success(...)` + `refetch()` of the active
  *                 list query (with its live variables — NOT `refetchQueries`
  *                 without variables, which repopulates another cache entry).
@@ -22,13 +23,9 @@ import { useMutation } from '@apollo/client/react'
 import type { DocumentNode } from 'graphql'
 import type { TypedDocumentNode, OperationVariables, ErrorLike } from '@apollo/client'
 import { toast } from 'sonner'
+import { showError } from '@/lib/showError'
 
-/** Message of any thrown value (Error, Apollo ErrorLike, string). */
-export function errorMessage(e: unknown): string {
-  if (e instanceof Error) return e.message
-  if (typeof e === 'object' && e !== null && 'message' in e) return String((e as { message: unknown }).message)
-  return String(e)
-}
+export { errorMessage } from '@/lib/showError'
 
 export interface MutationWithToastOptions<TData, TVariables extends OperationVariables>
   extends Omit<useMutation.Options<TData, TVariables>, 'onCompleted' | 'onError'> {
@@ -57,7 +54,7 @@ export function useMutationWithToast<TData = unknown, TVariables extends Operati
       if (refetch) void refetch()
     },
     onError: (error) => {
-      toast.error(error.message)
+      showError(error)
       onError?.(error)
     },
   })

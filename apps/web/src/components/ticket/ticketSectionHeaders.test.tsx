@@ -47,7 +47,7 @@ describe('testate dei riquadri dei ticket', () => {
     const { user } = renderWithProviders(
       <AffectedCIList
         affectedCIs={[ci]}
-        rules={[]}
+        excludedTypes={[]}
         ciResults={[]}
         onSearchChange={() => {}}
         onAddCI={() => {}}

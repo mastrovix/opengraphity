@@ -118,15 +118,29 @@ describe('reconcileBatch uses parameter maps, never keys in the query text', () 
     expect(writes[0]!.params).toMatchObject({ id: 'ci-1', tenantId: 'tenant-1', updates: { os: 'ubuntu', name: 'web-01', discovery_status: 'active' } })
   })
 
-  it('a malicious discovered key aborts the run before any write', async () => {
+  it('CONTRATTO RINEGOZIATO (D-20): una chiave malevola diventa un CONFLITTO, il run continua', async () => {
+    /**
+     * Revisione totale · D-20: un CI non scrivibile faceva cadere l'INTERO
+     * run con un errore che non nominava né il CI né la proprietà. Ora è un
+     * conflitto come «tipo sconosciuto»: il CI non si scrive (che è il punto
+     * della difesa), il conflitto lo dice all'admin e gli altri CI del lotto
+     * vengono riconciliati.
+     */
     const { session, writes } = makeCapturingSession([[]])
     vi.mocked(getSession).mockReturnValue(session as never)
+    const st = stats()
 
-    await expect(reconcileBatch([{
+    await reconcileBatch([{
       external_id: 'ext-evil', source: 'csv', ci_type: 'server', name: 'x',
       properties: { 'foo}) DETACH DELETE ci //': 1 }, tags: {}, relationships: [],
-    }], source, 'run-1', 'tenant-1', stats())).rejects.toThrow(/ext-evil/)
+    }], source, 'run-1', 'tenant-1', st)
 
-    expect(writes).toHaveLength(0)
+    expect(st.ciConflicts).toBe(1)
+    expect(st.ciCreated).toBe(0)
+    // La sola scrittura è il conflitto: nessun CI toccato.
+    expect(writes.every((w) => w.query.includes('SyncConflict'))).toBe(true)
+    const conflict = writes.find((w) => w.query.includes('SyncConflict'))!
+    expect(conflict.params).toMatchObject({ externalId: 'ext-evil' })
+    expect(String(conflict.params['message'])).toContain('ext-evil')
   })
 })

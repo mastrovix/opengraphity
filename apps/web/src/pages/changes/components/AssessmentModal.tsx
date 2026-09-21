@@ -35,7 +35,7 @@ export function AssessmentModal({ task, ciName, roleLabel, bothAssessDone, onClo
             </div>
           ))}
           <div style={{ marginTop: 12, fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
-            Score: {task.score ?? '—'}
+            {t('changeTasks.score')}: {task.score ?? '—'}
           </div>
         </>
       )}

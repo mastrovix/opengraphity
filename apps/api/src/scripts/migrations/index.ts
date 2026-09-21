@@ -6,6 +6,19 @@
  *
  * Tenant-scoped, operator-driven data fixes (migrate-enum-references.ts,
  * which needs `--tenant`) are NOT migrations: they stay manual scripts.
+ *
+ * REGOLA ROTTA TRE VOLTE, e come si e rimediato (revisione totale · H-16).
+ * Tre migrazioni sono state modificate DOPO il commit che le introduceva:
+ * `20260908_1000_workflow_step_metadata`,
+ * `20260908_1010_ci_configuration_item_label` e
+ * `20260917_1810_ci_lifecycle_semantics`. La piu dannosa e la 1010: la sua
+ * prima versione metteva `:ConfigurationItem` anche sui nodi dei tipi ITIL,
+ * che hanno una `neo4j_label`; il filtro `scope <> 'itil'` e arrivato dopo, e
+ * su un database migrato prima quei ticket sono rimasti etichettati come CI —
+ * `migrate --status` lo mostrava come «drift» informativo e nessuno lo
+ * traduceva in un'azione. La riparazione e la migrazione
+ * `20261002_1070_remove_ci_label_from_tickets`, che toglie la label. Quando il
+ * runner segnala un drift su una di queste tre, e quello: non riapplicarle.
  */
 import type { Migration } from '@opengraphity/neo4j'
 import { workflowStepMetadata }     from './20260908_1000_workflow_step_metadata.js'
@@ -50,6 +63,81 @@ import { enumValueLabelsIdentiche } from './20260920_1740_enum_value_labels_iden
 import { tenantDefaultLanguage } from './20260920_1750_tenant_default_language.js'
 import { teamTypeVocabolario } from './20260921_1000_team_type_vocabolario.js'
 import { teamTypeEtichette } from './20260921_1010_team_type_etichette.js'
+import { reportSectionGroupNode } from './20260922_1000_report_section_group_node.js'
+import { concludedTicketsSla } from './20260922_1010_concluded_tickets_sla.js'
+import { shippedMetamodelLabels } from './20260922_1020_shipped_metamodel_labels.js'
+import { problemKnownErrorPurpose } from './20260923_1000_problem_known_error_purpose.js'
+import { notificationRuleSeverity } from './20260923_1010_notification_rule_severity.js'
+import { ticketOrphansCleanup } from './20260923_1020_ticket_orphans_cleanup.js'
+import { commentsSingleModel } from './20260923_1030_comments_single_model.js'
+import { majorIncidentNotificationRule } from './20260923_1040_major_incident_notification_rule.js'
+import { slaWarningMinutes } from './20260923_1050_sla_warning_minutes.js'
+import { changeTaskCounters } from './20260923_1060_change_task_counters.js'
+import { reportDashboardChildrenTenant } from './20260923_1070_report_dashboard_children_tenant.js'
+import { changeNumber } from './20260923_1080_change_number.js'
+import { slaPolicyTimezoneInherit } from './20260924_1000_sla_policy_timezone_inherit.js'
+import { environmentRiskMatrix } from './20260924_1010_environment_risk_matrix.js'
+import { valueColorsKbCategory } from './20260924_1020_value_colors_kb_category.js'
+import { serviceCalendar } from './20260924_1030_service_calendar.js'
+import { kbPublishedAt } from './20260924_1040_kb_published_at.js'
+import { changeEnvironmentWeightSeed } from './20260924_1050_change_environment_weight.js'
+import { workflowLabelsByLanguage } from './20260924_1060_workflow_labels_by_language.js'
+import { riskBandColors } from './20260925_1000_risk_band_colors.js'
+import { serviceExclusionReasonCode } from './20260925_1010_service_exclusion_reason_code.js'
+import { portalSeverityOptionsSeed } from './20260925_1020_portal_severity_options.js'
+import { catalogItemPriority } from './20260925_1030_catalog_item_priority.js'
+import { inAppRetentionPerTenant } from './20260925_1100_inapp_retention_per_tenant.js'
+import { serviceUrgencyMatrix } from './20260925_1110_service_urgency_matrix.js'
+import { catalogItemCategoryVocabulary } from './20260925_1120_catalog_item_category_vocabulary.js'
+import { namedServiceCalendars } from './20260925_1130_named_service_calendars.js'
+import { complianceObjectives } from './20260925_1140_compliance_objectives.js'
+import { stepDeadlines } from './20260925_1200_step_deadlines.js'
+import { impactAnalysisWeightsSeed } from './20260926_1000_impact_analysis_weights.js'
+import { anomalyRuleConfigsSeed } from './20260926_1010_anomaly_rule_configs.js'
+import { organizationSettingsSeed } from './20260927_1000_organization_settings.js'
+import { factoryRoles } from './20260928_1000_factory_roles.js'
+import { assistantPermission } from './20260928_1010_assistant_permission.js'
+import { ciRelationTargetLabel } from './20260929_1000_ci_relation_target_label.js'
+import { ticketCIExclusions } from './20260929_1010_ticket_ci_exclusions.js'
+import { officeProductivityLabel } from './20260930_1000_office_productivity_label.js'
+import { changeAuditDetailKeys } from './20260930_1010_change_audit_detail_keys.js'
+import { changeAuditDetailKeysOwnerSupport } from './20260930_1020_change_audit_detail_keys_owner_support.js'
+import { apiKeyExpiryRateLimit } from './20261001_1000_api_key_expiry_rate_limit.js'
+import { userEmailLowercase } from './20261001_1010_user_email_lowercase.js'
+import { answerOptionTenant } from './20261001_1020_answer_option_tenant.js'
+import { requestCreatedBy } from './20261001_1030_request_created_by.js'
+import { slaBreachedAt } from './20261002_1000_sla_breached_at.js'
+import { changeTaskKeys } from './20261002_1010_change_task_keys.js'
+import { slaWarningRepair } from './20261002_1020_sla_warning_repair.js'
+import { stepDeadlineCalendar } from './20261002_1030_step_deadline_calendar.js'
+import { serviceCalendarNameKey } from './20261002_1040_service_calendar_name_key.js'
+import { eventPolicyHighImpact } from './20261002_1050_event_policy_high_impact.js'
+import { slaNullResolveOutcome } from './20261002_1060_sla_null_resolve_outcome.js'
+import { removeCiLabelFromTickets } from './20261002_1070_remove_ci_label_from_tickets.js'
+import { catalogFormSchema } from './20261003_1010_catalog_form_schema.js'
+import { catalogFormLimits } from './20261003_1020_catalog_form_limits.js'
+import { formTableRowsLimit } from './20261004_1010_form_table_rows_limit.js'
+import { metamodelDuplicateFields } from './20261005_1010_metamodel_duplicate_fields.js'
+import { changeTransitionLabels } from './20261005_1020_change_transition_labels.js'
+import { deployPlanWindowEnvelope } from './20261005_1030_deploy_plan_window_envelope.js'
+import { enumTenantDuplicates } from './20261005_1040_enum_tenant_duplicates.js'
+import { portalSeveritiesSeed } from './20261005_1050_portal_severities_seed.js'
+import { defaultLanguageSeed } from './20261005_1060_default_language_seed.js'
+import { enumIdenticalCopies } from './20261005_1070_enum_identical_copies.js'
+import { formFieldsShared } from './20261005_1080_form_fields_shared.js'
+import { aiSettingsFormDesigner } from './20261005_1090_ai_settings_form_designer.js'
+import { aiSettingsMissingFeatures } from './20261005_1100_ai_settings_missing_features.js'
+import { reportEdgeDirection } from './20261005_1110_report_edge_direction.js'
+import { dropChangeTaskIndexes } from './20261005_1120_drop_change_task_indexes.js'
+import { changeTypeLabelsTechnical } from './20261005_1130_change_type_labels_technical.js'
+import { proposalPermissions } from './20261005_1140_proposal_permissions.js'
+import { opengrafoPlatformCI } from './20261006_1010_opengrafo_platform_ci.js'
+import { aiSettingsPlatformSelfAnalysis } from './20261006_1020_ai_settings_platform_self_analysis.js'
+import { aiSettingsDailyWork } from './20261006_1030_ai_settings_daily_work.js'
+import { automationOrigin } from './20261006_1040_automation_origin.js'
+import { aiSettingsConfigurationAssist } from './20261006_1050_ai_settings_configuration_assist.js'
+import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
+import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
 export const MIGRATIONS: readonly Migration[] = [
   workflowStepMetadata,
@@ -94,4 +182,79 @@ export const MIGRATIONS: readonly Migration[] = [
   tenantDefaultLanguage,
   teamTypeVocabolario,
   teamTypeEtichette,
+  reportSectionGroupNode,
+  concludedTicketsSla,
+  shippedMetamodelLabels,
+  problemKnownErrorPurpose,
+  notificationRuleSeverity,
+  ticketOrphansCleanup,
+  commentsSingleModel,
+  majorIncidentNotificationRule,
+  slaWarningMinutes,
+  changeTaskCounters,
+  reportDashboardChildrenTenant,
+  changeNumber,
+  slaPolicyTimezoneInherit,
+  environmentRiskMatrix,
+  valueColorsKbCategory,
+  serviceCalendar,
+  kbPublishedAt,
+  changeEnvironmentWeightSeed,
+  workflowLabelsByLanguage,
+  riskBandColors,
+  serviceExclusionReasonCode,
+  portalSeverityOptionsSeed,
+  catalogItemPriority,
+  inAppRetentionPerTenant,
+  serviceUrgencyMatrix,
+  catalogItemCategoryVocabulary,
+  namedServiceCalendars,
+  complianceObjectives,
+  stepDeadlines,
+  impactAnalysisWeightsSeed,
+  anomalyRuleConfigsSeed,
+  organizationSettingsSeed,
+  factoryRoles,
+  assistantPermission,
+  ciRelationTargetLabel,
+  ticketCIExclusions,
+  officeProductivityLabel,
+  changeAuditDetailKeys,
+  changeAuditDetailKeysOwnerSupport,
+  ticketTeamSegments,
+  changeTaskTeamSegments,
+  apiKeyExpiryRateLimit,
+  userEmailLowercase,
+  answerOptionTenant,
+  requestCreatedBy,
+  slaBreachedAt,
+  changeTaskKeys,
+  slaWarningRepair,
+  stepDeadlineCalendar,
+  serviceCalendarNameKey,
+  eventPolicyHighImpact,
+  slaNullResolveOutcome,
+  removeCiLabelFromTickets,
+  catalogFormSchema,
+  catalogFormLimits,
+  formTableRowsLimit,
+  metamodelDuplicateFields,
+  changeTransitionLabels,
+  deployPlanWindowEnvelope,
+  enumTenantDuplicates,
+  portalSeveritiesSeed,
+  defaultLanguageSeed,
+  enumIdenticalCopies,
+  formFieldsShared,
+  aiSettingsFormDesigner,
+  aiSettingsMissingFeatures,
+  reportEdgeDirection,
+  dropChangeTaskIndexes,
+  changeTypeLabelsTechnical,
+  proposalPermissions,
+  opengrafoPlatformCI,
+  aiSettingsPlatformSelfAnalysis,
+  aiSettingsDailyWork,
+  automationOrigin,
+  aiSettingsConfigurationAssist,
 ]

@@ -29,6 +29,8 @@ import { alpha, colors, palette, lookupOrError } from '@/lib/tokens'
 import { ACCENT, TINT_BROKEN } from '@/lib/eventPalette'
 import { EventSeverityBadge } from './eventShared'
 import { EVENT_CORRELATIONS, EVENT_SEVERITIES, type EventHistoryEntry, type EventHistoryKind, type EventSeverity } from '@/types/events'
+import { useValueStyle } from '@/hooks/useValueStyle'
+import type { ValueStyle } from '@/lib/domainStyle'
 
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
 
@@ -105,18 +107,16 @@ const FAMILY_COLOR: Record<Exclude<Family, 'cycle'>, string> = {
   manual:      ACCENT.neutral,
 }
 
-/** Cicli: il pallino segue la severità della voce; il rientro è verde; severità non registrata = grigio. */
-const SEVERITY_COLOR: Record<EventSeverity, string> = {
-  critical: ACCENT.critical,
-  warning:  ACCENT.warning,
-  info:     palette.info.base,
-}
-
-function dotColor(kind: EventHistoryKind, severity: EventSeverity | null): string {
+/**
+ * Cicli: il pallino segue la severità della voce, col colore che il Dizionario
+ * dà al valore di `event_severity` (revisione del 14 set 2026 · F9); il rientro
+ * è verde; severità non registrata = grigio.
+ */
+function dotColor(kind: EventHistoryKind, severity: EventSeverity | null, styleOf: (vocabulary: string, value: string) => ValueStyle): string {
   const family = FAMILY[kind]
   if (family !== 'cycle') return FAMILY_COLOR[family]
   if (kind === 'cycle_resolved') return ACCENT.success
-  return severity ? lookupOrError(SEVERITY_COLOR, severity, 'EVENT_HISTORY_SEVERITY_COLOR', TINT_BROKEN.bg) : ACCENT.muted
+  return severity ? styleOf('event_severity', severity).accent : ACCENT.muted
 }
 
 /** Nome di chi ha agito: "monitoraggio" per le azioni automatiche; utente cancellato → resta l'id (è il dato vero, non un ripiego). */
@@ -206,10 +206,11 @@ export function EventHistorySection({ entries, total }: Props) {
 
 function HistoryRow({ entry: e, last }: { entry: EventHistoryEntry; last: boolean }) {
   const { t } = useTranslation()
+  const styleOf = useValueStyle()
   const known = e.kind in FAMILY
   // Kind sconosciuto: pallino rosso pieno e console.error, mai un colore "plausibile".
   const Icon: LucideIcon = lookupOrError(ICON, e.kind, 'EVENT_HISTORY_ICON', HelpCircle)
-  const bg = known ? dotColor(e.kind, e.severity) : TINT_BROKEN.bg
+  const bg = known ? dotColor(e.kind, e.severity, styleOf) : TINT_BROKEN.bg
   const note = known ? noteText(t, e) : e.note
   const dot: ReactNode = (
     <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: '50%', backgroundColor: bg, color: TINT_BROKEN.color, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: `2px solid ${colors.white}`, boxShadow: `0 0 0 1px ${alpha.black20}` }}>

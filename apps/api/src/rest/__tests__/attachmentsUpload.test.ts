@@ -1,11 +1,12 @@
 /**
  * POST /api/attachments over a real Express app with real multipart bodies
  * (Node FormData/Blob → busboy): target whitelist/UUID validation, tenant
- * scoping of the existence check, upload-role gate, MIME whitelist, 10 MB
- * limit, single-response guard and the on-disk path staying inside
+ * scoping of the existence check, upload-role gate, the organization's allowed
+ * file types and size (ondata 6 di «Nulla cablato»: prima MIME e 10 MB fissi), single-response guard and the on-disk path staying inside
  * ATTACHMENT_DIR. Neo4j and auth are mocked; the filesystem is real (scratch dir).
  */
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import { perms } from '../../lib/__tests__/testPermissions.js'
 import express from 'express'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -22,10 +23,16 @@ vi.mock('../../lib/logger.js', () => ({
 vi.mock('../../middleware/auth.js', () => ({
   authMiddleware: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     const role = typeof req.headers['x-test-role'] === 'string' ? req.headers['x-test-role'] : 'operator'
-    req.user = { tenantId: 'tenant-1', userId: 'user-1', email: 'u@example.com', role }
+    req.user = { tenantId: 'tenant-1', userId: 'user-1', email: 'u@example.com', role, permissions: perms(role) }
     next()
   },
 }))
+// La politica degli allegati dell'organizzazione: di fabbrica, salvo i test che la cambiano.
+const policy = vi.hoisted(() => ({ current: null as null | { maxSizeMb: number; extensions: string[]; isDefault: boolean } }))
+vi.mock('../../lib/attachmentPolicy.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../lib/attachmentPolicy.js')>()
+  return { ...real, attachmentPolicy: vi.fn(async () => policy.current ?? { ...real.FACTORY_ATTACHMENT_POLICY, extensions: [...real.FACTORY_ATTACHMENT_POLICY.extensions], isDefault: true }) }
+})
 vi.mock('@opengraphity/neo4j', () => ({
   getSession:  vi.fn(),
   runQuery:    vi.fn(),
@@ -73,6 +80,7 @@ afterAll(async () => {
 })
 beforeEach(() => {
   vi.clearAllMocks()
+  policy.current = null
   writes.length = 0
   jsonCalls.length = 0
   vi.mocked(getSession).mockImplementation(() => fakeSession() as never)
@@ -175,22 +183,36 @@ describe('POST /api/attachments — authorization and target', () => {
     expect(res.status).toBe(404)
     expect(await errorBody(res)).toMatch(new RegExp(`incident ${UUID} not found`))
     expect(vi.mocked(runQueryOne).mock.calls[0]![1]).toMatch(/e:Incident/)
-    expect(vi.mocked(runQueryOne).mock.calls[0]![2]).toEqual({ entityId: UUID, tenantId: 'tenant-1' })
+    // `userId` viaggia con la condizione d'accesso (revisione totale · H-3).
+    expect(vi.mocked(runQueryOne).mock.calls[0]![2]).toEqual({ entityId: UUID, tenantId: 'tenant-1', userId: 'user-1' })
     expect(fs.existsSync(path.join(UPLOAD_DIR, 'tenant-1', UUID))).toBe(false)
     expect(writes).toHaveLength(0)
   })
 })
 
 describe('POST /api/attachments — file constraints', () => {
-  it('disallowed MIME type → exactly one 400 reply, no ERR_HTTP_HEADERS_SENT', async () => {
+  it('file type outside the organization\'s list → exactly one 400 reply, no ERR_HTTP_HEADERS_SENT', async () => {
     const res = await upload({ mime: 'application/x-msdownload', filename: 'evil.exe' })
     expect(res.status).toBe(400)
-    expect(await errorBody(res)).toMatch(/File type 'application\/x-msdownload' is not allowed/)
+    expect(await errorBody(res)).toMatch(/File type '\.exe' is not allowed\. Allowed: \.pdf/)
     expect(jsonCalls).toEqual([1])
     const logged = JSON.stringify(vi.mocked(logger.error).mock.calls)
     expect(logged).not.toMatch(/ERR_HTTP_HEADERS_SENT|headers already sent/i)
     expect(runQueryOne).not.toHaveBeenCalled()
     expect(filesUnder(UPLOAD_DIR)).toEqual([])
+  })
+
+  it('the organization decides: .pcap allowed, 1 MB limit (the browser MIME does not matter)', async () => {
+    policy.current = { maxSizeMb: 1, extensions: ['pcap'], isDefault: false }
+    const ok = await upload({ mime: 'application/octet-stream', filename: 'capture.pcap', content: new Uint8Array(1000) })
+    expect(ok.status).toBe(201)
+    const tooBig = await upload({ mime: 'application/octet-stream', filename: 'big.pcap', content: new Uint8Array(1024 * 1024 + 1) })
+    expect(tooBig.status).toBe(400)
+    expect(await errorBody(tooBig)).toMatch(/exceeds maximum size of 1MB/)
+    const pdf = await upload({ mime: 'application/pdf', filename: 'doc.pdf' })
+    expect(pdf.status).toBe(400)
+    // Il file accettato resta su disco: gli altri test contano la cartella vuota.
+    fs.rmSync(path.join(UPLOAD_DIR, 'tenant-1'), { recursive: true, force: true })
   })
 
   it('file over 10 MB → 400 "exceeds maximum size", partial file removed, no Attachment node', async () => {

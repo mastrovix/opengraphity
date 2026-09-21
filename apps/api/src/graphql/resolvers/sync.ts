@@ -7,7 +7,7 @@ import {
   getConnector,
 } from '@opengraphity/discovery'
 import type { GraphQLContext } from '../../context.js'
-import { syncQueue } from '../../discovery/syncWorker.js'
+import { scheduleSourceSync, syncQueue } from '../../discovery/syncWorker.js'
 import { CONFLICT_LOCKED_FIELDS, CONFLICT_UNKNOWN_CI_TYPE } from '../../discovery/reconciliationEngine.js'
 import { CITypeResolver } from '../../discovery/ciTypeResolution.js'
 import { withSession } from './ci-utils.js'
@@ -15,6 +15,24 @@ import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { validateStringLength, validateCronExpression } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
 import { notifyCIGraphChanged } from '../../services/serviceImpact/sync.js'
+import { initialCIStatus } from '../../lib/ciLifecycle.js'
+import { normalizeProperties } from '@opengraphity/discovery'
+
+/**
+ * Le proprietà scoperte come le scrive il motore di riconciliazione (revisione
+ * totale · D-3): appiattite sul nodo, con i tag come proprietà, mai una stringa
+ * JSON — le pagine CMDB e la validazione del metamodello leggono le proprietà,
+ * non un campo `properties`. I nomi strutturali non si sovrascrivono da qui.
+ */
+const RESOLVE_RESERVED_PROPS = new Set(['id', 'tenant_id', 'name', 'name_key', 'type', 'status', 'created_at', 'updated_at'])
+function flatDiscoveredProps(properties: Record<string, unknown>, tags: Record<string, string>): Record<string, unknown> {
+  const flat = normalizeProperties({ ...properties, ...tags })
+  for (const key of Object.keys(flat)) {
+    if (RESERVED_PREFIX_RE.test(key) || RESOLVE_RESERVED_PROPS.has(key)) delete flat[key]
+  }
+  return flat
+}
+const RESERVED_PREFIX_RE = /^(discovery_|discovered_)/
 
 function encryptionKey(): string {
   const k = process.env['DISCOVERY_ENCRYPTION_KEY']
@@ -162,6 +180,7 @@ export const syncResolvers = {
 
         type Row = { p: Props; total: unknown }
         const rows = await runQuery<Row>(session,
+          // tenant-ok: `filters` parte da `n.tenant_id = $tenantId` (riga sopra)
           `MATCH (n:SyncConflict) WHERE ${filters.join(' AND ')}
            WITH count(n) AS total, collect(n) AS all
            UNWIND all AS n
@@ -314,6 +333,8 @@ export const syncResolvers = {
           `MATCH (n:SyncSource {id: $id, tenant_id: $tenantId}) RETURN properties(n) AS p`, { id, tenantId: ctx.tenantId },
         )
         const newSource = mapSource(row!.p)
+        // Il cron parte subito, senza aspettare un riavvio dell'API (D-6).
+        await scheduleSourceSync({ id, tenantId: ctx.tenantId, cron: newSource.scheduleCron ?? null, enabled: newSource.enabled !== false })
         void audit(ctx, 'sync_source.created', 'SyncSource', id)
         return newSource
       }, true)
@@ -335,7 +356,10 @@ export const syncResolvers = {
       if (input.name         != null) { sets.push('n.name = $name');                    params['name']         = input.name }
       if (input.config       != null) { sets.push('n.config = $config');                params['config']       = input.config }
       if (input.mappingRules != null) { sets.push('n.mapping_rules = $mappingRules');    params['mappingRules'] = input.mappingRules }
-      if (input.scheduleCron != null) { sets.push('n.schedule_cron = $scheduleCron');    params['scheduleCron'] = input.scheduleCron }
+      // Il cron si valida anche in modifica (revisione totale · D-7): prima lo
+      // faceva solo la creazione, e un cron non valido salvato qui impediva
+      // l'avvio dell'API alla registrazione dei repeat job.
+      if (input.scheduleCron != null) { validateCronExpression(input.scheduleCron); sets.push('n.schedule_cron = $scheduleCron'); params['scheduleCron'] = input.scheduleCron }
       if (input.enabled      != null) { sets.push('n.enabled = $enabled');               params['enabled']      = input.enabled }
       if (input.credentials  != null) {
         const creds = JSON.parse(input.credentials) as Record<string, string>
@@ -353,7 +377,11 @@ export const syncResolvers = {
           `MATCH (n:SyncSource {id: $id, tenant_id: $tenantId}) RETURN properties(n) AS p`, { id, tenantId: ctx.tenantId },
         )
         void audit(ctx, 'sync_source.updated', 'SyncSource', id)
-        return mapSource(row!.p)
+        // Il cron in Redis segue la sorgente (D-6): spenta o con un cron nuovo,
+        // il vecchio repeat job non resta a scattare.
+        const updated = mapSource(row!.p)
+        await scheduleSourceSync({ id, tenantId: ctx.tenantId, cron: updated.scheduleCron ?? null, enabled: updated.enabled !== false })
+        return updated
       }, true)
     },
 
@@ -363,6 +391,9 @@ export const syncResolvers = {
           `MATCH (n:SyncSource {id: $id, tenant_id: $tenantId}) DETACH DELETE n`,
           { id: args.id, tenantId: ctx.tenantId },
         ))
+        // Niente cron orfano in Redis (D-6): scattava per sempre, e ogni volta
+        // il job falliva con «SyncSource not found».
+        await scheduleSourceSync({ id: args.id, tenantId: ctx.tenantId, cron: null, enabled: false })
         void audit(ctx, 'sync_source.deleted', 'SyncSource', args.id)
         return true
       }, true)
@@ -378,6 +409,17 @@ export const syncResolvers = {
       const syncType = args.syncType ?? 'manual'
 
       return withSession(async (session) => {
+        /**
+         * La sorgente deve ESISTERE nel tenant (revisione totale · D-17):
+         * senza controllo si creava una run `queued` e si accodava il job, che
+         * poi falliva prima di aggiornare lo stato — la run restava «in coda»
+         * per sempre nell'elenco, e l'admin non capiva cosa aspettasse.
+         */
+        const source = await runQueryOne<{ id: string }>(session,
+          'MATCH (n:SyncSource {id: $sourceId, tenant_id: $tenantId}) RETURN n.id AS id',
+          { sourceId: args.sourceId, tenantId: ctx.tenantId })
+        if (!source) throw new NotFoundError('SyncSource', args.sourceId)
+
         await session.executeWrite(tx => tx.run(
           `CREATE (r:SyncRun {
             id: $runId, source_id: $sourceId, tenant_id: $tenantId,
@@ -434,6 +476,14 @@ export const syncResolvers = {
           )
         }
         const discovered = JSON.parse(conflict.discoveredCi) as Record<string, unknown>
+        // Revisione totale · D-3: il CI che nasce (o si aggiorna) da qui deve
+        // avere la FORMA che il motore riconosce — `type` (non `ci_type`),
+        // proprietà appiattite (non un JSON), `discovery_source_id`,
+        // `discovery_status`, `discovery_last_seen`. Prima erano diverse: al run
+        // successivo `findExisting` non trovava il CI (manca
+        // `discovery_source_id`) e il MERGE ne creava un ALTRO, uno per run;
+        // `markStale` non lo toccava mai e le pagine CMDB non vedevano le
+        // proprietà (erano dentro una stringa JSON).
         const discoveredProps  = (discovered['properties']  ?? {}) as Record<string, unknown>
         const discoveredTags   = (discovered['tags']        ?? {}) as Record<string, string>
         const discoveredName   = discovered['name']        as string | undefined
@@ -465,79 +515,90 @@ export const syncResolvers = {
           const propSets: string[] = [
             'ci.updated_at = $now',
             'ci.discovery_source = $source',
+            'ci.discovery_source_id = $sourceId',
             'ci.discovery_external_id = $externalId',
-            'ci.discovery_last_seen_at = $now',
+            'ci.discovery_status = \'active\'',
+            'ci.discovery_stale_since = null',
+            'ci.discovery_last_seen = $now',
           ]
           if (discoveredName) propSets.push('ci.name = $discoveredName', 'ci.name_key = toLower($discoveredName)')   // name_key: lib/ciNameKey.ts
-          const propsJson = JSON.stringify(discoveredProps)
-          const tagsJson  = JSON.stringify(discoveredTags)
 
           await session.executeWrite(tx => tx.run(
             `MATCH (ci:ConfigurationItem {id: $existingCiId, tenant_id: $tenantId})
-             SET ${propSets.join(', ')}, ci.properties = $propsJson, ci.tags = $tagsJson`,
+             SET ${propSets.join(', ')}, ci += $props`,
             {
               existingCiId:   conflict.existingCiId,
               tenantId:       ctx.tenantId,
               now,
               source:         discoveredSource ?? '',
+              sourceId:       conflict.sourceId,
               externalId:     discoveredExtId  ?? '',
               discoveredName: discoveredName   ?? '',
-              propsJson,
-              tagsJson,
+              // Le proprietà scoperte, appiattite come le scrive il motore.
+              props: flatDiscoveredProps(discoveredProps, discoveredTags),
             },
           ))
 
         } else if (args.resolution === 'distinct') {
           // Create a brand-new CI from discovered data
           const newCiId = randomUUID()
+          const initialStatus = await initialCIStatus(ctx.tenantId)
           await session.executeWrite(tx => tx.run(
             `CREATE (ci:ConfigurationItem:${ciLabel} {
                id: $newCiId,
                tenant_id: $tenantId,
                name: $name,
                name_key: toLower($name),
-               ci_type: $ciType,
-               status: 'active',
+               type: $ciType,
+               status: $initialStatus,
                discovery_source: $source,
+               discovery_source_id: $sourceId,
                discovery_external_id: $externalId,
-               discovery_last_seen_at: $now,
-               properties: $propsJson,
-               tags: $tagsJson,
+               discovery_status: 'active',
+               discovery_last_seen: $now,
+               discovered_at: $now,
+               discovery_locked_fields: [],
                created_at: $now,
                updated_at: $now
-             })`,
+             })
+             SET ci += $props`,
             {
               newCiId,
               tenantId: ctx.tenantId,
               name:      discoveredName  ?? discoveredExtId ?? 'Unknown',
               ciType:    resolvedType.type.name,
               source:    discoveredSource ?? '',
+              sourceId:  conflict.sourceId,
               externalId: discoveredExtId ?? '',
               now,
-              propsJson:  JSON.stringify(discoveredProps),
-              tagsJson:   JSON.stringify(discoveredTags),
+              initialStatus,
+              props: flatDiscoveredProps(discoveredProps, discoveredTags),
             },
           ))
 
         } else if (args.resolution === 'linked') {
           // Create new CI from discovered data AND link it bidirectionally to existing CI
           const newCiId = randomUUID()
+          const initialStatus = await initialCIStatus(ctx.tenantId)
           await session.executeWrite(tx => tx.run(
             `CREATE (ci:ConfigurationItem:${ciLabel} {
                id: $newCiId,
                tenant_id: $tenantId,
                name: $name,
                name_key: toLower($name),
-               ci_type: $ciType,
-               status: 'active',
+               type: $ciType,
+               status: $initialStatus,
                discovery_source: $source,
+               discovery_source_id: $sourceId,
                discovery_external_id: $externalId,
-               discovery_last_seen_at: $now,
-               properties: $propsJson,
-               tags: $tagsJson,
+               discovery_status: 'active',
+               discovery_last_seen: $now,
+               discovered_at: $now,
+               discovery_locked_fields: [],
                created_at: $now,
                updated_at: $now
              })
+             SET ci += $props
              WITH ci
              MATCH (existing:ConfigurationItem {id: $existingCiId, tenant_id: $tenantId})
              MERGE (ci)-[:RELATED_TO {created_at: $now}]->(existing)
@@ -548,11 +609,12 @@ export const syncResolvers = {
               name:        discoveredName  ?? discoveredExtId ?? 'Unknown',
               ciType:      resolvedType.type.name,
               source:      discoveredSource ?? '',
+              sourceId:    conflict.sourceId,
               externalId:  discoveredExtId  ?? '',
               existingCiId: conflict.existingCiId,
               now,
-              propsJson:   JSON.stringify(discoveredProps),
-              tagsJson:    JSON.stringify(discoveredTags),
+              initialStatus,
+              props: flatDiscoveredProps(discoveredProps, discoveredTags),
             },
           ))
           // Servizi monitorati (ondata 5): due RELATED_TO nuove fra CI. Non è
@@ -570,11 +632,16 @@ export const syncResolvers = {
           { id: args.conflictId, tenantId: ctx.tenantId, resolution: args.resolution, now },
         ))
 
+        // La rilettura è SCOPATA al tenant come tutte le altre (revisione
+        // totale · B-31): era l'unica query del file che leggeva un conflitto
+        // per solo id.
         const row = await runQueryOne<{ p: Props }>(session,
-          `MATCH (c:SyncConflict {id: $id}) RETURN properties(c) AS p`, { id: args.conflictId },
+          `MATCH (c:SyncConflict {id: $id, tenant_id: $tenantId}) RETURN properties(c) AS p`,
+          { id: args.conflictId, tenantId: ctx.tenantId },
         )
+        if (!row) throw new NotFoundError('SyncConflict', args.conflictId)
         void audit(ctx, 'sync_conflict.resolved', 'SyncConflict', args.conflictId, { resolution: args.resolution })
-        return mapConflict(row!.p)
+        return mapConflict(row.p)
       }, true)
     },
 

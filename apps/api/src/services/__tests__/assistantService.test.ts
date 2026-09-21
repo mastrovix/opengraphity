@@ -10,11 +10,14 @@
  *    runner; testo → emit.text/emit.done; refusal/errore → emit.error.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../lib/__tests__/testPermissions.js'
 
 // ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
 // `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
 // Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
 // tipo non contavano, in silenzio.
+// Ondata 6 di «Nulla cablato»: le funzioni AI sono dell'organizzazione; qui tutte accese.
+vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
 vi.mock('../../lib/ciLabelsForTenant.js', () => ({
   ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
   ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
@@ -93,15 +96,22 @@ function runnerOf(...streams: ReturnType<typeof messageStream>[]) {
 }
 
 /** Costruisce i tool del tenant catturandoli dal runner (buildTools non è esportata). */
-async function toolsFor(tenantId: string): Promise<Map<string, ToolLike>> {
+async function toolsFor(tenantId: string, permissions: ReadonlySet<string> = perms('operator')): Promise<Map<string, ToolLike>> {
   runnerOf(messageStream([]))
-  await streamAssistantChat(tenantId, [{ role: 'user', content: 'ciao' }], emitter())
+  await streamAssistantChat(tenantId, permissions as never, [{ role: 'user', content: 'ciao' }], emitter())
   const params = h.toolRunner.mock.calls.at(-1)![0]
   return new Map(params.tools.map(t => [t.name, t]))
 }
 
 const queries = () => vi.mocked(runQuery).mock.calls.map(c => ({ cypher: c[1] as string, params: c[2] as Record<string, unknown> }))
-const limitOf = (cypher: string): string => /LIMIT (\S+)/.exec(cypher)?.[1] ?? /tutti\[\.\.(\S+?)\]/.exec(cypher)?.[1] ?? 'NONE'
+/**
+ * Il limite della query: un letterale nel Cypher, oppure il parametro
+ * `vectorLimit` per le ricerche vettoriali, che dalla revisione totale (B-12)
+ * passano da `lib/vectorSearch.ts` e mandano il limite come parametro.
+ */
+const limitOf = (q: { cypher: string; params: Record<string, unknown> }): string =>
+  q.params['vectorLimit'] !== undefined ? String(q.params['vectorLimit'])
+  : /LIMIT (\S+)/.exec(q.cypher)?.[1] ?? /tutti\[\.\.(\S+?)\]/.exec(q.cypher)?.[1] ?? 'NONE'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -116,8 +126,8 @@ describe('streamAssistantChat — configurazione', () => {
   it('ANTHROPIC_API_KEY assente → emit.error esplicito senza istanziare l\'SDK né chiamare il runner', async () => {
     h.cfg.anthropicApiKey = undefined
     const emit = emitter()
-    await streamAssistantChat(TENANT, [{ role: 'user', content: 'ciao' }], emit)
-    expect(emit.error).toHaveBeenCalledWith('Assistente AI non configurato: ANTHROPIC_API_KEY mancante')
+    await streamAssistantChat(TENANT, perms('operator'), [{ role: 'user', content: 'ciao' }], emit)
+    expect(emit.error).toHaveBeenCalledWith('AI assistant not configured: ANTHROPIC_API_KEY is missing')
     expect(emit.done).not.toHaveBeenCalled()
     expect(h.constructed).toHaveLength(0)
     expect(h.toolRunner).not.toHaveBeenCalled()
@@ -126,7 +136,7 @@ describe('streamAssistantChat — configurazione', () => {
   it('con la chiave: runner con modello, 7 tool di sola lettura, messaggi mappati, stream e max_iterations', async () => {
     runnerOf(messageStream([]))
     const messages = [{ role: 'user' as const, content: 'q1' }, { role: 'assistant' as const, content: 'a1' }, { role: 'user' as const, content: 'q2' }]
-    await streamAssistantChat(TENANT, messages, emitter())
+    await streamAssistantChat(TENANT, perms('operator'), messages, emitter())
     expect(h.constructed).toHaveLength(1)
     const params = h.toolRunner.mock.calls[0]![0]
     expect(params).toMatchObject({ model: config.anthropicModel, stream: true, max_iterations: 8, messages })
@@ -143,7 +153,7 @@ describe('streamAssistantChat — streaming', () => {
   it('inoltra i delta di testo e chiude con done(testo completo)', async () => {
     runnerOf(messageStream([textDelta('Ciao '), { type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: '{' } }, textDelta('mondo')]))
     const emit = emitter()
-    await streamAssistantChat(TENANT, [{ role: 'user', content: 'ciao' }], emit)
+    await streamAssistantChat(TENANT, perms('operator'), [{ role: 'user', content: 'ciao' }], emit)
     expect(emit.text.mock.calls.map(c => c[0])).toEqual(['Ciao ', 'mondo'])
     expect(emit.done).toHaveBeenCalledWith('Ciao mondo')
     expect(emit.error).not.toHaveBeenCalled()
@@ -162,7 +172,7 @@ describe('streamAssistantChat — streaming', () => {
       },
     }))
     const emit = emitter()
-    await streamAssistantChat(TENANT, [{ role: 'user', content: 'quanti incident aperti?' }], emit)
+    await streamAssistantChat(TENANT, perms('operator'), [{ role: 'user', content: 'quanti incident aperti?' }], emit)
 
     expect(emit.tool).toHaveBeenCalledWith('lista_incident')
     expect(JSON.parse(toolResult!)).toEqual({ totale: 2, elencati: 2, incident: [{ numero: 'INC00000001' }, { numero: 'INC00000002' }] })
@@ -174,7 +184,7 @@ describe('streamAssistantChat — streaming', () => {
   it('refusal → emit.error, nessun done', async () => {
     runnerOf(messageStream([textDelta('parziale')], { stop_reason: 'refusal' }))
     const emit = emitter()
-    await streamAssistantChat(TENANT, [{ role: 'user', content: 'x' }], emit)
+    await streamAssistantChat(TENANT, perms('operator'), [{ role: 'user', content: 'x' }], emit)
     expect(emit.error).toHaveBeenCalledWith('Il modello ha rifiutato la richiesta')
     expect(emit.done).not.toHaveBeenCalled()
   })
@@ -185,7 +195,7 @@ describe('streamAssistantChat — streaming', () => {
       async *[Symbol.asyncIterator]() { throw new Error('overloaded_error') },
     }))
     const emit = emitter()
-    await streamAssistantChat(TENANT, [{ role: 'user', content: 'x' }], emit)
+    await streamAssistantChat(TENANT, perms('operator'), [{ role: 'user', content: 'x' }], emit)
     expect(emit.error).toHaveBeenCalledWith('overloaded_error')
     expect(emit.done).not.toHaveBeenCalled()
   })
@@ -314,7 +324,7 @@ describe('tool dell\'assistente — clamp di limit', () => {
     const run = async (extra: Record<string, unknown>) => {
       vi.mocked(runQuery).mockClear()
       await tools.get(name)!.run({ ...input, ...extra })
-      return limitOf(queries()[0]!.cypher)
+      return limitOf(queries()[0]!)
     }
     expect(await run({})).toBe(def)
     expect(await run({ limit: 999_999 })).toBe(max)
@@ -327,7 +337,7 @@ describe('tool dell\'assistente — clamp di limit', () => {
     const tools = await toolsFor(TENANT)
     vi.mocked(runQuery).mockClear()
     await tools.get('cerca_kb')!.run({ query: 'x', limit: 999 })
-    expect(limitOf(queries()[0]!.cypher)).toBe('5')
+    expect(limitOf(queries()[0]!)).toBe('5')
   })
 
   it('limit negativo → clampato a un minimo ≥ 1 — BUG: assistantService.ts:66/115/174/216 usano solo Math.min (LIMIT -3 → Cypher invalido)', async () => {
@@ -335,7 +345,7 @@ describe('tool dell\'assistente — clamp di limit', () => {
     for (const [name, input] of CASES) {
       vi.mocked(runQuery).mockClear()
       await tools.get(name)!.run({ ...input, limit: -3 })
-      expect(Number(limitOf(queries()[0]!.cypher)), name).toBeGreaterThanOrEqual(1)
+      expect(Number(limitOf(queries()[0]!)), name).toBeGreaterThanOrEqual(1)
     }
   })
 
@@ -344,7 +354,33 @@ describe('tool dell\'assistente — clamp di limit', () => {
     for (const [name, input, def] of CASES) {
       vi.mocked(runQuery).mockClear()
       await tools.get(name)!.run({ ...input, limit: Number.NaN })
-      expect(limitOf(queries()[0]!.cypher), name).toBe(def)
+      expect(limitOf(queries()[0]!), name).toBe(def)
     }
+  })
+})
+
+// ── Permessi del ruolo (ondata 7) ─────────────────────────────────────────────
+
+describe('gli strumenti sono quelli dei dati che il ruolo può vedere', () => {
+  it('operator: tutti gli strumenti', async () => {
+    const tools = await toolsFor(TENANT, perms('operator'))
+    expect([...tools.keys()].sort()).toEqual(['analisi_impatto', 'cerca_ci', 'cerca_incident', 'cerca_kb', 'change_aperti', 'dettaglio_incident', 'lista_incident'])
+  })
+
+  it('un ruolo con sola CMDB: niente incident né change, e l\'analisi d\'impatto non li nomina nemmeno come «zero»', async () => {
+    const tools = await toolsFor(TENANT, new Set(['workspace.use', 'assistant.use', 'cmdb.read']))
+    expect([...tools.keys()].sort()).toEqual(['analisi_impatto', 'cerca_ci'])
+    vi.mocked(runQuery).mockResolvedValue([{ nome: 'db-01', tipo: 'Database', incident_aperti: [], change_in_corso: [] }])
+    const out = JSON.parse(String(await tools.get('analisi_impatto')!.run({ ci_id_o_nome: 'db-01' }))) as Record<string, unknown>
+    expect(out).not.toHaveProperty('incident_aperti')
+    expect(out).not.toHaveProperty('change_in_corso')
+    const q = queries().at(-1)!
+    expect(q.params['seeIncidents']).toBe(false)
+    expect(q.params['seeChanges']).toBe(false)
+  })
+
+  it('un ruolo senza permessi di lettura: nessuno strumento', async () => {
+    const tools = await toolsFor(TENANT, new Set(['workspace.use', 'assistant.use']))
+    expect(tools.size).toBe(0)
   })
 })

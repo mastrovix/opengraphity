@@ -83,9 +83,16 @@ const CONSTRAINTS: SchemaStatement[] = [
     label: 'FormTemplate.id',
     cypher: 'CREATE CONSTRAINT form_template_id_unique IF NOT EXISTS FOR (n:FormTemplate) REQUIRE n.id IS UNIQUE',
   },
+  /**
+   * L'etichetta vera è `SLAPolicyNode` (revisione totale · E-25): il vincolo
+   * era su `SLAPolicy`, che l'applicazione non usa — un vincolo morto, e
+   * NESSUNA unicità sull'id delle policy vere, quindi due creazioni
+   * concorrenti con lo stesso id passavano. Verificato sul grafo: zero nodi
+   * `:SLAPolicy`, quindi non c'è niente da migrare.
+   */
   {
-    label: 'SLAPolicy.id',
-    cypher: 'CREATE CONSTRAINT sla_policy_id_unique IF NOT EXISTS FOR (n:SLAPolicy) REQUIRE n.id IS UNIQUE',
+    label: 'SLAPolicyNode.id',
+    cypher: 'CREATE CONSTRAINT sla_policy_node_id_unique IF NOT EXISTS FOR (n:SLAPolicyNode) REQUIRE n.id IS UNIQUE',
   },
   {
     label: 'Problem.id',
@@ -128,9 +135,94 @@ const CONSTRAINTS: SchemaStatement[] = [
     label: 'Change(tenant_id, code)',
     cypher: 'CREATE CONSTRAINT change_code_unique IF NOT EXISTS FOR (n:Change) REQUIRE (n.tenant_id, n.code) IS UNIQUE',
   },
+  /**
+   * IL COMPITO GENERICO (20 set 2026). Tre invarianti che il codice già
+   * rispetta e che qui diventano dichiarate — e imposte dal database, che è
+   * l'unico posto dove una regola non si aggira:
+   *  - l'id è unico, come per ogni altra entità;
+   *  - la CHIAVE NATURALE `ticket + passo + azione` è unica: è quella che
+   *    impedisce i doppioni quando un ticket rientra in un passo. La MERGE
+   *    da sola regge (provato con cinque scritture simultanee: un compito
+   *    solo), ma con il vincolo l'invariante è scritta invece che sperata;
+   *  - il numero leggibile è unico nel cliente, come per i ticket.
+   */
+  {
+    label:  'Task.id unique',
+    cypher: 'CREATE CONSTRAINT task_id_unique IF NOT EXISTS FOR (k:Task) REQUIRE k.id IS UNIQUE',
+  },
+  {
+    label:  'Task(tenant_id, task_key) unique',
+    cypher: 'CREATE CONSTRAINT task_key_unique IF NOT EXISTS FOR (k:Task) REQUIRE (k.tenant_id, k.task_key) IS UNIQUE',
+  },
+  {
+    label:  'Task(tenant_id, code) unique',
+    cypher: 'CREATE CONSTRAINT task_code_unique IF NOT EXISTS FOR (k:Task) REQUIRE (k.tenant_id, k.code) IS UNIQUE',
+  },
+  /**
+   * LE PROPOSTE DI MIGLIORAMENTO (20 set 2026) — e il vincolo che il modello
+   * copiato NON aveva.
+   *
+   * Il progetto dice «modellata su `:Anomaly`». Lo è, tranne qui: su
+   * `:Anomaly` c'è un `MERGE (a {tenant_id, rule_key, entity_id})` con tre
+   * indici e NESSUN vincolo, quindi due scansioni sovrapposte — l'oraria e
+   * quella a richiesta — possono duplicare. La promessa «stessa osservazione
+   * = stessa impronta = nessun doppione» senza vincolo è vuota, e qui la
+   * promessa regge il tetto di cinque proposte aperte: un doppione ruba uno
+   * slot a una proposta vera.
+   */
+  {
+    label:  'Proposal.id unique',
+    cypher: 'CREATE CONSTRAINT proposal_id_unique IF NOT EXISTS FOR (p:Proposal) REQUIRE p.id IS UNIQUE',
+  },
+  {
+    label:  'Proposal(tenant_id, area, fingerprint) unique',
+    cypher: 'CREATE CONSTRAINT proposal_fingerprint_unique IF NOT EXISTS FOR (p:Proposal) REQUIRE (p.tenant_id, p.area, p.fingerprint) IS UNIQUE',
+  },
+  /**
+   * I LOG DEL SERVER: un nodo per (firma, giorno) — 20 set 2026, ondata 3.
+   *
+   * Il vincolo non è un'ottimizzazione, è ciò che rende vero il modello:
+   * `lib/serverLogSink.ts` scrive con un `MERGE` su questa coppia, e due
+   * processi (API e worker condividono il database) che sbagliano nello
+   * stesso istante devono incrementare lo stesso nodo, non crearne due.
+   * Senza vincolo il `MERGE` concorrente duplica, ed è esattamente il difetto
+   * che `:Anomaly` aveva e che il progetto dice di non ripetere.
+   */
+  /**
+   * IL REGISTRO DEL COSTO AI (20 set 2026, ondata 4). Il vincolo è ciò che
+   * rende vero il `MERGE` di `lib/aiCostLedger.ts`: due processi che contano
+   * la stessa funzione nello stesso mese devono sommare sullo stesso nodo,
+   * non crearne due che poi nessuno somma.
+   */
+  {
+    label:  'AIUsage(tenant_id, month, feature) unique',
+    cypher: 'CREATE CONSTRAINT ai_usage_unique IF NOT EXISTS FOR (u:AIUsage) REQUIRE (u.tenant_id, u.month, u.feature) IS UNIQUE',
+  },
+  {
+    label:  'ServerLogEntry(fingerprint, day) unique',
+    cypher: 'CREATE CONSTRAINT server_log_fingerprint_day_unique IF NOT EXISTS FOR (l:ServerLogEntry) REQUIRE (l.fingerprint, l.day) IS UNIQUE',
+  },
+  /**
+   * Il nome di un calendario di servizio è unico DAVVERO (revisione totale ·
+   * C-34): l'unicità era controllata da una lettura fuori dalla transazione di
+   * creazione, quindi due admin che salvavano «Ufficio» nello stesso istante
+   * passavano entrambi e la tendina mostrava due calendari omonimi. La chiave
+   * è `name_key` = toLower(name), come per i CI: il confronto del prodotto non
+   * distingue le maiuscole.
+   */
+  {
+    label: 'ServiceCalendar(tenant_id, name_key)',
+    cypher: 'CREATE CONSTRAINT service_calendar_name_unique IF NOT EXISTS FOR (n:ServiceCalendar) REQUIRE (n.tenant_id, n.name_key) IS UNIQUE',
+  },
+  {
+    // F18: `number` sulle change come sugli altri ticket (stesso valore di `code`).
+    label: 'Change(tenant_id, number)',
+    cypher: 'CREATE CONSTRAINT change_number_unique IF NOT EXISTS FOR (n:Change) REQUIRE (n.tenant_id, n.number) IS UNIQUE',
+  },
   { label: 'ServiceCatalogItem.id', cypher: 'CREATE CONSTRAINT service_catalog_item_id_unique IF NOT EXISTS FOR (n:ServiceCatalogItem) REQUIRE n.id IS UNIQUE' },
   { label: 'KBArticleVersion.id', cypher: 'CREATE CONSTRAINT kb_article_version_id_unique IF NOT EXISTS FOR (n:KBArticleVersion) REQUIRE n.id IS UNIQUE' },
   { label: 'OLAContract.id', cypher: 'CREATE CONSTRAINT ola_contract_id_unique IF NOT EXISTS FOR (n:OLAContract) REQUIRE n.id IS UNIQUE' },
+  { label: 'ServiceCalendar.id', cypher: 'CREATE CONSTRAINT service_calendar_id_unique IF NOT EXISTS FOR (n:ServiceCalendar) REQUIRE n.id IS UNIQUE' },
   {
     label: 'Counter(tenant_id, kind)',
     cypher: 'CREATE CONSTRAINT counter_key_unique IF NOT EXISTS FOR (n:Counter) REQUIRE (n.tenant_id, n.kind) IS UNIQUE',
@@ -205,9 +297,21 @@ const CONSTRAINTS: SchemaStatement[] = [
     cypher: 'DROP INDEX enum_type_definition_tenant_name IF EXISTS',
   },
   { label: 'EnumTypeDefinition(tenant_id, name)', cypher: 'CREATE CONSTRAINT enum_type_definition_tenant_name_unique IF NOT EXISTS FOR (n:EnumTypeDefinition) REQUIRE (n.tenant_id, n.name) IS UNIQUE' },
+  // Moduli del catalogo (ondata 1): il nome di un campo della libreria e il
+  // nome della proprieta sul ticket, quindi due campi con lo stesso nome nello
+  // stesso tenant scriverebbero sullo stesso dato.
+  { label: 'FormField(tenant_id, name)', cypher: 'CREATE CONSTRAINT form_field_tenant_name_unique IF NOT EXISTS FOR (n:FormField) REQUIRE (n.tenant_id, n.name) IS UNIQUE' },
+  { label: 'CatalogFormRevision(tenant_id, item_id, revision)', cypher: 'CREATE CONSTRAINT catalog_form_revision_unique IF NOT EXISTS FOR (n:CatalogFormRevision) REQUIRE (n.tenant_id, n.item_id, n.revision) IS UNIQUE' },
   { label: 'CIFieldDefinition.id', cypher: 'CREATE CONSTRAINT ci_field_definition_id_unique IF NOT EXISTS FOR (n:CIFieldDefinition) REQUIRE n.id IS UNIQUE' },
   { label: 'CIRelationDefinition.id', cypher: 'CREATE CONSTRAINT ci_relation_definition_id_unique IF NOT EXISTS FOR (n:CIRelationDefinition) REQUIRE n.id IS UNIQUE' },
-  { label: 'CISystemRelationDefinition.id', cypher: 'CREATE CONSTRAINT ci_system_relation_definition_id_unique IF NOT EXISTS FOR (n:CISystemRelationDefinition) REQUIRE n.id IS UNIQUE' },
+  { label: 'CISystemRelationDefinition.id', cypher: 'CREATE CONSTRAINT ci_system_relation_definition_id_unique IF NOT EXISTS FOR (n:CISystemRelationDefinition) REQUIRE n.id IS UNIQUE' },  // Revisione totale · E-24: questi cinque vincoli stavano nell'elenco degli
+  // INDICI, quindi non passavano dal controllo dei duplicati né dall'ordine
+  // «prechecks → vincoli → indici» (e il test di init era rosso).
+  { label: 'AnomalyRuleConfig(tenant_id, rule_key) unique', cypher: 'CREATE CONSTRAINT anomaly_rule_config_unique IF NOT EXISTS FOR (c:AnomalyRuleConfig) REQUIRE (c.tenant_id, c.rule_key) IS UNIQUE' },
+  { label: 'Role(tenant_id, key) unique', cypher: 'CREATE CONSTRAINT role_tenant_key_unique IF NOT EXISTS FOR (r:Role) REQUIRE (r.tenant_id, r.key) IS UNIQUE' },
+  { label: 'TicketCIExclusion(tenant_id, ticket_type, ci_type) unique', cypher: 'CREATE CONSTRAINT ticket_ci_exclusion_unique IF NOT EXISTS FOR (x:TicketCIExclusion) REQUIRE (x.tenant_id, x.ticket_type, x.ci_type) IS UNIQUE' },
+  { label: 'SlackInstallation(tenant_id) unique', cypher: 'CREATE CONSTRAINT slack_installation_tenant_unique IF NOT EXISTS FOR (s:SlackInstallation) REQUIRE s.tenant_id IS UNIQUE' },
+  { label: 'SlackInstallation(team_id) unique',   cypher: 'CREATE CONSTRAINT slack_installation_team_unique IF NOT EXISTS FOR (s:SlackInstallation) REQUIRE s.team_id IS UNIQUE' },
 ]
 
 const INDEXES: SchemaStatement[] = [
@@ -287,10 +391,23 @@ const INDEXES: SchemaStatement[] = [
   // WorkflowDefinition
   { label: 'WorkflowDefinition(tenant_id, entity_type)', cypher: 'CREATE INDEX wf_tenant_type IF NOT EXISTS FOR (w:WorkflowDefinition) ON (w.tenant_id, w.entity_type)' },
   { label: 'WorkflowDefinition(tenant_id, active)',       cypher: 'CREATE INDEX wf_tenant_active IF NOT EXISTS FOR (w:WorkflowDefinition) ON (w.tenant_id, w.active)' },
-  // ChangeTask
-  { label: 'ChangeTask(change_id)',                     cypher: 'CREATE INDEX change_task_change IF NOT EXISTS FOR (t:ChangeTask) ON (t.change_id)' },
-  { label: 'ChangeTask(tenant_id, status)',              cypher: 'CREATE INDEX change_task_tenant_status IF NOT EXISTS FOR (t:ChangeTask) ON (t.tenant_id, t.status)' },
-  { label: 'ChangeTask(tenant_id, task_type)',           cypher: 'CREATE INDEX change_task_type IF NOT EXISTS FOR (t:ChangeTask) ON (t.tenant_id, t.task_type)' },
+  /**
+   * IL COMPITO GENERICO (20 set 2026), quello che un passo di workflow crea
+   * su un ticket qualunque. Senza indici «I miei compiti» scandiva TUTTI i
+   * compiti del cliente a ogni apertura della pagina, e ogni chiusura di un
+   * compito faceva una scansione per etichetta su `{id}`.
+   */
+  { label: 'Task(tenant_id, state)',                    cypher: 'CREATE INDEX task_tenant_state IF NOT EXISTS FOR (k:Task) ON (k.tenant_id, k.state)' },
+  { label: 'Task(tenant_id, step_name)',                cypher: 'CREATE INDEX task_tenant_step IF NOT EXISTS FOR (k:Task) ON (k.tenant_id, k.step_name)' },
+  /*
+   * `ChangeTask` NON C'È PIÙ (20 set 2026). Qui stavano tre indici su
+   * quell'etichetta: nessun nodo la porta (zero su questa installazione),
+   * nessuna query la nomina, e i task delle change hanno da tempo le cinque
+   * etichette dei loro tipi. Lo stesso fantasma era già stato tolto dal
+   * contatore dei task nella revisione del 14 set (CH-2); questi tre erano
+   * rimasti, e ogni `init-schema` li ricreava. Chi li ha ancora se li vede
+   * togliere dalla migrazione `20261005_1120_drop_change_task_indexes`.
+   */
   // ReportConversation
   { label: 'ReportConversation(tenant_id)',             cypher: 'CREATE INDEX report_tenant IF NOT EXISTS FOR (r:ReportConversation) ON (r.tenant_id)' },
   // NotificationChannel
@@ -304,6 +421,18 @@ const INDEXES: SchemaStatement[] = [
   { label: 'Anomaly(tenant_id)',                        cypher: 'CREATE INDEX anomaly_tenant IF NOT EXISTS FOR (a:Anomaly) ON (a.tenant_id)' },
   { label: 'Anomaly(tenant_id, status)',                cypher: 'CREATE INDEX anomaly_tenant_status IF NOT EXISTS FOR (a:Anomaly) ON (a.tenant_id, a.status)' },
   { label: 'Anomaly(tenant_id, rule_key)',              cypher: 'CREATE INDEX anomaly_tenant_rule IF NOT EXISTS FOR (a:Anomaly) ON (a.tenant_id, a.rule_key)' },
+  // Proposte di miglioramento: la pagina filtra per stato e per area, e il
+  // giro notturno cerca per impronta prima di scrivere.
+  { label: 'Proposal(tenant_id, status)',               cypher: 'CREATE INDEX proposal_tenant_status IF NOT EXISTS FOR (p:Proposal) ON (p.tenant_id, p.status)' },
+  { label: 'Proposal(tenant_id, area)',                 cypher: 'CREATE INDEX proposal_tenant_area IF NOT EXISTS FOR (p:Proposal) ON (p.tenant_id, p.area)' },
+  { label: 'Proposal(tenant_id, created_at)',           cypher: 'CREATE INDEX proposal_tenant_created IF NOT EXISTS FOR (p:Proposal) ON (p.tenant_id, p.created_at)' },
+  // La lapide di un rifiuto: sopravvive alla purga della proposta, e il giro
+  // la cerca per impronta per non riproporre ciò che è già stato respinto.
+  { label: 'ProposalRejection(tenant_id, fingerprint)', cypher: 'CREATE INDEX proposal_rejection_fp IF NOT EXISTS FOR (r:ProposalRejection) ON (r.tenant_id, r.fingerprint)' },
+  // Configurazione delle regole (ondata 5 di «Nulla cablato»): una per regola per tenant.
+  // Ruoli dell'organizzazione (ondata 7 di «Nulla cablato»): una chiave per tenant.
+  // Tipi di CI esclusi per tipo di ticket (revisione del 15 set 2026 · CM-8): un'esclusione per coppia.
+  // Slack dell'organizzazione (ondata 8): uno per organizzazione, un workspace per una sola organizzazione.
   // Team by id (lookup in OWNED_BY / SUPPORTED_BY joins)
   { label: 'Team(tenant_id, id)',                       cypher: 'CREATE INDEX team_id IF NOT EXISTS FOR (t:Team) ON (t.tenant_id, t.id)' },
   // SyncSource
@@ -318,6 +447,8 @@ const INDEXES: SchemaStatement[] = [
   { label: 'SyncConflict(source_id)',                   cypher: 'CREATE INDEX sync_conflict_source IF NOT EXISTS FOR (n:SyncConflict) ON (n.source_id)' },
   { label: 'SyncConflict(tenant_id, status)',           cypher: 'CREATE INDEX sync_conflict_status IF NOT EXISTS FOR (n:SyncConflict) ON (n.tenant_id, n.status)' },
   { label: 'ServiceCatalogItem(tenant_id)', cypher: 'CREATE INDEX service_catalog_tenant IF NOT EXISTS FOR (n:ServiceCatalogItem) ON (n.tenant_id)' },
+  { label: 'FormField(tenant_id)', cypher: 'CREATE INDEX form_field_tenant IF NOT EXISTS FOR (n:FormField) ON (n.tenant_id)' },
+  { label: 'CatalogFormRevision(tenant_id, item_id)', cypher: 'CREATE INDEX catalog_form_revision_item IF NOT EXISTS FOR (n:CatalogFormRevision) ON (n.tenant_id, n.item_id)' },
   // Discovery reconciliation lookups by (tenant_id, source, external_id) are
   // served by the ci_discovery_key_unique constraint's backing index (CONSTRAINTS).
   // Fulltext for the command-palette global search (CONTAINS cannot use range indexes).
@@ -339,12 +470,25 @@ const INDEXES: SchemaStatement[] = [
   { label: 'NotificationRule(tenant_id, event_type)', cypher: 'CREATE INDEX notification_rule_tenant_event IF NOT EXISTS FOR (n:NotificationRule) ON (n.tenant_id, n.event_type)' },
   // SLAPolicyNode: sla/selector.ts picks the policy for every created entity.
   { label: 'SLAPolicyNode(tenant_id, entity_type)', cypher: 'CREATE INDEX sla_policy_node_tenant_type IF NOT EXISTS FOR (n:SLAPolicyNode) ON (n.tenant_id, n.entity_type)' },
+  // ServiceCalendar: i calendari con nome di un cliente (verifica «Cosa resta cablato», ondata 2).
+  { label: 'ServiceCalendar(tenant_id)', cypher: 'CREATE INDEX service_calendar_tenant IF NOT EXISTS FOR (n:ServiceCalendar) ON (n.tenant_id)' },
   // WorkflowStep: the engine resolves steps by (definition, name) on every transition.
   { label: 'WorkflowStep(definition_id, name)', cypher: 'CREATE INDEX workflow_step_definition_name IF NOT EXISTS FOR (n:WorkflowStep) ON (n.definition_id, n.name)' },
-  // Comments: two labels coexist — `Comment` (Incident HAS_COMMENT, legacy) and
-  // `EntityComment` (generic, resolvers/comments.ts + portal). Both indexed.
-  { label: 'EntityComment(tenant_id, entity_id)', cypher: 'CREATE INDEX entity_comment_tenant_entity IF NOT EXISTS FOR (n:EntityComment) ON (n.tenant_id, n.entity_id)' },
+  // E la transizione cerca lo step di arrivo per (definizione, id) — senza
+  // questo indice era una scansione dell'etichetta a ogni transizione
+  // (revisione totale · E-6). Non è un vincolo di unicità: gli id dei passi dei
+  // seed storici (`step-<nome>`) si ripetono fra definizioni, ed è proprio per
+  // questo che la query passa dalla definizione.
+  { label: 'WorkflowStep(definition_id, id)', cypher: 'CREATE INDEX workflow_step_definition_id IF NOT EXISTS FOR (n:WorkflowStep) ON (n.definition_id, n.id)' },
+  // Comments: one model for every ticket, `(ticket)-[:HAS_COMMENT]->(:Comment)`
+  // (apps/api/src/lib/ticketComments.ts). `EntityComment` was retired by the
+  // migration 20260923_1030_comments_single_model: its index is no longer created.
   { label: 'Comment(tenant_id)', cypher: 'CREATE INDEX comment_tenant IF NOT EXISTS FOR (n:Comment) ON (n.tenant_id)' },
+  // Edit/delete of a single comment (resolvers/comments.ts) look it up by id.
+  { label: 'Comment(tenant_id, id)', cypher: 'CREATE INDEX comment_tenant_id IF NOT EXISTS FOR (n:Comment) ON (n.tenant_id, n.id)' },
+  // Revisione del 14 set 2026 · F10: il pannello legge le notifiche del tenant dalla più recente; la pulizia per età.
+  { label: 'InAppNotification(tenant_id, created_at)', cypher: 'CREATE INDEX inapp_notification_tenant_created IF NOT EXISTS FOR (n:InAppNotification) ON (n.tenant_id, n.created_at)' },
+  { label: 'InAppNotification(created_at)', cypher: 'CREATE INDEX inapp_notification_created IF NOT EXISTS FOR (n:InAppNotification) ON (n.created_at)' },
   // Metamodel definitions (id lookups from the dynamic CI resolvers). Le chiavi
   // naturali (tenant_id, name) sono VINCOLI di unicità (D-17, vedi CONSTRAINTS):
   // i loro indici di appoggio servono anche queste ricerche, quindi qui restano
@@ -364,6 +508,41 @@ const INDEXES: SchemaStatement[] = [
   // Attachments / audit trail — always read per entity
   { label: 'Attachment(tenant_id, entity_id)', cypher: 'CREATE INDEX attachment_tenant_entity IF NOT EXISTS FOR (n:Attachment) ON (n.tenant_id, n.entity_id)' },
   { label: 'AuditEntry(tenant_id, entity_id)', cypher: 'CREATE INDEX audit_entry_tenant_entity IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.entity_id)' },
+  /*
+   * GLI AGGREGATI DEL LAVORO QUOTIDIANO (20 set 2026, ondata 2 di
+   * «Miglioramento continuo»).
+   *
+   * L'unico indice era quello per entità. Ogni domanda «che cosa è successo
+   * in questa finestra», «chi ha fatto cosa», «quali azioni si ripetono» era
+   * una scansione piena di un registro che non si purga mai — e `created_at`
+   * è una stringa ISO, quindi l'ordinamento e i confronti sono lessicali e
+   * l'indice serve davvero.
+   */
+  { label: 'AuditEntry(tenant_id, created_at)', cypher: 'CREATE INDEX audit_entry_tenant_created IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.created_at)' },
+  { label: 'AuditEntry(tenant_id, action)',     cypher: 'CREATE INDEX audit_entry_tenant_action IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.action)' },
+  { label: 'AuditEntry(tenant_id, user_id)',    cypher: 'CREATE INDEX audit_entry_tenant_user IF NOT EXISTS FOR (n:AuditEntry) ON (n.tenant_id, n.user_id)' },
+  /*
+   * I LOG DEL SERVER (ondata 3). Due domande sole, e sono queste:
+   * «questa firma su quanti giorni distinti?» (il connettore) e «cosa è
+   * successo in questa finestra?» (la retention e la lettura di piattaforma).
+   * `:LogEntry`, il registro dei log del BROWSER, non ha mai avuto un indice
+   * in tre anni: 270.000 nodi scritti e mai letti. Qui si parte con l'indice.
+   */
+  { label: 'ServerLogEntry(fingerprint, day)', cypher: 'CREATE INDEX server_log_fingerprint_day IF NOT EXISTS FOR (n:ServerLogEntry) ON (n.fingerprint, n.day)' },
+  { label: 'ServerLogEntry(day)',              cypher: 'CREATE INDEX server_log_day IF NOT EXISTS FOR (n:ServerLogEntry) ON (n.day)' },
+  /*
+   * E finalmente uno su `:LogEntry` — i log del browser. Li scrive
+   * `rest/client-logs.ts`, non li legge nessuno e non li purga nessuno; la
+   * retention dell'ondata 3 li raggiunge, e per cancellarli per età serve
+   * poter cercare per (tenant, giorno) senza scandire tutto.
+   */
+  { label: 'LogEntry(tenant_id, timestamp)',   cypher: 'CREATE INDEX log_entry_tenant_timestamp IF NOT EXISTS FOR (n:LogEntry) ON (n.tenant_id, n.timestamp)' },
+  /*
+   * LA COPERTURA DELLA KNOWLEDGE BASE (20 set 2026). `coperturaPerCategoria`
+   * raggruppa gli incident per `category` dentro una finestra: senza indice è
+   * una scansione di tutti gli incident del cliente a ogni giro notturno.
+   */
+  { label: 'Incident(tenant_id, category)',    cypher: 'CREATE INDEX incident_tenant_category IF NOT EXISTS FOR (n:Incident) ON (n.tenant_id, n.category)' },
   // Event Management: la console lista per (tenant, status) ordinando per last_seen_at.
   { label: 'Event(tenant_id, status, last_seen_at)', cypher: 'CREATE INDEX event_tenant_status_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.status, n.last_seen_at)' },
   // Tempeste per sorgente (eventStorm.ts: MATCH (e:Event {tenant_id, source_id})) e
@@ -405,6 +584,8 @@ const INDEXES: SchemaStatement[] = [
   { label: 'ServiceMap(tenant_id, service_id)', cypher: 'CREATE INDEX service_map_tenant_service IF NOT EXISTS FOR (n:ServiceMap) ON (n.tenant_id, n.service_id)' },
   { label: 'ServiceMap(tenant_id, status)', cypher: 'CREATE INDEX service_map_tenant_status IF NOT EXISTS FOR (n:ServiceMap) ON (n.tenant_id, n.status)' },
   { label: 'ServiceHealthEntry(tenant_id, map_id, at)', cypher: 'CREATE INDEX service_health_tenant_map IF NOT EXISTS FOR (n:ServiceHealthEntry) ON (n.tenant_id, n.map_id, n.at)' },
+  // Storia delle assegnazioni ai team: il report OLA/UC filtra i tratti per team.
+  { label: 'TicketTeamSegment(tenant_id, team_id)', cypher: 'CREATE INDEX ticket_team_segment_tenant_team IF NOT EXISTS FOR (n:TicketTeamSegment) ON (n.tenant_id, n.team_id)' },
   // NOTE — vector indexes are NOT listed here on purpose: their name and
   // dimension depend on the configured embedding provider
   // (`incident_embedding_<dims>` / `kb_embedding_<dims>`, see
@@ -437,8 +618,11 @@ const COUNTER_SEEDS: SchemaStatement[] = [
     WITH ch.tenant_id AS t, max(toInteger(substring(ch.code, 3))) AS mx
     MERGE (c:Counter {tenant_id: t, kind: 'change'})
     SET c.value = CASE WHEN c.value IS NULL OR c.value < mx THEN mx ELSE c.value END` },
+  // Revisione del 14 set 2026 · CH-2: questa voce cercava l'etichetta
+  // `ChangeTask`, che non esiste — i task hanno le cinque etichette dei loro tipi.
   { label: 'seed task counter', cypher: `
-    MATCH (tk:ChangeTask) WHERE tk.tenant_id IS NOT NULL AND tk.code STARTS WITH 'TASK'
+    MATCH (tk) WHERE (tk:AssessmentTask OR tk:DeployPlanTask OR tk:ValidationTest OR tk:DeploymentTask OR tk:ReviewTask)
+      AND tk.tenant_id IS NOT NULL AND tk.code STARTS WITH 'TASK'
     WITH tk.tenant_id AS t, max(toInteger(substring(tk.code, 4))) AS mx
     MERGE (c:Counter {tenant_id: t, kind: 'task'})
     SET c.value = CASE WHEN c.value IS NULL OR c.value < mx THEN mx ELSE c.value END` },
@@ -601,6 +785,35 @@ export interface InitSchemaOptions {
    */
   migrations?: readonly Migration[]
   log?: (message: string) => void
+  /**
+   * Rifà la semina dei contatori anche se il marcatore c'è (E-26). Serve dopo
+   * un ripristino da backup, dove i numeri nel grafo possono essere più alti
+   * dei contatori.
+   */
+  reseedCounters?: boolean
+}
+
+/** Il marcatore della semina dei contatori (E-26): un nodo solo, senza tenant. */
+const COUNTER_SEED_MARKER = 'counters'
+
+async function countersAlreadySeeded(force: boolean): Promise<boolean> {
+  if (force) return false
+  const session = getDriver().session({ defaultAccessMode: neo4j.session.READ })
+  try {
+    const r = await session.run('MATCH (s:SchemaSeed {id: $id}) RETURN s.at AS at', { id: COUNTER_SEED_MARKER })
+    return r.records.length > 0
+  } finally {
+    await session.close()
+  }
+}
+
+async function markCountersSeeded(): Promise<void> {
+  const session = getDriver().session({ defaultAccessMode: neo4j.session.WRITE })
+  try {
+    await session.run('MERGE (s:SchemaSeed {id: $id}) SET s.at = $at', { id: COUNTER_SEED_MARKER, at: new Date().toISOString() })
+  } finally {
+    await session.close()
+  }
 }
 
 /**
@@ -614,7 +827,20 @@ export async function initSchema(opts: InitSchemaOptions = {}): Promise<void> {
   await runPrechecks()
   await runStatements(CONSTRAINTS, 'Constraint')
   await runStatements(INDEXES, 'Index')
-  await runStatements(COUNTER_SEEDS, 'CounterSeed')
+  /**
+   * I contatori si seminano UNA volta (revisione totale · E-26): sono cinque
+   * `max()` su tutti gli incident, problem, richieste, change e task, cioè
+   * cinque scansioni complete, e giravano a ogni esecuzione. Servono una sola
+   * volta: a partire da lì il contatore lo alza l'applicazione (`sequence.ts`)
+   * e l'import lo alza sopra ogni numero conservato. Un marcatore nel grafo
+   * lo ricorda; `reseedCounters: true` lo rifà (dopo un ripristino da backup).
+   */
+  if (await countersAlreadySeeded(opts.reseedCounters === true)) {
+    log('[neo4j:init] Counter seeds skipped: already done (pass reseedCounters to redo them after a restore).')
+  } else {
+    await runStatements(COUNTER_SEEDS, 'CounterSeed')
+    await markCountersSeeded()
+  }
   log('[neo4j:init] Schema initialisation complete.')
 
   const migrations = opts.migrations ?? []

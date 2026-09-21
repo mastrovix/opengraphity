@@ -2,6 +2,16 @@ import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } fr
 import type { DomainEvent } from '@opengraphity/types'
 import type { InAppNotification } from '../sse.js'
 
+// Revisione totale · E-3: la consegna è deduplicata per canale su Redis. Nei
+// test gli eventi riusano lo stesso id, quindi la deduplica va azzerata a
+// ogni caso: il contratto della deduplica è pinnato in deliveryDedup.test.ts.
+vi.mock('../deliveryDedup.js', () => ({
+  deliverOnce: async (_id: string | undefined, _ch: string, deliver: () => Promise<void> | void) => { await deliver(); return true },
+  alreadyDelivered: async () => false,
+  markDelivered: async () => {},
+  resetDeliveryDedup: () => {},
+}))
+
 // Complements dispatcher.test.ts (email escaping, notifications_enabled
 // recipients, Teams routing on sla.breached). Covered here: NotificationRule
 // lookup + cache, in_app fan-out, Slack routing per tenant, email batching,
@@ -12,6 +22,13 @@ let userRows: Array<Record<string, unknown>> = []
 let channelRows: Array<Record<string, unknown>> = []
 let ruleRows: Array<Record<string, unknown>> = []
 
+// Il marchio dell'organizzazione nelle e-mail (ondata 6): qui quello di fabbrica, senza leggere il Tenant.
+vi.mock('../brand.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../brand.js')>()
+  const { FACTORY_TENANT_BRAND } = await import('@opengraphity/types')
+  return { ...real, loadTenantBrand: vi.fn(async () => ({ ...FACTORY_TENANT_BRAND, isDefault: true })) }
+})
+vi.mock('../locale.js', () => ({ loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })), invalidateNotificationLocale: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({
     executeRead: async (fn: (tx: { run: (c: string, p: Record<string, unknown>) => Promise<unknown> }) => Promise<unknown>) =>
@@ -58,7 +75,7 @@ function event(type: string, payload: Record<string, unknown>, tenantId = 't1'):
 }
 const incidentPayload = { id: 'inc-1', title: 'DB down', severity: 'critical', status: 'open', assignedTo: 'Mario', ciName: 'db-01' }
 
-let sendToTenant: MockInstance<(tenantId: string, event: InAppNotification) => void>
+let sendToTenant: MockInstance<(tenantId: string, event: InAppNotification) => Promise<void>>
 
 beforeEach(() => {
   runQueries.length = 0
@@ -69,7 +86,7 @@ beforeEach(() => {
   fetchMock.mockClear()
   fetchMock.mockImplementation(async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) }))
   for (const t of ['t1', 't2', 't3']) invalidateRuleCache(t)
-  sendToTenant = vi.spyOn(sseManager, 'sendToTenant').mockImplementation(() => {})
+  sendToTenant = vi.spyOn(sseManager, 'deliverToTenant').mockResolvedValue(undefined)
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
@@ -121,12 +138,25 @@ describe('NotificationDispatcher.process — rule lookup', () => {
     expect(sendEmail).not.toHaveBeenCalled()
   })
 
-  it('rule missing channels/target → defaults in_app / all', async () => {
-    ruleRows = [{ id: 'r', enabled: true, title_key: 'k' }]
-    await new NotificationDispatcher().process(event('incident.created', incidentPayload))
-    expect(sendToTenant).toHaveBeenCalledTimes(1)
-    expect(sendToTenant.mock.calls[0]![1].severity).toBe('info')
+  /**
+   * CONTRATTO RINEGOZIATO (revisione totale · E-44). Prima una regola senza
+   * canali o senza bersaglio ripiegava su `['in_app']` e `'all'`: una regola
+   * scritta male via API o da una migrazione TRASMETTEVA a tutto il tenant,
+   * viewer compresi — lo stesso difetto di riservatezza già chiuso (D-23),
+   * per una via secondaria. Ora è un dato rotto e si dice.
+   */
+  it('regola senza canali o senza bersaglio → errore che la nomina, nessuna trasmissione (E-44)', async () => {
+    ruleRows = [{ id: 'r-rotta', enabled: true, title_key: 'k', event_type: 'incident.created' }]
+    await expect(new NotificationDispatcher().process(event('incident.created', incidentPayload)))
+      .rejects.toThrow(/NotificationRule r-rotta .* has no channels/)
+    expect(sendToTenant).not.toHaveBeenCalled()
+
+    ruleRows = [{ id: 'r-senza-target', enabled: true, title_key: 'k', event_type: 'incident.created', channels: ['in_app'] }]
+    await expect(new NotificationDispatcher().process(event('incident.created', incidentPayload)))
+      .rejects.toThrow(/has no target/)
+    expect(sendToTenant).not.toHaveBeenCalled()
   })
+
 
   it('caches the rule per (tenant, event) for 60s; invalidateRuleCache and TTL expiry re-query', async () => {
     vi.useFakeTimers()
@@ -180,8 +210,8 @@ describe('NotificationDispatcher — Slack routing per tenant', () => {
     expect(url).toBe('https://hooks.slack.example/s-assigned')
     const text = init.body
     expect(text).toContain('DB down')
-    expect(text).toContain('*CI Affected:* db-01')
-    expect(text).toContain('*Assegnato a:* Mario')
+    expect(text).toContain('*Affected CI:* db-01')
+    expect(text).toContain('*Assigned to:* Mario')
     expect(sendToTenant).not.toHaveBeenCalled()
   })
 
@@ -213,22 +243,29 @@ describe('NotificationDispatcher — Slack routing per tenant', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('event type with no Slack/Teams formatter (e.g. problem.created) with a slack rule → in_app still delivered, then an explicit error names the channel (D3.1: never a silent drop)', async () => {
+  /**
+   * CONTRATTO RINEGOZIATO (revisione totale · E-3). Prima il canale non
+   * instradabile veniva rifiutato DOPO aver consegnato in-app ed e-mail: il
+   * job fallliva, BullMQ lo ritentava quattro volte e ogni tentativo rifaceva
+   * quelle consegne — quattro notifiche identiche per ogni evento, per
+   * sempre, finché la regola restava scritta così. Ora il rifiuto viene
+   * PRIMA: nessuna consegna, un solo errore, la regola si corregge.
+   */
+  it('event type with no Slack/Teams formatter (e.g. problem.created) with a slack rule → rifiuto PRIMA di consegnare, niente in_app (E-3)', async () => {
     ruleRows = [rule(['slack', 'in_app'])]
     channelRows = [slackChannel('s', ['assigned'])]
     await expect(new NotificationDispatcher().process(event('problem.created', { id: 'prb-1', title: 'x' })))
       .rejects.toThrow('problem.created notification rule requests channels [slack] that the dispatcher cannot route for this event type — routable: [in_app, email]')
-    expect(sendToTenant).toHaveBeenCalledTimes(1)   // in_app still goes out
+    expect(sendToTenant).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
     expect(runQueries.some(q => q.cypher.includes('NotificationChannel'))).toBe(false)
   })
 
-  it('change.approved with slack AND teams → slack delivered (formatter exists), then an error for teams (no Teams formatter for changes)', async () => {
+  it('change.approved con slack E teams → entrambi i canali ricevono (E-18)', async () => {
     ruleRows = [rule(['slack', 'teams'])]
     channelRows = [slackChannel('s-chg', ['change_approved']), teamsChannel('t-chg', ['change_approved'])]
-    await expect(new NotificationDispatcher().process(event('change.approved', { id: 'chg-1', title: 'Upgrade', type: 'normal', status: 'approved' })))
-      .rejects.toThrow('change.approved notification rule requests channels [teams]')
-    expect(fetchMock.mock.calls.map(c => c[0])).toEqual(['https://hooks.slack.example/s-chg'])
+    await new NotificationDispatcher().process(event('change.approved', { id: 'chg-1', title: 'Upgrade', type: 'normal', status: 'approved' }))
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['https://hooks.slack.example/s-chg', 'https://teams.example/t-chg'])
   })
 
   it('change.approved → slack channels subscribed to change_approved (Change enrichment query on the tenant)', async () => {
@@ -239,35 +276,90 @@ describe('NotificationDispatcher — Slack routing per tenant', () => {
     expect(fetchMock.mock.calls.map(c => c[0])).toEqual(['https://hooks.slack.example/s-chg'])
   })
 
-  it('change.approved without id/title → nothing sent, no error (pinned)', async () => {
+  /**
+   * CONTRATTO RINEGOZIATO (revisione totale · E-17): un `change.approved`
+   * senza id o titolo uscriva in silenzio, quindi un produttore che pubblica
+   * `entity_id` invece di `id` lasciava la regola attiva e muta per sempre —
+   * mentre lo stesso caso su un incident lancia. Ora lancia anche qui.
+   */
+  it('change.approved senza id/title → errore che nomina il campo (E-17)', async () => {
     ruleRows = [rule(['slack'])]
     channelRows = [slackChannel('s-chg', ['change_approved'])]
-    await expect(new NotificationDispatcher().process(event('change.approved', { id: 'chg-1' }))).resolves.toBeUndefined()
+    await expect(new NotificationDispatcher().process(event('change.approved', { id: 'chg-1' })))
+      .rejects.toThrow('change.approved payload has no "title"')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('change.task_assigned → slack channels subscribed to change_task_assigned', async () => {
+  it('change.task_assigned → canali Slack E Teams abbonati (E-18)', async () => {
     ruleRows = [rule(['slack'])]
     channelRows = [slackChannel('s-task', ['change_task_assigned']), teamsChannel('t-task', ['change_task_assigned'])]
     await new NotificationDispatcher().process(event('change.task_assigned', {
       changeId: 'chg-1', changeTitle: 'Upgrade', taskId: 'task-1', ciName: 'db-01', teamName: 'DBA', assignedTo: 'Mario',
     }))
-    expect(fetchMock.mock.calls.map(c => c[0])).toEqual(['https://hooks.slack.example/s-task'])
+    expect(fetchMock.mock.calls.map(c => c[0])).toEqual(['https://hooks.slack.example/s-task', 'https://teams.example/t-task'])
   })
 
   it('sla.breached on an incident → slack channels subscribed to sla_breach with a synthetic title', async () => {
     ruleRows = [rule(['slack'])]
     channelRows = [slackChannel('s-sla', ['sla_breach']), slackChannel('s-asg', ['assigned'])]
-    await new NotificationDispatcher().process(event('sla.breached', { entity_type: 'incident', entity_id: 'inc-9', breached_at: 'x' }))
+    await new NotificationDispatcher().process(event('sla.breached', { entity_type: 'incident', entity_id: 'inc-9', breached_at: 'x', number: 'INC00000009', title: 'Rete giù' }))
     expect(fetchMock.mock.calls.map(c => c[0])).toEqual(['https://hooks.slack.example/s-sla'])
-    expect(fetchMock.mock.calls[0]![1].body).toContain('SLA breach su incident inc-9')
+    expect(fetchMock.mock.calls[0]![1].body).toContain('SLA breached on INC00000009: Rete giù')
   })
 
   it('sla.breached on a problem with a teams channel lacking webhook_url → explicit error', async () => {
     ruleRows = [rule(['teams'])]
     channelRows = [teamsChannel('t-broken', ['sla_breach'], null)]
-    await expect(new NotificationDispatcher().process(event('sla.breached', { entity_type: 'problem', entity_id: 'prb-1' })))
+    await expect(new NotificationDispatcher().process(event('sla.breached', { entity_type: 'problem', entity_id: 'prb-1', number: 'PRB00000001', title: 'Rete giù' })))
       .rejects.toThrow('Teams NotificationChannel t-broken has no webhook_url')
+  })
+
+  /**
+   * Revisione totale · E-4: per un'entità che non è un incident esisteva SOLO
+   * il ramo Teams. Una regola «SLA violato → Slack» su un problem o su una
+   * richiesta non mandava niente, senza errore e senza log: la pagina mostrava
+   * la regola attiva e instradabile.
+   */
+  it('sla.breached su un problem con una regola Slack → il messaggio parte (E-4)', async () => {
+    ruleRows = [rule(['slack'])]
+    channelRows = [slackChannel('s-sla', ['sla_breach'])]
+    await new NotificationDispatcher().process(event('sla.breached', {
+      entity_type: 'problem', entity_id: 'prb-1', number: 'PRB00000001', title: 'Rete giù',
+      breached_at: '2026-09-16T08:00:00.000Z', severity: 'low', status: 'change_requested',
+    }))
+    expect(fetchMock.mock.calls.map(c => c[0])).toEqual(['https://hooks.slack.example/s-sla'])
+    const body = fetchMock.mock.calls[0]![1].body as string
+    expect(body).toContain('PRB00000001')
+    // E-8: la gravità e lo stato sono quelli VERI del ticket, non «HIGH/open».
+    expect(body).toContain('LOW')
+    expect(body).toContain('change_requested')
+    expect(body).not.toContain('HIGH')
+  })
+
+  /**
+   * Revisione totale · E-8: la card della violazione su un incident scriveva
+   * «Severity: HIGH · Status: open» CABLATI, per qualunque incident — anche un
+   * critical in escalation.
+   */
+  it('sla.breached su un incident: gravità e stato sono quelli dell\'evento, non cablati (E-8)', async () => {
+    ruleRows = [rule(['slack'])]
+    channelRows = [slackChannel('s-sla', ['sla_breach'])]
+    await new NotificationDispatcher().process(event('sla.breached', {
+      entity_type: 'incident', entity_id: 'inc-9', breached_at: 'x', number: 'INC00000009', title: 'Rete giù',
+      severity: 'critical', status: 'escalated',
+    }))
+    const body = fetchMock.mock.calls[0]![1].body as string
+    expect(body).toContain('CRITICAL')
+    expect(body).toContain('escalated')
+    expect(body).not.toContain('HIGH')
+  })
+
+  it('evento vecchio senza gravità e stato: si vede che è un ripiego, non «high/open»', async () => {
+    ruleRows = [rule(['slack'])]
+    channelRows = [slackChannel('s-sla', ['sla_breach'])]
+    await new NotificationDispatcher().process(event('sla.breached', { entity_type: 'incident', entity_id: 'inc-9', breached_at: 'x', number: 'INC00000009', title: 'Rete giù' }))
+    const body = fetchMock.mock.calls[0]![1].body as string
+    expect(body).toContain('UNKNOWN')
   })
 })
 
@@ -282,7 +374,9 @@ describe('NotificationDispatcher — email channel', () => {
     expect(sendEmail).not.toHaveBeenCalled()
   })
 
-  it('subject = [tenant] title: message(≤80 chars); html carries the entity link; recipients batched by 50', async () => {
+  // NT-2: oggetto e titolo sono la FRASE della chiave nella lingua del cliente
+  // (prima: «[t1] notification.incident.created.title: …»).
+  it('subject = translated title: message(≤80 chars); html carries the entity link; recipients batched by 50', async () => {
     ruleRows = [rule(['email'])]
     userRows = Array.from({ length: 120 }, (_, i) => ({ email: `u${i}@x.example` }))
     const longTitle = 'x'.repeat(200)
@@ -292,8 +386,11 @@ describe('NotificationDispatcher — email channel', () => {
     const sizes = sendEmail.mock.calls.map(c => c[0].to.length)
     expect(sizes).toEqual([50, 50, 20])
     const first = sendEmail.mock.calls[0]![0]
-    expect(first.subject.startsWith('[t1] notification.incident.created.title: ')).toBe(true)
-    expect(first.subject.length).toBe('[t1] notification.incident.created.title: '.length + 80)
+    expect(first.subject.startsWith('New incident: ')).toBe(true)
+    expect(first.subject.length).toBe('New incident: '.length + 80)
+    expect(first.subject).not.toContain('notification.')
+    expect(first.html).toContain('>New incident</h2>')
+    expect(first.html).toContain('View details')
     expect(first.html).toContain('/incidents/inc-1')
     expect(first.to[0]).toBe('u0@x.example')
   })
@@ -337,12 +434,12 @@ describe('NotificationDispatcher — workflow.step.entered (rule embedded in the
       .rejects.toThrow('workflow.step.entered event without notifyRule payload')
   })
 
-  it('unsupported channel (slack/teams) → in_app/email still delivered, then an explicit error names the channels', async () => {
+  it('unsupported channel (slack/teams) → rifiuto PRIMA di consegnare in_app/email (E-3)', async () => {
     userRows = [{ email: 'ops@x.example' }]
     await expect(new NotificationDispatcher().process(step(['in_app', 'email', 'slack', 'teams'])))
       .rejects.toThrow('unsupported channels [slack, teams]')
-    expect(sendToTenant).toHaveBeenCalledTimes(1)
-    expect(sendEmail).toHaveBeenCalledTimes(1)
+    expect(sendToTenant).not.toHaveBeenCalled()
+    expect(sendEmail).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

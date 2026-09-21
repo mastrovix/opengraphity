@@ -9,9 +9,10 @@
  */
 import { ForbiddenError } from './errors.js'
 import type { GraphQLContext } from '../context.js'
+import { isPortalOnly } from './permissions.js'
 
-export function assertMayAcknowledgeNoSla(ctx: Pick<GraphQLContext, 'role'>, acknowledgeNoSla: boolean | null | undefined): void {
-  if (acknowledgeNoSla === true && ctx.role === 'end_user') {
+export function assertMayAcknowledgeNoSla(ctx: Pick<GraphQLContext, 'permissions'>, acknowledgeNoSla: boolean | null | undefined): void {
+  if (acknowledgeNoSla === true && isPortalOnly(ctx)) {
     throw new ForbiddenError('Only staff can create a ticket acknowledging that no SLA policy covers it', { key: 'errors.sla.acknowledgeStaffOnly' })
   }
 }

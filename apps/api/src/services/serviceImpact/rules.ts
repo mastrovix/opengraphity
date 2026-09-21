@@ -54,6 +54,8 @@
  * per la UI: «pesa sempre»). Un nodo senza salute non è mai «giù».
  */
 import type { CIHealth } from '../../lib/eventVocabularies.js'
+import { systemTextIn } from '../../lib/systemText.js'
+import type { Lingua } from '../../lib/enumValueLabels.js'
 import { SERVICE_MAX_CAUSES, type NodeExcludedReason, type NodePropagation, type ServiceHealth, type ServiceImpactRules, type ServiceNodeRole } from '../../lib/serviceVocabularies.js'
 
 export interface ImpactNodeInput {
@@ -90,6 +92,15 @@ export interface ImpactResult {
   health:      ServiceHealth
   impactScore: number
   causes:      ImpactCause[]
+  /**
+   * Quanti componenti che contano sono non operativi, TUTTI
+   * (revisione totale · G-MON-6). `causes` e tagliato a
+   * SERVICE_MAX_CAUSES = 20, quindi chi lo contava per spiegare la salute
+   * («20 componenti non operativi, meno dei 25 previsti») diceva un numero
+   * falso appena le cause passavano venti. E anche il numero con cui la regola
+   * `min_nodes` viene confrontata: e questo che va detto a chi legge.
+   */
+  unhealthyCount: number
   /**
    * La salute che il servizio avrebbe SENZA le finestre di change in corso
    * (stessi nodi, `inChangeWindow` ignorato): valorizzata solo quando
@@ -220,6 +231,7 @@ function evaluateCore(nodes: readonly ImpactNodeInput[], rules: ServiceImpactRul
   return {
     health,
     impactScore,
+    unhealthyCount,
     causes: causes.slice(0, SERVICE_MAX_CAUSES).map(({ level: _level, ...c }) => c),
   }
 }
@@ -252,25 +264,27 @@ export interface HealthNoteInput {
 /** Quanti elementi si citano per esteso in una nota prima di «e altri N». */
 export const HEALTH_NOTE_MAX_ITEMS = 3
 
-function withRest(items: readonly string[]): string {
+function withRest(lingua: Lingua, items: readonly string[]): string {
   const shown = items.slice(0, HEALTH_NOTE_MAX_ITEMS)
   const rest = items.length - shown.length
-  return `${shown.join(', ')}${rest > 0 ? `, e altri ${rest}` : ''}`
+  return rest > 0 ? systemTextIn(lingua, 'serviceMap.andOthers', { shown: shown.join(', '), rest }) : shown.join(', ')
 }
 
 /**
  * Perché la salute è questa, quando l'elenco delle cause non basta
  * (`ServiceMap.health_note`): la tempesta che ha sospeso la valutazione e/o i
  * componenti coperti da una change su un CI a monte. Funzione pura, testi
- * espliciti: `null` quando non c'è niente da spiegare (e la nota va cancellata).
+ * espliciti nella lingua del cliente: `null` quando non c'è niente da spiegare
+ * (e la nota va cancellata).
  */
-export function serviceHealthNote(input: HealthNoteInput): string | null {
+export function serviceHealthNote(lingua: Lingua, input: HealthNoteInput): string | null {
   const parts: string[] = []
   if (input.held && input.stormSources.length > 0) {
-    parts.push(`${input.stormSources.length === 1 ? 'Sorgente in tempesta' : 'Sorgenti in tempesta'}: ${withRest([...input.stormSources])}. Valutazione sospesa: la salute resta quella dell'ultima valutazione.`)
+    parts.push(systemTextIn(lingua, input.stormSources.length === 1 ? 'serviceMap.stormOne' : 'serviceMap.stormMany', { sources: withRest(lingua, [...input.stormSources]) }))
   }
   if (input.upstreamWindows.length > 0) {
-    parts.push(`${input.upstreamWindows.length === 1 ? 'Componente in finestra di change a monte' : 'Componenti in finestra di change a monte'}: ${withRest(input.upstreamWindows.map((u) => `${u.name} (${u.changeCode} su ${u.viaName})`))}.`)
+    const items = withRest(lingua, input.upstreamWindows.map((u) => systemTextIn(lingua, 'serviceMap.upstreamItem', { name: u.name, change: u.changeCode, via: u.viaName })))
+    parts.push(systemTextIn(lingua, input.upstreamWindows.length === 1 ? 'serviceMap.upstreamOne' : 'serviceMap.upstreamMany', { items }))
   }
   return parts.length ? parts.join(' ') : null
 }

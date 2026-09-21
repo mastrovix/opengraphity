@@ -2,8 +2,11 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, LogOut, User, Menu, X } from 'lucide-react'
+import { useQuery } from '@apollo/client/react'
 import { keycloak } from '@/lib/keycloak'
+import { GET_TENANT_BRAND } from '@/graphql/queries'
 import { colors, alpha } from '@/lib/tokens'
+import { PortalLanguageSelect } from './PortalLanguageSelect'
 
 interface Props {
   userName: string
@@ -28,6 +31,9 @@ export function PortalHeader({ userName }: Props) {
   const { t }                   = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  // Il marchio dell'organizzazione (ondata 6 di «Nulla cablato»): senza un logo suo, quello del prodotto.
+  const { data: brandData } = useQuery<{ tenantBrand: { displayName: string; logoUrl: string | null; isDefault: boolean } }>(GET_TENANT_BRAND)
+  const brand = brandData?.tenantBrand
 
   function logout() {
     keycloak.logout({ redirectUri: window.location.origin })
@@ -63,10 +69,16 @@ export function PortalHeader({ userName }: Props) {
       }}>
         {/* Logo */}
         <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <img src="/opengrafo-logo.svg" alt="OpenGrafo" style={{ height: 28 }} />
-          <span style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>
-            {t('portal.title')}
-          </span>
+          {brand && (
+            <>
+              <img src={brand.logoUrl ?? '/opengrafo-logo.svg'} alt={brand.displayName} style={{ height: 28, maxWidth: 160, objectFit: 'contain' }} />
+              <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                {/* Il nome si vede quando l'organizzazione ne ha scelto uno, anche senza logo. */}
+                {(brand.logoUrl || !brand.isDefault) && <span style={{ fontSize: 13, fontWeight: 700, color: colors.slateDark }}>{brand.displayName}</span>}
+                <span style={{ fontSize: 12, fontWeight: 600, color: colors.slateDark }}>{t('portal.title')}</span>
+              </span>
+            </>
+          )}
         </a>
 
         {/* Nav — desktop */}
@@ -127,7 +139,7 @@ export function PortalHeader({ userName }: Props) {
               }}>
                 {initials(userName)}
               </div>
-              <span style={{ fontSize: 10, color: colors.slateDark, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 12, color: colors.slateDark, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {userName}
               </span>
               <ChevronDown size={14} style={{ color: colors.slateLight }} />
@@ -151,15 +163,17 @@ export function PortalHeader({ userName }: Props) {
               >
                 <button
                   onClick={openProfile}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: colors.slateDark }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: colors.slateDark }}
                 >
                   <User size={14} style={{ color: colors.slate }} />
                   {t('common.profile')}
                 </button>
                 <div style={{ height: 1, background: colors.border }} />
+                <PortalLanguageSelect />
+                <div style={{ height: 1, background: colors.border }} />
                 <button
                   onClick={logout}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: colors.danger }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: colors.danger }}
                 >
                   <LogOut size={14} />
                   {t('common.logout')}

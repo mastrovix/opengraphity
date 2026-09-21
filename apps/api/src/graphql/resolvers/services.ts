@@ -9,8 +9,9 @@
  * rivalutazione): qui restano ruolo, audit e la rilettura della mappa.
  *
  * Ogni query è scopata per tenant; ogni mutation scrive l'audit. Le
- * mutation e `serviceMapCandidates` sono admin-only in lib/authorization.ts
- * e hanno un requireRole locale come seconda linea. La lista
+ * mutation e `serviceMapCandidates` chiedono `config.services` (o
+ * `service.reevaluate`) in lib/operationPermissions.ts e hanno un
+ * `requirePermission` locale come seconda linea. La lista
  * (`serviceMaps`) calcola contatori, totale filtrato e pagina in UNA query
  * (tre CALL { } senza importazioni, pattern di ciHealthOverview); servizio,
  * owner e conteggio dei nodi sono risolti con la riga (`serviceMapRowColumns`),
@@ -23,7 +24,8 @@ import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { logger } from '../../lib/logger.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { mapIncident, mapTeam } from '../../lib/mappers.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
 import { serviceRelationshipTypesForTenant } from '../../lib/ciMetamodelForTenant.js'
@@ -31,10 +33,11 @@ import { assertDomainValue } from '../../lib/domainMatrix.js'
 import {
   NODE_WEIGHT_MIN,
   SERVICE_HEALTHS, SERVICE_HEALTH_SEVERITY_ORDER, SERVICE_HEALTH_TRIGGERS, SERVICE_HISTORY_MAX, SERVICE_MAP_DEFAULT_DEPTH, SERVICE_MAP_STATUSES,
-  SERVICE_RELATIONSHIP_TYPES, SERVICE_STALE_REASONS, parseServiceImpactRules,
+  SERVICE_STALE_REASONS, parseServiceImpactRules,
   type ServiceHealth, type ServiceHealthTrigger, type ServiceImpactRules, type ServiceMapStatus, type ServiceStaleReason,
 } from '../../lib/serviceVocabularies.js'
 import { createServiceMap as createServiceMapService, evaluateServiceMap, loadServiceMapState, type LoadedNode } from '../../services/serviceImpact/engine.js'
+import { buildServiceMap } from '../../services/serviceImpact/build.js'
 import { nodeContributes, nodeExcludedReason } from '../../services/serviceImpact/rules.js'
 import type { CauseCIRef, StoredCause } from '../../services/serviceImpact/history.js'
 import {
@@ -45,12 +48,14 @@ import {
   removeServiceMapExclusion as removeServiceMapExclusionService,
   serviceMapProposal as serviceMapProposalService,
   setServiceMapAutoSync as setServiceMapAutoSyncService,
+  updateServiceMapScope as updateServiceMapScopeService,
   updateServiceImpactRules as updateServiceImpactRulesService,
   updateServiceMapNodes as updateServiceMapNodesService,
   type ConfigWriteResult, type ServiceImpactRulesInput, type ServiceMapNodeInput,
 } from '../../services/serviceImpact/config.js'
 import { syncServiceMap as syncServiceMapService } from '../../services/serviceImpact/sync.js'
 import { incidentStepInfo } from '../../services/events/incidentWorkflow.js'
+import { parseServiceIncidentProblem } from '../../services/serviceImpact/incident.js'
 import { forgetServiceMapJobs } from '../../jobs/serviceImpactWorker.js'
 
 type Props = Record<string, unknown>
@@ -185,6 +190,10 @@ export function mapServiceMap(row: ServiceMapRow) {
     impactScore:       toNumber(p['impact_score']),
     evaluatedAt:       toStrOrNull(p['evaluated_at']),
     explanation:       parseStoredCauses(p['explanation'], `ServiceMap ${id} explanation`),
+    // G-MON-6: null finché la mappa non viene rivalutata (il motore lo scrive
+    // a ogni valutazione); chi lo legge lo tratta come «non lo so».
+    unhealthyCount:    p['unhealthy_count'] == null ? null : toNumber(p['unhealthy_count']),
+    incidentProblem:   mapIncidentProblem(p, id),
     service: {
       id:          row.service.id,
       name:        row.service.name ?? '',
@@ -193,6 +202,15 @@ export function mapServiceMap(row: ServiceMapRow) {
     },
     nodeCount: toNumber(row.nodeCount),
   }
+}
+
+/** SV-4: il motivo per cui l'incident del servizio non è nello stato giusto; null se non ce n'è. */
+export function mapIncidentProblem(p: Props, id: string) {
+  const problem = parseServiceIncidentProblem(p['incident_problem'], id)
+  if (!problem) return null
+  const since = toStrOrNull(p['incident_problem_at'])
+  if (!since) throw new Error(`ServiceMap ${id} has incident_problem without incident_problem_at: it was not written by the service impact engine`)
+  return { key: problem.key, params: Object.entries(problem.params).map(([name, value]) => ({ name, value })), message: problem.message, since }
 }
 
 export function mapHistoryEntry(props: Props) {
@@ -336,7 +354,7 @@ async function servicesImpactedByCI(_: unknown, args: { ciId: string }, ctx: Gra
 
 /** BusinessApplication senza mappa: strumento admin della creazione. */
 async function serviceMapCandidates(_: unknown, args: { search?: string | null; limit?: number | null }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const limit = Math.min(Math.max(args.limit ?? 20, 1), 100)
   const search = args.search?.trim() ? args.search.trim().toLowerCase() : null
   const session = getSession()
@@ -358,8 +376,30 @@ async function serviceMapCandidates(_: unknown, args: { search?: string | null; 
  * `relationshipTypes` della mappa, i CI con `EXCLUDES` non vengono riproposti.
  * Nessuna scrittura.
  */
+/**
+ * I componenti che una mappa nuova avrebbe, prima di crearla (secondo giro UI
+ * del 15 set 2026: «Crea una mappa» non mostrava niente fino alla creazione).
+ * La stessa costruzione di `createServiceMap`, senza scrivere.
+ */
+async function serviceMapCreationPreview(_: unknown, args: { serviceId: string; maxDepth: number; relationshipTypes: string[] }, ctx: GraphQLContext) {
+  requirePermission(ctx, 'config.services')
+  const session = getSession()
+  try {
+    const p = await buildServiceMap(session, ctx.tenantId, args.serviceId, args.maxDepth, args.relationshipTypes)
+    return {
+      serviceName: p.serviceName,
+      maxDepth: p.maxDepth,
+      relationshipTypes: p.relationshipTypes,
+      nodes: p.nodes.map((n) => ({
+        ci: mapCIRef(ctx.tenantId, { id: n.ciId, name: n.name, labels: n.labels, status: n.status, health: n.health }),
+        level: n.level, role: n.role, propagate: n.propagate, weight: n.weight, critical: n.critical, via: n.via,
+      })),
+    }
+  } finally { await session.close() }
+}
+
 async function serviceMapProposal(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const d = await serviceMapProposalService(ctx.tenantId, args.id)
   return {
     mapId:             d.mapId,
@@ -390,7 +430,7 @@ async function serviceMapProposal(_: unknown, args: { id: string }, ctx: GraphQL
 
 /** «Con queste impostazioni adesso»: calcolo puro sullo stato reale, nessuna scrittura. */
 async function serviceImpactPreview(_: unknown, args: { id: string; rules?: ServiceImpactRulesInput | null; nodes?: ServiceMapNodeInput[] | null }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const p = await previewServiceImpact({ tenantId: ctx.tenantId, mapId: args.id, rules: args.rules ?? null, nodes: args.nodes ?? null })
   return {
     health:            p.health,
@@ -583,9 +623,10 @@ async function serviceRelationshipTypes(_: unknown, __: unknown, ctx: GraphQLCon
 // ── Mutation ─────────────────────────────────────────────────────────────────
 
 async function createServiceMap(_: unknown, args: { serviceId: string; maxDepth?: number | null; relationshipTypes?: string[] | null; status?: string | null; autoSync?: boolean | null }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const maxDepth = args.maxDepth ?? SERVICE_MAP_DEFAULT_DEPTH
-  const relationshipTypes = args.relationshipTypes ?? [...SERVICE_RELATIONSHIP_TYPES]
+  // SV-8: il default sono i tipi percorribili da QUESTO cliente, come offre il dialogo.
+  const relationshipTypes = args.relationshipTypes ?? [...await serviceRelationshipTypesForTenant(ctx.tenantId)]
   const status = args.status == null ? 'active' : assertEnumInput(args.status, SERVICE_MAP_STATUSES, 'status')
   // Mappa viva per default (ondata 5): si passa `false` solo per congelarla subito.
   const autoSync = args.autoSync ?? true
@@ -598,7 +639,7 @@ async function createServiceMap(_: unknown, args: { serviceId: string; maxDepth?
 }
 
 async function reevaluateServiceMap(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'service.reevaluate')
   const r = await evaluateServiceMap({ tenantId: ctx.tenantId, mapId: args.id, trigger: 'manual', actorId: ctx.userId })
   void audit(ctx, 'service_map.reevaluated', 'ServiceMap', args.id, { previousHealth: r.previousHealth, health: r.health, impactScore: r.impactScore, changed: r.changed, stale: r.stale })
   return requireServiceMap(args.id, ctx.tenantId)
@@ -629,7 +670,7 @@ export const SET_STATUS_CYPHER = `
  * restare quella di quando è stata scritta.
  */
 async function setServiceMapStatus(_: unknown, args: { id: string; expectedVersion: number; status: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const status = assertEnumInput(args.status, SERVICE_MAP_STATUSES, 'status')
   if (!Number.isInteger(args.expectedVersion) || args.expectedVersion < 1) throw new ValidationError(`expectedVersion must be an integer >= 1. Got: ${JSON.stringify(args.expectedVersion)}`)
   const now = new Date().toISOString()
@@ -681,21 +722,21 @@ function configAudit(r: ConfigWriteResult, extra: Record<string, unknown>): Reco
 }
 
 async function updateServiceImpactRules(_: unknown, args: { id: string; expectedVersion: number; rules: ServiceImpactRulesInput }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const r = await updateServiceImpactRulesService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, rules: args.rules, actorId: ctx.userId })
   void audit(ctx, 'service_map.rules_changed', 'ServiceMap', args.id, configAudit(r, { rules: args.rules }))
   return requireServiceMap(args.id, ctx.tenantId)
 }
 
 async function updateServiceMapNodes(_: unknown, args: { id: string; expectedVersion: number; nodes: ServiceMapNodeInput[] }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const r = await updateServiceMapNodesService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, nodes: args.nodes, actorId: ctx.userId })
   void audit(ctx, 'service_map.nodes_changed', 'ServiceMap', args.id, configAudit(r, { nodes: args.nodes.map((n) => n.ciId) }))
   return requireServiceMap(args.id, ctx.tenantId)
 }
 
 async function applyServiceMapProposal(_: unknown, args: { id: string; expectedVersion: number; add: string[]; exclude: string[]; remove: string[] }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const r = await applyServiceMapProposalService({
     tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion,
     add: args.add, exclude: args.exclude, remove: args.remove, actorId: ctx.userId,
@@ -704,18 +745,42 @@ async function applyServiceMapProposal(_: unknown, args: { id: string; expectedV
   return requireServiceMap(args.id, ctx.tenantId)
 }
 
+async function updateServiceMapScope(_: unknown, args: { id: string; expectedVersion: number; relationshipTypes: string[]; maxDepth: number }, ctx: GraphQLContext) {
+  requirePermission(ctx, 'config.services')
+  const r = await updateServiceMapScopeService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, relationshipTypes: args.relationshipTypes, maxDepth: args.maxDepth, actorId: ctx.userId })
+  void audit(ctx, 'service_map.scope_changed', 'ServiceMap', args.id, configAudit(r, { relationshipTypes: args.relationshipTypes, maxDepth: args.maxDepth }))
+  return requireServiceMap(args.id, ctx.tenantId)
+}
+
 async function removeServiceMapExclusion(_: unknown, args: { id: string; expectedVersion: number; ciId: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const r = await removeServiceMapExclusionService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, ciId: args.ciId, actorId: ctx.userId })
   void audit(ctx, 'service_map.exclusion_removed', 'ServiceMap', args.id, configAudit(r, { ciId: args.ciId }))
-  return requireServiceMap(args.id, ctx.tenantId)
+  const map = await requireServiceMap(args.id, ctx.tenantId)
+  // Giro UI del 15 set 2026 · U-2: su una mappa viva il CI riammesso tornava
+  // solo con «Sincronizza ora» o con la passata di sicurezza (fino a 30 min).
+  // Riammettere è il gesto che chiede di riaverlo: si sincronizza subito.
+  if (!map.autoSync || r.status === 'paused') return map
+  try {
+    const synced = await syncServiceMapService(ctx.tenantId, args.id, 'manual', ctx.userId)
+    void audit(ctx, 'service_map.synced', 'ServiceMap', args.id, {
+      trigger: 'readmitted', version: synced.version, added: synced.added, removed: synced.removed, moved: synced.moved,
+      changed: synced.changed, skipped: synced.skipped, note: synced.note,
+    })
+    return synced.changed ? requireServiceMap(args.id, ctx.tenantId) : map
+  } catch (err) {
+    // La riammissione è già scritta: non la si annulla. Detto ad alta severità;
+    // la passata di sicurezza recupera entro 30 minuti.
+    logger.error({ err, module: 'services', tenantId: ctx.tenantId, mapId: args.id, ciId: args.ciId }, 'Exclusion removed, but the live map could NOT be synchronized right away (the periodic pass will catch up)')
+    return map
+  }
 }
 
 // ── Mappa viva (ondata 5) ────────────────────────────────────────────────────
 
 /** Interruttore «aggiorna automaticamente i componenti»: mappa viva o congelata. */
 async function setServiceMapAutoSync(_: unknown, args: { id: string; expectedVersion: number; autoSync: boolean }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const r = await setServiceMapAutoSyncService({ tenantId: ctx.tenantId, mapId: args.id, expectedVersion: args.expectedVersion, autoSync: args.autoSync, actorId: ctx.userId })
   void audit(ctx, 'service_map.auto_sync_changed', 'ServiceMap', args.id, configAudit(r, { autoSync: args.autoSync }))
   return requireServiceMap(args.id, ctx.tenantId)
@@ -734,7 +799,7 @@ async function setServiceMapAutoSync(_: unknown, args: { id: string; expectedVer
  * BAD_USER_INPUT, non un esito.
  */
 async function syncServiceMap(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const r = await syncServiceMapService(ctx.tenantId, args.id, 'manual', ctx.userId)
   void audit(ctx, 'service_map.synced', 'ServiceMap', args.id, {
     trigger: 'manual', version: r.version, added: r.added, removed: r.removed, moved: r.moved,
@@ -762,7 +827,7 @@ async function syncServiceMap(_: unknown, args: { id: string }, ctx: GraphQLCont
  * DELETE e per l'operatore resta un incident critico «senza motivo».
  */
 async function deleteServiceMap(_: unknown, args: { id: string }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.services')
   const { noteServiceMapDeletion } = await import('../../services/events/cascade.js')
   await noteServiceMapDeletion(ctx.tenantId, args.id)
   const session = getSession(undefined, 'WRITE')
@@ -786,10 +851,10 @@ async function deleteServiceMap(_: unknown, args: { id: string }, ctx: GraphQLCo
 }
 
 export const serviceResolvers = {
-  Query: { serviceMaps, serviceMap, servicesImpactedByCI, serviceMapCandidates, serviceMapProposal, serviceImpactPreview, businessCapabilitiesHealth, serviceRelationshipTypes },
+  Query: { serviceMaps, serviceMap, servicesImpactedByCI, serviceMapCandidates, serviceMapCreationPreview, serviceMapProposal, serviceImpactPreview, businessCapabilitiesHealth, serviceRelationshipTypes },
   Mutation: {
     createServiceMap, reevaluateServiceMap, setServiceMapStatus, deleteServiceMap,
-    updateServiceImpactRules, updateServiceMapNodes, applyServiceMapProposal, removeServiceMapExclusion,
+    updateServiceImpactRules, updateServiceMapNodes, applyServiceMapProposal, removeServiceMapExclusion, updateServiceMapScope,
     setServiceMapAutoSync, syncServiceMap,
   },
   ServiceMap: {

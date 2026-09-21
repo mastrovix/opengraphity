@@ -9,7 +9,7 @@
  *     assign_team, …`.
  *  2. Azioni degli step di workflow (`packages/workflow/src/actions.ts`,
  *     `types.ts`): operatori `eq | ne | gt | lt | gte | lte | in | not_in |
- *     contains | is_null | is_not_null`; azioni `sla_start, schedule_job, …`.
+ *     contains | is_null | is_not_null`; azioni `sla_start, update_field, …`.
  *
  * Il formato SALVATO nel DB non cambia (nessuna migrazione): l'UI condivisa
  * parla il vocabolario 1 e, per gli step di workflow, un adapter esplicito
@@ -24,10 +24,6 @@ export const ITIL_ENTITIES: ReadonlySet<string> = new Set(['incident', 'problem'
 
 export function isITILEntity(entityType: string): boolean {
   return ITIL_ENTITIES.has(entityType)
-}
-
-export const ENTITY_LABELS: Record<string, string> = {
-  incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'Service Request',
 }
 
 /**
@@ -74,15 +70,14 @@ export function eventOptionKey(eventType: string): string {
   return lookupOrError(EVENT_OPTION_KEYS, eventType, 'EVENT_OPTION_KEYS', `?${eventType}`)
 }
 
-export function entityLabel(entityType: string): string {
-  return lookupOrError(ENTITY_LABELS, entityType, 'ENTITY_LABELS', `?${entityType}`)
-}
 
 export const FIELD_TYPE_KEYS: Record<string, string> = {
   string: 'automation.fieldType.string', number: 'automation.fieldType.number',
   date:   'automation.fieldType.date',   boolean: 'automation.fieldType.boolean',
   enum:   'automation.fieldType.enum',   user:    'automation.fieldType.user',
   team:   'automation.fieldType.team',
+  // Selezione multipla di un modulo del catalogo (ondata 5).
+  multi_enum: 'automation.fieldType.multiEnum',
 }
 
 export function fieldTypeKey(fieldType: string): string {
@@ -113,8 +108,22 @@ const NN:  OperatorOption = { value: 'is_not_null',  labelKey: 'automation.opera
 
 export const ALL_OPERATORS: OperatorOption[] = [EQ, NE, CT, GT, LT, NUL, NN]
 
+/**
+ * «è cambiato» (secondo giro UI del 15 set 2026 · V-19): il campo è fra quelli
+ * che l'aggiornamento ha cambiato. Solo per business rule e trigger sugli
+ * aggiornamenti, e fuori da `ALL_OPERATORS` perché gli step di workflow non ce
+ * l'hanno (l'adapter `toWorkflowOperator` non saprebbe dove portarlo).
+ */
+export const CHANGED_OPERATOR = { value: 'changed', labelKey: 'automation.operator.changed' } as const
+
 export const OPERATORS_BY_FIELD_TYPE: Record<string, OperatorOption[]> = {
   enum:    [EQ, NE, NUL, NN],
+  /**
+   * Selezione multipla (ondata 5): il valore è una LISTA, quindi «uguale a»
+   * non avrebbe senso — l'unica domanda sensata è se contiene una scelta.
+   * `contains` lo sa: sul server, su una lista, vuol dire «la contiene».
+   */
+  multi_enum: [{ ...CT, labelKey: 'automation.operator.containsChoice' }, NUL, NN],
   string:  [EQ, NE, CT, NUL, NN],
   number:  [EQ, NE, GT, LT, NUL, NN],
   date:    [EQ, NE, { ...GT, labelKey: 'automation.operator.after' }, { ...LT, labelKey: 'automation.operator.before' }, NUL, NN],
@@ -127,14 +136,14 @@ export function operatorsForFieldType(fieldType: string): OperatorOption[] {
   return lookupOrError(OPERATORS_BY_FIELD_TYPE, fieldType, 'OPERATORS_BY_FIELD_TYPE', ALL_OPERATORS)
 }
 
-export const OPERATOR_KEYS: Record<string, string> = Object.fromEntries(ALL_OPERATORS.map((o) => [o.value, o.labelKey]))
+export const OPERATOR_KEYS: Record<string, string> = Object.fromEntries([...ALL_OPERATORS, CHANGED_OPERATOR].map((o) => [o.value, o.labelKey]))
 
 export function operatorKey(op: string): string {
   return lookupOrError(OPERATOR_KEYS, op, 'OPERATOR_KEYS', `?${op}`)
 }
 
-/** Operatori senza valore (is_null / is_not_null). */
-export const NO_VALUE_OPERATORS: ReadonlySet<string> = new Set(['is_null', 'is_not_null'])
+/** Operatori senza valore (is_null / is_not_null / changed). */
+export const NO_VALUE_OPERATORS: ReadonlySet<string> = new Set(['is_null', 'is_not_null', CHANGED_OPERATOR.value])
 
 // ── Operatori (vocabolario 2: step di workflow) + adapter ───────────────────
 
@@ -195,8 +204,10 @@ export function automationActionKey(type: string): string {
 
 /** Tipi selezionabili nel pannello step (notify_rule ha una sua tab dedicata). */
 export const WORKFLOW_STEP_ACTION_TYPES = [
-  'sla_start', 'sla_stop', 'schedule_job', 'cancel_job',
+  'sla_start', 'sla_stop',
   'create_entity', 'assign_to', 'update_field', 'call_webhook', 'create_approval_request',
+  // Un compito da fare per una squadra, creato entrando nel passo (20 set 2026).
+  'create_task',
 ] as const
 
 export type WorkflowStepActionType = typeof WORKFLOW_STEP_ACTION_TYPES[number]

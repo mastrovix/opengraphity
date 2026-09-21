@@ -13,9 +13,21 @@
  * nessuno dei tre.
  */
 import { useEffect } from 'react'
-import { useQuery } from '@apollo/client/react'
+import { useMutation, useQuery } from '@apollo/client/react'
 import { GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
-import { applicaLinguaDelCliente, linguaSceltaDallUtente } from '@/i18n/tenantLanguage'
+import { SET_MY_LANGUAGE } from '@/graphql/mutations'
+import { useMe } from '@/hooks/useMe'
+import i18n from '@/i18n/i18n'
+import { applicaLinguaDelCliente, linguaSceltaDallUtente, scegliLinguaPersonale, usaLinguaDellOrganizzazione } from '@/i18n/tenantLanguage'
+
+/** Una volta per browser: la scelta che stava solo qui è stata portata sulla persona. */
+const CHIAVE_PORTATA = 'og.language.synced'
+function giaPortata(): boolean {
+  try { return window.localStorage.getItem(CHIAVE_PORTATA) === 'true' } catch { return true }
+}
+function segnaPortata(): void {
+  try { window.localStorage.setItem(CHIAVE_PORTATA, 'true') } catch { /* localStorage negato: si riproverà, innocuo */ }
+}
 
 interface LanguageSettings { available: string[]; defaultLanguage: string | null; fallback: string }
 
@@ -24,10 +36,23 @@ export function useTenantLanguage(): void {
     fetchPolicy: 'cache-first',
   })
   const lingua = data?.tenantLanguageSettings.defaultLanguage ?? null
+  const { me, loading: meLoading } = useMe()
+  const [salvaLingua] = useMutation(SET_MY_LANGUAGE, { refetchQueries: ['GetMe'] })
+  const personale = me?.language ?? null
 
   useEffect(() => {
+    if (meLoading) return
+    // Secondo giro UI del 15 set 2026: la scelta della persona sta sul suo nodo
+    // (`me.language`), così la vede anche il portale.
+    if (personale) { void scegliLinguaPersonale(personale); segnaPortata(); return }
+    if (me && linguaSceltaDallUtente() && !giaPortata()) {
+      // Scelta fatta prima, quando stava solo nel browser: la si porta sulla persona una volta.
+      segnaPortata()
+      void salvaLingua({ variables: { language: i18n.resolvedLanguage ?? i18n.language } })
+      return
+    }
+    if (me && linguaSceltaDallUtente()) void usaLinguaDellOrganizzazione(null)   // tolta da un altro posto
     if (lingua === null) return              // non configurata: lo dice la diagnostica
-    if (linguaSceltaDallUtente()) return     // la scelta di una persona vince
     void applicaLinguaDelCliente(lingua)
-  }, [lingua])
+  }, [lingua, personale, me, meLoading, salvaLingua])
 }

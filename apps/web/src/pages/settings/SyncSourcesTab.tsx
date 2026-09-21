@@ -11,12 +11,18 @@ import { formatDateTime } from '@/lib/datetime'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
+/**
+ * Le pianificazioni pronte, con l'etichetta in i18n
+ * (revisione totale · G-2/H-23): erano cinque letterali inglesi dentro il
+ * sorgente, quindi un cliente italiano leggeva «Every 6 hours» in mezzo a una
+ * pagina tradotta. `labelKey` si risolve al render.
+ */
 const CRON_PRESETS = [
-  { label: 'Every hour',       value: '0 * * * *' },
-  { label: 'Every 6 hours',    value: '0 */6 * * *' },
-  { label: 'Every 12 hours',   value: '0 */12 * * *' },
-  { label: 'Daily at midnight',value: '0 0 * * *' },
-  { label: 'Custom…',          value: '__custom__' },
+  { labelKey: 'pages.sync.schedulePreset.hourly',        value: '0 * * * *' },
+  { labelKey: 'pages.sync.schedulePreset.every6h',       value: '0 */6 * * *' },
+  { labelKey: 'pages.sync.schedulePreset.every12h',      value: '0 */12 * * *' },
+  { labelKey: 'pages.sync.schedulePreset.dailyMidnight', value: '0 0 * * *' },
+  { labelKey: 'pages.sync.schedulePreset.custom',        value: '__custom__' },
 ]
 
 // ── TextareaFileField ────────────────────────────────────────────────────────
@@ -105,7 +111,7 @@ function TextareaFileField({ id, fieldName, value, onChange, required }: Textare
       {mode === 'inline' ? (
         <textarea
           id={id}
-          style={{ ...inputStyle, height: 140, resize: 'vertical', fontFamily: 'monospace', fontSize: 'var(--font-size-body)' }}
+          style={{ ...inputStyle, height: 140, resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-body)' }}
           value={value}
           onChange={e => onChange(e.target.value)}
           required={required}
@@ -195,7 +201,10 @@ export function SyncSourcesTab({
     e.preventDefault()
     const config: Record<string, string> = {}
     for (const f of selectedConnector?.configFields ?? []) {
-      if (form[f.name]) config[f.name] = form[f.name]!
+      // Revisione totale · G-7: i campi con un valore predefinito lo mostravano
+      // ma non lo mettevano nella configurazione, perché `form` era vuoto.
+      const value = form[f.name] ?? (f.defaultValue != null ? String(f.defaultValue) : '')
+      if (value !== '') config[f.name] = value
     }
     try {
       await onCreateSource({
@@ -203,6 +212,9 @@ export function SyncSourcesTab({
         connectorType: selectedType,
         credentials: credForm,
         config,
+        // G-7: la pianificazione digitata qui si perdeva in silenzio — la
+        // sincronizzazione non partiva mai finché non si riapriva il dialogo.
+        ...(form['scheduleCron']?.trim() ? { scheduleCron: form['scheduleCron'].trim() } : {}),
       })
       setShowCreate(false)
       setForm({}); setCredForm({}); setSelectedType('')
@@ -229,7 +241,8 @@ export function SyncSourcesTab({
     }
   }
 
-  if (loading) return <div style={{ padding: 24, color: colors.slate }}>Loading...</div>
+  // G-18: era «Loading...» letterale, in inglese anche nel prodotto italiano.
+  if (loading) return <div style={{ padding: 24, color: colors.slate }}>{t('common.loading')}</div>
 
   return (
     <div>
@@ -255,20 +268,29 @@ export function SyncSourcesTab({
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: colors.slateDark }}>{s.name}</span>
                 <span style={{ fontSize: 'var(--font-size-table)', color: colors.slate, background: 'var(--color-border-light)', borderRadius: 4, padding: '2px 6px' }}>{s.connectorType}</span>
-                <span style={{ fontSize: 'var(--font-size-table)', color: s.enabled ? 'var(--color-success)' : colors.slate }}>{s.enabled ? 'enabled' : 'disabled'}</span>
+                <span style={{ fontSize: 'var(--font-size-table)', color: s.enabled ? 'var(--color-success)' : colors.slate }}>{s.enabled ? t('pages.sync.sourceEnabled') : t('pages.sync.sourceDisabled')}</span>
               </div>
               <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate, marginTop: 2 }}>
-                Last sync: {formatDateTime(s.lastSyncAt)}
+                {t('pages.sync.lastSync', { when: formatDateTime(s.lastSyncAt) })}
                 {s.lastSyncStatus && <> · <StatusBadge status={s.lastSyncStatus} /></>}
                 {s.lastSyncDurationMs != null && <> · {formatMs(s.lastSyncDurationMs)}</>}
-                {s.scheduleCron && <> · cron: <code style={{ fontSize: 'var(--font-size-table)' }}>{s.scheduleCron}</code></>}
+                {s.scheduleCron && <> · {t('pages.sync.cron')}: <code style={{ fontSize: 'var(--font-size-table)' }}>{s.scheduleCron}</code></>}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               <button type="button" onClick={() => onTestConnection(s.id)}  style={btnStyle(colors.white, palette.neutral.textMuted)}>{t('pages.notifications.test')}</button>
               <button type="button" onClick={() => openSchedule(s)}         style={btnStyle(colors.white, palette.purple.base)}><Clock size={12} />{t('pages.sync.schedule')}</button>
               <button type="button" onClick={() => onTriggerSync(s.id)}     style={btnStyle(colors.brand, colors.white)}><Play size={12} />{t('pages.sync.syncNow')}</button>
-              <button type="button" onClick={() => onDeleteSource(s.id)}    style={btnStyle(colors.white, 'var(--color-trigger-sla-breach)')}><Trash2 size={12} /></button>
+              {/* G-22: era la sola icona, che uno screen reader leggeva «pulsante». */}
+              <button
+                type="button"
+                onClick={() => onDeleteSource(s.id)}
+                aria-label={t('pages.sync.deleteSourceLabel', { name: s.name })}
+                title={t('common.delete')}
+                style={btnStyle(colors.white, 'var(--color-trigger-sla-breach)')}
+              >
+                <Trash2 size={12} aria-hidden="true" />
+              </button>
             </div>
           </div>
         ))}
@@ -279,7 +301,7 @@ export function SyncSourcesTab({
         <Modal
           open
           onClose={() => setSchedSource(null)}
-          title={`Schedule — ${schedSource.name}`}
+          title={t('pages.sync.scheduleTitle', { name: schedSource.name })}
           width={400}
           footer={
             <>
@@ -290,12 +312,12 @@ export function SyncSourcesTab({
         >
           <label htmlFor={`${fid}-sched-preset`} style={labelStyle}>{t('pages.sync.cronPreset')}</label>
           <Select id={`${fid}-sched-preset`} style={inputStyle} value={schedPreset} onChange={e => setSchedPreset(e.target.value)}>
-            {CRON_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            {CRON_PRESETS.map(p => <option key={p.value} value={p.value}>{t(p.labelKey)}</option>)}
           </Select>
           {schedPreset === '__custom__' && (
             <>
               <label htmlFor={`${fid}-sched-custom`} style={{ ...labelStyle, marginTop: 8 }}>{t('pages.sync.customCron')}</label>
-              <Input id={`${fid}-sched-custom`} style={inputStyle} value={schedCustom} onChange={e => setSchedCustom(e.target.value)} placeholder="e.g. 0 */4 * * *" />
+              <Input id={`${fid}-sched-custom`} style={inputStyle} value={schedCustom} onChange={e => setSchedCustom(e.target.value)} placeholder={t('pages.sync.schedulePreset.placeholder')} />
             </>
           )}
         </Modal>

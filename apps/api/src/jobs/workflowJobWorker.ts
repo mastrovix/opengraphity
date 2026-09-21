@@ -1,14 +1,16 @@
 import type { Worker, Job } from 'bullmq'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
-import * as incidentService from '../services/incidentService.js'
 import { logger } from '../lib/logger.js'
-import { ValidationError } from '../lib/errors.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
 import { evaluateConditions, parseConditions } from '../lib/conditionEvaluator.js'
 import { executeActions, parseActions, type ActionExecutionContext } from '../lib/actionExecutor.js'
 import { assertSafeOutboundUrl, loggableUrl } from '../lib/safeUrl.js'
 import { automaticTransitionAllowed } from '../graphql/resolvers/change/windowGate.js'
+import { loadAutomationEntity } from '../lib/automationEntity.js'
+import { runStepDeadlineSweep } from '../lib/stepDeadlines.js'
+import { runOLASweep } from '../lib/olaSweep.js'
+import { AUTOMATION_ACTOR, type AutomationEntityType } from '@opengraphity/types'
 
 // ── Job data shape produced by packages/workflow/src/actions.ts ───────────────
 
@@ -25,130 +27,85 @@ interface WebhookRetryData {
   type:     'webhook_retry'
   url:      string
   method:   string
-  headers:  Record<string, string>
   payload:  string
   attempt:  number
   tenantId: string
   entityId: string
+  /** Il passo che porta l'azione `call_webhook` e la sua posizione fra le azioni del passo. */
+  stepId?:      string
+  actionIndex?: number
+  /** Job accodati prima della revisione: portavano gli header dentro il job. */
+  headers?: Record<string, string>
+}
+
+/**
+ * Gli header del webhook, riletti dal passo del workflow (revisione totale ·
+ * E-11): nel job non ci sono più, perché un token del cliente non deve stare in
+ * chiaro in Redis. Un passo o un'azione che non c'è più: nessun header, e il
+ * tentativo prosegue (l'URL e il payload sono nel job). I job vecchi, accodati
+ * prima di questa modifica, usano gli header che portano con sé.
+ */
+async function webhookRetryHeaders(d: WebhookRetryData): Promise<Record<string, string>> {
+  if (!d.stepId) return d.headers ?? {}
+  const session = getSession(undefined, 'READ')
+  try {
+    const rows = await runQuery<{ enterActions: string | null; exitActions: string | null }>(session, `
+      MATCH (s:WorkflowStep {id: $stepId, tenant_id: $tenantId})
+      RETURN s.enter_actions AS enterActions, s.exit_actions AS exitActions
+    `, { stepId: d.stepId, tenantId: d.tenantId })
+    const row = rows[0]
+    if (!row) {
+      logger.warn({ stepId: d.stepId }, '[webhook_retry] the step no longer exists: retrying without its headers')
+      return {}
+    }
+    const parse = (raw: string | null): Array<{ type?: string; params?: Record<string, unknown> }> => {
+      try { return raw ? JSON.parse(raw) as Array<{ type?: string; params?: Record<string, unknown> }> : [] } catch { return [] }
+    }
+    const actions = [...parse(row.exitActions), ...parse(row.enterActions)]
+    const action = typeof d.actionIndex === 'number' ? actions[d.actionIndex] : actions.find((a) => a.type === 'call_webhook')
+    const headers = action?.type === 'call_webhook' ? action.params?.['headers'] : undefined
+    if (headers && typeof headers === 'object' && !Array.isArray(headers)) return headers as Record<string, string>
+    return {}
+  } finally {
+    await session.close()
+  }
 }
 
 // SSRF protection: shared assertSafeOutboundUrl (lib/safeUrl.ts → @opengraphity/events).
 
-// ── auto_close dispatch per entity type (A-12) ────────────────────────────────
-
-/**
- * Publishes the domain "closed" event for the entity after its workflow
- * transition. Only incidents have a closing service today: for every other
- * entity type the job fails with an explicit ValidationError instead of
- * publishing `incident.closed` for a problem/change (which is what happened
- * before — wrong event, wrong payload loader).
- */
-async function publishAutoClose(entityType: string, entityId: string, tenantId: string): Promise<void> {
-  switch (entityType) {
-    case 'incident':
-      await incidentService.closeIncident(entityId, { tenantId, userId: 'system' })
-      return
-    case 'problem':
-    case 'change':
-    case 'service_request':
-      throw new ValidationError(
-        `[workflow-jobs] auto_close is not implemented for entity type "${entityType}" (entity ${entityId}): ` +
-        'no closing service exists for it — only incidentService.closeIncident. Remove the schedule_job(auto_close) ' +
-        'action from that workflow or implement the service.',
-      )
-    default:
-      throw new ValidationError(`[workflow-jobs] auto_close: unknown entity type "${entityType}" (entity ${entityId})`)
-  }
-}
-
-const AUTO_CLOSE_SUPPORTED = new Set(['incident'])
-
 // ── Processor ─────────────────────────────────────────────────────────────────
 
 async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
-  const { entityId, tenantId, instanceId } = job.data
-  logger.info({ jobName: job.name, entityId, tenantId }, '[workflow-jobs] processing')
+  const { entityId, tenantId } = job.data
+  // La passata delle scadenze gira ogni minuto: il suo log è il riepilogo, non questa riga.
+  if (job.name !== STEP_DEADLINES_JOB && job.name !== OLA_SWEEP_JOB) logger.info({ jobName: job.name, entityId, tenantId }, '[workflow-jobs] processing')
 
   switch (job.name) {
-    case 'auto_close': {
-      // 1. Transizione workflow → terminal step 'closed-like' in Neo4j
-      let entityType: string
-      const session = getSession(undefined, 'WRITE')
-      try {
-        const { getWorkflowSteps } = await import('../lib/workflowHelpers.js')
-        const { targetStepByCategory } = await import('../lib/workflowTargets.js')
-        // The job is scheduled from an entity-specific step, so we resolve the
-        // workflow's entity_type via the instance, then pick the step marked
-        // as closure (category='closed' preferred, else first terminal).
-        const wiRes = await session.executeRead((tx) => tx.run(`
-          MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
-          RETURN wi.entity_type AS entityType
-        `, { instanceId, tenantId }))
-        const found = wiRes.records[0]?.get('entityType') as string | undefined
-        if (!found) {
-          logger.warn({ instanceId, entityId }, '[workflow-jobs] auto_close: workflow instance not found')
-          return
-        }
-        entityType = found
-
-        // Dispatch check BEFORE the transition: failing after it would leave
-        // the entity closed with no event, and every retry would then fail
-        // on the (already done) transition.
-        if (!AUTO_CLOSE_SUPPORTED.has(entityType)) {
-          await publishAutoClose(entityType, entityId, tenantId)  // throws ValidationError
-        }
-
-        // Revisione delle otto ondate · B·N-4. Era
-        // `steps.find(category === 'closed') ?? steps.find(isTerminal)` su una
-        // lista SENZA ordine: aggiunto dal disegnatore un secondo passo
-        // terminale di categoria `closed` («Annullato», «Respinto» — l'esempio
-        // stesso della documentazione), la scelta cadeva su quello, 5 letture
-        // su 5, e gli incident si auto-chiudevano come annullati.
-        //
-        // Adesso l'ordine è nel nucleo (`step_order`, poi il nome) e la scelta
-        // passa da `targetStepByCategory`, che ordina e dice cosa manca. Un
-        // workflow senza passi di categoria `closed` ma con un terminale resta
-        // servito — da quel terminale — perché era il comportamento di prima e
-        // togliere la chiusura automatica a quei tenant non è un rimedio; ma
-        // ora lo si DICE, invece di scegliere in silenzio.
-        const steps  = await getWorkflowSteps(session, tenantId, entityType)
-        let target: string
-        try {
-          target = await targetStepByCategory(session, tenantId, entityType, ['closed'],
-            `Chiusura automatica di ${entityType} ${entityId}`)
-        } catch (err) {
-          const terminal = steps.find((s) => s.isTerminal)
-          if (!terminal) {
-            // Prima era un `warn` + `return`: il job risultava completato e
-            // quel ticket non si chiudeva mai, senza che nessuno lo vedesse.
-            throw new Error(
-              `[workflow-jobs] auto_close: il workflow "${entityType}" del tenant ${tenantId} non ha nessun passo ` +
-              `di categoria "closed" né nessun passo terminale: non esiste un posto dove chiudere ${entityId}. ` +
-              `(${err instanceof Error ? err.message : String(err)})`,
-            )
-          }
-          logger.warn({ entityType, entityId, tenantId, chosen: terminal.name },
-            '[workflow-jobs] auto_close: nessun passo di categoria "closed"; si usa il passo terminale — ' +
-            'assegna la categoria «chiuso» al passo di chiusura nel disegnatore')
-          target = terminal.name
-        }
-        const result = await workflowEngine.transition(
-          session,
-          { instanceId, toStepName: target, triggeredBy: 'system', triggerType: 'automatic' },
-          { userId: 'system', entityData: {} },
-        )
-        if (!result.success) {
-          // Throw → the job fails and BullMQ retries; a silent return would
-          // mark it completed and the incident would never auto-close.
-          throw new Error(`[workflow-jobs] auto_close transition failed for ${entityId}: ${result.error ?? 'unknown error'}`)
-        }
-      } finally {
-        await session.close()
+    case STEP_DEADLINES_JOB: {
+      // Verifica «Cosa resta cablato», ondata 3: le scadenze dei passi. La
+      // passata cerca i ticket fermi oltre la scadenza del loro passo e li
+      // sposta; l'esito resta sull'esecuzione del passo (lib/stepDeadlines.ts).
+      const summary = await runStepDeadlineSweep()
+      if (summary.moved + summary.refused + summary.failed > 0) {
+        logger.info(summary, '[workflow-jobs] step deadlines')
       }
+      break
+    }
 
-      // 2. Pubblica evento domain <entity>.closed (notifiche, audit)
-      await publishAutoClose(entityType, entityId, tenantId)
-      logger.info({ entityId, entityType }, '[workflow-jobs] auto_close completed')
+    case OLA_SWEEP_JOB: {
+      // Secondo giro UI del 15 set 2026: gli avvisi OLA/UC sul tempo del team (lib/olaSweep.ts).
+      const summary = await runOLASweep()
+      if (summary.alerted + summary.failed > 0) logger.info(summary, '[workflow-jobs] OLA sweep')
+      if (summary.failed > 0) throw new Error(`OLA sweep: ${summary.failed} contract(s) could not be evaluated (see the log)`)
+      break
+    }
+
+    case 'auto_close': {
+      // I job `auto_close` messi in coda PRIMA dell'ondata 3 (72 ore di
+      // ritardo) arrivano ancora per qualche giorno dopo l'aggiornamento. Non
+      // c'è niente da fare: lo stesso ticket lo chiude la scadenza del passo
+      // «resolved», nata dalla migrazione 20260925_1200 con la stessa durata.
+      logger.info({ entityId, tenantId }, '[workflow-jobs] auto_close di prima dell\'ondata 3: lo fa la scadenza del passo, il job non fa nulla')
       break
     }
 
@@ -160,15 +117,20 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
       await assertSafeOutboundUrl(d.url)
       const host = loggableUrl(d.url)
 
+      // Gli header (spesso un token del cliente) NON stanno nel job: si
+      // rileggono dal passo che ha l'azione (revisione totale · E-11).
+      const headers = await webhookRetryHeaders(d)
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 15_000)
       try {
         const res = await fetch(d.url, {
           method:  d.method,
-          headers: { 'Content-Type': 'application/json', ...d.headers },
+          headers: { 'Content-Type': 'application/json', ...headers },
           body:    d.method !== 'GET' ? d.payload : undefined,
           signal:  controller.signal,
         })
+        // C-29: corpo della risposta scartato (connessione rilasciata subito).
+        await res.body?.cancel().catch(() => undefined)
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`)
         }
@@ -203,19 +165,12 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
         const trigger = triggerRows[0].props
 
         // 2. Load the current entity (with relationships for assigned_to check)
-        const entityRows = await runQuery<{ props: Record<string, unknown>; assignedTo: string | null; assignedTeam: string | null }>(session, `
-          MATCH (e {id: $entityId, tenant_id: $tenantId})
-          OPTIONAL MATCH (e)-[:ASSIGNED_TO]->(u)
-          OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t)
-          RETURN properties(e) AS props, u.id AS assignedTo, t.id AS assignedTeam
-        `, { entityId, tenantId })
-
-        if (entityRows.length === 0) {
+        // Stessa lettura del consumatore degli eventi (lib/automationEntity.ts).
+        const entity = await loadAutomationEntity(session, tenantId, entityType as AutomationEntityType, entityId)
+        if (!entity) {
           logger.info({ entityId }, '[trigger_timer] entity not found — skipped')
           break
         }
-
-        const entity: Record<string, unknown> = { ...entityRows[0].props, assigned_to: entityRows[0].assignedTo, assigned_team: entityRows[0].assignedTeam }
 
         // 3. Evaluate conditions — they might no longer be true
         const conditions = parseConditions(trigger['conditions'] as string | null)
@@ -228,7 +183,7 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
         // 4. Execute actions
         const actions = parseActions(trigger['actions'] as string | null)
         const execCtx: ActionExecutionContext = {
-          tenantId, userId: 'system', entityId, entityType,
+          tenantId, userId: AUTOMATION_ACTOR, entityId, entityType,
           entity, source: 'trigger', sourceName: trigger['name'] as string,
         }
         const results = await executeActions(actions, execCtx)
@@ -265,27 +220,12 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
 async function processNotificationJob(job: Job): Promise<void> {
   switch (job.name) {
     case 'escalation_check': {
+      // Revisione del 14 set 2026 · NT-8: prima questo ramo scriveva un log e
+      // basta — la regola «escalation» si salvava e non notificava mai nessuno.
       const { incidentId, tenantId, ruleId } = job.data as { incidentId: string; tenantId: string; ruleId: string }
-      const session = getSession(undefined, 'READ')
-      try {
-        const { isEntityOpen } = await import('../lib/workflowHelpers.js')
-        const open = await isEntityOpen(session, incidentId, tenantId)
-        if (open) {
-          logger.info({ incidentId, ruleId }, '[notification-jobs] escalation_check: incident still open, escalation triggered')
-          // Escalation notification logic would call notification service here
-        } else {
-          logger.info({ incidentId }, '[notification-jobs] escalation_check: incident already resolved, skipping')
-        }
-      } finally {
-        await session.close()
-      }
-      break
-    }
-
-    case 'digest': {
-      const { ruleId } = job.data as { ruleId: string }
-      logger.info({ ruleId }, '[notification-jobs] digest: daily digest job executed')
-      // Digest aggregation + notification dispatch would happen here
+      const { runEscalationCheck } = await import('../lib/notificationEscalation.js')
+      const outcome = await runEscalationCheck(tenantId, incidentId, ruleId)
+      logger.info({ incidentId, ruleId, outcome }, '[notification-jobs] escalation_check')
       break
     }
 
@@ -316,14 +256,14 @@ async function processNotificationJob(job: Job): Promise<void> {
                  c.id AS changeId, c.change_type AS changeType
         `, { instanceId, tenantId }))
         if (fresh.records.length === 0) {
-          throw new Error(`timer_wait: l'istanza ${instanceId} del tenant ${tenantId} non esiste più o non ha un passo corrente — il timer non può concludersi`)
+          throw new Error(`timer_wait: instance ${instanceId} of tenant ${tenantId} no longer exists or has no current step — the timer cannot complete`)
         }
         const currentStep = fresh.records[0]!.get('currentStep') as string
         const toStep      = fresh.records[0]!.get('toStep') as string | null
         if (!toStep) {
           throw new Error(
-            `timer_wait: dal passo "${currentStep}" non esce nessuna transizione con innesco "automatic" o "timer", quindi l'attesa non può concludersi ` +
-            `(l'arco era previsto verso "${scheduledToStep ?? 'n/d'}" quando il timer è partito). Aggiungi l'arco nel disegnatore.`,
+            `timer_wait: no transition with an "automatic" or "timer" trigger leaves step "${currentStep}", so the wait cannot complete ` +
+            `(the edge was expected towards "${scheduledToStep ?? 'n/a'}" when the timer started). Add the edge in the designer.`,
           )
         }
         if (scheduledToStep && scheduledToStep !== toStep) {
@@ -343,14 +283,80 @@ async function processNotificationJob(job: Job): Promise<void> {
           const allowed = await automaticTransitionAllowed(session, {
             tenantId, changeId, changeType: changeType ?? '', currentStep, toStep,
           }, 'timer_job')
-          if (!allowed) break
+          if (!allowed) {
+            /**
+             * Un'attesa RIFIUTATA dal varco lascia una traccia visibile
+             * (revisione totale · C-30): il job risultava completato, la
+             * change restava nell'attesa per sempre e solo un log e un
+             * contatore lo dicevano. Ora l'esito si scrive sull'esecuzione del
+             * passo, esattamente come fanno le scadenze, quindi la
+             * diagnostica lo elenca fra i ticket bloccati e l'admin lo vede.
+             */
+            await runQuery(session, `
+              MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})-[:STEP_HISTORY]->(ex:WorkflowStepExecution)
+              WHERE ex.exited_at IS NULL
+              SET ex.deadline_outcome    = 'refused',
+                  ex.deadline_reason     = 'approval_gate',
+                  ex.deadline_detail     = $detail,
+                  ex.deadline_to_step    = $toStep,
+                  ex.deadline_checked_at = $now
+            `, {
+              instanceId, tenantId, toStep,
+              // Il dettaglio finisce sul nodo e lo legge la diagnostica: inglese, come tutti i testi dell'API.
+              detail: `timer_wait: the approval gate does not allow the automatic transition to "${toStep}"`,
+              now: new Date().toISOString(),
+            })
+            logger.warn({ instanceId, currentStep, toStep, changeId },
+              '[notification-jobs] timer_wait rifiutato dal varco delle approvazioni: la change resta nell-attesa (visibile nella diagnostica)')
+            break
+          }
         }
         const result = await workflowEngine.transition(
           session,
-          { instanceId, toStepName: toStep, triggeredBy: 'timer', triggerType: 'automatic' },
+          { instanceId, toStepName: toStep, triggeredBy: 'timer', triggerType: 'automatic', tenantId },
           { userId: 'system', entityData: {} },
         )
         if (!result.success) {
+          /**
+           * RIFIUTATA DA UNA GUARDIA ≠ ANDATA STORTA (rimedio, 20 set 2026).
+           *
+           * Qui era peggio che altrove: rilanciando, BullMQ ritentava, i
+           * tentativi si esaurivano e **il timer non veniva più riarmato**,
+           * quindi il ticket restava nel passo di attesa per sempre senza un
+           * segnale. Una guardia però non dipende dal tempo che passa ma da
+           * qualcuno che chiuda un compito: ritentare subito è inutile,
+           * riprovare PIÙ TARDI è esattamente la cosa giusta.
+           *
+           * Quindi si riarma il timer con lo stesso ritardo e si dice perché.
+           */
+          if (result.refusedByCondition) {
+            /**
+             * Stessa forma del varco delle approvazioni qui sopra (C-30):
+             * l'esito si scrive sull'esecuzione del passo, così la
+             * diagnostica elenca il ticket fra quelli bloccati e
+             * l'amministratore lo vede. Prima si rilanciava: BullMQ
+             * ritentava, i tentativi si esaurivano, il timer non veniva più
+             * riarmato e il ticket restava nell'attesa per sempre senza un
+             * segnale — che è il difetto che C-30 aveva chiuso per il varco
+             * e che la guardia nuova riapriva da un'altra porta.
+             */
+            await runQuery(session, `
+              MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})-[:STEP_HISTORY]->(ex:WorkflowStepExecution)
+              WHERE ex.exited_at IS NULL
+              SET ex.deadline_outcome    = 'refused',
+                  ex.deadline_reason     = 'transition_condition',
+                  ex.deadline_detail     = $detail,
+                  ex.deadline_to_step    = $toStep,
+                  ex.deadline_checked_at = $now
+            `, {
+              instanceId, tenantId, toStep,
+              detail: `timer_wait: the transition guard "${result.refusedByCondition}" refused the automatic transition to "${toStep}" (${result.error ?? ''})`,
+              now: new Date().toISOString(),
+            })
+            logger.warn({ instanceId, toStep, condition: result.refusedByCondition, error: result.error },
+              '[notification-jobs] timer_wait rifiutato da una guardia: il ticket resta nell-attesa (visibile nella diagnostica)')
+            break
+          }
           logger.error({ instanceId, toStep, error: result.error }, '[notification-jobs] timer_wait transition failed')
           throw new Error(`timer_wait transition failed for instance ${instanceId} → ${toStep}: ${result.error ?? 'unknown'}`)
         }
@@ -368,6 +374,11 @@ async function processNotificationJob(job: Job): Promise<void> {
 
 export const NOTIFICATION_JOBS_QUEUE = 'notification-jobs'
 export const WORKFLOW_JOBS_QUEUE     = 'workflow-jobs'
+/** Il job ripetuto delle scadenze dei passi, ogni minuto. */
+export const STEP_DEADLINES_JOB      = 'step_deadlines'
+export const STEP_DEADLINES_EVERY_MS = 60_000
+export const OLA_SWEEP_JOB = 'ola_sweep'
+export const OLA_SWEEP_EVERY_MS = 60_000
 
 export function startNotificationJobWorker(): Worker {
   getQueue(NOTIFICATION_JOBS_QUEUE)  // register the producer singleton (metrics + scheduleEscalationCheck)
@@ -388,6 +399,29 @@ export async function scheduleEscalationCheck(incidentId: string, tenantId: stri
 }
 
 // ── Worker ────────────────────────────────────────────────────────────────────
+
+/**
+ * La passata delle scadenze, ripetuta ogni minuto. `jobId` fisso: ogni replica
+ * la registra all'avvio, e BullMQ ne tiene una sola.
+ */
+export async function scheduleStepDeadlineSweep(): Promise<void> {
+  await getQueue(WORKFLOW_JOBS_QUEUE).add(
+    STEP_DEADLINES_JOB,
+    { instanceId: '', entityId: '', tenantId: '', job: STEP_DEADLINES_JOB },
+    { repeat: { every: STEP_DEADLINES_EVERY_MS }, jobId: 'workflow-step-deadlines', removeOnComplete: true, removeOnFail: 100 },
+  )
+  logger.info({ everyMs: STEP_DEADLINES_EVERY_MS }, '[workflow-jobs] step deadlines sweep scheduled')
+}
+
+/** La passata OLA/UC, ogni minuto: stesso schema di quella delle scadenze. */
+export async function scheduleOLASweep(): Promise<void> {
+  await getQueue(WORKFLOW_JOBS_QUEUE).add(
+    OLA_SWEEP_JOB,
+    { instanceId: '', entityId: '', tenantId: '', job: OLA_SWEEP_JOB },
+    { repeat: { every: OLA_SWEEP_EVERY_MS }, jobId: 'workflow-ola-sweep', removeOnComplete: true, removeOnFail: 100 },
+  )
+  logger.info({ everyMs: OLA_SWEEP_EVERY_MS }, '[workflow-jobs] OLA sweep scheduled')
+}
 
 export function startWorkflowJobWorker(): Worker<WorkflowJobData> {
   getQueue(WORKFLOW_JOBS_QUEUE)  // producer singleton (packages/workflow actions + triggerEngine timers)

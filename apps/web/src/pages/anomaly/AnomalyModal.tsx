@@ -48,7 +48,7 @@ export function ResolutionForm({
           gap: 10,
           alignItems: 'flex-start',
         }}>
-          <Lightbulb size={15} color="var(--color-brand)" style={{ flexShrink: 0, marginTop: 1 }} />
+          <Lightbulb size={15} aria-hidden="true" color="var(--color-brand)" style={{ flexShrink: 0, marginTop: 1 }} />
           <span style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark, lineHeight: 1.6 }}>
             {suggestion}
           </span>

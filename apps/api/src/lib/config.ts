@@ -90,11 +90,30 @@ const readers = {
   // Process profile (revisione 2 · D1.1): which work groups THIS process starts —
   // the table is lib/workerProfiles.ts. `all` = the API runs everything (as before).
   workerProfile: (): WorkerProfile => enumEnv('WORKER_PROFILE', WORKER_PROFILES, 'all'),
+  /**
+   * Revisione del 14 set 2026 · F8: `true` = il processo non parte con
+   * migrazioni pendenti. Spento per default perché la ricetta locale le lancia
+   * dentro il container dell'API (vedi lib/migrationState.ts).
+   */
+  requireAppliedMigrations: (): boolean => boolEnv('REQUIRE_APPLIED_MIGRATIONS', false),
 
   // Keycloak
   /** Internal URL for server-to-server calls (JWKS fetch, admin API). */
   keycloakUrl:           (): string   => envOrThrowInProd('KEYCLOAK_URL', 'http://localhost:8080'),
   /** Public origins browsers use; tokens carry one of them as `iss`. Comma-separated. */
+  /**
+   * I client Keycloak delle app (web e portale) a cui l'API crede
+   * (revisione totale · A-7): un token del realm emesso per un altro client
+   * (account-console, un'altra applicazione federata) non è un accesso a
+   * OpenGrafo. Nel compose viene da VITE_KEYCLOAK_CLIENT_ID e
+   * VITE_KEYCLOAK_CLIENT_ID_PORTAL: una sorgente sola con i bundle.
+   */
+  keycloakAppClientIds:  (): string[] => {
+    const raw = envOrThrowInProd('KEYCLOAK_APP_CLIENT_IDS', 'opengrafo-web,opengrafo-portal')
+    const ids = raw.split(',').map((u) => u.trim()).filter((u) => u.length > 0)
+    if (ids.length === 0) throw new Error('Environment variable KEYCLOAK_APP_CLIENT_IDS is set but contains no client id')
+    return ids
+  },
   keycloakPublicUrls:    (): string[] => {
     const raw = envOrThrowInProd('KEYCLOAK_PUBLIC_URL', readers.keycloakUrl())
     const urls = raw.split(',').map((u) => u.trim()).filter((u) => u.length > 0)
@@ -108,6 +127,36 @@ const readers = {
   /** Secret: required in every environment, read lazily (only createUser/onboarding need it). */
   keycloakAdminPassword: (): string => requireEnv('KEYCLOAK_ADMIN_PASSWORD'),
 
+  /*
+   * LA CONSOLE DI PIATTAFORMA (17 set 2026): il realm Keycloak dei suoi
+   * amministratori e l'host su cui vive.
+   *
+   * Non hanno un default, nemmeno fuori produzione, e il motivo è la
+   * sicurezza: un default farebbe esistere la console — quella che crea e
+   * cancella i tenant — su ogni installazione, anche dove nessuno l'ha voluta.
+   * Assenti, il suo cammino di autenticazione rifiuta tutto e nginx non la
+   * espone.
+   *
+   * L'host si confronta per INTERO (`opengrafo.admin`, non un primo pezzo):
+   * così nessun nome di tenant diventa vietato, mentre riservare l'etichetta
+   * `admin.` avrebbe impedito per sempre a un cliente di chiamarsi così.
+   */
+  platformRealm: (): string | undefined => optionalEnv('PLATFORM_REALM'),
+  platformHost:  (): string | undefined => optionalEnv('PLATFORM_CONSOLE_HOST'),
+  /*
+   * GLI INDIRIZZI DELLE APP DI UN TENANT, con `{slug}` al posto del nome.
+   *
+   * Sono una scelta dell'installazione, non una costante: in locale i tenant
+   * stanno su `http://{slug}.localhost`, in produzione su
+   * `https://{slug}.azienda.com`, e c'è chi mette il portale su un dominio a
+   * parte. Dedurli dall'host della console sarebbe un ripiego silenzioso che
+   * indovina bene finché le due cose stanno sullo stesso dominio, e poi mostra
+   * link rotti senza dirlo — quindi se non sono configurati la console scrive
+   * «not configured» invece di inventarli.
+   */
+  tenantUrlTemplate: (): string | undefined => optionalEnv('TENANT_URL_TEMPLATE'),
+  portalUrlTemplate: (): string | undefined => optionalEnv('PORTAL_URL_TEMPLATE'),
+
   // Auth
   /** Legacy HS256 dev tokens (auth/resolveAuth.ts). Off unless ALLOW_LEGACY_JWT=true. */
   allowLegacyJwt: (): boolean            => boolEnv('ALLOW_LEGACY_JWT', false),
@@ -117,8 +166,19 @@ const readers = {
   // HTTP
   /** Undefined → server.ts refuses to start in production, allows everything in dev. */
   corsOrigin:           (): string | undefined => optionalEnv('CORS_ORIGIN'),
-  /** Requests/min per client for the GraphQL rate limiter (production only). */
+  /**
+   * Richieste per FINESTRA e per client (IP) del limitatore HTTP, in
+   * produzione. La finestra è `RATE_LIMIT_WINDOW_MINUTES` — prima era un
+   * quarto d'ora scritto nel codice mentre questo commento diceva «al
+   * minuto» (revisione totale · A-10).
+   */
   rateLimitMax:         (): number  => intEnv('RATE_LIMIT_MAX', 1000),
+  /** La finestra del limitatore, in minuti (default: 1 → «al minuto»). */
+  rateLimitWindowMinutes: (): number => {
+    const n = intEnv('RATE_LIMIT_WINDOW_MINUTES', 1)
+    if (!Number.isInteger(n) || n < 1) throw new Error(`RATE_LIMIT_WINDOW_MINUTES must be a whole number of minutes >= 1 (got "${String(n)}")`)
+    return n
+  },
   /** Apollo introspection in production (off by default; always on outside). */
   graphqlIntrospection: (): boolean => boolEnv('GRAPHQL_INTROSPECTION', false),
   /**
@@ -140,8 +200,20 @@ const readers = {
    * cliente più ricco ne ha 13) e si alza con la variabile d'ambiente.
    */
   maxCITypesPerTenant:  (): number => intEnv('MAX_CI_TYPES_PER_TENANT', 200),
-  /** Bearer token for GET /metrics; empty → loopback/private networks only. */
-  metricsToken:         (): string | undefined => optionalEnv('METRICS_TOKEN'),
+  /**
+   * Bearer token di GET /metrics. In produzione è OBBLIGATORIO (revisione
+   * totale · A-24): senza, l'accesso era deciso dall'indirizzo del socket, e su
+   * una rete bridge di Docker qualunque container leggeva le metriche —
+   * compresa `tenant_provisioning_gaps{tenant}`, cioè l'elenco dei clienti che
+   * `/health` nasconde di proposito. Fuori produzione resta facoltativo.
+   */
+  metricsToken:         (): string | undefined => {
+    const token = optionalEnv('METRICS_TOKEN')
+    if (!token && process.env['NODE_ENV'] === 'production') {
+      throw new Error('Environment variable METRICS_TOKEN is required in production: without it /metrics is open to the whole Docker network')
+    }
+    return token
+  },
   /** Base URL of the web app used in every outbound link (emails, Slack cards). */
   appUrl:               (): string  => envOrThrowInProd('APP_URL', 'http://localhost:5173'),
 
@@ -149,6 +221,12 @@ const readers = {
   attachmentDir: (): string => path.resolve(envOrThrowInProd('ATTACHMENT_DIR', './data/attachments')),
   backupDir:     (): string => path.resolve(envOrThrowInProd('BACKUP_DIR', './backups')),
   reportDir:     (): string => path.resolve(envOrThrowInProd('REPORT_DIR', './data/reports')),
+  /**
+   * Il TETTO della piattaforma per un allegato, in MB (verifica «Cosa resta
+   * cablato», ondata 6): ogni organizzazione sceglie il suo limite sotto questo
+   * valore. È dell'operatore, non del cliente: protegge disco e memoria di tutti.
+   */
+  attachmentMaxMbCap: (): number => intEnv('ATTACHMENT_MAX_MB_CAP', 100),
 
   // Discovery
   /** 32-byte hex key for connector credentials at rest; unset → discovery sources cannot be saved. */
@@ -186,8 +264,21 @@ const readers = {
    * modello distinto).
    */
   anthropicModel:     (): string => optionalEnv('ANTHROPIC_MODEL') ?? 'claude-opus-5',
-  slackBotToken:      (): string | undefined => optionalEnv('SLACK_BOT_TOKEN'),
+  /*
+    L'app Slack DI OPENGRAFO (ondata 8): serve al collegamento con un clic
+    («Aggiungi a Slack»). Il token di ogni organizzazione NON sta qui: sta nel
+    grafo, cifrato (SlackInstallation). Senza queste tre il collegamento con un
+    clic non si offre; resta quello con il token dell'app dell'organizzazione.
+  */
+  slackClientId:      (): string | undefined => optionalEnv('SLACK_CLIENT_ID'),
+  slackClientSecret:  (): string | undefined => optionalEnv('SLACK_CLIENT_SECRET'),
   slackSigningSecret: (): string | undefined => optionalEnv('SLACK_SIGNING_SECRET'),
+  /**
+   * L'indirizzo da cui Internet raggiunge OpenGrafo (es. https://opengrafo.acme.com):
+   * Slack chiama lì i comandi, le azioni e il ritorno dell'installazione.
+   * Senza, Slack non può raggiungere OpenGrafo e la pagina Integrazioni lo dice.
+   */
+  publicBaseUrl:      (): string | undefined => optionalEnv('PUBLIC_BASE_URL')?.replace(/\/+$/, ''),
 } as const
 
 type Readers = typeof readers
@@ -240,17 +331,17 @@ export function resetConfigCache(): void {
  */
 export const CONFIG_PROFILES = {
   api: [
-    'nodeEnv', 'port', 'logLevel', 'workerProfile',
+    'nodeEnv', 'port', 'logLevel', 'workerProfile', 'requireAppliedMigrations',
     'neo4jUri', 'neo4jUser', 'neo4jPassword', 'neo4jMaxPoolSize',
-    'keycloakUrl', 'keycloakPublicUrls', 'keycloakAdminUser',
-    'allowLegacyJwt', 'corsOrigin', 'rateLimitMax', 'graphqlIntrospection', 'graphqlSchemaCacheMax', 'maxCITypesPerTenant', 'metricsToken', 'appUrl',
+    'keycloakUrl', 'keycloakPublicUrls', 'keycloakAppClientIds', 'keycloakAdminUser',
+    'allowLegacyJwt', 'corsOrigin', 'rateLimitMax', 'rateLimitWindowMinutes', 'graphqlIntrospection', 'graphqlSchemaCacheMax', 'maxCITypesPerTenant', 'metricsToken', 'appUrl',
     'attachmentDir', 'backupDir', 'reportDir',
     'embeddingsProvider', 'transformersCache', 'embeddingWorkerExternal',
     'emailFrom', 'otelEnabled', 'otelEndpoint',
   ],
   // The worker serves GET /metrics on `port` (Prometheus scrapes it like the API).
   worker: [
-    'nodeEnv', 'port', 'logLevel', 'workerProfile', 'metricsToken',
+    'nodeEnv', 'port', 'logLevel', 'workerProfile', 'metricsToken', 'requireAppliedMigrations',
     'neo4jUri', 'neo4jUser', 'neo4jPassword', 'neo4jMaxPoolSize',
     'embeddingsProvider', 'transformersCache',
   ],

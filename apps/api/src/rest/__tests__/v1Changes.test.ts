@@ -9,7 +9,9 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import express from 'express'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { perms } from '../../lib/__tests__/testPermissions.js'
 
+vi.mock('../../lib/ticketCustomFields.js', async (importOriginal) => ({ ...(await importOriginal<object>()), customFieldDefs: vi.fn(async () => []) }))
 vi.mock('../../lib/logger.js', () => ({
   logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))
@@ -139,13 +141,15 @@ describe('GET /api/v1/changes/:id', () => {
 })
 
 describe('POST /api/v1/changes', () => {
-  const valid = { title: 'Upgrade DB', why: 'EOL', what: 'pg16', changeOwner: 'u-own', affectedCIIds: ['ci-1'] }
+  const valid = { title: 'Upgrade DB', why: 'EOL', what: 'pg16', changeOwner: 'u-own', changeType: 'normal', affectedCIIds: ['ci-1'] }
 
   it.each([
     [{ ...valid, title: undefined }, /title is required/],
     [{ ...valid, why: '' }, /why is required/],
     [{ ...valid, what: 1 }, /what is required/],
     [{ ...valid, changeOwner: undefined }, /changeOwner is required/],
+    // Verifica «Cosa resta cablato», ondata 1: il tipo non ha più un default.
+    [{ ...valid, changeType: undefined }, /changeType is required/],
     [{ ...valid, affectedCIIds: [] }, /affectedCIIds must be a non-empty array/],
     [{ ...valid, affectedCIIds: ['ci-1', 2] }, /affectedCIIds must be a non-empty array/],
     [{ ...valid, affectedCIIds: 'ci-1' }, /affectedCIIds must be a non-empty array/],
@@ -166,7 +170,7 @@ describe('POST /api/v1/changes', () => {
     expect(await res.json()).toMatchObject({ data: { id: 'chg-1', code: 'CHG0001', affectedCIs: [] } })
     expect(createChangeRFC).toHaveBeenCalledWith(valid, { tenantId: 'tenant-1', userId: 'key-1' })
     expect(audit).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator' }),
+      expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator', permissions: perms('operator') }),
       'change_created', 'change', 'chg-1', { code: 'CHG0001', title: 'Upgrade DB', affectedCIIds: ['ci-1'] },
     )
   })
@@ -203,7 +207,7 @@ describe('POST /api/v1/changes/:id/transition', () => {
     expect(executeChangeTransition).toHaveBeenCalledWith(
       null,
       { changeId: 'chg-1', toStep: 'planning', notes: 'all assessed' },
-      expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator', userEmail: 'api-key:key-1' }),
+      expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator', permissions: perms('operator'), userEmail: 'api-key:key-1' }),
     )
     expect(audit).toHaveBeenCalledWith(expect.anything(), 'change_transition', 'change', 'chg-1', { toStep: 'planning', notes: 'all assessed' })
   })
@@ -224,11 +228,16 @@ describe('POST /api/v1/changes/:id/transition', () => {
 })
 
 describe('GET /api/v1/changes/:id/status', () => {
+  // Categorie e scopi come li ha il dato vero: `deployment` NON è una categoria
+  // (WORKFLOW_STEP_CATEGORIES) ma il nome di fabbrica del passo di scopo
+  // `implementation`. Il fixture di prima usava la categoria inventata, e così
+  // nascondeva che la rotta riconosceva il passo solo dal NOME (revisione del
+  // 14 set 2026 · F17).
   const steps = [
-    { name: 'draft',      isInitial: true,  isTerminal: false, isOpen: true, category: 'draft',      stepOrder: 0 },
-    { name: 'assessment', isInitial: false, isTerminal: false, isOpen: true, category: 'assessment', stepOrder: 1 },
-    { name: 'deployment', isInitial: false, isTerminal: false, isOpen: true, category: 'deployment', stepOrder: 4 },
-    { name: 'review',     isInitial: false, isTerminal: false, isOpen: true, category: 'review',     stepOrder: 5 },
+    { name: 'draft',      isInitial: true,  isTerminal: false, isOpen: true, category: 'active', purpose: null,             stepOrder: 0 },
+    { name: 'assessment', isInitial: false, isTerminal: false, isOpen: true, category: 'active', purpose: 'assessment',     stepOrder: 1 },
+    { name: 'deployment', isInitial: false, isTerminal: false, isOpen: true, category: 'active', purpose: 'implementation', stepOrder: 4 },
+    { name: 'review',     isInitial: false, isTerminal: false, isOpen: true, category: 'active', purpose: 'review',         stepOrder: 5 },
   ]
 
   it('unknown id → 404', async () => {
@@ -251,6 +260,23 @@ describe('GET /api/v1/changes/:id/status', () => {
     expect(getWorkflowSteps).toHaveBeenCalledWith(expect.anything(), 'tenant-1', 'change')
   })
 
+  it('passo di rilascio RINOMINATO: si riconosce dallo scopo, non dal nome', async () => {
+    const renamed = steps.map((st) => st.name === 'deployment' ? { ...st, name: 'rilascio' } : st)
+    vi.mocked(runQueryOne).mockResolvedValueOnce({ code: 'CHG0001', approvalStatus: 'approved', phase: 'rilascio' })
+    vi.mocked(getWorkflowSteps).mockResolvedValueOnce(renamed)
+    const res = await fetch(`${base}/chg-1/status`)
+    expect(res.status).toBe(200)
+    expect((await res.json() as { data: { deployApproved: boolean } }).data.deployApproved).toBe(true)
+  })
+
+  it('nessun passo con scopo implementation: errore, non «deploy non approvato» in silenzio', async () => {
+    const withoutPurpose = steps.map((st) => st.purpose === 'implementation' ? { ...st, purpose: null } : st)
+    vi.mocked(runQueryOne).mockResolvedValueOnce({ code: 'CHG0001', approvalStatus: 'approved', phase: 'review' })
+    vi.mocked(getWorkflowSteps).mockResolvedValueOnce(withoutPurpose)
+    const res = await fetch(`${base}/chg-1/status`)
+    expect(res.status).toBe(500)
+  })
+
   it('legacy change without workflow → phase null, deployApproved false, no step lookup', async () => {
     vi.mocked(runQueryOne).mockResolvedValueOnce({ code: null, approvalStatus: null, phase: null })
     const res = await fetch(`${base}/chg-old/status`)
@@ -267,7 +293,7 @@ describe('GET /api/v1/changes/:id/tasks', () => {
     expect(runQuery).not.toHaveBeenCalled()
   })
 
-  it('collects the five task sources with functional/technical split and completion fields', async () => {
+  it('collects the five per-CI task sources plus the generic step tasks', async () => {
     vi.mocked(runQueryOne).mockResolvedValueOnce({ id: 'chg-1' })
     vi.mocked(runQuery)
       .mockResolvedValueOnce([
@@ -278,6 +304,10 @@ describe('GET /api/v1/changes/:id/tasks', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ props: { id: 'r1', code: 'RV-1', status: 'done', reviewed_at: 't9' }, ciId: 'ci-1', ciName: 'db-01', team: null, completedBy: null }])
+      // I compiti GENERICI del passo (20 set 2026): senza, l'endpoint
+      // prometteva «tutti i task della change» e non mostrava quelli che
+      // possono BLOCCARLA.
+      .mockResolvedValueOnce([{ props: { id: 'k1', code: 'TASK00000042', state: 'open', title: 'Prepara la finestra', step_name: 'scheduled' }, team: { id: 'team-2', name: 'Rete' } }])
 
     const res = await fetch(`${base}/chg-1/tasks`)
     expect(res.status).toBe(200)
@@ -286,13 +316,14 @@ describe('GET /api/v1/changes/:id/tasks', () => {
       { id: 'a2', code: 'AT-2', type: 'technical', status: 'open', ci: { id: 'ci-1', name: 'db-01' }, assignedTeam: null, completedBy: null, completedAt: null },
       { id: 'd1', code: 'DP-1', type: 'planning', status: 'open', ci: null, assignedTeam: null, completedBy: null, completedAt: null },
       { id: 'r1', code: 'RV-1', type: 'review', status: 'done', ci: { id: 'ci-1', name: 'db-01' }, assignedTeam: null, completedBy: null, completedAt: 't9' },
+      { id: 'k1', code: 'TASK00000042', type: 'task', title: 'Prepara la finestra', step: 'scheduled', status: 'open', ci: null, assignedTeam: { id: 'team-2', name: 'Rete' }, completedBy: null, completedAt: null },
     ] })
-    expect(runQuery).toHaveBeenCalledTimes(5)
+    expect(runQuery).toHaveBeenCalledTimes(6)
     for (const call of vi.mocked(runQuery).mock.calls) {
       expect(call[2]).toEqual({ id: 'chg-1', tenantId: 'tenant-1' })
     }
     expect(vi.mocked(runQuery).mock.calls.map((c) => /\[:(HAS_\w+)\]/.exec(c[1])?.[1])).toEqual([
-      'HAS_ASSESSMENT', 'HAS_DEPLOY_PLAN', 'HAS_VALIDATION', 'HAS_DEPLOYMENT', 'HAS_REVIEW',
+      'HAS_ASSESSMENT', 'HAS_DEPLOY_PLAN', 'HAS_VALIDATION', 'HAS_DEPLOYMENT', 'HAS_REVIEW', 'HAS_TASK',
     ])
   })
 })

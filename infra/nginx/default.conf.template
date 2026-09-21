@@ -20,9 +20,84 @@
 # explicitly. The API derives the tenant of the request from that header
 # (auth/resolveAuth.ts cross-checks it against the token's realm): if nginx
 # forwarded the client's own value a caller could pick the tenant by header.
-# client_max_body_size on /api/ matches the API's 10 MB attachment limit
-# (rest/attachments.ts) — nginx's 1 MB default returned 413 before the API
-# could even reject.
+# client_max_body_size on /api/ comes from NGINX_API_MAX_BODY (compose,
+# default 101m), kept just above ATTACHMENT_MAX_MB_CAP so the API — not nginx —
+# is what refuses an oversized upload, with its own JSON message. Revisione
+# totale · H-11: it used to be a fixed 11m «matching the API's 10 MB limit»,
+# from before the maximum became a per-organization setting up to 100 MB.
+
+# ── Platform console: opengrafo-admin.localhost ───────────────────────────────
+# La console crea, rinomina, sospende e CANCELLA i tenant: non appartiene a
+# nessuno di loro e vive su un host suo.
+#
+# Il `server_name` è ESATTO, non una regex, e questo è ciò che lo protegge:
+# nginx preferisce sempre un nome esatto a una espressione regolare, quindi
+# vince su `~^(?<tenant>[^.]+)\.localhost$` — che altrimenti corrisponderebbe
+# anche qui e tratterebbe la console come un tenant chiamato «opengrafo-admin».
+# Sta comunque scritto prima, perché si legge nell'ordine in cui si ragiona.
+#
+# La seconda metà della protezione è nell'API: `resolveAuth` rifiuta un token
+# di tenant presentato su questo host, così il confine non dipende da nginx.
+#
+# Non c'è `/graphql`: lo schema del prodotto è legato a un tenant e la console
+# non ne ha uno. Solo `/platform`, che ha la sua autenticazione (realm dedicato
+# + questo host, `apps/api/src/auth/platformAuth.ts`).
+server {
+    listen 80;
+    server_name opengrafo-admin.localhost;
+
+    # Il DNS di Docker: `proxy_pass` con una variabile lo richiede, e senza
+    # questa riga l'inoltro dava 502 — visto dal vivo appena scritto il blocco.
+    resolver 127.0.0.11 ipv6=off valid=30s;
+
+    large_client_header_buffers 4 32k;
+    proxy_buffer_size           128k;
+    proxy_buffers               4 256k;
+    proxy_busy_buffers_size     256k;
+
+    # Le stesse intestazioni delle altre app, più `noindex`: è un pannello di
+    # servizio, non una pagina da trovare. Niente `wasm-unsafe-eval`: la console
+    # non esegue formule, quindi non le serve.
+    #
+    # `connect-src` elenca ENTRAMBE le origini pubbliche di Keycloak, come i
+    # blocchi di web e portale. Scritto più stretto — solo
+    # `${KEYCLOAK_PUBLIC_ORIGIN}` — la console si fermava all'avvio con «Cannot
+    # reach Keycloak … Load failed»: il bundle è costruito con
+    # `VITE_KEYCLOAK_URL`, che qui è l'host Tailscale, e il CSP bloccava la
+    # richiesta prima che partisse. Un CSP più severo del necessario non è più
+    # sicuro: è solo rotto in un modo che somiglia a un guasto di rete.
+    add_header Content-Security-Policy
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ${KEYCLOAK_PUBLIC_ORIGIN} https://${TAILSCALE_HOST}; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+        always;
+    add_header X-Content-Type-Options "nosniff"                         always;
+    add_header X-Frame-Options        "DENY"                            always;
+    add_header Referrer-Policy        "strict-origin-when-cross-origin" always;
+    add_header X-Robots-Tag           "noindex, nofollow"               always;
+
+    location /platform {
+        client_max_body_size 64k;
+        set $upstream_api api:4000;
+        proxy_pass         http://$upstream_api;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        # X-Forwarded-Host imposto da nginx: `platformAuth` confronta questo
+        # host con quello configurato, e un client non deve poterlo scegliere.
+        proxy_set_header   X-Forwarded-Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        set $upstream_console console:80;
+        proxy_pass         http://$upstream_console;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Forwarded-Host $host;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
 
 # ── Portal: portal.{tenant}.localhost ────────────────────────────────────────
 server {
@@ -36,10 +111,16 @@ server {
     proxy_buffers               4 256k;
     proxy_busy_buffers_size     256k;
 
-    # Same policy as the agent app minus 'wasm-unsafe-eval' (the portal ships no
-    # wasm). connect-src lists the public Keycloak origins the browser talks to.
+    # Come l'app degli operatori, 'wasm-unsafe-eval' COMPRESO: dai moduli del
+    # catalogo (ondata 6) il portale spedisce wasm — le formule dei campi
+    # calcolati girano in QuickJS, un sandbox WebAssembly, ed è il modo SICURO di
+    # eseguirle (niente `eval`, niente accesso alla pagina). Prima qui c'era
+    # scritto «the portal ships no wasm», e il risultato era un campo calcolato
+    # che nel portale restava vuoto: il CSP bloccava la compilazione del wasm.
+    # La direttiva permette il wasm, NON l'eval di JavaScript.
+    # connect-src elenca le origini pubbliche di Keycloak con cui parla il browser.
     add_header Content-Security-Policy
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ${KEYCLOAK_PUBLIC_ORIGIN} https://${TAILSCALE_HOST}; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+        "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' ${KEYCLOAK_PUBLIC_ORIGIN} https://${TAILSCALE_HOST}; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
         always;
     add_header X-Content-Type-Options "nosniff"                      always;
     add_header X-Frame-Options        "DENY"                         always;
@@ -65,6 +146,11 @@ server {
 
     # ── GraphQL ──────────────────────────────────────────────────────────────
     location /graphql {
+        # H-21: senza questa riga vale il default di nginx (1 MB) e un corpo piu
+        # grande tornava 413 in HTML, che Apollo Client mostra come «Network
+        # error». L'API ha il suo limite (512 kB, server.ts) e risponde in JSON:
+        # qui si sta piu larghi, cosi e sempre l'API a rispondere.
+        client_max_body_size 2m;
         set $upstream_api api:4000;
         proxy_pass         http://$upstream_api;
         proxy_http_version 1.1;
@@ -79,7 +165,14 @@ server {
 
     # ── REST API ─────────────────────────────────────────────────────────────
     location /api/ {
-        client_max_body_size 11m;
+        # H-11: il tetto viene dall'ambiente (NGINX_API_MAX_BODY), un po' sopra
+        # ATTACHMENT_MAX_MB_CAP, cosi il no lo dice l'API e non nginx in HTML.
+        client_max_body_size ${NGINX_API_MAX_BODY};
+        # H-20: import CSV fino a 20 MB, export PDF/Excel e /api/report-stream
+        # passano il minuto del default. Un 504 qui lascia l'import a metà per
+        # il client mentre l'API lo completa davvero.
+        proxy_read_timeout   600s;
+        proxy_send_timeout   600s;
         set $upstream_api api:4000;
         proxy_pass         http://$upstream_api;
         proxy_http_version 1.1;
@@ -146,6 +239,11 @@ server {
 
     # ── GraphQL ───────────────────────────────────────────────────────────────
     location /graphql {
+        # H-21: senza questa riga vale il default di nginx (1 MB) e un corpo piu
+        # grande tornava 413 in HTML, che Apollo Client mostra come «Network
+        # error». L'API ha il suo limite (512 kB, server.ts) e risponde in JSON:
+        # qui si sta piu larghi, cosi e sempre l'API a rispondere.
+        client_max_body_size 2m;
         set $upstream_api api:4000;
         proxy_pass         http://$upstream_api;
         proxy_http_version 1.1;
@@ -160,7 +258,14 @@ server {
 
     # ── REST API ──────────────────────────────────────────────────────────────
     location /api/ {
-        client_max_body_size 11m;
+        # H-11: il tetto viene dall'ambiente (NGINX_API_MAX_BODY), un po' sopra
+        # ATTACHMENT_MAX_MB_CAP, cosi il no lo dice l'API e non nginx in HTML.
+        client_max_body_size ${NGINX_API_MAX_BODY};
+        # H-20: import CSV fino a 20 MB, export PDF/Excel e /api/report-stream
+        # passano il minuto del default. Un 504 qui lascia l'import a metà per
+        # il client mentre l'API lo completa davvero.
+        proxy_read_timeout   600s;
+        proxy_send_timeout   600s;
         set $upstream_api api:4000;
         proxy_pass         http://$upstream_api;
         proxy_http_version 1.1;
@@ -265,6 +370,11 @@ server {
         add_header         Cache-Control     "no-cache" always;
     }
     location /graphql {
+        # H-21: senza questa riga vale il default di nginx (1 MB) e un corpo piu
+        # grande tornava 413 in HTML, che Apollo Client mostra come «Network
+        # error». L'API ha il suo limite (512 kB, server.ts) e risponde in JSON:
+        # qui si sta piu larghi, cosi e sempre l'API a rispondere.
+        client_max_body_size 2m;
         set $upstream_api api:4000;
         proxy_pass         http://$upstream_api;
         proxy_http_version 1.1;
@@ -274,7 +384,14 @@ server {
         proxy_set_header   X-Forwarded-Proto https;
     }
     location /api/ {
-        client_max_body_size 11m;
+        # H-11: il tetto viene dall'ambiente (NGINX_API_MAX_BODY), un po' sopra
+        # ATTACHMENT_MAX_MB_CAP, cosi il no lo dice l'API e non nginx in HTML.
+        client_max_body_size ${NGINX_API_MAX_BODY};
+        # H-20: import CSV fino a 20 MB, export PDF/Excel e /api/report-stream
+        # passano il minuto del default. Un 504 qui lascia l'import a metà per
+        # il client mentre l'API lo completa davvero.
+        proxy_read_timeout   600s;
+        proxy_send_timeout   600s;
         set $upstream_api api:4000;
         proxy_pass         http://$upstream_api;
         proxy_http_version 1.1;
@@ -283,6 +400,21 @@ server {
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto https;
     }
+    # ── Portale self-service (revisione totale · H-33) ───────────────────────
+    # Il front-door Tailscale aveva web, Keycloak e API ma NESSUNA via per il
+    # portale: da remoto un utente finale non poteva aprire un ticket. Il
+    # portale sta sotto /portal/ dello stesso host (un sottodominio vorrebbe un
+    # altro certificato da `tailscale serve`), con lo stesso tenant del blocco.
+    location /portal/ {
+        set $upstream_portal portal:80;
+        proxy_pass         http://$upstream_portal/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              ${TAILSCALE_TENANT_HOST};
+        proxy_set_header   X-Forwarded-Host  ${TAILSCALE_TENANT_HOST};
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto https;
+    }
+
     location / {
         set $upstream_web web:80;
         proxy_pass         http://$upstream_web;
@@ -292,4 +424,22 @@ server {
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto https;
     }
+}
+
+# ── Host sconosciuto (revisione totale · H-32) ───────────────────────────────
+# Senza un `default_server` una richiesta con `Host` che non corrisponde a
+# nessun blocco cadeva nel PRIMO, il portale, che senza slug nel sottodominio
+# mostrava «Nessun tenant nel sottodominio»: chi apriva http://localhost/ o
+# l'IP del Mac dalla LAN vedeva l'errore di un'applicazione invece di un 404.
+# Questo blocco e l'ultimo del file ma `default_server` non dipende
+# dall'ordine: e lui a prendere tutto quello che nessun altro riconosce.
+server {
+    listen 80 default_server;
+    server_name _;
+
+    # Nessun proxy, nessun corpo: solo la risposta che dice che l'indirizzo non
+    # e servito da qui. `/health` risponde 200 perche un controllo TCP/HTTP
+    # sull'IP del container non deve leggersi come un guasto.
+    location = /health { access_log off; add_header Content-Type text/plain always; return 200 "nginx: ok\n"; }
+    location / { add_header Content-Type text/plain always; return 404 "OpenGrafo: nessuna organizzazione per questo indirizzo. Usa http://<organizzazione>.localhost (o l'host Tailscale).\n"; }
 }

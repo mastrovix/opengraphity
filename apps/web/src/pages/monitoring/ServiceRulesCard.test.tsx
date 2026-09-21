@@ -7,12 +7,15 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { toast } from 'sonner'
 import { ServiceRulesCard, validateRulesForm } from './ServiceRulesCard'
 import { GET_SERVICE_IMPACT_PREVIEW } from '@/graphql/queries'
 import { UPDATE_SERVICE_IMPACT_RULES } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { mapDetail, preview, RULES } from '@/test/mocks/services'
 import type { ServiceMapDetail } from '@/types/services'
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }))
 
 const detail = (over: Record<string, unknown> = {}) => mapDetail(over) as unknown as ServiceMapDetail
 
@@ -108,6 +111,8 @@ describe('ServiceRulesCard', () => {
       id: 'map-1', expectedVersion: 3,
       rules: { downSharePct: 70, degradedSharePct: 1, minNodes: 1, unknownNodes: 'operational', openIncidentFrom: 'down', duringStorm: 'hold' },
     }]))
+    // U-5: il salvataggio riuscito lo dice
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Rules saved: the map is now at version 4'))
   })
 
   it('admin: soglia degradato sopra la soglia giù → messaggio e salvataggio bloccato', async () => {

@@ -52,7 +52,7 @@ describe('jsonConnector.scan', () => {
   it('rejects colliding property keys instead of overwriting', async () => {
     const content = JSON.stringify([{ id: 'x', name: 'x', 'Cost Center': 'A', cost_center: 'B' }])
     await expect(collect(jsonConnector.scan(sourceWith(content), {})))
-      .rejects.toThrow(/\[json\] item 0 \(x\): le chiavi "Cost Center" e "cost_center" collidono/)
+      .rejects.toThrow(/\[json\] item 0 \(x\): keys "Cost Center" and "cost_center" collide/)
   })
 })
 

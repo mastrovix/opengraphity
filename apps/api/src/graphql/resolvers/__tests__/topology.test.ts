@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
   ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
@@ -28,14 +29,21 @@ vi.mock('@opengraphity/schema-generator', () => ({
   ]),
 }))
 
+// CM-11: la manutenzione è la semantica DEL CLIENTE, non il letterale `maintenance`.
+vi.mock('../../../lib/ciLifecycle.js', () => ({
+  resolveCILifecycleSemantics: vi.fn(async () => ({ retired: new Set(), maintenance: new Set(['in_revisione']), ignored: new Set() })),
+  isMaintenanceLifecycle: (status: string | null | undefined, s: { maintenance: Set<string> }) => status != null && s.maintenance.has(status),
+}))
+
 const queries: { cypher: string; params: Record<string, unknown> }[] = []
+let nodeRows: { get: (k: string) => unknown }[] = []
 
 const mockSession = {
   executeRead: vi.fn(async (fn: (tx: unknown) => unknown) =>
     fn({
       run: (cypher: string, params: Record<string, unknown>) => {
         queries.push({ cypher, params })
-        return Promise.resolve({ records: [] })
+        return Promise.resolve({ records: cypher.includes('AS incidentCount') ? nodeRows : [] })
       },
     })),
   executeWrite: vi.fn(),
@@ -61,11 +69,11 @@ vi.mock('../../../lib/cache.js', () => ({
 const { topologyResolvers } = await import('../topology.js')
 
 const topology = topologyResolvers.Query.topology
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@x', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') }
 
 const queryWith = (needle: string) => queries.find((q) => q.cypher.includes(needle))
 
-beforeEach(() => { queries.length = 0; vi.clearAllMocks() })
+beforeEach(() => { queries.length = 0; nodeRows = []; vi.clearAllMocks() })
 
 describe('topology — etichette dal metamodello del tenant', () => {
   it('topologia completa: i nodi sono filtrati sulle etichette del tenant, tipo del cliente compreso', async () => {
@@ -95,3 +103,25 @@ describe('topology — etichette dal metamodello del tenant', () => {
     expect(queries.some((q) => q.cypher.includes('labels(ci)'))).toBe(false)
   })
 })
+
+// ── Revisione del 15 set 2026 · CM-11 ─────────────────────────────────────────
+describe('topology — stato e manutenzione dal cliente', () => {
+  const node = (over: Record<string, unknown>) => {
+    const m: Record<string, unknown> = { id: 'ci-1', name: 'srv', type: 'Server', status: null, health: null, environment: null, ownerGroup: null, incidentCount: 0, changeCount: 0, ...over }
+    return { get: (k: string) => m[k] }
+  }
+
+  it('niente `coalesce(ci.status, \'active\')`: un CI senza stato non è «active»', async () => {
+    nodeRows = [node({ status: null })]
+    const out = await topology(null, {}, ctx) as { nodes: { status: string | null; inMaintenance: boolean }[] }
+    expect(queryWith('AS incidentCount')!.cypher).not.toContain("'active'")
+    expect(out.nodes[0]).toMatchObject({ status: null, inMaintenance: false })
+  })
+
+  it('«in manutenzione» è la semantica del cliente (qui `in_revisione`), non il letterale `maintenance`', async () => {
+    nodeRows = [node({ status: 'in_revisione' }), node({ id: 'ci-2', status: 'maintenance' })]
+    const out = await topology(null, {}, ctx) as { nodes: { id: string; inMaintenance: boolean }[] }
+    expect(out.nodes.map((n) => [n.id, n.inMaintenance])).toEqual([['ci-1', true], ['ci-2', false]])
+  })
+})
+

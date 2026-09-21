@@ -5,6 +5,7 @@ import { FormField } from './citype/CIFieldInlineEditor'
 import { inputS, selectS, textareaS, btnPrimary } from './shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import type { SettingsFormState } from './useITILTypeDesigner'
+import { ColorField } from '@/components/ui/ColorField'
 
 const ICONS = ['box', 'database', 'server', 'shield', 'hard-drive', 'cloud', 'globe', 'cpu', 'network', 'monitor', 'lock', 'alert-circle', 'bug', 'git-pull-request', 'inbox']
 
@@ -49,15 +50,7 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
       </div>
 
       <FormField label={t('citypeDesigner.color')}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input
-            type="color"
-            value={settingsForm.color}
-            onChange={(e) => setSettingsForm((p) => p && ({ ...p, color: e.target.value }))}
-            style={{ width: 36, height: 36, border: 'none', borderRadius: 4, cursor: 'pointer', padding: 0 }}
-          />
-          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{settingsForm.color}</span>
-        </div>
+        <ColorField label={t('citypeDesigner.color')} value={settingsForm.color} onChange={(hex) => setSettingsForm((p) => p && ({ ...p, color: hex }))} />
       </FormField>
 
       <FormField label={t('citypeDesigner.validationScript')}>
@@ -65,6 +58,7 @@ export function ITILTypeSettings({ settingsForm, setSettingsForm, settingsSaving
           <Trans i18nKey="citypeDesigner.validationScriptHint" components={{ code: <code /> }} />
         </p>
         <textarea
+          aria-label={t('citypeDesigner.validationScript')}
           style={{ ...textareaS, minHeight: 100 }}
           value={settingsForm.validationScript}
           onChange={(e) => setSettingsForm((p) => p && ({ ...p, validationScript: e.target.value }))}

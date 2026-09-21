@@ -31,8 +31,15 @@
  *
  * Scritta sui tipi di SISTEMA e su ogni copia per tenant (un tipo ITIL
  * personalizzato vince in lettura: senza, chi l'aveva personalizzato non
- * vedrebbe i campi nuovi). Idempotente: `MERGE` sul nome del campo, e il
+ * vedrebbe i campi nuovi). Idempotente: `MERGE` su tipo + nome + tenant, e il
  * legame col vocabolario solo se manca.
+ *
+ * ## Correzione del 5 ott 2026
+ *
+ * Non era idempotente: `scope` stava nella CHIAVE del MERGE, e quando un'altra
+ * migrazione ha riscritto quei nodi il MERGE ne ha creati altri accanto — cinque
+ * doppioni, visti dal vivo come «Priorità» due volte nelle tendine delle
+ * automazioni. La chiave ora è tipo + nome + tenant; vedi il commento sul MERGE.
  */
 import type { Migration } from '@opengraphity/neo4j'
 import { v4 as uuidv4 } from 'uuid'
@@ -63,11 +70,24 @@ export const itilPriorityImpactUrgency: Migration = {
       for (const rec of tipi.records) {
         const tipoId = rec.get('id')     as string
         const tenant = rec.get('tenant') as string
+        /*
+         * LA CHIAVE DEL MERGE È tipo + nome + tenant, e NON `scope`.
+         *
+         * Con `scope: 'itil'` dentro la chiave questa migrazione si è
+         * duplicata i propri campi (5 doppioni su c-test: incident.impact,
+         * urgency, priority e problem.impact, urgency, visibili come «Priorità»
+         * due volte nelle tendine delle automazioni). Il motivo: una migrazione
+         * successiva ha riscritto quei nodi, il MERGE non li ha più riconosciuti
+         * come suoi e ne ha creati altri accanto. Una proprietà che qualcun altro
+         * può cambiare non può stare nella chiave di un MERGE — `scope` si scrive
+         * solo alla creazione. I doppioni già in giro li toglie la migrazione
+         * `20261005_1010_metamodel_duplicate_fields`.
+         */
         const r = await session.run(
           `MATCH (t:CITypeDefinition {id: $tipoId})
-           MERGE (t)-[:HAS_FIELD]->(f:CIFieldDefinition {name: $nome, tenant_id: $tenant, scope: 'itil'})
+           MERGE (t)-[:HAS_FIELD]->(f:CIFieldDefinition {name: $nome, tenant_id: $tenant})
            ON CREATE SET f.id = $id, f.label = $label, f.field_type = 'enum',
-                         f.required = false, f.order = $ordine,
+                         f.required = false, f.order = $ordine, f.scope = 'itil',
                          f.is_system = true, f.created_at = $now
            RETURN (f.created_at = $now) AS creato`,
           { tipoId, nome: c.nome, tenant, id: uuidv4(), label: c.label, ordine: c.ordine, now: new Date().toISOString() },

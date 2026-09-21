@@ -6,6 +6,7 @@ import { lookupOrError, colors } from '@/lib/tokens'
 import { WidgetBody, type WidgetSeriesData } from '@/components/WidgetBody'
 import { DataFreeWidgetBody } from './DataFreeWidgetBody'
 import { DATA_FREE_WIDGET_TYPES } from './useWidgetConfig'
+import { useFieldValueLabel } from '@/hooks/useFieldValueLabel'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -73,7 +74,9 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
   })
 
   const colSpan = lookupOrError(SIZE_COLSPAN, widget.size, 'SIZE_COLSPAN', 6)
-  const wData   = data?.widgetData
+  const valueLabel = useFieldValueLabel(widget.entityType, widget.groupByField)
+  const rawData = data?.widgetData
+  const wData   = rawData && { ...rawData, series: rawData.series.map((s) => ({ ...s, label: valueLabel(s.label) })) }
 
   const cardStyle: React.CSSProperties = {
     gridColumn:    `span ${colSpan}`,

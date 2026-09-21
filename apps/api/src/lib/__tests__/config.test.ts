@@ -108,7 +108,7 @@ describe('config — production has no silent defaults', () => {
     let message = ''
     try { validateConfig('api') } catch (e) { message = (e as Error).message }
     expect(message).toMatch(/Invalid configuration for the "api" process/)
-    for (const name of ['NEO4J_URI', 'NEO4J_PASSWORD', 'KEYCLOAK_URL', 'ATTACHMENT_DIR', 'BACKUP_DIR', 'REPORT_DIR', 'APP_URL', 'TRANSFORMERS_CACHE', 'EMAIL_FROM']) {
+    for (const name of ['NEO4J_URI', 'NEO4J_PASSWORD', 'KEYCLOAK_URL', 'ATTACHMENT_DIR', 'BACKUP_DIR', 'REPORT_DIR', 'APP_URL', 'TRANSFORMERS_CACHE', 'EMAIL_FROM', 'METRICS_TOKEN', 'KEYCLOAK_APP_CLIENT_IDS']) {
       expect(message).toContain(name)
     }
   })
@@ -120,6 +120,7 @@ describe('config — production has no silent defaults', () => {
       KEYCLOAK_URL: 'http://keycloak:8080', KEYCLOAK_PUBLIC_URL: 'https://auth.example.com', KEYCLOAK_ADMIN_USER: 'admin',
       APP_URL: 'https://app.example.com',
       ATTACHMENT_DIR: '/data/attachments', BACKUP_DIR: '/data/backups', REPORT_DIR: '/data/reports',
+      KEYCLOAK_APP_CLIENT_IDS: 'opengrafo-web,opengrafo-portal', METRICS_TOKEN: 'metrics-secret',
       EMBEDDINGS_PROVIDER: 'local', TRANSFORMERS_CACHE: '/data/models', EMAIL_FROM: 'ITSM <no-reply@example.com>',
     })
     expect(() => validateConfig('api')).not.toThrow()

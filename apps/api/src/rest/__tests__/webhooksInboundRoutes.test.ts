@@ -16,6 +16,11 @@ vi.mock('../../lib/logger.js', () => {
 })
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn() }))
+// Le etichette dei CI vengono dal metamodello del tenant (M-18: il webhook
+// risolve il CI impattato per id o per nome, come il comando Slack).
+vi.mock('../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Server OR ${alias}:Application)`),
+}))
 vi.mock('../../services/problemService.js', () => ({ createProblem: vi.fn() }))
 vi.mock('@opengraphity/scripting', () => ({ runScript: vi.fn() }))
 // D-12: lo script di trasformazione è del cliente e passa dal limite di piano
@@ -57,7 +62,9 @@ function hook(overrides: HookProps = {}): { props: HookProps } {
       tenant_id:        'tenant-1',
       secret:           sha(TOKEN),
       entity_type:      'incident',
-      field_mapping:    JSON.stringify({ summary: 'title', level: 'severity', body: 'description' }),
+      // Revisione totale · M-18: un incident senza CI impattato non si crea, e
+      // il webhook lo nomina (`affectedCI`, per id o per nome).
+      field_mapping:    JSON.stringify({ summary: 'title', level: 'severity', body: 'description', host: 'affectedCI' }),
       default_values:   JSON.stringify({ severity: 'medium' }),
       transform_script: null,
       ...overrides,
@@ -82,7 +89,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   assertScriptingEnabled.mockImplementation(async () => {})
   vi.mocked(getSession).mockReturnValue(session as never)
-  vi.mocked(runQuery).mockResolvedValue([])
+  // Il CI impattato che il webhook nomina (M-18): la risoluzione per id o nome.
+  vi.mocked(runQuery).mockImplementation(async (_s: unknown, cypher: string) =>
+    (typeof cypher === 'string' && cypher.includes('toLower(ci.name)') ? [{ id: 'ci-1', name: 'db-01' }] : []) as never)
   vi.mocked(createIncident).mockResolvedValue({ id: 'inc-new', number: 'INC00000007' } as never)
   vi.mocked(createProblem).mockResolvedValue({ id: 'prb-new' } as never)
 })
@@ -98,7 +107,7 @@ function post(hookId: string, opts: PostOpts = {}) {
   if (opts.token !== null) headers['authorization'] = `Bearer ${opts.token ?? TOKEN}`
   return fetch(`${base}/${hookId}${opts.query ?? ''}`, {
     method: 'POST', headers,
-    body: opts.rawBody ?? JSON.stringify(opts.body ?? { summary: 'Disk full', level: 'high', body: 'on db-01' }),
+    body: opts.rawBody ?? JSON.stringify(opts.body ?? { summary: 'Disk full', level: 'high', body: 'on db-01', host: 'db-01' }),
   })
 }
 
@@ -155,18 +164,18 @@ describe('happy path', () => {
     expect(res.status).toBe(201)
     expect(await res.json()).toEqual({ id: 'hook-1', entity_type: 'incident', entity_id: 'inc-new' })
     expect(createIncident).toHaveBeenCalledWith(
-      { title: 'Disk full', description: 'on db-01', severity: 'high', category: undefined },
+      { title: 'Disk full', description: 'on db-01', severity: 'high', category: undefined, affectedCIIds: ['ci-1'] },
       { tenantId: 'tenant-1', userId: 'webhook' },
     )
-    expect(runQuery).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(runQuery).mock.calls[0]![1]).toMatch(/SET w\.receive_count/)
-    expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ hookId: 'hook-1', tenantId: 'tenant-1' })
+    // Due letture: il CI impattato (M-18) e le statistiche della sorgente.
+    const statsCall = vi.mocked(runQuery).mock.calls.find((c) => String(c[1]).includes('SET w.receive_count'))!
+    expect(statsCall[2]).toMatchObject({ hookId: 'hook-1', tenantId: 'tenant-1' })
     expect(session.close).toHaveBeenCalled()
   })
 
   it('default_values fill only missing fields (severity from defaults when the payload has none)', async () => {
     vi.mocked(runQueryOne).mockResolvedValue(hook())
-    const res = await post('hook-1', { body: { summary: 'No level given' } })
+    const res = await post('hook-1', { body: { summary: 'No level given', host: 'db-01' } })
     expect(res.status).toBe(201)
     expect(createIncident).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'No level given', severity: 'medium' }),
@@ -274,7 +283,7 @@ describe('transform script sotto semaforo (B3)', () => {
     const gates: Array<() => void> = []
     vi.mocked(runScript).mockImplementation(() => new Promise((resolve) => {
       inFlight++; maxInFlight = Math.max(maxInFlight, inFlight)
-      gates.push(() => { inFlight--; resolve({ success: true, output: { summary: 'ok', level: 'low' }, logs: [], executionTimeMs: 1 } as never) })
+      gates.push(() => { inFlight--; resolve({ success: true, output: { summary: 'ok', level: 'low', host: 'db-01' }, logs: [], executionTimeMs: 1 } as never) })
     }))
     const requests = Array.from({ length: 5 }, () => post('hook-sem'))
     await vi.waitFor(() => expect(runScript).toHaveBeenCalledTimes(4))
@@ -334,7 +343,9 @@ describe('fail-loud payload/config handling', () => {
     )
     expect(createIncident).not.toHaveBeenCalled()
     // nessuna statistica di ricezione: l'unica scrittura è il motivo del rifiuto sul webhook
-    expect(runQuery).toHaveBeenCalledTimes(1)
+    // Una sola scrittura di servizio: l'errore del servizio finisce in last_error
+    // (la lettura del CI impattato non conta, M-18).
+    expect(vi.mocked(runQuery).mock.calls.filter((c) => String(c[1]).includes('w.last_error'))).toHaveLength(1)
     expect(vi.mocked(runQuery).mock.calls[0]![1]).toMatch(/SET w\.last_error = \$message/)
     expect(vi.mocked(runQuery).mock.calls[0]![1]).not.toMatch(/receive_count/)
   })
@@ -361,7 +372,7 @@ describe('fail-loud payload/config handling', () => {
 
   it('transform script output replaces the payload before mapping', async () => {
     vi.mocked(runQueryOne).mockResolvedValue(hook({ transform_script: 'return {...}' }))
-    vi.mocked(runScript).mockResolvedValueOnce({ success: true, output: { summary: 'Transformed', level: 'critical' }, logs: [], executionTimeMs: 1 } as never)
+    vi.mocked(runScript).mockResolvedValueOnce({ success: true, output: { summary: 'Transformed', level: 'critical', host: 'db-01' }, logs: [], executionTimeMs: 1 } as never)
     const res = await post('hook-1', { body: { unrelated: true } })
     expect(res.status).toBe(201)
     expect(createIncident).toHaveBeenCalledWith(expect.objectContaining({ title: 'Transformed', severity: 'critical' }), expect.anything())
@@ -413,7 +424,7 @@ describe('fail-loud payload/config handling', () => {
 
   it('un bersaglio ammesso passa come prima (nessuna regressione sulla via felice)', async () => {
     vi.mocked(runQueryOne).mockResolvedValue(hook())
-    const res = await post('hook-1', { body: { summary: 'x', level: 'high', body: 'b' } })
+    const res = await post('hook-1', { body: { summary: 'x', level: 'high', body: 'b', host: 'db-01' } })
     expect(res.status).toBe(201)
     expect(createIncident).toHaveBeenCalled()
   })
@@ -432,10 +443,12 @@ describe('fail-loud payload/config handling', () => {
     const res = await post('hook-1')
     expect(res.status).toBe(400)
     expect((await err(res)).message).toMatch(/impacted CI/)
-    // nessuna statistica di ricezione: l'unica scrittura è il motivo del rifiuto sul webhook
-    expect(runQuery).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(runQuery).mock.calls[0]![1]).toMatch(/SET w\.last_error = \$message/)
-    expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ hookId: 'hook-1', tenantId: 'tenant-1', message: expect.stringMatching(/impacted CI/) })
+    // Nessuna statistica di ricezione: l'unica SCRITTURA è il motivo del
+    // rifiuto sul webhook (la lettura del CI impattato non conta, M-18).
+    const errorCalls = vi.mocked(runQuery).mock.calls.filter((c) => String(c[1]).includes('SET w.last_error = $message'))
+    expect(errorCalls).toHaveLength(1)
+    expect(vi.mocked(runQuery).mock.calls.filter((c) => String(c[1]).includes('SET w.receive_count'))).toHaveLength(0)
+    expect(errorCalls[0]![2]).toMatchObject({ hookId: 'hook-1', tenantId: 'tenant-1', message: expect.stringMatching(/impacted CI/) })
   })
 
   it('unexpected error → 500 with a generic body; details only in the log', async () => {

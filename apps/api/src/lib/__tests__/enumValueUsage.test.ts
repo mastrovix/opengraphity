@@ -127,8 +127,8 @@ describe('enumValueUsageMessage', () => {
     const msg = enumValueUsageMessage('ci_status', [
       { value: 'decommissioned', records: [{ typeName: '__base__', fieldName: 'status', count: 12 }], policyLists: ['retired_statuses'], matrices: [], configSites: [], total: 13 },
     ])
-    expect(msg).toContain('Il vocabolario "ci_status" non può perdere questi valori')
-    expect(msg).toContain('"decommissioned" è ancora usato da 12 __base__.status, la policy degli allarmi (retired_statuses)')
+    expect(msg).toContain('The dictionary "ci_status" cannot lose these values')
+    expect(msg).toContain('"decommissioned" is still used by 12 __base__.status, the alarm policy (retired_statuses)')
     expect(msg).toContain('replacements: [{from: "…", to: "…"}]')
   })
 })
@@ -201,9 +201,9 @@ describe('il conteggio copre i vocabolari di dominio e le matrici', () => {
       [{ kind: 'priority', entries: JSON.stringify({ 'low|low': 'low', 'high|high': 'p1' }) }],
     ])
     const out = await countEnumValueUsage(s as never, 'acme', 'priority', ['p1'])
-    expect(out[0]!.matrices).toEqual(['priority (cella "high|high")'])
+    expect(out[0]!.matrices).toEqual(['priority (cell "high|high")'])
     expect(out[0]!.total).toBe(1)
-    expect(enumValueUsageMessage('priority', out)).toContain('la matrice priority (cella "high|high")')
+    expect(enumValueUsageMessage('priority', out)).toContain('the priority (cell "high|high") matrix')
   })
 
   it('una CHIAVE della matrice che cita il valore è un uso (il caso misurato dal vivo)', async () => {
@@ -219,8 +219,8 @@ describe('il conteggio copre i vocabolari di dominio e le matrici', () => {
     ])
     const out = await countEnumValueUsage(s as never, 'acme', 'impact', ['estremo'])
     expect(out[0]!.matrices).toEqual([
-      'priority (chiave "estremo|low")',
-      'service_impact (cella "mission_critical")',
+      'priority (key "estremo|low")',
+      'service_impact (cell "mission_critical")',
     ])
   })
 })
@@ -277,6 +277,11 @@ describe('il perimetro della configurazione', () => {
     conditions?: Row[]      // righe di BusinessRule (l'unica sede a condizioni della scena)
     scalar?: Record<string, Row[]>   // righe per PROPRIETA, cosi ogni sede ha le sue
     thresholds?: Row[]      // righe del Tenant
+    portal?: Row[]          // righe del Tenant: le severità offerte nel portale
+    /** Revisione totale · C-5: le AZIONI di una regola (o di un passo). */
+    actions?: Row[]
+    /** I campi impostati da una scadenza del passo. */
+    deadline?: Row[]
   }
 
   function smistante(scena: Scena) {
@@ -286,12 +291,22 @@ describe('il perimetro della configurazione', () => {
       if (/SET n\./.test(cypher)) { scritture.push({ cypher, params: p }); return { records: [rec({ n: int(1) })] } }
       if (cypher.includes('USES_ENUM'))            return { records: [] }              // nessun campo CI
       if (cypher.includes(':DomainMatrix'))        return { records: [] }              // nessuna matrice
+      // C-5: la lettura delle azioni/scadenze porta anche `definition_id`.
+      if (cypher.includes('n.definition_id AS definitionId')) {
+        if (cypher.includes('n.deadline AS raw')) return { records: (scena.deadline ?? []).map(rec) }
+        return { records: (cypher.includes(':BusinessRule') ? (scena.actions ?? []) : []).map(rec) }
+      }
       if (cypher.includes('AS raw, n.entity_type')) {
         // Solo BusinessRule: AutoTrigger ha la stessa forma, e rispondere a
         // entrambe raddoppierebbe ogni conteggio senza provare niente in piu.
         return { records: (cypher.includes(':BusinessRule') ? (scena.conditions ?? []) : []).map(rec) }
       }
+      if (/RETURN n\.id AS id, n\.(enter_actions|exit_actions|actions) AS raw/.test(cypher)) {
+        return { records: (cypher.includes(':BusinessRule') ? (scena.actions ?? []) : []).map(rec) }
+      }
+      if (/RETURN n\.id AS id, n\.deadline AS raw/.test(cypher)) return { records: (scena.deadline ?? []).map(rec) }
       if (cypher.includes('risk_band_thresholds AS raw')) return { records: (scena.thresholds ?? []).map(rec) }
+      if (cypher.includes('portal_severity_options AS raw')) return { records: (scena.portal ?? []).map(rec) }
       const scal = /RETURN n\.([a-z_]+) AS value/.exec(cypher)
       if (scal) return { records: (scena.scalar?.[scal[1]!] ?? []).map(rec) }
       return { records: [] }
@@ -316,7 +331,7 @@ describe('il perimetro della configurazione', () => {
     const s = smistante({ conditions: [REGOLA] })
     const out = await countEnumValueUsage(s as never, 'acme', 'severity', ['critical'])
     expect(out).toHaveLength(1)
-    expect(out[0]!.configSites).toEqual(['le condizioni di una Business Rule «Incident security critico → SecOps»'])
+    expect(out[0]!.configSites).toEqual(['the conditions of a Business Rule «Incident security critico → SecOps»'])
     expect(out[0]!.total).toBe(1)
     expect(enumValueUsageMessage('severity', out)).toContain('Business Rule')
   })
@@ -368,7 +383,7 @@ describe('il perimetro della configurazione', () => {
     ]) }]
     const out = await countEnumValueUsage(smistante({ thresholds }) as never, 'acme', 'risk_band', ['low'])
     expect(out).toHaveLength(1)
-    expect(out[0]!.configSites).toEqual(['le soglie delle fasce di rischio'])
+    expect(out[0]!.configSites).toEqual(['the risk band thresholds'])
 
     const s = smistante({ thresholds })
     await replaceEnumValue(s as never, 'acme', 'risk_band', 'low', 'basso')
@@ -379,15 +394,89 @@ describe('il perimetro della configurazione', () => {
     ])
   })
 
+  /** Verifica «Cosa resta cablato», ondata 1: le severità offerte nel portale. */
+  it('le severità offerte nel portale contano come uso, e la rinomina le riscrive con le etichette', async () => {
+    const portal = [{ raw: JSON.stringify([
+      { value: 'critical', labels: { en: 'It stops my work' } }, { value: 'low', labels: {} },
+    ]) }]
+    const out = await countEnumValueUsage(smistante({ portal }) as never, 'acme', 'severity', ['critical'])
+    expect(out[0]!.configSites).toEqual(['the severities offered in the self-service portal'])
+
+    const s = smistante({ portal })
+    await replaceEnumValue(s as never, 'acme', 'severity', 'critical', 'p1')
+    const w = s.scritture.find((c) => c.cypher.includes('SET n.portal_severity_options'))
+    expect(w, 'le severità del portale non sono state riscritte').toBeDefined()
+    expect(JSON.parse(String(w!.params['raw']))).toEqual([
+      { value: 'p1', labels: { en: 'It stops my work' } }, { value: 'low', labels: {} },
+    ])
+  })
+
   it('una sede scalare col vocabolario nominato da un altro campo si tiene solo se combacia', async () => {
     // FieldVisibilityRule {trigger_field: 'category', trigger_value: 'hardware'}
     const scalar = { trigger_value: [{ value: 'hardware', field: 'category', name: 'Mostra il modello' }] }
     const conCategory = await countEnumValueUsage(smistante({ scalar }) as never, 'acme', 'category', ['hardware'])
     expect(conCategory).toHaveLength(1)
-    expect(conCategory[0]!.configSites[0]).toContain('visibilita')
+    expect(conCategory[0]!.configSites[0]).toContain('visibility')
     // Con un altro vocabolario la stessa riga non conta: `trigger_field` dice «category».
     const conAltro = await countEnumValueUsage(smistante({ scalar }) as never, 'acme', 'environment', ['hardware'])
     expect(conAltro).toEqual([])
   })
-})
 
+  /**
+   * Revisione totale · C-5: il perimetro copriva le sole CONDIZIONI. I valori
+   * scritti dalle AZIONI (`set_priority`, `set_field`, `update_field`) e dai
+   * campi di una scadenza restavano sul nome vecchio: il conteggio diceva «0
+   * usi», la rinomina non riscriveva, e la regola falliva a ogni esecuzione
+   * con un messaggio solo nel log.
+   */
+  it('un\'azione set_priority che cita il valore conta come uso, e la rinomina la riscrive (C-5)', async () => {
+    const regola = {
+      id: 'br-2', name: 'Incident security → P1', entityType: 'incident',
+      raw: JSON.stringify([{ type: 'set_priority', params: { priority: 'critical' } }]),
+    }
+    const out = await countEnumValueUsage(smistante({ actions: [regola] }) as never, 'acme', 'priority', ['critical'])
+    expect(out).toHaveLength(1)
+    expect(out[0]!.configSites.some((w) => w.includes('actions of a Business Rule'))).toBe(true)
+
+    const s = smistante({ actions: [regola] })
+    await replaceEnumValue(s as never, 'acme', 'priority', 'critical', 'p1')
+    const w = s.scritture.find((c) => c.cypher.includes('SET n.actions'))
+    expect(w, 'le azioni non sono state riscritte').toBeDefined()
+    expect(JSON.parse(String(w!.params['raw']))).toEqual([{ type: 'set_priority', params: { priority: 'p1' } }])
+  })
+
+  it('set_field conta per il vocabolario del campo che nomina, non per un altro', async () => {
+    const regola = {
+      id: 'br-3', name: 'Rete → categoria network', entityType: 'incident',
+      raw: JSON.stringify([{ type: 'set_field', params: { field: 'category', value: 'network' } }]),
+    }
+    const perCategory = await countEnumValueUsage(smistante({ actions: [regola] }) as never, 'acme', 'category', ['network'])
+    expect(perCategory).toHaveLength(1)
+    const perPriority = await countEnumValueUsage(smistante({ actions: [regola] }) as never, 'acme', 'priority', ['network'])
+    expect(perPriority).toEqual([])
+  })
+
+  it('un valore con un segnaposto non è un valore di vocabolario: non conta e non si riscrive', async () => {
+    const regola = {
+      id: 'br-4', name: 'Copia la categoria', entityType: 'incident',
+      raw: JSON.stringify([{ type: 'set_field', params: { field: 'category', value: '{category}' } }]),
+    }
+    expect(await countEnumValueUsage(smistante({ actions: [regola] }) as never, 'acme', 'category', ['{category}'])).toEqual([])
+  })
+
+  it('i campi impostati da una scadenza del passo contano e si riscrivono', async () => {
+    const passo = {
+      id: 'st-1', name: 'review',
+      raw: JSON.stringify({ after: 7, unit: 'days', to_step: 'closed', set_fields: [{ field: 'category', value: 'network' }] }),
+    }
+    const out = await countEnumValueUsage(smistante({ deadline: [passo] }) as never, 'acme', 'category', ['network'])
+    expect(out).toHaveLength(1)
+    expect(out[0]!.configSites.some((w) => w.includes('step deadline'))).toBe(true)
+
+    const s = smistante({ deadline: [passo] })
+    await replaceEnumValue(s as never, 'acme', 'category', 'network', 'rete')
+    const w = s.scritture.find((c) => c.cypher.includes('SET n.deadline'))
+    expect(w).toBeDefined()
+    expect(JSON.parse(String(w!.params['raw'])).set_fields).toEqual([{ field: 'category', value: 'rete' }])
+  })
+})

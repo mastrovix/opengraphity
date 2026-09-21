@@ -1,9 +1,20 @@
-import { describe, it, expect, vi } from 'vitest'
+/**
+ * `updateCIFields` — la modifica di un CI dal dettaglio e dai criteri dei
+ * gruppi dinamici.
+ *
+ * Revisione del 15 set 2026 · CM-2: questa strada scriveva da sé, senza
+ * validazione del vocabolario, senza `name_key`, senza gancio della
+ * manutenzione e senza audit. Dal vivo accettava `status: "pizza"` e una
+ * proprietà `campo_inventato`. Adesso trova il tipo del CI e passa da
+ * `updateCIRecord`, la stessa scrittura di `update<Tipo>`; le chiavi di
+ * `customFields` devono essere campi del tipo, e i valori prendono il suo tipo.
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { GraphQLError } from 'graphql'
+import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 // ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
-// `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
-// Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
-// tipo non contavano, in silenzio.
 vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
   ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
   ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
@@ -11,18 +22,32 @@ vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
   ciTypeNameForLabel:        vi.fn(async (_t: string, label: string) => (label === 'LoadBalancer' ? 'load_balancer' : null)),
   clearCILabelCache:         vi.fn(),
 }))
-import { GraphQLError } from 'graphql'
 
-vi.mock('@opengraphity/neo4j', () => ({
-  getSession: vi.fn(),
-  runQuery: vi.fn(),
-  runQueryOne: vi.fn(),
-}))
+function field(name: string, fieldType: string, over: Record<string, unknown> = {}) {
+  return { id: name, name, label: name, fieldType, required: false, defaultValue: null, enumValues: [], order: 0, scope: 'tenant', tenantId: 't1', validationScript: null, visibilityScript: null, defaultScript: null, isSystem: false, ...over }
+}
+const LB = {
+  id: 'ct-lb', name: 'load_balancer', label: 'Load Balancer', neo4jLabel: 'LoadBalancer', scope: 'tenant', tenantId: 't1', active: true,
+  icon: '', color: '', validationScript: null, serviceRole: null, relations: [], systemRelations: [],
+  fields: [
+    field('status', 'enum', { isSystem: true }),
+    field('costCenter', 'string'), field('ports', 'number'), field('ha', 'boolean'), field('chain', 'enum', { isSystem: true }),
+  ],
+} as unknown as CITypeWithDefinitions
 
-const { buildCIFieldUpdates, cmdbResolvers } = await import('../cmdb.js')
-const { getSession, runQuery } = await import('@opengraphity/neo4j')
+vi.mock('@opengraphity/schema-generator', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('@opengraphity/schema-generator')>()
+  return { ...orig, loadMetamodel: vi.fn(async () => [LB]) }
+})
+vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => Number(v) }))
+vi.mock('../ci-utils.js', () => ({ withSession: vi.fn(async (fn: (s: unknown) => unknown) => fn({ close: vi.fn() })) }))
+const updateCIRecord = vi.fn(async (_s: unknown, _ctx: unknown, _t: unknown, _l: string, id: string, input: Record<string, unknown>) => ({ id, tenant_id: 't1', name: 'LB-01', ...input }))
+vi.mock('../ciMutations.js', () => ({ updateCIRecord: (...a: Parameters<typeof updateCIRecord>) => updateCIRecord(...a) }))
 
-const NOW = '2026-09-08T00:00:00.000Z'
+const { ciInputFromFields, cmdbResolvers } = await import('../cmdb.js')
+const { runQuery } = await import('@opengraphity/neo4j')
+
+const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') as const }
 
 function expectBadInput(fn: () => unknown, part: string) {
   let thrown: unknown
@@ -32,10 +57,29 @@ function expectBadInput(fn: () => unknown, part: string) {
   expect((thrown as GraphQLError).message).toContain(part)
 }
 
-describe('buildCIFieldUpdates (B-01)', () => {
-  it('maps base fields + camelCase custom keys to a parameter object', () => {
-    expect(buildCIFieldUpdates({ name: 'web-01', customFields: JSON.stringify({ ipAddress: '10.0.0.1', rack_unit: 12 }) }, NOW))
-      .toEqual({ updated_at: NOW, name: 'web-01', ip_address: '10.0.0.1', rack_unit: 12 })
+beforeEach(() => { vi.clearAllMocks() })
+
+describe('ciInputFromFields', () => {
+  it('campi di base e campi del tipo, in camelCase come gli input del tipo', () => {
+    expect(ciInputFromFields({ name: 'LB-01', status: 'active', customFields: JSON.stringify({ costCenter: 'IT-42' }) }, LB))
+      .toEqual({ name: 'LB-01', status: 'active', costCenter: 'IT-42' })
+  })
+
+  it('CM-2: una chiave che il tipo non dichiara è rifiutata (dal vivo era finita sul CI una `campo_inventato`)', () => {
+    let err: GraphQLError | null = null
+    try { ciInputFromFields({ customFields: JSON.stringify({ campoInventato: 'x' }) }, LB) } catch (e) { err = e as GraphQLError }
+    expect(err?.extensions?.['i18n']).toMatchObject({ key: 'errors.ci.unknownField', params: { field: 'campoInventato', type: 'Load Balancer' } })
+  })
+
+  it('un campo di sistema non passa da customFields', () => {
+    expectBadInput(() => ciInputFromFields({ customFields: JSON.stringify({ chain: 'Application' }) }, LB), 'which the product manages')
+  })
+
+  it('i valori prendono il tipo del campo: numero, booleano, vuoto = null', () => {
+    expect(ciInputFromFields({ customFields: JSON.stringify({ ports: '8443', ha: 'true', costCenter: '' }) }, LB))
+      .toEqual({ ports: 8443, ha: true, costCenter: null })
+    expectBadInput(() => ciInputFromFields({ customFields: JSON.stringify({ ports: 'tanti' }) }, LB), 'is not a number')
+    expectBadInput(() => ciInputFromFields({ customFields: JSON.stringify({ ha: 'forse' }) }, LB), 'is not true or false')
   })
 
   const injections: Array<[string, string, string]> = [
@@ -47,88 +91,50 @@ describe('buildCIFieldUpdates (B-01)', () => {
     ['reserved tenant_id',           JSON.stringify({ tenant_id: 'other' }),                 'system-managed'],
     ['reserved tenantId (camel)',    JSON.stringify({ tenantId: 'other' }),                  'system-managed'],
     ['reserved id',                  JSON.stringify({ id: 'x' }),                            'system-managed'],
-    ['reserved created_at',          JSON.stringify({ created_at: 'x' }),                    'system-managed'],
     ['reserved labels',              JSON.stringify({ labels: ['Admin'] }),                  'system-managed'],
+    ['product nameKey',              JSON.stringify({ nameKey: 'x' }),                       'which the product manages'],
+    ['product health',               JSON.stringify({ health: 'down' }),                     'which the product manages'],
     ['not JSON',                     '{oops',                                                'not valid JSON'],
     ['JSON array',                   '[1,2]',                                                'must be a JSON object'],
   ]
-  it.each(injections)('rejects %s', (_n, customFields, part) => {
-    expectBadInput(() => buildCIFieldUpdates({ customFields }, NOW), part)
+  it.each(injections)('rifiuta %s', (_n, customFields, part) => {
+    expectBadInput(() => ciInputFromFields({ customFields }, LB), part)
   })
 })
 
 describe('updateCIFields resolver', () => {
-  it('uses SET ci += $updates with a parameter map (no key in the query text)', async () => {
-    const session = { close: vi.fn() }
-    vi.mocked(getSession).mockReturnValue(session as never)
-    // L'etichetta è parte del contratto: `mapCI` deriva il tipo da lì (i nodi CI
-    // non portano `type`).
-    vi.mocked(runQuery).mockResolvedValue([{ props: { id: 'ci-1', name: 'web-01', tenant_id: 't1' }, label: 'LoadBalancer' }] as never)
-
-    const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator' as const }
-    await cmdbResolvers.Mutation.updateCIFields(undefined, {
-      id: 'ci-1', input: { name: 'web-01', customFields: JSON.stringify({ ipAddress: '10.0.0.1' }) },
-    }, ctx)
-
+  it('CM-2: trova il tipo dall\'etichetta e scrive da updateCIRecord, la strada di update<Tipo>', async () => {
+    vi.mocked(runQuery).mockResolvedValue([{ label: 'LoadBalancer' }] as never)
+    const out = await cmdbResolvers.Mutation.updateCIFields(undefined, {
+      id: 'ci-1', input: { name: 'LB-02', status: 'pizza', customFields: JSON.stringify({ ports: '80' }) },
+    }, ctx) as { type: string; name: string }
     const [, cypher, params] = vi.mocked(runQuery).mock.calls[0]!
-    expect(cypher).toContain('SET ci += $updates')
-    // A-9: predicato dal metamodello del tenant (prima un CI di un tipo del
-    // cliente non veniva trovato e la modifica diceva «non trovato»).
     expect(cypher).toContain('ci:LoadBalancer')
-    expect(cypher).not.toContain('ip_address')
-    expect(params).toMatchObject({ id: 'ci-1', tenantId: 't1', updates: { name: 'web-01', ip_address: '10.0.0.1' } })
-  })
-
-  it('rejects an injected key before touching the database', async () => {
-    vi.mocked(runQuery).mockClear()
-    const ctx = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator' as const }
-    await expect(cmdbResolvers.Mutation.updateCIFields(undefined, {
-      id: 'ci-1', input: { customFields: JSON.stringify({ 'x = 1 SET ci.tenant_id': 'evil' }) },
-    }, ctx)).rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT' } })
-    expect(runQuery).not.toHaveBeenCalled()
-  })
-})
-
-// ── Il tipo viene dall'ETICHETTA (revisione delle otto ondate) ───────────────
-//
-// `mapCI` ripiegava su `props.type`, che sui nodi CI NON esiste (dal vivo: 0 su
-// 2049): il tipo diventava `'unknown'` e il `__resolveType` — reso fail-loud
-// nell'ondata 6, correttamente — lanciava DOPO la scrittura. Il salvataggio di
-// un CI dal web riusciva e rispondeva errore, per ogni CI di ogni cliente.
-// Il difetto non era il fail-loud: era questo chiamante, che non gli passava
-// l'informazione che possiede.
-describe('updateCIFields — il tipo dall\'etichetta, e le proprietà del prodotto', () => {
-  const props = { id: 'ci-1', tenant_id: 't1', name: 'LB-01', status: 'active' }
-  const call = (input: Record<string, unknown>) =>
-    cmdbResolvers.Mutation.updateCIFields(undefined, { id: 'ci-1', input }, { tenantId: 't1', userId: 'u', userEmail: 'u@x', role: 'operator' as const })
-
-  it('chiede l\'etichetta nella query e risolve il tipo del CLIENTE', async () => {
-    vi.mocked(getSession).mockReturnValue({ close: vi.fn() } as never)
-    vi.mocked(runQuery).mockResolvedValue([{ props, label: 'LoadBalancer' }] as never)
-    const out = await call({ name: 'LB-01' }) as { type: string }
-    const [, cypher] = vi.mocked(runQuery).mock.calls.at(-1)!
-    expect(cypher).toContain("head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label")
+    expect(cypher).not.toContain('SET')
+    expect(params).toMatchObject({ id: 'ci-1', tenantId: 't1' })
+    // la validazione (e il rifiuto di `pizza`) sta in updateCIRecord: qui si pretende che ci si passi
+    expect(updateCIRecord).toHaveBeenCalledWith(expect.anything(), ctx, LB, 'LoadBalancer', 'ci-1', { name: 'LB-02', status: 'pizza', ports: 80 })
     expect(out.type).toBe('load_balancer')
   })
 
+  it('un CI che non esiste → NOT_FOUND senza scrivere', async () => {
+    vi.mocked(runQuery).mockResolvedValue([] as never)
+    await expect(cmdbResolvers.Mutation.updateCIFields(undefined, { id: 'x', input: { name: 'n' } }, ctx))
+      .rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
+    expect(updateCIRecord).not.toHaveBeenCalled()
+  })
+
   it('un CI senza etichetta di tipo → CONFLICT che lo dice, non «unknown»', async () => {
-    vi.mocked(getSession).mockReturnValue({ close: vi.fn() } as never)
-    vi.mocked(runQuery).mockResolvedValue([{ props, label: null }] as never)
-    const err = await call({ name: 'x' }).then(() => null, (e: unknown) => e)
+    vi.mocked(runQuery).mockResolvedValue([{ label: null }] as never)
+    const err = await cmdbResolvers.Mutation.updateCIFields(undefined, { id: 'ci-1', input: { name: 'x' } }, ctx).then(() => null, (e: unknown) => e)
     expect((err as GraphQLError).extensions?.code).toBe('CONFLICT')
     expect((err as GraphQLError).message).toMatch(/has no type label/)
   })
 
-  // La guardia sulle chiavi è DOPPIA: forma (anti-injection) + riservate dei CI.
-  // Da `customFields` passavano `name_key`, `health`, `chain`, `type` e i
-  // `discovery_*`: la fuga che l'ondata 5 aveva chiuso su `ciMutations`.
-  it.each(['nameKey', 'health', 'healthSource', 'chain', 'type', 'discoverySourceId'])(
-    'rifiuta la proprietà del prodotto "%s" senza scrivere', (key) => {
-      expectBadInput(() => buildCIFieldUpdates({ customFields: JSON.stringify({ [key]: 'x' }) }, NOW), 'gestita dal prodotto')
-    })
-
-  it('un campo normale del cliente passa', () => {
-    expect(buildCIFieldUpdates({ customFields: JSON.stringify({ costCenter: 'IT-42' }) }, NOW))
-      .toEqual({ updated_at: NOW, cost_center: 'IT-42' })
+  it('un\'etichetta che nessun tipo attivo dichiara → CONFLICT, senza scrivere', async () => {
+    vi.mocked(runQuery).mockResolvedValue([{ label: 'Server' }] as never)
+    await expect(cmdbResolvers.Mutation.updateCIFields(undefined, { id: 'ci-1', input: { name: 'x' } }, ctx))
+      .rejects.toMatchObject({ extensions: { code: 'CONFLICT' } })
+    expect(updateCIRecord).not.toHaveBeenCalled()
   })
 })

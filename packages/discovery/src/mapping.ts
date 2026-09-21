@@ -53,10 +53,22 @@ export function ciTypeAliases(rules: readonly MappingRule[]): Map<string, string
 
 // ── inferCIType ───────────────────────────────────────────────────────────────
 
+/**
+ * Il nome si guarda per PAROLE, non per sottostringa (revisione totale ·
+ * E-40): `name.includes('cert')` faceva di `concert-web-01` un certificato e
+ * `includes('lb')` faceva di `albany-db` un load balancer. I nomi dei CI sono
+ * separati da `-`, `_`, `.` o spazi: qui si confrontano i pezzi.
+ */
+function nameWords(name: string): ReadonlySet<string> {
+  return new Set(name.toLowerCase().split(/[^a-z0-9]+/i).filter(Boolean))
+}
+
 export function inferCIType(ci: DiscoveredCI): string {
   if (ci.ci_type) return ci.ci_type
 
-  const name   = ci.name.toLowerCase()
+  // E-40: si confrontano le PAROLE del nome, non le sottostringhe (il nome
+  // minuscolo intero non serve piu a nessuno).
+  const words  = nameWords(ci.name)
   const props  = ci.properties
 
   const engine = typeof props['engine'] === 'string' ? props['engine'].toLowerCase() : ''
@@ -68,23 +80,23 @@ export function inferCIType(ci: DiscoveredCI): string {
     return 'database'
   }
 
-  if (typeof props['certificate_arn'] === 'string' || name.includes('certificate') || name.includes('cert')) {
+  if (typeof props['certificate_arn'] === 'string' || words.has('certificate') || words.has('cert')) {
     return 'certificate'
   }
-  if (name.includes('lb') || name.includes('load-balancer') || name.includes('loadbalancer') ||
+  if (words.has('lb') || words.has('loadbalancer') || (words.has('load') && words.has('balancer')) ||
       typeof props['load_balancer_type'] === 'string') {
     return 'load_balancer'
   }
-  if (name.includes('container') || typeof props['container_id'] === 'string') {
+  if (words.has('container') || typeof props['container_id'] === 'string') {
     return 'container'
   }
-  if (name.includes('bucket') || typeof props['bucket_name'] === 'string') {
+  if (words.has('bucket') || typeof props['bucket_name'] === 'string') {
     return 'storage'
   }
-  if (name.includes('vpc') || name.includes('subnet') || typeof props['cidr_block'] === 'string') {
+  if (words.has('vpc') || words.has('subnet') || typeof props['cidr_block'] === 'string') {
     return 'network'
   }
-  if (typeof props['app_name'] === 'string' || name.includes('function') || name.includes('lambda')) {
+  if (typeof props['app_name'] === 'string' || words.has('function') || words.has('lambda')) {
     return 'application'
   }
 
@@ -92,6 +104,13 @@ export function inferCIType(ci: DiscoveredCI): string {
 }
 
 // ── normalizeProperties ───────────────────────────────────────────────────────
+
+/** I nomi che dicono «questa proprietà è un sì/no» (E-40). */
+const BOOLEAN_PROPERTY_RE = /^(is_|has_|allow_|enable)|(_enabled|_flag)$|^(monitored|deleted|encrypted|public|active|enabled|disabled|managed)$/
+
+function isBooleanProperty(key: string): boolean {
+  return BOOLEAN_PROPERTY_RE.test(key.toLowerCase())
+}
 
 export function normalizeProperties(
   properties: Record<string, unknown>,
@@ -104,8 +123,18 @@ export function normalizeProperties(
     if (typeof value === 'string') {
       const trimmed = value.trim()
       if (trimmed === '') continue
-      if (trimmed === 'true')  { result[key] = true;  continue }
-      if (trimmed === 'false') { result[key] = false; continue }
+      /**
+       * «true»/«false» diventano booleani SOLO per le proprietà che sono
+       * booleane per nome (revisione totale · E-40): la conversione valeva per
+       * qualunque proprietà, quindi un tag `Environment=false` o una versione
+       * `"true"` cambiavano tipo e poi non si filtravano più come testo. Le
+       * proprietà dei CI sono `is_*`, `has_*`, `*_enabled`, `monitored`,
+       * `deleted`…: quelle sono booleane, il resto resta testo.
+       */
+      if (isBooleanProperty(key)) {
+        if (trimmed === 'true')  { result[key] = true;  continue }
+        if (trimmed === 'false') { result[key] = false; continue }
+      }
       result[key] = trimmed
       continue
     }

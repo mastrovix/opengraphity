@@ -57,6 +57,19 @@ export const GET_RISK_BAND_THRESHOLDS = gql`
   }
 `
 
+/** Il peso dell'ambiente nel punteggio dell'assessment della change (era 5 nel codice). */
+export const GET_IMPACT_ANALYSIS_WEIGHTS = gql`
+  query GetImpactAnalysisWeights {
+    impactAnalysisWeights { productionCI blastRadiusCI blastRadiusCap openIncident failedChange ongoingChange recentChangesDays recentIncidentsDays isDefault }
+  }
+`
+
+export const GET_CHANGE_ENVIRONMENT_WEIGHT = gql`
+  query GetChangeEnvironmentWeight {
+    changeEnvironmentWeight { weight isDefault }
+  }
+`
+
 /**
  * Cosa c'è da sistemare nella configurazione di questo cliente. Il prodotto lo
  * sapeva già e lo diceva a tutti tranne che a chi può rimediare: intestazione
@@ -79,9 +92,31 @@ export const GET_TENANT_LANGUAGE_SETTINGS = gql`
   }
 `
 
+/** Il fuso orario del cliente e le zone disponibili (revisione del 14 set 2026 · F7). */
+export const GET_TENANT_TIMEZONE_SETTINGS = gql`
+  query GetTenantTimezoneSettings {
+    tenantTimezoneSettings { timezone available }
+  }
+`
+
+
 /** Cosa manca a questo cliente per essere usabile (lista vuota = completo). */
 export const GET_TENANT_PROVISIONING_GAPS = gql`
   query GetTenantProvisioningGaps {
     tenantProvisioningGaps { kind params { name value } }
+  }
+`
+
+/** Le severità offerte nel portale self-service, come le ha salvate l'amministratore (null = non dichiarate). */
+export const GET_PORTAL_SEVERITY_OPTIONS = gql`
+  query GetPortalSeverityOptions {
+    portalSeverityOptions { value labels { language label } }
+  }
+`
+
+/** Per quanti giorni si conservano le notifiche della campanella (null = non scelto). */
+export const GET_TENANT_INAPP_RETENTION = gql`
+  query GetTenantInAppRetention {
+    tenantInAppRetentionDays
   }
 `

@@ -11,6 +11,7 @@
  * d'ambiente, punteggio della domanda, rischio del CI, rotta d'approvazione —
  * restano sincrone e senza dipendenze.
  */
+import { riskBandOf } from '../../../lib/riskBands.js'
 import { ValidationError } from '../../../lib/errors.js'
 import { assertDomainValue } from '../../../lib/domainMatrix.js'
 import { resolveDomainValue } from '../../../lib/domainValue.js'
@@ -26,34 +27,32 @@ export interface QuestionScore {
 
 /**
  * Automatic environment factor (replaces the removed
- * "Is the production environment affected?" question):
- *   production → score 3 (max)
- *   staging    → score 1
- *   altro      → score 0
+ * "Is the production environment affected?" question). The score of the CI's
+ * environment comes from the domain matrix `environment_risk`
+ * (lib/environmentRisk.ts, revisione del 14 set 2026 · CH-3): it used to be
+ * two literals here, `production` → 3 and `staging` → 1. Its WEIGHT against
+ * the questions is the tenant's `change_environment_weight`
+ * (lib/changeEnvironmentWeight.ts): it used to be `ENV_WEIGHT = 5` here, and
+ * every production change came out high-risk whatever the answers (#32).
  */
-export const ENV_WEIGHT = 5
 export const ENV_MAX = 3
-
-export function environmentScore(environment: string | null | undefined): number {
-  return environment === 'production' ? 3 :
-         environment === 'staging'    ? 1 :
-                                        0
-}
 
 /**
  * Weighted assessment-task score, integer 0..100:
  *
- *   round( (Σ weight·score + ENV_WEIGHT·envScore)
- *        / (Σ weight·maxScore + ENV_WEIGHT·ENV_MAX) · 100 )
+ *   round( (Σ weight·score + envWeight·envScore)
+ *        / (Σ weight·maxScore + envWeight·ENV_MAX) · 100 )
  *
- * The environment factor is always part of the pool, so the denominator is
- * never 0 and the result is never NaN. An empty question list is a caller
- * bug (the resolver refuses to complete a task without questions), so it
- * raises a ValidationError instead of returning a meaningless score.
+ * An empty question list is a caller bug (the resolver refuses to complete a
+ * task without questions), so it raises a ValidationError instead of
+ * returning a meaningless score. With a zero environment weight and questions
+ * whose options all score 0 there is nothing to measure: that is an error of
+ * the questionnaire, said as such, never NaN.
  */
 export function calculateTaskScore(
   questions: QuestionScore[],
-  environment: string | null | undefined,
+  envScore: number,
+  envWeight: number,
 ): number {
   if (questions.length === 0) {
     throw new ValidationError('No assessment question: the score cannot be computed', { key: 'errors.assessment.noQuestions' })
@@ -63,8 +62,20 @@ export function calculateTaskScore(
     num += q.weight * q.score
     den += q.weight * q.maxScore
   }
-  num += ENV_WEIGHT * environmentScore(environment)
-  den += ENV_WEIGHT * ENV_MAX
+  if (!Number.isInteger(envScore) || envScore < 0 || envScore > ENV_MAX) {
+    throw new Error(`Environment score ${String(envScore)} is outside the 0..${String(ENV_MAX)} scale`)
+  }
+  if (!Number.isInteger(envWeight) || envWeight < 0) {
+    throw new Error(`Environment weight ${String(envWeight)} is not a non-negative integer`)
+  }
+  num += envWeight * envScore
+  den += envWeight * ENV_MAX
+  if (den === 0) {
+    throw new ValidationError(
+      'The assessment questions have no scored option and the environment weight is 0: there is nothing to score',
+      { key: 'errors.assessment.nothingToScore' },
+    )
+  }
   return Math.round((num / den) * 100)
 }
 
@@ -74,16 +85,15 @@ export function calculateCIRiskScore(ownerScore: number, supportScore: number): 
 }
 
 /**
- * approval_route of a Change from its aggregate risk score
- * (the MAX across the per-CI risk scores):
- *   ≤ 30 → 'low'  (frontend: Auto-approve)
- *   ≤ 60 → 'medium' (frontend: Change Manager)
- *   > 60 → 'high' (frontend: CAB)
+ * approval_route di una change: la **fascia di rischio del cliente** del
+ * punteggio aggregato (il MASSIMO dei punteggi per CI). Prima erano tre rotte
+ * fisse (≤30 low, ≤60 medium, oltre high) mentre la fascia — e quindi la
+ * priorità — seguiva le soglie di Matrici di dominio: con soglie 20/50 la
+ * stessa change aveva priorità «alta» e rotta «medium» (verifica «Cosa resta
+ * cablato», ondata 1). Con quattro fasce le rotte sono quattro.
  */
-export function determineApprovalRoute(aggregateScore: number): 'low' | 'medium' | 'high' {
-  return aggregateScore <= 30 ? 'low' :
-         aggregateScore <= 60 ? 'medium' :
-                                'high'
+export async function determineApprovalRoute(tenantId: string, aggregateScore: number): Promise<string> {
+  return riskBandOf(tenantId, aggregateScore)
 }
 
 /**
@@ -109,7 +119,6 @@ export function determineApprovalRoute(aggregateScore: number): 'low' | 'medium'
  * fascia era irraggiungibile. Ora sono dato del cliente: `lib/riskBands.ts`.
  */
 export { riskBandOf } from '../../../lib/riskBands.js'
-import { riskBandOf } from '../../../lib/riskBands.js'
 
 /**
  * Priorità della Change = **tipo × fascia di rischio** (decisione del

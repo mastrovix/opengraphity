@@ -4,7 +4,7 @@ import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { withSession } from './ci-utils.js'
 import { audit } from '../../lib/audit.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
 import type { GraphQLContext } from '../../context.js'
 
@@ -80,7 +80,7 @@ async function createFieldVisibilityRule(
   args: { entityType: string; triggerField: string; triggerValue: string; targetField: string; action: string },
   ctx: GraphQLContext,
 ) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.metamodel')
   if (args.triggerField === args.targetField) {
     throw new ValidationError('triggerField and targetField cannot be the same field', { key: 'errors.fieldRule.sameField' })
   }
@@ -127,7 +127,7 @@ async function updateFieldVisibilityRule(
   args: { id: string; triggerField?: string; triggerValue?: string; targetField?: string; action?: string },
   ctx: GraphQLContext,
 ) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.metamodel')
   const { id } = args
   const now = new Date().toISOString()
 
@@ -161,7 +161,7 @@ async function deleteFieldVisibilityRule(
   args: { id: string },
   ctx: GraphQLContext,
 ) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.metamodel')
   return withSession(async (session) => {
     const row = await runQueryOne<{ p: Props }>(session, `
       MATCH (r:FieldVisibilityRule {id: $id, tenant_id: $tenantId})
@@ -184,7 +184,7 @@ async function setFieldRequirement(
   args: { entityType: string; fieldName: string; required: boolean; workflowStep?: string | null },
   ctx: GraphQLContext,
 ) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.metamodel')
   const now = new Date().toISOString()
 
   return withSession(async (session) => {
@@ -275,7 +275,7 @@ async function deleteFieldRequirement(
   args: { id: string },
   ctx: GraphQLContext,
 ) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.metamodel')
   return withSession(async (session) => {
     const row = await runQueryOne<{ p: Props }>(session, `
       MATCH (r:FieldRequirementRule {id: $id, tenant_id: $tenantId})

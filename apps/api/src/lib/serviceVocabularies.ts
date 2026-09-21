@@ -125,8 +125,12 @@ export const SERVICE_STALE_OVER_LIMIT: ServiceStaleReason = 'over_limit'
 export const NODE_EXCLUDED_REASONS = ['never', 'lifecycle_decommissioned', 'lifecycle_maintenance', 'change_window', 'upstream_change_window', 'unknown_health'] as const
 export type NodeExcludedReason = (typeof NODE_EXCLUDED_REASONS)[number]
 
-/** Motivo di una `EXCLUDES` creata dall'amministratore dal diff della mappa (ondata 2). */
-export const SERVICE_EXCLUSION_REASON_MANUAL = 'escluso a mano'
+/**
+ * Motivo di una `EXCLUDES` creata dall'amministratore dal diff della mappa
+ * (ondata 2). È un CODICE, non una frase: era «escluso a mano», italiano
+ * scritto nei dati di ogni cliente (verifica «Cosa resta cablato», ondata 1).
+ */
+export const SERVICE_EXCLUSION_REASON_MANUAL = 'manual'
 
 /**
  * Criticità dell'applicazione radice (`BusinessApplication.criticality`).

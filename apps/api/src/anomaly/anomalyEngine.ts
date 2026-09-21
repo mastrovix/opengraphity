@@ -3,8 +3,10 @@ import { randomUUID } from 'crypto'
 import { getSession } from '@opengraphity/neo4j'
 import { sendSlackMessage } from '@opengraphity/notifications'
 import { logger } from '../lib/logger.js'
+import { ciTypeFromLabels } from '../lib/ciTypeFromLabels.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
-import { ANOMALY_RULES, type AnomalyRule } from './rules.js'
+import { buildAnomalyRule, type AnomalyRule, type ResolvedRuleSettings } from './rules.js'
+import { anomalyRuleOptions, anomalyRuleProblem, loadAnomalyRuleConfigs, type AnomalyRuleConfig, type AnomalyRuleOptions } from './ruleConfig.js'
 
 export const ANOMALY_SCANNER_QUEUE = 'anomaly-scanner'
 
@@ -26,6 +28,7 @@ interface RuleHit {
   entitySubtype: string
   entityName:    string
   description:   string
+  params:        Record<string, string>
   severity:      string
 }
 
@@ -45,6 +48,28 @@ async function loadTenants(): Promise<TenantRow[]> {
   }
 }
 
+/** I parametri della frase di un risultato, come stringhe (la pagina li interpola). */
+function stringParams(raw: unknown, ruleKey: string): Record<string, string> {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`anomaly rule ${ruleKey}: the query must return params as a map`)
+  }
+  return Object.fromEntries(Object.entries(raw as Record<string, unknown>).map(([k, v]) => [
+    k, typeof v === 'object' && v !== null && 'toNumber' in v ? String((v as { toNumber(): number }).toNumber()) : String(v),
+  ]))
+}
+
+/**
+ * Il tipo del CI di un'anomalia: le regole restituiscono le label del nodo
+ * (V-3), il nome del tipo lo dà il metamodello. Una stringa resta com'è (una
+ * regola che non riguarda un CI).
+ */
+export function entitySubtypeOf(tenantId: string, raw: unknown): string {
+  if (raw == null) return ''
+  if (Array.isArray(raw)) return raw.length === 0 ? '' : ciTypeFromLabels(tenantId, raw as string[])
+  if (typeof raw === 'string') return raw
+  throw new Error(`anomaly rule returned an unreadable entitySubtype: ${JSON.stringify(raw)}`)
+}
+
 async function runRule(rule: AnomalyRule, tenantId: string): Promise<RuleHit[]> {
   const session = getSession(undefined, 'READ')
   try {
@@ -52,14 +77,15 @@ async function runRule(rule: AnomalyRule, tenantId: string): Promise<RuleHit[]> 
     const incidentTerminal = await getTerminalStepNames(session, tenantId, 'incident')
     // GDS-based rules may fail if the plugin is not installed — skip gracefully
     const result = await session.executeRead(tx =>
-      tx.run(rule.cypher, { tenantId, incidentTerminal }),
+      tx.run(rule.cypher, { ...rule.params, tenantId, incidentTerminal }),
     )
     return result.records.map(r => ({
       entityId:      r.get('entityId')      as string,
       entityType:    r.get('entityType')    as string,
-      entitySubtype: (r.get('entitySubtype') as string | null) ?? '',
+      entitySubtype: entitySubtypeOf(tenantId, r.get('entitySubtype')),
       entityName:    r.get('entityName')    as string,
       description:   r.get('description')   as string,
+      params:        stringParams(r.get('params'), rule.key),
       severity:      r.get('severity')      as string,
     }))
   } catch (err) {
@@ -106,13 +132,16 @@ async function upsertAnomalies(
             a.entity_subtype  = $entitySubtype,
             a.entity_name     = $entityName,
             a.description     = $description,
+            a.description_params = $params,
             a.detected_at     = $now,
             a.resolved_at     = null,
             a.tenant_id       = $tenantId
           ON MATCH SET
             a.status          = CASE WHEN a.status IN ['false_positive', 'accepted_risk'] THEN a.status ELSE 'open' END,
             a.resolved_at     = CASE WHEN a.status IN ['false_positive', 'accepted_risk'] THEN a.resolved_at ELSE null END,
+            a.title           = $title,
             a.description     = $description,
+            a.description_params = $params,
             a.severity        = $severity
           RETURN a.id AS id
         `, {
@@ -126,6 +155,7 @@ async function upsertAnomalies(
           entitySubtype: hit.entitySubtype,
           entityName:    hit.entityName,
           description:   hit.description,
+          params:        JSON.stringify(hit.params),
           now,
         }),
       )
@@ -142,9 +172,10 @@ async function upsertAnomalies(
  * Auto-resolve anomalies that are no longer detected for a given rule+tenant.
  */
 async function autoResolveStale(
-  rule: AnomalyRule,
+  ruleKey: string,
   tenantId: string,
   currentEntityIds: string[],
+  reason: 'not_detected' | 'rule_disabled' = 'not_detected',
 ): Promise<void> {
   const now = new Date().toISOString()
   const session = getSession(undefined, 'WRITE')
@@ -153,8 +184,8 @@ async function autoResolveStale(
       tx.run(`
         MATCH (a:Anomaly {tenant_id: $tenantId, rule_key: $ruleKey, status: 'open'})
         WHERE NOT a.entity_id IN $currentEntityIds
-        SET a.status = 'resolved', a.resolved_at = $now
-      `, { tenantId, ruleKey: rule.key, currentEntityIds, now }),
+        SET a.status = 'resolved', a.resolved_at = $now, a.resolved_reason = $reason
+      `, { tenantId, ruleKey, currentEntityIds, now, reason }),
     )
   } finally {
     await session.close()
@@ -166,8 +197,11 @@ async function loadSlackWebhookForTenant(tenantId: string): Promise<string | nul
   try {
     const res = await session.executeRead(tx =>
       tx.run(`
-        MATCH (t:Tenant {id: $tenantId})-[:HAS_CHANNEL]->(c:NotificationChannel)
-        WHERE c.platform = 'slack' AND c.active = true AND c.tenant_id = $tenantId
+        // Revisione totale · D-11: i canali sono nodi del tenant, non appesi al
+        // nodo Tenant con una relazione HAS_CHANNEL che non esiste in nessun
+        // punto del prodotto — la notifica non partiva mai, e in silenzio.
+        MATCH (c:NotificationChannel {tenant_id: $tenantId})
+        WHERE c.platform = 'slack' AND c.active = true
         RETURN c.webhook_url AS webhookUrl LIMIT 1
       `, { tenantId }),
     )
@@ -181,6 +215,7 @@ async function sendSlackAlert(
   webhookUrl: string,
   tenantId: string,
   newByRule: Map<string, number>,
+  titles: Map<string, string>,
 ): Promise<void> {
   const totalNew = [...newByRule.values()].reduce((a, b) => a + b, 0)
   if (totalNew === 0) return
@@ -188,13 +223,13 @@ async function sendSlackAlert(
   const blocks: unknown[] = [
     {
       type: 'header',
-      text: { type: 'plain_text', text: `🚨 Anomalie rilevate nel grafo (${totalNew} nuove)`, emoji: true },
+      text: { type: 'plain_text', text: `🚨 Anomalies found in the graph (${totalNew} new)`, emoji: true },
     },
     {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `Tenant: \`${tenantId}\`\n*Scanner anomalie* ha rilevato nuove anomalie nel grafo CMDB.`,
+        text: `Tenant: \`${tenantId}\`\n*Anomaly scanner* found new anomalies in the CMDB graph.`,
       },
     },
   ]
@@ -202,8 +237,7 @@ async function sendSlackAlert(
   const fields: unknown[] = []
   for (const [ruleKey, count] of newByRule.entries()) {
     if (count > 0) {
-      const rule = ANOMALY_RULES.find(r => r.key === ruleKey)
-      fields.push({ type: 'mrkdwn', text: `*${rule?.title ?? ruleKey}*\n${count} nuove anomalie` })
+      fields.push({ type: 'mrkdwn', text: `*${titles.get(ruleKey) ?? ruleKey}*\n${count} new anomalies` })
     }
   }
 
@@ -214,6 +248,7 @@ async function sendSlackAlert(
   blocks.push({ type: 'divider' })
 
   await sendSlackMessage(
+    tenantId,
     webhookUrl,
     null,
     blocks as import('@opengraphity/notifications').SlackBlock[],
@@ -222,24 +257,61 @@ async function sendSlackAlert(
 
 // ── Job processor ──────────────────────────────────────────────────────────────
 
-/** Runs every rule for one tenant. Returns the number of rules that failed. */
-async function scanTenant(tenantId: string): Promise<number> {
-  const newByRule = new Map<string, number>()
-  let ruleFailures = 0
+/** La regola eseguibile per la configurazione del cliente: i tipi diventano etichette del suo metamodello. */
+export function resolveRule(config: AnomalyRuleConfig, options: AnomalyRuleOptions): AnomalyRule {
+  // Una configurazione che cita un tipo o una relazione tolti dal metamodello
+  // fa fallire la regola dicendolo: filtrarla via lascerebbe la regola a
+  // cercare su un perimetro che l'admin non ha scelto.
+  const problem = anomalyRuleProblem(config, options)
+  if (problem) throw problem
+  const labelOf = new Map(options.ciTypes.map((t) => [t.name, t.neo4jLabel]))
+  const settings: ResolvedRuleSettings = {
+    ...config,
+    ciLabels:        config.ciTypes.map((t) => labelOf.get(t)!),
+    forbiddenLabels: config.forbidden.map((f) => ({ fromLabel: labelOf.get(f.fromType)!, relation: f.relation, toLabel: labelOf.get(f.toType)! })),
+  }
+  return buildAnomalyRule(config.ruleKey, settings)
+}
 
-  for (const rule of ANOMALY_RULES) {
+export interface TenantScanSummary {
+  ruleFailures: number
+  /** Per regola: risultati trovati, nuove anomalie, o `disabled`. */
+  rules: Array<{ ruleKey: string; title: string; hits: number; created: number; disabled: boolean; error: string | null }>
+}
+
+/** Runs every enabled rule for one tenant, with the tenant's configuration. */
+export async function scanTenant(tenantId: string): Promise<TenantScanSummary> {
+  const newByRule = new Map<string, number>()
+  const titles = new Map<string, string>()
+  const summary: TenantScanSummary = { ruleFailures: 0, rules: [] }
+
+  const configs = await loadAnomalyRuleConfigs(tenantId)
+  const options = await anomalyRuleOptions(tenantId)
+
+  for (const config of configs) {
     try {
+      if (!config.enabled) {
+        // Regola spenta: le sue anomalie aperte si chiudono dicendo perché,
+        // invece di restare aperte per sempre su una regola che non gira più.
+        await autoResolveStale(config.ruleKey, tenantId, [], 'rule_disabled')
+        summary.rules.push({ ruleKey: config.ruleKey, title: config.ruleKey, hits: 0, created: 0, disabled: true, error: null })
+        continue
+      }
+      const rule = resolveRule(config, options)
+      titles.set(rule.key, rule.title)
       const hits = await runRule(rule, tenantId)
       const created = await upsertAnomalies(rule, tenantId, hits)
-      await autoResolveStale(rule, tenantId, hits.map(h => h.entityId))
+      await autoResolveStale(rule.key, tenantId, hits.map(h => h.entityId))
 
       newByRule.set(rule.key, created)
+      summary.rules.push({ ruleKey: rule.key, title: rule.title, hits: hits.length, created, disabled: false, error: null })
       if (hits.length > 0 || created > 0) {
         logger.info({ ruleKey: rule.key, tenantId, hits: hits.length, created }, 'anomaly-engine: rule done')
       }
     } catch (err) {
-      ruleFailures++
-      logger.error({ err, ruleKey: rule.key, tenantId }, 'anomaly-engine: rule failed')
+      summary.ruleFailures++
+      summary.rules.push({ ruleKey: config.ruleKey, title: config.ruleKey, hits: 0, created: 0, disabled: false, error: err instanceof Error ? err.message : String(err) })
+      logger.error({ err, ruleKey: config.ruleKey, tenantId }, 'anomaly-engine: rule failed')
     }
   }
 
@@ -252,7 +324,7 @@ async function scanTenant(tenantId: string): Promise<number> {
     if (totalNew > 0) {
       const webhookUrl = await loadSlackWebhookForTenant(tenantId)
       if (webhookUrl) {
-        await sendSlackAlert(webhookUrl, tenantId, newByRule)
+        await sendSlackAlert(webhookUrl, tenantId, newByRule, titles)
         logger.info({ tenantId, totalNew }, 'anomaly-engine: slack alert sent')
       }
     }
@@ -260,7 +332,7 @@ async function scanTenant(tenantId: string): Promise<number> {
     logger.error({ err, tenantId }, 'anomaly-engine: slack notification failed')
   }
 
-  return ruleFailures
+  return summary
 }
 
 export async function anomalyScannerProcessor(job: Job<AnomalyScanJobData>): Promise<void> {
@@ -270,7 +342,7 @@ export async function anomalyScannerProcessor(job: Job<AnomalyScanJobData>): Pro
 
   let failures = 0
   for (const tenant of tenants) {
-    failures += await scanTenant(tenant.id)
+    failures += (await scanTenant(tenant.id)).ruleFailures
   }
   if (failures > 0) {
     // Visible failure: the scan status was persisted for the rules that ran,

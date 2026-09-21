@@ -1,4 +1,5 @@
 import { useQuery }         from '@apollo/client/react'
+import { pausedWhenHidden } from '@/lib/polling'
 import { useTranslation }   from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
 import { useState, useEffect, useRef } from 'react'
@@ -38,7 +39,8 @@ interface SystemMetrics {
 // ── Style helpers ─────────────────────────────────────────────────────────────
 
 const card: React.CSSProperties = {
-  background:   'white',
+  // G-27: i colori e le dimensioni passano dai token, come in tutto il web.
+  background:   'var(--surface)',
   border:       '1px solid var(--border)',
   borderRadius: 10,
   padding:      '20px 24px',
@@ -46,7 +48,7 @@ const card: React.CSSProperties = {
 }
 
 const sectionTitle: React.CSSProperties = {
-  fontSize:     15,
+  fontSize:     'var(--font-size-card-title)',
   fontWeight:   700,
   color:        'var(--color-slate-dark)',
   marginBottom: 16,
@@ -87,9 +89,9 @@ function formatUptime(seconds: number): string {
 export function MonitoringPage() {
   const { t } = useTranslation()
 
-  const { data: healthData }  = useQuery<{ systemHealth: SystemHealth }>(GET_SYSTEM_HEALTH,  { pollInterval: 15_000, fetchPolicy: 'network-only' })
-  const { data: metricsData } = useQuery<{ systemMetrics: SystemMetrics }>(GET_SYSTEM_METRICS, { pollInterval: 15_000, fetchPolicy: 'network-only' })
-  const { data: traceData }   = useQuery<{ traceInfo: { enabled: boolean; endpoint: string | null; recentTraces: RecentTrace[] } }>(GET_TRACE_INFO, { pollInterval: 15_000, fetchPolicy: 'network-only' })
+  const { data: healthData }  = useQuery<{ systemHealth: SystemHealth }>(GET_SYSTEM_HEALTH,  { ...pausedWhenHidden(15_000), fetchPolicy: 'network-only' })
+  const { data: metricsData } = useQuery<{ systemMetrics: SystemMetrics }>(GET_SYSTEM_METRICS, { ...pausedWhenHidden(15_000), fetchPolicy: 'network-only' })
+  const { data: traceData }   = useQuery<{ traceInfo: { enabled: boolean; endpoint: string | null; recentTraces: RecentTrace[] } }>(GET_TRACE_INFO, { ...pausedWhenHidden(15_000), fetchPolicy: 'network-only' })
 
   const health  = healthData?.systemHealth
   const metrics = metricsData?.systemMetrics
@@ -141,7 +143,7 @@ export function MonitoringPage() {
 
       {/* Section 1: System Health */}
       <div style={card}>
-        <p style={sectionTitle}>{t('pages.monitoring.health.title')}</p>
+        <h2 style={sectionTitle}>{t('pages.monitoring.health.title')}</h2>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           {/* Overall */}
           <div style={{ ...statCard, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -183,7 +185,7 @@ export function MonitoringPage() {
 
       {/* Section 2: Request Metrics */}
       <div style={card}>
-        <p style={sectionTitle}>{t('pages.monitoring.requests.title')}</p>
+        <h2 style={sectionTitle}>{t('pages.monitoring.requests.title')}</h2>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
           <div style={statCard}>
             <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.requests.rpm')}</div>
@@ -221,7 +223,7 @@ export function MonitoringPage() {
 
       {/* Section 3: BullMQ Queues */}
       <div style={card}>
-        <p style={sectionTitle}>{t('pages.monitoring.queues.title')}</p>
+        <h2 style={sectionTitle}>{t('pages.monitoring.queues.title')}</h2>
         {metrics?.queues && metrics.queues.length > 0 ? (
           <div className="og-scroll-x">
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
@@ -258,7 +260,7 @@ export function MonitoringPage() {
 
       {/* Section 4: Neo4j */}
       <div style={card}>
-        <p style={sectionTitle}>{t('pages.monitoring.neo4j.title')}</p>
+        <h2 style={sectionTitle}>{t('pages.monitoring.neo4j.title')}</h2>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
           <div style={statCard}>
             <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.neo4j.totalQueries')}</div>
@@ -304,7 +306,7 @@ export function MonitoringPage() {
 
       {/* Section 5: OpenTelemetry Tracing */}
       <div style={card}>
-        <p style={sectionTitle}>{t('pages.monitoring.tracing.title')}</p>
+        <h2 style={sectionTitle}>{t('pages.monitoring.tracing.title')}</h2>
         {trace ? (
           trace.enabled ? (
             <>
@@ -336,7 +338,7 @@ export function MonitoringPage() {
                           {tr.operationName}
                           {tr.spanCount > 1 && (
                             <span style={{ color: colors.slateLight, marginLeft: 8, fontSize: 'var(--font-size-table)' }}>
-                              — {tr.spanCount} spans
+                              — {t('pages.monitoring.spans', { count: tr.spanCount })}
                             </span>
                           )}
                         </td>
@@ -360,7 +362,25 @@ export function MonitoringPage() {
             </>
           ) : (
             <div style={{ fontSize: 'var(--font-size-body)', color: colors.slateLight, padding: '12px 0' }}>
+              {/**
+                * Il messaggio dice il FATTO e chi lo cambia, non la ricetta del
+                * nostro stack locale. Prima diceva «avvia Jaeger», che nel
+                * compose gira da sempre; poi (colpa mia) «scrivi in
+                * infra/.env e fai docker compose up -d api», ed era l'unico
+                * punto di tutta l'interfaccia a nominare un file del NOSTRO
+                * repository, un comando docker e `localhost` — cioè la
+                * macchina di chi legge. Chi ha `admin.system` è
+                * l'amministratore del CLIENTE, e il suo OpenGrafo può girare
+                * come vuole. La ricetta sta in DEPLOY, dove il contesto è lo
+                * stack che documentiamo noi.
+                */}
               {t('pages.monitoring.tracing.noTracing')}
+              {/* L'endpoint configurato è un fatto del deploy di chi legge, e dice dove andrebbero le tracce. */}
+              {trace.endpoint && (
+                <div style={{ marginTop: 6, fontSize: 'var(--font-size-table)' }}>
+                  {t('pages.monitoring.tracing.endpointWhenOff', { endpoint: trace.endpoint })}
+                </div>
+              )}
             </div>
           )
         ) : null}
@@ -368,7 +388,7 @@ export function MonitoringPage() {
 
       {/* Section 6: Process Info */}
       <div style={card}>
-        <p style={sectionTitle}>{t('pages.monitoring.process.title')}</p>
+        <h2 style={sectionTitle}>{t('pages.monitoring.process.title')}</h2>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <div style={statCard}>
             <div style={{ fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.monitoring.process.memory')}</div>

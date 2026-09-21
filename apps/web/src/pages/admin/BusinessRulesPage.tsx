@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { InvalidFilterNotice } from '@/components/InvalidFilterNotice'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -51,9 +52,13 @@ type RuleDraft = {
 }
 
 import { ITIL_ENTITY_TYPES as ENTITY_TYPES } from '@/constants'
-import { entityLabel, eventOptionKey, automationActionKey } from '@/lib/automationOperators'
+import { eventOptionKey, automationActionKey } from '@/lib/automationOperators'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { colors, palette } from '@/lib/tokens'
-const EVENT_TYPES   = ['on_create', 'on_update', 'on_transition'] as const
+import { RULE_EVENT_TYPES, automationEventSupported } from '@opengraphity/types'
+import { showError } from '@/lib/showError'
+/** Dalla tabella condivisa con l'API: le pagine offrono solo le combinazioni evento × ticket che girano (AU-1). */
+const EVENT_TYPES = RULE_EVENT_TYPES
 /**
  * I DUE VALORI, scritti come li vuole l'API: minuscoli.
  *
@@ -84,11 +89,9 @@ const emptyDraft = (): RuleDraft => ({
 })
 
 /** Come nei trigger: le etichette dei filtri sono testo a schermo, quindi una funzione di `t`. */
-const ruleFilterFields = (t: TFunction): FieldConfig[] => [
-  { key: 'entityType', label: t('admin.rules.filter.entityType'), type: 'enum', options: [
-    { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' },
-    { value: 'problem', label: 'Problem' }, { value: 'service_request', label: 'Service Request' },
-  ]},
+const ruleFilterFields = (t: TFunction, labelOf: (entityType: string) => string): FieldConfig[] => [
+  { key: 'entityType', label: t('admin.rules.filter.entityType'), type: 'enum', options:
+    ENTITY_TYPES.map((et) => ({ value: et, label: labelOf(et) })) },
   { key: 'eventType', label: t('admin.rules.filter.eventType'), type: 'enum', options: [
     { value: 'on_create',     label: t('automation.eventFilter.onCreate') },
     { value: 'on_update',     label: t('automation.eventFilter.onUpdate') },
@@ -157,6 +160,7 @@ function ruleToDraft(r: BusinessRule): RuleDraft {
 
 export function BusinessRulesPage() {
   const { t } = useTranslation()
+  const { labelOf } = useItilTypeLabels()
   const confirm = useConfirm()
   const list  = useListQueryState()
   const modal = useCrudModal<BusinessRule, RuleDraft>(emptyDraft, ruleToDraft)
@@ -180,7 +184,7 @@ export function BusinessRulesPage() {
     // Refuse to open the editor on corrupt data: an editor silently opened
     // empty would destroy the original conditions/actions at the next save.
     try { modal.openEdit(r) }
-    catch (e) { toast.error(t('toast.rule.openFailed', { name: r.name, error: errorMessage(e) })) }
+    catch (e) { showError(e, t('toast.rule.openFailed', { name: r.name, error: errorMessage(e) })) }
   }
 
   async function handleSave() {
@@ -199,21 +203,21 @@ export function BusinessRulesPage() {
         toast.success(t('toast.rule.created'))
       }
       modal.close(); void refetch()
-    } catch (e: unknown) { toast.error(errorMessage(e)) }
+    } catch (e: unknown) { showError(e) }
   }
 
   async function handleDelete(r: BusinessRule) {
     const ok = await confirm({ title: t('admin.rules.deleteTitle'), body: r.name, danger: true })
     if (!ok) return
     try { await deleteRule({ variables: { id: r.id } }); toast.success(t('toast.rule.deleted')); void refetch() }
-    catch (e: unknown) { toast.error(errorMessage(e)) }
+    catch (e: unknown) { showError(e) }
   }
 
   async function handleToggleEnabled(r: BusinessRule) {
     try {
       await updateRule({ variables: { id: r.id, input: { enabled: !r.enabled } } })
       void refetch()
-    } catch (e: unknown) { toast.error(errorMessage(e)) }
+    } catch (e: unknown) { showError(e) }
   }
 
   async function moveRule(idx: number, dir: -1 | 1) {
@@ -222,7 +226,7 @@ export function BusinessRulesPage() {
     if (target < 0 || target >= ids.length) return
     ;[ids[idx], ids[target]] = [ids[target], ids[idx]]
     try { await reorderRules({ variables: { ruleIds: ids } }); void refetch() }
-    catch (e: unknown) { toast.error(errorMessage(e)) }
+    catch (e: unknown) { showError(e) }
   }
 
   const ruleColumns: ColumnDef<BusinessRule>[] = [
@@ -238,7 +242,9 @@ export function BusinessRulesPage() {
     } },
     { key: 'priority', label: '#', sortable: true, render: (v) => <span style={{ fontWeight: 600, color: 'var(--color-brand)' }}>{String(v)}</span> },
     { key: 'name', label: t('common.name'), sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
-    { key: 'entityType', label: t('automation.columns.entity'), sortable: true },
+    // Il nome dell'entità, non `service_request` (20 set 2026, dal giro nel
+    // browser): `labelOf` è lo stesso che riempie il filtro qui sopra.
+    { key: 'entityType', label: t('automation.columns.entity'), sortable: true, render: (v) => labelOf(String(v)) },
     { key: 'eventType', label: t('automation.columns.event'), sortable: true, render: (v) => t(eventOptionKey(String(v))) },
     { key: 'conditionLogic', label: t('admin.rules.logic'), sortable: true, render: (v) => <Pill bg={v === 'and' ? palette.info.tint : palette.warning.tint} color={v === 'and' ? palette.info.text : palette.warning.strong} radius={10}>{String(v).toUpperCase()}</Pill> },
     { key: 'stopOnMatch', label: t('admin.rules.stop'), sortable: true, render: (v) => v ? <Pill bg={palette.danger.tint} color="var(--color-trigger-sla-breach)" radius={10}>STOP</Pill> : null },
@@ -255,19 +261,30 @@ export function BusinessRulesPage() {
 
   // ── Condition / Action builders ───────────────────────────────────────────
 
-  const updateCondition = (i: number, p: Partial<Condition>) => patch({ conditions: draft.conditions.map((c, j) => j === i ? { ...c, ...p } : c) })
-  const removeCondition = (i: number) => patch({ conditions: draft.conditions.filter((_, j) => j !== i) })
-  const addCondition = () => patch({ conditions: [...draft.conditions, { ...EMPTY_CONDITION }] })
+  /*
+   * Ogni aiutante legge le condizioni e le azioni da `prev`, non dalla bozza
+   * della chiusura. Non è stile: `ActionParamsEditor`, quando si sceglie il
+   * campo di «Imposta campo», fa DUE modifiche nello stesso gesto — il campo e
+   * il valore da azzerare — e due `patch` calcolati sulla stessa bozza vecchia
+   * si annullano: vinceva il secondo e il CAMPO SPARIVA. La tendina tornava
+   * vuota e l'azione non era configurabile (trovato nel browser su c-test,
+   * ondata 8). Con `prev` le due modifiche si compongono.
+   */
+  const updateCondition = (i: number, p: Partial<Condition>) => modal.setDraft((prev) => ({ ...prev, conditions: prev.conditions.map((c, j) => j === i ? { ...c, ...p } : c) }))
+  const removeCondition = (i: number) => modal.setDraft((prev) => ({ ...prev, conditions: prev.conditions.filter((_, j) => j !== i) }))
+  const addCondition = () => modal.setDraft((prev) => ({ ...prev, conditions: [...prev.conditions, { ...EMPTY_CONDITION }] }))
 
-  const setActionParam = (i: number, key: string, val: string) => patch({ actions: draft.actions.map((a, j) => j === i ? { ...a, params: { ...a.params, [key]: val } } : a) })
-  const updateAction = (i: number, p: Partial<RuleAction>) => patch({ actions: draft.actions.map((a, j) => j === i ? { ...a, ...p } : a) })
-  const removeAction = (i: number) => patch({ actions: draft.actions.filter((_, j) => j !== i) })
-  const addAction = () => patch({ actions: [...draft.actions, { ...EMPTY_ACTION }] })
+  const setActionParam = (i: number, key: string, val: string) => modal.setDraft((prev) => ({ ...prev, actions: prev.actions.map((a, j) => j === i ? { ...a, params: { ...a.params, [key]: val } } : a) }))
+  const updateAction = (i: number, p: Partial<RuleAction>) => modal.setDraft((prev) => ({ ...prev, actions: prev.actions.map((a, j) => j === i ? { ...a, ...p } : a) }))
+  const removeAction = (i: number) => modal.setDraft((prev) => ({ ...prev, actions: prev.actions.filter((_, j) => j !== i) }))
+  const addAction = () => modal.setDraft((prev) => ({ ...prev, actions: [...prev.actions, { ...EMPTY_ACTION }] }))
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <PageContainer>
+      {/* F-17: un filtro dell'URL illeggibile si dice, non si ignora. */}
+      <InvalidFilterNotice show={list.filtersInvalid} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <PageTitle icon={<GitBranch size={22} color="var(--color-icon-accent)" />}>{t('sidebar.businessRules')}</PageTitle>
@@ -278,7 +295,7 @@ export function BusinessRulesPage() {
         <Button icon={<Plus size={14} aria-hidden="true" />} onClick={modal.openCreate}>{t('pages.businessRules.newRule')}</Button>
       </div>
 
-      <FilterBuilder fields={ruleFilterFields(t)} onApply={list.setFilterGroup} />
+      <FilterBuilder fields={ruleFilterFields(t, labelOf)} onApply={list.setFilterGroup} />
 
       {!loading && !rules.length && (
         <EmptyState
@@ -333,14 +350,14 @@ export function BusinessRulesPage() {
           <div className="og-pair" style={{ marginBottom: 16 }}>
             <div>
               <label htmlFor={ids.entityType} style={labelS}>{t('pages.businessRules.entityType')}</label>
-              <Select id={ids.entityType} style={selectS} value={draft.entityType} onChange={e => patch({ entityType: e.target.value })} disabled={modal.isEditing}>
-                {ENTITY_TYPES.map(et => <option key={et} value={et}>{entityLabel(et)}</option>)}
+              <Select id={ids.entityType} style={selectS} value={draft.entityType} onChange={e => patch({ entityType: e.target.value, ...(automationEventSupported(draft.eventType, e.target.value) ? {} : { eventType: 'on_create' }) })} disabled={modal.isEditing}>
+                {ENTITY_TYPES.map(et => <option key={et} value={et}>{labelOf(et)}</option>)}
               </Select>
             </div>
             <div>
               <label htmlFor={ids.eventType} style={labelS}>{t('pages.businessRules.event')}</label>
               <Select id={ids.eventType} style={selectS} value={draft.eventType} onChange={e => patch({ eventType: e.target.value })}>
-                {EVENT_TYPES.map(et => <option key={et} value={et}>{t(eventOptionKey(et))}</option>)}
+                {EVENT_TYPES.filter(et => automationEventSupported(et, draft.entityType)).map(et => <option key={et} value={et}>{t(eventOptionKey(et))}</option>)}
               </Select>
             </div>
           </div>
@@ -368,6 +385,7 @@ export function BusinessRulesPage() {
                 key={i}
                 condition={c}
                 entityType={draft.entityType}
+                allowChanged={draft.eventType === 'on_update'}
                 onChange={p => updateCondition(i, p)}
                 onRemove={() => removeCondition(i)}
               />

@@ -12,8 +12,8 @@
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { GET_BASE_CI_TYPE } from '@/graphql/queries'
-import { palette } from '@/lib/tokens'
-import { domainValueStyle } from '@/lib/domainStyle'
+import type { ValueColor } from '@opengraphity/types'
+import { vocabularyValueStyle, type ValueStyle } from '@/lib/domainStyle'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 interface BaseCITypeData {
@@ -70,39 +70,17 @@ export function toEnumOptions(values: string[]): { value: string; label: string 
 
 // ── Palette stato CI (unica: prima solo TopologyPage la coloriva) ────────────
 
-export const CI_STATUS_STYLE: Record<string, { bg: string; color: string }> = {
-  active:         { bg: palette.success.tint, color: palette.success.strong },
-  inactive:       { bg: palette.danger.tint, color: palette.danger.strong },
-  maintenance:    { bg: palette.yellow.bg, color: palette.yellow.text },
-  decommissioned: { bg: 'var(--color-slate-bg)', color: 'var(--color-slate)' },
-}
-
 /**
- * Ondata 7 · D-15: `vocabulary` sono gli stati ammessi per QUESTO cliente
- * (`useCIBaseEnums().statuses`, o `null` mentre non si sanno). Uno stato del
- * vocabolario senza colore assegnato — `expired`, `revoked`, o un valore che
- * il cliente ha aggiunto — è normale e prende lo stile neutro; uno stato
- * **fuori** dal vocabolario resta rosso, perché quello è un record da
- * sistemare. Prima erano lo stesso caso, e ogni riga di lista finiva con una
- * pastiglia rossa e un `console.error`.
+ * Lo stile dello stato del CI. Il colore è quello che il Dizionario assegna al
+ * valore del vocabolario `ci_status` (revisione del 14 set 2026 · F9): prima
+ * era `CI_STATUS_STYLE`, una tabella con quattro stati scritta qui.
+ *
+ * Ondata 7 · D-15: `vocabulary` sono gli stati ammessi per QUESTO cliente (o
+ * `null` mentre non si sanno). Uno stato del vocabolario senza colore — o un
+ * valore che il cliente ha aggiunto — è normale e prende lo stile neutro; uno
+ * stato **fuori** dal vocabolario resta rosso, perché quello è un record da
+ * sistemare.
  */
-export function ciStatusStyle(status: string, vocabulary: readonly string[] | null = null): { bg: string; color: string } {
-  return domainValueStyle(CI_STATUS_STYLE, status, 'CI_STATUS_STYLE', vocabulary)
-}
-
-// ── Etichette i18n dei tipi CI "storici" ─────────────────────────────────────
-// Unione delle due mappe che vivevano in CIListPage e AnomalyPage.
-
-export const CI_TYPE_LABEL_KEYS: Record<string, string> = {
-  application:       'sidebar.application',
-  server:            'sidebar.server',
-  database:          'sidebar.database',
-  database_instance: 'sidebar.dbInstance',
-  certificate:       'sidebar.certificate',
-  ssl_certificate:   'sidebar.certificate',
-}
-
-/** Chiave i18n del tipo, o null se il tipo non ha un'etichetta fissa (si usa `ciType.label`). */
-export function ciTypeLabelKey(typeName: string | null | undefined): string | null {
-  return typeName ? (CI_TYPE_LABEL_KEYS[typeName] ?? null) : null
+export function ciStatusStyle(status: string, vocabulary: readonly string[] | null, color: ValueColor | null): ValueStyle {
+  return vocabularyValueStyle('ci_status', status, vocabulary, color)
 }

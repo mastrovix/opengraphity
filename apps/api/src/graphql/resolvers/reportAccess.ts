@@ -14,6 +14,7 @@
 import type { Session } from 'neo4j-driver'
 import type { GraphQLContext } from '../../context.js'
 import { ForbiddenError, NotFoundError } from '../../lib/errors.js'
+import { hasPermission } from '../../lib/permissions.js'
 
 export type AccessMode = 'read' | 'write'
 
@@ -44,7 +45,7 @@ export async function assertReportTemplateAccess(
   const visibility   = (row.get('visibility') as string | null) ?? 'private'
   const isTeamMember = row.get('isTeamMember') === true
   const isOwner      = createdBy !== null && createdBy === ctx.userId
-  const isAdmin      = ctx.role === 'admin'
+  const isAdmin      = hasPermission(ctx, 'dashboard.manageAll')
 
   if (mode === 'read') {
     if (isOwner || visibility === 'all' || (visibility === 'groups' && isTeamMember)) {
@@ -86,7 +87,7 @@ export async function assertDashboardAccess(
   const visibility   = (row.get('visibility') as string | null) ?? 'private'
   const isTeamMember = row.get('isTeamMember') === true
   const isOwner      = ownerId !== null && ownerId === ctx.userId
-  const isAdmin      = ctx.role === 'admin'
+  const isAdmin      = hasPermission(ctx, 'dashboard.manageAll')
 
   if (mode === 'read') {
     if (isOwner || visibility === 'all' || (visibility === 'teams' && isTeamMember)) {
