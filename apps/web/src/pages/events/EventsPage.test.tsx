@@ -395,7 +395,20 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
     await screen.findByText('CPU high on web-01')
     await user.click(screen.getByRole('button', { name: 'Resolved' }))
     await attendiURL('/events', { status: 'resolved' })
+    /*
+     * DUE ASSERZIONI E NON UNA (21 set 2026), e il motivo è diagnostico.
+     *
+     * Su CI questo punto falliva con l'URL fermo a `?status=resolved`, senza
+     * la ricerca — e non si capiva se fosse la CASELLA a non ricevere il
+     * testo o il DEBOUNCE a non scriverlo nell'URL. Le due cose si rompono
+     * per ragioni diverse e si correggono in due posti diversi, quindi il
+     * test dice quale delle due è.
+     *
+     * Riprodotto in locale non riesce: cinque giri di fila verdi, e verdi
+     * anche forzando 400 ms fra un tasto e l'altro — più del debounce.
+     */
     await user.type(screen.getByLabelText('Search'), 'cpu')
+    await waitFor(() => expect(screen.getByLabelText('Search')).toHaveValue('cpu'))
     await attendiURL('/events', { status: 'resolved', q: 'cpu' })
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['resolved'], search: 'cpu' }))
 
