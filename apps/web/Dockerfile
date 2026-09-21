@@ -5,7 +5,7 @@
 # Pinned tag + digest (G-16) — same image as the front-door nginx in compose.
 # nginx alpine already runs its worker processes as the unprivileged `nginx`
 # user (master as root only to bind :80): no USER directive needed.
-FROM nginx:1.31.5-alpine@sha256:72ba65eb42c10344912a84ff42408db7d34f2feb642204570ab8fc5ffd29f1d3
+FROM nginx:1.31.6-alpine@sha256:adad2ae9204d0fd7a34f40299bc838c3782be1293b10005eac4315ff5a1abf4e
 
 COPY apps/web/dist /usr/share/nginx/html
 
