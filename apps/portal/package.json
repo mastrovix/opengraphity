@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@apollo/client": "^4.3.0",
+    "@opengraphity/types": "workspace:*",
     "@opengraphity/web-core": "workspace:*",
     "graphql": "^16.13.1",
     "i18next": "^26.4.2",
@@ -38,6 +39,6 @@
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.4",
     "remark-gfm": "^4.0.1",
-    "@opengraphity/types": "workspace:*"
+    "uuid": "^14.0.2"
   }
 }
