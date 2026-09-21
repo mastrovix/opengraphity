@@ -13,6 +13,23 @@ import { httpStatusForError, restErrorHandler, asyncHandler } from '../errorHand
 import { parsePagination, apiKeyOf, optionalString, requiredString } from '../apiContext.js'
 import { NotFoundError, ValidationError, ForbiddenError, ServiceUnavailableError } from '../../lib/errors.js'
 import { GraphQLError } from 'graphql'
+/*
+ * LA FORMA DELL'ARRAY È CAMBIATA CON EXPRESS 5 (21 set 2026).
+ *
+ * Express 5 usa `simple` come parser della query string, non piu' `qs`
+ * (`extended`). Quindi `?page[]=1` NON produce piu' un array: diventa una
+ * chiave letterale `page[]`, che nessuna rotta conosce e che viene ignorata.
+ *
+ * L'array pero' esiste ancora, nella forma che il parser semplice produce:
+ * `?page=1&page=2` → `{ page: ['1','2'] }`. È quella che questi test
+ * provano adesso, perche' l'INTENTO non e' cambiato: un array non deve
+ * diventare un `NaN` che arriva fino a Cypher.
+ *
+ * Non si e' rimesso `extended` per far ripassare i test com'erano: quel
+ * parser fa passare le query string dentro `qs`, ed e' proprio da li' che
+ * venivano i tre avvisi (GHSA-q8mj, GHSA-x5fp, GHSA-4mjr) che questa
+ * migrazione ha chiuso.
+ */
 
 function fakeRes() {
   const res = { statusCode: 0, body: undefined as unknown, headersSent: false, headers: {} as Record<string, string> } as {
@@ -104,7 +121,7 @@ describe('parsePagination', () => {
     expect(parsePagination({ page: '3', limit: '10' })).toEqual({ page: 3, limit: 10, offset: 20 })
   })
   it.each([
-    [{ page: ['1'] },  /page/],       // ?page[]=1
+    [{ page: ['1'] },  /page/],       // ?page=1&page=2
     [{ page: '0' },    /page/],
     [{ page: 'abc' },  /page/],
     [{ page: '1.5' },  /page/],

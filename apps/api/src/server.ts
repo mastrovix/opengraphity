@@ -16,14 +16,19 @@ import { ApolloServerPluginLandingPageDisabled } from '@apollo/server/plugin/dis
  * APOLLO SERVER 5 (21 set 2026).
  *
  * In Apollo 5 l'adattatore per express non sta piu' dentro il pacchetto
- * (`@apollo/server/express4` non esiste): e' un pacchetto a se'. Restando su
- * express 4 e' `@as-integrations/express4` — Apollo 5 NON obbliga a express 5,
- * e le due migrazioni sono indipendenti.
+ * (`@apollo/server/express4` non esiste): e' un pacchetto a se', e ce n'e'
+ * uno per ogni major di express. Qui e' `@as-integrations/express5`.
  *
- * Chiude `GHSA-9q82-xgwf-vj6h` (Apollo Server: bypass della prevenzione
- * XS-Search), che era in `audit-allowlist.json` proprio in attesa di questo.
+ * Le due migrazioni sono state fatte in QUESTO ordine e separate apposta:
+ * Apollo 5 non obbliga a express 5 (si puo' stare su
+ * `@as-integrations/express4`), quindi la prima e' entrata da sola e, se
+ * express 5 avesse dato problemi, sarebbe rimasta.
+ *
+ * Insieme chiudono quattro avvisi che stavano in `audit-allowlist.json` in
+ * attesa proprio di questo: `GHSA-9q82-xgwf-vj6h` (Apollo, bypass della
+ * prevenzione XS-Search) e i tre su `qs`, che express 4 teneva fermo a ~6.14.
  */
-import { expressMiddleware } from '@as-integrations/express4'
+import { expressMiddleware } from '@as-integrations/express5'
 import type { GraphQLRequestContextDidEncounterErrors } from '@apollo/server'
 import { buildContext, type GraphQLContext } from './context.js'
 import { getSchemaForTenant, getSchemaState } from './lib/schemaCache.js'

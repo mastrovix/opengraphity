@@ -18,7 +18,8 @@
   "pnpm": {
     "overrides": {
       "sharp": "^0.35.4",
-      "@types/d3-selection": "3.0.11"
+      "@types/d3-selection": "3.0.11",
+      "@types/express": "^5.0.6"
     },
     "onlyBuiltDependencies": [
       "esbuild",
