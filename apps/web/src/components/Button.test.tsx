@@ -2,6 +2,18 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Button } from './Button'
+/*
+ * IL NOME ACCESSIBILE HA PERSO UNO SPAZIO (21 set 2026, jsdom 30).
+ *
+ * jsdom 30 non inserisce piu' uno spazio fra elementi IN LINEA quando calcola
+ * il nome accessibile: «* Testo» e' diventato «*Testo». Il DOM che il prodotto
+ * rende non e' cambiato di una virgola — e' cambiato il modo in cui la
+ * libreria di prova lo legge, e la 30 e' piu' vicina alla specifica accname.
+ *
+ * Si aggiorna l'atteso invece di allentare la ricerca con una regex: il punto
+ * di queste asserzioni e' proprio che il nome accessibile sia ESATTAMENTE
+ * quello, perche' e' quello che un lettore di schermo annuncia.
+ */
 
 describe('Button', () => {
   it('type è "button" di default (non submitta un form per sbaglio) e rispetta type="submit"', () => {
@@ -83,7 +95,7 @@ describe('Button', () => {
 
   it('inoltra aria-expanded / aria-pressed e l\'icona precede il testo', () => {
     render(<Button aria-expanded={true} aria-pressed={false} icon={<span data-testid="ic">*</span>}>Testo</Button>)
-    const btn = screen.getByRole('button', { name: '* Testo' })
+    const btn = screen.getByRole('button', { name: '*Testo' })
     expect(btn).toHaveAttribute('aria-expanded', 'true')
     expect(btn).toHaveAttribute('aria-pressed', 'false')
     expect(btn.firstElementChild).toHaveAttribute('data-testid', 'ic')

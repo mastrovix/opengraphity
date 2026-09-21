@@ -3,6 +3,18 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { Tabs, type TabItem } from './Tabs'
+/*
+ * IL NOME ACCESSIBILE HA PERSO UNO SPAZIO (21 set 2026, jsdom 30).
+ *
+ * jsdom 30 non inserisce piu' uno spazio fra elementi IN LINEA quando calcola
+ * il nome accessibile: «* Testo» e' diventato «*Testo». Il DOM che il prodotto
+ * rende non e' cambiato di una virgola — e' cambiato il modo in cui la
+ * libreria di prova lo legge, e la 30 e' piu' vicina alla specifica accname.
+ *
+ * Si aggiorna l'atteso invece di allentare la ricerca con una regex: il punto
+ * di queste asserzioni e' proprio che il nome accessibile sia ESATTAMENTE
+ * quello, perche' e' quello che un lettore di schermo annuncia.
+ */
 
 type Key = 'a' | 'b' | 'c'
 const ITEMS: TabItem<Key>[] = [
@@ -30,7 +42,7 @@ describe('Tabs', () => {
 
   it('il badge compare solo se > 0', () => {
     render(<Controlled />)
-    expect(screen.getByRole('tab', { name: 'Beta 3' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Beta3' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Gamma' })).toBeInTheDocument()
   })
 
@@ -53,7 +65,7 @@ describe('Tabs', () => {
 
     await user.keyboard('{ArrowRight}')
     expect(onChange).toHaveBeenLastCalledWith('b')
-    expect(screen.getByRole('tab', { name: 'Beta 3' })).toHaveFocus()
+    expect(screen.getByRole('tab', { name: 'Beta3' })).toHaveFocus()
 
     await user.keyboard('{ArrowLeft}{ArrowLeft}')   // b → a → c (wrap)
     expect(onChange).toHaveBeenLastCalledWith('c')

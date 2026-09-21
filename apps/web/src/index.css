@@ -1033,3 +1033,56 @@ code, kbd, samp, pre {
 }
 
 
+
+/* ── ACCESSIBILITÀ: quello che si vedeva col mouse si vede anche da tastiera ──
+   (21 set 2026, accendendo `eslint-plugin-jsx-a11y`)
+
+   Tre punti dell'app cambiavano aspetto con `onMouseEnter`/`onMouseLeave` in
+   JavaScript: il riquadro di un passo nel disegnatore, la scheda di un
+   articolo della Knowledge Base, l'etichetta di una transizione. Chi naviga
+   col tasto Tab non ha un puntatore, quindi quel risalto non lo vedeva MAI:
+   arrivava sull'elemento senza nessun segno di esserci arrivato.
+
+   Qui la stessa emersione si scrive in CSS e si aggancia sia a `:hover` sia
+   al fuoco. Il codice React che teneva lo stato sparisce: era stato scritto
+   per un effetto che il foglio di stile sa fare da solo, e per entrambi. */
+
+/* Il riquadro di un passo nel disegnatore di workflow. Il colore d'accento
+   arriva come variabile perché lo decide il nodo, non il foglio di stile. */
+.og-wf-node { border-color: var(--color-brand-a53); }
+.og-wf-node:hover,
+.react-flow__node:focus-visible .og-wf-node,
+.og-wf-node.is-selected { border-color: var(--og-wf-accent); }
+/* La matita «questo si può aprire» compariva solo col mouse sopra. */
+.og-wf-edit-hint { display: none; }
+.og-wf-node:hover .og-wf-edit-hint,
+.react-flow__node:focus-visible .og-wf-edit-hint,
+.og-wf-node.is-selected .og-wf-edit-hint { display: block; }
+
+/* L'etichetta di una transizione è diventata un bottone vero (apre il
+   pannello della transizione, cosa che prima il clic PROMETTEVA col
+   `cursor: pointer` e non faceva: il clic non arriva all'SVG). */
+.og-wf-edge-label {
+  border: 1px solid var(--og-wf-edge-color);
+  color: var(--og-wf-edge-color);
+  background: var(--color-white);
+  border-radius: 4px; padding: 2px 6px;
+  font-size: 10px; font-weight: 500; font-family: inherit;
+  white-space: nowrap; cursor: pointer;
+  display: flex; align-items: center; gap: 4px;
+  box-shadow: 0 1px 4px var(--color-black-a10);
+  opacity: 0.85;
+}
+.og-wf-edge-label:hover,
+.og-wf-edge-label:focus-visible,
+.og-wf-edge-label.is-selected { opacity: 1; }
+
+/* La scheda di un articolo della Knowledge Base: il bordo si accendeva col
+   mouse sopra. Il fuoco sta sul collegamento che la CONTIENE, quindi la
+   regola parte da lì — `:focus-within` non servirebbe, guarda i figli. */
+.og-kb-card { transition: border-color 150ms, box-shadow 150ms; }
+.og-kb-card:hover,
+a:focus-visible .og-kb-card {
+  border-color: var(--color-brand);
+  box-shadow: 0 2px 8px var(--color-icon-accent-a12);
+}

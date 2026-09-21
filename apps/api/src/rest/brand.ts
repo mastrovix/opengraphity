@@ -20,6 +20,7 @@ import { logger } from '../lib/logger.js'
 import { audit } from '../lib/audit.js'
 import { removeTenantLogo, setTenantLogo, tenantLogoFile } from '../lib/brand.js'
 import type { GraphQLContext } from '../context.js'
+import { parametro } from './parametroDiRotta.js'
 
 const router: ExpressRouter = Router()
 
@@ -90,7 +91,7 @@ router.delete('/brand/logo', authMiddleware, (req, res) => {
 
 router.get('/brand/:tenantId/logo', (req: Request, res: Response) => {
   void (async () => {
-    const tenantId = String(req.params['tenantId'] ?? '')
+    const tenantId = String(parametro(req, 'tenantId'))
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(tenantId)) { res.status(404).end(); return }
     try {
       const file = await tenantLogoFile(tenantId)
