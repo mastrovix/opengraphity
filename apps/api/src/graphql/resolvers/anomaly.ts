@@ -6,7 +6,11 @@ import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { cache } from '../../lib/cache.js'
 import { validateStringLength } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
+import {
+  ANOMALY_RULE_SPECS, ANOMALY_SEVERITIES, anomalyRuleOptions, anomalyRuleProblem, loadAnomalyRuleConfigs,
+  saveAnomalyRuleConfig, type AnomalyRuleConfig, type AnomalyRuleOptions,
+} from '../../anomaly/ruleConfig.js'
 
 /** Mirrors `enum ResolutionStatus` in schema-anomaly.ts — re-checked here so the stored status can never be an arbitrary string. */
 export const RESOLUTION_STATUSES = ['resolved', 'false_positive', 'accepted_risk'] as const
@@ -28,6 +32,12 @@ function toStr(v: unknown): string {
   return String(v)
 }
 
+function anomalyParams(raw: unknown, id: string): Array<{ key: string; value: string }> {
+  const parsed: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`Anomaly ${id}: description_params is not a map`)
+  return Object.entries(parsed as Record<string, unknown>).map(([key, value]) => ({ key, value: String(value) }))
+}
+
 function mapAnomaly(p: Props) {
   return {
     id:               toStr(p['id']),
@@ -40,19 +50,97 @@ function mapAnomaly(p: Props) {
     entitySubtype:    toStr(p['entity_subtype']),
     entityName:       toStr(p['entity_name']),
     description:      toStr(p['description']),
+    // Null su un'anomalia registrata prima del 14 set 2026 e non più riscontrata:
+    // resta la sua frase storica. Ogni scansione riscrive quelle ancora aperte.
+    descriptionParams: p['description_params'] == null ? null : anomalyParams(p['description_params'], toStr(p['id'])),
     detectedAt:       toStr(p['detected_at']),
     resolvedAt:       p['resolved_at']        ? toStr(p['resolved_at'])        : null,
     resolutionStatus: p['resolution_status']  ? toStr(p['resolution_status'])  : null,
     resolutionNote:   p['resolution_note']    ? toStr(p['resolution_note'])    : null,
     resolvedBy:       p['resolved_by']        ? toStr(p['resolved_by'])        : null,
+    // G-ANO-8: il nome lo risolve il field resolver (una lettura sola per riga
+    // mostrata, e solo se il client lo chiede).
+    resolvedByName:   null as string | null,
+    resolvedReason:   p['resolved_reason']    ? toStr(p['resolved_reason'])    : null,
     tenantId:         toStr(p['tenant_id']),
+  }
+}
+
+/** La regola come la espone l'API: con le scelte possibili e il motivo per cui non gira, se c'è. */
+function mapRuleConfig(config: AnomalyRuleConfig, options: AnomalyRuleOptions, openCount: number) {
+  const spec = ANOMALY_RULE_SPECS[config.ruleKey]
+  const problem = anomalyRuleProblem(config, options)
+  const i18n = problem?.extensions['i18n'] as { key: string; params?: Record<string, string | number> } | undefined
+  return {
+    ruleKey: config.ruleKey, enabled: config.enabled, severity: config.severity,
+    ciTypes: config.ciTypes, relations: config.relations, threshold: config.threshold,
+    incidentSeverities: config.incidentSeverities, forbidden: config.forbidden,
+    spec: {
+      ciTypes: spec.ciTypes, relations: spec.relations, incidentSeverities: spec.incidentSeverities, forbidden: spec.forbidden,
+      thresholdMin: spec.threshold?.min ?? null, thresholdMax: spec.threshold?.max ?? null,
+    },
+    isDefault: config.isDefault, updatedAt: config.updatedAt,
+    problem: problem ? {
+      key: i18n?.key ?? 'errors.anomalyRule.invalid',
+      params: Object.entries(i18n?.params ?? {}).map(([key, value]) => ({ key, value: String(value) })),
+      message: problem.message,
+    } : null,
+    openCount,
+  }
+}
+
+async function openCountsByRule(tenantId: string): Promise<Map<string, number>> {
+  const session = getSession()
+  try {
+    const rows = await runQuery<{ ruleKey: string; n: unknown }>(session, `
+      MATCH (a:Anomaly {tenant_id: $tenantId, status: 'open'})
+      RETURN a.rule_key AS ruleKey, count(a) AS n
+    `, { tenantId })
+    return new Map(rows.map((r) => [r.ruleKey, toNumber(r.n)]))
+  } finally {
+    await session.close()
   }
 }
 
 const ANOMALY_ALLOWED_FIELDS = new Set(['title', 'severity', 'status', 'ruleKey', 'detectedAt'])
 
+/** Quanto vive la cache dei riquadri delle anomalie (G-ANO-7). */
+const ANOMALY_STATS_TTL_SECONDS = 10
+
 export const anomalyResolvers = {
+  /**
+   * G-ANO-8: il NOME di chi ha risolto, letto solo se il client lo chiede. Un
+   * id che non è più un utente del tenant (persona rimossa) non diventa una
+   * stringa tecnica a schermo: resta vuoto.
+   */
+  Anomaly: {
+    resolvedByName: async (parent: { resolvedBy: string | null }, _: unknown, ctx: GraphQLContext) => {
+      if (!parent.resolvedBy) return null
+      const session = getSession(undefined, 'READ')
+      try {
+        const row = await runQueryOne<{ name: string | null }>(session,
+          'MATCH (u:User {id: $id, tenant_id: $tenantId}) RETURN u.name AS name',
+          { id: parent.resolvedBy, tenantId: ctx.tenantId })
+        return row?.name ?? null
+      } finally {
+        await session.close()
+      }
+    },
+  },
+
   Query: {
+    anomalyRules: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
+      const [configs, options, counts] = await Promise.all([
+        loadAnomalyRuleConfigs(ctx.tenantId), anomalyRuleOptions(ctx.tenantId), openCountsByRule(ctx.tenantId),
+      ])
+      return configs.map((c) => mapRuleConfig(c, options, counts.get(c.ruleKey) ?? 0))
+    },
+
+    anomalyRuleOptions: async (_: unknown, __: unknown, ctx: GraphQLContext) => ({
+      ...await anomalyRuleOptions(ctx.tenantId),
+      severities: [...ANOMALY_SEVERITIES],
+    }),
+
     anomalies: async (
       _: unknown,
       args: { limit?: number; offset?: number; filters?: string; sortField?: string; sortDirection?: string },
@@ -81,6 +169,7 @@ export const anomalyResolvers = {
 
         // Two separate queries — same pattern as incident resolver
         const itemRows = await runQuery<{ props: Props }>(session, `
+          // tenant-ok: il WHERE interpolato parte da a.tenant_id = $tenantId (conditions, riga 75)
           MATCH (a:Anomaly)
           ${where}
           WITH a ORDER BY ${orderByClause}
@@ -89,6 +178,7 @@ export const anomalyResolvers = {
         `, params)
 
         const countRows = await runQuery<{ total: unknown }>(session, `
+          // tenant-ok: stesso $where della query di pagina, tenant per primo (conditions, riga 75)
           MATCH (a:Anomaly)
           ${where}
           RETURN count(a) AS total
@@ -161,7 +251,17 @@ export const anomalyResolvers = {
           falsePositive: toNumber(row['falsePositive']),
           acceptedRisk:  toNumber(row['acceptedRisk']),
         }
-        cache.set(cacheKey, result, 60)
+        /**
+         * TTL corto (revisione totale · G-ANO-7): la cache era di 60 secondi
+         * e la invalidavano solo l'accodamento dello scan e la risoluzione —
+         * lo SCAN, che gira in un altro processo, non poteva invalidarla.
+         * Quindi a scan finito i riquadri restavano quelli di prima per un
+         * minuto, mentre la tabella sotto era già aggiornata: due numeri che
+         * si contraddicevano nella stessa pagina. Dieci secondi bastano a
+         * evitare la raffica di query di un caricamento e non sopravvivono a
+         * uno scan.
+         */
+        cache.set(cacheKey, result, ANOMALY_STATS_TTL_SECONDS)
         return result
       } finally {
         await session.close()
@@ -170,6 +270,16 @@ export const anomalyResolvers = {
   },
 
   Mutation: {
+    updateAnomalyRule: async (_: unknown, args: { ruleKey: string; settings: Record<string, unknown> }, ctx: GraphQLContext) => {
+      const before = (await loadAnomalyRuleConfigs(ctx.tenantId)).find((c) => c.ruleKey === args.ruleKey)
+      const saved = await saveAnomalyRuleConfig(ctx.tenantId, args.ruleKey, { ...args.settings })
+      const { isDefault: _b, updatedAt: _bu, ...from } = before ?? ({} as AnomalyRuleConfig)
+      const { isDefault: _s, updatedAt: _su, ...to } = saved
+      void audit(ctx, 'anomaly.rule_updated', 'AnomalyRuleConfig', args.ruleKey, { from, to })
+      const [options, counts] = await Promise.all([anomalyRuleOptions(ctx.tenantId), openCountsByRule(ctx.tenantId)])
+      return mapRuleConfig(saved, options, counts.get(saved.ruleKey) ?? 0)
+    },
+
     resolveAnomaly: async (
       _: unknown,
       args: { id: string; resolutionStatus: string; note: string },
@@ -193,7 +303,9 @@ export const anomalyResolvers = {
           tenantId:         ctx.tenantId,
           resolutionStatus,
           note:             args.note,
-          resolvedBy:       ctx.userId || 'unknown',
+          // G-ANO-8: se non c'è un utente, la colonna resta VUOTA — «unknown»
+          // scritto nel grafo diventava «Risolta da unknown» a schermo.
+          resolvedBy:       ctx.userId || null,
           now,
         })
         if (!row) throw new NotFoundError('Anomaly')
@@ -210,7 +322,7 @@ export const anomalyResolvers = {
      * (Redis down) propagates as a GraphQL error: returning `false` hid it.
      */
     runAnomalyScanner: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
-      requireRole(ctx, 'admin', 'operator')
+      requirePermission(ctx, 'anomaly.scan')
       await enqueueTenantScan(ctx.tenantId)
       cache.invalidate(`anomaly-stats:${ctx.tenantId}`)
       void audit(ctx, 'anomaly.scan_triggered', 'AnomalyScanner', ctx.tenantId)

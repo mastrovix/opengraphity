@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
@@ -37,7 +38,7 @@ vi.mock('@opengraphity/events', async (importOriginal) => {
 
 const { notificationChannelResolvers } = await import('../notificationChannel.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
 const input = (webhookUrl: string, platform = 'slack') => ({ platform, name: 'Ops', webhookUrl, eventTypes: ['incident.created'] })
 
 const nodeRecord = (props: Record<string, unknown>) => ({ get: () => ({ properties: props }) })
@@ -133,7 +134,7 @@ describe('updateNotificationChannel', () => {
     const run = vi.fn().mockResolvedValue({ records: [] })
     mockSession.executeWrite.mockImplementation(async (fn: (tx: { run: typeof run }) => unknown) => fn({ run }))
     await expect(notificationChannelResolvers.Mutation.updateNotificationChannel(null, { id: 'ch-altrui', input: input('https://hooks.slack.com/y') }, ctx))
-      .rejects.toThrow('NotificationChannel non trovato')
+      .rejects.toThrow('NotificationChannel not found')
   })
 })
 
@@ -144,5 +145,52 @@ describe('testNotificationChannel — ri-verifica l\'URL salvato prima di inviar
     const run = vi.fn().mockResolvedValue({ records: [nodeRecord({ id: 'ch-1', platform: 'slack', name: 'Ops', webhook_url: 'https://169.254.169.254/x', event_types: '[]', active: true })] })
     mockSession.executeRead.mockImplementation(async (fn: (tx: { run: typeof run }) => unknown) => fn({ run }))
     await expectValidation(notificationChannelResolvers.Mutation.testNotificationChannel(null, { id: 'ch-1' }, ctx), /private\/loopback\/link-local/)
+  })
+})
+
+/**
+ * Revisione totale · F-20: il web scollegava l'account Slack mandando
+ * `slackId: ""`. Un id vuoto non è «nessun account»: resta sul nodo, è uguale
+ * per tutti gli «scollegati», e le azioni dai messaggi Slack cercano l'utente
+ * proprio per `slack_id`.
+ */
+describe('linkSlackAccount — collega e scollega', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const userNode = (slackId: string | null) => ({
+    get: () => ({ properties: { id: 'admin-1', tenant_id: 'tenant-1', email: 'adm@test.io', name: 'Admin', role: 'admin', slack_id: slackId } }),
+  })
+
+  it('slackId null → scollega: scrive null sul nodo, nessun controllo di unicità', async () => {
+    const write = vi.fn().mockResolvedValue({ records: [userNode(null)] })
+    mockSession.executeWrite.mockImplementation(async (fn: (tx: { run: typeof write }) => unknown) => fn({ run: write }))
+    const out = await notificationChannelResolvers.Mutation.linkSlackAccount(null, { slackId: null }, ctx)
+    expect(out).toMatchObject({ id: 'admin-1', slackId: null })
+    expect(write.mock.calls[0]![1]).toMatchObject({ slackId: null, userId: 'admin-1', tenantId: 'tenant-1' })
+    expect(mockSession.executeRead).not.toHaveBeenCalled()
+  })
+
+  it('stringa vuota o soli spazi → BAD_USER_INPUT che indica null, nessuna scrittura', async () => {
+    await expectValidation(notificationChannelResolvers.Mutation.linkSlackAccount(null, { slackId: '' }, ctx), /pass null to unlink/)
+    await expectValidation(notificationChannelResolvers.Mutation.linkSlackAccount(null, { slackId: '   ' }, ctx), /pass null to unlink/)
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('id già collegato a un\'altra persona del cliente → BAD_USER_INPUT col nome, nessuna scrittura', async () => {
+    const read = vi.fn().mockResolvedValue({ records: [{ get: () => 'Paolo Verdi' }] })
+    mockSession.executeRead.mockImplementation(async (fn: (tx: { run: typeof read }) => unknown) => fn({ run: read }))
+    await expectValidation(notificationChannelResolvers.Mutation.linkSlackAccount(null, { slackId: 'U123' }, ctx), /already linked to Paolo Verdi/)
+    expect(read.mock.calls[0]![1]).toMatchObject({ slackId: 'U123', tenantId: 'tenant-1', userId: 'admin-1' })
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('id libero → viene salvato senza spazi ai bordi', async () => {
+    const read = vi.fn().mockResolvedValue({ records: [] })
+    mockSession.executeRead.mockImplementation(async (fn: (tx: { run: typeof read }) => unknown) => fn({ run: read }))
+    const write = vi.fn().mockResolvedValue({ records: [userNode('U123')] })
+    mockSession.executeWrite.mockImplementation(async (fn: (tx: { run: typeof write }) => unknown) => fn({ run: write }))
+    const out = await notificationChannelResolvers.Mutation.linkSlackAccount(null, { slackId: '  U123 ' }, ctx)
+    expect(out).toMatchObject({ slackId: 'U123' })
+    expect(write.mock.calls[0]![1]).toMatchObject({ slackId: 'U123' })
   })
 })

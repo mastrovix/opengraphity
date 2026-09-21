@@ -8,16 +8,32 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
+import { resetAnthropicForTests } from '../../lib/aiClient.js'
 
 const h = vi.hoisted(() => {
   const cfg = { anthropicApiKey: undefined as string | undefined }
   const create = vi.fn<(p: Record<string, unknown>) => Promise<unknown>>()
   const constructed: unknown[] = []
-  const session = { close: vi.fn().mockResolvedValue(undefined) }
+  // A-2: il triage legge anche le PERSONALIZZAZIONI del tenant
+  // (`loadTenantEnumOverrides`), che passa da `session.executeRead`/`tx.run` e
+  // non da `runQuery`: la sessione finta deve saperlo fare. `ownEnums` sono i
+  // vocabolari propri del tenant (vuoto = nessuna personalizzazione).
+  const ownEnums: Array<Record<string, unknown>> = []
+  const overridesRun = vi.fn(async () => ({
+    records: ownEnums.map((m) => ({ get: (k: string) => (k in m ? m[k] : null) })),
+  }))
+  const session = {
+    close: vi.fn().mockResolvedValue(undefined),
+    executeRead: (fn: (tx: { run: typeof overridesRun }) => unknown) => fn({ run: overridesRun }),
+  }
   const embed = vi.fn<(texts: string[]) => Promise<number[][]>>()
-  return { cfg, create, constructed, session, embed }
+  return { cfg, create, constructed, session, embed, ownEnums, overridesRun }
 })
 
+// La lingua in cui il modello scrive si legge dal cliente (lib/systemText.ts).
+// Ondata 6 di «Nulla cablato»: le funzioni AI sono dell'organizzazione; qui tutte accese.
+vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 vi.mock('../../lib/config.js', () => ({ config: h.cfg }))
 vi.mock('@anthropic-ai/sdk', () => ({
   default: class {
@@ -38,7 +54,9 @@ vi.mock('../../lib/logger.js', () => ({
 }))
 
 const { suggestTriage } = await import('../triageService.js')
+const aiFake = await import('../../lib/__tests__/aiSettingsFake.js')
 const { runQuery } = await import('@opengraphity/neo4j')
+import { config } from '../../lib/config.js'
 
 // ── Fixture ───────────────────────────────────────────────────────────────────
 
@@ -78,14 +96,35 @@ async function failure(promise: Promise<unknown>): Promise<unknown> {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Il client è un singleton condiviso (ondata 8): senza dimenticarlo, il
+  // secondo test di questo file conterebbe la costruzione del primo.
+  resetAnthropicForTests()
   h.constructed.length = 0
+  h.ownEnums.length = 0
   h.cfg.anthropicApiKey = 'sk-test'
   h.embed.mockResolvedValue([[0.1, 0.2, 0.3]])
   h.create.mockResolvedValue(modelReply(JSON.stringify(SUGGESTION)))
   graph()
+  aiFake.aiResetFake()
 })
 
 describe('suggestTriage — precondizioni', () => {
+  // Ondata 6 di «Nulla cablato»: una funzione spenta dall'organizzazione non chiama il modello.
+  it('triage spento → AI_DISABLED, nessun embedding e nessuna chiamata al modello', async () => {
+    aiFake.aiOff('triage')
+    const err = await failure(suggestTriage(input))
+    expect((err as GraphQLError).extensions['code']).toBe('AI_DISABLED')
+    expect(h.embed).not.toHaveBeenCalled()
+    expect(h.create).not.toHaveBeenCalled()
+  })
+
+  it('embedding spenti → il triage lavora senza incident simili: il testo non va al provider degli embedding', async () => {
+    aiFake.aiOff('embeddings')
+    await suggestTriage(input)
+    expect(h.embed).not.toHaveBeenCalled()
+    expect(h.create).toHaveBeenCalled()
+  })
+
   it('titolo e descrizione vuoti → BAD_USER_INPUT senza embedding né query', async () => {
     const err = await failure(suggestTriage({ ...input, title: '  ', description: null }))
     expect(err).toBeInstanceOf(GraphQLError)
@@ -99,7 +138,10 @@ describe('suggestTriage — precondizioni', () => {
     h.cfg.anthropicApiKey = undefined
     const err = await failure(suggestTriage(input))
     expect(err).toBeInstanceOf(GraphQLError)
-    expect((err as GraphQLError).message).toBe('Triage AI non configurato: ANTHROPIC_API_KEY mancante')
+    // Ondata 8: il messaggio è uno per tutte le funzioni AI, perché il client
+    // è uno solo (`lib/aiClient.ts`). Quale funzione ha fallito lo dice il
+    // resolver che alza l'errore, non il controllo della chiave.
+    expect((err as GraphQLError).message).toBe('AI is not configured on this platform: ANTHROPIC_API_KEY missing')
     expect((err as GraphQLError).extensions['code']).toBe('FAILED_PRECONDITION')
     expect(h.constructed).toHaveLength(0)
     expect(h.create).not.toHaveBeenCalled()
@@ -120,7 +162,7 @@ describe('suggestTriage — chiamata al modello', () => {
     expect(h.embed).toHaveBeenCalledWith(['VPN lenta\nda stamattina'])
     expect(h.create).toHaveBeenCalledTimes(1)
     const params = h.create.mock.calls[0]![0]
-    expect(params).toMatchObject({ model: 'claude-opus-4-8', max_tokens: 2000, thinking: { type: 'adaptive' } })
+    expect(params).toMatchObject({ model: config.anthropicModel, max_tokens: 2000, thinking: { type: 'adaptive' } })
     const schema = (params['output_config'] as { format: { type: string; schema: Record<string, { enum?: string[] }> } }).format
     expect(schema.type).toBe('json_schema')
     expect(schema.schema['properties']).toMatchObject({
@@ -128,7 +170,16 @@ describe('suggestTriage — chiamata al modello', () => {
       category: { enum: ['network', 'database'] },
       confidence: { enum: ['low', 'medium', 'high'] },
     })
-    const userContent = JSON.parse((params['messages'] as Array<{ content: string }>)[0]!.content) as Record<string, unknown>
+    /*
+     * Il CONTESTO viaggia nell'ultimo blocco di sistema, col punto di cache, e
+     * non nel messaggio (ondata 8): attaccato alla frase dell'utente cambiava
+     * a ogni chiamata e rendeva la cache impossibile per costruzione.
+     */
+    const sistema = params['system'] as Array<{ text: string; cache_control?: unknown }>
+    const ultimo = sistema[sistema.length - 1]!
+    expect(ultimo.cache_control).toEqual({ type: 'ephemeral' })
+    expect(sistema.filter((b) => b.cache_control !== undefined)).toHaveLength(1)
+    const userContent = JSON.parse(ultimo.text) as Record<string, unknown>
     expect(userContent['bozza']).toEqual({ titolo: 'VPN lenta', descrizione: 'da stamattina' })
     expect(userContent['incident_simili']).toHaveLength(6)
     expect((userContent['incident_simili'] as unknown[])[0]).toEqual({ numero: 'INC00000001', titolo: 'Simile 1', severity: 'high', categoria: 'network', stato: 'resolved', team: 'NOC', similarita: 0.91 })
@@ -149,16 +200,59 @@ describe('suggestTriage — chiamata al modello', () => {
     expect((impact[2] as Record<string, unknown>)['ciIds']).toEqual(['a', 'b', 'c', 'd', 'e'])
   })
 
+  // ── A-2: i valori ammessi sono quelli di QUESTO cliente ───────────────────
+  // `incident` è un tipo spedito col prodotto: il suo `USES_ENUM` è unico per
+  // tutti, e letto senza ambito portava qui i vocabolari del cliente che li
+  // aveva agganciati per primo (dal vivo: c-one).
+
+  it('il vocabolario agganciato si legge solo se di sistema o del tenant, e il tipo incident è quello condiviso', async () => {
+    await suggestTriage(input)
+    const enumCalls = vi.mocked(runQuery).mock.calls.filter((c) => (c[1] as string).includes('CITypeDefinition'))
+    expect(enumCalls).toHaveLength(2)
+    for (const c of enumCalls) {
+      expect(c[1]).toContain("WHERE t.tenant_id IN [$tenantId, 'system']")
+      expect(c[1]).toContain("WHERE e.tenant_id IN [$tenantId, 'system']")
+    }
+  })
+
+  it('la personalizzazione del tenant (stesso nome) vince sui valori agganciati', async () => {
+    h.ownEnums.push({ id: 'own-sev', name: 'severity', values: ['bassa', 'alta'] })
+    vi.mocked(runQuery).mockImplementation(async (_s: unknown, cypher: string, params?: Record<string, unknown>) => {
+      if (cypher.includes('CITypeDefinition')) {
+        return [params?.['field'] === 'severity'
+          ? { values: ['low', 'high'], enumId: 'sys-sev', enumName: 'severity' }
+          : { values: ['network'],     enumId: 'sys-cat', enumName: 'category' }]
+      }
+      if (cypher.includes('db.index.vector.queryNodes')) return SIMILAR
+      return []
+    })
+    h.create.mockResolvedValue(modelReply(JSON.stringify({ ...SUGGESTION, severity: 'alta', category: 'network' })))
+    await suggestTriage({ ...input, ciIds: [] })
+    const outputConfig = h.create.mock.calls[0]![0]['output_config'] as { format: { schema: { properties: Record<string, { enum?: string[] }> } } }
+    // i valori del vocabolario agganciato (low/high) non arrivano al modello
+    expect(outputConfig.format.schema.properties['severity']!.enum).toEqual(['bassa', 'alta'])
+    expect(outputConfig.format.schema.properties['category']!.enum).toEqual(['network'])
+  })
+
   it('senza CI non interroga l\'impatto e passa impatto_ci vuoto', async () => {
     await suggestTriage({ ...input, ciIds: [] })
     expect(vi.mocked(runQuery).mock.calls.some(c => (c[1] as string).includes('BusinessCapability'))).toBe(false)
-    const userContent = JSON.parse((h.create.mock.calls[0]![0]['messages'] as Array<{ content: string }>)[0]!.content) as Record<string, unknown>
+    const sistema = h.create.mock.calls[0]![0]['system'] as Array<{ text: string }>
+    const userContent = JSON.parse(sistema[sistema.length - 1]!.text) as Record<string, unknown>
     expect(userContent['impatto_ci']).toEqual([])
   })
 
-  it('output JSON non parsabile → errore esplicito (nessun triage vuoto)', async () => {
+  it('output JSON non parsabile → errore con una chiave da leggere (nessun triage vuoto)', async () => {
+    /*
+     * Prima usciva il `SyntaxError` crudo di `JSON.parse`: un 500 con un
+     * messaggio che parla di posizioni in una stringa che l'utente non ha mai
+     * visto. Dall'ondata 8 passa dal client condiviso, che alza un errore con
+     * la sua chiave i18n — ed è la stessa per tutte le funzioni AI.
+     */
     h.create.mockResolvedValue(modelReply('{"severity": "high", '))
-    await expect(suggestTriage(input)).rejects.toThrow(SyntaxError)
+    const err = await failure(suggestTriage(input))
+    expect(err).toBeInstanceOf(GraphQLError)
+    expect((err as GraphQLError).extensions['i18n']).toEqual({ key: 'errors.ai.badAnswer' })
   })
 
   it('refusal → INTERNAL_SERVER_ERROR; risposta senza blocco testo → errore', async () => {
@@ -168,7 +262,7 @@ describe('suggestTriage — chiamata al modello', () => {
     expect((err as GraphQLError).extensions['code']).toBe('INTERNAL_SERVER_ERROR')
 
     h.create.mockResolvedValue(modelReply(null))
-    await expect(suggestTriage(input)).rejects.toThrow('[triage] risposta senza blocco testo')
+    await expect(suggestTriage(input)).rejects.toThrow('[triage] response without a text block')
   })
 
   it('errore del provider propaga (no-fallback)', async () => {

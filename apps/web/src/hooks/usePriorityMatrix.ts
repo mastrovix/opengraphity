@@ -1,0 +1,55 @@
+/**
+ * La matrice della priorità **del cliente** (revisione delle otto ondate ·
+ * C·N-3).
+ *
+ * Il web teneva una copia della matrice 3×3 in `lib/priority.ts`, con i valori
+ * di impatto e urgenza scritti a mano. Ma la matrice è dato del cliente
+ * dall'ondata 7, e i vocabolari si possono rinominare: chi lo faceva vedeva nel
+ * form i tre bottoni vecchi e ogni invio veniva rifiutato dal server. La query
+ * `domainMatrices` esisteva già e restituisce sia le celle sia i valori
+ * ammessi: qui si usa quella.
+ *
+ * `fetchPolicy: METAMODEL_FETCH_POLICY` come per gli altri metamodelli: la matrice
+ * cambia raramente e la pagina delle Matrici di dominio la riscrive quando
+ * serve.
+ */
+import { useMemo } from 'react'
+import { useQuery } from '@apollo/client/react'
+import { GET_DOMAIN_MATRICES } from '@/graphql/queries'
+import type { PriorityMatrix } from '@/lib/priority'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+
+interface MatrixOut {
+  kind:         string
+  inputs:       string[]
+  output:       string
+  inputValues:  string[][]
+  outputValues: string[]
+  cells:        { key: string; inputs: string[]; value: string | null }[]
+}
+
+export function usePriorityMatrix(): { matrix: PriorityMatrix | null; loading: boolean; error: Error | null } {
+  // `cache-and-network` e non `cache-first` (terza revisione · M4): la matrice
+  // e DATO DEL CLIENTE e cambia mentre l'app e aperta — una rinomina nel
+  // Dizionario riscrive le chiavi della matrice sul server. Con `cache-first`,
+  // l'admin che rinominava `low` in `basso` e poi apriva «Crea incident» nella
+  // stessa scheda vedeva ancora i bottoni vecchi, e ogni invio veniva rifiutato
+  // da `assertDomainValue`: cioe esattamente il difetto che questo hook esiste
+  // per chiudere, riaperto dalla cache. La cache serve ancora il primo
+  // fotogramma, la rete lo corregge.
+  const { data, loading, error } = useQuery(GET_DOMAIN_MATRICES, { fetchPolicy: METAMODEL_FETCH_POLICY })
+
+  const matrix = useMemo<PriorityMatrix | null>(() => {
+    const all = (data as { domainMatrices?: MatrixOut[] } | undefined)?.domainMatrices
+    const m = all?.find((x) => x.kind === 'priority')
+    if (!m) return null
+    return {
+      impacts:    m.inputValues[0] ?? [],
+      urgencies:  m.inputValues[1] ?? [],
+      priorities: m.outputValues,
+      cells:      m.cells,
+    }
+  }, [data])
+
+  return { matrix, loading, error: error ?? null }
+}

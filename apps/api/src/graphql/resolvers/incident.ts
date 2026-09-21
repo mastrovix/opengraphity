@@ -1,9 +1,10 @@
 import type { GraphQLResolveInfo } from 'graphql'
+import { requestCustomFieldDefs } from './ticketCustomFields.js'
+import { customFieldValueMap, type CustomFieldInput } from '../../lib/ticketCustomFields.js'
 import { resolvePriorityPatch } from '../../lib/priority.js'
 import { propsToFieldValues as mergedFieldValues } from '../../lib/validateRequiredFields.js'
-import { requireRole } from '../../lib/requireRole.js'
-import { NotFoundError } from '../../lib/errors.js'
-import { v4 as uuidv4 } from 'uuid'
+import { requirePermission } from '../../lib/permissions.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import { mapUser, mapTeam, mapIncident } from '../../lib/mappers.js'
@@ -13,7 +14,18 @@ import type { GraphQLContext } from '../../context.js'
 import * as incidentService from '../../services/incidentService.js'
 import { audit } from '../../lib/audit.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
-import { ciLabelPredicate } from '../../lib/ciLabels.js'
+import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
+import { assertCIsLinkable } from '../../lib/ticketCIExclusions.js'
+import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
+import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
+import { commentAuthorKind, commentAuthorLabel, commentTrace } from '../../lib/commentAuthor.js'
+import { writeTicketComment } from '../../lib/ticketComments.js'
+import { notifyCommentAudience } from './comments.js'
+import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
+import { publishEvent } from '../../lib/publishEvent.js'
+import { listPage } from '../../lib/listLimit.js'
+import { serviceRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
+import { orderByOrThrow } from '../../lib/sortField.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
@@ -22,7 +34,15 @@ type Props = Record<string, unknown>
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
-const INCIDENT_SORT_WHITELIST: Record<string, string> = {
+/**
+ * `number` c'è perché la colonna del web è ordinabile (revisione totale · B-9):
+ * mancava, il resolver ricadeva su `created_at DESC` e la tabella mostrava la
+ * freccia su una colonna che non ordinava. Il numero è una stringa con lo
+ * stesso prefisso e lo stesso numero di cifre, quindi l'ordine lessicale è
+ * quello cronologico.
+ */
+export const INCIDENT_SORT_WHITELIST: Record<string, string> = {
+  number:    'number',
   title:     'title',
   severity:  'severity',
   status:    'status',
@@ -30,10 +50,10 @@ const INCIDENT_SORT_WHITELIST: Record<string, string> = {
 }
 
 function incidentOrderBy(sortField?: string | null, sortDirection?: string | null): string {
-  const col = sortField && INCIDENT_SORT_WHITELIST[sortField]
-  if (!col) return 'i.created_at DESC'
-  const dir = sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
-  return `i.${col} ${dir}`
+  // A-22: un campo non ordinabile è un errore, non un ordine diverso in
+  // silenzio. Le colonne della whitelist sono senza alias: si aggiunge qui.
+  const prefixed = Object.fromEntries(Object.entries(INCIDENT_SORT_WHITELIST).map(([k, v]) => [k, `i.${v}`]))
+  return orderByOrThrow(prefixed, sortField, sortDirection ?? 'desc', 'i.created_at DESC', 'incidents(sortField)')
 }
 
 async function incidents(
@@ -42,7 +62,8 @@ async function incidents(
   ctx: GraphQLContext,
   info: GraphQLResolveInfo,
 ) {
-  const { status, severity, limit = 50, offset = 0, filters, sortField, sortDirection } = args
+  const { status, severity, filters, sortField, sortDirection } = args
+  const { limit, offset } = listPage(args, 50)
 
   return withSession(async (session) => {
     const params: Record<string, unknown> = {
@@ -52,8 +73,9 @@ async function incidents(
       offset,
       limit,
     }
-    const allowedFields = getScalarFields(info.schema, 'Incident')
-    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'i') : ''
+    // I campi del cliente si filtrano come quelli del prodotto (ondata 4).
+    const allowedFields = new Set([...getScalarFields(info.schema, 'Incident'), ...(await requestCustomFieldDefs(ctx, 'incident')).map((d) => d.name)])
+    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'i', {}, 'Incident') : ''
     const whereClause = `
       WHERE ($status   IS NULL OR i.status   = $status)
         AND ($severity IS NULL OR i.severity = $severity)
@@ -67,7 +89,7 @@ async function incidents(
       WITH i, u, t ORDER BY ${incidentOrderBy(sortField, sortDirection)}
       SKIP toInteger($offset) LIMIT toInteger($limit)
       OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci)
-      WITH i, u, t, collect(DISTINCT {props: properties(ci), label: labels(ci)[0]}) AS cis
+      WITH i, u, t, collect(DISTINCT {props: properties(ci), label: head([l IN labels(ci) WHERE l <> 'ConfigurationItem'])}) AS cis
       RETURN properties(i) AS props, properties(u) AS uProps, properties(t) AS tProps, cis
     `, params)
     const countRows = await runQuery<{ total: number }>(session, `
@@ -83,7 +105,7 @@ async function incidents(
         base.affectedCIs  = r.cis
           .filter((c) => c.props && c.props['id'])
           .map((c) => {
-            const t = ciTypeFromLabels([c.label])
+            const t = ciTypeFromLabels(ctx.tenantId, [c.label])
             c.props['type'] = t
             const ci = mapCI(c.props) as Record<string, unknown>
             ci['ciType']     = t
@@ -120,15 +142,17 @@ async function incident(
 
 async function createIncident(
   _: unknown,
-  args: { input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[] } },
+  args: { input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null ; customFields?: CustomFieldInput[] | null } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
     await validateRequiredFields(session, {
       entityType:  'incident',
-      fieldValues: args.input as Record<string, unknown>,
+      // Le regole di obbligatorietà valgono anche sui campi del cliente (ondata 4).
+      fieldValues: { ...(args.input as Record<string, unknown>), ...customFieldValueMap(args.input.customFields) },
       tenantId:    ctx.tenantId,
     })
+    assertMayAcknowledgeNoSla(ctx, args.input.acknowledgeNoSla)
     const result = await incidentService.createIncident(args.input, ctx)
     void audit(ctx, 'incident.created', 'Incident', result.id as string)
     return result
@@ -160,16 +184,22 @@ async function updateIncident(
     // Priorità (severity) = Impatto × Urgenza, sempre coerenti tra loro:
     //  - impact/urgency nella patch → severity ricalcolata (merge col corrente);
     //  - solo severity nella patch → impact/urgency riallineati alla severity.
-    const { severity, impact, urgency } = resolvePriorityPatch(
+    const { severity, impact, urgency } = await resolvePriorityPatch(
+      ctx.tenantId,
       { impact: current.props['impact'] as string | null, urgency: current.props['urgency'] as string | null },
       { priority: input.severity, impact: input.impact, urgency: input.urgency },
     )
 
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      // La descrizione si può SVUOTARE (revisione totale · B-17): con
+      // «coalesce» null e assente erano la stessa cosa, e chi cancellava un
+      // testo sbagliato lo ritrovava lì dopo il salvataggio. Ora conta se il
+      // campo è presente nell'input. Il titolo no: un ticket senza titolo non
+      // si riconosce in nessun elenco.
       SET i += {
         title:       coalesce($title, i.title),
-        description: coalesce($description, i.description),
+        description: CASE WHEN $descriptionGiven THEN $description ELSE i.description END,
         severity:    coalesce($severity, i.severity),
         impact:      coalesce($impact, i.impact),
         urgency:     coalesce($urgency, i.urgency),
@@ -185,6 +215,8 @@ async function updateIncident(
       tenantId:    ctx.tenantId,
       title:       input.title       ?? null,
       description: input.description ?? null,
+      // B-17: «presente nell'input» distingue il vuoto dall'assenza.
+      descriptionGiven: Object.prototype.hasOwnProperty.call(input, 'description'),
       severity,
       impact,
       urgency,
@@ -192,6 +224,7 @@ async function updateIncident(
     })
     const row = rows[0]
     if (!row) throw new NotFoundError('Incident', id)
+    await publishTicketUpdated(ctx, 'incident', id, current.props, row.props)
     return mapIncident(row.props)
   }, true)
 }
@@ -204,14 +237,44 @@ async function resolveIncident(
   return incidentService.resolveIncident(args.id, ctx, args.rootCause)
 }
 
+/*
+ * LE ASSEGNAZIONI DICONO CHI, DA CHI E A COSA (20 set 2026, ondata 2 di
+ * «Miglioramento continuo»).
+ *
+ * Prima queste due scrivevano la STESSA riga — `incident.assigned` senza
+ * dettagli — e dal registro non si poteva sapere né a chi era andato il
+ * ticket, né da chi veniva, né se l'assegnazione era a una squadra o a una
+ * persona. Su c-one tutte e 34 le voci avevano `details = NULL`.
+ *
+ * Adesso sono due azioni distinte con il valore prima e dopo. Le voci
+ * storiche restano povere: un registro di conformità non si riscrive.
+ */
 async function assignIncidentToTeam(
   _: unknown,
   args: { id: string; teamId: string },
   ctx: GraphQLContext,
 ) {
-  const result = await incidentService.assignIncidentToTeam(args.id, args.teamId, ctx)
-  void audit(ctx, 'incident.assigned', 'Incident', args.id)
-  return result
+  const { incident, teamName, previousTeamName, unassignedUserName } =
+    await incidentService.assignIncidentToTeam(args.id, args.teamId, ctx)
+  void audit(ctx, 'incident.assigned_team', 'Incident', args.id, {
+    teamId: args.teamId, to: teamName, from: previousTeamName,
+  })
+  /*
+   * CHI PERDE IL TICKET LO DICE IL REGISTRO (20 set 2026).
+   *
+   * Cambiare squadra stacca l'assegnatario che nella squadra nuova non c'è
+   * (`setTicketTeam`, regola M-10). Finora lo diceva solo la timeline del
+   * ticket: dal registro, una persona si vedeva sparire il lavoro senza che
+   * nessuna riga lo raccontasse, e «quante assegnazioni cadono per un cambio
+   * di squadra» non era una domanda rispondibile. `reason` distingue questa
+   * voce dal distacco che qualcuno ha chiesto a mano.
+   */
+  if (unassignedUserName) {
+    void audit(ctx, 'incident.unassigned_user', 'Incident', args.id, {
+      userId: null, to: null, from: unassignedUserName, reason: 'team_changed',
+    })
+  }
+  return incident
 }
 
 async function assignIncidentToUser(
@@ -219,33 +282,48 @@ async function assignIncidentToUser(
   args: { id: string; userId: string | null },
   ctx: GraphQLContext,
 ) {
-  const result = await incidentService.assignIncidentToUser(args.id, args.userId, ctx)
-  void audit(ctx, 'incident.assigned', 'Incident', args.id)
-  return result
+  const { incident, userName, previousUserName } = await incidentService.assignIncidentToUser(args.id, args.userId, ctx)
+  /*
+   * Un distacco che non stacca nessuno non si scrive (20 set 2026): togliere
+   * l'assegnatario a un ticket che non ne aveva è un'operazione legittima e
+   * senza effetto, e una voce `unassigned_user` con `from: null` e `to: null`
+   * racconta un fatto che non è successo. Il registro dell'ondata 2 esiste
+   * perché lo si possa leggere: il rumore che assomiglia a un evento è peggio
+   * di una voce in meno.
+   */
+  if (args.userId !== null || previousUserName !== null) {
+    void audit(ctx, args.userId === null ? 'incident.unassigned_user' : 'incident.assigned_user', 'Incident', args.id, {
+      userId: args.userId, to: userName, from: previousUserName,
+    })
+  }
+  return incident
 }
 
 async function addAffectedCI(
   _: unknown,
-  args: { incidentId: string; ciId: string; relationType?: string | null },
+  args: { incidentId: string; ciId: string },
   ctx: GraphQLContext,
 ) {
-  const { getAllowedCILabels } = await import('./itilRelations.js')
-  const allowedTypes = await getAllowedCILabels(ctx.tenantId, 'incident')
-  const ciWhereClause = allowedTypes.length > 0
-    ? `ANY(label IN labels(ci) WHERE label IN $allowedLabels)`
-    : ciLabelPredicate('ci')
-  const allowedLabels = allowedTypes.map((t) =>
-    t.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(''),
-  )
+  // CM-8: i tipi di CI esclusi per gli incident non si collegano, qui come
+  // alla creazione (prima valevano solo qui, e come elenco degli ammessi).
+  await assertCIsLinkable(ctx.tenantId, 'incident', [args.ciId])
+  const ciWhereClause = await ciLabelPredicateForTenant('ci', ctx.tenantId)
 
   return withSession(async (session) => {
-    await session.executeWrite((tx) => tx.run(`
+    // Righe CONTATE come in `createIncident` (C-2): se il CI non esiste in
+    // questo cliente il MERGE non scrive niente — e prima la mutation
+    // rispondeva con l'incident intatto, come se il collegamento ci fosse.
+    const res = await session.executeWrite((tx) => tx.run(`
       MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
       WHERE ${ciWhereClause}
       MERGE (i)-[r:AFFECTED_BY]->(ci)
-      SET i.updated_at = $now, r.relation_type = $relationType
-    `, { incidentId: args.incidentId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString(), allowedLabels, relationType: args.relationType ?? null }))
+      SET i.updated_at = $now
+      RETURN count(r) AS linked
+    `, { incidentId: args.incidentId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
+    if (Number(res.records[0]?.get('linked') ?? 0) === 0) {
+      throw new ValidationError(`CI ${args.ciId} not linked to the incident: it does not exist in this tenant`, { key: 'errors.ciLink.incident', params: { ci: args.ciId } })
+    }
     const r = await session.executeRead((tx) => tx.run(
       `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
       { id: args.incidentId, tenantId: ctx.tenantId },
@@ -280,40 +358,37 @@ async function removeAffectedCI(
 
 async function addIncidentComment(
   _: unknown,
-  args: { id: string; text: string },
+  args: { id: string; text: string; isInternal?: boolean | null },
   ctx: GraphQLContext,
 ) {
-  const commentId = uuidv4()
-  const now       = new Date().toISOString()
-
+  // Un modello solo (lib/ticketComments.ts). Senza scelta esplicita è una nota
+  // interna: una risposta pubblica a chi ha aperto il ticket si chiede.
+  const isInternal = args.isInternal !== false
   return withSession(async (session) => {
-    const cypher = `
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
-      MATCH (u:User {id: $userId, tenant_id: $tenantId})
-      CREATE (c:Comment {
-        id:         $commentId,
-        tenant_id:  $tenantId,
-        text:       $text,
-        author_id:  $userId,
-        created_at: $now,
-        updated_at: $now
-      })
-      CREATE (i)-[:HAS_COMMENT]->(c)
-      RETURN properties(c) AS cProps, properties(u) AS uProps
-    `
-    const rows = await runQuery<{ cProps: Props; uProps: Props }>(session, cypher, {
-      id: args.id, tenantId: ctx.tenantId, userId: ctx.userId, commentId, text: args.text, now,
+    const row = await writeTicketComment(session, {
+      entityType: 'incident', entityId: args.id, tenantId: ctx.tenantId,
+      text: args.text, authorId: ctx.userId, isInternal,
     })
-    const row = rows[0]
     if (!row) throw new NotFoundError('Incident', args.id)
-    return {
-      id:        row.cProps['id']         as string,
-      text:      row.cProps['text']       as string,
-      createdAt: row.cProps['created_at'] as string,
-      updatedAt: row.cProps['updated_at'] as string,
-      author:    mapUser(row.uProps),
-    }
+    void audit(ctx, 'comment.added', 'Incident', args.id, { commentId: row.comment['id'], isInternal })
+    // CO-3: stesse notifiche di ogni altro commento (osservatori, menzioni).
+    void notifyCommentAudience(ctx, 'incident', args.id, args.text, isInternal)
+    return mapComment(row.comment, row.author)
   }, true)
+}
+
+function mapComment(c: Props, u: Props | null) {
+  return {
+    id:          c['id']         as string,
+    text:        c['text']       as string,
+    isInternal:  c['is_internal'] === true,
+    createdAt:   c['created_at'] as string,
+    updatedAt:   c['updated_at'] as string,
+    author:      u ? mapUser(u) : null,
+    authorKind:  commentAuthorKind(c, !!u),
+    authorLabel: commentAuthorLabel(c),
+    ...commentTrace(c),
+  }
 }
 
 // ── Field resolvers ──────────────────────────────────────────────────────────
@@ -363,13 +438,13 @@ async function incidentAffectedCIs(
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:AFFECTED_BY]->(ci)
       WHERE ci.tenant_id = $tenantId
-      RETURN properties(ci) as props, labels(ci)[0] AS label
+      RETURN properties(ci) as props, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
     `
     const rows = await runQuery<{ props: Props; label: string }>(session, cypher, {
       id: parent.id, tenantId: ctx.tenantId,
     })
     return rows.map((r) => {
-      const t = ciTypeFromLabels([r.label])
+      const t = ciTypeFromLabels(ctx.tenantId, [r.label])
       r.props['type'] = t
       const ci = mapCI(r.props) as Record<string, unknown>
       ci['ciType']     = t
@@ -391,24 +466,41 @@ async function incidentImpactedApplications(
     // il percorso più breve verso un CI colpito; `path` è la catena di CI
     // ORDINATA dal CI colpito → … → applicazione (direzione di propagazione
     // dell'impatto), pronta da disegnare come grafo lato UI.
+    // CM-3: le relazioni dei servizi del tenant (anche INSTALLED_ON,
+    // USES_CERTIFICATE e quelle del cliente), non due scritte qui.
+    const relPattern = await serviceRelPatternForTenant(ctx.tenantId)
+    /**
+     * Le CANDIDATE prima dei cammini (revisione totale · B-34): la query
+     * partiva da OGNI applicazione del cliente e cercava il cammino più breve
+     * verso ogni CI colpito — un prodotto cartesiano (500 applicazioni × 5 CI
+     * = 2.500 `shortestPath` a ogni apertura del dettaglio). Ora si risale
+     * dai CI colpiti, che sono pochi, per trovare le applicazioni davvero
+     * collegate; il cammino più breve si calcola solo per quelle.
+     */
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:AFFECTED_BY]->(affected)
       WHERE affected.tenant_id = $tenantId
-      MATCH (app) WHERE app.tenant_id = $tenantId AND 'Application' IN labels(app)
-      MATCH p = shortestPath( (app)-[:DEPENDS_ON|HOSTED_ON*0..5]->(affected) )
+      WITH collect(DISTINCT affected) AS targets
+      UNWIND targets AS target
+      MATCH (candidate)-[:${relPattern}*0..5]->(target)
+      WHERE candidate.tenant_id = $tenantId AND 'Application' IN labels(candidate)
+      WITH targets, collect(DISTINCT candidate) AS apps
+      UNWIND apps AS app
+      UNWIND targets AS affected
+      MATCH p = shortestPath( (app)-[:${relPattern}*0..5]->(affected) )
       WITH app, affected, p
       ORDER BY length(p) ASC
       WITH app, head(collect({affected: affected, p: p})) AS best
-      RETURN properties(app) AS props, labels(app)[0] AS label,
+      RETURN properties(app) AS props, head([l IN labels(app) WHERE l <> 'ConfigurationItem']) AS label,
              length(best.p) AS distance, best.affected.name AS via,
-             [n IN reverse(nodes(best.p)) | {id: n.id, name: n.name, type: labels(n)[0]}] AS path
+             [n IN reverse(nodes(best.p)) | {id: n.id, name: n.name, type: head([l IN labels(n) WHERE l <> 'ConfigurationItem'])}] AS path
       ORDER BY distance ASC, props.name ASC
     `
     const rows = await runQuery<{ props: Props; label: string; distance: number; via: string | null; path: Array<{ id: string; name: string; type: string }> }>(
       session, cypher, { id: parent.id, tenantId: ctx.tenantId },
     )
     return rows.map((r) => {
-      const t = ciTypeFromLabels([r.label])
+      const t = ciTypeFromLabels(ctx.tenantId, [r.label])
       r.props['type'] = t
       const ci = mapCI(r.props) as Record<string, unknown>
       ci['ciType']     = t
@@ -417,7 +509,7 @@ async function incidentImpactedApplications(
         ci,
         distance: Number(r.distance),
         via: r.via,
-        path: r.path.map((n) => ({ id: n.id, name: n.name, type: ciTypeFromLabels([n.type]) })),
+        path: r.path.map((n) => ({ id: n.id, name: n.name, type: ciTypeFromLabels(ctx.tenantId, [n.type]) })),
       }
     })
   })
@@ -438,54 +530,42 @@ async function incidentComments(
     const rows = await runQuery<{ cProps: Props; uProps: Props | null }>(session, cypher, {
       id: parent.id, tenantId: ctx.tenantId,
     })
-    return rows.map((r) => ({
-      id:        r.cProps['id']         as string,
-      text:      r.cProps['text']       as string,
-      createdAt: r.cProps['created_at'] as string,
-      updatedAt: r.cProps['updated_at'] as string,
-      author:    r.uProps ? mapUser(r.uProps) : null,
-    }))
+    return rows.map((r) => mapComment(r.cProps, r.uProps))
   })
 }
 
-async function incidentSlaStatus(
-  parent: { id: string; tenantId: string },
-  _: unknown,
-  ctx: GraphQLContext,
-) {
-  return withSession(async (session) => {
-    const result = await session.executeRead((tx) => tx.run(`
-      MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-      RETURN s ORDER BY s.started_at DESC LIMIT 1
-    `, { id: parent.id, tenantId: ctx.tenantId }))
-    if (!result.records.length) return null
-    const s = result.records[0]!.get('s').properties as Props
-    return {
-      startedAt:        s['started_at'],
-      responseDeadline: s['response_deadline'],
-      resolveDeadline:  s['resolve_deadline'],
-      responseMet:      Boolean(s['response_met']),
-      resolveMet:       Boolean(s['resolve_met']),
-      breached:         Boolean(s['breached']),
-      pausedAt:         (s['paused_at'] ?? null) as string | null,
-    }
-  })
-}
+const incidentSlaStatus = ticketSlaStatusResolver('Incident')
 
 // ── Export ───────────────────────────────────────────────────────────────────
 
+/**
+ * Dichiarare (o ritirare) un Major Incident — revisione del 14 set 2026 · IT-24:
+ * prima scriveva il flag e l'audit e basta. Nessun evento, quindi nessuna
+ * regola di notifica, automazione o webhook poteva reagire proprio nel momento
+ * in cui serve di più. L'evento parte solo quando il flag cambia davvero.
+ */
 async function setIncidentMajor(_: unknown, args: { id: string; major: boolean }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin', 'operator')
-  return withSession(async (session) => {
-    const rows = await runQuery<{ props: Props }>(session, `
+  requirePermission(ctx, 'incident.write')
+  const now = new Date().toISOString()
+  const { props, changed } = await withSession(async (session) => {
+    const rows = await runQuery<{ props: Props; was: unknown }>(session, `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      WITH i, coalesce(i.major, false) AS was
       SET i.major = $major, i.updated_at = $now
-      RETURN properties(i) as props
-    `, { id: args.id, tenantId: ctx.tenantId, major: args.major, now: new Date().toISOString() })
+      RETURN properties(i) as props, was
+    `, { id: args.id, tenantId: ctx.tenantId, major: args.major, now })
     if (!rows[0]) throw new NotFoundError('Incident', args.id)
-    void audit(ctx, args.major ? 'incident.major_declared' : 'incident.major_cleared', 'Incident', args.id)
-    return mapIncident(rows[0].props)
+    return { props: rows[0].props, changed: rows[0].was !== args.major }
   }, true)
+  if (changed) {
+    const type = args.major ? 'incident.major_declared' : 'incident.major_cleared'
+    void audit(ctx, type, 'Incident', args.id)
+    await publishEvent(type, ctx.tenantId, ctx.userId, {
+      id: args.id, title: props['title'] as string, severity: props['severity'] as string, status: props['status'] as string,
+      number: (props['number'] ?? null) as string | null,
+    }, now)
+  }
+  return mapIncident(props)
 }
 
 export const incidentResolvers = {

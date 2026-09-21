@@ -44,16 +44,47 @@ export function getTenantSlug(hostHeader: string): string | null {
   // portal.c-one.localhost → tenant is the second segment, not "portal"
   if (first === 'portal' && parts.length >= 3) return parts[1]!
 
+  /**
+   * Le etichette che NON sono un tenant (revisione totale · E-43): qualunque
+   * prima etichetta veniva presa per uno slug, quindi `www.opengrafo.com`
+   * mandava al realm Keycloak «www» e `api.opengrafo.com` al realm «api», con
+   * un errore che non spiegava niente. Sono nomi tecnici che nessun cliente
+   * può avere come slug: qui valgono come «nessun tenant», e chi serve l'app
+   * su un host così passa `VITE_TENANT_SLUG` (come per Tailscale).
+   */
+  if (NON_TENANT_LABELS.has(first.toLowerCase())) return null
+
   return first
 }
+
+/**
+ * Nomi tecnici che non sono clienti (E-43). L'elenco è corto di proposito:
+ * ogni voce è un'etichetta che un'installazione usa per sé, non uno slug che
+ * l'onboarding possa assegnare.
+ */
+const NON_TENANT_LABELS: ReadonlySet<string> = new Set([
+  'www', 'api', 'app', 'admin', 'static', 'assets', 'cdn', 'mail', 'grafana', 'prometheus',
+])
 
 export interface RequireTenantSlugOptions {
   /** Usually `window.location.hostname`. */
   hostname: string
   /**
-   * Explicit override (`VITE_TENANT_SLUG`): wins over the hostname. Used when
-   * the app is served on a host whose first label is not the tenant (Tailscale
-   * MagicDNS, plain `localhost:5174` in dev). Empty string counts as unset.
+   * Explicit override (`VITE_TENANT_SLUG`). Serve quando l'app e servita su un
+   * host la cui prima etichetta NON e il tenant (Tailscale MagicDNS, dove
+   * `getTenantSlug` restituirebbe `macbook-pro-di-vittorio`; `localhost:5174`
+   * in sviluppo). Stringa vuota = non impostato.
+   *
+   * PRECEDENZA (terza revisione): vince sull'hostname **tranne** sugli host
+   * `*.localhost`, dove decide l'hostname.
+   *
+   * Prima vinceva sempre, e la conseguenza era che un'installazione locale
+   * multi-tenant poteva raggiungerne UNO SOLO: il bundle e costruito una volta
+   * con lo slug dentro, quindi `c-two.localhost` finiva sul realm `c-one` e
+   * Keycloak rifiutava il `redirect_uri`. In produzione gli host sono
+   * `<tenant>.opengrafo.com` e non cambia niente — l'override, se impostato,
+   * continua a vincere — mentre in locale ogni sottodominio apre il suo
+   * tenant, che e il motivo per cui nginx li instrada.
    */
   override?: string | undefined
   /** Example host shown in the error, e.g. `c-one.localhost:5173`. */
@@ -64,12 +95,23 @@ export interface RequireTenantSlugOptions {
  * Tenant slug for the running app, or a readable error. Never returns a
  * made-up default: without a tenant the Keycloak realm cannot be chosen.
  */
+/** Host di sviluppo locale: `*.localhost`, dove la prima etichetta e il tenant. */
+function isLocalhostSubdomain(hostname: string): boolean {
+  const host = hostname.split(',')[0]!.trim().split(':')[0]!
+  return host.endsWith('.localhost')
+}
+
 export function requireTenantSlug(opts: RequireTenantSlugOptions): string {
-  if (opts.override) return opts.override
   const slug = getTenantSlug(opts.hostname)
+  // Su `*.localhost` l'hostname ha la precedenza: e l'unico modo di aprire piu
+  // di un tenant da un bundle costruito una volta sola (vedi `override`).
+  if (slug && isLocalhostSubdomain(opts.hostname)) return slug
+  if (opts.override) return opts.override
   if (slug) return slug
+  // H-34: in inglese come gli altri messaggi di bootstrap — qui non c'e
+  // ancora un tenant, quindi non c'e una lingua del cliente da rispettare.
   throw new Error(
-    `Nessun tenant nel sottodominio ("${opts.hostname}"). ` +
-    `Accedi tramite: ${opts.hint} oppure imposta VITE_TENANT_SLUG.`,
+    `No tenant in the subdomain ("${opts.hostname}"). ` +
+    `Open the app as: ${opts.hint} — or set VITE_TENANT_SLUG.`,
   )
 }

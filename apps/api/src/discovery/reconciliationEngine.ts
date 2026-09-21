@@ -8,9 +8,12 @@ import type {
   CIDiscoveryMetadata,
 } from '@opengraphity/discovery'
 import { applyMappingRules, inferCIType, normalizeProperties } from '@opengraphity/discovery'
+import { CITypeResolver } from './ciTypeResolution.js'
 import { logger } from '../lib/logger.js'
 import { FIELD_NAME_RE } from '../lib/cypherIdentifiers.js'
 import { ValidationError } from '../lib/errors.js'
+import { ciNameKey } from '../lib/ciNameKey.js'
+import { notifyCIGraphChanged } from '../services/serviceImpact/sync.js'
 import { toNum } from './connectors/normalize.js'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -24,6 +27,17 @@ export interface ReconciliationStats {
   relationsCreated: number
   relationsRemoved: number
 }
+
+/** Tipo di conflitto su `SyncConflict.conflict_kind` (ondata 6 · A-11). */
+export const CONFLICT_LOCKED_FIELDS = 'locked_fields'
+export const CONFLICT_UNKNOWN_CI_TYPE = 'unknown_ci_type'
+/**
+ * Il CI scoperto non è scrivibile così com'è (revisione totale · D-20): una
+ * chiave di proprietà fuori forma, o un valore che non è un tipo primitivo.
+ * Prima l'errore faceva cadere l'INTERO run con un messaggio che non nominava
+ * il CI; ora è un conflitto come gli altri, e il resto del run continua.
+ */
+export const CONFLICT_INVALID_PROPERTIES = 'invalid_properties'
 
 interface ExistingCI {
   id:            string
@@ -51,14 +65,40 @@ export async function reconcileBatch(
   stats:     ReconciliationStats,
 ): Promise<void> {
   const session = getSession()
+  // Servizi monitorati (ondata 5): gli id dei CI le cui relazioni sono state
+  // toccate in questo lotto. UNA notifica alla fine con tutti gli id (non una
+  // per relazione): un lotto che tocca 500 relazioni produce comunque una
+  // sincronizzazione per mappa, non 500.
+  const touched = new Set<string>()
   try {
+    // A-11: i tipi attivi del cliente e gli alias della sorgente, UNA volta per
+    // lotto. Se il metamodello non si legge il run fallisce: continuare
+    // significherebbe inventare etichette, che è il difetto che si sta chiudendo.
+    const ciTypes = await CITypeResolver.forSource(tenantId, source)
     for (const raw of batch) {
       const ci = applyMappingRules(raw, source.mapping_rules ?? [])
-      await reconcileOne(ci, source, runId, tenantId, stats, session)
+      try {
+        await reconcileOne(ci, source, runId, tenantId, stats, session, touched, ciTypes)
+      } catch (err) {
+        /**
+         * Un CI che non si può scrivere è UN conflitto, non la fine del run
+         * (revisione totale · D-20). Vale per gli errori di forma del CI
+         * scoperto (proprietà non primitive, chiavi fuori forma): un errore
+         * del database o del metamodello riguarda tutto il lotto e continua a
+         * propagarsi, perché ritentare ha senso solo per quello.
+         */
+        if (!(err instanceof ValidationError)) throw err
+        await createInvalidPropertiesConflict(session, ci, err.message, source, runId, tenantId, new Date().toISOString())
+        stats.ciConflicts++
+      }
     }
   } finally {
     await session.close()
   }
+  // Dopo il commit del lotto e senza mai lanciare: la CMDB è già scritta, un
+  // errore di coda non deve far fallire la discovery (la passata di sicurezza
+  // dei servizi recupera entro 30 minuti).
+  await notifyCIGraphChanged(tenantId, [...touched], `discovery.reconciled:${source.id}`)
 }
 
 async function reconcileOne(
@@ -68,9 +108,21 @@ async function reconcileOne(
   tenantId:   string,
   stats:      ReconciliationStats,
   session:    Session,
+  touched:    Set<string>,
+  ciTypes:    CITypeResolver,
 ): Promise<void> {
-  const ciType   = discovered.ci_type ?? inferCIType(discovered)
-  const label    = ciTypeToLabel(ciType)
+  const rawType = discovered.ci_type ?? inferCIType(discovered)
+  // A-11 — LA PORTA. Prima l'etichetta era il PascalCase della stringa in
+  // arrivo, senza nessun controllo: un `ci_type` che non esiste creava un CI
+  // con un'etichetta che nessuna pagina mostra, e il run lo contava «creato».
+  const resolution = ciTypes.resolve(rawType)
+  if (!resolution.ok) {
+    await createUnknownTypeConflict(session, discovered, rawType, resolution.reason, source, runId, tenantId, new Date().toISOString())
+    stats.ciConflicts++
+    return
+  }
+  const ciType   = resolution.type.name
+  const label    = resolution.type.label
   const now      = new Date().toISOString()
 
   // ── 1. Find existing CI by external_id + source ───────────────────────────
@@ -94,6 +146,14 @@ async function reconcileOne(
     const conflicts = detectConflicts(discovered, existing)
     if (conflicts.length > 0) {
       await createConflict(session, discovered, existing, conflicts, source, runId, tenantId, now)
+      // Il CI è stato VISTO: i marcatori della discovery si scrivono comunque
+      // (D-8), altrimenti un conflitto su un campo bloccato lo faceva sembrare
+      // sparito (`stale`) alla passata successiva.
+      await session.executeWrite(tx => tx.run(
+        `MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId})
+         SET ci.discovery_last_seen = $now, ci.discovery_status = 'active', ci.discovery_stale_since = null`,
+        { id: existing.id, tenantId, now },
+      ))
       stats.ciConflicts++
       return
     }
@@ -109,7 +169,7 @@ async function reconcileOne(
 
   // ── 3. Sync relations ────────────────────────────────────────────────────
   if (discovered.relationships && discovered.relationships.length > 0) {
-    const delta = await syncRelations(session, discovered, source, tenantId)
+    const delta = await syncRelations(session, discovered, source, tenantId, touched)
     stats.relationsCreated += delta.created
     stats.relationsRemoved += delta.removed
   }
@@ -134,17 +194,30 @@ export function assertDiscoveredPropertyKeys(props: Record<string, unknown>, ext
       `invalid: ${bad.map(k => JSON.stringify(k.slice(0, 60))).join(', ')} (normalize them in the connector mapping)`,
     )
   }
+  /**
+   * Anche i VALORI (revisione totale · D-20): il controllo guardava solo le
+   * chiavi, quindi un oggetto o un array di oggetti in una proprietà del JSON
+   * arrivava fino a `SET ci += $props` e Neo4j lo rifiutava («Property values
+   * can only be of primitive types») — l'INTERO run di discovery cadeva con un
+   * errore che non nominava né il CI né la proprietà. Ora il CI si ferma da
+   * solo, con il nome della proprietà, e il resto del run continua.
+   */
+  const notPrimitive = Object.entries(props).filter(([, v]) => {
+    if (v === null || v === undefined) return false
+    if (Array.isArray(v)) return v.some((x) => x !== null && typeof x === 'object')
+    return typeof v === 'object'
+  }).map(([k]) => k)
+  if (notPrimitive.length) {
+    throw new ValidationError(
+      `[reconcile] CI ${externalId}: these properties are not primitive values (Neo4j stores strings, numbers, booleans, `
+      + `or lists of those): ${notPrimitive.join(', ')}. Map them to single fields in the connector mapping, or drop them.`,
+    )
+  }
 }
 
-function ciTypeToLabel(ciType: string): string {
-  // Convert snake_case ci_type to PascalCase Neo4j label
-  const label = ciType
-    .split('_')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join('')
-  if (!SAFE_LABEL_RE.test(label)) throw new Error(`Invalid CI type label: ${ciType}`)
-  return label
-}
+// `ciTypeToLabel` non esiste più (ondata 6 · A-11): era il PascalCase della
+// stringa in arrivo, cioè il modo in cui la discovery inventava etichette.
+// L'etichetta viene dal tipo risolto nel metamodello (./ciTypeResolution.ts).
 
 async function findExisting(
   session:    Session,
@@ -230,6 +303,7 @@ async function createCI(
     id,
     tenant_id:  tenantId,
     name:       ci.name,
+    name_key:   ciNameKey(ci.name),   // riconoscimento per nome degli allarmi (lib/ciNameKey.ts)
     type:       ciType,
     created_at: now,
     updated_at: now,
@@ -292,17 +366,36 @@ async function updateCI(
     }
   }
 
+  // Il nome e i marcatori della discovery si scrivono SEMPRE (revisione totale
+  // · D-2): l'uscita anticipata stava prima di questa scrittura, quindi un CI
+  // rinominato alla sorgente non veniva mai rinominato, uno marcato `stale` che
+  // riappariva identico restava «sparito» per sempre, e `discovery_last_seen`
+  // non avanzava mai per i CI stabili. Il nome cambiato è una modifica come le
+  // altre, e come tale entra nella storia della sincronizzazione.
+  if (String(existing.props['name'] ?? '') !== ci.name) {
+    changedFields.push('name')
+    oldValues['name'] = existing.props['name'] ?? null
+    newValues['name'] = ci.name
+  }
+  const wasStale = existing.props['discovery_status'] !== 'active'
   updates['name']                 = ci.name
+  updates['name_key']             = ciNameKey(ci.name)
   updates['discovery_last_seen']  = now
   updates['discovery_status']     = 'active'
+  updates['discovery_stale_since'] = null
   updates['updated_at']           = now
-
-  if (changedFields.length === 0) return false
 
   await session.executeWrite(tx => tx.run(
     `MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId}) SET ci += $updates`,
     { id: existing.id, tenantId, updates },
   ))
+
+  // Niente da raccontare: il CI è stato rivisto uguale a com'era. Le proprietà
+  // di servizio sono già scritte qui sopra.
+  if (changedFields.length === 0) {
+    if (wasStale) logger.info({ ciId: existing.id, externalId: ci.external_id }, '[reconcile] CI seen again: no longer stale')
+    return false
+  }
 
   // Record the change for sync history
   const changeId = randomUUID()
@@ -343,17 +436,19 @@ async function createConflict(
   now:        string,
 ): Promise<void> {
   const id = randomUUID()
+  // Un conflitto APERTO per (sorgente, external_id, campi bloccati) — revisione
+  // totale · D-8: con un CREATE a ogni run un cron orario ne creava 24 al
+  // giorno per lo stesso campo, la pagina Conflitti si riempiva e risolverne
+  // uno lasciava gli altri aperti. Il conflitto si aggiorna col valore visto
+  // ora (`discovered_ci`, `run_id`, `last_seen_at`) e ne resta uno.
   await session.executeWrite(tx => tx.run(
-    `CREATE (c:SyncConflict {
-       id: $id, source_id: $sourceId, tenant_id: $tenantId, run_id: $runId,
-       external_id: $externalId, ci_type: $ciType,
-       conflict_fields: $conflictFields,
-       status: 'open',
-       discovered_ci: $discoveredCi,
-       existing_ci_id: $existingCiId,
-       match_reason: 'external_id',
-       created_at: $now
-     })`,
+    `MERGE (c:SyncConflict {
+       source_id: $sourceId, tenant_id: $tenantId, external_id: $externalId,
+       conflict_fields: $conflictFields, conflict_kind: '${CONFLICT_LOCKED_FIELDS}', status: 'open'
+     })
+     ON CREATE SET c.id = $id, c.created_at = $now, c.match_reason = 'external_id'
+     SET c.run_id = $runId, c.ci_type = $ciType, c.discovered_ci = $discoveredCi,
+         c.existing_ci_id = $existingCiId, c.last_seen_at = $now`,
     {
       id,
       sourceId:       source.id,
@@ -370,14 +465,88 @@ async function createConflict(
   logger.warn({ id, externalId: discovered.external_id, conflicts }, '[reconcile] Conflict created')
 }
 
+/**
+ * Il CI non si crea perché il suo tipo non esiste (A-11): resta un
+ * `SyncConflict` di tipo `unknown_ci_type` con il motivo E cosa fare (creare il
+ * tipo o aggiungere un alias). `existing_ci_id` è vuoto — non c'è nessun CI
+ * esistente in ballo, qui il conflitto è fra il dato e il metamodello — e
+ * `match_reason` lo dice. Idempotente: uno per (sorgente, external_id, run).
+ */
+async function createUnknownTypeConflict(
+  session:    Session,
+  discovered: DiscoveredCI,
+  rawType:    string,
+  reason:     string,
+  source:     SyncSourceConfig,
+  runId:      string,
+  tenantId:   string,
+  now:        string,
+): Promise<void> {
+  const id = randomUUID()
+  await session.executeWrite(tx => tx.run(
+    `MERGE (c:SyncConflict {tenant_id: $tenantId, source_id: $sourceId, run_id: $runId, external_id: $externalId, conflict_kind: '${CONFLICT_UNKNOWN_CI_TYPE}'})
+     ON CREATE SET
+       c.id = $id, c.ci_type = $ciType, c.conflict_fields = $conflictFields, c.status = 'open',
+       c.discovered_ci = $discoveredCi, c.existing_ci_id = '', c.match_reason = 'ci_type',
+       c.message = $message, c.created_at = $now
+     ON MATCH SET c.message = $message, c.discovered_ci = $discoveredCi`,
+    {
+      id, tenantId, sourceId: source.id, runId,
+      externalId:     discovered.external_id,
+      ciType:         rawType,
+      conflictFields: JSON.stringify(['ci_type']),
+      discoveredCi:   JSON.stringify(discovered),
+      message:        reason,
+      now,
+    },
+  ))
+  logger.warn({ externalId: discovered.external_id, ciType: rawType, sourceId: source.id, runId, tenantId, reason },
+    '[reconcile] CI non creato: il ci_type non esiste nel metamodello del cliente')
+}
+
+/** D-20: il CI scoperto non è scrivibile (proprietà non primitive, chiavi fuori forma). */
+async function createInvalidPropertiesConflict(
+  session:    Session,
+  discovered: DiscoveredCI,
+  reason:     string,
+  source:     SyncSourceConfig,
+  runId:      string,
+  tenantId:   string,
+  now:        string,
+): Promise<void> {
+  const id = randomUUID()
+  await session.executeWrite(tx => tx.run(
+    `MERGE (c:SyncConflict {tenant_id: $tenantId, source_id: $sourceId, run_id: $runId, external_id: $externalId, conflict_kind: '${CONFLICT_INVALID_PROPERTIES}'})
+     ON CREATE SET
+       c.id = $id, c.ci_type = $ciType, c.conflict_fields = $conflictFields, c.status = 'open',
+       c.discovered_ci = $discoveredCi, c.existing_ci_id = '', c.match_reason = 'properties',
+       c.message = $message, c.created_at = $now
+     ON MATCH SET c.message = $message, c.discovered_ci = $discoveredCi`,
+    {
+      id, tenantId, sourceId: source.id, runId,
+      externalId:     discovered.external_id,
+      ciType:         discovered.ci_type ?? '',
+      conflictFields: JSON.stringify(['properties']),
+      discoveredCi:   JSON.stringify(discovered),
+      message:        reason,
+      now,
+    },
+  ))
+  logger.warn({ externalId: discovered.external_id, sourceId: source.id, runId, tenantId, reason },
+    '[reconcile] CI non scritto: le proprietà scoperte non sono scrivibili nel grafo')
+}
+
 async function syncRelations(
   session:    Session,
   ci:         DiscoveredCI,
   source:     SyncSourceConfig,
   tenantId:   string,
+  touched:    Set<string>,
 ): Promise<{ created: number; removed: number }> {
   let created = 0
-  const removed = 0
+  let removed = 0
+  /** Le relazioni che la sorgente riporta ora: quelle del suo marcatore che non ci sono più vanno via (D-9). */
+  const reported: Array<{ toId: string; relType: string; direction: string }> = []
 
   const ciResult = await session.executeRead(tx => tx.run(
     `MATCH (ci:ConfigurationItem {discovery_external_id: $externalId, discovery_source_id: $sourceId, tenant_id: $tenantId})
@@ -405,22 +574,48 @@ async function syncRelations(
         `MATCH (a:ConfigurationItem {id: $fromId}), (b:ConfigurationItem {id: $toId})
          MERGE (a)-[r:${relType}]->(b)
          ON CREATE SET r.created_at = $now, r.discovery_source_id = $sourceId
-         RETURN r.created_at AS createdAt`,
+         RETURN r.created_at = $now AS isNew`,
         { fromId, toId, now: new Date().toISOString(), sourceId: source.id },
       ))
-      if (r.records.length) created++
+      // Creata ora, non «ritrovata»: prima ogni riga contava come creazione, e
+      // `relations_created` diceva il totale delle relazioni a ogni run (D-9).
+      if (r.records[0]?.get('isNew') === true) created++
     } else {
       const r = await session.executeWrite(tx => tx.run(
         // tenant-ok: id dei CI riconciliati in questo run (stesso tenant della sorgente)
         `MATCH (a:ConfigurationItem {id: $toId}), (b:ConfigurationItem {id: $fromId})
          MERGE (a)-[r:${relType}]->(b)
          ON CREATE SET r.created_at = $now, r.discovery_source_id = $sourceId
-         RETURN r.created_at AS createdAt`,
+         RETURN r.created_at = $now AS isNew`,
         { fromId, toId, now: new Date().toISOString(), sourceId: source.id },
       ))
-      if (r.records.length) created++
+      if (r.records[0]?.get('isNew') === true) created++
     }
+    // Entrambi i capi: la mappa può includere l'uno o l'altro.
+    touched.add(fromId)
+    touched.add(toId)
+    reported.push({ toId, relType, direction: rel.direction })
   }
+
+  // Le relazioni che QUESTA sorgente aveva creato da questo CI e che ora non
+  // riporta più si rimuovono (revisione totale · D-9): prima `removed` era
+  // sempre 0 e una `DEPENDS_ON` verso un target togliato dall'ELB restava per
+  // sempre, seguita da mappe dei servizi e soppressione degli allarmi. Si
+  // toccano solo le relazioni con il marcatore della sorgente: quelle scritte a
+  // mano nella CMDB non si cancellano.
+  const removeResult = await session.executeWrite(tx => tx.run(
+    // tenant-ok: id del CI riconciliato in questo run (stesso tenant della sorgente)
+    `MATCH (a:ConfigurationItem {id: $fromId})-[r]-(b:ConfigurationItem)
+     WHERE r.discovery_source_id = $sourceId
+       AND NOT [type(r), b.id, CASE WHEN startNode(r).id = $fromId THEN 'outgoing' ELSE 'incoming' END] IN $reported
+     DELETE r
+     RETURN count(r) AS n`,
+    {
+      fromId, sourceId: source.id,
+      reported: reported.map((x) => [x.relType, x.toId, x.direction]),
+    },
+  ))
+  removed += toNum(removeResult.records[0]?.get('n')) ?? 0
 
   return { created, removed }
 }

@@ -4,30 +4,47 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
-import { colors, lookupOrError } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
-import type { WorkflowDefinition, WorkflowKey } from './workflow-types'
+import type { WorkflowDefinition } from './workflow-types'
 import { ADD_WORKFLOW_STEP } from '@/graphql/mutations'
 import { Pill } from '@/components/ui/Pill'
+import { showError } from '@/lib/showError'
 
-const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
-  incident:  'Incident',
-  standard:  'Standard Change',
-  normal:    'Normal Change',
-  emergency: 'Emergency Change',
-}
-
+/**
+ * I tipi di passo che si possono aggiungere.
+ *
+ * Revisione delle otto ondate · B·M-1: qui c'erano solo i quattro tipi
+ * TECNICI, e per le change il bottone era nascosto del tutto. Quindi tutte e
+ * otto le ondate ragionavano sull'amministratore che «inserisce un passo CAB
+ * fra approvazione e programmazione» — e dall'interfaccia non si poteva: il
+ * solo modo era la mutation GraphQL a mano. Il difetto che le ondate hanno
+ * chiuso era raggiungibile solo via API, mentre quello che restava aperto
+ * (togliere lo scopo dalla tendina) con due clic.
+ *
+ * `standard` è il passo di processo, ed è il primo della lista perché è quello
+ * che serve normalmente.
+ */
 const SPECIAL_STEP_TYPES = [
-  { type: 'parallel_fork', label: '⑂ Fork',       name: 'parallel_fork' },
-  { type: 'parallel_join', label: '⑂ Join',       name: 'parallel_join' },
-  { type: 'timer_wait',    label: '⏱ Timer Wait', name: 'timer_wait'    },
-  { type: 'sub_workflow',  label: '⊞ Sub-Workflow', name: 'sub_workflow' },
+  // Terza revisione: le etichette erano LETTERALI, e mescolavano due lingue nel
+  // medesimo menu («Passo», «Fork», «Join», «Timer Wait», «Sub-Workflow»). Per
+  // un cliente inglese «Passo» restava «Passo». Il simbolo resta qui — e
+  // grafica, non testo — e la parola viene dal vocabolario delle traduzioni.
+  //
+  // ONDATA 10: qui c'erano anche «Biforcazione», «Ricongiunzione» e
+  // «Sotto-workflow». Il motore non li esegue — un `parallel_fork` seguiva UNA
+  // transizione come un passo normale, e chi aveva disegnato due rami ne
+  // vedeva partire uno solo, senza un errore. Offrire un attrezzo che non fa
+  // quello che disegna è peggio che non averlo. L'elenco di quello che il
+  // motore sa fare è `ADDABLE_STEP_TYPES` in `@opengraphity/types`, e un test
+  // tiene insieme le due sponde.
+  { type: 'standard',      glyph: '▢', labelKey: 'workflow.stepType.standard',      name: 'step'          },
+  { type: 'timer_wait',    glyph: '⏱', labelKey: 'workflow.stepType.timer_wait',    name: 'timer_wait'    },
 ]
 
 interface WorkflowToolbarProps {
   def:              WorkflowDefinition | null
-  selectedWorkflow: WorkflowKey
   hasChanges:       boolean
   pendingCount:     number
   onSave:           () => void
@@ -36,7 +53,6 @@ interface WorkflowToolbarProps {
 
 export function WorkflowToolbar({
   def,
-  selectedWorkflow,
   hasChanges,
   pendingCount,
   onSave,
@@ -45,15 +61,19 @@ export function WorkflowToolbar({
   const { t } = useTranslation()
   const navigate            = useNavigate()
   const [showAddStep, setShowAddStep] = useState(false)
-  const [stepType,    setStepType]    = useState('parallel_fork')
+  const [stepType,    setStepType]    = useState('standard')
   const [stepLabel,   setStepLabel]   = useState('')
   const [timerMins,   setTimerMins]   = useState('')
   const accentColor  = colors.brand
   const canSave      = (hasChanges || pendingCount > 0) && !!def
+  // Lo slug dell'etichetta: per un passo di processo È il nome, e il nome
+  // diventa lo stato del ticket. Un'etichetta che non produce nessuno slug
+  // («!!!», «2») darebbe un nome che il server rifiuta: meglio non offrirlo.
+  const stepSlug = stepLabel.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '').replace(/^[^a-z]+/, '')
 
   const [addWorkflowStep, { loading: addingStep }] = useMutation(ADD_WORKFLOW_STEP, {
     onCompleted: () => { toast.success(t('toast.workflow.stepAdded')); setShowAddStep(false); setStepLabel(''); setTimerMins(''); onRefetch?.() },
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
 
   return (
@@ -62,8 +82,8 @@ export function WorkflowToolbar({
       alignItems:      'center',
       justifyContent:  'space-between',
       padding:         '12px 24px',
-      borderBottom:    '1px solid #e2e6f0',
-      backgroundColor: '#ffffff',
+      borderBottom:    '1px solid var(--color-border)',
+      backgroundColor: colors.white,
       flexShrink:      0,
     }}>
       <div>
@@ -84,42 +104,32 @@ export function WorkflowToolbar({
           }}
         >
           <ArrowLeft size={13} aria-hidden="true" />
-          Workflow
+          {t('pages.workflow.title')}
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
-            {WORKFLOW_LABELS[selectedWorkflow]}
+            {/* Il nome del workflow del cliente. Revisione del 14 set 2026 · F16: era
+                «Incident» per gli incident e «Standard Change» per TUTTI gli altri
+                workflow, problem e service request compresi. */}
+            {def?.name ?? ''}
           </h1>
           {def && (
             <Pill bg="var(--color-brand-a08)" color={accentColor} radius={100} style={{ fontSize: 11 }}>
-              v{def.version} · Attivo
+              v{def.version} · {t('common.active')}
             </Pill>
           )}
-          {def?.changeSubtype && (() => {
-            const subtypeStyles: Record<string, { bg: string; fg: string }> = {
-              standard:  { bg: '#dcfce7', fg: '#166534' },
-              normal:    { bg: '#dbeafe', fg: '#1e40af' },
-              emergency: { bg: '#fee2e2', fg: '#991b1b' },
-            }
-            const s = lookupOrError(subtypeStyles, def.changeSubtype, 'subtypeStyles', { bg: 'var(--color-danger)', fg: '#fff' })
-            return (
-              <Pill bg={s.bg} color={s.fg} radius={4}>
-                {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}
-              </Pill>
-            )
-          })()}
         </div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {def && def.entityType !== 'change' && (
+        {def && (
           <button
             type="button"
             onClick={() => setShowAddStep(true)}
-            style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid #e2e6f0', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}
+            style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--color-border)', background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}
           >
-            + Step
+            + {t('workflow.addStep')}
           </button>
         )}
         <button
@@ -128,8 +138,8 @@ export function WorkflowToolbar({
           onClick={onSave}
           style={{
             padding:         '8px 18px',
-            backgroundColor: canSave ? accentColor : '#e2e6f0',
-            color:           canSave ? '#ffffff' : 'var(--color-slate-light)',
+            backgroundColor: canSave ? accentColor : colors.border,
+            color:           canSave ? colors.white : 'var(--color-slate-light)',
             border:          'none',
             borderRadius:    7,
             fontSize:        13,
@@ -140,7 +150,7 @@ export function WorkflowToolbar({
             gap:             8,
           }}
         >
-          Salva modifiche
+          {t('common.saveChanges')}
           {pendingCount > 0 && (
             <span style={{
               fontSize:        11,
@@ -161,47 +171,61 @@ export function WorkflowToolbar({
         <Modal
           open
           onClose={() => setShowAddStep(false)}
-          title="Aggiungi Step"
+          title={t('workflow.addStepDialog')}
           width={380}
           footer={
             <>
-              <Button variant="secondary" onClick={() => setShowAddStep(false)} style={{ padding: '7px 14px', border: '1px solid #e2e6f0' }}>Annulla</Button>
+              <Button variant="secondary" onClick={() => setShowAddStep(false)} style={{ padding: '7px 14px', border: '1px solid var(--color-border)' }}>{t('common.cancel')}</Button>
               <Button
-                disabled={!stepLabel.trim() || addingStep}
+                disabled={!stepLabel.trim() || addingStep || (stepType === 'standard' && !stepSlug)}
                 onClick={() => {
-                  const name = stepLabel.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+                  const name = stepSlug
+                  // Il nome di un passo di processo diventa lo `status` del
+                  // ticket, e finisce nei filtri e nei report: è lo slug
+                  // dell'etichetta, non `tipo_slug_timestamp` (revisione ·
+                  // B·M-1). Se quel nome è già usato il server lo dice; per i
+                  // tipi tecnici il nome generato resta, perché non è uno stato
+                  // che qualcuno legge.
+                  const stepName = stepType === 'standard'
+                    ? name
+                    : `${stepType}_${name}_${Date.now().toString(36)}`
                   void addWorkflowStep({ variables: {
-                    definitionId: def.id, name: `${stepType}_${name}_${Date.now().toString(36)}`,
+                    definitionId: def.id, name: stepName,
                     label: stepLabel.trim(), type: stepType,
                     timerDelayMinutes: stepType === 'timer_wait' && timerMins ? Number(timerMins) : undefined,
                   } })
                 }}
                 style={{ padding: '7px 16px', backgroundColor: accentColor, fontSize: 'var(--font-size-body)', fontWeight: 600 }}
               >
-                Aggiungi
+                {t('pages.questions.add')}
               </Button>
             </>
           }
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div>
-              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>TIPO</div>
+              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>{t('common.type').toUpperCase()}</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {SPECIAL_STEP_TYPES.map(s => (
-                  <button type="button" key={s.type} aria-pressed={stepType === s.type} onClick={() => setStepType(s.type)} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${stepType === s.type ? accentColor : '#e2e6f0'}`, background: stepType === s.type ? 'var(--color-brand-a08)' : '#fff', color: stepType === s.type ? accentColor : 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
-                    {s.label}
+                  <button type="button" key={s.type} aria-pressed={stepType === s.type} onClick={() => setStepType(s.type)} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${stepType === s.type ? accentColor : 'var(--color-border)'}`, background: stepType === s.type ? 'var(--color-brand-a08)' : colors.white, color: stepType === s.type ? accentColor : 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
+                    {s.glyph} {t(s.labelKey)}
                   </button>
                 ))}
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>LABEL</div>
-              <input value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder="es. Attesa Timer" style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
+              <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>{t('common.label')}</div>
+              <input value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder={t(stepType === 'standard' ? 'pages.workflowStep.labelPlaceholder' : 'pages.workflowStep.labelPlaceholderTimer')} style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
             </div>
+            {stepType === 'standard' && (
+              <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.45 }}>
+                {t('workflow.addStepStandardHint')}
+              </div>
+            )}
             {stepType === 'timer_wait' && (
               <div>
-                <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>RITARDO (minuti)</div>
-                <input type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder="es. 60" style={{ width: '100%', padding: '7px 10px', border: '1px solid #e2e6f0', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
+                <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>{t('pages.workflowStep.timerDelay')}</div>
+                <input type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder={t('workflow.timerMinutesPlaceholder')} style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
               </div>
             )}
           </div>

@@ -3,18 +3,22 @@
  * Pure: no data fetching, no mutations, no app-level state.
  */
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Eye, ExternalLink, X } from 'lucide-react'
-import { TASK_STATUS } from '@/lib/taskStatus'
-import { fmtShort } from '@/lib/datetime'
+import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT } from '@/lib/taskStatus'
+import type { TFunction } from 'i18next'
+import { formatDateTime } from '@/lib/datetime'
 import { StatusLabel } from '@/components/ui/badges'
+import { alpha, colors } from '@/lib/tokens'
 
 // Date e badge vivono nei moduli condivisi; i re-export mantengono i path
 // storici dei call site delle change.
-export { fmtDate, fmtShort } from '@/lib/datetime'
+export { fmtDate } from '@/lib/datetime'
 export { StatusLabel, RiskBadge } from '@/components/ui/badges'
 
 export function OpenTaskButton({ taskId }: { taskId: string }) {
+  const { t } = useTranslation()
   return (
     <Link to={`/tasks/${taskId}`} onClick={(e) => e.stopPropagation()} style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -22,20 +26,21 @@ export function OpenTaskButton({ taskId }: { taskId: string }) {
       fontSize: 'var(--font-size-label)', fontWeight: 500,
       color: 'var(--color-brand)', background: 'transparent', textDecoration: 'none',
     }}>
-      <ExternalLink size={12} /> Apri
+      <ExternalLink size={12} /> {t('common.open')}
     </Link>
   )
 }
 
 export function EyeButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation()
   return (
     <button type="button" onClick={(e) => { e.stopPropagation(); onClick() }} style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
-      background: 'none', border: '1px solid #e5e7eb', borderRadius: 4,
+      background: 'none', border: '1px solid var(--color-border)', borderRadius: 4,
       padding: '2px 6px', cursor: 'pointer', fontSize: 'var(--font-size-label)',
       color: 'var(--color-brand)', fontWeight: 500,
     }}>
-      <Eye size={12} /> Vedi
+      <Eye size={12} /> {t('common.view')}
     </button>
   )
 }
@@ -43,6 +48,7 @@ export function EyeButton({ onClick }: { onClick: () => void }) {
 export function ModalOverlay({ title, onClose, children }: {
   title: string; onClose: () => void; children: React.ReactNode
 }) {
+  const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -60,17 +66,28 @@ export function ModalOverlay({ title, onClose, children }: {
     // solo-mouse; l'equivalente da tastiera è Escape (keydown sopra) e il bottone "Chiudi".
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- overlay: chiusura via mouse, Escape/bottone per la tastiera
     <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+      style={{ position: 'fixed', inset: 0, background: alpha.scrim, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div ref={containerRef} role="dialog" aria-modal="true" aria-label={title} style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 600, width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
+      <div ref={containerRef} role="dialog" aria-modal="true" aria-label={title} style={{ background: colors.white, borderRadius: 12, padding: 24, maxWidth: 600, width: '90%', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 8px 24px var(--color-black-a15)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>{title}</h3>
-          <button type="button" onClick={onClose} aria-label="Chiudi" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={18} color="var(--color-slate-light)" /></button>
+          <button type="button" onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><X size={18} color="var(--color-slate-light)" /></button>
         </div>
         {children}
       </div>
     </div>
   )
+}
+
+/** L'esito di un task (validazione, review) nella lingua di chi legge. */
+export function taskResultLabel(t: TFunction, result: string): string {
+  switch (result) {
+    case VALIDATION_RESULT.PASS:   return t('taskStatus.result.pass')
+    case VALIDATION_RESULT.FAIL:   return t('taskStatus.result.fail')
+    case REVIEW_RESULT.CONFIRMED:  return t('taskStatus.result.confirmed')
+    case REVIEW_RESULT.REJECTED:   return t('taskStatus.result.rejected')
+    default:                       return result
+  }
 }
 
 export function TaskStatusRow({ label, code, status, scheduledDate, result, actor, date, assignedTeam, assignee, action }: {
@@ -79,28 +96,29 @@ export function TaskStatusRow({ label, code, status, scheduledDate, result, acto
   assignedTeam?: string | null; assignee?: string | null
   action?: React.ReactNode
 }) {
+  const { t } = useTranslation()
   const isScheduled = scheduledDate && status === TASK_STATUS.PENDING && new Date(scheduledDate).getTime() > Date.now()
   const isCompleted = status === TASK_STATUS.COMPLETED
   return (
-    <div style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid #f3f4f6', fontSize: 'var(--font-size-label)' }}>
+    <div style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--color-border-light)', fontSize: 'var(--font-size-label)' }}>
       <span style={{ width: 90, flexShrink: 0, color: 'var(--color-slate)', fontWeight: 500, paddingTop: 1 }}>{label}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {code && <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{code}</span>}
           {isScheduled
-            ? <span style={{ color: 'var(--color-slate-light)' }}>Schedulato — {fmtShort(scheduledDate)}</span>
-            : status ? <StatusLabel status={status} /> : <span style={{ color: '#d1d5db' }}>—</span>
+            ? <span style={{ color: 'var(--color-slate-light)' }}>{t('changeTasks.scheduledOn', { date: formatDateTime(scheduledDate) })}</span>
+            : status ? <StatusLabel status={status} /> : <span style={{ color: colors.slateLight }}>—</span>
           }
-          {!isScheduled && result && <span style={{ color: 'var(--color-slate)' }}>· {result}</span>}
+          {!isScheduled && result && <span style={{ color: 'var(--color-slate)' }}>· {taskResultLabel(t, result)}</span>}
         </div>
         {isCompleted && (actor || date) && (
           <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-            {actor}{actor && date ? ' · ' : ''}{date ? fmtShort(date) : ''}
+            {actor}{actor && date ? ' · ' : ''}{date ? formatDateTime(date) : ''}
           </div>
         )}
         {!isCompleted && assignedTeam && (
           <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-            Assegnato a: <span style={{ fontWeight: 600 }}>{assignedTeam}</span>{assignee ? ` — ${assignee}` : ''}
+            {t('detail.assignedTo')}: <span style={{ fontWeight: 600 }}>{assignedTeam}</span>{assignee ? ` — ${assignee}` : ''}
           </div>
         )}
       </div>
@@ -126,17 +144,18 @@ export function DetailField({ label, value }: { label: string; value: string }) 
   )
 }
 
-export function DescriptionField({ value, label = 'Descrizione' }: { value: string; label?: string }) {
+export function DescriptionField({ value, label }: { value: string; label?: string }) {
+  const { t } = useTranslation()
   const [showFull, setShowFull] = useState(false)
   return (
     <div>
-      <div style={fieldLabelStyle}>{label}</div>
+      <div style={fieldLabelStyle}>{label ?? t('common.description')}</div>
       <div style={{ ...fieldValueStyle, ...(showFull ? {} : { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }) }}>
         {value}
       </div>
       {value.length > 150 && (
         <button type="button" onClick={() => setShowFull(p => !p)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', marginTop: 2 }}>
-          {showFull ? 'Mostra meno' : 'Mostra tutto'}
+          {t(showFull ? 'common.showLess' : 'common.showAll')}
         </button>
       )}
     </div>

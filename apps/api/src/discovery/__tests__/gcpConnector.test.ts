@@ -80,25 +80,25 @@ beforeEach(() => {
 describe('gcpConnector.scan — config e credenziali', () => {
   it('project_ids mancante o vuoto → errore esplicito prima di ogni chiamata', async () => {
     await expect(collect(gcpConnector.scan(source({}), CREDS)))
-      .rejects.toThrow('[gcp] config failed: campo di configurazione obbligatorio mancante: project_ids')
+      .rejects.toThrow('[gcp] config failed: required configuration field missing: project_ids')
     await expect(collect(gcpConnector.scan(source({ project_ids: ' , ' }), CREDS)))
-      .rejects.toThrow('[gcp] config failed: project_ids non contiene alcun progetto')
+      .rejects.toThrow('[gcp] config failed: project_ids contains no project')
     expect(h.ctors).toHaveLength(0)
   })
 
   it('service_account_json mancante o non-oggetto → errore esplicito', async () => {
     await expect(collect(gcpConnector.scan(source({ project_ids: 'proj-a' }), {})))
-      .rejects.toThrow('[gcp] credentials failed: credenziali mancanti: service_account_json')
+      .rejects.toThrow('[gcp] credentials failed: missing credentials: service_account_json')
     await expect(collect(gcpConnector.scan(source({ project_ids: 'proj-a' }), { service_account_json: '{not json' })))
       .rejects.toThrow(/^\[gcp\] service_account_json parse failed: /)
     await expect(collect(gcpConnector.scan(source({ project_ids: 'proj-a' }), { service_account_json: '[1,2]' })))
-      .rejects.toThrow('[gcp] service_account_json parse failed: deve essere un oggetto JSON')
+      .rejects.toThrow('[gcp] service_account_json parse failed: must be a JSON object')
     expect(h.ctors).toHaveLength(0)
   })
 
   it('resource_types sconosciuti → errore esplicito', async () => {
     await expect(collect(gcpConnector.scan(source({ project_ids: 'proj-a', resource_types: 'compute, ec2' }), CREDS)))
-      .rejects.toThrow('[gcp] config failed: resource_types sconosciuti: ec2 (ammessi: compute, cloudsql, gke, lb)')
+      .rejects.toThrow('[gcp] config failed: unknown resource_types: ec2 (allowed: compute, cloudsql, gke, lb)')
     expect(h.ctors).toHaveLength(0)
   })
 
@@ -262,9 +262,9 @@ describe('gcpConnector.testConnection', () => {
 
   it('ko: config/credenziali mancanti → { ok:false } senza chiamare l\'SDK', async () => {
     await expect(gcpConnector.testConnection(source({}), CREDS))
-      .resolves.toEqual({ ok: false, message: 'GCP connection failed: [gcp] config failed: campo di configurazione obbligatorio mancante: project_ids' })
+      .resolves.toEqual({ ok: false, message: 'GCP connection failed: [gcp] config failed: required configuration field missing: project_ids' })
     await expect(gcpConnector.testConnection(source({ project_ids: 'proj-a' }), {}))
-      .resolves.toEqual({ ok: false, message: 'GCP connection failed: [gcp] credentials failed: credenziali mancanti: service_account_json' })
+      .resolves.toEqual({ ok: false, message: 'GCP connection failed: [gcp] credentials failed: missing credentials: service_account_json' })
     expect(h.zonesList).not.toHaveBeenCalled()
   })
 })

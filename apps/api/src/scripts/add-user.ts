@@ -1,13 +1,14 @@
 /**
  * Add a user to an existing tenant.
- * Idempotent: if the user already exists in Keycloak, updates its role (and
+ * Idempotent: if the user already exists, updates its role in the graph (and
  * the password only when one is supplied via --password-stdin).
  *
  * Usage:
  *   pnpm --filter @opengraphity/api add-user -- \
  *     --slug c-one \
  *     --email mario@acme.com \
- *     [--username mario] [--first-name Mario] [--last-name Rossi] [--role user] \
+ *     --role operator \
+ *     [--username mario] [--first-name Mario] [--last-name Rossi] \
  *     [--password-stdin]
  *
  * Password (mai in argv — `--password X` è rifiutato):
@@ -25,13 +26,23 @@ import { parseArgs } from 'node:util'
 import { getSession } from '@opengraphity/neo4j'
 import { ScriptArgError } from './lib/scriptArgs.js'
 import { runScript } from './lib/runScript.js'
-import { assignRealmRole, createKeycloakAdmin, findUserIdByEmail, keycloakConfigFromEnv, type KeycloakAdmin } from './lib/keycloakAdmin.js'
+import { createKeycloakAdmin, findUserIdByEmail, keycloakConfigFromEnv, type KeycloakAdmin } from './lib/keycloakAdmin.js'
 import { PASSWORD_STDIN_FLAG, assertNoPasswordInArgv, printOneTimePassword, resolvePassword, type ResolvedPassword } from './lib/password.js'
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 
-const ALLOWED_ROLES = ['admin', 'user', 'manager', 'operator', 'viewer', 'end_user'] as const
-type Role = typeof ALLOWED_ROLES[number]
+/**
+ * Il ruolo è la CHIAVE di un ruolo dell'organizzazione (ondata 7 di «Nulla
+ * cablato»): uno di fabbrica o uno creato dalla pagina Ruoli. Si verifica nel
+ * grafo PRIMA di toccare Keycloak (`assertTenantRole`), e un ruolo che il tenant
+ * non ha è rifiutato con l'elenco di quelli validi.
+ *
+ * Storia (D-13): qui c'erano `user` e `manager`, che l'API rifiuta al login, e
+ * `user` era persino il DEFAULT. Il ruolo resta obbligatorio: meglio un errore
+ * al comando che un utente che non riesce a entrare.
+ */
+const ROLE_KEY_RE = /^[a-z][a-z0-9_]{1,39}$/
+type Role = string
 
 interface Args {
   slug:      string
@@ -55,22 +66,23 @@ function parseCliArgs(argv: readonly string[]): Args {
       'email':          { type: 'string' },
       'first-name':     { type: 'string' },
       'last-name':      { type: 'string' },
-      'role':           { type: 'string', default: 'user' },
+      'role':           { type: 'string' },   // obbligatorio: nessun default (un default invalido creava utenti che non entrano)
       'password-stdin': { type: 'boolean', default: false },
     },
   })
 
   const slug  = args['slug']
-  const email = args['email']
-  if (!slug || !email) {
+  // Minuscola come nel realm e come la cerca l'autenticazione (revisione totale · A-3).
+  const email = args['email']?.trim().toLowerCase()
+  const role  = args['role']
+  if (!slug || !email || !role) {
     throw new ScriptArgError(
-      `argomenti mancanti. Uso: --slug <slug> --email <email> [--username <u>] [--first-name <n>] [--last-name <c>] [--role user] [${PASSWORD_STDIN_FLAG}]`,
+      `argomenti mancanti. Uso: --slug <slug> --email <email> --role <chiave del ruolo> [--username <u>] [--first-name <n>] [--last-name <c>] [${PASSWORD_STDIN_FLAG}]`,
     )
   }
 
-  const role = args['role']!
-  if (!ALLOWED_ROLES.includes(role as Role)) {
-    throw new ScriptArgError(`--role deve essere uno di: ${ALLOWED_ROLES.join(', ')}`)
+  if (!ROLE_KEY_RE.test(role)) {
+    throw new ScriptArgError(`--role "${role}" non è la chiave di un ruolo (minuscole, cifre e _; la chiave è nella pagina Ruoli)`)
   }
 
   // first-name / last-name opzionali: derivati da username o email se assenti
@@ -79,6 +91,30 @@ function parseCliArgs(argv: readonly string[]): Args {
   const lastName  = args['last-name']  ?? ''
 
   return { slug, email, username, firstName, lastName, role: role as Role, passwordStdin: args['password-stdin'] ?? false }
+}
+
+// ── Step 0: il ruolo esiste nell'organizzazione ───────────────────────────────
+
+async function assertTenantRole(a: Args): Promise<void> {
+  const session = getSession(undefined, 'READ')
+  try {
+    const res = await session.executeRead((tx) => tx.run(
+      `MATCH (r:Role {tenant_id: $tenantId})
+       RETURN r.key AS key, r.name AS name ORDER BY r.is_factory DESC, r.key`,
+      { tenantId: a.slug },
+    ))
+    const roles = res.records.map((r) => ({ key: r.get('key') as string, name: r.get('name') as string | null }))
+    if (roles.length === 0) {
+      throw new Error(`Il tenant "${a.slug}" non ha ruoli: esegui migrate.js (i ruoli di fabbrica nascono con la migrazione 20260928_1000_factory_roles).`)
+    }
+    if (!roles.some((r) => r.key === a.role)) {
+      const list = roles.map((r) => (r.name ? `${r.key} (${r.name})` : r.key)).join(', ')
+      throw new ScriptArgError(`--role "${a.role}" non è un ruolo di "${a.slug}". Ruoli validi: ${list}`)
+    }
+    console.log(`  ✓ Ruolo "${a.role}" presente in "${a.slug}"`)
+  } finally {
+    await session.close()
+  }
 }
 
 // ── Step 1: Verify realm exists ───────────────────────────────────────────────
@@ -107,7 +143,7 @@ async function upsertKeycloakUser(kc: KeycloakAdmin, token: string, a: Args, pas
     userId = newId
   } else {
     userId = await findUserIdByEmail(kc, token, a.slug, a.email)
-    console.log(`  ↩ Utente già esistente in Keycloak — aggiorno il ruolo`)
+    console.log(`  ↩ Utente già esistente in Keycloak`)
   }
 
   // Password: sempre per un utente nuovo; per uno esistente SOLO se fornita
@@ -120,11 +156,9 @@ async function upsertKeycloakUser(kc: KeycloakAdmin, token: string, a: Args, pas
     console.log(`  ↩ Password invariata (usa ${PASSWORD_STDIN_FLAG} per reimpostarla)`)
   }
 
-  const { roleCreated } = await assignRealmRole(kc, token, a.slug, userId, a.role, true)
-  if (roleCreated) console.log(`  + Ruolo "${a.role}" creato nel realm "${a.slug}"`)
-
+  // Il ruolo NON si copia in Keycloak (ondata 7): l'app lo legge solo dal grafo,
+  // e una copia nel realm diventerebbe falsa alla prima modifica dalla pagina Ruoli.
   if (created) console.log(`  ✓ Utente creato in Keycloak: ${a.email} (id: ${userId})`)
-  console.log(`  ✓ Ruolo "${a.role}" assegnato`)
 }
 
 // ── Step 5: Neo4j ─────────────────────────────────────────────────────────────
@@ -182,7 +216,10 @@ async function main(): Promise<void> {
   console.log(`║  OpenGrafo — Add user to tenant: ${a.slug.padEnd(7)} ║`)
   console.log(`╚══════════════════════════════════════════╝\n`)
 
-  console.log('▶ Keycloak')
+  console.log('▶ Ruolo')
+  await assertTenantRole(a)
+
+  console.log('\n▶ Keycloak')
   const token = await kc.getAdminToken()
   await verifyRealm(kc, token, a.slug)
   await upsertKeycloakUser(kc, token, a, password)

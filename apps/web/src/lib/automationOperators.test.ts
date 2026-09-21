@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   toWorkflowOperator, fromWorkflowOperator,
-  operatorsForFieldType, operatorLabel, fieldTypeLabel, automationActionLabel,
-  ALL_OPERATORS, OPERATOR_LABELS, NO_VALUE_OPERATORS, ITIL_ENTITIES, isITILEntity,
+  operatorsForFieldType, operatorKey, fieldTypeKey, automationActionKey,
+  ALL_OPERATORS, OPERATOR_KEYS, NO_VALUE_OPERATORS, ITIL_ENTITIES, isITILEntity,
   WORKFLOW_STEP_ACTION_TYPES, AUTOMATION_ACTION_TYPES,
   type AutomationOperator, type WorkflowStepOperator,
 } from './automationOperators'
@@ -20,7 +20,7 @@ describe('toWorkflowOperator (UI → persistito)', () => {
   })
 
   it.each(['gte', 'in', 'not_in', '', 'EQUALS', 'like'])('"%s" non mappabile → throw', (op) => {
-    expect(() => toWorkflowOperator(op)).toThrow(`[automationOperators] operatore UI non mappabile su workflow: "${op}"`)
+    expect(() => toWorkflowOperator(op)).toThrow(`[automationOperators] UI operator that does not map onto a workflow one: "${op}"`)
   })
 })
 
@@ -58,36 +58,39 @@ describe('operatorsForFieldType', () => {
     expect(consoleError).not.toHaveBeenCalled()
   })
 
-  it('le date hanno etichette "dopo"/"prima" per > e <', () => {
-    const labels = Object.fromEntries(operatorsForFieldType('date').map((o) => [o.value, o.label]))
-    expect(labels['greater_than']).toBe('dopo')
-    expect(labels['less_than']).toBe('prima')
+  it('le date hanno le CHIAVI "dopo"/"prima" per > e <', () => {
+    const keys = Object.fromEntries(operatorsForFieldType('date').map((o) => [o.value, o.labelKey]))
+    expect(keys['greater_than']).toBe('automation.operator.after')
+    expect(keys['less_than']).toBe('automation.operator.before')
   })
 
   it('tipo sconosciuto → console.error e tutti gli operatori (fallback visibile)', () => {
     expect(operatorsForFieldType('geo')).toBe(ALL_OPERATORS)
-    expect(consoleError).toHaveBeenCalledWith('[OPERATORS_BY_FIELD_TYPE] valore sconosciuto: "geo"')
+    expect(consoleError).toHaveBeenCalledWith('[OPERATORS_BY_FIELD_TYPE] unknown value: "geo"')
   })
 })
 
-describe('etichette', () => {
-  it('operatorLabel copre tutti gli operatori; sconosciuto → "?op" + log', () => {
-    for (const o of ALL_OPERATORS) expect(operatorLabel(o.value)).toBe(OPERATOR_LABELS[o.value])
-    expect(operatorLabel('nope')).toBe('?nope')
-    expect(consoleError).toHaveBeenCalledWith('[OPERATOR_LABELS] valore sconosciuto: "nope"')
+describe('chiavi delle etichette', () => {
+  // Il vocabolario porta CHIAVI, non testo: la lingua la decide il client.
+  // Cosi la stessa tendina si legge in inglese o in italiano senza che questo
+  // file sappia niente delle due lingue.
+  it('operatorKey copre tutti gli operatori; sconosciuto → "?op" + log', () => {
+    for (const o of ALL_OPERATORS) expect(operatorKey(o.value)).toBe(OPERATOR_KEYS[o.value])
+    expect(operatorKey('nope')).toBe('?nope')
+    expect(consoleError).toHaveBeenCalledWith('[OPERATOR_KEYS] unknown value: "nope"')
   })
-  it('fieldTypeLabel / automationActionLabel: noto → etichetta, ignoto → "?x"', () => {
-    expect(fieldTypeLabel('string')).toBe('testo')
-    expect(fieldTypeLabel('blob')).toBe('?blob')
-    expect(automationActionLabel('set_field')).toBe('Imposta campo')
-    expect(automationActionLabel('fly')).toBe('?fly')
+  it('fieldTypeKey / automationActionKey: noto → chiave, ignoto → "?x"', () => {
+    expect(fieldTypeKey('string')).toBe('automation.fieldType.string')
+    expect(fieldTypeKey('blob')).toBe('?blob')
+    expect(automationActionKey('set_field')).toBe('automation.action.setField')
+    expect(automationActionKey('fly')).toBe('?fly')
     expect(consoleError).toHaveBeenCalledTimes(2)
   })
 })
 
 describe('vocabolari', () => {
-  it('NO_VALUE_OPERATORS contiene solo is_null / is_not_null', () => {
-    expect([...NO_VALUE_OPERATORS].sort()).toEqual(['is_not_null', 'is_null'])
+  it('NO_VALUE_OPERATORS contiene is_null / is_not_null e «changed» (V-19: non confronta con un valore)', () => {
+    expect([...NO_VALUE_OPERATORS].sort()).toEqual(['changed', 'is_not_null', 'is_null'])
   })
   it('ITIL_ENTITIES / isITILEntity', () => {
     expect([...ITIL_ENTITIES].sort()).toEqual(['change', 'incident', 'problem', 'service_request'])

@@ -9,8 +9,20 @@ export const GET_USERS = gql`
   query GetUsers($sortField: String, $sortDirection: String) {
     users(sortField: $sortField, sortDirection: $sortDirection) {
       ...UserRef
-      role createdAt
+      role roleName active createdAt
       teams { ...TeamRef }
+    }
+  }
+`
+
+/**
+ * Chi può ricevere un ticket: il permesso «Ricevere ticket» (`ticket.assignable`)
+ * del ruolo di ogni persona (ondata 7; prima «admin o operator»).
+ */
+export const GET_ASSIGNABLE_USERS = gql`
+  query GetAssignableUsers {
+    users(sortField: "name", sortDirection: "asc") {
+      id name permissions active
     }
   }
 `
@@ -24,7 +36,11 @@ export const GET_ME = gql`
     me {
       ...UserRef
       role
+      roleName
+      permissions
       slackId
+      emailNotifications
+      language
       teams { ...TeamRef }
     }
   }
@@ -35,7 +51,7 @@ export const GET_USER = gql`
   query GetUser($id: ID!) {
     user(id: $id) {
       ...UserRef
-      tenantId code firstName lastName role slackId createdAt
+      tenantId code active firstName lastName role roleName slackId createdAt
       teams { id name type }
     }
   }

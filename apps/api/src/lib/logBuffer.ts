@@ -10,6 +10,12 @@ export interface LogEntry {
   module:    string
   message:   string
   data:      string | null
+  /**
+   * Di chi è la riga (20 set 2026). `null` = riga di PIATTAFORMA (avvio,
+   * code, bus del metamodello): non appartiene a nessun cliente e non si
+   * mostra nella pagina Log di nessuno.
+   */
+  tenantId:  string | null
 }
 
 const MAX_SIZE = 2000
@@ -25,8 +31,21 @@ export function pushLog(entry: LogEntry): void {
   seq++
 }
 
-/** Return entries newest-first. */
-export function getLogs(): LogEntry[] {
+/**
+ * Le righe di UN cliente, dalla più recente.
+ *
+ * Prima tornava il buffer intero: un amministratore vedeva le righe di ogni
+ * altro cliente servito dallo stesso processo, e fra quelle ci sono nomi di
+ * CI e numeri di ticket. Le righe di piattaforma (`tenantId: null`) non sono
+ * di nessun cliente e restano fuori: si leggono da «Monitoraggio della
+ * piattaforma».
+ */
+export function getLogs(tenantId: string): LogEntry[] {
+  return tutteLeRighe().filter((e) => e.tenantId === tenantId)
+}
+
+/** Il buffer intero, dalla più recente: per la piattaforma e per i test. */
+export function tutteLeRighe(): LogEntry[] {
   // Reconstruct ordered array from the circular buffer
   if (buffer.length < MAX_SIZE) {
     // Buffer hasn't wrapped yet — entries are in insertion order

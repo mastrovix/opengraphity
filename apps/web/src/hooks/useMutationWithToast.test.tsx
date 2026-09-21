@@ -60,12 +60,12 @@ describe('useMutationWithToast', () => {
     expect(toast.success).not.toHaveBeenCalled()
   })
 
-  it('errore GraphQL: toast.error con il messaggio del server, poi onError; niente onSuccess/refetch', async () => {
+  it('errore GraphQL: nessun secondo avviso (lo mostra il link degli errori), poi onError; niente onSuccess/refetch', async () => {
     const onError = vi.fn(); const onSuccess = vi.fn(); const refetch = vi.fn()
     const { user } = renderWithProviders(<Harness onError={onError} onSuccess={onSuccess} refetch={refetch} successMessage="no" />, { mocks: [koMock] })
     await user.click(screen.getByRole('button'))
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Nome già in uso'))
-    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Nome già in uso' }))
+    await waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Nome già in uso' })))
+    expect(toast.error).not.toHaveBeenCalled()
     expect(onSuccess).not.toHaveBeenCalled()
     expect(refetch).not.toHaveBeenCalled()
     expect(toast.success).not.toHaveBeenCalled()

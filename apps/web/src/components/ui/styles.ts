@@ -11,17 +11,35 @@
  * must use `<Button variant="…">`.
  */
 import type { CSSProperties } from 'react'
+import { colors, palette } from '@/lib/tokens'
 
 export const inputS: CSSProperties = {
   width: '100%', padding: '7px 10px', border: '1px solid var(--border)',
   borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)',
-  outline: 'none', backgroundColor: '#fff', boxSizing: 'border-box',
+  outline: 'none', backgroundColor: colors.white, boxSizing: 'border-box',
+}
+
+/**
+ * CAMPO IN SOLA LETTURA: il valore si legge, lo sfondo dice che è bloccato.
+ *
+ * Sta qui e non nella pagina perché il difetto che chiude è di quelli che si
+ * ripetono: il Dizionario dipingeva i campi di un vocabolario spedito col
+ * colore dei PLACEHOLDER (`slateLight`, che tokens.ts dichiara «tertiary
+ * text, placeholders»), e «status_change / Change Status / ITIL» si leggevano
+ * come suggerimenti in tre caselle vuote — dal vivo si è concluso che il
+ * vocabolario fosse vuoto (17 set 2026).
+ *
+ * Scolorire il contenuto non comunica «in sola lettura»: comunica «assente».
+ * Lo dicono lo sfondo e il cursore che non lampeggia.
+ */
+export const readOnlyInputS: CSSProperties = {
+  backgroundColor: colors.slateBg, color: colors.slateDark, cursor: 'default',
 }
 
 export const selectS: CSSProperties = {
   ...inputS,
   appearance: 'none',
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238892a4' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+  backgroundImage: 'var(--select-arrow)',
   backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 30, cursor: 'pointer',
 }
 
@@ -37,38 +55,38 @@ export const labelS: CSSProperties = {
 export const btnPrimary: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
   padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)',
-  color: '#fff', fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms',
+  color: colors.white, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms',
 }
 
 /** @deprecated use `<Button variant="secondary">` */
 export const btnSecondary: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6,
-  padding: '7px 14px', border: '1px solid var(--border)', borderRadius: 6, background: '#fff',
+  padding: '7px 14px', border: '1px solid var(--border)', borderRadius: 6, background: colors.white,
   color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
 }
 
 /** @deprecated use `<Button variant="danger">` */
 export const btnDanger: CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 4,
-  padding: '4px 10px', border: '1px solid #fecaca', borderRadius: 6, background: '#fff',
+  padding: '4px 10px', border: `1px solid ${palette.danger.border}`, borderRadius: 6, background: colors.white,
   color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', cursor: 'pointer',
 }
 
 /** Chip preview for enum values */
 export function enumChipStyle(): CSSProperties {
-  return { padding: '2px 8px', background: '#f0f4ff', borderRadius: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)' }
+  return { padding: '2px 8px', background: palette.info.bg, borderRadius: 12, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)' }
 }
 
 /** Active card style (selected state in designer type lists) */
 export const activeCardStyle: CSSProperties = {
   border: '1px solid var(--color-brand)',
-  background: '#f0f9ff',
+  background: palette.info.light,
   color: 'var(--color-brand)',
 }
 
 /** Inactive card style */
 export const inactiveCardStyle: CSSProperties = {
   border: '1px solid var(--border)',
-  background: '#fff',
+  background: colors.white,
   color: 'var(--color-slate-dark)',
 }
