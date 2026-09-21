@@ -73,6 +73,11 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      # Serve all'action per chiedere un token OIDC a GitHub e presentarsi ad
+      # Anthropic (primo giro del 21 set 2026: «Could not fetch an OIDC token»
+      # e il lavoro moriva in 15 secondi). NON dà nessun diritto in più sul
+      # repository: è solo l'identità con cui il lavoro si fa riconoscere.
+      id-token: write
     steps:
       # ── La seconda sbarra ────────────────────────────────────────────────
       # Non si fida della configurazione delle etichette: chiede a GitHub che
