@@ -24,6 +24,7 @@ import { ticketCustomFieldResolvers } from '../../graphql/resolvers/ticketCustom
 import { writeTicketComment } from '../../lib/ticketComments.js'
 import { notifyCommentAudience } from '../../graphql/resolvers/comments.js'
 import { audit } from '../../lib/audit.js'
+import { parametro } from '../parametroDiRotta.js'
 
 const router: ExpressRouter = Router()
 
@@ -62,7 +63,7 @@ router.get('/', requirePermission('incidents:read'), asyncHandler(async (req: Re
 
 // GET /api/v1/incidents/:id
 router.get('/:id', requirePermission('incidents:read'), asyncHandler(async (req: Request, res: Response) => {
-  const id = req.params['id']!
+  const id = parametro(req, 'id')
   const tenantId = apiKeyOf(req).tenantId
   const { row, defs } = await withSession(async (session) => ({
     row: await runQueryOne<{ props: Props }>(session, `
@@ -119,7 +120,7 @@ router.patch('/:id', requirePermission('incidents:write'), asyncHandler(async (r
 
   // Same resolvers as the UI: required-field rules, Impact×Urgency coherence,
   // and the customer's fields validated like the detail page (ondata 4).
-  const id  = req.params['id']!
+  const id  = parametro(req, 'id')
   const ctx = apiCtx(req)
   const updated = Object.keys(input).length > 0 ? await incidentResolvers.Mutation.updateIncident(null, { id, input }, ctx) : null
   if (customFields === undefined) {
@@ -139,7 +140,7 @@ router.patch('/:id', requirePermission('incidents:write'), asyncHandler(async (r
 router.post('/:id/comments', requirePermission('incidents:write'), asyncHandler(async (req: Request, res: Response) => {
   const body = (req.body ?? {}) as Record<string, unknown>
   const text = requiredString(body, 'text').trim()
-  const id   = req.params['id']!
+  const id   = parametro(req, 'id')
   const key  = apiKeyOf(req)
   // Nota interna salvo richiesta esplicita: un'integrazione che vuole
   // rispondere a chi ha aperto il ticket lo dice (lib/ticketComments.ts).

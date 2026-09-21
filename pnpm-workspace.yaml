@@ -26,3 +26,12 @@ catalog:
 #   SI TOGLIE quando `@types/d3-transition` pubblica una versione che regge la
 #   3.0.12. Per provarlo: togliere l'override, `pnpm install`,
 #   `pnpm --filter @opengraphity/web exec tsc --noEmit`.
+#
+# Blocco attivo: `@types/express` allineato a ^5.
+#   Con la migrazione a express 5 (21 set 2026) `@types/compression` dichiara
+#   `@types/express: *` ma pnpm gli risolveva la 4.17: due major degli STESSI
+#   tipi nell'albero, e `compression.filter(req, res)` non compilava piu'
+#   perche' la sua `Request` era quella di express 4.
+#   E' la stessa ragione del catalogo qui sopra — una versione sola per
+#   dipendenza condivisa — applicata a un pacchetto di soli tipi.
+#   SI TOGLIE quando `@types/compression` dichiarera' `@types/express: ^5`.
