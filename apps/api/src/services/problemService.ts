@@ -1,20 +1,22 @@
 import { v4 as uuidv4 } from 'uuid'
-import { nextSequenceValue } from '../lib/sequence.js'
+import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
+import { creationStepContext } from '../lib/customFieldSteps.js'
+import { nextTicketNumber } from '../lib/ticketNumbering.js'
 import { resolveNewTicketPriority } from '../lib/priority.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import type { ServiceCtx } from './incidentService.js'
 import { ValidationError } from '../lib/errors.js'
+import { assertDomainValue } from '../lib/domainMatrix.js'
+import { publishStepEnteredForEntity } from '../lib/stepEnteredPublisher.js'
 import { validateStringLength } from '../lib/validation.js'
-import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js'
 import { logger } from '../lib/logger.js'
-import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
 import { getInitialStepName } from '../lib/workflowHelpers.js'
-import { loadStepFacts } from '../lib/stepEvent.js'
-import { stepEnteredEventType, legacyStepEventType, type ProblemCreatedPayload } from '@opengraphity/types'
+import { type ProblemCreatedPayload } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
+import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
 
 /**
  * Il payload degli eventi del problem. È **lo stesso tipo** che consuma il
@@ -26,45 +28,28 @@ export type ProblemEventPayload = ProblemCreatedPayload
 
 type Props = Record<string, unknown>
 
-async function loadProblemPayload(
-  id: string,
-  tenantId: string,
-): Promise<ProblemEventPayload | null> {
-  return withSession(async (session) => {
-    const result = await session.executeRead((tx) => tx.run(`
-      MATCH (p:Problem {id: $id, tenant_id: $tenantId})
-      OPTIONAL MATCH (p)-[:ASSIGNED_TO]->(u:User)
-      OPTIONAL MATCH (p)-[:ASSIGNED_TO_TEAM]->(t:Team)
-      RETURN p.id AS id, p.title AS title, p.priority AS priority, p.status AS status,
-             u.name AS assignedTo, t.name AS teamName
-    `, { id, tenantId }))
-    if (!result.records.length) return null
-    const r = result.records[0]
-    return {
-      id:         r.get('id')                                                    as string,
-      title:      r.get('title')                                                 as string,
-      priority:   (r.get('priority') ?? 'medium')                               as string,
-      status:     r.get('status')                                                as string,
-      assignedTo: ((r.get('assignedTo') ?? r.get('teamName') ?? '—')            as string),
-    } satisfies ProblemEventPayload
-  })
-}
+/**
+ * Il payload del problem per gli eventi di dominio è costruito da
+ * `lib/stepEnteredPublisher.ts` (revisione totale · C-1), che serve tutte le
+ * entità e tutti i cammini. Qui restava una copia usata solo dalla
+ * pubblicazione della transizione, che ora passa da lì.
+ */
 
 // buildEvent removed — using shared publishEvent
 
 
-function requireProblemPayload<T>(payload: T | null, id: string): T {
-  if (!payload) throw new Error(`Problem ${id} not found while building event payload`)
-  return payload
-}
-
 // ── Public service operations ─────────────────────────────────────────────────
 
 export async function createProblem(
-  input: { title: string; description?: string; priority?: string; impact?: string; urgency?: string; category?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string; acknowledgeNoSla?: boolean | null },
+  input: { title: string; description?: string; priority?: string; impact?: string; urgency?: string; category?: string; affectedCIs?: string[]; relatedIncidents?: string[]; workaround?: string; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null },
   ctx: ServiceCtx,
 ) {
   validateStringLength(input.title, 'title', 1, 500)
+  // B-3: la categoria è un valore del vocabolario del cliente, come per gli
+  // incident. Prima veniva usata per scegliere il workflow e poi scartata.
+  if (input.category != null) await assertDomainValue(ctx.tenantId, 'category', input.category)
+  // CM-8: i tipi di CI esclusi per i problem, prima di scrivere.
+  await assertCIsLinkable(ctx.tenantId, 'problem', input.affectedCIs ?? [])
   // ITIL: Priority = f(Impact, Urgency). Impatto+urgenza vincono. Ondata 7
   // (C-8): valori validati contro i vocabolari del cliente e tradotti dalla
   // sua matrice `priority` — mai piu' un `medium` ricostruito in silenzio.
@@ -72,12 +57,15 @@ export async function createProblem(
   const priority = resolved.severity
   const impact   = resolved.impact
   const urgency  = resolved.urgency
+  // Campi personalizzati (ondata 4): solo dai canali che li mandano (vedi createIncident).
+  const customProps = input.customFields == null ? {} : await withSession(async (session) =>
+    resolveCustomFieldWrites(ctx.tenantId, 'problem', await customFieldDefs(session, ctx.tenantId, 'problem'), input.customFields, { current: null, stepContext: await creationStepContext(session, ctx.tenantId, 'problem', input.category ?? null) }))
   const id  = uuidv4()
   const now = new Date().toISOString()
 
   const created = await withSession(async (session) => {
-    const seq = await nextSequenceValue(session, ctx.tenantId, 'problem')
-    const number = 'PRB' + String(seq).padStart(8, '0')
+    // Formato del cliente (verifica «Cosa resta cablato», ondata 6), contatore del prodotto.
+    const number = await nextTicketNumber(session, ctx.tenantId, 'problem')
 
     const initialStatus = await getInitialStepName(session, ctx.tenantId, 'problem')
     const rows = await runQuery<{ props: Props }>(session, `
@@ -90,6 +78,9 @@ export async function createProblem(
         priority:    $priority,
         impact:      $impact,
         urgency:     $urgency,
+        // B-3: la categoria scelta resta sul nodo — sceglie il workflow E le
+        // policy SLA per categoria la leggono da qui (packages/sla/status.ts).
+        category:    $category,
         status:      $status,
         workaround:  $workaround,
         created_at:  $now,
@@ -99,15 +90,18 @@ export async function createProblem(
         sla_absence_acknowledged_at: $ackAt,
         sla_absence_acknowledged_by: $ackBy
       })
+      SET p += $customProps
       RETURN properties(p) as props
     `, {
       id, tenantId: ctx.tenantId, number,
       title: input.title, description: input.description ?? null,
       priority, impact, urgency,
+      category: input.category ?? null,
       workaround: input.workaround ?? null,
       status: initialStatus, now,
       ackAt: input.acknowledgeNoSla === true ? now : null,
       ackBy: input.acknowledgeNoSla === true ? ctx.userId : null,
+      customProps,
     })
     if (!rows[0]) throw new Error('Failed to create problem')
     // Autore (Problem.createdBy): prima nessuno scriveva CREATED_BY e il campo
@@ -116,7 +110,10 @@ export async function createProblem(
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})
       MATCH (u:User {id: $userId, tenant_id: $tenantId})
       MERGE (p)-[:CREATED_BY]->(u)
-    `, { id, tenantId: ctx.tenantId, userId: ctx.userId })
+      // Chi apre il ticket lo segue, come per gli incident (prima «Watch 0»).
+      MERGE (u)-[w:WATCHES]->(p)
+        ON CREATE SET w.watched_at = $now
+    `, { id, tenantId: ctx.tenantId, userId: ctx.userId, now })
     return rows[0].props
   }, true)
 
@@ -162,9 +159,26 @@ export async function createProblem(
     }, true)
   }
 
-  await withSession(async (session) => {
-    await workflowEngine.createInstance(session, ctx.tenantId, id, 'problem', undefined, input.category ?? null)
-  }, true)
+  /**
+   * Come per gli incident (revisione totale · B-6): un problem senza istanza
+   * di workflow non si può muovere né chiudere, quindi se la creazione
+   * dell'istanza non riesce il problem si annulla invece di restare lì.
+   */
+  try {
+    await withSession(async (session) => {
+      await workflowEngine.createInstance(session, ctx.tenantId, id, 'problem', undefined, input.category ?? null)
+    }, true)
+  } catch (err) {
+    await withSession(async (session) => {
+      await runQuery(session, 'MATCH (p:Problem {id: $id, tenant_id: $tenantId}) DETACH DELETE p', { id, tenantId: ctx.tenantId })
+    }, true)
+    logger.error({ err, problemId: id, tenantId: ctx.tenantId, category: input.category ?? null },
+      '[problemService] istanza di workflow non creata: problem annullato (resterebbe senza workflow)')
+    throw new ValidationError(
+      `Problem not created: its workflow instance could not be started (${err instanceof Error ? err.message : String(err)})`,
+      { key: 'errors.problem.workflowInstance', params: { reason: err instanceof Error ? err.message : String(err) } },
+    )
+  }
 
   const initialStatus = await withSession((s) => getInitialStepName(s, ctx.tenantId, 'problem'))
   await publishEvent('problem.created', ctx.tenantId, ctx.userId, {
@@ -175,16 +189,8 @@ export async function createProblem(
     assignedTo: '—',
   } satisfies ProblemEventPayload)
 
-  const entityData = { id, title: input.title, priority, status: initialStatus, category: input.category ?? null }
-  void evaluateTriggers(ctx.tenantId, 'problem', 'on_create', entityData, ctx.userId)
-    .then(() => evaluateBusinessRules(ctx.tenantId, 'problem', 'on_create', entityData, ctx.userId))
-    .catch((err: unknown) => {
-      logger.error({ err, problemId: id, tenantId: ctx.tenantId },
-        '[problemService] trigger/business-rule evaluation failed — automations NOT executed')
-    })
-  scheduleTimerTriggers(ctx.tenantId, 'problem', id).catch((err: unknown) => {
-    logger.error({ err, problemId: id }, '[problemService] scheduleTimerTriggers failed')
-  })
+  // Trigger, Business Rule e trigger a tempo: li mette in moto `problem.created`
+  // (consumers/automationConsumer.ts).
 
   return created
 }
@@ -196,12 +202,15 @@ export async function createProblem(
  * `problem.<stepName>`, a cui restano agganciate le regole di fabbrica
  * (`problem.under_investigation`, `problem.deferred`, …) e quelle dei tenant.
  */
+/**
+ * Come per l'incident: gli eventi di dominio della transizione nascono
+ * dall'hook `onStepEntered` del motore, che vede tutti i cammini (revisione
+ * totale · C-1). Qui resta il solo punto d'ingresso per chi pubblica senza
+ * passare dal motore.
+ */
 export async function publishProblemTransition(id: string, stepName: string, ctx: ServiceCtx) {
-  // Prima il payload (un problem inesistente è l'errore da dire), poi i fatti
-  // del passo: l'ordine è quello dei messaggi, e non va invertito.
-  const payload = requireProblemPayload(await loadProblemPayload(id, ctx.tenantId), id)
-  const facts   = await withSession((s) => loadStepFacts(s, ctx.tenantId, 'problem', stepName))
-  const body    = { ...payload, ...facts }
-  await publishEvent(stepEnteredEventType('problem'), ctx.tenantId, ctx.userId, body)
-  await publishEvent(legacyStepEventType('problem', stepName), ctx.tenantId, ctx.userId, body)
+  await publishStepEnteredForEntity({
+    tenantId: ctx.tenantId, actorId: ctx.userId,
+    entityType: 'problem', entityId: id, stepName, enteredAt: new Date().toISOString(),
+  })
 }

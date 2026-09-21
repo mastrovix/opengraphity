@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(),
@@ -12,13 +13,15 @@ vi.mock('@opengraphity/workflow', () => ({
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
 vi.mock('../../../lib/workflowHelpers.js', () => ({ getInitialStepName: vi.fn().mockResolvedValue('draft') }))
 vi.mock('../../../jobs/embeddingWorker.js', () => ({ enqueueEmbedding: vi.fn().mockResolvedValue(undefined) }))
+// F5: la categoria si valida contro `kb_category`; qui si prova la transazione, non il vocabolario.
+vi.mock('../../../lib/domainMatrix.js', () => ({ assertDomainValue: vi.fn(async (_t: string, _v: string, value: unknown) => value) }))
 
 const { createKBArticle } = await import('../knowledgeBase.js')
 const { getSession } = await import('@opengraphity/neo4j')
 const { workflowEngine } = await import('@opengraphity/workflow')
 const { enqueueEmbedding } = await import('../../../jobs/embeddingWorker.js')
 
-const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') }
 
 const ARTICLE_ROW = {
   id: 'a1', title: 'T', slug: 't-a1', body: 'b', category: 'c', tags: '["x"]', status: 'draft',

@@ -16,6 +16,7 @@
  */
 import { useState, useId } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import type { TFunction } from 'i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { Handshake, Plus } from 'lucide-react'
@@ -31,28 +32,30 @@ import { Input, Textarea, Select, FieldLabel } from '@/components/ui/FormControl
 import { Pill } from '@/components/ui/Pill'
 import { Toggle } from '@/components/ui/Toggle'
 import { GET_OLA_CONTRACTS, GET_TEAMS } from '@/graphql/queries'
-import { CREATE_OLA_CONTRACT, UPDATE_OLA_CONTRACT } from '@/graphql/mutations'
+import { CREATE_OLA_CONTRACT, DELETE_OLA_CONTRACT, UPDATE_OLA_CONTRACT } from '@/graphql/mutations'
+import { useConfirm } from '@/hooks/useConfirm'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { palette } from '@/lib/tokens'
+import { ComplianceFields, TimeCountingField, calendarChoiceOf, calendarIdFor, complianceValid } from '@/components/sla/ServiceTargetFields'
+import { showError } from '@/lib/showError'
 
 export interface OLAContract {
   id: string; type: string; name: string; description: string | null; entityType: string
   responseMinutes: number; resolveMinutes: number; businessHours: boolean
+  calendarId: string | null; calendarName: string | null
+  complianceTarget: number | null; complianceWarning: number | null
   partyType: string | null; partyName: string | null; teamId: string | null
   teamName: string | null; enabled: boolean; createdAt: string
 }
 
-/** L'ambito del contratto: l'entità, o «tutte». Le etichette delle entità sono i loro nomi ITIL. */
+/**
+ * L'ambito del contratto: l'entità, o «tutte». Le etichette delle entità sono
+ * quelle dei tipi ITIL del cliente (`useItilTypeLabels`, revisione del 14 set
+ * 2026 · F16): prima erano i nomi di fabbrica scritti qui.
+ */
 export const OLA_SCOPES = ['incident', 'problem', 'change', 'service_request', 'any'] as const
-export function olaScopeLabel(scope: string, t: TFunction): string {
-  switch (scope) {
-    case 'incident':        return 'Incident'
-    case 'problem':         return 'Problem'
-    case 'change':          return 'Change'
-    case 'service_request': return 'Service Request'
-    case 'any':             return t('common.all')
-    default:                return scope
-  }
+export function olaScopeLabel(scope: string, t: TFunction, typeLabel: (entityType: string) => string): string {
+  return scope === 'any' ? t('common.all') : typeLabel(scope)
 }
 
 /** Minuti in forma breve, con le unità tradotte (le stesse delle SLA policy). */
@@ -76,10 +79,15 @@ type OLAForm = {
   responseMinutes: number; resolveMinutes: number; partyType: string
   /** L'id del team responsabile, qualunque sia il tipo. */
   teamId: string
+  /** `''` nessuna scelta, `24x7`, o l'id di un calendario (ondata 2). */
+  calendarChoice: string
+  complianceTarget: string; complianceWarning: string
 }
 const EMPTY_OLA: OLAForm = {
   type: 'ola', name: '', description: '', entityType: 'incident',
   responseMinutes: 240, resolveMinutes: 1440, partyType: 'team', teamId: '',
+  // Come conta il tempo e l'obiettivo di conformità si scelgono: nessun valore di partenza (ondata 2).
+  calendarChoice: '', complianceTarget: '', complianceWarning: '',
 }
 
 /** Il Sourcing che un team deve avere per ciascun tipo di responsabile. */
@@ -89,11 +97,12 @@ interface Team { id: string; name: string; sourcing: string | null }
 
 export function OLAContractsPage() {
   const { t } = useTranslation()
+  const { labelOf: typeLabel } = useItilTypeLabels()
   const uid = useId()
   const ids = {
     type: `${uid}-type`, entity: `${uid}-entity`, name: `${uid}-name`, desc: `${uid}-desc`,
     response: `${uid}-response`, resolve: `${uid}-resolve`, partyType: `${uid}-party-type`,
-    teamId: `${uid}-team`,
+    teamId: `${uid}-team`, timeCounting: `${uid}-time-counting`, compliance: `${uid}-compliance`,
   }
 
   const { data, loading, error, refetch } = useQuery<{ olaContracts: OLAContract[] }>(GET_OLA_CONTRACTS, {
@@ -111,14 +120,25 @@ export function OLAContractsPage() {
   const [createOLA, { loading: creating }] = useMutation(CREATE_OLA_CONTRACT, {
     refetchQueries,
     onCompleted: async () => { setModal(null); await refetch(); toast.success(t('toast.sla.olaCreated')) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const [updateOLA, { loading: updating }] = useMutation(UPDATE_OLA_CONTRACT, {
     refetchQueries,
-    onCompleted: async () => { setModal(null); await refetch() },
-    onError: (e) => toast.error(e.message),
+    onCompleted: async () => { setModal(null); await refetch(); toast.success(t('toast.sla.olaUpdated')) },
+    onError: (e) => showError(e),
   })
-  const saving = creating || updating
+  const [deleteOLA, { loading: deleting }] = useMutation(DELETE_OLA_CONTRACT, {
+    refetchQueries,
+    onCompleted: async () => { setModal(null); await refetch(); toast.success(t('toast.sla.olaDeleted')) },
+    onError: (e) => showError(e),
+  })
+  const confirm = useConfirm()
+  const saving = creating || updating || deleting
+  // Giro UI del 15 set 2026: un contratto non si poteva cancellare, e disattivarlo non dava riscontro.
+  const removeContract = async (o: OLAContract) => {
+    const ok = await confirm({ title: t('pages.olaContracts.deleteTitle', { name: o.name }), body: t('pages.olaContracts.deleteBody'), danger: true, confirmLabel: t('pages.olaContracts.delete') })
+    if (ok) void deleteOLA({ variables: { id: o.id } })
+  }
 
   const openCreate = () => { setForm(EMPTY_OLA); setModal({ mode: 'create' }) }
   const openEdit = (o: OLAContract) => {
@@ -126,22 +146,32 @@ export function OLAContractsPage() {
       type: o.type, name: o.name, description: o.description ?? '', entityType: o.entityType,
       responseMinutes: o.responseMinutes, resolveMinutes: o.resolveMinutes,
       partyType: o.partyType ?? 'team', teamId: o.teamId ?? '',
+      calendarChoice: calendarChoiceOf(o.calendarId, o.businessHours),
+      complianceTarget: o.complianceTarget == null ? '' : String(o.complianceTarget),
+      complianceWarning: o.complianceWarning == null ? '' : String(o.complianceWarning),
     })
     setModal({ mode: 'edit', item: o })
   }
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!modal) return
+    if (form.calendarChoice === '') { toast.error(t('serviceTargets.timeCountingRequired')); return }
+    if (!complianceValid(form.complianceTarget, form.complianceWarning)) { toast.error(t('serviceTargets.complianceInvalid')); return }
     const responsabile = { partyType: form.partyType, teamId: form.teamId || null }
     const base = {
       name: form.name.trim(), description: form.description.trim() || null, entityType: form.entityType,
       responseMinutes: Number(form.responseMinutes), resolveMinutes: Number(form.resolveMinutes),
+      calendarId: calendarIdFor(form.calendarChoice),
+      complianceTarget: Number(form.complianceTarget), complianceWarning: Number(form.complianceWarning),
       ...responsabile,
     }
     if (modal.mode === 'create') void createOLA({ variables: { input: { type: form.type, ...base } } })
     else void updateOLA({ variables: { id: modal.item.id, input: base } })
   }
-  const toggleEnabled = (o: OLAContract) => void updateOLA({ variables: { id: o.id, input: { enabled: !o.enabled } } })
+  const toggleEnabled = (o: OLAContract) => void updateOLA({
+    variables: { id: o.id, input: { enabled: !o.enabled } },
+    onCompleted: async () => { await refetch(); toast.success(t(o.enabled ? 'toast.sla.olaDisabled' : 'toast.sla.olaEnabled', { name: o.name })) },
+  })
 
   const contracts = data?.olaContracts ?? []
   // Solo i team col Sourcing del tipo di responsabile scelto.
@@ -152,10 +182,18 @@ export function OLAContractsPage() {
       <Pill bg={v === 'uc' ? palette.purple.tint : palette.info.tint} color={v === 'uc' ? palette.purple.dark : palette.info.text}>{String(v).toUpperCase()}</Pill>
     ) },
     { key: 'name', label: t('common.name'), sortable: true, render: (v) => <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{String(v)}</span> },
-    { key: 'entityType', label: t('admin.sla.scopeField'), sortable: true, render: (v) => olaScopeLabel(String(v), t) },
+    { key: 'entityType', label: t('admin.sla.scopeField'), sortable: true, render: (v) => olaScopeLabel(String(v), t, typeLabel) },
     { key: 'teamName', label: t('pages.slaReport.party'), sortable: true, render: (_v, o) => o.teamName ?? o.partyName ?? '—' },
     { key: 'responseMinutes', label: t('admin.sla.response'), sortable: true, render: (v) => olaMinutes(Number(v), t) },
     { key: 'resolveMinutes', label: t('admin.sla.resolution'), sortable: true, render: (v) => olaMinutes(Number(v), t) },
+    { key: 'businessHours', label: t('serviceTargets.timeCounting'), sortable: true, width: '150px', render: (_v, o) => (
+      o.businessHours
+        ? <Pill bg={o.calendarName ? palette.success.tint : palette.danger.tint} color={o.calendarName ? palette.success.text : palette.danger.text} radius={10}>{o.calendarName ?? t('serviceTargets.noCalendar')}</Pill>
+        : <Pill bg="var(--color-border-light)" color="var(--color-slate)" radius={10}>{t('serviceTargets.alwaysOn')}</Pill>
+    ) },
+    { key: 'complianceTarget', label: t('serviceTargets.targetColumn'), sortable: false, width: '100px', render: (_v, o) => (
+      <span style={{ color: 'var(--color-slate)' }}>{o.complianceTarget == null ? '—' : `${o.complianceTarget}%`}</span>
+    ) },
     { key: 'enabled', label: t('admin.rules.active'), sortable: true, width: '90px', render: (_v, o) => (
       <Toggle checked={o.enabled} onChange={() => toggleEnabled(o)} label={t('admin.sla.toggleLabel', { name: o.name })} />
     ) },
@@ -198,6 +236,9 @@ export function OLAContractsPage() {
         onSubmit={submit}
         footer={
           <>
+            {modal?.mode === 'edit' && (
+              <Button type="button" variant="danger" disabled={saving} onClick={() => void removeContract(modal.item)} style={{ marginRight: 'auto' }}>{t('pages.olaContracts.delete')}</Button>
+            )}
             <Button type="button" variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
             <Button type="submit" disabled={saving || form.name.trim().length === 0}>{saving ? t('common.saving') : t('common.save')}</Button>
           </>
@@ -214,7 +255,7 @@ export function OLAContractsPage() {
           <div>
             <FieldLabel htmlFor={ids.entity}>{t('admin.sla.scopeField')}</FieldLabel>
             <Select id={ids.entity} value={form.entityType} onChange={(e) => setForm({ ...form, entityType: e.target.value })}>
-              {OLA_SCOPES.map((v) => <option key={v} value={v}>{olaScopeLabel(v, t)}</option>)}
+              {OLA_SCOPES.map((v) => <option key={v} value={v}>{olaScopeLabel(v, t, typeLabel)}</option>)}
             </Select>
           </div>
           <div style={{ gridColumn: '1 / -1' }}>
@@ -240,6 +281,12 @@ export function OLAContractsPage() {
           <div>
             <FieldLabel htmlFor={ids.resolve}>{t('pages.slaReport.resolveTarget')}</FieldLabel>
             <Input id={ids.resolve} type="number" min={1} value={form.resolveMinutes} onChange={(e) => setForm({ ...form, resolveMinutes: Number(e.target.value) })} required />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <TimeCountingField id={ids.timeCounting} value={form.calendarChoice} onChange={(v) => setForm({ ...form, calendarChoice: v })} />
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <ComplianceFields idPrefix={ids.compliance} target={form.complianceTarget} warning={form.complianceWarning} onChange={(p) => setForm({ ...form, ...p })} />
           </div>
           <div>
             <FieldLabel htmlFor={ids.partyType}>{t('pages.slaReport.party')}</FieldLabel>

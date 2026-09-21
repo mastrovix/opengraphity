@@ -5,7 +5,7 @@ import { gql } from '@apollo/client'
 export const GET_SERVICE_CATALOG_ADMIN = gql`
   query GetServiceCatalogAdmin {
     serviceCatalogItems {
-      id name description category requiresApproval active createdAt
+      id name description category legacyCategory requiresApproval priority active createdAt
     }
   }
 `

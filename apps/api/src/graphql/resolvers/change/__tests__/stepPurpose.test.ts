@@ -15,6 +15,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 // ── Passi del tenant (rinominati) ─────────────────────────────────────────────
 
@@ -45,6 +46,8 @@ const session = {
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+// I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
+vi.mock('../../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 vi.mock('../../ci-utils.js', () => ({
   withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(session)),
   runQuery:    vi.fn(),
@@ -77,7 +80,7 @@ const { invalidateWorkflowCache } = await import('../../../../lib/workflowHelper
 const { targetStepByPurpose, targetStepByCategory, stepNamesByCategory, stepNamesByPurposeOrdered } =
   await import('../../../../lib/workflowTargets.js')
 
-const ctx = { tenantId: 't1', userId: 'u-1', userEmail: 'op@test.io', role: 'admin' as const }
+const ctx = { tenantId: 't1', userId: 'u-1', userEmail: 'op@test.io', role: 'admin', permissions: perms('admin') as const }
 
 /** Risponde alle query di approvalGate: passo corrente, requisito, ecc. */
 function mockGate(currentStep: string) {
@@ -112,7 +115,7 @@ describe('approvazione della change su un workflow rinominato (A4-2)', () => {
     await approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, ctx)
     expect(workflowEngine.transition).toHaveBeenCalledWith(
       session,
-      expect.objectContaining({ instanceId: 'wi-1', toStepName: 'in_calendario', notes: 'Approvazioni complete' }),
+      expect.objectContaining({ instanceId: 'wi-1', toStepName: 'in_calendario', notes: 'Approvals complete' }),
       expect.anything(),
     )
     expect(afterEnterStep).toHaveBeenCalledWith(session, 'chg-1', 't1', 'in_calendario')
@@ -129,6 +132,25 @@ describe('approvazione della change su un workflow rinominato (A4-2)', () => {
     expect(afterEnterStep).toHaveBeenCalledWith(session, 'chg-1', 't1', 'valutazione')
   })
 
+  /**
+   * Giro nel browser del 14 set 2026: una change con 2/2 approvazioni aveva
+   * `approval_status` null, e REST, PDF, impatto e ticket collegati la
+   * mostravano senza esito. L'esito si scrive: approved quando tutti i
+   * requisiti sono soddisfatti, rejected al rifiuto.
+   */
+  it('approvazione completa scrive approval_status = approved; il rifiuto rejected', async () => {
+    mockGate('cab_settimanale')
+    await approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, ctx)
+    const written = vi.mocked(runQueryOne).mock.calls.map(([, c]) => String(c))
+    expect(written.some((c) => c.includes("c.approval_status = 'approved'"))).toBe(true)
+
+    const cyphers: string[] = []
+    session.executeWrite.mockImplementationOnce(async (fn: (tx: { run: (c: string) => Promise<unknown> }) => unknown) =>
+      fn({ run: async (c: string) => { cyphers.push(c); return { records: [] } } }))
+    await rejectChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab', note: 'manca il rollback', reopenAll: true }, ctx)
+    expect(cyphers.some((c) => c.includes("c.approval_status = 'rejected'"))).toBe(true)
+  })
+
   it('un passo CHIAMATO «approval» ma con un altro scopo non è la fase di approvazione', async () => {
     steps = [...CHANGE_STEPS, { name: 'approval', purpose: 'review', category: 'active', order: 6 }]
     mockGate('approval')
@@ -142,9 +164,9 @@ describe('approvazione della change su un workflow rinominato (A4-2)', () => {
     steps = CHANGE_STEPS.filter((s) => s.purpose !== 'scheduled')
     mockGate('cab_settimanale')
     const err = await caught(approveChangeApproval(null, { changeId: 'chg-1', teamId: 'team-cab' }, ctx))
-    expect(err.message).toMatch(/avanzamento della change dopo le approvazioni complete/)
-    expect(err.message).toMatch(/nessun passo dichiara lo scopo \[scheduled\]/)
-    expect(err.message).toMatch(/disegnatore/)
+    expect(err.message).toMatch(/change advance after all approvals/)
+    expect(err.message).toMatch(/no step declares the purpose \[scheduled\]/)
+    expect(err.message).toMatch(/designer/)
     expect(workflowEngine.transition).not.toHaveBeenCalled()
   })
 
@@ -177,6 +199,6 @@ describe('workflowTargets', () => {
   it('categoria assente → errore che la nomina e indica il disegnatore (nessuna lista vuota silenziosa)', async () => {
     steps = CHANGE_STEPS.filter((s) => s.category !== 'closed')
     await expect(targetStepByCategory(session as never, 't1', 'change', ['closed'], 'chiusura della change'))
-      .rejects.toThrow(/chiusura della change: .*nessun passo ha la categoria \[closed\].*disegnatore/s)
+      .rejects.toThrow(/chiusura della change: .*no step has the category \[closed\].*designer/s)
   })
 })

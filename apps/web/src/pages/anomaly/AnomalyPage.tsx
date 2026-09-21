@@ -1,24 +1,31 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
-import { ShieldAlert, ShieldCheck, Radar, RefreshCw } from 'lucide-react'
+import { ShieldAlert, ShieldCheck, Radar, RefreshCw, SlidersHorizontal } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
-import { SeverityBadge } from '@/components/SeverityBadge'
+// G-ANO-6: la severità delle anomalie è una scala del prodotto, non il vocabolario del cliente.
+import { AnomalySeverityBadge } from '@/components/ui/badges'
 import {
   GET_ANOMALIES, GET_ANOMALY_STATS, GET_ANOMALY_SCAN_STATUS,
   RESOLVE_ANOMALY, RUN_ANOMALY_SCANNER,
 } from '@/graphql/queries'
 import { colors, lookupOrError } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
-import { ciTypeLabelKey } from '@/lib/ciEnums'
+import { useCILabels } from '@/hooks/useCILabels'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
+import { QueryError } from '@/components/QueryError'
+import { EmptyState } from '@/components/EmptyState'
 import { DetailPanel } from './AnomalyDetail'
 import type { Anomaly, AnomalyStats, AnomalyScanStatus } from '@/types/anomaly'
 import { StatTile, StatTileGrid } from '@/components/ui/StatTile'
+import { useMe } from '@/hooks/useMe'
+import { routePermissions } from '@/lib/routePermissions'
+import { showError } from '@/lib/showError'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -30,10 +37,49 @@ const PAGE_SIZE = 10
 const SCAN_POLL_MS    = 2_000
 const SCAN_TIMEOUT_MS = 120_000
 
-/** Etichetta del tipo CI dell'entità: chiave i18n fissa (lib/ciEnums) o il nome grezzo. */
-export function anomalyEntityTypeLabel(t: (k: string) => string, a: Pick<Anomaly, 'entitySubtype' | 'entityType'>): string {
-  const key = ciTypeLabelKey(a.entitySubtype)
-  return key ? t(key) : (a.entitySubtype ?? a.entityType)
+/**
+ * Etichetta del tipo CI dell'entità, dal METAMODELLO (20 set 2026, dal giro
+ * nel browser).
+ *
+ * Prima veniva da una tabella cablata di sei tipi in `lib/ciEnums`: ogni
+ * altro tipo — compresi tutti quelli creati dal cliente — usciva col nome
+ * interno, e dal vivo si leggeva «Portale clienti — businessapplication»
+ * mentre la CMDB, che il metamodello lo legge, diceva «Business Application».
+ * Ora le due pagine dicono la stessa cosa, e il nome di un tipo lo decide chi
+ * lo crea.
+ */
+export function anomalyEntityTypeLabel(
+  etichettaDelTipo: (nome: string) => string,
+  a: Pick<Anomaly, 'entitySubtype' | 'entityType'>,
+): string {
+  /**
+   * G-ANO-15: `entitySubtype` è `String!` nello schema, quindi non è mai null
+   * e il ripiego `?? entityType` non scattava mai — un CI senza sottotipo
+   * arrivava come stringa VUOTA e la seconda riga della colonna restava
+   * bianca. Il vuoto vale come assente.
+   */
+  const subtype = a.entitySubtype?.trim() ? a.entitySubtype : null
+  return subtype ? etichettaDelTipo(subtype) : a.entityType
+}
+
+/**
+ * Titolo e frase dell'anomalia nella lingua di chi guarda (giro nel browser del
+ * 14 set 2026, #57): l'API scrive testi inglesi e manda i parametri del
+ * risultato. Un'anomalia storica senza parametri mostra la frase registrata.
+ */
+export function anomalyTitle(t: (k: string) => string, a: Pick<Anomaly, 'ruleKey' | 'title'>): string {
+  const key = RULE_LABEL_KEYS[a.ruleKey]
+  return key ? t(key) : a.title
+}
+
+export function anomalyDescription(t: (k: string, o?: Record<string, string>) => string, a: Pick<Anomaly, 'ruleKey' | 'description' | 'descriptionParams'>): string {
+  if (!a.descriptionParams || !RULE_LABEL_KEYS[a.ruleKey]) return a.description
+  const params: Record<string, string> = Object.fromEntries(a.descriptionParams.map((p) => [p.key, p.value]))
+  // Prima dell'ondata 5 la relazione vietata era una sola e il parametro si chiamava `application`.
+  if (a.ruleKey === 'unauthorized_relation' && params['target'] === undefined) {
+    return t('anomaly.hits.unauthorized_relation_legacy', params)
+  }
+  return t(`anomaly.hits.${a.ruleKey}`, params)
 }
 
 export const RULE_LABEL_KEYS: Record<string, string> = {
@@ -89,7 +135,8 @@ function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | nul
     return (
       <div style={{ textAlign: 'center', padding: '56px 24px' }}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-          <Radar size={44} color={colors.slateLight} />
+          {/* G-ANO-14: icona decorativa — il testo accanto dice tutto. */}
+          <Radar size={44} color={colors.slateLight} aria-hidden="true" />
         </div>
         <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slate, marginBottom: 6 }}>
           {t('pages.anomalies.noScanYet')}
@@ -105,7 +152,7 @@ function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | nul
   return (
     <div style={{ textAlign: 'center', padding: '56px 24px' }}>
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-        <ShieldCheck size={44} color={colors.success} />
+        <ShieldCheck size={44} color={colors.success} aria-hidden="true" />
       </div>
       <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slate, marginBottom: 6 }}>
         {t('pages.anomalies.noAnomalies')}
@@ -121,6 +168,8 @@ function AnomalyEmptyState({ scanStatus }: { scanStatus: AnomalyScanStatus | nul
 
 export function AnomalyPage() {
   const { t } = useTranslation()
+  const { can } = useMe()
+  const { typeLabel: etichettaDelTipo } = useCILabels()
   const [selected, setSelected]         = useState<Anomaly | null>(null)
 
   const columns: ColumnDef<Anomaly>[] = [
@@ -128,13 +177,11 @@ export function AnomalyPage() {
       key:      'title',
       label:    t('pages.anomalies.title_col'),
       sortable: true,
-      render: (v, row) => (
+      render: (_v, row) => (
         <div>
-          <div style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{String(v)}</div>
+          <div style={{ fontWeight: 600, color: 'var(--color-slate-dark)' }}>{anomalyTitle(t, row)}</div>
           <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-            {row.description.length > 64
-              ? row.description.slice(0, 61) + '…'
-              : row.description}
+            {(() => { const d = anomalyDescription(t, row); return d.length > 64 ? d.slice(0, 61) + '…' : d })()}
           </div>
         </div>
       ),
@@ -144,7 +191,7 @@ export function AnomalyPage() {
       label:    t('pages.anomalies.severity'),
       width:    '120px',
       sortable: true,
-      render:   (v) => <SeverityBadge value={String(v)} />,
+      render:   (v) => <AnomalySeverityBadge value={String(v)} />,
     },
     {
       key:      'status',
@@ -161,7 +208,7 @@ export function AnomalyPage() {
         <div>
           <div style={{ color: 'var(--color-slate-dark)' }}>{String(v)}</div>
           <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-            {anomalyEntityTypeLabel(t, row)}
+            {anomalyEntityTypeLabel(etichettaDelTipo, row)}
           </div>
         </div>
       ),
@@ -221,7 +268,7 @@ export function AnomalyPage() {
   const { data: scanData, refetch: refetchScan } = useQuery<{ anomalyScanStatus: AnomalyScanStatus }>(
     GET_ANOMALY_SCAN_STATUS,
   )
-  const { data, loading, refetch } = useQuery<{ anomalies: { items: Anomaly[]; total: number } }>(
+  const { data, loading, error, refetch } = useQuery<{ anomalies: { items: Anomaly[]; total: number } }>(
     GET_ANOMALIES,
     {
       variables: {
@@ -264,7 +311,7 @@ export function AnomalyPage() {
         } catch (err) {
           if (cancelled) return
           setAwaitingScan(null)
-          toast.error(err instanceof Error ? err.message : String(err))
+          showError(err)
         }
       })()
     }, SCAN_POLL_MS)
@@ -275,7 +322,11 @@ export function AnomalyPage() {
   const scanStatus = scanData?.anomalyScanStatus
   const anomalies  = data?.anomalies?.items ?? []
   const total      = data?.anomalies?.total ?? 0
-  const totalPages = Math.ceil(total / PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  // Revisione totale · G-ANO-4: risolvendo l'ultima anomalia di una pagina la
+  // pagina corrente restava fuori intervallo («3 / 2», tabella vuota e il
+  // messaggio «CMDB sana» sotto «Aperte: 12»).
+  useEffect(() => { if (page > 0 && page >= totalPages) setPage(totalPages - 1) }, [page, totalPages])
 
 
   async function handleResolve(id: string, resolutionStatus: string, note: string) {
@@ -287,8 +338,15 @@ export function AnomalyPage() {
       void refetchStats()
       setSelected(null)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : t('pages.anomalies.errResolving')
-      setResolveError(msg)
+      /**
+       * UN avviso solo (revisione totale · G-ANO-11): il messaggio grezzo
+       * finiva nel box rosso del pannello mentre il link degli errori di
+       * Apollo aveva già mostrato il suo toast — due avvisi identici per lo
+       * stesso errore. Qui resta la frase del pannello, che dice cosa non è
+       * riuscito; il dettaglio tecnico lo dà il toast.
+       */
+      setResolveError(t('pages.anomalies.errResolving'))
+      void err
     } finally {
       setMutLoading(false)
     }
@@ -299,15 +357,21 @@ export function AnomalyPage() {
       const before = await refetchScan()
       const baseline = before.data?.anomalyScanStatus.totalScans ?? 0
       const res = await runScanner()
-      // L'API risponde false quando non riesce ad accodare il job (Redis giù):
-      // non è un successo silenzioso.
-      if (!res.data?.runAnomalyScanner) {
+      /**
+       * Il resolver o accoda e risponde `true`, o LANCIA (Redis giù, permesso
+       * mancante): l'errore arriva al `catch` qui sotto. Questo ramo copre il
+       * solo caso rimasto — una risposta senza dati e senza errore, cioè il
+       * contratto rotto — e lo dice invece di mostrare un'attesa che non
+       * finirà mai (revisione totale · G-ANO-12: il commento di prima diceva
+       * «l'API risponde false», che non è vero, e il ramo sembrava morto).
+       */
+      if (res.data?.runAnomalyScanner !== true) {
         toast.error(t('toast.anomaly.scanEnqueueFailed'))
         return
       }
       setAwaitingScan({ baseline, startedAt: Date.now() })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      showError(err)
     }
   }
 
@@ -316,13 +380,26 @@ export function AnomalyPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <PageTitle icon={<ShieldAlert size={22} color="var(--color-icon-accent)" />}>
+          <PageTitle icon={<ShieldAlert size={22} color="var(--color-icon-accent)" aria-hidden="true" />}>
             {t('pages.anomalies.title')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
             {loading ? '—' : t('pages.anomalies.count', { count: total })}
           </p>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {can(...routePermissions('/settings/anomaly-rules')) && (
+          <Link
+            to="/settings/anomaly-rules"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 6,
+              border: `1px solid ${colors.border}`, background: 'var(--surface)', textDecoration: 'none',
+              fontSize: 'var(--font-size-body)', fontWeight: 600, color: colors.slate,
+            }}
+          >
+            <SlidersHorizontal size={14} aria-hidden="true" /> {t('pages.anomalies.configureRules')}
+          </Link>
+        )}
         <button
           type="button"
           onClick={() => void handleRunScanner()}
@@ -335,9 +412,10 @@ export function AnomalyPage() {
             color: colors.slate,
           }}
         >
-          <RefreshCw size={14} style={{ animation: scannerLoading ? 'spin 1s linear infinite' : undefined }} />
+          <RefreshCw size={14} aria-hidden="true" style={{ animation: scannerLoading ? 'spin 1s linear infinite' : undefined }} />
           {t('pages.anomalies.runScanner')}
         </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -369,8 +447,15 @@ export function AnomalyPage() {
 
       {/* Table */}
       <div className="card-border" style={{ overflow: 'hidden' }}>
-        {!loading && anomalies.length === 0 ? (
-          <AnomalyEmptyState scanStatus={scanStatus} />
+        {error && !data ? (
+          /* Revisione totale · G-ANO-2: un errore non è una CMDB sana. */
+          <div style={{ padding: 24 }}><QueryError message={error.message} onRetry={() => void refetch()} /></div>
+        ) : !loading && anomalies.length === 0 ? (
+          /* G-ANO-3: «nessuna anomalia» solo senza filtri; con un filtro attivo
+             il vuoto è del filtro, non della CMDB. */
+          filterGroup
+            ? <EmptyState icon={<SlidersHorizontal size={32} color={colors.slateLight} aria-hidden="true" />} title={t('pages.anomalies.noResults')} description={t('pages.anomalies.noResultsDesc')} />
+            : <AnomalyEmptyState scanStatus={scanStatus} />
         ) : (
           <SortableFilterTable<Anomaly>
             data={anomalies}
@@ -391,7 +476,16 @@ export function AnomalyPage() {
       {selected && (
         <DetailPanel
           key={selected.id}
-          anomaly={selected}
+          /**
+           * L'anomalia AGGIORNATA, non l'istantanea del clic (revisione
+           * totale · G-ANO-10): dopo uno scan che l'aveva chiusa da sé il
+           * pannello mostrava ancora «aperta» e il pulsante «Risolvi», e
+           * risolverla sovrascriveva la chiusura automatica. Se l'elenco non
+           * la contiene più (chiusa, o fuori dal filtro) resta l'istantanea,
+           * ma il pannello sa che è vecchia.
+           */
+          anomaly={anomalies.find((a) => a.id === selected.id) ?? selected}
+          stale={!anomalies.some((a) => a.id === selected.id)}
           onClose={() => { setSelected(null); setResolveError(null) }}
           onResolve={(id, resolutionStatus, note) => void handleResolve(id, resolutionStatus, note)}
           loading={mutLoading}

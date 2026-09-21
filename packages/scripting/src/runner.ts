@@ -3,6 +3,23 @@ import { validateScript } from './validate.js'
 
 // ── Script definition ────────────────────────────────────────────────────────
 
+/**
+ * CODICE MORTO, dichiarato tale (revisione totale · E-35).
+ *
+ * `ScriptTrigger`, `ScriptDefinition.trigger` e `runScriptsForTrigger`
+ * promettono che uno script possa scattare su `incident.updated`,
+ * `change.approved` e gli altri: NESSUNO li esegue. L'API usa solo
+ * `runScript`, chiamata dalle azioni delle regole
+ * (`lib/actionExecutor.ts`), dalla validazione del metamodello
+ * (`lib/metamodelScript.ts`) e dal webhook in ingresso. Un amministratore che
+ * scrivesse uno «script su incident.updated» non vedrebbe mai eseguirlo.
+ *
+ * Non si cancella qui (il tipo è nell'interfaccia pubblica del pacchetto e
+ * i dati potrebbero portare `trigger`), ma non si finge nemmeno: chi passa da
+ * qui deve sapere che questo innesco non ha un motore. Se un giorno serve, il
+ * chiamante va scritto — non è un difetto da «riattivare», è una funzione da
+ * fare.
+ */
 export type ScriptTrigger =
   | 'incident.created'
   | 'incident.updated'
@@ -95,6 +112,9 @@ export async function runScript(
 /**
  * Runs all enabled scripts that match the given trigger for the tenant.
  * Failures are isolated — one script failing does not stop the others.
+ *
+ * SENZA CHIAMANTI (E-35): vedi la nota su `ScriptTrigger`. Resta perché il
+ * pacchetto la esporta, ma nessun innesco del prodotto la invoca.
  */
 export async function runScriptsForTrigger(
   definitions: ScriptDefinition[],

@@ -62,7 +62,9 @@ describe('le chiavi degli errori dell\'API', () => {
   for (const lingua of ['it', 'en']) {
     it(`${lingua}: nessuna chiave senza frase`, () => {
       const scritte = dizionario(lingua)
-      const mancanti = [...USATE].filter(([k]) => !scritte.has(k)).map(([k, f]) => `${k} (${f})`)
+      // Una frase al plurale (`{{count}}`) esiste come `chiave_one` / `chiave_other`:
+      // i18next la risolve dalla chiave nuda quando i parametri portano `count`.
+      const mancanti = [...USATE].filter(([k]) => !scritte.has(k) && !scritte.has(`${k}_other`)).map(([k, f]) => `${k} (${f})`)
       expect(mancanti, `Queste chiavi le scrive l'API ma ${lingua}.json non le ha: l'utente leggerebbe `
         + `il messaggio inglese del server invece dell'errore nella sua lingua`).toEqual([])
     })

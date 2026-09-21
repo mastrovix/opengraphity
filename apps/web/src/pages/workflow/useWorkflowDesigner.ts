@@ -66,6 +66,8 @@ export interface PendingStepChange {
   category?:    string | null
   /** Scopo del passo: assente = non cambia, '' = tolto, altrimenti uno di WORKFLOW_STEP_PURPOSES. */
   purpose?:     string | null
+  /** Scadenza del passo: assente = non cambia, '' = tolta, altrimenti il JSON. */
+  deadline?:    string | null
 }
 
 export function useWorkflowDesigner(def: WorkflowDefinition | null) {
@@ -146,7 +148,8 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
       const mergedStep: WFStep = pending
         ? { ...step, label: pending.label, enterActions: pending.enterActions, exitActions: pending.exitActions,
             isInitial: pending.isInitial, isTerminal: pending.isTerminal, isOpen: pending.isOpen,
-            category: pending.category, purpose: pending.purpose ?? null }
+            category: pending.category, purpose: pending.purpose ?? null,
+            deadline: pending.deadline === undefined ? step.deadline : (pending.deadline || null) }
         : step
       return {
         id:       step.id,
@@ -247,7 +250,9 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
       const idx = prev.findIndex((c) => c.stepName === change.stepName)
       if (idx >= 0) {
         const updated = [...prev]
-        updated[idx] = change
+        // Unione, non sostituzione: un campo che il pannello manda solo quando
+        // CAMBIA (la scadenza) non deve sparire al secondo salvataggio locale.
+        updated[idx] = { ...prev[idx], ...change }
         return updated
       }
       return [...prev, change]

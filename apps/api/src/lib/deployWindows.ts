@@ -90,3 +90,43 @@ export function anyDeployWindowContains(plans: readonly unknown[], atMs: number)
   }
   return false
 }
+
+/**
+ * L'INVILUPPO DI UN PIANO: la prima data e l'ultima fra tutte le sue finestre,
+ * validazioni comprese. Serve come INDICE, non come verità (17 set 2026).
+ *
+ * Le finestre stanno in un JSON, quindi «dammi i piani che toccano questa
+ * settimana» non si poteva chiedere al database: il calendario delle change
+ * avrebbe dovuto leggere i piani di TUTTO il tenant a ogni apertura di pagina
+ * e filtrare in memoria — su un tenant con migliaia di change è una scansione
+ * per ogni sguardo al calendario.
+ *
+ * Con l'inviluppo scritto sul nodo (`window_start`, `window_end`, indicizzati)
+ * il filtro per intervallo torna nel database, e il JSON si apre solo per i
+ * pochi piani che cadono dentro. Resta il JSON la verità: questo è un estremo
+ * derivato, e lo scrive UNA funzione sola, `saveDeployPlan`, nello stesso `SET`
+ * dei passi — l'unico posto del prodotto che scrive passi veri (gli altri due
+ * scrivono `'[]'` alla creazione).
+ *
+ * `null` quando nessuna finestra è utilizzabile: un piano vuoto, o con date
+ * inservibili, non ha un posto nel calendario — e chi lo legge lo conta invece
+ * di far finta che non esista.
+ */
+export function planEnvelope(steps: readonly DeployStep[]): { start: string; end: string } | null {
+  let da = Number.POSITIVE_INFINITY
+  let a  = Number.NEGATIVE_INFINITY
+  for (const s of steps) {
+    for (const w of [s.validationWindow, s.releaseWindow]) {
+      if (!w?.start || !w.end) continue
+      const inizio = Date.parse(w.start)
+      const fine   = Date.parse(w.end)
+      // Una finestra a rovescio non allarga l'inviluppo: sarebbe un intervallo
+      // che nessuna finestra vera occupa.
+      if (Number.isNaN(inizio) || Number.isNaN(fine) || fine < inizio) continue
+      if (inizio < da) da = inizio
+      if (fine > a)    a = fine
+    }
+  }
+  if (!Number.isFinite(da) || !Number.isFinite(a)) return null
+  return { start: new Date(da).toISOString(), end: new Date(a).toISOString() }
+}

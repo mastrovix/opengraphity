@@ -24,6 +24,10 @@ let enumRows: Array<{ name: string; owner: string; values: string[]; labels: str
 let linguaDelCliente: string | null = 'it'
 
 vi.mock('@opengraphity/neo4j', () => ({
+  // `runQuery` serve al controllo delle change ferme (changesStuck.ts): senza,
+  // quel controllo falliva e ogni scenario di questo file si ritrovava un
+  // `check_failed` in più — un mock incompleto che fa sembrare rotto il codice.
+  runQuery: vi.fn(async () => []),
   getSession: () => ({
     run: vi.fn(),
     executeRead: (fn: (tx: { run: () => Promise<unknown> }) => unknown) => fn({
@@ -37,6 +41,15 @@ vi.mock('@opengraphity/neo4j', () => ({
   }),
 }))
 vi.mock('../schemaCache.js', () => ({ getSchemaState: vi.fn(async () => degraded) }))
+/**
+ * I campi con una formula e l'interruttore degli script (moduli del catalogo,
+ * ondata 6): di default nessun campo calcolato e script accesi, così questo
+ * controllo non compare nei casi degli altri.
+ */
+let campiConFormula: string[] = []
+let scriptAccesi = true
+vi.mock('../catalogForm.js', () => ({ formFieldsWithFormula: vi.fn(async () => campiConFormula) }))
+vi.mock('../scriptingPlan.js', () => ({ getScriptingPlan: vi.fn(async () => ({ plan: 'enterprise', enabled: scriptAccesi })) }))
 /*
   La lingua predefinita del cliente: da quando e configurazione, «non
   configurata» e uno stato che la diagnostica deve saper dire.
@@ -46,23 +59,101 @@ vi.mock('../tenantLanguage.js', () => ({
   LINGUA_DI_ULTIMA_ISTANZA: 'en',
 }))
 vi.mock('../provisionTenantData.js', () => ({ tenantProvisioningGaps: vi.fn(async () => gaps) }))
+/** Il fuso del cliente: `null` = nessuno l'ha scelto. */
+let fusoDelCliente: string | null = 'Europe/Rome'
+vi.mock('../tenantTimezone.js', () => ({ tenantTimezone: vi.fn(async () => fusoDelCliente) }))
+/** Le migrazioni pendenti (F8): di default nessuna. */
+let migrazioniPendenti: string[] = []
+vi.mock('../migrationState.js', () => ({ pendingMigrations: vi.fn(async () => migrazioniPendenti) }))
+/** Policy e contratti in orario di servizio senza un calendario valido (ondata 2): di default nessuno. */
+let senzaCalendario: string[] = []
+vi.mock('../serviceCalendars.js', () => ({ businessHoursWithoutCalendar: vi.fn(async () => senzaCalendario) }))
 /** I team senza interno/esterno: di default nessuno, cosi i test degli altri controlli non li vedono. */
 let senzaProvenienza: { count: number; names: string[] } = { count: 0, names: [] }
 vi.mock('../teamSourcing.js', () => ({ teamsWithoutSourcing: vi.fn(async () => senzaProvenienza) }))
 /** I ticket aperti senza SLA: di default nessuno. */
 let senzaSla: { count: number; numbers: string[] } = { count: 0, numbers: [] }
 vi.mock('../ticketsWithoutSla.js', () => ({ ticketsWithoutSla: vi.fn(async () => senzaSla) }))
+/** I workflow a cui mancano ruoli dei passi (F17): di default nessuno. */
+let ruoliMancanti: Array<Record<string, unknown>> = []
+vi.mock('../workflowStepRoles.js', () => ({ workflowsMissingStepRoles: vi.fn(async () => ruoliMancanti) }))
+/** Le copie dei vocabolari rimaste indietro rispetto ai valori spediti (F20): di default nessuna. */
+let copieIndietro: Array<{ id: string; name: string; newValues: string[] }> = []
+/** Le copie di vocabolario identiche alla spedita: di default nessuna. */
+let copieInutili: Array<{ id: string; name: string; label: string }> = []
+vi.mock('../vocabularyShippedDrift.js', () => ({
+  vocabulariesBehindShipped: vi.fn(async () => copieIndietro),
+  vocabulariesCopiedWithoutChanges: vi.fn(async () => copieInutili),
+}))
+/** Le policy SLA con il preavviso non prima della scadenza (giro nel browser): di default nessuna. */
+let preavvisiScaduti: Array<{ name: string; warningMinutes: number; resolveMinutes: number }> = []
+// Verifica «Cosa resta cablato», ondata 1: le severità del portale dichiarate e dentro il vocabolario.
+let severitaDelPortale: { value: string; labels: Record<string, string> }[] | null = [{ value: 'low', labels: {} }]
+vi.mock('../portalSeverityOptions.js', () => ({
+  PORTAL_SEVERITY_VOCABULARY: 'severity',
+  portalSeverityOptions: vi.fn(async () => severitaDelPortale),
+}))
+let giorniNotifiche: number | null = 30
+vi.mock('../tenantInAppRetention.js', () => ({ tenantInAppRetentionDays: vi.fn(async () => giorniNotifiche) }))
+let vociSenzaPriorita: string[] = []
+let vociCategoriaVecchia: Array<{ name: string; legacy: string }> = []
+vi.mock('../catalogItemPriority.js', () => ({ catalogItemsWithoutPriority: vi.fn(async () => vociSenzaPriorita), catalogItemsWithLegacyCategory: vi.fn(async () => vociCategoriaVecchia) }))
+vi.mock('../stepDeadlineBlocked.js', () => ({ blockedStepDeadlines: vi.fn(async () => []) }))
+let canaliSlackSenzaWorkspace: string[] = []
+vi.mock('../slackChannelsWithoutWorkspace.js', () => ({ slackChannelsWithoutWorkspace: vi.fn(async () => canaliSlackSenzaWorkspace) }))
+/** SV-4: le mappe il cui incident il monitoraggio non riesce a gestire; di default nessuna. */
+let mappeConProblema: Array<{ id: string; name: string }> = []
+vi.mock('../serviceIncidentProblems.js', () => ({ serviceMapsWithIncidentProblem: vi.fn(async () => mappeConProblema) }))
+// Campi dei ticket con regole di fase (secondo giro UI del 15 set 2026): uno che cita una fase sparita.
+let campiConFasi: Array<{ label: string; visibility: unknown; editability: unknown }> = []
+vi.mock('../ticketCustomFields.js', () => ({ customFieldDefs: vi.fn(async (_s: unknown, _t: string, entityType: string) => entityType === 'change' ? campiConFasi : []) }))
+vi.mock('../customFieldSteps.js', async (importOriginal) => ({ ...(await importOriginal<object>()), workflowStepsByDefinition: vi.fn(async () => [
+  { workflow: 'Change RFC Process', category: null, steps: [{ name: 'assessment' }, { name: 'review' }, { name: 'closed' }] },
+  { workflow: 'Change Emergency', category: 'emergency', steps: [{ name: 'assessment' }, { name: 'closed' }] },
+]) }))
+// Contratti OLA/UC (secondo giro UI del 15 set 2026, punto 3): di default tutti misurabili.
+let misurabilitaOLA: { withoutTeam: string[]; unmeasurable: string[] } = { withoutTeam: [], unmeasurable: [] }
+let campiDuplicati: Array<{ typeName: string; field: string; count: number }> = []
+let moduliDaSistemare: Array<{ item: string; reason: string; fields: string[] }> = []
+vi.mock('../olaMeasurability.js', () => ({ olaContractsMeasurability: vi.fn(async () => misurabilitaOLA) }))
+/* I campi duplicati nel metamodello: di norma nessuno (il caso suo sta in metamodelDuplicateFields.test.ts). */
+vi.mock('../metamodelDuplicateFields.js', () => ({ duplicateMetamodelFields: vi.fn(async () => campiDuplicati) }))
+/* I moduli del catalogo da sistemare: di norma nessuno (il caso suo sta in fondo). */
+vi.mock('../catalogFormHealth.js', () => ({ catalogFormsToFix: vi.fn(async () => moduliDaSistemare) }))
+vi.mock('../slaWarningCheck.js', () => ({ slaPoliciesWarningNotBeforeDeadline: vi.fn(async () => preavvisiScaduti) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
 vi.mock('../domainMatrix.js', async (importOriginal) => {
   const orig = await importOriginal<typeof import('../domainMatrix.js')>()
   return {
     ...orig,
     domainVocabulary: vi.fn(async (_t: string, name: string) => vocabularies[name] ?? []),
+    // Le dimensioni d'ingresso a scala del prodotto (service_urgency) non sono vocabolari.
+    matrixInputValues: vi.fn(async (_t: string, kind: keyof typeof orig.DOMAIN_MATRIX_KINDS) => {
+      const spec: { inputs: readonly string[]; inputScales?: Record<string, readonly string[]> } = orig.DOMAIN_MATRIX_KINDS[kind]
+      return spec.inputs.map((i) => spec.inputScales?.[i] ?? vocabularies[i] ?? [])
+    }),
+    // Le uscite a scala (environment_risk) non sono vocabolari: la scala è del prodotto.
+    matrixOutputValues: vi.fn(async (_t: string, kind: keyof typeof orig.DOMAIN_MATRIX_KINDS) => {
+      const spec: { output: string; scale?: readonly string[] } = orig.DOMAIN_MATRIX_KINDS[kind]
+      return spec.scale ?? vocabularies[spec.output] ?? []
+    }),
     loadDomainMatrix: vi.fn(async (_t: string, kind: string) => ({ kind, entries: matrices[kind] ?? {}, isDefault: false, updatedAt: null })),
   }
 })
 
-const { configurationIssues } = await import('../configurationIssues.js')
+const { configurationIssues: configurationIssuesCached, invalidateConfigurationIssues } = await import('../configurationIssues.js')
+
+/**
+ * CONTRATTO RINEGOZIATO (revisione totale · C-33): i rilievi stanno in cache
+ * per un minuto — il banner li chiedeva a ogni apertura di pagina e i
+ * ventitré controlli fanno scansioni vere. Questi test cambiano la
+ * configurazione a metà e richiedono i rilievi di nuovo: qui si rilegge
+ * sempre fresco, che è quello che vogliono verificare.
+ */
+const configurationIssues = async (tenantId: string) => {
+  invalidateConfigurationIssues()
+  return configurationIssuesCached(tenantId)
+}
 type Issue = Awaited<ReturnType<typeof configurationIssues>>[number]
 /**
  * I PARAMETRI, non la frase.
@@ -81,16 +172,30 @@ const { DOMAIN_MATRIX_KINDS } = await import('../domainMatrix.js')
 function healthy(): void {
   degraded = { degraded: false, reason: null }
   linguaDelCliente = 'it'
+  severitaDelPortale = [{ value: 'low', labels: {} }]
+  vociSenzaPriorita = []
+  vociCategoriaVecchia = []
+  giorniNotifiche = 30
+  canaliSlackSenzaWorkspace = []
+  mappeConProblema = []
   gaps = []
   vocabularies = {
     impact: ['low'], urgency: ['low'], priority: ['low'], severity: ['low'],
     service_criticality: ['mission_critical'], event_severity: ['info'], import_severity: ['minor'],
-    change_type: ['standard'], risk_band: ['low'],
+    change_type: ['standard'], risk_band: ['low'], environment: ['production'],
     ci_status: ['active', 'dismesso'],
   }
   matrices = Object.fromEntries(Object.entries(DOMAIN_MATRIX_KINDS).map(([kind, spec]) => {
-    const key = spec.inputs.map((i) => vocabularies[i]![0]!).join('|')
-    return [kind, { [key]: vocabularies[spec.output]![0]! }]
+    // Una dimensione a scala del prodotto (service_urgency) va coperta tutta: i
+    // suoi valori non si riducono a uno come i vocabolari del test.
+    const scales = (spec as { inputScales?: Record<string, readonly string[]> }).inputScales
+    const scale = (spec as { scale?: readonly string[] }).scale
+    const out = scale ? scale[0]! : vocabularies[spec.output]![0]!
+    const keys = spec.inputs.reduce<string[]>((acc, i) => {
+      const values = scales?.[i] ?? [vocabularies[i]![0]!]
+      return acc.flatMap((prefix) => values.map((v) => (prefix ? `${prefix}|${v}` : v)))
+    }, [''])
+    return [kind, Object.fromEntries(keys.map((k) => [k, out]))]
   }))
   policy = { ignore_lifecycle_statuses: [], retired_statuses: ['dismesso'], maintenance_statuses: [] }
   // Ogni valore con la sua etichetta IN TUTTE LE LINGUE: lo stato in cui il
@@ -103,11 +208,64 @@ function healthy(): void {
   }))
 }
 
-beforeEach(() => { healthy() })
+beforeEach(() => { healthy(); invalidateConfigurationIssues() })
 
 describe('configurationIssues', () => {
   it('niente da sistemare → lista vuota (un banner che compare sempre diventa invisibile)', async () => {
     expect(await configurationIssues('c-one')).toEqual([])
+  })
+
+  it('ondata 8: canali Slack col bot ma nessun workspace collegato → errore che li nomina, si rimedia in Integrazioni', async () => {
+    canaliSlackSenzaWorkspace = ['#ops', '#major']
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'slack_not_connected', severity: 'error', where: '/admin/integrations', params: { count: '2', channels: '#ops, #major' } },
+    ])
+  })
+
+  it('SV-4: servizi il cui incident non si riesce a gestire → errore che li nomina; con uno solo si va al suo dettaglio', async () => {
+    mappeConProblema = [{ id: 'map-1', name: 'Portale clienti' }]
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'service_incident_problem', severity: 'error', where: '/monitoring/services/map-1', params: { count: '1', services: 'Portale clienti' } },
+    ])
+    mappeConProblema = [{ id: 'map-1', name: 'Billing' }, { id: 'map-2', name: 'CRM' }]
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'service_incident_problem', severity: 'error', where: '/monitoring/services', params: { count: '2', services: 'Billing, CRM' } },
+    ])
+  })
+
+  it('conservazione delle notifiche non scelta → avviso, si rimedia in Organizzazione', async () => {
+    giorniNotifiche = null
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'inapp_retention_not_set', severity: 'warning', where: '/settings/organization', params: {} },
+    ])
+  })
+
+  it('voci del catalogo con una categoria scritta a mano non convertita → avviso che le nomina col testo di prima', async () => {
+    vociCategoriaVecchia = [{ name: 'Badge', legacy: 'Sicurezza fisica' }]
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'catalog_items_legacy_category', severity: 'warning', where: '/admin/service-catalog', params: { count: '1', items: 'Badge («Sicurezza fisica»)' } },
+    ])
+  })
+
+  it('voci attive del catalogo senza priorità → errore che le nomina, si rimedia nel catalogo', async () => {
+    vociSenzaPriorita = ['Nuovo laptop', 'Sblocco account']
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'catalog_items_without_priority', severity: 'error', where: '/admin/service-catalog', params: { count: '2', items: 'Nuovo laptop, Sblocco account' } },
+    ])
+  })
+
+  it('severità del portale non dichiarate → errore, si rimedia in Organizzazione', async () => {
+    severitaDelPortale = null
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'portal_severities_not_set', severity: 'error', where: '/settings/organization', params: {} },
+    ])
+  })
+
+  it('severità del portale fuori dal vocabolario (rinominata nel Dizionario) → errore che la nomina', async () => {
+    severitaDelPortale = [{ value: 'low', labels: {} }, { value: 'urgente', labels: {} }]
+    expect(await configurationIssues('c-one')).toEqual([
+      { kind: 'portal_severities_stale', severity: 'error', where: '/settings/organization', params: { values: 'urgente' } },
+    ])
   })
 
   it('schema degradato → errore che riporta il motivo e dove si rimedia', async () => {
@@ -229,6 +387,96 @@ describe('configurationIssues', () => {
   })
 
   /**
+   * Revisione del 14 set 2026 · F7: il fuso ora si sceglie da Organizzazione.
+   * Senza, ogni scadenza SLA/OLA, il digest e le date dei messaggi falliscono:
+   * e un errore, e dice dove si sistema.
+   */
+  it('nessun fuso configurato → errore che rimanda a Organizzazione', async () => {
+    fusoDelCliente = null
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'timezone_not_set')
+    expect(issue).toMatchObject({ severity: 'error', where: '/settings/organization' })
+    fusoDelCliente = 'Europe/Rome'
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'timezone_not_set')).toBeUndefined()
+  })
+
+  /** Revisione del 14 set 2026 · F8: le migrazioni pendenti si dicono all'admin, con quali sono. */
+  it('migrazioni pendenti → errore con il numero e i nomi', async () => {
+    migrazioniPendenti = ['20260924_1000_x', '20260924_1010_y']
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'migrations_pending')
+    expect(issue).toMatchObject({ severity: 'error', where: null, params: { count: '2', migrations: '20260924_1000_x, 20260924_1010_y' } })
+    migrazioniPendenti = []
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'migrations_pending')).toBeUndefined()
+  })
+
+  /**
+   * Revisione del 14 set 2026 · F6: senza calendario, una policy SLA o un
+   * contratto OLA in orario lavorativo non sa calcolare le scadenze. Errore
+   * solo se qualcuno lo usa.
+   */
+  it('policy o contratti in orario di servizio senza calendario valido → errore con i nomi; nessuno → silenzio', async () => {
+    senzaCalendario = ['Incident di rete', 'OLA Rete']
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'service_calendar_not_set')
+    expect(issue).toMatchObject({ severity: 'error', where: '/admin/sla-policies', params: { count: '2', names: 'Incident di rete, OLA Rete' } })
+    senzaCalendario = []
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'service_calendar_not_set')).toBeUndefined()
+  })
+
+  /**
+   * Revisione del 14 set 2026 · F17: un workflow a cui manca la categoria o lo
+   * scopo che il codice cerca. Obbligatori → errore (un'operazione si ferma);
+   * facoltativi → avviso (un comportamento si spegne in silenzio). Una voce per
+   * workflow, con il nome, e i valori mancanti come DATI.
+   */
+  /**
+   * Revisione del 14 set 2026 · F20: il prodotto ha spedito valori nuovi in un
+   * vocabolario che il cliente ha personalizzato, e la copia non li ha. Avviso,
+   * con i nomi: si decide dal Dizionario (adottarli o tenerli fuori).
+   */
+  /**
+   * Giro nel browser del 14 set 2026: una migrazione aveva messo il preavviso
+   * a 30 minuti su tutte le policy, anche su quella da 30 minuti di risoluzione.
+   * L'avviso «SLA about to be breached» partiva alla creazione di ogni ticket.
+   * Il resolver ora lo rifiuta, ma i dati già scritti li dice la diagnostica.
+   */
+  it('policy SLA con il preavviso non prima della scadenza → errore con i nomi', async () => {
+    preavvisiScaduti = [{ name: 'Incident di rete', warningMinutes: 30, resolveMinutes: 30 }]
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'sla_warning_not_before_deadline')
+    expect(issue).toEqual({
+      kind: 'sla_warning_not_before_deadline', severity: 'error', where: '/admin/sla-policies',
+      params: { count: '1', details: '«Incident di rete»: 30 / 30 min' },
+    })
+    preavvisiScaduti = []
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'sla_warning_not_before_deadline')).toBeUndefined()
+  })
+
+  it('copie dei vocabolari indietro rispetto ai valori spediti → avviso con vocabolari e valori', async () => {
+    copieIndietro = [{ id: 'c-1', name: 'priority', newValues: ['critical'] }, { id: 'c-2', name: 'environment', newValues: ['dr', 'lab'] }]
+    const issue = (await configurationIssues('c-one')).find((i) => i.kind === 'vocabulary_behind_shipped')
+    expect(issue).toEqual({
+      kind: 'vocabulary_behind_shipped', severity: 'warning', where: '/settings/enum-designer',
+      params: { count: '2', details: '«priority»: critical · «environment»: dr, lab' },
+    })
+    copieIndietro = []
+    expect((await configurationIssues('c-one')).find((i) => i.kind === 'vocabulary_behind_shipped')).toBeUndefined()
+  })
+
+  it('workflow senza i ruoli dei passi → errore per gli obbligatori, avviso per i facoltativi', async () => {
+    ruoliMancanti = [
+      { workflow: 'Incident — Rinominato', entityType: 'incident', required: { categories: ['resolved', 'escalated'], purposes: [] }, optional: { categories: [], purposes: [] } },
+      { workflow: 'Change RFC', entityType: 'change', required: { categories: [], purposes: [] }, optional: { categories: [], purposes: ['implementation'] } },
+    ]
+    const issues = (await configurationIssues('c-one')).filter((i) => i.kind.startsWith('workflow_'))
+    expect(issues).toEqual([
+      { kind: 'workflow_step_categories_missing', severity: 'error', where: '/workflow',
+        params: { workflow: 'Incident — Rinominato', entityType: 'incident', missing: 'resolved, escalated' } },
+      { kind: 'workflow_optional_step_purposes_missing', severity: 'warning', where: '/workflow',
+        params: { workflow: 'Change RFC', entityType: 'change', missing: 'implementation' } },
+    ])
+    ruoliMancanti = []
+    expect((await configurationIssues('c-one')).filter((i) => i.kind.startsWith('workflow_'))).toEqual([])
+  })
+
+  /**
    * Interno/esterno e un campo nuovo: i team che esistevano prima non lo
    * hanno, e la migrazione non lo indovina. Si dice qui, con i nomi.
    */
@@ -344,5 +592,133 @@ describe('checkValueLabels — una lingua sola non basta', () => {
   it('con tutte le lingue scritte, nessuno dei due avvisi', async () => {
     const issues = await configurationIssues('c-one')
     expect(issues.filter((i) => i.kind.startsWith('value_labels'))).toEqual([])
+  })
+})
+
+describe('configurationIssues — campi che citano fasi sparite', () => {
+  it('un campo «da revue in poi» su un workflow senza «revue» → avviso che lo nomina, si rimedia nel disegnatore ITIL', async () => {
+    campiConFasi = [
+      { label: 'Esito', visibility: { mode: 'from', step: 'revue' }, editability: { mode: 'visible' } },
+      { label: 'Note di chiusura', visibility: { mode: 'from', step: 'review' }, editability: { mode: 'visible' } },
+    ]
+    try {
+      const issues = await configurationIssues('t1')
+      expect(issues.filter((i) => i.kind === 'custom_field_steps_missing')).toEqual([
+        { kind: 'custom_field_steps_missing', severity: 'warning', where: '/settings/itil-designer', params: { count: '1', fields: 'Esito (change): revue' } },
+      ])
+      // «da review in poi» e il workflow d'emergenza non ha review: lì il campo non si vede mai
+      expect(issues.filter((i) => i.kind === 'custom_field_from_step_absent')).toEqual([
+        { kind: 'custom_field_from_step_absent', severity: 'warning', where: '/settings/itil-designer', params: { count: '1', fields: 'Note di chiusura (change, review): Change Emergency' } },
+      ])
+    } finally { campiConFasi = [] }
+  })
+})
+
+/**
+ * CAMPI DEFINITI DUE VOLTE NELLO STESSO TIPO (trovato nel browser su c-test:
+ * «Priorità» due volte nelle tendine delle automazioni). È un `error` e non un
+ * avviso: una regola di visibilità scritta su una definizione non vale per
+ * l'altra, quindi la configurazione dice una cosa e il prodotto ne fa un'altra.
+ */
+/**
+ * I MODULI CHE NON SI POSSONO COMPILARE (revisione del 17 set 2026): la
+ * pubblicazione rifiuta le configurazioni impossibili, ma un modulo pubblicato
+ * prima della regola — o rotto cancellando un campo dalla libreria — lo
+ * scoprirebbe solo chi apre la richiesta.
+ */
+describe('configurationIssues — moduli del catalogo da sistemare', () => {
+  it('un modulo impossibile → errore che nomina la voce e il motivo, si rimedia nel costruttore', async () => {
+    moduliDaSistemare = [
+      { item: 'Nuovo portatile', reason: 'requiredNotForEndUser', fields: ['per_chi'] },
+      { item: 'Nuovo accesso', reason: 'fieldsMissing', fields: ['centro_di_costo'] },
+    ]
+    try {
+      const issues = await configurationIssues('t1')
+      expect(issues.filter((i) => i.kind === 'catalog_form_to_fix')).toEqual([
+        {
+          kind: 'catalog_form_to_fix', severity: 'error', where: '/settings/catalog-forms',
+          params: {
+            count: '2',
+            forms: 'Nuovo portatile (requiredNotForEndUser: per_chi); Nuovo accesso (fieldsMissing: centro_di_costo)',
+          },
+        },
+      ])
+    } finally { moduliDaSistemare = [] }
+  })
+})
+
+describe('configurationIssues — campi duplicati nel metamodello', () => {
+  it('doppioni → errore che li nomina col tipo, si rimedia nel disegnatore', async () => {
+    campiDuplicati = [
+      { typeName: 'incident', field: 'priority', count: 2 },
+      { typeName: 'problem',  field: 'impact',   count: 2 },
+    ]
+    try {
+      const issues = await configurationIssues('t1')
+      expect(issues.filter((i) => i.kind === 'metamodel_duplicate_field')).toEqual([
+        {
+          kind: 'metamodel_duplicate_field', severity: 'error', where: '/settings/itil-designer',
+          params: { count: '2', fields: 'incident.priority (2), problem.impact (2)' },
+        },
+      ])
+    } finally { campiDuplicati = [] }
+  })
+})
+
+describe('configurationIssues — contratti OLA/UC che non misurano niente', () => {
+  it('senza team e su ticket che nessuno assegna a un team → due avvisi con i nomi, si rimedia nei contratti', async () => {
+    misurabilitaOLA = { withoutTeam: ['Vecchio contratto'], unmeasurable: ['Service Desk evade le richieste entro 1 giorno (service_request)'] }
+    try {
+      const issues = await configurationIssues('t1')
+      expect(issues.filter((i) => i.kind.startsWith('ola_contract'))).toEqual([
+        { kind: 'ola_contract_without_team', severity: 'warning', where: '/admin/ola-uc', params: { count: '1', names: 'Vecchio contratto' } },
+        { kind: 'ola_contract_unmeasurable', severity: 'warning', where: '/admin/ola-uc', params: { count: '1', names: 'Service Desk evade le richieste entro 1 giorno (service_request)' } },
+      ])
+    } finally { misurabilitaOLA = { withoutTeam: [], unmeasurable: [] } }
+  })
+})
+
+/**
+ * CAMPI CALCOLATI CON GLI SCRIPT SPENTI (ondata 6). Il rifiuto al salvataggio
+ * lo vede chi compila, che non può rimediare: questo controllo è il modo di
+ * dirlo a chi può.
+ */
+describe('formule e interruttore degli script', () => {
+  it('script spenti e campi con formula → un rilievo ERRORE che nomina i campi e dove si accende', async () => {
+    scriptAccesi = false
+    campiConFormula = ['Costo totale (EUR)', 'Giorni stimati']
+    const issues = await configurationIssues('t1')
+    const mio = issues.find((i) => i.kind === 'formulas_with_scripting_off')!
+    expect(mio).toBeDefined()
+    expect(mio.severity).toBe('error')
+    expect(mio.where).toBe('/settings/organization')
+    expect(mio.params['count']).toBe('2')
+    expect(mio.params['names']).toContain('Costo totale (EUR)')
+  })
+
+  it('script spenti ma NESSUN campo calcolato → niente rilievo: non c'+String.fromCharCode(39)+'è niente di rotto', async () => {
+    scriptAccesi = false
+    campiConFormula = []
+    const issues = await configurationIssues('t1')
+    expect(issues.some((i) => i.kind === 'formulas_with_scripting_off')).toBe(false)
+  })
+
+  it('script accesi → niente rilievo, e la libreria non si legge affatto', async () => {
+    scriptAccesi = true
+    campiConFormula = ['Costo totale (EUR)']
+    const issues = await configurationIssues('t1')
+    expect(issues.some((i) => i.kind === 'formulas_with_scripting_off')).toBe(false)
+  })
+
+  it('una copia di vocabolario identica a quella di fabbrica → avviso che la nomina', async () => {
+    // Non compra niente e paga il prezzo di ogni copia: non ricevera i valori
+    // che il prodotto aggiungera. Avviso e non errore: oggi non e rotto niente.
+    copieInutili = [{ id: 'v1', name: 'priority', label: 'Priority' }]
+    const out = await configurationIssues('c-one')
+    const avviso = out.find((i) => i.kind === 'vocabulary_copy_without_changes')
+    expect(avviso?.severity).toBe('warning')
+    expect(avviso?.params['names']).toContain('Priority')
+    expect(avviso?.where).toBe('/settings/enum-designer')
+    copieInutili = []
   })
 })

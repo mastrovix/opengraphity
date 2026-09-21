@@ -6,14 +6,15 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Eye, ExternalLink, X } from 'lucide-react'
-import { TASK_STATUS } from '@/lib/taskStatus'
-import { fmtShort } from '@/lib/datetime'
+import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT } from '@/lib/taskStatus'
+import type { TFunction } from 'i18next'
+import { formatDateTime } from '@/lib/datetime'
 import { StatusLabel } from '@/components/ui/badges'
 import { alpha, colors } from '@/lib/tokens'
 
 // Date e badge vivono nei moduli condivisi; i re-export mantengono i path
 // storici dei call site delle change.
-export { fmtDate, fmtShort } from '@/lib/datetime'
+export { fmtDate } from '@/lib/datetime'
 export { StatusLabel, RiskBadge } from '@/components/ui/badges'
 
 export function OpenTaskButton({ taskId }: { taskId: string }) {
@@ -78,6 +79,17 @@ export function ModalOverlay({ title, onClose, children }: {
   )
 }
 
+/** L'esito di un task (validazione, review) nella lingua di chi legge. */
+export function taskResultLabel(t: TFunction, result: string): string {
+  switch (result) {
+    case VALIDATION_RESULT.PASS:   return t('taskStatus.result.pass')
+    case VALIDATION_RESULT.FAIL:   return t('taskStatus.result.fail')
+    case REVIEW_RESULT.CONFIRMED:  return t('taskStatus.result.confirmed')
+    case REVIEW_RESULT.REJECTED:   return t('taskStatus.result.rejected')
+    default:                       return result
+  }
+}
+
 export function TaskStatusRow({ label, code, status, scheduledDate, result, actor, date, assignedTeam, assignee, action }: {
   label: string; code?: string; status: string | null; scheduledDate?: string | null
   result?: string | null; actor?: string | null; date?: string | null
@@ -94,14 +106,14 @@ export function TaskStatusRow({ label, code, status, scheduledDate, result, acto
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {code && <span style={{ fontWeight: 500, color: 'var(--color-slate-dark)' }}>{code}</span>}
           {isScheduled
-            ? <span style={{ color: 'var(--color-slate-light)' }}>{t('changeTasks.scheduledOn', { date: fmtShort(scheduledDate) })}</span>
+            ? <span style={{ color: 'var(--color-slate-light)' }}>{t('changeTasks.scheduledOn', { date: formatDateTime(scheduledDate) })}</span>
             : status ? <StatusLabel status={status} /> : <span style={{ color: colors.slateLight }}>—</span>
           }
-          {!isScheduled && result && <span style={{ color: 'var(--color-slate)' }}>· {result}</span>}
+          {!isScheduled && result && <span style={{ color: 'var(--color-slate)' }}>· {taskResultLabel(t, result)}</span>}
         </div>
         {isCompleted && (actor || date) && (
           <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-            {actor}{actor && date ? ' · ' : ''}{date ? fmtShort(date) : ''}
+            {actor}{actor && date ? ' · ' : ''}{date ? formatDateTime(date) : ''}
           </div>
         )}
         {!isCompleted && assignedTeam && (

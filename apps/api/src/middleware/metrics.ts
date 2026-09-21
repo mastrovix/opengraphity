@@ -280,6 +280,13 @@ export const workflowPurposeMissingTotal = createCounter('workflow_step_purpose_
  * dentro la finestra di rilascio scavalcando l'approvazione: e una
  * configurazione da correggere, non un guasto del prodotto.
  */
+/**
+ * Le scadenze dei passi di workflow (verifica «Cosa resta cablato», ondata 3):
+ * quante hanno spostato un ticket, quante il varco ha rifiutato e quante non
+ * sono riuscite, per ragione. Un `failed` è configurazione da correggere.
+ */
+export const stepDeadlineOutcomesTotal = createCounter('workflow_step_deadline_outcomes_total', 'Workflow step deadlines that came due, by outcome (moved, refused, failed) and reason', ['outcome', 'reason'])
+
 export const changeWindowGateBlockedTotal = createCounter('change_window_gate_blocked_total', 'Automatic workflow transitions refused because the change would enter the release window without satisfied approvals, by path and reason', ['path', 'reason'])
 
 /**
@@ -407,10 +414,10 @@ export const redisLockHoldSeconds   = createHistogram('redis_lock_hold_seconds',
 // i tipi del cliente) per non lasciare il tenant senza API e senza la mutation
 // per rimediare, e questo contatore è l'unico modo per accorgersene.
 
-export const graphqlSchemaBuildsTotal = createCounter('graphql_schema_builds_total', 'Schemi GraphQL generati (per tenant): un valore che cresce senza modifiche al metamodello significa cache che non trattiene', [])
-export const graphqlSchemaEvictionsTotal = createCounter('graphql_schema_evictions_total', 'Schemi tolti dalla cache perché è piena (GRAPHQL_SCHEMA_CACHE_MAX): se cresce, alza il limite o riduci i tenant per replica', [])
-export const graphqlSchemaBuildFailedTotal = createCounter('graphql_schema_build_failed_total', 'Schemi di un tenant che NON si sono costruiti (di norma un tipo o un campo personalizzato che collide): il tenant sta ricevendo lo schema sicuro, senza i suoi tipi. Va guardato subito', [])
-export const graphqlSchemaCacheEntries = createGauge('graphql_schema_cache_entries', 'Schemi GraphQL attualmente in cache in questo processo', [])
+export const graphqlSchemaBuildsTotal = createCounter('graphql_schema_builds_total', 'GraphQL schemas built (per tenant): a value that grows without metamodel changes means the cache does not hold', [])
+export const graphqlSchemaEvictionsTotal = createCounter('graphql_schema_evictions_total', 'Schemas evicted because the cache is full (GRAPHQL_SCHEMA_CACHE_MAX): if it grows, raise the limit or reduce the tenants per replica', [])
+export const graphqlSchemaBuildFailedTotal = createCounter('graphql_schema_build_failed_total', 'Tenant schemas that did NOT build (usually a colliding custom type or field): the tenant is served the safe schema, without its types. Look at it now', [])
+export const graphqlSchemaCacheEntries = createGauge('graphql_schema_cache_entries', 'GraphQL schemas currently cached in this process', [])
 
 /** Metriche dello schema per tenant, nell'ordine di esposizione. */
 export const SCHEMA_METRICS = [
@@ -422,6 +429,7 @@ export const EVENT_MANAGEMENT_METRICS = [
   eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsAmbiguousTotal, eventsSuppressedTotal, eventsFlappingTotal,
   workflowPurposeMissingTotal,
   changeWindowGateBlockedTotal,
+  stepDeadlineOutcomesTotal,
   tenantProvisioningGapsGauge,
   incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal, eventsPurgedTotal,
   eventsOutOfOrderTotal, eventsIngestFailedTotal, eventsRejectedTotal, eventsResolvedUnknownTotal, eventStormsActive, webhookRateLimitedTotal,
@@ -506,14 +514,35 @@ export function metricsAccessAllowed(req: Pick<Request, 'headers' | 'socket'>, t
 // processo che **non è sottoscritto** (non verrà mai avvisato). Qui diventano
 // numeri, con la regola Prometheus che li sorveglia in infra/prometheus/.
 
-export const metamodelPublishedTotal = createCounter('metamodel_published_total', 'Cambiamenti del metamodello pubblicati sul canale, per esito: delivered = almeno un processo in ascolto, no_receivers = nessuno (le altre repliche restano vecchie), error = PUBLISH fallito', ['result'])
-export const metamodelReceivedTotal = createCounter('metamodel_received_total', 'Messaggi del canale del metamodello ricevuti da QUESTO processo, per esito: applied = cache svuotate, stale = versione già applicata o fuori ordine, malformed = messaggio scartato', ['result'])
-export const metamodelCacheClearFailuresTotal = createCounter('metamodel_cache_clear_failures_total', 'Cache del metamodello che NON si sono svuotate (il clearer ha lanciato): quel processo resta con dati vecchi per quel tenant fino alla scadenza del TTL', ['cache'])
-export const metamodelBusSubscribed = createGauge('metamodel_bus_subscribed', 'Questo processo è sottoscritto al canale del metamodello (1) oppure no (0): a 0 non viene avvisato dei cambiamenti fatti altrove', [])
+export const metamodelPublishedTotal = createCounter('metamodel_published_total', 'Metamodel changes published on the channel, by outcome: delivered = at least one process listening, no_receivers = none (other replicas stay stale), error = PUBLISH failed', ['result'])
+export const metamodelReceivedTotal = createCounter('metamodel_received_total', 'Metamodel channel messages received by THIS process, by outcome: applied = caches cleared, stale = version already applied or out of order, malformed = message dropped', ['result'])
+export const metamodelCacheClearFailuresTotal = createCounter('metamodel_cache_clear_failures_total', 'Metamodel caches that did NOT clear (the clearer threw): that process keeps stale data for that tenant until the TTL expires', ['cache'])
+export const metamodelBusSubscribed = createGauge('metamodel_bus_subscribed', 'This process is subscribed to the metamodel channel (1) or not (0): at 0 it is not told about changes made elsewhere', [])
+// Ogni incremento è una finestra in cui questo processo NON è stato avvisato:
+// Redis pub/sub non ha arretrato, quindi quei messaggi sono perduti e le cache
+// vengono svuotate per intero (PRB00000003).
+export const metamodelResubscribeFlushTotal = createCounter('metamodel_resubscribe_flush_total', 'Times this process re-subscribed to the metamodel channel AFTER losing its subscription and therefore dropped all its metamodel caches: each one is a window of invalidation messages lost for good (Redis pub/sub has no backlog)', [])
 
 /** Metriche del canale del metamodello, nell'ordine di esposizione. */
+/**
+ * L'AI COSTA E SI MISURA (revisione AI, ondata 8).
+ *
+ * Sei funzioni chiamavano il modello e nessuna era contata: quanto spende un
+ * cliente, quante risposte arrivano tagliate, quanto del prompt rilegge la
+ * cache — niente. `ai_tokens_total{kind="cache_read"}` in particolare è il
+ * numero che dice se il punto di cache è messo dove serve: se resta a zero,
+ * il prefisso non si ripete e la cache non sta lavorando.
+ */
+export const aiCallsTotal = createCounter('ai_calls_total', 'Calls to the language model by AI feature and outcome (ok, truncated, refused, unreadable, failed)', ['feature', 'outcome'])
+export const aiTokensTotal = createCounter('ai_tokens_total', 'Tokens exchanged with the language model by AI feature and kind (input, output, cache_read, cache_write)', ['feature', 'kind'])
+export const aiDiscardsTotal = createCounter('ai_discards_total', 'Pieces of a model proposal thrown away by the validation filter, by AI feature: it measures how well the prompt matches what the product accepts', ['feature'])
+export const aiCallDurationSeconds = createHistogram('ai_call_duration_seconds', 'Wall time of a model call by AI feature', ['feature'], [1, 2, 5, 10, 20, 40, 80])
+
+export const AI_METRICS = [aiCallsTotal, aiTokensTotal, aiDiscardsTotal, aiCallDurationSeconds] as const
+
 export const METAMODEL_BUS_METRICS = [
   metamodelPublishedTotal, metamodelReceivedTotal, metamodelCacheClearFailuresTotal, metamodelBusSubscribed,
+  metamodelResubscribeFlushTotal,
 ] as const
 
 export const METRICS_CONTENT_TYPE = 'text/plain; version=0.0.4; charset=utf-8'
@@ -531,6 +560,7 @@ export function renderMetrics(): string {
     ...EVENT_MANAGEMENT_METRICS.map((m) => m.collect()),
     ...SCHEMA_METRICS.map((m) => m.collect()),
     ...METAMODEL_BUS_METRICS.map((m) => m.collect()),
+    ...AI_METRICS.map((m) => m.collect()),
   ].join('\n\n')
 }
 
@@ -637,9 +667,33 @@ export interface ProcessMetricsData {
 const slowQueryBuffer: SlowQueryEntry[] = []
 const MAX_SLOW_QUERIES = 20
 
+/**
+ * La query come la LEGGE chi guarda il pannello: senza i commenti del
+ * sorgente e su una riga.
+ *
+ * Prima si prendevano i primi 200 caratteri del testo cosi com'era, e le
+ * nostre query hanno spesso un commento in testa che spiega perche sono
+ * scritte cosi. Risultato, visto nel pannello «Query lente»: al posto della
+ * query si leggeva «// OGNI PARTE nella sua sottoquery (revisione totale ·
+ * E-36): i sette // OPTIONAL MATCH in fila prima del RETURN facevano il
+ * prodotto…», cioe la spiegazione e non la cosa da guardare. Con 200
+ * caratteri di budget, un commento lungo mangia tutta la query.
+ *
+ * Limite noto: un `//` dentro una stringa della query (un URL) taglierebbe il
+ * resto della riga. E' solo la vista del pannello, non la query eseguita, e
+ * nessuna query del prodotto contiene un URL.
+ */
+export function queryPerIlPannello(query: string): string {
+  return query
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .split('\n').map((riga) => riga.replace(/\/\/.*$/, '')).join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function recordSlowQuery(query: string, durationMs: number): void {
   slowQueryBuffer.push({
-    query: query.slice(0, 200),
+    query: queryPerIlPannello(query).slice(0, 200),
     durationMs,
     timestamp: new Date().toISOString(),
   })

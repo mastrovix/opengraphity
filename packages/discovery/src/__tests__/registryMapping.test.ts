@@ -91,9 +91,33 @@ describe('inferCIType', () => {
 })
 
 describe('normalizeProperties', () => {
-  it('drops null/undefined/blank strings, trims, and turns "true"/"false" into booleans; other values untouched', () => {
+  it('CONTRATTO RINEGOZIATO (E-40): «true»/«false» diventano booleani solo per le proprietà booleane', () => {
+    /**
+     * Revisione totale · E-40: la conversione valeva per QUALUNQUE proprietà,
+     * quindi un tag `Environment=false` o una versione `"true"` cambiavano
+     * tipo e poi non si filtravano più come testo. Ora convertono solo le
+     * proprietà che dicono di essere un sì/no dal nome (`is_*`, `has_*`,
+     * `*_enabled`, `monitored`, `encrypted`…).
+     */
     expect(normalizeProperties({
-      a: null, b: undefined, c: '', d: '   ', e: '  x  ', f: 'true', g: ' false ', h: 0, i: false, j: [1], k: { n: 1 }, l: 'TRUE',
-    })).toEqual({ e: 'x', f: true, g: false, h: 0, i: false, j: [1], k: { n: 1 }, l: 'TRUE' })
+      a: null, b: undefined, c: '', d: '   ', e: '  x  ', h: 0, i: false, j: [1], k: { n: 1 },
+      is_managed: 'true', has_backup: ' false ', monitored: 'true', tls_enabled: 'false',
+      environment: 'false', version: 'true', label: 'TRUE',
+    })).toEqual({
+      e: 'x', h: 0, i: false, j: [1], k: { n: 1 },
+      is_managed: true, has_backup: false, monitored: true, tls_enabled: false,
+      environment: 'false', version: 'true', label: 'TRUE',
+    })
+  })
+
+  it('E-40: il tipo si indovina per PAROLE del nome, non per sottostringa', () => {
+    const ci = (name: string) => ({ external_id: name, source: 'csv', name, properties: {}, tags: {}, relationships: [] })
+    // «concert» non è «cert», «albany» non è «lb»
+    expect(inferCIType(ci('concert-web-01'))).toBe('server')
+    expect(inferCIType(ci('albany-db'))).toBe('server')
+    // le parole vere continuano a valere
+    expect(inferCIType(ci('wildcard-cert-2026'))).toBe('certificate')
+    expect(inferCIType(ci('public-lb-01'))).toBe('load_balancer')
+    expect(inferCIType(ci('prod-vpc'))).toBe('network')
   })
 })

@@ -24,7 +24,7 @@ export const GET_TEAM = gql`
   ${USER_REF}
   query GetTeam($id: ID!) {
     team(id: $id) {
-      id tenantId name description type sourcing createdAt isChangeManager
+      id name description type sourcing createdAt isChangeManager
       manager { ...UserRef }
       members { ...UserRef role }
       ownedCIs { id name type environment status }

@@ -1,12 +1,14 @@
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
-  Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp,
+  Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp, ListOrdered,
   Table as TableIcon,
 } from 'lucide-react'
 import { ReportPreview } from './ReportPreview'
 import type { SectionResult } from './ReportPreview'
+import { navigableLabel } from './ReportFlowNodes'
 import type { NavigableField } from './ReportFlowNodes'
+import { isTemporalField } from '@opengraphity/types'
 import { colors, palette } from '@/lib/tokens'
 
 /*
@@ -23,6 +25,9 @@ export const CHART_TYPES = [
   { value: 'line',           labelKey: 'reportChart.type.line',          descKey: 'reportChart.desc.line',          icon: <LineChart size={18} /> },
   { value: 'area',           labelKey: 'reportChart.type.area',          descKey: 'reportChart.desc.area',          icon: <TrendingUp size={18} /> },
   { value: 'table',          labelKey: 'reportChart.type.table',         descKey: 'reportChart.desc.table',         icon: <TableIcon size={18} /> },
+  /* `top_n` esisteva nell'API (e nei suoi test) e NON si poteva scegliere:
+     chi apriva un report che lo usava leggeva «top_n» come nome del grafico. */
+  { value: 'top_n',          labelKey: 'reportChart.type.topN',          descKey: 'reportChart.desc.topN',          icon: <ListOrdered size={18} /> },
 ]
 
 export const METRIC_TYPES = [
@@ -33,13 +38,55 @@ export const METRIC_TYPES = [
   { value: 'max',   labelKey: 'reportChart.metric.max' },
 ]
 
-export const DATE_FIELD_NAMES = ['created_at', 'updated_at', 'resolved_at', 'expires_at', 'scheduled_start', 'scheduled_end', 'implemented_at']
+/**
+ * Il PERIODO di una serie temporale (19 set 2026). Mancava: una serie
+ * raggruppava per GIORNO e basta, quindi «gli ultimi 6 mesi» erano 180 punti
+ * appiccicati. Chi chiede sei mesi vuole i mesi.
+ */
+export const GRANULARITIES = [
+  { value: 'day',   labelKey: 'reportChart.granularity.day' },
+  { value: 'week',  labelKey: 'reportChart.granularity.week' },
+  { value: 'month', labelKey: 'reportChart.granularity.month' },
+  { value: 'year',  labelKey: 'reportChart.granularity.year' },
+]
+
+/**
+ * «Questo campo è una data?» — la risposta sta in `packages/types`
+ * (`isTemporalField`), la stessa che usa l'API per rifiutare un periodo su un
+ * campo che data non è. Qui c'era un elenco scritto a mano che già divergeva
+ * da quello dell'API (che non c'era affatto) e dimenticava `datetime`: un
+ * campo `resolved_at` tipizzato `datetime` non faceva comparire la tendina
+ * del periodo.
+ */
+export const eUnaData = (f: { name: string; fieldType?: string | null }): boolean =>
+  isTemporalField(f.name, f.fieldType ?? null)
+
+/**
+ * IL PERIODO CHE SI SALVA — `null` quando non c'è una data su cui applicarlo.
+ *
+ * Il wizard mandava `granularita || 'day'`, cioè SEMPRE: un istogramma
+ * «Incident per stato» nasceva con «per giorno» addosso, e il costruttore di
+ * query lo prendeva sul serio — `date(datetime(n0.status))`. Neo4j: «Text
+ * cannot be parsed to a DateTime "completed"», all'esecuzione. La tendina
+ * era già nascosta: quel valore non era la scelta di nessuno, era quello
+ * rimasto nello stato dal grafico di prima.
+ */
+export function periodoDaSalvare(
+  granularita: string,
+  campo: string,
+  fieldType?: string | null,
+): string | null {
+  if (campo === '' || !eUnaData({ name: campo, fieldType })) return null
+  return granularita || 'day'
+}
 
 interface NodeDataEntry {
   label:          string
   fields:         NavigableField[]
   selectedFields: string[]
   isResult:       boolean
+  /** La RADICE: è il nodo su cui si calcola la metrica (vedi sotto). */
+  isRoot:         boolean
 }
 
 interface Props {
@@ -53,6 +100,8 @@ interface Props {
   onGroupByNodeIdChange:  (v: string) => void
   groupByField:           string
   onGroupByFieldChange:   (v: string) => void
+  groupByGranularity:     string
+  onGroupByGranularityChange: (v: string) => void
   limit:                  number
   onLimitChange:          (v: number) => void
   sortDir:                string
@@ -80,6 +129,7 @@ export function ReportChartConfig({
   metricField, onMetricFieldChange,
   groupByNodeId, onGroupByNodeIdChange,
   groupByField, onGroupByFieldChange,
+  groupByGranularity, onGroupByGranularityChange,
   limit, onLimitChange,
   sortDir, onSortDirChange,
   nodeDataMap, onSelectedFieldsChange,
@@ -88,7 +138,7 @@ export function ReportChartConfig({
 }: Props) {
   const { t } = useTranslation()
   const uid = useId()
-  const ids = { metric: `${uid}-metric`, metricField: `${uid}-metric-field`, limit: `${uid}-limit`, sortDir: `${uid}-sort-dir` }
+  const ids = { granularity: `${uid}-granularity`, metric: `${uid}-metric`, metricField: `${uid}-metric-field`, limit: `${uid}-limit`, sortDir: `${uid}-sort-dir` }
   const isKpi        = chartType === 'kpi'
   const isTable      = chartType === 'table'
   const isTimeSeries = chartType === 'line' || chartType === 'area'
@@ -96,6 +146,18 @@ export function ReportChartConfig({
   const needsLimit   = !isKpi && !isTable && !isTimeSeries
 
   const resultNodes = Object.entries(nodeDataMap).filter(([, nd]) => nd.isResult)
+  /** I campi su cui una metrica si può calcolare: numerici, e della RADICE. */
+  /**
+   * Il campo su cui si raggruppa è una DATA? Lo dice il metamodello
+   * (`fieldType`), con i nomi noti come rete per i campi che il metamodello
+   * non tipizza.
+   */
+  const campoDelGruppo = (nodeDataMap[groupByNodeId]?.fields ?? []).find((f) => f.name === groupByField)
+  const raggruppaPerData = groupByField !== ''
+    && eUnaData({ name: groupByField, fieldType: campoDelGruppo?.fieldType })
+
+  const campiNumericiDellaRadice = (Object.values(nodeDataMap).find((nd) => nd.isRoot)?.fields ?? [])
+    .filter((f) => f.fieldType === 'number')
   const tableColumnCount = resultNodes.reduce((acc, [, nd]) => acc + nd.selectedFields.length, 0)
 
   return (
@@ -146,9 +208,9 @@ export function ReportChartConfig({
                   <option value="">{t('reportChart.fieldOption')}</option>
                   {groupByNodeId && nodeDataMap[groupByNodeId]
                     ? nodeDataMap[groupByNodeId].fields
-                        .filter(f => !isTimeSeries || f.fieldType === 'date' || DATE_FIELD_NAMES.includes(f.name))
+                        .filter(f => !isTimeSeries || eUnaData(f))
                         .map(f => (
-                          <option key={f.name} value={f.name}>{f.label}</option>
+                          <option key={f.name} value={f.name}>{navigableLabel(t, f)}</option>
                         ))
                     : null}
                 </select>
@@ -169,19 +231,55 @@ export function ReportChartConfig({
                   {METRIC_TYPES.map(m => <option key={m.value} value={m.value}>{t(m.labelKey)}</option>)}
                 </select>
               </div>
-              {metric !== 'count' && resultNodes.length > 0 && (
+              {/*
+                IL CAMPO DELLA METRICA VIENE DALLA RADICE (19 set 2026).
+
+                Prima si pescava da tutti i nodi «risultato», ma l'aggregazione
+                si calcola sulla radice: un campo di un altro nodo darebbe una
+                proprietà che la radice non ha, cioè `null` — una media
+                silenziosamente sbagliata. E la metrica ora si calcola davvero
+                (prima era sempre un conteggio), quindi offrire il campo
+                sbagliato costerebbe un numero falso invece di niente.
+              */}
+              {metric !== 'count' && (
                 <div style={{ flex: 1 }}>
                   <label htmlFor={ids.metricField} style={labelStyle}>{t('reportChart.field')}</label>
                   <select id={ids.metricField} value={metricField} onChange={e => onMetricFieldChange(e.target.value)} style={selectStyle}>
                     <option value="">{t('common.select')}</option>
-                    {resultNodes.flatMap(([, nd]) =>
-                      nd.fields.filter(f => f.fieldType === 'number').map(f => (
-                        <option key={f.name} value={f.name}>{f.label}</option>
-                      ))
-                    )}
+                    {campiNumericiDellaRadice.map((f) => (
+                      <option key={f.name} value={f.name}>{navigableLabel(t, f)}</option>
+                    ))}
                   </select>
+                  {campiNumericiDellaRadice.length === 0 && (
+                    <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+                      {t('reportChart.noNumericField')}
+                    </p>
+                  )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/*
+            IL PERIODO compare per QUALUNQUE grafico raggruppato per una DATA
+            (19 set 2026).
+            Stava solo sulle serie, e intanto il costruttore offriva i campi
+            data anche agli istogrammi: raggruppare le barre per «Creato il»
+            dava una barra per timestamp — dodici barre alte 1 con sotto
+            «2026-07-15T11:05:33.963Z».
+
+            `needsGroupBy` e non il tipo di grafico: dove il raggruppamento
+            non c'è (numero totale, tabella) il periodo non vuol dire niente,
+            e il campo scelto prima resterebbe nello stato a far comparire una
+            tendina che non governa niente.
+          */}
+          {needsGroupBy && raggruppaPerData && (
+            <div>
+              <label htmlFor={ids.granularity} style={labelStyle}>{t('reportChart.granularityLabel')}</label>
+              <select id={ids.granularity} value={groupByGranularity || 'day'}
+                onChange={e => onGroupByGranularityChange(e.target.value)} style={selectStyle}>
+                {GRANULARITIES.map(g => <option key={g.value} value={g.value}>{t(g.labelKey)}</option>)}
+              </select>
             </div>
           )}
 
@@ -225,7 +323,7 @@ export function ReportChartConfig({
                             onSelectedFieldsChange(nid, updated)
                           }}
                         />
-                        {f.label}
+                        {navigableLabel(t, f)}
                       </label>
                     ))}
                   </div>
@@ -237,7 +335,7 @@ export function ReportChartConfig({
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={labelStyle}>{t('reportChart.livePreview')}</div>
-          <ReportPreview loading={previewLoading} data={previewData} />
+          <ReportPreview loading={previewLoading} data={previewData} granularita={raggruppaPerData ? groupByGranularity : null} />
         </div>
       </div>
     </div>

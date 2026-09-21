@@ -90,7 +90,7 @@ export async function ciLabelsForTypeNames(
   typeNames: readonly string[],
   what: string,
   /** Dove: il pezzo di frase che dice in quale campo si è trovato il nome ignoto (chiave i18n). */
-  where: 'topology' | 'problemRules' | 'incidentRules' | 'groupCriteria',
+  where: 'topology' | 'groupCriteria',
 ): Promise<string[]> {
   const map = await nameToLabel(tenantId)
   const out: string[] = []

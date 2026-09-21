@@ -4,16 +4,18 @@
  * Vocabolario (operatori, azioni, entità, eventi): lib/automationOperators.ts.
  */
 import { useTranslation } from 'react-i18next'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { GET_TEAMS, GET_USERS } from '@/graphql/queries'
 import { useEntityFieldLookup } from '@/hooks/useEntityFields'
-import { lookupOrError, palette } from '@/lib/tokens'
+import { palette } from '@/lib/tokens'
 import {
-  ENTITY_LABELS, NO_VALUE_OPERATORS, automationActionKey, eventParticipleKey, operatorKey,
+  NO_VALUE_OPERATORS, automationActionKey, eventParticipleKey, operatorKey,
 } from '@/lib/automationOperators'
 import { Eye } from 'lucide-react'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
 interface Condition { field: string; operator: string; value: string }
 interface Action { type: string; params: Record<string, string> }
@@ -31,7 +33,10 @@ interface Props {
 
 export function AutomationPreview({ entityType, eventType, conditions, conditionLogic, actions, timerMinutes }: Props) {
   const { t } = useTranslation()
+  // F16: l'etichetta del tipo ITIL del cliente, non una tabella del web.
+  const { labelOf } = useItilTypeLabels()
   const fieldLookup = useEntityFieldLookup(entityType)
+  const vocab = useDomainVocabularies()
   const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
 
@@ -50,6 +55,9 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
         // Resolve IDs to names
         if (meta?.fieldType === 'user') val = userMap.get(c.value) ?? c.value
         if (meta?.fieldType === 'team') val = teamMap.get(c.value) ?? c.value
+        // V-19: «Urgenza = "high"» → «Urgenza = "Alta"», l'etichetta del Dizionario.
+        // Anche la scelta multipla (ondata 5): il valore è UNA scelta del vocabolario.
+        if ((meta?.fieldType === 'enum' || meta?.fieldType === 'multi_enum') && meta.enumTypeName) val = vocab.labelOf(meta.enumTypeName, c.value) ?? c.value
         return `${fieldName} ${op} "${val}"`
       }).join(logic)
     : null
@@ -79,7 +87,7 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
     : null
 
   // ── Compose full preview ─────────────────────────────────────────────────
-  const entityLabel = lookupOrError(ENTITY_LABELS, entityType, 'ENTITY_LABELS', `?${entityType}`)
+  const entityLabel = labelOf(entityType)
   const eventLabel  = t(eventParticipleKey(eventType))
 
   // La frase si compone di FRAMMENTI tradotti, non di pezzi cuciti in italiano:

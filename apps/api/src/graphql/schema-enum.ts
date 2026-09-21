@@ -1,5 +1,20 @@
 export function enumTypeSDL(): string {
   return `
+  type EnumValueRecordUsage {
+    typeName:  String!
+    fieldName: String!
+    count:     Int!
+  }
+
+  type EnumValueUsage {
+    value:       String!
+    records:     [EnumValueRecordUsage!]!
+    policyLists: [String!]!
+    matrices:    [String!]!
+    configSites: [String!]!
+    total:       Int!
+  }
+
   type EnumTypeDefinition {
     id:        ID!
     tenantId:  String!
@@ -19,6 +34,12 @@ export function enumTypeSDL(): string {
     copia vince in lettura solo per chi la possiede).
     """
     isShipped: Boolean!
+    """
+    Values the product added to the shipped dictionary after this copy was made (or after the last decision),
+    which the copy does not have. Always empty for a shipped dictionary. Decide with \`adoptShippedValues\`
+    or \`acknowledgeShippedValues\`.
+    """
+    newShippedValues: [String!]!
     """
     Il valore da usare quando nessuno lo indica (\`null\` = non dichiarato).
     Serve a togliere una regola di dominio dalla POSIZIONE: \`initialCIStatus\`
@@ -44,13 +65,37 @@ export function enumTypeSDL(): string {
     arrivo, non voci di menu.
     """
     valueLabels(language: String): [EnumValueLabel!]!
+    """
+    Il colore di ogni valore che ne ha uno, nell'ordine dei valori: il nome di
+    una famiglia della palette del prodotto (neutral, success, info, purple,
+    warning, orange, danger), mai un esadecimale. Un valore senza colore si
+    mostra neutro. Revisione del 14 set 2026 · F9: prima i colori erano tabelle
+    scritte nel web, e un valore del cliente appariva grigio.
+    """
+    valueColors: [EnumValueColor!]!
+    """
+    Perche questo vocabolario NON porta etichette per valore, come chiave i18n —
+    \`null\` quando le porta (e quindi un'etichetta vuota e vuota davvero).
+
+    Esiste perche il Dizionario scriveva «not written» accanto a tutti i valori
+    di \`status_change\`, in entrambe le lingue, senza dire che e di proposito: la
+    lettura naturale era «manca qualcosa». Il motivo stava nei commenti del
+    server, dove nessun cliente lo legge (17 set 2026).
+    """
+    valueLabelsReasonKey: String
+  }
+
+  type EnumValueColor {
+    value: String!
+    color: String!
   }
 
   """
   Un valore del vocabolario e come si legge a schermo.
 
   «label» e' l'etichetta nella lingua CHIESTA e c'e' sempre, col ripiego
-  dichiarato: lingua chiesta → italiano → il valore con le iniziali maiuscole.
+  dichiarato: lingua chiesta → lingua predefinita del cliente → il valore con
+  le iniziali maiuscole.
   Chi legge non deve ripiegare da se'.
 
   «labels» porta le lingue in cui l'etichetta e' davvero scritta, e serve
@@ -99,6 +144,13 @@ export function enumTypeSDL(): string {
     valori (quelli nuovi, se li stai cambiando nella stessa chiamata).
     """
     defaultValue: String
+    """I colori per valore, SOSTITUITI in blocco (la lista mandata è quella che resta)."""
+    valueColors: [EnumValueColorInput!]
+  }
+
+  input EnumValueColorInput {
+    value: String!
+    color: String!
   }
 
   """Un'etichetta, per un valore e per UNA lingua. Un valore con due lingue manda due voci."""

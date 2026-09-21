@@ -16,7 +16,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { USER_ROLES, NOTIFICATION_TARGETS, NOTIFICATION_ROLE_TARGETS } from '@opengraphity/types'
+import { USER_ROLES, NOTIFICATION_TARGETS, NOTIFICATION_BASE_TARGETS, NOTIFICATION_ROLE_TARGETS } from '@opengraphity/types'
 import { ROLES } from '../authorization.js'
 
 const SRC = fileURLToPath(new URL('../..', import.meta.url))
@@ -35,11 +35,23 @@ describe('un solo elenco di ruoli', () => {
     expect(src).toContain('export const ROLES = USER_ROLES')
   })
 
-  it('add-user e onboard-tenant prendono i ruoli ammessi dalla lista condivisa', () => {
+  it('add-user accetta i ruoli dell\'organizzazione, letti dal grafo prima di toccare Keycloak (ondata 7)', () => {
+    const src = code(read('scripts/add-user.ts'))
+    expect(src).toMatch(/MATCH \(r:Role \{tenant_id: \$tenantId\}\)/)
+    expect(src.indexOf('await assertTenantRole(a)')).toBeLessThan(src.indexOf('await kc.getAdminToken()'))
+    expect(src).not.toMatch(/'manager'|'user'/)
+  })
+
+  it('onboard-tenant: il primo admin ha un ruolo di fabbrica che gestisce persone e ruoli', () => {
+    const src = code(read('scripts/onboard-tenant.ts'))
+    expect(src).toMatch(/const ALLOWED_ROLES = USER_ROLES\.filter\(\(r\) => FACTORY_ROLE_PERMISSIONS\[r\]\.includes\(USERS_ADMIN_PERMISSION\)\)/)
+    expect(src).not.toMatch(/'manager'|'user'/)
+  })
+
+  it('nessuno dei due copia il ruolo in Keycloak (ondata 7: il ruolo si legge solo dal grafo)', () => {
     for (const file of ['scripts/add-user.ts', 'scripts/onboard-tenant.ts']) {
-      const src = read(file)
-      expect(code(src), file).toMatch(/const ALLOWED_ROLES = USER_ROLES/)
-      expect(code(src), file).not.toMatch(/'manager'|'user'/)
+      const src = code(read(file))
+      expect(src, file).not.toMatch(/assignRealmRole\(|\/roles`|realm-role-mapper/)
     }
   })
 
@@ -50,19 +62,21 @@ describe('un solo elenco di ruoli', () => {
   })
 })
 
-describe('i destinatari delle notifiche per ruolo coincidono con i ruoli veri (D-23 + D-13)', () => {
-  it('un bersaglio per ogni ruolo, nessuno in più', () => {
+describe('i destinatari delle notifiche per ruolo sono i ruoli dell\'organizzazione (D-23 + D-13, ondata 7)', () => {
+  it('i ruoli di fabbrica hanno ognuno il suo bersaglio, e nessun ruolo inventato', () => {
     expect([...NOTIFICATION_ROLE_TARGETS]).toEqual(USER_ROLES.map((r) => `role:${r}`))
     expect(NOTIFICATION_TARGETS).not.toContain('role:manager')
   })
 
-  it('la tendina del web offre esattamente il vocabolario condiviso', () => {
+  it('la tendina del web offre i bersagli fissi del vocabolario e un bersaglio per ogni ruolo caricato', () => {
     const src = code(readFileSync(fileURLToPath(new URL('../../../../web/src/pages/settings/NotificationRuleList.tsx', import.meta.url)), 'utf8'))
-    // I valori non sono scritti a mano nel web: la lista arriva da
-    // NOTIFICATION_TARGETS e qui c'è solo l'etichetta di ognuno (un bersaglio
-    // senza etichetta fa fallire il caricamento del modulo).
-    expect(src).toContain('NOTIFICATION_TARGETS.map')
-    for (const target of NOTIFICATION_TARGETS) expect(src, target).toContain(`'${target}':`)
+    // I valori non sono scritti a mano nel web: i fissi arrivano da
+    // NOTIFICATION_BASE_TARGETS (qui c'è solo l'etichetta di ognuno), i ruoli
+    // dai ruoli dell'organizzazione (`useRoles`), mai da una lista.
+    expect(src).toContain('NOTIFICATION_BASE_TARGETS.map')
+    for (const target of NOTIFICATION_BASE_TARGETS) expect(src, target).toContain(`'${target}':`)
+    expect(src).toContain('roles.map((r) => ({ value: roleNotificationTarget(r.key)')
     expect(src).not.toContain('role:manager')
+    expect(src).not.toMatch(/'role:(admin|operator|viewer|end_user)'/)
   })
 })

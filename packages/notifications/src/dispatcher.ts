@@ -1,19 +1,23 @@
 import { randomUUID } from 'crypto'
 import { BaseConsumer } from '@opengraphity/events'
-import type { DomainEvent, StepEnteredFacts } from '@opengraphity/types'
-import { isStepEnteredEventType, stepEnteredEntityType, legacyStepEventType } from '@opengraphity/types'
+import { TICKET_WORKER_PERMISSION, type DomainEvent, type StepEnteredFacts } from '@opengraphity/types'
+import { isStepEnteredEventType, stepEnteredEntityType, legacyStepEventType, AUTOMATION_NOTIFICATION_EVENT, AUTOMATION_NOTIFICATION_CHANNELS, type AutomationNotificationPayload } from '@opengraphity/types'
 import { getSession } from '@opengraphity/neo4j'
 import { sseManager, InAppNotification } from './sse.js'
-import { sendTeamsAdaptiveMessage, type TeamsAdaptiveCard } from './index.js'
+import { sendTeamsAdaptiveMessage, sendSlackMessage, type TeamsAdaptiveCard, type SlackBlock } from './index.js'
 import {
   loadChannels, dispatchIncidentNotification, dispatchChangeNotification, dispatchChangeTaskNotification,
   type ChannelPlatform,
 } from './consumer.js'
 import type { IncidentData, ChangeTaskPayload } from './formatters.js'
-import { APP_URL } from './appUrl.js'
+import { appUrl } from './appUrl.js'
+import { brandedEmailHtml, loadTenantBrand } from './brand.js'
 import { escapeHtml } from './escapeHtml.js'
 import { assertRoutableChannels, notificationEntityPath, unroutableChannels } from './routing.js'
 import { resolveNotificationRecipients, targetNeedsRecipients, type NotificationRecipient } from './recipients.js'
+import { formatNotificationDate, notificationText, notificationTitle, isNotificationTextKey, type NotificationLocale } from './texts.js'
+import { loadNotificationLocale } from './locale.js'
+import { deliverOnce } from './deliveryDedup.js'
 
 // ── Rule model ────────────────────────────────────────────────────────────────
 
@@ -73,8 +77,14 @@ async function fetchRules(tenantId: string, eventType: string): Promise<Notifica
         enabled:          Boolean(props['enabled']),
         severityOverride: (props['severity_override'] ?? 'info') as string,
         titleKey:         props['title_key']         as string,
-        channels:         (props['channels']         as string[]) ?? ['in_app'],
-        target:           (props['target']           as string)   ?? 'all',
+        // Nessun ripiego su `['in_app']`/`'all'` (revisione totale · E-44):
+        // una regola scritta male via API o migrazione trasmetteva a TUTTO il
+        // tenant, viewer compresi — lo stesso difetto della riservatezza già
+        // chiuso (D-23), per una via secondaria. Una regola senza canali o
+        // senza bersaglio è un dato rotto e si dice: il job fallisce, la
+        // regola si corregge.
+        channels:         requireChannels(props),
+        target:           requireTarget(props),
         stepPurpose:      (props['step_purpose']     ?? null) as string | null,
         stepCategory:     (props['step_category']    ?? null) as string | null,
       }
@@ -82,6 +92,25 @@ async function fetchRules(tenantId: string, eventType: string): Promise<Notifica
   } finally {
     await session.close()
   }
+}
+
+/** I canali della regola: una lista non vuota di stringhe, o un errore che nomina la regola. */
+function requireChannels(props: Record<string, unknown>): string[] {
+  const raw = props['channels']
+  const list = Array.isArray(raw) ? raw.filter((c): c is string => typeof c === 'string' && c !== '') : []
+  if (list.length === 0) {
+    throw new Error(`NotificationRule ${String(props['id'])} (${String(props['event_type'])}) has no channels: it cannot be delivered — fix the rule instead of broadcasting in-app to the whole tenant`)
+  }
+  return list
+}
+
+/** Il bersaglio della regola: mai dedotto, perché «all» è una trasmissione. */
+function requireTarget(props: Record<string, unknown>): string {
+  const raw = props['target']
+  if (typeof raw !== 'string' || raw === '') {
+    throw new Error(`NotificationRule ${String(props['id'])} (${String(props['event_type'])}) has no target: it would broadcast to the whole tenant — set a target on the rule`)
+  }
+  return raw
 }
 
 async function getRules(tenantId: string, eventType: string): Promise<NotificationRule[]> {
@@ -128,6 +157,16 @@ export function invalidateRuleCache(tenantId: string, eventType?: string): void 
   }
 }
 
+/**
+ * Le regole di OGNI tenant (PRB00000003). Serve quando il canale del
+ * metamodello riprende dopo una caduta: i messaggi persi non dicono più quali
+ * tenant siano cambiati, e questa cache sta nel processo che CONSEGNA le
+ * notifiche — una regola spenta e ancora in memoria continua a notificare.
+ */
+export function clearRuleCache(): void {
+  ruleCache.clear()
+}
+
 // ── Payload helpers ───────────────────────────────────────────────────────────
 
 function extractEntityId(payload: unknown): string | undefined {
@@ -155,6 +194,16 @@ function extractEntityType(eventType: string, payload: unknown): string {
 const monitoringEvent = (type: string) => (p: Record<string, unknown>) => `${required(p, 'title', type)} — ${required(p, 'resource', type)}`
 
 const MESSAGE_BY_EVENT: Record<string, (p: Record<string, unknown>) => string> = {
+  // Giro nel browser del 14 set 2026 (#18): il corpo era «29», solo i minuti.
+  'sla.warning': (p) => {
+    const ref = `${required(p, 'number', 'sla.warning')} — ${required(p, 'title', 'sla.warning')}`
+    return p['target'] === 'response'
+      ? `${ref}: the response time has elapsed`
+      : `${ref}: ${requiredNumber(p, 'minutes_remaining', 'sla.warning')} min left before the SLA deadline`
+  },
+  'sla.breached': (p) => `${required(p, 'number', 'sla.breached')} — ${required(p, 'title', 'sla.breached')}`,
+  // Il messaggio scritto nella regola di escalation (NT-8), già risolto dall'API.
+  'incident.escalation':     (p) => required(p, 'message', 'incident.escalation'),
   'service.health_changed':  (p) => `${required(p, 'name', 'service.health_changed')} — ${required(p, 'new_health', 'service.health_changed')}`,
   'service.incident_opened': (p) => `${required(p, 'name', 'service.incident_opened')} — ${required(p, 'health', 'service.incident_opened')} (${required(p, 'incident_number', 'service.incident_opened')})`,
   'ci.health_changed':       (p) => `${required(p, 'name', 'ci.health_changed')} — ${required(p, 'new_health', 'ci.health_changed')}`,
@@ -166,7 +215,41 @@ const MESSAGE_BY_EVENT: Record<string, (p: Record<string, unknown>) => string> =
   'event.flapping':          monitoringEvent('event.flapping'),
   'event.stable':            monitoringEvent('event.stable'),
   'event.storm_started':     (p) => `${required(p, 'source_name', 'event.storm_started')} — ${requiredNumber(p, 'rate_per_minute', 'event.storm_started')}/min`,
-  'event.storm_ended':       (p) => `${required(p, 'source_name', 'event.storm_ended')} — ${requiredNumber(p, 'events', 'event.storm_ended')} allarmi in ${requiredNumber(p, 'duration_minutes', 'event.storm_ended')} min`,
+  'event.storm_ended':       (p) => `${required(p, 'source_name', 'event.storm_ended')} — ${requiredNumber(p, 'events', 'event.storm_ended')} alarms in ${requiredNumber(p, 'duration_minutes', 'event.storm_ended')} min`,
+}
+
+/**
+ * Le frasi dei messaggi che hanno parole (non solo dati): chiave e dati per il
+ * pannello, che le compone nella lingua di chi legge. Il `message` sopra resta
+ * il testo inglese per e-mail e integrazioni.
+ */
+const MESSAGE_KEY_BY_EVENT: Record<string, (p: Record<string, unknown>) => { key: string; params: Record<string, string> }> = {
+  'sla.warning': (p): { key: string; params: Record<string, string> } => {
+    const ref = { number: required(p, 'number', 'sla.warning'), title: required(p, 'title', 'sla.warning') }
+    return p['target'] === 'response'
+      ? { key: 'inApp.sla.responseElapsed', params: ref }
+      : { key: 'inApp.sla.warning', params: { ...ref, minutes: String(requiredNumber(p, 'minutes_remaining', 'sla.warning')) } }
+  },
+  'event.storm_ended': (p) => ({
+    key: 'inApp.storm.ended',
+    params: {
+      source: required(p, 'source_name', 'event.storm_ended'),
+      events: String(requiredNumber(p, 'events', 'event.storm_ended')),
+      minutes: String(requiredNumber(p, 'duration_minutes', 'event.storm_ended')),
+    },
+  }),
+}
+
+/**
+ * L'istante dell'evento come `Date` (revisione totale · E-16): i messaggi che
+ * escono datavano la consegna, non il fatto — con una coda in ritardo di venti
+ * minuti Slack riportava un orario sbagliato di venti minuti. Un timestamp
+ * illeggibile non ferma la notifica: si data adesso, che è comunque la verità
+ * su quando è stata scritta.
+ */
+function eventInstant(event: DomainEvent<unknown>): Date {
+  const ms = Date.parse(event.timestamp)
+  return Number.isNaN(ms) ? new Date() : new Date(ms)
 }
 
 function required(p: Record<string, unknown>, field: string, eventType: string): string {
@@ -179,6 +262,13 @@ function requiredNumber(p: Record<string, unknown>, field: string, eventType: st
   const v = p[field]
   if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${eventType} payload has no numeric "${field}": the notification would have an empty body`)
   return v
+}
+
+function messageKeyOf(eventType: string, payload: unknown): { message_key?: string; message_params?: Record<string, string> } {
+  const k = MESSAGE_KEY_BY_EVENT[eventType]
+  if (!k) return {}
+  const { key, params } = k(payload as Record<string, unknown>)
+  return { message_key: key, message_params: params }
 }
 
 function extractMessage(eventType: string, payload: unknown): string {
@@ -200,11 +290,9 @@ function extractMessage(eventType: string, payload: unknown): string {
   const assignedTo = typeof p['assignedTo'] === 'string' && p['assignedTo'] !== '—' ? p['assignedTo'] as string : null
   const changeTitle= typeof p['changeTitle']=== 'string' && p['changeTitle'] ? p['changeTitle'] as string : null
   const ciName     = typeof p['ciName']     === 'string' && p['ciName'] !== '—' ? p['ciName']     as string : null
-  const minRem     = typeof p['minutes_remaining'] === 'number' ? (p['minutes_remaining'] as number) : null
   const entityType = typeof p['entity_type'] === 'string' ? p['entity_type'] as string : null
   const entityId   = typeof p['entity_id']   === 'string' ? p['entity_id']   as string : null
 
-  if (minRem !== null) return String(minRem)
   if (changeTitle)     return ciName ? `${changeTitle} — ${ciName}` : changeTitle
   if (entityType && entityId && !title) return `${entityType} ${entityId}`
 
@@ -223,16 +311,42 @@ function extractMessage(eventType: string, payload: unknown): string {
  * in-app panel uses): no link at all beats a link to a route that does not
  * exist (D3.2). Exported for tests.
  */
-export function renderNotificationEmail(notification: InAppNotification): string {
+export function renderNotificationEmail(notification: InAppNotification, locale: NotificationLocale): string {
   const path = notificationEntityPath(notification.entity_type, notification.entity_id)
   const link = path
-    ? `<a href="${escapeHtml(`${APP_URL}${path}`)}" style="color:#0EA5E9;">Vedi dettagli</a>`
+    ? `<a href="${escapeHtml(`${appUrl()}${path}`)}" style="color:#0EA5E9;">${escapeHtml(notificationText(locale, 'viewDetails'))}</a>`
     : ''
-  return `<div style="font-family:Arial,sans-serif;padding:16px;">
-          <h2 style="color:#0F172A;margin:0 0 8px;">${escapeHtml(notification.title)}</h2>
-          <p style="color:#64748B;margin:0 0 16px;">${escapeHtml(notification.message)}</p>
+  return `<div lang="${locale.language}" style="font-family:Arial,sans-serif;padding:16px;">
+          <h2 style="color:#0F172A;margin:0 0 8px;">${escapeHtml(emailTitle(notification, locale))}</h2>
+          <p style="color:#64748B;margin:0 0 16px;">${escapeHtml(emailBody(notification, locale))}</p>
           ${link}
         </div>`
+}
+
+/**
+ * Il CORPO che una persona legge nell'e-mail, nella lingua del cliente
+ * (revisione totale · E-13). `message` resta il testo inglese per l'API e per
+ * le integrazioni; quando la notifica porta la chiave del messaggio
+ * (`message_key`, la stessa che il pannello traduce) l'e-mail usa quella.
+ */
+function emailBody(notification: InAppNotification, locale: NotificationLocale): string {
+  const key = notification.message_key
+  if (key && isNotificationTextKey(key)) {
+    return notificationText(locale, key, notification.message_params ?? {})
+  }
+  return notification.message
+}
+
+/**
+ * Il titolo che una persona legge nell'e-mail: la frase della chiave nella
+ * lingua del cliente (NT-2: prima era la chiave grezza), altrimenti il testo di
+ * ripiego della notifica (l'etichetta del passo), altrimenti il testo scritto
+ * nella regola — lo stesso ordine del pannello.
+ */
+function emailTitle(notification: InAppNotification, locale: NotificationLocale): string {
+  const translated = notificationTitle(locale, notification.title)
+  if (translated !== notification.title) return translated
+  return notification.title_fallback ?? notification.title
 }
 
 // ── Dispatcher ────────────────────────────────────────────────────────────────
@@ -243,6 +357,18 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
   }
 
   async process(event: DomainEvent<unknown>): Promise<void> {
+    // Il promemoria di un task di change a una persona precisa (CH-13).
+    if (event.type === 'change.task_reminder') {
+      this.processTaskReminder(event)
+      return
+    }
+
+    // L'azione «crea notifica» di un trigger o di una Business Rule (AU-2).
+    if (event.type === AUTOMATION_NOTIFICATION_EVENT) {
+      await this.processAutomationNotification(event)
+      return
+    }
+
     // Workflow step custom notification (embed rule in payload, no DB lookup)
     if (event.type === 'workflow.step.entered') {
       await this.processWorkflowStep(event)
@@ -278,10 +404,10 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
   private async processStepEntered(event: DomainEvent<unknown>): Promise<void> {
     const p = event.payload as Record<string, unknown>
     const entityType = stepEnteredEntityType(event.type)
-    if (!entityType) throw new Error(`${event.type}: tipo di evento di passo malformato`)
+    if (!entityType) throw new Error(`${event.type}: malformed step event type`)
     const stepName = p['step_name']
     if (typeof stepName !== 'string' || !stepName) {
-      throw new Error(`${event.type} payload has no "step_name": impossibile scegliere la regola del passo`)
+      throw new Error(`${event.type} payload has no "step_name": the step rule cannot be chosen`)
     }
     const facts: StepEnteredFacts = {
       step_id:       typeof p['step_id'] === 'string' ? p['step_id'] as string : '',
@@ -324,12 +450,20 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     const unroutable = unroutableChannels(event.type, rule.channels)
     const channels   = rule.channels.filter((c) => !unroutable.includes(c))
 
+    // Un canale che questo evento non sa instradare è un errore della REGOLA,
+    // non della consegna: si rifiuta PRIMA di consegnare (revisione totale ·
+    // E-3). Prima si consegnava in-app ed e-mail e poi si lanciava: il job
+    // veniva ritentato quattro volte e ogni tentativo rifaceva quelle
+    // consegne — quattro notifiche identiche per ogni evento, per sempre.
+    if (unroutable.length > 0) assertRoutableChannels(event.type, rule.channels)
+
     const notification: InAppNotification = {
       id:          randomUUID(),
       type:        event.type,
       title:       rule.titleKey,
       title_fallback: titleFallback,
       message:     extractMessage(event.type, event.payload),
+      ...messageKeyOf(event.type, event.payload),
       severity:    rule.severityOverride as InAppNotification['severity'],
       entity_id:   extractEntityId(event.payload),
       entity_type: extractEntityType(event.type, event.payload),
@@ -348,19 +482,20 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       ? await this.resolveRecipients(event, rule.target)
       : null
 
+    // Ogni canale è consegnato UNA volta per evento: se un canale a valle
+    // fallisce, il ritentativo del job riprende da quello e non ripete i
+    // precedenti (E-3, lib deliveryDedup).
     if (channels.includes('in_app')) {
-      this.sendInApp(event.tenant_id, notification, recipients)
+      await deliverOnce(event.id, 'in_app', () => this.sendInApp(event.tenant_id, notification, recipients))
     }
 
     if (channels.some((c) => c === 'slack' || c === 'teams')) {
-      await this.dispatchToChannels(event, channels)
+      await deliverOnce(event.id, 'channels', () => this.dispatchToChannels(event, channels))
     }
 
     if (channels.includes('email')) {
-      await this.dispatchEmail(event, notification, recipients)
+      await deliverOnce(event.id, 'email', () => this.dispatchEmail(event, notification, recipients))
     }
-
-    if (unroutable.length > 0) assertRoutableChannels(event.type, rule.channels)
   }
 
   private async processWorkflowStep(event: DomainEvent<unknown>): Promise<void> {
@@ -396,19 +531,70 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       ? await this.resolveRecipients(event, nr.target ?? 'all', { type: p.entityType, id: p.entityId })
       : null
 
-    if (nr.channels.includes('in_app')) {
-      this.sendInApp(event.tenant_id, notification, recipients)
-    }
-    if (nr.channels.includes('email')) {
-      await this.dispatchEmail(event, notification, recipients)
-    }
-    // Slack/Teams for workflow steps are not implemented: refuse loudly instead
-    // of silently dropping a channel the admin configured (same table as the
-    // rule-driven events: routing.ts).
+    // Il canale non instradabile si rifiuta PRIMA di consegnare (E-3): dopo,
+    // il ritentativo del job ripeterebbe in-app ed e-mail a ogni giro.
+    // Slack/Teams per i passi non sono implementati: si rifiuta a voce alta
+    // invece di lasciar cadere un canale che l'admin ha configurato (stessa
+    // tabella degli eventi guidati da regola: routing.ts).
     const unsupported = unroutableChannels('workflow.step.entered', nr.channels)
     if (unsupported.length > 0) {
       throw new Error(`workflow.step.entered notify_rule requests unsupported channels [${unsupported.join(', ')}] — only in_app and email are implemented`)
     }
+    if (nr.channels.includes('in_app')) {
+      await deliverOnce(event.id, 'in_app', () => this.sendInApp(event.tenant_id, notification, recipients))
+    }
+    if (nr.channels.includes('email')) {
+      await deliverOnce(event.id, 'email', () => this.dispatchEmail(event, notification, recipients))
+    }
+  }
+
+  /**
+   * Il promemoria di un task di change (CH-13): prima la mutation scriveva un
+   * nodo che nessuno leggeva. Va solo alla persona scelta, nel pannello.
+   */
+  private processTaskReminder(event: DomainEvent<unknown>): void {
+    const p = event.payload as { recipient_user_id?: string; entity_id?: string; code?: string | null; title?: string | null }
+    if (!p?.recipient_user_id || !p.entity_id) throw new Error('change.task_reminder event without recipient_user_id/entity_id')
+    const notification: InAppNotification = {
+      id:          randomUUID(),
+      type:        'change.task_reminder',
+      title:       'notification.change.task_reminder.title',
+      message:     [p.code, p.title].filter(Boolean).join(' — '),
+      severity:    'warning',
+      entity_id:   p.entity_id,
+      entity_type: 'change',
+      timestamp:   event.timestamp,
+      read:        false,
+    }
+    sseManager.sendToUser(event.tenant_id, p.recipient_user_id, notification)
+  }
+
+  /**
+   * La notifica di un'automazione: il titolo è il nome della regola, il testo
+   * quello scritto nell'azione, i destinatari quelli del suo bersaglio.
+   */
+  private async processAutomationNotification(event: DomainEvent<unknown>): Promise<void> {
+    const p = event.payload as AutomationNotificationPayload
+    if (!p?.message || !p.entity_id || !p.entity_type) throw new Error('automation.notification event without message/entity')
+    if (!AUTOMATION_NOTIFICATION_CHANNELS.includes(p.channel)) {
+      throw new Error(`automation.notification requests unsupported channel "${p.channel}" — only ${AUTOMATION_NOTIFICATION_CHANNELS.join(', ')}`)
+    }
+    const notification: InAppNotification = {
+      id:             randomUUID(),
+      type:           AUTOMATION_NOTIFICATION_EVENT,
+      // Il nome che l'amministratore ha dato alla regola: testo, non una chiave.
+      title:          p.rule,
+      title_fallback: p.rule,
+      message:        p.message,
+      severity:       'info',
+      entity_id:      p.entity_id,
+      entity_type:    p.entity_type,
+      timestamp:      event.timestamp,
+      read:           false,
+    }
+    const recipients = await this.resolveRecipients(event, p.target, { type: p.entity_type, id: p.entity_id })
+    if (p.channel === 'in_app') this.sendInApp(event.tenant_id, notification, recipients)
+    else await this.dispatchEmail(event, notification, recipients)
   }
 
   // ── Bersaglio della regola → destinatari (D-23) ─────────────────────────────
@@ -433,14 +619,84 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     })
   }
 
-  /** In-app: trasmissione al tenant per `all`, una consegna per destinatario altrimenti. */
-  private sendInApp(tenantId: string, notification: InAppNotification, recipients: NotificationRecipient[] | null): void {
+  /**
+   * In-app: trasmissione al tenant per `all`, una consegna per destinatario
+   * altrimenti. ATTESA (E-19): se la notifica non viene salvata il job
+   * fallisce e viene ritentato, invece di lasciare una riga di log e una
+   * notifica che spariva al ricaricamento.
+   */
+  private async sendInApp(tenantId: string, notification: InAppNotification, recipients: NotificationRecipient[] | null): Promise<void> {
     if (recipients === null) {
-      sseManager.sendToTenant(tenantId, notification)
+      await sseManager.deliverToTenant(tenantId, notification)
       return
     }
     for (const recipient of recipients) {
-      sseManager.sendToUser(tenantId, recipient.id, notification)
+      await sseManager.deliverToUser(tenantId, recipient.id, notification)
+    }
+  }
+
+  /**
+   * SLA violato su un ticket che non è un incident (problem, richiesta di
+   * servizio): la card per Teams E i blocchi per Slack (revisione totale ·
+   * E-4 — il ramo esisteva solo per Teams, quindi una regola «SLA violato →
+   * Slack» su un problem non mandava niente e non c'era nemmeno un log).
+   * La gravità e lo stato sono quelli veri del ticket (E-8).
+   */
+  private async dispatchGenericSlaBreach(
+    event: DomainEvent<unknown>,
+    p: Record<string, unknown>,
+    platforms: readonly ChannelPlatform[],
+    locale: NotificationLocale,
+    number: string,
+    title: string,
+  ): Promise<void> {
+    const channels = await loadChannels(event.tenant_id, 'sla_breach', platforms)
+    if (channels.length === 0) return
+    const entityType = String(p['entity_type'] ?? '—')
+    const entityId   = String(p['entity_id'] ?? '—')
+    const breachedAt = typeof p['breached_at'] === 'string' ? formatNotificationDate(locale, new Date(p['breached_at'])) : '—'
+    const severity   = typeof p['severity'] === 'string' && p['severity'] ? p['severity'] : 'unknown'
+    const status     = typeof p['status']   === 'string' && p['status']   ? p['status']   : 'unknown'
+    const headline   = notificationText(locale, 'slaBreachedCard')
+    const subject    = notificationText(locale, 'slaBreachedFor', { type: entityType, id: `${number} — ${title}` })
+    const path       = notificationEntityPath(entityType, entityId)
+    const link       = path ? `${appUrl()}${path}` : null
+
+    for (const ch of channels) {
+      if (ch.platform === 'teams') {
+        if (!ch.webhookUrl) throw new Error(`Teams NotificationChannel ${ch.id} has no webhook_url`)
+        const card: TeamsAdaptiveCard = {
+          type: 'AdaptiveCard',
+          version: '1.4',
+          body: [
+            { type: 'TextBlock', text: headline, weight: 'Bolder', size: 'Large', wrap: true },
+            { type: 'TextBlock', text: subject, wrap: true },
+            { type: 'FactSet', facts: [
+              { title: notificationText(locale, 'entityType'), value: entityType },
+              { title: notificationText(locale, 'entityId'),   value: entityId },
+              { title: notificationText(locale, 'severity'),   value: severity.toUpperCase() },
+              { title: notificationText(locale, 'status'),     value: status },
+              { title: notificationText(locale, 'breachedAt'), value: breachedAt },
+            ] },
+          ],
+        }
+        await sendTeamsAdaptiveMessage(ch.webhookUrl, card)
+      } else {
+        const blocks: SlackBlock[] = [
+          { type: 'header', text: { type: 'plain_text', text: `⏰ ${headline}` } },
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: [
+              subject,
+              `*${notificationText(locale, 'severity')}:* ${severity.toUpperCase()}`,
+              `*${notificationText(locale, 'status')}:* ${status}`,
+              `*${notificationText(locale, 'breachedAt')}:* ${breachedAt}`,
+            ].join('\n') },
+            ...(link ? { accessory: { type: 'button' as const, text: { type: 'plain_text' as const, text: notificationText(locale, 'open') }, url: link } } : {}),
+          },
+        ]
+        await sendSlackMessage(event.tenant_id, ch.webhookUrl, ch.channelId, blocks)
+      }
     }
   }
 
@@ -451,24 +707,27 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     const hasTeams = channels.includes('teams')
     if (!hasSlack && !hasTeams) return
 
-    // Change approved → Slack
+    // Change approvata → Slack e Teams
     if (event.type === 'change.approved') {
       const p = event.payload as Record<string, unknown>
-      if (p['id'] && p['title']) {
-        await dispatchChangeNotification(event.tenant_id, {
-          id:       p['id']     as string,
-          title:    p['title']  as string,
-          type:     (p['type']  as string) ?? '—',
-          status:   (p['status'] as string) ?? 'scheduled',
-          tenantId: event.tenant_id,
-        })
-      }
+      // Un payload senza id o titolo NON è «niente da fare»: prima si usciva
+      // in silenzio (`if (p.id && p.title)`), quindi un produttore che
+      // pubblicava `entity_id` invece di `id` lasciava la regola attiva e muta
+      // per sempre — mentre lo stesso caso su un incident lancia (revisione
+      // totale · E-17).
+      await dispatchChangeNotification(event.tenant_id, {
+        id:       required(p, 'id', 'change.approved'),
+        title:    required(p, 'title', 'change.approved'),
+        type:     (p['type']  as string) ?? '—',
+        status:   (p['status'] as string) ?? 'scheduled',
+        tenantId: event.tenant_id,
+      }, eventInstant(event))
       return
     }
 
-    // Change task assigned → Slack
+    // Attività di change assegnata → Slack e Teams
     if (event.type === 'change.task_assigned') {
-      await dispatchChangeTaskNotification(event.tenant_id, event.payload as ChangeTaskPayload)
+      await dispatchChangeTaskNotification(event.tenant_id, event.payload as ChangeTaskPayload, eventInstant(event))
       return
     }
 
@@ -480,34 +739,28 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     // SLA breached → tenant Slack/Teams channels subscribed to 'sla_breach'
     if (event.type === 'sla.breached') {
       const p = event.payload as Record<string, unknown>
+      const locale = await loadNotificationLocale(event.tenant_id)
+      const number = required(p, 'number', 'sla.breached')
+      const title  = required(p, 'title', 'sla.breached')
       if (p['entity_type'] === 'incident') {
         const incident: IncidentData = {
           id:       p['entity_id'] as string,
-          title:    `SLA breach su incident ${p['entity_id']}`,
-          severity: 'high',
-          status:   'open',
+          title:    notificationText(locale, 'slaBreachOnIncident', { number, title }),
+          // La gravità e lo stato VERI dell'incident: erano cablati a
+          // «high»/«open» per qualunque incident (revisione totale · E-8). Il
+          // ripiego serve solo agli eventi già in coda prima del rimedio, e si
+          // vede che è un ripiego.
+          severity: typeof p['severity'] === 'string' && p['severity'] ? p['severity'] : 'unknown',
+          status:   typeof p['status']   === 'string' && p['status']   ? p['status']   : 'unknown',
           tenantId: event.tenant_id,
         }
-        await dispatchIncidentNotification(event.tenant_id, 'sla_breach', incident, platforms)
-      } else if (hasTeams) {
-        const card: TeamsAdaptiveCard = {
-          type: 'AdaptiveCard',
-          version: '1.4',
-          body: [
-            { type: 'TextBlock', text: '🔴 SLA Violato', weight: 'Bolder', size: 'Large', wrap: true },
-            { type: 'TextBlock', text: `SLA superato per ${String(p['entity_type'])} ${String(p['entity_id'])}`, wrap: true },
-            { type: 'FactSet', facts: [
-              { title: 'Entity Type', value: String(p['entity_type'] ?? '—') },
-              { title: 'Entity ID',   value: String(p['entity_id']   ?? '—') },
-              { title: 'Breached At', value: String(p['breached_at'] ?? '—') },
-            ] },
-          ],
-        }
-        const teamsChannels = await loadChannels(event.tenant_id, 'sla_breach', ['teams'])
-        for (const ch of teamsChannels) {
-          if (!ch.webhookUrl) throw new Error(`Teams NotificationChannel ${ch.id} has no webhook_url`)
-          await sendTeamsAdaptiveMessage(ch.webhookUrl, card)
-        }
+        await dispatchIncidentNotification(event.tenant_id, 'sla_breach', incident, platforms, 'sla_breach', eventInstant(event))
+      } else {
+        // Un problem o una richiesta con SLA violato: prima il ramo esisteva
+        // SOLO per Teams, quindi una regola «SLA violato → Slack» su un
+        // problem non mandava niente e non lo diceva (revisione totale ·
+        // E-4). Ora entrambe le piattaforme, sulla stessa card/blocchi.
+        await this.dispatchGenericSlaBreach(event, p, platforms, locale, number, title)
       }
       return
     }
@@ -541,7 +794,7 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       assigneeName: typeof p['assignedTo'] === 'string' && p['assignedTo'] !== '—' ? p['assignedTo'] as string : null,
       tenantId:     event.tenant_id,
     }
-    await dispatchIncidentNotification(event.tenant_id, notifType, incident, platforms)
+    await dispatchIncidentNotification(event.tenant_id, notifType, incident, platforms, event.type === 'incident.created' ? 'created' : notifType, eventInstant(event))
   }
 
   private async dispatchEmail(
@@ -562,19 +815,24 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
       : await this.broadcastEmailRecipients(event.tenant_id)
     if (emails.length === 0) return
 
-    const subject = `[${event.tenant_id}] ${notification.title}: ${notification.message.slice(0, 80)}`
-    const html = renderNotificationEmail(notification)
+    const locale  = await loadNotificationLocale(event.tenant_id)
+    const title   = emailTitle(notification, locale)
+    const subject = notification.message ? `${title}: ${notification.message.slice(0, 80)}` : title
+    // Il marchio del cliente (ondata 6 di «Nulla cablato»): logo e nome in testa, mittente e risposte suoi.
+    const brand = await loadTenantBrand(event.tenant_id)
+    const html = brandedEmailHtml(event.tenant_id, brand, renderNotificationEmail(notification, locale), locale.language)
 
     // Batch emails (Resend limit: 50 per call)
     for (let i = 0; i < emails.length; i += 50) {
       const batch = emails.slice(i, i + 50)
-      await sendEmail({ to: batch, subject, html })
+      await sendEmail({ to: batch, subject, html, senderName: brand.senderName, replyTo: brand.replyTo })
     }
   }
 
   /**
-   * Destinatari email della trasmissione (`target: 'all'`): admin/operator con
-   * un indirizzo che non hanno disattivato le notifiche.
+   * Destinatari email della trasmissione (`target: 'all'`): chi lavora i ticket
+   * (il permesso `TICKET_WORKER_PERMISSION` del suo ruolo, ondata 7; prima
+   * «admin/operator») con un indirizzo, che non ha disattivato le notifiche.
    * `notifications_enabled` è l'UNICO criterio di esclusione (assente →
    * attivo, false → escluso) — gli account dimostrativi sono marcati con
    * quello invece di essere riconosciuti dall'indirizzo (D-20).
@@ -584,12 +842,14 @@ export class NotificationDispatcher extends BaseConsumer<unknown> {
     try {
       const result = await session.executeRead(tx => tx.run(
         `MATCH (u:User {tenant_id: $tenantId})
-         WHERE u.role IN ['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR']
+         MATCH (r:Role {tenant_id: $tenantId, key: u.role})
+         WHERE $permission IN r.permissions
+           AND coalesce(u.active, true) = true
            AND u.email IS NOT NULL
            AND u.email <> ''
            AND coalesce(u.notifications_enabled, true) = true
          RETURN u.email AS email`,
-        { tenantId },
+        { tenantId, permission: TICKET_WORKER_PERMISSION },
       ))
       return result.records.map(r => r.get('email') as string).filter(Boolean)
     } finally {

@@ -1,7 +1,8 @@
-import { GraphQLError } from 'graphql'
 import { getSession, runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
+import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { cache, metamodelCacheKey } from '../../lib/cache.js'
 import { calculateChain } from '../../lib/chainCalculator.js'
 import { logger } from '../../lib/logger.js'
@@ -42,11 +43,34 @@ async function allowedRelTypes(tenantId: string): Promise<Set<string>> {
   }
 }
 
-const TYPE_CONSTRAINTS: Record<string, { source: string[]; target: string[] }> = {
-  HOSTED_ON:        { source: ['DatabaseInstance'], target: ['Server'] },
-  USES_CERTIFICATE: { source: ['Application'],     target: ['Certificate'] },
-  INSTALLED_ON:     { source: ['Certificate'],      target: ['Server'] },
-  // DEPENDS_ON has no constraints — any CI to any CI
+/**
+ * La relazione è dichiarata dal metamodello fra QUESTI due tipi? O come
+ * relazione in uscita del tipo sorgente, o come relazione in entrata del tipo
+ * destinazione; `target_type` è l'etichetta dell'altro capo o `any`, e una
+ * definizione può elencare più tipi (`DEPENDS_ON|HOSTED_ON|INSTALLED_ON`).
+ *
+ * Giro nel browser del 14 set 2026 (#56): qui c'era `TYPE_CONSTRAINTS`, una
+ * tabella scritta a mano che contraddiceva il metamodello (l'applicazione
+ * dichiara «Hosted On → Server», la tabella lo ammetteva solo per le istanze
+ * di database), e `DEPENDS_ON` passava fra due CI qualunque.
+ */
+async function relationDeclared(
+  session: Parameters<typeof runQueryOne>[0], tenantId: string, relationType: string, sLabels: string[], tLabels: string[],
+): Promise<boolean> {
+  const row = await runQueryOne<{ declared: boolean }>(session, `
+    OPTIONAL MATCH (st:CITypeDefinition)-[:HAS_RELATION]->(out:CIRelationDefinition)
+      WHERE st.tenant_id IN ['system', $tenantId] AND st.neo4j_label IN $sLabels
+        AND out.direction = 'outgoing' AND $relationType IN [x IN split(out.relationship_type, '|') | trim(x)]
+        AND (out.target_type = 'any' OR out.target_type IN $tLabels)
+    WITH count(out) AS outgoing
+    OPTIONAL MATCH (tt:CITypeDefinition)-[:HAS_RELATION]->(inc:CIRelationDefinition)
+      WHERE tt.tenant_id IN ['system', $tenantId] AND tt.neo4j_label IN $tLabels
+        AND inc.direction = 'incoming' AND $relationType IN [x IN split(inc.relationship_type, '|') | trim(x)]
+        AND (inc.target_type = 'any' OR inc.target_type IN $sLabels)
+    WITH outgoing, count(inc) AS incoming
+    RETURN outgoing + incoming > 0 AS declared
+  `, { tenantId, relationType, sLabels, tLabels })
+  return row?.declared === true
 }
 
 // ── addCIRelationship ────────────────────────────────────────────────────────
@@ -60,15 +84,13 @@ async function addCIRelationship(
   const tenantId = ctx.tenantId
 
   // 1. Validate relationType format (cheap, no DB)
-  if (!/^[A-Z][A-Z0-9_]*$/.test(relationType)) {
-    throw new GraphQLError(`Invalid relation type format: ${relationType}`)
-  }
+  assertRelationTypeFormat(relationType)
 
   const session = getSession(undefined, 'WRITE')
   try {
     // Validate against the metamodel-declared relation types (+ core set)
     if (!(await allowedRelTypes(tenantId)).has(relationType)) {
-      throw new GraphQLError(`Invalid relation type: ${relationType}`)
+      throw new ValidationError(`Invalid relation type: ${relationType}`, { key: 'errors.ciRelation.unknownType', params: { relation: relationType } })
     }
     // 2. Load source and target CIs in a single query — verify they exist and
     //    belong to the tenant. (One query, not two concurrent session.run() —
@@ -79,35 +101,27 @@ async function addCIRelationship(
       RETURN labels(s) AS sLabels, labels(t) AS tLabels
     `, { sourceId, targetId, tenantId })
 
-    if (!endpoints) throw new GraphQLError(`Source or target CI not found (source: ${sourceId}, target: ${targetId})`)
+    if (!endpoints) throw new NotFoundError('ConfigurationItem', `${sourceId} → ${targetId}`)
 
-    // 3. Type constraint validation
-    const constraint = TYPE_CONSTRAINTS[relationType]
-    if (constraint) {
-      const sourceLabels = endpoints.sLabels
-      const targetLabels = endpoints.tLabels
-      const sourceMatch = constraint.source.some(l => sourceLabels.includes(l))
-      const targetMatch = constraint.target.some(l => targetLabels.includes(l))
-      if (!sourceMatch) {
-        throw new GraphQLError(
-          `${relationType} requires source to be one of: ${constraint.source.join(', ')}`,
-        )
-      }
-      if (!targetMatch) {
-        throw new GraphQLError(
-          `${relationType} requires target to be one of: ${constraint.target.join(', ')}`,
-        )
-      }
+    // 3. The metamodel must declare this relation between these two types
+    if (!(await relationDeclared(session, tenantId, relationType, endpoints.sLabels, endpoints.tLabels))) {
+      const typeOf = (labels: string[]) => labels.find((l) => l !== 'ConfigurationItem') ?? labels[0] ?? '?'
+      const source = typeOf(endpoints.sLabels)
+      const target = typeOf(endpoints.tLabels)
+      throw new ValidationError(
+        `${relationType} from ${source} to ${target} is not declared in the metamodel`,
+        { key: 'errors.ci.relationNotDeclared', params: { relation: relationType, source, target } },
+      )
     }
 
     // 4. Cycle detection (DEPENDS_ON only)
     if (relationType === 'DEPENDS_ON') {
       const cycleRow = await runQueryOne<{ hasCycle: boolean }>(session, `
-        MATCH path = (target {id: $targetId})-[:DEPENDS_ON*1..10]->(source {id: $sourceId})
+        MATCH path = (target {id: $targetId, tenant_id: $tenantId})-[:DEPENDS_ON*1..10]->(source {id: $sourceId, tenant_id: $tenantId})
         RETURN count(path) > 0 AS hasCycle
-      `, { sourceId, targetId })
+      `, { sourceId, targetId, tenantId })
       if (cycleRow?.hasCycle) {
-        throw new GraphQLError('Adding this relationship would create a cycle')
+        throw new ValidationError('Adding this relationship would create a cycle', { key: 'errors.ciRelation.cycle' })
       }
     }
 
@@ -123,8 +137,8 @@ async function addCIRelationship(
     await calculateChain(targetId, tenantId)
 
     // 7. Invalidate cache
-    cache.invalidate(metamodelCacheKey('topology', tenantId))
-    cache.invalidate(metamodelCacheKey('ci', tenantId))
+    cache.invalidate(`${metamodelCacheKey('topology', tenantId)}:`)
+    cache.invalidate(`${metamodelCacheKey('ci', tenantId)}:`)
 
     // 8. Servizi monitorati (ondata 5): il grafo dei CI è cambiato, le mappe
     //    vive che toccano questi due CI si risincronizzano subito. Dopo il
@@ -154,31 +168,36 @@ async function removeCIRelationship(
 ): Promise<boolean> {
   const { sourceId, targetId, relationType } = args
   const tenantId = ctx.tenantId
-
-  if (!/^[A-Z][A-Z0-9_]*$/.test(relationType)) {
-    throw new GraphQLError(`Invalid relation type format: ${relationType}`)
-  }
+  assertRelationTypeFormat(relationType)
 
   const session = getSession(undefined, 'WRITE')
   try {
-    if (!(await allowedRelTypes(tenantId)).has(relationType)) {
-      throw new GraphQLError(`Invalid relation type: ${relationType}`)
-    }
-    // 2. Delete the relationship
-    const row = await runQueryOne<{ deleted: boolean }>(session, `
+    // CM-4 (revisione del 15 set 2026): qui c'era il controllo contro le
+    // definizioni del metamodello. Ma togliere un arco non deve dipendere dal
+    // fatto che la sua definizione esista ancora: senza definizione l'arco
+    // restava nel grafo e NESSUNO poteva più cancellarlo («Invalid relation
+    // type»). Basta che i due capi siano CI di questo tenant.
+    const ciA = await ciLabelPredicateForTenant('a', tenantId)
+    const ciB = await ciLabelPredicateForTenant('b', tenantId)
+    const row = await runQueryOne<{ deleted: number }>(session, `
       MATCH (a {id: $sourceId, tenant_id: $tenantId})-[r]->(b {id: $targetId, tenant_id: $tenantId})
-      WHERE type(r) = $relType
+      WHERE type(r) = $relType AND ${ciA} AND ${ciB}
       DELETE r
-      RETURN count(r) > 0 AS deleted
+      RETURN count(r) AS deleted
     `, { sourceId, targetId, tenantId, relType: relationType })
+
+    // CM-11: prima rispondeva `true` anche senza aver tolto niente.
+    if (Number(row?.deleted ?? 0) === 0) {
+      throw new NotFoundError('CIRelationship', `${sourceId} -${relationType}-> ${targetId}`)
+    }
 
     // 3. Recalculate chains
     await calculateChain(sourceId, tenantId)
     await calculateChain(targetId, tenantId)
 
     // 4. Invalidate cache
-    cache.invalidate(metamodelCacheKey('topology', tenantId))
-    cache.invalidate(metamodelCacheKey('ci', tenantId))
+    cache.invalidate(`${metamodelCacheKey('topology', tenantId)}:`)
+    cache.invalidate(`${metamodelCacheKey('ci', tenantId)}:`)
 
     // 5. Servizi monitorati (ondata 5): stessa notifica dell'aggiunta — una
     //    relazione tolta può far uscire dei componenti dalle mappe vive.
@@ -188,13 +207,19 @@ async function removeCIRelationship(
     void audit(ctx, 'ci_relationship.removed', 'CIRelationship', sourceId, {
       targetId,
       relationType,
-      deleted: row?.deleted ?? false,
     })
 
     logger.info({ sourceId, targetId, relationType, tenantId }, '[ciRelationship] removed')
     return true
   } finally {
     await session.close()
+  }
+}
+
+/** Un tipo di relazione Neo4j: MAIUSCOLO_CON_UNDERSCORE, perché finisce nel testo della query. */
+function assertRelationTypeFormat(relationType: string): void {
+  if (!/^[A-Z][A-Z0-9_]*$/.test(relationType)) {
+    throw new ValidationError(`Invalid relation type format: ${relationType}`, { key: 'errors.ciRelation.invalidFormat', params: { relation: relationType } })
   }
 }
 

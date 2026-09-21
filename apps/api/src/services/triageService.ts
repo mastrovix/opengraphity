@@ -11,13 +11,16 @@
  * automatically. No-fallback: missing API key, provider errors and schema
  * violations all throw.
  */
-import Anthropic from '@anthropic-ai/sdk'
 import { config } from '../lib/config.js'
 import { GraphQLError } from 'graphql'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
+import { vectorSearchForTenant } from '../lib/vectorSearch.js'
+import { aiFeatureEnabled, assertAIFeature } from '../lib/aiSettings.js'
+import { bloccoDiContesto, getAnthropic, leggiJSONDalModello, registraChiamataFallita, registraDurata } from '../lib/aiClient.js'
 import { logger } from '../lib/logger.js'
 import { enumScopeClause, loadTenantEnumOverrides, applyEnumOverride } from '../lib/enumScope.js'
+import { modelLanguageFor } from '../lib/systemText.js'
 
 const log = logger.child({ module: 'triage' })
 
@@ -80,20 +83,25 @@ async function loadEnumValues(field: 'severity' | 'category', tenantId: string):
   }
 }
 
+/** Quanti incident simili guarda il triage per proporre team/categoria/severità. */
+const TRIAGE_SIMILAR_LIMIT = 6
+
 async function findSimilar(tenantId: string, embedding: number[]): Promise<SimilarForTriage[]> {
   const session = getSession(undefined, 'READ')
   try {
-    return await runQuery<SimilarForTriage>(session, `
-      CALL db.index.vector.queryNodes($index, 30, $embedding)
-      YIELD node, score
-      WHERE node.tenant_id = $tenantId
-      OPTIONAL MATCH (node)-[:ASSIGNED_TO_TEAM]->(team:Team)
-      RETURN node.id AS id, node.number AS number, node.title AS title,
+    // K cresce finché i simili DEL TENANT bastano: l'indice è cross-tenant
+    // (revisione totale · B-12).
+    return await vectorSearchForTenant<SimilarForTriage>(session, {
+      index: vectorIndexName('Incident'),
+      embedding,
+      tenantId,
+      limit: TRIAGE_SIMILAR_LIMIT,
+      extra: 'OPTIONAL MATCH (node)-[:ASSIGNED_TO_TEAM]->(team:Team)',
+      returns: `node.id AS id, node.number AS number, node.title AS title,
              node.severity AS severity, node.category AS category,
-             node.status AS status, team.name AS teamName, score
-      ORDER BY score DESC
-      LIMIT 6
-    `, { index: vectorIndexName('Incident'), embedding, tenantId })
+             node.status AS status, team.name AS teamName, score`,
+      what: 'triage.findSimilar',
+    })
   } finally {
     await session.close()
   }
@@ -138,7 +146,7 @@ async function loadCIImpact(tenantId: string, ciIds: string[]): Promise<CIImpact
 
 const SYSTEM_PROMPT = `Sei l'assistente di triage di OpenGrafo, una piattaforma ITSM. Ricevi la bozza di un incident (titolo, descrizione), gli incident storici semanticamente simili con il loro triage effettivo, e l'impatto infrastrutturale dei Configuration Item coinvolti (dipendenti diretti e Business Capability raggiungibili nel grafo).
 
-Suggerisci severity, categoria e team di assegnazione motivando in modo conciso e concreto (2-4 frasi, in italiano). Regole:
+Suggerisci severity, categoria e team di assegnazione motivando in modo conciso e concreto (2-4 frasi, nella lingua indicata in fondo). Regole:
 - Basa il suggerimento sull'evidenza fornita: triage degli incident simili e impatto dei CI. Non inventare fatti.
 - Un CI con molti dipendenti o vicino a una Business Capability alza la severity.
 - Se gli incident simili sono pochi o poco simili (score < 0.5), abbassa la confidence.
@@ -161,26 +169,20 @@ function suggestionSchema(severities: string[], categories: string[]) {
   } as const
 }
 
-let _client: Anthropic | null = null
-function getClient(): Anthropic {
-  if (!config.anthropicApiKey) {
-    throw new GraphQLError('AI triage not configured: ANTHROPIC_API_KEY missing', {
-      extensions: { code: 'FAILED_PRECONDITION', i18n: { key: 'errors.ai.notConfigured' } },
-    })
-  }
-  _client ??= new Anthropic()
-  return _client
-}
-
 export async function suggestTriage(input: TriageInput): Promise<TriageSuggestion> {
+  // Funzione spenta dall'organizzazione: nessuna chiamata al modello (ondata 6).
+  await assertAIFeature(input.tenantId, 'triage')
   const draftText = [input.title, input.description].filter(Boolean).join('\n')
   if (!draftText.trim()) {
-    throw new GraphQLError('Titolo vuoto: niente da analizzare', { extensions: { code: 'BAD_USER_INPUT' } })
+    throw new GraphQLError('Empty title: nothing to analyse', { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.triage.emptyTitle' } } })
   }
 
-  const [embedding] = await getEmbedder().embed([draftText])
+  // Con gli embedding spenti il triage lavora senza incident simili: il testo
+  // della bozza non va al provider degli embedding.
+  const embeddingsOn = await aiFeatureEnabled(input.tenantId, 'embeddings')
+  const embedding = embeddingsOn ? (await getEmbedder().embed([draftText]))[0]! : null
   const [similar, impact, severities, categories] = await Promise.all([
-    findSimilar(input.tenantId, embedding),
+    embedding ? findSimilar(input.tenantId, embedding) : Promise.resolve([] as Awaited<ReturnType<typeof findSimilar>>),
     loadCIImpact(input.tenantId, input.ciIds),
     loadEnumValues('severity', input.tenantId),
     loadEnumValues('category', input.tenantId),
@@ -195,27 +197,37 @@ export async function suggestTriage(input: TriageInput): Promise<TriageSuggestio
     impatto_ci: impact,
   }
 
-  const client = getClient()
+  const client = getAnthropic()
   const t0 = Date.now()
-  const response = await client.messages.create({
-    model: config.anthropicModel,
-    max_tokens: 2000,
-    thinking: { type: 'adaptive' },
-    output_config: {
-      effort: 'low',
-      format: { type: 'json_schema', schema: suggestionSchema(severities, categories) },
-    },
-    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-    messages: [{ role: 'user', content: JSON.stringify(context, null, 1) }],
-  })
-
-  if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('Il modello ha rifiutato la richiesta di triage', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+  let response
+  try {
+    response = await client.messages.create({
+      model: config.anthropicModel,
+      max_tokens: 2000,
+      thinking: { type: 'adaptive' },
+      output_config: {
+        effort: 'low',
+        format: { type: 'json_schema', schema: suggestionSchema(severities, categories) },
+      },
+      system: [
+        { type: 'text', text: SYSTEM_PROMPT },
+        // La motivazione la legge l'operatore: nella lingua del cliente.
+        { type: 'text', text: `Write the reasoning in ${await modelLanguageFor(input.tenantId)}.` },
+        // Il contesto (bozza, incident simili, impatto dei CI) col punto di
+        // cache: vedi `lib/aiClient.ts`.
+        bloccoDiContesto(context),
+      ],
+      messages: [{ role: 'user', content: 'Triage this draft.' }],
+    })
+  } catch (err) {
+    registraChiamataFallita('triage', err)
+    throw err
   }
-  const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')
-  if (!textBlock) throw new Error('[triage] risposta senza blocco testo')
+  registraDurata('triage', Date.now() - t0)
 
-  const parsed = JSON.parse(textBlock.text) as Omit<TriageSuggestion, 'similarUsed'>
+  const parsed = leggiJSONDalModello(response, 'triage', {
+    troncata: 'errors.ai.truncated', illeggibile: 'errors.ai.badAnswer',
+  }) as Omit<TriageSuggestion, 'similarUsed'>
   log.info({ ms: Date.now() - t0, severity: parsed.severity, confidence: parsed.confidence }, '[triage] suggestion generated')
 
   return { ...parsed, similarUsed: similar.slice(0, 5) }

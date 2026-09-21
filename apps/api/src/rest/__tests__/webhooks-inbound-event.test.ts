@@ -176,7 +176,7 @@ describe('entity_type = event', () => {
     ['severity fuori enum', { alerts: [{ status: 'firing', labels: { alertname: 'A', severity: 'page', instance: 'h' } }] }, /alerts\[0\]\.labels\.severity value "page" is not mapped \(value_mapping\.severity\)/],
     ['senza instance', { alerts: [{ status: 'firing', labels: { alertname: 'A', severity: 'info' } }] }, /labels\.instance is missing/],
     ['lista vuota', { alerts: [] }, /contains no alerts/],
-    ['tutti scartati (2 di 2)', { alerts: [{ status: 'firing', labels: { alertname: 'A', severity: 'info' } }, { status: 'firing', labels: { alertname: 'B', severity: 'page', instance: 'h' } }] }, /^2 di 2 scartati: alerts\[0\]\.labels\.instance is missing/],
+    ['tutti scartati (2 di 2)', { alerts: [{ status: 'firing', labels: { alertname: 'A', severity: 'info' } }, { status: 'firing', labels: { alertname: 'B', severity: 'page', instance: 'h' } }] }, /^2 of 2 rejected: alerts\[0\]\.labels\.instance is missing/],
   ])('payload non valido (%s) → 400 con il motivo, niente in coda', async (_n, body, pattern) => {
     const res = await post(body)
     expect(res.status).toBe(400)
@@ -209,7 +209,7 @@ describe('entity_type = event', () => {
     expect(stats[2]).toMatchObject({ n: 2 })
     const rejection = vi.mocked(runQuery).mock.calls.find(([, c]) => /last_error/.test(c as string))!
     expect(rejection[1]).toContain('MATCH (w:InboundWebhook {id: $hookId, tenant_id: $tenantId})')
-    expect(rejection[2]).toMatchObject({ hookId: 'hook-ev', tenantId: 'tenant-1', count: 2, message: expect.stringMatching(/^2 di 4 scartati: alerts\[1\]\.labels\.severity value "none"/) })
+    expect(rejection[2]).toMatchObject({ hookId: 'hook-ev', tenantId: 'tenant-1', count: 2, message: expect.stringMatching(/^2 of 4 rejected: alerts\[1\]\.labels\.severity value "none"/) })
     expect(eventsRejectedTotal.inc).toHaveBeenCalledWith({ connector: 'alertmanager' }, 2)
   })
 

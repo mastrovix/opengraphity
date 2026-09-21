@@ -17,7 +17,7 @@
 import { describe, it, expect } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { CreateIncidentPage } from './CreateIncidentPage'
-import { GET_TEAMS, GET_ITIL_CI_RELATION_RULES, GET_ALL_CIS } from '@/graphql/queries'
+import { GET_TEAMS, GET_TICKET_CI_EXCLUSIONS, GET_ALL_CIS } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { domainMatricesMock, itilTypesMock } from '@/test/mocks/gql'
 
@@ -27,8 +27,8 @@ const teamsMock = (): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 const ciRulesMock = (): GqlMock => ({
-  request: { query: GET_ITIL_CI_RELATION_RULES, variables: { itilType: 'incident' } },
-  result: { data: { itilCIRelationRules: [] } },
+  request: { query: GET_TICKET_CI_EXCLUSIONS, variables: { ticketType: 'incident' } },
+  result: { data: { ticketCIExclusions: [{ __typename: 'TicketCIExclusions', ticketType: 'incident', ciTypes: [] }] } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 const allCisMock = (): GqlMock => ({

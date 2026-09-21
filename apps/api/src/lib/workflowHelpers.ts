@@ -4,6 +4,7 @@
  * or services. The workflow engine (WorkflowDefinition/WorkflowStep nodes)
  * is the single source of truth.
  */
+import { parseLocalizedLabels, type LocalizedLabel } from '@opengraphity/types'
 
 import type { Session } from 'neo4j-driver'
 
@@ -37,6 +38,8 @@ export interface StepRow {
   name:       string
   /** Etichetta scelta dal cliente nel disegnatore; `null` se non l'ha messa. */
   label:      string | null
+  /** Traduzioni dell'etichetta spedita (giro del 14 set 2026, #22); vuota se il cliente l'ha scritta lui. */
+  labels:     LocalizedLabel[]
   isInitial:  boolean
   isTerminal: boolean
   isOpen:     boolean
@@ -64,6 +67,7 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
       MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
       RETURN s.name       AS name,
              s.label      AS label,
+             s.labels     AS labels,
              coalesce(s.is_initial,  s.type = 'start') AS isInitial,
              coalesce(s.is_terminal, s.type = 'end')   AS isTerminal,
              coalesce(s.is_open,     s.type <> 'end')  AS isOpen,
@@ -75,6 +79,7 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
     return res.records.map((r) => ({
       name:       r.get('name')       as string,
       label:      (r.get('label') ?? null) as string | null,
+      labels:     parseLocalizedLabels(r.get('labels'), `step ${String(r.get('name'))} (${entityType})`),
       isInitial:  Boolean(r.get('isInitial')),
       isTerminal: Boolean(r.get('isTerminal')),
       isOpen:     Boolean(r.get('isOpen')),
@@ -84,6 +89,14 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
     }))
   })
   stepsCache.set(key, promise)
+  /**
+   * Una lettura FALLITA non resta in cache (revisione totale · C-15): la cache
+   * memorizza la promessa, quindi un solo timeout del database veniva
+   * rigiocato a ogni chiamante — liste, transizioni, notifiche — per i
+   * trenta secondi successivi, su tutto il tenant. Ora l'errore si propaga a
+   * chi ha chiesto, e il tentativo dopo riparte pulito.
+   */
+  promise.catch(() => { if (stepsCache.get(key) === promise) stepsCache.delete(key) })
   // Auto-expire after 30s to keep long-lived processes in sync with designer edits.
   setTimeout(() => { stepsCache.delete(key) }, 30_000).unref?.()
   return promise
@@ -151,9 +164,37 @@ export async function isEntityInTerminalStep(session: Session, entityId: string,
   return Boolean(res.records[0].get('terminal'))
 }
 
+/**
+ * Il ticket è in un passo di categoria `closed`: la stessa nozione con cui il
+ * portale nasconde la risposta (revisione totale · H-39). Senza istanza: no.
+ */
+export async function isEntityClosed(session: Session, entityId: string, tenantId: string): Promise<boolean> {
+  const res = await session.executeRead((tx) => tx.run(`
+    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
+    RETURN s.category = 'closed' AS closed
+  `, { entityId, tenantId }))
+  return res.records[0]?.get('closed') === true
+}
+
 export async function isEntityOpen(session: Session, entityId: string, tenantId: string): Promise<boolean> {
   const terminal = await isEntityInTerminalStep(session, entityId, tenantId)
   return !terminal
+}
+
+/**
+ * Il ticket è CONCLUSO: il suo passo ha categoria `resolved` o `closed`,
+ * oppure è terminale (revisione totale · C-26). È la nozione che serve a chi
+ * dice «non risolto dopo N minuti»: il flag «terminale» da solo non basta,
+ * perché un cliente può togliere «terminale» al suo passo Risolto — e
+ * l'escalation di notifica avvisava «non risolto» su incident risolti da ore.
+ * Senza istanza di workflow: non concluso.
+ */
+export async function isEntityConcluded(session: Session, entityId: string, tenantId: string): Promise<boolean> {
+  const res = await session.executeRead((tx) => tx.run(`
+    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
+    RETURN s.category IN ['resolved', 'closed'] OR coalesce(s.is_terminal, false) AS concluded
+  `, { entityId, tenantId }))
+  return res.records[0]?.get('concluded') === true
 }
 
 export async function getStepCategory(session: Session, tenantId: string, entityType: string, stepName: string): Promise<string | null> {
@@ -250,6 +291,14 @@ export async function getStepNamesByPurpose(
  * Lo scopo di un passo preciso, `null` se non dichiarato. Serve a chi ha in
  * mano il nome corrente di un'istanza e deve capire dove si trova.
  */
+/** La riga del passo (scopo, categoria, terminale) dal workflow del tenant; null se non c'è. */
+export async function getStepRow(
+  session: Session, tenantId: string, entityType: string, stepName: string,
+): Promise<StepRow | null> {
+  const steps = await loadSteps(session, tenantId, entityType)
+  return steps.find((s) => s.name === stepName) ?? null
+}
+
 export async function getStepPurpose(
   session: Session, tenantId: string, entityType: string, stepName: string,
 ): Promise<string | null> {
@@ -272,9 +321,9 @@ export async function requireStepNamesByPurpose(
   const names = await getStepNamesByPurpose(session, tenantId, entityType, purposes)
   if (names.length === 0) {
     throw new Error(
-      `${what}: nel workflow "${entityType}" del tenant ${tenantId} nessun passo dichiara lo scopo ` +
-      `[${purposes.join(', ')}]. Assegna lo scopo ai passi nel disegnatore: senza, questa regola non ha ` +
-      `su quali passi applicarsi.`,
+      `${what}: in the "${entityType}" workflow of tenant ${tenantId} no step declares the purpose ` +
+      `[${purposes.join(', ')}]. Give the purpose to the steps in the designer: without it this rule has ` +
+      `no step to apply to.`,
     )
   }
   return names

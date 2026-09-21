@@ -885,7 +885,7 @@ export function normalizeBatch(
 export function rejectionSummary(batch: Pick<NormalizedBatch, 'rejected' | 'total'>, maxChars = 500): string {
   const first = batch.rejected[0]
   if (!first) return ''
-  const message = batch.total === 1 ? first.error : `${batch.rejected.length} di ${batch.total} scartati: ${first.error}`
+  const message = batch.total === 1 ? first.error : `${batch.rejected.length} of ${batch.total} rejected: ${first.error}`
   return message.length > maxChars ? `${message.slice(0, maxChars - 1)}…` : message
 }
 

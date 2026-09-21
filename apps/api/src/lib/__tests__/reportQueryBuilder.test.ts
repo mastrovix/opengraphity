@@ -9,6 +9,9 @@ import { FIELD_NAME_RE } from '../cypherIdentifiers.js'
 const whitelist: ReportWhitelist = {
   labels:            new Set(['Incident', 'Team', 'User', 'Server', 'CIBase']),
   relationshipTypes: new Set(['ASSIGNED_TO_TEAM', 'AFFECTS', 'MEMBER_OF']),
+  // I campi data DICHIARATI dal metamodello: quelli che finiscono per `_at`
+  // li riconosce `isTemporalField` per nome, qui sta il campo del cliente.
+  temporalFields:    new Map([['Incident', new Set(['data_di_consegna'])]]),
 }
 
 function node(overrides: Partial<ReportNodeDef> & { id: string }): ReportNodeDef {
@@ -195,8 +198,11 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     const { query, params } = buildReportQuery(sec, TENANT, whitelist)
     expect(query).toBe([
       'MATCH (n0:Incident {tenant_id: $tenantId})',
-      'WHERE n0.status IN $n0_f0 AND n0.created_at > datetime() - duration({days: $n0_f1}) AND toLower(n0.title) CONTAINS toLower($n0_f2) AND n0.resolved_at IS NULL',
+      'WHERE n0.status IN $n0_f0 AND datetime(n0.created_at) > datetime() - duration({days: $n0_f1}) AND toLower(n0.title) CONTAINS toLower($n0_f2) AND n0.resolved_at IS NULL',
       'MATCH (n0)-[:ASSIGNED_TO_TEAM]->(n1:Team)',
+      // `WITH DISTINCT` (19 set 2026): con un join `count(n0)` contava RIGHE,
+      // non nodi — un incident che tocca tre CI valeva tre.
+      'WITH DISTINCT n0, n1',
       'RETURN n1.name AS label, count(n0) AS value',
       'ORDER BY value ASC',
       'LIMIT toInteger($limit)',
@@ -207,7 +213,20 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     })
   })
 
-  it('edge stored from child to root: direction is interpreted relative to the BFS parent (legacy semantics preserved)', () => {
+  /**
+   * UNA CONVENZIONE SOLA: `direction` vale rispetto a SORGENTE → BERSAGLIO,
+   * comunque la BFS arrivi all'arco (19 set 2026).
+   *
+   * Questo test fissava il contrario — «legacy semantics preserved», cioè il
+   * verso interpretato rispetto al PADRE nell'albero — e quella era una
+   * seconda convenzione, mai scritta e opposta a quella del generatore
+   * quando l'arco si percorre dal lato della sorgente. Le due si annullavano
+   * finché il grafo si costruiva sempre dalla radice in giù; il progettista
+   * AI, che orienta gli archi secondo il metamodello, ha prodotto il caso in
+   * cui non si annullano: la relazione al contrario, e un report che non
+   * trova mai niente senza dirlo.
+   */
+  it('la direzione di un arco vale rispetto a sorgente → bersaglio, da qualunque lato lo si percorra', () => {
     const build = (direction: string) => buildReportQuery(section({
       chartType: 'pie',
       nodes: [
@@ -217,27 +236,35 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
       edges: [edge({ id: 'e1', sourceNodeId: 'user', targetNodeId: 'team', relationshipType: 'MEMBER_OF', direction })],
     }), TENANT, whitelist).query
 
-    expect(build('incoming')).toBe([
-      'MATCH (n0:Team {tenant_id: $tenantId})',
-      'MATCH (n0)<-[:MEMBER_OF]-(n1:User)',
-      'WHERE n1.role <> $n1_f0',
-      'RETURN n0.status AS label, count(n0) AS value',
-      'ORDER BY value DESC',
-      'LIMIT toInteger($limit)',
-    ].join('\n'))
-    expect(build('outgoing')).toContain('MATCH (n0)-[:MEMBER_OF]->(n1:User)')
+    // L'arco dice «user -[:MEMBER_OF]-> team»: la radice è `team`, quindi si
+    // percorre all'indietro, e il pattern deve restare quello.
+    expect(build('outgoing')).toContain('MATCH (n0)<-[:MEMBER_OF]-(n1:User)')
+    // «team -[:MEMBER_OF]-> user», letto dallo stesso lato.
+    expect(build('incoming')).toContain('MATCH (n0)-[:MEMBER_OF]->(n1:User)')
   })
 
   it('line chart defaults to created_at', () => {
     const { query } = buildReportQuery(section({ chartType: 'line' }), TENANT, whitelist)
     expect(query).toBe([
       'MATCH (n0:Incident {tenant_id: $tenantId})',
-      'RETURN date(n0.created_at) AS label, count(n0) AS value',
+      // `toString(...)`: senza, l'asse di ogni serie diceva «[object Object]»
+      // (19 set 2026) — una data di Neo4j perde il suo `toString` passando
+      // dalla serializzazione JSON.
+      'RETURN toString(date(datetime(n0.created_at))) AS label, count(n0) AS value',
       'ORDER BY label ASC',
     ].join('\n'))
   })
 
-  it('table: aliases are generated (c0, c1…) and display names come from node labels', () => {
+  /**
+   * Le INTESTAZIONI si leggono (ondata 6, punto 3): l'etichetta del campo
+   * quando la conosciamo, il nome interno come ripiego, e l'etichetta
+   * dell'entità davanti SOLO con più di un'entità nella stessa tabella — qui
+   * ce ne sono due, quindi il prefisso serve a distinguere «Nome» da «Nome».
+   *
+   * Il testo dell'etichetta resta dato dell'utente e non entra MAI in Cypher:
+   * il `Team) RETURN 1 //` nel nome del nodo è lì per questo.
+   */
+  it('table: aliases are generated (c0, c1…) and display names come from the field labels', () => {
     const sec = section({
       chartType: 'table',
       nodes: [
@@ -246,20 +273,33 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
       ],
       edges: [edge({ id: 'e1', sourceNodeId: 'root', targetNodeId: 'team' })],
     })
-    const { query, columns } = buildReportQuery(sec, TENANT, whitelist)
+    const fieldLabels = new Map([['Incident.title', 'Titolo'], ['Team.name', 'Nome']])
+    const { query, columns } = buildReportQuery(sec, TENANT, whitelist, { fieldLabels })
     expect(query).toBe([
       'MATCH (n0:Incident {tenant_id: $tenantId})',
       'MATCH (n0)-[:ASSIGNED_TO_TEAM]->(n1:Team)',
+      // Anche una tabella con un join duplicava le righe.
+      'WITH DISTINCT n0, n1',
       'RETURN n0.title AS c0, n0.created_at AS c1, n1.name AS c2',
       'LIMIT toInteger($limit)',
     ].join('\n'))
     // The label text (which may contain anything) is UI-only, never in Cypher.
     expect(query).not.toContain('RETURN 1')
     expect(columns).toEqual([
-      { alias: 'c0', name: 'Incidenti_aperti_title' },
-      { alias: 'c1', name: 'Incidenti_aperti_createdAt' },
-      { alias: 'c2', name: 'Team)_RETURN_1_//_name' },
+      { alias: 'c0', name: 'Incidenti aperti · Titolo', source: { neo4jLabel: 'Incident', field: 'title' } },
+      // `createdAt` non è nella mappa: ripiego sul nome interno, non intestazione vuota.
+      { alias: 'c1', name: 'Incidenti aperti · createdAt', source: { neo4jLabel: 'Incident', field: 'createdAt' } },
+      { alias: 'c2', name: 'Team) RETURN 1 // · Nome', source: { neo4jLabel: 'Team', field: 'name' } },
     ])
+  })
+
+  it('table con UNA sola entità: nessun prefisso, il nome del campo basta', () => {
+    const sec = section({
+      chartType: 'table',
+      nodes: [node({ id: 'root', isRoot: true, isResult: true, label: 'Incidenti aperti', selectedFields: ['title'] })],
+    })
+    const { columns } = buildReportQuery(sec, TENANT, whitelist, { fieldLabels: new Map([['Incident.title', 'Titolo']]) })
+    expect(columns).toEqual([{ alias: 'c0', name: 'Titolo', source: { neo4jLabel: 'Incident', field: 'title' } }])
   })
 
   it('table with no selected fields is a validation error (no phantom id column) — C-11', () => {
@@ -279,8 +319,8 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     bar:            ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
     bar_horizontal: ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
     top_n:          ['RETURN n0.status AS label, count(n0) AS value', 'ORDER BY value DESC', 'LIMIT toInteger($limit)'],
-    line:           ['RETURN date(n0.created_at) AS label, count(n0) AS value', 'ORDER BY label ASC'],
-    area:           ['RETURN date(n0.created_at) AS label, count(n0) AS value', 'ORDER BY label ASC'],
+    line:           ['RETURN toString(date(datetime(n0.created_at))) AS label, count(n0) AS value', 'ORDER BY label ASC'],
+    area:           ['RETURN toString(date(datetime(n0.created_at))) AS label, count(n0) AS value', 'ORDER BY label ASC'],
     table:          ['RETURN n0.title AS c0', 'LIMIT toInteger($limit)'],
   }
 
@@ -305,6 +345,7 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
     const wl: ReportWhitelist = {
       labels: new Set([...whitelist.labels, 'CustomBox']),
       relationshipTypes: new Set([...whitelist.relationshipTypes, 'CONTAINS_BOX']),
+      temporalFields: whitelist.temporalFields,
     }
     const sec = section({
       nodes: [node({ id: 'root', isRoot: true, neo4jLabel: 'Server' }), node({ id: 'b', neo4jLabel: 'CustomBox' })],
@@ -318,4 +359,369 @@ describe('buildReportQuery — valid sections produce the expected Cypher', () =
 describe('FIELD_NAME_RE contract', () => {
   it.each(['status', 'created_at', 'ip_address', 'x1', 'a_b_c'])('accepts %s', f => expect(FIELD_NAME_RE.test(f)).toBe(true))
   it.each(['', 'Status', '_x', '1a', 'a b', 'a-b', 'a.b', 'a`b', 'a}b', 'x AS y', 'tenant_id) RETURN 1 //'])('rejects %j', f => expect(FIELD_NAME_RE.test(f)).toBe(false))
+})
+
+/**
+ * LE METRICHE FANNO QUELLO CHE DICONO (19 set 2026).
+ *
+ * `metric` e `metricField` si salvavano e NON si usavano: il RETURN era sempre
+ * `count(root)`, quindi un report configurato «media del costo» mostrava il
+ * numero di ticket. Trovato preparando il progettista AI dei report — una
+ * proposta che scrive «media» avrebbe prodotto un conteggio, e il difetto
+ * sarebbe passato da raro a normale.
+ */
+describe('le metriche', () => {
+  // Si riusa il costruttore di sezioni del file: una radice `Incident` con
+  // una colonna, che è quello che ogni altro test qui sopra usa.
+  const sezione = (over: Partial<ReportSectionDef>): ReportSectionDef =>
+    section({ nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] })], ...over })
+
+  it('count resta count', () => {
+    expect(buildReportQuery(sezione({}), 't1', whitelist).query).toContain('RETURN count(n0) AS value')
+  })
+
+  it('avg calcola la MEDIA sul campo della radice, non un conteggio', () => {
+    const q = buildReportQuery(sezione({ metric: 'avg', metricField: 'resolution_minutes' }), 't1', whitelist).query
+    expect(q).toContain('RETURN avg(toFloat(n0.resolution_minutes)) AS value')
+    expect(q).not.toContain('count(n0)')
+  })
+
+  it('sum somma, min e max non forzano il numero (valgono anche su una data)', () => {
+    expect(buildReportQuery(sezione({ metric: 'sum', metricField: 'cost' }), 't1', whitelist).query)
+      .toContain('sum(toFloat(n0.cost))')
+    expect(buildReportQuery(sezione({ metric: 'min', metricField: 'created_at' }), 't1', whitelist).query)
+      .toContain('min(n0.created_at)')
+    expect(buildReportQuery(sezione({ metric: 'max', metricField: 'created_at' }), 't1', whitelist).query)
+      .toContain('max(n0.created_at)')
+  })
+
+  it('la metrica vale anche sui grafici a categorie e sulle serie', () => {
+    const barre = buildReportQuery(sezione({
+      chartType: 'bar', metric: 'avg', metricField: 'cost', groupByField: 'status',
+    }), 't1', whitelist).query
+    expect(barre).toContain('AS label, avg(toFloat(n0.cost)) AS value')
+    const serie = buildReportQuery(sezione({
+      chartType: 'line', metric: 'sum', metricField: 'cost', groupByField: 'created_at',
+    }), 't1', whitelist).query
+    expect(serie).toContain('AS label, sum(toFloat(n0.cost)) AS value')
+  })
+
+  it('una metrica senza campo si RIFIUTA: prima diventava un conteggio in silenzio', () => {
+    expect(() => buildReportQuery(sezione({ metric: 'avg', metricField: null }), 't1', whitelist))
+      .toThrow(/needs a metricField/)
+  })
+
+  it('una metrica inventata si rifiuta', () => {
+    expect(() => buildReportQuery(sezione({ metric: 'median' }), 't1', whitelist))
+      .toThrow(/unsupported metric/)
+  })
+
+  it('un campo di metrica con Cypher dentro non passa', () => {
+    expect(() => buildReportQuery(sezione({ metric: 'sum', metricField: 'cost) RETURN 1 //' }), 't1', whitelist))
+      .toThrow()
+  })
+})
+
+/**
+ * IL PERIODO DI UNA SERIE (19 set 2026).
+ *
+ * «gli incident resolved negli ultimi 6 mesi»: il proprietario intendeva il
+ * numero PER MESE, e il motore sapeva raggruppare solo per giorno — 180 punti
+ * appiccicati. Non c'era modo di chiedere altro, da nessuna parte.
+ */
+describe('la granularità di una serie', () => {
+  const serie = (over: Partial<ReportSectionDef>): ReportSectionDef => section({
+    chartType: 'line', groupByField: 'resolved_at',
+    nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] })],
+    ...over,
+  })
+
+  it('senza periodo resta il comportamento di prima: un punto al giorno', () => {
+    expect(buildReportQuery(serie({}), 't1', whitelist).query).toContain('toString(date(datetime(n0.resolved_at)))')
+  })
+
+  it('per mese porta ogni data al primo del mese', () => {
+    expect(buildReportQuery(serie({ groupByGranularity: 'month' }), 't1', whitelist).query)
+      .toContain("toString(date.truncate('month', datetime(n0.resolved_at)))")
+  })
+
+  it('per settimana idem', () => {
+    expect(buildReportQuery(serie({ groupByGranularity: 'week' }), 't1', whitelist).query)
+      .toContain("toString(date.truncate('week', datetime(n0.resolved_at)))")
+  })
+
+  it('un periodo inventato si rifiuta invece di finire nel Cypher', () => {
+    expect(() => buildReportQuery(serie({ groupByGranularity: "day') RETURN 1 //" }), 't1', whitelist))
+      .toThrow(/unsupported groupByGranularity/)
+  })
+
+  /*
+   * QUESTO TEST DICEVA IL CONTRARIO stamattina, e diceva il difetto.
+   *
+   * «Fuori dalle serie il periodo non cambia niente» significava che un
+   * istogramma raggruppato per `created_at` raggruppava sul TIMESTAMP: una
+   * barra per incident, tutte alte 1, con sotto «2026-07-15T11:05:33.963Z».
+   * Il proprietario l'ha visto mezz'ora dopo. Il periodo vale per qualunque
+   * grafico raggruppato per data.
+   */
+  it('anche un istogramma raggruppato per data si tronca al periodo', () => {
+    const barre = buildReportQuery(serie({ chartType: 'bar', groupByField: 'created_at', groupByGranularity: 'month' }), 't1', whitelist).query
+    expect(barre).toContain("toString(date.truncate('month', datetime(n0.created_at)))")
+  })
+
+  /*
+   * L'ORDINE DELL'ASSE (20 set 2026, dal giro nel browser).
+   *
+   * «Usando le barre l'ordinamento sull'asse x è sbagliato»: le barre erano
+   * ordinate per valore come ogni altro raggruppamento, e con un periodo
+   * l'asse usciva 13, 15, 16, 14 set — gli stessi dati che la linea mostrava
+   * in ordine. Un istogramma nel tempo si legge da sinistra a destra.
+   */
+  it('un istogramma per periodo si ordina per DATA, non per valore', () => {
+    const q = buildReportQuery(serie({ chartType: 'bar', groupByField: 'created_at', groupByGranularity: 'month' }), 't1', whitelist).query
+    expect(q).toContain('ORDER BY label ASC')
+    expect(q).not.toContain('ORDER BY value')
+  })
+
+  it('col limite tiene i periodi PIÙ RECENTI e li mostra dal più vecchio', () => {
+    // Ordinare per etichetta e poi tagliare darebbe i dodici mesi più vecchi,
+    // buttando in silenzio proprio quelli che interessano.
+    const q = buildReportQuery(serie({ chartType: 'bar', groupByField: 'created_at', groupByGranularity: 'month' }), 't1', whitelist).query
+    expect(q.indexOf('ORDER BY label DESC')).toBeLessThan(q.indexOf('LIMIT toInteger($limit)'))
+    expect(q.indexOf('LIMIT toInteger($limit)')).toBeLessThan(q.lastIndexOf('ORDER BY label ASC'))
+  })
+
+  it('le barre orizzontali per periodo seguono la stessa regola', () => {
+    expect(buildReportQuery(serie({ chartType: 'bar_horizontal', groupByField: 'created_at', groupByGranularity: 'month' }), 't1', whitelist).query)
+      .toContain('ORDER BY label ASC')
+  })
+
+  it('torta e classifica restano ordinate per valore: non hanno un asse', () => {
+    for (const chartType of ['pie', 'donut', 'top_n'] as const) {
+      expect(buildReportQuery(serie({ chartType, groupByField: 'created_at', groupByGranularity: 'month' }), 't1', whitelist).query)
+        .toContain('ORDER BY value')
+    }
+  })
+
+  it('un istogramma SENZA periodo resta una classifica per valore', () => {
+    expect(buildReportQuery(serie({ chartType: 'bar', groupByField: 'status' }), 't1', whitelist).query)
+      .toContain('ORDER BY value')
+  })
+
+  it('senza periodo un raggruppamento resta la proprietà grezza: stato, categoria, team', () => {
+    const barre = buildReportQuery(serie({ chartType: 'bar', groupByField: 'status' }), 't1', whitelist).query
+    expect(barre).toContain('RETURN n0.status AS label')
+    expect(barre).not.toContain('date')
+  })
+
+  it('una classifica per mese si raggruppa come le barre', () => {
+    const classifica = buildReportQuery(serie({ chartType: 'top_n', groupByField: 'created_at', groupByGranularity: 'month' }), 't1', whitelist).query
+    expect(classifica).toContain("toString(date.truncate('month', datetime(n0.created_at)))")
+  })
+})
+
+/**
+ * UN PERIODO SU UN CAMPO CHE DATA NON È (20 set 2026).
+ *
+ * Il wizard mandava `groupByGranularity: 'day'` SEMPRE — anche per «Incident
+ * per stato», dove la tendina del periodo è nascosta e nessuno l'ha scelta.
+ * Il costruttore lo prendeva sul serio: `date(datetime(n0.status))`, e Neo4j
+ * rispondeva «Text cannot be parsed to a DateTime "completed"». A
+ * ESECUZIONE: la sezione si salvava senza un lamento, e cadeva quando
+ * qualcuno apriva il report — o quando lo apriva lo schedulatore, di notte,
+ * per mandarlo per email.
+ *
+ * Il wizard è corretto, ma non basta: la stessa sezione la può scrivere il
+ * progettista AI, e quelle già salvate così esistono. Si rifiuta QUI, che è
+ * il punto attraversato sia dal salvataggio sia dall'esecuzione.
+ */
+describe('il periodo vuole una data', () => {
+  const conPeriodo = (over: Partial<ReportSectionDef>): ReportSectionDef => section({
+    nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] })],
+    groupByGranularity: 'month', ...over,
+  })
+
+  for (const chartType of ['bar', 'bar_horizontal', 'pie', 'donut', 'top_n', 'line', 'area']) {
+    it(`${chartType}: per stato con un periodo si RIFIUTA`, () => {
+      expect(() => buildReportQuery(conPeriodo({ chartType, groupByField: 'status' }), 't1', whitelist))
+        .toThrow(/needs a date field/)
+    })
+  }
+
+  it('senza campo scelto vale il predefinito del grafico: le barre cadrebbero su `status`', () => {
+    expect(() => buildReportQuery(conPeriodo({ chartType: 'bar', groupByField: null }), 't1', whitelist))
+      .toThrow(/needs a date field/)
+    // Una serie invece cade su `created_at`, che una data lo è: passa.
+    expect(buildReportQuery(conPeriodo({ chartType: 'line', groupByField: null }), 't1', whitelist).query)
+      .toContain("date.truncate('month', datetime(n0.created_at))")
+  })
+
+  it('su una data passa, e il periodo si applica', () => {
+    expect(buildReportQuery(conPeriodo({ chartType: 'bar', groupByField: 'resolved_at' }), 't1', whitelist).query)
+      .toContain("date.truncate('month', datetime(n0.resolved_at))")
+  })
+
+  it('un campo data DEL CLIENTE lo dice il metamodello, non il nome', () => {
+    // `data_di_consegna` non finisce per `_at`: passa solo perché la
+    // whitelist di questo tenant lo dichiara `date`.
+    expect(buildReportQuery(conPeriodo({ chartType: 'bar', groupByField: 'data_di_consegna' }), 't1', whitelist).query)
+      .toContain("date.truncate('month', datetime(n0.data_di_consegna))")
+    expect(() => buildReportQuery(conPeriodo({ chartType: 'bar', groupByField: 'altro_campo' }), 't1', whitelist))
+      .toThrow(/needs a date field/)
+  })
+
+  it('l\'errore si legge nella lingua di chi lo causa', () => {
+    try {
+      buildReportQuery(conPeriodo({ chartType: 'bar', groupByField: 'status' }), 't1', whitelist)
+      throw new Error('doveva rifiutare')
+    } catch (e) {
+      const ext = (e as { extensions?: { i18n?: { key: string; params?: Record<string, unknown> } } }).extensions
+      expect(ext?.i18n?.key).toBe('errors.report.granularityNeedsDate')
+      // Nessun parametro: la frase si risolve senza interpolazione (vedi il
+      // commento accanto al `throw`), e il nome del campo resta nel
+      // messaggio tecnico.
+      expect(ext?.i18n?.params).toBeUndefined()
+      expect((e as Error).message).toContain('"status"')
+    }
+  })
+
+  it('numero totale e tabella non raggruppano: un periodo rimasto per strada non fa danno', () => {
+    expect(() => buildReportQuery(conPeriodo({ chartType: 'kpi', groupByField: 'status' }), 't1', whitelist)).not.toThrow()
+    expect(() => buildReportQuery(conPeriodo({ chartType: 'table', groupByField: 'status' }), 't1', whitelist)).not.toThrow()
+  })
+})
+
+/**
+ * PER ANNO (19 set 2026): «quando si raggruppa per data devo poter
+ * specificare sempre se per giorno, mese o anno, in tutti i grafici in cui
+ * ha senso farlo».
+ */
+describe('il periodo per anno', () => {
+  const sez = (over: Partial<ReportSectionDef>): ReportSectionDef => section({
+    nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] })], ...over,
+  })
+
+  it('una serie per anno', () => {
+    expect(buildReportQuery(sez({ chartType: 'line', groupByField: 'created_at', groupByGranularity: 'year' }), 't1', whitelist).query)
+      .toContain("toString(date.truncate('year', datetime(n0.created_at)))")
+  })
+
+  it('una torta per anno', () => {
+    expect(buildReportQuery(sez({ chartType: 'pie', groupByField: 'resolved_at', groupByGranularity: 'year' }), 't1', whitelist).query)
+      .toContain("toString(date.truncate('year', datetime(n0.resolved_at)))")
+  })
+})
+
+/**
+ * I NUMERI CON UN JOIN (19 set 2026, dalla revisione).
+ *
+ * `count(n0)` conta righe, non nodi: con un secondo MATCH un incident che
+ * tocca tre CI compare tre volte. Sul conteggio era un numero gonfiato — da
+ * quando le metriche funzionano davvero è una SOMMA sbagliata, cioè una cifra
+ * che qualcuno stamperà.
+ */
+describe('i join non moltiplicano i numeri', () => {
+  const conJoin = (over: Partial<ReportSectionDef> = {}): ReportSectionDef => section({
+    chartType: 'bar', groupByField: 'status',
+    nodes: [
+      node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] }),
+      node({ id: 'n2', neo4jLabel: 'Team' }),
+    ],
+    edges: [edge({ id: 'e1', sourceNodeId: 'n1', targetNodeId: 'n2' })],
+    ...over,
+  })
+
+  it('con un join le righe si scremano prima di aggregare', () => {
+    expect(buildReportQuery(conJoin(), 't1', whitelist).query).toContain('WITH DISTINCT n0')
+  })
+
+  it('senza join non si aggiunge niente: la query resta quella di sempre', () => {
+    const semplice = buildReportQuery(section({
+      nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] })],
+    }), 't1', whitelist).query
+    expect(semplice).not.toContain('WITH DISTINCT')
+  })
+
+  it('la somma di un campo passa dal DISTINCT: è la cifra che qualcuno stampa', () => {
+    const q = buildReportQuery(conJoin({ metric: 'sum', metricField: 'cost' }), 't1', whitelist).query
+    expect(q).toContain('WITH DISTINCT n0')
+    expect(q).toContain('sum(toFloat(n0.cost))')
+  })
+})
+
+/**
+ * UN ARCO IN PIÙ È UN VINCOLO, non un disegno: il triangolo.
+ */
+describe('gli archi fuori dall\'albero', () => {
+  it('diventano un EXISTS invece di sparire', () => {
+    const q = buildReportQuery(section({
+      chartType: 'kpi',
+      nodes: [
+        node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] }),
+        node({ id: 'n2', neo4jLabel: 'Team' }),
+        node({ id: 'n3', neo4jLabel: 'User' }),
+      ],
+      edges: [
+        edge({ id: 'e1', sourceNodeId: 'n1', targetNodeId: 'n2', relationshipType: 'ASSIGNED_TO_TEAM' }),
+        edge({ id: 'e2', sourceNodeId: 'n1', targetNodeId: 'n3', relationshipType: 'AFFECTS' }),
+        // Il terzo lato: prima spariva, e il report contava anche le coppie
+        // che quella relazione non hanno.
+        edge({ id: 'e3', sourceNodeId: 'n3', targetNodeId: 'n2', relationshipType: 'MEMBER_OF' }),
+      ],
+    }), 't1', whitelist).query
+    expect(q).toContain('WHERE EXISTS { (n2)-[:MEMBER_OF]->(n1) }')
+  })
+})
+
+describe('una tabella non ha una misura', () => {
+  it('una media su una tabella si rifiuta invece di essere ignorata', () => {
+    expect(() => buildReportQuery(section({
+      chartType: 'table', metric: 'avg', metricField: 'cost',
+      nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'] })],
+    }), 't1', whitelist)).toThrow(/a table lists rows/)
+  })
+})
+
+/**
+ * IL VALORE DI UN FILTRO NON PASSA PIÙ SENZA GUARDARLO (19 set 2026).
+ *
+ * Tre esiti muti: «ultimi N giorni» vuoto = 0 giorni (solo il futuro), «è
+ * fra» vuoto = `IN []` (mai vero), e un operatore senza valore. Nessuno dava
+ * un errore: davano zero righe, che è una risposta plausibile.
+ */
+describe('i valori dei filtri', () => {
+  const conFiltro = (filtro: Record<string, unknown>) => section({
+    nodes: [node({ id: 'n1', isRoot: true, isResult: true, selectedFields: ['number'], filters: JSON.stringify([filtro]) })],
+  })
+  const costruisci = (filtro: Record<string, unknown>) => () => buildReportQuery(conFiltro(filtro), 't1', whitelist)
+
+  it('«ultimi N giorni» senza numero si rifiuta invece di diventare zero giorni', () => {
+    expect(costruisci({ field: 'created_at', operator: 'last_n_days', value: '' })).toThrow(/whole number of days/)
+    expect(costruisci({ field: 'created_at', operator: 'last_n_days', value: 'un mese' })).toThrow(/whole number of days/)
+    expect(costruisci({ field: 'created_at', operator: 'last_n_days', value: 0 })).toThrow(/whole number of days/)
+  })
+
+  it('un numero di giorni scritto come testo si accetta: è quello che manda una casella', () => {
+    const { params } = buildReportQuery(conFiltro({ field: 'created_at', operator: 'last_n_days', value: '30' }), 't1', whitelist)
+    expect(Object.values(params)).toContain(30)
+  })
+
+  it('«è fra» senza valori si rifiuta: una lista vuota non corrisponde mai', () => {
+    expect(costruisci({ field: 'status', operator: 'in', value: [] })).toThrow(/at least one value/)
+    expect(costruisci({ field: 'status', operator: 'in', value: ['', '  '] })).toThrow(/at least one value/)
+  })
+
+  it('un confronto senza valore si rifiuta', () => {
+    expect(costruisci({ field: 'status', operator: 'eq', value: '' })).toThrow(/needs a value/)
+    expect(costruisci({ field: 'status', operator: 'eq', value: null })).toThrow(/needs a value/)
+  })
+
+  it('«è vuoto» non vuole nessun valore e non si lamenta', () => {
+    expect(costruisci({ field: 'resolved_at', operator: 'is_null', value: null })).not.toThrow()
+  })
+
+  it('un numero resta un numero: `n.porta = "443"` non troverebbe mai niente', () => {
+    const { params } = buildReportQuery(conFiltro({ field: 'port', operator: 'eq', value: 443 }), 't1', whitelist)
+    expect(Object.values(params)).toContain(443)
+  })
 })

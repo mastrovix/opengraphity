@@ -51,13 +51,20 @@ describe('assertScriptingEnabled', () => {
     expect(runQueries[0]!.params).toEqual({ tenantId: 't1' })
   })
 
-  it('piano SENZA script → BAD_USER_INPUT che nomina script, piano e tenant (mai un salto silenzioso)', async () => {
+  /**
+   * Il messaggio non parla più di PIANO (moduli del catalogo, ondata 6): gli
+   * script sono un interruttore dell'organizzazione, e il rifiuto deve dire
+   * dove si accende — non «passa a un piano superiore», che l'amministratore
+   * non può fare da solo. Il varco è identico: niente salti silenziosi.
+   */
+  it('script SPENTI → BAD_USER_INPUT che nomina lo script, il tenant e dove accenderli (mai un salto silenzioso)', async () => {
     tenantRows = [{ plan: 'starter', scriptingEnabled: false }]
     const err = await assertScriptingEnabled('t1', 'server.rack.validation_script').then(() => null, (e: unknown) => e)
     expect(err).toBeInstanceOf(GraphQLError)
     expect((err as GraphQLError).extensions['code']).toBe('BAD_USER_INPUT')
     expect((err as GraphQLError).message).toContain('server.rack.validation_script')
-    expect((err as GraphQLError).message).toContain('the "starter" plan of tenant t1 does not include scripts')
+    expect((err as GraphQLError).message).toContain('scripts are switched off for tenant t1')
+    expect((err as GraphQLError).message).toContain('Settings > Organization')
   })
 
   it('tenant senza nodo :Tenant → errore che nomina la migrazione', async () => {

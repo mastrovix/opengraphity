@@ -48,7 +48,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Focus, Info, Star, Loader2, ArrowRight, GitCompareArrows, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Boxes, RotateCcw, Pause, Play, Trash2, AlertTriangle, Focus, Info, Star, Loader2, ArrowRight, GitCompareArrows, RefreshCw, Pencil } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageLoader } from '@/components/PageLoader'
 import { QueryError } from '@/components/QueryError'
@@ -61,13 +61,12 @@ import { Pill } from '@/components/ui/Pill'
 import { useMe } from '@/hooks/useMe'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
-import { useMetamodel } from '@/contexts/MetamodelContext'
 import { GET_SERVICE_MAP, GET_SERVICE_MAP_STATUS } from '@/graphql/queries'
 import { REEVALUATE_SERVICE_MAP, SET_SERVICE_MAP_STATUS, DELETE_SERVICE_MAP, SYNC_SERVICE_MAP } from '@/graphql/mutations'
 import { formatDateTime, formatDuration, timeAgo } from '@/lib/datetime'
 import { pausedWhenHidden } from '@/lib/polling'
 import { ciPath } from '@/lib/ciPath'
-import { ciTypeLabelKey, enumLabel } from '@/lib/ciEnums'
+import { useCILabels, useCriticalityLabel } from '@/hooks/useCILabels'
 import { colors, lookupOrError, palette } from '@/lib/tokens'
 import { AMBER_BANNER, TINT_NEUTRAL, TINT_WARNING } from '@/lib/eventPalette'
 import { ServiceMapCanvas } from './ServiceMapCanvas'
@@ -75,6 +74,7 @@ import { ServiceHistorySection } from './ServiceHistorySection'
 import { ServiceComponentsTable } from './ServiceComponentsTable'
 import { ServiceRulesCard } from './ServiceRulesCard'
 import { ServiceOpenIncidentCard } from './ServiceOpenIncidentCard'
+import { ServiceMapScopeDialog } from './ServiceMapScopeDialog'
 import { UpdateServiceMapDialog } from './UpdateServiceMapDialog'
 import { ServiceAutoSyncToggle } from './ServiceAutoSyncToggle'
 import {
@@ -83,6 +83,7 @@ import {
   serviceStatusLabel, serviceHealthLabel, staleMessage,
 } from './servicesShared'
 import type { ServiceMapDetail, ServiceMapNode, ImpactCause, ServiceMapStatus, ServiceMapSyncResult } from '@/types/services'
+import { showError } from '@/lib/showError'
 
 const POLL_MS = 15_000
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
@@ -119,14 +120,18 @@ const STATUS_ACTION: Record<ServiceMapStatus, StatusAction> = {
 export function ServiceDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { t } = useTranslation()
+  const criticalityLabel = useCriticalityLabel()
   const navigate = useNavigate()
-  const { isAdmin } = useMe()
+  const { can } = useMe()
+  // Ondata 7: la configurazione della mappa è `config.services`, il ricalcolo `service.reevaluate`.
+  const managesServices = can('config.services')
+  const mayReevaluate = can('service.reevaluate')
   const confirm = useConfirm()
-  const { ciTypes } = useMetamodel()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   /** «Isola»: la mappa mostra solo la catena di questo componente. Vive qui perché il pulsante sta nel pannello del componente. */
   const [isolatedId, setIsolatedId] = useState<string | null>(null)
   const [updateOpen, setUpdateOpen] = useState(false)
+  const [scopeOpen, setScopeOpen] = useState(false)
 
   /**
    * C-8: in polling va SOLO la sonda (tre marcatori, `no-cache`), non l'intero
@@ -153,8 +158,27 @@ export function ServiceDetailPage() {
 
   const [reevaluate, { loading: reevaluating }] = useMutation<{ reevaluateServiceMap: ServiceMapDetail }>(REEVALUATE_SERVICE_MAP)
   const [setStatus, { loading: settingStatus }] = useMutation<{ setServiceMapStatus: ServiceMapDetail }>(SET_SERVICE_MAP_STATUS)
-  const [deleteMap, { loading: deleting }] = useMutation<{ deleteServiceMap: boolean }>(DELETE_SERVICE_MAP)
+  /**
+   * La mappa eliminata sparisce anche dalla CACHE (revisione totale · G-MON-12).
+   *
+   * Dopo la cancellazione la lista (`cache-and-network`) ridisegnava dalla
+   * cache e mostrava ancora la riga: cliccandola si arrivava a un «non
+   * trovato». Con il polling in pausa a scheda nascosta poteva restare a
+   * lungo. Qui si butta via il nodo e si rilegge la lista.
+   */
+  const [deleteMap, { loading: deleting }] = useMutation<{ deleteServiceMap: boolean }>(DELETE_SERVICE_MAP, {
+    update(cache, result) {
+      if (result.data?.deleteServiceMap !== true) return
+      cache.evict({ id: cache.identify({ __typename: 'ServiceMap', id }) })
+      cache.gc()
+    },
+    refetchQueries: ['GetServiceMaps', 'GetServiceHealthCounts'],
+  })
   const [syncMap, { loading: syncing }] = useMutation<{ syncServiceMap: ServiceMapSyncResult }>(SYNC_SERVICE_MAP)
+  // La stessa funzione di CMDB, anomalie e mappa (20 set 2026): qui la chiave
+  // i18n veniva prima dell'etichetta del disegnatore, cioè il contrario della
+  // regola F-22. Sta con gli altri hook, PRIMA delle uscite anticipate.
+  const { typeLabel: ciTypeLabel } = useCILabels()
 
   if (loading && !data && !previousData) return <PageLoader />
   if (error && !data) return <PageContainer><QueryError message={error.message} onRetry={() => void refetch()} /></PageContainer>
@@ -167,10 +191,6 @@ export function ServiceDetailPage() {
     )
   }
 
-  const ciTypeLabel = (type: string) => {
-    const key = ciTypeLabelKey(type)
-    return key ? t(key) : (ciTypes.find((ct) => ct.name === type)?.label ?? enumLabel(type))
-  }
   const nodeById = new Map(map.nodes.map((n) => [n.ci.id, n]))
   const selected = selectedId ? (nodeById.get(selectedId) ?? null) : null
   const since = map.healthSince ? formatDuration(Date.now() - new Date(map.healthSince).getTime()) : null
@@ -191,7 +211,7 @@ export function ServiceDetailPage() {
       const next = res.data?.reevaluateServiceMap
       if (!next) throw new Error(t('monitoring.services.detail.noResult', { operation: 'reevaluateServiceMap' }))
       toast.success(t('toast.services.reevaluated', { health: serviceHealthLabel(t, next.health) }))
-    } catch (e) { toast.error(t('toast.services.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.services.actionFailed', { error: errorMessage(e) })) }
   }
 
   /**
@@ -214,7 +234,7 @@ export function ServiceDetailPage() {
       toast.success(out.added === 0 && out.removed === 0 && out.moved === 0
         ? t('toast.services.syncAligned')
         : t('toast.services.synced', { added: out.added, removed: out.removed, moved: out.moved }))
-    } catch (e) { toast.error(t('toast.services.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.services.actionFailed', { error: errorMessage(e) })) }
   }
 
   /** Bozza → attiva, attiva → in pausa, in pausa → riattivata: un pulsante solo, con l'etichetta dello stato vero. */
@@ -225,7 +245,7 @@ export function ServiceDetailPage() {
       const next = res.data?.setServiceMapStatus
       if (!next) throw new Error(t('monitoring.services.detail.noResult', { operation: 'setServiceMapStatus' }))
       toast.success(t('toast.services.statusChanged', { status: serviceStatusLabel(t, next.status) }))
-    } catch (e) { toast.error(t('toast.services.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.services.actionFailed', { error: errorMessage(e) })) }
   }
 
   async function onDelete() {
@@ -236,7 +256,7 @@ export function ServiceDetailPage() {
       await deleteMap({ variables: { id } })
       toast.success(t('toast.services.deleted'))
       navigate('/monitoring/services')
-    } catch (e) { toast.error(t('toast.services.actionFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.services.actionFailed', { error: errorMessage(e) })) }
   }
 
   return (
@@ -280,7 +300,7 @@ export function ServiceDetailPage() {
           <div role="alert" data-testid="stale-banner" data-reason={map.staleReason ?? 'none'} style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, padding: '10px 14px', borderRadius: 8, background: AMBER_BANNER.bg, border: `1px solid ${AMBER_BANNER.border}`, color: AMBER_BANNER.text, fontSize: 'var(--font-size-body)' }}>
             <AlertTriangle size={16} aria-hidden="true" style={{ flexShrink: 0 }} />
             <span>{staleMessage(t, map.staleReason)}</span>
-            {isAdmin && map.staleReason === 'over_limit' && (
+            {managesServices && map.staleReason === 'over_limit' && (
               <Button variant="secondary" size="xs" disabled={busy} icon={<GitCompareArrows size={13} aria-hidden="true" />} onClick={() => setUpdateOpen(true)}>
                 {t('monitoring.services.detail.actions.reviewComponents')}
               </Button>
@@ -290,11 +310,14 @@ export function ServiceDetailPage() {
         <p data-testid="explanation-sentence" style={{ margin: '12px 0 0', fontSize: 'var(--font-size-card-title)', color: colors.slateDark, lineHeight: 1.6 }}>
           {explanationSentence(t, map)}
         </p>
-        {isAdmin && (
+        {(managesServices || mayReevaluate) && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
+            {mayReevaluate && (
             <Button variant="secondary" size="sm" disabled={busy} icon={reevaluating ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RotateCcw size={14} aria-hidden="true" />} onClick={() => void onReevaluate()}>
               {t('monitoring.services.detail.actions.reevaluate')}
             </Button>
+            )}
+            {managesServices && (<>
             {/* Mappa viva: si sincronizza a richiesta e il diff serve solo a rivedere ed escludere; congelata: il diff è l'unico modo di far entrare i componenti nuovi. */}
             {/* C-11: su una mappa in pausa il motore rifiuta la sincronizzazione manuale: il pulsante è disabilitato e dice perché, invece di fallire ogni volta. */}
             {map.autoSync && (
@@ -318,6 +341,7 @@ export function ServiceDetailPage() {
             <Button variant="danger" size="sm" disabled={busy} icon={<Trash2 size={14} aria-hidden="true" />} onClick={() => void onDelete()}>
               {t('monitoring.services.detail.actions.delete')}
             </Button>
+            </>)}
           </div>
         )}
       </div>
@@ -331,7 +355,7 @@ export function ServiceDetailPage() {
       */}
       <div>
         {/* Incident aperto dal monitoraggio per questo servizio (ondata 3): la prima cosa da sapere. */}
-        <ServiceOpenIncidentCard incident={map.openIncident} openIncidentFrom={map.rules.openIncidentFrom} />
+        <ServiceOpenIncidentCard incident={map.openIncident} openIncidentFrom={map.rules.openIncidentFrom} problem={map.incidentProblem} />
 
         <SectionCard title={t('monitoring.services.detail.why')} count={map.explanation.length} defaultOpen>
           {map.explanation.length === 0
@@ -348,23 +372,31 @@ export function ServiceDetailPage() {
         </SectionCard>
 
         <SectionCard title={t('monitoring.services.detail.components')} count={map.nodeCount}>
-          <ServiceComponentsTable map={map} canEdit={isAdmin} ciTypeLabel={ciTypeLabel} onReload={() => void refetch()} />
+          <ServiceComponentsTable map={map} canEdit={managesServices} ciTypeLabel={ciTypeLabel} onReload={() => void refetch()} />
         </SectionCard>
 
         {/* C-12: la scheda tiene la sola CONFIGURAZIONE; stato, valutazione, sincronizzazione e versione stanno una volta sola, in testata. */}
         <SectionCard title={t('monitoring.services.detail.service')}>
           <DetailField label={t('monitoring.services.detail.fields.service')} value={map.service.name} />
-          <DetailField label={t('monitoring.services.detail.fields.criticality')} value={map.service.criticality ? enumLabel(map.service.criticality) : null} />
+          <DetailField label={t('monitoring.services.detail.fields.criticality')} value={map.service.criticality ? criticalityLabel(map.service.criticality) : null} />
           <DetailField label={t('monitoring.services.detail.fields.owner')} value={map.service.ownerGroup?.name ?? null} />
           <DetailField label={t('monitoring.services.detail.fields.maxDepth')} value={String(map.maxDepth)} />
           <DetailField label={t('monitoring.services.detail.fields.relationshipTypes')} value={map.relationshipTypes.length > 0 ? map.relationshipTypes.join(', ') : null} />
+          {/* SV-6: tipi di relazione e profondità non erano più modificabili dopo la creazione. */}
+          {managesServices && (
+            <div style={{ margin: '4px 0 8px' }}>
+              <Button variant="secondary" size="xs" disabled={busy} icon={<Pencil size={12} aria-hidden="true" />} onClick={() => setScopeOpen(true)}>
+                {t('monitoring.services.scope.open')}
+              </Button>
+            </div>
+          )}
           <DetailField label={t('monitoring.services.detail.fields.builtFrom')} value={builtFromLabel(map.builtFrom, t)} />
           <DetailField label={t('monitoring.services.detail.fields.excluded')} value={t('monitoring.services.detail.fields.excludedCount', { count: map.excluded.length })} />
           <DetailField label={t('monitoring.services.detail.fields.updatedAt')} value={map.updatedAt ? `${formatDateTime(map.updatedAt)} · ${timeAgo(map.updatedAt)}` : null} />
-          {isAdmin && <ServiceAutoSyncToggle map={map} onReload={() => void refetch()} />}
+          {managesServices && <ServiceAutoSyncToggle map={map} onReload={() => void refetch()} />}
         </SectionCard>
 
-        <ServiceRulesCard map={map} canEdit={isAdmin} onReload={() => void refetch()} />
+        <ServiceRulesCard map={map} canEdit={managesServices} onReload={() => void refetch()} />
 
         <ServiceHistorySection mapId={map.id} entries={map.history} total={map.historyCount} />
 
@@ -385,7 +417,8 @@ export function ServiceDetailPage() {
         )}
       </div>
 
-      {isAdmin && <UpdateServiceMapDialog map={map} open={updateOpen} onClose={() => setUpdateOpen(false)} />}
+      {managesServices && <UpdateServiceMapDialog map={map} open={updateOpen} onClose={() => setUpdateOpen(false)} />}
+      {managesServices && scopeOpen && <ServiceMapScopeDialog map={map} onClose={() => setScopeOpen(false)} onReload={() => void refetch()} />}
     </PageContainer>
   )
 }

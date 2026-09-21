@@ -35,13 +35,19 @@ import { historyParams, historyWriteCypher } from './history.js'
 import { recomputeCIHealth } from './ciHealth.js'
 import { incidentTerminalSteps } from './incidentWorkflow.js'
 import { runEventPipeline } from './pipeline.js'
+import { systemText, systemTextIn } from '../../lib/systemText.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
+import type { Lingua } from '../../lib/enumValueLabels.js'
 
 const log = logger.child({ module: 'event-cascade' })
 
 // ── D4.1 · cancellazione di una sorgente ─────────────────────────────────────
 
 /** Nota scritta sull'allarme (cronologia + `resolution_note`) quando la sua sorgente viene eliminata. */
-export const SOURCE_DELETED_NOTE = 'sorgente eliminata: nessun payload potrà più farlo rientrare'
+/** La nota sugli allarmi chiusi con la loro sorgente, nella lingua del cliente. */
+export async function sourceDeletedNote(tenantId: string): Promise<string> {
+  return systemText(tenantId, 'event.history.sourceDeleted')
+}
 
 export interface DeleteSourceResult {
   /** false = la sorgente non esisteva (id sbagliato o già eliminata): niente da fare. */
@@ -79,6 +85,7 @@ export async function deleteSourceAndResolveEvents(tenantId: string, sourceId: s
   const now = new Date().toISOString()
   const session = getSession(undefined, 'WRITE')
   let row: DeletedSourceRow | null
+  const note = await sourceDeletedNote(tenantId)
   try {
     row = await runQueryOne<DeletedSourceRow>(session, `
       MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})
@@ -95,8 +102,8 @@ export async function deleteSourceAndResolveEvents(tenantId: string, sourceId: s
       DETACH DELETE w
       RETURN eventIds, ciIds
     `, {
-      sourceId, tenantId, now, actorId, note: SOURCE_DELETED_NOTE,
-      ...historyParams({ kind: 'resolved_manually', actorId, note: SOURCE_DELETED_NOTE }, now),
+      sourceId, tenantId, now, actorId, note,
+      ...historyParams({ kind: 'resolved_manually', actorId, note }, now),
     })
   } finally { await session.close() }
   if (!row) return { deleted: false, resolvedEvents: 0, affectedCIs: 0 }
@@ -129,13 +136,13 @@ export async function deleteSourceAndResolveEvents(tenantId: string, sourceId: s
 // ── D4.3 · commenti sugli incident rimasti senza la loro causa ───────────────
 
 /** Commento scritto sull'incident quando sparisce l'ULTIMO CI impattato. */
-export function ciDeletedComment(ciName: string): string {
-  return `Il CI "${ciName}" è stato eliminato dalla CMDB: era l'unico CI impattato di questo incident, che resta aperto ma non potrà più essere chiuso dal monitoraggio (gli allarmi correlati non hanno più un CI).`
+export function ciDeletedComment(lingua: Lingua, ciName: string): string {
+  return systemTextIn(lingua, 'cascade.ciDeleted', { ci: ciName })
 }
 
 /** Commento scritto sull'incident di servizio quando la mappa che lo apriva viene eliminata. */
-export function serviceMapDeletedComment(serviceName: string): string {
-  return `Il servizio "${serviceName}" non è più monitorato: la mappa dei componenti è stata eliminata. L'incident resta aperto ma non verrà più chiuso automaticamente dal ripristino del servizio.`
+export function serviceMapDeletedComment(lingua: Lingua, serviceName: string): string {
+  return systemTextIn(lingua, 'cascade.serviceMapDeleted', { service: serviceName })
 }
 
 /** Incident non terminali che perdono il loro ULTIMO CI impattato con la cancellazione di `ciId`. */
@@ -184,7 +191,7 @@ export async function noteServiceMapDeletion(tenantId: string, mapId: string, se
   const own = session ?? getSession()
   let found: { serviceName: string; incidentIds: string[] }
   try { found = await findIncidentsOfServiceMap(own, tenantId, mapId) } finally { if (!session) await own.close() }
-  return commentOnIncidents(tenantId, found.incidentIds, serviceMapDeletedComment(found.serviceName), `service_map.deleted:${mapId}`)
+  return commentOnIncidents(tenantId, found.incidentIds, serviceMapDeletedComment(await languageFor(tenantId), found.serviceName), `service_map.deleted:${mapId}`)
 }
 
 /**
@@ -201,7 +208,7 @@ export async function noteServiceMapDeletion(tenantId: string, mapId: string, se
  */
 export async function noteIncidentsBeforeCIDeletion(tenantId: string, ciId: string, session: Session): Promise<void> {
   const orphaned = await findIncidentsLosingTheirOnlyCI(session, tenantId, ciId)
-  await commentOnIncidents(tenantId, orphaned.incidentIds, ciDeletedComment(orphaned.ciName), `ci.deleted:${ciId}`)
+  await commentOnIncidents(tenantId, orphaned.incidentIds, ciDeletedComment(await languageFor(tenantId), orphaned.ciName), `ci.deleted:${ciId}`)
   const map = await runQueryOne<{ id: string }>(session, `
     MATCH (n:ConfigurationItem {id: $ciId, tenant_id: $tenantId})-[:HAS_SERVICE_MAP]->(m:ServiceMap {tenant_id: $tenantId})
     RETURN m.id AS id

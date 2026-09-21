@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { DomainEvent } from '@opengraphity/types'
 
+// Revisione totale · E-3: la consegna è deduplicata per canale su Redis. Nei
+// test gli eventi riusano lo stesso id, quindi la deduplica va azzerata a
+// ogni caso: il contratto della deduplica è pinnato in deliveryDedup.test.ts.
+vi.mock('../deliveryDedup.js', () => ({
+  deliverOnce: async (_id: string | undefined, _ch: string, deliver: () => Promise<void> | void) => { await deliver(); return true },
+  alreadyDelivered: async () => false,
+  markDelivered: async () => {},
+  resetDeliveryDedup: () => {},
+}))
+
 /**
  * D-22 / B-16 — l'ingresso in un passo notifica anche quando il cliente ha
  * rinominato o aggiunto il passo.
@@ -19,6 +29,7 @@ const runQueries: Array<{ cypher: string; params: Record<string, unknown> }> = [
 /** Regole per (tenant, event_type), come le trova la query del dispatcher. */
 let rulesByType: Record<string, Array<Record<string, unknown>>> = {}
 
+vi.mock('../locale.js', () => ({ loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })), invalidateNotificationLocale: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({
     executeRead: async (fn: (tx: { run: (c: string, p: Record<string, unknown>) => Promise<unknown> }) => Promise<unknown>) =>

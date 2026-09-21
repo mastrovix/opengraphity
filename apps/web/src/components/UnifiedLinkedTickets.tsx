@@ -22,6 +22,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { Input } from '@/components/ui/FormControls'
 import { GET_INCIDENTS, GET_PROBLEMS, GET_CHANGES } from '@/graphql/queries'
 import { colors, palette } from '@/lib/tokens'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 
 export interface LinkedTicketItem { id: string; number: string; title: string; status: string; removable?: boolean | null }
 
@@ -42,16 +43,57 @@ const BADGE: Record<LinkedKind, string> = {
   CHANGE:   'var(--color-brand)',
 }
 
+/** Il tipo di entità del workflow, per tradurre il nome del passo (F-33). */
+const ENTITY_TYPE: Record<LinkedKind, string> = {
+  INCIDENT: 'incident',
+  PROBLEM:  'problem',
+  CHANGE:   'change',
+}
+
+/**
+ * La FASE di un ticket collegato con l'etichetta del workflow, non il nome
+ * tecnico con i trattini bassi tolti (revisione totale · F-33): un passo
+ * rinominato dal cliente si leggeva «in progress» invece di «In lavorazione».
+ */
+function StepCell({ kind, status }: { kind: LinkedKind; status: string }) {
+  const { labelFor } = useWorkflowSteps(ENTITY_TYPE[kind])
+  const label = status ? (labelFor(status) || status.replace(/_/g, ' ')) : '—'
+  return (
+    <span style={{ width: 120, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{label}</span>
+  )
+}
+
+/**
+ * La ricerca la fa il SERVER (revisione totale · F-8).
+ *
+ * Incident e change venivano caricati coi 50 più recenti e filtrati nel
+ * browser: su un tenant con trecento incident, cercare per numero non trovava
+ * il ticket e l'utente concludeva che non esistesse. `incidents` e `changes`
+ * non hanno un argomento `search`, ma hanno `filters` — lo stesso JSON del
+ * costruttore di filtri: qui si compone «numero contiene X OPPURE titolo
+ * contiene X», che è quello che la modale chiede.
+ */
+function searchFilters(term: string, numberField: string): string | undefined {
+  const q = term.trim()
+  if (q === '') return undefined
+  return JSON.stringify({
+    rules: [
+      { id: 'n', field: numberField, operator: 'contains', value: q, logic: 'OR' },
+      { id: 't', field: 'title',     operator: 'contains', value: q, logic: 'OR' },
+    ],
+  })
+}
+
 /** Risultati di ricerca per il tipo attivo: query lazy (skip quando il tab non è attivo). */
 function useLinkSearch(kind: LinkedKind | null, term: string): LinkedTicketItem[] {
   const { data: inc } = useQuery<{ incidents: { items: LinkedTicketItem[] } }>(GET_INCIDENTS, {
-    variables: { limit: 50 }, skip: kind !== 'INCIDENT',
+    variables: { limit: 50, filters: searchFilters(term, 'number') }, skip: kind !== 'INCIDENT',
   })
   const { data: prb } = useQuery<{ problems: { items: LinkedTicketItem[] } }>(GET_PROBLEMS, {
     variables: { search: term.trim() || undefined, limit: 20 }, skip: kind !== 'PROBLEM',
   })
   const { data: chg } = useQuery<{ changes: { items: { id: string; code: string; title: string; approvalStatus?: string | null; workflowInstance?: { currentStep?: string | null } | null }[] } }>(GET_CHANGES, {
-    variables: { limit: 50 }, skip: kind !== 'CHANGE',
+    variables: { limit: 50, filters: searchFilters(term, 'code') }, skip: kind !== 'CHANGE',
   })
   if (kind === 'INCIDENT') return inc?.incidents?.items ?? []
   if (kind === 'PROBLEM')  return prb?.problems?.items ?? []
@@ -88,7 +130,7 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
 
       {showSearch && active && (
         <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
             {types.map((t) => (
               <button key={t.kind} type="button" onClick={() => { setActiveKind(t.kind); setTerm('') }}
                 style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer', fontSize: 'var(--font-size-label)', fontWeight: 600, background: activeKind === t.kind ? 'var(--color-brand)' : 'transparent', color: activeKind === t.kind ? colors.white : 'var(--color-slate)' }}>
@@ -130,7 +172,7 @@ export function UnifiedLinkedTickets({ title, types, excludeId }: { title: strin
               <div key={`${g.kind}-${r.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: `1px solid ${palette.neutral.borderLight}`, fontSize: 'var(--font-size-body)' }}>
                 <span style={{ width: 130 }}><Link to={`${g.routeBase}/${r.id}`} style={{ fontWeight: 600, color: 'var(--color-brand)', textDecoration: 'none' }}>{r.number}</Link></span>
                 <span style={{ flex: 1, color: 'var(--color-slate-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</span>
-                <span style={{ width: 120, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>{(r.status || '—').replace(/_/g, ' ')}</span>
+                <StepCell kind={g.kind} status={r.status} />
                 <span style={{ width: 30, display: 'flex', justifyContent: 'flex-end' }}>
                   {r.removable === false ? (
                     <span title={t('components.linkedTickets.automatic')} style={{ padding: 2, color: 'var(--color-slate-light)', display: 'inline-flex' }}>

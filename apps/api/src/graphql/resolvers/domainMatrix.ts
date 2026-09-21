@@ -21,13 +21,15 @@ import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
 import {
-  DOMAIN_MATRIX_KINDS, domainVocabulary, isDomainMatrixKind,
+  DOMAIN_MATRIX_KINDS, domainVocabulary, isDomainMatrixKind, matrixInputValues, matrixOutputValues,
   loadDomainMatrix, matrixKey, type DomainMatrixKind,
 } from '../../lib/domainMatrix.js'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import { criticalServiceCriticalities } from '../../services/serviceImpact/incident.js'
 import { preApprovedChangeTypes, setPreApprovedChangeTypes, changeTypeVocabulary } from '../../lib/changePolicy.js'
 import { riskBandThresholds, setRiskBandThresholds } from '../../lib/riskBands.js'
+import { changeEnvironmentWeight, setChangeEnvironmentWeight } from '../../lib/changeEnvironmentWeight.js'
+import { impactAnalysisWeights, setImpactAnalysisWeights } from '../../lib/impactWeights.js'
 import { configurationIssues } from '../../lib/configurationIssues.js'
 import { mapGaps, mapParams } from '../issueShape.js'
 
@@ -57,8 +59,8 @@ export function cartesianKeys(inputValues: readonly (readonly string[])[]): stri
 
 async function readMatrix(tenantId: string, kind: DomainMatrixKind): Promise<DomainMatrixOut> {
   const spec = DOMAIN_MATRIX_KINDS[kind]
-  const inputValues  = await Promise.all(spec.inputs.map((v) => domainVocabulary(tenantId, v)))
-  const outputValues = await domainVocabulary(tenantId, spec.output)
+  const inputValues  = await matrixInputValues(tenantId, kind)
+  const outputValues = await matrixOutputValues(tenantId, kind)
   const matrix = await loadDomainMatrix(tenantId, kind)
 
   const combos = cartesianKeys(inputValues)
@@ -110,20 +112,22 @@ async function updateDomainMatrix(
 ): Promise<DomainMatrixOut> {
   if (!isDomainMatrixKind(args.kind)) {
     throw new ValidationError(
-      `Matrice "${args.kind}" inesistente. Ammesse: ${Object.keys(DOMAIN_MATRIX_KINDS).join(', ')}.`,
+      `Matrix "${args.kind}" does not exist. Allowed: ${Object.keys(DOMAIN_MATRIX_KINDS).join(', ')}.`,
+      { key: 'errors.matrix.unknownKind', params: { kind: String(args.kind), allowed: Object.keys(DOMAIN_MATRIX_KINDS).join(', ') } },
     )
   }
   const kind = args.kind
   const spec = DOMAIN_MATRIX_KINDS[kind]
-  const inputValues  = await Promise.all(spec.inputs.map((v) => domainVocabulary(ctx.tenantId, v)))
-  const outputValues = await domainVocabulary(ctx.tenantId, spec.output)
+  const inputValues  = await matrixInputValues(ctx.tenantId, kind)
+  const outputValues = await matrixOutputValues(ctx.tenantId, kind)
 
   const entries: Record<string, string> = {}
   for (const e of args.entries) {
     const parts = e.key.split('|')
     if (parts.length !== spec.inputs.length) {
       throw new ValidationError(
-        `Matrice "${kind}": la chiave "${e.key}" ha ${parts.length} dimensioni, attese ${spec.inputs.length} (${spec.inputs.join(' × ')}).`,
+        `Matrix "${kind}": key "${e.key}" has ${parts.length} dimensions, ${spec.inputs.length} expected (${spec.inputs.join(' × ')}).`,
+        { key: 'errors.matrix.keyDimensions', params: { matrix: kind, cell: e.key, got: parts.length, expected: spec.inputs.length } },
       )
     }
     parts.forEach((part, i) => {
@@ -164,7 +168,7 @@ async function updateDomainMatrix(
       SET m.entries = $entries, m.updated_at = $now, m.updated_by = $userId, m.seeded = false
       RETURN m.kind AS kind
     `, { tenantId: ctx.tenantId, kind, entries: JSON.stringify(entries), now, userId: ctx.userId ?? null })
-    if (!row) throw new Error(`Matrice "${kind}": la scrittura non ha toccato nessun nodo`)
+    if (!row) throw new Error(`Matrix "${kind}": the write touched no node`)
   } finally { await session.close() }
 
   // La leva unica, non `invalidateDomainMatrix` (revisione · C-N9 / D-N1):
@@ -241,6 +245,30 @@ async function updateRiskBandThresholds(
   return { thresholds: [...saved], vocabulary: [...vocabulary], isDefault: false }
 }
 
+async function changeEnvironmentWeightQuery(_: unknown, __: unknown, ctx: GraphQLContext) {
+  return changeEnvironmentWeight(ctx.tenantId)
+}
+
+async function updateChangeEnvironmentWeight(_: unknown, args: { weight: number }, ctx: GraphQLContext) {
+  const before = await changeEnvironmentWeight(ctx.tenantId)
+  const saved = await setChangeEnvironmentWeight(ctx.tenantId, args.weight)
+  void audit(ctx, 'change.environment_weight.updated', 'Tenant', ctx.tenantId, { from: before.weight, to: saved.weight })
+  return saved
+}
+
+async function impactAnalysisWeightsQuery(_: unknown, __: unknown, ctx: GraphQLContext) {
+  return impactAnalysisWeights(ctx.tenantId)
+}
+
+async function updateImpactAnalysisWeights(_: unknown, args: { input: Record<string, number> }, ctx: GraphQLContext) {
+  const before = await impactAnalysisWeights(ctx.tenantId)
+  const saved = await setImpactAnalysisWeights(ctx.tenantId, { ...args.input })
+  const { isDefault: _b, ...from } = before
+  const { isDefault: _s, ...to } = saved
+  void audit(ctx, 'change.impact_weights.updated', 'Tenant', ctx.tenantId, { from, to })
+  return saved
+}
+
 async function configurationIssuesQuery(_: unknown, __: unknown, ctx: GraphQLContext) {
   const issues = await configurationIssues(ctx.tenantId)
   // I parametri come lista di coppie: e la stessa cosa, nella forma che lo
@@ -255,6 +283,8 @@ export const domainMatrixResolvers = {
     criticalServiceCriticalities: criticalServiceCriticalitiesQuery,
     preApprovedChangeTypes: preApprovedChangeTypesQuery,
     riskBandThresholds: riskBandThresholdsQuery,
+    changeEnvironmentWeight: changeEnvironmentWeightQuery,
+    impactAnalysisWeights: impactAnalysisWeightsQuery,
   },
-  Mutation: { updateDomainMatrix, updatePreApprovedChangeTypes, updateRiskBandThresholds },
+  Mutation: { updateDomainMatrix, updatePreApprovedChangeTypes, updateRiskBandThresholds, updateChangeEnvironmentWeight, updateImpactAnalysisWeights },
 }

@@ -17,6 +17,7 @@
  * nulla rende la domanda decorativa.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 const run = vi.fn<(q: string, p?: Record<string, unknown>) => Promise<{ records: unknown[] }>>()
 
@@ -34,7 +35,7 @@ vi.mock('../../../../lib/logger.js', () => ({
 
 const { createAssessmentQuestion, updateAssessmentQuestion } = await import('../questionAdmin.js')
 
-const ctx = { tenantId: 'c-test', userId: 'u1', userEmail: 'a@b.c', role: 'admin' } as never
+const ctx = { tenantId: 'c-test', userId: 'u1', userEmail: 'a@b.c', role: 'admin', permissions: perms('admin') } as never
 const buone = [{ label: 'Sì, provato', score: 1, sortOrder: 0 }, { label: 'No', score: 3, sortOrder: 1 }]
 const crea = (input: Record<string, unknown>) =>
   createAssessmentQuestion(null, { input: { text: 'Domanda?', category: 'technical', isCore: true, options: buone, ...input } } as never, ctx)

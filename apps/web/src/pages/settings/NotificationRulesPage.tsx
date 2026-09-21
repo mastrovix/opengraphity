@@ -9,7 +9,7 @@ import { PageTitle } from '@/components/PageTitle'
 import { GET_NOTIFICATION_RULES, GET_NOTIFICATION_ROUTING, GET_WORKFLOW_EVENT_TYPES } from '@/graphql/queries'
 import { UPDATE_NOTIFICATION_RULE, CREATE_NOTIFICATION_RULE, DELETE_NOTIFICATION_RULE } from '@/graphql/mutations'
 import { fontSize, fontWeight, colors } from '@/lib/tokens'
-import { RuleRow, routableFor, targetOptionsFor, RULE_CATEGORIES, STANDARD_EVENTS } from './NotificationRuleList'
+import { RuleRow, routableFor, targetOptionsFor, useTargetOptions, RULE_CATEGORIES, STANDARD_EVENTS } from './NotificationRuleList'
 import type { NotificationRule, NotificationRouting, UpdateInput } from './NotificationRuleList'
 import { NewRuleDialog } from './NotificationRuleForm'
 import type { CreateInput, WorkflowEventType } from './NotificationRuleForm'
@@ -30,6 +30,8 @@ const TH: React.CSSProperties = {
 export default function NotificationRulesPage() {
   const { t } = useTranslation()
   const confirm = useConfirm()
+  // I destinatari: i fissi e un «Ruolo: X» per ogni ruolo dell'organizzazione (ondata 7).
+  const targetOptions = useTargetOptions()
   const [showDialog, setShowDialog] = useState(false)
 
   const { data, loading, refetch } = useQuery<{ notificationRules: NotificationRule[] }>(
@@ -148,7 +150,7 @@ export default function NotificationRulesPage() {
                     <thead>{tableHeader}</thead>
                     <tbody>
                       {rules.map((rule) => (
-                        <RuleRow key={rule.id} rule={rule} routable={routableFor(routing, rule.eventType)} targets={targetOptionsFor(routing, rule.eventType, rule.target)} onUpdate={handleUpdate} onDelete={handleDelete} />
+                        <RuleRow key={rule.id} rule={rule} routable={routableFor(routing, rule.eventType)} targets={targetOptionsFor(routing, rule.eventType, rule.target, targetOptions)} onUpdate={handleUpdate} onDelete={handleDelete} />
                       ))}
                     </tbody>
                   </table>
@@ -174,7 +176,7 @@ export default function NotificationRulesPage() {
                   <thead>{tableHeader}</thead>
                   <tbody>
                     {customRules.map((rule) => (
-                      <RuleRow key={rule.id} rule={rule} routable={routableFor(routing, rule.eventType)} targets={targetOptionsFor(routing, rule.eventType, rule.target)} onUpdate={handleUpdate} onDelete={handleDelete} />
+                      <RuleRow key={rule.id} rule={rule} routable={routableFor(routing, rule.eventType)} targets={targetOptionsFor(routing, rule.eventType, rule.target, targetOptions)} onUpdate={handleUpdate} onDelete={handleDelete} />
                     ))}
                   </tbody>
                 </table>

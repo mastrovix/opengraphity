@@ -9,7 +9,7 @@ import {
   btnPrimary, btnSecondary,
   FIELD_TYPES, enumOptionLabel,
 } from '../shared/designerStyles'
-import { Input, Select } from '@/components/ui/FormControls'
+import { Input, LabelledField, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import type { EnumTypeRef } from '../shared/designerStyles'
 import { palette } from '@/lib/tokens'
@@ -22,12 +22,7 @@ export { btnPrimary, btnSecondary, btnDanger } from '@/components/ui/styles'
 interface EnumTypeOption extends EnumTypeRef { name: string }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <label style={labelS}>{label}</label>
-      {children}
-    </div>
-  )
+  return <LabelledField label={label} labelStyle={labelS} style={{ marginBottom: 14 }}>{children}</LabelledField>
 }
 
 // ── FieldForm ─────────────────────────────────────────────────────────────────
@@ -52,7 +47,8 @@ export function fieldToForm(f: CIFieldDef): FieldForm {
     label:            f.label,
     fieldType:        f.fieldType,
     required:         f.required,
-    defaultValue:     '',
+    // Revisione totale · G-3: il valore predefinito del campo, non una stringa vuota.
+    defaultValue:     (f as unknown as { defaultValue?: string | null }).defaultValue ?? '',
     enumTypeId:       (f as unknown as { enumTypeId?: string | null }).enumTypeId ?? null,
     validationScript: f.validationScript ?? '',
     visibilityScript: f.visibilityScript ?? '',
@@ -73,7 +69,17 @@ interface FieldModalProps {
 
 export function CIFieldEditor({ open, onClose, onSave, initial, existingCount }: FieldModalProps) {
   const { t } = useTranslation()
+  // Revisione totale · G-4: il modale è montato sempre, quindi `useState` si
+  // valutava una volta sola (con `initial` a null): «Modifica» su un campo base
+  // mostrava un form vuoto — o l'ultimo digitato — e salvava come «aggiungi».
+  // La chiave riporta il form al campo scelto ogni volta che si apre.
+  const formKey = `${open ? 'open' : 'closed'}:${initial?.name ?? 'new'}`
   const [form, setForm] = useState<FieldForm>(initial ?? { ...emptyFieldForm(), order: existingCount })
+  const [loadedFor, setLoadedFor] = useState(formKey)
+  if (loadedFor !== formKey) {
+    setLoadedFor(formKey)
+    setForm(initial ?? { ...emptyFieldForm(), order: existingCount })
+  }
   const [saving, setSaving] = useState(false)
   const [scriptTab, setScriptTab] = useState<'validation' | 'visibility' | 'default'>('validation')
 

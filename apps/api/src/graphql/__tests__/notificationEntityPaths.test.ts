@@ -98,7 +98,8 @@ describe('entity_type prodotti dall\'API ↔ NOTIFICATION_ENTITY_PATHS', () => {
     const main = readFileSync(join(here, '../../../../web/src/main.tsx'), 'utf8')
     for (const [type, path] of Object.entries(NOTIFICATION_ENTITY_PATHS)) {
       const route = path.replace(/^\//, '')   // '/monitoring/services/:id' → 'monitoring/services/:id'
-      expect(main.includes(`path: '${route}'`), `${type} → ${path} non è una rotta di main.tsx`).toBe(true)
+      // `{ path: '…' }` o `guarded('…', …)` (ondata 7: la guardia dei permessi)
+      expect(main.includes(`path: '${route}'`) || main.includes(`guarded('${route}'`), `${type} → ${path} non è una rotta di main.tsx`).toBe(true)
     }
   })
 })

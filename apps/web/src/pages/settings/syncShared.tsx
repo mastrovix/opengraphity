@@ -14,6 +14,7 @@ export function formatMs(ms: number | null): string {
 }
 
 export function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation()
   const cfg: Record<string, { color: string; icon: React.ReactNode }> = {
     completed: { color: 'var(--color-success)', icon: <CheckCircle size={12} /> },
     running:   { color: colors.brand, icon: <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} /> },
@@ -25,7 +26,7 @@ export function StatusBadge({ status }: { status: string }) {
   const c = lookupOrError(cfg, status, 'StatusBadge:cfg', { color: colors.slate, icon: null as React.ReactNode })
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: c.color, fontSize: 'var(--font-size-body)', fontWeight: 500 }}>
-      {c.icon}{status}
+      {c.icon}{status in cfg ? t(`pages.sync.status.${status as 'completed'}`) : status}
     </span>
   )
 }

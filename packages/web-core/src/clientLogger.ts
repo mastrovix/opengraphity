@@ -2,10 +2,17 @@ import type { ApiBase } from './apiBase.js'
 import type { ClientLogger } from './logger.js'
 
 /**
- * Logger that ships entries to `POST /api/logs/client` (stored per tenant as
- * `LogEntry` nodes, visible in the Logs page). A failed delivery is reported
- * on the console — never swallowed silently — but cannot throw: a logger
- * that breaks the caller would hide the original error.
+ * Logger that ships entries to `POST /api/logs/client`, stored per tenant as
+ * `LogEntry` nodes and shown in the Logs page alongside the server lines of
+ * the same tenant. A failed delivery is reported on the console — never
+ * swallowed silently — but cannot throw: a logger that breaks the caller
+ * would hide the original error.
+ *
+ * Fino al 20 set 2026 questo commento diceva «visible in the Logs page» e NON
+ * era vero: i nodi venivano scritti e non li leggeva nessuno (zero `MATCH` in
+ * tutto l'albero), mentre la pagina mostrava solo l'anello in memoria del
+ * server. Adesso lo è — e la lezione è che una frase in un commento non
+ * diventa vera perché qualcuno l'ha scritta in buona fede.
  */
 export function createClientLogger(api: ApiBase): ClientLogger {
   async function send(level: 'error' | 'warn' | 'info', message: string, data?: Record<string, unknown>): Promise<void> {
@@ -21,9 +28,9 @@ export function createClientLogger(api: ApiBase): ClientLogger {
           timestamp: new Date().toISOString(),
         }),
       })
-      if (!res.ok) console.warn(`[clientLogger] invio log fallito: ${res.status} ${res.statusText}`, message)
+      if (!res.ok) console.warn(`[clientLogger] sending logs failed: ${res.status} ${res.statusText}`, message)
     } catch (err) {
-      console.warn('[clientLogger] invio log fallito', err, message)
+      console.warn('[clientLogger] sending logs failed', err, message)
     }
   }
 

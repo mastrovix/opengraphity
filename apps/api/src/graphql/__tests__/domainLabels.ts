@@ -14,7 +14,7 @@
  */
 export const DOMAIN_LABELS = [
   'Incident', 'Problem', 'Change', 'ServiceRequest', 'KBArticle',
-  'Team', 'User',
+  'Team', 'User', 'Role', 'SlackInstallation',
   'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'DeploymentTask', 'ReviewTask', 'ChangeApproval',
   'WorkflowInstance', 'WorkflowDefinition', 'WorkflowStep', 'WorkflowStepExecution',
   'NotificationChannel', 'NotificationRule', 'OutboundWebhook', 'InboundWebhook', 'ApiKey',
@@ -27,7 +27,32 @@ export const DOMAIN_LABELS = [
   // il punto cieco dichiarato di D-18.
   'EnumTypeDefinition', 'CITypeDefinition',
   'CIFieldDefinition', 'CIRelationDefinition', 'CISystemRelationDefinition',
-  'FieldVisibilityRule', 'FieldRequirementRule', 'ITILCIRelationRule', 'ServiceCatalogItem', 'AssessmentQuestion',
+  'FieldVisibilityRule', 'FieldRequirementRule', 'TicketCIExclusion', 'ServiceCatalogItem', 'AssessmentQuestion',
   'Event', 'CIAlias', 'EventHistoryEntry',
   'ServiceMap', 'ServiceHealthEntry',
+  /**
+   * Le label trovate DAL VIVO sul grafo con `tenant_id` e non ancora
+   * nell'elenco (revisione totale · A-20): nessuna verifica meccanica le
+   * copriva, quindi un MATCH senza tenant su una di queste passava il lint.
+   * Ricavate con `CALL db.labels()` + `n.tenant_id IS NOT NULL` su c-test.
+   * I tipi CI concreti (Server, Database, Application…) NON stanno qui:
+   * portano tutti `:ConfigurationItem`, che è già in elenco.
+   */
+  'ServiceCalendar', 'DomainMatrix', 'BusinessApplication', 'BusinessCapability',
+  'AnomalyRuleConfig', 'AnswerOption', 'AssessmentResponse', 'ChangeAuditEntry',
+  'ChangeCatalogCategory', 'StandardChangeCatalogEntry', 'KBArticleVersion',
+  'ReportNode', 'ReportMessage', 'InAppNotification', 'TicketTeamSegment',
+  'LogEntry', 'Counter',
+  // Il conflitto della sincronizzazione e i record di cambiamento: il giro a
+  // mano li aveva visti fuori elenco.
+  'SyncConflict', 'SyncChangeRecord',
+  /**
+   * I MODULI DEL CATALOGO (ondate 1-8), assenti da questo elenco fin dall'inizio
+   * — quindi i due lint giravano A VUOTO su tutto il programma: la libreria dei
+   * campi del cliente, le copie congelate delle revisioni e le righe delle
+   * tabelle ripetibili si leggevano e si scrivevano senza che nessuno
+   * verificasse il `tenant_id`. Trovato dalla revisione del 17 set 2026, ed è
+   * il rilievo che rendeva tutti gli altri meno sicuri di quanto sembrassero.
+   */
+  'FormField', 'CatalogFormRevision', 'FormTableRow', 'FormTemplate',
 ] as const

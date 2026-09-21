@@ -34,10 +34,42 @@ export function cmdbSDL(): string {
 
   # ── Metamodel types ──────────────────────────────────────────────────────────
 
+  """Il conto di una cancellazione di tipo CI (regola del 15 set 2026): il solo impedimento è ticketCIs > 0, il resto va via con il tipo."""
+  type CITypeDeletionImpact {
+    cis:                     Int!
+    ticketCIs:               Int!
+    tickets:                 Int!
+    ticketCIExclusions:      Int!
+    groupsUpdated:           Int!
+    groupsDeleted:           Int!
+    fieldVisibilityRules:    Int!
+    fieldRequirementRules:   Int!
+    businessRules:           Int!
+    autoTriggers:            Int!
+    customWidgets:           Int!
+    reportSections:          Int!
+    assessmentQuestionLinks: Int!
+    """
+    Service maps that follow a relationship type only this CI type declares: while any is listed, the type is not deleted
+    (remove the relationship type from those maps first).
+    """
+    blockingServiceMaps:     [String!]!
+  }
+
   type CITypeDefinition {
     id: ID!
     name: String!
     label: String!
+    """
+    L'etichetta PER LINGUA (20 set 2026, dal giro nel browser). Il tipo aveva
+    una sola etichetta, e quelli spediti col prodotto ce l'hanno in inglese
+    («Application»): il web la mostrava in cinque pagine e nelle altre tre
+    usava una traduzione fissa del prodotto, quindi lo stesso tipo si leggeva
+    «Application» o «Applicazione» a seconda della pagina. Ora la lingua sta
+    nel metamodello, come per i valori dei vocabolari: una regola sola, e un
+    cliente può rinominare il tipo in ogni lingua che parla.
+    """
+    labels: [LocalizedLabel!]!
     icon: String
     color: String
     active: Boolean!
@@ -66,9 +98,38 @@ export function cmdbSDL(): string {
     validationScript: String
     visibilityScript: String
     defaultScript: String
+    # Solo per i campi dei ticket: il portale lo offre all'utente finale.
+    visibleToEndUser: Boolean!
     isSystem: Boolean!
     enumTypeId:   ID
     enumTypeName: String
+    # Solo per i campi dei ticket: in quali fasi del workflow si vede e si modifica.
+    stepVisibility:  FieldStepVisibility!
+    stepEditability: FieldStepEditability!
+  }
+
+  # Dove si vede un campo del ticket: always | steps (solo in \`steps\`) | from (da \`step\` in poi).
+  type FieldStepVisibility {
+    mode:  String!
+    steps: [String!]!
+    step:  String
+  }
+
+  # Dove si modifica: visible (dovunque si veda) | steps (solo in \`steps\`, e dove si vede).
+  type FieldStepEditability {
+    mode:  String!
+    steps: [String!]!
+  }
+
+  input FieldStepVisibilityInput {
+    mode:  String!
+    steps: [String!]
+    step:  String
+  }
+
+  input FieldStepEditabilityInput {
+    mode:  String!
+    steps: [String!]
   }
 
   type CIRelationDef {
@@ -103,6 +164,11 @@ export function cmdbSDL(): string {
     validationScript: String
     visibilityScript: String
     defaultScript:    String
+    # Il portale offre il campo all'utente finale (default no).
+    visibleToEndUser: Boolean
+    # In quali fasi si vede e si modifica (assente = come prima: invariato in modifica, «sempre» in creazione).
+    stepVisibility:  FieldStepVisibilityInput
+    stepEditability: FieldStepEditabilityInput
   }
 
   input UpdateITILTypeInput {
@@ -112,15 +178,19 @@ export function cmdbSDL(): string {
     validationScript: String
   }
 
-  # ── ITIL-CI Relation Rules ───────────────────────────────────────────────────
+  # ── Tipi di CI esclusi per tipo di ticket (revisione del 15 set 2026 · CM-8) ──
 
-  type ITILCIRelationRule {
-    id:           ID!
-    itilType:     String!
-    ciType:       String!
-    relationType: String!
-    direction:    String!
-    description:  String
+  """
+  I tipi di CI che un tipo di ticket NON può coinvolgere: un CI di un tipo
+  escluso non si collega al ticket, né alla creazione né dopo, da nessuna
+  strada. Nessuna esclusione = tutti ammessi. Sostituisce le vecchie regole
+  «tipi ammessi», il cui tipo di relazione e direzione non erano usati da nessuno.
+  """
+  type TicketCIExclusions {
+    """incident | problem | change | service_request"""
+    ticketType: String!
+    """I NOMI dei tipi CI esclusi (es. certificate)."""
+    ciTypes:    [String!]!
   }
 
   input UpdateCIFieldsInput {

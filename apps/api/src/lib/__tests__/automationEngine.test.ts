@@ -127,9 +127,19 @@ describe('evaluateRules — failures are reported, never hidden', () => {
     expect(out[1]).toMatchObject({ id: 'b', matched: true, actionsRun: 2 })
   })
 
-  it('an afterExecute failure is reported on the record', async () => {
+  it('CONTRATTO RINEGOZIATO (C-22): il contatore che fallisce NON fa risultare la regola non eseguita', async () => {
+    /**
+     * Revisione totale · C-22: `afterExecute` (il contatore del trigger) stava
+     * dentro il try delle azioni, quindi un suo errore portava tutto nel ramo
+     * di fallimento e la regola veniva riportata «matched: true, actionsRun:
+     * 0» — su una regola che aveva appena riassegnato il ticket. Adesso le
+     * azioni eseguite restano contate e l'errore del contatore finisce nel
+     * log, dove è: non è il ticket a essere andato storto.
+     */
     const out = await evaluateRules({ ...base, records: [record()], afterExecute: async () => { throw new Error('counter failed') } })
-    expect(out[0]).toMatchObject({ matched: true, actionsRun: 0, error: 'counter failed' })
+    expect(out[0]).toMatchObject({ matched: true })
+    expect(out[0]!.error).toBeUndefined()
+    expect(out[0]!.actionsRun).toBeGreaterThan(0)
   })
 })
 

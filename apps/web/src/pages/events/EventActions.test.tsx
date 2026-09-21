@@ -100,7 +100,7 @@ describe('EventActions — dialoghi dentro una riga cliccabile', () => {
     await user.type(within(dialog).getByLabelText('Search CI'), 'db-99')
     const results = await within(dialog).findByRole('list', { name: 'CI search results' })
     const first = (await within(results).findByText('db-99')).closest('button')!
-    expect(first).toHaveTextContent('server · production')
+    expect(first).toHaveTextContent('db-99Server · production')
     await user.click(first)
     expect(first).toHaveAttribute('aria-pressed', 'true')
     expect(onRow).not.toHaveBeenCalled()
@@ -136,5 +136,41 @@ describe('EventActions — dialoghi dentro una riga cliccabile', () => {
     await user.click(ack)
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Alarm acknowledged'))
     expect(onRow).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Revisione totale · G-EVT-1 e G-EVT-10: le azioni mostrate sono quelle che
+ * l'API accetta. Prima «Apri incident» compariva su un evento risolto (l'API
+ * accetta solo `firing`) e «Risolvi»/«Prendi in carico» sparivano su un evento
+ * `suppressed`, che l'API invece accetta.
+ */
+describe('EventActions — le azioni combaciano con gli stati che l\'API accetta', () => {
+  function actionsFor(status: EventRow['status'], extra: Partial<EventRow> = {}) {
+    renderWithProviders(<EventActions event={{ ...EVENT, status, ...extra }} />, { mocks: [] })
+    return screen.queryAllByRole('button').map((b) => b.textContent)
+  }
+
+  it('evento risolto: nessuna azione di presa in carico, risoluzione o apertura incident', () => {
+    const labels = actionsFor('resolved')
+    expect(labels).not.toContain('Open incident')
+    expect(labels).not.toContain('Resolve')
+    expect(labels).not.toContain('Acknowledge')
+  })
+
+  it('evento firing: «Apri incident» c\'è', () => {
+    expect(actionsFor('firing')).toContain('Open incident')
+  })
+
+  it('evento suppressed: si prende in carico e si risolve (l\'API lo accetta)', () => {
+    const labels = actionsFor('suppressed')
+    expect(labels).toContain('Acknowledge')
+    expect(labels).toContain('Resolve')
+  })
+
+  it('evento flapping: niente «Apri incident» (l\'API vuole firing)', () => {
+    const labels = actionsFor('flapping')
+    expect(labels).toContain('Resolve')
+    expect(labels).not.toContain('Open incident')
   })
 })

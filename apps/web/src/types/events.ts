@@ -11,6 +11,15 @@ export const EVENT_SEVERITIES:  readonly EventSeverity[] = ['critical', 'warning
 export const CI_ALIAS_KINDS:    readonly CIAliasKind[]   = ['hostname', 'ip', 'fqdn', 'external_id']
 
 /**
+ * Lo stato degli eventi in ordine di ATTENZIONE, non di perimetro
+ * (revisione totale · G-EVT-7): e la scala con cui si ordina la colonna
+ * «Stato», dove chi guarda la console si aspetta prima quello che sta
+ * suonando. `EVENT_STATUSES` resta l'elenco dei valori ammessi e non va
+ * riordinato: i filtri e i test del perimetro lo leggono cosi.
+ */
+export const EVENT_STATUS_RANK: readonly EventStatus[] = ['firing', 'flapping', 'suppressed', 'resolved']
+
+/**
  * Esito della correlazione automatica (ondata 3, `Event.correlation`):
  * cosa ha fatto la policy con l'evento all'ultima valutazione.
  * - opened / attached / reopened: incident aperto, agganciato o riaperto;
@@ -249,6 +258,8 @@ export interface EventPolicy {
   /** Minuti sotto soglia prima di chiudere la tempesta. */
   stormCooldownMinutes: number
   retentionDays:        number
+  /** G-MON-7: da quanti CI dipendenti la console della salute segna «un guasto qui si propaga» (0 = nessuna evidenza). */
+  highImpactDependents: number
   /** Riconoscimento del CI per nome: FQDN ↔ nome corto (db-01.example.local ↔ db-01). */
   matchShortHostname:   boolean
   /**
@@ -410,6 +421,8 @@ export interface EventFilterVars {
   orphan?:   boolean
   search?:   string
   since?:    string
+  /** G-EVT-3: solo eventi RISOLTI da questo istante (la domanda del riquadro «Risolti 24h»). */
+  resolvedSince?: string
   /** Eventi correlati a un incident. */
   incidentId?:           string
   /** Eventi silenziati da una change. */

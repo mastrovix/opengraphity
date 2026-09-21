@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { SeverityBadge, RoleBadge, RiskBadge, riskLevel, SEVERITY_STYLE, PhaseBadge, StatusLabel } from './badges'
+import { SeverityBadge, RoleBadge, RiskBadge, PhaseBadge, StatusLabel } from './badges'
+import { RiskBandContext, bandForScore, type RiskBandThreshold } from '@/contexts/RiskBandContext'
+import { palette } from '@/lib/tokens'
 import { DomainVocabularyContext } from '@/contexts/DomainVocabularyContext'
 import { NEUTRAL_VALUE_STYLE } from '@/lib/domainStyle'
 import { enumLabel } from '@/lib/ciEnums'
@@ -18,12 +20,15 @@ function withVocabulary(
   ui: React.ReactElement,
   /** Le etichette del cliente (ondata 1): assenti per default, come su un tenant non ancora migrato. */
   labels: Readonly<Record<string, string>> = {},
+  /** I colori del Dizionario (revisione del 14 set 2026 · F9). */
+  valueColors: Readonly<Record<string, string>> = {},
 ) {
   return render(
     <DomainVocabularyContext.Provider value={{
       valuesOf:  () => values,
       labelOf:   (_n, v) => labels[v] ?? null,
-      entriesOf: () => (values ? values.map((v) => ({ value: v, label: labels[v] ?? v, labels: [] })) : null),
+      colorOf:   (_n, v) => (valueColors[v] as never) ?? null,
+      vocabularyLabelOf: () => null, entriesOf: () => (values ? values.map((v) => ({ value: v, label: labels[v] ?? v, labels: [] })) : null),
       loading: false,
       error: null,
     }}>
@@ -32,47 +37,47 @@ function withVocabulary(
   )
 }
 
+const SEVERITIES = ['critical', 'high', 'medium', 'low']
+const FACTORY_COLORS = { critical: 'danger', high: 'orange', medium: 'warning', low: 'success' } as const
+
 describe('SeverityBadge', () => {
-  it.each(Object.keys(SEVERITY_STYLE))('%s → pill con la palette dedicata', (sev) => {
-    withVocabulary(Object.keys(SEVERITY_STYLE), <SeverityBadge value={sev} />)
+  /**
+   * Revisione del 14 set 2026 · F9: il colore viene dal Dizionario del cliente
+   * (`colorOf`), non da `SEVERITY_STYLE` scritto qui. Un valore rinominato o
+   * aggiunto dal cliente col suo colore si vede col suo colore.
+   */
+  it.each(SEVERITIES)('%s → il colore che il Dizionario gli assegna', (sev) => {
+    withVocabulary(SEVERITIES, <SeverityBadge value={sev} />, {}, FACTORY_COLORS)
     const pill = screen.getByText(enumLabel(sev))
-    expect(pill).toHaveStyle({ background: SEVERITY_STYLE[sev]!.bg, color: SEVERITY_STYLE[sev]!.color, textTransform: 'uppercase' })
+    const family = palette[FACTORY_COLORS[sev as keyof typeof FACTORY_COLORS]]
+    expect(pill).toHaveStyle({ background: family.tint, color: family.text, textTransform: 'uppercase' })
     expect(consoleError).not.toHaveBeenCalled()
   })
-  it('critical e low hanno colori diversi (prima erano testo grigio identico)', () => {
-    expect(SEVERITY_STYLE['critical']).not.toEqual(SEVERITY_STYLE['low'])
+  it('un valore del cliente (p1) prende il colore che il cliente gli ha dato', () => {
+    withVocabulary(['p1', 'p2'], <SeverityBadge value="p1" />, { p1: 'Urgente' }, { p1: 'danger' })
+    expect(screen.getByText('Urgente')).toHaveStyle({ background: palette.danger.tint, color: palette.danger.text })
   })
   it('valore assente → "—"', () => {
     withVocabulary(null, <SeverityBadge value={null} />)
     expect(screen.getByText('—')).toBeInTheDocument()
   })
 
-  /**
-   * CONTRATTO RINEGOZIATO (ondata 7 · D-15). Prima questo test pretendeva che
-   * `<SeverityBadge value="blocker" />` rendesse una pastiglia **rossa piena**
-   * con `console.error`: la regola «niente fallback silenziosi» applicata a un
-   * valore che il cliente ha tutto il diritto di avere nel suo vocabolario. In
-   * una lista di incident diventavano cinquanta pastiglie rosse e cinquanta
-   * righe di errore in console, e la personalizzazione sembrava rotta.
-   *
-   * Adesso i due casi sono distinti, e sono tre righe di test invece di una.
-   */
-  it('valore NEL vocabolario del cliente senza stile assegnato → neutro e silenzioso', () => {
-    withVocabulary([...Object.keys(SEVERITY_STYLE), 'blocker'], <SeverityBadge value="blocker" />)
+  it('valore NEL vocabolario del cliente senza colore assegnato → neutro e silenzioso', () => {
+    withVocabulary([...SEVERITIES, 'blocker'], <SeverityBadge value="blocker" />, {}, FACTORY_COLORS)
     expect(screen.getByText('Blocker')).toHaveStyle({ background: NEUTRAL_VALUE_STYLE.bg, color: NEUTRAL_VALUE_STYLE.color })
     expect(consoleError).not.toHaveBeenCalled()
   })
   it('valore FUORI dal vocabolario del cliente → stile rotto (rosso) e console.error', () => {
-    withVocabulary(Object.keys(SEVERITY_STYLE), <SeverityBadge value="blocker" />)
+    withVocabulary(SEVERITIES, <SeverityBadge value="blocker" />, {}, FACTORY_COLORS)
     expect(screen.getByText('Blocker')).toHaveStyle({ background: BROKEN_BG, color: 'var(--color-white)' })
-    expect(consoleError).toHaveBeenCalledWith('[SEVERITY_STYLE/severity] "blocker" is not in the vocabulary of this tenant (critical, high, medium, low)')
+    expect(consoleError).toHaveBeenCalledWith('[severity] "blocker" is not in the vocabulary of this tenant (critical, high, medium, low)')
   })
   it('vocabolario non disponibile → neutro e console.warn (non si accusa di essere rotto ciò che non si è potuto verificare)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     withVocabulary(null, <SeverityBadge value="blocker" />)
     expect(screen.getByText('Blocker')).toHaveStyle({ background: NEUTRAL_VALUE_STYLE.bg })
     expect(consoleError).not.toHaveBeenCalled()
-    expect(warn).toHaveBeenCalledWith('[SEVERITY_STYLE/severity] "blocker" has no style and the vocabulary of this tenant is unavailable: neutral style')
+    expect(warn).toHaveBeenCalledWith('[severity] "blocker" has no color and the vocabulary of this tenant is unavailable: neutral style')
   })
 })
 
@@ -82,25 +87,63 @@ describe('RoleBadge', () => {
     expect(screen.getByText(label)).toBeInTheDocument()
     expect(consoleError).not.toHaveBeenCalled()
   })
-  it('ruolo assente → "—"; ruolo ignoto → etichetta grezza in rosso + log', () => {
+  it('ruolo assente → "—"; un ruolo creato dall\'organizzazione (ondata 7) mostra il suo nome, senza errori', () => {
     const { rerender } = render(<RoleBadge role={undefined} />)
     expect(screen.getByText('—')).toBeInTheDocument()
-    rerender(<RoleBadge role="superuser" />)
-    expect(screen.getByText('superuser')).toHaveStyle({ background: BROKEN_BG })
-    expect(consoleError).toHaveBeenCalledWith('[ROLE_STYLE] unknown value: "superuser"')
+    rerender(<RoleBadge role="service_desk" name="Service Desk" />)
+    expect(screen.getByText('Service Desk')).toBeInTheDocument()
+    rerender(<RoleBadge role="viewer" name="Sola lettura" />)
+    expect(screen.getByText('Sola lettura')).toBeInTheDocument()
+    expect(consoleError).not.toHaveBeenCalled()
   })
 })
 
-describe('RiskBadge / riskLevel', () => {
-  it.each([[0, 'low'], [30, 'low'], [31, 'medium'], [60, 'medium'], [61, 'high'], [100, 'high']])('score %d → %s', (score, level) => {
-    expect(riskLevel(score)).toBe(level)
+describe('RiskBadge — fasce del cliente (verifica «Cosa resta cablato», ondata 1)', () => {
+  const FACTORY: RiskBandThreshold[] = [{ band: 'low', upTo: 30 }, { band: 'medium', upTo: 60 }, { band: 'high', upTo: 100 }]
+  const RISK_COLORS = { low: 'success', medium: 'warning', high: 'danger', critical: 'purple' } as const
+
+  function withBands(thresholds: RiskBandThreshold[] | null, ui: React.ReactElement, labels: Record<string, string> = {}) {
+    const values = thresholds ? thresholds.map((t) => t.band) : null
+    return withVocabulary(values, (
+      <RiskBandContext.Provider value={{ bandOf: (score) => (thresholds ? bandForScore(thresholds, score) : null), loading: false, error: null }}>
+        {ui}
+      </RiskBandContext.Provider>
+    ), labels, RISK_COLORS)
+  }
+
+  it.each([[0, 'low'], [30, 'low'], [31, 'medium'], [60, 'medium'], [61, 'high'], [100, 'high']])('soglie di fabbrica: score %d → %s', (score, band) => {
+    expect(bandForScore(FACTORY, score)).toBe(band)
   })
-  it('mostra "LIVELLO · score", in compact solo il numero, con tooltip', () => {
-    const { rerender } = render(<RiskBadge score={45} />)
-    expect(screen.getByText('MEDIUM · 45')).toHaveAttribute('title', 'MEDIUM · score 45')
-    rerender(<RiskBadge score={72} compact />)
+
+  it('mostra "FASCIA · score" con il colore del Dizionario, in compact solo il numero', () => {
+    const { rerender } = withBands(FACTORY, <RiskBadge score={45} />)
+    const el = screen.getByText('MEDIUM · 45')
+    expect(el).toHaveAttribute('title', 'MEDIUM · score 45')
+    expect(el.parentElement).toHaveStyle({ color: palette.warning.text })
+    rerender(
+      <DomainVocabularyContext.Provider value={{ valuesOf: () => ['low', 'medium', 'high'], labelOf: () => null, colorOf: (_n, v) => ((RISK_COLORS as Record<string, string>)[v] as never) ?? null, vocabularyLabelOf: () => null, entriesOf: () => null, loading: false, error: null }}>
+        <RiskBandContext.Provider value={{ bandOf: (score) => bandForScore(FACTORY, score), loading: false, error: null }}>
+          <RiskBadge score={72} compact />
+        </RiskBandContext.Provider>
+      </DomainVocabularyContext.Provider>,
+    )
     expect(screen.getByText('72')).toHaveAttribute('title', 'HIGH · score 72')
   })
+
+  it('segue le soglie e le fasce del cliente: 20/50/80/100 con quattro fasce ed etichette sue', () => {
+    const custom: RiskBandThreshold[] = [{ band: 'low', upTo: 20 }, { band: 'medium', upTo: 50 }, { band: 'high', upTo: 80 }, { band: 'critical', upTo: 100 }]
+    withBands(custom, <RiskBadge score={45} />, { medium: 'Media' })
+    expect(screen.getByText('MEDIA · 45')).toBeInTheDocument()
+    withBands(custom, <RiskBadge score={90} />, { critical: 'Critica' })
+    expect(screen.getByText('CRITICA · 90').parentElement).toHaveStyle({ color: palette.purple.text })
+  })
+
+  it('soglie non note (caricamento o errore): solo il punteggio, neutro, nessuna fascia indovinata', () => {
+    withBands(null, <RiskBadge score={45} />)
+    expect(screen.getByText('45')).toHaveAttribute('title', 'score 45')
+    expect(screen.queryByText(/MEDIUM/)).not.toBeInTheDocument()
+  })
+
   it('score assente → "—"', () => {
     render(<RiskBadge score={null} />)
     expect(screen.getByText('—')).toBeInTheDocument()
@@ -116,11 +159,13 @@ describe('PhaseBadge / StatusLabel', () => {
     expect(screen.getByText('weird')).toBeInTheDocument()
     expect(consoleError).toHaveBeenCalledWith('[workflowStepStyle] unknown category: "galactic"')
   })
-  it('StatusLabel: pending → "TO BE COMPLETED", altri stati con underscore → spazio', () => {
+  it('StatusLabel: ogni stato del task con la sua etichetta (giro UI del 15 set 2026: «COMPLETED» si leggeva grezzo)', () => {
     const { rerender } = render(<StatusLabel status="pending" />)
     expect(screen.getByText('TO BE COMPLETED')).toHaveAttribute('title', 'pending')
     rerender(<StatusLabel status="in-progress" />)
-    expect(screen.getByText('in-progress')).toHaveStyle({ color: 'var(--color-warning)' })
+    expect(screen.getByText('In progress')).toHaveStyle({ color: 'var(--color-warning)' })
+    rerender(<StatusLabel status="completed" />)
+    expect(screen.getByText('Completed')).toHaveAttribute('title', 'completed')
     rerender(<StatusLabel status={null} />)
     expect(screen.getByText('—')).toBeInTheDocument()
   })

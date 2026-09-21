@@ -50,7 +50,7 @@ const EXEMPT: Record<string, Exemption> = {
   },
   'graphql/resolvers/workflowMutations.ts': {
     reason: 'La mutation generica RIFIUTA a voce alta le istanze di change e le manda a executeChangeTransition.',
-    proof: (s) => s.includes('Le change si transizionano con executeChangeTransition'),
+    proof: (s) => s.includes('errors.workflow.changeUsesChangeTransition'),
   },
   'graphql/resolvers/approval.ts': {
     reason: 'Solo articoli della Knowledge Base: il tipo di entità è il letterale `kb_article` in entrambe le transizioni.',
@@ -59,7 +59,6 @@ const EXEMPT: Record<string, Exemption> = {
   'graphql/resolvers/portal.ts':    { reason: 'Solo incident.',         proof: (s) => !mentionsChange(s) },
   'graphql/resolvers/problem.ts':   { reason: 'Solo incident e problem.', proof: (s) => !mentionsChange(s) },
   'services/incidentService.ts':    { reason: 'Solo incident.',         proof: (s) => !mentionsChange(s) },
-  'services/requestService.ts':     { reason: 'Solo service request.',  proof: (s) => !mentionsChange(s) },
   'scripts/revert-problem.ts':      { reason: 'Script una-volta, solo problem.', proof: (s) => !mentionsChange(s) },
 }
 

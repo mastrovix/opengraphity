@@ -46,7 +46,7 @@ describe('loadTenantEnumOverrides', () => {
 
   it('values corrotti → errore che nomina il vocabolario, non un elenco vuoto', async () => {
     const { session } = sessionWith([{ id: 'e1', name: 'severity', values: '{non json' }])
-    await expect(loadTenantEnumOverrides(session, 'c-one')).rejects.toThrow(/Vocabolario "severity"/)
+    await expect(loadTenantEnumOverrides(session, 'c-one')).rejects.toThrow(/Dictionary "severity"/)
   })
 
   it('per il tenant di sistema non ci sono personalizzazioni e non si interroga il grafo', async () => {

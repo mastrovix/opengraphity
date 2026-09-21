@@ -40,7 +40,7 @@ import { Pagination } from '@/components/ui/Pagination'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
 import { useMe } from '@/hooks/useMe'
-import { enumLabel } from '@/lib/ciEnums'
+import { useCriticalityLabel } from '@/hooks/useCILabels'
 import { formatDateTime, formatDuration, currentLocale } from '@/lib/datetime'
 import { pausedWhenHidden } from '@/lib/polling'
 import { GET_SERVICE_MAPS } from '@/graphql/queries'
@@ -172,6 +172,7 @@ const TD: React.CSSProperties = { padding: '10px 12px', fontSize: 'var(--font-si
 /** Riga: il clic apre il dettaglio, il bersaglio da tastiera è il Link sul nome (niente tabIndex sulla riga). */
 function ServiceRowView({ row }: { row: ServiceMapRow }) {
   const { t } = useTranslation()
+  const criticalityLabel = useCriticalityLabel()
   const navigate = useNavigate()
   // Salute fuori vocabolario → famiglia «rotta» (rossa, loggata), mai un colore plausibile.
   const fam = serviceHealthFamily(row.health)
@@ -180,7 +181,7 @@ function ServiceRowView({ row }: { row: ServiceMapRow }) {
   const sinceId = `service-${row.id}-since`
   const first = row.explanation[0]
   const ifActive = healthIfActiveNote(t, row)
-  const meta = [row.service.criticality ? enumLabel(row.service.criticality) : null].filter(Boolean).join(' · ')
+  const meta = [row.service.criticality ? criticalityLabel(row.service.criticality) : null].filter(Boolean).join(' · ')
 
   return (
     <tr onClick={() => navigate(to)} className="hover-bg" style={{ cursor: 'pointer', borderTop: '1px solid var(--border)' }}>
@@ -227,7 +228,8 @@ function ServiceRowView({ row }: { row: ServiceMapRow }) {
 
 export function ServicesPage() {
   const { t } = useTranslation()
-  const { isAdmin } = useMe()
+  const { can } = useMe()
+  const managesServices = can('config.services')
 
   const [searchParams, setSearchParams] = useSearchParams()
   const filter = useMemo(() => filterFromParams(searchParams), [searchParams])
@@ -318,8 +320,8 @@ export function ServicesPage() {
         <EmptyState
           icon={<Boxes size={32} />}
           title={t('monitoring.services.empty.title')}
-          description={`${t('monitoring.services.empty.description')}${isAdmin ? '' : ` ${t('monitoring.services.empty.askAdmin')}`}`}
-          action={isAdmin ? <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => setCreateOpen(true)}>{t('monitoring.services.empty.cta')}</Button> : undefined}
+          description={`${t('monitoring.services.empty.description')}${managesServices ? '' : ` ${t('monitoring.services.empty.askAdmin')}`}`}
+          action={managesServices ? <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => setCreateOpen(true)}>{t('monitoring.services.empty.cta')}</Button> : undefined}
         />
       </div>
     )
@@ -364,7 +366,7 @@ export function ServicesPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>{updatedLabel}</span>
             <Button variant="secondary" size="xs" icon={<RefreshCw size={13} aria-hidden="true" />} onClick={() => void refetch()}>{t('monitoring.services.refresh')}</Button>
-            {isAdmin && !nothingYet && (
+            {managesServices && !nothingYet && (
               <Button size="xs" icon={<Plus size={13} aria-hidden="true" />} onClick={() => setCreateOpen(true)}>{t('monitoring.services.create.title')}</Button>
             )}
           </div>
@@ -423,7 +425,7 @@ export function ServicesPage() {
         <BusinessCapabilitiesSection />
       </div>
 
-      {isAdmin && <CreateServiceMapDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => void refetch()} />}
+      {managesServices && <CreateServiceMapDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => void refetch()} />}
     </PageContainer>
   )
 }

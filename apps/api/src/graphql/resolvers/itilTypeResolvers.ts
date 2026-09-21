@@ -27,76 +27,21 @@ import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import type { Session } from 'neo4j-driver'
 import { invalidateSchema } from '../../lib/schemaInvalidator.js'
 import {
-  SYSTEM_TENANT, enumScopeClause, loadTenantEnumOverrides, applyEnumOverrides,
-  assertEnumLinkable, type EnumOverride, type EnumRow,
+  SYSTEM_TENANT, enumScopeClause, loadTenantEnumOverrides,
+  assertEnumLinkable,
 } from '../../lib/enumScope.js'
+import { FIELD_SCOPE, mapFieldRows, mapITILField, loadITILTypes } from '../../lib/itilTypes.js'
+import { assertCustomFieldName } from '../../lib/customFieldName.js'
+import { assertStepsExist, parseStepEditability, parseStepVisibility, workflowStepNames } from '../../lib/customFieldSteps.js'
+import { removeTicketFieldValues, ticketFieldValues } from '../../lib/ticketCustomFields.js'
+import { audit } from '../../lib/audit.js'
+import { logger } from '../../lib/logger.js'
+
+const log = logger.child({ module: 'itil-designer' })
 
 type Props = Record<string, unknown>
 
-/** Campi visibili: i propri più quelli spediti. Mai quelli di un altro cliente. */
-const FIELD_SCOPE = `f.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']`
-
-// ── mapITILField ──────────────────────────────────────────────────────────────
-
-function parseInlineEnumValues(raw: unknown): string[] {
-  if (!raw || typeof raw !== 'string') return []
-  const arr: unknown = JSON.parse(raw)
-  if (!Array.isArray(arr)) throw new Error(`enum_values non è un array JSON valido: ${raw.slice(0, 80)}`)
-  return arr as string[]
-}
-
-export function mapITILField(f: Props, enumRef?: { id: string; name: string; values: string[] }) {
-  return {
-    id:               f['id'],
-    name:             f['name'],
-    label:            f['label'],
-    fieldType:        f['field_type'],
-    required:         f['required']      ?? false,
-    defaultValue:     f['default_value'] ?? null,
-    enumValues:       enumRef?.values ?? parseInlineEnumValues(f['enum_values']),
-    order:            Number(f['order']   ?? 0),
-    validationScript: f['validation_script'] ?? null,
-    visibilityScript: f['visibility_script'] ?? null,
-    defaultScript:    f['default_script']    ?? null,
-    isSystem:         f['is_system']          ?? false,
-    enumTypeId:       enumRef?.id ?? null,
-    enumTypeName:     enumRef?.name ?? null,
-  }
-}
-
-// ── Righe di campo + vocabolario ──────────────────────────────────────────────
-
-/** Una riga «campo + vocabolario agganciato», nella forma che `enumScope` sa personalizzare. */
-interface ITILFieldRow extends EnumRow {
-  props: Props
-}
-
-function toValues(raw: string[] | string | null, name: string): string[] {
-  if (Array.isArray(raw)) return raw
-  if (typeof raw === 'string') {
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) throw new Error(`Vocabolario "${name}": values non è un array`)
-    return parsed as string[]
-  }
-  return []
-}
-
-/**
- * Applica la personalizzazione del tenant (il suo vocabolario con lo stesso
- * nome vince) e mappa le righe. La precedenza risultante è quella del
- * contratto: vocabolario del tenant > agganciato di sistema > `enum_values`
- * inline del campo (l'inline lo usa `mapITILField` quando non c'è aggancio).
- */
-function mapFieldRows(rows: readonly ITILFieldRow[], overrides: Map<string, EnumOverride>) {
-  return applyEnumOverrides(rows, overrides)
-    .map((r) => {
-      const enumRef = r.enumId
-        ? { id: r.enumId, name: r.enumName ?? '', values: toValues(r.enumValues, r.enumName ?? r.enumId) }
-        : undefined
-      return mapITILField(r.props, enumRef)
-    })
-    .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
-}
+export { mapITILField, loadITILTypes }
 
 // ── fetchITILTypeById ─────────────────────────────────────────────────────────
 
@@ -171,51 +116,30 @@ export async function fetchITILTypeById(id: string, tenantId: string) {
 
 // ── buildITILTypesResolver ────────────────────────────────────────────────────
 
+/** Il nome del tipo ITIL (incident, problem, change, service_request) dal suo id. */
+async function itilTypeName(session: Session, typeId: string, tenantId: string): Promise<string> {
+  const r = await session.executeRead(tx => tx.run(`
+    MATCH (t:CITypeDefinition {id: $typeId})
+    WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
+    RETURN t.name AS name
+  `, { typeId, tenantId }))
+  const name = r.records[0]?.get('name')
+  if (typeof name !== 'string') throw new NotFoundError('ITILType', typeId)
+  return name
+}
+
+/** Quanti ticket hanno un valore nel campo: la conferma del designer lo dice prima di cancellare (U-28). */
+export function buildITILFieldValueCountResolver() {
+  return async (_: unknown, args: { typeId: string; fieldId: string }, ctx: GraphQLContext) => withSession(async (session) => {
+    const field = await assertFieldWritable(session, args.typeId, args.fieldId, ctx.tenantId)
+    const typeName = await itilTypeName(session, args.typeId, ctx.tenantId)
+    return (await ticketFieldValues(session, ctx.tenantId, typeName, field.name)).count
+  })
+}
+
 export function buildITILTypesResolver() {
   return async (_: unknown, __: unknown, ctx: GraphQLContext) =>
-    withSession(async session => {
-      const overrides = await loadTenantEnumOverrides(session, ctx.tenantId)
-      const r = await session.executeRead(tx =>
-        tx.run(
-          `MATCH (t:CITypeDefinition)
-           WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}'] AND t.active = true
-           OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
-             WHERE ${FIELD_SCOPE}
-           OPTIONAL MATCH (f)-[:USES_ENUM]->(enumDef:EnumTypeDefinition)
-             ${enumScopeClause('enumDef')}
-           RETURN t,
-             collect(DISTINCT {f: f, enumTypeId: enumDef.id, enumTypeName: enumDef.name, enumTypeValues: enumDef.values}) AS fieldData
-           ORDER BY t.name`,
-          { tenantId: ctx.tenantId },
-        ),
-      )
-      return r.records.map(rec => {
-        const t = rec.get('t').properties as Props
-
-        type FieldData = { f: { properties: Props } | null; enumTypeId: string | null; enumTypeName: string | null; enumTypeValues: string[] | null }
-        const fields = mapFieldRows(
-          (rec.get('fieldData') as FieldData[])
-            .filter(d => d.f)
-            .map(d => ({ props: d.f!.properties, enumId: d.enumTypeId, enumName: d.enumTypeName, enumValues: d.enumTypeValues })),
-          overrides,
-        )
-
-        return {
-          id:               t['id'],
-          name:             t['name'],
-          label:            t['label'],
-          icon:             t['icon']  ?? '',
-          color:            t['color'] ?? '',
-          active:           t['active'],
-          scope:            t['scope']     ?? 'itil',
-          tenantId:         t['tenant_id'] ?? SYSTEM_TENANT,
-          validationScript: t['validation_script'] ?? null,
-          fields,
-          relations:       [],
-          systemRelations: [],
-        }
-      })
-    })
+    withSession(session => loadITILTypes(session, ctx.tenantId))
 }
 
 // ── buildITILTypeFieldsResolver ───────────────────────────────────────────────
@@ -319,14 +243,35 @@ async function assertEnumTypeLinkable(
 
 // ── buildITILMutations ────────────────────────────────────────────────────────
 
-export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) {
+/**
+ * Le regole di fase di un campo, pronte da salvare (secondo giro UI del 15 set
+ * 2026): validate contro le fasi dei workflow attivi del tipo di ticket, `null`
+ * per «sempre» / «dove si vede» (così un campo senza regole resta com'era).
+ * `undefined` = l'input non le porta: in modifica restano quelle salvate.
+ */
+async function stepRulesToStore(
+  session: Session, tenantId: string, typeName: string, input: Record<string, unknown>, field: string,
+): Promise<{ visibility: string | null; editability: string | null } | undefined> {
+  if (input['stepVisibility'] === undefined && input['stepEditability'] === undefined) return undefined
+  const visibility = parseStepVisibility(input['stepVisibility'] ?? null, `field ${field}`)
+  const editability = parseStepEditability(input['stepEditability'] ?? null, `field ${field}`)
+  if (visibility.mode !== 'always' || editability.mode !== 'visible') {
+    assertStepsExist(visibility, editability, await workflowStepNames(session, tenantId, typeName), field)
+  }
+  return {
+    visibility: visibility.mode === 'always' ? null : JSON.stringify(visibility),
+    editability: editability.mode === 'visible' ? null : JSON.stringify(editability),
+  }
+}
+
+export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLContext) => void) {
   return {
     updateITILType: async (
       _: unknown,
       args: { id: string; input: { label?: string; icon?: string; color?: string; validationScript?: string | null } },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const updates: Props = {}
       const { label, icon, color, validationScript } = args.input
       if (label            !== undefined) updates['label']             = label
@@ -374,7 +319,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
       args: { typeId: string; input: Record<string, unknown> },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const { typeId, input } = args
       const fieldId     = crypto.randomUUID()
       const enumTypeId  = (input['enumTypeId'] as string | null | undefined) ?? null
@@ -391,6 +336,16 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
         : Array.isArray(input['enumValues']) ? JSON.stringify(input['enumValues']) : null
 
       await withSession(async session => {
+        // Ondata 4: il nome diventa la proprietà sul ticket, quindi non può
+        // essere un campo del prodotto né un dato che i ticket portano già.
+        const typeRow = await session.executeRead(tx => tx.run(
+          `MATCH (t:CITypeDefinition {id: $typeId}) WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}'] RETURN t.name AS name`,
+          { typeId, tenantId: ctx.tenantId },
+        ))
+        const typeName = typeRow.records[0]?.get('name') as string | undefined
+        if (typeName) await assertCustomFieldName(session, ctx.tenantId, typeName, String(input['name'] ?? ''))
+        const stepRules = typeName ? await stepRulesToStore(session, ctx.tenantId, typeName, input, String(input['label'] ?? input['name'] ?? '')) : undefined
+
         // Il campo nuovo è del TENANT (`tenant_id`, `is_system: false`) anche
         // su un tipo condiviso: quindi può essere agganciato al vocabolario del
         // tenant. Quello di un altro cliente no, e `assertEnumLinkable` lo dice.
@@ -425,6 +380,9 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
               validation_script: $validationScript,
               visibility_script: $visibilityScript,
               default_script:    $defaultScript,
+              visible_to_end_user: $visibleToEndUser,
+              step_visibility:   $stepVisibility,
+              step_editability:  $stepEditability,
               created_at:        $now
             })
             CREATE (t)-[:HAS_FIELD]->(f)
@@ -450,6 +408,9 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
             validationScript: (input['validationScript'] as string | null | undefined) ?? null,
             visibilityScript: (input['visibilityScript'] as string | null | undefined) ?? null,
             defaultScript:    (input['defaultScript']    as string | null | undefined) ?? null,
+            visibleToEndUser: input['visibleToEndUser'] === true,
+            stepVisibility:   stepRules?.visibility ?? null,
+            stepEditability:  stepRules?.editability ?? null,
             tenantId:         ctx.tenantId,
             now:              new Date().toISOString(),
           }),
@@ -471,7 +432,7 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
       args: { typeId: string; fieldId: string; input: Record<string, unknown> },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
       const { typeId, fieldId, input } = args
       const enumTypeId  = (input['enumTypeId'] as string | null | undefined) ?? null
 
@@ -491,6 +452,24 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
         // intero, non solo su name/field_type/required.
         const field = await assertFieldWritable(session, typeId, fieldId, ctx.tenantId)
         await assertEnumTypeLinkable(session, enumTypeId, field, ctx.tenantId)
+        // Ondata 4: nome e tipo sono la proprietà e la forma dei valori già
+        // scritti sui ticket — come per i campi dei CI, non si cambiano in posto.
+        const stored = await session.executeRead(tx => tx.run(
+          `MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId, tenant_id: $tenantId})
+           WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
+           RETURN f.name AS name, f.field_type AS fieldType, t.name AS typeName`,
+          { typeId, fieldId, tenantId: ctx.tenantId },
+        ))
+        const storedName = stored.records[0]?.get('name') as string | undefined
+        const storedType = stored.records[0]?.get('fieldType') as string | undefined
+        const storedTypeName = stored.records[0]?.get('typeName') as string | undefined
+        const stepRules = storedTypeName ? await stepRulesToStore(session, ctx.tenantId, storedTypeName, input, String(input['label'] ?? storedName ?? '')) : undefined
+        if ((input['name'] != null && input['name'] !== storedName) || (input['fieldType'] != null && input['fieldType'] !== storedType)) {
+          throw new ValidationError(
+            `The name and the type of field "${storedName ?? ''}" cannot change: tickets already store values under them. Remove the field and add a new one.`,
+            { key: 'errors.customField.nameTypeFixed', params: { name: storedName ?? '' } },
+          )
+        }
 
         await session.executeWrite(tx =>
           tx.run(`
@@ -504,7 +483,10 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
                 f.order             = $order,
                 f.validation_script = $validationScript,
                 f.visibility_script = $visibilityScript,
-                f.default_script    = $defaultScript
+                f.default_script    = $defaultScript,
+                f.visible_to_end_user = $visibleToEndUser,
+                f.step_visibility   = CASE WHEN $keepStepRules THEN f.step_visibility ELSE $stepVisibility END,
+                f.step_editability  = CASE WHEN $keepStepRules THEN f.step_editability ELSE $stepEditability END
             WITH f
             // Remove any existing USES_ENUM relation first (clean slate for enum reference)
             // Qui non si LEGGE il vocabolario: si stacca il legame vecchio del
@@ -535,6 +517,10 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
             validationScript: (input['validationScript'] as string | null | undefined) ?? null,
             visibilityScript: (input['visibilityScript'] as string | null | undefined) ?? null,
             defaultScript:    (input['defaultScript']    as string | null | undefined) ?? null,
+            visibleToEndUser: input['visibleToEndUser'] === true,
+            keepStepRules:    stepRules === undefined,
+            stepVisibility:   stepRules?.visibility ?? null,
+            stepEditability:  stepRules?.editability ?? null,
           }),
         )
       }, true)
@@ -548,21 +534,35 @@ export function buildITILMutations(requireAdmin: (ctx: GraphQLContext) => void) 
       args: { typeId: string; fieldId: string },
       ctx: GraphQLContext,
     ) => {
-      requireAdmin(ctx)
+      requireMetamodelPermission(ctx)
+      let outcome: { name: string; typeName: string; removed: number; sample: Record<string, string> } | null = null
       await withSession(async session => {
         // A-4: `f.is_system` non basta — i campi custom di un altro cliente
         // hanno `is_system = false` ed erano quindi cancellabili da qui.
-        await assertFieldWritable(session, args.typeId, args.fieldId, ctx.tenantId)
-
-        await session.executeWrite(tx =>
-          tx.run(`
+        const field = await assertFieldWritable(session, args.typeId, args.fieldId, ctx.tenantId)
+        const typeName = await itilTypeName(session, args.typeId, ctx.tenantId)
+        // Giro UI del 15 set 2026 · U-28 (scelta del proprietario, come CM-4 per
+        // i CI): i valori se ne vanno con il campo, nella stessa transazione, e
+        // un campione dei valori di prima resta nell'Audit Log.
+        const before = await ticketFieldValues(session, ctx.tenantId, typeName, field.name)
+        const removed = await session.executeWrite(async tx => {
+          const r = await tx.run(`
             MATCH (t:CITypeDefinition {id: $typeId})-[:HAS_FIELD]->(f:CIFieldDefinition {id: $fieldId, tenant_id: $tenantId})
             WHERE t.scope = 'itil' AND t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
             DETACH DELETE f
-          `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId }),
-        )
+            RETURN count(*) AS deleted
+          `, { typeId: args.typeId, fieldId: args.fieldId, tenantId: ctx.tenantId })
+          if (Number(r.records[0]?.get('deleted') ?? 0) === 0) throw new NotFoundError('Field', args.fieldId)
+          return removeTicketFieldValues(tx, ctx.tenantId, typeName, field.name)
+        })
+        if (removed !== before.count) {
+          log.warn({ tenantId: ctx.tenantId, field: field.name, counted: before.count, removed }, 'Custom field values changed while deleting the field')
+        }
+        outcome = { name: field.name, typeName, removed, sample: before.sample }
       }, true)
 
+      const done = outcome as { name: string; typeName: string; removed: number; sample: Record<string, string> } | null
+      if (done) void audit(ctx, 'itil_type.field_removed', 'CITypeDefinition', args.typeId, { entityType: done.typeName, field: done.name, valuesRemoved: done.removed, previousValues: done.sample })
       invalidateSchema(ctx.tenantId)
       return fetchITILTypeById(args.typeId, ctx.tenantId)
     },

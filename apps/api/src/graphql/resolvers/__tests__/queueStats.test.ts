@@ -5,6 +5,7 @@
  * non dice più «Unknown queue», e il rigioco è rifiutato dove non ha senso.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 import { CONSUMER_QUEUES } from '@opengraphity/events'
 
 const queues = new Map<string, { name: string; getJobCounts: ReturnType<typeof vi.fn>; getJobs: ReturnType<typeof vi.fn>; getJob: ReturnType<typeof vi.fn> }>()
@@ -27,8 +28,8 @@ vi.mock('../../../lib/bullmq.js', () => ({
 const { queueStatsResolvers } = await import('../queueStats.js')
 const { QUEUE_REGISTRY } = await import('../../../lib/queueRegistry.js')
 
-const admin = { role: 'admin', tenantId: 't1' } as never
-const operator = { role: 'operator', tenantId: 't1' } as never
+const admin = { role: 'admin', tenantId: 't1', permissions: perms('admin') } as never
+const operator = { role: 'operator', tenantId: 't1', permissions: perms('operator') } as never
 
 beforeEach(() => { queues.clear(); vi.clearAllMocks() })
 
@@ -47,7 +48,7 @@ describe('queueStats', () => {
   })
 
   it('richiede il ruolo admin', async () => {
-    await expect(queueStatsResolvers.Query.queueStats(null, {}, operator)).rejects.toThrow(/admin role required/)
+    await expect(queueStatsResolvers.Query.queueStats(null, {}, operator)).rejects.toThrow(/admin\.system/)
   })
 })
 
@@ -90,6 +91,6 @@ describe('retryQueueJob', () => {
   it('job inesistente → NOT_FOUND; coda sconosciuta → Unknown queue; non admin → Forbidden', async () => {
     await expect(queueStatsResolvers.Mutation.retryQueueJob(null, { queueName: 'events-ingest', jobId: 'missing' }, admin)).rejects.toThrow('Job missing not found in queue events-ingest')
     await expect(queueStatsResolvers.Mutation.retryQueueJob(null, { queueName: 'nope', jobId: 'j' }, admin)).rejects.toThrow('Unknown queue: nope')
-    await expect(queueStatsResolvers.Mutation.retryQueueJob(null, { queueName: 'events-ingest', jobId: 'j' }, operator)).rejects.toThrow(/admin role required/)
+    await expect(queueStatsResolvers.Mutation.retryQueueJob(null, { queueName: 'events-ingest', jobId: 'j' }, operator)).rejects.toThrow(/admin\.system/)
   })
 })

@@ -14,6 +14,7 @@ import { KBListPage }      from '@/pages/KBListPage'
 import { KBArticlePage }   from '@/pages/KBArticlePage'
 import { ServiceCatalogPage } from '@/pages/ServiceCatalogPage'
 import { NotFoundPage }    from '@/pages/NotFoundPage'
+import { RequireSubmit }   from '@/components/RequireSubmit'
 import '@/index.css'
 import i18n from '@/i18n/i18n'
 
@@ -24,7 +25,7 @@ const router = createBrowserRouter([
     children: [
       { index: true,             element: <HomePage /> },
       { path: 'tickets',         element: <TicketListPage /> },
-      { path: 'tickets/new',     element: <TicketNewPage /> },
+      { path: 'tickets/new',     element: <RequireSubmit><TicketNewPage /></RequireSubmit> },
       { path: 'tickets/:id',     element: <TicketDetailPage /> },
       { path: 'catalog',         element: <ServiceCatalogPage /> },
       { path: 'kb',              element: <KBListPage /> },

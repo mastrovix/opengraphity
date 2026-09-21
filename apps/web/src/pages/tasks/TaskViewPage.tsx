@@ -53,6 +53,11 @@ import { TeamGatePanel } from './components/TeamGatePanel'
 import { KIND_TITLE_KEY, inputStyle } from './components/shared'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { colors, palette } from '@/lib/tokens'
+import { plannedWindowStart, beforePlannedWindow } from './components/plannedWindow'
+import { useConfirm } from '@/hooks/useConfirm'
+import { formatDateTime } from '@/lib/datetime'
+import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
 
 interface TaskDetail {
   id: string; code: string; kind: string
@@ -63,6 +68,7 @@ interface CatalogEntry { weight: number; sortOrder: number; question: QuestionDa
 
 export function TaskViewPage() {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const { taskId } = useParams<{ taskId: string }>()
   const navigate = useNavigate()
   const id = taskId ?? ''
@@ -74,23 +80,26 @@ export function TaskViewPage() {
   const { data: affectedData, refetch: refetchAffected } = useQuery<{ changeAffectedCIs: AffectedCI[] }>(GET_CHANGE_AFFECTED_CIS, { variables: { changeId: task?.changeId ?? '' }, skip: !task, fetchPolicy: 'cache-and-network' })
   const { data: funcCat } = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: QUESTION_CATEGORY.FUNCTIONAL }, skip: !task || (task.kind !== 'assessment') })
   const { data: techCat } = useQuery<{ assessmentQuestionCatalog: CatalogEntry[] }>(GET_QUESTION_CATALOG, { variables: { category: QUESTION_CATEGORY.TECHNICAL }, skip: !task || (task.kind !== 'assessment') })
-  const { me } = useMe()
+  const { me, can } = useMe()
   const meData: { me: MeData | null } = { me }
   const { byName: changeStepByName } = useWorkflowSteps('change')
 
   const change = changeData?.change
   const allAffected = affectedData?.changeAffectedCIs ?? []
   const ciAffected = allAffected.find(a => a.ci.id === task?.ciId) ?? null
-  const isAdmin = meData?.me?.role === 'admin'
+  // Chi agisce per qualunque team (approval.override, ondata 7; prima «admin»).
+  const actsForAnyTeam = can('approval.override')
   const userTeamIds = new Set((meData?.me?.teams ?? []).map(t => t.id))
-  const currentUserId = meData?.me?.id ?? null
 
   // Team assegnatario del task assegnabile (assessment/deploy-plan): si caricano solo i suoi membri,
   // non l'intera anagrafica utenti.
   const assignableTeamId = task?.kind === 'assessment'
     ? ((ciAffected?.assessmentOwner?.id === id ? ciAffected?.assessmentOwner : ciAffected?.assessmentSupport?.id === id ? ciAffected?.assessmentSupport : null)?.assignedTeam?.id ?? null)
     : task?.kind === 'deploy-plan' ? (ciAffected?.deployPlan?.assignedTeam?.id ?? null) : null
-  const { data: teamData } = useQuery<{ team: { id: string; members: Array<{ id: string; name: string }> } | null }>(GET_TEAM_DETAIL, { variables: { id: assignableTeamId ?? '' }, skip: !assignableTeamId, fetchPolicy: 'cache-first' })
+  const { data: teamData } = useQuery<{ team: { id: string; members: Array<{ id: string; name: string }> } | null }>(GET_TEAM_DETAIL, { variables: { id: assignableTeamId ?? '' }, skip: !assignableTeamId, // F-39: `cache-first` non ricaricava più i membri nella sessione, quindi
+    // una persona aggiunta al team dopo l'apertura dell'app non compariva fra
+    // gli assegnabili finché non si ricaricava la pagina.
+    fetchPolicy: 'cache-and-network' })
   const getTeamUsers = (teamId: string | null | undefined): Array<{ id: string; name: string }> => {
     if (!teamId || teamId !== assignableTeamId) return []
     return (teamData?.team?.members ?? []).map(u => ({ id: u.id, name: u.name }))
@@ -102,21 +111,33 @@ export function TaskViewPage() {
     if (cid) { toast.success(t('toast.task.completed')); navigate(`/changes/${cid}`) }
   }
 
-  const [submitAnswer]     = useMutation(SUBMIT_ASSESSMENT_RESPONSE,   { onCompleted: refetchAll, onError: (e) => toast.error(e.message) })
-  const [completeAssess]   = useMutation(COMPLETE_ASSESSMENT_TASK,     { onCompleted: goToChange, onError: (e) => toast.error(e.message) })
-  const [assignUser]       = useMutation(ASSIGN_ASSESSMENT_TASK_TO_USER, { onCompleted: async () => { toast.success(t('toast.task.assignmentUpdated')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [assignPlanUser]   = useMutation(ASSIGN_DEPLOY_PLAN_TASK_TO_USER, { onCompleted: async () => { toast.success(t('toast.task.assignmentUpdated')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [savePlan]         = useMutation(SAVE_DEPLOY_PLAN,             { onCompleted: async () => { toast.success(t('toast.task.planSaved')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [completePlan]     = useMutation(COMPLETE_DEPLOY_PLAN_TASK,    { onCompleted: goToChange, onError: (e) => toast.error(e.message) })
-  const [completeVal]      = useMutation(COMPLETE_VALIDATION_TEST,     { onCompleted: goToChange, onError: (e) => toast.error(e.message) })
-  const [completeDep]      = useMutation(COMPLETE_DEPLOYMENT,          { onCompleted: goToChange, onError: (e) => toast.error(e.message) })
-  const [completeRev]      = useMutation(COMPLETE_REVIEW,              { onCompleted: goToChange, onError: (e) => toast.error(e.message) })
+  const [submitAnswer]     = useMutation(SUBMIT_ASSESSMENT_RESPONSE,   { onCompleted: refetchAll, onError: (e) => showError(e) })
+  const [completeAssess]   = useMutation(COMPLETE_ASSESSMENT_TASK,     { onCompleted: goToChange, onError: (e) => showError(e) })
+  const [assignUser]       = useMutation(ASSIGN_ASSESSMENT_TASK_TO_USER, { onCompleted: async () => { toast.success(t('toast.task.assignmentUpdated')); await refetchAll() }, onError: (e) => showError(e) })
+  const [assignPlanUser]   = useMutation(ASSIGN_DEPLOY_PLAN_TASK_TO_USER, { onCompleted: async () => { toast.success(t('toast.task.assignmentUpdated')); await refetchAll() }, onError: (e) => showError(e) })
+  const [savePlan]         = useMutation(SAVE_DEPLOY_PLAN,             { onCompleted: async () => { toast.success(t('toast.task.planSaved')); await refetchAll() }, onError: (e) => showError(e) })
+  const [completePlan]     = useMutation(COMPLETE_DEPLOY_PLAN_TASK,    { onCompleted: goToChange, onError: (e) => showError(e) })
+  const [completeVal]      = useMutation(COMPLETE_VALIDATION_TEST,     { onCompleted: goToChange, onError: (e) => showError(e) })
+  const [completeDep]      = useMutation(COMPLETE_DEPLOYMENT,          { onCompleted: goToChange, onError: (e) => showError(e) })
+  const [completeRev]      = useMutation(COMPLETE_REVIEW,              { onCompleted: goToChange, onError: (e) => showError(e) })
 
-  const [reopenAssess]     = useMutation(REOPEN_TASK,          { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [reopenPlan]       = useMutation(REOPEN_DEPLOY_PLAN,   { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [reopenVal]        = useMutation(REOPEN_VALIDATION,    { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [reopenDep]        = useMutation(REOPEN_DEPLOYMENT,    { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => toast.error(e.message) })
-  const [reopenRev]        = useMutation(REOPEN_REVIEW,        { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => toast.error(e.message) })
+  const [reopenAssess]     = useMutation(REOPEN_TASK,          { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
+  const [reopenPlan]       = useMutation(REOPEN_DEPLOY_PLAN,   { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
+  const [reopenVal]        = useMutation(REOPEN_VALIDATION,    { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
+  const [reopenDep]        = useMutation(REOPEN_DEPLOYMENT,    { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
+  const [reopenRev]        = useMutation(REOPEN_REVIEW,        { onCompleted: async () => { toast.success(t('toast.task.reopened')); await refetchAll() }, onError: (e) => showError(e) })
+
+  // Completare prima della finestra pianificata si può, ma lo si conferma.
+  const confirm = useConfirm()
+  const confirmBeforeWindow = async (kind: 'validation' | 'deployment'): Promise<boolean> => {
+    const start = plannedWindowStart(ciAffected?.deployPlan?.steps, kind)
+    if (!beforePlannedWindow(start)) return true
+    return confirm({
+      title: t('pages.tasks.beforeWindow.title'),
+      body:  t(kind === 'validation' ? 'pages.tasks.beforeWindow.validation' : 'pages.tasks.beforeWindow.deployment', { when: formatDateTime(start) }),
+      confirmLabel: t('pages.tasks.beforeWindow.confirm'),
+    })
+  }
 
   const [showReopenModal, setShowReopenModal] = useState(false)
 
@@ -157,7 +178,7 @@ export function TaskViewPage() {
 
   const ciOwnerTeamId = ciAffected?.ci.ownerGroup?.id ?? null
   const ciSupportTeamId = ciAffected?.ci.supportGroup?.id ?? null
-  const canEdit = isAdmin || (
+  const canEdit = actsForAnyTeam || (
     task.kind === 'assessment' ? (assessRole === ASSESSMENT_ROLE.OWNER ? !!ciOwnerTeamId && userTeamIds.has(ciOwnerTeamId) : !!ciSupportTeamId && userTeamIds.has(ciSupportTeamId))
     : task.kind === 'deploy-plan' ? !!ciSupportTeamId && userTeamIds.has(ciSupportTeamId)
     : task.kind === 'validation' || task.kind === 'review' ? !!ciOwnerTeamId && userTeamIds.has(ciOwnerTeamId)
@@ -201,13 +222,15 @@ export function TaskViewPage() {
         </span>
         <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', textTransform: 'uppercase', marginLeft: 12 }}>{t('pages.taskView.assignedTo')}</span>
         <select
+          aria-label={t('pages.taskView.assignedTo')}
           disabled={!canAssign}
           value={tsk.assignee?.id ?? ''}
           onChange={(e) => {
-            if (e.target.value && currentUserId) {
-              const assign = task.kind === 'deploy-plan' ? assignPlanUser : assignUser
-              void assign({ variables: { taskId: tsk.id, userId: e.target.value } })
-            }
+            // «Non assegnato» (valore vuoto) manda userId null e TOGLIE
+            // l'assegnazione: prima l'opzione c'era e non faceva nulla
+            // (revisione totale · F-4).
+            const assign = task.kind === 'deploy-plan' ? assignPlanUser : assignUser
+            void assign({ variables: { taskId: tsk.id, userId: e.target.value || null } })
           }}
           style={{ ...inputStyle, flex: 1, maxWidth: 250 }}
         >
@@ -220,13 +243,15 @@ export function TaskViewPage() {
 
   return (
     <PageContainer style={{ padding: '16px 24px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
+      {/* Il codice dell'attività è il titolo della pagina: il percorso finisce sul
+          tipo di attività, altrimenti «TASK…» si leggeva due volte di fila. */}
+      <nav aria-label={t('topbar.breadcrumb')} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
         <Link to={`/changes/${task.changeId}`} style={{ color: 'var(--color-brand)', textDecoration: 'none' }}>{task.changeCode}</Link>
-        <ChevronRight size={14} />
+        <ChevronRight size={14} aria-hidden="true" />
         <span style={{ color: 'var(--color-slate)' }}>{task.ciName}</span>
-        <ChevronRight size={14} />
-        <span style={{ color: 'var(--color-slate-dark)', fontWeight: 500 }}>{task.code}</span>
-      </div>
+        <ChevronRight size={14} aria-hidden="true" />
+        <span aria-current="page" style={{ color: 'var(--color-slate-dark)', fontWeight: 500 }}>{taskTitle}</span>
+      </nav>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 24, alignItems: 'start' }}>
         <div>
@@ -235,7 +260,7 @@ export function TaskViewPage() {
             <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
               {task.code}
             </h1>
-            {isAdmin && isTaskCompleted && (
+            {actsForAnyTeam && isTaskCompleted && (
               <button
                 type="button"
                 onClick={() => setShowReopenModal(true)}
@@ -251,9 +276,9 @@ export function TaskViewPage() {
               </button>
             )}
           </div>
-          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 4px' }}>{taskTitle}</p>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 20px' }}>
-            {task.ciName}{task.ciType ? ` · ${task.ciType}` : ''}
+            {/* Secondo giro UI · V-2: etichette, non «application»/«business_application». */}
+            {task.ciName}{task.ciType ? ` · ${ciLabels.subtitle({ type: task.ciType, environment: task.ciEnv })}` : ''}
           </p>
 
           {assignable}
@@ -297,14 +322,14 @@ export function TaskViewPage() {
           {task.kind === 'validation' && (
             <ValidationTaskForm
               canEdit={canEdit}
-              onComplete={(result) => void completeVal({ variables: { changeId: task.changeId, ciId: task.ciId, result } })}
+              onComplete={(result) => void confirmBeforeWindow('validation').then((ok) => { if (ok) void completeVal({ variables: { changeId: task.changeId, ciId: task.ciId, result } }) })}
             />
           )}
 
           {task.kind === 'deployment' && (
             <DeploymentTaskForm
               canEdit={canEdit}
-              onComplete={() => void completeDep({ variables: { changeId: task.changeId, ciId: task.ciId } })}
+              onComplete={() => void confirmBeforeWindow('deployment').then((ok) => { if (ok) void completeDep({ variables: { changeId: task.changeId, ciId: task.ciId } }) })}
             />
           )}
 

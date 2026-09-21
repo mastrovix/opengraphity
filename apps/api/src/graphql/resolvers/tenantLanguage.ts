@@ -9,7 +9,7 @@
  * tutte le altre: nell'interfaccia, senza script e senza codice.
  */
 import type { GraphQLContext } from '../../context.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { audit } from '../../lib/audit.js'
 import { LINGUE } from '../../lib/enumValueLabels.js'
 import { tenantDefaultLanguage, setTenantDefaultLanguage, LINGUA_DI_ULTIMA_ISTANZA } from '../../lib/tenantLanguage.js'
@@ -35,7 +35,7 @@ async function tenantLanguageSettings(_: unknown, __: unknown, ctx: GraphQLConte
 async function setTenantDefaultLanguageMutation(
   _: unknown, args: { language: string }, ctx: GraphQLContext,
 ) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.organization')
   const lingua = await setTenantDefaultLanguage(ctx.tenantId, args.language)
   /*
     LA LEVA DEL METAMODELLO. La lingua predefinita è il ripiego con cui si

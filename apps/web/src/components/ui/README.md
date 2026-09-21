@@ -85,9 +85,11 @@ Un solo posto per ogni pattern ricorrente. Le primitive vivono in
   da `t()` (`useTranslation`) o, fuori da React (util, class component, hook
   puri), da `i18n.t()` con `import i18n from '@/i18n/i18n'`.
 - **Toast**: `toast.success(t('toast.<dominio>.<nome>', { … }))`. Mai
-  `toast.error('stringa')`; il messaggio del server passa come interpolazione
-  (`{ error: e.message }`) o direttamente (`toast.error(e.message)`), non in un
-  template literal con testo fisso.
+  `toast.error('stringa')`. Un errore si mostra con `showError(e)` o
+  `showError(e, t('toast.<dominio>.<nome>', { error: errorMessage(e) }))`
+  (`lib/showError.ts`): gli errori GraphQL e di rete li mostra già il link degli
+  errori, tradotti, e `showError` non li ripete. Mai `toast.error(e.message)`:
+  lo impedisce `lib/showError.test.ts`.
 - **Chiavi**: sezione per dominio (`pages.<dir>.*`, `components.<nome>.*`,
   `toast.<dominio>.*`, `common.*` per i testi ricorrenti). Aggiungere in fondo
   alla sezione, stesso ordine in `it.json` ed `en.json`, mai riordinare.

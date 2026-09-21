@@ -1,6 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
-import { ConfigurationIssuesBanner } from '@/components/ConfigurationIssuesBanner'
 import { useTenantLanguage } from '@/hooks/useTenantLanguage'
 import { useTranslation } from 'react-i18next'
 import { keycloak } from '../../lib/keycloak'
@@ -11,11 +10,29 @@ import { colors } from '@/lib/tokens'
 
 const SIDEBAR_WIDTH     = 240
 const SIDEBAR_COLLAPSED = 56
+/**
+ * Sotto questa larghezza la barra laterale parte chiusa e si chiude da sola
+ * quando la finestra si stringe: a 683px occupava un terzo dello schermo e
+ * spingeva fuori testata e pulsanti (giro nel browser del 14 set 2026, #28).
+ * Riaprirla resta una scelta di chi usa l'app.
+ */
+const NARROW_QUERY = '(max-width: 900px)'
+
+function isNarrow(): boolean {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(NARROW_QUERY).matches
+}
 
 export function AppLayout() {
   const { t } = useTranslation()
   // Hooks must run unconditionally, before any early return
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(isNarrow)
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia(NARROW_QUERY)
+    const onChange = (e: MediaQueryListEvent) => { if (e.matches) setCollapsed(true) }
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
   // In che lingua si legge questo cliente: e configurazione, sta nel grafo, e
   // vale per chi non ha scelto la propria dal Profilo.
   useTenantLanguage()
@@ -29,7 +46,7 @@ export function AppLayout() {
 
   return (
     <ConfirmProvider>
-      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', backgroundColor: 'var(--color-slate-bg)' }}>
+      <div style={{ display: 'flex', height: 'var(--vh-app)', overflow: 'hidden', backgroundColor: 'var(--color-slate-bg)' }}>
         {/* Skip to main content — visibile solo su focus */}
         <a
           href="#main-content"
@@ -64,18 +81,20 @@ export function AppLayout() {
             flex:           1,
             display:        'flex',
             flexDirection:  'column',
-            height:         '100vh',
+            height:         'var(--vh-app)',
             overflow:       'hidden',
             transition:     'margin-left 200ms ease',
             minWidth:       0,
           }}
         >
-          <Topbar />
           {/* Revisione delle otto ondate · A·#3: lo schema degradato, le
               matrici incomplete e i buchi di configurazione avevano metrica,
               log e intestazione HTTP — e l'amministratore del tenant, l'unico
-              che può rimediare, vedeva solo pagine che non funzionano. */}
-          <ConfigurationIssuesBanner />
+              che può rimediare, vedeva solo pagine che non funzionano. Dal
+              20 set 2026 non è più un banner su ogni pagina (un quinto dello
+              schermo): la Topbar porta la pastiglia col numero, l'elenco sta
+              in Configurazione ▸ Diagnostica. */}
+          <Topbar />
           <main
             id="main-content"
             style={{

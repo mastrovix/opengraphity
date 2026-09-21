@@ -81,7 +81,7 @@ export function createMetamodelCache<T>(opts: {
     for (const key of [...entries.keys()]) if (key.startsWith(prefix)) entries.delete(key)
   }
 
-  registerMetamodelCacheClearer(opts.name, (tenantId: string) => { invalidate(tenantId) })
+  registerMetamodelCacheClearer(opts.name, (tenantId: string) => { invalidate(tenantId) }, () => { entries.clear() })
 
   return {
     get(tenantId: string, subKey = ''): Promise<T> {
