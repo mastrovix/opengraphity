@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useEffect } from 'react'
 import { gql } from '@apollo/client'
 import { useQuery } from '@apollo/client/react'
@@ -5,15 +6,18 @@ import { Link } from 'react-router-dom'
 import { Sparkles, BookOpen } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/ui/badges'
+import { colors, palette } from '@/lib/tokens'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
 
 const GET_SIMILAR_INCIDENTS = gql`
   query SimilarIncidents($incidentId: ID!, $limit: Int) {
     similarIncidents(incidentId: $incidentId, limit: $limit) {
-      ready
+      ready disabled
       items { id number title status severity createdAt resolvedAt score }
     }
     suggestedArticles(incidentId: $incidentId, limit: 3) {
-      ready
+      ready disabled
       items { id title slug category score }
     }
   }
@@ -25,8 +29,8 @@ interface SimilarItem {
 }
 interface ArticleItem { id: string; title: string; slug: string | null; category: string | null; score: number }
 interface QueryData {
-  similarIncidents: { ready: boolean; items: SimilarItem[] }
-  suggestedArticles: { ready: boolean; items: ArticleItem[] }
+  similarIncidents: { ready: boolean; disabled: boolean; items: SimilarItem[] }
+  suggestedArticles: { ready: boolean; disabled: boolean; items: ArticleItem[] }
 }
 
 function scorePct(score: number): string {
@@ -34,6 +38,12 @@ function scorePct(score: number): string {
 }
 
 export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
+  const { t } = useTranslation()
+  // Chiuso/risolto si legge dai METADATA del passo di questo cliente, non da
+  // `['closed','resolved']` (B-22): un passo terminale aggiunto dal cliente
+  // veniva reso come «aperto», e l'etichetta mostrava il nome grezzo del passo
+  // al posto di quella scelta nel disegnatore.
+  const { isTerminal, categoryOf, labelFor } = useWorkflowSteps('incident')
   const { data, loading, error, startPolling, stopPolling } = useQuery<QueryData>(GET_SIMILAR_INCIDENTS, {
     variables: { incidentId, limit: 5 },
     fetchPolicy: 'cache-and-network',
@@ -42,7 +52,9 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
   // The embedding is computed asynchronously right after creation: while the
   // backend reports ready=false, poll until it flips — never show "nessun
   // risultato" for an incident that simply hasn't been embedded yet.
-  const pending = !!data && (!data.similarIncidents.ready || !data.suggestedArticles.ready)
+  // Embedding spenti dall'organizzazione (ondata 6): niente attesa, lo si dice.
+  const disabled = !!data && (data.similarIncidents.disabled || data.suggestedArticles.disabled)
+  const pending = !!data && !disabled && (!data.similarIncidents.ready || !data.suggestedArticles.ready)
   useEffect(() => {
     if (pending) startPolling(4000)
     else stopPolling()
@@ -56,42 +68,44 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
     <SectionCard
       title={
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <Sparkles size={14} color="var(--color-brand)" /> Incident simili
+          <Sparkles size={14} color="var(--color-brand)" /> {t('components.similar.title')}
         </span>
       }
       defaultOpen
     >
       {error ? (
-        <div style={{ padding: '8px 10px', background: 'var(--color-danger-bg)', border: '1px solid #fecaca', borderRadius: 6, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
-          Errore ricerca semantica: {error.message}
+        <div style={{ padding: '8px 10px', background: 'var(--color-danger-bg)', border: `1px solid ${palette.danger.border}`, borderRadius: 6, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
+          {t('components.similar.searchError', { message: error.message })}
         </div>
       ) : loading && !data ? (
-        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>Caricamento…</p>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>{t('common.loading')}</p>
+      ) : disabled ? (
+        <AIDisabledNotice feature="embeddings" />
       ) : pending ? (
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
-          Analisi semantica in corso — l'embedding di questo incident è in calcolo…
+          {t('components.similar.pending')}
         </p>
       ) : (
         <>
           {similar && similar.items.length === 0 && (
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
-              Nessun incident storico simile.
+              {t('components.similar.empty')}
             </p>
           )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {similar?.items.map((it) => {
-              const closed = it.status === 'closed' || it.status === 'resolved'
+              const closed = isTerminal(it.status) || categoryOf(it.status) === 'resolved'
               return (
                 <Link
                   key={it.id}
                   to={`/incidents/${it.id}`}
-                  style={{ display: 'block', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, textDecoration: 'none', background: '#fff' }}
+                  style={{ display: 'block', padding: '8px 10px', border: `1px solid ${colors.border}`, borderRadius: 8, textDecoration: 'none', background: colors.white }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                     <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
                       {it.number ?? it.id.slice(0, 8)}
                     </span>
-                    <span title="Similarità semantica" style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-brand)' }}>
+                    <span title={t('components.similar.semanticScore')} style={{ fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-brand)' }}>
                       {scorePct(it.score)}
                     </span>
                   </div>
@@ -100,8 +114,8 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                     <SeverityBadge value={it.severity} />
-                    <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: closed ? '#dcfce7' : '#f1f5f9', color: closed ? '#15803d' : 'var(--color-slate)', textTransform: 'uppercase' }}>
-                      {it.status.replace(/_/g, ' ')}
+                    <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, background: closed ? palette.success.tint : colors.slateBg, color: closed ? palette.success.text : 'var(--color-slate)', textTransform: 'uppercase' }}>
+                      {labelFor(it.status).replace(/_/g, ' ')}
                     </span>
                   </div>
                 </Link>
@@ -112,14 +126,14 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
           {articles && articles.items.length > 0 && (
             <div style={{ marginTop: 4 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '8px 0 6px' }}>
-                <BookOpen size={12} /> KB suggerita
+                <BookOpen size={12} /> {t('components.similar.kb')}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {articles.items.map((a) => (
                   <Link
                     key={a.id}
                     to={a.slug ? `/knowledge-base/${a.slug}` : '/knowledge-base'}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 10px', border: '1px solid #e5e7eb', borderRadius: 8, textDecoration: 'none', background: '#fff' }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 10px', border: `1px solid ${colors.border}`, borderRadius: 8, textDecoration: 'none', background: colors.white }}
                   >
                     <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {a.title}

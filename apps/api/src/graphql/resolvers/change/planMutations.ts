@@ -2,8 +2,11 @@
  * Mutations on DeployPlanTask — editing and completion of the deploy plan.
  */
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../../lib/errors.js'
 import { ValidationError } from '../../../lib/errors.js'
+import { assertWindowDate } from '../../../lib/deployWindows.js'
 import { TASK_STATUS } from '../../../lib/taskStatus.js'
+import { planEnvelope } from '../../../lib/deployWindows.js'
 import { withSession, runQueryOne, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { mapDeployPlanTask } from './mappers.js'
@@ -20,15 +23,19 @@ import {
 type TimeWindowInput = { start: string; end: string }
 type DeployStepInput = { title: string; validationWindow: TimeWindowInput; releaseWindow: TimeWindowInput }
 
-function validateWindow(label: string, w: TimeWindowInput) {
-  if (!w || !w.start || !w.end) throw new ValidationError(`${label}: start e end obbligatori`)
+export function validateWindow(label: string, w: TimeWindowInput) {
+  if (!w || !w.start || !w.end) throw new ValidationError(`${label}: start and end are required`, { key: 'errors.plan.windowStartEndRequired', params: { window: label } })
+  // Offset esplicito obbligatorio (B·1.17): una data senza Z/±hh:mm verrebbe
+  // letta nel fuso del server, non del tenant; la stessa regola vale in lettura.
+  assertWindowDate(w.start, `${label}.start`)
+  assertWindowDate(w.end, `${label}.end`)
   if (new Date(w.start).getTime() >= new Date(w.end).getTime()) {
-    throw new ValidationError(`${label}: end deve essere dopo start`)
+    throw new ValidationError(`${label}: the end must come after the start`, { key: 'errors.plan.endBeforeStart', params: { window: label } })
   }
 }
 
 function validateStep(idx: number, s: DeployStepInput) {
-  if (!s.title || !s.title.trim()) throw new ValidationError(`Step ${idx + 1}: titolo obbligatorio`)
+  if (!s.title || !s.title.trim()) throw new ValidationError(`Step ${idx + 1}: the title is required`, { key: 'errors.plan.stepTitleRequired', params: { step: idx + 1 } })
   validateWindow(`Step ${idx + 1} — finestra di validazione`, s.validationWindow)
   validateWindow(`Step ${idx + 1} — finestra di deploy`, s.releaseWindow)
 }
@@ -47,12 +54,12 @@ export async function saveDeployPlan(
       MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
       RETURN dp.ci_id AS ciId, c.id AS changeId, dp.status AS status, wi.current_step AS currentStep
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
-    if (!tctx) throw new GraphQLError(`DeployPlanTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
-    if (tctx.status === TASK_STATUS.COMPLETED) throw new GraphQLError('Task già completata', { extensions: { code: 'CONFLICT' } })
+    if (!tctx) throw new NotFoundError('DeployPlanTask', args.taskId)
+    if (tctx.status === TASK_STATUS.COMPLETED) throw new GraphQLError('Task already completed', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.task.alreadyCompleted' } } })
     const initialStepName = await getInitialStepName(session, ctx.tenantId, 'change')
-    if (tctx.currentStep !== initialStepName) throw new GraphQLError(`Piano deploy editabile solo nello step iniziale (${initialStepName})`, { extensions: { code: 'CONFLICT' } })
+    if (tctx.currentStep !== initialStepName) throw new GraphQLError(`The deploy plan can be edited only in the initial step (${initialStepName})`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.plan.editableOnlyInInitialStep', params: { step: initialStepName } } } })
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
-    if (!Array.isArray(args.steps) || args.steps.length < 1) throw new ValidationError('Almeno 1 step obbligatorio')
+    if (!Array.isArray(args.steps) || args.steps.length < 1) throw new ValidationError('At least one step is required', { key: 'errors.plan.atLeastOneStep' })
     args.steps.forEach((s, i) => validateStep(i, s))
 
     const normalized = args.steps.map(s => ({
@@ -61,14 +68,35 @@ export async function saveDeployPlan(
       releaseWindow:    { start: s.releaseWindow.start,    end: s.releaseWindow.end    },
     }))
 
+    /*
+     * L'INVILUPPO accanto ai passi, nello stesso `SET` (17 set 2026).
+     *
+     * `window_start` e `window_end` sono la prima e l'ultima data fra tutte le
+     * finestre di questo piano, validazioni comprese: sono un INDICE, non una
+     * verità — la verità resta il JSON dei passi. Servono perché «dammi i piani
+     * che toccano questa settimana» non si può chiedere a un JSON, e senza di
+     * loro il calendario delle change dovrebbe leggere i piani di TUTTO il
+     * tenant a ogni apertura di pagina.
+     *
+     * Si scrivono QUI e solo qui, nella stessa istruzione dei passi, perché
+     * questa è l'unica funzione del prodotto che scrive passi veri: gli altri
+     * due punti scrivono `'[]'` alla creazione del task. Un inviluppo scritto
+     * altrove sarebbe la seconda verità che questo commento serve a impedire.
+     */
+    const inviluppo = planEnvelope(normalized)
     await session.executeWrite((tx) => tx.run(`
       MATCH (dp:DeployPlanTask {id: $taskId, tenant_id: $tenantId})
-      SET dp.steps = $steps, dp.status = '${TASK_STATUS.IN_PROGRESS}'
-    `, { taskId: args.taskId, tenantId: ctx.tenantId, steps: JSON.stringify(normalized) }))
+      SET dp.steps = $steps, dp.status = '${TASK_STATUS.IN_PROGRESS}',
+          dp.window_start = $windowStart, dp.window_end = $windowEnd
+    `, {
+      taskId: args.taskId, tenantId: ctx.tenantId, steps: JSON.stringify(normalized),
+      windowStart: inviluppo?.start ?? null, windowEnd: inviluppo?.end ?? null,
+    }))
 
     const ciName = await getCIName(session, tctx.ciId, ctx.tenantId)
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'deploy_plan_saved', ctx.userId,
-      `${ciName}: ${normalized.length} step — ${normalized.map(s => `"${s.title}"`).join(', ')}`)
+      `${ciName}: ${normalized.length} step — ${normalized.map(s => `"${s.title}"`).join(', ')}`,
+      { key: 'planSaved', params: { ci: ciName, count: String(normalized.length), steps: normalized.map(s => `"${s.title}"`).join(', ') } })
 
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (dp:DeployPlanTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(dp) AS props
@@ -86,13 +114,13 @@ export async function completeDeployPlanTask(_: unknown, args: { taskId: string 
       WHERE coalesce(c.deleted, false) = false
       RETURN dp.ci_id AS ciId, c.id AS changeId, dp.status AS status, dp.steps AS steps
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
-    if (!tctx) throw new GraphQLError(`DeployPlanTask ${args.taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
-    if (tctx.status === TASK_STATUS.COMPLETED) throw new GraphQLError('Task già completata', { extensions: { code: 'CONFLICT' } })
+    if (!tctx) throw new NotFoundError('DeployPlanTask', args.taskId)
+    if (tctx.status === TASK_STATUS.COMPLETED) throw new GraphQLError('Task already completed', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.task.alreadyCompleted' } } })
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
 
     const steps = tctx.steps ? JSON.parse(tctx.steps) as unknown[] : []
     if (!Array.isArray(steps) || steps.length === 0) {
-      throw new GraphQLError('Almeno 1 step deve essere compilato prima di completare', { extensions: { code: 'CONFLICT' } })
+      throw new GraphQLError('At least one step must be filled in before completing', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.plan.oneStepFilled' } } })
     }
 
     const now = new Date().toISOString()
@@ -108,7 +136,7 @@ export async function completeDeployPlanTask(_: unknown, args: { taskId: string 
 
     const ciName = await getCIName(session, tctx.ciId, ctx.tenantId)
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'deploy_plan_completed', ctx.userId,
-      `${ciName}: piano completato (${steps.length} step)`)
+      `${ciName}: plan completed (${steps.length} steps)`, { key: 'planCompleted', params: { ci: ciName, count: String(steps.length) } })
 
     await computeAggregateRisk(session, tctx.changeId, ctx.tenantId)
     await evaluateAutoTransitions(session, tctx.changeId, ctx, afterEnterStep)

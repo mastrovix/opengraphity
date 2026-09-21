@@ -11,7 +11,7 @@
  */
 import ReactECharts from 'echarts-for-react'
 import { useTranslation } from 'react-i18next'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, palette } from '@/lib/tokens'
 import {
   buildBarOption, buildGaugeOption, buildLineOption, buildPieOption, type ChartPoint,
 } from '@/lib/charts/echartsOptions'
@@ -72,24 +72,26 @@ export function WidgetBody({ widgetType, color, data, caption, height = 180, lar
   if (widgetType === 'table') {
     return (
       <div style={{ overflow: 'auto', maxHeight: 220 }}>
+        <div className="og-scroll-x">
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
           <thead>
-            <tr style={{ background: 'var(--color-slate-bg)' }}>
-              <th style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--color-slate-light)', fontWeight: 600 }}>{t('components.widgetBody.label')}</th>
-              <th style={{ padding: '6px 10px', textAlign: 'right', color: 'var(--color-slate-light)', fontWeight: 600 }}>{t('components.widgetBody.value')}</th>
+            <tr>
+              <th style={{ padding: '6px 10px', textAlign: 'left' }}>{t('components.widgetBody.label')}</th>
+              <th style={{ padding: '6px 10px', textAlign: 'right' }}>{t('components.widgetBody.value')}</th>
             </tr>
           </thead>
           <tbody>
             {data.series.length === 0 ? (
               <tr><td colSpan={2} style={{ padding: '12px 10px', textAlign: 'center', color: 'var(--color-slate-light)' }}>{t('components.widgetBody.noData')}</td></tr>
             ) : data.series.map((s, i) => (
-              <tr key={i} style={{ borderTop: '1px solid #f3f4f6' }}>
+              <tr key={i} style={{ borderTop: `1px solid ${palette.neutral.borderLight}` }}>
                 <td style={{ padding: '5px 10px', color: 'var(--color-slate-dark)' }}>{s.label}</td>
                 <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: 600, color }}>{s.value.toLocaleString(locale)}</td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
       </div>
     )
   }

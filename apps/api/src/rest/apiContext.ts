@@ -11,6 +11,7 @@
  *    that later surfaces as a Cypher error.
  */
 import type { Request } from 'express'
+import { FACTORY_ROLE_PERMISSIONS } from '@opengraphity/types'
 import type { GraphQLContext } from '../context.js'
 import type { ApiKeyContext } from '../middleware/apiKeyAuth.js'
 import { ValidationError } from '../lib/errors.js'
@@ -30,6 +31,9 @@ export function apiCtx(req: Request): GraphQLContext {
     userId:    key.keyId,
     userEmail: `api-key:${key.keyId}`,
     role:      'operator',
+    // Le chiavi API hanno i loro permessi (API_KEY_PERMISSIONS, controllati dalle
+    // rotte); dentro i servizi riusati agiscono come il ruolo di fabbrica operator.
+    permissions: new Set(FACTORY_ROLE_PERMISSIONS.operator),
   }
 }
 

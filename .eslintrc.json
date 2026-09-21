@@ -1,7 +1,10 @@
 {
   "root": true,
   "parser": "@typescript-eslint/parser",
-  "plugins": ["@typescript-eslint", "react-hooks"],
+  "plugins": [
+    "@typescript-eslint",
+    "react-hooks"
+  ],
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/recommended"
@@ -12,8 +15,19 @@
     "es2022": true
   },
   "rules": {
-    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
-    "no-constant-condition": ["error", { "checkLoops": false }],
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "no-constant-condition": [
+      "error",
+      {
+        "checkLoops": false
+      }
+    ],
     "@typescript-eslint/no-explicit-any": "warn",
     "react-hooks/rules-of-hooks": "error",
     "react-hooks/exhaustive-deps": "warn",
@@ -31,6 +45,31 @@
       ],
       "rules": {
         "no-console": "off"
+      }
+    },
+    {
+      "files": ["apps/portal/src/**/*.ts", "apps/portal/src/**/*.tsx"],
+      "excludedFiles": ["**/*.test.ts", "**/*.test.tsx", "apps/portal/src/test/**", "apps/portal/src/lib/tokens.ts"],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "Literal[value=/#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?([0-9a-fA-F]{2})?\\b/]",
+            "message": "Colore esadecimale scritto a mano: usa i token di lib/tokens.ts (colors/palette/alpha) o var(--color-…) di index.css."
+          },
+          {
+            "selector": "TemplateElement[value.raw=/#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?([0-9a-fA-F]{2})?\\b/]",
+            "message": "Colore esadecimale scritto a mano in un template: usa var(--color-…) di index.css."
+          },
+          {
+            "selector": "Literal[value=/rgba?\\(/]",
+            "message": "rgba() scritto a mano: usa alpha.* di lib/tokens.ts."
+          },
+          {
+            "selector": "TemplateElement[value.raw=/rgba?\\(/]",
+            "message": "rgba() scritto a mano in un template: usa var(--color-*-a…) di index.css."
+          }
+        ]
       }
     }
   ]

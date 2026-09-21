@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode, type CSSProperties } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CountBadge } from './CountBadge'
+import { alpha, colors } from '@/lib/tokens'
 
 interface SectionCardProps {
   title:         ReactNode
@@ -24,8 +25,12 @@ export function SectionCard({
   title,
   collapsible = true,
   defaultOpen = false,
-  activeColor = '#0ea5e9',
-  activeTextColor = '#fff',
+  // Intestazione aperta: TINTA del turchese (32 %), non il turchese pieno. Il
+  // pieno con testo bianco pesava come una barra di navigazione e, con molti
+  // riquadri aperti, la pagina diventava una scala di fasce colorate; le tinte
+  // più chiare (13 %, 20 %) lasciavano la testata troppo timida.
+  activeColor = alpha.brand32,
+  activeTextColor = colors.brandHover,
   open: controlledOpen,
   onToggle,
   count,
@@ -54,13 +59,18 @@ export function SectionCard({
   )
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
+    <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, marginBottom: 16, overflow: 'hidden' }}>
       <div
         style={{
           display:        'flex',
           alignItems:     'center',
           justifyContent: 'space-between',
-          padding:        '14px 20px',
+          // Altezza FISSA (vedi --og-card-header-h in index.css): la testata di
+          // una scheda misura uguale in tutto il prodotto, che dentro ci sia
+          // solo il titolo o anche un pulsante.
+          minHeight:      'var(--og-card-header-h)',
+          boxSizing:      'border-box',
+          padding:        '6px 20px',
           borderBottom:   open ? '1px solid var(--border)' : 'none',
           transition:     'background-color 150ms, color 150ms',
           // Scheda aperta (attiva): intestazione colorata (default turchese logo).

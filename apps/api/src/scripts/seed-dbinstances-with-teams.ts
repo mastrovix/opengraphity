@@ -50,7 +50,7 @@ async function seed(TENANT_ID: string) {
     const supportTeam = supportTeams[i % supportTeams.length]
 
     const result = await session.run(
-      `MERGE (c:DatabaseInstance {name: $name, tenant_id: $tenantId})
+      `MERGE (c:ConfigurationItem:DatabaseInstance {name: $name, tenant_id: $tenantId})
        ON CREATE SET
          c.id          = $id,
          c.environment = $environment,

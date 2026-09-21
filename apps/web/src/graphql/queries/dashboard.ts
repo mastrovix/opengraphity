@@ -14,7 +14,7 @@ export const GET_MY_DASHBOARDS = gql`
 `
 
 export const GET_DASHBOARD = gql`
-  query GetDashboard($id: ID!) {
+  query GetDashboard($id: ID!, $language: String) {
     dashboard(id: $id) {
       id name description role isDefault isPersonal isShared
       visibility
@@ -23,7 +23,7 @@ export const GET_DASHBOARD = gql`
       widgets {
         id order colSpan
         reportTemplateId reportSectionId
-        data error
+        data(language: $language) error(language: $language)
         reportSection { id title chartType }
         reportTemplate { id name }
       }
@@ -37,13 +37,13 @@ export const GET_DASHBOARD = gql`
 `
 
 export const GET_MY_DASHBOARD = gql`
-  query GetMyDashboard {
+  query GetMyDashboard($language: String) {
     myDashboard {
       id name description role isDefault isPersonal isShared
       visibility
       widgets {
         id order colSpan reportTemplateId reportSectionId
-        data error
+        data(language: $language) error(language: $language)
         reportSection { id title chartType }
         reportTemplate { id name }
       }
@@ -61,6 +61,16 @@ export const GET_WIDGET_DATA = gql`
     widgetData(widgetId: $widgetId) {
       value label
       series { label value color }
+    }
+  }
+`
+
+/** Entità e campi dei widget dal metamodello del cliente: la stessa lista con cui l'API valida (ondata 5). */
+export const GET_WIDGET_CATALOG = gql`
+  query GetWidgetCatalog {
+    widgetCatalog {
+      entityType label group
+      fields { name label fieldType enumTypeName enumValues groupable numeric custom }
     }
   }
 `

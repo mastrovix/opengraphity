@@ -10,7 +10,7 @@
  * Uso: pnpm --filter @opengraphity/api seed:relations -- --tenant=<slug> --yes-delete
  */
 import neo4j from 'neo4j-driver'
-import { getSession } from '@opengraphity/neo4j'
+import { getSession, toNumber } from '@opengraphity/neo4j'
 import { refuseInProduction, requireConfirmFlag, resolveTenantArg } from './lib/scriptArgs.js'
 import { runScript } from './lib/runScript.js'
 
@@ -29,18 +29,25 @@ async function seed(TENANT_ID: string) {
 
   // ── STEP 1: Load existing CIs ─────────────────────────────────────────────
 
-  const load = async (type: string): Promise<string[]> => {
+  /**
+   * I CI di un tipo. Il tipo è la LABEL del nodo, non una proprietà: nessun CI
+   * porta `type` (l'API scrive la label — revisione totale · H-7). Con il
+   * filtro sulla proprietà questo seed caricava zero nodi e usciva con «No
+   * servers found» anche con settecento server, mentre il README lo
+   * documentava come funzionante.
+   */
+  const load = async (label: string): Promise<string[]> => {
     const result = await session.run(
-      `MATCH (c:ConfigurationItem {tenant_id: $tenantId, type: $type}) RETURN c.id AS id`,
-      { tenantId: TENANT_ID, type }
+      `MATCH (c:ConfigurationItem) WHERE c.tenant_id = $tenantId AND $label IN labels(c) RETURN c.id AS id`,
+      { tenantId: TENANT_ID, label }
     )
     return result.records.map((r) => r.get('id') as string)
   }
 
-  const apps        = await load('application')
-  const databases   = await load('database')
-  const dbInstances = await load('database_instance')
-  const servers     = await load('server')
+  const apps        = await load('Application')
+  const databases   = await load('Database')
+  const dbInstances = await load('DatabaseInstance')
+  const servers     = await load('Server')
 
   console.log(`Loaded: ${apps.length} apps, ${databases.length} databases, ${dbInstances.length} dbInstances, ${servers.length} servers`)
 
@@ -62,7 +69,9 @@ async function seed(TENANT_ID: string) {
      RETURN count(r) AS deleted`,
     { tenantId: TENANT_ID }
   )
-  const deleted = (cleanResult.records[0].get('deleted') as { toNumber(): number }).toNumber()
+  // `count(...)` non è sempre un `Integer` del driver: `toNumber` copre
+  // entrambe le forme (lo stesso inciampo che teneva rotto `deleteEnumType`).
+  const deleted = toNumber(cleanResult.records[0].get('deleted'))
   console.log(`  Deleted ${deleted} existing relations`)
 
   // ── STEP 2: DB chain — Database → DatabaseInstance → Server ──────────────

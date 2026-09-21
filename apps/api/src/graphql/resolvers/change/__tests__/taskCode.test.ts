@@ -1,94 +1,45 @@
 /**
- * Generatori di codici progressivi (helpers.ts):
- *   getNextTaskCodes → 'TASK' + 8 cifre zero-padded, batch sequenziale
- *   nextChangeCode   → 'CHG'  + 8 cifre zero-padded
+ * Generatori di codici progressivi (helpers.ts) — revisione del 14 set 2026 · CH-2:
+ *   nextChangeCode   → 'CHG'  + 8 cifre dal contatore atomico `change`
+ *   getNextTaskCodes → 'TASK' + 8 cifre, un blocco contiguo dal contatore `task`
+ * Prima erano `max()+1` letti e poi scritti (due creazioni insieme → stesso
+ * codice) e i task scandivano tutti i nodi del database.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// ── Mocks ─────────────────────────────────────────────────────────────────────
-
-vi.mock('../../ci-utils.js', () => ({
-  getSession:  vi.fn(),
-  runQuery:    vi.fn(),
-  runQueryOne: vi.fn(),
-  mapCI:       vi.fn(),
-}))
-
+// Ondata 6 di «Nulla cablato»: il formato dei numeri è del cliente; qui quello di fabbrica.
+vi.mock('../../../../lib/ticketNumbering.js', () => import('../../../../lib/__tests__/ticketNumberingFake.js'))
+vi.mock('../../ci-utils.js', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), mapCI: vi.fn() }))
 vi.mock('../../../../lib/logger.js', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
-
-vi.mock('../../../../lib/workflowHelpers.js', () => ({
-  getInitialStepName: vi.fn().mockResolvedValue('assessment'),
-  getWorkflowSteps:   vi.fn().mockResolvedValue([]),
-}))
-
-// ── Import after mocks ────────────────────────────────────────────────────────
+vi.mock('../../../../lib/workflowHelpers.js', () => ({ getInitialStepName: vi.fn().mockResolvedValue('assessment'), getWorkflowSteps: vi.fn().mockResolvedValue([]) }))
+const nextSequenceValue = vi.fn(async () => 42)
+const nextSequenceBlock = vi.fn(async (_s: unknown, _t: string, _k: string, count: number) => 40 + count)
+vi.mock('../../../../lib/sequence.js', () => ({ nextSequenceValue, nextSequenceBlock }))
 
 const { getNextTaskCodes, nextChangeCode } = await import('../helpers.js')
 const { runQuery } = await import('../../ci-utils.js')
+const session = {} as never
 
-const mockSession = {} as never
+beforeEach(() => vi.clearAllMocks())
 
-describe('getNextTaskCodes', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('nessun task esistente → primo code TASK00000001', async () => {
-    vi.mocked(runQuery).mockResolvedValue([] as never)
-
-    await expect(getNextTaskCodes(mockSession, 'tenant-1', 1)).resolves.toEqual(['TASK00000001'])
-  })
-
-  it('esistente TASK00000041 → il prossimo è TASK00000042', async () => {
-    vi.mocked(runQuery).mockResolvedValue([{ code: 'TASK00000041' }] as never)
-
-    await expect(getNextTaskCodes(mockSession, 'tenant-1', 1)).resolves.toEqual(['TASK00000042'])
-  })
-
-  it('batch: count 3 → sequenza consecutiva a partire dal successivo', async () => {
-    vi.mocked(runQuery).mockResolvedValue([{ code: 'TASK00000041' }] as never)
-
-    await expect(getNextTaskCodes(mockSession, 'tenant-1', 3)).resolves.toEqual([
-      'TASK00000042', 'TASK00000043', 'TASK00000044',
-    ])
-  })
-
-  it('tutti i code rispettano il formato TASK + 8 cifre', async () => {
-    vi.mocked(runQuery).mockResolvedValue([{ code: 'TASK00000007' }] as never)
-
-    const codes = await getNextTaskCodes(mockSession, 'tenant-1', 2)
-    for (const code of codes) expect(code).toMatch(/^TASK\d{8}$/)
-  })
-
-  it('code esistente con suffisso non numerico → riparte da 1 (fallback difensivo)', async () => {
-    vi.mocked(runQuery).mockResolvedValue([{ code: 'TASKlegacy' }] as never)
-
-    await expect(getNextTaskCodes(mockSession, 'tenant-1', 1)).resolves.toEqual(['TASK00000001'])
+describe('nextChangeCode', () => {
+  it('dal contatore atomico del tenant, nessuna lettura del massimo', async () => {
+    expect(await nextChangeCode(session, 't1')).toBe('CHG00000042')
+    expect(nextSequenceValue).toHaveBeenCalledWith(session, 't1', 'change')
+    expect(runQuery).not.toHaveBeenCalled()
   })
 })
 
-describe('nextChangeCode', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
+describe('getNextTaskCodes', () => {
+  it('un blocco contiguo riservato in una sola operazione', async () => {
+    expect(await getNextTaskCodes(session, 't1', 3)).toEqual(['TASK00000041', 'TASK00000042', 'TASK00000043'])
+    expect(nextSequenceBlock).toHaveBeenCalledWith(session, 't1', 'task', 3)
+    expect(runQuery).not.toHaveBeenCalled()
   })
-
-  it('nessun change esistente (maxNum 0) → CHG00000001', async () => {
-    vi.mocked(runQuery).mockResolvedValue([{ maxNum: 0 }] as never)
-
-    await expect(nextChangeCode(mockSession, 'tenant-1')).resolves.toBe('CHG00000001')
-  })
-
-  it('max esistente 41 → CHG00000042', async () => {
-    vi.mocked(runQuery).mockResolvedValue([{ maxNum: 41 }] as never)
-
-    await expect(nextChangeCode(mockSession, 'tenant-1')).resolves.toBe('CHG00000042')
-  })
-
-  it('query senza righe → parte comunque da CHG00000001', async () => {
-    vi.mocked(runQuery).mockResolvedValue([] as never)
-
-    await expect(nextChangeCode(mockSession, 'tenant-1')).resolves.toBe('CHG00000001')
+  it('zero task → nessun codice e nessun contatore toccato', async () => {
+    expect(await getNextTaskCodes(session, 't1', 0)).toEqual([])
+    expect(nextSequenceBlock).not.toHaveBeenCalled()
   })
 })

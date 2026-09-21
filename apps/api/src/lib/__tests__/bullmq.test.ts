@@ -18,7 +18,17 @@ class FakeQueue extends EventEmitter {
 // implementation is a `function`/class, not an arrow function.
 vi.mock('bullmq', () => ({
   Worker: vi.fn(function (name: string, processor: unknown, opts: Record<string, unknown>) { return new FakeWorker(name, processor, opts) }),
-  Queue:  vi.fn(function (name: string, opts: Record<string, unknown>) { return new FakeQueue(name, opts) }),
+  /*
+   * `client` c'è anche nel finto: una `Queue` vera lo espone (è il getter di
+   * `QueueBase`), ed è da lì che si aggancia la ripresa dopo un guasto
+   * (21 set 2026, `PRB00000002`). Un finto senza `client` avrebbe provato un
+   * codice diverso da quello che gira.
+   */
+  Queue:  vi.fn(function (name: string, opts: Record<string, unknown>) {
+    const q = new FakeQueue(name, opts)
+    Object.defineProperty(q, 'client', { get: () => Promise.resolve(q) })
+    return q
+  }),
 }))
 
 const quit = vi.fn().mockResolvedValue('OK')
@@ -27,8 +37,9 @@ vi.mock('ioredis', () => ({
 }))
 
 const logError = vi.fn()
+const logWarn  = vi.fn()
 vi.mock('../logger.js', () => ({
-  logger: { child: () => ({ error: logError, info: vi.fn(), warn: vi.fn() }) },
+  logger: { child: () => ({ error: logError, info: vi.fn(), warn: logWarn }) },
 }))
 
 const { createWorker, getQueue, getAllQueues, closeAllQueues, getSharedRedis } = await import('../bullmq.js')
@@ -40,7 +51,24 @@ describe('createWorker', () => {
     const w = createWorker('q1', async () => undefined, { concurrency: 2 }) as unknown as FakeWorker
     expect(w.listenerCount('error')).toBe(1)
     expect(() => w.emit('error', new Error('ECONNRESET'))).not.toThrow()
-    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ worker: 'q1' }), expect.stringContaining('worker error'))
+    expect(logError).toHaveBeenCalledWith(
+      expect.objectContaining({ worker: 'q1' }), expect.stringContaining('connection lost'))
+  })
+
+  /*
+   * LA RIPETIZIONE NON SCRIVE UNA RIGA A TESTA (21 set 2026, `PRB00000002`).
+   *
+   * Prima qui c'era un `log.error` per ogni tentativo, e ioredis riprova
+   * senza sosta: un solo guasto di Redis ha scritto 728 righe sull'api in un
+   * giorno, 952 su tre processi. Vedi `lib/dipendenzaGiu.ts`.
+   */
+  it('cinquanta cadute uguali scrivono UNA riga, e la ripresa dice quante ne ha taciute', () => {
+    const w = createWorker('q-flood', async () => undefined) as unknown as FakeWorker
+    for (let i = 0; i < 50; i++) w.emit('error', new Error('getaddrinfo ENOTFOUND redis'))
+    expect(logError.mock.calls.filter((c) => String(c[1]).includes('connection lost'))).toHaveLength(1)
+    w.emit('ready')
+    expect(logWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ worker: 'q-flood', taciute: 49 }), expect.stringContaining('back up after'))
   })
 
   it("registra on('failed') con log strutturato e invoca onFailed", () => {

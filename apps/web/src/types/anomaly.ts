@@ -10,11 +10,17 @@ export interface Anomaly {
   entitySubtype:    string
   entityName:       string
   description:      string
+  /** Parametri della frase (null su un'anomalia storica non più riscansionata). */
+  descriptionParams: Array<{ key: string; value: string }> | null
   detectedAt:       string
   resolvedAt:       string | null
   resolutionStatus: string | null
   resolutionNote:   string | null
   resolvedBy:       string | null
+  /** G-ANO-8: il nome di chi l'ha risolta (l'id da solo non si mostra). */
+  resolvedByName:   string | null
+  /** Perché lo scan l'ha chiusa: `not_detected` o `rule_disabled`. */
+  resolvedReason?:  string | null
 }
 
 export interface AnomalyStats {

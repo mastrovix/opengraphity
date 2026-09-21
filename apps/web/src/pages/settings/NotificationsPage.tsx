@@ -1,14 +1,14 @@
 import { useId, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
-import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { Modal } from '@/components/Modal'
 import { Bell } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
-import { lookupStyle } from '@/lib/tokens'
+import { lookupStyle, colors, palette, vendorColors } from '@/lib/tokens'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useTranslation } from 'react-i18next'
+import { showError } from '@/lib/showError'
 
 const GET_NOTIFICATION_CHANNELS = gql`
   query GetNotificationChannels {
@@ -42,14 +42,15 @@ const TEST_NOTIFICATION_CHANNEL = gql`
   }
 `
 
+/** Etichette come CHIAVI: la casella si legge nella lingua del cliente. */
 const ALL_EVENTS = [
-  { value: 'sla_breach',      label: 'SLA Breach',           defaultOn: true  },
-  { value: 'escalation',      label: 'Escalation',           defaultOn: true  },
-  { value: 'assigned',        label: 'Assegnazione a me',    defaultOn: true  },
-  { value: 'resolved',        label: 'Risoluzione incident', defaultOn: false },
-  { value: 'change_approved',       label: 'Change approvato',           defaultOn: false },
-  { value: 'change_failed',         label: 'Change fallito',             defaultOn: false },
-  { value: 'change_task_assigned',  label: 'Task assessment assegnato',  defaultOn: false },
+  { value: 'sla_breach',           labelKey: 'pages.notifications.event.slaBreach',         defaultOn: true  },
+  { value: 'escalation',           labelKey: 'pages.notifications.event.escalation',        defaultOn: true  },
+  { value: 'assigned',             labelKey: 'pages.notifications.event.assignedToMe',      defaultOn: true  },
+  { value: 'resolved',             labelKey: 'pages.notifications.event.incidentResolved',  defaultOn: false },
+  { value: 'change_approved',      labelKey: 'pages.notifications.event.changeApproved',    defaultOn: false },
+  { value: 'change_failed',        labelKey: 'pages.notifications.event.changeFailed',      defaultOn: false },
+  { value: 'change_task_assigned', labelKey: 'pages.notifications.event.assessmentAssigned', defaultOn: false },
 ]
 
 interface Channel {
@@ -80,8 +81,8 @@ const defaultForm = (): FormState => ({
 })
 
 const PLATFORM_BADGE: Record<string, { bg: string; color: string }> = {
-  slack: { bg: '#f0f4ff', color: '#4a154b' },
-  teams: { bg: '#f0f4ff', color: '#464eb8' },
+  slack: { bg: palette.info.bg, color: vendorColors.slack },
+  teams: { bg: palette.info.bg, color: vendorColors.teams },
 }
 
 export default function NotificationsPage() {
@@ -135,7 +136,7 @@ export default function NotificationsPage() {
       }
     } catch (e) {
       // Il dialog resta aperto: l'utente non perde i dati inseriti.
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
       return
     }
     setDialogOpen(false)
@@ -147,7 +148,7 @@ export default function NotificationsPage() {
     try {
       await deleteChannel({ variables: { id } })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
       return
     }
     void refetch()
@@ -159,7 +160,7 @@ export default function NotificationsPage() {
       const res = await testChannel({ variables: { id } })
       setTestResult((p) => ({ ...p, [id]: (res.data as { testNotificationChannel?: boolean } | null)?.testNotificationChannel ?? false }))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
       setTestResult((p) => ({ ...p, [id]: false }))
     }
   }
@@ -177,19 +178,19 @@ export default function NotificationsPage() {
     <PageContainer>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <PageTitle icon={<Bell size={22} color="var(--color-icon-accent)" />}>
-          Notifiche
+          {t('sidebar.notifications')}
         </PageTitle>
         <button type="button"
           onClick={openCreate}
-          style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#fff', background: 'var(--color-brand)', border: 'none', borderRadius: 6, padding: '8px 16px', cursor: 'pointer' }}
+          style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.white, background: 'var(--color-brand)', border: 'none', borderRadius: 6, padding: '8px 16px', cursor: 'pointer' }}
         >
-          + Aggiungi canale
+          + {t('pages.notifications.addChannel')}
         </button>
       </div>
 
       {channels.length === 0 ? (
         <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', padding: '40px 0', textAlign: 'center' }}>
-          Nessun canale configurato. Aggiungi Slack o Teams per ricevere notifiche.
+          {t('pages.notifications.empty')}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -197,7 +198,7 @@ export default function NotificationsPage() {
             const pb = lookupStyle(PLATFORM_BADGE, ch.platform, 'PLATFORM_BADGE')
             const tr = testResult[ch.id]
             return (
-              <div key={ch.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', background: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div key={ch.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '14px 16px', background: colors.white, display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', padding: '2px 8px', borderRadius: 4, background: pb.bg, color: pb.color }}>
                   {ch.platform}
                 </span>
@@ -205,11 +206,11 @@ export default function NotificationsPage() {
                   <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{ch.name}</div>
                   <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>{ch.eventTypes.join(', ')}</div>
                 </div>
-                {tr === true  && <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-success)' }}>✓ Inviato</span>}
-                {tr === false && <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>✗ Errore</span>}
-                <button type="button" onClick={() => void handleTest(ch.id)}   style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Testa</button>
-                <button type="button" onClick={() => openEdit(ch)}              style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Modifica</button>
-                <button type="button" onClick={() => void handleDelete(ch.id)}  style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)', background: 'none', border: '1px solid #fee2e2', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>Elimina</button>
+                {tr === true  && <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-success)' }}>{t('pages.notifications.testSent')}</span>}
+                {tr === false && <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>{t('pages.notifications.testFailed')}</span>}
+                <button type="button" onClick={() => void handleTest(ch.id)}   style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>{t('pages.notifications.test')}</button>
+                <button type="button" onClick={() => openEdit(ch)}              style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>{t('common.edit')}</button>
+                <button type="button" onClick={() => void handleDelete(ch.id)}  style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)', background: 'none', border: `1px solid ${palette.danger.tint}`, borderRadius: 5, padding: '5px 10px', cursor: 'pointer' }}>{t('common.delete')}</button>
               </div>
             )
           })}
@@ -219,23 +220,23 @@ export default function NotificationsPage() {
       <Modal
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        title={editingId ? 'Modifica canale' : 'Aggiungi canale'}
+        title={t(editingId ? 'pages.notifications.editChannel' : 'pages.notifications.addChannel')}
         footer={
           <>
-            <button type="button" onClick={() => setDialogOpen(false)} style={{ fontSize: 'var(--font-size-card-title)', padding: '8px 16px', border: '1px solid var(--border)', borderRadius: 6, background: '#fff', color: 'var(--color-slate)', cursor: 'pointer' }}>Annulla</button>
-            <button type="button" onClick={() => void handleSave()} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)', color: '#fff', cursor: 'pointer' }}>Salva</button>
+            <button type="button" onClick={() => setDialogOpen(false)} style={{ fontSize: 'var(--font-size-card-title)', padding: '8px 16px', border: '1px solid var(--border)', borderRadius: 6, background: colors.white, color: 'var(--color-slate)', cursor: 'pointer' }}>{t('common.cancel')}</button>
+            <button type="button" onClick={() => void handleSave()} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '8px 16px', border: 'none', borderRadius: 6, background: 'var(--color-brand)', color: colors.white, cursor: 'pointer' }}>{t('common.save')}</button>
           </>
         }
       >
         <div style={{ marginBottom: 14 }}>
-          <div id={`${fid}-platform`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>Platform</div>
+          <div id={`${fid}-platform`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>{t('pages.notifications.platform')}</div>
           <div role="group" aria-labelledby={`${fid}-platform`} style={{ display: 'flex', gap: 8 }}>
             {['slack', 'teams'].map((p) => (
               <button type="button"
                 key={p}
                 aria-pressed={form.platform === p}
                 onClick={() => setForm((f) => ({ ...f, platform: p }))}
-                style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '6px 18px', borderRadius: 6, cursor: 'pointer', border: '2px solid', borderColor: form.platform === p ? 'var(--color-brand)' : 'var(--border)', background: form.platform === p ? '#eff0ff' : '#fff', color: form.platform === p ? 'var(--color-brand)' : 'var(--color-slate)' }}
+                style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, padding: '6px 18px', borderRadius: 6, cursor: 'pointer', border: '2px solid', borderColor: form.platform === p ? 'var(--color-brand)' : 'var(--border)', background: form.platform === p ? palette.info.bg : colors.white, color: form.platform === p ? 'var(--color-brand)' : 'var(--color-slate)' }}
               >
                 {p.charAt(0).toUpperCase() + p.slice(1)}
               </button>
@@ -244,63 +245,63 @@ export default function NotificationsPage() {
         </div>
 
         <div style={{ marginBottom: 14 }}>
-          <label htmlFor={`${fid}-name`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>Nome</label>
+          <label htmlFor={`${fid}-name`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>{t('common.name')}</label>
           <input
             id={`${fid}-name`}
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
+            style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, boxSizing: 'border-box' }}
           />
         </div>
 
         {form.platform === 'slack' && (
           <>
             <div style={{ marginBottom: 14 }}>
-              <label htmlFor={`${fid}-slack-webhook`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>Webhook URL</label>
+              <label htmlFor={`${fid}-slack-webhook`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>{t('pages.notifications.webhookUrl')}</label>
               <input
                 id={`${fid}-slack-webhook`}
                 value={form.webhookUrl}
                 onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))}
                 placeholder="https://hooks.slack.com/services/..."
-                style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
+                style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, boxSizing: 'border-box' }}
               />
             </div>
             <div style={{ marginBottom: 14 }}>
               <label htmlFor={`${fid}-channel-id`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>
-                Channel ID <span style={{ fontWeight: 400, color: 'var(--color-slate-light)' }}>(Bot API)</span>
+                {t('pages.notifications.channelId')} <span style={{ fontWeight: 400, color: 'var(--color-slate-light)' }}>{t('pages.notifications.channelIdProtocol')}</span>
               </label>
               <input
                 id={`${fid}-channel-id`}
                 value={form.channelId}
                 onChange={(e) => setForm((f) => ({ ...f, channelId: e.target.value }))}
                 placeholder="C0XXXXXXXXX"
-                style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
+                style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, boxSizing: 'border-box' }}
               />
-              <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4 }}>Usa Webhook URL per canali pubblici, Channel ID se hai configurato il Bot Token</div>
+              <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('pages.notifications.slackHint')}</div>
             </div>
           </>
         )}
 
         {form.platform === 'teams' && (
           <div style={{ marginBottom: 14 }}>
-            <label htmlFor={`${fid}-teams-webhook`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>Webhook URL *</label>
+            <label htmlFor={`${fid}-teams-webhook`} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 6 }}>{t('pages.notifications.webhookUrlRequired')}</label>
             <input
               id={`${fid}-teams-webhook`}
               value={form.webhookUrl}
               onChange={(e) => setForm((f) => ({ ...f, webhookUrl: e.target.value }))}
               placeholder="https://outlook.office.com/webhook/..."
-              style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, boxSizing: 'border-box' }}
+              style={{ width: '100%', fontSize: 'var(--font-size-card-title)', padding: '8px 10px', border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, boxSizing: 'border-box' }}
             />
           </div>
         )}
 
         <fieldset style={{ marginBottom: 20, border: 'none', padding: 0, margin: '0 0 20px' }}>
-          <legend style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 8, padding: 0 }}>Eventi da notificare</legend>
+          <legend style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 8, padding: 0 }}>{t('pages.notifications.eventsToNotify')}</legend>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {ALL_EVENTS.map((ev) => (
               <label key={ev.value} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer' }}>
                 <input type="checkbox" checked={form.eventTypes.includes(ev.value)} onChange={() => toggleEvent(ev.value)} />
-                {ev.label}
+                {t(ev.labelKey)}
               </label>
             ))}
           </div>

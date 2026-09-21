@@ -1,17 +1,30 @@
-# Prometheus — scrapes the OpenGraphity API (G-15).
+# Prometheus — scrapes the OpenGraphity API and worker processes (G-15).
 # Metric names: apps/api/src/middleware/metrics.ts
 #   http_requests_total{method,route,status_code}          counter
 #   http_request_duration_seconds{method,route}            histogram
 #   graphql_resolver_duration_seconds{resolver}            histogram
 #   neo4j_query_duration_seconds{operation}                histogram
-#   bullmq_queue_depth{queue,status}                       gauge (30s sampling)
+#   bullmq_queue_depth{queue,status}                       gauge (30s sampling, api only: every queue of lib/queueRegistry.ts)
 #   opengrafo_backup_runs_total{result}                    counter (ok | backup_failed | verify_failed)
 #   opengrafo_backup_last_success_timestamp_seconds        gauge
+#   events_* / event_* / service_* / redis_lock_*          Event Management + Servizi monitorati (docs/OPERATIONS.md §7)
 # The dashboard provisioned in Grafana (infra/grafana/dashboards) reads these.
+#
+# Processes (revisione 2 · D1.1): with WORKER_PROFILE=api the API no longer
+# runs the alert pipeline — its counters and gauges (events_received_total,
+# events_correlated_total, event_storms_active, events_overdue_delayed, …)
+# are incremented in the `events-worker` process, which serves the same
+# GET /metrics. Every process is a target; the rules and the dashboard
+# aggregate with sum()/max() across them.
 
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+
+# Alerting rules (revisione 2 · D7.1): infra/prometheus/alerts.yml, mounted by
+# docker-compose.yml. Verify: GET http://127.0.0.1:9090/api/v1/rules.
+rule_files:
+  - /etc/prometheus/alerts.yml
 
 scrape_configs:
   - job_name: opengraphity-api
@@ -27,6 +40,12 @@ scrape_configs:
       - targets: ["api:4000"]
         labels:
           service: api
+      - targets: ["events-worker:4000"]
+        labels:
+          service: events-worker
+      - targets: ["worker:4000"]
+        labels:
+          service: worker
 
   - job_name: prometheus
     static_configs:

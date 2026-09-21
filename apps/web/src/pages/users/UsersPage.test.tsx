@@ -4,7 +4,7 @@ import { UsersPage } from './UsersPage'
 import { exportToCsv } from '@/lib/csvExport'
 import { GET_USERS } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
-import { teamsMock, type UserRowFixture } from '@/test/mocks/gql'
+import { teamsMock, meMock, rolesMock, type UserRowFixture } from '@/test/mocks/gql'
 
 vi.mock('@/lib/csvExport', () => ({ exportToCsv: vi.fn() }))
 
@@ -18,7 +18,7 @@ const USERS: UserRowFixture[] = [
 function usersAnySort(users = USERS): GqlMock {
   return {
     request: { query: GET_USERS, variables: () => true },
-    result: { data: { users: users.map((u) => ({ __typename: 'User', teams: [], ...u })) } },
+    result: { data: { users: users.map((u) => ({ __typename: 'User', teams: [], roleName: null, active: true, ...u })) } },
     maxUsageCount: Number.POSITIVE_INFINITY,
   }
 }
@@ -28,9 +28,11 @@ const names = () => bodyRows().map((r) => within(r).getAllByRole('cell')[0]!.tex
 
 async function applyRoleFilter(user: ReturnType<typeof renderWithProviders>['user'], role: string) {
   await user.click(screen.getByRole('button', { name: /Advanced filters/ }))
-  await user.click(screen.getByRole('button', { name: '+ Add filter' }))
+  await user.click(screen.getByRole('button', { name: 'Add filter' }))
   const [fieldSelect] = screen.getAllByRole('combobox')
   await user.selectOptions(fieldSelect!, 'role')
+  // le opzioni del ruolo sono i ruoli dell'organizzazione (ondata 7), che arrivano dalla query
+  await waitFor(() => expect(within(screen.getAllByRole('combobox')[2]!).queryByRole('option', { name: 'Admin' })).not.toBeNull())
   const selects = screen.getAllByRole('combobox')
   expect(selects).toHaveLength(3)                 // campo, operatore, valore
   expect(selects[1]).toHaveValue('equals')
@@ -42,7 +44,7 @@ beforeEach(() => { vi.mocked(exportToCsv).mockClear() })
 
 describe('UsersPage', () => {
   it('elenca gli utenti con ruolo e conteggio', async () => {
-    renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock()], route: '/users' })
+    renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock(), meMock('admin', { maxUsageCount: Number.POSITIVE_INFINITY }), rolesMock()], route: '/users' })
     expect(await screen.findByText('Mario Rossi')).toBeInTheDocument()
     expect(names()).toEqual(['Mario Rossi', 'Anna Bianchi', 'Luca Verdi'])
     expect(screen.getByText('3 users')).toBeInTheDocument()
@@ -50,17 +52,17 @@ describe('UsersPage', () => {
   })
 
   it('il filtro avanzato è applicato client-side: riduce le righe e il conteggio', async () => {
-    const { user } = renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock()], route: '/users' })
+    const { user } = renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock(), meMock('admin', { maxUsageCount: Number.POSITIVE_INFINITY }), rolesMock()], route: '/users' })
     await screen.findByText('Mario Rossi')
     await applyRoleFilter(user, 'operator')
     await waitFor(() => expect(names()).toEqual(['Anna Bianchi']))
-    expect(screen.getByText('1 users')).toBeInTheDocument()
+    expect(screen.getByText('1 user')).toBeInTheDocument()
     // il filtro finisce nella URL (persistInQuery) e la pagina torna alla prima
     expect(screen.getByTestId('location').textContent).toMatch(/^\/users\?filters=/)
   })
 
   it('Reset del filtro ripristina tutte le righe', async () => {
-    const { user } = renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock()], route: '/users' })
+    const { user } = renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock(), meMock('admin', { maxUsageCount: Number.POSITIVE_INFINITY }), rolesMock()], route: '/users' })
     await screen.findByText('Mario Rossi')
     await applyRoleFilter(user, 'viewer')
     await waitFor(() => expect(names()).toEqual(['Luca Verdi']))
@@ -70,7 +72,7 @@ describe('UsersPage', () => {
   })
 
   it('l\'export CSV riceve le righe FILTRATE, non tutte', async () => {
-    const { user } = renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock()], route: '/users' })
+    const { user } = renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock(), meMock('admin', { maxUsageCount: Number.POSITIVE_INFINITY }), rolesMock()], route: '/users' })
     await screen.findByText('Mario Rossi')
     await applyRoleFilter(user, 'admin')
     await waitFor(() => expect(names()).toEqual(['Mario Rossi']))
@@ -84,7 +86,7 @@ describe('UsersPage', () => {
   })
 
   it('senza filtro l\'export contiene tutte le righe', async () => {
-    const { user } = renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock()], route: '/users' })
+    const { user } = renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock(), meMock('admin', { maxUsageCount: Number.POSITIVE_INFINITY }), rolesMock()], route: '/users' })
     await screen.findByText('Mario Rossi')
     await user.click(screen.getByRole('button', { name: 'Export CSV' }))
     await waitFor(() => expect(exportToCsv).toHaveBeenCalledTimes(1))
@@ -106,7 +108,7 @@ describe('UsersPage', () => {
   })
 
   it('click su una riga naviga al dettaglio utente', async () => {
-    const { user } = renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock()], route: '/users' })
+    const { user } = renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock(), meMock('admin', { maxUsageCount: Number.POSITIVE_INFINITY }), rolesMock()], route: '/users' })
     await user.click(await screen.findByText('Anna Bianchi'))
     expect(screen.getByTestId('location')).toHaveTextContent('/users/u2')
   })
@@ -120,14 +122,14 @@ describe('UsersPage', () => {
   })
 
   it('"New User" apre il modale con i campi obbligatori e Create disabilitato finché incompleto', async () => {
-    const { user } = renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock()], route: '/users' })
+    const { user } = renderWithProviders(<UsersPage />, { mocks: [usersAnySort(), teamsMock(), meMock('admin', { maxUsageCount: Number.POSITIVE_INFINITY }), rolesMock()], route: '/users' })
     await screen.findByText('Mario Rossi')
-    await user.click(screen.getByRole('button', { name: '+ New User' }))
+    await user.click(screen.getByRole('button', { name: 'New User' }))
     const dialog = await screen.findByRole('dialog', { name: 'New user' })
     expect(within(dialog).getByRole('button', { name: 'Create' })).toBeDisabled()
-    await user.type(within(dialog).getByPlaceholderText('mario@acme.com'), 'x@y.z')
-    await user.type(within(dialog).getByPlaceholderText('Mario'), 'X')
-    await user.type(within(dialog).getByPlaceholderText('Rossi'), 'Y')
+    await user.type(within(dialog).getByPlaceholderText('jane@acme.com'), 'x@y.z')
+    await user.type(within(dialog).getByPlaceholderText('Jane'), 'X')
+    await user.type(within(dialog).getByPlaceholderText('Smith'), 'Y')
     await user.type(within(dialog).getByPlaceholderText('At least 8 characters'), 'password1')
     expect(within(dialog).getByRole('button', { name: 'Create' })).toBeEnabled()
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))

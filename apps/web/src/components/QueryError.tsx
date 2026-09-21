@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, RotateCw } from 'lucide-react'
+import { colors, palette } from '@/lib/tokens'
 
 interface Props {
   /** Error message shown under the title (optional, technical) */
@@ -16,8 +17,8 @@ interface Props {
 export function QueryError({ message, onRetry }: Props) {
   const { t } = useTranslation()
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '40px 20px', backgroundColor: '#fff', border: '1px solid var(--border)', borderRadius: 8, textAlign: 'center' }}>
-      <AlertTriangle size={28} color="var(--color-danger, #ef4444)" />
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '40px 20px', backgroundColor: colors.white, border: '1px solid var(--border)', borderRadius: 8, textAlign: 'center' }}>
+      <AlertTriangle size={28} color={colors.danger} />
       <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
         {t('queryError.title')}
       </div>
@@ -29,7 +30,7 @@ export function QueryError({ message, onRetry }: Props) {
       {onRetry && (
         <button type="button"
           onClick={onRetry}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '7px 16px', backgroundColor: '#fff', border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, padding: '7px 16px', backgroundColor: colors.white, border: `1px solid ${palette.neutral.borderStrong}`, borderRadius: 6, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)' }}
         >
           <RotateCw size={13} />
           {t('queryError.retry')}

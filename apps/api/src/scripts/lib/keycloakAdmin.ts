@@ -1,6 +1,6 @@
 /**
- * Client minimale per la Keycloak Admin REST API, condiviso da add-user.ts e
- * onboard-tenant.ts (prima era duplicato integralmente nei due script).
+ * Client minimale per la Keycloak Admin REST API, condiviso da add-user.ts,
+ * onboard-tenant.ts e dalla pagina Accesso dell'API (lib/tenantLogin.ts).
  *
  * Configurazione da env (keycloakConfigFromEnv):
  *   KEYCLOAK_URL            default http://localhost:8080 SOLO fuori produzione
@@ -31,6 +31,8 @@ export interface KeycloakAdmin {
   exists(token: string, path: string): Promise<boolean>
   post(token: string, path: string, body: unknown): Promise<{ id?: string; created: boolean }>
   put(token: string, path: string, body: unknown): Promise<void>
+  /** DELETE: errore su non 2xx; 404 = già assente, non è un errore. */
+  delete(token: string, path: string): Promise<void>
   /** PUT /users/{id}/reset-password. `temporary: true` obbliga il cambio al primo login. */
   setPassword(token: string, realm: string, userId: string, password: string, temporary: boolean): Promise<void>
 }
@@ -116,6 +118,12 @@ export function createKeycloakAdmin(config: KeycloakAdminConfig): KeycloakAdmin 
         body:    JSON.stringify(body),
       })
       if (!res.ok) throw new Error(`PUT ${path} → ${res.status}: ${await bodyText(res)}`)
+    },
+
+    async delete(token: string, path: string) {
+      const res = await doFetch(`${baseUrl}${path}`, { method: 'DELETE', headers: authHeaders(token) })
+      if (res.status === 404) return
+      if (!res.ok) throw new Error(`DELETE ${path} → ${res.status}: ${await bodyText(res)}`)
     },
 
     setPassword(token, realm, userId, password, temporary) {

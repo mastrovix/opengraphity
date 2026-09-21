@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { gql } from '@apollo/client'
 import {
   Search, Loader2, Server, GitPullRequest, AlertCircle, SearchCheck,
-  ClipboardList, BookOpen,
+  ClipboardList, BookOpen, Inbox,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { apolloClient } from '@/lib/apollo'
 import { keyActivate } from '@/lib/a11y'
 import { ciPath } from '@/lib/ciPath'
-import { layoutPalette as C } from '@/lib/tokens'
+import { layoutPalette as C, alpha, colors } from '@/lib/tokens'
 
 const GLOBAL_SEARCH = gql`
   query GlobalSearch($query: String!, $limit: Int) {
@@ -19,6 +19,7 @@ const GLOBAL_SEARCH = gql`
       changes    { id code title }
       incidents  { id number title }
       problems   { id number title }
+      serviceRequests { id number title }
       tasks      { id code taskType status changeCode changeId ciName }
       kbArticles { id title slug }
     }
@@ -36,11 +37,12 @@ interface GlobalSearchResults {
   changes:    SearchChange[]
   incidents:  SearchTicket[]
   problems:   SearchTicket[]
+  serviceRequests: SearchTicket[]
   tasks:      SearchTask[]
   kbArticles: SearchArticle[]
 }
 
-const EMPTY: GlobalSearchResults = { cis: [], changes: [], incidents: [], problems: [], tasks: [], kbArticles: [] }
+const EMPTY: GlobalSearchResults = { cis: [], changes: [], incidents: [], problems: [], serviceRequests: [], tasks: [], kbArticles: [] }
 
 interface FlatItem {
   key:      string
@@ -63,11 +65,12 @@ const GROUP_ICONS: Record<keyof GlobalSearchResults, LucideIcon> = {
   changes:    GitPullRequest,
   incidents:  AlertCircle,
   problems:   SearchCheck,
+  serviceRequests: Inbox,
   tasks:      ClipboardList,
   kbArticles: BookOpen,
 }
 
-const GROUP_ORDER: (keyof GlobalSearchResults)[] = ['cis', 'changes', 'incidents', 'problems', 'tasks', 'kbArticles']
+const GROUP_ORDER: (keyof GlobalSearchResults)[] = ['cis', 'changes', 'incidents', 'problems', 'serviceRequests', 'tasks', 'kbArticles']
 
 function toFlatItems(type: keyof GlobalSearchResults, results: GlobalSearchResults): FlatItem[] {
   switch (type) {
@@ -84,6 +87,8 @@ function toFlatItems(type: keyof GlobalSearchResults, results: GlobalSearchResul
       return results.incidents.map((i) => ({ key: `inc-${i.id}`, route: `/incidents/${i.id}`, primary: i.number, title: i.title }))
     case 'problems':
       return results.problems.map((p) => ({ key: `prb-${p.id}`, route: `/problems/${p.id}`, primary: p.number, title: p.title }))
+    case 'serviceRequests':
+      return results.serviceRequests.map((r) => ({ key: `req-${r.id}`, route: `/requests/${r.id}`, primary: r.number, title: r.title }))
     case 'tasks':
       return results.tasks.map((t) => ({
         key:     `task-${t.id}`,
@@ -113,6 +118,15 @@ export function GlobalSearch() {
   const [searchError, setSearchError] = useState<string | null>(null)
   const [open, setOpen]               = useState(false)
   const [selectedIdx, setSelectedIdx] = useState(0)
+
+  // Giro del 14 set 2026 (#54): la tendina restava aperta dopo la
+  // navigazione. Qualunque cambio di pagina la chiude, non solo la scelta di un
+  // risultato (un link nel menu, il tasto indietro).
+  const location = useLocation()
+  useEffect(() => {
+    setOpen(false)
+    setQuery('')
+  }, [location.pathname])
 
   // Cmd+K / Ctrl+K → focus sul box
   useEffect(() => {
@@ -234,7 +248,16 @@ export function GlobalSearch() {
           alignItems:   'center',
           gap:          8,
           height:       32,
-          width:        260,
+          /*
+            `width: 260` fisso spingeva la barra in alto fuori dallo schermo su
+            finestra stretta — misurato su /monitoring/health a 731px: il
+            gruppo di destra (ricerca 260 + campanella + utente) faceva 424px
+            dentro 491px, e la PAGINA scorreva di lato, barra laterale
+            compresa. 260 resta il massimo, non il minimo.
+          */
+          width:        '100%',
+          maxWidth:     260,
+          minWidth:     120,
           padding:      '0 10px',
           borderRadius: 6,
           border:       `1px solid ${C.border}`,
@@ -282,10 +305,10 @@ export function GlobalSearch() {
             width:         440,
             maxHeight:     '60vh',
             overflowY:     'auto',
-            background:    '#fff',
+            background:    colors.white,
             border:        '1px solid var(--border)',
             borderRadius:  10,
-            boxShadow:     '0 12px 40px rgba(0,0,0,0.2)',
+            boxShadow:     `0 12px 40px ${alpha.black20}`,
             zIndex:        60,
             padding:       '4px 0',
           }}
@@ -347,7 +370,7 @@ export function GlobalSearch() {
                       gap:             8,
                       padding:         '7px 14px',
                       cursor:          'pointer',
-                      backgroundColor: selected ? '#f1f5f9' : 'transparent',
+                      backgroundColor: selected ? colors.slateBg : 'transparent',
                       fontSize:        13,
                     }}
                   >

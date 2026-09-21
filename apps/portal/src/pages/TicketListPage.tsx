@@ -1,17 +1,29 @@
 import { useState } from 'react'
+import { valueColorStyle } from '@/lib/valueColor'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { PlusCircle } from 'lucide-react'
 import { GET_MY_TICKETS } from '@/graphql/queries'
+import { useTicketCategories } from '@/hooks/useTicketCategories'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { TICKET_POLL_INTERVAL_MS } from '@/lib/apollo'
 import { fmtDate } from '@/lib/format'
+import { colors, palette, alpha } from '@/lib/tokens'
+import { usePortalAccess } from '@/hooks/usePortalAccess'
 
 const PAGE_SIZE = 15
 
+/**
+ * Le schede mandano una CLASSE di stato, non il nome di un passo: l'API la
+ * traduce nei passi del workflow del tenant (`is_open`, `is_initial`,
+ * `is_terminal`, `category`). Prima qui c'era `open: 'open'`, confrontato per
+ * uguaglianza con `Incident.status`: nessun workflow definisce un passo
+ * chiamato `open`, quindi la scheda «Aperti» era vuota per costruzione — e non
+ * coincideva col contatore della home. Ora la sorgente è una sola.
+ */
 type FilterKey = 'all' | 'open' | 'inProgress' | 'resolved' | 'closed'
-const FILTER_STATUS: Record<FilterKey, string | null> = {
+const FILTER_CLASS: Record<FilterKey, string | null> = {
   all:        null,
   open:       'open',
   inProgress: 'in_progress',
@@ -19,26 +31,27 @@ const FILTER_STATUS: Record<FilterKey, string | null> = {
   closed:     'closed',
 }
 
-const PRIORITY_COLORS: Record<string, string> = {
-  high:   '#EF4444',
-  medium: '#F59E0B',
-  low:    '#22C55E',
-}
-
 interface Ticket {
-  id: string; title: string; status: string; priority: string
-  category: string; createdAt: string; updatedAt: string; assignedTeam: string | null
+  id: string; number: string
+  /** `incident` o `service_request`: il portale apre entrambi (revisione totale · H-2). */
+  type: string
+  title: string; status: string; priority: string; priorityLabel: string; priorityColor: string | null
+  /** Categoria ed etichetta del passo nel workflow del cliente (ondata 7 · D-15). */
+  statusCategory: string | null; statusLabel: string | null
+  category: string | null; createdAt: string; updatedAt: string; assignedTeam: string | null
 }
 
 export function TicketListPage() {
-  const { t }                     = useTranslation()
+  const { t, i18n }               = useTranslation()
+  const { canSubmit } = usePortalAccess()
+  const { labelOf: categoryLabel } = useTicketCategories()
   const [filter, setFilter]       = useState<FilterKey>('all')
   const [page, setPage]           = useState(1)
 
   // The list polls for status changes made by the IT team; nothing else does.
-  const { data, loading } = useQuery<{ myTickets: { items: Ticket[]; total: number } }>(
+  const { data, loading, error } = useQuery<{ myTickets: { items: Ticket[]; total: number } }>(
     GET_MY_TICKETS,
-    { variables: { status: FILTER_STATUS[filter], page, pageSize: PAGE_SIZE }, pollInterval: TICKET_POLL_INTERVAL_MS },
+    { variables: { status: FILTER_CLASS[filter], page, pageSize: PAGE_SIZE, language: i18n.resolvedLanguage ?? i18n.language }, pollInterval: TICKET_POLL_INTERVAL_MS },
   )
 
   const tickets   = data?.myTickets?.items ?? []
@@ -61,16 +74,16 @@ export function TicketListPage() {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 600, color: '#0F172A' }}>{t('nav.tickets')}</h1>
-        <Link
+        <h1 style={{ fontSize: 20, fontWeight: 600, color: colors.slateDark }}>{t('nav.tickets')}</h1>
+        {canSubmit && <Link
           to="/tickets/new"
           style={{
             display:         'inline-flex',
             alignItems:      'center',
             gap:             6,
             padding:         '9px 18px',
-            backgroundColor: '#0EA5E9',
-            color:           '#fff',
+            backgroundColor: colors.brand,
+            color:           colors.white,
             borderRadius:    8,
             fontSize:        14,
             fontWeight:      600,
@@ -79,11 +92,11 @@ export function TicketListPage() {
         >
           <PlusCircle size={15} />
           {t('ticket.new')}
-        </Link>
+        </Link>}
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid #E2E8F0', paddingBottom: 0 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: `1px solid ${colors.border}`, paddingBottom: 0 }}>
         {FILTERS.map(f => (
           <button
             key={f.key}
@@ -92,11 +105,11 @@ export function TicketListPage() {
               padding:         '8px 16px',
               background:      'none',
               border:          'none',
-              borderBottom:    filter === f.key ? '2px solid #0EA5E9' : '2px solid transparent',
+              borderBottom:    filter === f.key ? `2px solid ${colors.brand}` : '2px solid transparent',
               cursor:          'pointer',
               fontSize:        14,
               fontWeight:      filter === f.key ? 600 : 400,
-              color:           filter === f.key ? '#0EA5E9' : '#64748B',
+              color:           filter === f.key ? colors.brand : colors.slate,
               marginBottom:    -1,
             }}
           >
@@ -107,16 +120,24 @@ export function TicketListPage() {
 
       {/* Tickets list */}
       {loading ? (
-        <div style={{ padding: 32, textAlign: 'center', color: '#94A3B8' }}>{t('common.loading')}</div>
+        <div style={{ padding: 32, textAlign: 'center', color: colors.slateLight }}>{t('common.loading')}</div>
+      ) : error ? (
+        /* Fail-loud: se il workflow del tenant non dichiara nessun passo per la
+           classe scelta, l'API lo dice — e va detto in pagina, invece di
+           mostrare una lista vuota che si legge come «non hai ticket». */
+        <div role="alert" style={{ padding: '32px 24px', textAlign: 'center', color: palette.danger.text, backgroundColor: palette.danger.bg, border: `1px solid ${palette.danger.border}`, borderRadius: 10 }}>
+          <p style={{ fontWeight: 600, marginBottom: 8 }}>{t('ticket.filterError')}</p>
+          <p style={{ fontSize: 12 }}>{error.message}</p>
+        </div>
       ) : tickets.length === 0 ? (
-        <div style={{ padding: '48px 0', textAlign: 'center', color: '#94A3B8' }}>
+        <div style={{ padding: '48px 0', textAlign: 'center', color: colors.slateLight }}>
           <p style={{ marginBottom: 16 }}>{t(`ticket.empty.${filter}`)}</p>
-          <Link
+          {canSubmit && <Link
             to="/tickets/new"
-            style={{ color: '#0EA5E9', fontWeight: 500, fontSize: 10 }}
+            style={{ color: colors.brand, fontWeight: 500, fontSize: 12 }}
           >
             + {t('ticket.new')}
-          </Link>
+          </Link>}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -129,31 +150,34 @@ export function TicketListPage() {
                 alignItems:      'center',
                 gap:             16,
                 padding:         '14px 18px',
-                backgroundColor: '#fff',
-                border:          '1px solid #E2E8F0',
+                backgroundColor: colors.white,
+                border:          `1px solid ${colors.border}`,
                 borderRadius:    10,
                 textDecoration:  'none',
                 transition:      'box-shadow 0.15s, border-color 0.15s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#BAE6FD'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(14,165,233,0.08)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.boxShadow = 'none' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = palette.info.border; e.currentTarget.style.boxShadow = `0 2px 8px ${alpha.brand08}` }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.boxShadow = 'none' }}
             >
               {/* Priority indicator */}
               <div style={{
                 width:           4,
                 height:          40,
                 borderRadius:    4,
-                backgroundColor: PRIORITY_COLORS[ticket.priority] ?? '#94A3B8',
+                backgroundColor: valueColorStyle(ticket.priorityColor).base,
                 flexShrink:      0,
               }} />
 
               {/* Main info */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 10, fontWeight: 500, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
                   {ticket.title}
                 </div>
-                <div style={{ display: 'flex', gap: 12, fontSize: 10, color: '#94A3B8', flexWrap: 'wrap' }}>
-                  <span>{t(`ticket.category.${ticket.category}`, { defaultValue: ticket.category })}</span>
+                <div style={{ display: 'flex', gap: 12, fontSize: 12, color: colors.slateLight, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 600 }}>{ticket.number}</span>
+                  {/* Di che ticket si tratta: incident o richiesta dal catalogo (H-2). */}
+                  <span style={{ padding: '1px 6px', borderRadius: 100, backgroundColor: colors.slateBg }}>{t(`ticket.kind.${ticket.type}`)}</span>
+                  {ticket.category && <span>{categoryLabel(ticket.category)}</span>}
                   <span>{t('ticket.openedOn', { date: fmtDate(ticket.createdAt) })}</span>
                   <span>{t('ticket.updatedOn', { date: fmtDate(ticket.updatedAt) })}</span>
                   {ticket.assignedTeam && <span>→ {ticket.assignedTeam}</span>}
@@ -162,16 +186,16 @@ export function TicketListPage() {
 
               {/* Status + priority pill */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                <TicketStatusBadge status={ticket.status} />
+                <TicketStatusBadge status={ticket.status} statusCategory={ticket.statusCategory} statusLabel={ticket.statusLabel} />
                 <span style={{
                   fontSize:        11,
                   padding:         '1px 8px',
                   borderRadius:    100,
-                  backgroundColor: '#F1F5F9',
-                  color:           PRIORITY_COLORS[ticket.priority] ?? '#94A3B8',
+                  backgroundColor: colors.slateBg,
+                  color:           valueColorStyle(ticket.priorityColor).text,
                   fontWeight:      600,
                 }}>
-                  {t(`ticket.priority.${ticket.priority}`, { defaultValue: ticket.priority })}
+                  {ticket.priorityLabel}
                 </span>
               </div>
             </Link>
@@ -187,17 +211,17 @@ export function TicketListPage() {
             onClick={() => setPage(p => p - 1)}
             style={{
               padding:      '8px 18px',
-              border:       '1px solid #E2E8F0',
+              border:       `1px solid ${colors.border}`,
               borderRadius: 7,
-              background:   '#fff',
+              background:   colors.white,
               cursor:       page === 1 ? 'not-allowed' : 'pointer',
-              color:        page === 1 ? '#CBD5E1' : '#64748B',
+              color:        page === 1 ? palette.neutral.textDisabled : colors.slate,
               fontSize:     13,
             }}
           >
             {t('ticket.prev')}
           </button>
-          <span style={{ padding: '8px 0', fontSize: 10, color: '#94A3B8' }}>
+          <span style={{ padding: '8px 0', fontSize: 12, color: colors.slateLight }}>
             {page} / {totalPages}
           </span>
           <button
@@ -205,11 +229,11 @@ export function TicketListPage() {
             onClick={() => setPage(p => p + 1)}
             style={{
               padding:      '8px 18px',
-              border:       '1px solid #E2E8F0',
+              border:       `1px solid ${colors.border}`,
               borderRadius: 7,
-              background:   '#fff',
+              background:   colors.white,
               cursor:       page >= totalPages ? 'not-allowed' : 'pointer',
-              color:        page >= totalPages ? '#CBD5E1' : '#64748B',
+              color:        page >= totalPages ? palette.neutral.textDisabled : colors.slate,
               fontSize:     13,
             }}
           >

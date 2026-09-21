@@ -14,9 +14,11 @@ type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
 const workerOn = vi.fn()
 const queueAdd = vi.fn().mockResolvedValue(undefined)
+const getRepeatableJobs = vi.fn().mockResolvedValue([])
+const removeRepeatableByKey = vi.fn().mockResolvedValue(undefined)
 vi.mock('../../lib/bullmq.js', () => ({
   createWorker: vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => { processors.set(name, processor); return { name, opts, on: workerOn } }),
-  getQueue: vi.fn(() => ({ add: queueAdd })),
+  getQueue: vi.fn(() => ({ add: queueAdd, getRepeatableJobs: getRepeatableJobs, removeRepeatableByKey: removeRepeatableByKey })),
 }))
 
 interface Rec { get(k: string): unknown }
@@ -35,8 +37,10 @@ vi.mock('@opengraphity/neo4j', () => ({
     close,
   })),
   runQueryOne: (...a: unknown[]) => runQueryOne(...a),
+  runQuery: (...a: unknown[]) => runQuery(...a),
 }))
 
+const runQuery = vi.fn().mockResolvedValue([])
 const getConnector = vi.fn()
 const decryptCredentials = vi.fn()
 vi.mock('@opengraphity/discovery', () => ({
@@ -133,9 +137,11 @@ describe('processSyncJob — connettore che restituisce N risorse', () => {
 
     await expect(processor(job)).resolves.toBeUndefined()
 
-    // source lookup scopato per tenant
-    expect(runQueryOne.mock.calls[0]![1]).toContain('MATCH (s:SyncSource {id: $id, tenant_id: $tenantId})')
-    expect(runQueryOne.mock.calls[0]![2]).toEqual({ id: 'src-1', tenantId: 't1' })
+    // Revisione totale · D-5: prima si assicura il nodo dell'esecuzione (qui
+    // esiste già: l'ha creato la mutation), poi si legge la sorgente, scopata per tenant.
+    expect(runQueryOne.mock.calls[0]![1]).toContain('MATCH (r:SyncRun {id: $runId, tenant_id: $tenantId})')
+    expect(runQueryOne.mock.calls[1]![1]).toContain('MATCH (s:SyncSource {id: $id, tenant_id: $tenantId})')
+    expect(runQueryOne.mock.calls[1]![2]).toEqual({ id: 'src-1', tenantId: 't1' })
     expect(getConnector).toHaveBeenCalledWith('mock')
     expect(decryptCredentials).toHaveBeenCalledWith('ENCRYPTED-BLOB', 'a'.repeat(64))
 
@@ -275,10 +281,11 @@ describe('processSyncJob — errori di configurazione (permanenti: run failed, n
   })
 
   it('SyncSource non trovata nel tenant → rigetta; la SyncRun NON viene aggiornata (resta nello stato del resolver)', async () => {
-    runQueryOne.mockResolvedValue(null)
+    runQueryOne.mockResolvedValueOnce({ id: 'run-1' }).mockResolvedValue(null)
     await expect(processor(makeJob().job)).rejects.toThrow('SyncSource src-1 not found')
     expect(runWrites()).toHaveLength(0)
-    expect(close).toHaveBeenCalledOnce()
+    // Due sessioni chiuse: quella del nodo dell'esecuzione (D-5) e quella della sorgente.
+    expect(close).toHaveBeenCalledTimes(2)
   })
 })
 
@@ -294,6 +301,9 @@ describe('startSyncWorker / loadScheduledSyncs', () => {
     readRows = [{ id: 'src-1', tenantId: 't1', cron: '0 */6 * * *' }, { id: 'src-2', tenantId: 't2', cron: '30 2 * * *' }]
 
     await loadScheduledSyncs()
+    // Revisione totale · D-6: prima di registrarlo si toglie l'eventuale
+    // repeat job vecchio, così un cron cambiato non ne lascia due.
+    expect(getRepeatableJobs).toHaveBeenCalledTimes(2)
 
     expect(queueAdd).toHaveBeenCalledTimes(2)
     expect(queueAdd).toHaveBeenCalledWith(

@@ -9,6 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type express from 'express'
+import { perms } from '../lib/__tests__/testPermissions.js'
 
 const resolveAuth = vi.fn()
 vi.mock('../auth/resolveAuth.js', () => ({ resolveAuth: (token: string, req: unknown) => resolveAuth(token, req) }))
@@ -22,7 +23,7 @@ vi.mock('../lib/logger.js', () => ({
 const { buildContext } = await import('../context.js')
 const { authMiddleware } = await import('../middleware/auth.js')
 
-const CTX = { tenantId: 'tenant-a', userId: 'u-1', userEmail: 'alice@acme.io', role: 'operator' as const }
+const CTX = { tenantId: 'tenant-a', userId: 'u-1', userEmail: 'alice@acme.io', role: 'operator', permissions: perms('operator') as const }
 const makeReq = (headers: Record<string, string> = {}): express.Request => ({ headers } as unknown as express.Request)
 const unauthorized = (msg: string) => new GraphQLError(msg, { extensions: { code: 'UNAUTHORIZED' } })
 
@@ -117,7 +118,7 @@ describe('authMiddleware', () => {
     const out = await runMiddleware({ authorization: 'Bearer kc-token' })
 
     expect(out.nextCalled).toBe(true)
-    expect(out.req.user).toEqual({ tenantId: 'tenant-a', userId: 'u-1', email: 'alice@acme.io', role: 'operator' })
+    expect(out.req.user).toEqual({ tenantId: 'tenant-a', userId: 'u-1', email: 'alice@acme.io', role: 'operator', permissions: perms('operator') })
     expect(resolveAuth).toHaveBeenCalledWith('kc-token', out.req)
   })
 

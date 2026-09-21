@@ -10,6 +10,7 @@
  * numeri/hex, non `var(--…)`.
  */
 import { cssVar, cssVarPx } from './cssVar'
+import i18n from '@/i18n/i18n'
 
 // ── Dati ─────────────────────────────────────────────────────────────────────
 
@@ -48,12 +49,12 @@ export function chartPalette(): string[] {
     cssVar('--color-trigger-automatic'),
     cssVar('--color-warning'),
     cssVar('--color-danger'),
-    '#8b5cf6',
-    '#06b6d4',
-    '#84cc16',
+    cssVar('--color-purple-light'),
+    cssVar('--color-teal-light'),
+    cssVar('--color-lime'),
     cssVar('--color-trigger-timer'),
-    '#0d9488',
-    '#ec4899',
+    cssVar('--color-teal'),
+    cssVar('--color-pink'),
   ]
 }
 
@@ -122,18 +123,43 @@ function itemColor(style: ChartStyle, i: number, palette: string[]): string {
   return style.color ?? palette[i % palette.length]!
 }
 
+
+/*
+ * SPAZIO PER L'ETICHETTA DEL VALORE (20 set 2026, dal giro nel browser: «la
+ * linea mostra i valori ma non si vedono bene, alcuni tagliati»).
+ *
+ * L'etichetta sta SOPRA il punto, e la griglia arrivava fin sotto il bordo:
+ * il valore del punto più alto finiva mezzo fuori. Con le etichette accese
+ * la griglia si abbassa di una riga di testo — e ai lati un po' d'aria, se
+ * no il primo e l'ultimo valore escono dal riquadro.
+ */
+function grigliaConEtichette(
+  griglia: Record<string, unknown>, mostraValori: boolean | undefined,
+): Record<string, unknown> {
+  if (!mostraValori) return griglia
+  return {
+    ...griglia,
+    top:   Number(griglia['top'] ?? 0) + 20,
+    left:  Number(griglia['left'] ?? 0) + 8,
+    right: Number(griglia['right'] ?? 0) + 8,
+  }
+}
+
 // ── Builder ──────────────────────────────────────────────────────────────────
 
-export function buildBarOption(points: ChartPoint[], style: ChartStyle = {}) {
+export function buildBarOption(points: ChartPoint[], style: ChartStyle & { locale?: string; granularita?: string | null } = {}) {
   const t = theme()
   const compact = style.compact ?? false
   const palette = chartPalette()
+  // Anche un istogramma può essere raggruppato per mese: stesse etichette.
+  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en', { granularita: style.granularita })
+    ?? points.map((p) => p.label)
   return {
     tooltip: tooltip('axis', { axisPointer: { type: 'shadow' } }),
-    grid: compact
+    grid: grigliaConEtichette(compact
       ? { top: 12, right: 12, bottom: 20, left: 40, containLabel: true }
-      : { left: 16, right: 16, bottom: 48, top: 16, containLabel: true },
-    xAxis: categoryAxis(points.map((p) => p.label), compact, points.length > 6 ? 30 : 0),
+      : { left: 16, right: 16, bottom: 48, top: 16, containLabel: true }, style.showValueLabels),
+    xAxis: categoryAxis(etichette, compact, points.length > 6 ? 30 : 0),
     yAxis: valueAxis(compact),
     series: [{
       type: 'bar',
@@ -146,11 +172,13 @@ export function buildBarOption(points: ChartPoint[], style: ChartStyle = {}) {
   }
 }
 
-export function buildHorizontalBarOption(points: ChartPoint[], style: ChartStyle = {}) {
+export function buildHorizontalBarOption(points: ChartPoint[], style: ChartStyle & { locale?: string; granularita?: string | null } = {}) {
   const t = theme()
   const compact = style.compact ?? false
   const palette = chartPalette()
-  const rev = [...points].reverse()
+  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en', { unaRiga: true, granularita: style.granularita })
+  const conEtichette = etichette === null ? points : points.map((p, i) => ({ ...p, label: etichette[i]! }))
+  const rev = [...conEtichette].reverse()
   return {
     tooltip: tooltip('axis', { axisPointer: { type: 'shadow' } }),
     grid: { left: 16, right: 60, bottom: 16, top: 16, containLabel: true },
@@ -167,16 +195,84 @@ export function buildHorizontalBarOption(points: ChartPoint[], style: ChartStyle
   }
 }
 
-export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area?: boolean } = {}) {
+/**
+ * LE ETICHETTE DI UN ASSE TEMPORALE, come le scrive un foglio di calcolo
+ * (19 set 2026).
+ *
+ * Il server manda date ISO — `2026-01-01`, `2026-02-01`, … — e l'asse le
+ * stampava tutte per intero, una sopra l'altra: nove etichette da dieci
+ * caratteri in uno spazio da tre. Il proprietario: «non si capisce nulla, in
+ * questi casi l'anno dovrebbe stare in basso e ogni mese mostrare solo il
+ * mese, come farebbe Excel».
+ *
+ * Quindi: il PERIODO sulla prima riga (gen, feb… oppure «6 apr» per i giorni)
+ * e l'ANNO sulla seconda, ma SOLO quando cambia — cioè sul primo punto e a
+ * ogni capodanno. È esattamente l'asse a due livelli dei fogli di calcolo, e
+ * si ottiene con un `\n` dentro l'etichetta.
+ *
+ * Il periodo si riconosce dai DATI e non da un parametro: se ogni data è il
+ * primo del mese la serie è mensile. Così vale anche per un grafico salvato
+ * prima che il periodo esistesse, e per i widget della dashboard, che la
+ * configurazione della sezione non ce l'hanno.
+ */
+export function etichetteTemporali(
+  labels: readonly string[], locale: string,
+  opts: { unaRiga?: boolean; granularita?: string | null } = {},
+): string[] | null {
+  const ISO = /^(\d{4})-(\d{2})-(\d{2})$/
+  const pezzi = labels.map((l) => ISO.exec(l))
+  if (labels.length === 0 || pezzi.some((m) => m === null)) return null
+
+  /*
+   * IL PERIODO, SE LO SAPPIAMO, LO DICE CHI CHIAMA.
+   *
+   * Il costruttore e il dettaglio del report conoscono `groupByGranularity`:
+   * passarlo toglie ogni indovinello. Con un solo punto l'inferenza sbagliava
+   * — una torta raggruppata PER ANNO con un anno solo di dati mostrava «gen
+   * 2026» invece di «2026» (visto nel browser il 19 set).
+   *
+   * L'inferenza resta per chi quel dato non ce l'ha: i widget della dashboard
+   * e le sezioni salvate prima che il periodo esistesse.
+   */
+  const annuale = opts.granularita === 'year'
+    || (opts.granularita == null && pezzi.length >= 2 && pezzi.every((m) => m![2] === '01' && m![3] === '01'))
+  const mensile = !annuale && (opts.granularita === 'month'
+    || (opts.granularita == null && pezzi.every((m) => m![3] === '01')))
+  let annoPrecedente = ''
+  return pezzi.map((m) => {
+    const [, anno, mese, giorno] = m!
+    if (annuale) return anno!
+    // Mezzogiorno UTC: costruire la data a mezzanotte la farebbe scivolare al
+    // giorno prima nei fusi a ovest, e un «1 gennaio» diventerebbe dicembre.
+    const d = new Date(Date.UTC(Number(anno), Number(mese) - 1, Number(giorno), 12))
+    const periodo = mensile
+      ? d.toLocaleDateString(locale, { month: 'short', timeZone: 'UTC' })
+      : d.toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' })
+    /*
+     * Due righe solo dove c'è un ASSE condiviso (linea, barre verticali): lì
+     * l'anno vale per tutte le etichette che seguono. In una torta o in una
+     * barra orizzontale ogni etichetta sta per conto suo — una riga, con
+     * l'anno sempre, altrimenti «gen» da solo non dice di quale anno è.
+     */
+    if (opts.unaRiga === true) return `${periodo} ${anno!}`
+    const nuovo = anno !== annoPrecedente
+    annoPrecedente = anno!
+    return nuovo ? `${periodo}\n${anno!}` : periodo
+  })
+}
+
+export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area?: boolean; locale?: string; granularita?: string | null } = {}) {
   const t = theme()
   const compact = style.compact ?? false
   const color = style.color ?? t.brand
+  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en', { granularita: style.granularita })
+    ?? points.map((p) => p.label)
   return {
     tooltip: tooltip('axis'),
-    grid: compact
+    grid: grigliaConEtichette(compact
       ? { top: 12, right: 12, bottom: 20, left: 40, containLabel: true }
-      : { left: 16, right: 16, bottom: 48, top: 16, containLabel: true },
-    xAxis: categoryAxis(points.map((p) => p.label), compact),
+      : { left: 16, right: 16, bottom: 48, top: 16, containLabel: true }, style.showValueLabels),
+    xAxis: categoryAxis(etichette, compact),
     yAxis: valueAxis(compact),
     series: [{
       type: 'line',
@@ -184,8 +280,27 @@ export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area
       smooth: true,
       symbol: 'circle',
       symbolSize: 6,
+      /*
+       * IL VALORE SUI PUNTI (20 set 2026, dal giro nel browser: «nella linea
+       * dove ci sono i puntini dovrebbe esserci anche il valore»).
+       *
+       * `showValueLabels` arriva acceso da ogni sezione di report
+       * (`ReportChartRenderer`) e la linea era l'unico grafico che lo
+       * ignorava: barre e torte scrivevano il numero, la linea no. Lo stesso
+       * dato cambiava leggibilità cambiando disegno, e su una serie di pochi
+       * punti — che è il caso normale di un report mensile — il numero è
+       * proprio quello che si va a leggere.
+       */
+      label: style.showValueLabels
+        ? { show: true, position: 'top', distance: 8, color: t.text, fontSize: t.fsBody, fontWeight: 600, fontFamily: t.font }
+        : { show: false },
+      // Fuori dal riquadro non si taglia, e due valori vicini non si
+      // sovrappongono: sparisce il secondo invece di diventare illeggibili
+      // tutti e due.
+      labelLayout: { hideOverlap: true },
+      clip: false,
       lineStyle: { color, width: 2.5 },
-      itemStyle: { color, borderWidth: 2, borderColor: '#fff' },
+      itemStyle: { color, borderWidth: 2, borderColor: cssVar('--color-white') },
       ...(style.area
         ? { areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: `${color}33` }, { offset: 1, color: `${color}05` }] } } }
         : {}),
@@ -193,11 +308,12 @@ export function buildLineOption(points: ChartPoint[], style: ChartStyle & { area
   }
 }
 
-export function buildPieOption(points: ChartPoint[], style: ChartStyle & { donut?: boolean; centerText?: string } = {}) {
+export function buildPieOption(points: ChartPoint[], style: ChartStyle & { donut?: boolean; centerText?: string; locale?: string; granularita?: string | null } = {}) {
   const t = theme()
   const compact = style.compact ?? false
   const palette = chartPalette()
   const donut = style.donut ?? false
+  const etichette = etichetteTemporali(points.map((p) => p.label), style.locale ?? 'en', { unaRiga: true, granularita: style.granularita })
   return {
     tooltip: tooltip('item', { formatter: '{b}: {c} ({d}%)' }),
     legend: legend(compact),
@@ -205,7 +321,7 @@ export function buildPieOption(points: ChartPoint[], style: ChartStyle & { donut
       ? {
           graphic: [
             { type: 'text', left: 'center', top: '40%', style: { text: style.centerText, fontSize: t.fsTitle, fontWeight: 700, fill: t.textDark, fontFamily: t.font } },
-            { type: 'text', left: 'center', top: '50%', style: { text: 'totale', fontSize: t.fsBody, fill: t.text, fontFamily: t.font } },
+            { type: 'text', left: 'center', top: '50%', style: { text: i18n.t('reportChart.total'), fontSize: t.fsBody, fill: t.text, fontFamily: t.font } },
           ],
         }
       : {}),
@@ -214,15 +330,17 @@ export function buildPieOption(points: ChartPoint[], style: ChartStyle & { donut
       radius: donut ? (compact ? ['40%', '70%'] : ['40%', '65%']) : (compact ? '65%' : ['0%', '65%']),
       center: ['50%', '45%'],
       data: points.map((p, i) => ({
-        name: p.label,
+        // Le fette non hanno un asse: l'etichetta temporale va su una riga
+        // sola, con l'anno (vedi `etichetteTemporali`).
+        name: etichette?.[i] ?? p.label,
         value: p.value,
-        itemStyle: { color: palette[i % palette.length], borderRadius: 4, borderWidth: 2, borderColor: '#fff' },
+        itemStyle: { color: palette[i % palette.length], borderRadius: 4, borderWidth: 2, borderColor: cssVar('--color-white') },
       })),
       label: style.showValueLabels
         ? { show: true, formatter: '{b}\n{d}%', fontSize: t.fsBody, color: t.text, fontFamily: t.font }
         : { show: false },
       labelLine: { show: style.showValueLabels ?? false },
-      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' } },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: cssVar('--color-black-a20') } },
     }],
   }
 }

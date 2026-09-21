@@ -1,0 +1,142 @@
+import { gql } from '@apollo/client'
+import { EVENT_FIELDS } from '../fragments'
+
+// ── Event Management ─────────────────────────────────────────────────────────
+// Le mutation che restituiscono l'evento selezionano la stessa forma della
+// lista (EVENT_FIELDS in fragments.ts) così la cache aggiorna la riga senza
+// refetch.
+
+export const ACKNOWLEDGE_EVENT = gql`
+  mutation AcknowledgeEvent($id: ID!) {
+    acknowledgeEvent(id: $id) { ...EventFields }
+  }
+  ${EVENT_FIELDS}
+`
+
+export const RESOLVE_EVENT = gql`
+  mutation ResolveEvent($id: ID!, $note: String) {
+    resolveEvent(id: $id, note: $note) { ...EventFields }
+  }
+  ${EVENT_FIELDS}
+`
+
+export const LINK_EVENT_TO_CI = gql`
+  mutation LinkEventToCI($eventId: ID!, $ciId: ID!, $createAlias: Boolean) {
+    linkEventToCI(eventId: $eventId, ciId: $ciId, createAlias: $createAlias) { ...EventFields }
+  }
+  ${EVENT_FIELDS}
+`
+
+/** Ondata 3: fa ripassare l'evento dalla policy di correlazione (suppressed/delayed/skipped_orphan). */
+export const REEVALUATE_EVENT = gql`
+  mutation ReevaluateEvent($id: ID!) {
+    reevaluateEvent(id: $id) { ...EventFields }
+  }
+  ${EVENT_FIELDS}
+`
+
+export const CREATE_INCIDENT_FROM_EVENT = gql`
+  mutation CreateIncidentFromEvent($eventId: ID!) {
+    createIncidentFromEvent(eventId: $eventId) { id number title status }
+  }
+`
+
+export const CREATE_CI_ALIAS = gql`
+  mutation CreateCIAlias($ciId: ID!, $kind: CIAliasKind!, $value: String!) {
+    createCIAlias(ciId: $ciId, kind: $kind, value: $value) {
+      id kind value source createdAt
+      ci { id name type status }
+    }
+  }
+`
+
+export const DELETE_CI_ALIAS = gql`
+  mutation DeleteCIAlias($id: ID!) {
+    deleteCIAlias(id: $id)
+  }
+`
+
+/** `input.expectedVersion` = la versione letta: un salvataggio sopra la modifica di un altro admin è rifiutato dall'API. */
+export const UPDATE_EVENT_POLICY = gql`
+  mutation UpdateEventPolicy($input: EventPolicyInput!) {
+    updateEventPolicy(input: $input) {
+      version updatedAt
+      openIncidentFrom groupBy openDelaySeconds autoResolve
+      suppressUpstreamHops flapThreshold flapWindowMinutes flapStableMinutes
+      stormThresholdPerMinute stormCooldownMinutes retentionDays matchShortHostname severityMap
+      ignoreLifecycleStatuses retiredStatuses maintenanceStatuses
+      highImpactDependents
+    }
+  }
+`
+
+// ── Ondata 2: sorgenti di monitoraggio e configurazione senza codice ────────
+
+const MONITORING_SOURCE_RESULT = gql`
+  fragment MonitoringSourceResult on InboundWebhook {
+    id name entityType connectorKind fieldMapping defaultValues valueMapping
+    enabled lastReceivedAt receiveCount lastError lastErrorAt errorCount createdAt
+  }
+`
+
+/** Normalizza un payload senza ingerirlo: anteprima in tempo reale del mappatore. */
+export const PREVIEW_INBOUND_EVENTS = gql`
+  mutation PreviewInboundEvents($input: InboundEventPreviewInput!) {
+    previewInboundEvents(input: $input) {
+      externalId status severity title description resource resourceKind labels
+    }
+  }
+`
+
+/**
+ * Ingerisce un payload di esempio attraverso la pipeline reale: torna il numero
+ * di eventi accodati. `payload` è l'esempio incollato dall'admin (sorgenti
+ * «generic»): senza di esso l'API usa il campione fisso del connettore, che non
+ * ha i percorsi mappati a mano (revisione totale · G-MON-1).
+ */
+export const SEND_SAMPLE_EVENT = gql`
+  mutation SendSampleEvent($sourceId: ID!, $payload: String) {
+    sendSampleEvent(sourceId: $sourceId, payload: $payload)
+  }
+`
+
+/** health = null toglie la forzatura e ricalcola dal monitoraggio. */
+export const SET_CI_HEALTH_OVERRIDE = gql`
+  mutation SetCIHealthOverride($ciId: ID!, $health: CIHealth) {
+    setCIHealthOverride(ciId: $ciId, health: $health) { ciId health healthSource lastEventAt firingEvents }
+  }
+`
+
+/** Crea la sorgente (InboundWebhook con entityType = event). Il token è visibile SOLO qui. */
+export const CREATE_MONITORING_SOURCE = gql`
+  mutation CreateMonitoringSource($input: CreateInboundWebhookInput!) {
+    createInboundWebhook(input: $input) {
+      id name token entityType connectorKind fieldMapping defaultValues valueMapping enabled createdAt
+    }
+  }
+`
+
+export const UPDATE_MONITORING_SOURCE = gql`
+  mutation UpdateMonitoringSource($id: ID!, $input: UpdateInboundWebhookInput!) {
+    updateInboundWebhook(id: $id, input: $input) { ...MonitoringSourceResult }
+  }
+  ${MONITORING_SOURCE_RESULT}
+`
+
+/**
+ * Eliminare una sorgente chiude anche i suoi allarmi ancora accesi (revisione 2,
+ * D4.1): senza, restavano «attivi» per sempre con il CI giù. Il risultato dice
+ * quanti ne sono stati chiusi e su quanti CI, così la pagina lo può raccontare.
+ */
+export const DELETE_MONITORING_SOURCE = gql`
+  mutation DeleteMonitoringSource($id: ID!) {
+    deleteInboundWebhook(id: $id) { deleted resolvedEvents affectedCIs }
+  }
+`
+
+/** Il nuovo token è visibile SOLO nella risposta. */
+export const REGENERATE_SOURCE_TOKEN = gql`
+  mutation RegenerateSourceToken($id: ID!) {
+    regenerateWebhookToken(id: $id) { id token }
+  }
+`

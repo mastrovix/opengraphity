@@ -1,13 +1,18 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Share2 } from 'lucide-react'
 import { GET_TOPOLOGY, GET_ALL_CIS, GET_CI_TYPES } from '@/graphql/queries'
-import { fontFamily } from '@/lib/tokens'
+import { fontFamily, alpha, colors, palette } from '@/lib/tokens'
+import { pausedWhenHidden } from '@/lib/polling'
 import { Pill } from '@/components/ui/Pill'
-import { ciStatusStyle, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
+import { ciStatusStyle, useCIBaseEnums } from '@/lib/ciEnums'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import TopologyGraph, { TopologyLegend, type TopologyNode } from '@/components/topology/TopologyGraph'
+import { CIHealthBadge } from '@/pages/events/eventShared'
+import type { CIHealth } from '@/types/events'
+import { useCILabels } from '@/hooks/useCILabels'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,7 +55,20 @@ interface Filters {
 
 export function TopologyPage() {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const navigate  = useNavigate()
+  // `?health=1` accende l'evidenziazione della salute; `?ciId=` è il CI di
+  // partenza (la pagina Salute CI manda qui con entrambi, D·1.3: senza un CI
+  // la mappa resta vuota). Entrambi vivono nell'URL (replace: niente una voce
+  // di cronologia per clic) così F5 e i link condivisi ripartono dallo stesso punto.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const setParam = useCallback((name: string, value: string | null) => {
+    setSearchParams((prev) => { const next = new URLSearchParams(prev); if (value) next.set(name, value); else next.delete(name); return next }, { replace: true })
+  }, [setSearchParams])
+  const highlightHealth = searchParams.get('health') === '1'
+  const setHighlightHealth = (on: boolean) => setParam('health', on ? '1' : null)
+  const focusNodeId = searchParams.get('ciId') || null
+  const setFocusNodeId = useCallback((id: string | null) => setParam('ciId', id), [setParam])
   const [filters, setFilters] = useState<Filters>({
     type:         '',
     environment:  '',
@@ -59,7 +77,6 @@ export function TopologyPage() {
   })
   const [selectedNode, setSelectedNode] = useState<TopologyNode | null>(null)
   const [showLabels, setShowLabels]     = useState(true)
-  const [focusNodeId, setFocusNodeId]   = useState<string | null>(null)
   const [maxHops, setMaxHops]           = useState<number | null>(2)  // null = tutti
 
   // ── CI types from metamodel — popola il dropdown tipo ───────────────────────
@@ -73,8 +90,13 @@ export function TopologyPage() {
   // Status/environment dal tipo base del metamodello (unica sorgente, F-23)
   const baseEnums = useCIBaseEnums()
 
-  // Reset focusNodeId quando l'utente cambia tipo
-  useEffect(() => { setFocusNodeId(null) }, [filters.type])
+  // Il cambio di tipo azzera il CI di partenza (nel gestore del select, non in
+  // un effetto: un effetto girerebbe anche al montaggio e cancellerebbe `?ciId=`).
+  const changeType = (type: string) => {
+    setFilters((f) => ({ ...f, type }))
+    setFocusNodeId(null)
+    setSelectedNode(null)
+  }
 
   // ── Topology query — parte SOLO quando è selezionato un CI specifico ────────
   const queryVars = {
@@ -84,13 +106,14 @@ export function TopologyPage() {
     status:       filters.status      ? filters.status      : undefined,
   }
 
-  // Polling a 30 s: TopologyGraph confronta la struttura (id nodi + archi) e a
-  // struttura invariata aggiorna solo contatori/stati in place, senza
-  // ricostruire simulazione, zoom e posizioni trascinate (F-06).
+  // Polling a 30 s (in pausa a scheda nascosta): TopologyGraph confronta la
+  // struttura (id nodi + archi) e a struttura invariata aggiorna solo
+  // contatori/stati in place, senza ricostruire simulazione, zoom e posizioni
+  // trascinate (F-06).
   const { data, loading, error } = useQuery<TopologyData>(GET_TOPOLOGY, {
     variables:   queryVars,
     skip:        !focusNodeId,
-    pollInterval: 30_000,
+    ...pausedWhenHidden(30_000),
     fetchPolicy:  'cache-and-network',
   })
 
@@ -107,9 +130,19 @@ export function TopologyPage() {
     [data?.topology.edges],
   )
 
+  // Arrivati con `?ciId=` e nessun tipo scelto (da Salute CI): il tipo del CI
+  // di partenza popola il filtro, così il combobox mostra QUALE CI è al centro
+  // e permette di cambiarlo. Il tipo non entra nella query: solo nel combobox.
+  const rootNode = useMemo(() => (focusNodeId ? data?.topology.nodes.find((n) => n.id === focusNodeId) ?? null : null), [data?.topology.nodes, focusNodeId])
+  useEffect(() => {
+    if (rootNode && !filters.type) setFilters((f) => ({ ...f, type: rootNode.type }))
+  }, [rootNode, filters.type])
+
   // Stats
   const totalIncident = nodes.reduce((s, n) => s + n.incidentCount, 0)
   const totalChange   = nodes.reduce((s, n) => s + n.changeCount,   0)
+  const totalDown     = nodes.filter((n) => n.health === 'down').length
+  const totalDegraded = nodes.filter((n) => n.health === 'degraded').length
 
   const handleNodeClick = useCallback((node: TopologyNode) => {
     setSelectedNode(node)
@@ -118,10 +151,10 @@ export function TopologyPage() {
   const selectStyle = {
     fontSize:     12,
     color:        'var(--color-slate-dark)',
-    border:       '1px solid #e2e8f0',
+    border:       '1px solid var(--color-border)',
     borderRadius: 6,
     padding:      '5px 10px',
-    background:   '#fff',
+    background:   colors.white,
     cursor:       'pointer',
     outline:      'none',
   }
@@ -135,8 +168,8 @@ export function TopologyPage() {
         alignItems:      'center',
         justifyContent:  'space-between',
         padding:         '12px 20px',
-        borderBottom:    '1px solid #e5e7eb',
-        background:      '#fff',
+        borderBottom:    '1px solid var(--color-border)',
+        background:      colors.white,
         flexShrink:      0,
       }}>
         <h1 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
@@ -145,7 +178,7 @@ export function TopologyPage() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {/* Type filter */}
-          <select aria-label={t('pages.cmdb.type')} value={filters.type} onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value }))} style={selectStyle}>
+          <select aria-label={t('pages.cmdb.type')} value={filters.type} onChange={(e) => changeType(e.target.value)} style={selectStyle}>
             <option value="">{t('pages.topology.allTypes')}</option>
             {ciTypeOptions.map(ct => (
               <option key={ct.name} value={ct.name}>{ct.label}</option>
@@ -157,6 +190,7 @@ export function TopologyPage() {
             <CICombobox
               ciType={filters.type}
               value={focusNodeId}
+              valueName={rootNode?.name ?? null}
               onChange={(id) => {
                 setFocusNodeId(id)
                 setSelectedNode(null)   // reset pannello dettaglio al cambio CI
@@ -184,13 +218,13 @@ export function TopologyPage() {
           {/* Environment filter */}
           <select aria-label={t('pages.cmdb.environment')} value={filters.environment} onChange={(e) => setFilters((f) => ({ ...f, environment: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
             <option value="">{t('pages.topology.allEnvironments')}</option>
-            {baseEnums.environments.map((v) => <option key={v} value={v}>{enumLabel(v)}</option>)}
+            {baseEnums.environments.map((v) => <option key={v} value={v}>{ciLabels.environmentLabel(v)}</option>)}
           </select>
 
           {/* Status filter */}
           <select aria-label={t('pages.cmdb.status')} value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))} style={selectStyle} title={baseEnums.error ?? undefined}>
             <option value="">{t('pages.topology.allStatuses')}</option>
-            {baseEnums.statuses.map((v) => <option key={v} value={v}>{enumLabel(v)}</option>)}
+            {baseEnums.statuses.map((v) => <option key={v} value={v}>{ciLabels.statusLabel(v)}</option>)}
           </select>
           {baseEnums.error && (
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)' }} title={baseEnums.error}>
@@ -207,6 +241,17 @@ export function TopologyPage() {
               style={{ cursor: 'pointer' }}
             />
             {t('pages.topology.showLabels')}
+          </label>
+
+          {/* Health highlight toggle (also driven by ?health=1) */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={highlightHealth}
+              onChange={(e) => setHighlightHealth(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            {t('pages.topology.highlightHealth')}
           </label>
 
           {/* Incident only toggle */}
@@ -236,7 +281,7 @@ export function TopologyPage() {
               gap:             16,
               userSelect:      'none',
             }}>
-              <Share2 size={48} color="#94a3b8" strokeWidth={1.5} />
+              <Share2 size={48} color={colors.slateLight} strokeWidth={1.5} />
               <div style={{
                 fontSize: 'var(--font-size-page-title)', fontWeight: 600,
                 color: 'var(--color-slate-dark)',
@@ -249,9 +294,10 @@ export function TopologyPage() {
                 fontFamily,
                 textAlign: 'center',
               }}>
+                {/* Giro del 14 set 2026 (#58): «0 nodes · 0 relationships» senza dire cosa fare. */}
                 {loading
                   ? t('pages.topology.loading')
-                  : t('pages.topology.emptyHint')}
+                  : focusNodeId ? t('pages.topology.noRelations') : t('pages.topology.chooseCIHint')}
               </div>
             </div>
           )}
@@ -276,29 +322,30 @@ export function TopologyPage() {
               highlightNodeId={focusNodeId}
               rootNodeId={focusNodeId}
               ciTypes={ciTypeOptions}
+              highlightHealth={highlightHealth}
             />
           )}
 
-          <TopologyLegend nodes={nodes} edges={edges} ciTypes={ciTypeOptions} />
+          <TopologyLegend nodes={nodes} edges={edges} ciTypes={ciTypeOptions} highlightHealth={highlightHealth} />
 
           {/* Truncation warning */}
           {data?.topology.truncated && (
             <div style={{
               position:   'absolute', top: 10, left: '50%', transform: 'translateX(-50%)',
-              background: '#fef9c3', border: '1px solid #fde047', borderRadius: 6,
-              padding:    '5px 14px', fontSize: 'var(--font-size-body)', color: '#854d0e',
+              background: palette.yellow.bg, border: '1px solid var(--color-yellow-border)', borderRadius: 6,
+              padding:    '5px 14px', fontSize: 'var(--font-size-body)', color: palette.yellow.text,
               fontFamily,
-              whiteSpace: 'nowrap', boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              whiteSpace: 'nowrap', boxShadow: '0 2px 8px var(--color-black-a08)',
             }}>
               {t('pages.topology.truncated', { limit: data.topology.nodeLimit })}
             </div>
           )}
 
           {/* Stats bar */}
-          <div style={{
+          {nodes.length > 0 && <div style={{
             position:    'absolute', bottom: 16, right: selectedNode ? 316 : 16,
-            background:  'rgba(255,255,255,0.92)', backdropFilter: 'blur(4px)',
-            border:      '1px solid #e2e8f0', borderRadius: 6,
+            background:  alpha.white92, backdropFilter: 'blur(4px)',
+            border:      '1px solid var(--color-border)', borderRadius: 6,
             padding:     '5px 12px', fontSize: 'var(--font-size-body)',
             color:       'var(--color-slate)',
             fontFamily,
@@ -311,16 +358,18 @@ export function TopologyPage() {
               </span>
             )}
             {totalIncident > 0 && <span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 8 }}>{t('pages.topology.activeIncidents', { count: totalIncident })}</span>}
-            {totalChange   > 0 && <span style={{ color: '#8b5cf6', marginLeft: 8 }}>{t('pages.topology.changesInProgress', { count: totalChange })}</span>}
-          </div>
+            {totalChange   > 0 && <span style={{ color: palette.purple.light, marginLeft: 8 }}>{t('pages.topology.changesInProgress', { count: totalChange })}</span>}
+            {highlightHealth && totalDown     > 0 && <span style={{ color: palette.danger.dark, marginLeft: 8 }}>{t('components.topologyGraph.healthDown')}: {totalDown}</span>}
+            {highlightHealth && totalDegraded > 0 && <span style={{ color: palette.warning.dark, marginLeft: 8 }}>{t('components.topologyGraph.healthDegraded')}: {totalDegraded}</span>}
+          </div>}
         </div>
 
         {/* ── Detail panel ─────────────────────────────────────────────── */}
         {selectedNode && (
           <div style={{
             width:       300,
-            borderLeft:  '1px solid #e5e7eb',
-            background:  '#fff',
+            borderLeft:  '1px solid var(--color-border)',
+            background:  colors.white,
             flexShrink:  0,
             overflow:    'auto',
             padding:     '16px',
@@ -332,14 +381,14 @@ export function TopologyPage() {
                   {selectedNode.name}
                 </div>
                 <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-                  {selectedNode.type.replace(/_/g, ' ')}
+                  {ciLabels.typeLabel(selectedNode.type)}
                 </div>
               </div>
               <button
                 type="button"
                 aria-label={t('common.close')}
                 onClick={() => setSelectedNode(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 'var(--font-size-section-title)', padding: 0 }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.slateLight, fontSize: 'var(--font-size-section-title)', padding: 0 }}
               >
                 ✕
               </button>
@@ -348,12 +397,18 @@ export function TopologyPage() {
             {/* Fields */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <DetailField label={t('pages.cmdb.status')}>
-                <StatusBadge status={selectedNode.status} />
+                {selectedNode.status ? <StatusBadge status={selectedNode.status} statuses={baseEnums.loading || baseEnums.error ? null : baseEnums.statuses} /> : '—'}
               </DetailField>
+
+              {selectedNode.health && (
+                <DetailField label={t('monitoring.ciHealth.title')}>
+                  <CIHealthBadge health={selectedNode.health as CIHealth} />
+                </DetailField>
+              )}
 
               {selectedNode.environment && (
                 <DetailField label={t('pages.cmdb.environment')}>
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{selectedNode.environment}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{ciLabels.environmentLabel(selectedNode.environment)}</span>
                 </DetailField>
               )}
 
@@ -363,12 +418,16 @@ export function TopologyPage() {
                 </DetailField>
               )}
 
-              {/* Incident count */}
+              {/* Incident count — porta al CI, che elenca i SUOI ticket
+                  (revisione totale · F-10): `/incidents?ci=<id>` non esisteva
+                  come filtro e la lista si apriva con TUTTI gli incident del
+                  cliente, facendo credere che fossero quelli del CI. */}
               <DetailField label={t('pages.topology.openIncidents')}>
                 {selectedNode.incidentCount > 0 ? (
                   <button
                     type="button"
-                    onClick={() => navigate(`/incidents?ci=${selectedNode.id}`)}
+                    title={t('pages.topology.openCIForTickets')}
+                    onClick={() => navigate(`/cis/${selectedNode.id}`)}
                     style={{
                       fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-trigger-sla-breach)',
                       background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline',
@@ -381,14 +440,15 @@ export function TopologyPage() {
                 )}
               </DetailField>
 
-              {/* Change count */}
+              {/* Change count — vedi F-10 sopra. */}
               <DetailField label={t('pages.topology.changeInProgress')}>
                 {selectedNode.changeCount > 0 ? (
                   <button
                     type="button"
-                    onClick={() => navigate(`/changes?ci=${selectedNode.id}`)}
+                    title={t('pages.topology.openCIForTickets')}
+                    onClick={() => navigate(`/cis/${selectedNode.id}`)}
                     style={{
-                      fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#f97316',
+                      fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: palette.orange.base,
                       background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline',
                     }}
                   >
@@ -409,7 +469,7 @@ export function TopologyPage() {
                   width:        '100%',
                   padding:      '8px 0',
                   background:   'var(--color-brand)',
-                  color:        '#fff',
+                  color:        colors.white,
                   border:       'none',
                   borderRadius: 6,
                   fontSize:     13,
@@ -444,6 +504,8 @@ function DetailField({ label, children }: { label: string; children: React.React
 interface CIComboboxProps {
   ciType:   string
   value:    string | null
+  /** Nome del CI selezionato quando non è tra i risultati della ricerca (arrivo con `?ciId=`: il nome viene dal grafo caricato). */
+  valueName?: string | null
   onChange: (id: string | null) => void
 }
 
@@ -452,12 +514,13 @@ interface CIComboboxProps {
  * e ne mostrava al più 80 filtrati in locale, senza dire che mancavano gli
  * altri. Ora il totale è visibile ("mostrati N di M") e la ricerca copre tutto.
  */
-function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
+function CICombobox({ ciType, value, valueName = null, onChange }: CIComboboxProps) {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const [search, setSearch]   = useState('')
   const [debounced, setDebounced] = useState('')
   const [open, setOpen]       = useState(false)
-  const [selectedName, setSelectedName] = useState('')
+  const [selectedName, setSelectedName] = useState(valueName ?? '')
   const containerRef          = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -472,12 +535,14 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
   const options = useMemo(() => data?.allCIs.items ?? [], [data])
   const total   = data?.allCIs.total ?? 0
 
-  // Nome del CI selezionato: tenuto in stato perché la lista cambia con la ricerca
+  // Nome del CI selezionato: tenuto in stato perché la lista cambia con la
+  // ricerca; se non è tra i risultati vale il nome passato dal chiamante.
   useEffect(() => {
     if (!value) { setSelectedName(''); return }
     const hit = options.find((o) => o.id === value)
     if (hit) setSelectedName(hit.name)
-  }, [value, options])
+    else if (valueName) setSelectedName(valueName)
+  }, [value, valueName, options])
 
   // Close on outside click
   useEffect(() => {
@@ -503,9 +568,9 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
         display:      'flex',
         alignItems:   'center',
         gap:          4,
-        border:       '1px solid #e2e8f0',
+        border:       '1px solid var(--color-border)',
         borderRadius: 6,
-        background:   '#fff',
+        background:   colors.white,
         padding:      '4px 8px',
         fontSize:     12,
         cursor:       'text',
@@ -531,7 +596,7 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
             type="button"
             aria-label={t('common.close')}
             onClick={(e) => { e.stopPropagation(); handleSelect(null) }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '0 2px', fontSize: 'var(--font-size-body)', lineHeight: 1 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.slateLight, padding: '0 2px', fontSize: 'var(--font-size-body)', lineHeight: 1 }}
           >
             ✕
           </button>
@@ -541,8 +606,8 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
       {open && (
         <div style={{
           position:   'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
-          background: '#fff', border: '1px solid #e2e8f0', borderRadius: 6,
-          boxShadow:  '0 4px 16px rgba(0,0,0,0.1)',
+          background: colors.white, border: '1px solid var(--color-border)', borderRadius: 6,
+          boxShadow:  '0 4px 16px var(--color-black-a10)',
           maxHeight:  220, overflowY: 'auto', marginTop: 2,
         }}>
           <button
@@ -553,7 +618,7 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
               display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', font: 'inherit',
               padding: '7px 10px', fontSize: 'var(--font-size-body)', cursor: 'pointer',
               color: 'var(--color-slate-light)',
-              borderBottom: '1px solid #f1f5f9',
+              borderBottom: '1px solid var(--color-border-light)',
             }}
           >
             {t('pages.topology.comboAll')}
@@ -576,7 +641,7 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
               style={{
                 width: '100%', textAlign: 'left', border: 'none', font: 'inherit',
                 padding:    '7px 10px', fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                background: o.id === value ? 'rgba(2,132,199,0.08)' : 'transparent',
+                background: o.id === value ? alpha.brand08 : 'transparent',
                 color:      o.id === value ? 'var(--color-brand)' : 'var(--color-slate-dark)',
                 fontWeight: o.id === value ? 600 : 400,
                 display:    'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -587,13 +652,13 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
               <span>{o.name}</span>
               {o.environment && (
                 <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
-                  {o.environment}
+                  {ciLabels.environmentLabel(o.environment)}
                 </span>
               )}
             </button>
           ))}
           {total > options.length && (
-            <div style={{ padding: '6px 10px', fontSize: 'var(--font-size-label)', color: '#854d0e', background: '#fef9c3', borderTop: '1px solid #fde68a' }}>
+            <div style={{ padding: '6px 10px', fontSize: 'var(--font-size-label)', color: palette.yellow.text, background: palette.yellow.bg, borderTop: '1px solid var(--color-warning-border)' }}>
               {t('pages.topology.comboShown', { shown: options.length, total })}
             </div>
           )}
@@ -603,8 +668,14 @@ function CICombobox({ ciType, value, onChange }: CIComboboxProps) {
   )
 }
 
-/** Stato CI colorato: palette unica in lib/ciEnums (CI_STATUS_STYLE). */
-function StatusBadge({ status }: { status: string }) {
-  const s = ciStatusStyle(status)
-  return <Pill bg={s.bg} color={s.color} radius={10} style={{ fontSize: 'var(--font-size-body)' }}>{status}</Pill>
+/**
+ * Stato CI colorato col colore del Dizionario (`ci_status`, F9). `statuses`
+ * è il vocabolario `ci_status` del cliente (ondata 7 · D-15): uno stato suo
+ * senza colore assegnato è neutro, uno fuori vocabolario resta rosso.
+ */
+function StatusBadge({ status, statuses }: { status: string; statuses: readonly string[] | null }) {
+  const { colorOf } = useDomainVocabularies()
+  const { statusLabel } = useCILabels()
+  const s = ciStatusStyle(status, statuses, colorOf('ci_status', status))
+  return <Pill bg={s.bg} color={s.color} radius={10} style={{ fontSize: 'var(--font-size-body)' }}>{statusLabel(status)}</Pill>
 }

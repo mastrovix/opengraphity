@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useMutation, useQuery } from '@apollo/client/react'
@@ -6,12 +6,23 @@ import { useTranslation } from 'react-i18next'
 import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { CREATE_INCIDENT, ASSIGN_INCIDENT_TO_TEAM } from '@/graphql/mutations'
-import { derivePriority, priorityCode, impactUrgencyFromPriority, IMPACT_URGENCY_OPTIONS, IMPACT_URGENCY_LABEL, type ImpactUrgency } from '@/lib/priority'
-import { GET_INCIDENTS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
+import { derivePriority, priorityCode, impactUrgencyFromPriority } from '@/lib/priority'
+import { usePriorityMatrix } from '@/hooks/usePriorityMatrix'
+import { GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { FieldWrapper } from '@/components/FieldWrapper'
 import { TriageSuggestionCard } from '@/components/TriageSuggestionCard'
+import { colors, palette, alpha } from '@/lib/tokens'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
+import { useValueStyle } from '@/hooks/useValueStyle'
+import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
+import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
+import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
+import { CIExclusionHint } from '@/components/ticket/CIExclusionHint'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -25,17 +36,10 @@ const fieldLabel: React.CSSProperties = {
 
 const inputBase: React.CSSProperties = {
   width: '100%', padding: '10px 14px',
-  border: '1.5px solid #e5e7eb', borderRadius: 8,
+  border: `1.5px solid ${colors.border}`, borderRadius: 8,
   fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', outline: 'none',
-  backgroundColor: '#fff', boxSizing: 'border-box',
+  backgroundColor: colors.white, boxSizing: 'border-box',
   fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", transition: 'border-color 150ms',
-}
-
-const SEVERITY_STYLES: Record<string, { bg: string; border: string; color: string }> = {
-  critical: { bg: 'var(--color-danger-bg)', border: 'var(--color-danger)', color: 'var(--color-trigger-sla-breach)' },
-  high:     { bg: '#fff7ed', border: 'var(--color-brand)', color: 'var(--color-brand)' },
-  medium:   { bg: 'var(--color-warning-bg)', border: 'var(--color-warning)', color: '#b45309' },
-  low:      { bg: 'var(--color-success-bg)', border: 'var(--color-success)', color: '#15803d' },
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -43,14 +47,28 @@ const SEVERITY_STYLES: Record<string, { bg: string; border: string; color: strin
 
 export function CreateIncidentPage() {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
+  const { labelOf } = useDomainVocabularies()
+  // F9: il colore della priorità derivata è quello del Dizionario.
+  const styleOf = useValueStyle()
   const navigate = useNavigate()
-  const ids = { category: useId(), ciSearch: useId(), teamSearch: useId() }
+  const ids = { category: useId(), ciSearch: useId(), teamSearch: useId(), levels: useId() }
 
   const [title,       setTitle]       = useState('')
   const [category,    setCategory]    = useState('')
-  const [impact,      setImpact]      = useState<ImpactUrgency>('medium')
-  const [urgency,     setUrgency]     = useState<ImpactUrgency>('medium')
-  const priority = derivePriority(impact, urgency)
+  // Impatto, urgenza e priorità vengono dalla matrice DEL CLIENTE (revisione ·
+  // C·N-3): qui c'era una copia della matrice di fabbrica, e chi rinominava i
+  // vocabolari vedeva i tre bottoni vecchi e ogni invio rifiutato dal server.
+  // Il valore iniziale è quello mediano della scala del cliente, non «medium».
+  const { matrix, loading: matrixLoading, error: matrixError } = usePriorityMatrix()
+  const [impact,      setImpact]      = useState('')
+  const [urgency,     setUrgency]     = useState('')
+  useEffect(() => {
+    if (!matrix) return
+    setImpact((v) => (v === '' ? (matrix.impacts[Math.floor((matrix.impacts.length - 1) / 2)] ?? '') : v))
+    setUrgency((v) => (v === '' ? (matrix.urgencies[Math.floor((matrix.urgencies.length - 1) / 2)] ?? '') : v))
+  }, [matrix])
+  const priority = derivePriority(matrix, impact, urgency) ?? ''
   const [description, setDescription] = useState('')
   const [selectedTeam,      setSelectedTeam]      = useState<{ id: string; name: string } | null>(null)
   const [teamSearch,        setTeamSearch]        = useState('')
@@ -59,39 +77,46 @@ export function CreateIncidentPage() {
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  const formValues = { title, severity: priority, category, description }
+  // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
+  const { defs: customDefs } = useCreationCustomFieldDefs('incident', category)
+  const [customValues, setCustomValues] = useState<Record<string, string>>({})
+  const formValues = { title, severity: priority, category, description, ...customValues }
   const { rules: fieldRules, error: fieldRulesError } = useFormFieldRules('incident', null, formValues)
   const { values: categoryValues, loading: categoryLoading } = useEnumValues('incident', 'category')
 
-  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
-    GET_ITIL_CI_RELATION_RULES,
-    { variables: { itilType: 'incident' }, fetchPolicy: 'network-only' },
-  )
-
-  const ciTypesFilter = ciRulesData?.itilCIRelationRules?.length
-    ? [...new Set(ciRulesData.itilCIRelationRules.map(r => r.ciType.toLowerCase()))]
-    : undefined
+  // CM-8: i tipi di CI esclusi per questo tipo di ticket non si propongono (l'API li rifiuta comunque).
+  const { excluded: excludedCITypes } = useTicketCIExclusions('incident')
 
   const { data: ciData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch, limit: 20, ciTypes: ciTypesFilter },
-    skip: ciSearch.length < 2 || ciRulesData === undefined,
+    variables: { search: ciSearch, limit: 20, excludeCiTypes: excludedCITypes },
+    skip: ciSearch.length < 2 || excludedCITypes === undefined,
     fetchPolicy: 'network-only',
   })
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
 
   const ciResults     = (ciData?.allCIs?.items ?? [])
     .filter(ci => !selectedCIs.find(s => s.id === ci.id))
-    .filter(ci => !ciTypesFilter || ciTypesFilter.includes(ci.type.toLowerCase()))
   const teams         = teamsData?.teams ?? []
   const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
   const [assignToTeam] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
-    onError: (err) => toast.error(t('toast.incident.teamAssignmentFailed', { error: err.message })),
+    onError: (err) => showError(err, t('toast.incident.teamAssignmentFailed', { error: err.message })),
   })
+
+  const checkSlaCoverage = useSlaCoverageCheck()
+  const [checkingSla, setCheckingSla] = useState(false)
 
   const canSubmit = title.trim() !== '' && description.trim() !== '' && category !== '' && selectedCIs.length > 0
 
   const [createIncident, { loading }] = useMutation<{ createIncident: { id: string } }>(CREATE_INCIDENT, {
-    refetchQueries: [{ query: GET_INCIDENTS }],
+    /**
+     * Il refetch per NOME dell'operazione (revisione totale · F-14):
+     * `[{ query: GET_X }]` senza variabili rinfresca solo la voce di cache
+     * SENZA variabili, che nessuna lista usa (tutte passano limite, pagina e
+     * filtri) — quindi dopo una creazione l'elenco restava quello di prima.
+     * Col nome, Apollo rinfresca ogni query attiva con quel nome, qualunque
+     * siano le sue variabili.
+     */
+    refetchQueries: ['GetIncidents'],
     onCompleted: async (data) => {
       if (selectedTeam) {
         await assignToTeam({ variables: { id: data.createIncident.id, teamId: selectedTeam.id } })
@@ -99,7 +124,7 @@ export function CreateIncidentPage() {
       toast.success(t('toast.incident.created'))
       navigate('/incidents', { state: { refresh: true } })
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
 
@@ -119,20 +144,26 @@ export function CreateIncidentPage() {
         </button>
 
         <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: '0 0 4px', letterSpacing: '-0.02em' }}>
-          Nuovo Incident
+          {t('pages.createIncident.title')}
         </h1>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 24px' }}>
-          Compila i dettagli dell'incident da aprire
+          {t('pages.createIncident.subtitle')}
         </p>
 
         {/* Card */}
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '28px 32px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+        <div style={{ background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 12, padding: '28px 32px', boxShadow: `0 1px 4px ${alpha.black06}` }}>
 
           {/* TITOLO */}
           <FieldWrapper
             visible={fieldRules['title']?.visible ?? true}
-            required={fieldRules['title']?.required ?? false}
-            label="Titolo"
+            /*
+              Il titolo È obbligatorio — `canSubmit` lo esige e lo schema lo
+              dichiara `String!` — e il suo era l'unico campo obbligatorio del
+              form senza l'asterisco: `?? false`. Primo campo della pagina, e
+              l'unico che non diceva di esserlo.
+            */
+            required
+            label={t('forms.title')}
             error={fieldErrors['title']}
             style={{ marginBottom: 20 }}
           >
@@ -140,30 +171,30 @@ export function CreateIncidentPage() {
               type="text"
               value={title}
               onChange={e => { setTitle(e.target.value); setFieldErrors((p) => { const n = { ...p }; delete n['title']; return n }) }}
-              placeholder="Es. Database produzione non raggiungibile"
-              style={{ ...inputBase, borderColor: fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
+              placeholder={t('pages.createIncident.titlePlaceholder')}
+              style={{ ...inputBase, borderColor: fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : colors.border }}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
+              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = fieldErrors['title'] ? 'var(--color-trigger-sla-breach)' : colors.border }}
             />
           </FieldWrapper>
 
           {/* CATEGORIA */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.category} style={fieldLabel}>
-              Categoria <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
+              {t('pages.kb.category')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
             {categoryLoading ? (
-              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>Caricamento…</span>
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</span>
             ) : (
               <select
                 id={ids.category}
                 value={category}
                 onChange={e => { setCategory(e.target.value); setFieldErrors(p => { const n = { ...p }; delete n['category']; return n }) }}
-                style={{ ...inputBase, borderColor: fieldErrors['category'] ? 'var(--color-trigger-sla-breach)' : '#e5e7eb' }}
+                style={{ ...inputBase, borderColor: fieldErrors['category'] ? 'var(--color-trigger-sla-breach)' : colors.border }}
               >
-                <option value="">-- Seleziona categoria --</option>
+                <option value="">{t('pages.createIncident.selectCategory')}</option>
                 {categoryValues.map(c => (
-                  <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                  <option key={c} value={c}>{labelOf('category', c) ?? (c.charAt(0).toUpperCase() + c.slice(1))}</option>
                 ))}
               </select>
             )}
@@ -172,19 +203,22 @@ export function CreateIncidentPage() {
 
           {/* IMPATTO × URGENZA → PRIORITÀ (ITIL) */}
           <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            {([['Impatto', impact, setImpact], ['Urgenza', urgency, setUrgency]] as const).map(([label, val, setVal]) => (
-              <div key={label}>
-                <div style={fieldLabel}>{label} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {IMPACT_URGENCY_OPTIONS.map(o => {
+            {([['pages.domainMatrices.impact', 'impact', impact, setImpact, matrix?.impacts ?? []], ['pages.domainMatrices.urgency', 'urgency', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([labelKey, vocabolario, val, setVal, options]) => (
+              <div key={labelKey}>
+                <div id={`${ids.levels}-${vocabolario}`} style={fieldLabel}>{t(labelKey)} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
+                {/* Un gruppo col nome del campo e bottoni che dicono quale è scelto (aria-pressed). */}
+                <div role="group" aria-labelledby={`${ids.levels}-${vocabolario}`} style={{ display: 'flex', gap: 6 }}>
+                  {options.map(o => {
                     const sel = val === o
                     return (
-                      <button key={o} type="button" onClick={() => setVal(o)}
+                      <button key={o} type="button" aria-pressed={sel} onClick={() => setVal(o)}
                         style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                          border: `1.5px solid ${sel ? 'var(--color-brand)' : '#e5e7eb'}`,
-                          background: sel ? '#f0f9ff' : 'var(--color-slate-bg)',
-                          color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
-                        {IMPACT_URGENCY_LABEL[o]}
+                          border: `1.5px solid ${sel ? 'var(--color-brand)' : colors.border}`,
+                          background: sel ? palette.info.light : 'var(--color-slate-bg)',
+                          color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}
+                        title={o}>
+                        {/* L'etichetta del cliente: «Alto» per l'impatto, «Alta» per l'urgenza. */}
+                        {labelOf(vocabolario, o) ?? o}
                       </button>
                     )
                   })}
@@ -192,13 +226,18 @@ export function CreateIncidentPage() {
               </div>
             ))}
             <div>
-              <div style={fieldLabel}>Priorità (calcolata)</div>
+              <div style={fieldLabel}>{t('pages.createTicket.derivedPriority')}</div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 6,
-                border: `1.5px solid ${(SEVERITY_STYLES[priority]?.border ?? '#e5e7eb')}`,
-                background: SEVERITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
-                color: SEVERITY_STYLES[priority]?.color ?? 'var(--color-slate)', fontWeight: 600 }}>
-                <span>{priorityCode(priority)}</span>
-                <span style={{ textTransform: 'capitalize' }}>{priority}</span>
+                border: `1.5px solid ${priority === '' ? colors.border : styleOf('priority', priority).accent}`,
+                background: priority === '' ? 'var(--color-slate-bg)' : styleOf('priority', priority).bg,
+                color: priority === '' ? 'var(--color-slate)' : styleOf('priority', priority).color, fontWeight: 600 }}>
+                <span>{priority === '' ? '—' : priorityCode(matrix?.priorities ?? [], priority)}</span>
+                <span style={{ textTransform: 'capitalize' }}>
+                  {/* L'etichetta della priorità, non il valore: qui si leggeva «Medium». */}
+                  {priority !== '' ? (labelOf('priority', priority) ?? priority)
+                    : matrixLoading ? t('common.loading')
+                    : t('pages.domainMatrices.notFilledIn')}
+                </span>
               </div>
             </div>
           </div>
@@ -207,18 +246,18 @@ export function CreateIncidentPage() {
           <FieldWrapper
             visible={fieldRules['description']?.visible ?? true}
             required={true}
-            label="Descrizione"
+            label={t('forms.description')}
             error={fieldErrors['description']}
             style={{ marginBottom: 20 }}
           >
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="Descrivi cosa sta succedendo..."
+              placeholder={t('pages.createIncident.descriptionPlaceholder')}
               rows={3}
               style={{ ...inputBase, resize: 'vertical', lineHeight: 1.6 }}
               onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+              onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
             />
           </FieldWrapper>
 
@@ -229,8 +268,12 @@ export function CreateIncidentPage() {
             ciIds={selectedCIs.map(ci => ci.id)}
             onApply={({ severity: sev, category: cat, teamName }) => {
               // AI suggests a severity → map back to impact/urgency
-              const iu = impactUrgencyFromPriority(sev)
-              setImpact(iu.impact); setUrgency(iu.urgency)
+              // La coppia si ricava dalla matrice del cliente; se quella
+              // priorità nessuna cella la produce, impatto e urgenza restano
+              // quelli scelti dall'utente invece di essere sovrascritti con un
+              // valore inventato.
+              const iu = impactUrgencyFromPriority(matrix, sev)
+              if (iu) { setImpact(iu.impact); setUrgency(iu.urgency) }
               setCategory(cat)
               if (teamName) {
                 const team = teamsData?.teams.find(t => t.name === teamName)
@@ -243,8 +286,10 @@ export function CreateIncidentPage() {
           {/* CI IMPATTATI */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.ciSearch} style={fieldLabel}>
-              CI Impattati <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
+              {t('attachments.affectedCIs')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
+
+            <CIExclusionHint excluded={excludedCITypes} />
 
             {/* Search input with icon */}
             <div style={{ position: 'relative' }}>
@@ -256,26 +301,26 @@ export function CreateIncidentPage() {
                 type="text"
                 value={ciSearch}
                 onChange={e => setCiSearch(e.target.value)}
-                placeholder="Cerca per nome..."
+                placeholder={t('pages.createTicket.searchByName')}
                 style={{ ...inputBase, paddingLeft: 36 }}
                 onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-                onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+                onBlur={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
               />
 
               {/* Dropdown */}
               {ciResults.length > 0 && ciSearch.length >= 2 && (
-                <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
+                <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 8, boxShadow: `0 4px 12px ${alpha.black10}`, maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
                   {ciResults.map(ci => (
                     <button
                       type="button"
                       key={ci.id}
                       onClick={() => { setSelectedCIs(p => [...p, ci]); setCiSearch('') }}
                       className="hover-bg"
-                      style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
+                      style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${palette.neutral.borderLight}` }}
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{ci.name}</span>
                       <span style={{ fontSize: 'var(--font-size-body)', padding: '1px 6px', borderRadius: 4, backgroundColor: 'var(--color-border-light)', color: 'var(--color-slate)' }}>
-                        {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
+                        {ciLabels.subtitle(ci)}
                       </span>
                     </button>
                   ))}
@@ -287,7 +332,7 @@ export function CreateIncidentPage() {
             {selectedCIs.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                 {selectedCIs.map(ci => (
-                  <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-brand-light)', border: '1px solid #c7d2fe', color: 'var(--color-brand-hover)', fontSize: 'var(--font-size-body)' }}>
+                  <span key={ci.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-brand-light)', border: `1px solid ${palette.info.border}`, color: 'var(--color-brand-hover)', fontSize: 'var(--font-size-body)' }}>
                     {ci.name}
                     <button
                       type="button"
@@ -305,19 +350,19 @@ export function CreateIncidentPage() {
           {/* TEAM */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.teamSearch} style={fieldLabel}>
-              Team{' '}
-              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>(opzionale)</span>
+              {t('detail.team')}{' '}
+              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>{t('common.optional')}</span>
             </label>
 
             {/* Tag team selezionato */}
             {selectedTeam && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-success-bg)', border: '1px solid #86efac', color: '#15803d', fontSize: 'var(--font-size-body)' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px 3px 10px', borderRadius: 6, background: 'var(--color-success-bg)', border: `1px solid ${palette.success.border}`, color: palette.success.text, fontSize: 'var(--font-size-body)' }}>
                   {selectedTeam.name}
                   <button
                     type="button"
                     onClick={() => { setSelectedTeam(null); setTeamSearch('') }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#15803d', padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: palette.success.text, padding: 0, lineHeight: 1, display: 'flex', alignItems: 'center', opacity: 0.7 }}
                   >
                     <X size={12} />
                   </button>
@@ -338,15 +383,15 @@ export function CreateIncidentPage() {
                   onChange={e => { setTeamSearch(e.target.value); setTeamDropdownOpen(true) }}
                   onFocus={() => setTeamDropdownOpen(true)}
                   onBlur={() => setTimeout(() => setTeamDropdownOpen(false), 150)}
-                  placeholder="Cerca team per nome..."
+                  placeholder={t('pages.createTicket.searchTeam')}
                   style={{ ...inputBase, paddingLeft: 36 }}
                   onFocusCapture={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-brand)' }}
-                  onBlurCapture={e  => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb' }}
+                  onBlurCapture={e  => { (e.currentTarget as HTMLElement).style.borderColor = colors.border }}
                 />
 
                 {/* Dropdown */}
                 {teamDropdownOpen && filteredTeams.length > 0 && (
-                  <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
+                  <div style={{ position: 'absolute', left: 0, right: 0, top: '100%', marginTop: 4, background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 8, boxShadow: `0 4px 12px ${alpha.black10}`, maxHeight: 200, overflowY: 'auto', zIndex: 20 }}>
                     {filteredTeams.map(tm => (
                       <button
                         type="button"
@@ -354,7 +399,7 @@ export function CreateIncidentPage() {
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => { setSelectedTeam(tm); setTeamSearch(''); setTeamDropdownOpen(false) }}
                         className="hover-bg"
-                        style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #f3f4f6' }}
+                        style={{ width: '100%', background: 'none', border: 'none', borderRadius: 0, font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${palette.neutral.borderLight}` }}
                       >
                         <Users size={14} color="var(--color-slate-light)" />
                         <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{tm.name}</span>
@@ -366,8 +411,23 @@ export function CreateIncidentPage() {
             )}
           </div>
 
+          {/* CAMPI DEL CLIENTE */}
+          {customDefs.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <CustomFieldsForm
+                defs={customDefs}
+                values={customValues}
+                rules={fieldRules}
+                errors={fieldErrors}
+                onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setFieldErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}
+                inputStyle={inputBase}
+                labelStyle={fieldLabel}
+              />
+            </div>
+          )}
+
           {/* Footer */}
-          <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 8, paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ borderTop: `1px solid ${palette.neutral.borderLight}`, marginTop: 8, paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <button
               type="button"
               onClick={() => navigate('/incidents')}
@@ -375,50 +435,77 @@ export function CreateIncidentPage() {
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--color-slate)' }}
             >
-              Annulla
+              {t('common.cancel')}
             </button>
             <button
               type="button"
-              disabled={!canSubmit || loading}
+              disabled={!canSubmit || loading || checkingSla}
               onClick={() => {
-                if (!canSubmit || loading) return
+                if (!canSubmit || loading || checkingSla) return
                 if (fieldRulesError) {
-                  toast.error(t('toast.incident.fieldRulesUnavailable', { error: fieldRulesError.message }))
+                  showError(fieldRulesError, t('toast.incident.fieldRulesUnavailable', { error: fieldRulesError.message }))
+                  return
+                }
+                // La matrice è la sorgente di impatto, urgenza e priorità: se non
+                // si legge, o se non copre la coppia scelta, non si inventa un
+                // valore — il server lo rifiuterebbe comunque, e il messaggio
+                // qui dice cosa fare.
+                if (matrixError) {
+                  showError(matrixError, t('toast.incident.matrixUnavailable', { error: matrixError.message }))
+                  return
+                }
+                if (priority === '') {
+                  toast.error(t('toast.incident.matrixIncomplete'))
                   return
                 }
                 const errs: Record<string, string> = {}
-                if (!title.trim()) errs['title'] = 'Campo obbligatorio'
-                if (!category) errs['category'] = 'Seleziona una categoria'
-                if (!description.trim()) errs['description'] = 'Campo obbligatorio'
-                const missing = validateFormFields(fieldRules, formValues)
-                missing.forEach((f) => { if (!errs[f]) errs[f] = 'Campo obbligatorio' })
+                if (!title.trim()) errs['title'] = t('forms.fieldRequired')
+                if (!category) errs['category'] = t('forms.selectCategory')
+                if (!description.trim()) errs['description'] = t('forms.fieldRequired')
+                const missing = [...validateFormFields(fieldRules, formValues), ...missingCustomFields(customDefs, customValues, fieldRules)]
+                missing.forEach((f) => { if (!errs[f]) errs[f] = t('forms.fieldRequired') })
                 if (Object.keys(errs).length > 0) {
                   setFieldErrors(errs)
                   return
                 }
                 setFieldErrors({})
-                void createIncident({
-                  variables: {
-                    input: {
-                      title: title.trim(),
-                      impact,
-                      urgency,
-                      category: category || undefined,
-                      description: description.trim() || undefined,
-                      affectedCIIds: selectedCIs.map(ci => ci.id),
+                // Prima di creare: una policy SLA copre questo incident? Se no,
+                // chi lo crea lo sa adesso e decide (useSlaCoverageCheck).
+                setCheckingSla(true)
+                void checkSlaCoverage({
+                  entityType: 'incident',
+                  priority, priorityLabel: labelOf('priority', priority) ?? priority,
+                  category: category || null, categoryLabel: category ? (labelOf('category', category) ?? category) : null,
+                  teamId: selectedTeam?.id ?? null, teamName: selectedTeam?.name ?? null,
+                }).then((decisione) => {
+                  if (decisione === 'cancelled') return
+                  void createIncident({
+                    variables: {
+                      input: {
+                        title: title.trim(),
+                        impact,
+                        urgency,
+                        category: category || undefined,
+                        description: description.trim() || undefined,
+                        affectedCIIds: selectedCIs.map(ci => ci.id),
+                        customFields: customFieldsInput(customDefs, customValues),
+                        ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
+                      },
                     },
-                  },
-                })
+                  })
+                }).catch((err: unknown) => {
+                  showError(err, t('toast.incident.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
+                }).finally(() => setCheckingSla(false))
               }}
               style={{
-                background: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 8,
+                background: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 8,
                 padding: '10px 24px', fontSize: 'var(--font-size-card-title)', fontWeight: 600,
-                cursor: canSubmit && !loading ? 'pointer' : 'not-allowed',
-                opacity: canSubmit && !loading ? 1 : 0.5,
+                cursor: canSubmit && !loading && !checkingSla ? 'pointer' : 'not-allowed',
+                opacity: canSubmit && !loading && !checkingSla ? 1 : 0.5,
                 transition: 'opacity 150ms',
               }}
             >
-              {loading ? 'Creazione…' : 'Crea Incident'}
+              {loading ? t('common.creating') : t('pages.createIncident.submit')}
             </button>
           </div>
 

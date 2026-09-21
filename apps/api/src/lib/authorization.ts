@@ -3,150 +3,93 @@
  *
  * Prima di questa policy esistevano 17 `requireRole` sparsi: team, workflow,
  * webhook, sync, CMDB, automazione erano scrivibili da `viewer` e dall'
- * `end_user` del portale. Qui la regola è unica, dichiarativa e applicata a
- * OGNI campo root da `applyAuthorizationPolicy` (chiamata in buildResolvers):
+ * `end_user` del portale. Qui la regola è unica e applicata a OGNI campo root da
+ * `applyAuthorizationPolicy` (chiamata in buildResolvers).
  *
- *   - default Query    → admin, operator, viewer
- *   - default Mutation → admin, operator
- *   - liste esplicite  → admin-only (configurazione), viewer-consentite
- *                        (azioni personali), end_user-consentite (portale)
+ * ## Dai ruoli ai permessi (ondata 7 di «Nulla cablato»)
+ * Fino all'ondata 7 questo file teneva quattro elenchi di nomi — admin-only,
+ * viewer-consentite, end_user-consentite — e un default per ruolo. Ora ogni
+ * operazione chiede dei PERMESSI (`operationPermissions.ts`), e un ruolo è
+ * l'insieme dei permessi che l'organizzazione gli ha dato (`roles.ts`). I
+ * quattro ruoli di prima sono ruoli di fabbrica con gli stessi permessi, a meno
+ * delle quattro correzioni approvate: il confronto «prima e dopo» su ogni
+ * operazione è `lib/__tests__/authorizationBeforeAfter.test.ts`.
  *
- * `end_user` è default-deny: vede solo l'allowlist del portale. Un ruolo
- * sconosciuto (dati legacy) è rifiutato con messaggio esplicito, non
- * degradato a viewer. I `requireRole` locali restano validi come seconda
- * linea; questa policy può solo restringere, mai allargare.
+ * Un ruolo che l'organizzazione non ha è rifiutato con messaggio esplicito, non
+ * degradato. I controlli locali nei resolver restano come seconda linea: questa
+ * policy può solo restringere, mai allargare.
  *
- * Fail-fast: ogni nome nelle liste statiche deve esistere nella mappa dei
- * resolver, altrimenti l'avvio fallisce (un refuso non deve diventare un
- * campo silenziosamente aperto o chiuso).
+ * Fail-fast: un campo root senza permessi, o una riga della mappa che nomina un
+ * campo inesistente, fa fallire l'avvio.
  */
 import type { GraphQLResolveInfo } from 'graphql'
+import { USER_ROLES, type Permission } from '@opengraphity/types'
 import { ForbiddenError } from './errors.js'
+import {
+  AUTHENTICATED, DYNAMIC_CI_PERMISSIONS, OPERATION_PERMISSIONS, operationRequirement,
+  type OperationRequirement, type RootKind,
+} from './operationPermissions.js'
 import type { GraphQLContext } from '../context.js'
 
 export type Role = GraphQLContext['role']
-export type RootKind = 'Query' | 'Mutation'
-
-export const ROLES: readonly Role[] = ['admin', 'operator', 'viewer', 'end_user']
-
-const DEFAULT_QUERY_ROLES:    readonly Role[] = ['admin', 'operator', 'viewer']
-const DEFAULT_MUTATION_ROLES: readonly Role[] = ['admin', 'operator']
-
-/** Configurazione del tenant: solo admin. */
-export const ADMIN_ONLY_QUERIES: ReadonlySet<string> = new Set([
-  'logs', 'auditLog', 'queueStats', 'queueJobs', 'systemHealth', 'systemMetrics', 'traceInfo',
-  'apiKeys', 'inboundWebhooks', 'outboundWebhooks',
-  'syncSources', 'syncSource', 'syncRuns', 'syncConflicts', 'syncStats', 'availableConnectors', 'syncChangeHistory',
-  'notificationChannels', 'notificationRules',
-  'autoTriggers', 'businessRules', 'slaPolicies',
-  'assessmentQuestionsAdmin', 'questionCITypeAssignments',
-])
-
-export const ADMIN_ONLY_MUTATIONS: ReadonlySet<string> = new Set([
-  // utenti e team
-  'createUser', 'updateUserTeams', 'createTeam', 'setTeamManager', 'removeTeamManager', 'setChangeManagerTeam',
-  // definizioni di workflow
-  'addWorkflowStep', 'removeWorkflowStep', 'updateWorkflowStep',
-  'addWorkflowTransition', 'removeWorkflowTransition', 'updateWorkflowTransition',
-  'saveWorkflowLayout', 'saveWorkflowChanges',
-  // notifiche
-  'createNotificationChannel', 'updateNotificationChannel', 'deleteNotificationChannel', 'testNotificationChannel',
-  'createNotificationRule', 'updateNotificationRule', 'deleteNotificationRule',
-  // integrazioni
-  'createInboundWebhook', 'updateInboundWebhook', 'deleteInboundWebhook', 'regenerateWebhookToken',
-  'createOutboundWebhook', 'updateOutboundWebhook', 'deleteOutboundWebhook', 'testOutboundWebhook',
-  'createApiKey', 'updateApiKey', 'deleteApiKey', 'regenerateApiKey',
-  // discovery / sync (credenziali cloud, scritture di massa sul CMDB)
-  'createSyncSource', 'updateSyncSource', 'deleteSyncSource', 'triggerSync', 'resolveConflict', 'testSyncConnection',
-  // automazione e SLA/OLA
-  'createAutoTrigger', 'updateAutoTrigger', 'deleteAutoTrigger',
-  'createBusinessRule', 'updateBusinessRule', 'deleteBusinessRule', 'reorderBusinessRules',
-  'createSLAPolicy', 'updateSLAPolicy', 'deleteSLAPolicy',
-  'createOLAContract', 'updateOLAContract',
-  // metamodello e regole di campo
-  'updateITILType', 'createITILField', 'updateITILField', 'deleteITILField',
-  'createITILCIRelationRule', 'deleteITILCIRelationRule',
-  'createEnumType', 'updateEnumType', 'deleteEnumType',
-  'createFieldVisibilityRule', 'updateFieldVisibilityRule', 'deleteFieldVisibilityRule',
-  'setFieldRequirement', 'deleteFieldRequirement',
-  // cataloghi e questionari
-  'createServiceCatalogItem', 'updateServiceCatalogItem',
-  'createAssessmentQuestion', 'updateAssessmentQuestion', 'deleteAssessmentQuestion',
-  'assignQuestionToCIType', 'removeQuestionFromCIType', 'setQuestionCore',
-  // operazioni di sistema
-  'runAnomalyScanner', 'retryQueueJob', 'updateReportSchedule', 'deleteChange',
-])
+export type { RootKind }
 
 /**
- * Mutation admin-only registrate dai resolver dinamici del metamodello
- * (ciTypeMetamodel): non stanno nello SDL base, quindi sono verificate solo
- * se presenti nella mappa a runtime.
+ * I ruoli di fabbrica, in un posto solo: `USER_ROLES` di @opengraphity/types, la
+ * stessa lista che `assertRole` applica al login (auth/resolveAuth.ts) e che
+ * gli script di onboarding usano (D-13).
  */
-export const ADMIN_ONLY_DYNAMIC_MUTATIONS: ReadonlySet<string> = new Set([
-  'createCIType', 'updateCIType', 'deleteCIType',
-  'addCIField', 'removeCIField', 'addCIRelation', 'removeCIRelation',
-])
+export const ROLES: readonly Role[] = USER_ROLES
 
-/** Azioni personali consentite anche in sola lettura (viewer). */
-export const VIEWER_ALLOWED_MUTATIONS: ReadonlySet<string> = new Set([
-  'watchEntity', 'unwatchEntity', 'linkSlackAccount', 'rateKBArticle', 'deleteReportConversation',
-  'createDashboard', 'updateDashboard', 'deleteDashboard', 'cloneDashboard',
-  'addDashboardWidget', 'removeDashboardWidget', 'updateDashboardWidget', 'reorderDashboardWidgets',
-  'createCustomWidget', 'updateCustomWidget', 'deleteCustomWidget', 'reorderCustomWidgets',
-])
-
-/** Superficie del portale self-service: tutto il resto è negato a end_user. */
-export const END_USER_ALLOWED_QUERIES: ReadonlySet<string> = new Set([
-  'me', 'myTickets', 'myTicket', 'myTicketStats', 'serviceCatalogItems',
-  'kbArticles', 'kbArticle', 'kbArticleBySlug', 'kbCategories',
-  'fieldVisibilityRules', 'fieldRequirementRules',
-])
-export const END_USER_ALLOWED_MUTATIONS: ReadonlySet<string> = new Set([
-  'createTicket', 'addTicketComment', 'reopenTicket', 'createServiceRequest', 'rateKBArticle',
-])
-
-/** Ruoli ammessi per un campo root. Pura: usata anche dai test. */
-export function allowedRoles(kind: RootKind, field: string): readonly Role[] {
-  if (kind === 'Query') {
-    if (ADMIN_ONLY_QUERIES.has(field)) return ['admin']
-    return END_USER_ALLOWED_QUERIES.has(field) ? [...DEFAULT_QUERY_ROLES, 'end_user'] : DEFAULT_QUERY_ROLES
-  }
-  if (ADMIN_ONLY_MUTATIONS.has(field) || ADMIN_ONLY_DYNAMIC_MUTATIONS.has(field)) return ['admin']
-  const roles: Role[] = [...DEFAULT_MUTATION_ROLES]
-  if (VIEWER_ALLOWED_MUTATIONS.has(field)) roles.push('viewer')
-  if (END_USER_ALLOWED_MUTATIONS.has(field)) roles.push('end_user')
-  return roles
+/** I permessi di un campo root, o `undefined` se non è deciso. Pura: usata anche dai test. */
+export function requirementOf(kind: RootKind, field: string, dynamicCI: ReadonlySet<string> = new Set()): OperationRequirement | undefined {
+  return operationRequirement(kind, field) ?? (dynamicCI.has(`${kind}.${field}`) ? DYNAMIC_CI_PERMISSIONS[kind] : undefined)
 }
 
-export function authorize(kind: RootKind, field: string, role: string): void {
-  if (!(ROLES as readonly string[]).includes(role)) {
-    throw new ForbiddenError(`Ruolo sconosciuto '${role}': nessuna operazione consentita`)
+/** Vero se questi permessi aprono l'operazione. */
+export function permits(requirement: OperationRequirement, permissions: ReadonlySet<Permission>): boolean {
+  return requirement === AUTHENTICATED || requirement.some((p) => permissions.has(p))
+}
+
+export function authorize(
+  kind: RootKind, field: string, role: string, permissions: ReadonlySet<Permission>, dynamicCI?: ReadonlySet<string>,
+): void {
+  const requirement = requirementOf(kind, field, dynamicCI)
+  if (!requirement) {
+    // Non succede se l'avvio è passato dal controllo: è un difetto del prodotto, non un divieto.
+    throw new Error(`[authorization] ${kind}.${field} has no permission rule (lib/operationPermissions.ts)`)
   }
-  const roles = allowedRoles(kind, field)
-  if (!roles.includes(role as Role)) {
-    throw new ForbiddenError(`Il ruolo '${role}' non può eseguire ${kind}.${field} (richiesto: ${roles.join(', ')})`)
+  if (!permits(requirement, permissions)) {
+    const required = (requirement as readonly Permission[]).join(', ')
+    throw new ForbiddenError(`Role '${role}' cannot run ${kind}.${field} (requires one of: ${required})`, { key: 'errors.authz.roleNotAllowed', params: { role, operation: `${kind}.${field}`, required } })
   }
 }
 
 type RootResolver = (parent: unknown, args: unknown, ctx: GraphQLContext, info: GraphQLResolveInfo) => unknown
 type RootMap = Record<string, RootResolver | undefined>
 
-/**
- * Avvolge ogni campo root con il controllo di ruolo. Verifica anche che le
- * liste statiche puntino a campi esistenti (fail-fast all'avvio).
- */
-export function applyAuthorizationPolicy<T extends { Query?: RootMap; Mutation?: RootMap }>(resolvers: T): T {
-  const query    = resolvers.Query    ?? {}
-  const mutation = resolvers.Mutation ?? {}
+export interface AuthorizationOptions {
+  /** I campi root generati per ogni tipo di CI (`Query.servers`, `Mutation.createServer`, …). */
+  dynamicCI?: ReadonlySet<string>
+}
 
-  const missing: string[] = []
-  for (const name of ADMIN_ONLY_QUERIES)    if (!(name in query))    missing.push(`Query.${name}`)
-  for (const name of [...ADMIN_ONLY_MUTATIONS, ...VIEWER_ALLOWED_MUTATIONS, ...END_USER_ALLOWED_MUTATIONS]) {
-    if (!(name in mutation)) missing.push(`Mutation.${name}`)
-  }
-  for (const name of END_USER_ALLOWED_QUERIES) if (!(name in query)) missing.push(`Query.${name}`)
+/**
+ * Avvolge ogni campo root con il controllo dei permessi. Verifica anche che la
+ * mappa e i campi coincidano (fail-fast all'avvio).
+ */
+export function applyAuthorizationPolicy<T extends { Query?: RootMap; Mutation?: RootMap }>(resolvers: T, opts: AuthorizationOptions = {}): T {
+  const query     = resolvers.Query    ?? {}
+  const mutation  = resolvers.Mutation ?? {}
+  const dynamicCI = opts.dynamicCI ?? new Set<string>()
+
+  const present = new Set([...Object.keys(query).map((f) => `Query.${f}`), ...Object.keys(mutation).map((f) => `Mutation.${f}`)])
+  const missing = [...OPERATION_PERMISSIONS.keys()].filter((op) => !present.has(op))
   if (missing.length) {
-    throw new Error(`[authorization] la policy cita campi inesistenti: ${missing.join(', ')}`)
+    throw new Error(`[authorization] the policy names fields that do not exist: ${missing.join(', ')}`)
+  }
+  const undecided = [...present].filter((op) => !OPERATION_PERMISSIONS.has(op) && !dynamicCI.has(op))
+  if (undecided.length) {
+    throw new Error(`[authorization] fields without a permission rule (lib/operationPermissions.ts): ${undecided.join(', ')}`)
   }
 
   const wrap = (kind: RootKind, map: RootMap): RootMap => {
@@ -154,7 +97,7 @@ export function applyAuthorizationPolicy<T extends { Query?: RootMap; Mutation?:
     for (const [field, fn] of Object.entries(map)) {
       if (typeof fn !== 'function') { out[field] = fn; continue }
       out[field] = (parent, args, ctx, info) => {
-        authorize(kind, field, ctx.role)
+        authorize(kind, field, ctx.role, ctx.permissions, dynamicCI)
         return fn(parent, args, ctx, info)
       }
     }

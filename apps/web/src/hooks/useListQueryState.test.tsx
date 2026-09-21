@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { renderHook, act, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { useListQueryState, type ListQueryStateOptions } from './useListQueryState'
@@ -90,14 +90,27 @@ describe('useListQueryState — persistInQuery', () => {
     expect(result.current.variables.filters).toBe(JSON.stringify(GROUP))
   })
 
-  it('sort malformato in URL → default; filters corrotto → warn e ignorato (la pagina non crolla)', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  it('CONTRATTO RINEGOZIATO (F-17): un filters corrotto si DICE, non si ignora', () => {
+    /**
+     * Revisione totale · F-17: un filtro illeggibile nell'URL veniva ignorato
+     * con un `console.warn` e la lista compariva SENZA filtri — chi apriva un
+     * collegamento «solo P1 aperti» vedeva l'elenco completo e credeva che
+     * quelli fossero i P1. Adesso `filtersInvalid` lo dichiara e le liste
+     * mostrano l'avviso (`InvalidFilterNotice`).
+     */
     const { result } = renderState({ persistInQuery: true, defaultSortField: 'name' }, '/list?sort=nodir&page=abc&filters={broken')
     expect(result.current.sortField).toBe('name')
     expect(result.current.sortDir).toBe('asc')
     expect(result.current.page).toBe(0)
     expect(result.current.filterGroup).toBeNull()
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('parametro "filters" non valido'), expect.anything())
+    expect(result.current.filtersInvalid).toBe(true)
+  })
+
+  it('F-17: un filters valido non è «invalido», e uno assente nemmeno', () => {
+    const ok = renderState({ persistInQuery: true }, `/list?filters=${encodeURIComponent('{"rules":[]}')}`)
+    expect(ok.result.current.filtersInvalid).toBe(false)
+    const none = renderState({ persistInQuery: true }, '/list')
+    expect(none.result.current.filtersInvalid).toBe(false)
   })
 
   it('handleSort scrive ?sort= e rimuove page; setPage scrive page 1-based (pagina 0 → nessun parametro)', () => {

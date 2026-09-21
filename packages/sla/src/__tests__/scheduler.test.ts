@@ -6,14 +6,19 @@ import type { Job } from 'bullmq'
 const publish     = vi.fn(async () => {})
 const getSLAStatus = vi.fn()
 const markBreached = vi.fn(async () => {})
+const markResponseBreachNotified = vi.fn(async () => {})
 const callOrder: string[] = []
 
 vi.mock('@opengraphity/events', () => ({
   publish: (...args: unknown[]) => { callOrder.push('publish'); return publish(...(args as [])) },
 }))
 vi.mock('../status.js', () => ({
+  ticketReference: vi.fn(async () => ({ number: 'INC00000012', title: 'Rete giù' })),
   getSLAStatus: (...args: unknown[]) => getSLAStatus(...(args as [])),
   markBreached: (...args: unknown[]) => { callOrder.push('markBreached'); return markBreached(...(args as [])) },
+  // E-12: l'avviso della presa in carico viene registrato, così la ripresa di
+  // una pausa non ne manda un secondo.
+  markResponseBreachNotified: (...args: unknown[]) => { callOrder.push('markResponseBreachNotified'); return markResponseBreachNotified(...(args as [])) },
 }))
 vi.mock('../olaBreach.js', () => ({ isEntityResolved: vi.fn(async () => false) }))
 
@@ -60,6 +65,15 @@ describe('processSLAJob — defense in depth against met targets (D-01)', () => 
     expect(event.type).toBe('sla.warning')
     expect(event.payload.minutes_remaining).toBe(0)
     expect(event.id).toBe('response-breach-sla-1')
+    // Giro del 14 set 2026 (#18): il payload dice di quale ticket si tratta e cosa è scaduto.
+    expect(event.payload).toMatchObject({ target: 'response', number: 'INC00000012', title: 'Rete giù' })
+  })
+
+  it('sla.warning: il payload porta numero e titolo del ticket e il bersaglio resolve', async () => {
+    getSLAStatus.mockResolvedValue(status())
+    await processSLAJob(job('sla.warning'))
+    const event = publish.mock.calls[0]![0] as unknown as { payload: Record<string, unknown> }
+    expect(event.payload).toMatchObject({ target: 'resolve', number: 'INC00000012', title: 'Rete giù', entity_id: 'inc-1' })
   })
 
   it('sla.warning: skipped when resolve_met', async () => {
@@ -118,5 +132,12 @@ describe('processSLAJob — sla.breach ordering and idempotency (D-10)', () => {
 
   it('rejects an unknown job type loudly', async () => {
     await expect(processSLAJob(job('sla.bogus'))).rejects.toThrow('Unknown job type')
+  })
+})
+
+describe('processSLAJob — ola.breach (secondo giro UI del 15 set 2026)', () => {
+  it('i job per ticket di prima si scaricano senza avvisare: gli avvisi li dà la passata OLA dell\'API', async () => {
+    await processSLAJob({ name: 'ola.breach', id: 'ola-c1-inc-1', data: { entityId: 'inc-1', entityType: 'incident', tenantId: 't1', resolveDeadline: new Date().toISOString(), contractId: 'c1' } } as unknown as Job)
+    expect(publish).not.toHaveBeenCalled()
   })
 })

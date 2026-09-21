@@ -13,7 +13,7 @@ describe('lib/api', () => {
   it('apiUrl compone path relativi; un path senza "/" iniziale è un errore', () => {
     expect(apiUrl('/api/attachments')).toBe('/api/attachments')
     expect(apiUrl('/api/logs/client')).toBe('/api/logs/client')
-    expect(() => apiUrl('api/attachments')).toThrow('apiUrl: il path deve iniziare con "/" (ricevuto "api/attachments")')
+    expect(() => apiUrl('api/attachments')).toThrow('apiUrl: the path must start with "/" (got "api/attachments")')
   })
 
   it('authHeader legge il token Keycloak corrente: presente → Bearer, assente → header vuoto', () => {

@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(),
@@ -42,8 +43,8 @@ function fakeSession(readResults: Array<{ records: unknown[] }>) {
   return s
 }
 
-const operator: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator' }
-const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
+const operator: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator', permissions: perms('operator') }
+const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
 
 describe('deleteAttachment', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -109,14 +110,18 @@ describe('attachments(entityType, entityId) — lista scoped per tenant', () => 
   beforeEach(() => vi.clearAllMocks())
 
   it('query con tenant_id/entity_type/entity_id dal contesto e mapping con downloadUrl', async () => {
-    const s = fakeSession([{ records: [rec({
+    // Prima lettura: l'entità è raggiungibile dal chiamante (revisione totale · H-14).
+    const s = fakeSession([{ records: [rec({ id: 'inc-1' })] }, { records: [rec({
       id: 'att-1', filename: 'log.txt', mimeType: 'text/plain', sizeBytes: { toNumber: () => 1234 },
       uploadedBy: 'user-1', uploadedAt: '2026-01-01T00:00:00Z', description: null,
     })] }])
 
     const out = await attachmentResolvers.Query.attachments(null, { entityType: 'incident', entityId: 'inc-1' }, operator)
 
-    const [cypher, params] = s.txRun.mock.calls[0]!
+    const [reachCypher, reachParams] = s.txRun.mock.calls[0]!
+    expect(reachCypher).toContain('WHERE (e:Incident)')
+    expect(reachParams).toEqual({ entityId: 'inc-1', tenantId: 'tenant-1', userId: 'user-1' })
+    const [cypher, params] = s.txRun.mock.calls[1]!
     expect(cypher).toContain('MATCH (a:Attachment {tenant_id: $tenantId, entity_type: $entityType, entity_id: $entityId})')
     expect(params).toEqual({ tenantId: 'tenant-1', entityType: 'incident', entityId: 'inc-1' })
     expect(out).toEqual([{
@@ -126,7 +131,7 @@ describe('attachments(entityType, entityId) — lista scoped per tenant', () => 
     expect(s.close).toHaveBeenCalledOnce()
   })
 
-  it('entità di un altro tenant → lista vuota (mai i suoi allegati)', async () => {
+  it('entità di un altro tenant (o che il chiamante non vede) → lista vuota, mai i suoi allegati (H-14)', async () => {
     fakeSession([{ records: [] }])
     await expect(attachmentResolvers.Query.attachments(null, { entityType: 'incident', entityId: 'inc-altrui' }, operator)).resolves.toEqual([])
   })

@@ -6,10 +6,13 @@
  * inside the conversation becomes an `error` event on the open stream.
  */
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import { perms } from '../../lib/__tests__/testPermissions.js'
 import express from 'express'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
+// Ondata 6 di «Nulla cablato»: le funzioni AI sono dell'organizzazione; qui tutte accese.
+vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 vi.mock('../../lib/logger.js', () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } }))
 vi.mock('../../services/reportAI.js', () => ({ streamReportAI: vi.fn() }))
@@ -17,7 +20,7 @@ vi.mock('../../services/reportConversation.js', () => ({ runReportConversation: 
 vi.mock('../../middleware/auth.js', () => ({
   authMiddleware: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     const role = typeof req.headers['x-test-role'] === 'string' ? req.headers['x-test-role'] : 'operator'
-    req.user = { tenantId: 'tenant-1', userId: 'user-1', email: 'u@example.com', role }
+    req.user = { tenantId: 'tenant-1', userId: 'user-1', email: 'u@example.com', role, permissions: perms(role) }
     next()
   },
 }))
@@ -70,7 +73,7 @@ describe('POST /api/report/stream — gates before the stream opens', () => {
     expect(res.headers.get('content-type')).toMatch(/application\/json/)
     expect(res.headers.get('content-type')).not.toMatch(/text\/event-stream/)
     expect(res.headers.get('cache-control')).not.toBe('no-cache')
-    expect(await res.json()).toEqual({ error: `Role '${role}' is not authorized. Required: admin, operator` })
+    expect(await res.json()).toEqual({ error: `Role '${role}' is not authorized. Requires: report.ai` })
     expect(runReportConversation).not.toHaveBeenCalled()
     expect(getSession).not.toHaveBeenCalled()
   })

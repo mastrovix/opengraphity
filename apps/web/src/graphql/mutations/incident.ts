@@ -44,17 +44,17 @@ export const ASSIGN_INCIDENT_TO_USER = gql`
 `
 
 export const ADD_INCIDENT_COMMENT = gql`
-  mutation AddIncidentComment($id: ID!, $text: String!) {
-    addIncidentComment(id: $id, text: $text) {
-      id text createdAt updatedAt
+  mutation AddIncidentComment($id: ID!, $text: String!, $isInternal: Boolean) {
+    addIncidentComment(id: $id, text: $text, isInternal: $isInternal) {
+      id text isInternal createdAt updatedAt
       author { id name email }
     }
   }
 `
 
 export const ADD_AFFECTED_CI = gql`
-  mutation AddAffectedCI($incidentId: ID!, $ciId: ID!, $relationType: String) {
-    addAffectedCI(incidentId: $incidentId, ciId: $ciId, relationType: $relationType) {
+  mutation AddAffectedCI($incidentId: ID!, $ciId: ID!) {
+    addAffectedCI(incidentId: $incidentId, ciId: $ciId) {
       id
       affectedCIs { id name type status environment }
     }
@@ -84,6 +84,33 @@ export const UPDATE_INCIDENT = gql`
   }
 `
 
+export const ASSIGN_SERVICE_REQUEST_TO_USER = gql`
+  mutation AssignServiceRequestToUser($id: ID!, $userId: ID) {
+    assignServiceRequestToUser(id: $id, userId: $userId) {
+      id assignee { id name email }
+    }
+  }
+`
+
+/** I CI di una richiesta (revisione del 15 set 2026 · CM-8). */
+export const ADD_CI_TO_SERVICE_REQUEST = gql`
+  mutation AddCIToServiceRequest($requestId: ID!, $ciId: ID!) {
+    addCIToServiceRequest(requestId: $requestId, ciId: $ciId) {
+      id
+      affectedCIs { id name type status environment }
+    }
+  }
+`
+
+export const REMOVE_CI_FROM_SERVICE_REQUEST = gql`
+  mutation RemoveCIFromServiceRequest($requestId: ID!, $ciId: ID!) {
+    removeCIFromServiceRequest(requestId: $requestId, ciId: $ciId) {
+      id
+      affectedCIs { id name type status environment }
+    }
+  }
+`
+
 export const UPDATE_SERVICE_REQUEST = gql`
   mutation UpdateServiceRequest($id: ID!, $input: UpdateServiceRequestInput!) {
     updateServiceRequest(id: $id, input: $input) {
@@ -92,8 +119,3 @@ export const UPDATE_SERVICE_REQUEST = gql`
   }
 `
 
-export const COMPLETE_SERVICE_REQUEST = gql`
-  mutation CompleteServiceRequest($id: ID!) {
-    completeServiceRequest(id: $id) { id status completedAt }
-  }
-`
