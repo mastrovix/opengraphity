@@ -405,20 +405,28 @@ export async function scheduleEscalationCheck(incidentId: string, tenantId: stri
  * la registra all'avvio, e BullMQ ne tiene una sola.
  */
 export async function scheduleStepDeadlineSweep(): Promise<void> {
-  await getQueue(WORKFLOW_JOBS_QUEUE).add(
-    STEP_DEADLINES_JOB,
-    { instanceId: '', entityId: '', tenantId: '', job: STEP_DEADLINES_JOB },
-    { repeat: { every: STEP_DEADLINES_EVERY_MS }, jobId: 'workflow-step-deadlines', removeOnComplete: true, removeOnFail: 100 },
+  await getQueue(WORKFLOW_JOBS_QUEUE).upsertJobScheduler(
+    'workflow-step-deadlines',
+    { every: STEP_DEADLINES_EVERY_MS },
+    {
+      name: STEP_DEADLINES_JOB,
+      data: { instanceId: '', entityId: '', tenantId: '', job: STEP_DEADLINES_JOB },
+      opts: { removeOnComplete: true, removeOnFail: 100 },
+    },
   )
   logger.info({ everyMs: STEP_DEADLINES_EVERY_MS }, '[workflow-jobs] step deadlines sweep scheduled')
 }
 
 /** La passata OLA/UC, ogni minuto: stesso schema di quella delle scadenze. */
 export async function scheduleOLASweep(): Promise<void> {
-  await getQueue(WORKFLOW_JOBS_QUEUE).add(
-    OLA_SWEEP_JOB,
-    { instanceId: '', entityId: '', tenantId: '', job: OLA_SWEEP_JOB },
-    { repeat: { every: OLA_SWEEP_EVERY_MS }, jobId: 'workflow-ola-sweep', removeOnComplete: true, removeOnFail: 100 },
+  await getQueue(WORKFLOW_JOBS_QUEUE).upsertJobScheduler(
+    'workflow-ola-sweep',
+    { every: OLA_SWEEP_EVERY_MS },
+    {
+      name: OLA_SWEEP_JOB,
+      data: { instanceId: '', entityId: '', tenantId: '', job: OLA_SWEEP_JOB },
+      opts: { removeOnComplete: true, removeOnFail: 100 },
+    },
   )
   logger.info({ everyMs: OLA_SWEEP_EVERY_MS }, '[workflow-jobs] OLA sweep scheduled')
 }

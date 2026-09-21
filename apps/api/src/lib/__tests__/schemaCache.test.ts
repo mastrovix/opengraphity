@@ -178,7 +178,14 @@ describe('la cache è limitata', () => {
     // l'ultimo invece è ancora in cache
     const last = await getSchemaForTenant(`t-${max + 1}`)
     expect(Object.is(await getSchemaForTenant(`t-${max + 1}`), last)).toBe(true)
-  })
+  /*
+   * IL TEMPO DICHIARATO (21 set 2026). Questo test costruisce piu' schemi
+   * veri per riempire la cache e provocarne lo sfratto: e' pesante di suo, e
+   * sul runner della CI ha superato i 5 secondi di default. Non si accorcia —
+   * quello che prova vale proprio perche' arriva oltre il limite — si dice
+   * quanto tempo gli serve.
+   */
+  }, 60_000)
 })
 
 // ── Revisione del 15 set 2026 · CM-10 ─────────────────────────────────────────

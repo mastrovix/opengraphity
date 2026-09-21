@@ -345,10 +345,22 @@ export async function startReportScheduler(): Promise<Worker> {
   const worker = createWorker(REPORT_SCHEDULER_QUEUE, reportSchedulerProcessor)
 
   // Repeating job: every 60 seconds
-  await getReportSchedulerQueue().add(
-    'check',
-    {},
-    { repeat: { every: 60_000 }, jobId: 'report-scheduler-check', removeOnComplete: true },
+  /*
+   * JOB SCHEDULER, non piu' «repeat» (21 set 2026, BullMQ 6).
+   *
+   * BullMQ 6 ha RIMOSSO i job ripetibili: `repeat` su `add()`, la classe
+   * `Repeat`, `getRepeatableJobs()` e `removeRepeatable*()` non esistono piu'.
+   * Al loro posto i Job Scheduler, che hanno un'identita' esplicita — il primo
+   * argomento — invece di essere dedotta da (nome, opzioni di ripetizione).
+   *
+   * La ricorrenza si registra a ogni avvio del worker, come prima: non c'e'
+   * stato da migrare, e `upsert` significa che riavviare non ne crea una
+   * seconda.
+   */
+  await getReportSchedulerQueue().upsertJobScheduler(
+    'report-scheduler-check',
+    { every: 60_000 },
+    { name: 'check', data: {}, opts: { removeOnComplete: true } },
   )
 
   logger.info('report-scheduler started')

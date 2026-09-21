@@ -24,7 +24,17 @@ const STATUS_TYPES: Record<string, JobType[]> = {
   completed: ['completed'],
   failed:    ['failed'],
   delayed:   ['delayed'],
-  paused:    ['paused'],
+  /*
+   * «paused» NON c'e' piu' (21 set 2026, BullMQ 6).
+   *
+   * Non e' un rinomino: e' il modello che e' cambiato. Prima «in pausa» era
+   * uno STATO del job e si contava; ora una coda e' in pausa o non lo e', e i
+   * suoi job restano `waiting` in entrambi i casi. Un conteggio «paused»
+   * oggi sarebbe sempre zero — cioe' una bugia tranquilla a schermo.
+   *
+   * Al suo posto `paused` e' un booleano SULLA CODA (`queue.isPaused()`), che
+   * e' l'informazione vera: non «quanti», ma «se».
+   */
 }
 
 function requireSystemPermission(ctx: GraphQLContext): void {
@@ -71,20 +81,22 @@ export const queueStatsResolvers = {
       requireSystemPermission(ctx)
       return Promise.all(
         QUEUE_REGISTRY.map(async (entry) => {
-          const counts = await getQueue(entry.name).getJobCounts(
-            'waiting', 'active', 'completed', 'failed', 'delayed', 'paused',
-          )
+          const coda = getQueue(entry.name)
+          const [counts, inPausa] = await Promise.all([
+            coda.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed'),
+            coda.isPaused(),
+          ])
           return {
             name:      entry.name,
             group:     entry.group,
             retryable: entry.retryable,
+            paused:    inPausa,
             counts: {
               waiting:   counts['waiting']   ?? 0,
               active:    counts['active']    ?? 0,
               completed: counts['completed'] ?? 0,
               failed:    counts['failed']    ?? 0,
               delayed:   counts['delayed']   ?? 0,
-              paused:    counts['paused']    ?? 0,
             },
           }
         }),
