@@ -26,12 +26,15 @@ updates:
       security-patches:
         applies-to: security-updates
         update-types: ["minor", "patch"]
-    ignore:
-      # @types/node NON e' piu' escluso (21 set 2026): l'esclusione esisteva
-      # perche' il runtime era fermo a Node 20, e quel vincolo e' caduto con
-      # isolated-vm 7 (che Node >= 24 lo PRETENDE). Ora i tipi seguono il
-      # runtime come devono. Se un giorno il runtime si rifermasse, e'
-      # l'esclusione a tornare, non i tipi a restare indietro in silenzio.
+    # Nessuna esclusione qui — e la chiave `ignore:` NON va lasciata vuota:
+    # Dependabot rifiuta l'intero file e smette di aprire PR, in silenzio
+    # tranne un check rosso chiamato `.github/dependabot.yml` (21 set 2026).
+    #
+    # @types/node non e' piu' escluso: l'esclusione esisteva perche' il
+    # runtime era fermo a Node 20, e quel vincolo e' caduto con isolated-vm 7
+    # (che Node >= 24 lo PRETENDE). Ora i tipi seguono il runtime come devono.
+    # Se un giorno il runtime si rifermasse, e' l'esclusione a tornare, non i
+    # tipi a restare indietro in silenzio.
 
   # ── Docker base images (FROM lines) ────────────────────────────────────────
   - package-ecosystem: "docker"
