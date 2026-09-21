@@ -215,7 +215,17 @@ describe('NewSourceWizard — percorso generico', () => {
     await user.click(screen.getByRole('button', { name: 'Finish' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByTestId('location')).toHaveTextContent('/monitoring/sources')
-  })
+  /*
+   * Otto passi della procedura con attese vere fra l'uno e l'altro, e i 5
+   * secondi di default di vitest non bastano su un runner: la suite del web
+   * che in locale impiega 22 secondi, nella CI ne impiega 140.
+   *
+   * È la stessa dichiarazione che il test di Zabbix qui sotto ha già (riga
+   * ~374): quello l'aveva ricevuta, questo — che è il più lungo del file —
+   * no. Non è lentezza da indagare, è il budget che non era mai stato
+   * scritto (21 set 2026).
+   */
+  }, 30_000)
 
   it('D·1.10 — con un esempio incollato e l\'anteprima in errore "Crea sorgente" resta bloccato con il motivo', async () => {
     const failingPreview: GqlMock = { request: { query: PREVIEW_INBOUND_EVENTS, variables: () => true }, error: new Error('resource is empty'), maxUsageCount: Number.POSITIVE_INFINITY }

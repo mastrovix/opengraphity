@@ -16,8 +16,19 @@ export async function audit(
   // fine del resolver per sapere che questa mutation ha già la sua voce.
   noteAuditWritten()
   logger.debug({ action, entityType, entityId, tenantId: ctx.tenantId, userId: ctx.userId }, '[audit] writing entry')
-  const session = getSession(undefined, 'WRITE')
+  /*
+   * `getSession()` DENTRO il try (21 set 2026).
+   *
+   * Stava fuori, e questa funzione e' chiamata quasi sempre come
+   * `void audit(...)`: un errore qui non veniva preso dal `catch` qui sotto,
+   * usciva come rejection senza padrone, e su Node 24 una rejection senza
+   * padrone TERMINA il processo. Un audit che non si scrive non deve far
+   * cadere ne' il chiamante ne' il server — e' scritto nel catch qui sotto,
+   * ma una riga fuori dal try lo smentiva.
+   */
+  let session: ReturnType<typeof getSession> | undefined
   try {
+    session = getSession(undefined, 'WRITE')
     const now = new Date().toISOString()
     await session.executeWrite((tx) =>
       tx.run(`
@@ -58,6 +69,6 @@ export async function audit(
     noteAuditFailed()
     logger.error({ err, action, entityType, entityId, tenantId: ctx.tenantId }, '[audit] write failed: this action has no entry in the Audit Log')
   } finally {
-    await session.close()
+    await session?.close()
   }
 }

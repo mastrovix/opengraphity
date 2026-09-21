@@ -318,9 +318,21 @@ export function ServiceCatalogPage() {
          * nessun fuoco spostato. Con un lettore di schermo il modulo non
          * veniva annunciato e si continuava a tabulare nella pagina sotto.
          */
+        /*
+         * Lo sfondo è DECORAZIONE (`role="presentation"`, 21 set 2026):
+         * chiudere cliccandoci sopra è una comodità del mouse, e
+         * l'equivalente da tastiera è Escape — che sta qui e funziona perché
+         * il fuoco è sul dialogo qui dentro e l'evento risale.
+         *
+         * E il clic chiude solo se arriva PROPRIO sullo sfondo: prima il
+         * pannello doveva fermare l'evento con uno `stopPropagation`, e un
+         * gestore di clic su un dialogo è esattamente ciò che un lettore di
+         * schermo non sa come annunciare.
+         */
         <div
+          role="presentation"
           style={{ position: 'fixed', inset: 0, background: alpha.scrim, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', zIndex: 100, padding: 24, overflowY: 'auto' }}
-          onClick={() => apriVoce(null)}
+          onClick={(e) => { if (e.target === e.currentTarget) apriVoce(null) }}
           onKeyDown={(e) => { if (e.key === 'Escape') apriVoce(null) }}
         >
           <div
@@ -330,7 +342,6 @@ export function ServiceCatalogPage() {
             ref={(el) => { el?.focus() }}
             tabIndex={-1}
             style={{ background: colors.white, borderRadius: 12, padding: 24, width: 460, maxWidth: '90vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', outline: 'none' }}
-            onClick={e => e.stopPropagation()}
           >
             <h3 id="og-catalog-modal-title" style={{ fontSize: 17, fontWeight: 600, color: colors.slateDark, marginBottom: 4 }}>{openItem.name}</h3>
             {openItem.requiresApproval && <p style={{ fontSize: 12, color: palette.warning.text, marginBottom: 12 }}>{t('catalog.approvalNotice')}</p>}

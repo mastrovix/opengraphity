@@ -12,7 +12,23 @@ import { ApolloServer } from '@apollo/server'
 import type { GraphQLSchema } from 'graphql'
 import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin/landingPage/default'
 import { ApolloServerPluginLandingPageDisabled } from '@apollo/server/plugin/disabled'
-import { expressMiddleware } from '@apollo/server/express4'
+/*
+ * APOLLO SERVER 5 (21 set 2026).
+ *
+ * In Apollo 5 l'adattatore per express non sta piu' dentro il pacchetto
+ * (`@apollo/server/express4` non esiste): e' un pacchetto a se', e ce n'e'
+ * uno per ogni major di express. Qui e' `@as-integrations/express5`.
+ *
+ * Le due migrazioni sono state fatte in QUESTO ordine e separate apposta:
+ * Apollo 5 non obbliga a express 5 (si puo' stare su
+ * `@as-integrations/express4`), quindi la prima e' entrata da sola e, se
+ * express 5 avesse dato problemi, sarebbe rimasta.
+ *
+ * Insieme chiudono quattro avvisi che stavano in `audit-allowlist.json` in
+ * attesa proprio di questo: `GHSA-9q82-xgwf-vj6h` (Apollo, bypass della
+ * prevenzione XS-Search) e i tre su `qs`, che express 4 teneva fermo a ~6.14.
+ */
+import { expressMiddleware } from '@as-integrations/express5'
 import type { GraphQLRequestContextDidEncounterErrors } from '@apollo/server'
 import { buildContext, type GraphQLContext } from './context.js'
 import { getSchemaForTenant, getSchemaState } from './lib/schemaCache.js'
@@ -305,7 +321,7 @@ function buildApolloServer(schema: GraphQLSchema): ApolloServer<GraphQLContext> 
       {
         // ── GraphQL tracing plugin ─────────────────────────────────────────────
         // Creates an explicit OTEL root span per GraphQL operation. This is
-        // necessary because Apollo Server 4 + expressMiddleware processes POST
+        // necessary because Apollo Server + expressMiddleware processes POST
         // bodies in its own pipeline, breaking out of the HTTP auto-instrumentation
         // context — so POST spans never appear in Jaeger without manual creation.
         async requestDidStart(reqCtx) {

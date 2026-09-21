@@ -971,6 +971,7 @@
       "provisionPartial": "Configurazione creata, ma manca ancora: {{gaps}}",
       "loading": "Caricamento workflow…",
       "noneForTenant": "Nessun workflow trovato per questo tenant.",
+      "openTransition": "Apri la transizione {{name}}",
       "stepsFixedHint": "Gli step di questo workflow sono fissi. Puoi personalizzare label, azioni e condizioni.",
       "defaultBadge": "Default",
       "deleteTransition": "Elimina transizione",
@@ -4683,6 +4684,10 @@
       "analysisAlreadyRunning": "Un'analisi è già in corso per questa organizzazione. Riprova fra un momento.",
       "acknowledgeHasAction": "Questa proposta porta un’azione: per essere d’accordo, accettala e falla eseguire.",
       "notProblemMaterial": "Da questa proposta non si apre un Problem: un Problem è la causa di guasti, e questa non lo è."
+    },
+    "rest": {
+      "repeatedRouteParam": "Il parametro «{{name}}» della rotta è arrivato come elenco: questa rotta dichiara un parametro ripetuto, e chi la usa non se lo aspetta.",
+      "missingRouteParam": "Manca il parametro «{{name}}» nella rotta."
     }
   },
   "errorBoundary": {

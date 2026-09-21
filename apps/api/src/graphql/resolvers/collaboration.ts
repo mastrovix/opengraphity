@@ -331,13 +331,25 @@ async function sendInternalMessage(
   // Auto-watch on message
   await autoWatch(ctx.tenantId, ctx.userId, args.entityId)
 
-  // Notify watchers
+  /*
+   * AVVISI A PARTE, MA NON SENZA PADRONE (21 set 2026).
+   *
+   * Il `void` qui e' voluto: chi scrive un messaggio non deve aspettare che
+   * partano gli avvisi. Ma senza `.catch` un errore la' dentro diventa una
+   * rejection senza padrone, e su Node 24 quella TERMINA il processo: un
+   * avviso che non parte avrebbe buttato giu' l'API.
+   *
+   * Non si ingoia: si scrive a livello di errore, perche' un osservatore che
+   * non viene avvisato e' un difetto, non un dettaglio. Lo ha trovato vitest
+   * 5, che una rejection senza padrone la fa fallire invece di stamparla.
+   */
   const title = await getEntityTitle(ctx.tenantId, args.entityId)
   void notifyWatchers(ctx.tenantId, args.entityType, args.entityId, { kind: 'internal_chat', author: ctx.userEmail }, ctx.userId, true)
+    .catch((err: unknown) => logger.error({ err, entityType: args.entityType, entityId: args.entityId }, '[collaboration] watchers NOT notified of the internal message'))
 
-  // Notify mentions
   if (mentions.length > 0) {
     void notifyMentions(ctx.tenantId, ctx.userEmail, args.entityType, args.entityId, title, mentions, 'internal_chat')
+      .catch((err: unknown) => logger.error({ err, entityType: args.entityType, entityId: args.entityId }, '[collaboration] mentioned people NOT notified of the internal message'))
   }
 
   // Revisione del 14 set 2026 · CO-2/F10: qui partiva «nuovo messaggio
