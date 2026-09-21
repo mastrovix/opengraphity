@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { NewSourceWizard } from './NewSourceWizard'
 import { GET_SAMPLE_INBOUND_PAYLOAD, GET_PAYLOAD_KEYS, GET_MONITORING_SOURCE } from '@/graphql/queries'
 import { PREVIEW_INBOUND_EVENTS, CREATE_MONITORING_SOURCE, SEND_SAMPLE_EVENT } from '@/graphql/mutations'
-import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { renderWithProviders, attendiURL, type GqlMock } from '@/test/utils'
 import type { MonitoringSource } from '@/types/events'
 
 vi.mock('sonner', () => ({
@@ -356,8 +356,16 @@ describe('NewSourceWizard — strumenti noti', () => {
     // "Esci comunque" → elenco delle sorgenti
     await user.click(screen.getByRole('button', { name: 'Finish' }))
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Leave anyway' }))
-    expect(screen.getByTestId('location')).toHaveTextContent('/monitoring/sources')
-    expect(screen.getByTestId('location')).not.toHaveTextContent('/monitoring/sources/new')
+    /*
+     * Prima qui c'erano due asserzioni sincrone, e tutte e due sbagliate
+     * (21 set 2026). `toHaveTextContent('/monitoring/sources')` è vero anche
+     * su `/monitoring/sources/new` — è una SOTTOSTRINGA — quindi passava
+     * pure quando la navigazione non era ancora avvenuta; e la seconda, che
+     * quella navigazione la pretendeva davvero, leggeva l'URL prima che il
+     * router l'avesse aggiornato. `attendiURL` aspetta e confronta il
+     * percorso per intero.
+     */
+    await attendiURL('/monitoring/sources')
   /*
    * Procedura a più passi con attese vere fra l'uno e l'altro: 30 secondi
    * perché la CI è più lenta di un portatile, non perché sia lenta lei

@@ -19,6 +19,25 @@ vi.mock('../../../lib/scriptingPlan.js', async (importOriginal) => {
   return { ...orig, assertScriptingEnabled: (t: string, w: string, k?: string) => assertScriptingEnabled(t, w, k) }
 })
 vi.mock('../ci-utils.js', () => ({ withSession: vi.fn() }))
+/*
+ * QUESTO TEST APRIVA UNA CONNESSIONE A NEO4J VERA (21 set 2026).
+ *
+ * `withSession` era sostituito, e sembrava bastasse. Ma la creazione di un CI
+ * senza `status` esplicito chiede lo stato iniziale al DIZIONARIO del cliente
+ * (`initialCIStatus`, la regola «niente valori cablati»: lo stato di partenza
+ * è una scelta sua, non una costante). Quella lettura va nel grafo per conto
+ * suo, fuori dalla sessione sostituita.
+ *
+ * Sulla macchina di chi sviluppa Neo4j è acceso e il test passava in
+ * millisecondi; sulla CI, dove in questo passo il database non c'è, restava
+ * appeso fino ai 5 secondi del tetto. Un test unitario che in silenzio ha
+ * bisogno di un database passa a casa e cade altrove, e chi lo legge non ha
+ * modo di saperlo.
+ */
+vi.mock('../../../lib/ciLifecycle.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../../../lib/ciLifecycle.js')>()
+  return { ...orig, initialCIStatus: async () => 'active' }
+})
 vi.mock('../../../lib/cache.js', () => ({ cache: { invalidate: vi.fn() } }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/chainCalculator.js', () => ({ calculateChain: vi.fn().mockResolvedValue(undefined) }))
