@@ -1,0 +1,59 @@
+{
+	"executionStatus": {
+		"/Users/mastrovix/Developer/opengraphity": {
+			"status": "passed",
+			"duration": 1351.327625
+		},
+		"/Users/mastrovix/Developer/opengraphity/packages/discovery": {
+			"status": "passed",
+			"duration": 117.273041
+		},
+		"/Users/mastrovix/Developer/opengraphity/packages/neo4j": {
+			"status": "passed",
+			"duration": 117.111291
+		},
+		"/Users/mastrovix/Developer/opengraphity/packages/types": {
+			"status": "skipped"
+		},
+		"/Users/mastrovix/Developer/opengraphity/packages/events": {
+			"status": "passed",
+			"duration": 117.2535
+		},
+		"/Users/mastrovix/Developer/opengraphity/packages/schema-generator": {
+			"status": "passed",
+			"duration": 115.813042
+		},
+		"/Users/mastrovix/Developer/opengraphity/packages/scripting": {
+			"status": "passed",
+			"duration": 117.306
+		},
+		"/Users/mastrovix/Developer/opengraphity/packages/web-core": {
+			"status": "passed",
+			"duration": 115.809958
+		},
+		"/Users/mastrovix/Developer/opengraphity/apps/console": {
+			"status": "passed",
+			"duration": 118.615458
+		},
+		"/Users/mastrovix/Developer/opengraphity/apps/portal": {
+			"status": "passed",
+			"duration": 118.902125
+		},
+		"/Users/mastrovix/Developer/opengraphity/apps/web": {
+			"status": "passed",
+			"duration": 119.580125
+		},
+		"/Users/mastrovix/Developer/opengraphity/packages/notifications": {
+			"status": "passed",
+			"duration": 116.552375
+		},
+		"/Users/mastrovix/Developer/opengraphity/packages/sla": {
+			"status": "passed",
+			"duration": 100.777875
+		},
+		"/Users/mastrovix/Developer/opengraphity/packages/workflow": {
+			"status": "passed",
+			"duration": 98.129583
+		}
+	}
+}

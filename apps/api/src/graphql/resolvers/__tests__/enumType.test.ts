@@ -1,29 +1,77 @@
 /**
- * enumType.ts — pin della Cypher: le letture includono gli enum di sistema
- * (`e.tenant_id = $tenantId OR e.is_system = true`), le scritture: create con
- * tenant_id del contesto e is_system=false; update su `tenant_id IN
- * [$tenantId, 'system']` (comportamento reale, vedi it.fails); delete solo
+ * enumType.ts — pin della Cypher: le letture vedono il proprio tenant più il
+ * SOLO tenant condiviso `system`
+ * (`e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')`
+ * — personalizzazioni ondata 0, B0-2: prima era `OR e.is_system = true`, cioè
+ * il flag di protezione usato come flag di visibilità, che mostrava a ogni
+ * tenant i vocabolari di tutti gli altri); le scritture: create con tenant_id
+ * del contesto e is_system=false; update e delete solo su
  * `{tenant_id: $tenantId}`; non-admin → Forbidden prima della sessione.
+ *
+ * Ondata 1 (A1-1): `isShipped` dice di chi è il vocabolario (`tenant_id =
+ * 'system'`), cosa che `is_system` — flag di protezione scritto anche sulle
+ * copie per tenant — non dice; `customizeEnumType` è la copia su scrittura, e
+ * `updateEnumType` su un nodo spedito non finisce più in un NotFound opaco ma
+ * rimanda a «Personalizza».
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
+import { int as neo4jInt } from 'neo4j-driver'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
+/**
+ * `toNumber` è quello VERO (non un finto): `deleteEnumType` converte il
+ * `count(...)` con lui, e il difetto che questo test non vedeva era proprio
+ * una conversione fatta a mano (`.toNumber()` su un valore che può essere un
+ * `number` normale). Mockarlo nasconderebbe di nuovo il problema.
+ */
+vi.mock('@opengraphity/neo4j', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('@opengraphity/neo4j')>()
+  return { getSession: vi.fn(), toNumber: orig.toNumber }
+})
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+/*
+  La lingua predefinita del cliente e configurazione, quindi si legge dal grafo:
+  qui e finta, altrimenti la sua query consumerebbe la coda della sessione finta
+  e ogni asserzione su cosa legge il resolver diventerebbe inaffidabile.
+*/
+vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 
-const { enumTypeResolvers } = await import('../enumType.js')
+const { enumTypeResolvers, customizeEnumType } = await import('../enumType.js')
 const { getSession } = await import('@opengraphity/neo4j')
+const { registerMetamodelCacheClearer, registeredMetamodelCacheClearers } =
+  await import('../../../lib/schemaInvalidator.js')
 
-const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
-const operator: GraphQLContext = { ...admin, role: 'operator' }
-const rec = (map: Record<string, unknown>) => ({ get: (k: string) => (k in map ? map[k] : null) })
+const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
+const operator: GraphQLContext = { ...admin, role: 'operator', permissions: perms('operator') }
+/** `keys` serve a lib/enumValueUsage.ts, che legge le righe per chiave (B7-2). */
+const rec = (map: Record<string, unknown>) => ({ keys: Object.keys(map), get: (k: string) => (k in map ? map[k] : null) })
+/** Un `count(...)` come lo dà il driver quando i numeri sono «lossless». */
+const int = (n: number) => neo4jInt(n)
 
-const ENUM_ROW = { id: 'e-1', tenantId: 'tenant-1', name: 'ticket_source', label: 'Origine', values: ['portal', 'email'], isSystem: false, scope: 'itil', createdAt: 'c', updatedAt: 'u' }
+const ENUM_ROW = { id: 'e-1', tenantId: 'tenant-1', name: 'ticket_source', label: 'Origine', values: ['portal', 'email'], isSystem: false, scope: 'itil', defaultValue: null, createdAt: 'c', updatedAt: 'u' }
+
+/**
+ * Le sedi di CONFIGURAZIONE (terza revisione · G1) aggiungono una lettura per
+ * sede a ogni sostituzione. Questa coda risponde per POSIZIONE, quindi quelle
+ * letture in piu le sfilerebbero le risposte destinate al vocabolario: si
+ * riconoscono dall'etichetta e si servono vuote SENZA consumare la coda. I
+ * test dedicati alle sedi stanno in `lib/__tests__/enumValueUsage.test.ts`,
+ * dove la sessione finta smista sul Cypher invece di rispondere in coda.
+ */
+// Le query delle sedi usano tutte l'alias `n`: la policy degli allarmi legge
+// `MATCH (t:Tenant …) RETURN t.event_policy`, e un filtro sul solo nome
+// dell'etichetta si sarebbe mangiato anche quella (mi e successo).
+// Revisione totale · C-5: fra le sedi ci sono anche le AZIONI delle regole e
+// dei passi, e i campi impostati da una scadenza — altre letture con l'alias
+// `n`, da servire vuote senza consumare la coda.
+const CONFIG_LABELS = /\(n:(?:BusinessRule|AutoTrigger|SLAPolicyNode|DynamicCIGroup|StandardChangeCatalogEntry|FieldVisibilityRule|WorkflowStep)\b|risk_band_thresholds/
 
 function fakeSession(responses: Array<{ records: unknown[] }>) {
   const queue = [...responses]
-  const txRun = vi.fn().mockImplementation(async () => queue.shift() ?? { records: [] })
+  const txRun = vi.fn().mockImplementation(async (cypher: string) =>
+    (CONFIG_LABELS.test(String(cypher)) ? { records: [] } : queue.shift() ?? { records: [] }))
   const tx = { run: txRun }
   const s = {
     txRun,
@@ -45,26 +93,76 @@ async function expectCode(p: Promise<unknown>, code: string, pattern?: RegExp) {
 describe('letture — tenant + sistema', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('enumTypes: WHERE (e.tenant_id = $tenantId OR e.is_system = true), scope opzionale include "shared"', async () => {
-    const s = fakeSession([{ records: [rec(ENUM_ROW), rec({ ...ENUM_ROW, id: 'e-sys', tenantId: 'system', isSystem: true, values: '["a","b"]' })] }])
+  /**
+   * RINEGOZIATO (ondata 8 · A-18): questo test pinnava la TOLLERANZA di
+   * `mapEnum` verso le due forme di `values` (lista o stringa JSON). La
+   * stringa era scritta da un posto solo — `seed-metamodel.ts` per `ci_chain` —
+   * e quel `JSON.parse` di ripiego nascondeva l'incoerenza a tutti: al primo
+   * consumatore che facesse `values.length` sarebbe stato un difetto. Ora il
+   * seed scrive una lista, la migrazione 20260918_1910 normalizza il nodo
+   * esistente, e una stringa è un dato rotto da dire, non da indovinare.
+   */
+  it('values come stringa JSON → errore che nomina il nodo e la migrazione, invece di un JSON.parse silenzioso', async () => {
+    fakeSession([{ records: [rec({ ...ENUM_ROW, tenantId: 'system', name: 'ci_chain', values: '["Application","Infrastructure"]' })] }])
+    await expect(enumTypeResolvers.Query.enumTypes(null, {}, operator))
+      .rejects.toThrow(/system\/ci_chain: "values" is not a list of strings.*20260918_1910/s)
+  })
+
+  it('enumTypes: WHERE (e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = \'system\')), scope opzionale include "shared"', async () => {
+    const s = fakeSession([{ records: [rec(ENUM_ROW), rec({ ...ENUM_ROW, id: 'e-sys', tenantId: 'system', isSystem: true, values: ['a', 'b'] })] }])
 
     const out = await enumTypeResolvers.Query.enumTypes(null, { scope: 'itil' }, operator)
 
     const [cypher, params] = s.txRun.mock.calls[0]!
-    expect(cypher).toContain('(e.tenant_id = $tenantId OR e.is_system = true)')
+    expect(cypher).toContain("(e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system'))")
     expect(cypher).toContain('(e.scope = $scope OR e.scope = "shared")')
     expect(params).toEqual({ tenantId: 'tenant-1', scope: 'itil' })
-    // values sia come lista nativa sia come JSON serializzato
     expect(out.map((e) => e.values)).toEqual([['portal', 'email'], ['a', 'b']])
     expect(s.close).toHaveBeenCalledOnce()
+  })
+
+  // A1-1: `is_system` è un flag di PROTEZIONE scritto anche sulle copie per
+  // tenant, quindi non dice di chi è il vocabolario. `isShipped` sì: lo legge
+  // dal tenant, ed è quello che l'interfaccia usa per offrire «Personalizza».
+  it('isShipped viene dal tenant, non da is_system', async () => {
+    fakeSession([{ records: [
+      rec({ ...ENUM_ROW, isSystem: true }),                               // copia per tenant, protetta ma NON spedita
+      rec({ ...ENUM_ROW, id: 'e-sys', tenantId: 'system', isSystem: true }),
+    ] }])
+    const out = await enumTypeResolvers.Query.enumTypes(null, {}, operator)
+    expect(out.map((e) => [e.tenantId, e.isSystem, e.isShipped])).toEqual([
+      ['tenant-1', true, false],
+      ['system',   true, true],
+    ])
   })
 
   it('enumType(id): stesso predicato; id di altro tenant non-system → null', async () => {
     const s = fakeSession([{ records: [] }])
     await expect(enumTypeResolvers.Query.enumType(null, { id: 'e-altrui' }, operator)).resolves.toBeNull()
     const [cypher, params] = s.txRun.mock.calls[0]!
-    expect(cypher).toContain('WHERE e.tenant_id = $tenantId OR e.is_system = true')
+    expect(cypher).toContain("WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')")
     expect(params).toEqual({ id: 'e-altrui', tenantId: 'tenant-1' })
+  })
+
+  // B0-2 (A-3/D-5): `is_system` è scritto sugli enum seminati in OGNI tenant,
+  // quindi `OR e.is_system = true` faceva passare i vocabolari degli altri
+  // clienti. Il predicato deve nominare il tenant condiviso `system`: nessuna
+  // lettura può più tornare un enum `is_system` di un tenant diverso.
+  it('isolamento: il predicato non ammette enum is_system di un ALTRO tenant (né in enumTypes né in enumType)', async () => {
+    const seen: string[] = []
+    const s1 = fakeSession([{ records: [] }])
+    await enumTypeResolvers.Query.enumTypes(null, {}, operator)
+    seen.push(s1.txRun.mock.calls[0]![0] as string)
+    vi.clearAllMocks()
+    const s2 = fakeSession([{ records: [] }])
+    await enumTypeResolvers.Query.enumType(null, { id: 'e-x' }, operator)
+    seen.push(s2.txRun.mock.calls[0]![0] as string)
+
+    for (const cypher of seen) {
+      // niente `is_system` senza il vincolo sul tenant condiviso
+      expect(cypher).not.toMatch(/e\.is_system = true(?! AND e\.tenant_id = 'system')/)
+      expect(cypher).toContain("e.is_system = true AND e.tenant_id = 'system'")
+    }
   })
 })
 
@@ -78,27 +176,67 @@ describe('createEnumType', () => {
 
   it.each([
     [{ name: 'NotSnake', label: 'X', values: ['a'], scope: 'itil' }, /snake_case/],
-    [{ name: 'ok_name', label: 'X', values: [], scope: 'itil' }, /at least one entry/],
+    // Terza revisione · M7: il messaggio ora dice la CONSEGUENZA («nessun
+    // record potrebbe piu essere creato») e le due uscite, e la stessa regola
+    // vale anche per `updateEnumType`, che prima non guardava affatto.
+    [{ name: 'ok_name', label: 'X', values: [], scope: 'itil' }, /cannot be left without values/],
+    [{ name: 'ok_name', label: 'X', values: ['a', 'a'], scope: 'itil' }, /repeats "a"/],
+    [{ name: 'ok_name', label: 'X', values: ['a', '  '], scope: 'itil' }, /empty value/],
     [{ name: 'ok_name', label: 'X', values: ['a'], scope: 'global' }, /scope must be one of: itil, cmdb, shared/],
   ])('input non valido %j → ValidationError senza sessione', async (input, pattern) => {
     await expectCode(enumTypeResolvers.Mutation.createEnumType(null, { input }, admin), 'BAD_USER_INPUT', pattern)
     expect(getSession).not.toHaveBeenCalled()
   })
 
-  it('nome già usato nel tenant → ValidationError, nessuna CREATE', async () => {
-    const s = fakeSession([{ records: [rec({ id: 'e-dup' })] }])
+  /**
+   * D-17 (ondata 8): la creazione era «leggi, poi crea» in DUE transazioni, e
+   * i due test che stavano qui pinnavano proprio quella forma (una MATCH di
+   * controllo, poi una CREATE). Ora è UNA scrittura idempotente: MERGE sulla
+   * chiave naturale (tenant_id, name), e chi arriva secondo lo capisce
+   * dall'`id` che torna diverso dal suo. I due test sono riscritti sulla forma
+   * nuova — la promessa verso il chiamante (stesso messaggio, stesso codice) è
+   * identica.
+   */
+  function mergeSession(returnedId: 'echo' | string) {
+    const txRun = vi.fn().mockImplementation(async (_c: string, p: Record<string, unknown>) => ({
+      records: [rec({ id: returnedId === 'echo' ? p['id'] : returnedId })],
+    }))
+    const tx = { run: txRun }
+    const s = {
+      txRun,
+      executeRead:  vi.fn().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx)),
+      executeWrite: vi.fn().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx)),
+      close: vi.fn().mockResolvedValue(undefined),
+    }
+    vi.mocked(getSession).mockReturnValue(s as never)
+    return s
+  }
+
+  it('nome già usato nel tenant → ValidationError; una sola scrittura, nessuna lettura di controllo', async () => {
+    const s = mergeSession('e-dup')
     await expectCode(enumTypeResolvers.Mutation.createEnumType(null, { input: { name: 'ticket_source', label: 'X', values: ['a'], scope: 'itil' } }, admin), 'BAD_USER_INPUT', /already exists for this tenant/)
-    expect(s.txRun.mock.calls[0]![0]).toContain('MATCH (e:EnumTypeDefinition {name: $name, tenant_id: $tenantId})')
-    expect(s.executeWrite).not.toHaveBeenCalled()
+    expect(s.executeRead).not.toHaveBeenCalled()
+    expect(s.txRun).toHaveBeenCalledTimes(1)
   })
 
-  it('valido → CREATE con tenant_id = $tenantId (mai "system") e is_system: false', async () => {
-    const s = fakeSession([{ records: [] }])
+  it('corsa persa contro il vincolo → lo stesso rifiuto, non un errore interno', async () => {
+    const txRun = vi.fn().mockRejectedValue(new Error('Node(7) already exists with label `EnumTypeDefinition` and properties'))
+    const tx = { run: txRun }
+    vi.mocked(getSession).mockReturnValue({
+      executeRead:  vi.fn().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx)),
+      executeWrite: vi.fn().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx)),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as never)
+    await expectCode(enumTypeResolvers.Mutation.createEnumType(null, { input: { name: 'ticket_source', label: 'X', values: ['a'], scope: 'itil' } }, admin), 'BAD_USER_INPUT', /already exists for this tenant/)
+  })
+
+  it('valido → MERGE sulla chiave naturale, tenant_id = $tenantId (mai "system") e is_system = false', async () => {
+    const s = mergeSession('echo')
     const out = await enumTypeResolvers.Mutation.createEnumType(null, { input: { name: 'ticket_source', label: 'Origine', values: ['portal'], scope: 'cmdb' } }, admin)
-    const [cypher, params] = s.txRun.mock.calls[1]!
-    expect(cypher).toContain('CREATE (e:EnumTypeDefinition {')
-    expect(cypher).toContain('tenant_id:  $tenantId')
-    expect(cypher).toContain('is_system:  false')
+    const [cypher, params] = s.txRun.mock.calls[0]!
+    expect(cypher).toContain('MERGE (e:EnumTypeDefinition {tenant_id: $tenantId, name: $name})')
+    expect(cypher).toContain('ON CREATE SET')
+    expect(cypher).toContain('e.is_system  = false')
     expect(cypher).not.toContain("'system'")
     expect(params).toMatchObject({ tenantId: 'tenant-1', name: 'ticket_source', values: ['portal'], scope: 'cmdb' })
     expect(out).toMatchObject({ tenantId: 'tenant-1', isSystem: false, name: 'ticket_source' })
@@ -119,25 +257,215 @@ describe('updateEnumType', () => {
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
-  it('enum di sistema + cambio scope → ValidationError, nessuna scrittura', async () => {
-    const s = fakeSession([{ records: [rec({ isSystem: true })] }])
+  it('copia del tenant marcata is_system + cambio scope → ValidationError, nessuna scrittura', async () => {
+    const s = fakeSession([{ records: [rec({ isSystem: true, tenantId: 'tenant-1', name: 'severity' })] }])
     await expectCode(enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-sys', input: { scope: 'cmdb' } }, admin), 'BAD_USER_INPUT', /Cannot change scope of system enum types/)
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
+  // A1-1: prima la scrittura su `{id, tenant_id: $tenantId}` non trovava il
+  // nodo spedito e usciva con un NotFound opaco. Adesso l'errore indica
+  // `customizeEnumType`.
+  it('vocabolario SPEDITO → errore che rimanda a «Personalizza», nessuna scrittura', async () => {
+    const s = fakeSession([{ records: [rec({ isSystem: true, tenantId: 'system', name: 'severity' })] }])
+    await expectCode(enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-sys', input: { values: ['x'] } }, admin), 'BAD_USER_INPUT', /ships with the product.*customizeEnumType/s)
+    expect(s.executeWrite).not.toHaveBeenCalled()
+  })
+
   it('enum del tenant → SET con label/values coalesce, tenantId del contesto nei parametri', async () => {
-    const s = fakeSession([{ records: [rec({ isSystem: false })] }, { records: [rec({ ...ENUM_ROW, label: 'Nuova' })] }])
+    const s = fakeSession([{ records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'] })] }, { records: [rec({ ...ENUM_ROW, label: 'Nuova' })] }])
     const out = await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { label: 'Nuova' } }, admin)
     const [cypher, params] = s.txRun.mock.calls[1]!
     expect(cypher).toContain('SET e.label      = coalesce($label, e.label)')
-    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1', label: 'Nuova', values: null, scope: null, now: expect.any(String) })
+    // `finalDefault` (terza revisione · C2) al posto del vecchio `defaultValue`:
+    // il default non è più «quello che c'è se non me ne dài uno», è calcolato —
+    // le sostituzioni valgono anche per lui. Qui non c'è default, quindi null.
+    // `valueLabels` e sempre fra i parametri: `null` quando il vocabolario non
+    // ha etichette, com'e qui. Le etichette per valore sono dell'ondata 1 —
+    // il valore resta quello che e, l'etichetta e come si legge a schermo.
+    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1', label: 'Nuova', values: null, scope: null, finalDefault: null, valueLabels: null, valueColors: null, now: expect.any(String) })
     expect(out.label).toBe('Nuova')
   })
 
-  it('la mutation scrive SOLO con tenant_id = $tenantId (mai "system") — BUG multi-tenant: un admin di tenant modifica label/values di un enum condiviso tra tutti i tenant (enumType.ts:184-190)', async () => {
-    const s = fakeSession([{ records: [rec({ isSystem: true })] }, { records: [rec({ ...ENUM_ROW, tenantId: 'system', isSystem: true })] }])
-    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-sys', input: { values: ['x'] } }, admin)
+  it('la mutation scrive SOLO con tenant_id = $tenantId (mai "system")', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: true, tenantId: 'tenant-1', name: 'severity', values: ['x'] })] },
+      { records: [rec({ ...ENUM_ROW })] },
+    ])
+    // Una modifica VERA: da quando un salvataggio che non cambia niente viene
+    // rifiutato (18 set 2026), mandare gli stessi valori non arriva piu alla
+    // scrittura — e questo test guarda proprio la query di scrittura.
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-own', input: { values: ['x', 'y'] } }, admin)
     expect(s.txRun.mock.calls[1]![0]).not.toContain("'system'")
+  })
+})
+
+/**
+ * Ondata 7 · B7-2 / A-13 — togliere un valore ancora in uso.
+ *
+ * Prima `values` veniva sostituito in blocco: nessun conteggio, e i record
+ * restavano con un valore che il vocabolario non aveva più (dal vivo 68 CI su
+ * c-one). Ora si conta e si rifiuta; per procedere serve una sostituzione
+ * esplicita, applicata nella STESSA transazione.
+ */
+describe('updateEnumType — valore in uso (B7-2)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const OWN = (values: string[]) => rec({ isSystem: false, tenantId: 'tenant-1', name: 'ci_status', values })
+  /** Le righe che `enumValueBindings` e il conteggio si aspettano. */
+  const BINDING = { records: [rec({ label: 'ConfigurationItem', typeName: '__base__', fieldName: 'status' })] }
+  const COUNT   = (value: string, n: number) => ({ records: [rec({ value, n })] })
+  const POLICY  = (raw: string | null) => ({ records: [rec({ raw })] })
+
+  it('valore rimosso e ancora su dei record → rifiutato, con il conteggio e la via d\'uscita; nessuna scrittura', async () => {
+    const s = fakeSession([
+      { records: [OWN(['active', 'decommissioned'])] },
+      BINDING,
+      COUNT('decommissioned', 12),
+      POLICY(null),
+    ])
+    await expectCode(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active'] } }, admin),
+      'BAD_USER_INPUT',
+      /"decommissioned" is still used by 12 __base__\.status.*replacements/s,
+    )
+    expect(s.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('valore rimosso e citato dalla SEMANTICA del ciclo di vita → rifiutato (è ciò che rende sicura la scelta delle due liste sulla policy)', async () => {
+    fakeSession([
+      { records: [OWN(['active', 'decommissioned'])] },
+      BINDING,
+      COUNT('decommissioned', 0),
+      POLICY(JSON.stringify({ retired_statuses: ['inactive', 'decommissioned'], maintenance_statuses: ['maintenance'], ignore_lifecycle_statuses: [] })),
+    ])
+    await expectCode(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active'] } }, admin),
+      'BAD_USER_INPUT',
+      /the alarm policy \(retired_statuses\)/,
+    )
+  })
+
+  it('valore rimosso e non usato da nessuno → passa', async () => {
+    const s = fakeSession([
+      { records: [OWN(['active', 'obsoleto'])] },
+      BINDING,
+      { records: [] },
+      POLICY(null),
+      { records: [rec({ ...ENUM_ROW, name: 'ci_status', values: ['active'] })] },
+    ])
+    const out = await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active'] } }, admin)
+    expect(out.values).toEqual(['active'])
+    expect(s.executeWrite).toHaveBeenCalled()
+  })
+
+  it('sostituzione: `to` deve stare fra i valori nuovi e `from` fra quelli rimossi', async () => {
+    fakeSession([{ records: [OWN(['active', 'decommissioned'])] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active'], replacements: [{ from: 'decommissioned', to: 'dismesso' }] } }, admin),
+      'BAD_USER_INPUT',
+      /the replacement value "dismesso" is not among the new values/,
+    )
+    fakeSession([{ records: [OWN(['active', 'decommissioned'])] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active', 'decommissioned'], replacements: [{ from: 'active', to: 'decommissioned' }] } }, admin),
+      'BAD_USER_INPUT',
+      /"active" is not among the values you are removing/,
+    )
+  })
+
+  it('sostituzione valida → non conta gli usi, riscrive i record e poi il vocabolario, nella stessa transazione', async () => {
+    const s = fakeSession([
+      { records: [OWN(['active', 'decommissioned'])] },
+      BINDING,                                                   // enumValueBindings, dentro la transazione
+      { records: [rec({ n: 7 })] },                              // SET sui 7 CI
+      POLICY(null),                                              // niente policy da riscrivere
+      { records: [rec({ ...ENUM_ROW, name: 'ci_status', values: ['active', 'dismesso'] })] },
+    ])
+    const out = await enumTypeResolvers.Mutation.updateEnumType(
+      null,
+      { id: 'e-1', input: { values: ['active', 'dismesso'], replacements: [{ from: 'decommissioned', to: 'dismesso' }] } },
+      admin,
+    )
+    expect(out.values).toEqual(['active', 'dismesso'])
+    const setCall = s.txRun.mock.calls.find((c) => String(c[0]).includes('SET n.status = $to'))
+    expect(setCall).toBeDefined()
+    expect(setCall![1]).toMatchObject({ tenantId: 'tenant-1', from: 'decommissioned', to: 'dismesso' })
+    // il vocabolario si scrive DOPO i record
+    const enumWriteIdx = s.txRun.mock.calls.findIndex((c) => String(c[0]).includes('SET e.label'))
+    expect(enumWriteIdx).toBeGreaterThan(s.txRun.mock.calls.indexOf(setCall!))
+  })
+})
+
+/**
+ * A1-1 — copia su scrittura: un vocabolario spedito non si modifica in posto,
+ * si personalizza. La copia ha lo stesso NOME (è il nome che la fa vincere in
+ * lettura, vedi lib/enumScope.ts) e is_system = false.
+ */
+describe('customizeEnumType', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const SHIPPED = { tenantId: 'system', name: 'severity', label: 'Severity', values: ['low', 'high'], scope: 'shared' }
+
+  it('non admin → Forbidden senza sessione', async () => {
+    await expectCode(customizeEnumType(null, { id: 'e-sys' }, operator), 'FORBIDDEN')
+    expect(getSession).not.toHaveBeenCalled()
+  })
+
+  it('id sconosciuto o di un altro cliente → NotFound, nessuna scrittura', async () => {
+    const s = fakeSession([{ records: [] }])
+    await expectCode(customizeEnumType(null, { id: 'e-altrui' }, admin), 'NOT_FOUND')
+    const [cypher, params] = s.txRun.mock.calls[0]!
+    expect(cypher).toContain('WHERE e.tenant_id IN [$tenantId, $systemTenant]')
+    expect(params).toEqual({ id: 'e-altrui', tenantId: 'tenant-1', systemTenant: 'system' })
+    expect(s.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('vocabolario già del tenant → errore che lo dice, nessuna copia', async () => {
+    const s = fakeSession([{ records: [rec({ ...SHIPPED, tenantId: 'tenant-1' })] }])
+    await expectCode(customizeEnumType(null, { id: 'e-1' }, admin), 'BAD_USER_INPUT', /is already yours/)
+    expect(s.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('il tenant ha già un vocabolario con quel nome → errore che lo nomina, nessuna copia', async () => {
+    const s = fakeSession([
+      { records: [rec(SHIPPED)] },
+      { records: [rec({ id: 'own-9' })] },
+    ])
+    await expectCode(customizeEnumType(null, { id: 'e-sys' }, admin), 'BAD_USER_INPUT', /You already have a dictionary "severity" \(own-9\)/)
+    expect(s.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('spedito e senza copia → CREATE con lo stesso nome e valori, tenant del contesto, is_system false', async () => {
+    const s = fakeSession([
+      { records: [rec(SHIPPED)] },
+      { records: [] },
+      { records: [rec({ ...ENUM_ROW, id: 'new-1', name: 'severity', label: 'Severity', values: ['low', 'high'], scope: 'shared' })] },
+    ])
+    const out = await customizeEnumType(null, { id: 'e-sys' }, admin)
+    const [cypher, params] = s.txRun.mock.calls[2]!
+    expect(cypher).toContain('CREATE (e:EnumTypeDefinition {')
+    expect(cypher).toContain('is_system:  false')
+    expect(params).toMatchObject({ tenantId: 'tenant-1', name: 'severity', values: ['low', 'high'], scope: 'shared' })
+    // F20: la copia ricorda i valori spediti che ha visto, così quelli spediti
+    // DOPO si riconoscono (e quelli tolti di proposito non tornano a segnalare).
+    expect(cypher).toContain('shipped_values_seen: $shippedValuesSeen')
+    expect(params).toMatchObject({ shippedValuesSeen: ['low', 'high'] })
+    expect(out).toMatchObject({ id: 'new-1', name: 'severity', tenantId: 'tenant-1', isShipped: false })
+  })
+
+  it('values serializzati come JSON sul nodo spedito → copiati come lista', async () => {
+    const s = fakeSession([
+      { records: [rec({ ...SHIPPED, values: '["low","high"]' })] },
+      { records: [] },
+      { records: [rec({ ...ENUM_ROW, name: 'severity', values: ['low', 'high'] })] },
+    ])
+    await customizeEnumType(null, { id: 'e-sys' }, admin)
+    expect(s.txRun.mock.calls[2]![1]!['values']).toEqual(['low', 'high'])
+  })
+
+  it('è esposta fra le Mutation', () => {
+    expect(enumTypeResolvers.Mutation.customizeEnumType).toBe(customizeEnumType)
   })
 })
 
@@ -154,28 +482,555 @@ describe('deleteEnumType', () => {
     await expectCode(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-sys' }, admin), 'NOT_FOUND')
     const [cypher, params] = s.txRun.mock.calls[0]!
     expect(cypher).toContain('MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId})')
-    expect(cypher).not.toContain("'system'")
+    // Il vocabolario da cancellare si cerca SOLO nel tenant; `'system'` compare
+    // adesso in una sola riga, quella che legge il vocabolario SPEDITO con lo
+    // stesso nome (ondata 7 · B7-2: cancellare la copia del cliente lo rimette
+    // in gioco, e non deve far sparire in silenzio i valori suoi ancora in uso).
+    expect(cypher).toContain("OPTIONAL MATCH (shipped:EnumTypeDefinition {name: e.name, tenant_id: 'system'})")
+    expect(cypher.match(/'system'/g)).toHaveLength(1)
     expect(params).toEqual({ id: 'e-sys', tenantId: 'tenant-1' })
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
   it('enum del tenant marcato is_system → ValidationError, nessuna DELETE', async () => {
-    const s = fakeSession([{ records: [rec({ isSystem: true, usageCount: { toNumber: () => 0 } })] }])
+    const s = fakeSession([{ records: [rec({ isSystem: true, usageCount: 0 })] }])
     await expectCode(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin), 'BAD_USER_INPUT', /System enum types cannot be deleted/)
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
   it('enum in uso da campi → ValidationError con conteggio', async () => {
-    const s = fakeSession([{ records: [rec({ isSystem: false, usageCount: { toNumber: () => 2 } })] }])
+    const s = fakeSession([{ records: [rec({ isSystem: false, usageCount: int(2) })] }])
     await expectCode(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin), 'BAD_USER_INPUT', /Enum in use by 2 fields/)
     expect(s.executeWrite).not.toHaveBeenCalled()
   })
 
-  it('enum libero del tenant → DETACH DELETE scoped per tenant', async () => {
-    const s = fakeSession([{ records: [rec({ isSystem: false, usageCount: { toNumber: () => 0 } })] }])
+  /**
+   * Il percorso RIUSCITO, nelle DUE forme in cui `count(...)` può arrivare.
+   * Prima il conteggio veniva convertito a mano con `.toNumber()`: con un
+   * `number` normale la cancellazione moriva con «get(...).toNumber is not a
+   * function» su QUALUNQUE vocabolario, anche uno non usato da nessuno — e i
+   * test non se ne accorgevano perché fabbricavano solo la forma `Integer`.
+   */
+  it.each([['number semplice', 0 as unknown], ['Integer del driver', int(0) as unknown]])(
+    'enum libero del tenant (%s) → DETACH DELETE scoped per tenant',
+    async (_shape, usageCount) => {
+      const s = fakeSession([{ records: [rec({ isSystem: false, usageCount, name: 'ticket_source', values: ['portal'], shippedValues: ['portal'] })] }])
+      await expect(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin)).resolves.toBe(true)
+      const [cypher, params] = s.txRun.mock.calls[1]!
+      expect(cypher).toContain('MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId}) DETACH DELETE e')
+      expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1' })
+    },
+  )
+
+  /**
+   * Ondata 7 · B7-2. `usageCount` conta solo i campi agganciati a QUESTO nodo,
+   * e dal vivo i campi condivisi sono agganciati ai nodi di un altro cliente
+   * (C-6): cancellare la copia del cliente tornava quindi a quello spedito
+   * **in silenzio**, facendo sparire dai menu i valori che il cliente aveva
+   * aggiunto e lasciando i record su valori che nessun vocabolario ha più —
+   * lo stesso difetto A-13, da un'altra porta.
+   */
+  it('la copia del tenant con valori SUOI ancora in uso → rifiutata, dicendo quali valori e dove', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, usageCount: 0, name: 'ci_status', values: ['active', 'dismesso'], shippedValues: ['active'] })] },
+      { records: [rec({ label: 'ConfigurationItem', typeName: '__base__', fieldName: 'status' })] },   // enumValueBindings
+      { records: [rec({ value: 'dismesso', n: int(7) })] },                                            // conteggio
+      { records: [rec({ raw: null })] },                                                               // policy
+    ])
+    await expectCode(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin), 'BAD_USER_INPUT',
+      /would bring it back to the one shipped with the product \(active\).*"dismesso" \(7 __base__\.status\)/s)
+    expect(s.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('la copia del tenant i cui valori extra NON sono in uso → si cancella (annullare la personalizzazione resta possibile)', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, usageCount: 0, name: 'ci_status', values: ['active', 'dismesso'], shippedValues: ['active'] })] },
+      { records: [rec({ label: 'ConfigurationItem', typeName: '__base__', fieldName: 'status' })] },
+      { records: [] },                                                                                 // nessun record con `dismesso`
+      { records: [rec({ raw: null })] },
+      { records: [] },                                                                                 // la DELETE
+    ])
     await expect(enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin)).resolves.toBe(true)
-    const [cypher, params] = s.txRun.mock.calls[1]!
-    expect(cypher).toContain('MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId}) DETACH DELETE e')
-    expect(params).toEqual({ id: 'e-1', tenantId: 'tenant-1' })
+    expect(s.executeWrite).toHaveBeenCalled()
+  })
+})
+
+/**
+ * Revisione delle otto ondate · C-N1 / D-N1 — **il difetto capitale**.
+ *
+ * Nessuna mutation di questo file invalidava niente: `enumType.ts` non
+ * importava nemmeno `invalidateSchema`. E la cache dei vocabolari
+ * (`lib/domainMatrix.ts`) non aveva scadenza. Misurato dal vivo: subito dopo
+ * una rinomina nel Dizionario, lo **stesso processo API** continuava a
+ * rifiutare il valore nuovo («is not in the dictionary of this tenant») e ad
+ * accettare quello appena rimosso, scrivendolo sui ticket — fino al riavvio.
+ * Nei worker, che non servono mai queste mutation, per sempre.
+ *
+ * Qui si prova la leva, non la cache: si registra un clearer finto nel registro
+ * vero e si guarda che ogni mutation lo faccia scattare col tenant giusto. È il
+ * legame che mancava; `lib/__tests__/metamodelCache.test.ts` prova l'altra metà
+ * (che un clearer registrato svuoti davvero, e che la scadenza esista).
+ */
+describe('ogni scrittura di un vocabolario invalida le cache del metamodello', () => {
+  const svuotati: string[] = []
+  registerMetamodelCacheClearer('test-vocabolari', (tenantId) => { svuotati.push(tenantId) })
+
+  beforeEach(() => { svuotati.length = 0 })
+
+  it('il registro contiene il clearer di prova (la prova non è vacua)', () => {
+    expect(registeredMetamodelCacheClearers()).toContain('test-vocabolari')
+  })
+
+  it('createEnumType', async () => {
+    // Come `mergeSession('echo')`: il MERGE restituisce l'id che ha ricevuto,
+    // cioè «l'ho creato io» (un id diverso significa corsa persa).
+    const txRun = vi.fn().mockImplementation(async (_c: string, p: Record<string, unknown>) => ({
+      records: [rec({ id: p['id'] })],
+    }))
+    const tx = { run: txRun }
+    vi.mocked(getSession).mockReturnValue({
+      txRun,
+      executeRead:  vi.fn().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx)),
+      executeWrite: vi.fn().mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx)),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as never)
+    await enumTypeResolvers.Mutation.createEnumType(
+      null, { input: { name: 'gravita', label: 'Gravità', values: ['bassa'], scope: 'itil' } }, admin,
+    )
+    expect(svuotati).toEqual(['tenant-1'])
+  })
+
+  it('customizeEnumType', async () => {
+    fakeSession([
+      { records: [rec({ tenantId: 'system', name: 'impact', label: 'Impatto', values: ['low'], scope: 'shared' })] },
+      { records: [] },
+      { records: [rec({ ...ENUM_ROW, name: 'impact' })] },
+    ])
+    await customizeEnumType(null, { id: 'e-sys' }, admin)
+    expect(svuotati).toEqual(['tenant-1'])
+  })
+
+  it('updateEnumType', async () => {
+    fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'impact', values: ['low', 'high'] })] },
+      { records: [rec({ ...ENUM_ROW, name: 'impact', values: ['basso', 'high'] })] },
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(
+      null, { id: 'e-1', input: { values: ['low', 'high', 'estremo'] } }, admin,
+    )
+    expect(svuotati).toEqual(['tenant-1'])
+  })
+
+  it('deleteEnumType', async () => {
+    fakeSession([
+      { records: [rec({ isSystem: false, usageCount: int(0), name: 'gravita', values: ['bassa'], shippedValues: null })] },
+      { records: [] },
+      { records: [] },
+      { records: [rec({ raw: null })] },
+      { records: [] },
+    ])
+    await enumTypeResolvers.Mutation.deleteEnumType(null, { id: 'e-1' }, admin)
+    expect(svuotati).toEqual(['tenant-1'])
+  })
+
+  it('una mutation RIFIUTATA non invalida niente (non è cambiato nulla)', async () => {
+    fakeSession([{ records: [rec({ isSystem: false, tenantId: 'system', name: 'impact', values: ['low'] })] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-sys', input: { label: 'X' } }, admin),
+      'BAD_USER_INPUT', /ships with the product/,
+    )
+    expect(svuotati).toEqual([])
+  })
+})
+
+/**
+ * Revisione delle otto ondate · C·N-2 — **rinominare un valore**, che finora
+ * era un'operazione che il prodotto non aveva.
+ *
+ * Il Dizionario sapeva solo `addValue` (in coda) e `removeValue`: rinominare
+ * era togliere + aggiungere, cioè **spostare il valore in fondo**. E tre regole
+ * di dominio leggevano il vocabolario per posizione — lo stato con cui nasce un
+ * CI, le fasce di rischio, l'impatto più alto. Misurato dal vivo: dopo aver
+ * rinominato `active` in `attivo`, un CI nuovo nasceva `inactive`, cioè fuori
+ * servizio.
+ */
+describe('renameEnumValue — il valore resta al suo posto', () => {
+  const row = (over: Record<string, unknown> = {}) => rec({
+    tenantId: 'tenant-1', name: 'ci_status', values: ['active', 'inactive', 'dismesso'], defaultValue: 'active', ...over,
+  })
+
+  it('sostituisce IN POSIZIONE, non in coda', async () => {
+    const s = fakeSession([
+      { records: [row()] },                                                   // check
+      { records: [] },                                                         // enumValueBindings
+      { records: [rec({ raw: null })] },                                        // policy degli allarmi
+      { records: [rec({ ...ENUM_ROW, name: 'ci_status', values: ['attivo', 'inactive', 'dismesso'] })] },
+    ])
+    const out = await enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'active', to: 'attivo' }, admin)
+    expect(out.values).toEqual(['attivo', 'inactive', 'dismesso'])
+    const [cypher, params] = s.txRun.mock.calls.at(-1)!
+    expect(cypher).toContain('SET e.values        = $values')
+    expect(params).toMatchObject({ values: ['attivo', 'inactive', 'dismesso'], from: 'active', to: 'attivo' })
+  })
+
+  it('porta dietro il valore di DEFAULT del vocabolario', async () => {
+    const s = fakeSession([{ records: [row()] }, { records: [] }, { records: [rec({ raw: null })] }, { records: [rec(ENUM_ROW)] }])
+    await enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'active', to: 'attivo' }, admin)
+    expect(s.txRun.mock.calls.at(-1)![0]).toContain('e.default_value = CASE WHEN e.default_value = $from THEN $to ELSE e.default_value END')
+  })
+
+  it('un valore che non c\'è è un rifiuto che elenca quelli veri', async () => {
+    fakeSession([{ records: [row()] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'attivo', to: 'x' }, admin),
+      'BAD_USER_INPUT', /"attivo" is not among those of "ci_status" \(active, inactive, dismesso\)/,
+    )
+  })
+
+  it('rinominare SU un valore esistente unirebbe due valori: rifiutato, dicendo la strada', async () => {
+    fakeSession([{ records: [row()] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'active', to: 'inactive' }, admin),
+      'BAD_USER_INPUT', /would merge two distinct values into one.*remove "active" giving "inactive" as its replacement/s,
+    )
+  })
+
+  it('su un vocabolario SPEDITO rimanda a «Personalizza»', async () => {
+    fakeSession([{ records: [row({ tenantId: 'system' })] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-sys', from: 'active', to: 'attivo' }, admin),
+      'BAD_USER_INPUT', /ships with the product.*Use "Customize"/s,
+    )
+  })
+
+  it('il vocabolario del PROTOCOLLO in ingresso non si rinomina, e il rifiuto dice dov\'è la manopola', async () => {
+    // `event_severity` is the severity the monitoring systems send: il
+    // prodotto normalizza gli allarmi a info/warning/critical, quindi
+    // rinominarla non cambia quello che arriva e rompe la traduzione. Il
+    // revisore l'ha chiamato «un vocabolario finto», e aveva ragione.
+    fakeSession([{ records: [row({ name: 'event_severity', values: ['info', 'warning', 'critical'] })] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'info', to: 'informativo' }, admin),
+      'BAD_USER_INPUT', /is the severity the monitoring systems send.*Domain matrices/s,
+    )
+  })
+
+  it('non-admin → Forbidden prima di toccare la sessione', async () => {
+    const s = fakeSession([])
+    await expectCode(enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'a', to: 'b' }, operator), 'FORBIDDEN')
+    expect(s.executeRead).not.toHaveBeenCalled()
+  })
+})
+
+describe('reorderEnumValues — l\'ordine è una scala, e ora si modifica', () => {
+  const row = (values: string[]) => rec({ tenantId: 'tenant-1', name: 'impact', values })
+
+  it('lo stesso insieme, permutato', async () => {
+    const s = fakeSession([
+      { records: [row(['low', 'medium', 'high'])] },
+      { records: [rec({ ...ENUM_ROW, name: 'impact', values: ['high', 'medium', 'low'] })] },
+    ])
+    const out = await enumTypeResolvers.Mutation.reorderEnumValues(null, { id: 'e-1', values: ['high', 'medium', 'low'] }, admin)
+    expect(out.values).toEqual(['high', 'medium', 'low'])
+    expect(s.txRun.mock.calls.at(-1)![0]).toContain('SET e.values = $values')
+  })
+
+  it('un insieme DIVERSO è rifiutato, e dice quale operazione serve', async () => {
+    fakeSession([{ records: [row(['low', 'medium', 'high'])] }])
+    await expectCode(
+      enumTypeResolvers.Mutation.reorderEnumValues(null, { id: 'e-1', values: ['low', 'medium', 'estremo'] }, admin),
+      'BAD_USER_INPUT', /changes only the ORDER.*missing: high.*extra: estremo.*to change its name use the rename/s,
+    )
+  })
+})
+
+/**
+ * IL DEFAULT SEGUE I VALORI (terza revisione · C2).
+ *
+ * `renameEnumValue` portava dietro `default_value` con un `CASE WHEN`;
+ * `updateEnumType` faceva `coalesce($defaultValue, e.default_value)` — «tieni
+ * quello che c'è» — anche quando quello che c'era era il valore appena tolto.
+ * E `countEnumValueUsage` non guarda il default, quindi su un tenant dove
+ * nessun record usa quel valore la rimozione passava muta. Poi
+ * `initialCIStatus` lancia su ogni CI creato senza stato esplicito, che è il
+ * caso normale: nessun CI nasce più.
+ */
+describe('il valore di default segue i valori', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  /** La riga del vocabolario come la legge `updateEnumType`, col suo default. */
+  const ROW = (values: string[], defaultValue: string | null) =>
+    ({ records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ci_status', values, defaultValue })] })
+  const BINDING = { records: [rec({ label: 'ConfigurationItem', typeName: '__base__', fieldName: 'status' })] }
+  const COUNT   = (value: string, n: number) => ({ records: [rec({ value, n })] })
+  const POLICY  = (raw: string | null) => ({ records: [rec({ raw })] })
+  const FINAL   = (values: string[], defaultValue: string | null) =>
+    ({ records: [rec({ ...ENUM_ROW, name: 'ci_status', values, defaultValue })] })
+  /** Il parametro `finalDefault` scritto sul nodo del vocabolario. */
+  const scritto = (s: { txRun: { mock: { calls: unknown[][] } } }) => {
+    const w = s.txRun.mock.calls.find((c) => String(c[0]).includes('SET e.label'))
+    expect(w, 'il vocabolario non è stato scritto').toBeDefined()
+    return (w![1] as { finalDefault: string | null }).finalDefault
+  }
+
+  it('togliere il default senza dire su cosa riscriverlo è RIFIUTATO, e il messaggio nomina le due uscite', async () => {
+    const s = fakeSession([ROW(['active', 'inactive'], 'active'), BINDING, COUNT('active', 0), POLICY(null)])
+    const err = await enumTypeResolvers.Mutation.updateEnumType(
+      null, { id: 'e-1', input: { values: ['inactive'] } }, admin,
+    ).then(() => null, (e: GraphQLError) => e)
+    expect(err).toBeInstanceOf(GraphQLError)
+    expect(err!.message).toMatch(/default value/)
+    expect(err!.message).toMatch(/replacements/)
+    expect(err!.message).toMatch(/defaultValue/)
+    // E non ha scritto niente: il vocabolario resta com'era.
+    expect(s.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('una sostituzione porta dietro il default, come fa la rinomina', async () => {
+    const s = fakeSession([
+      ROW(['active', 'inactive'], 'active'),
+      BINDING, { records: [rec({ n: 3 })] }, POLICY(null),
+      FINAL(['inactive'], 'inactive'),
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, {
+      id: 'e-1', input: { values: ['inactive'], replacements: [{ from: 'active', to: 'inactive' }] },
+    }, admin)
+    expect(scritto(s)).toBe('inactive')
+  })
+
+  it('si può togliere il default scegliendone un altro nella stessa chiamata', async () => {
+    const s = fakeSession([
+      ROW(['active', 'inactive'], 'active'),
+      BINDING, { records: [rec({ n: 0 })] }, POLICY(null),
+      FINAL(['inactive'], 'inactive'),
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, {
+      id: 'e-1',
+      input: { values: ['inactive'], replacements: [{ from: 'active', to: 'inactive' }], defaultValue: 'inactive' },
+    }, admin)
+    expect(scritto(s)).toBe('inactive')
+  })
+
+  it('un default che non è fra i valori nuovi è rifiutato anche se lo si indica a mano', async () => {
+    fakeSession([ROW(['active', 'inactive'], null)])
+    await expectCode(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active', 'inactive'], defaultValue: 'pizza' } }, admin),
+      'BAD_USER_INPUT', /is not among the values/,
+    )
+  })
+
+  it('un vocabolario senza default resta senza default (non se ne inventa uno)', async () => {
+    const s = fakeSession([
+      ROW(['active', 'inactive'], null),
+      FINAL(['active', 'inactive', 'nuovo'], null),
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['active', 'inactive', 'nuovo'] } }, admin)
+    expect(scritto(s)).toBeNull()
+  })
+
+  it('e il default NON viene toccato quando si cambia solo l\'etichetta', async () => {
+    const s = fakeSession([
+      ROW(['active', 'inactive'], 'active'),
+      FINAL(['active', 'inactive'], 'active'),
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { label: 'Stato del CI' } }, admin)
+    expect(scritto(s)).toBe('active')
+  })
+})
+
+/**
+ * LE ETICHETTE PER VALORE (ondata 1).
+ *
+ * Il valore resta quello che è (`high`): lo scrivono i record, le condizioni
+ * delle regole, le celle delle matrici. L'etichetta è come si legge a schermo.
+ * Qui si pinnano i tre punti in cui si perderebbero in silenzio.
+ */
+describe('etichette per valore', () => {
+  it('mapEnum: l\'etichetta c\'è SEMPRE — dove manca, il valore con le iniziali maiuscole', async () => {
+    fakeSession([{ records: [rec({ ...ENUM_ROW, values: ['portal', 'email'], valueLabels: '{"portal":{"it":"Portale"}}' })] }])
+    const vocabolario = await enumTypeResolvers.Query.enumType(null, { id: 'e-1' }, admin)
+    // `valueLabels` e un field resolver: conosce la lingua chiesta, e nessun
+    // altro posto la conosce (l'API non la sa, la manda il client).
+    expect(await enumTypeResolvers.EnumTypeDefinition.valueLabels(vocabolario!, { language: 'it' }, admin)).toEqual([
+      { value: 'portal', label: 'Portale', labels: [{ language: 'it', label: 'Portale' }] },
+      { value: 'email',  label: 'Email',   labels: [] },
+    ])
+  })
+
+  it('un value_labels CORROTTO non rende illeggibile il vocabolario', async () => {
+    fakeSession([{ records: [rec({ ...ENUM_ROW, valueLabels: '{nope' })] }])
+    const out = await enumTypeResolvers.Query.enumType(null, { id: 'e-1' }, admin)
+    expect(out!.values).toEqual(['portal', 'email'])
+    expect((await enumTypeResolvers.EnumTypeDefinition.valueLabels(out!, {}, admin)).map((e) => e.label))
+      .toEqual(['Portal', 'Email'])
+  })
+
+  it('RINOMINARE un valore porta con sé la sua etichetta', async () => {
+    const s = fakeSession([
+      { records: [rec({ tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueLabels: '{"portal":{"it":"Portale","en":"Portal"},"email":{"it":"Email"}}' })] },
+      { records: [] },                       // enumValueBindings (replaceEnumValue)
+      { records: [rec({ ...ENUM_ROW, values: ['sportello', 'email'] })] },
+    ])
+    await enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'portal', to: 'sportello' }, admin)
+    const [, params] = s.txRun.mock.calls.at(-1)!
+    // «Portale» è passata su `sportello`: senza questo resterebbe appesa a una
+    // chiave che non esiste più, e a schermo comparirebbe «Sportello» per caso.
+    // TUTTE le lingue seguono il valore rinominato.
+    expect(JSON.parse((params as { valueLabels: string }).valueLabels))
+      .toEqual({ sportello: { it: 'Portale', en: 'Portal' }, email: { it: 'Email' } })
+  })
+
+  it('TOGLIERE un valore ne scarta l\'etichetta: non resta appesa', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueLabels: '{"portal":{"it":"Portale"},"email":{"it":"Email"}}' })] },
+      { records: [] },                       // nessuna entita lega questo vocabolario → uso zero
+      { records: [rec({ ...ENUM_ROW, values: ['email'] })] },
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['email'] } }, admin)
+    const [, params] = s.txRun.mock.calls.at(-1)!
+    expect(JSON.parse((params as { valueLabels: string }).valueLabels)).toEqual({ email: { it: 'Email' } })
+  })
+
+  it('le etichette mandate SOSTITUISCONO in blocco, e una vuota vale come assente', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueLabels: '{"portal":{"it":"Vecchia"}}' })] },
+      { records: [rec({ ...ENUM_ROW })] },
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, {
+      id: 'e-1',
+      input: { valueLabels: [
+        { value: 'portal', language: 'it', label: 'Portale' },
+        { value: 'portal', language: 'en', label: 'Portal' },
+        { value: 'email',  language: 'it', label: '   ' },   // vuota = non scritta
+      ] },
+    }, admin)
+    const [, params] = s.txRun.mock.calls.at(-1)!
+    expect(JSON.parse((params as { valueLabels: string }).valueLabels))
+      .toEqual({ portal: { it: 'Portale', en: 'Portal' } })
+  })
+
+  it('PERSONALIZZARE un vocabolario spedito ne copia le etichette', async () => {
+    const s = fakeSession([
+      { records: [rec({ tenantId: 'system', name: 'impact', label: 'Impact', values: ['low', 'medium', 'high'], scope: 'shared', defaultValue: null, valueLabels: '{"low":{"it":"Basso"},"medium":{"it":"Medio"},"high":{"it":"Alto"}}' })] },
+      { records: [] },  // nessuna copia esistente per il tenant
+      { records: [rec({ ...ENUM_ROW, name: 'impact', values: ['low', 'medium', 'high'] })] },
+    ])
+    await enumTypeResolvers.Mutation.customizeEnumType(null, { id: 'sys-impact' }, admin)
+    const [cypher, params] = s.txRun.mock.calls.at(-1)!
+    // Il CYPHER deve scrivere la proprietà, non solo ricevere il parametro:
+    // asserire il solo parametro era vacuo — passa anche se la CREATE lo
+    // ignora, e infatti togliendo `value_labels` dalla CREATE il test passava.
+    expect(String(cypher)).toContain('value_labels: $valueLabels')
+    // Senza questo, personalizzare «impact» per aggiungere un valore avrebbe
+    // fatto tornare in inglese i tre che c'erano già.
+    expect(JSON.parse((params as { valueLabels: string }).valueLabels))
+      .toEqual({ low: { it: 'Basso' }, medium: { it: 'Medio' }, high: { it: 'Alto' } })
+  })
+})
+
+/**
+ * Revisione del 14 set 2026 · F9: il colore di un valore era una tabella nel
+ * web (`PRIORITY_COLOR` in cinque copie, `SEVERITY_STYLE`, `CI_STATUS_STYLE`,
+ * `KB_CATEGORY_COLORS`): un valore aggiunto o rinominato dal cliente appariva
+ * grigio. Ora il colore sta nel Dizionario accanto all'etichetta, scelto da una
+ * palette chiusa di token (nessun esadecimale).
+ */
+describe('colori per valore', () => {
+  it('il vocabolario espone i colori nell\'ordine dei valori, solo per i valori che ne hanno uno', async () => {
+    fakeSession([{ records: [rec({ ...ENUM_ROW, values: ['portal', 'email'], valueColors: '{"email":"info","portal":"danger"}' })] }])
+    const out = await enumTypeResolvers.Query.enumType(null, { id: 'e-1' }, admin)
+    expect(out!.valueColors).toEqual([{ value: 'portal', color: 'danger' }, { value: 'email', color: 'info' }])
+  })
+
+  it('un value_colors corrotto non rende illeggibile il vocabolario', async () => {
+    fakeSession([{ records: [rec({ ...ENUM_ROW, valueColors: '{nope' })] }])
+    const out = await enumTypeResolvers.Query.enumType(null, { id: 'e-1' }, admin)
+    expect(out!.values).toEqual(['portal', 'email'])
+    expect(out!.valueColors).toEqual([])
+  })
+
+  it('i colori mandati SOSTITUISCONO in blocco', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueColors: '{"portal":"warning"}' })] },
+      { records: [rec({ ...ENUM_ROW })] },
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { valueColors: [{ value: 'email', color: 'success' }] } }, admin)
+    const [cypher, params] = s.txRun.mock.calls.at(-1)!
+    expect(String(cypher)).toContain('e.value_colors = $valueColors')
+    expect(JSON.parse((params as { valueColors: string }).valueColors)).toEqual({ email: 'success' })
+  })
+
+  it('un colore fuori palette o per un valore che non esiste è rifiutato prima di scrivere', async () => {
+    fakeSession([{ records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null })] }])
+    await expectCode(enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { valueColors: [{ value: 'email', color: '#ff0000' }] } }, admin), 'BAD_USER_INPUT', /#ff0000/)
+    fakeSession([{ records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null })] }])
+    await expectCode(enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { valueColors: [{ value: 'fax', color: 'info' }] } }, admin), 'BAD_USER_INPUT', /fax/)
+  })
+
+  it('RINOMINARE un valore porta con sé il suo colore', async () => {
+    const s = fakeSession([
+      { records: [rec({ tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueColors: '{"portal":"danger"}' })] },
+      { records: [] },
+      { records: [rec({ ...ENUM_ROW, values: ['sportello', 'email'] })] },
+    ])
+    await enumTypeResolvers.Mutation.renameEnumValue(null, { id: 'e-1', from: 'portal', to: 'sportello' }, admin)
+    const [, params] = s.txRun.mock.calls.at(-1)!
+    expect(JSON.parse((params as { valueColors: string }).valueColors)).toEqual({ sportello: 'danger' })
+  })
+
+  it('TOGLIERE un valore ne scarta il colore', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'ticket_source', values: ['portal', 'email'], defaultValue: null, valueColors: '{"portal":"danger","email":"info"}' })] },
+      { records: [] },
+      { records: [rec({ ...ENUM_ROW, values: ['email'] })] },
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-1', input: { values: ['email'] } }, admin)
+    const [, params] = s.txRun.mock.calls.at(-1)!
+    expect(JSON.parse((params as { valueColors: string }).valueColors)).toEqual({ email: 'info' })
+  })
+
+  it('PERSONALIZZARE un vocabolario spedito ne copia i colori', async () => {
+    const s = fakeSession([
+      { records: [rec({ tenantId: 'system', name: 'priority', label: 'Priority', values: ['low', 'high'], scope: 'shared', defaultValue: null, valueColors: '{"low":"success","high":"orange"}' })] },
+      { records: [] },
+      { records: [rec({ ...ENUM_ROW, name: 'priority', values: ['low', 'high'] })] },
+    ])
+    await enumTypeResolvers.Mutation.customizeEnumType(null, { id: 'sys-priority' }, admin)
+    const [cypher, params] = s.txRun.mock.calls.at(-1)!
+    expect(String(cypher)).toContain('value_colors: $valueColors')
+    expect(JSON.parse((params as { valueColors: string }).valueColors)).toEqual({ low: 'success', high: 'orange' })
+  })
+})
+
+/*
+ * NIENTE DA SALVARE, NIENTE SALVATAGGIO (18 set 2026).
+ *
+ * Chiesto dal proprietario: «bisogna impedire di salvare se non ci sono state
+ * modifiche». Un salvataggio a vuoto scrive `updated_at`, lascia una voce
+ * nell'audit e — al primo salvataggio dopo «Personalizza» — fissa una copia
+ * identica a quella spedita, che da quel momento scherma il tenant dai valori
+ * che il prodotto aggiungerà.
+ */
+describe('updateEnumType — niente da salvare', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('lo stesso documento → rifiuto, e nessuna scrittura', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'severity', values: ['low', 'high'] })] },
+    ])
+    await expect(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-own', input: { values: ['low', 'high'] } }, admin),
+    ).rejects.toThrow(/Nothing to save/)
+    // La LETTURA c'e (serve a sapere cosa c'e gia); la SCRITTURA no.
+    expect(s.txRun.mock.calls.some((c) => String(c[0]).includes('SET e.'))).toBe(false)
+  })
+
+  it('un valore in piu → si salva', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'severity', values: ['low', 'high'] })] },
+      { records: [rec({ ...ENUM_ROW })] },
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-own', input: { values: ['low', 'high', 'critical'] } }, admin)
+    expect(s.txRun).toHaveBeenCalled()
   })
 })

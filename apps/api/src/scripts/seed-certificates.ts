@@ -67,7 +67,7 @@ async function seed(TENANT_ID: string) {
     const supportTeam = supportTeams.length > 0 ? supportTeams[i % supportTeams.length] : ownerTeam
 
     const result = await session.run(
-      `MERGE (c:Certificate {name: $name, tenant_id: $tenantId})
+      `MERGE (c:ConfigurationItem:Certificate {name: $name, tenant_id: $tenantId})
        ON CREATE SET
          c.id               = $id,
          c.serial_number    = $serialNumber,

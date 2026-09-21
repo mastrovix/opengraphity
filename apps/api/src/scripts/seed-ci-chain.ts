@@ -10,14 +10,16 @@
  * Usage: pnpm tsx apps/api/src/scripts/seed-ci-chain.ts --slug c-one
  */
 import { calculateAllChains } from '../lib/chainCalculator.js'
+import { resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
-const slug = process.argv.find((_, i, a) => a[i - 1] === '--slug') ?? process.argv.find((_, i, a) => a[i - 1] === '--tenant-id')
-if (!slug) { console.error('Usage: seed-ci-chain.ts --slug <tenant-id>'); process.exit(1) }
-
+// H-45: il tenant lo legge `resolveTenantArg` (che accetta --tenant, --tenant-id
+// e --slug) e il processo lo chiude `runScript`, che chiude anche il driver
+// Neo4j: `process.exit` troncava i log asincroni.
 async function main() {
-  const { total, app, infra } = await calculateAllChains(slug!)
+  const slug = resolveTenantArg()
+  const { total, app, infra } = await calculateAllChains(slug)
   console.log(`CI chain populated for tenant "${slug}": ${total} total, ${app} Application, ${infra} Infrastructure`)
-  process.exit(0)
 }
 
-main().catch(err => { console.error(err); process.exit(1) })
+runScript('seed-ci-chain', main)

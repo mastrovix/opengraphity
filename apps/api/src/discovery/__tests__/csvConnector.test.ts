@@ -56,7 +56,7 @@ describe('csvConnector.scan', () => {
 
   it('rejects colliding or duplicate headers', async () => {
     await expect(collect(csvConnector.scan(sourceWith('name,Cost Center,costCenter\na,b,c'), {})))
-      .rejects.toThrow(/\[csv\] header row: le chiavi "Cost Center" e "costCenter" collidono su "cost_center"/)
+      .rejects.toThrow(/\[csv\] header row: keys "Cost Center" and "costCenter" collide on "cost_center"/)
     await expect(collect(csvConnector.scan(sourceWith('name,x,x\na,b,c'), {})))
       .rejects.toThrow(/duplicate header column "x"/)
     await expect(collect(csvConnector.scan(sourceWith('name,,x\na,b,c'), {})))

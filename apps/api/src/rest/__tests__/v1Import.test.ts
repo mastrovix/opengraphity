@@ -11,8 +11,13 @@ import express from 'express'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
+// Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
+// dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
+// fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
+
 vi.mock('../../lib/logger.js', () => ({
-  logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn(), child: vi.fn(() => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() })) },
 }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 vi.mock('@opengraphity/workflow', () => ({ workflowEngine: {} }))
@@ -106,14 +111,14 @@ describe('POST /api/v1/import/incidents — permissions and upload validation', 
   it('header-only CSV (no data rows) → 400 with the Italian message', async () => {
     const res = await upload({ csv: 'external_id,title,severity\n' })
     expect(res.status).toBe(400)
-    expect((await err(res)).message).toMatch(/non contiene righe dati/)
+    expect((await err(res)).message).toMatch(/no data rows/)
     expect(importIncidents).not.toHaveBeenCalled()
   })
 
   it('malformed CSV (unterminated quote swallowing everything) → 400, importer untouched', async () => {
     const res = await upload({ csv: '"external_id,title\nINC-1,x\nINC-2,y' })
     expect(res.status).toBe(400)
-    expect((await err(res)).message).toMatch(/non contiene righe dati/)
+    expect((await err(res)).message).toMatch(/no data rows/)
     expect(importIncidents).not.toHaveBeenCalled()
   })
 

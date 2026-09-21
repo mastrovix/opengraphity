@@ -6,6 +6,11 @@ initTelemetry()
 // One error lists ALL the missing variables (G-07).
 import { validateConfig, config } from './lib/config.js'
 validateConfig('api')
+// Process profile (revisione 2 · D1.1): the ONE table of «profile → what
+// starts» is lib/workerProfiles.ts; a profile that is not valid for the API
+// process stops the boot here.
+import { workGroupsFor } from './lib/workerProfiles.js'
+const workGroups = workGroupsFor('api', config.workerProfile)
 
 import { startServer } from './server.js'
 // Registra le condizioni di transizione ITSM sul workflow engine (side-effect).
@@ -13,10 +18,24 @@ import './workflow/conditions.js'
 import { createNotificationDispatcher } from '@opengraphity/notifications'
 import { createSLAEngine, closeScheduler } from '@opengraphity/sla'
 import { EscalationConsumer } from './consumers/escalationConsumer.js'
+import { AutomationConsumer } from './consumers/automationConsumer.js'
+import { ServiceImpactConsumer } from './consumers/serviceImpactConsumer.js'
 import { closeConnection } from '@opengraphity/events'
 import { closeDriver, registerSessionTracker } from '@opengraphity/neo4j'
 import { neo4jQueryDurationSeconds, recordSlowQuery, startBullMQMetricsCollector } from './middleware/metrics.js'
-import { getAllQueues, closeAllQueues } from './lib/bullmq.js'
+import { getAllQueues, getQueue, closeAllQueues } from './lib/bullmq.js'
+import { QUEUE_REGISTRY } from './lib/queueRegistry.js'
+import { wireDomainEventFailureMetric } from './lib/domainEventFailures.js'
+import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
+import { accendiSinkDeiLog, spegniSinkDeiLog } from './lib/serverLogSink.js'
+// Canale del metamodello (A-16): l'import registra i clearer dei moduli che
+// tengono cache derivate dal metamodello; `startMetamodelBus()` apre la
+// sottoscrizione Redis e registra il publisher usato da invalidateSchema.
+import { startMetamodelBus, stopMetamodelBus } from './lib/metamodelBus.js'
+// Import a effetto: registra sul canale il clearer delle cache del
+// dispatcher delle notifiche (regole, lingua e fuso) — revisione totale ·
+// E-20/A-15: erano invalidate solo nel processo che serviva la mutation.
+import './lib/notificationRuleCache.js'
 
 // Instrument every Neo4j session.run() — covers all 400+ call sites
 registerSessionTracker((durationMs, query) => {
@@ -25,20 +44,45 @@ registerSessionTracker((durationMs, query) => {
 })
 import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
-import { startWorkflowJobWorker, startNotificationJobWorker } from './jobs/workflowJobWorker.js'
+import { startProposalScanner } from './jobs/proposalScanner.js'
+import { startWorkflowJobWorker, startNotificationJobWorker, scheduleStepDeadlineSweep, scheduleOLASweep } from './jobs/workflowJobWorker.js'
 import { startWebhookDeliveryWorker } from './jobs/webhookDeliveryWorker.js'
+import { startEventIngestWorker } from './jobs/eventIngestWorker.js'
+import { startEventCorrelateWorker, startEventMaintenanceWorker } from './jobs/eventCorrelateWorker.js'
+import { startServiceImpactWorker } from './jobs/serviceImpactWorker.js'
 import { startEmbeddingWorker } from './jobs/embeddingWorker.js'
 import { startEmailDigestWorker } from './jobs/emailDigestWorker.js'
 import { registerAllConnectors } from './discovery/registerConnectors.js'
 import { startSyncWorker, loadScheduledSyncs } from './discovery/syncWorker.js'
 import { startMaintenanceWorker } from './workers/maintenance.worker.js'
 import { logger } from './lib/logger.js'
+import { assertMigrationsAppliedAtBoot } from './lib/migrationState.js'
+import { startInAppBus, stopInAppBus } from './lib/inAppBus.js'
+import { assertEmailConfigured } from '@opengraphity/notifications'
 import type { Worker } from 'bullmq'
 
 async function main() {
+  // Revisione del 14 set 2026 · F8: migrazioni pendenti dette all'avvio (e,
+  // con REQUIRE_APPLIED_MIGRATIONS=true, avvio fermato).
+  await assertMigrationsAppliedAtBoot({ require: config.requireAppliedMigrations, log: logger })
+  // L'API invia e-mail (menzioni, osservatori, riepilogo): senza chiave in
+  // produzione non parte. Il pacchetto non lancia più all'import, perché i
+  // worker, che non inviano, lo importano anche loro.
+  assertEmailConfigured()
+
+  // Prima del server: una mutation sul metamodello servita subito dopo l'avvio
+  // deve già trovare il canale aperto, altrimenti le altre repliche non
+  // vengono avvisate e nessuno se ne accorge.
+  startMetamodelBus()
+  // F10: consegne in-app salvate e condivise fra i processi.
+  startInAppBus()
+
   const httpServer = await startServer()
 
-  // Start RabbitMQ consumers
+  // Domain-event consumers that exhaust their retries → events_failed_total{queue,type}
+  wireDomainEventFailureMetric()
+
+  // Start domain-event consumers (BullMQ fan-out queues of packages/events)
   const notificationDispatcher = await createNotificationDispatcher()
   const slaEngine = await createSLAEngine()
 
@@ -47,18 +91,51 @@ async function main() {
   const escalationConsumer = new EscalationConsumer()
   await escalationConsumer.start()
 
+  // Trigger e Business Rule su ogni evento che le pagine offrono (AU-1).
+  const automationConsumer = new AutomationConsumer()
+  await automationConsumer.start()
+
   // Start report scheduler (BullMQ, every 60s)
   const reportScheduler = await startReportScheduler()
 
   // Start anomaly scanner (BullMQ, every 1h)
   const anomalyWorker = await startAnomalyScanner()
 
-  // Start workflow job worker (BullMQ, processes auto_close and other scheduled jobs)
+  // Le proposte di miglioramento: un giro a notte, un job per cliente.
+  const proposalWorker = await startProposalScanner()
+
+  // Start workflow job worker (BullMQ: step deadlines, webhook retries, timed triggers)
   const workflowWorker = startWorkflowJobWorker()
+  await scheduleStepDeadlineSweep()
+  await scheduleOLASweep()
 
   // Start notification job worker (escalation_check, digest, timer_wait)
   const notificationWorker = startNotificationJobWorker()
   const webhookDeliveryWorker = startWebhookDeliveryWorker()
+
+  // Event Management + Servizi monitorati: allarmi dal monitoraggio (coda
+  // events-ingest), correlazione ritardata / fine finestra di change
+  // (events-correlate), passate periodiche paginate (events-maintenance,
+  // concurrency 1), valutazione delle mappe (services-impact) e il consumer
+  // che la innesca da ci.health_changed. Con WORKER_PROFILE=api tutto questo
+  // gira nel processo `events-worker` (worker.ts) e l'API resta libera per le
+  // richieste: qui non parte nulla, e il webhook continua ad accodare.
+  const eventWorkers: Worker[] = []
+  const eventConsumers: Closable[] = []
+  if (workGroups.includes('events')) {
+    const serviceImpactConsumer = new ServiceImpactConsumer()
+    await serviceImpactConsumer.start()
+    eventConsumers.push({ name: 'service-impact-consumer', close: () => serviceImpactConsumer.stop() })
+    eventWorkers.push(
+      startEventIngestWorker(),
+      await startEventCorrelateWorker(),
+      await startEventMaintenanceWorker(),
+      await startServiceImpactWorker(),
+    )
+  } else {
+    logger.info({ profile: config.workerProfile }, 'Event Management and Servizi monitorati workers delegated to the events worker process (WORKER_PROFILE)')
+  }
+
   // Embedding worker (semantic similarity). CPU-bound: when a dedicated worker
   // container runs it (EMBEDDING_WORKER_EXTERNAL=true) the API skips it so the
   // ONNX inference does not block the request event loop.
@@ -75,65 +152,76 @@ async function main() {
   // Start maintenance worker (backup scheduler)
   const maintenanceWorker = await startMaintenanceWorker()
 
+  /*
+   * IL SINK DEI LOG DEL SERVER (20 set 2026, ondata 3). Da qui in poi ogni
+   * riga `error`/`fatal` di QUESTO processo finisce nel grafo come template
+   * scrubbato. Si accende dopo il driver, perché la prima cosa che fa è
+   * aprire una sessione; le righe di avvio precedenti restano solo su stdout,
+   * ed è un limite dichiarato — un errore che impedisce l'avvio non si legge
+   * in un database a cui il processo non è ancora arrivato.
+   */
+  await accendiSinkDeiLog()
+
   // BullMQ queue-depth gauges for /metrics and the admin "System metrics" page
-  // (A-14). Getter: queues opened later are picked up too. Interval is unref'd.
+  // (A-14). Every queue of the registry is opened here as a producer handle so
+  // the gauge covers ALL of them — the consumer queues of packages/events and
+  // the queues whose workers run in another process included (revisione 2 ·
+  // D2.2) — not only the ones this process happened to open. Getter: queues
+  // opened later are picked up too. Interval is unref'd.
+  for (const entry of QUEUE_REGISTRY) getQueue(entry.name)
   startBullMQMetricsCollector(getAllQueues)
 
-  logger.info('All consumers started')
+  logger.info({ profile: config.workerProfile, workGroups }, 'All consumers started')
 
   // Every worker/consumer must be closed on shutdown; a job left in-flight is
   // redelivered at-least-once on the next boot (idempotency in BaseConsumer and
   // the SLAStatus MERGE keep that safe, but draining cleanly avoids the churn).
   const bullWorkers: Worker[] = [
-    anomalyWorker, workflowWorker, syncWorker, maintenanceWorker,
-    notificationWorker, webhookDeliveryWorker,
+    anomalyWorker, proposalWorker, workflowWorker, syncWorker, maintenanceWorker,
+    notificationWorker, webhookDeliveryWorker, ...eventWorkers,
     emailDigestWorker, reportScheduler,
     ...(embeddingWorker ? [embeddingWorker] : []),
   ]
-  const baseConsumers = [notificationDispatcher, slaEngine, escalationConsumer]
+  const closables: Closable[] = [
+    ...bullWorkers.map((w) => ({ name: w.name, close: () => w.close() })),
+    { name: 'notification-service', close: () => notificationDispatcher.stop() },
+    { name: 'sla-engine',           close: () => slaEngine.stop() },
+    { name: 'escalation-consumer',  close: () => escalationConsumer.stop() },
+    { name: 'automation-consumer',  close: () => automationConsumer.stop() },
+    ...eventConsumers,
+  ]
 
-  // ── Graceful shutdown ──────────────────────────────────────────────────────
-
+  // ── Graceful shutdown (lib/shutdown.ts, revisione 2 · D1.2) ───────────────
+  // HTTP awaited for real (idle then all connections), workers within the
+  // timeout; if they do not stop, the shared resources are NOT closed under the
+  // in-flight jobs and the process exits ≠ 0 (the container is recreated).
   let shuttingDown = false
-  const shutdown = async (signal: string) => {
+  const shutdown = (signal: string) => {
     if (shuttingDown) return
     shuttingDown = true
-    logger.info({ signal }, 'Received signal — shutting down gracefully')
-
-    // Stop accepting new HTTP connections
-    httpServer.close(() => {
-      logger.info('HTTP server closed')
+    void runGracefulShutdown({
+      signal,
+      httpServer,
+      workers: closables,
+      // Code singleton (lib/bullmq), poi SLA scheduler, poi publisher (D-24, A-13), poi il driver
+      resources: [
+        // Per primo: scrive le righe in attesa, e ha bisogno del driver che
+        // viene chiuso in fondo a questa stessa lista.
+        { name: 'server-log-sink',  close: () => spegniSinkDeiLog() },
+        { name: 'metamodel-bus',    close: () => stopMetamodelBus() },
+        { name: 'inapp-bus',        close: () => stopInAppBus() },
+        { name: 'bullmq-queues',    close: () => closeAllQueues() },
+        { name: 'sla-scheduler',    close: () => closeScheduler() },
+        { name: 'event-connection', close: () => closeConnection() },
+        { name: 'neo4j-driver',     close: () => closeDriver() },
+      ],
+      log: logger,
+      exit: (code) => process.exit(code),
     })
-
-    // Close all BullMQ workers and BaseConsumers with a 30s timeout
-    const workerClosePromise = Promise.all([
-      ...bullWorkers.map(w => w.close()),
-      ...baseConsumers.map(c => c.stop()),
-    ])
-    const timedOut = await Promise.race([
-      workerClosePromise.then(() => false),
-      new Promise<boolean>(resolve => setTimeout(() => resolve(true), 30_000)),
-    ])
-    logger.info(timedOut ? 'BullMQ workers close timed out after 30s' : 'BullMQ workers closed')
-
-    // Code singleton (lib/bullmq), poi SLA scheduler, poi publisher (D-24, A-13)
-    await closeAllQueues()
-    logger.info('BullMQ queues closed')
-    await closeScheduler()
-    logger.info('SLA scheduler closed')
-    await closeConnection()
-    logger.info('Event connection closed')
-
-    // Close Neo4j driver
-    await closeDriver()
-    logger.info('Neo4j driver closed')
-
-    logger.info('Graceful shutdown completed')
-    process.exit(0)
   }
 
-  process.on('SIGTERM', () => void shutdown('SIGTERM'))
-  process.on('SIGINT',  () => void shutdown('SIGINT'))
+  process.on('SIGTERM', () => shutdown('SIGTERM'))
+  process.on('SIGINT',  () => shutdown('SIGINT'))
 }
 
 main().catch((err: unknown) => {

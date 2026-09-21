@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(),
@@ -18,7 +19,7 @@ const { saveDashboardLayout } = await import('../dashboard/widgetMutations.js')
 const { getSession } = await import('@opengraphity/neo4j')
 const { assertDashboardAccess, assertReportTemplateAccess } = await import('../reportAccess.js')
 
-const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') }
 const DASH = { id: 'd1', tenant_id: 't1', user_id: 'u1', name: 'Home', visibility: 'private', created_at: 'x' }
 
 /** Session whose executeWrite hands a tx to the callback; tx.run dispatches on Cypher. */

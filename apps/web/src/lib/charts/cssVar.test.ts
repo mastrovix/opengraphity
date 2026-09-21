@@ -13,12 +13,12 @@ describe('cssVar', () => {
   })
 
   it('variabile non definita → throw con il nome (fail-loud, nessun default)', () => {
-    expect(() => cssVar('--missing-token')).toThrow('[cssVar] variabile CSS non definita in :root: --missing-token')
+    expect(() => cssVar('--missing-token')).toThrow('[cssVar] CSS variable not defined on :root: --missing-token')
   })
 
   it('valore vuoto conta come non definito', () => {
     cleanup = setCssVars({ '--empty': '' })
-    expect(() => cssVar('--empty')).toThrow(/non definita/)
+    expect(() => cssVar('--empty')).toThrow(/not defined/)
   })
 
   it('memoizza: dopo il primo hit non rilegge :root finché resetCssVarCache()', () => {
@@ -39,9 +39,9 @@ describe('cssVarPx', () => {
   })
   it('valore non numerico → throw con nome e valore', () => {
     cleanup = setCssVars({ '--font-family': 'Inter, sans-serif' })
-    expect(() => cssVarPx('--font-family')).toThrow('[cssVar] --font-family non è una misura in px: "Inter, sans-serif"')
+    expect(() => cssVarPx('--font-family')).toThrow('[cssVar] --font-family is not a px measure: "Inter, sans-serif"')
   })
   it('variabile assente → stesso errore di cssVar', () => {
-    expect(() => cssVarPx('--nope')).toThrow(/non definita in :root: --nope/)
+    expect(() => cssVarPx('--nope')).toThrow(/not defined on :root: --nope/)
   })
 })

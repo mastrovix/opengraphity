@@ -69,7 +69,7 @@ async function seed(TENANT_ID: string) {
     const depDbIds    = randomSubset(dbIds, 1, 3)
 
     const result = await session.run(
-      `MERGE (c:Application {name: $name, tenant_id: $tenantId})
+      `MERGE (c:ConfigurationItem:Application {name: $name, tenant_id: $tenantId})
        ON CREATE SET
          c.id          = $id,
          c.environment = $environment,

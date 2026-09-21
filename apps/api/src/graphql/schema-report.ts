@@ -50,6 +50,8 @@ export function reportSDL(): string {
     chartType: String!
     groupByNodeId: String
     groupByField: String
+    """Come si raggruppa una data in una serie: day (difetto), week, month."""
+    groupByGranularity: String
     metric: String!
     metricField: String
     limit: Int
@@ -61,7 +63,15 @@ export function reportSDL(): string {
   type NavigableEntity {
     entityType: String!
     label: String!
+    """
+    Chiave i18n quando l'etichetta è del PRODOTTO (revisione totale · C-18):
+    il web la traduce, con «label» come ripiego. Assente per i tipi e i campi
+    creati dal cliente, la cui etichetta è già la sua.
+    """
+    labelKey: String
     neo4jLabel: String!
+    # itsm | organization | cmdb: dove il costruttore la mostra
+    group: String!
     fields: [NavigableField!]!
     relations: [NavigableRelation!]!
   }
@@ -69,22 +79,27 @@ export function reportSDL(): string {
   type NavigableField {
     name: String!
     label: String!
+    labelKey: String
     fieldType: String!
     enumValues: [String!]!
+    enumTypeName: String
   }
 
   type NavigableRelation {
     relationshipType: String!
     direction: String!
     label: String!
+    labelKey: String
     targetEntityType: String!
     targetLabel: String!
+    targetLabelKey: String
     targetNeo4jLabel: String!
   }
 
   type ReachableEntity {
     entityType: String!
     label: String!
+    labelKey: String
     neo4jLabel: String!
     relationshipType: String!
     direction: String!
@@ -103,6 +118,15 @@ export function reportSDL(): string {
     data: String!
     total: Int
     error: String
+    """
+    La chiave i18n dell'errore, quando l'errore è di quelli che l'utente può
+    causare (20 set 2026, dal giro nel browser): l'anteprima mostrava il
+    messaggio inglese del server — «a table section needs at least one
+    selected field on a result node (isResult = true)» — a chi legge il
+    prodotto in italiano. Assente per gli errori che non sono suoi: lì il
+    messaggio tecnico è l'unica cosa utile.
+    """
+    errorKey: String
   }
 
   # ── AI Report Conversations ────────────────────────────────────────────────
@@ -149,6 +173,64 @@ export function reportSDL(): string {
     scheduleChannelId: String
   }
 
+  # ── La proposta dell'AI per una sezione (19 set 2026) ─────────────────────
+  #
+  # Tipizzata: e forma NOSTRA, non dato del cliente, e il costruttore deve
+  # poterla leggere pezzo per pezzo. I filtri restano una stringa JSON, come
+  # nel nodo salvato: quella e la forma che il costruttore gia scrive.
+
+  """Un nodo proposto: l'entita, il suo posto nel grafo e il perche."""
+  type ReportDesignNode {
+    id:             ID!
+    entityType:     String!
+    neo4jLabel:     String!
+    label:          String!
+    isRoot:         Boolean!
+    isResult:       Boolean!
+    selectedFields: [String!]!
+    """I filtri come JSON \`[{field, operator, value}]\`, o null."""
+    filters:        String
+    positionX:      Float!
+    positionY:      Float!
+    why:            String!
+  }
+
+  type ReportDesignEdge {
+    id:               ID!
+    sourceNodeId:     ID!
+    targetNodeId:     ID!
+    relationshipType: String!
+    direction:        String!
+    label:            String!
+  }
+
+  """
+  Il progetto di UNA sezione di report: non scrive niente. I campi hanno gli
+  stessi nomi di \`ReportSectionInput\`, perche il costruttore li usa per
+  riempire il wizard e per chiedere l'anteprima.
+  """
+  type ReportDesignProposal {
+    """La descrizione da cui e nata, per rileggerla accanto al risultato."""
+    prompt:        String!
+    title:         String!
+    chartType:     String!
+    metric:        String!
+    metricField:   String
+    groupByNodeId: ID
+    groupByField:  String
+    """day (difetto), week, month o year: senza, una serie su sei mesi è un punto al giorno."""
+    groupByGranularity: String
+    limit:         Int!
+    sortDir:       String!
+    nodes:         [ReportDesignNode!]!
+    edges:         [ReportDesignEdge!]!
+    """Perche questo disegno: il pezzo della descrizione da cui nasce."""
+    why:           String!
+    discarded:     [AIDesignDiscard!]!
+    """Quello che il modello dice di non aver potuto fare."""
+    notes:         [String!]!
+  }
+
   input ReportNodeInput {
     id: String!
     entityType: String!
@@ -176,6 +258,8 @@ export function reportSDL(): string {
     chartType: String!
     groupByNodeId: String
     groupByField: String
+    """Come raggruppare una data in una serie: day (difetto), week, month."""
+    groupByGranularity: String
     metric: String!
     metricField: String
     limit: Int

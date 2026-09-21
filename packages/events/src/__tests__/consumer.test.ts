@@ -17,12 +17,24 @@ vi.mock('ioredis', () => ({
   Redis: class { disconnect() {} async exists() { return 0 } async set() { return 'OK' } },
 }))
 
-const { BaseConsumer, getFailedEventCount, onEventFailed } = await import('../consumer.js')
+const { BaseConsumer, getFailedEventCount, onEventFailed, CONSUMER_CONCURRENCY } = await import('../consumer.js')
 
 class TestConsumer extends BaseConsumer<unknown> {
   constructor() { super('test-queue') }
   async process(): Promise<void> {}
+  /** The Worker instance (fake) for the concurrency assertion. */
+  get workerOpts(): { concurrency: number } { return (this as unknown as { worker: { opts: { concurrency: number } } }).worker.opts }
 }
+
+describe('BaseConsumer — concurrency (revisione 2 · D1.1)', () => {
+  it('runs 3 jobs in parallel per consumer (was 10: four consumers took 40 of the ~70 slots on one Neo4j pool)', async () => {
+    expect(CONSUMER_CONCURRENCY).toBe(3)
+    const c = new TestConsumer()
+    await c.start()
+    expect(c.workerOpts.concurrency).toBe(3)
+    await c.stop()
+  })
+})
 
 function job(attemptsMade: number, attempts: number): Job {
   return {

@@ -45,7 +45,21 @@ services:
     image: redis:8.10.1-alpine@sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576
     # Password-protected: every client (api, worker) reads the same
     # REDIS_URL + REDIS_PASSWORD through packages/events getRedisConnection().
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD mancante in infra/.env}"]
+    # AOF with fsync every second (revisione 2 · D7.4): BullMQ lives here —
+    # alerts accepted with 202 and not yet ingested, delayed correlations,
+    # repeat jobs, idempotency markers. With RDB snapshots only, a crash (not a
+    # clean stop: SIGTERM saves) lost up to 15 minutes of that state and an
+    # alert accepted from the sender was gone for good. Cost: ~1 s of writes
+    # at most on a crash. docs/OPERATIONS.md «Procedure di ripristino».
+    # La password NON sta nella riga di comando (revisione totale · H-31): con
+    # `--requirepass <password>` la si leggeva da `docker inspect`, da `ps`
+    # sull'host e nei log di compose. Si scrive in un file di configurazione
+    # dentro il container, da una variabile d'ambiente.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD mancante in infra/.env}
+      # redis-cli legge la password da qui: nemmeno l'healthcheck la mette in `ps`.
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD mancante in infra/.env}
+    entrypoint: ["sh", "-c", "umask 077 && printf 'requirepass %s\\nappendonly yes\\nappendfsync everysec\\n' \"$$REDIS_PASSWORD\" > /tmp/redis.conf && exec redis-server /tmp/redis.conf"]
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
@@ -53,7 +67,7 @@ services:
     networks:
       - opengrafo-network
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD mancante in infra/.env}", "--no-auth-warning", "ping"]
+      test: ["CMD", "redis-cli", "--no-auth-warning", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -119,6 +133,9 @@ services:
           --storage.tsdb.retention.time=15d
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Alerting rules (revisione 2 · D7.1): evaluated by Prometheus itself
+      # (GET /api/v1/rules, /alerts); an Alertmanager is not part of the stack.
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     networks:
       - opengrafo-network
@@ -196,6 +213,13 @@ services:
     ports:
       - "127.0.0.1:3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      # H-17: senza volume indice e chunk vivevano nel filesystem del
+      # container, quindi un `up -d --force-recreate loki` (o un aggiornamento
+      # dell'immagine) azzerava tutta la storia dei log — e promtail, che
+      # conserva le posizioni di lettura in promtail_data, non le rispediva.
+      # OPERATIONS §6 manda a quei log per gli incidenti operativi.
+      - loki_data:/loki
     networks:
       - opengrafo-network
     healthcheck:
@@ -247,7 +271,15 @@ services:
       # Tenant host the Tailscale front door impersonates (X-Forwarded-Host):
       # the Tailscale hostname carries no tenant slug
       TAILSCALE_TENANT_HOST: ${TAILSCALE_TENANT_HOST:-c-one.localhost}
-      NGINX_ENVSUBST_FILTER: ^(TAILSCALE_HOST|KEYCLOAK_PUBLIC_ORIGIN|TAILSCALE_TENANT_HOST)$$
+      # Corpo massimo accettato su /api/ (revisione totale · H-11): era 11m
+      # fisso, «pari al limite di 10 MB degli allegati» — ma da quando la
+      # dimensione massima e una scelta dell'organizzazione fino a
+      # ATTACHMENT_MAX_MB_CAP (default 100 MB), nginx rispondeva 413 in HTML
+      # prima che l'API vedesse la richiesta, e l'impostazione appena salvata
+      # sembrava non valere. Tenerlo un po' sopra il tetto: e l'API a dire di
+      # no, con il suo messaggio.
+      NGINX_API_MAX_BODY: ${NGINX_API_MAX_BODY:-101m}
+      NGINX_ENVSUBST_FILTER: ^(TAILSCALE_HOST|KEYCLOAK_PUBLIC_ORIGIN|TAILSCALE_TENANT_HOST|NGINX_API_MAX_BODY)$$
     volumes:
       - ./nginx:/etc/nginx/templates:ro
     networks:
@@ -282,6 +314,15 @@ services:
       # Embedding inference runs in the dedicated `worker` service (below), so
       # the API event loop stays free for requests.
       EMBEDDING_WORKER_EXTERNAL: "true"
+      # Process profile (revisione 2 · D1.1, apps/api/src/lib/workerProfiles.ts):
+      # `api` = this process serves HTTP and the ITSM workers only; the Event
+      # Management / Servizi monitorati workers run in `events-worker` (below).
+      # `all` (the default outside compose) would run everything in here.
+      WORKER_PROFILE: api
+      # Neo4j connections of this process (default 50): HTTP resolvers + ITSM workers.
+      NEO4J_MAX_POOL_SIZE: "50"
+      # Pending migrations stop the start instead of only being logged (docs/OPERATIONS.md §3).
+      REQUIRE_APPLIED_MIGRATIONS: ${REQUIRE_APPLIED_MIGRATIONS:-false}
       # Apollo introspection/Sandbox: off by default with NODE_ENV=production.
       # Set GRAPHQL_INTROSPECTION=true in infra/.env to use the Sandbox locally.
       GRAPHQL_INTROSPECTION: ${GRAPHQL_INTROSPECTION:-false}
@@ -302,6 +343,16 @@ services:
       KEYCLOAK_URL: http://keycloak:8080
       # Public URL — the origin browsers use; tokens carry this in their `iss` claim
       KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+      # I client delle app a cui l'API crede (token emessi per altri client rifiutati): gli stessi dei bundle.
+      KEYCLOAK_APP_CLIENT_IDS: "${VITE_KEYCLOAK_CLIENT_ID:-opengrafo-web},${VITE_KEYCLOAK_CLIENT_ID_PORTAL:-opengrafo-portal},${VITE_KEYCLOAK_CLIENT_ID_CONSOLE:-opengrafo-console}"
+      # ── La console di piattaforma (17 set 2026) ──────────────────────────────
+      # Senza queste due, ogni richiesta a `/platform` è rifiutata: la console
+      # non esiste dove nessuno l'ha configurata. Niente default, nemmeno qui.
+      PLATFORM_REALM: ${PLATFORM_REALM:-}
+      PLATFORM_CONSOLE_HOST: ${PLATFORM_CONSOLE_HOST:-}
+      # Gli indirizzi delle app di un tenant, con `{slug}`: li mostra la console.
+      TENANT_URL_TEMPLATE: ${TENANT_URL_TEMPLATE:-}
+      PORTAL_URL_TEMPLATE: ${PORTAL_URL_TEMPLATE:-}
       KEYCLOAK_ADMIN_USER: admin
       KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD mancante in infra/.env}"
 
@@ -315,6 +366,10 @@ services:
       # Email (Resend)
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       EMAIL_FROM: ${EMAIL_FROM:-OpenGrafo <onboarding@resend.dev>}
+      # `true` = questa installazione non manda posta: ogni messaggio finisce
+      # nei log e viene scartato. Lo annuncia all'avvio. Il digest gira dentro
+      # questo container, quindi è qui che l'interruttore conta.
+      EMAIL_SEND_DISABLED: ${EMAIL_SEND_DISABLED:-false}
 
       # Storage (api_data volume; backups on their own volume — see below)
       ATTACHMENT_DIR: /data/attachments
@@ -324,7 +379,11 @@ services:
       # CORS — allow web and portal origins (subdomain routing + direct port access)
       CORS_ORIGIN: ${CORS_ORIGIN:-http://*.localhost,http://localhost:5173,http://localhost:5174,http://localhost}
 
-      # Observability
+      # Observability. Il preload fa partire OTEL PRIMA dell'app: senza,
+      # l'auto-strumentazione non patcha express/neo4j/ioredis (già caricati) e
+      # in Jaeger restano solo gli span dell'operazione GraphQL — revisione
+      # totale · A-23. È inerte con OTEL_ENABLED=false.
+      NODE_OPTIONS: --import=/app/dist/telemetry-register.js
       OTEL_ENABLED: ${OTEL_ENABLED:-false}
       OTEL_ENDPOINT: http://jaeger:4318/v1/traces
 
@@ -335,11 +394,38 @@ services:
       TRANSFORMERS_CACHE: /data/models
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
 
+      # Limits — revisione totale · H-10: erano documentate in .env.example
+      # (e in OPERATIONS/DEPLOY) ma NON arrivavano al container, quindi
+      # scriverle in infra/.env non cambiava niente.
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-1000}
+      RATE_LIMIT_WINDOW_MINUTES: ${RATE_LIMIT_WINDOW_MINUTES:-1}
+      GRAPHQL_SCHEMA_CACHE_MAX: ${GRAPHQL_SCHEMA_CACHE_MAX:-25}
+      MAX_CI_TYPES_PER_TENANT: ${MAX_CI_TYPES_PER_TENANT:-200}
+      ATTACHMENT_MAX_MB_CAP: ${ATTACHMENT_MAX_MB_CAP:-100}
+      # Backup notturno (maintenance worker, che gira in QUESTO processo)
+      BACKUP_RETENTION: ${BACKUP_RETENTION:-14}
+      BACKUP_SKIP_KEYCLOAK: ${BACKUP_SKIP_KEYCLOAK:-false}
+      # Durata dei due registri di log (ondata 3): quello del server e quello del browser
+      SERVER_LOG_RETENTION_DAYS: ${SERVER_LOG_RETENTION_DAYS:-90}
+      # Tetto mensile di gettoni degli analisti autonomi (rimedio c): la chiave
+      # Anthropic è una sola per tutta la piattaforma, e senza tetto un cliente
+      # solo poteva prosciugare il budget di tutti gli altri.
+      AI_MONTHLY_TOKEN_BUDGET_TENANT: ${AI_MONTHLY_TOKEN_BUDGET_TENANT:-2000000}
+      AI_MONTHLY_TOKEN_BUDGET_PLATFORM: ${AI_MONTHLY_TOKEN_BUDGET_PLATFORM:-20000000}
+
       # Optional integrations
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # DEPLOY dice «un solo posto da cambiare»: che sia vero (H-10).
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
       REPORT_AI_MODEL: ${REPORT_AI_MODEL:-}
-      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      # Slack (ondata 8): il token di ogni organizzazione sta nel grafo, cifrato con
+      # SECRETS_ENCRYPTION_KEY. Qui solo l'app Slack DI OPENGRAFO («Aggiungi a Slack»)
+      # e l'indirizzo pubblico da cui Slack raggiunge OpenGrafo.
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-}
+      SLACK_CLIENT_ID: ${SLACK_CLIENT_ID:-}
+      SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-}
       SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       APP_URL: ${APP_URL:-http://localhost}
 
     volumes:
@@ -358,8 +444,14 @@ services:
     networks:
       - opengrafo-network
     healthcheck:
-      # The api image has no wget/curl — probe /health with node's built-in fetch
-      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      # The api image has no wget/curl — probe with node's built-in fetch.
+      # /health/live, not /health (revisione totale · H-48): /health answers 503
+      # while migrations are pending, which is right for an operator but wrong
+      # for a container probe — during the documented two-step deploy (new image
+      # up, then `migrate`) `docker compose ps` showed the API red as if it had
+      # crashed. /health/live answers the container's question: is this process
+      # alive and are Neo4j and Redis reachable.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/health/live').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -367,13 +459,15 @@ services:
     restart: unless-stopped
 
   # Dedicated worker process: runs the CPU-bound embedding worker off the API
-  # event loop. Same image as api, different entrypoint.
+  # event loop. Same image as api, different entrypoint (WORKER_PROFILE=all →
+  # embedding only in the worker process; apps/api/src/lib/workerProfiles.ts).
   worker:
     image: opengrafo-api:local
     command: ["node", "--no-node-snapshot", "dist/worker.js"]  # isolated-vm su Node >= 20
     environment:
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      REQUIRE_APPLIED_MIGRATIONS: ${REQUIRE_APPLIED_MIGRATIONS:-false}
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: neo4j
       NEO4J_PASSWORD: "${NEO4J_PASSWORD:?NEO4J_PASSWORD mancante in infra/.env}"
@@ -382,6 +476,11 @@ services:
       EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-local}
       TRANSFORMERS_CACHE: /data/models
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      # Il token Slack delle organizzazioni si legge cifrato dal grafo (ondata 8)
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-}
+      # GET /metrics of this process (scraped by prometheus as `worker:4000`)
+      PORT: "4000"
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
     volumes:
       - api_data:/data
     depends_on:
@@ -392,7 +491,7 @@ services:
     networks:
       - opengrafo-network
     healthcheck:
-      # No HTTP in this process: the probe (baked into the image, see
+      # No HTTP API in this process: the probe (baked into the image, see
       # apps/api/Dockerfile) asks Redis whether an `embeddings` BullMQ worker
       # is connected. Caveat: it counts every worker of that queue on the
       # Redis server, i.e. it is per-queue, not per-container.
@@ -401,6 +500,59 @@ services:
       timeout: 10s
       retries: 3
       start_period: 90s
+    restart: unless-stopped
+
+  # Event Management + Servizi monitorati worker (revisione 2 · D1.1): the
+  # alert ingest, correlation and maintenance queues, the service-map
+  # evaluation queue and the `service-impact-consumer` — ~12 job slots that
+  # used to run inside the API process on its Neo4j pool. Same image,
+  # WORKER_PROFILE=events; the API runs with WORKER_PROFILE=api and starts none
+  # of them. Scale this service, not the API, when alert storms grow.
+  events-worker:
+    image: opengrafo-api:local
+    command: ["node", "--no-node-snapshot", "dist/worker.js"]
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WORKER_PROFILE: events
+      REQUIRE_APPLIED_MIGRATIONS: ${REQUIRE_APPLIED_MIGRATIONS:-false}
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD:?NEO4J_PASSWORD mancante in infra/.env}"
+      # 12 slots × up to 3 sessions per event (pipeline + CI health + grouping)
+      NEO4J_MAX_POOL_SIZE: "40"
+      REDIS_URL: redis://redis:6379
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?REDIS_PASSWORD mancante in infra/.env}"
+      # The validation of the worker profile reads them; no embedding runs here.
+      EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-local}
+      TRANSFORMERS_CACHE: /data/models
+      # Correlation may call the AI triage of new incidents (optional, like in the API)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # H-10: lo stesso modello dell'API, altrimenti la triage dal worker usa un altro modello.
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      # Il token Slack delle organizzazioni si legge cifrato dal grafo (ondata 8)
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY:-}
+      # GET /metrics of this process: the pipeline metrics live where the
+      # pipeline runs (scraped by prometheus as `events-worker:4000`)
+      PORT: "4000"
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      # Liveness probe: an `events-ingest` worker connected to Redis (see `worker`)
+      HEALTHCHECK_QUEUE: events-ingest
+    volumes:
+      - api_data:/data
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - opengrafo-network
+    healthcheck:
+      test: ["CMD", "node", "worker-healthcheck.mjs"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
 
   web:
@@ -425,6 +577,35 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
+
+  # ── LA CONSOLE DI PIATTAFORMA (17 set 2026) ────────────────────────────────
+  # Crea, rinomina, sospende e cancella i TENANT: non appartiene a nessuno di
+  # loro, e per questo ha un host e un realm Keycloak suoi.
+  #
+  # `PLATFORM_REALM` non ha default nemmeno qui: senza, l'API rifiuta ogni
+  # richiesta alla console e il bundle si ferma all'avvio. È voluto — una
+  # console che si crea da sé su ogni installazione è una porta che nessuno ha
+  # chiesto di aprire.
+  console:
+    build:
+      context: ..
+      dockerfile: apps/console/Dockerfile
+      args:
+        VITE_KEYCLOAK_URL: ${VITE_KEYCLOAK_URL:?VITE_KEYCLOAK_URL mancante in infra/.env (URL Keycloak raggiungibile dal browser)}
+        VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID_CONSOLE:-opengrafo-console}
+        VITE_PLATFORM_REALM: ${PLATFORM_REALM:?PLATFORM_REALM mancante in infra/.env (il realm Keycloak degli amministratori di piattaforma)}
+    ports:
+      - "127.0.0.1:5175:80"
+    depends_on:
+      - api
+    networks:
+      - opengrafo-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   portal:
     build:
@@ -466,4 +647,6 @@ volumes:
   api_backups:
   jaeger_data:
   prometheus_data:
+  # H-17: indice e chunk di Loki (altrimenti la storia dei log muore col container)
+  loki_data:
   promtail_data:

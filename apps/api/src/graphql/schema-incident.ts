@@ -60,14 +60,28 @@ export function incidentSDL(): string {
     resolveMet:       Boolean!
     breached:         Boolean!
     pausedAt:         String
+    """Minuti di preavviso della policy: sotto questa soglia lo SLA è «in scadenza», per l'avviso e per il badge."""
+    warningMinutes:   Int!
   }
 
   type Comment {
     id:        ID!
     text:      String!
+    """Nota di lavoro (solo staff) o risposta pubblica, visibile anche dal portale."""
+    isInternal: Boolean!
     author:    User
+    """Chi l'ha scritto quando non è una persona: 'automation' (una regola) o 'monitoring'."""
+    authorKind:  String
+    """Il nome dell'automazione che l'ha scritto."""
+    authorLabel: String
     createdAt: String!
     updatedAt: String!
+    """Modificato: quando e da chi (il testo di prima è nell'Audit Log)."""
+    editedAt:      String
+    editedByName:  String
+    """Cancellato: il commento resta come traccia, senza testo."""
+    deletedAt:     String
+    deletedByName: String
   }
 
   type IncidentsResult {
@@ -83,6 +97,11 @@ export function incidentSDL(): string {
     urgency: String
     category: String
     affectedCIIds: [ID!]
+    """
+    Chi crea sa che nessuna policy SLA copre il ticket e accetta che nasca
+    senza SLA: la diagnostica di configurazione non lo conta.
+    """
+    acknowledgeNoSla: Boolean
   }
 
   input UpdateIncidentInput {

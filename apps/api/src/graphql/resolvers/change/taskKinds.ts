@@ -10,6 +10,7 @@
  * completamento su un task inesistente è NOT_FOUND, non un no-op silenzioso.
  */
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../../lib/errors.js'
 import { ValidationError } from '../../../lib/errors.js'
 import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT, ROLE_LABEL } from '../../../lib/taskStatus.js'
 import { withSession, runQueryOne, type Props } from '../ci-utils.js'
@@ -18,7 +19,7 @@ import {
   mapAssessmentTask, mapDeployPlanTask, mapValidationTest, mapDeploymentTask, mapReviewTask,
 } from './mappers.js'
 import {
-  CHANGE_NOT_DELETED, assertAdmin, writeAudit, getCIName, assertUserInCITeam, afterEnterStep, resetChangeRisk,
+  CHANGE_NOT_DELETED, assertMayReopenTasks, writeAudit, getCIName, assertUserInCITeam, afterEnterStep, resetChangeRisk,
 } from './helpers.js'
 import { evaluateAutoTransitions } from './autoTransitions.js'
 
@@ -54,7 +55,7 @@ export const TASK_KINDS: Record<TaskKind, KindDef> = {
     map: mapAssessmentTask,
   },
   'deploy-plan': {
-    label: 'DeployPlanTask', rel: 'HAS_DEPLOY_PLAN', byRel: 'COMPLETED_BY', title: 'Piano deploy',
+    label: 'DeployPlanTask', rel: 'HAS_DEPLOY_PLAN', byRel: 'COMPLETED_BY', title: 'Deploy plan',
     reopen: { status: TASK_STATUS.IN_PROGRESS, clear: ['completed_at'], resetRisk: false },
     map: mapDeployPlanTask,
   },
@@ -78,9 +79,9 @@ export const TASK_KINDS: Record<TaskKind, KindDef> = {
   },
 }
 
-/** Riapre (admin) un task completato riportandolo allo stato aperto del suo tipo. */
+/** Riapre un task completato riportandolo allo stato aperto del suo tipo (`approval.override`). */
 export async function reopenTask(kind: TaskKind, taskId: string, reason: string, ctx: GraphQLContext) {
-  assertAdmin(ctx)
+  assertMayReopenTasks(ctx)
   const k = TASK_KINDS[kind]
   return withSession(async (session) => {
     const tctx = await runQueryOne<{ changeId: string; ciId: string; role: string | null }>(session, `
@@ -88,7 +89,7 @@ export async function reopenTask(kind: TaskKind, taskId: string, reason: string,
       WHERE ${CHANGE_NOT_DELETED}
       RETURN c.id AS changeId, t.ci_id AS ciId, t.responder_role AS role
     `, { taskId, tenantId: ctx.tenantId })
-    if (!tctx) throw new GraphQLError(`${k.label} ${taskId} non trovata`, { extensions: { code: 'NOT_FOUND' } })
+    if (!tctx) throw new NotFoundError(k.label, taskId)
 
     const clears = k.reopen.clear.map((f) => `, t.${f} = null`).join('')
     await session.executeWrite((tx) => tx.run(`
@@ -114,7 +115,8 @@ export async function reopenTask(kind: TaskKind, taskId: string, reason: string,
     const ciName = await getCIName(session, tctx.ciId, ctx.tenantId)
     const who = tctx.role ? ` ${ROLE_LABEL[tctx.role] ?? tctx.role}` : ''
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'task_reopened', ctx.userId,
-      `${k.title}${who} · ${ciName} riaperto: ${reason}`)
+      `${k.title}${who} · ${ciName} reopened: ${reason}`,
+      { key: 'taskReopened', params: { task: k.title, role: who.trim(), ci: ciName, reason } })
 
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:${k.label} {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
@@ -131,10 +133,10 @@ export async function reopenTask(kind: TaskKind, taskId: string, reason: string,
 export async function completeTask(kind: TaskKind, changeId: string, ciId: string, result: string | undefined, ctx: GraphQLContext) {
   const k = TASK_KINDS[kind]
   const c = k.complete
-  if (!c) throw new Error(`Il task di tipo "${kind}" non si completa con completeTask`)
+  if (!c) throw new Error(`A task of kind "${kind}" is not completed with completeTask`)
   if (c.allowedResults) {
     if (!result || !c.allowedResults.includes(result)) {
-      throw new ValidationError(`result deve essere ${c.allowedResults.map((r) => `"${r}"`).join(' o ')}`)
+      throw new ValidationError(`result must be ${c.allowedResults.map((r) => `"${r}"`).join(' or ')}`, { key: 'errors.task.resultOneOf', params: { allowed: c.allowedResults.join(', ') } })
     }
   }
   return withSession(async (session) => {
@@ -154,12 +156,13 @@ export async function completeTask(kind: TaskKind, changeId: string, ciId: strin
       RETURN t.id AS id
     `, { changeId, ciId, result: result ?? null, completed: TASK_STATUS.COMPLETED, tenantId: ctx.tenantId, userId: ctx.userId, now }))
     if (res.records.length === 0) {
-      throw new GraphQLError(`${k.title} per il CI ${ciId} non trovato sulla change (fase sbagliata o task riaperto?)`, { extensions: { code: 'NOT_FOUND' } })
+      throw new GraphQLError(`${k.title} for CI ${ciId} not found on the change (wrong phase, or task reopened?)`, { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.task.notOnChange', params: { task: k.title, ci: ciId } } } })
     }
 
     const ciName = await getCIName(session, ciId, ctx.tenantId)
     await writeAudit(session, changeId, ctx.tenantId, c.audit, ctx.userId,
-      c.resultField ? `${ciName}: ${result}` : `${k.title} completato su ${ciName}`)
+      c.resultField ? `${ciName}: ${result}` : `${k.title} completed on ${ciName}`,
+      c.resultField ? undefined : { key: 'taskCompleted', params: { task: k.title, ci: ciName } })
     await evaluateAutoTransitions(session, changeId, ctx, afterEnterStep)
 
     const row = await runQueryOne<{ props: Props }>(session, `

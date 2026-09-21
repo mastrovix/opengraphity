@@ -10,6 +10,7 @@
  * restituiscono i ticket collegati come LinkedTicketRef {id, number, title, status}.
  */
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../lib/errors.js'
 import { withSession, runQuery } from './ci-utils.js'
 import type { GraphQLContext } from '../../context.js'
 
@@ -17,14 +18,14 @@ const LABEL: Record<string, string> = { incident: 'Incident', problem: 'Problem'
 
 function labelOf(entityType: string): string {
   const l = LABEL[entityType]
-  if (!l) throw new GraphQLError(`Tipo ticket non valido: ${entityType}`, { extensions: { code: 'BAD_USER_INPUT' } })
+  if (!l) throw new GraphQLError(`Invalid ticket type: ${entityType}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.change.badTicketType', params: { entityType } } } })
   return l
 }
 
 /** Collega due ticket dello stesso tipo (RELATED_TO, non orientata a livello logico). */
 export async function linkRelatedTicket(_: unknown, args: { entityType: string; entityId: string; otherId: string }, ctx: GraphQLContext) {
   const label = labelOf(args.entityType)
-  if (args.entityId === args.otherId) throw new GraphQLError('Non puoi collegare un ticket a sé stesso', { extensions: { code: 'BAD_USER_INPUT' } })
+  if (args.entityId === args.otherId) throw new GraphQLError('A ticket cannot be linked to itself', { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.link.self' } } })
   await withSession(async (session) => {
     const r = await session.executeWrite((tx) => tx.run(`
       MATCH (a:${label} {id: $entityId, tenant_id: $tenantId})
@@ -32,7 +33,7 @@ export async function linkRelatedTicket(_: unknown, args: { entityType: string; 
       MERGE (a)-[:RELATED_TO]-(b)
       RETURN a.id AS id
     `, { entityId: args.entityId, otherId: args.otherId, tenantId: ctx.tenantId }))
-    if (r.records.length === 0) throw new GraphQLError('Ticket non trovato', { extensions: { code: 'NOT_FOUND' } })
+    if (r.records.length === 0) throw new NotFoundError('Ticket')
   }, true)
   return true
 }
@@ -47,7 +48,7 @@ export async function unlinkRelatedTicket(_: unknown, args: { entityType: string
     `, { entityId: args.entityId, otherId: args.otherId, tenantId: ctx.tenantId }))
     const n = Number(res.records[0]?.get('n') ?? 0)
     // Fail-loud: un id sbagliato o un link già rimosso non è "successo".
-    if (n === 0) throw new GraphQLError('Collegamento non trovato', { extensions: { code: 'NOT_FOUND' } })
+    if (n === 0) throw new NotFoundError('Link')
   }, true)
   return true
 }
@@ -83,7 +84,10 @@ export function incidentRelatedChanges(parent: { id: string }, _: unknown, ctx: 
   return query(`
     MATCH (i:Incident {id: $id, tenant_id: $t})-[rel:RESOLVED_BY]->(c:Change {tenant_id: $t})
     WHERE coalesce(c.deleted, false) = false
-    RETURN c.id AS id, c.code AS number, c.title AS title, coalesce(c.approval_status,'') AS status, (NOT coalesce(rel.auto, false)) AS removable
+    // Lo stato di una change è il suo passo di workflow, non l'esito delle
+    // approvazioni (che era sempre vuoto: giro nel browser del 14 set 2026).
+    OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $t})
+    RETURN c.id AS id, coalesce(c.number, c.code) AS number, c.title AS title, coalesce(wi.current_step, '') AS status, (NOT coalesce(rel.auto, false)) AS removable
     ORDER BY c.created_at DESC
   `, { id: parent.id, t: ctx.tenantId })
 }
@@ -108,7 +112,10 @@ export function problemLinkedChanges(parent: { id: string }, _: unknown, ctx: Gr
   return query(`
     MATCH (p:Problem {id: $id, tenant_id: $t})-[rel:RESOLVED_BY]->(c:Change {tenant_id: $t})
     WHERE coalesce(c.deleted, false) = false
-    RETURN c.id AS id, c.code AS number, c.title AS title, coalesce(c.approval_status,'') AS status, (NOT coalesce(rel.auto, false)) AS removable
+    // Lo stato di una change è il suo passo di workflow, non l'esito delle
+    // approvazioni (che era sempre vuoto: giro nel browser del 14 set 2026).
+    OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $t})
+    RETURN c.id AS id, coalesce(c.number, c.code) AS number, c.title AS title, coalesce(wi.current_step, '') AS status, (NOT coalesce(rel.auto, false)) AS removable
     ORDER BY c.created_at DESC
   `, { id: parent.id, t: ctx.tenantId })
 }

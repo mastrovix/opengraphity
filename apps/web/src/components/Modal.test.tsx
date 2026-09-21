@@ -105,7 +105,7 @@ describe('Modal', () => {
     const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault())
     const user = userEvent.setup()
     render(
-      <Modal open onClose={onClose} title="Form" as="form" onSubmit={onSubmit} footer={<button type="submit">Salva</button>}>
+      <Modal open onClose={onClose} title="Form" as="form" onSubmit={onSubmit} footer={<button type="submit">Save</button>}>
         <input aria-label="name" required />
       </Modal>,
     )
@@ -114,7 +114,7 @@ describe('Modal', () => {
     expect(screen.getByRole('dialog').tagName).toBe('FORM')
 
     await user.type(screen.getByLabelText('name'), 'x')
-    await user.click(screen.getByRole('button', { name: 'Salva' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
     expect(onSubmit).toHaveBeenCalledTimes(1)
   })
 

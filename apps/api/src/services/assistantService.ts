@@ -2,12 +2,16 @@
  * Conversational assistant grounded in the tenant's graph — Claude tool use
  * over READ-ONLY typed tools (incidents, CIs, impact, changes, KB).
  *
- * Security by design: every tool is tenant-scoped and read-only; the model
- * can only see what the tenant's own resolvers would expose. No mutations.
+ * Security by design: every tool is tenant-scoped and read-only, and the
+ * model gets ONLY the tools the caller's role may read (wave 7: incidents need
+ * `incident.read`, CIs `cmdb.read`, changes `change.read`, articles `kb.read`).
+ * No mutations.
  * No-fallback: missing API key, tool failures and provider errors surface
  * as explicit SSE error events.
  */
-import Anthropic from '@anthropic-ai/sdk'
+import { kbArticlePublishedCypher } from '../lib/kbPublished.js'
+import { vectorSearchForTenant } from '../lib/vectorSearch.js'
+import type { Permission } from '@opengraphity/types'
 
 /** Limite chiesto dal modello: intero in [1, max]; assente/NaN/negativo → default (mai LIMIT NaN o negativo in Cypher). */
 function clampLimit(limit: unknown, def: number, max: number): number {
@@ -18,7 +22,17 @@ import { config } from '../lib/config.js'
 import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
-import { ALL_CI_LABELS } from '../lib/ciLabels.js'
+import { aiDisabledError, aiFeatureEnabled } from '../lib/aiSettings.js'
+import { getAnthropic, registraChiamataFallita, registraDurata, registraRisposta } from '../lib/aiClient.js'
+// Le etichette dei CI vengono dal metamodello del tenant (A-9): con la lista
+// fissa l'assistente non trovava i CI dei tipi creati dal cliente e rispondeva
+// «non trovato» — un buco invisibile a chi fa la domanda.
+import { ciLabelsForTenant } from '../lib/ciLabelsForTenant.js'
+// «Aperto» e «concluso» vengono dai metadata dei passi del workflow di QUESTO
+// cliente (ondata 8 · B-22): le liste di nomi scritte a mano contavano come
+// aperto un passo terminale aggiunto dal cliente, e nominavano stati
+// (`completed`, `cancelled`) che nessun workflow produce.
+import { concludedStatusNames } from '../lib/statusStepNames.js'
 import { logger } from '../lib/logger.js'
 
 const log = logger.child({ module: 'assistant' })
@@ -29,6 +43,19 @@ async function readQuery<T>(cypher: string, params: Record<string, unknown>): Pr
   const session = getSession(undefined, 'READ')
   try {
     return await runQuery<T>(session, cypher, params)
+  } finally {
+    await session.close()
+  }
+}
+
+/** Quanti articoli propone la ricerca semantica nella KB. */
+const KB_SEARCH_LIMIT = 5
+
+/** Ricerca vettoriale del tenant su una sessione di sola lettura (B-12). */
+async function vectorSearch<T>(tenantId: string, opts: Omit<Parameters<typeof vectorSearchForTenant>[1], 'tenantId'>): Promise<T[]> {
+  const session = getSession(undefined, 'READ')
+  try {
+    return await vectorSearchForTenant<T>(session, { ...opts, tenantId })
   } finally {
     await session.close()
   }
@@ -45,7 +72,11 @@ function j(value: unknown): string {
 
 // ── Tool implementations ─────────────────────────────────────────────────────
 
-function buildTools(tenantId: string) {
+/** Detto al modello quando l'organizzazione ha spento gli embedding: la ricerca per significato non c'è. */
+const SEMANTIC_SEARCH_OFF = JSON.stringify({ error: 'Semantic search is turned off for this organization (embeddings disabled). Use lista_incident or cerca_ci instead.' })
+
+function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
+  const can = (p: Permission) => permissions.has(p)
   const cercaIncident = betaTool({
     name: 'cerca_incident',
     description: 'Ricerca semantica tra gli incident del tenant (storici e aperti). Usalo per trovare incident per argomento, sintomo o testo libero. Ritorna numero, titolo, stato, severity, team e score di similarità.',
@@ -59,18 +90,20 @@ function buildTools(tenantId: string) {
     },
     run: async (input) => {
       const { query, limit } = input as { query: string; limit?: number }
+      if (!(await aiFeatureEnabled(tenantId, 'embeddings'))) return SEMANTIC_SEARCH_OFF
       const [embedding] = await getEmbedder().embed([query])
-      const rows = await readQuery(`
-        CALL db.index.vector.queryNodes($index, 30, $embedding)
-        YIELD node, score
-        WHERE node.tenant_id = $tenantId
-        OPTIONAL MATCH (node)-[:ASSIGNED_TO_TEAM]->(team:Team)
-        RETURN node.number AS numero, node.title AS titolo, node.status AS stato,
+      // K cresce finché i risultati DEL TENANT bastano: l'indice vettoriale è
+      // cross-tenant (revisione totale · B-12).
+      const rows = await vectorSearch(tenantId, {
+        index: vectorIndexName('Incident'),
+        embedding,
+        limit: clampLimit(limit, 5, 15),
+        extra: 'OPTIONAL MATCH (node)-[:ASSIGNED_TO_TEAM]->(team:Team)',
+        returns: `node.number AS numero, node.title AS titolo, node.status AS stato,
                node.severity AS severity, node.category AS categoria,
-               team.name AS team, round(score, 2) AS similarita, node.id AS id
-        ORDER BY score DESC
-        LIMIT ${clampLimit(limit, 5, 15)}
-      `, { index: vectorIndexName('Incident'), embedding, tenantId })
+               team.name AS team, round(score, 2) AS similarita, node.id AS id`,
+        what: 'assistant.cerca_incident',
+      })
       return j(rows)
     },
   })
@@ -116,10 +149,10 @@ function buildTools(tenantId: string) {
         MATCH (ci {tenant_id: $tenantId})
         WHERE any(l IN labels(ci) WHERE l IN $labels)
           AND toLower(ci.name) CONTAINS toLower($query)
-        RETURN ci.id AS id, ci.name AS nome, labels(ci)[0] AS tipo,
+        RETURN ci.id AS id, ci.name AS nome, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS tipo,
                ci.environment AS ambiente, ci.status AS stato
         LIMIT ${clampLimit(limit, 8, 20)}
-      `, { tenantId, labels: ALL_CI_LABELS, query })
+      `, { tenantId, labels: await ciLabelsForTenant(tenantId), query })
       return j(rows)
     },
   })
@@ -139,23 +172,36 @@ function buildTools(tenantId: string) {
         WHERE any(l IN labels(ci) WHERE l IN $labels)
           AND (ci.id = $key OR toLower(ci.name) = toLower($key))
         OPTIONAL MATCH (dep)-[:DEPENDS_ON]->(ci)
-        WITH ci, collect(DISTINCT {nome: dep.name, tipo: labels(dep)[0]}) AS dipendenti_diretti
+        WITH ci, collect(DISTINCT {nome: dep.name, tipo: head([l IN labels(dep) WHERE l <> 'ConfigurationItem'])}) AS dipendenti_diretti
         OPTIONAL MATCH (dep2)-[:DEPENDS_ON*2]->(ci)
         WITH ci, dipendenti_diretti, count(DISTINCT dep2) AS dipendenti_secondo_livello
         OPTIONAL MATCH (cap:BusinessCapability {tenant_id: $tenantId})-[*1..4]-(ci)
         WITH ci, dipendenti_diretti, dipendenti_secondo_livello,
              collect(DISTINCT cap.name)[..5] AS business_capability
         OPTIONAL MATCH (inc:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci)
-        WHERE NOT inc.status IN ['closed', 'resolved']
+        WHERE $seeIncidents AND NOT inc.status IN $incidentConcluded
         WITH ci, dipendenti_diretti, dipendenti_secondo_livello, business_capability,
              collect(DISTINCT inc.number) AS incident_aperti
-        OPTIONAL MATCH (ch:Change {tenant_id: $tenantId})-[:AFFECTS]->(ci)
-        WHERE NOT ch.status IN ['completed', 'closed', 'cancelled', 'failed'] AND coalesce(ch.deleted, false) = false
-        RETURN ci.name AS nome, labels(ci)[0] AS tipo, ci.environment AS ambiente,
+        // La relazione delle CHANGE è AFFECTS_CI (revisione totale · D-10):
+        // AFFECTS lega i PROBLEM ai CI, quindi «change in corso su questo CI»
+        // era sempre vuoto — e all'assistente sembrava che non ce ne fossero.
+        OPTIONAL MATCH (ch:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(ci)
+        WHERE $seeChanges AND NOT ch.status IN $changeConcluded AND coalesce(ch.deleted, false) = false
+        RETURN ci.name AS nome, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS tipo, ci.environment AS ambiente,
                dipendenti_diretti, dipendenti_secondo_livello, business_capability,
-               incident_aperti, collect(DISTINCT ch.number) AS change_in_corso
-      `, { tenantId, labels: ALL_CI_LABELS, key: ci_id_o_nome })
-      return rows.length ? j(rows[0]) : j({ errore: `CI "${ci_id_o_nome}" non trovato — prova cerca_ci per il nome esatto` })
+               incident_aperti, collect(DISTINCT coalesce(ch.number, ch.code)) AS change_in_corso
+      `, {
+        tenantId, labels: await ciLabelsForTenant(tenantId), key: ci_id_o_nome,
+        incidentConcluded: await concludedStatusNames(tenantId, 'incident'),
+        changeConcluded:   await concludedStatusNames(tenantId, 'change'),
+        seeIncidents: can('incident.read'), seeChanges: can('change.read'),
+      })
+      if (!rows.length) return j({ errore: `CI "${ci_id_o_nome}" non trovato — prova cerca_ci per il nome esatto` })
+      // Quello che il ruolo non vede non c'è nemmeno come «zero»: il modello non deve dire «nessun incident».
+      const row = { ...(rows[0] as Record<string, unknown>) }
+      if (!can('incident.read')) delete row['incident_aperti']
+      if (!can('change.read')) delete row['change_in_corso']
+      return j(row)
     },
   })
 
@@ -165,8 +211,8 @@ function buildTools(tenantId: string) {
     inputSchema: {
       type: 'object',
       properties: {
-        stato:       { type: 'string', description: 'Filtro stato esatto (es. new, assigned, in_progress, resolved, closed)' },
-        solo_aperti: { type: 'boolean', description: 'true = escludi resolved e closed' },
+        stato:       { type: 'string', description: 'Filtro stato esatto: il NOME del passo di workflow di questo cliente' },
+        solo_aperti: { type: 'boolean', description: 'true = escludi i ticket conclusi (passi risolti e terminali del workflow di questo cliente)' },
         severity:    { type: 'string', description: 'Filtro severity (low, medium, high, critical)' },
         categoria:   { type: 'string', description: 'Filtro categoria' },
         limit:       { type: 'number', description: 'Max incident elencati (default 15; il totale è comunque esatto)' },
@@ -183,7 +229,7 @@ function buildTools(tenantId: string) {
         WHERE ($stato IS NULL OR i.status = $stato)
           AND ($severity IS NULL OR i.severity = $severity)
           AND ($categoria IS NULL OR i.category = $categoria)
-          AND ($soloAperti = false OR NOT i.status IN ['resolved', 'closed'])
+          AND ($soloAperti = false OR NOT i.status IN $concluded)
         WITH i ORDER BY i.created_at DESC
         WITH collect({numero: i.number, titolo: i.title, stato: i.status,
                       severity: i.severity, categoria: i.category, creato: i.created_at}) AS tutti
@@ -194,6 +240,7 @@ function buildTools(tenantId: string) {
         severity: severity ?? null,
         categoria: categoria ?? null,
         soloAperti: solo_aperti === true,
+        concluded: solo_aperti === true ? await concludedStatusNames(tenantId, 'incident') : [],
       })
       const r = rows[0] ?? { totale: 0, incident: [] }
       return j({ totale: r.totale, elencati: Array.isArray(r.incident) ? r.incident.length : 0, incident: r.incident })
@@ -212,15 +259,19 @@ function buildTools(tenantId: string) {
       const { limit } = input as { limit?: number }
       const rows = await readQuery(`
         MATCH (ch:Change {tenant_id: $tenantId})
-        WHERE NOT ch.status IN ['completed', 'closed', 'cancelled', 'failed'] AND coalesce(ch.deleted, false) = false
-        OPTIONAL MATCH (ch)-[:AFFECTS]->(ci)
+        WHERE NOT ch.status IN $concluded AND coalesce(ch.deleted, false) = false
+        // D-10: AFFECTS_CI, e i campi che una change ha DAVVERO: risk_level e
+        // planned_start non esistono sul nodo (il rischio sta in
+        // aggregate_risk_score), quindi l'assistente rispondeva «rischio:
+        // null» su ogni change.
+        OPTIONAL MATCH (ch)-[:AFFECTS_CI]->(ci)
         WITH ch, collect(DISTINCT ci.name) AS cis
-        RETURN ch.number AS numero, ch.title AS titolo, ch.status AS stato,
-               ch.change_type AS tipo, ch.risk_level AS rischio,
-               ch.planned_start AS inizio_pianificato, cis AS ci_toccati
+        RETURN coalesce(ch.number, ch.code) AS numero, ch.title AS titolo, ch.status AS stato,
+               ch.change_type AS tipo, ch.aggregate_risk_score AS punteggio_rischio,
+               ch.priority AS priorita, cis AS ci_toccati
         ORDER BY ch.created_at DESC
         LIMIT ${clampLimit(limit, 10, 25)}
-      `, { tenantId })
+      `, { tenantId, concluded: await concludedStatusNames(tenantId, 'change') })
       return j(rows)
     },
   })
@@ -235,26 +286,32 @@ function buildTools(tenantId: string) {
     },
     run: async (input) => {
       const { query } = input as { query: string }
+      if (!(await aiFeatureEnabled(tenantId, 'embeddings'))) return SEMANTIC_SEARCH_OFF
       const [embedding] = await getEmbedder().embed([query])
-      const rows = await readQuery(`
-        CALL db.index.vector.queryNodes($index, 15, $embedding)
-        YIELD node, score
-        WHERE node.tenant_id = $tenantId AND node.status = 'published'
-        RETURN node.title AS titolo, node.category AS categoria,
-               node.slug AS slug, round(score, 2) AS similarita
-        ORDER BY score DESC
-        LIMIT 5
-      `, { index: vectorIndexName('KBArticle'), embedding, tenantId })
+      const rows = await vectorSearch(tenantId, {
+        index: vectorIndexName('KBArticle'),
+        embedding,
+        limit: KB_SEARCH_LIMIT,
+        where: kbArticlePublishedCypher('node'),
+        returns: `node.title AS titolo, node.category AS categoria,
+               node.slug AS slug, round(score, 2) AS similarita`,
+        what: 'assistant.cerca_kb',
+      })
       return j(rows)
     },
   })
 
-  return [cercaIncident, dettaglioIncident, listaIncident, cercaCI, analisiImpatto, changeAperti, cercaKB]
+  return [
+    ...(can('incident.read') ? [cercaIncident, dettaglioIncident, listaIncident] : []),
+    ...(can('cmdb.read') ? [cercaCI, analisiImpatto] : []),
+    ...(can('change.read') ? [changeAperti] : []),
+    ...(can('kb.read') ? [cercaKB] : []),
+  ]
 }
 
 // ── Streaming chat ───────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `Sei l'assistente operativo di OpenGrafo, una piattaforma ITSM basata su un grafo Neo4j (CMDB, incident, change, knowledge base). Rispondi in italiano, conciso e concreto.
+const SYSTEM_PROMPT = `Sei l'assistente operativo di OpenGrafo, una piattaforma ITSM basata su un grafo Neo4j (CMDB, incident, change, knowledge base). Rispondi nella lingua in cui ti scrive l'utente, conciso e concreto: anche le frasi che scrivi prima di usare uno strumento sono in quella lingua.
 
 Regole:
 - Usa i tool per fondare OGNI risposta sui dati reali del tenant. Non inventare mai numeri di ticket, nomi di CI o stati.
@@ -263,6 +320,7 @@ Regole:
 - Se un tool non trova nulla, dillo esplicitamente — non riempire il vuoto con supposizioni.
 - Hai SOLO strumenti di lettura: non puoi creare o modificare nulla. Se l'utente chiede un'azione, spiega dove farla nella UI.
 - Per domande di impatto ("se spengo X..."), usa analisi_impatto e riassumi: dipendenti, business capability, incident/change in corso.
+- Hai solo gli strumenti dei dati che il ruolo dell'utente può vedere. Se una domanda riguarda dati per cui non hai uno strumento, dì che il suo ruolo non li vede: non dedurli e non dire che non esistono.
 - Risposte brevi: elenchi puntati dove utile, niente preamboli.`
 
 export interface AssistantMessage { role: 'user' | 'assistant'; content: string }
@@ -276,25 +334,31 @@ export interface AssistantEmitter {
 
 export async function streamAssistantChat(
   tenantId: string,
+  permissions: ReadonlySet<Permission>,
   messages: AssistantMessage[],
   emit: AssistantEmitter,
 ): Promise<void> {
   if (!config.anthropicApiKey) {
-    emit.error('Assistente AI non configurato: ANTHROPIC_API_KEY mancante')
+    emit.error('AI assistant not configured: ANTHROPIC_API_KEY is missing')
+    return
+  }
+  // Funzione spenta dall'organizzazione: nessuna chiamata al modello (ondata 6).
+  if (!(await aiFeatureEnabled(tenantId, 'assistant'))) {
+    emit.error(aiDisabledError('assistant').message)
     return
   }
 
-  const client = new Anthropic()
+  const client = getAnthropic()
   const t0 = Date.now()
   let fullText = ''
 
   try {
     const runner = client.beta.messages.toolRunner({
-      model: 'claude-opus-4-8',
+      model: config.anthropicModel,
       max_tokens: 4000,
       thinking: { type: 'adaptive' },
       system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      tools: buildTools(tenantId),
+      tools: buildTools(tenantId, permissions),
       messages: messages.map(m => ({ role: m.role, content: m.content })),
       stream: true,
       max_iterations: 8,
@@ -302,7 +366,13 @@ export async function streamAssistantChat(
 
     for await (const messageStream of runner) {
       for await (const event of messageStream) {
-        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        if (event.type === 'content_block_start' && event.content_block.type === 'text' && fullText !== '' && !fullText.endsWith('\n')) {
+          // Giro nel browser del 14 set 2026 (#52): la frase scritta prima di
+          // uno strumento e la risposta dopo erano incollate («…clienti.**CI:»).
+          // Un nuovo blocco di testo comincia su un paragrafo nuovo.
+          fullText += '\n\n'
+          emit.text('\n\n')
+        } else if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
           fullText += event.delta.text
           emit.text(event.delta.text)
         } else if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
@@ -310,15 +380,21 @@ export async function streamAssistantChat(
         }
       }
       const message = await messageStream.finalMessage()
+      // Ogni giro dell'agente è una chiamata al modello e si conta come tale:
+      // l'assistente ne fa fino a `max_iterations`, ed è la funzione AI che
+      // può costare di più senza che nessuno se ne accorga.
+      registraRisposta('assistant', message.stop_reason === 'refusal' ? 'refused' : 'ok', message)
       if (message.stop_reason === 'refusal') {
         emit.error('Il modello ha rifiutato la richiesta')
         return
       }
     }
 
+    registraDurata('assistant', Date.now() - t0)
     log.info({ ms: Date.now() - t0, turns: messages.length }, '[assistant] chat completed')
     emit.done(fullText)
   } catch (err) {
+    registraChiamataFallita('assistant', err)
     const msg = err instanceof Error ? err.message : String(err)
     log.error({ err, tenantId }, '[assistant] chat failed')
     emit.error(msg)

@@ -47,8 +47,8 @@ describe('Button', () => {
   })
 
   it.each([
-    ['primary',   { backgroundColor: 'var(--color-brand)', color: '#fff' }],
-    ['secondary', { color: 'var(--color-slate)', background: '#fff' }],
+    ['primary',   { backgroundColor: 'var(--color-brand)', color: 'var(--color-white)' }],
+    ['secondary', { color: 'var(--color-slate)', background: 'var(--color-white)' }],
     ['danger',    { color: 'var(--color-danger)' }],
     ['ghost',     { padding: '0px', background: 'none' }],
   ] as const)('variante %s', (variant, style) => {
@@ -78,7 +78,7 @@ describe('Button', () => {
   it('icon senza nome accessibile → console.error in dev (fail-visible, non silenzioso)', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     render(<Button variant="icon" icon={<svg />} />)
-    expect(err).toHaveBeenCalledWith('[Button] variant="icon" richiede aria-label o title (nome accessibile)')
+    expect(err).toHaveBeenCalledWith('[Button] variant="icon" needs aria-label or title (an accessible name)')
   })
 
   it('inoltra aria-expanded / aria-pressed e l\'icona precede il testo', () => {

@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { buildProblemPdf, type ProblemDossier, type PdfMeta } from '../problemPdf.js'
 
 const META: PdfMeta = {
+  locale: { language: 'it', timeZone: 'Europe/Rome' },
+  brand: { displayName: 'OpenGrafo', logoPng: null },
   generatedAt: '2026-07-17T10:00:00.000Z',
   generatedBy: 'test@example.com',
   tenantId:    'c-one',
@@ -33,6 +35,7 @@ function minimalDossier(): ProblemDossier {
     workflowHistory:  [],
     comments:         [],
     attachments:      [],
+    customFields:     [],
   }
 }
 
@@ -80,6 +83,7 @@ function fullDossier(): ProblemDossier {
       },
       { author: null, type: 'system', createdAt: null, text: 'Automatic note from workflow engine.' },
     ],
+    customFields: [{ label: 'Esito', value: 'successful' }, { label: 'Centro di costo', value: null }],
     attachments: [
       { filename: 'pool-metrics.png', sizeBytes: 345_678, uploadedBy: 'Mario Rossi', uploadedAt: '2026-06-03T10:00:00.000Z' },
       { filename: 'rca-draft.docx',   sizeBytes: 45_120,  uploadedBy: null,          uploadedAt: null },

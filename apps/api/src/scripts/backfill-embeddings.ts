@@ -8,13 +8,15 @@
  * Fail-fast: any provider or DB error aborts with exit 1 — a partial backfill
  * must not be reported as success. Progress is logged per batch.
  */
-import { getSession, runQuery, closeDriver } from '@opengraphity/neo4j'
+import { aiFeatureEnabled } from '../lib/aiSettings.js'
+import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, incidentEmbeddingText, kbEmbeddingText } from '../services/embeddings.js'
 import { ensureVectorIndexes } from '../jobs/embeddingWorker.js'
+import { runScript } from './lib/runScript.js'
 
 const BATCH = 20
 
-async function backfillLabel(label: 'Incident' | 'KBArticle'): Promise<number> {
+async function backfillLabel(label: 'Incident' | 'KBArticle', tenantsOff: readonly string[]): Promise<number> {
   const embedder = getEmbedder()
   const model = `${embedder.provider}:${embedder.model}`
   let total = 0
@@ -24,10 +26,11 @@ async function backfillLabel(label: 'Incident' | 'KBArticle'): Promise<number> {
     try {
       const rows = await runQuery<{ id: string; tenant_id: string; props: Record<string, unknown> }>(session, `
         MATCH (n:${label})
-        WHERE n.embedding IS NULL OR n.embedding_model <> $model
+        WHERE (n.embedding IS NULL OR n.embedding_model <> $model)
+          AND NOT n.tenant_id IN $tenantsOff
         RETURN n.id AS id, n.tenant_id AS tenant_id, properties(n) AS props
         LIMIT ${BATCH}
-      `, { model })
+      `, { model, tenantsOff })
       if (rows.length === 0) return total
 
       const texts = rows.map((r) =>
@@ -58,15 +61,22 @@ async function main(): Promise<void> {
   const embedder = getEmbedder()
   console.log(`[backfill] provider=${embedder.provider} model=${embedder.model} dims=${embedder.dimensions}`)
   await ensureVectorIndexes()
-  const incidents = await backfillLabel('Incident')
-  const articles = await backfillLabel('KBArticle')
+  // Le organizzazioni che hanno spento gli embedding (ondata 6): i loro testi non vanno al provider.
+  const session = getSession(undefined, 'READ')
+  let tenantIds: string[]
+  try {
+    tenantIds = (await runQuery<{ id: string }>(session, "MATCH (t:Tenant) WHERE t.id <> 'system' RETURN t.id AS id", {})).map((r) => r.id)
+  } finally {
+    await session.close()
+  }
+  const tenantsOff: string[] = []
+  for (const id of tenantIds) if (!(await aiFeatureEnabled(id, 'embeddings'))) tenantsOff.push(id)
+  if (tenantsOff.length) console.log(`[backfill] embeddings turned off, skipped: ${tenantsOff.join(', ')}`)
+  const incidents = await backfillLabel('Incident', tenantsOff)
+  const articles = await backfillLabel('KBArticle', tenantsOff)
   console.log(`[backfill] DONE — incidents: ${incidents}, kb articles: ${articles}`)
 }
 
-main()
-  .then(() => closeDriver())
-  .then(() => process.exit(0))
-  .catch((err: unknown) => {
-    console.error('[backfill] FAILED:', err)
-    process.exit(1)
-  })
+// H-45: il runner uniforme chiude il driver e mette l'exit code; il
+// `process.exit(0)` finale troncava i log asincroni dell'ultima riga.
+runScript('backfill-embeddings', main)

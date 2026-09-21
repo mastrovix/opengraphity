@@ -12,9 +12,13 @@ interface TopologyArgs {
   maxHops?:      number | null
 }
 
-// All known CI labels in Neo4j — single source of truth
-import { ALL_CI_LABELS as CI_LABELS, TYPE_TO_LABEL } from '../../lib/ciLabels.js'
+// Le etichette dei CI vengono dal metamodello del tenant (ondata 6: A-9): con
+// la lista fissa un CI di un tipo del cliente non compariva nella topologia e
+// non veniva attraversato, in silenzio.
+import { ciLabelsForTenant, apocLabelFilterForTenant } from '../../lib/ciLabelsForTenant.js'
+import { ciLabelsForTypeNames } from '../../lib/ciTypeNameToLabel.js'
 import { toNumber } from '@opengraphity/neo4j'
+import { isMaintenanceLifecycle, resolveCILifecycleSemantics, type CILifecycleSemantics } from '../../lib/ciLifecycle.js'
 
 const NODE_LIMIT = 2000
 const EDGE_LIMIT = 5000
@@ -35,16 +39,18 @@ export const TICKET_COUNT_MATCHES = `
               AND NOT ch.status IN $changeTerminal
               AND coalesce(ch.deleted, false) = false`
 
-function labelFromType(t: string): string {
-  return TYPE_TO_LABEL[t.toLowerCase()] ?? t
-}
-
-function mapNode(r: { get: (k: string) => unknown }) {
+function mapNode(tenantId: string, r: { get: (k: string) => unknown }, lifecycle: CILifecycleSemantics) {
+  const status = (r.get('status') ?? null) as string | null
   return {
     id:            r.get('id')           as string,
     name:          r.get('name')         as string,
-    type:          ciTypeFromLabels([r.get('type') as string]),
-    status:        r.get('status')       as string,
+    type:          ciTypeFromLabels(tenantId, [r.get('type') as string]),
+    // CM-11 (revisione del 15 set 2026): niente `coalesce(ci.status, 'active')`
+    // — un CI senza stato non è «active», e il web decideva la manutenzione
+    // confrontando con il letterale `maintenance`. La semantica è del cliente.
+    status,
+    inMaintenance: isMaintenanceLifecycle(status, lifecycle),
+    health:        (r.get('health') ?? null) as string | null,
     environment:   r.get('environment')  as string | null,
     ownerGroup:    r.get('ownerGroup')   as string | null,
     incidentCount: toNumber(r.get('incidentCount')),
@@ -66,6 +72,9 @@ export const topologyResolvers = {
       return withSession(async (session) => {
         const incidentTerminal = await getTerminalStepNames(session, ctx.tenantId, 'incident')
         const changeTerminal   = await getTerminalStepNames(session, ctx.tenantId, 'change')
+        const CI_LABELS        = await ciLabelsForTenant(ctx.tenantId)
+        const CI_LABEL_FILTER  = await apocLabelFilterForTenant(ctx.tenantId)
+        const lifecycle        = await resolveCILifecycleSemantics(ctx.tenantId)
 
         // ── BRANCH A: ego-network from a specific CI ──────────────────────
         if (args.selectedCiId) {
@@ -85,7 +94,7 @@ export const topologyResolvers = {
               AND ANY(lbl IN labels(origin) WHERE lbl IN $ciLabels)
             CALL apoc.path.subgraphNodes(origin, {
               relationshipFilter: null,
-              labelFilter:        '${CI_LABELS.map((l) => '+' + l).join('|')}',
+              labelFilter:        '${CI_LABEL_FILTER}',
               maxLevel:           $depth,
               limit:              ${NODE_LIMIT}
             }) YIELD node
@@ -120,16 +129,17 @@ export const topologyResolvers = {
             RETURN
               ci.id          AS id,
               ci.name        AS name,
-              labels(ci)[0]  AS type,
-              coalesce(ci.status, 'active') AS status,
+              head([l IN labels(ci) WHERE l <> 'ConfigurationItem'])  AS type,
+              ci.status      AS status,
+              ci.health      AS health,
               ci.environment AS environment,
-              ci.owner_group AS ownerGroup,
+              head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name]) AS ownerGroup,
               incidentCount,
               changeCount
             ORDER BY ci.name
           `, { nodeIds, tenantId: ctx.tenantId, ciId: args.selectedCiId, environment, status, incidentTerminal, changeTerminal }))
 
-          const nodes = nodesResult.records.map(mapNode)
+          const nodes = nodesResult.records.map((r) => mapNode(ctx.tenantId, r, lifecycle))
 
           // 3. Edges between the loaded nodes
           const edgesResult = await session.executeRead((tx) => tx.run(`
@@ -154,8 +164,12 @@ export const topologyResolvers = {
         // ── BRANCH B: full topology with type/env/status filters ──────────
         const params: Record<string, unknown> = {
           tenantId: ctx.tenantId,
+          // Un tipo che questo cliente non ha ferma la query dicendolo: prima
+          // `TYPE_TO_LABEL[t] ?? t` passava il NOME del tipo come etichetta
+          // (`load_balancer`), che non corrisponde a nessun nodo — filtro muto
+          // e topologia vuota senza spiegazione.
           ciLabels: args.types && args.types.length > 0
-            ? args.types.map(labelFromType)
+            ? await ciLabelsForTypeNames(ctx.tenantId, args.types, 'topology(types:)', 'topology')
             : CI_LABELS,
           incidentTerminal,
           changeTerminal,
@@ -186,17 +200,18 @@ export const topologyResolvers = {
           RETURN
             ci.id          AS id,
             ci.name        AS name,
-            labels(ci)[0]  AS type,
-            coalesce(ci.status, 'active') AS status,
+            head([l IN labels(ci) WHERE l <> 'ConfigurationItem'])  AS type,
+            ci.status      AS status,
+            ci.health      AS health,
             ci.environment AS environment,
-            ci.owner_group AS ownerGroup,
+            head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name]) AS ownerGroup,
             incidentCount,
             changeCount
           ORDER BY ci.name
           LIMIT ${NODE_LIMIT}
         `, params))
 
-        const nodes = nodesResult.records.map(mapNode)
+        const nodes = nodesResult.records.map((r) => mapNode(ctx.tenantId, r, lifecycle))
         const truncated = nodes.length >= NODE_LIMIT
 
         if (nodes.length === 0) return { nodes: [], edges: [], truncated: false, nodeLimit: NODE_LIMIT }

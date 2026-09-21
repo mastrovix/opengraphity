@@ -1,124 +1,36 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
+// F-21: i contatori della barra non interrogano l'API a scheda nascosta.
+import { pausedWhenHidden } from '@/lib/polling'
 import { useQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
 import { GET_ANOMALY_STATS } from '@/graphql/queries'
-import {
-  LayoutDashboard,
-  AlertCircle,
-  Search,
-  GitPullRequest,
-  HelpCircle,
-  ClipboardList,
-  Inbox,
-  ListChecks,
-  SlidersHorizontal,
-  Route,
-  Server,
-  Users,
-  UsersRound,
-  User,
-  BarChart2,
-  BrainCircuit,
-  LayoutGrid,
-  ScrollText,
-  Layers,
-  Settings,
-  Settings2,
-  Activity,
-  ShieldAlert,
-  ShieldCheck,
-  Share2,
-  Bell,
-  UserCircle,
-  Tag,
-  CheckSquare,
-  BookOpen,
-  Zap,
-  GitBranch,
-  Clock,
-  Plug,
-  FlaskConical,
-  Sparkles,
-  ShoppingCart,
-  Gauge,
-} from 'lucide-react'
+import { ListChecks, SlidersHorizontal, Server, Users, BarChart2, Settings, Activity, Radar } from 'lucide-react'
 import { useMe } from '@/hooks/useMe'
+import { routePermissions } from '@/lib/routePermissions'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
-import { C, navItemStyle, NavItem, SubItem } from './SidebarNavItems'
+import { C, NavItem, SubItem } from './SidebarNavItems'
 import { SidebarGroup, useGroupOpen } from './SidebarGroup'
+import { voceAttiva } from './menuActive'
+import { NAV_ITEM_DEFS, ANALYSIS_ITEM_DEFS, MONITORING_ITEM_DEFS, CONFIG_ITEM_DEFS, PROFILE_ITEM, ITSM_ITEM_DEFS, REPORTING_ITEM_DEFS, TEAMS_ITEM_DEFS, SETTINGS_ITEM_DEFS, ADMIN_NAV_ITEM_DEFS } from './menu'
 import { SidebarCollapseButton } from './SidebarUserMenu'
+import { colors } from '@/lib/tokens'
 
 const MY_PENDING_APPROVALS_COUNT = gql`
   query MyPendingApprovalsCount {
     myPendingApprovals { id }
+    pendingTicketApprovals { kind entityId }
   }
 `
 
-const NAV_ITEM_DEFS = [
-  { to: '/dashboard',      labelKey: 'sidebar.dashboard',     icon: LayoutDashboard },
-  { to: '/approvals',      labelKey: 'sidebar.approvals',     icon: CheckSquare },
-  { to: '/knowledge-base', labelKey: 'sidebar.knowledgeBase', icon: BookOpen },
-  { to: '/assistant',      labelKey: 'sidebar.assistant',     icon: Sparkles },
-]
-
-const ANALYSIS_ITEM_DEFS = [
-  { to: '/anomalies',        labelKey: 'sidebar.anomalies',   icon: ShieldAlert  },
-  { to: '/topology',         labelKey: 'sidebar.topologyMap', icon: Share2       },
-  { to: '/analysis/what-if', labelKey: 'sidebar.whatIf',      icon: FlaskConical },
-]
-
-const CONFIG_ITEM_DEFS = [
-  { to: '/settings/ci-types',        labelKey: 'sidebar.ciTypeDesigner',  icon: Layers   },
-  { to: '/settings/itil-designer',   labelKey: 'sidebar.itilDesigner',    icon: Settings2 },
-  { to: '/settings/enum-designer',   labelKey: 'sidebar.enumDesigner',    icon: Tag      },
-  { to: '/workflow',                  labelKey: 'sidebar.workflowDesigner', icon: Route    },
-]
-
-// Personal page, every role (E-13): language + Slack link.
-const PROFILE_ITEM = { to: '/profile', labelKey: 'sidebar.profile', icon: UserCircle }
-
-const ITSM_ITEM_DEFS = [
-  { to: '/incidents', labelKey: 'sidebar.incidents', icon: AlertCircle    },
-  { to: '/problems',  labelKey: 'sidebar.problems',  icon: Search         },
-  { to: '/changes',   labelKey: 'sidebar.changes',   icon: GitPullRequest },
-  { to: '/my-tasks',  labelKey: 'sidebar.myTasks',   icon: ClipboardList  },
-  { to: '/requests',  labelKey: 'sidebar.requests',  icon: Inbox          },
-]
-
-const REPORTING_ITEM_DEFS = [
-  { to: '/reports',        labelKey: 'sidebar.aiAnalysis',    icon: BrainCircuit },
-  { to: '/reports/sla',    labelKey: 'sidebar.slaReport',     icon: Gauge        },
-  { to: '/custom-reports', labelKey: 'sidebar.reportBuilder', icon: LayoutGrid   },
-]
-
-const TEAMS_ITEM_DEFS = [
-  { to: '/teams', labelKey: 'sidebar.teams', icon: UsersRound },
-  { to: '/users', labelKey: 'sidebar.users', icon: User },
-]
-
-const SETTINGS_ITEM_DEFS = [
-  { to: '/settings/notifications',      labelKey: 'sidebar.notificationChannels', icon: Bell },
-  { to: '/settings/notification-rules', labelKey: 'sidebar.notificationRules',    icon: Bell },
-  { to: '/settings/sync',               labelKey: 'sidebar.cmdbSync',             icon: Activity },
-  { to: '/admin/queues',                labelKey: 'sidebar.bullBoard',            icon: Activity },
-]
-
-const ADMIN_NAV_ITEM_DEFS = [
-  { to: '/logs',                   labelKey: 'sidebar.logs',           icon: ScrollText  },
-  { to: '/admin/audit',            labelKey: 'sidebar.auditLog',       icon: ShieldCheck },
-  { to: '/admin/monitoring',       labelKey: 'sidebar.monitoring',     icon: Activity    },
-  { to: '/admin/knowledge-base',   labelKey: 'sidebar.kbAdmin',        icon: BookOpen    },
-  { to: '/admin/triggers',         labelKey: 'sidebar.autoTriggers',   icon: Zap         },
-  { to: '/admin/business-rules',   labelKey: 'sidebar.businessRules',  icon: GitBranch   },
-  { to: '/admin/sla-policies',     labelKey: 'sidebar.slaPolicies',    icon: Clock       },
-  { to: '/admin/service-catalog',  labelKey: 'sidebar.serviceCatalog', icon: ShoppingCart},
-  { to: '/admin/integrations',         labelKey: 'sidebar.integrations',        icon: Plug        },
-  { to: '/admin/assessment-questions', labelKey: 'sidebar.assessmentQuestions', icon: HelpCircle  },
-]
-
-// CI type → sidebar label key (module scope: not rebuilt on every render, E-12).
+/**
+ * Chiave i18n dei tipi CI SPEDITI, usata SOLO quando il cliente non ha scritto
+ * un'etichetta sua (revisione totale · F-22): prima la chiave scavalcava
+ * `ciType.label`, quindi chi rinominava «Server» in «Host fisico» lo vedeva
+ * nel titolo della pagina e non nel menu, nel breadcrumb e nella lista.
+ * A livello di modulo: non si ricostruisce a ogni render (E-12).
+ */
 const CI_LABEL_KEYS: Record<string, string> = {
   application:       'sidebar.application',
   server:            'sidebar.server',
@@ -142,26 +54,46 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
   const { t } = useTranslation()
   const { pathname } = useLocation()
 
-  // Same source of truth as the pages and the RequireRole route guard:
-  // `me.role` from the DB, not the Keycloak realm role. Groups whose every
-  // route is wrapped in `admin(...)` in main.tsx (Teams & Users,
-  // Configuration, Admin) are hidden from everyone else — no menu entry may
-  // lead to a "forbidden" page.
-  const { isAdmin } = useMe()
+  // Same source of truth as the route guards: the PERMISSIONS of `me.role`
+  // (wave 7), read from the one table `lib/routePermissions`. An item shows
+  // only when its page opens, and a group only when it has items — no menu
+  // entry may lead to a "forbidden" page.
+  const { can } = useMe()
+  const opens = (to: string) => can(...routePermissions(to))
+  const visible = <T extends { to: string }>(defs: readonly T[]): T[] => defs.filter((d) => opens(d.to))
+  const nav        = visible(NAV_ITEM_DEFS)
+  const itsm       = visible(ITSM_ITEM_DEFS)
+  const reporting  = visible(REPORTING_ITEM_DEFS)
+  const analysis   = visible(ANALYSIS_ITEM_DEFS)
+  const monitoring = visible(MONITORING_ITEM_DEFS)
+  const teams      = visible(TEAMS_ITEM_DEFS)
+  const config     = visible(CONFIG_ITEM_DEFS)
+  const settings   = visible(SETTINGS_ITEM_DEFS)
+  const adminNav   = visible(ADMIN_NAV_ITEM_DEFS)
   const { ciTypes } = useMetamodel()
+
+  // Una voce accesa sola, la più specifica fra TUTTE quelle del menu.
+  const attiva = voceAttiva(pathname, [
+    ...NAV_ITEM_DEFS, ...ITSM_ITEM_DEFS, ...REPORTING_ITEM_DEFS, ...ANALYSIS_ITEM_DEFS,
+    ...MONITORING_ITEM_DEFS, ...TEAMS_ITEM_DEFS, ...CONFIG_ITEM_DEFS, ...SETTINGS_ITEM_DEFS,
+    ...ADMIN_NAV_ITEM_DEFS, PROFILE_ITEM,
+  ].map((d) => d.to).concat('/cmdb', ciTypes.map((ct) => `/ci/${ct.name}`)))
 
   // Active flags derived from the location; open state re-opens on entry (E-12).
   const itsmActive      = startsWithAny(pathname, ITSM_ITEM_DEFS)
   const reportingActive = pathname.startsWith('/reports') || pathname.startsWith('/custom-reports')
   const analysisActive  = startsWithAny(pathname, ANALYSIS_ITEM_DEFS)
+  const monitoringActive = pathname.startsWith('/events') || pathname.startsWith('/monitoring') || pathname.startsWith('/settings/event-policy')
   const cmdbActive      = CMDB_LEGACY_PREFIXES.some((p) => pathname.startsWith(p))
   const teamsActive     = startsWithAny(pathname, TEAMS_ITEM_DEFS)
   const configActive    = startsWithAny(pathname, CONFIG_ITEM_DEFS)
-  const settingsActive  = pathname.startsWith('/settings') || pathname.startsWith('/admin/queues')
+  // La policy eventi vive sotto /settings ma appartiene al gruppo Monitoraggio: un solo gruppo attivo.
+  const settingsActive  = (pathname.startsWith('/settings') && !pathname.startsWith('/settings/event-policy')) || pathname.startsWith('/admin/queues')
 
   const [itsmOpen, toggleItsm]           = useGroupOpen(itsmActive)
   const [reportingOpen, toggleReporting] = useGroupOpen(reportingActive)
   const [analysisOpen, toggleAnalysis]   = useGroupOpen(analysisActive)
+  const [monitoringOpen, toggleMonitoring] = useGroupOpen(monitoringActive)
   const [cmdbOpen, toggleCmdb]           = useGroupOpen(cmdbActive)
   const [teamsOpen, toggleTeams]         = useGroupOpen(teamsActive)
   const [configOpen, toggleConfig]       = useGroupOpen(configActive)
@@ -169,15 +101,17 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
 
   const { data: anomalyStatsData, error: anomalyError } = useQuery<{ anomalyStats: { critical: number; open: number } }>(
     GET_ANOMALY_STATS,
-    { pollInterval: 60_000, fetchPolicy: 'cache-and-network' },
+    { ...pausedWhenHidden(60_000), fetchPolicy: 'cache-and-network', skip: !opens('/anomalies') },
   )
   const anomalyCritical = anomalyStatsData?.anomalyStats?.critical ?? 0
 
-  const { data: pendingApprovalsData } = useQuery<{ myPendingApprovals: { id: string }[] }>(
+  // Il badge conta tutto quello che la pagina Approvazioni elenca: le richieste
+  // generiche e le approvazioni che si decidono nel ticket (change, richieste).
+  const { data: pendingApprovalsData } = useQuery<{ myPendingApprovals: { id: string }[]; pendingTicketApprovals: { kind: string; entityId: string }[] }>(
     MY_PENDING_APPROVALS_COUNT,
-    { pollInterval: 60_000, fetchPolicy: 'cache-and-network' },
+    { ...pausedWhenHidden(60_000), fetchPolicy: 'cache-and-network', skip: !opens('/approvals') },
   )
-  const pendingApprovalsCount = pendingApprovalsData?.myPendingApprovals?.length ?? 0
+  const pendingApprovalsCount = (pendingApprovalsData?.myPendingApprovals?.length ?? 0) + (pendingApprovalsData?.pendingTicketApprovals?.length ?? 0)
 
   const anomalyBadge = (anomalyCritical > 0 || anomalyError) ? (
     <span
@@ -186,7 +120,7 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
       style={{
         fontSize: 'var(--font-size-label)', fontWeight: 700, lineHeight: 1,
         padding: '2px 5px', borderRadius: 8,
-        background: 'var(--danger)', color: '#fff',
+        background: 'var(--danger)', color: colors.white,
       }}
     >
       {anomalyError ? '!' : anomalyCritical}
@@ -254,9 +188,9 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
           </p>
         )}
 
-        {NAV_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => {
+        {nav.map(({ to, labelKey, icon: Icon }) => {
           const label = t(labelKey)
-          const isActive = pathname === to || (to !== '/dashboard' && pathname.startsWith(to))
+          const isActive = to === attiva
           const badge = to === '/approvals' && pendingApprovalsCount > 0 ? pendingApprovalsCount : 0
           return (
             <NavItem key={to} to={to} label={label} icon={Icon} collapsed={collapsed} isActive={isActive} badge={badge} />
@@ -264,92 +198,101 @@ export function Sidebar({ collapsed, width, onToggle }: SidebarProps) {
         })}
 
         {/* ITIL Processes */}
-        <SidebarGroup title={t('sidebar.itilProcesses')} icon={ListChecks} active={itsmActive} open={itsmOpen} onToggle={toggleItsm} collapsed={collapsed} collapsedTo="/incidents">
-          {ITSM_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
-        </SidebarGroup>
+        {itsm.length > 0 && (
+          <SidebarGroup title={t('sidebar.itilProcesses')} icon={ListChecks} active={itsmActive} open={itsmOpen} onToggle={toggleItsm} collapsed={collapsed} collapsedTo={itsm[0]!.to}>
+            {itsm.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
+          </SidebarGroup>
+        )}
 
         {/* Reporting */}
-        <SidebarGroup title={t('sidebar.reporting')} icon={BarChart2} active={reportingActive} open={reportingOpen} onToggle={toggleReporting} collapsed={collapsed} collapsedTo="/reports">
-          {REPORTING_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
-        </SidebarGroup>
+        {reporting.length > 0 && (
+          <SidebarGroup title={t('sidebar.reporting')} icon={BarChart2} active={reportingActive} open={reportingOpen} onToggle={toggleReporting} collapsed={collapsed} collapsedTo={reporting[0]!.to}>
+            {reporting.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
+          </SidebarGroup>
+        )}
 
         {/* Analysis */}
-        <SidebarGroup title={t('sidebar.analysis')} icon={Activity} active={analysisActive} open={analysisOpen} onToggle={toggleAnalysis} collapsed={collapsed} collapsedTo="/anomalies">
-          {ANALYSIS_ITEM_DEFS.map(({ to, labelKey, icon }) => (
-            <SubItem key={to} to={to} label={t(labelKey)} icon={icon} trailing={to === '/anomalies' ? anomalyBadge : undefined} />
-          ))}
-        </SidebarGroup>
+        {analysis.length > 0 && (
+          <SidebarGroup title={t('sidebar.analysis')} icon={Activity} active={analysisActive} open={analysisOpen} onToggle={toggleAnalysis} collapsed={collapsed} collapsedTo={analysis[0]!.to}>
+            {analysis.map(({ to, labelKey, icon }) => (
+              <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} trailing={to === '/anomalies' ? anomalyBadge : undefined} />
+            ))}
+          </SidebarGroup>
+        )}
+
+        {/* Monitoraggio (Event Management) */}
+        {monitoring.length > 0 && (
+          <SidebarGroup title={t('sidebar.monitoring')} icon={Radar} active={monitoringActive} open={monitoringOpen} onToggle={toggleMonitoring} collapsed={collapsed} collapsedTo={monitoring[0]!.to}>
+            {monitoring.map(({ to, labelKey, icon }) => (
+              <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />
+            ))}
+          </SidebarGroup>
+        )}
 
         {/* CMDB */}
+        {opens('/cmdb') && (
         <SidebarGroup title={t('sidebar.cmdb')} icon={Server} active={cmdbActive} open={cmdbOpen} onToggle={toggleCmdb} collapsed={collapsed} collapsedTo="/cmdb">
-          <SubItem to="/cmdb" end label={t('sidebar.all')} icon={Server} />
+          <SubItem to="/cmdb" label={t('sidebar.all')} icon={Server} isActive={attiva === '/cmdb'} />
           {ciTypes.map(ct => {
             const to = `/ci/${ct.name}`
+            // L'etichetta del cliente vince; la chiave spedita è il ripiego.
             const labelKey = CI_LABEL_KEYS[ct.name]
             return (
               <SubItem
                 key={ct.name}
                 to={to}
-                label={labelKey ? t(labelKey) : ct.label}
+                label={ct.label || (labelKey ? t(labelKey) : ct.name)}
                 iconNode={<CIIcon icon={ct.icon} size={12} color={C.brand} />}
-                isActive={pathname === to || pathname.startsWith(`${to}/`)}
+                isActive={to === attiva}
               />
             )
           })}
         </SidebarGroup>
+        )}
 
-        {/* Profile — personal, every role */}
-        <NavItem
-          to={PROFILE_ITEM.to}
-          label={t(PROFILE_ITEM.labelKey)}
-          icon={PROFILE_ITEM.icon}
-          collapsed={collapsed}
-          isActive={pathname.startsWith(PROFILE_ITEM.to)}
-        />
+        {/* Profile — personal, the whole workspace */}
+        {opens(PROFILE_ITEM.to) && (
+          <NavItem
+            to={PROFILE_ITEM.to}
+            label={t(PROFILE_ITEM.labelKey)}
+            icon={PROFILE_ITEM.icon}
+            collapsed={collapsed}
+            isActive={attiva === PROFILE_ITEM.to}
+          />
+        )}
 
-        {/* Teams & Users — admin only (routes are admin(...) in main.tsx) */}
-        {isAdmin && (
-          <SidebarGroup title={t('sidebar.teamsUsers')} icon={Users} active={teamsActive} open={teamsOpen} onToggle={toggleTeams} collapsed={collapsed} collapsedTo="/teams">
-            {TEAMS_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
+        {/* Teams & Users */}
+        {teams.length > 0 && (
+          <SidebarGroup title={t('sidebar.teamsUsers')} icon={Users} active={teamsActive} open={teamsOpen} onToggle={toggleTeams} collapsed={collapsed} collapsedTo={teams[0]!.to}>
+            {teams.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
           </SidebarGroup>
         )}
 
-        {/* Configuration — admin only (routes are admin(...) in main.tsx) */}
-        {isAdmin && (
-          <SidebarGroup title={t('sidebar.configuration')} icon={SlidersHorizontal} active={configActive} open={configOpen} onToggle={toggleConfig} collapsed={collapsed} collapsedTo="/workflow">
-            {CONFIG_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
+        {/* Configuration */}
+        {config.length > 0 && (
+          <SidebarGroup title={t('sidebar.configuration')} icon={SlidersHorizontal} active={configActive} open={configOpen} onToggle={toggleConfig} collapsed={collapsed} collapsedTo={config[0]!.to}>
+            {config.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
           </SidebarGroup>
         )}
 
         {/* Admin items + Settings */}
-        {isAdmin && (
+        {(adminNav.length > 0 || settings.length > 0) && (
           <>
             {!collapsed && (
               <p style={{ color: C.textSection, fontSize: 'var(--font-size-label)', fontWeight: 600, letterSpacing: '0.08em', padding: '8px 8px 4px', margin: 0 }}>
                 {t('sidebar.admin')}
               </p>
             )}
-            {ADMIN_NAV_ITEM_DEFS.map(({ to, labelKey, icon: Icon }) => {
-              const label = t(labelKey)
-              const isActive = pathname === to || pathname.startsWith(to + '/')
-              return (
-                <NavLink
-                  key={to}
-                  to={to}
-                  title={collapsed ? label : undefined}
-                  style={navItemStyle(isActive, collapsed)}
-                  className="hover-bg"
-                >
-                  <Icon size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-                  {!collapsed && label}
-                </NavLink>
-              )
-            })}
+            {adminNav.map(({ to, labelKey, icon }) => (
+              <NavItem key={to} to={to} label={t(labelKey)} icon={icon} collapsed={collapsed} isActive={to === attiva} />
+            ))}
 
             {/* Settings — collapsible, dentro ADMIN */}
-            <SidebarGroup title={t('sidebar.settings')} icon={Settings} active={settingsActive} open={settingsOpen} onToggle={toggleSettings} collapsed={collapsed} collapsedTo="/settings/notifications">
-              {SETTINGS_ITEM_DEFS.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} />)}
-            </SidebarGroup>
+            {settings.length > 0 && (
+              <SidebarGroup title={t('sidebar.settings')} icon={Settings} active={settingsActive} open={settingsOpen} onToggle={toggleSettings} collapsed={collapsed} collapsedTo={settings[0]!.to}>
+                {settings.map(({ to, labelKey, icon }) => <SubItem key={to} to={to} label={t(labelKey)} icon={icon} isActive={to === attiva} />)}
+              </SidebarGroup>
+            )}
           </>
         )}
       </nav>

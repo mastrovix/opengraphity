@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Activity } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
@@ -7,37 +8,40 @@ import { SyncSourcesTab } from './SyncSourcesTab'
 import { SyncHistoryTab } from './SyncHistoryTab'
 import { SyncConflictsTab } from './SyncConflictsTab'
 import { ImportTab } from './ImportTab'
+import { colors } from '@/lib/tokens'
 
 export function SyncPage() {
+  const { t } = useTranslation()
   const hook = useSyncPage()
 
   return (
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
         <PageTitle icon={<Activity size={22} color="var(--color-icon-accent)" />}>
-          CMDB Sync
+          {t('sync.title')}
         </PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', margin: '4px 0 0' }}>
-          Import and sync configuration items from external sources
+          {t('sync.subtitle')}
         </p>
       </div>
 
       {hook.stats && <StatsBar stats={hook.stats} />}
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#f1f5f9', padding: 4, borderRadius: 8, width: 'fit-content' }}>
-        {TABS.map(t => (
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: colors.slateBg, padding: 4, borderRadius: 8, width: 'fit-content' }}>
+        {TABS.map(tab => (
           <button type="button"
-            key={t}
-            onClick={() => hook.setTab(t)}
+            key={tab}
+            aria-pressed={hook.tab === tab}
+            onClick={() => hook.setTab(tab)}
             style={{
               padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer',
               fontSize: 'var(--font-size-body)', fontWeight: 500,
-              background: hook.tab === t ? 'var(--color-brand)' : 'transparent',
-              color: hook.tab === t ? '#fff' : 'var(--color-slate)',
+              background: hook.tab === tab ? 'var(--color-brand)' : 'transparent',
+              color: hook.tab === tab ? colors.white : 'var(--color-slate)',
             }}
           >
-            {t}
+            {t(`pages.sync.tab.${tab}`)}
           </button>
         ))}
       </div>
@@ -70,6 +74,9 @@ export function SyncPage() {
           conflicts={hook.conflicts}
           loading={hook.conflictsLoading}
           onResolveConflict={hook.handleResolveConflict}
+          total={hook.conflictsTotal}
+          status={hook.conflictStatus}
+          onStatusChange={hook.setConflictStatus}
         />
       )}
 

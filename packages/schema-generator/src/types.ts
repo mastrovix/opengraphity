@@ -9,6 +9,13 @@ export interface CITypeDefinition {
   active: boolean
   neo4jLabel: string
   validationScript: string | null
+  /**
+   * Ruolo del tipo nella mappa di un servizio (`component | infrastructure |
+   * certificate`), ondata 6 · A-10. `null` quando il tipo non lo dichiara: chi
+   * legge ricade sul seme dei tipi spediti e poi sulle famiglie di catena
+   * (`lib/ciMetamodelForTenant.ts`), mai su un ruolo inventato qui.
+   */
+  serviceRole: string | null
 }
 
 export interface CIFieldDefinition {
