@@ -3,12 +3,13 @@
  *  - reopenTicket goes through workflowEngine.transition (never `SET i.status`),
  *    picking a transition the workflow actually offers from the current step;
  *  - no transition back to an open step → ValidationError;
- *  - createTicket rejects a missing/unknown priority instead of defaulting to 'medium';
- *  - mapTicket fails loud on a node missing priority/category.
+ *  - (createTicket: the priority checks moved with the creation into incidentService — portalCreateTicket.test.ts);
+ *  - mapTicket fails loud on a node missing severity/category.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = {
   executeRead:  vi.fn(),
@@ -16,6 +17,11 @@ const mockSession = {
   close:        vi.fn().mockResolvedValue(undefined),
 }
 
+// I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
+vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
+// Verifica «Cosa resta cablato», ondata 1: le severità offerte nel portale.
+vi.mock('../../../lib/portalSeverityOptions.js', () => import('../../../lib/__tests__/portalSeverityOptionsFake.js'))
+vi.mock('../../../lib/vocabularyEntries.js', () => ({ loadVocabularyEntries: vi.fn(async () => ({ values: ['low', 'medium', 'high', 'critical'], labels: {}, colors: {} })) }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
@@ -38,7 +44,7 @@ const { portalResolvers } = await import('../portal.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
 const { getWorkflowSteps } = await import('../../../lib/workflowHelpers.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@test.io', role: 'end_user' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@test.io', role: 'end_user', permissions: perms('end_user') }
 const rec = (map: Record<string, unknown>) => ({ get: (k: string) => (k in map ? map[k] : null) })
 
 const STEPS = [
@@ -48,7 +54,7 @@ const STEPS = [
   { name: 'closed',      isInitial: false, isTerminal: true,  isOpen: false, category: 'closed',   stepOrder: 4 },
 ]
 
-const ticketProps = { id: 'inc-1', title: 'T', status: 'in_progress', priority: 'high', category: 'hardware', created_by: 'user-1', created_at: 'a', updated_at: 'b' }
+const ticketProps = { id: 'inc-1', number: 'INC00000001', title: 'T', status: 'in_progress', severity: 'high', category: 'hardware', created_by: 'user-1', created_at: 'a', updated_at: 'b' }
 
 describe('reopenTicket', () => {
   beforeEach(() => {
@@ -56,8 +62,8 @@ describe('reopenTicket', () => {
     mockSession.executeRead.mockReset()
     vi.mocked(getWorkflowSteps).mockResolvedValue(STEPS)
     mockSession.executeRead
-      .mockResolvedValueOnce({ records: [rec({ createdBy: 'user-1', status: 'resolved', instanceId: 'wi-1' })] })
-      .mockResolvedValueOnce({ records: [rec({ props: ticketProps })] })
+      .mockResolvedValueOnce({ records: [rec({ createdBy: 'user-1', status: 'resolved', instanceId: 'wi-1', labels: ['Incident'] })] })
+      .mockResolvedValueOnce({ records: [rec({ props: ticketProps, labels: ['Incident'] })] })
   })
 
   it('transitions via the engine to an open step the workflow allows (prefers non-initial active)', async () => {
@@ -97,14 +103,14 @@ describe('reopenTicket', () => {
     vi.mocked(workflowEngine.getAvailableTransitions).mockResolvedValueOnce([
       { toStep: 'in_progress', label: 'Riapri', requiresInput: false, inputField: null, condition: null },
     ])
-    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: false, error: 'Transizione concorrente' } as never)
+    vi.mocked(workflowEngine.transition).mockResolvedValueOnce({ success: false, error: 'Concurrent transition' } as never)
 
-    await expect(portalResolvers.Mutation.reopenTicket(null, { ticketId: 'inc-1' }, ctx)).rejects.toThrow(/Transizione concorrente/)
+    await expect(portalResolvers.Mutation.reopenTicket(null, { ticketId: 'inc-1' }, ctx)).rejects.toThrow(/Concurrent transition/)
   })
 
   it('ticket without workflow instance → ValidationError (never a bare status write)', async () => {
     mockSession.executeRead.mockReset()
-    mockSession.executeRead.mockResolvedValueOnce({ records: [rec({ createdBy: 'user-1', status: 'resolved', instanceId: null })] })
+    mockSession.executeRead.mockResolvedValueOnce({ records: [rec({ createdBy: 'user-1', status: 'resolved', instanceId: null, labels: ['Incident'] })] })
 
     await expect(portalResolvers.Mutation.reopenTicket(null, { ticketId: 'inc-1' }, ctx)).rejects.toThrow(/no workflow instance/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
@@ -112,45 +118,29 @@ describe('reopenTicket', () => {
 
   it('not resolved → CONFLICT', async () => {
     mockSession.executeRead.mockReset()
-    mockSession.executeRead.mockResolvedValueOnce({ records: [rec({ createdBy: 'user-1', status: 'in_progress', instanceId: 'wi-1' })] })
+    mockSession.executeRead.mockResolvedValueOnce({ records: [rec({ createdBy: 'user-1', status: 'in_progress', instanceId: 'wi-1', labels: ['Incident'] })] })
     const err = await portalResolvers.Mutation.reopenTicket(null, { ticketId: 'inc-1' }, ctx).then(() => null, (e: unknown) => e)
     expect((err as GraphQLError).extensions['code']).toBe('CONFLICT')
-  })
-})
-
-describe('createTicket — priority fail-fast (A-19)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mockSession.executeRead.mockReset()
-    // loadEnumValues: category then priority
-    mockSession.executeRead
-      .mockResolvedValueOnce({ records: [rec({ values: ['hardware', 'software'] })] })
-      .mockResolvedValueOnce({ records: [rec({ values: ['low', 'medium', 'high'] })] })
-  })
-
-  it('unknown priority → ValidationError, nothing written', async () => {
-    const err = await portalResolvers.Mutation.createTicket(null, { title: 'T', priority: 'urgentissimo', category: 'hardware' }, ctx)
-      .then(() => null, (e: unknown) => e)
-    expect((err as GraphQLError).extensions['code']).toBe('BAD_USER_INPUT')
-    expect((err as GraphQLError).message).toMatch(/Invalid priority: urgentissimo/)
-    expect(mockSession.executeWrite).not.toHaveBeenCalled()
-  })
-
-  it('missing priority → ValidationError (no silent "medium")', async () => {
-    const err = await portalResolvers.Mutation.createTicket(null, { title: 'T', category: 'hardware' }, ctx)
-      .then(() => null, (e: unknown) => e)
-    expect((err as GraphQLError).message).toMatch(/priority is required/)
-    expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 })
 
 describe('mapTicket — no invented defaults (A-19)', () => {
   beforeEach(() => { vi.clearAllMocks(); mockSession.executeRead.mockReset() })
 
-  it('a node without category fails loud instead of reporting "other"', async () => {
+  // Category is optional (an incident opened from an alarm has none): null,
+  // never an invented "other" (giro nel browser del 14 set 2026).
+  it('a node without category reports null, not "other"', async () => {
+    mockSession.executeRead.mockResolvedValue({ records: [] })
     mockSession.executeRead.mockResolvedValueOnce({
-      records: [rec({ props: { ...ticketProps, category: undefined }, assignedTeam: null })],
+      records: [rec({ props: { ...ticketProps, category: undefined }, assignedTeam: null, labels: ['Incident'] })],
     })
-    await expect(portalResolvers.Query.myTicket(null, { id: 'inc-1' }, ctx)).rejects.toThrow(/missing required property 'category'/)
+    await expect(portalResolvers.Query.myTicket(null, { id: 'inc-1' }, ctx)).resolves.toMatchObject({ category: null })
+  })
+
+  it('a node without severity still fails loud instead of reporting "medium"', async () => {
+    mockSession.executeRead.mockResolvedValueOnce({
+      records: [rec({ props: { ...ticketProps, severity: undefined }, assignedTeam: null, labels: ['Incident'] })],
+    })
+    await expect(portalResolvers.Query.myTicket(null, { id: 'inc-1' }, ctx)).rejects.toThrow(/missing required property 'severity'/)
   })
 })

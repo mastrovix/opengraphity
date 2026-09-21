@@ -36,19 +36,51 @@
  * chiave, e i soli `params` da interpolare — e la frase la compone il client,
  * che la lingua la conosce (`configurationIssue.<kind>`).
  */
+import { slackChannelsWithoutWorkspace } from './slackChannelsWithoutWorkspace.js'
+import { serviceMapsWithIncidentProblem } from './serviceIncidentProblems.js'
 import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
+import { getScriptingPlan } from './scriptingPlan.js'
+import { formFieldsWithFormula } from './catalogForm.js'
+import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSeverityOptions.js'
+import { catalogItemsWithLegacyCategory, catalogItemsWithoutPriority } from './catalogItemPriority.js'
+import { tenantInAppRetentionDays } from './tenantInAppRetention.js'
 import { getSchemaState } from './schemaCache.js'
+import { ENTITY_NEO4J_LABELS } from '@opengraphity/types'
+import { TASK_STATE } from './ticketTasks.js'
+import { runQuery } from '../graphql/resolvers/ci-utils.js'
+
+/**
+ * Le coppie «tipo dichiarato :: etichetta Neo4j» ammesse per un compito,
+ * dall'allowlist del prodotto. Una coppia che non è qui è un compito appeso a
+ * un ticket che non è del suo tipo.
+ */
+const COPPIE_TIPO_ETICHETTA: string[] = Object.entries(ENTITY_NEO4J_LABELS).map(([tipo, etichetta]) => `${tipo}::${etichetta}`)
 import { tenantProvisioningGaps, type ProvisioningGap } from './provisionTenantData.js'
-import { DOMAIN_MATRIX_KINDS, domainVocabulary, loadDomainMatrix, matrixKey, type DomainMatrixKind } from './domainMatrix.js'
+import { DOMAIN_MATRIX_KINDS, domainVocabulary, loadDomainMatrix, matrixInputValues, matrixKey, matrixOutputValues, type DomainMatrixKind } from './domainMatrix.js'
 import { CI_STATUS_VOCABULARY } from './eventVocabularies.js'
 import { LIFECYCLE_POLICY_LISTS } from './eventPolicy.js'
 import { getEventPolicy } from '../services/events/policy.js'
 import { logger } from './logger.js'
 import { LINGUE, parseValueLabels, vocabularyCarriesLabels } from './enumValueLabels.js'
 import { tenantDefaultLanguage, LINGUA_DI_ULTIMA_ISTANZA } from './tenantLanguage.js'
+import { tenantTimezone } from './tenantTimezone.js'
+import { businessHoursWithoutCalendar } from './serviceCalendars.js'
+import { pendingMigrations } from './migrationState.js'
 import { teamsWithoutSourcing } from './teamSourcing.js'
+import { changesStuckWithOpenPath } from './changesStuck.js'
 import { ticketsWithoutSla } from './ticketsWithoutSla.js'
+import { workflowsMissingStepRoles } from './workflowStepRoles.js'
+import { vocabulariesBehindShipped, vocabulariesCopiedWithoutChanges } from './vocabularyShippedDrift.js'
+import { slaPoliciesWarningNotBeforeDeadline } from './slaWarningCheck.js'
+import { blockedStepDeadlines } from './stepDeadlineBlocked.js'
+import { customFieldDefs } from './ticketCustomFields.js'
+import { stepsNamedBy, workflowStepsByDefinition } from './customFieldSteps.js'
+import { olaContractsMeasurability } from './olaMeasurability.js'
+import { TICKET_CUSTOM_FIELD_ENTITY_TYPES } from '@opengraphity/types'
+import { createMetamodelCache } from './metamodelCache.js'
+import { duplicateMetamodelFields } from './metamodelDuplicateFields.js'
+import { catalogFormsToFix } from './catalogFormHealth.js'
 
 const log = logger.child({ module: 'configuration-issues' })
 
@@ -65,8 +97,37 @@ export type ConfigurationIssueKind =
   | 'value_labels_missing'
   | 'value_labels_partial'
   | 'default_language_not_set'
+  | 'timezone_not_set'
+  | 'service_calendar_not_set'
+  | 'portal_severities_not_set'
+  | 'portal_severities_stale'
+  | 'catalog_items_without_priority'
+  | 'inapp_retention_not_set'
+  | 'catalog_items_legacy_category'
+  | 'migrations_pending'
   | 'teams_without_sourcing'
   | 'tickets_without_sla'
+  | 'workflow_step_categories_missing'
+  | 'workflow_step_purposes_missing'
+  | 'workflow_optional_step_categories_missing'
+  | 'workflow_optional_step_purposes_missing'
+  | 'vocabulary_behind_shipped'
+  | 'vocabulary_copy_without_changes'
+  | 'sla_warning_not_before_deadline'
+  | 'step_deadlines_blocked'
+  | 'slack_not_connected'
+  | 'service_incident_problem'
+  | 'custom_field_steps_missing'
+  | 'custom_field_from_step_absent'
+  | 'ola_contract_without_team'
+  | 'ola_contract_unmeasurable'
+  | 'formulas_with_scripting_off'
+  | 'metamodel_duplicate_field'
+  | 'catalog_form_to_fix'
+  | 'task_type_mismatch'
+  | 'tasks_without_team'
+  | 'tasks_waiting_forever'
+  | 'changes_stuck'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -85,11 +146,40 @@ export interface ConfigurationIssue {
   where: string | null
 }
 
+/**
+ * I RILIEVI in cache per un minuto (revisione totale · C-33).
+ *
+ * I ventitré controlli girano in serie e alcuni sono scansioni vere — tutti i
+ * ticket aperti, i conteggi per tipo per ogni contratto OLA — e il banner
+ * della diagnostica li chiedeva a OGNI apertura di pagina. Su un cliente con
+ * centomila ticket erano decine di query pesanti per un banner che cambia una
+ * volta al giorno. Un minuto è abbastanza per non farne due nella stessa
+ * navigazione e poco per non nascondere un rimedio appena fatto; la cache
+ * passa dal canale del metamodello, quindi una modifica alla configurazione
+ * la svuota subito.
+ */
+const CONFIGURATION_ISSUES_TTL_MS = 60_000
+
+const issuesCache = createMetamodelCache<ConfigurationIssue[]>({
+  name:  'configuration-issues',
+  ttlMs: CONFIGURATION_ISSUES_TTL_MS,
+  load:  (tenantId) => computeConfigurationIssues(tenantId),
+})
+
+export function invalidateConfigurationIssues(tenantId?: string): void {
+  if (tenantId) issuesCache.invalidate(tenantId)
+  else issuesCache.clear()
+}
+
 export async function configurationIssues(tenantId: string): Promise<ConfigurationIssue[]> {
+  return issuesCache.get(tenantId)
+}
+
+async function computeConfigurationIssues(tenantId: string): Promise<ConfigurationIssue[]> {
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkLanguage, checkTeamSourcing, checkTicketsWithoutSla]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkRedundantVocabularyCopies, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms, checkStuckChanges, checkTaskIntegrity]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -133,8 +223,8 @@ async function checkMatrices(tenantId: string): Promise<ConfigurationIssue[]> {
   for (const kind of Object.keys(DOMAIN_MATRIX_KINDS) as DomainMatrixKind[]) {
     const spec   = DOMAIN_MATRIX_KINDS[kind]
     const matrix = await loadDomainMatrix(tenantId, kind)
-    const inputValues  = await Promise.all(spec.inputs.map((v) => domainVocabulary(tenantId, v)))
-    const outputValues = await domainVocabulary(tenantId, spec.output)
+    const inputValues  = await matrixInputValues(tenantId, kind)
+    const outputValues = await matrixOutputValues(tenantId, kind)
 
     // UN VOCABOLARIO VUOTO non e un problema della matrice (terza revisione · M10).
     // `cartesian([])` e vuoto, quindi `wanted` e vuoto, quindi OGNI chiave
@@ -288,6 +378,315 @@ async function checkLanguage(tenantId: string): Promise<ConfigurationIssue[]> {
 }
 
 /**
+ * IL FUSO NON CONFIGURATO (revisione del 14 set 2026 · F7).
+ *
+ * È un errore e non un avviso: senza fuso le scadenze SLA/OLA, il digest e le
+ * date dei messaggi falliscono, e nessun ripiego è giusto (il fuso del server
+ * non è quello del cliente). Si sceglie dalla pagina Organizzazione.
+ */
+async function checkTimezone(tenantId: string): Promise<ConfigurationIssue[]> {
+  if (await tenantTimezone(tenantId) !== null) return []
+  return [{ kind: 'timezone_not_set', severity: 'error', where: '/settings/organization', params: {} }]
+}
+
+/** Le policy SLA con il preavviso non prima della scadenza: vedi lib/slaWarningCheck.ts. */
+async function checkSlaWarnings(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const bad = await slaPoliciesWarningNotBeforeDeadline(session, tenantId)
+  if (bad.length === 0) return []
+  return [{
+    kind: 'sla_warning_not_before_deadline', severity: 'error', where: '/admin/sla-policies',
+    params: { count: String(bad.length), details: bad.map((b) => `«${b.name}»: ${b.warningMinutes} / ${b.resolveMinutes} min`).join(' · ') },
+  }]
+}
+
+/**
+ * LE COPIE DEI VOCABOLARI RIMASTE INDIETRO (revisione del 14 set 2026 · F20).
+ *
+ * Il prodotto ha aggiunto valori a un vocabolario spedito che il cliente ha
+ * personalizzato, e la copia — che per scelta non si sovrascrive — non li ha.
+ * Avviso: niente è rotto, ma il cliente non vede quello che il prodotto ha
+ * aggiunto. Si decide dal Dizionario: adottarli, o tenerli fuori.
+ */
+async function checkVocabulariesBehindShipped(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const behind = await vocabulariesBehindShipped(session, tenantId)
+  if (behind.length === 0) return []
+  return [{
+    kind: 'vocabulary_behind_shipped', severity: 'warning', where: '/settings/enum-designer',
+    params: { count: String(behind.length), details: behind.map((b) => `«${b.name}»: ${b.newValues.join(', ')}`).join(' · ') },
+  }]
+}
+
+/**
+ * I RUOLI DEI PASSI CHE MANCANO (revisione del 14 set 2026 · F17).
+ *
+ * Il codice cerca i passi per categoria e per scopo, non per nome
+ * (`lib/workflowStepRoles.ts`). Un workflow a cui manca un ruolo OBBLIGATORIO fa
+ * fermare un'operazione (errore); uno a cui manca un ruolo FACOLTATIVO spegne
+ * un comportamento senza dirlo (avviso). Una voce per workflow, gravità e tipo di ruolo;
+ * i valori mancanti sono dati, la frase la compone il client.
+ */
+/**
+ * LE COPIE DI VOCABOLARIO CHE NON AGGIUNGONO NIENTE (18 set 2026).
+ *
+ * Una copia identica alla spedita non compra niente e paga il prezzo di ogni
+ * copia: resta indietro in silenzio quando il prodotto aggiunge un valore. Si
+ * dice, con i nomi, e si rimedia cancellandola dal Dizionario — il prodotto
+ * ripiega da solo su quella di fabbrica.
+ *
+ * Avviso e non errore: oggi non è rotto niente, e la copia potrebbe essere il
+ * primo passo di una personalizzazione appena cominciata.
+ */
+async function checkRedundantVocabularyCopies(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const copie = await vocabulariesCopiedWithoutChanges(session, tenantId)
+  if (copie.length === 0) return []
+  return [{
+    kind: 'vocabulary_copy_without_changes', severity: 'warning', where: '/settings/enum-designer',
+    params: { count: String(copie.length), names: copie.map((c) => `«${c.label}»`).join(', ') },
+  }]
+}
+
+async function checkWorkflowStepRoles(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const out: ConfigurationIssue[] = []
+  for (const m of await workflowsMissingStepRoles(session, tenantId)) {
+    for (const [values, kind, severity] of [
+      [m.required.categories, 'workflow_step_categories_missing', 'error'],
+      [m.required.purposes, 'workflow_step_purposes_missing', 'error'],
+      [m.optional.categories, 'workflow_optional_step_categories_missing', 'warning'],
+      [m.optional.purposes, 'workflow_optional_step_purposes_missing', 'warning'],
+    ] as const) {
+      if (values.length === 0) continue
+      out.push({ kind, severity, where: '/workflow', params: { workflow: m.workflow, entityType: m.entityType, missing: values.join(', ') } })
+    }
+  }
+  return out
+}
+
+/**
+ * CAMPI CHE CITANO FASI CHE IL WORKFLOW NON HA PIÙ (secondo giro UI del 15 set
+ * 2026). Le regole di fase si validano quando si salva il campo, ma una fase si
+ * può togliere o rinominare dopo, nel disegnatore: allora il campo «da quella
+ * fase in poi» non si vede più da nessuna parte. Lo si dice qui invece di
+ * lasciarlo sparire.
+ */
+async function checkCustomFieldSteps(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const missing: string[] = []
+  const absent: string[] = []
+  for (const entityType of TICKET_CUSTOM_FIELD_ENTITY_TYPES) {
+    const defs = (await customFieldDefs(session, tenantId, entityType)).filter((d) => d.visibility.mode !== 'always' || d.editability.mode !== 'visible')
+    if (defs.length === 0) continue
+    const workflows = await workflowStepsByDefinition(session, tenantId, entityType)
+    const names = new Set(workflows.flatMap((w) => w.steps.map((s) => s.name)))
+    for (const d of defs) {
+      const gone = stepsNamedBy(d.visibility, d.editability).filter((s) => !names.has(s))
+      if (gone.length > 0) missing.push(`${d.label} (${entityType}): ${gone.join(', ')}`)
+      // «Da X in poi» su un tipo con più workflow: dove X non c'è, il campo non si vede mai.
+      const from = d.visibility.mode === 'from' ? d.visibility.step : null
+      if (from && names.has(from)) {
+        const without = workflows.filter((w) => !w.steps.some((s) => s.name === from)).map((w) => w.workflow)
+        if (without.length > 0) absent.push(`${d.label} (${entityType}, ${from}): ${without.join(', ')}`)
+      }
+    }
+  }
+  const out: ConfigurationIssue[] = []
+  if (missing.length > 0) out.push({ kind: 'custom_field_steps_missing', severity: 'warning', where: '/settings/itil-designer', params: { count: String(missing.length), fields: missing.join('; ') } })
+  if (absent.length > 0) out.push({ kind: 'custom_field_from_step_absent', severity: 'warning', where: '/settings/itil-designer', params: { count: String(absent.length), fields: absent.join('; ') } })
+  return out
+}
+
+/**
+ * I CONTRATTI OLA/UC CHE NON MISURANO NIENTE (secondo giro UI del 15 set 2026,
+ * punto 3): senza team non avvisano mai; su ticket che nessuno assegna a un
+ * team restano a zero. Si rimedia nel contratto (team, tipo di ticket).
+ */
+async function checkOLAContracts(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const { withoutTeam, unmeasurable } = await olaContractsMeasurability(session, tenantId)
+  const out: ConfigurationIssue[] = []
+  if (withoutTeam.length > 0) out.push({ kind: 'ola_contract_without_team', severity: 'warning', where: '/admin/ola-uc', params: { count: String(withoutTeam.length), names: withoutTeam.join(', ') } })
+  if (unmeasurable.length > 0) out.push({ kind: 'ola_contract_unmeasurable', severity: 'warning', where: '/admin/ola-uc', params: { count: String(unmeasurable.length), names: unmeasurable.join(', ') } })
+  return out
+}
+
+/**
+ * I MODULI DEL CATALOGO CHE NON SI POSSONO COMPILARE (revisione del 17 set
+ * 2026). La pubblicazione rifiuta le configurazioni impossibili, ma un modulo
+ * pubblicato prima della regola resta com'è, e un campo cancellato dalla
+ * libreria rompe un modulo che ieri andava: senza questo controllo il rifiuto
+ * arriva solo a chi apre la richiesta, cioè a chi non può rimediare.
+ */
+async function checkCatalogForms(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const daSistemare = await catalogFormsToFix(session, tenantId)
+  if (daSistemare.length === 0) return []
+  return [{
+    kind: 'catalog_form_to_fix', severity: 'error', where: '/settings/catalog-forms',
+    params: {
+      count: String(daSistemare.length),
+      forms: daSistemare.map((m) => `${m.item} (${m.reason}: ${m.fields.join(', ')})`).join('; '),
+    },
+  }]
+}
+
+/**
+ * DUE CAMPI CON LO STESSO NOME NELLO STESSO TIPO (trovato nel browser su
+ * c-test: «Priorità» due volte nelle tendine delle automazioni). Il perché e
+ * come si rimedia stanno in `lib/metamodelDuplicateFields.ts`; qui si dice.
+ */
+async function checkDuplicateFields(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const doppioni = await duplicateMetamodelFields(session, tenantId)
+  if (doppioni.length === 0) return []
+  return [{
+    kind: 'metamodel_duplicate_field', severity: 'error', where: '/settings/itil-designer',
+    params: {
+      count:  String(doppioni.length),
+      fields: doppioni.map((d) => `${d.typeName}.${d.field} (${d.count})`).join(', '),
+    },
+  }]
+}
+
+/**
+ * LE MIGRAZIONI PENDENTI (revisione del 14 set 2026 · F8). Non riguardano un
+ * cliente ma tutti: l'admin le vede perché il sintomo — dati e schema non
+ * allineati — lo vede lui per primo. Si rimedia lanciando `migrate.js`.
+ */
+async function checkMigrations(_tenantId: string): Promise<ConfigurationIssue[]> {
+  const pending = await pendingMigrations()
+  if (pending.length === 0) return []
+  return [{ kind: 'migrations_pending', severity: 'error', where: null, params: { count: String(pending.length), migrations: pending.join(', ') } }]
+}
+
+/**
+ * LE CHANGE FERME CON LA STRADA APERTA (17 set 2026). La logica — e il perché
+ * si segnala invece di ripararle — sta in `changesStuck.ts`; qui c'è solo la
+ * voce del banner. `warning` e non `error`: niente è rotto, ma del lavoro
+ * finito è parcheggiato e nessuno lo sa.
+ */
+async function checkStuckChanges(tenantId: string): Promise<ConfigurationIssue[]> {
+  const session = getSession()
+  try {
+    const ferme = await changesStuckWithOpenPath(session, tenantId)
+    if (ferme.length === 0) return []
+    return [{
+      kind: 'changes_stuck', severity: 'warning', where: '/changes',
+      params: { count: String(ferme.length), changes: ferme.join(', ') },
+    }]
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * CAMPI CALCOLATI CON GLI SCRIPT SPENTI (moduli del catalogo, ondata 6).
+ *
+ * Una formula è uno script: con l'interruttore spento non gira, e la richiesta
+ * NON si crea — il rifiuto dice perché, ma arriva a chi sta compilando, che non
+ * può rimediare. Qui lo si dice a chi può: l'amministratore, nel posto dove
+ * guarda già.
+ *
+ * `error` e non `warning`: non è «sarà un problema», è già rotto — quei moduli
+ * non si possono compilare.
+ */
+async function checkFormulasScripting(tenantId: string): Promise<ConfigurationIssue[]> {
+  const { enabled } = await getScriptingPlan(tenantId)
+  if (enabled) return []
+  const names = await formFieldsWithFormula(tenantId)
+  if (names.length === 0) return []
+  return [{
+    kind: 'formulas_with_scripting_off', severity: 'error', where: '/settings/organization',
+    params: { count: String(names.length), names: names.join(', ') },
+  }]
+}
+
+/**
+ * ORARIO DI SERVIZIO SENZA CALENDARIO (revisione del 14 set 2026 · F6, ondata 2
+ * della verifica «Cosa resta cablato»).
+ *
+ * Una policy SLA o un contratto OLA/UC che conta l'orario di servizio senza un
+ * calendario valido (nessuno scelto, o uno eliminato) non sa calcolare la
+ * scadenza, e il motore lo dice al primo ticket. Qui lo si dice prima, con i nomi.
+ */
+async function checkServiceCalendar(tenantId: string): Promise<ConfigurationIssue[]> {
+  const names = await businessHoursWithoutCalendar(tenantId)
+  if (names.length === 0) return []
+  return [{ kind: 'service_calendar_not_set', severity: 'error', where: '/admin/sla-policies', params: { count: String(names.length), names: names.join(', ') } }]
+}
+
+/**
+ * LE SEVERITÀ DEL PORTALE (verifica «Cosa resta cablato», ondata 1). Non
+ * dichiarate, o con un valore che il Dizionario non ha più: dal portale non si
+ * apre nessun ticket, ed è un errore — gli utenti finali lo scoprono per primi.
+ */
+async function checkPortalSeverities(tenantId: string): Promise<ConfigurationIssue[]> {
+  const options = await portalSeverityOptions(tenantId)
+  if (options === null || options.length === 0) {
+    return [{ kind: 'portal_severities_not_set', severity: 'error', where: '/settings/organization', params: {} }]
+  }
+  const vocabulary = await domainVocabulary(tenantId, PORTAL_SEVERITY_VOCABULARY)
+  const stale = options.filter((o) => !vocabulary.includes(o.value)).map((o) => o.value)
+  if (stale.length === 0) return []
+  return [{ kind: 'portal_severities_stale', severity: 'error', where: '/settings/organization', params: { values: stale.join(', ') } }]
+}
+
+/**
+ * VOCI DEL CATALOGO CON LA CATEGORIA SCRITTA A MANO (ondata 2): la conversione
+ * al Dizionario non ha trovato un valore corrispondente. Avviso: le richieste
+ * nascono senza categoria e le policy SLA per categoria non le vedono.
+ */
+async function checkCatalogItemCategories(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const items = await catalogItemsWithLegacyCategory(session, tenantId)
+  if (items.length === 0) return []
+  return [{ kind: 'catalog_items_legacy_category', severity: 'warning', where: '/admin/service-catalog', params: { count: String(items.length), items: items.map((i) => `${i.name} («${i.legacy}»)`).join(', ') } }]
+}
+
+/**
+ * CANALI SLACK SENZA SLACK COLLEGATO (ondata 8): un canale che scrive con il bot
+ * (`channel_id`, non un webhook) usa il token del workspace dell'organizzazione.
+ * Senza workspace collegato ogni notifica verso quel canale fallisce.
+ */
+async function checkSlackChannels(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const names = await slackChannelsWithoutWorkspace(session, tenantId)
+  if (names.length === 0) return []
+  return [{ kind: 'slack_not_connected', severity: 'error', where: '/admin/integrations', params: { count: String(names.length), channels: names.join(', ') } }]
+}
+
+/**
+ * SERVIZI IL CUI INCIDENT NON SI RIESCE A GESTIRE (revisione del 15 set 2026 ·
+ * SV-4): il motore scrive sulla mappa perché l'ultima riconciliazione è
+ * fallita (tipicamente un tipo di CI escluso dagli incident) e lo toglie alla
+ * prima che riesce. Prima si leggeva solo nel log del worker, mentre il
+ * servizio restava giù senza incident. Con una mappa sola si va dritti al suo
+ * dettaglio, dove c'è il motivo.
+ */
+async function checkServiceIncidentProblems(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const maps = await serviceMapsWithIncidentProblem(session, tenantId)
+  if (maps.length === 0) return []
+  return [{
+    kind: 'service_incident_problem', severity: 'error',
+    where: maps.length === 1 ? `/monitoring/services/${maps[0]!.id}` : '/monitoring/services',
+    params: { count: String(maps.length), services: maps.map((m) => m.name).join(', ') },
+  }]
+}
+
+/**
+ * LA CONSERVAZIONE DELLE NOTIFICHE NON SCELTA (ondata 2): la pulizia notturna
+ * salta questa organizzazione, e le notifiche crescono senza limite. Un avviso:
+ * niente è rotto oggi.
+ */
+async function checkInAppRetention(tenantId: string): Promise<ConfigurationIssue[]> {
+  if (await tenantInAppRetentionDays(tenantId) !== null) return []
+  return [{ kind: 'inapp_retention_not_set', severity: 'warning', where: '/settings/organization', params: {} }]
+}
+
+/**
+ * VOCI DEL CATALOGO SENZA PRIORITÀ (verifica «Cosa resta cablato», ondata 1):
+ * la priorità delle richieste la decide la voce, e da una voce attiva che non
+ * ne ha nessuna il portale non apre richieste.
+ */
+async function checkCatalogItemPriorities(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const names = await catalogItemsWithoutPriority(session, tenantId)
+  if (names.length === 0) return []
+  return [{ kind: 'catalog_items_without_priority', severity: 'error', where: '/admin/service-catalog', params: { count: String(names.length), items: names.join(', ') } }]
+}
+
+/**
  * Team che non dicono se sono interni o esterni.
  *
  * Sono quelli nati prima del campo: la migrazione non lo indovina (un team
@@ -295,6 +694,93 @@ async function checkLanguage(tenantId: string): Promise<ConfigurationIssue[]> {
  * dice qui, con i nomi, finché qualcuno non lo sceglie dalla pagina del team.
  * I team nuovi non possono finire in questa lista: l'API pretende il valore.
  */
+/**
+ * LA TERZA DIFESA sui compiti (20 set 2026).
+ *
+ * `Task.entity_type` deve coincidere col tipo del ticket a cui il compito è
+ * appeso. Due difese vengono prima: il tipo non è esprimibile nel disegnatore
+ * (lo eredita dalla definizione di workflow) e la scrittura lo verifica
+ * contro l'etichetta del nodo. Questo conteggio **deve quindi essere sempre
+ * zero**: se un giorno non lo è, l'ha scritto una strada che nessuno aveva
+ * previsto, e si scopre qui invece che dentro un report sbagliato.
+ *
+ * Insieme, i compiti APERTI senza squadra: nascono così quando la squadra
+ * nominata nel passo non esiste più (cancellata dopo aver scritto il
+ * workflow). Non si ripiega su una squadra a caso — sarebbe lavoro assegnato
+ * a gente che non sa di averlo — quindi il compito resta lì, e lo si dice.
+ */
+async function checkTaskIntegrity(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const out: ConfigurationIssue[] = []
+
+  /**
+   * Il confronto è fra la coppia (tipo dichiarato, etichetta vera): un
+   * compito è sano se una delle etichette del suo ticket è quella del tipo
+   * che dichiara. Le coppie ammesse arrivano dall'allowlist del motore, la
+   * stessa che usa per scrivere lo status — non se ne inventa una seconda.
+   */
+  const rotti = await runQuery<{ code: string; declared: string; actual: string }>(session, `
+    MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
+    WITH k, ticket, [l IN labels(ticket) | k.entity_type + '::' + l] AS coppie
+    WHERE none(c IN coppie WHERE c IN $ammesse)
+    RETURN k.code AS code, k.entity_type AS declared, head(labels(ticket)) AS actual
+    LIMIT 20
+  `, { tenantId, ammesse: COPPIE_TIPO_ETICHETTA })
+  if (rotti.length > 0) {
+    out.push({
+      kind: 'task_type_mismatch', severity: 'error', where: null,
+      params: {
+        count: String(rotti.length),
+        examples: rotti.slice(0, 5).map((r) => `${r.code} (${r.declared} → ${r.actual})`).join(', '),
+      },
+    })
+  }
+
+  const senzaSquadra = await runQuery<{ code: string }>(session, `
+    MATCH (k:Task {tenant_id: $tenantId, state: $aperto})
+    WHERE NOT EXISTS { (k)-[:ASSIGNED_TO_TEAM]->(:Team) }
+      AND NOT EXISTS { (k)-[:ASSIGNED_TO]->(:User) }
+    RETURN k.code AS code
+    LIMIT 20
+  `, { tenantId, aperto: TASK_STATE.OPEN })
+  if (senzaSquadra.length > 0) {
+    out.push({
+      kind: 'tasks_without_team', severity: 'warning', where: null,
+      params: {
+        count: String(senzaSquadra.length),
+        codes: senzaSquadra.slice(0, 5).map((r) => r.code).join(', '),
+      },
+    })
+  }
+  /**
+   * Compiti IN ATTESA di un compito che sul ticket non c'è. Nascono da un
+   * refuso nel disegnatore — «parte quando è chiuso: ‹un titolo che nessun
+   * altro compito ha›» — e da soli non partirebbero mai, tenendo fermo anche
+   * il passo, perché la guardia conta anche le attese. Meglio dirlo che
+   * lasciare un ticket bloccato senza spiegazione.
+   */
+  const attesePerSempre = await runQuery<{ code: string; after: string }>(session, `
+    MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId, state: $attesa})
+    WHERE k.after_title IS NOT NULL
+      AND NOT EXISTS {
+        MATCH (ticket)-[:HAS_TASK]->(altro:Task {tenant_id: $tenantId})
+        WHERE altro.title = k.after_title AND altro.step_name = k.step_name
+      }
+    RETURN k.code AS code, k.after_title AS after
+    LIMIT 20
+  `, { tenantId, attesa: TASK_STATE.WAITING })
+  if (attesePerSempre.length > 0) {
+    out.push({
+      kind: 'tasks_waiting_forever', severity: 'error', where: null,
+      params: {
+        count: String(attesePerSempre.length),
+        examples: attesePerSempre.slice(0, 5).map((r) => `${r.code} → «${r.after}»`).join(', '),
+      },
+    })
+  }
+
+  return out
+}
+
 async function checkTeamSourcing(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
   const { count, names } = await teamsWithoutSourcing(session, tenantId)
   if (count === 0) return []
@@ -365,4 +851,20 @@ async function checkLifecyclePolicy(tenantId: string): Promise<ConfigurationIssu
 
 function cartesian(lists: readonly (readonly string[])[]): string[][] {
   return lists.reduce<string[][]>((acc, list) => acc.flatMap((prefix) => list.map((v) => [...prefix, v])), [[]])
+}
+
+/**
+ * LE SCADENZE DEI PASSI CHE NON RIESCONO A SPOSTARE UN TICKET (ondata 3). Il
+ * varco delle approvazioni le ha rifiutate, o il workflow è cambiato e non
+ * hanno più strada: il ticket resta nel passo e la scadenza si riprova ogni
+ * ora. I numeri, perché chi guarda possa aprirli.
+ */
+async function checkStepDeadlines(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const blocked = await blockedStepDeadlines(session, tenantId)
+  if (blocked.length === 0) return []
+  const shown = blocked.slice(0, 10).map((b) => `${b.number} (${b.step})`).join(', ')
+  return [{
+    kind: 'step_deadlines_blocked', severity: blocked.some((b) => b.outcome === 'failed') ? 'error' : 'warning', where: '/workflow',
+    params: { count: String(blocked.length), tickets: blocked.length > 10 ? `${shown}, …` : shown },
+  }]
 }

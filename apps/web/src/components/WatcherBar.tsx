@@ -12,6 +12,7 @@ import { IS_WATCHING, GET_WATCHERS, SEARCH_USERS } from '@/graphql/queries'
 import { WATCH_ENTITY, UNWATCH_ENTITY, ADD_WATCHER, REMOVE_WATCHER } from '@/graphql/mutations'
 import { Input } from '@/components/ui/FormControls'
 import { alpha, colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 interface Props {
   entityType: string
@@ -44,7 +45,7 @@ export function WatcherBar({ entityType, entityId }: Props) {
   const watchersList = watchersData?.watchers ?? []
   const suggestions  = (searchData?.searchUsers ?? []).filter(u => !watchersList.some(w => w.id === u.id))
 
-  const onErr = (e: { message: string }) => toast.error(e.message)
+  const onErr = (e: { message: string }) => showError(e)
   const [watch]    = useMutation(WATCH_ENTITY,   { onCompleted: () => { void refetchWatching(); void refetchWatchers(); toast.success(t('watchers.nowWatching')) }, onError: onErr })
   const [unwatch]  = useMutation(UNWATCH_ENTITY, { onCompleted: () => { void refetchWatching(); void refetchWatchers(); toast.success(t('watchers.stoppedWatching')) }, onError: onErr })
   const [add]      = useMutation(ADD_WATCHER,    { onCompleted: () => { void refetchWatchers(); toast.success(t('watchers.added')) }, onError: onErr })

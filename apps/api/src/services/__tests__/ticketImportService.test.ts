@@ -5,8 +5,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // esegue le scritture di ogni riga (MERGE nodo, relazioni, commenti, workflow)
 // dentro una executeWrite per riga.
 
+/** Il contatore dei numeri (lib/sequence.ts): ogni MERGE (c:Counter) restituisce il valore successivo. */
+let counter = 0
+const txRun = async (query: string) => {
+  if (query.includes('MERGE (c:Counter') && query.includes('RETURN c.value')) {
+    counter += 1
+    return { records: [{ get: () => counter }] }
+  }
+  return { records: [] }
+}
 const mockTx = {
-  run: vi.fn().mockResolvedValue({ records: [] }),
+  run: vi.fn(txRun),
 }
 
 const mockSession = {
@@ -22,6 +31,8 @@ const mockSession = {
 // Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
 // dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
 // fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+// Ondata 6 di «Nulla cablato»: il formato dei numeri è del cliente; qui quello di fabbrica.
+vi.mock('../../lib/ticketNumbering.js', () => import('../../lib/__tests__/ticketNumberingFake.js'))
 vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
 
 vi.mock('@opengraphity/workflow', () => ({
@@ -37,6 +48,7 @@ vi.mock('@opengraphity/neo4j', () => ({
   runQuery:    vi.fn(),
   runQueryOne: vi.fn(),
   closeDriver: vi.fn(),
+  toNumber:    (v: unknown) => Number(v),
 }))
 
 const INCIDENT_STEPS = [
@@ -56,7 +68,7 @@ const KB_STEPS = [
 vi.mock('../../lib/workflowHelpers.js', () => ({
   getWorkflowSteps: vi.fn().mockImplementation(
     async (_s: unknown, _t: string, entityType: string) =>
-      entityType === 'incident' ? INCIDENT_STEPS : KB_STEPS,
+      entityType === 'kb_article' ? KB_STEPS : INCIDENT_STEPS,
   ),
   getInitialStepName: vi.fn().mockResolvedValue('new'),
 }))
@@ -68,13 +80,20 @@ vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
   getSession: vi.fn(),
 }))
 
+// Ondata 4: i campi del cliente dell'incident, per le colonne omonime del file.
+let customDefs: Array<Record<string, unknown>> = []
+vi.mock('../../lib/ticketCustomFields.js', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  customFieldDefs: vi.fn(async () => customDefs),
+}))
+
 vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-const { parseCsv, importIncidents, importKBArticles } = await import('../ticketImportService.js')
+const { parseCsv, importIncidents, importProblems, importChanges, importServiceRequests, importKBArticles } = await import('../ticketImportService.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { workflowEngine } = await import('@opengraphity/workflow')
 
@@ -93,28 +112,32 @@ function mockReads(opts: {
   vi.mocked(runQuery).mockImplementation(async (_s: unknown, query: string) => {
     if (query.includes('MATCH (u:User'))               return (opts.users ?? []) as never
     if (query.includes('MATCH (t:Team'))               return (opts.teams ?? []) as never
-    if (query.includes('i.import_external_id IN'))     return (opts.existing ?? []) as never
-    if (query.includes('i.number IN'))                 return (opts.numbers ?? []) as never
+    if (query.includes('n.import_external_id IN'))     return (opts.existing ?? []) as never
+    if (query.includes('n.number IN'))                 return (opts.numbers ?? []) as never
     if (query.includes('a.import_external_id IN'))     return (opts.kbExisting ?? []) as never
     if (query.includes('RETURN a.slug'))               return (opts.slugs ?? []).map((slug) => ({ slug })) as never
     return [] as never
   })
   vi.mocked(runQueryOne).mockImplementation(async (_s: unknown, query: string) => {
-    if (query.includes("STARTS WITH 'INC'")) return { maxNum: opts.maxNum ?? 0 } as never
+    if (query.includes('STARTS WITH $prefix')) return { maxNum: opts.maxNum ?? 0 } as never
     return null as never
   })
 }
 
-/** Parametri della MERGE (i:Incident ...) per la riga n-esima scritta (0-based). */
-function mergedIncidentParams(n = 0): Record<string, unknown> {
-  const calls = mockTx.run.mock.calls.filter((c) => (c[0] as string).includes('MERGE (i:Incident'))
+/** Parametri della MERGE (n:<label> ...) per la riga n-esima scritta (0-based). */
+function mergedParams(label: string, n = 0): Record<string, unknown> {
+  const calls = mockTx.run.mock.calls.filter((c) => (c[0] as string).includes(`MERGE (n:${label}`))
   expect(calls.length).toBeGreaterThan(n)
   return calls[n]![1] as Record<string, unknown>
 }
+const mergedIncidentParams = (n = 0) => mergedParams('Incident', n)
+/** Le proprietà del tipo scritte sulla riga (severità, descrizione, date…). */
+const incidentProps = (n = 0) => mergedIncidentParams(n)['props'] as Record<string, unknown>
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockTx.run.mockResolvedValue({ records: [] })
+  counter = 0
+  mockTx.run.mockImplementation(txRun)
   mockSession.executeWrite.mockImplementation(
     async (work: (tx: typeof mockTx) => Promise<unknown>) => work(mockTx),
   )
@@ -175,19 +198,46 @@ describe('importIncidents', () => {
     expect(result.errors[0]!.message).toContain('urgentissimo')
     // Il messaggio dice la strada: il vocabolario e la matrice.
     expect(result.errors[0]!.message).toMatch(/Import Severity/)
-    expect(mergedIncidentParams(0)['severity']).toBe('critical')
+    expect(incidentProps(0)['severity']).toBe('critical')
   })
 
-  it('senza colonna severity la riga nasce col default dichiarato, non con un valore inventato', async () => {
-    const result = await importIncidents([{ external_id: 'A-1', title: 'T1' }], ctx)
-    expect(result.errors).toHaveLength(0)
-    expect(mergedIncidentParams(0)['severity']).toBe('medium')
+  // Verifica «Cosa resta cablato», ondata 1: senza severità non c'è più il
+  // default `medium`, che né il file né il cliente avevano scelto.
+  it('senza severity la riga è IN ERRORE, non nasce con un valore scelto dal codice', async () => {
+    const result = await importIncidents([
+      { external_id: 'A-1', title: 'T1' },
+      { external_id: 'A-2', title: 'T2', severity: 'med' },
+    ], ctx)
+    expect(result.created).toBe(1)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]).toMatchObject({ row: 1, externalId: 'A-1', messageKey: 'severityRequired' })
+    expect(incidentProps(0)['severity']).toBe('medium')
+  })
+
+  // Verifica «Cosa resta cablato», ondata 4: una colonna per campo del cliente.
+  it('colonne dei campi del cliente: valore convertito e scritto; valore fuori vocabolario → riga in errore che nomina la colonna', async () => {
+    customDefs = [
+      { name: 'site', label: 'Sede', fieldType: 'enum', required: true, enumValues: ['mi', 'rm'], enumTypeName: 'site', validationScript: null, visibleToEndUser: false, order: 1 },
+      { name: 'effort', label: 'Ore', fieldType: 'number', required: false, enumValues: [], enumTypeName: null, validationScript: null, visibleToEndUser: false, order: 2 },
+    ]
+    const result = await importIncidents([
+      { external_id: 'A-1', title: 'T1', severity: 'P1', site: 'rm', effort: '2.5' },
+      { external_id: 'A-2', title: 'T2', severity: 'P1', site: 'napoli' },
+      // Storico senza il campo: l'obbligo non vale nell'import, e la cella vuota non tocca il campo.
+      { external_id: 'A-3', title: 'T3', severity: 'P1', site: '' },
+    ], ctx)
+    customDefs = []
+    expect(result.created).toBe(2)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]).toMatchObject({ row: 2, externalId: 'A-2', messageKey: 'customFieldInvalid', messageParams: expect.objectContaining({ field: 'site' }) })
+    expect(mergedIncidentParams(0)['customProps']).toEqual({ site: 'rm', effort: 2.5 })
+    expect(mergedIncidentParams(1)['customProps']).toEqual({})
   })
 
   it('mappa status case-insensitive sugli step del workflow; sconosciuto → warning + step iniziale', async () => {
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'T1', status: 'IN_PROGRESS' },
-      { external_id: 'A-2', title: 'T2', status: 'inesistente' },
+      { external_id: 'A-1', title: 'T1', status: 'IN_PROGRESS', severity: 'med' },
+      { external_id: 'A-2', title: 'T2', status: 'inesistente', severity: 'med' },
     ], ctx)
 
     expect(result.warnings).toHaveLength(1)
@@ -198,10 +248,10 @@ describe('importIncidents', () => {
 
   it('errore di riga su external_id mancante, title mancante e data invalida — le righe valide procedono', async () => {
     const result = await importIncidents([
-      { external_id: '',    title: 'T1' },
-      { external_id: 'A-2', title: ''   },
-      { external_id: 'A-3', title: 'T3', created_at: 'non-una-data' },
-      { external_id: 'A-4', title: 'T4', created_at: '2024-01-01T10:00:00Z' },
+      { external_id: '',    title: 'T1', severity: 'med' },
+      { external_id: 'A-2', title: '', severity: 'med' },
+      { external_id: 'A-3', title: 'T3', created_at: 'non-una-data', severity: 'med' },
+      { external_id: 'A-4', title: 'T4', created_at: '2024-01-01T10:00:00Z', severity: 'med' },
     ], ctx)
 
     expect(result.totalRows).toBe(4)
@@ -218,7 +268,7 @@ describe('importIncidents', () => {
   it('idempotenza: secondo run sullo stesso external_id → updated, non created', async () => {
     mockReads({ existing: [{ id: 'inc-1', externalId: 'A-1', number: 'INC00000001' }] })
 
-    const result = await importIncidents([{ external_id: 'A-1', title: 'T1 aggiornato' }], ctx)
+    const result = await importIncidents([{ external_id: 'A-1', title: 'T1 aggiornato', severity: 'med' }], ctx)
 
     expect(result.created).toBe(0)
     expect(result.updated).toBe(1)
@@ -234,9 +284,9 @@ describe('importIncidents', () => {
     mockReads({ existing: [{ id: 'inc-1', externalId: 'A-1', number: null }] })
 
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'Esistente' },
+      { external_id: 'A-1', title: 'Esistente', severity: 'med' },
       { external_id: 'A-2', title: 'Nuovo', severity: 'boh' },
-      { external_id: '',    title: 'Invalida' },
+      { external_id: '',    title: 'Invalida', severity: 'med' },
     ], ctx, { dryRun: true })
 
     // Ondata 7: `severity: 'boh'` non e' piu' un avviso con ripiego a `medium`
@@ -254,7 +304,7 @@ describe('importIncidents', () => {
     mockReads({ numbers: [{ number: 'INC00000042', externalId: 'ALTRO' }] })
 
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'T1', number: 'INC00000042' },
+      { external_id: 'A-1', title: 'T1', number: 'INC00000042', severity: 'med' },
     ], ctx)
 
     expect(result.created).toBe(0)
@@ -263,23 +313,33 @@ describe('importIncidents', () => {
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
-  it('number preservato se già suo; generato progressivo se assente', async () => {
+  // Ondata 5 di «Nulla cablato»: il numero generato viene dal contatore dei
+  // ticket (lib/sequence.ts), e il contatore sale oltre i numeri già presenti o
+  // preservati. Prima era max()+1 senza toccare il contatore: il primo incident
+  // aperto dalla pagina dopo un import riprendeva un numero già scritto.
+  it('number preservato se già suo; generato dal contatore se assente, e il contatore sale oltre il più alto', async () => {
     mockReads({ numbers: [{ number: 'INC90000001', externalId: 'A-1' }], maxNum: 7, existing: [{ id: 'inc-1', externalId: 'A-1', number: 'INC90000001' }] })
+    counter = 90000001
 
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'T1', number: 'INC90000001' },
-      { external_id: 'A-2', title: 'T2' },
+      { external_id: 'A-1', title: 'T1', number: 'INC90000001', severity: 'med' },
+      { external_id: 'A-2', title: 'T2', severity: 'med' },
     ], ctx)
 
     expect(result.errors).toHaveLength(0)
+    const raise = mockSession.executeWrite.mock.calls.length
+    expect(raise).toBeGreaterThan(0)
     expect(mergedIncidentParams(0)['numberUpdate']).toBe('INC90000001')
-    expect(mergedIncidentParams(1)['number']).toBe('INC00000008')
+    expect(mergedIncidentParams(1)['number']).toBe('INC90000002')
+    const raised = mockTx.run.mock.calls.find((c) => (c[0] as string).includes('CASE WHEN c.value < $value'))
+    expect(raised?.[1]).toMatchObject({ kind: 'incident' })
+    expect(Number((raised![1] as { value: unknown }).value)).toBe(90000001)
   })
 
   it('external_id duplicato nel file → errore sulla seconda riga', async () => {
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'T1' },
-      { external_id: 'A-1', title: 'T2' },
+      { external_id: 'A-1', title: 'T1', severity: 'med' },
+      { external_id: 'A-1', title: 'T2', severity: 'med' },
     ], ctx)
     expect(result.created).toBe(1)
     expect(result.errors).toHaveLength(1)
@@ -290,8 +350,8 @@ describe('importIncidents', () => {
     mockReads({ users: [{ email: 'mario@acme.it', id: 'u-1' }], teams: [{ name: 'platform', id: 't-1' }] })
 
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'T1', assignee_email: 'Mario@Acme.it', team_name: 'Platform' },
-      { external_id: 'A-2', title: 'T2', assignee_email: 'ghost@acme.it', team_name: 'Nessuno' },
+      { external_id: 'A-1', title: 'T1', assignee_email: 'Mario@Acme.it', team_name: 'Platform', severity: 'med' },
+      { external_id: 'A-2', title: 'T2', assignee_email: 'ghost@acme.it', team_name: 'Nessuno', severity: 'med' },
     ], ctx)
 
     expect(result.created).toBe(2)
@@ -308,8 +368,8 @@ describe('importIncidents', () => {
     mockReads({ users: [{ email: 'mario@acme.it', id: 'u-1' }] })
 
     const result = await importIncidents([
-      { external_id: 'A-1', title: 'T1', comments: 'non-json' },
-      { external_id: 'A-2', title: 'T2', comments: '[{"author_email":"mario@acme.it","text":"ok","created_at":"2024-02-01T08:00:00Z"}]' },
+      { external_id: 'A-1', title: 'T1', comments: 'non-json', severity: 'med' },
+      { external_id: 'A-2', title: 'T2', comments: '[{"author_email":"mario@acme.it","text":"ok","created_at":"2024-02-01T08:00:00Z"}]', severity: 'med' },
     ], ctx)
 
     expect(result.errors).toHaveLength(1)
@@ -321,13 +381,62 @@ describe('importIncidents', () => {
   })
 
   it('crea la workflow instance e la porta allo step mappato dentro la stessa tx', async () => {
-    await importIncidents([{ external_id: 'A-1', title: 'T1', status: 'resolved' }], ctx)
+    await importIncidents([{ external_id: 'A-1', title: 'T1', status: 'resolved', severity: 'med' }], ctx)
 
     expect(mockSession.executeWrite).toHaveBeenCalledTimes(1)
     expect(workflowEngine.createInstance).toHaveBeenCalledWith(mockTx, ctx.tenantId, expect.any(String), 'incident')
     const repointCalls = mockTx.run.mock.calls.filter((c) => (c[0] as string).includes('wi.current_step <> $stepName'))
     expect(repointCalls).toHaveLength(1)
     expect((repointCalls[0]![1] as Record<string, unknown>)['stepName']).toBe('resolved')
+  })
+})
+
+// ── problem, change, service request (ondata 5 di «Nulla cablato») ──────────────
+
+describe('import dei problem, delle change e delle richieste', () => {
+  it('problem: priorità dal vocabolario del cliente (maiuscole indifferenti), impatto facoltativo; fuori vocabolario o senza priorità → riga in errore', async () => {
+    const result = await importProblems([
+      { external_id: 'P-1', title: 'Disco pieno', priority: 'HIGH', impact: 'medium', workaround: 'pulire /tmp', resolved_at: '2024-03-01T00:00:00Z' },
+      { external_id: 'P-2', title: 'Senza priorità' },
+      { external_id: 'P-3', title: 'Priorità strana', priority: 'altissima' },
+    ], ctx)
+    expect(result.created).toBe(1)
+    expect(result.errors.map((e) => [e.row, e.messageKey])).toEqual([[2, 'columnRequired'], [3, 'vocabularyUnknown']])
+    const params = mergedParams('Problem')
+    expect(params['props']).toMatchObject({ priority: 'high', impact: 'medium', workaround: 'pulire /tmp', resolved_at: '2024-03-01T00:00:00.000Z' })
+    expect(params['number']).toBe('PRB00000001')
+    expect(workflowEngine.createInstance).toHaveBeenCalledWith(mockTx, ctx.tenantId, expect.any(String), 'problem')
+  })
+
+  it('change: tipo obbligatorio dal vocabolario change_type, numero anche in code, rischio 0..100; niente assegnatario', async () => {
+    mockReads({ users: [{ email: 'mario@acme.it', id: 'u-1' }] })
+    const result = await importChanges([
+      { external_id: 'C-1', title: 'Patch kernel', change_type: 'Emergency', why: 'CVE', what: 'kernel', aggregate_risk_score: '72', number: 'CHG00000900', assignee_email: 'mario@acme.it' },
+      { external_id: 'C-2', title: 'Senza tipo' },
+      { external_id: 'C-3', title: 'Rischio fuori scala', change_type: 'normal', aggregate_risk_score: '140' },
+    ], ctx)
+    expect(result.created).toBe(1)
+    expect(result.errors.map((e) => e.messageKey)).toEqual(['columnRequired', 'integerOutOfRange'])
+    const call = mockTx.run.mock.calls.find((c) => (c[0] as string).includes('MERGE (n:Change'))!
+    expect(call[0]).toContain('n.code       = $number')
+    expect(call[1]).toMatchObject({ number: 'CHG00000900', props: { change_type: 'emergency', why: 'CVE', what: 'kernel', aggregate_risk_score: 72 } })
+    expect(mockTx.run.mock.calls.filter((c) => (c[0] as string).includes(':ASSIGNED_TO]'))).toHaveLength(0)
+    expect(workflowEngine.createInstance).toHaveBeenCalledWith(mockTx, ctx.tenantId, expect.any(String), 'change')
+  })
+
+  it('service request: priorità obbligatoria, date di scadenza e completamento, campi del cliente della richiesta', async () => {
+    customDefs = [{ name: 'office', label: 'Sede', fieldType: 'string', required: true, enumValues: [], enumTypeName: null, validationScript: null, visibleToEndUser: false, order: 1 }]
+    const result = await importServiceRequests([
+      { external_id: 'R-1', title: 'Nuovo PC', priority: 'low', due_date: '2024-05-10', office: 'Milano' },
+      { external_id: 'R-2', title: 'Data sbagliata', priority: 'low', due_date: 'domani' },
+    ], ctx)
+    customDefs = []
+    expect(result.created).toBe(1)
+    expect(result.errors).toEqual([expect.objectContaining({ row: 2, messageKey: 'invalidDate' })])
+    const params = mergedParams('ServiceRequest')
+    expect(params['props']).toMatchObject({ priority: 'low', due_date: '2024-05-10T00:00:00.000Z' })
+    expect(params['customProps']).toEqual({ office: 'Milano' })
+    expect(params['number']).toBe('REQ00000001')
   })
 })
 
@@ -344,8 +453,8 @@ describe('importKBArticles', () => {
     mockReads({ slugs: ['reset-password'] })
 
     const result = await importKBArticles([
-      { external_id: 'K-1', title: 'Reset Password' },
-      { external_id: 'K-2', title: 'Reset password', status: 'strano' },
+      { external_id: 'K-1', title: 'Reset Password', severity: 'med' },
+      { external_id: 'K-2', title: 'Reset password', status: 'strano', severity: 'med' },
     ], ctx)
 
     expect(result.created).toBe(2)
@@ -357,7 +466,7 @@ describe('importKBArticles', () => {
 
   it('status published → step con category published; tags separati da ;', async () => {
     await importKBArticles([
-      { external_id: 'K-1', title: 'Guida VPN', status: 'Published', tags: 'vpn; rete ;', published_at: '2024-06-01T00:00:00Z' },
+      { external_id: 'K-1', title: 'Guida VPN', status: 'Published', tags: 'vpn; rete ;', published_at: '2024-06-01T00:00:00Z', severity: 'med' },
     ], ctx)
 
     const params = mergedKBParams(0)
@@ -369,7 +478,7 @@ describe('importKBArticles', () => {
   it('idempotenza: articolo esistente → updated e slug esistente conservato', async () => {
     mockReads({ kbExisting: [{ id: 'kb-1', externalId: 'K-1' }] })
 
-    const result = await importKBArticles([{ external_id: 'K-1', title: 'Guida aggiornata' }], ctx)
+    const result = await importKBArticles([{ external_id: 'K-1', title: 'Guida aggiornata', severity: 'med' }], ctx)
 
     expect(result.created).toBe(0)
     expect(result.updated).toBe(1)
@@ -378,12 +487,23 @@ describe('importKBArticles', () => {
 
   it('dry-run: nessuna scrittura', async () => {
     const result = await importKBArticles([
-      { external_id: 'K-1', title: 'Guida' },
-      { external_id: '',    title: 'Senza id' },
+      { external_id: 'K-1', title: 'Guida', severity: 'med' },
+      { external_id: '',    title: 'Senza id', severity: 'med' },
     ], ctx, { dryRun: true })
 
     expect(result).toMatchObject({ totalRows: 2, created: 1, updated: 0 })
     expect(result.errors).toHaveLength(1)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  /** Revisione del 14 set 2026 · F5: la categoria di un articolo importato è una categoria KB del Dizionario. */
+  it('categoria fuori dal vocabolario kb_category → riga in errore che la nomina; una valida passa', async () => {
+    const result = await importKBArticles([
+      { external_id: 'K-1', title: 'Guida', category: 'boh', severity: 'med' },
+      { external_id: 'K-2', title: 'Guida DB', category: 'database', severity: 'med' },
+    ], ctx)
+    expect(result.created).toBe(1)
+    expect(result.errors).toEqual([expect.objectContaining({ externalId: 'K-1', message: expect.stringContaining('boh') })])
+    expect(mergedKBParams(0)['category']).toBe('database')
   })
 })

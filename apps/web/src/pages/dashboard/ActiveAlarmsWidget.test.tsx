@@ -44,9 +44,9 @@ describe('ActiveAlarmsWidget', () => {
     expect(screen.getByText('Allarmi')).toBeInTheDocument()
   })
 
-  it('end user: nessun contatore né link alla console (rotta riservata allo staff), ma un messaggio in chiaro', async () => {
+  it('end user: nessun contatore né link alla console (senza event.read), ma un messaggio in chiaro', async () => {
     renderWithProviders(<ActiveAlarmsWidget color="#0EA5E9" />, { mocks: [meMock('end_user'), statsMock()] })
-    expect(await screen.findByText(/reserved to staff/)).toBeInTheDocument()
+    expect(await screen.findByText(/Your role cannot open/)).toBeInTheDocument()
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 })

@@ -67,11 +67,11 @@ function parseValues(raw: unknown, name: string): string[] {
   if (typeof raw === 'string') {
     let parsed: unknown
     try { parsed = JSON.parse(raw) }
-    catch (e) { throw new Error(`Vocabolario "${name}": values non è JSON valido (${e instanceof Error ? e.message : String(e)})`) }
-    if (!Array.isArray(parsed)) throw new Error(`Vocabolario "${name}": values non è un array (${typeof parsed})`)
+    catch (e) { throw new Error(`Dictionary "${name}": values is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
+    if (!Array.isArray(parsed)) throw new Error(`Dictionary "${name}": values is not an array (${typeof parsed})`)
     return parsed as string[]
   }
-  throw new Error(`Vocabolario "${name}": values assente o di tipo inatteso (${typeof raw})`)
+  throw new Error(`Dictionary "${name}": values missing or of an unexpected type (${typeof raw})`)
 }
 
 /**

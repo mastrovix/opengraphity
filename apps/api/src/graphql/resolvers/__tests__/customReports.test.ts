@@ -143,6 +143,19 @@ describe('reachableEntities — whitelist validation', () => {
   })
 })
 
+describe('reachableEntities — solo entità che il costruttore sa descrivere (#12)', () => {
+  it('scarta i nodi tecnici collegati (audit, istanze di workflow), tiene i tipi navigabili', async () => {
+    const session = makeSession([[
+      { targetLabel: 'ChangeAuditEntry', relType: 'HAS_AUDIT', direction: 'outgoing', cnt: 40 },
+      { targetLabel: 'WorkflowInstance', relType: 'HAS_WORKFLOW', direction: 'outgoing', cnt: 12 },
+      { targetLabel: 'Application',      relType: 'DEPENDS_ON', direction: 'incoming', cnt: 3 },
+    ]])
+    vi.mocked(getSession).mockReturnValue(session as never)
+    const result = await customReportResolvers.Query.reachableEntities(undefined, { fromNeo4jLabel: 'Application' }, mockCtx)
+    expect(result.map((r) => r.neo4jLabel)).toEqual(['Application'])
+  })
+})
+
 describe('ALLOWED_NEO4J_LABELS — copertura etichette attese', () => {
   const EXPECTED_LABELS = [
     'ConfigurationItem', 'Application', 'Server', 'Database', 'DatabaseInstance',

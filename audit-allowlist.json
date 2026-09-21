@@ -2,13 +2,6 @@
   "$comment": "Accepted advisories for scripts/audit-check.mjs (pnpm audit --prod, gate >= high). Every entry needs the GHSA id, the package, the reason it is acceptable and an expiry date: after that date CI goes red again until the entry is renewed with a fresh justification or the dependency is fixed. Entries below the gate are listed for documentation only.",
   "entries": [
     {
-      "id": "GHSA-xcpc-8h2w-3j85",
-      "package": "adm-zip",
-      "severity": "high",
-      "reason": "Pinned to 0.5.18 by onnxruntime-node 1.24.3 (dependency of @huggingface/transformers); only used by its postinstall script to unpack the ONNX runtime binaries it downloads at install time, never at runtime. Waiting for an onnxruntime-node release on adm-zip >= 0.6.",
-      "expires": "2026-12-31"
-    },
-    {
       "id": "GHSA-9q82-xgwf-vj6h",
       "package": "@apollo/server",
       "severity": "moderate",

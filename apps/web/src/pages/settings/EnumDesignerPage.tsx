@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { useQuery, useMutation } from '@apollo/client/react'
+import {useState, useEffect, useRef } from 'react'
+import { useApolloClient, useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { PageContainer } from '@/components/PageContainer'
 import { Lock, LockOpen, Package, Plus, X, Save, Trash2, Tag, Copy, Pencil, ArrowUp, ArrowDown, Star, Check } from 'lucide-react'
@@ -7,9 +7,12 @@ import { PageTitle } from '@/components/PageTitle'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
 import { Input, Select } from '@/components/ui/FormControls'
-import { inputS, labelS, btnSecondary, btnDanger, btnPrimary as sharedBtnPrimary } from '@/components/ui/styles'
+import { inputS, labelS, btnSecondary, btnDanger, readOnlyInputS, btnPrimary as sharedBtnPrimary } from '@/components/ui/styles'
 import { toast } from 'sonner'
-import { GET_ENUM_TYPES } from '@/graphql/queries'
+import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT, GET_ENUM_VALUE_USAGE } from '@/graphql/queries'
+import { useLingue } from '@/hooks/useLingue'
+import { useConfirm } from '@/hooks/useConfirm'
+import { dictionaryList } from '@/lib/dictionaryList'
 import {
   CREATE_ENUM_TYPE,
   UPDATE_ENUM_TYPE,
@@ -17,24 +20,20 @@ import {
   REORDER_ENUM_VALUES,
   DELETE_ENUM_TYPE,
   CUSTOMIZE_ENUM_TYPE,
+  ADOPT_SHIPPED_VALUES,
+  ACKNOWLEDGE_SHIPPED_VALUES,
 } from '@/graphql/mutations'
 import { colors, palette } from '@/lib/tokens'
+import { VALUE_COLORS, type ValueColor } from '@opengraphity/types'
+import { valueColorStyle } from '@/lib/domainStyle'
+import { clientLogger } from '@/lib/clientLogger'
+import { errorMessage, showError } from '@/lib/showError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface LocalizedLabel { language: string; label: string }
 interface EnumValueLabel { value: string; label: string; labels: LocalizedLabel[] }
 
-/**
- * Le lingue del prodotto. Il Dizionario mostra un campo per ciascuna: le
- * etichette sono parole del CLIENTE, quindi le scrive lui — e chi usa l'altra
- * lingua le legge in italiano se ne ha compilata una sola (il ripiego e'
- * dichiarato, e la diagnostica lo segnala).
- */
-const LINGUE = [
-  { codice: 'it', nome: 'Italiano' },
-  { codice: 'en', nome: 'English'  },
-] as const
 
 interface EnumType {
   id:        string
@@ -49,6 +48,8 @@ interface EnumType {
    * come la si legge.
    */
   valueLabels: EnumValueLabel[]
+  /** Il colore dei valori che ne hanno uno (revisione del 14 set 2026 · F9). */
+  valueColors: { value: string; color: ValueColor }[]
   /**
    * Il valore con cui si nasce quando nessuno lo indica (`null` = non
    * dichiarato). Serve a togliere una regola di dominio dalla POSIZIONE: lo
@@ -61,6 +62,12 @@ interface EnumType {
   isSystem:  boolean
   /** Spedito col prodotto (`tenant_id = 'system'`): uno per tutti i clienti. */
   isShipped: boolean
+  /**
+   * Perche questo vocabolario non porta etichette per valore (chiave i18n),
+   * `null` se le porta. Lo decide il server: la pagina non tiene un suo elenco,
+   * che divergerebbe al primo vocabolario nuovo.
+   */
+  valueLabelsReasonKey: string | null
   scope:     string
   createdAt: string
   updatedAt: string
@@ -75,8 +82,8 @@ const iconBtn: React.CSSProperties = {
   background: 'none', border: 'none', cursor: 'pointer', padding: 2,
   display: 'flex', color: 'var(--color-slate-light)', lineHeight: 1,
 }
-/** Campo in sola lettura (vocabolario spedito col prodotto, o nome tecnico). */
-const readOnlyS: React.CSSProperties = { background: 'var(--color-slate-bg)', color: colors.slateLight }
+/** Campo in sola lettura: lo stile è del sistema di design (`readOnlyInputS`). */
+const readOnlyS = readOnlyInputS
 
 // ── CreateEnumDialog ──────────────────────────────────────────────────────────
 
@@ -88,6 +95,11 @@ function CreateEnumDialog({
   const [name, setName]   = useState('')
   const [label, setLabel] = useState('')
   const [scope, setScope] = useState<'shared' | 'itil' | 'cmdb'>('shared')
+  // I valori si danno alla creazione: un vocabolario senza valori non esiste
+  // (l'API lo rifiuta). Il dialogo mandava una lista vuota, quindi nessun
+  // vocabolario si poteva creare dall'interfaccia (ondata 4, trovato dal vivo).
+  const [valuesText, setValuesText] = useState('')
+  const values = [...new Set(valuesText.split(/[\n,]/).map((v) => v.trim()).filter(Boolean))]
 
   const [createEnum, { loading }] = useMutation(CREATE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
@@ -96,7 +108,7 @@ function CreateEnumDialog({
       toast.success(t('pages.dictionary.created', { label: result.label }))
       onCreated(result)
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const handleSubmit = (ev: React.FormEvent) => {
@@ -105,7 +117,11 @@ function CreateEnumDialog({
       toast.error(t('pages.dictionary.invalidName'))
       return
     }
-    void createEnum({ variables: { input: { name, label, values: [], scope } } })
+    if (values.length === 0) {
+      toast.error(t('pages.dictionary.valuesRequired'))
+      return
+    }
+    void createEnum({ variables: { input: { name, label, values, scope } } })
   }
 
   return (
@@ -164,6 +180,17 @@ function CreateEnumDialog({
               <option value="cmdb">{t('pages.dictionary.scopeCmdb')}</option>
             </Select>
           </div>
+          <div>
+            <label htmlFor="enum-values" style={labelS}>{t('pages.dictionary.valuesLabel')}</label>
+            <textarea
+              id="enum-values"
+              style={{ ...inputS, minHeight: 90, resize: 'vertical', fontFamily: 'inherit' }}
+              value={valuesText}
+              onChange={(e) => setValuesText(e.target.value)}
+              placeholder={t('pages.dictionary.valuesPlaceholder')}
+            />
+            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{t('pages.dictionary.valuesHint', { count: values.length })}</span>
+          </div>
         </div>
     </Modal>
   )
@@ -200,16 +227,31 @@ function OwnerBadge({ shipped }: { shipped: boolean }) {
 
 // ── EnumEditor ────────────────────────────────────────────────────────────────
 
-function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
+function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomized }: {
   enumType:     EnumType
+  /** Copia del cliente di un vocabolario spedito (U-17): l'originale non è più nell'elenco. */
+  customizedFromShipped: boolean
   onDeleted:    () => void
   onCustomized: (copy: EnumType) => void
 }) {
   const { t } = useTranslation()
+  // G-12: le lingue del cliente, dichiarate dall'API.
+  const lingue = useLingue()
   // Un vocabolario spedito col prodotto è UN nodo per tutti i clienti: non si
   // modifica in posto. L'interfaccia lo dice e offre «Personalizza», che ne
   // crea la copia del tenant (quella vince in lettura solo per chi la ha).
   const shipped = e.isShipped
+  /*
+   * QUESTO VOCABOLARIO NON PORTA ETICHETTE PER VALORE, e non è una mancanza.
+   *
+   * Per i quattro «status_*» i valori sono i nomi dei passi del workflow, e la
+   * lingua si scrive sul passo; per `import_severity` i 28 valori sono chiavi
+   * di riconoscimento dei dati in arrivo, non voci di menu. Senza dirlo, la
+   * pagina mostrava «not written» accanto a ogni valore in entrambe le lingue:
+   * tredici volte su Change Status, e la lettura naturale è «manca qualcosa»
+   * (17 set 2026).
+   */
+  const senzaEtichette = e.valueLabelsReasonKey
   const [label, setLabel]   = useState(e.label)
   const [scope, setScope]   = useState(e.scope)
   const [values, setValues] = useState<string[]>(e.values)
@@ -246,13 +288,13 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
   const [updateEnum, { loading: saving }] = useMutation(UPDATE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
     onCompleted: () => { toast.success(t('pages.dictionary.updated')); setDirty(false) },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [deleteEnum, { loading: deleting }] = useMutation(DELETE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
     onCompleted: () => { toast.success(t('pages.dictionary.deleted')); onDeleted() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   /**
@@ -270,19 +312,31 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
       setRenamingFrom(null); setRenameTo('')
       toast.success(t('pages.dictionary.valueRenamed'))
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [reorderValues, { loading: reordering }] = useMutation(REORDER_ENUM_VALUES, {
     refetchQueries: [GET_ENUM_TYPES],
     onCompleted: (d: unknown) => { setValues((d as { reorderEnumValues: EnumType }).reorderEnumValues.values) },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
+  })
+
+  /**
+   * Etichette e colori si scrivono con la LORO mutation (revisione totale ·
+   * G-2): usando quella del «Salva» dei valori, il suo `onCompleted` faceva
+   * `setDirty(false)` e i bottoni Salva/Annulla sparivano mentre la lista a
+   * schermo era diversa dal server — l'admin credeva di aver salvato i valori.
+   */
+  const [updateLabels, { loading: savingLabels }] = useMutation(UPDATE_ENUM_TYPE, {
+    refetchQueries: [GET_ENUM_TYPES],
+    onCompleted: () => toast.success(t('pages.dictionary.updated')),
+    onError: (err) => showError(err),
   })
 
   const [setDefault, { loading: settingDefault }] = useMutation(UPDATE_ENUM_TYPE, {
     refetchQueries: [GET_ENUM_TYPES],
     onCompleted: () => toast.success(t('pages.dictionary.defaultSet')),
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [customizeEnum, { loading: customizing }] = useMutation(CUSTOMIZE_ENUM_TYPE, {
@@ -293,7 +347,33 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
       toast.success(t('pages.dictionary.customized', { label: copy.label }))
       onCustomized(copy)
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
+  })
+
+  /*
+    I valori spediti DOPO la copia (revisione del 14 set 2026 · F20). La copia
+    del cliente non si sovrascrive mai: qui si dice cosa il prodotto ha
+    aggiunto, e l'amministratore decide se prenderlo o tenerlo fuori.
+  */
+  const { data: driftData, error: driftError } = useQuery<{ enumTypes: { id: string; newShippedValues: string[] }[] }>(GET_ENUM_SHIPPED_DRIFT, { skip: shipped })
+  useEffect(() => {
+    if (driftError) clientLogger.error('Dictionary: shipped values drift could not be loaded', { error: driftError.message })
+  }, [driftError])
+  const newShipped = driftData?.enumTypes.find((d) => d.id === e.id)?.newShippedValues ?? []
+  const [adoptShipped, { loading: adopting }] = useMutation(ADOPT_SHIPPED_VALUES, {
+    refetchQueries: [GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT],
+    awaitRefetchQueries: true,
+    onCompleted: (d: unknown) => {
+      setValues((d as { adoptShippedValues: EnumType }).adoptShippedValues.values)
+      toast.success(t('pages.dictionary.newShipped.adopted'))
+    },
+    onError: (err) => showError(err),
+  })
+  const [acknowledgeShipped, { loading: acknowledging }] = useMutation(ACKNOWLEDGE_SHIPPED_VALUES, {
+    refetchQueries: [GET_ENUM_SHIPPED_DRIFT],
+    awaitRefetchQueries: true,
+    onCompleted: () => toast.success(t('pages.dictionary.newShipped.kept')),
+    onError: (err) => showError(err),
   })
 
   const setDirtyLabel = (v: string) => { setLabel(v); setDirty(true) }
@@ -316,19 +396,88 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
   const move = (index: number, by: -1 | 1) => {
     const target = index + by
     if (target < 0 || target >= values.length) return
+    // G-2: `reorderEnumValues` pretende la lista dei valori SALVATI; con
+    // aggiunte o rimozioni non salvate la rifiutava.
+    if (dirty) { toast.error(t('pages.dictionary.saveValuesFirst')); return }
     const next = [...values]
     ;[next[index], next[target]] = [next[target]!, next[index]!]
     void reorderValues({ variables: { id: e.id, values: next } })
   }
 
-  const confirmRename = () => {
+  /*
+    Secondo giro UI del 15 set 2026: la rinomina riscriveva ticket, matrici e
+    regole senza chiedere e senza dire quanti. Prima si conta cosa usa il
+    valore (lo stesso conteggio del rifiuto della cancellazione), poi si chiede.
+  */
+  const apollo = useApolloClient()
+  const confirm = useConfirm()
+  const confirmRename = async () => {
     const to = renameTo.trim()
-    if (!renamingFrom || to === '' || to === renamingFrom) { setRenamingFrom(null); return }
-    void renameValue({ variables: { id: e.id, from: renamingFrom, to } })
+    const from = renamingFrom
+    if (!from || to === '' || to === from) { setRenamingFrom(null); return }
+    type Usage = { total: number; policyLists: string[]; matrices: string[]; configSites: string[]; records: { typeName: string; fieldName: string; count: number }[] }
+    let usage: Usage
+    try {
+      const res = await apollo.query<{ enumValueUsage: Usage }>({ query: GET_ENUM_VALUE_USAGE, variables: { id: e.id, value: from }, fetchPolicy: 'network-only' })
+      usage = res.data!.enumValueUsage
+    } catch (err) {
+      showError(err, t('pages.dictionary.renameUsageFailed', { error: errorMessage(err) }))
+      return
+    }
+    const where = [
+      ...usage.records.map((r) => t('pages.dictionary.renameUsageRecords', { count: r.count, type: r.typeName, field: r.fieldName })),
+      // L'API dice anche la chiave o la cella («priority (chiave "high|low")»): qui basta il nome della matrice, una volta.
+      ...[...new Set(usage.matrices.map((m) => m.split(' (')[0]!))].map((m) => t('pages.dictionary.renameUsageMatrix', { name: m })),
+      ...usage.policyLists.map((l) => t('pages.dictionary.renameUsagePolicy', { list: l })),
+      ...usage.configSites,
+    ]
+    const ok = await confirm({
+      title: t('pages.dictionary.renameConfirmTitle', { from, to }),
+      body: where.length === 0 ? t('pages.dictionary.renameConfirmNothing') : t('pages.dictionary.renameConfirmUsage', { where: where.join('; ') }),
+      confirmLabel: t('pages.dictionary.renameConfirmButton'),
+    })
+    if (ok) void renameValue({ variables: { id: e.id, from, to } })
   }
 
-  const handleSave = () => {
-    void updateEnum({ variables: { id: e.id, input: { label, values, scope: e.isSystem ? undefined : scope } } })
+  /**
+   * I valori TOLTI e ancora usati dai record: l'API li rifiuta e accetta una
+   * sostituzione esplicita (`replacements: [{from, to}]`), che il Dizionario
+   * non mandava mai — «togli il valore e riscrivi i record su X» non era
+   * raggiungibile dall'interfaccia, e restava solo l'errore (revisione totale
+   * · G-11). Qui si contano gli usi e, se ci sono, si chiede su cosa
+   * riscriverli prima di salvare.
+   */
+  const [replaceFor, setReplaceFor] = useState<{ from: string; total: number }[]>([])
+  const [replaceWith, setReplaceWith] = useState<Record<string, string>>({})
+
+  const handleSave = async () => {
+    const removed = e.values.filter((v) => !values.includes(v))
+    if (removed.length > 0 && replaceFor.length === 0) {
+      type Usage = { total: number }
+      const inUse: { from: string; total: number }[] = []
+      for (const from of removed) {
+        try {
+          const res = await apollo.query<{ enumValueUsage: Usage }>({ query: GET_ENUM_VALUE_USAGE, variables: { id: e.id, value: from }, fetchPolicy: 'network-only' })
+          if ((res.data?.enumValueUsage.total ?? 0) > 0) inUse.push({ from, total: res.data!.enumValueUsage.total })
+        } catch (err) {
+          showError(err, t('pages.dictionary.renameUsageFailed', { error: errorMessage(err) }))
+          return
+        }
+      }
+      if (inUse.length > 0) {
+        // Si chiede, non si riscrive da soli: cambiare il valore di decine di
+        // record è una modifica ai DATI.
+        setReplaceFor(inUse)
+        setReplaceWith(Object.fromEntries(inUse.map((u) => [u.from, values[0] ?? ''])))
+        return
+      }
+    }
+    const replacements = replaceFor
+      .map((u) => ({ from: u.from, to: replaceWith[u.from] ?? '' }))
+      .filter((r) => r.to !== '')
+    setReplaceFor([])
+    setReplaceWith({})
+    void updateEnum({ variables: { id: e.id, input: { label, values, scope: e.isSystem ? undefined : scope, ...(replacements.length > 0 ? { replacements } : {}) } } })
   }
 
   const handleCancel = () => {
@@ -336,6 +485,8 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
     setScope(e.scope)
     setValues(e.values)
     setLabelDrafts({})
+    setReplaceFor([])
+    setReplaceWith({})
     setDirty(false)
   }
 
@@ -357,16 +508,40 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
     const nuova  = (labelDrafts[chiave] ?? '').trim()
     const scarta = () => setLabelDrafts((d) => { const n = { ...d }; delete n[chiave]; return n })
     if (nuova === etichettaSalvata(v, lingua)) { scarta(); return }
-    // La lista INTERA, tutti i valori per tutte le lingue: la mutation
-    // sostituisce in blocco, mandarne una sola cancellerebbe le altre.
-    const lista = values.flatMap((val) =>
-      LINGUE.flatMap(({ codice }) => {
+    // G-2: con valori aggiunti o rimossi e non salvati, scrivere le etichette
+    // cancellava sul server l'etichetta dei valori rimossi localmente (la
+    // mutation sostituisce in blocco) e scartava quella dei valori nuovi.
+    // Prima si salvano i valori.
+    if (dirty) { toast.error(t('pages.dictionary.saveValuesFirst')); return }
+    // La lista INTERA, tutti i valori per tutte le lingue, dai valori SALVATI:
+    // la mutation sostituisce in blocco, mandarne una sola cancellerebbe le altre.
+    const lista = e.values.flatMap((val) =>
+      lingue.flatMap(({ codice }) => {
         const etichetta = val === v && codice === lingua ? nuova : etichettaSalvata(val, codice)
         return etichetta.trim() === '' ? [] : [{ value: val, language: codice, label: etichetta }]
       }),
     )
     scarta()
-    void updateEnum({ variables: { id: e.id, input: { valueLabels: lista } } })
+    void updateLabels({ variables: { id: e.id, input: { valueLabels: lista } } })
+  }
+
+  /** Il colore salvato per un valore, o '' se non ne ha. */
+  const coloreSalvato = (v: string) => e.valueColors.find((x) => x.value === v)?.color ?? ''
+
+  /**
+   * Scrive il colore di UN valore (F9). Come per le etichette, la mutation
+   * sostituisce in blocco: si manda la lista intera, nell'ordine dei valori.
+   * «Nessun colore» toglie la voce.
+   */
+  const salvaColore = (v: string, colore: string) => {
+    // G-2: come per le etichette, dai valori SALVATI e non con modifiche in
+    // sospeso (un colore su un valore non ancora salvato veniva rifiutato).
+    if (dirty) { toast.error(t('pages.dictionary.saveValuesFirst')); return }
+    const lista = e.values.flatMap((val) => {
+      const c = val === v ? colore : coloreSalvato(val)
+      return c === '' ? [] : [{ value: val, color: c }]
+    })
+    void updateLabels({ variables: { id: e.id, input: { valueColors: lista } } })
   }
 
   return (
@@ -397,6 +572,12 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
         )}
       </div>
 
+      {customizedFromShipped && (
+        <p data-testid="dictionary-customized-note" style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: 0 }}>
+          {t('pages.dictionary.customizedFromShipped')}
+        </p>
+      )}
+
       {(shipped || e.isSystem) && (
         <p style={{
           fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: 'var(--color-slate-bg)',
@@ -406,12 +587,35 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
         </p>
       )}
 
+      {!shipped && newShipped.length > 0 && (
+        <div
+          role="status"
+          style={{
+            display: 'flex', flexDirection: 'column', gap: 10,
+            fontSize: 'var(--font-size-body)', color: palette.warning.text, background: palette.warning.bg,
+            border: `1px solid ${palette.warning.border}`, padding: '10px 14px', borderRadius: 6,
+          }}
+        >
+          <span>{t('pages.dictionary.newShipped.notice', { count: newShipped.length, values: newShipped.join(', ') })}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" style={btnPrimary} disabled={adopting || acknowledging}
+              onClick={() => { void adoptShipped({ variables: { id: e.id } }) }}>
+              {t('pages.dictionary.newShipped.adopt')}
+            </button>
+            <button type="button" style={btnSecondary} disabled={adopting || acknowledging}
+              onClick={() => { void acknowledgeShipped({ variables: { id: e.id } }) }}>
+              {t('pages.dictionary.newShipped.keep')}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Nome (readonly) */}
       <div>
         <label htmlFor="editor-name" style={labelS}>{t('pages.dictionary.nameLabel')}</label>
         <Input
           id="editor-name"
-          style={{ ...inputS, background: 'var(--color-slate-bg)', color: colors.slateLight }}
+          style={{ ...inputS, ...readOnlyS }}
           value={e.name}
           readOnly
         />
@@ -487,12 +691,12 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
                     value={renameTo}
                     onChange={(ev) => setRenameTo(ev.target.value)}
                     onKeyDown={(ev) => {
-                      if (ev.key === 'Enter') { ev.preventDefault(); confirmRename() }
+                      if (ev.key === 'Enter') { ev.preventDefault(); void confirmRename() }
                       if (ev.key === 'Escape') setRenamingFrom(null)
                     }}
                     aria-label={t('pages.dictionary.renameValueLabel', { value: v })}
                   />
-                  <button type="button" onClick={confirmRename} disabled={renaming} style={iconBtn}
+                  <button type="button" onClick={() => void confirmRename()} disabled={renaming} style={iconBtn}
                     aria-label={t('pages.dictionary.renameConfirmLabel')}>
                     <Check size={12} aria-hidden="true" />
                   </button>
@@ -509,7 +713,12 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
                     tabella. Sul vocabolario spedito è in sola lettura, come i
                     valori: per cambiarla si usa «Personalizza», che la copia.
                   */}
-                  {LINGUE.map(({ codice, nome }) => (
+                  {/* Niente colonne delle lingue quando il vocabolario non porta
+                      etichette: al loro posto, sotto l'elenco, c'è la frase che
+                      dice dove si scrive la lingua. Mostrare caselle vuote e
+                      spiegarle a parte avrebbe lasciato in piedi l'invito a
+                      compilarle. */}
+                  {!senzaEtichette && lingue.map(({ codice, nome }) => (
                     shipped ? (
                       <span key={codice} style={{ flex: '1 1 120px', fontWeight: 400, color: 'var(--color-slate)' }}>
                         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginRight: 4 }}>{codice}</span>
@@ -531,6 +740,24 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
                       />
                     )
                   ))}
+                  {/* Il COLORE del valore (F9): una famiglia della palette, mai un esadecimale. */}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <span aria-hidden="true" style={{
+                      width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                      background: coloreSalvato(v) ? valueColorStyle(coloreSalvato(v) as ValueColor).accent : 'transparent',
+                      border: `1px solid ${palette.neutral.borderStrong}`,
+                    }} />
+                    <Select
+                      style={{ ...inputS, height: 26, width: 'auto', fontWeight: 400, ...(shipped ? readOnlyS : {}) }}
+                      value={coloreSalvato(v)}
+                      disabled={shipped || saving || savingLabels}
+                      onChange={(ev) => salvaColore(v, ev.target.value)}
+                      aria-label={t('pages.dictionary.valueColorLabel', { value: v })}
+                    >
+                      <option value="">{t('pages.dictionary.valueColorNone')}</option>
+                      {VALUE_COLORS.map((c) => <option key={c} value={c}>{t(`pages.dictionary.valueColors.${c}`)}</option>)}
+                    </Select>
+                  </span>
                   {e.defaultValue === v && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', fontWeight: 600 }}>
                       <Star size={10} aria-hidden="true" /> {t('pages.dictionary.defaultBadge')}
@@ -569,6 +796,13 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
             {t('pages.dictionary.orderNote')}
           </p>
         )}
+        {/* PERCHÉ non ci sono etichette per valore: si dice qui, sotto i valori,
+            dove si guardava per capire cosa mancasse. */}
+        {senzaEtichette && (
+          <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '0 0 8px', lineHeight: 1.5 }}>
+            {t(senzaEtichette)}
+          </p>
+        )}
         {shipped ? (
           <p id="editor-shipped-note" style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
             {t('pages.dictionary.shippedValuesNote')}
@@ -592,9 +826,31 @@ function EnumEditor({ enumType: e, onDeleted, onCustomized }: {
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: `1px solid ${palette.neutral.borderLight}` }}>
+        {/* G-11: i valori tolti e ancora usati chiedono su cosa riscrivere i
+            record. Senza questa scelta l'API rifiuta, ed era un vicolo cieco. */}
+        {replaceFor.length > 0 && (
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', border: `1px solid ${palette.warning.border}`, borderRadius: 8, background: palette.warning.bg, marginBottom: 8 }}>
+            <span style={{ fontSize: 'var(--font-size-body)', color: palette.warning.text }}>{t('pages.dictionary.replaceInUseIntro')}</span>
+            {replaceFor.map((u) => (
+              <label key={u.from} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)' }}>
+                <span style={{ fontFamily: 'var(--font-mono)' }}>{u.from}</span>
+                <span style={{ color: 'var(--color-slate-light)' }}>{t('pages.dictionary.replaceInUseCount', { count: u.total })}</span>
+                <span aria-hidden="true">→</span>
+                <Select
+                  style={{ ...inputS, height: 26, width: 'auto', fontWeight: 400 }}
+                  value={replaceWith[u.from] ?? ''}
+                  onChange={(ev) => setReplaceWith((m) => ({ ...m, [u.from]: ev.target.value }))}
+                  aria-label={t('pages.dictionary.replaceInUseLabel', { value: u.from })}
+                >
+                  {values.map((v) => <option key={v} value={v}>{etichettaSalvata(v, lingue[0]?.codice ?? '') || v}</option>)}
+                </Select>
+              </label>
+            ))}
+          </div>
+        )}
         {dirty && (
           <>
-            <button type="button" style={btnPrimary} onClick={handleSave} disabled={saving}>
+            <button type="button" style={btnPrimary} onClick={() => void handleSave()} disabled={saving}>
               <Save size={14} aria-hidden="true" /> {t('common.save')}
             </button>
             <button type="button" style={btnSecondary} onClick={handleCancel}>
@@ -642,7 +898,8 @@ export function EnumDesignerPage() {
     fetchPolicy: 'cache-and-network',
   })
 
-  const allEnums: EnumType[] = data?.enumTypes ?? []
+  // U-17: un vocabolario per nome, quello che vale (la copia del cliente nasconde l'originale).
+  const allEnums = dictionaryList(data?.enumTypes ?? [])
 
   // Group by scope (use i18n scope labels)
   const SCOPE_LABELS: Record<string, string> = {
@@ -651,7 +908,7 @@ export function EnumDesignerPage() {
     cmdb:   t('pages.dictionary.scopeCmdb'),
   }
 
-  const groups: Record<string, EnumType[]> = {}
+  const groups: Record<string, typeof allEnums> = {}
   for (const e of allEnums) {
     const g = SCOPE_LABELS[e.scope] ?? e.scope
     if (!groups[g]) groups[g] = []
@@ -692,7 +949,7 @@ export function EnumDesignerPage() {
             </button>
           </div>
 
-          <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
+          <div style={{ maxHeight: 'calc(var(--vh-app) - 220px)', overflowY: 'auto' }}>
             {loading && !allEnums.length && (
               <p style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: colors.slateLight }}>{t('pages.dictionary.loading')}</p>
             )}
@@ -760,6 +1017,7 @@ export function EnumDesignerPage() {
             <EnumEditor
               key={selected.id}
               enumType={selected}
+              customizedFromShipped={selected.customizedFromShipped}
               onDeleted={() => setSelectedId(null)}
               onCustomized={(copy) => setSelectedId(copy.id)}
             />

@@ -33,11 +33,10 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { DetailField } from '@/components/ui/DetailField'
 import { Pill } from '@/components/ui/Pill'
 import { useMe } from '@/hooks/useMe'
-import { useMetamodel } from '@/contexts/MetamodelContext'
 import { GET_EVENT, GET_EVENT_POLICY } from '@/graphql/queries'
 import { formatDateTime, timeAgo } from '@/lib/datetime'
 import { ciPath } from '@/lib/ciPath'
-import { ciTypeLabelKey, enumLabel } from '@/lib/ciEnums'
+import { useListReturn } from '@/lib/listReturn'
 import { colors } from '@/lib/tokens'
 import { TINT_NEUTRAL } from '@/lib/eventPalette'
 import { ToolBadge } from '@/pages/monitoring/monitoringShared'
@@ -48,6 +47,7 @@ import { CIAliasesSection } from './CIAliasesSection'
 import { EventHistorySection } from './EventHistorySection'
 import type { MonitoringEventDetail, EventPolicy } from '@/types/events'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { useCILabels } from '@/hooks/useCILabels'
 
 const linkStyle = { color: colors.brand, textDecoration: 'none', fontWeight: 500 } as const
 
@@ -55,9 +55,10 @@ export function EventDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { role, isAdmin } = useMe()
-  const { ciTypes } = useMetamodel()
-  const canAct = role === 'admin' || role === 'operator'
+  const { goBack: goBackToList } = useListReturn('/events')
+  const { can } = useMe()
+  const { statusLabel, typeLabel: ciTypeLabel } = useCILabels()
+  const canAct = can('event.work')
   const matchHelpId = useId()
 
   const { data, loading, error, refetch } = useQuery<{ event: MonitoringEventDetail | null }>(GET_EVENT, {
@@ -80,11 +81,8 @@ export function EventDetailPage() {
 
   const labels = parseLabels(ev.labels, t)
   const kindLabel = resourceKindLabel(t, ev.resourceKind)
-  // Tipo del CI: etichetta fissa dei tipi storici, altrimenti quella del metamodello, altrimenti il nome leggibile.
-  const ciTypeLabel = (type: string) => {
-    const key = ciTypeLabelKey(type)
-    return key ? t(key) : (ciTypes.find((ct) => ct.name === type)?.label ?? enumLabel(type))
-  }
+  // Tipo del CI: la funzione unica di `useCILabels` (20 set 2026) — prima
+  // l'etichetta del disegnatore, poi la chiave dei tipi spediti.
   const ambiguous = ev.matchReason === 'ambiguous' && !ev.ci
   // La severità massima del ciclo conta solo se diversa da quella attuale (altrimenti è già scritta sopra).
   const peak = ev.maxSeverity && ev.maxSeverity !== ev.severity ? ev.maxSeverity : null
@@ -92,7 +90,8 @@ export function EventDetailPage() {
   return (
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
-        <button type="button" onClick={() => navigate('/events')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
+        {/* G-EVT-13: torna alla console con i filtri con cui ci si era arrivati. */}
+        <button type="button" onClick={goBackToList} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
           <ArrowLeft size={14} aria-hidden="true" />
           {t('events.detail.back')}
         </button>
@@ -115,7 +114,7 @@ export function EventDetailPage() {
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               <GitBranch size={16} color={colors.slateLight} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
               <p data-testid="correlation-sentence" style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateDark, lineHeight: 1.6 }}>
-                {correlationSentence(t, ev, policy)}
+                {correlationSentence(t, ev, policy, { openedManually: (ev.history ?? []).some((h) => h.kind === 'incident_opened_manually' && h.incident?.id === ev.incident?.id), statusLabel })}
               </p>
             </div>
             {ev.suppressedBy && (
@@ -165,7 +164,7 @@ export function EventDetailPage() {
                 <tbody>
                   {labels.entries.map(([k, v]) => (
                     <tr key={k}>
-                      <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: colors.slate, borderBottom: '1px solid var(--color-border-light)', whiteSpace: 'nowrap' }}>{k}</td>
+                      <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)', color: colors.slate, borderBottom: '1px solid var(--color-border-light)', whiteSpace: 'nowrap' }}>{k}</td>
                       <td style={{ padding: '6px 8px', color: colors.slateDark, borderBottom: '1px solid var(--color-border-light)', wordBreak: 'break-all' }}>{v}</td>
                     </tr>
                   ))}
@@ -184,7 +183,7 @@ export function EventDetailPage() {
                 ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <Link to={ciPath(ev.ci)} style={linkStyle}>{ev.ci.name}</Link>
                     <span style={{ color: colors.slateLight }}>{ciTypeLabel(ev.ci.type)}</span>
-                    {ev.ci.status && <Pill bg={TINT_NEUTRAL.bg} color={TINT_NEUTRAL.color} style={{ fontSize: 'var(--font-size-label)' }}>{enumLabel(ev.ci.status)}</Pill>}
+                    {ev.ci.status && <Pill bg={TINT_NEUTRAL.bg} color={TINT_NEUTRAL.color} style={{ fontSize: 'var(--font-size-label)' }}>{statusLabel(ev.ci.status)}</Pill>}
                     {ev.ci.health && <CIHealthBadge health={ev.ci.health} />}
                   </span>
                 : <EventNoCIBadge matchReason={ev.matchReason} />}
@@ -219,7 +218,7 @@ export function EventDetailPage() {
             />
           </SectionCard>
 
-          {ev.ci && <CIAliasesSection ci={ev.ci} canEdit={isAdmin} variant="card" />}
+          {ev.ci && <CIAliasesSection ci={ev.ci} canEdit={can('config.monitoring')} variant="card" />}
         </div>
       </div>
     </PageContainer>

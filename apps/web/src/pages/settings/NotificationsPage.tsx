@@ -1,7 +1,6 @@
 import { useId, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
-import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
 import { Modal } from '@/components/Modal'
 import { Bell } from 'lucide-react'
@@ -9,6 +8,7 @@ import { PageTitle } from '@/components/PageTitle'
 import { lookupStyle, colors, palette, vendorColors } from '@/lib/tokens'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useTranslation } from 'react-i18next'
+import { showError } from '@/lib/showError'
 
 const GET_NOTIFICATION_CHANNELS = gql`
   query GetNotificationChannels {
@@ -136,7 +136,7 @@ export default function NotificationsPage() {
       }
     } catch (e) {
       // Il dialog resta aperto: l'utente non perde i dati inseriti.
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
       return
     }
     setDialogOpen(false)
@@ -148,7 +148,7 @@ export default function NotificationsPage() {
     try {
       await deleteChannel({ variables: { id } })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
       return
     }
     void refetch()
@@ -160,7 +160,7 @@ export default function NotificationsPage() {
       const res = await testChannel({ variables: { id } })
       setTestResult((p) => ({ ...p, [id]: (res.data as { testNotificationChannel?: boolean } | null)?.testNotificationChannel ?? false }))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
       setTestResult((p) => ({ ...p, [id]: false }))
     }
   }

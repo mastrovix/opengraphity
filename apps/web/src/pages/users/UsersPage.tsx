@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useId, useState } from 'react'
+import { InvalidFilterNotice } from '@/components/InvalidFilterNotice'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
@@ -18,11 +19,12 @@ import { labelS } from '@/components/ui/styles'
 import { RoleBadge } from '@/components/ui/badges'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
+import { Pill } from '@/components/ui/Pill'
 import { exportToCsv } from '@/lib/csvExport'
 import { applyFilterGroup } from '@/lib/filterGroup'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { useListQueryState } from '@/hooks/useListQueryState'
-import { ALL_ROLES } from '@/hooks/useMe'
+import { useRoles } from '@/hooks/useRoles'
 import { colors, palette, alpha } from '@/lib/tokens'
 import { formatDate } from '@/lib/datetime'
 
@@ -41,37 +43,45 @@ interface UserRow {
   name:      string
   email:     string
   role:      string
+  roleName:  string | null
+  active:    boolean
   createdAt: string | null
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  admin: 'Admin', operator: 'Operator', viewer: 'Viewer', end_user: 'End User',
-}
-
-const EMPTY_FORM = { email: '', firstName: '', lastName: '', password: '', role: 'operator', teamIds: [] as string[] }
+/**
+ * Il ruolo NON ha un default cablato (revisione totale · F-29): `operator` era
+ * scritto qui, e un'organizzazione che l'ha cancellato dai suoi ruoli apriva
+ * il form di creazione già su un ruolo inesistente — l'API rifiutava il
+ * salvataggio e non si capiva perché. Il default è il primo ruolo
+ * dell'organizzazione, scelto quando i ruoli sono arrivati.
+ */
+const EMPTY_FORM = { email: '', firstName: '', lastName: '', password: '', role: '', teamIds: [] as string[] }
 
 const REQUIRED = <span aria-hidden="true" style={{ color: 'var(--color-danger)' }}>*</span>
 
 export function UsersPage() {
   const { t } = useTranslation()
+  // I ruoli dell'organizzazione (ondata 7): quelli di fabbrica e quelli creati dall'admin.
+  const { roles, labelOf: roleLabel } = useRoles()
 
   const FILTER_FIELDS: FieldConfig[] = [
     { key: 'name',      label: t('pages.users.name'),      type: 'text' },
     { key: 'email',     label: t('pages.users.email'),     type: 'text' },
     { key: 'role',      label: t('pages.users.role'),      type: 'enum',
-      options: ALL_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] ?? r })) },
+      options: roles.map((r) => ({ value: r.key, label: roleLabel(r.key) })) },
     { key: 'createdAt', label: t('pages.users.createdAt'), type: 'date' },
   ]
 
   const COLUMNS: ColumnDef<UserRow>[] = [
-    { key: 'name',  label: t('pages.users.name'),  sortable: true },
+    { key: 'name',  label: t('pages.users.name'),  sortable: true,
+      render: (v, row) => row.active ? String(v) : <span>{String(v)} <Pill bg={palette.neutral.borderLight} color="var(--color-slate-dark)">{t('pages.users.inactive')}</Pill></span> },
     { key: 'email', label: t('pages.users.email'), sortable: true },
     {
       key:    'role',
       label:  t('pages.users.role'),
       width:  '120px',
       sortable: true,
-      render: (v) => <RoleBadge role={v as string} />,
+      render: (v, row) => <RoleBadge role={v as string} name={row.roleName} />,
     },
     {
       key:     'createdAt',
@@ -85,8 +95,16 @@ export function UsersPage() {
   // Sort / filters / page live in the URL: reload and shared links keep the view.
   const list = useListQueryState({ pageSize: 50, persistInQuery: true })
   const [modalOpen, setModalOpen] = useState(false)
+  // F-36: le etichette del form erano scollegate dai campi — uno screen
+  // reader annunciava «campo di testo» senza nome. `useId` dà la radice degli
+  // identificativi, come nelle altre pagine.
+  const formIds = useId()
   const [form, setForm] = useState(EMPTY_FORM)
   const [teamSearch, setTeamSearch] = useState('')
+  // F-29: appena i ruoli ci sono, il form parte dal primo dell'organizzazione.
+  useEffect(() => {
+    if (form.role === '' && roles.length > 0) setForm((f) => (f.role === '' ? { ...f, role: roles[0]!.key } : f))
+  }, [roles, form.role])
 
   // `users(sortField, sortDirection)` has no `filters` argument (see below).
   const { data, loading, error, refetch } = useQuery<{ users: UserRow[] }>(GET_USERS, {
@@ -113,6 +131,8 @@ export function UsersPage() {
 
   return (
     <PageContainer>
+      {/* F-17: un filtro dell'URL illeggibile si dice, non si ignora. */}
+      <InvalidFilterNotice show={list.filtersInvalid} />
       <ListPageHeader
         icon={<User size={22} color="var(--color-icon-accent)" />}
         title={t('pages.users.title')}
@@ -184,20 +204,26 @@ export function UsersPage() {
         }
       >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div><label style={labelS}>{t('pages.users.email')} {REQUIRED}</label><Input type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder={t('pages.users.emailPlaceholder')} /></div>
+            <div><label htmlFor={`${formIds}-email`} style={labelS}>{t('pages.users.email')} {REQUIRED}</label><Input id={`${formIds}-email`} type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder={t('pages.users.emailPlaceholder')} /></div>
             <div className="og-pair">
-              <div><label style={labelS}>{t('pages.users.firstName')} {REQUIRED}</label><Input required value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder={t('pages.users.firstNamePlaceholder')} /></div>
-              <div><label style={labelS}>{t('pages.users.lastName')} {REQUIRED}</label><Input required value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder={t('pages.users.lastNamePlaceholder')} /></div>
+              <div><label htmlFor={`${formIds}-first`} style={labelS}>{t('pages.users.firstName')} {REQUIRED}</label><Input id={`${formIds}-first`} required value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder={t('pages.users.firstNamePlaceholder')} /></div>
+              <div><label htmlFor={`${formIds}-last`} style={labelS}>{t('pages.users.lastName')} {REQUIRED}</label><Input id={`${formIds}-last`} required value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder={t('pages.users.lastNamePlaceholder')} /></div>
             </div>
-            <div><label style={labelS}>{t('pages.users.password')} {REQUIRED}</label><Input type="password" required value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={t('pages.users.passwordHint')} /></div>
-            <div><label style={labelS}>{t('pages.users.role')} {REQUIRED}</label>
-              <Select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-                {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>)}
+            <div><label htmlFor={`${formIds}-password`} style={labelS}>{t('pages.users.password')} {REQUIRED}</label><Input id={`${formIds}-password`} type="password" required value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={t('pages.users.passwordHint')} /></div>
+            <div><label htmlFor={`${formIds}-role`} style={labelS}>{t('pages.users.role')} {REQUIRED}</label>
+              <Select id={`${formIds}-role`} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+                {/* F-29: nessun ruolo cablato. Finché i ruoli non sono arrivati
+                    la tendina non offre niente, invece di offrire un ruolo che
+                    l'organizzazione potrebbe non avere. */}
+                {roles.length === 0 && <option value="">{t('common.loading')}</option>}
+                {roles.map((r) => <option key={r.key} value={r.key}>{roleLabel(r.key)}</option>)}
               </Select>
             </div>
             {/* Team — search + chips */}
             <div>
-              <label style={labelS}>{t('pages.users.teams')}</label>
+              {/* F-36: il gruppo dei team non è un campo singolo: l'etichetta
+                   nomina il gruppo di controlli. */}
+              <label style={labelS} id={`${formIds}-teams-label`}>{t('pages.users.teams')}</label>
               {/* Selected team chips */}
               {(() => {
                 const uniqueIds = [...new Set(form.teamIds)]

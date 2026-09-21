@@ -23,6 +23,9 @@ function resolveKey(encryptionKey: string): Buffer {
   return Buffer.from(encryptionKey, 'hex')
 }
 
+/** Il formato corrente delle credenziali cifrate (E-41): come `secretBox.ts`. */
+export const CREDENTIALS_PREFIX = 'v1:'
+
 // ── Encrypt / decrypt ─────────────────────────────────────────────────────────
 
 export function encryptCredentials(
@@ -36,9 +39,14 @@ export function encryptCredentials(
   const encrypted  = Buffer.concat([cipher.update(json, 'utf8'), cipher.final()])
   const authTag    = cipher.getAuthTag()
 
-  // Layout: IV (12) | authTag (16) | ciphertext
+  // Layout: `v1:` | base64 di IV (12) | authTag (16) | ciphertext.
+  // Il PREFISSO DI VERSIONE (revisione totale · E-41) mancava, a differenza
+  // di `secretBox.ts` che lo ha: senza, una rotazione della chiave o un
+  // cambio di formato dava lo stesso «Decryption failed» di un dato corrotto,
+  // e non si poteva distinguere «chiave vecchia» da «dato rotto». Le
+  // credenziali già salvate NON hanno il prefisso e continuano a leggersi.
   const result = Buffer.concat([iv, authTag, encrypted])
-  return result.toString('base64')
+  return CREDENTIALS_PREFIX + result.toString('base64')
 }
 
 export function decryptCredentials(
@@ -46,7 +54,22 @@ export function decryptCredentials(
   encryptionKey: string,
 ): Record<string, string> {
   const key  = resolveKey(encryptionKey)
-  const buf  = Buffer.from(encrypted, 'base64')
+  /**
+   * E-41: `v1:` è il formato di oggi; senza prefisso è una credenziale
+   * salvata prima (stesso layout, stessa chiave) e si legge com'è. Un
+   * prefisso che non conosciamo è un'ALTRA cosa, e lo si dice invece di
+   * confonderlo con una chiave sbagliata.
+   */
+  const versioned = encrypted.startsWith(CREDENTIALS_PREFIX)
+  const other     = /^v\d+:/.exec(encrypted)
+  if (!versioned && other) {
+    throw new Error(
+      `Stored credentials are in format "${other[0]}", which this version cannot read: `
+      + 'they were written by a newer OpenGrafo. Update this instance, or re-enter the credentials.',
+    )
+  }
+  const payload = versioned ? encrypted.slice(CREDENTIALS_PREFIX.length) : encrypted
+  const buf  = Buffer.from(payload, 'base64')
 
   if (buf.length < IV_LENGTH + AUTH_TAG_LENGTH) {
     throw new Error('Decryption failed: invalid key or corrupted data')

@@ -7,16 +7,10 @@ import { useTranslation } from 'react-i18next'
 import { colors } from '@/lib/tokens'
 import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
-import type { WorkflowDefinition, WorkflowKey } from './workflow-types'
+import type { WorkflowDefinition } from './workflow-types'
 import { ADD_WORKFLOW_STEP } from '@/graphql/mutations'
 import { Pill } from '@/components/ui/Pill'
-
-const WORKFLOW_LABELS: Record<WorkflowKey, string> = {
-  incident:  'Incident',
-  standard:  'Standard Change',
-  normal:    'Normal Change',
-  emergency: 'Emergency Change',
-}
+import { showError } from '@/lib/showError'
 
 /**
  * I tipi di passo che si possono aggiungere.
@@ -37,16 +31,20 @@ const SPECIAL_STEP_TYPES = [
   // medesimo menu («Passo», «Fork», «Join», «Timer Wait», «Sub-Workflow»). Per
   // un cliente inglese «Passo» restava «Passo». Il simbolo resta qui — e
   // grafica, non testo — e la parola viene dal vocabolario delle traduzioni.
+  //
+  // ONDATA 10: qui c'erano anche «Biforcazione», «Ricongiunzione» e
+  // «Sotto-workflow». Il motore non li esegue — un `parallel_fork` seguiva UNA
+  // transizione come un passo normale, e chi aveva disegnato due rami ne
+  // vedeva partire uno solo, senza un errore. Offrire un attrezzo che non fa
+  // quello che disegna è peggio che non averlo. L'elenco di quello che il
+  // motore sa fare è `ADDABLE_STEP_TYPES` in `@opengraphity/types`, e un test
+  // tiene insieme le due sponde.
   { type: 'standard',      glyph: '▢', labelKey: 'workflow.stepType.standard',      name: 'step'          },
-  { type: 'parallel_fork', glyph: '⑂', labelKey: 'workflow.stepType.parallel_fork', name: 'parallel_fork' },
-  { type: 'parallel_join', glyph: '⑂', labelKey: 'workflow.stepType.parallel_join', name: 'parallel_join' },
   { type: 'timer_wait',    glyph: '⏱', labelKey: 'workflow.stepType.timer_wait',    name: 'timer_wait'    },
-  { type: 'sub_workflow',  glyph: '⊞', labelKey: 'workflow.stepType.sub_workflow',  name: 'sub_workflow'  },
 ]
 
 interface WorkflowToolbarProps {
   def:              WorkflowDefinition | null
-  selectedWorkflow: WorkflowKey
   hasChanges:       boolean
   pendingCount:     number
   onSave:           () => void
@@ -55,7 +53,6 @@ interface WorkflowToolbarProps {
 
 export function WorkflowToolbar({
   def,
-  selectedWorkflow,
   hasChanges,
   pendingCount,
   onSave,
@@ -76,7 +73,7 @@ export function WorkflowToolbar({
 
   const [addWorkflowStep, { loading: addingStep }] = useMutation(ADD_WORKFLOW_STEP, {
     onCompleted: () => { toast.success(t('toast.workflow.stepAdded')); setShowAddStep(false); setStepLabel(''); setTimerMins(''); onRefetch?.() },
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
 
   return (
@@ -112,7 +109,10 @@ export function WorkflowToolbar({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1 style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>
-            {WORKFLOW_LABELS[selectedWorkflow]}
+            {/* Il nome del workflow del cliente. Revisione del 14 set 2026 · F16: era
+                «Incident» per gli incident e «Standard Change» per TUTTI gli altri
+                workflow, problem e service request compresi. */}
+            {def?.name ?? ''}
           </h1>
           {def && (
             <Pill bg="var(--color-brand-a08)" color={accentColor} radius={100} style={{ fontSize: 11 }}>

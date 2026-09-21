@@ -60,4 +60,13 @@ export function invalidateMetamodelDerivedCache(tenantId: string): void {
   for (const prefix of METAMODEL_CACHE_PREFIXES) cache.invalidate(metamodelCacheKey(prefix, tenantId))
 }
 
-registerMetamodelCacheClearer('memory-cache', invalidateMetamodelDerivedCache)
+/**
+ * Le stesse famiglie, per OGNI tenant (PRB00000003). Non `cache.clear()`: qui
+ * dentro vivono anche chiavi che col metamodello non c'entrano, e buttarle
+ * sarebbe un danno collaterale gratuito.
+ */
+export function invalidateAllMetamodelDerivedCache(): void {
+  for (const prefix of METAMODEL_CACHE_PREFIXES) cache.invalidate(`${prefix}:`)
+}
+
+registerMetamodelCacheClearer('memory-cache', invalidateMetamodelDerivedCache, invalidateAllMetamodelDerivedCache)

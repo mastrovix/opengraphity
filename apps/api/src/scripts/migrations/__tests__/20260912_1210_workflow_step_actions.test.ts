@@ -61,8 +61,10 @@ describe('20260912_1210_workflow_step_actions', () => {
   it('i passi con azioni del vocabolario non vengono toccati', async () => {
     const s = fakeSession([{
       id: 's-resolved', stepName: 'resolved', tenantId: 'c-one', defName: 'Incident Management', entityType: 'incident',
-      enterActions: JSON.stringify([{ type: 'sla_stop', params: { sla_type: 'resolve' } }, { type: 'schedule_job', params: { job: 'auto_close', delay_hours: '72' } }]),
-      exitActions: JSON.stringify([{ type: 'cancel_job', params: { job: 'auto_close' } }]),
+      // Ondata 3 di «Cosa resta cablato»: `schedule_job`/`cancel_job` non sono più
+      // del vocabolario; il caso resta quello di un passo con sole azioni note.
+      enterActions: JSON.stringify([{ type: 'sla_stop', params: { sla_type: 'resolve' } }]),
+      exitActions: JSON.stringify([{ type: 'sla_resume', params: { sla_type: 'resolve' } }]),
     }])
     await workflowStepActions.up(s as never)
     expect(s.writes).toEqual([])

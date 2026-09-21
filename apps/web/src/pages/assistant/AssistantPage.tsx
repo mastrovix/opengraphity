@@ -4,6 +4,8 @@
  * Truth-telling: gli errori compaiono in chat col messaggio reale; l'attività
  * dei tool è mostrata mentre avviene.
  */
+import { useAIFeature } from '@/hooks/useAIFeature'
+import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Sparkles, Send, Search, Trash2 } from 'lucide-react'
@@ -42,6 +44,7 @@ const SUGGESTION_KEYS = [
 
 export function AssistantPage() {
   const { t } = useTranslation()
+  const assistantOn = useAIFeature('assistant')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -91,7 +94,21 @@ export function AssistantPage() {
         for (const line of block.split('\n')) {
           if (line.startsWith('event: ')) event = line.slice(7).trim()
           else if (line.startsWith('data: ')) {
-            const data = JSON.parse(line.slice(6)) as { delta?: string; name?: string; text?: string; message?: string }
+            /**
+             * Una riga che non si legge NON interrompe la conversazione
+             * (revisione totale · F-18): il `JSON.parse` era nudo, quindi un
+             * frame spezzato al confine del chunk faceva salire un'eccezione
+             * generica e la risposta si fermava a metà, con un errore in
+             * console e niente a schermo. Si salta quella riga e si continua:
+             * lo stream porta il testo a pezzi, e perderne uno è meglio che
+             * perdere tutto.
+             */
+            let data: { delta?: string; name?: string; text?: string; message?: string }
+            try {
+              data = JSON.parse(line.slice(6)) as typeof data
+            } catch {
+              continue
+            }
             if (event === 'text' && data.delta) { acc += data.delta; setStreamText(acc) }
             else if (event === 'tool' && data.name) setActiveTools(prev => [...prev, data.name!])
             else if (event === 'done') {
@@ -131,7 +148,7 @@ export function AssistantPage() {
   }
 
   return (
-    <PageContainer style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 56px)' }}>
+    <PageContainer style={{ display: 'flex', flexDirection: 'column', height: 'calc(var(--vh-app) - 56px)' }}>
       <div style={{ maxWidth: 780, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0 12px' }}>
           {/* Il titolo passa da PageTitle come le altre pagine: era un <h1> scritto a mano, con l'icona piu piccola e di un altro colore. */}
@@ -147,6 +164,10 @@ export function AssistantPage() {
           )}
         </div>
 
+        {/* Assistente spento dall'organizzazione (ondata 6 di «Nulla cablato»): lo si dice, niente chat. */}
+        {assistantOn === false && <AIDisabledNotice feature="assistant" />}
+
+        {assistantOn === true && <>
         {/* Messaggi */}
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 2px 16px' }}>
           {messages.length === 0 && !streaming && (
@@ -217,6 +238,7 @@ export function AssistantPage() {
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input) } }}
             placeholder={t('pages.assistant.placeholder')}
+            aria-label={t('pages.assistant.placeholder')}
             disabled={streaming}
             style={{ flex: 1, padding: '11px 16px', borderRadius: 10, border: '1px solid var(--border)', fontSize: 'var(--font-size-body)', outline: 'none', background: colors.white }}
           />
@@ -228,6 +250,7 @@ export function AssistantPage() {
             <Send size={14} /> {t('pages.reportsAI.send')}
           </button>
         </div>
+        </>}
       </div>
     </PageContainer>
   )

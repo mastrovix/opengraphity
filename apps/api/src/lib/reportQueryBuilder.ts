@@ -4,6 +4,8 @@ import {
   assertFieldName, assertSortDir,
 } from './cypherIdentifiers.js'
 import type { ReportWhitelist } from './reportWhitelist.js'
+import type { ReportValueSource } from './reportValueLabels.js'
+import { isTemporalField } from '@opengraphity/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,6 +40,8 @@ export interface ReportSectionDef {
   groupByField:  string | null
   metric:        string
   metricField:   string | null
+  /** Come si raggruppa una data in una serie: giorno (difetto), settimana, mese. */
+  groupByGranularity?: string | null
   limit:         number | null
   sortDir:       string | null
   nodes:         ReportNodeDef[]
@@ -54,12 +58,16 @@ interface FilterClause {
 export interface ReportColumn {
   alias: string
   name:  string
+  /** Da dove viene il valore, per leggerlo con la sua etichetta (`reportValueLabels`). */
+  source: ReportValueSource | null
 }
 
 export interface BuiltReportQuery {
   query:   string
   params:  Record<string, unknown>
   columns: ReportColumn[]
+  /** Il campo del raggruppamento dei grafici a categorie; `null` per kpi, serie e tabelle. */
+  groupSource: ReportValueSource | null
 }
 
 /**
@@ -88,6 +96,60 @@ export function assertChartType(v: unknown, where: string): ChartType {
   return v
 }
 
+/**
+ * LE METRICHE — e il difetto che nascondevano (19 set 2026).
+ *
+ * `metric` e `metricField` si salvavano, si rimostravano nel costruttore e
+ * NON si usavano: il RETURN era sempre `count(root)`. Un report configurato
+ * come «media del costo» mostrava il NUMERO DI TICKET, e nessuno lo diceva —
+ * la famiglia di difetti peggiore, perché l'interfaccia promette.
+ *
+ * Trovato preparando il progettista AI: una proposta che scrive «media del
+ * tempo di risoluzione» avrebbe prodotto un conteggio, e il difetto sarebbe
+ * passato dall'essere raro all'essere la norma.
+ *
+ * Nessun report salvato usava altro che `count` (verificato sui tre tenant),
+ * quindi correggerlo non cambia un solo numero già letto da qualcuno.
+ *
+ * LA METRICA SI CALCOLA SULLA RADICE: `avg(root.campo)`, non su un nodo
+ * qualsiasi del grafo. La definizione porta il nome del campo e non il nodo,
+ * e indovinare il nodo vorrebbe dire leggere una proprietà che quel nodo può
+ * non avere — che in Neo4j è `null`, cioè una media silenziosamente sbagliata.
+ * Il costruttore offre solo i campi numerici della radice.
+ */
+export const REPORT_METRICS = ['count', 'avg', 'sum', 'min', 'max'] as const
+export type ReportMetric = typeof REPORT_METRICS[number]
+
+/** Le metriche che hanno bisogno di un campo su cui calcolarsi. */
+export const REPORT_METRICS_WITH_FIELD: readonly ReportMetric[] = ['avg', 'sum', 'min', 'max']
+
+export function isReportMetric(v: unknown): v is ReportMetric {
+  return typeof v === 'string' && (REPORT_METRICS as readonly string[]).includes(v)
+}
+
+/**
+ * LA GRANULARITÀ DI UNA SERIE TEMPORALE (19 set 2026).
+ *
+ * Mancava, e si vedeva solo chiedendo la cosa più normale del mondo: «gli
+ * incident risolti negli ultimi 6 mesi». Il raggruppamento su un campo data
+ * era `date(datetime(x))`, cioè UN PUNTO AL GIORNO: su sei mesi sono 180
+ * punti appiccicati, illeggibili — e nessuna parte dell'interfaccia diceva
+ * che «per mese» non si poteva chiedere. Il progettista AI ci ha creduto
+ * pure lui: nelle sue note scriveva «l'aggregazione per mese dipende dalla
+ * granularità applicata dal motore», che era una granularità inesistente.
+ *
+ * `day` è il comportamento di prima ed è il valore di chi non sceglie:
+ * nessuna sezione salvata cambia aspetto. `year` è arrivato subito dopo, con
+ * la richiesta del proprietario: «quando si raggruppa per data devo poter
+ * specificare sempre se per giorno, mese o anno, in TUTTI i grafici».
+ */
+export const REPORT_GRANULARITIES = ['day', 'week', 'month', 'year'] as const
+export type ReportGranularity = typeof REPORT_GRANULARITIES[number]
+
+export function isReportGranularity(v: unknown): v is ReportGranularity {
+  return typeof v === 'string' && (REPORT_GRANULARITIES as readonly string[]).includes(v)
+}
+
 export const FILTER_OPERATORS = ['eq', 'neq', 'contains', 'in', 'last_n_days', 'is_null', 'is_not_null'] as const
 export const EDGE_DIRECTIONS = ['outgoing', 'incoming'] as const
 export const MAX_REPORT_LIMIT = 1000
@@ -98,10 +160,35 @@ function toSnakeCase(s: string): string {
   return s.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '')
 }
 
-/** Display name of a table column (UI-facing; never interpolated into Cypher). */
-export function tableColumnName(node: ReportNodeDef, field: string): string {
-  return `${node.label.replace(/\s+/g, '_')}_${field}`
+/**
+ * Il NOME DI UNA COLONNA come si legge (mai interpolato in Cypher: quello è
+ * l'alias `c0`, `c1`, …).
+ *
+ * Prima era `${etichetta}_${nome interno}` e si leggeva
+ * «SERVICE_REQUEST_AMBIENTE_USO» in cima a una colonna che ovunque si chiama
+ * «Ambiente». Ora si usa l'etichetta del campo quando la conosciamo (la sa il
+ * metamodello, e per i campi dei moduli la libreria); il nome interno resta il
+ * ripiego, perché una colonna senza intestazione sarebbe peggio.
+ *
+ * L'etichetta del NODO davanti solo quando serve a distinguere: con due entità
+ * nella stessa tabella «Nome» e «Nome» sarebbero due colonne indistinguibili,
+ * con una sola entità il prefisso è rumore su ogni colonna.
+ */
+export function tableColumnName(
+  node: ReportNodeDef,
+  field: string,
+  labels?: ReportFieldLabels,
+  withNodePrefix = false,
+): string {
+  const etichetta = labels?.get(`${node.neo4jLabel}.${field}`) ?? field
+  return withNodePrefix ? `${node.label} · ${etichetta}` : etichetta
 }
+
+/**
+ * Le etichette dei campi, per `<etichetta Neo4j>.<campo>`. Le costruisce chi
+ * esegue il report dal metamodello del cliente: qui non si legge il grafo.
+ */
+export type ReportFieldLabels = ReadonlyMap<string, string>
 
 function parseFilters(filtersJson: string | null, what: string): FilterClause[] {
   if (!filtersJson) return []
@@ -120,8 +207,46 @@ function parseFilters(filtersJson: string | null, what: string): FilterClause[] 
     if (!(FILTER_OPERATORS as readonly string[]).includes(String(f.operator))) {
       throw new ValidationError(`${what}: filter #${i} unknown operator ${JSON.stringify(f.operator)}`)
     }
-    return { field, operator: f.operator as string, value: f.value }
+    return { field, operator: f.operator as string, value: valoreDelFiltro(f.operator as string, f.value, `${what}: filter #${String(i)}`) }
   })
+}
+
+/**
+ * IL VALORE DI UN FILTRO, VALIDATO (19 set 2026, dalla revisione).
+ *
+ * `parseFilters` controllava il campo e l'operatore e lasciava passare
+ * QUALUNQUE valore. Tre esiti muti, tutti visti nella revisione:
+ *  - «ultimi N giorni» con valore vuoto → `Number('')` = 0 → solo il futuro,
+ *    cioè un report sempre vuoto;
+ *  - «è fra» con una lista vuota → `IN []` → mai vero;
+ *  - un numero mandato come testo → `n.porta = "443"`, che su una proprietà
+ *    intera non corrisponde mai.
+ * Nessuno dei tre dava un errore: davano zero righe, e zero righe è una
+ * risposta plausibile.
+ *
+ * Il controllo sta QUI e non nel costruttore perché da qui passano tutte le
+ * strade — costruttore, AI, API, dashboard, esportazione e pianificazione.
+ */
+function valoreDelFiltro(operator: string, value: unknown, where: string): unknown {
+  if (operator === 'is_null' || operator === 'is_not_null') return null
+  if (operator === 'last_n_days') {
+    const days = typeof value === 'number' ? value : Number(String(value ?? '').trim())
+    if (!Number.isFinite(days) || !Number.isInteger(days) || days < 1) {
+      throw new ValidationError(`${where}: "last_n_days" needs a whole number of days (got ${JSON.stringify(value)})`)
+    }
+    return days
+  }
+  if (operator === 'in') {
+    const list = Array.isArray(value) ? value.filter((v) => String(v).trim() !== '') : []
+    if (list.length === 0) {
+      throw new ValidationError(`${where}: "in" needs at least one value — an empty list never matches`)
+    }
+    return list
+  }
+  if (value === null || value === undefined || String(value).trim() === '') {
+    throw new ValidationError(`${where}: operator "${operator}" needs a value to compare with`)
+  }
+  return value
 }
 
 function buildWhereClause(
@@ -157,7 +282,12 @@ function buildWhereClause(
         break
       case 'last_n_days':
         params[paramKey] = Number(f.value)
-        parts.push(`${nodeVar}.${field} > datetime() - duration({days: $${paramKey}})`)
+        // Le date dei ticket sono stringhe ISO sul nodo: confrontare una
+        // stringa con un DateTime dà NULL in Cypher, cioè NESSUNA riga, e in
+        // silenzio — «incident degli ultimi 7 giorni» tornava sempre vuoto
+        // (revisione totale · C-7, verificato sul database). La stringa va
+        // convertita, come fa già lib/filterBuilder.ts.
+        parts.push(`datetime(${nodeVar}.${field}) > datetime() - duration({days: $${paramKey}})`)
         break
       case 'is_null':
         parts.push(`${nodeVar}.${field} IS NULL`)
@@ -195,6 +325,33 @@ export function validateReportSection(section: ReportSectionDef, whitelist: Repo
   if (section.sortDir != null) assertSortDir(section.sortDir, `${where}: sortDir`)
   if (section.groupByField != null) assertFieldName(toSnakeCase(section.groupByField), `${where}: groupByField`)
   if (section.metricField != null) assertFieldName(toSnakeCase(section.metricField), `${where}: metricField`)
+  /*
+   * La metrica si valida come il resto, e una metrica senza campo si RIFIUTA:
+   * prima `avg` senza campo diventava un conteggio in silenzio, che è
+   * esattamente la bugia che questa correzione toglie.
+   */
+  if (section.groupByGranularity != null && section.groupByGranularity !== '' && !isReportGranularity(section.groupByGranularity)) {
+    throw new ValidationError(`${where}: unsupported groupByGranularity ${JSON.stringify(section.groupByGranularity)} (valid: ${REPORT_GRANULARITIES.join(', ')})`)
+  }
+  if (section.metric != null && section.metric !== '') {
+    if (!isReportMetric(section.metric)) {
+      throw new ValidationError(`${where}: unsupported metric ${JSON.stringify(section.metric)} (valid: ${REPORT_METRICS.join(', ')})`)
+    }
+    const serveCampo = (REPORT_METRICS_WITH_FIELD as readonly string[]).includes(section.metric)
+    const campo = section.metricField == null ? '' : String(section.metricField).trim()
+    /*
+     * UNA TABELLA NON HA UNA MISURA: elenca righe, non aggrega. La metrica
+     * si salvava, la scheda scriveva «Media · Costo» e il Cypher la
+     * ignorava — la stessa bugia che la correzione delle metriche ha tolto,
+     * rientrata dalla porta della tabella (19 set 2026).
+     */
+    if (chartType === 'table' && section.metric !== 'count') {
+      throw new ValidationError(`${where}: a table lists rows, it has no measure — remove the "${section.metric}" metric or pick another chart`)
+    }
+    if (serveCampo && campo === '') {
+      throw new ValidationError(`${where}: metric "${section.metric}" needs a metricField to compute on`)
+    }
+  }
 
   if (!Array.isArray(section.nodes) || section.nodes.length === 0) {
     throw new ValidationError(`${where}: at least one node is required`)
@@ -224,12 +381,69 @@ export function validateReportSection(section: ReportSectionDef, whitelist: Repo
       .filter(n => n.isResult)
       .reduce((acc, n) => acc + (n.selectedFields?.length ?? 0), 0)
     if (columnCount === 0) {
-      throw new ValidationError(`${where}: a table section needs at least one selected field on a result node (isResult = true)`)
+      /*
+       * Con la chiave i18n (20 set 2026, dal giro nel browser): l'anteprima
+       * mostrava questa frase COSÌ COM'È — in inglese e con «isResult =
+       * true» dentro — sotto l'avviso italiano che diceva già la stessa cosa
+       * in modo comprensibile. Un errore che l'utente può causare si legge
+       * nella sua lingua.
+       */
+      throw new ValidationError(
+        `${where}: a table section needs at least one selected field on a result node (isResult = true)`,
+        { key: 'errors.report.tableWithoutColumns' },
+      )
     }
   }
 
   if (section.groupByNodeId != null && !ids.has(section.groupByNodeId)) {
     throw new ValidationError(`${where}: groupByNodeId ${JSON.stringify(section.groupByNodeId)} does not match any section node — stale report config`)
+  }
+
+  /*
+   * UN PERIODO SI CHIEDE SOLO SU UNA DATA (20 set 2026, visto per strada
+   * costruendo un report sui task).
+   *
+   * Il pannello NASCONDE la tendina del periodo quando il campo scelto non è
+   * una data, ma il valore resta nello stato e viene salvato lo stesso: si
+   * sceglie «Creato il» + «Mese», si cambia il raggruppamento in «Stato», e
+   * la sezione parte con `groupByGranularity: 'month'` su un campo di testo.
+   * Il Cypher diventa `date.truncate('month', datetime(n.status))` e Neo4j
+   * risponde «Text cannot be parsed to a DateTime "completed"» — a
+   * ESECUZIONE, quando il report è salvato e magari schedulato.
+   *
+   * Si rifiuta qui, che è il punto attraversato sia dal salvataggio sia
+   * dall'esecuzione: le sezioni già salvate così danno un errore che si
+   * capisce, invece di uno del motore del database.
+   *
+   * Si guarda il campo EFFETTIVO, cioè quello che il costruttore userà se non
+   * ce n'è uno scelto — altrimenti una sezione a barre senza raggruppamento
+   * passerebbe la validazione e poi cadrebbe su `status`. Numero totale e
+   * tabella non raggruppano: lì un periodo rimasto per strada non fa danno e
+   * non si tocca.
+   */
+  if (isReportGranularity(section.groupByGranularity)) {
+    const CON_PERIODO: Record<string, string> = {
+      bar: 'status', bar_horizontal: 'status', pie: 'status', donut: 'status', top_n: 'status',
+      line: 'created_at', area: 'created_at',
+    }
+    const predefinito = CON_PERIODO[chartType]
+    if (predefinito != null) {
+      const campo = toSnakeCase(section.groupByField ?? '') || predefinito
+      const nodoDelGruppo = section.groupByNodeId != null
+        ? section.nodes.find(n => n.id === section.groupByNodeId)
+        : section.nodes.find(n => n.isRoot)
+      const dichiarate = whitelist.temporalFields.get(nodoDelGruppo?.neo4jLabel ?? '')
+      if (!isTemporalField(campo, null) && !(dichiarate?.has(campo) ?? false)) {
+        throw new ValidationError(
+          `${where}: groupByGranularity ${JSON.stringify(section.groupByGranularity)} needs a date field to group by — ${JSON.stringify(campo)} is not one`,
+          // Senza `params`: chi mostra questa frase (`ReportChartRenderer`)
+          // risolve la chiave SENZA interpolare, e un `{{campo}}` rimasto
+          // dentro si leggerebbe a schermo. Il nome del campo resta nel
+          // messaggio tecnico qui sopra.
+          { key: 'errors.report.granularityNeedsDate' },
+        )
+      }
+    }
   }
 
   for (const e of (section.edges ?? [])) {
@@ -252,6 +466,12 @@ export function buildReportQuery(
   section: ReportSectionDef,
   tenantId: string,
   whitelist: ReportWhitelist,
+  /**
+   * Le etichette dei campi, per le intestazioni delle colonne. Facoltative: chi
+   * non le passa (un test, una chiamata vecchia) ottiene i nomi interni, cioè
+   * quello che si vedeva prima.
+   */
+  opts: { fieldLabels?: ReportFieldLabels } = {},
 ): BuiltReportQuery {
   validateReportSection(section, whitelist)
 
@@ -281,6 +501,20 @@ export function buildReportQuery(
   if (rootWhere) matchLines.push(rootWhere)
   visited.add(rootNode.id)
 
+  /**
+   * GLI ARCHI CHE L'ALBERO NON PERCORRE non si perdono più (19 set 2026).
+   *
+   * La BFS visita ogni nodo UNA volta: un arco fra due nodi già visitati —
+   * un triangolo, o due relazioni diverse fra la stessa coppia — non
+   * diventava nessun MATCH e spariva in silenzio. Il costruttore lo disegnava
+   * e lo salvava, la query non lo applicava: un numero PLAUSIBILE e sbagliato,
+   * che è peggio di un report vuoto perché nessuno se ne accorge.
+   *
+   * Adesso quelli fuori dall'albero diventano un `EXISTS`, che è esattamente
+   * quello che significano: «e fra questi due c'è anche quella relazione».
+   */
+  const archiConsumati = new Set<string>()
+
   const addChild = (parentId: string, childNode: ReportNodeDef, relType: string, outgoing: boolean) => {
     const parentVar = v(parentId)
     const childVar  = v(childNode.id)
@@ -302,13 +536,36 @@ export function buildReportQuery(
       const childNode = nodes.find(n => n.id === edge.targetNodeId)
       if (!childNode || visited.has(childNode.id)) continue
       addChild(currentId, childNode, edge.relationshipType, edge.direction === 'outgoing')
+      archiConsumati.add(edge.id)
     }
 
     for (const edge of inEdges) {
       const childNode = nodes.find(n => n.id === edge.sourceNodeId)
       if (!childNode || visited.has(childNode.id)) continue
-      addChild(currentId, childNode, edge.relationshipType, edge.direction !== 'incoming')
+      /*
+       * `=== 'incoming'` e non `!==`: qui parent e child sono SCAMBIATI
+       * rispetto a source/target, quindi il verso della relazione si
+       * ribalta. Con `!==` un arco percorso dal lato del bersaglio produceva
+       * la relazione AL CONTRARIO — e un report che non trova mai niente,
+       * senza un errore (19 set 2026).
+       */
+      addChild(currentId, childNode, edge.relationshipType, edge.direction === 'incoming')
+      archiConsumati.add(edge.id)
     }
+  }
+
+  /*
+   * Gli archi che l'albero non ha percorso: si applicano come EXISTS, dopo i
+   * MATCH, quando entrambi i loro estremi sono nella query.
+   */
+  for (const edge of edges) {
+    if (archiConsumati.has(edge.id)) continue
+    if (!visited.has(edge.sourceNodeId) || !visited.has(edge.targetNodeId)) continue
+    const a = v(edge.sourceNodeId)
+    const b = v(edge.targetNodeId)
+    matchLines.push(edge.direction === 'incoming'
+      ? `WHERE EXISTS { (${a})<-[:${edge.relationshipType}]-(${b}) }`
+      : `WHERE EXISTS { (${a})-[:${edge.relationshipType}]->(${b}) }`)
   }
 
   // 3. Group node (validation guarantees groupByNodeId, when set, exists)
@@ -321,12 +578,84 @@ export function buildReportQuery(
   const sortDirVal = assertSortDir(sortDir ?? 'DESC', 'sortDir')
   params['limit']  = limitVal
 
+  /*
+   * LA MISURA. `count(root)` quando la metrica è il conteggio (o non c'è, che
+   * è come nascono tutti i report scritti finora), altrimenti l'aggregazione
+   * sul campo della RADICE — vedi il commento su `REPORT_METRICS` per il
+   * perché della radice e per il difetto che questo pezzo chiude.
+   *
+   * `toFloat` su somma e media: un numero salvato come testo darebbe una somma
+   * lessicografica, e la validazione di un campo di report non conosce i tipi.
+   * Minimo e massimo no: funzionano anche su date e testo, ed è quello che una
+   * persona si aspetta da «la più vecchia».
+   */
+  const metrica = section.metric != null && section.metric !== '' && isReportMetric(section.metric)
+    ? section.metric : 'count'
+  const campoMetrica = (REPORT_METRICS_WITH_FIELD as readonly string[]).includes(metrica) && section.metricField
+    ? assertFieldName(toSnakeCase(section.metricField), 'metricField') : null
+  const misura = campoMetrica === null
+    ? `count(${rootVar})`
+    : metrica === 'avg' ? `avg(toFloat(${rootVar}.${campoMetrica}))`
+    : metrica === 'sum' ? `sum(toFloat(${rootVar}.${campoMetrica}))`
+    : metrica === 'min' ? `min(${rootVar}.${campoMetrica})`
+    : `max(${rootVar}.${campoMetrica})`
+
+  /**
+   * L'ESPRESSIONE DEL RAGGRUPPAMENTO SU UNA DATA.
+   *
+   * Vale per le serie E per i grafici a categorie: raggruppare un istogramma
+   * per `created_at` senza troncare dà UNA BARRA PER TIMESTAMP — il
+   * proprietario ne ha viste dodici, tutte alte 1, con sotto
+   * «2026-07-15T11:05:33.963Z» (19 set 2026). Il periodo c'era solo per linea
+   * e area, e il resto del prodotto continuava a offrire i campi data anche
+   * agli altri grafici.
+   *
+   * Nessun periodo = la proprietà grezza, cioè il comportamento di sempre per
+   * i campi che date non sono (stato, categoria, team).
+   */
+  const periodoDi = (variabile: string, campo: string): string => {
+    const g = section.groupByGranularity
+    if (!isReportGranularity(g)) return `${variabile}.${campo}`
+    const troncata = g === 'day'
+      ? `date(datetime(${variabile}.${campo}))`
+      : `date.truncate('${g}', datetime(${variabile}.${campo}))`
+    /*
+     * `toString(...)`: SENZA, l'asse di ogni serie diceva «[object Object]».
+     * Una data di Neo4j arriva come oggetto temporale; il suo `toString()`
+     * darebbe «2026-04-01», ma l'oggetto passa da una serializzazione JSON
+     * prima di essere letto e a quel punto il prototipo — e con lui il
+     * `toString` — non c'è più: resta `{year, month, day}`, che stampato
+     * diventa «[object Object]».
+     */
+    return `toString(${troncata})`
+  }
+
+  /*
+   * `WITH DISTINCT` QUANDO C'È UN JOIN (19 set 2026).
+   *
+   * `count(n0)` conta RIGHE, non nodi: con un secondo MATCH un incident che
+   * tocca tre CI compare tre volte. Sul conteggio era un numero gonfiato —
+   * difetto vecchio; da quando le metriche funzionano davvero è una SOMMA
+   * sbagliata, cioè una cifra economica che qualcuno stamperà.
+   *
+   * Si scremano le righe prima di aggregare, tenendo le variabili che
+   * servono a valle: la radice, il nodo del raggruppamento e i nodi che
+   * portano colonne in una tabella.
+   */
+  const variabiliDaTenere = [...new Set([
+    rootVar,
+    ...(groupByNodeId ? [v(groupByNodeId)] : []),
+    ...nodes.filter((n) => n.isResult).map((n) => v(n.id)),
+  ])]
+  const withDistinct = edges.length > 0 ? `WITH DISTINCT ${variabiliDaTenere.join(', ')}` : null
+
   let returnClause: string
   const columns: ReportColumn[] = []
+  let groupSource: ReportValueSource | null = null
 
   switch (chartType) {
     case 'kpi':
-      returnClause = `RETURN count(${rootVar}) AS value`
+      returnClause = `RETURN ${misura} AS value`
       break
 
     case 'pie':
@@ -336,19 +665,55 @@ export function buildReportQuery(
     case 'top_n': {
       // top_n is a ranked bar: same { label, value } contract, limited + sorted.
       const field = groupField ?? 'status'
-      returnClause = [
-        `RETURN ${groupVar}.${field} AS label, count(${rootVar}) AS value`,
-        `ORDER BY value ${sortDirVal}`,
-        `LIMIT toInteger($limit)`,
-      ].join('\n')
+      groupSource = { neo4jLabel: groupNode.neo4jLabel, field: groupByField ?? 'status' }
+      /*
+       * UN ASSE DI DATE SI LEGGE IN ORDINE DI DATA (20 set 2026, dal giro nel
+       * browser: «usando le barre l'ordinamento sull'asse x è sbagliato»).
+       *
+       * Le barre erano ordinate per VALORE come ogni altro raggruppamento, e
+       * con un raggruppamento per periodo l'asse usciva 13, 15, 16, 14 set:
+       * gli stessi dati che la LINEA — che ordina per etichetta — mostrava in
+       * ordine. Due grafici della stessa sezione dicevano due storie, e quella
+       * delle barre era una storia falsa: un istogramma nel tempo si legge da
+       * sinistra a destra, e chi lo guarda non controlla le etichette.
+       *
+       * Con un limite si tengono i periodi PIÙ RECENTI e si mostrano dal più
+       * vecchio, come farebbe un foglio di calcolo: ordinare per etichetta e
+       * poi tagliare darebbe i dodici mesi più vecchi, buttando in silenzio
+       * proprio quelli che interessano.
+       *
+       * Torta e ciambella restano ordinate per valore: non hanno un asse, e la
+       * fetta più grande davanti è quello che serve. `top_n` è per definizione
+       * una classifica.
+       */
+      const asseTemporale = isReportGranularity(section.groupByGranularity)
+        && (chartType === 'bar' || chartType === 'bar_horizontal')
+      returnClause = asseTemporale
+        ? [
+            `WITH ${periodoDi(groupVar, field)} AS label, ${misura} AS value`,
+            `ORDER BY label DESC`,
+            `LIMIT toInteger($limit)`,
+            `RETURN label, value`,
+            `ORDER BY label ASC`,
+          ].join('\n')
+        : [
+            `RETURN ${periodoDi(groupVar, field)} AS label, ${misura} AS value`,
+            `ORDER BY value ${sortDirVal}`,
+            `LIMIT toInteger($limit)`,
+          ].join('\n')
       break
     }
 
     case 'line':
     case 'area': {
       const field = groupField ?? 'created_at'
+      // Una serie è SEMPRE per periodo: senza scelta, per giorno — che è il
+      // comportamento con cui sono state salvate tutte quelle di prima.
+      const etichetta = isReportGranularity(section.groupByGranularity)
+        ? periodoDi(groupVar, field)
+        : `toString(date(datetime(${groupVar}.${field})))`
       returnClause = [
-        `RETURN date(${groupVar}.${field}) AS label, count(${rootVar}) AS value`,
+        `RETURN ${etichetta} AS label, ${misura} AS value`,
         `ORDER BY label ASC`,
       ].join('\n')
       break
@@ -356,12 +721,15 @@ export function buildReportQuery(
 
     case 'table': {
       const cols: string[] = []
-      for (const rn of nodes.filter(n => n.isResult)) {
+      const nodiRisultato = nodes.filter(n => n.isResult)
+      // Il prefisso con l'entità solo se ce n'è più di una: vedi `tableColumnName`.
+      const conPrefisso = nodiRisultato.length > 1
+      for (const rn of nodiRisultato) {
         const rv = v(rn.id)
         for (const sf of (rn.selectedFields ?? [])) {
           const snakeSf = assertFieldName(toSnakeCase(sf), `node ${rn.id} selectedFields`)
           const alias   = `c${columns.length}`
-          columns.push({ alias, name: tableColumnName(rn, sf) })
+          columns.push({ alias, name: tableColumnName(rn, sf, opts.fieldLabels, conPrefisso), source: { neo4jLabel: rn.neo4jLabel, field: sf } })
           cols.push(`${rv}.${snakeSf} AS ${alias}`)
         }
       }
@@ -380,6 +748,6 @@ export function buildReportQuery(
     }
   }
 
-  const query = [...matchLines, returnClause].join('\n')
-  return { query, params, columns }
+  const query = [...matchLines, ...(withDistinct === null ? [] : [withDistinct]), returnClause].join('\n')
+  return { query, params, columns, groupSource }
 }

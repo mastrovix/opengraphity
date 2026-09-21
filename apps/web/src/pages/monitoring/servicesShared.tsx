@@ -262,7 +262,10 @@ export function causeLabel(t: TFunction, cause: ImpactCause): string {
  * (operativo, sconosciuta, in manutenzione); giù/degradato senza cause è detto
  * in chiaro, non taciuto.
  */
-export function explanationSentence(t: TFunction, map: Pick<ServiceMapRow, 'health' | 'explanation'>): string {
+export function explanationSentence(
+  t: TFunction,
+  map: Pick<ServiceMapRow, 'health' | 'explanation'> & { impactScore?: number; unhealthyCount?: number | null; rules?: { degradedSharePct: number; minNodes: number } | null },
+): string {
   const label = serviceHealthLabel(t, map.health)
   const causes = map.explanation.map((c) => {
     const via = causeVia(c)
@@ -277,6 +280,30 @@ export function explanationSentence(t: TFunction, map: Pick<ServiceMapRow, 'heal
     if (map.health === 'unknown')     return t('monitoring.services.explain.unknown')
     if (map.health === 'maintenance') return t('monitoring.services.explain.maintenance')
     return t('monitoring.services.explain.noCauses', { health: label })
+  }
+  // Secondo giro UI del 15 set 2026 · V-9: «Operativo: SRV-APP-01 è giù» sembrava
+  // una contraddizione. Il servizio è operativo perché una regola lo tiene sotto
+  // soglia, e si dice QUALE: meno componenti non operativi del minimo, oppure un
+  // punteggio sotto la soglia «degradato». Dirle entrambe, quando il punteggio la
+  // soglia la supera, era dire una cosa falsa (verificato dal vivo: «22 contro 1%»).
+  if (map.health === 'operational' && map.rules && map.impactScore !== undefined) {
+    /**
+     * Il numero dei non operativi viene dal MOTORE, non dalle cause
+     * (revisione totale · G-MON-6): `explanation` e tagliata a 20, quindi con
+     * 22 componenti giu la frase diceva «20 componenti non operativi, meno dei
+     * 25 previsti» — un numero sbagliato — e oltre `minNodes` cause tornava
+     * alla frase generica «Operativo: X e giu», che era la contraddizione che
+     * questo ramo doveva togliere. Una mappa non ancora rivalutata non ha il
+     * conteggio: in quel caso si resta alla frase generica.
+     */
+    const unhealthy = map.unhealthyCount
+    const params = { health: label, causes: causes.join(', '), count: unhealthy ?? causes.length }
+    if (unhealthy !== null && unhealthy !== undefined && unhealthy < map.rules.minNodes) {
+      return t('monitoring.services.explain.operationalBelowMinimum', { ...params, min: map.rules.minNodes })
+    }
+    if (map.impactScore < map.rules.degradedSharePct) {
+      return t('monitoring.services.explain.operationalBelowScore', { ...params, score: map.impactScore, degraded: map.rules.degradedSharePct })
+    }
   }
   return t('monitoring.services.explain.sentence', { health: label, causes: causes.join(', ') })
 }

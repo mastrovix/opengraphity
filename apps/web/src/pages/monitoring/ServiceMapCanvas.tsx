@@ -45,7 +45,7 @@ import { Button } from '@/components/Button'
 import { Input } from '@/components/ui/FormControls'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { CIIcon } from '@/lib/ciIcon'
-import { ciTypeLabelKey, enumLabel } from '@/lib/ciEnums'
+import { useCILabels } from '@/hooks/useCILabels'
 import { alpha, colors, palette } from '@/lib/tokens'
 import { srOnlyStyle } from '@/lib/a11y'
 import {
@@ -114,6 +114,17 @@ export function ServiceMapCanvas({ map, selectedId, onSelect, isolatedId = null,
    */
   const focusByDefault = map.nodes.length > FOCUS_THRESHOLD && map.explanation.length > 0
   const [focus, setFocus]       = useState(focusByDefault)
+  /**
+   * La modalita percorso vale solo se c'e un percorso (revisione totale · G-MON-3).
+   *
+   * `focus` si inizializzava una volta sola, ma il pulsante «Mostra tutto»
+   * esiste solo con almeno una causa. Se il guasto rientrava mentre la mappa
+   * era aperta (il polling porta `explanation` vuota), `focus` restava acceso:
+   * ogni riga finiva nel chip «+N fuori dal percorso» e il pulsante per uscire
+   * non c'era piu. Senza percorso la modalita si spegne da se.
+   */
+  const noPath = map.explanation.length === 0
+  useEffect(() => { if (noPath) setFocus(false) }, [noPath])
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set<number>())
   const [scale, setScale]       = useState(1)
   const [search, setSearch]     = useState('')
@@ -130,10 +141,10 @@ export function ServiceMapCanvas({ map, selectedId, onSelect, isolatedId = null,
   const isolated = isolatedId === null ? null : map.nodes.find((n) => n.ci.id === isolatedId) ?? null
   const hiddenByIsolate = isolated === null ? 0 : map.nodes.length - layout.nodes.filter((p) => p.node !== null).length
 
-  const typeLabel = (type: string) => {
-    const key = ciTypeLabelKey(type)
-    return key ? t(key) : (getCIType(type)?.label ?? enumLabel(type))
-  }
+  // La stessa funzione della CMDB e delle anomalie (ondata del 20 set): qui
+  // la chiave i18n veniva prima dell'etichetta del disegnatore, cioè il
+  // contrario della regola F-22.
+  const { typeLabel } = useCILabels()
   /** L'etichetta della riga è il livello e basta, servizio compreso: «Livello 0», «Livello 1», … */
   const levelLabel = (level: number) => t('monitoring.services.map.level', { level })
   const marker = (sev: PathSeverity | null) => `url(#${markerBase}-${sev ?? 'edge'})`
@@ -514,6 +525,10 @@ function RootCard({ placed: p, map, label, icon, register }: { placed: PlacedNod
       data-level="0"
       data-health={map.health}
       data-on-path={p.onPath ?? undefined}
+      // G-MON-8: un `aria-label` su un div generico non e un nome accessibile
+      // valido, quindi la carta del servizio arrivava allo screen reader come
+      // testo sciolto. `role="group"` la rende un elemento con un nome.
+      role="group"
       aria-label={t('monitoring.services.map.nodeLabel', { name: map.service.name, type: label, health: serviceHealthLabel(t, map.health) })}
       style={{ ...CARD_STYLE, left: p.x, top: p.y, background: fam.bg, border: `${p.onPath ? 3 : 2}px solid ${border}`, boxShadow: `0 2px 8px ${alpha.black08}` }}
     >

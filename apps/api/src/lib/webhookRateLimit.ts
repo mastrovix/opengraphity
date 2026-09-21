@@ -82,10 +82,18 @@ export interface RateDecision {
  * legittimo consuma il bucket (A-20).
  */
 export async function consumeWebhookRate(tenantId: string, webhookId: string, limit: number, atMs = Date.now()): Promise<RateDecision> {
-  const raw = await getSharedRedis().eval(WEBHOOK_RATE_LUA, 1, webhookRateKey(tenantId, webhookId, atMs), WEBHOOK_RATE_KEY_TTL_SECONDS)
+  return consumeMinuteRate(webhookRateKey(tenantId, webhookId, atMs), limit, atMs)
+}
+
+/**
+ * La stessa finestra fissa al minuto per una chiave qualunque (il webhook in
+ * ingresso e le chiavi API della REST v1). Redis giù → l'errore propaga.
+ */
+export async function consumeMinuteRate(key: string, limit: number, atMs = Date.now()): Promise<RateDecision> {
+  const raw = await getSharedRedis().eval(WEBHOOK_RATE_LUA, 1, key, WEBHOOK_RATE_KEY_TTL_SECONDS)
   const count = Number(raw)
   if (!Number.isFinite(count) || count < 1) {
-    throw new Error(`webhook rate limit: unexpected INCR reply ${JSON.stringify(raw)} for ${tenantId}/${webhookId}`)
+    throw new Error(`rate limit: unexpected INCR reply ${JSON.stringify(raw)} for ${key}`)
   }
   return { allowed: count <= limit, count, limit, retryAfterSeconds: secondsToWindowEnd(atMs) }
 }

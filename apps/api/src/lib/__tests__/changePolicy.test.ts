@@ -73,12 +73,12 @@ describe('la lista viene dal tenant', () => {
   it('un tenant inesistente è un errore, non una lista vuota', async () => {
     executeRead.mockReset()
     executeRead.mockResolvedValue({ records: [] })
-    await expect(preApprovedChangeTypes('fantasma')).rejects.toThrow(/inesistente/)
+    await expect(preApprovedChangeTypes('fantasma')).rejects.toThrow(/does not exist/)
   })
 
   it('un valore non testuale nella proprietà è un errore che lo mostra', async () => {
     tenantHas([1, 2])
-    await expect(preApprovedChangeTypes('c-one')).rejects.toThrow(/non è una lista di stringhe/)
+    await expect(preApprovedChangeTypes('c-one')).rejects.toThrow(/is not a list of strings/)
   })
 
   it('legge una volta per tenant, e di nuovo dopo l\'invalidazione del metamodello', async () => {

@@ -28,6 +28,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
@@ -43,18 +44,50 @@ vi.mock('../ci-utils.js', () => ({
   withSession: vi.fn().mockImplementation(async (fn: (s: unknown) => Promise<unknown>) => fn(mockSession)),
 }))
 vi.mock('../../../lib/schemaInvalidator.js', () => ({ invalidateSchema: vi.fn(), registerMetamodelCacheClearer: vi.fn() }))
+vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// SV-6: la domanda «una mappa di servizio segue questa relazione?» ha il suo test
+// (serviceMapRelationUsage.test.ts); qui si pretende solo che venga fatta.
+// Regola del 15 set 2026: cosa blocca e cosa porta via la cancellazione di un
+// tipo è lib/ciTypeDeletion.ts (test suo); qui si pretende che il resolver lo usi.
+const DELETION = vi.hoisted(() => ({ impact: {} as Record<string, number>, deletedIds: [] as string[], error: null as Error | null }))
+vi.mock('../../../lib/ciTypeDeletion.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../../../lib/ciTypeDeletion.js')>()
+  const impact = () => ({ cis: 0, ticketCIs: 0, tickets: 0, ticketCIExclusions: 0, groupsUpdated: 0, groupsDeleted: 0, fieldVisibilityRules: 0, fieldRequirementRules: 0, businessRules: 0, autoTriggers: 0, customWidgets: 0, reportSections: 0, assessmentQuestionLinks: 0, ...DELETION.impact })
+  return {
+    ...orig,
+    loadCITypeDeletionImpact: vi.fn(async () => impact()),
+    deleteCITypeDependents: vi.fn(async (_tx: unknown, _t: string, type: { name: string; label: string }) => {
+      if (DELETION.error) throw DELETION.error
+      orig.assertCITypeNotInTickets(impact() as never, type, 'delete')
+      return { impact: impact(), deletedCIIds: DELETION.deletedIds }
+    }),
+  }
+})
+vi.mock('../../../services/serviceImpact/sync.js', () => ({ notifyCIGraphChanged: vi.fn(async () => 0) }))
+vi.mock('../../../lib/triggerEngine.js', () => ({ invalidateTriggerCache: vi.fn() }))
+vi.mock('../../../lib/rulesEngine.js', () => ({ invalidateRulesCache: vi.fn() }))
+const SERVICE_MAP_FOLLOWS = vi.hoisted(() => ({ error: null as Error | null }))
+vi.mock('../../../lib/serviceMapRelationUsage.js', () => ({
+  assertNoServiceMapFollows: vi.fn(async () => { if (SERVICE_MAP_FOLLOWS.error) throw SERVICE_MAP_FOLLOWS.error }),
+  serviceMapsBlockingRemoval: vi.fn(async () => ({ lost: [], name: '', maps: [] })),
+}))
 // `@opengraphity/schema-generator` NON è più finto: la porta sui nomi (A-12)
 // usa le sue regole vere, e finger `toPascalCase` con una versione che divide
 // anche su spazi e trattini nasconderebbe esattamente il difetto che la regola
 // `^[a-z][a-z0-9_]*$` esiste per impedire.
 
-const { buildMetamodelMutations, buildCITypesResolver, buildBaseCITypeResolver, fetchCITypeById, requireAdmin } = await import('../ciTypeMetamodel.js')
+const { buildMetamodelMutations, buildCITypesResolver, buildBaseCITypeResolver, fetchCITypeById, requireMetamodelPermission } = await import('../ciTypeMetamodel.js')
 const { withSession } = await import('../ci-utils.js')
 const { invalidateSchema } = await import('../../../lib/schemaInvalidator.js')
 const { runQueryOne } = await import('@opengraphity/neo4j')
+const { assertNoServiceMapFollows } = await import('../../../lib/serviceMapRelationUsage.js')
+const { deleteCITypeDependents } = await import('../../../lib/ciTypeDeletion.js')
+const { notifyCIGraphChanged } = await import('../../../services/serviceImpact/sync.js')
+const { invalidateTriggerCache } = await import('../../../lib/triggerEngine.js')
+const { audit } = await import('../../../lib/audit.js')
 
-const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
-const operator: GraphQLContext = { ...admin, role: 'operator' }
+const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
+const operator: GraphQLContext = { ...admin, role: 'operator', permissions: perms('operator') }
 const mutations = buildMetamodelMutations()
 
 const TYPE_NODE = { properties: { id: 'ct-1', name: 'firewall', label: 'Firewall', icon: 'shield', color: '#000', active: true, scope: 'tenant', tenant_id: 'tenant-1' } }
@@ -84,9 +117,20 @@ function defaultResponse(cypher: string): { records: unknown[] } {
   // Revisione delle otto ondate · A·3.7: il tipo di ARRIVO di una relazione
   // deve esistere (prima non era validato, e una relazione verso un tipo
   // inesistente entrava nel metamodello ed era inerte in silenzio).
-  if (cypher.includes('RETURN collect(t.name) AS names')) {
-    return res([row({ names: ['server', 'application', 'firewall', 'incident'] })])
+  if (cypher.includes('RETURN t.name AS name, t.neo4j_label AS label')) {
+    // CM-1: i tipi CI che possono essere l'arrivo di una relazione, con l'etichetta.
+    return res([row({ name: 'server', label: 'Server' }), row({ name: 'application', label: 'Application' }), row({ name: 'firewall', label: 'Firewall' })])
   }
+  // CM-4: la definizione da togliere e gli archi che solo lei dichiara (di default nessuno).
+  if (cypher.includes('rel.target_type AS targetType')) {
+    return res([row({ label: 'Firewall', name: 'protegge', relationshipType: 'PROTECTS', direction: 'outgoing', targetType: 'Server' })])
+  }
+  if (cypher.includes('RETURN count(*) AS n') && cypher.includes('startNode(e)')) return res([row({ n: EDGES_ONLY_THIS.value })])
+  // CM-4 bis: il campo da togliere e i valori che se ne vanno con lui.
+  if (cypher.includes('RETURN f.name AS name, t.neo4j_label AS label')) return res([row({ name: 'stato', label: 'Firewall' })])
+  if (cypher.includes('REMOVE n.')) return res([row({ n: VALUES_CLEARED.value })])
+  // V-15: i valori prima della cancellazione (quanti e i primi, per nome del CI).
+  if (cypher.includes('RETURN size(rows) AS count, rows[0..$limit] AS sample')) return res([row({ count: VALUES_CLEARED.value, sample: VALUES_CLEARED.value ? [{ name: 'FW-01', value: 'up' }] : [] })])
   // Il tetto al numero di tipi (revisione · A·#6): infrastruttura per questi
   // test, non la cosa che misurano — risponde sempre il router, così la coda
   // resta allineata alle scritture.
@@ -105,6 +149,9 @@ function defaultResponse(cypher: string): { records: unknown[] } {
   if (cypher.includes('HAS_RELATION]->(r:CIRelationDefinition {name: $name})')) return res()
   return res([typeRecord()])
 }
+
+const EDGES_ONLY_THIS = { value: 0 }
+const VALUES_CLEARED  = { value: 0 }
 
 /** I tipi CI già presenti nello schema, come li legge `loadExistingCITypeNames`. */
 const EXISTING_TYPE_ROWS = [
@@ -125,7 +172,7 @@ const queue: Array<{ records: unknown[] }> = []
  */
 function usage(over: Record<string, number> = {}): void {
   vi.mocked(runQueryOne).mockResolvedValue({
-    cis: 0, itil_relation_rules: 0, assessment_questions: 0, dynamic_ci_groups: 0,
+    cis: 0, ticket_ci_exclusions: 0, assessment_questions: 0, dynamic_ci_groups: 0,
     field_visibility_rules: 0, field_requirement_rules: 0, business_rules: 0,
     auto_triggers: 0, custom_widgets: 0, report_nodes: 0, ...over,
   } as never)
@@ -134,13 +181,19 @@ function usage(over: Record<string, number> = {}): void {
 function reset(responses: Array<{ records: unknown[] }> = []) {
   vi.clearAllMocks()
   usage()
+  DELETION.impact = {}
+  DELETION.deletedIds = []
+  DELETION.error = null
   queue.splice(0, queue.length, ...responses)
+  EDGES_ONLY_THIS.value = 0
+  VALUES_CLEARED.value = 0
   // La guardia sul tipo di arrivo di una relazione (revisione · A·3.7) legge i
   // tipi disponibili prima di scrivere. È infrastruttura per questi test, non
   // la cosa che misurano: risponde sempre il router, così la coda resta
   // allineata alle scritture e nessun test va riscritto per una lettura in più.
   txRun.mockImplementation(async (cypher: string) =>
-    (cypher.includes('RETURN collect(t.name) AS names') || cypher.includes("scope: 'tenant'}) RETURN count(t) AS n")
+    (cypher.includes('RETURN t.name AS name, t.neo4j_label AS label') || cypher.includes("scope: 'tenant'}) RETURN count(t) AS n")
+      || cypher.includes('rel.target_type AS targetType') || cypher.includes('startNode(e)')
       ? defaultResponse(cypher)
       : queue.shift() ?? defaultResponse(cypher)))
   const tx = { run: txRun }
@@ -166,12 +219,12 @@ async function expectCode(p: Promise<unknown>, code: string) {
   expect((err as GraphQLError).extensions['code']).toBe(code)
 }
 
-describe('requireAdmin — prima di qualunque sessione', () => {
+describe('requireMetamodelPermission — prima di qualunque sessione', () => {
   beforeEach(() => reset())
 
-  it('requireAdmin: operator → FORBIDDEN, admin passa', () => {
-    expect(() => requireAdmin(admin)).not.toThrow()
-    expect(() => requireAdmin(operator)).toThrow(GraphQLError)
+  it('requireMetamodelPermission: operator (senza config.metamodel) → FORBIDDEN, admin passa', () => {
+    expect(() => requireMetamodelPermission(admin)).not.toThrow()
+    expect(() => requireMetamodelPermission(operator)).toThrow(GraphQLError)
   })
 
   it.each(Object.keys(buildMetamodelMutations()))('%s con operator → FORBIDDEN senza aprire sessioni', async (name) => {
@@ -200,6 +253,26 @@ describe('letture — tipi base/sistema + tipi del tenant', () => {
     expect(cypher).toContain(FIELD_CLAUSE('bf'))
     expect(params).toEqual({ tenantId: 'tenant-1' })
     expect(out).toEqual([expect.objectContaining({ id: 'ct-1', name: 'firewall', fields: [], relations: [], systemRelations: [] })])
+  })
+
+  /*
+   * OGNI COSTRUZIONE DI UN TIPO PORTA TUTTI I CAMPI DEL TIPO GraphQL (20 set
+   * 2026).
+   *
+   * `CITypeDefinition` si monta in DUE posti — `mapCITypeNode` e la lettura
+   * di `ciTypes`, che ha la sua copia — e aggiungendo `labels` a uno solo la
+   * query intera falliva: «Cannot return null for non-nullable field
+   * CITypeDefinition.labels», e con lei il metamodello di TUTTE le pagine
+   * (dal vivo: la CMDB ha ricominciato a mostrare «business_application»).
+   * Il test guarda le due strade insieme.
+   */
+  it('ciTypes e baseCIType costruiscono le STESSE chiavi: un campo nuovo non può entrare in una sola', async () => {
+    reset([{ records: [typeRecord()] }])
+    const daLista = (await buildCITypesResolver()(null, null, operator))[0]!
+    reset([{ records: [typeRecord()] }, { records: [] }])
+    const daBase = await buildBaseCITypeResolver()(null, null, operator)
+    expect(Object.keys(daLista as object).sort()).toEqual(Object.keys(daBase as object).sort())
+    expect(daLista).toHaveProperty('labels')
   })
 
   it('ciTypes: i vocabolari agganciati passano da enumScopeClause, sul tipo e su __base__', async () => {
@@ -264,7 +337,8 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
     expect(cypher).toContain('MERGE (t:CITypeDefinition {name: $name, tenant_id: $tenantId})')
     expect(cypher).toContain("t.scope            = 'tenant'")
     expect(cypher).not.toContain("'system'")
-    expect(params).toMatchObject({ name: 'firewall', tenantId: 'tenant-1', label: 'Firewall', icon: 'box', color: '#0284c7', neo4jLabel: 'Firewall' })
+    // CM-11: nessun colore scritto nel codice.
+    expect(params).toMatchObject({ name: 'firewall', tenantId: 'tenant-1', label: 'Firewall', icon: 'box', color: null, neo4jLabel: 'Firewall' })
     expect(vi.mocked(withSession).mock.calls[0]![1]).toBe(true)
     expect(invalidateSchema).toHaveBeenCalledWith('tenant-1')
     expect(out).toMatchObject({ id: 'ct-1', name: 'firewall' })
@@ -288,7 +362,7 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
     reset([{ records: [row({ scope, name: 'server', label: 'Server' })] }])
     const err = await mutations.deleteCIType(null, { id: 'ct-base' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
     expect(err!.message).toContain('ships with the product')
-    expect(err!.message).toContain('sparirebbe dalla CMDB di ogni cliente')
+    expect(err!.message).toContain('it would disappear from the CMDB of every tenant')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
@@ -301,6 +375,8 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
     expect(cypher).toContain('DETACH DELETE t, f, rel, sr')
     expect(params).toEqual({ id: 'ct-1', tenantId: 'tenant-1' })
     expect(invalidateSchema).toHaveBeenCalledWith('tenant-1')
+    // SV-6: le relazioni del tipo spariscono con lui — prima si chiede alle mappe di servizio
+    expect(assertNoServiceMapFollows).toHaveBeenCalledWith(expect.anything(), 'tenant-1', { typeId: 'ct-1' }, 'deleteType')
   })
 
   // ── B0-1 (A-7): «Salva impostazioni» del tipo CI ──────────────────────────
@@ -365,7 +441,7 @@ describe('mutation sui tipi — scrivono SOLO tipi del tenant', () => {
     // scrittura ora c'è anche la guardia sul tipo di arrivo (A·3.7), quindi la
     // scrittura si cerca per contenuto e non per indice.
     expect(call(0).cypher).toContain('RETURN t.scope AS scope')
-    const { cypher, params } = callWith('CIRelationDefinition')
+    const { cypher, params } = callWith(name === 'addCIRelation' ? 'CREATE (r:CIRelationDefinition' : 'DETACH DELETE rel')
     expect(cypher).toContain("WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId")
     expect(cypher).not.toContain("'system'")
     expect(params['tenantId']).toBe('tenant-1')
@@ -391,8 +467,8 @@ describe('campi sui tipi spediti col prodotto (A-5)', () => {
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
     expect(err!.message).toContain('__base__')
     expect(err!.message).toContain('ships with the product')
-    expect(err!.message).toMatch(/romperebbe la pagina di dettaglio di tutti i CI/)
-    expect(err!.message).toMatch(/Crea un tuo tipo CI/)
+    expect(err!.message).toMatch(/it would break the detail page of every CI/)
+    expect(err!.message).toMatch(/Create your own CI type/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
@@ -410,7 +486,7 @@ describe('campi sui tipi spediti col prodotto (A-5)', () => {
       .then(() => null, (e: unknown) => e as GraphQLError)
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
     expect(err!.message).toContain('server')
-    expect(err!.message).toContain('togliere un campo da qui lo toglierebbe a ogni cliente')
+    expect(err!.message).toContain('removing a field here would remove it for every tenant')
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
     expect(invalidateSchema).not.toHaveBeenCalled()
   })
@@ -419,7 +495,7 @@ describe('campi sui tipi spediti col prodotto (A-5)', () => {
     reset()
     await mutations.removeCIField(null, { typeId: 'ct-1', fieldId: 'f-1' }, admin)
     expect(call(0).cypher).toContain('RETURN t.scope AS scope')
-    const { cypher, params } = call(1)
+    const { cypher, params } = callWith('DETACH DELETE f')
     expect(cypher).toContain("WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId")
     expect(cypher).toContain("AND f.scope = 'tenant' AND f.tenant_id = $tenantId")
     expect(cypher).toContain('DETACH DELETE f')
@@ -610,9 +686,9 @@ describe('le mutation sui tipi non dicono più «fatto» a zero righe (A-6)', ()
   const shippedType = (name = 'server') => ({ records: [row({ scope: 'base', name, label: name })] })
 
   it.each([
-    ['updateCIType',     { id: 'ct-1', input: { label: 'X' } },                          'sola lettura'],
-    ['addCIRelation',    { typeId: 'ct-1', input: { name: 'n', label: 'l', relationshipType: 'DEPENDS_ON', targetType: 'server', cardinality: 'many', direction: 'outgoing' } }, 'in sola lettura'],
-    ['removeCIRelation', { typeId: 'ct-1', relationId: 'r-1' },                          'in sola lettura'],
+    ['updateCIType',     { id: 'ct-1', input: { label: 'X' } },                          'read-only'],
+    ['addCIRelation',    { typeId: 'ct-1', input: { name: 'n', label: 'l', relationshipType: 'DEPENDS_ON', targetType: 'server', cardinality: 'many', direction: 'outgoing' } }, 'are read-only'],
+    ['removeCIRelation', { typeId: 'ct-1', relationId: 'r-1' },                          'are read-only'],
   ] as const)('%s su un tipo spedito → errore prima di scrivere', async (name, args) => {
     reset([shippedType()])
     const fn = mutations[name] as (p: unknown, a: unknown, c: GraphQLContext) => Promise<unknown>
@@ -655,7 +731,7 @@ describe('le mutation sui tipi non dicono più «fatto» a zero righe (A-6)', ()
       { records: [] },   // nessun summary
     ])
     await expect(mutations.updateCIType(null, { id: 'ct-1', input: { label: 'X' } }, admin))
-      .rejects.toThrow(/non ha restituito i contatori/)
+      .rejects.toThrow(/returned no write counters/)
   })
 })
 
@@ -680,57 +756,67 @@ describe('scope e tenantId sono esposti (A-6)', () => {
   })
 })
 
-// ── Ondata 6 · A-8 / D-10: un tipo in uso non si cancella né si disattiva ────
-// Prima `deleteCIType` faceva `DETACH DELETE` senza contare niente e
-// `active = false` aveva lo stesso effetto sulle letture: i CI restavano nel
-// grafo, con le loro relazioni, e non comparivano più da nessuna parte.
+// ── Cancellare un tipo: la regola del proprietario (15 set 2026) ─────────────
+// Prima (A-8 / D-10) bloccavano i CI e ogni riferimento per nome, domande di
+// assessment comprese — che `createCIType` collega da sé: un tipo appena nato
+// non si cancellava. Ora blocca SOLO un ticket che cita un CI del tipo; il
+// resto va via con lui.
 
-describe('il tipo in uso non si cancella (A-8 / D-10)', () => {
+describe('cancellare o disattivare un tipo CI (regola del 15 set 2026)', () => {
   const tenantType = () => ({ records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] })
 
-  it('deleteCIType con CI di quel tipo → si ferma col NUMERO, e non scrive niente', async () => {
+  it('un tipo appena creato (solo i collegamenti automatici alle domande core) si cancella', async () => {
+    reset([tenantType(), res()])
+    DELETION.impact = { assessmentQuestionLinks: 2 }
+    await expect(mutations.deleteCIType(null, { id: 'ct-1' }, admin)).resolves.toBe(true)
+    expect(deleteCITypeDependents).toHaveBeenCalledWith(expect.anything(), 'tenant-1', { id: 'ct-1', name: 'firewall', label: 'Firewall', neo4jLabel: 'Firewall' })
+    expect(audit).toHaveBeenCalledWith(admin, 'ci_type.deleted', 'CITypeDefinition', 'ct-1', expect.objectContaining({ assessmentQuestionLinks: 2 }))
+  })
+
+  it('CI del tipo in un ticket (anche chiuso) → si ferma coi numeri, niente scritto né invalidato', async () => {
     reset([tenantType()])
-    usage({ cis: 12 })
+    DELETION.impact = { cis: 12, ticketCIs: 3, tickets: 5 }
     const err = await mutations.deleteCIType(null, { id: 'ct-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
     expect(err!.extensions['code']).toBe('BAD_USER_INPUT')
-    expect(err!.message).toContain('12 CIs of type Firewall')
-    expect(err!.message).toContain('was not deleted')
-    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+    expect(err!.extensions['i18n']).toEqual({ key: 'errors.ciType.inTicketsDelete', params: { label: 'Firewall', name: 'firewall', cis: 3, tickets: 5 } })
     expect(invalidateSchema).not.toHaveBeenCalled()
+    expect(notifyCIGraphChanged).not.toHaveBeenCalled()
   })
 
-  it('il messaggio elenca anche chi cita il tipo per nome (regole, gruppi, widget, report)', async () => {
-    reset([tenantType()])
-    usage({ cis: 3, itil_relation_rules: 2, dynamic_ci_groups: 1, report_nodes: 4 })
-    const err = await mutations.deleteCIType(null, { id: 'ct-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('2 regole di relazione ITIL')
-    expect(err!.message).toContain('1 gruppi dinamici')
-    expect(err!.message).toContain('4 nodi dei template di report')
-  })
-
-  it('nessun CI ma riferimenti appesi → si ferma comunque, dicendo quali', async () => {
-    reset([tenantType()])
-    usage({ custom_widgets: 1, assessment_questions: 5 })
-    const err = await mutations.deleteCIType(null, { id: 'ct-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('no CI of this type')
-    expect(err!.message).toContain('1 widget della dashboard')
-    expect(err!.message).toContain('5 domande di assessment')
-    expect(mockSession.executeWrite).not.toHaveBeenCalled()
-  })
-
-  it('disattivare è come cancellare, per chi legge: `active: false` con CI → rifiutato', async () => {
-    reset([tenantType()])
-    usage({ cis: 7 })
-    const err = await mutations.updateCIType(null, { id: 'ct-1', input: { active: false } }, admin)
-      .then(() => null, (e: unknown) => e as GraphQLError)
-    expect(err!.message).toContain('was not deactivated')
-    expect(err!.message).toContain('7 CIs of type Firewall')
-    expect(mockSession.executeWrite).not.toHaveBeenCalled()
-  })
-
-  it('riattivare (o cambiare etichetta) non conta nessun CI: la guardia è solo sulla disattivazione', async () => {
+  it('CI senza ticket e riferimenti → vanno via col tipo; dopo: schema, trigger e regole invalidati, mappe risincronizzate', async () => {
     reset([tenantType(), res()])
-    usage({ cis: 7 })
+    DELETION.impact = { cis: 2, ticketCIExclusions: 1, businessRules: 1 }
+    DELETION.deletedIds = ['ci-1', 'ci-2']
+    await expect(mutations.deleteCIType(null, { id: 'ct-1' }, admin)).resolves.toBe(true)
+    const del = callWith('DETACH DELETE t, f, rel, sr')
+    expect(del.cypher).toContain("WHERE t.scope = 'tenant' AND t.tenant_id = $tenantId")
+    // CI, riferimenti e tipo nella STESSA transazione
+    expect(mockSession.executeWrite).toHaveBeenCalledTimes(1)
+    expect(invalidateSchema).toHaveBeenCalledWith('tenant-1')
+    expect(invalidateTriggerCache).toHaveBeenCalledWith('tenant-1')
+    expect(notifyCIGraphChanged).toHaveBeenCalledWith('tenant-1', ['ci-1', 'ci-2'], 'ci_type.deleted')
+  })
+
+  it('disattivare: bloccano i ticket e i CI (sparirebbero dalle letture); i soli riferimenti per nome no', async () => {
+    reset([tenantType()])
+    DELETION.impact = { cis: 7, ticketCIs: 1, tickets: 1 }
+    let err = await mutations.updateCIType(null, { id: 'ct-1', input: { active: false } }, admin).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.extensions['i18n']).toMatchObject({ key: 'errors.ciType.inTicketsDeactivate' })
+
+    reset([tenantType()])
+    DELETION.impact = { cis: 7 }
+    err = await mutations.updateCIType(null, { id: 'ct-1', input: { active: false } }, admin).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.extensions['i18n']).toMatchObject({ key: 'errors.ciType.hasCIsDeactivate', params: { count: 7 } })
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+
+    reset([tenantType(), res()])
+    DELETION.impact = { customWidgets: 1, assessmentQuestionLinks: 5 }
+    await expect(mutations.updateCIType(null, { id: 'ct-1', input: { active: false } }, admin)).resolves.toBeTruthy()
+  })
+
+  it('riattivare (o cambiare etichetta) non conta nulla: la guardia è solo sulla disattivazione', async () => {
+    reset([tenantType(), res()])
+    DELETION.impact = { cis: 7, ticketCIs: 7, tickets: 2 }
     await expect(mutations.updateCIType(null, { id: 'ct-1', input: { active: true, label: 'FW' } }, admin)).resolves.toBeTruthy()
     expect(mockSession.executeWrite).toHaveBeenCalled()
   })
@@ -804,7 +890,7 @@ describe('addCIRelation valida il tipo di relazione (C-3)', () => {
 
   it.each(['bilancia', 'BILANCIA UNO', 'BILANCIA-1', '', 'Bilancia', 42, null])('%s → rifiutato prima di scrivere', async (bad) => {
     reset([{ records: [row({ scope: 'tenant', name: 'load_balancer', label: 'Bilanciatore' })] }])
-    await expect(mutations.addCIRelation(null, relInput(bad), admin)).rejects.toThrow(/non è un tipo di relazione valido/)
+    await expect(mutations.addCIRelation(null, relInput(bad), admin)).rejects.toThrow(/is not a valid relationship type/)
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 })
@@ -887,3 +973,80 @@ describe('il tetto al numero di tipi CI (A·#6)', () => {
     expect(txRun.mock.calls.map((c) => c[0] as string).join('\n')).not.toContain('MERGE (t:CITypeDefinition')
   })
 })
+
+// ── Revisione del 15 set 2026 · CM-1 / CM-4 / CM-9 ──────────────────────────
+describe('le relazioni del cliente si possono creare fra CI (CM-1)', () => {
+  const input = (targetType: unknown) => ({ typeId: 'ct-1', input: { name: 'protegge', label: 'Protegge', relationshipType: 'PROTECTS', targetType, cardinality: 'many', direction: 'outgoing' } })
+
+  it.each([
+    ['il nome del tipo (quello che il disegnatore manda)', 'server', 'Server'],
+    ['l\'etichetta (come le relazioni spedite)',             'Server', 'Server'],
+    ['«Qualsiasi», il predefinito del disegnatore',          'any',    'any'],
+  ])('%s → si salva nella forma che legge chi crea gli archi', async (_n, given, stored) => {
+    reset()
+    await mutations.addCIRelation(null, input(given), admin)
+    expect(callWith('CREATE (r:CIRelationDefinition').params['targetType']).toBe(stored)
+  })
+
+  it('un tipo che non esiste resta un errore che elenca anche «any»', async () => {
+    reset()
+    await expect(mutations.addCIRelation(null, input('bilanciatore'), admin)).rejects.toThrow(/Available: any, application, firewall, server/)
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+})
+
+describe('togliere una relazione o un campo non lascia dati invisibili (CM-4)', () => {
+  it('removeCIRelation con archi che solo lei dichiara → rifiutato col conteggio, senza scrivere', async () => {
+    reset([{ records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] }])
+    EDGES_ONLY_THIS.value = 3
+    const err = await mutations.removeCIRelation(null, { typeId: 'ct-1', relationId: 'r-1' }, admin).then(() => null, (e: unknown) => e as GraphQLError)
+    expect(err!.extensions['i18n']).toMatchObject({ key: 'errors.ciType.relationInUse', params: { name: 'protegge', relationshipType: 'PROTECTS', count: 3 } })
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+    const count = callWith('startNode(e)')
+    // un arco dichiarato ANCHE da un'altra definizione non conta
+    expect(count.cypher).toContain('o.id <> $relationId')
+    expect(count.cypher).toContain("o.direction = 'incoming'")
+  })
+
+  it('SV-6: una relazione (o un tipo) che una mappa di servizio segue non si toglie — la domanda si fa prima di scrivere', async () => {
+    const { ValidationError } = await import('../../../lib/errors.js')
+    SERVICE_MAP_FOLLOWS.error = new ValidationError('used by service maps', { key: 'errors.ciType.relationUsedByServiceMaps' })
+    try {
+      reset([{ records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] }])
+      await expect(mutations.removeCIRelation(null, { typeId: 'ct-1', relationId: 'r-1' }, admin)).rejects.toThrow('used by service maps')
+      expect(assertNoServiceMapFollows).toHaveBeenCalledWith(expect.anything(), 'tenant-1', { relationId: 'r-1' })
+      expect(mockSession.executeWrite).not.toHaveBeenCalled()
+    } finally { SERVICE_MAP_FOLLOWS.error = null }
+  })
+
+  it('removeCIField cancella anche i valori dai CI del tipo, nella stessa transazione', async () => {
+    reset()
+    VALUES_CLEARED.value = 12
+    await mutations.removeCIField(null, { typeId: 'ct-1', fieldId: 'f-1' }, admin)
+    const clear = callWith('REMOVE n.')
+    expect(clear.cypher).toContain('MATCH (n:Firewall {tenant_id: $tenantId})')
+    expect(clear.cypher).toContain('REMOVE n.stato')
+    expect(mockSession.executeWrite).toHaveBeenCalledTimes(1)
+    // Secondo giro UI · V-15: i valori di prima nell'Audit Log, come per i campi ITIL.
+    expect(audit).toHaveBeenCalledWith(admin, 'ci_type.field_removed', 'CITypeDefinition', 'ct-1', { field: 'stato', valuesRemoved: 12, previousValues: { 'FW-01': 'up' } })
+  })
+
+  it('V-15: ciFieldValueCount conta i CI con un valore nel campo, senza scrivere', async () => {
+    reset()
+    VALUES_CLEARED.value = 7
+    const { ciFieldValueCount } = await import('../ciTypeMetamodel.js')
+    expect(await ciFieldValueCount(null, { typeId: 'ct-1', fieldId: 'f-1' }, admin)).toBe(7)
+    expect(callWith('RETURN size(rows) AS count').cypher).toContain('MATCH (n:Firewall {tenant_id: $tenantId})')
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+})
+
+describe('un vocabolario si aggancia solo a un campo enum (CM-9)', () => {
+  it('updateCIField con enumTypeId su un campo string → rifiutato prima di scrivere', async () => {
+    reset([{ records: [row({ scope: 'tenant', name: 'firewall', label: 'Firewall' })] }, { records: [row({ name: 'nota', fieldType: 'string', isSystem: false })] }])
+    await expect(mutations.updateCIField(null, { typeId: 'ct-1', fieldId: 'f-1', input: { enumTypeId: 'e-altrui' } }, admin))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.ciType.dictionaryOnNonEnum' } } })
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+})
+

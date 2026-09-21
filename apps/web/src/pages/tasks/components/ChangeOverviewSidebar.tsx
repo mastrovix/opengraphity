@@ -6,8 +6,8 @@
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { PhaseBadge, RiskBadge } from '@/components/ui/badges'
-import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT, ROLE_LABEL } from '@/lib/taskStatus'
+import { PhaseBadge, RiskBadge, StatusLabel } from '@/components/ui/badges'
+import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT, ASSESSMENT_ROLE } from '@/lib/taskStatus'
 import type { AffectedCI, AssessmentTaskData, ChangeData, DeployPlanTaskData } from '@/types/change'
 import { colors } from '@/lib/tokens'
 
@@ -125,8 +125,8 @@ export function ChangeOverviewSidebar({
               </p>
             )}
             <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12 }}>
-              {change.requester && <span>Requester: <strong style={{ color: 'var(--color-slate)' }}>{change.requester.name}</strong></span>}
-              {change.changeOwner && <span style={{ marginLeft: 8 }}>Owner: <strong style={{ color: 'var(--color-slate)' }}>{change.changeOwner.name}</strong></span>}
+              {change.requester && <span>{t('changeTasks.requester')}: <strong style={{ color: 'var(--color-slate)' }}>{change.requester.name}</strong></span>}
+              {change.changeOwner && <span style={{ marginLeft: 8 }}>{t('changeTasks.changeOwner')}: <strong style={{ color: 'var(--color-slate)' }}>{change.changeOwner.name}</strong></span>}
             </div>
 
             <div style={{ fontSize: 'var(--font-size-label)', marginBottom: 12 }}>
@@ -162,18 +162,18 @@ export function ChangeOverviewSidebar({
                 {[ciAffected.assessmentOwner, ciAffected.assessmentSupport].map((at, i) => (
                   <div key={i} style={{ marginBottom: 6 }}>
                     <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 2 }}>
-                      {ROLE_LABEL[at.responderRole] ?? at.responderRole} · Score: {at.score ?? '—'}
+                      {at.responderRole === ASSESSMENT_ROLE.OWNER ? t('changeTasks.functional') : at.responderRole === ASSESSMENT_ROLE.SUPPORT ? t('changeTasks.technical') : at.responderRole} · {t('changeTasks.score')}: {at.score ?? '—'}
                     </div>
                   </div>
                 ))}
                 <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
-                  Risk CI: {ciAffected.riskScore != null && <RiskBadge compact score={ciAffected.riskScore} />}
+                  {t('changeTasks.riskCI')}: {ciAffected.riskScore != null && <RiskBadge compact score={ciAffected.riskScore} />}
                 </div>
               </div>
             )}
             {ciAffected && !(ciAffected.assessmentOwner?.status === TASK_STATUS.COMPLETED && ciAffected.assessmentSupport?.status === TASK_STATUS.COMPLETED) && (
               <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12 }}>
-                Functional: {ciAffected.assessmentOwner?.status ?? '—'} · Technical: {ciAffected.assessmentSupport?.status ?? '—'}
+                {t('changeTasks.functional')}: <StatusLabel status={ciAffected.assessmentOwner?.status} /> · {t('changeTasks.technical')}: <StatusLabel status={ciAffected.assessmentSupport?.status} />
               </div>
             )}
 

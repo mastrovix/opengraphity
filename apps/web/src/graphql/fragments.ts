@@ -80,6 +80,7 @@ export const EVENT_HISTORY_FIELDS = gql`
 export const SERVICE_MAP_ROW_FIELDS = gql`
   fragment ServiceMapRowFields on ServiceMap {
     id name status health healthIfActive healthSince impactScore stale staleReason nodeCount evaluatedAt
+    unhealthyCount
     service { id name criticality ownerGroup { id name } }
     explanation { ci { id name type } health weight critical path { id name } }
   }
@@ -108,6 +109,7 @@ export const SERVICE_MAP_DETAIL_FIELDS = gql`
     history(limit: 10) { ...ServiceHistoryFields }
     historyCount
     openIncident { id number title status workflowInstance { id currentStep status } }
+    incidentProblem { key params { name value } message since }
   }
   ${SERVICE_MAP_ROW_FIELDS}
   ${SERVICE_HISTORY_FIELDS}
@@ -139,5 +141,12 @@ export const DOMAIN_MATRIX_FIELDS = gql`
   fragment DomainMatrixFields on DomainMatrix {
     kind inputs output inputValues outputValues missing stale invalid isDefault updatedAt
     cells { key inputs value }
+  }
+`
+
+/** I campi personalizzati di un ticket (verifica «Cosa resta cablato», ondata 4). */
+export const CUSTOM_FIELD_VALUE_FIELDS = gql`
+  fragment CustomFieldValueFields on CustomFieldValue {
+    name label fieldType value enumValues enumTypeName required visibleToEndUser visible editable
   }
 `

@@ -66,7 +66,7 @@ describe('CITypeResolver', () => {
     ]))
     const out = r.resolve('elb')
     expect(out.ok).toBe(false)
-    expect(out.ok === false && out.reason).toMatch(/l'alias "elb" punta al tipo "bilanciatoer"/)
+    expect(out.ok === false && out.reason).toMatch(/the alias "elb" points to type "bilanciatoer"/)
   })
 
   it('un tipo sconosciuto dice cosa fare e quali tipi ci sono (mai un\'etichetta inventata)', async () => {
@@ -81,7 +81,7 @@ describe('CITypeResolver', () => {
   it('ci_type vuoto è un difetto del connettore, e si dice', async () => {
     const r = await CITypeResolver.forSource('c-two', source())
     expect(r.resolve('   ')).toMatchObject({ ok: false })
-    expect((r.resolve('') as { reason: string }).reason).toMatch(/vuoto/)
+    expect((r.resolve('') as { reason: string }).reason).toMatch(/empty/)
   })
 
   it('i tipi di due clienti non si mescolano', async () => {

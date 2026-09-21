@@ -1,4 +1,9 @@
 import { useId, useState } from 'react'
+import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
+import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
+import { FormAnswersCard, type FormAnswer } from '@/components/ticket/FormAnswersCard'
+import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
+import { useMe } from '@/hooks/useMe'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -10,63 +15,131 @@ import { DetailField } from '@/components/ui/DetailField'
 import { Pill } from '@/components/ui/Pill'
 import { Skeleton } from '@/components/ui/skeleton'
 import { WatcherBar } from '@/components/WatcherBar'
+import { EntityCommentsSection } from '@/components/ticket/EntityCommentsSection'
 import { timeAgo, formatDate } from '@/lib/datetime'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
+import { TicketTasksSection } from '@/components/ticket/TicketTasksSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
 import { Input, Textarea, Select, FieldLabel } from '@/components/ui/FormControls'
 import { Pencil } from 'lucide-react'
 import { keycloak } from '@/lib/keycloak'
-import { colors, palette, lookupOrError } from '@/lib/tokens'
-import { GET_SERVICE_REQUEST } from '@/graphql/queries'
-import { EXECUTE_WORKFLOW_TRANSITION, UPDATE_SERVICE_REQUEST } from '@/graphql/mutations'
+import { colors } from '@/lib/tokens'
+import { GET_SERVICE_REQUEST, GET_ASSIGNABLE_USERS, GET_ALL_CIS } from '@/graphql/queries'
+import { EXECUTE_WORKFLOW_TRANSITION, UPDATE_SERVICE_REQUEST, ASSIGN_SERVICE_REQUEST_TO_USER, ADD_CI_TO_SERVICE_REQUEST, REMOVE_CI_FROM_SERVICE_REQUEST } from '@/graphql/mutations'
+import { AffectedCIList, type AffectedCIRef } from '@/components/ticket/AffectedCIList'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
+import { SlaBadge, type SlaStatusInfo } from '@/components/SlaBadge'
+import { useSlaSettling } from '@/hooks/useSlaSettling'
+import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useEnumValues } from '@/hooks/useEnumValues'
+import { styleForCategory } from '@/lib/workflowStepStyle'
+import { transitionErrorText, type TransitionFailure } from '@/lib/transitionError'
+import { useValueStyle } from '@/hooks/useValueStyle'
+import { withLocalizedLabel } from '@/lib/localizedLabel'
+import { showError } from '@/lib/showError'
 
 interface WorkflowTransition { toStep: string; label: string; requiresInput: boolean; inputField: string | null }
 interface ServiceRequest {
-  id: string; title: string; description: string | null
+  customFields: CustomFieldValueView[]
+  id: string; number: string; title: string; description: string | null
   status: string; priority: string; dueDate: string | null
   createdAt: string; updatedAt: string; completedAt: string | null
   requestedBy: { id: string; name: string; email: string } | null
   assignee: { id: string; name: string; email: string } | null
   workflowInstance: { id: string; currentStep: string; status: string } | null
   availableTransitions: WorkflowTransition[]
+  slaStatus: SlaStatusInfo | null
+  /** I CI che la richiesta riguarda (revisione del 15 set 2026 · CM-8). */
+  affectedCIs: AffectedCIRef[]
+  /** La revisione del modulo con cui e stata compilata (moduli del catalogo, ondata 1). */
+  formRevision: number | null
+  /** Le risposte al modulo, nell'ordine di QUELLA revisione. */
+  formAnswers: FormAnswer[]
 }
 
-const PRIORITY_COLOR: Record<string, string> = { critical: 'var(--color-danger)', high: palette.orange.base, medium: colors.warning, low: colors.success }
-const STATUS_COLOR: Record<string, { bg: string; fg: string }> = {
-  open:        { bg: palette.info.tint, fg: palette.info.text },
-  in_progress: { bg: palette.warning.tint, fg: palette.warning.strong },
-  completed:   { bg: palette.success.tint, fg: palette.success.strong },
-  cancelled:   { bg: 'var(--color-border-light)', fg: colors.slate },
-}
+/**
+ * Chi può ricevere una richiesta: le persone il cui ruolo ha `ticket.assignable`,
+ * lo stesso permesso che l'API controlla (ondata 7); qui serve solo a non
+ * offrire nella tendina chi verrebbe rifiutato.
+ */
+const ASSIGNABLE_PERMISSION = 'ticket.assignable'
+
 
 
 export function ServiceRequestDetailPage() {
   const { t } = useTranslation()
+  // F9: il colore della priorità dal Dizionario del cliente.
+  const styleOf = useValueStyle()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const ids = { title: useId(), description: useId(), priority: useId(), dueDate: useId(), notes: useId() }
-  const { data, loading, error, refetch } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id, fetchPolicy: 'cache-and-network' })
+  const ids = { title: useId(), description: useId(), priority: useId(), dueDate: useId(), notes: useId(), assignee: useId() }
+  const { can } = useMe()
+  // Il permesso, non il NOME del ruolo (revisione totale · F-2): dall'ondata
+  // «Nulla cablato» i ruoli sono del cliente, e l'API concede
+  // `setTicketCustomFields` a `ticket.work`. Col confronto sul nome un ruolo
+  // «tecnico L2» con quel permesso vedeva i campi in sola lettura, e un ruolo
+  // chiamato «operator» SENZA il permesso vedeva il form e prendeva un 403.
+  const canEditCustomFields = can('ticket.work')
+  const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id, fetchPolicy: 'cache-and-network' })
   const sr = data?.serviceRequest
+  const srTransitions = (sr?.availableTransitions ?? []).map(withLocalizedLabel)
+  useSlaSettling(sr?.slaStatus, !!sr?.completedAt, { startPolling, stopPolling })
+  // Stato e priorità come li chiama il cliente: etichetta e colore del passo
+  // vengono dal workflow (categoria), la priorità dal vocabolario. Prima la
+  // pagina mostrava «submitted», «approval», «high» e cercava il colore in una
+  // tabella di nomi che nessun passo del workflow aveva.
+  const { labelFor: stepLabel, categoryOf: stepCategory } = useWorkflowSteps('service_request')
+  const { labelOf } = useDomainVocabularies()
+  const { values: priorityValues } = useEnumValues('service_request', 'priority')
 
   const [transitionModal, setTransitionModal] = useState<{ toStep: string; label: string; inputField: string | null } | null>(null)
   const [transitionNotes, setTransitionNotes] = useState('')
-  const [executeTransition, { loading: transitioning }] = useMutation<{ executeWorkflowTransition?: { success: boolean; error: string | null } }>(EXECUTE_WORKFLOW_TRANSITION, {
+  const [executeTransition, { loading: transitioning }] = useMutation<{ executeWorkflowTransition?: TransitionFailure & { success: boolean } }>(EXECUTE_WORKFLOW_TRANSITION, {
     onCompleted: async (res) => {
       const r = res.executeWorkflowTransition
-      if (r && !r.success) { toast.error(r.error ?? t('toast.request.transitionFailed')); return }
+      if (r && !r.success) { toast.error(transitionErrorText(r, t('toast.request.transitionFailed'))); return }
       setTransitionModal(null); setTransitionNotes('')
       await refetch()
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
+  })
+
+  // CM-8 (revisione del 15 set 2026): i CI della richiesta. Prima una richiesta
+  // non poteva dire di quale CI parlava; i tipi esclusi per le richieste non si
+  // propongono (e l'API li rifiuta comunque).
+  const [ciSearch, setCiSearch] = useState('')
+  const { excluded: excludedCITypes } = useTicketCIExclusions('service_request')
+  const { data: ciSearchData } = useQuery<{ allCIs: { items: AffectedCIRef[] } }>(GET_ALL_CIS, {
+    variables: { search: ciSearch, limit: 20, excludeCiTypes: excludedCITypes },
+    skip: ciSearch.length < 2 || excludedCITypes === undefined,
+  })
+  const [addCI] = useMutation(ADD_CI_TO_SERVICE_REQUEST, {
+    onCompleted: () => { toast.success(t('toast.request.ciAdded')); setCiSearch(''); void refetch() },
+    onError: (e) => showError(e),
+  })
+  const [removeCI] = useMutation(REMOVE_CI_FROM_SERVICE_REQUEST, {
+    onCompleted: () => { toast.success(t('toast.request.ciRemoved')); void refetch() },
+    onError: (e) => showError(e),
+  })
+
+  // Giro del 14 set 2026 (#41): la richiesta non si poteva assegnare.
+  const { data: usersData } = useQuery<{ users: Array<{ id: string; name: string; permissions: string[]; active: boolean }> }>(GET_ASSIGNABLE_USERS)
+  // Le persone disattivate non ricevono lavoro (revisione totale · M-6).
+  const assignable = (usersData?.users ?? []).filter((u) => u.active && u.permissions.includes(ASSIGNABLE_PERMISSION))
+  const [assigneeChoice, setAssigneeChoice] = useState<string | null>(null)
+  const [assignRequest, { loading: assigning }] = useMutation(ASSIGN_SERVICE_REQUEST_TO_USER, {
+    onCompleted: async () => { setAssigneeChoice(null); await refetch(); toast.success(t('toast.request.assigned')) },
+    onError: (e) => showError(e),
   })
 
   const [editOpen, setEditOpen] = useState(false)
   const [editForm, setEditForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '' })
   const [updateRequest, { loading: savingEdit }] = useMutation(UPDATE_SERVICE_REQUEST, {
     onCompleted: async () => { setEditOpen(false); await refetch(); toast.success(t('toast.request.updated')) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const openEdit = () => {
     if (!sr) return
@@ -87,9 +160,21 @@ export function ServiceRequestDetailPage() {
     } } })
   }
 
-  const runTransition = (instanceId: string, toStep: string, label: string, notes?: string) => {
+  const runTransition = (instanceId: string, toStep: string, notes?: string) => {
+    /**
+     * Il toast di successo arriva SOLO se la transizione è avvenuta
+     * (revisione totale · F-3): era agganciato alla promise della mutation,
+     * che si risolve anche quando il motore rifiuta (`success: false`) —
+     * quindi una transizione bloccata da una guardia mostrava insieme
+     * l'errore e «spostato in …». L'esito lo dice `onCompleted`, che è il
+     * solo che lo conosce.
+     */
     void executeTransition({ variables: { instanceId, toStep, notes: notes?.trim() || null } })
-      .then(() => toast.success(label))
+      .then((res) => {
+        if (res.data?.executeWorkflowTransition?.success === false) return
+        // Giro del 14 set 2026 (#42): il toast dice l'esito, non il pulsante.
+        toast.success(t('toast.transition.movedTo', { step: stepLabel(toStep) }))
+      })
       .catch(() => { /* onError handles toast */ })
   }
 
@@ -102,7 +187,7 @@ export function ServiceRequestDetailPage() {
     </PageContainer>
   )
 
-  const stColor = lookupOrError(STATUS_COLOR, sr.status, 'STATUS_COLOR', { bg: 'var(--color-border-light)', fg: colors.slate })
+  const stColor = styleForCategory(stepCategory(sr.status))
 
   return (
     <PageContainer>
@@ -118,10 +203,12 @@ export function ServiceRequestDetailPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
         <div>
+          {/* Giro UI del 15 set 2026 · U-12: il numero non compariva da nessuna parte (incident, problem e change lo mostrano). */}
+          <div data-testid="request-number" style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 2 }}>{sr.number}</div>
           <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 700, color: 'var(--color-slate-dark)', margin: '0 0 6px' }}>{sr.title}</h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Pill bg={stColor.bg} color={stColor.fg}>{sr.status}</Pill>
-            <Pill bg="transparent" color={lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', colors.slateLight)} style={{ border: `1.5px solid ${lookupOrError(PRIORITY_COLOR, sr.priority, 'PRIORITY_COLOR', colors.slateLight)}` }}>{sr.priority}</Pill>
+            <Pill bg={stColor.bg} color={stColor.color}>{stepLabel(sr.status)}</Pill>
+            <Pill bg="transparent" color={styleOf('priority', sr.priority).color} style={{ border: `1.5px solid ${styleOf('priority', sr.priority).accent}` }}>{labelOf('priority', sr.priority) ?? sr.priority}</Pill>
             <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{timeAgo(sr.createdAt)}</span>
           </div>
         </div>
@@ -141,8 +228,32 @@ export function ServiceRequestDetailPage() {
             </SectionCard>
           </div>
 
+          {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
+          <div style={{ marginBottom: 16 }}>
+            <TicketOLACard entityType="service_request" entityId={sr.id} />
+            <CustomFieldsCard entityType="service_request" ticketId={sr.id} fields={sr.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
+            {/* Le risposte al modulo della voce di catalogo (moduli del catalogo, ondata 1) */}
+            <FormAnswersCard answers={sr.formAnswers ?? []} revision={sr.formRevision ?? null} requestId={sr.id} />
+          </div>
+
+          {/* CI della richiesta (CM-8) */}
+          <div style={{ marginBottom: 16 }}>
+            <AffectedCIList
+              affectedCIs={sr.affectedCIs ?? []}
+              ciResults={ciSearchData?.allCIs?.items ?? []}
+              excludedTypes={excludedCITypes ?? []}
+              onSearchChange={setCiSearch}
+              onAddCI={(ciId) => void addCI({ variables: { requestId: sr.id, ciId } })}
+              onRemoveCI={(ciId) => void removeCI({ variables: { requestId: sr.id, ciId } })}
+            />
+          </div>
+
           {/* Allegati */}
+          <TicketTasksSection entityId={sr.id} />
           <AttachmentsSection entityType="service_request" entityId={sr.id} />
+
+          {/* F13: le richieste non avevano commenti. */}
+          <EntityCommentsSection entityType="service_request" entityId={sr.id} />
 
           {/* Internal Chat */}
           <InternalChatPanel entityType="service_request" entityId={sr.id} currentUserId={keycloak.subject ?? ''} />
@@ -157,13 +268,13 @@ export function ServiceRequestDetailPage() {
                 <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
                   {t('pages.serviceRequestDetail.noWorkflow')}
                 </p>
-              ) : sr.availableTransitions.length === 0 ? (
+              ) : srTransitions.length === 0 ? (
                 <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
-                  {t('pages.serviceRequestDetail.noActionInStep', { step: sr.workflowInstance.currentStep })}
+                  {t('pages.serviceRequestDetail.noActionInStep', { step: stepLabel(sr.workflowInstance.currentStep) })}
                 </p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {sr.availableTransitions.map((tr) => (
+                  {srTransitions.map((tr) => (
                     <button
                       type="button"
                       key={tr.toStep}
@@ -173,7 +284,7 @@ export function ServiceRequestDetailPage() {
                           setTransitionNotes('')
                           setTransitionModal({ toStep: tr.toStep, label: tr.label, inputField: tr.inputField })
                         } else {
-                          runTransition(sr.workflowInstance!.id, tr.toStep, tr.label)
+                          runTransition(sr.workflowInstance!.id, tr.toStep)
                         }
                       }}
                       style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--color-brand)', background: 'var(--color-brand)', color: colors.white, cursor: transitioning ? 'default' : 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, opacity: transitioning ? 0.6 : 1, textAlign: 'left' }}
@@ -187,8 +298,32 @@ export function ServiceRequestDetailPage() {
           </div>
 
           <SectionCard collapsible={false} defaultOpen title={t('detail.sections.details')}>
+            <DetailField label={t('detail.ticketNumber')} value={<span style={{ fontWeight: 600 }}>{sr.number}</span>} />
+            <DetailField label="SLA" value={sr.slaStatus ? <SlaBadge sla={sr.slaStatus} /> : t('pages.serviceRequestDetail.noSla')} />
             <DetailField label={t('detail.requester')} value={sr.requestedBy?.name ?? null} />
-            <DetailField label={t('detail.assignee')} value={sr.assignee?.name ?? null} />
+            {sr.completedAt ? (
+              <DetailField label={t('detail.assignee')} value={sr.assignee?.name ?? null} />
+            ) : (() => {
+              const current = sr.assignee?.id ?? ''
+              const chosen = assigneeChoice ?? current
+              return (
+                <DetailField label={t('detail.assignee')} value={
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <Select id={ids.assignee} aria-label={t('detail.assignee')} value={chosen} onChange={(e) => setAssigneeChoice(e.target.value)}>
+                      <option value="">{t('detail.unassign')}</option>
+                      {assignable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </Select>
+                    <Button
+                      variant="secondary"
+                      disabled={assigning || chosen === current}
+                      onClick={() => void assignRequest({ variables: { id: sr.id, userId: chosen || null } })}
+                    >
+                      {assigning ? t('detail.assigning') : t('detail.assign')}
+                    </Button>
+                  </div>
+                } />
+              )
+            })()}
             <DetailField label={t('detail.dueDate')} value={sr.dueDate ? formatDate(sr.dueDate) : null} />
             <DetailField label={t('detail.createdAt')} value={formatDate(sr.createdAt)} />
             {sr.completedAt && <DetailField label={t('detail.completedAt')} value={formatDate(sr.completedAt)} />}
@@ -223,10 +358,7 @@ export function ServiceRequestDetailPage() {
           <div>
             <FieldLabel htmlFor={ids.priority}>{t('detail.priority')}</FieldLabel>
             <Select id={ids.priority} value={editForm.priority} onChange={(e) => setEditForm({ ...editForm, priority: e.target.value })}>
-              <option value="critical">critical</option>
-              <option value="high">high</option>
-              <option value="medium">medium</option>
-              <option value="low">low</option>
+              {priorityValues.map((v) => <option key={v} value={v}>{labelOf('priority', v) ?? v}</option>)}
             </Select>
           </div>
           <div>
@@ -249,7 +381,7 @@ export function ServiceRequestDetailPage() {
               <button
                 type="button"
                 disabled={transitioning || transitionNotes.trim().length === 0}
-                onClick={() => runTransition(sr.workflowInstance!.id, transitionModal.toStep, transitionModal.label, transitionNotes)}
+                onClick={() => runTransition(sr.workflowInstance!.id, transitionModal.toStep, transitionNotes)}
                 style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: (transitioning || transitionNotes.trim().length === 0) ? 0.6 : 1 }}
               >
                 {t('common.confirm')}

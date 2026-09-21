@@ -3,6 +3,7 @@ import {
   change,
   changeAffectedCIs,
   changeAuditTrail,
+  changeCalendar,
   changeImpactedCIs,
   taskById,
   assessmentQuestionCatalog,
@@ -11,6 +12,7 @@ import {
   myTasks,
   changeResolvesIncidents,
   changeResolvesProblems,
+  changeDeployConflicts,
 } from './queries.js'
 import {
   createChange,
@@ -57,6 +59,7 @@ export const changeResolvers = {
     change,
     changeAffectedCIs,
     changeAuditTrail,
+    changeCalendar,
     changeImpactedCIs,
     taskById,
     assessmentQuestionCatalog,
@@ -101,5 +104,6 @@ export const changeResolvers = {
     resolvesIncidents: changeResolvesIncidents,
     resolvesProblems:  changeResolvesProblems,
     approvals:         changeApprovals,
+    deployConflicts:   changeDeployConflicts,
   },
 }

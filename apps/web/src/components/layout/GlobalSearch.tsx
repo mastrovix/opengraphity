@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { gql } from '@apollo/client'
 import {
   Search, Loader2, Server, GitPullRequest, AlertCircle, SearchCheck,
-  ClipboardList, BookOpen,
+  ClipboardList, BookOpen, Inbox,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { apolloClient } from '@/lib/apollo'
@@ -19,6 +19,7 @@ const GLOBAL_SEARCH = gql`
       changes    { id code title }
       incidents  { id number title }
       problems   { id number title }
+      serviceRequests { id number title }
       tasks      { id code taskType status changeCode changeId ciName }
       kbArticles { id title slug }
     }
@@ -36,11 +37,12 @@ interface GlobalSearchResults {
   changes:    SearchChange[]
   incidents:  SearchTicket[]
   problems:   SearchTicket[]
+  serviceRequests: SearchTicket[]
   tasks:      SearchTask[]
   kbArticles: SearchArticle[]
 }
 
-const EMPTY: GlobalSearchResults = { cis: [], changes: [], incidents: [], problems: [], tasks: [], kbArticles: [] }
+const EMPTY: GlobalSearchResults = { cis: [], changes: [], incidents: [], problems: [], serviceRequests: [], tasks: [], kbArticles: [] }
 
 interface FlatItem {
   key:      string
@@ -63,11 +65,12 @@ const GROUP_ICONS: Record<keyof GlobalSearchResults, LucideIcon> = {
   changes:    GitPullRequest,
   incidents:  AlertCircle,
   problems:   SearchCheck,
+  serviceRequests: Inbox,
   tasks:      ClipboardList,
   kbArticles: BookOpen,
 }
 
-const GROUP_ORDER: (keyof GlobalSearchResults)[] = ['cis', 'changes', 'incidents', 'problems', 'tasks', 'kbArticles']
+const GROUP_ORDER: (keyof GlobalSearchResults)[] = ['cis', 'changes', 'incidents', 'problems', 'serviceRequests', 'tasks', 'kbArticles']
 
 function toFlatItems(type: keyof GlobalSearchResults, results: GlobalSearchResults): FlatItem[] {
   switch (type) {
@@ -84,6 +87,8 @@ function toFlatItems(type: keyof GlobalSearchResults, results: GlobalSearchResul
       return results.incidents.map((i) => ({ key: `inc-${i.id}`, route: `/incidents/${i.id}`, primary: i.number, title: i.title }))
     case 'problems':
       return results.problems.map((p) => ({ key: `prb-${p.id}`, route: `/problems/${p.id}`, primary: p.number, title: p.title }))
+    case 'serviceRequests':
+      return results.serviceRequests.map((r) => ({ key: `req-${r.id}`, route: `/requests/${r.id}`, primary: r.number, title: r.title }))
     case 'tasks':
       return results.tasks.map((t) => ({
         key:     `task-${t.id}`,
@@ -113,6 +118,15 @@ export function GlobalSearch() {
   const [searchError, setSearchError] = useState<string | null>(null)
   const [open, setOpen]               = useState(false)
   const [selectedIdx, setSelectedIdx] = useState(0)
+
+  // Giro del 14 set 2026 (#54): la tendina restava aperta dopo la
+  // navigazione. Qualunque cambio di pagina la chiude, non solo la scelta di un
+  // risultato (un link nel menu, il tasto indietro).
+  const location = useLocation()
+  useEffect(() => {
+    setOpen(false)
+    setQuery('')
+  }, [location.pathname])
 
   // Cmd+K / Ctrl+K → focus sul box
   useEffect(() => {

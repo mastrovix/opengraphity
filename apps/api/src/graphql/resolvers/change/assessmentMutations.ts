@@ -1,6 +1,8 @@
 /**
  * Mutations on AssessmentTask — response submission, completion, assignment.
  */
+import { assertAssignablePerson } from '../../../services/ticketAssignment.js'
+import { assignTeamCypher, TEAM_NOW_PARAM } from '../../../lib/ticketTeamHistory.js'
 import { GraphQLError } from 'graphql'
 import { NotFoundError } from '../../../lib/errors.js'
 import { ForbiddenError } from '../../../lib/errors.js'
@@ -12,6 +14,8 @@ import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
 import { mapAssessmentTask, mapDeployPlanTask } from './mappers.js'
 import { calculateTaskScore } from './scoring.js'
+import { changeEnvironmentWeight } from '../../../lib/changeEnvironmentWeight.js'
+import { environmentRiskScore } from '../../../lib/environmentRisk.js'
 import { evaluateAutoTransitions } from './autoTransitions.js'
 import {
   writeAudit,
@@ -26,6 +30,50 @@ import {
   type Session,
 } from './helpers.js'
 import { toNumber } from '@opengraphity/neo4j'
+
+// ── Togliere l'assegnazione (F-4) ─────────────────────────────────────────────
+
+interface UnassignOptions {
+  changeId:    string
+  ciId:        string
+  /** Azione dell'audit: la stessa dell'assegnazione, il dettaglio dice cosa è successo. */
+  action:      string
+  /** Prefisso del dettaglio in inglese (il ruolo per l'assessment, «Planning» per il piano). */
+  prefix:      string
+  /** Chiave i18n del dettaglio per la timeline. */
+  key:         string
+  extraParams: Record<string, string>
+  map:         (props: Props) => unknown
+}
+
+/**
+ * Stacca la persona dall'attività e lascia il team. Usata quando la tendina
+ * dell'assegnatario torna su «Non assegnato» (revisione totale · F-4): prima
+ * quell'opzione non faceva nulla.
+ */
+async function unassignTask(
+  session: Session,
+  label: 'AssessmentTask' | 'DeployPlanTask',
+  taskId: string,
+  ctx: GraphQLContext,
+  opts: UnassignOptions,
+) {
+  await session.executeWrite((tx) => tx.run(`
+    MATCH (t:${label} {id: $taskId, tenant_id: $tenantId})
+    OPTIONAL MATCH (t)-[old:ASSIGNED_TO]->(:User)
+    DELETE old
+  `, { taskId, tenantId: ctx.tenantId }))
+
+  const ciName = await getCIName(session, opts.ciId, ctx.tenantId)
+  await writeAudit(session, opts.changeId, ctx.tenantId, opts.action, ctx.userId,
+    `${opts.prefix} · ${ciName}: assignment removed`,
+    { key: opts.key, params: { ci: ciName, ...opts.extraParams } })
+
+  const updated = await runQueryOne<{ props: Props }>(session, `
+    MATCH (t:${label} {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
+  `, { taskId, tenantId: ctx.tenantId })
+  return updated ? opts.map(updated.props) : null
+}
 
 // ── submitAssessmentResponse ──────────────────────────────────────────────────
 
@@ -42,7 +90,7 @@ export async function submitAssessmentResponse(
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!task) throw new NotFoundError('AssessmentTask', args.taskId)
     if (task.props['status'] === TASK_STATUS.COMPLETED) {
-      throw new GraphQLError('Task già completata, impossibile modificare le risposte', { extensions: { code: 'CONFLICT' } })
+      throw new GraphQLError('Task already completed: the answers can no longer be changed', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.assessment.answersLocked' } } })
     }
     const role = task.props['responder_role'] === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
     await assertUserInCITeam(session, task.props['ci_id'] as string, ctx.tenantId, ctx, role)
@@ -74,7 +122,9 @@ export async function submitAssessmentResponse(
     const qText    = await getQuestionText(session, args.questionId, ctx.tenantId)
     const optLabel = await getAnswerLabel(session, args.optionId, ctx.tenantId)
     await writeAudit(session, task.changeId, ctx.tenantId, 'assessment_response_submitted', ctx.userId,
-      `${ROLE_LABEL[role]} · ${ciName}: "${qText}" → ${optLabel}`)
+      `${ROLE_LABEL[role]} · ${ciName}: "${qText}" → ${optLabel}`,
+      // Secondo giro UI del 15 set 2026: la voce si legge nella lingua di chi guarda.
+      { key: 'responseSubmitted', params: { role, ci: ciName, question: qText, answer: optLabel } })
 
     const updated = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
@@ -94,7 +144,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
       changeId: string
       ciId: string
       ciLabel: string
-      ciTypeId: string | null
+      ciTypes: { id: string; scope: string; label: string }[]
       ciEnv: string | null
     }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t:AssessmentTask {id: $taskId})
@@ -112,11 +162,34 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
           AND ct.active = true
           AND (ct.scope = 'base' OR (ct.scope = 'tenant' AND ct.tenant_id = $tenantId))
       RETURN properties(t) AS taskProps, c.id AS changeId,
-             ci.id AS ciId, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS ciLabel, ct.id AS ciTypeId,
+             ci.id AS ciId, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS ciLabel,
+             // TUTTE le definizioni che combaciano, non la prima (revisione
+             // totale · B-16): un CI con due etichette di tipo, o un tipo del
+             // cliente con la stessa neo4j_label di uno base, dava le
+             // domande dell'uno o dell'altro a seconda dell'ordine di ritorno.
+             collect(DISTINCT {id: ct.id, scope: ct.scope, label: ct.neo4j_label}) AS ciTypes,
              ci.environment AS ciEnv
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!ctx1) throw new NotFoundError('AssessmentTask', args.taskId)
-    if (ctx1.taskProps['status'] === TASK_STATUS.COMPLETED) throw new GraphQLError('Task già completata', { extensions: { code: 'CONFLICT' } })
+    if (ctx1.taskProps['status'] === TASK_STATUS.COMPLETED) throw new GraphQLError('Task already completed', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.task.alreadyCompleted' } } })
+
+    /**
+     * B-16: il tipo del CLIENTE vince su quello base con la stessa etichetta —
+     * è la stessa precedenza che l'interfaccia applica alle etichette dei tipi.
+     * Due definizioni dello STESSO livello sono un'ambiguità vera: non si
+     * sceglie a caso, si dice quali sono, perché il punteggio del rischio
+     * dipende dalle domande.
+     */
+    const matched   = (ctx1.ciTypes ?? []).filter((t) => t && t.id)
+    const preferred = matched.filter((t) => t.scope === 'tenant')
+    const candidates = preferred.length ? preferred : matched
+    if (candidates.length > 1) {
+      throw new GraphQLError(
+        `CI ${ctx1.ciId} matches ${candidates.length} CI type definitions (${candidates.map((t) => `${t.label} [${t.id}]`).join(', ')}): the assessment questions would be arbitrary`,
+        { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ci.ambiguousType', params: { ci: ctx1.ciId, types: candidates.map((t) => t.label).join(', ') } } } },
+      )
+    }
+    const ciTypeId = candidates[0]?.id ?? null
 
     const role = ctx1.taskProps['responder_role'] === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
     await assertUserInCITeam(session, ctx1.ciId, ctx.tenantId, ctx, role)
@@ -125,14 +198,16 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
 
     type QRow = { questionId: string; weight: unknown; maxScore: unknown }
     const questions = await runQuery<QRow>(session, `
+      // Il tipo CI è del cliente o spedito col prodotto (revisione totale · A-21).
       MATCH (ct:CITypeDefinition {id: $ciTypeId})-[rel:HAS_QUESTION]->(q:AssessmentQuestion {tenant_id: $tenantId, is_active: true, category: $category})
+      WHERE ct.scope = 'base' OR ct.tenant_id IN [$tenantId, 'system']
       OPTIONAL MATCH (q)-[:HAS_OPTION]->(o:AnswerOption)
       WITH q, rel.weight AS weight, max(o.score) AS maxScore
       RETURN q.id AS questionId, weight, maxScore
-    `, { ciTypeId: ctx1.ciTypeId, tenantId: ctx.tenantId, category: taskCategory })
+    `, { ciTypeId, tenantId: ctx.tenantId, category: taskCategory })
 
     if (questions.length === 0) {
-      logger.error({ taskId: args.taskId, ciTypeId: ctx1.ciTypeId, category: taskCategory },
+      logger.error({ taskId: args.taskId, ciTypeId, category: taskCategory },
         '[completeAssessmentTask] nessuna domanda assegnata al CIType per questa categoria')
       throw new GraphQLError('No assessment question assigned to the CI type for the requested category', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.assessment.noQuestionForCategory' } } })
     }
@@ -148,17 +223,21 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
 
     const missing = questions.filter(q => !answered.has(q.questionId))
     if (missing.length > 0) {
-      throw new GraphQLError(`Risposte mancanti: ${missing.length} domande da completare prima di chiudere la task`, { extensions: { code: 'CONFLICT' } })
+      throw new GraphQLError(`Missing answers: ${missing.length} questions to answer before completing the task`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.assessment.missingAnswers', params: { count: missing.length } } } })
     }
 
-    // Weighted score + automatic environment factor: pure logic in scoring.ts.
+    // Weighted score + automatic environment factor: pure logic in scoring.ts;
+    // the environment's score is the tenant's `environment_risk` matrix.
+    const envScore = await environmentRiskScore(ctx.tenantId, ctx1.ciEnv)
+    const { weight: envWeight } = await changeEnvironmentWeight(ctx.tenantId)
     const score = calculateTaskScore(
       questions.map((q) => ({
         weight:   q.weight == null ? 1 : toNumber(q.weight),
         score:    answered.get(q.questionId) ?? 0,
         maxScore: toNumber(q.maxScore),
       })),
-      ctx1.ciEnv,
+      envScore,
+      envWeight,
     )
 
     const now = new Date().toISOString()
@@ -181,7 +260,8 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
       `, { taskId: args.taskId, tenantId: ctx.tenantId, score, now, userId: ctx.userId })
 
       await writeAudit(tx, ctx1.changeId, ctx.tenantId, 'assessment_task_completed', ctx.userId,
-        `${ROLE_LABEL[role1]} · ${ciName1}: score ${score}`)
+        `${ROLE_LABEL[role1]} · ${ciName1}: score ${score}`,
+        { key: 'taskScored', params: { role: role1, ci: ciName1, score: String(score) } })
 
       await recomputeCIRiskIfReady(tx, ctx1.changeId, ctx1.ciId, ctx.tenantId, ctx.userId)
       await computeAggregateRisk(tx, ctx1.changeId, ctx.tenantId)
@@ -229,22 +309,18 @@ export async function assignAssessmentTaskToTeam(
     await session.executeWrite((tx) => tx.run(`
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
       MATCH (tm:Team {id: $teamId, tenant_id: $tenantId})
-      OPTIONAL MATCH (t)-[oldRel:ASSIGNED_TO_TEAM]->(:Team)
-      DELETE oldRel
-      WITH t, tm
-      CREATE (t)-[:ASSIGNED_TO_TEAM]->(tm)
-      WITH t
+      ${assignTeamCypher('t', 'tm')}
       OPTIONAL MATCH (t)-[userRel:ASSIGNED_TO]->(u:User)
       OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(newTm:Team)<-[:MEMBER_OF]-(u)
       WITH userRel, newTm
       FOREACH (_ IN CASE WHEN userRel IS NOT NULL AND newTm IS NULL THEN [1] ELSE [] END |
         DELETE userRel
       )
-    `, { taskId: args.taskId, teamId: args.teamId, tenantId: ctx.tenantId }))
+    `, { taskId: args.taskId, teamId: args.teamId, tenantId: ctx.tenantId, [TEAM_NOW_PARAM]: new Date().toISOString() }))
 
     const ciName = await getCIName(session, tctx.ciId, ctx.tenantId)
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'assessment_team_assigned', ctx.userId,
-      `${ROLE_LABEL[role]} · ${ciName}: team riassegnato`)
+      `${ROLE_LABEL[role]} · ${ciName}: team reassigned`, { key: 'teamReassigned', params: { role: ROLE_LABEL[role] ?? role, ci: ciName } })
 
     const updated = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
@@ -253,9 +329,15 @@ export async function assignAssessmentTaskToTeam(
   }, true)
 }
 
+/**
+ * `userId` null = togli l'assegnazione (revisione totale · F-4): la tendina
+ * dell'attività offriva «Non assegnato» e l'handler non chiamava niente,
+ * perché la mutation esigeva un id. Togliere l'assegnazione lascia l'attività
+ * al team, che è lo stato in cui nasce.
+ */
 export async function assignAssessmentTaskToUser(
   _: unknown,
-  args: { taskId: string; userId: string },
+  args: { taskId: string; userId?: string | null },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -263,6 +345,13 @@ export async function assignAssessmentTaskToUser(
     if (!tctx) throw new NotFoundError('AssessmentTask', args.taskId)
     const role = tctx.role === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, role)
+
+    if (!args.userId) return unassignTask(session, 'AssessmentTask', args.taskId, ctx, {
+      changeId: tctx.changeId, ciId: tctx.ciId,
+      action: 'assessment_user_assigned', prefix: ROLE_LABEL[role] ?? role,
+      key: 'userUnassigned', extraParams: { role: ROLE_LABEL[role] ?? role },
+      map: mapAssessmentTask,
+    })
 
     const check = await runQueryOne<{ isMember: boolean }>(session, `
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM]->(tm:Team)
@@ -274,6 +363,7 @@ export async function assignAssessmentTaskToUser(
         '[assignAssessmentTaskToUser] utente non appartiene al team assegnato')
       throw new ForbiddenError('The user does not belong to the assigned team', { key: 'errors.authz.notInTeam' })
     }
+    await assertAssignablePerson(session, args.userId, ctx.tenantId)
 
     await session.executeWrite((tx) => tx.run(`
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId})
@@ -289,7 +379,8 @@ export async function assignAssessmentTaskToUser(
       MATCH (u:User {id: $id, tenant_id: $tenantId}) RETURN u.name AS name
     `, { id: args.userId, tenantId: ctx.tenantId })
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'assessment_user_assigned', ctx.userId,
-      `${ROLE_LABEL[role]} · ${ciName}: assegnato a ${userRow?.name ?? args.userId}`)
+      `${ROLE_LABEL[role]} · ${ciName}: assigned to ${userRow?.name ?? args.userId}`,
+      { key: 'userAssigned', params: { role: ROLE_LABEL[role] ?? role, ci: ciName, user: userRow?.name ?? args.userId } })
 
     const updated = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:AssessmentTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props
@@ -304,9 +395,10 @@ export async function assignAssessmentTaskToUser(
  * team is the CI's SUPPORT group. The UI used the assessment mutation for both,
  * which failed on deploy-plan ids ("AssessmentTask non trovata").
  */
+/** `userId` null = togli l'assegnazione (revisione totale · F-4). */
 export async function assignDeployPlanTaskToUser(
   _: unknown,
-  args: { taskId: string; userId: string },
+  args: { taskId: string; userId?: string | null },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -318,6 +410,13 @@ export async function assignDeployPlanTaskToUser(
     if (!tctx) throw new NotFoundError('DeployPlanTask', args.taskId)
     await assertUserInCITeam(session, tctx.ciId, ctx.tenantId, ctx, 'support')
 
+    if (!args.userId) return unassignTask(session, 'DeployPlanTask', args.taskId, ctx, {
+      changeId: tctx.changeId, ciId: tctx.ciId,
+      action: 'deploy_plan_user_assigned', prefix: 'Planning',
+      key: 'planUserUnassigned', extraParams: {},
+      map: mapDeployPlanTask,
+    })
+
     const check = await runQueryOne<{ isMember: boolean }>(session, `
       MATCH (t:DeployPlanTask {id: $taskId, tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM]->(tm:Team)
       OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})-[:MEMBER_OF]->(tm)
@@ -327,6 +426,7 @@ export async function assignDeployPlanTaskToUser(
       logger.error({ taskId: args.taskId, userId: args.userId }, '[assignDeployPlanTaskToUser] utente non appartiene al team assegnato')
       throw new ForbiddenError('The user does not belong to the assigned team', { key: 'errors.authz.notInTeam' })
     }
+    await assertAssignablePerson(session, args.userId, ctx.tenantId)
 
     await session.executeWrite((tx) => tx.run(`
       MATCH (t:DeployPlanTask {id: $taskId, tenant_id: $tenantId})
@@ -342,7 +442,8 @@ export async function assignDeployPlanTaskToUser(
       MATCH (u:User {id: $id, tenant_id: $tenantId}) RETURN u.name AS name
     `, { id: args.userId, tenantId: ctx.tenantId })
     await writeAudit(session, tctx.changeId, ctx.tenantId, 'deploy_plan_user_assigned', ctx.userId,
-      `Planning · ${ciName}: assegnato a ${userRow?.name ?? args.userId}`)
+      `Planning · ${ciName}: assigned to ${userRow?.name ?? args.userId}`,
+      { key: 'planUserAssigned', params: { ci: ciName, user: userRow?.name ?? args.userId } })
 
     const updated = await runQueryOne<{ props: Props }>(session, `
       MATCH (t:DeployPlanTask {id: $taskId, tenant_id: $tenantId}) RETURN properties(t) AS props

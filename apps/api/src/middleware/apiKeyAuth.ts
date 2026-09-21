@@ -6,12 +6,21 @@ import { createHash } from 'crypto'
 import type { Request, Response, NextFunction } from 'express'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
+import { consumeMinuteRate } from '../lib/webhookRateLimit.js'
+import { API_KEY_RATE_LIMIT_MAX, API_KEY_RATE_LIMIT_MIN } from '../lib/apiKeyInput.js'
 
 export interface ApiKeyContext {
   keyId:       string
   tenantId:    string
   permissions: string[]
   rateLimit:   number
+  /**
+   * Il nome dato alla chiave in Integrazioni: è l'AUTORE di ciò che
+   * l'integrazione scrive (revisione totale · D-12 — un commento via REST
+   * appariva senza autore, perché `author_id` era l'id della chiave e
+   * `lib/commentAuthor.ts` non lo risolve).
+   */
+  name:        string
 }
 
 declare global {
@@ -53,6 +62,13 @@ export async function apiKeyAuth(req: Request, res: Response, next: NextFunction
     }
 
     const p = row.props
+    const rateLimit = Number(p['rate_limit'])
+    if (!Number.isInteger(rateLimit) || rateLimit < API_KEY_RATE_LIMIT_MIN || rateLimit > API_KEY_RATE_LIMIT_MAX) {
+      // Nessun limite inventato (era `?? 60`): una chiave senza limite valido è mal configurata.
+      logger.error({ keyId: p['id'], tenantId: p['tenant_id'], rateLimit: p['rate_limit'] }, '[apiKeyAuth] API key has no valid rate_limit — request refused')
+      res.status(500).json({ error: { code: 'API_KEY_MISCONFIGURED', message: 'This API key has no valid request limit: set it again in Integrations' } })
+      return
+    }
     const rawPerms = p['permissions']
     const permissions: string[] = Array.isArray(rawPerms)
       ? rawPerms as string[]
@@ -62,7 +78,8 @@ export async function apiKeyAuth(req: Request, res: Response, next: NextFunction
       keyId:       p['id']        as string,
       tenantId:    p['tenant_id'] as string,
       permissions,
-      rateLimit:   Number(p['rate_limit'] ?? 60),
+      rateLimit,
+      name:        typeof p['name'] === 'string' && p['name'] ? p['name'] : 'API key',
     }
 
     // 2. Fire-and-forget write: update usage stats (non-blocking)
@@ -85,37 +102,28 @@ export async function apiKeyAuth(req: Request, res: Response, next: NextFunction
   }
 }
 
+/** La chiave Redis del minuto di una chiave API (stessa finestra del webhook in ingresso). */
+export function apiKeyRateKey(tenantId: string, keyId: string, atMs: number): string {
+  return `og:apikey:rate:${tenantId}:${keyId}:${Math.floor(atMs / 60_000)}`
+}
+
 /**
- * In-memory per-key rate limiter.
- * Resets every minute. No persistence — resets on server restart.
+ * Limite di richieste al minuto per chiave, condiviso fra le repliche (Redis).
+ * Prima era una mappa in memoria: con N repliche il limite era N volte più alto
+ * e si azzerava a ogni riavvio (revisione totale · D-21). Redis irraggiungibile
+ * → 500, mai «limite disattivato».
  */
-const buckets = new Map<string, { count: number; resetAt: number }>()
-
-setInterval(() => {
-  const now = Date.now()
-  for (const [k, v] of buckets) { if (v.resetAt <= now) buckets.delete(k) }
-}, 60_000)
-
 export function apiRateLimiter(req: Request, res: Response, next: NextFunction): void {
   const ctx = req.apiKey
   if (!ctx) { next(); return }
-
   const now = Date.now()
-  let bucket = buckets.get(ctx.keyId)
-  if (!bucket || bucket.resetAt <= now) {
-    bucket = { count: 0, resetAt: now + 60_000 }
-    buckets.set(ctx.keyId, bucket)
-  }
-
-  bucket.count++
-  if (bucket.count > ctx.rateLimit) {
-    const retryAfter = Math.ceil((bucket.resetAt - now) / 1000)
-    res.set('Retry-After', String(retryAfter))
-    res.status(429).json({ error: { code: 'RATE_LIMITED', message: `Rate limit exceeded (${ctx.rateLimit}/min)`, retry_after: retryAfter } })
-    return
-  }
-
-  next()
+  consumeMinuteRate(apiKeyRateKey(ctx.tenantId, ctx.keyId, now), ctx.rateLimit, now)
+    .then((decision) => {
+      if (decision.allowed) { next(); return }
+      res.set('Retry-After', String(decision.retryAfterSeconds))
+      res.status(429).json({ error: { code: 'RATE_LIMITED', message: `Rate limit exceeded (${ctx.rateLimit}/min)`, retry_after: decision.retryAfterSeconds } })
+    })
+    .catch(next)
 }
 
 /**

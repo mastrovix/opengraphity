@@ -198,3 +198,227 @@ input, textarea, select {
 .md-body th { background: var(--slate-bg); font-weight: 600; }
 .md-body blockquote { border-left: 3px solid var(--brand); padding-left: 1rem; color: var(--slate); margin: 0.75rem 0; }
 .md-body a { color: var(--brand); text-decoration: underline; }
+
+/*
+  IL MODULO DI UNA VOCE DI CATALOGO (moduli del catalogo, ondata 1).
+
+  La struttura la rende `CatalogFormRenderer` di @opengraphity/web-core, che è
+  condiviso con il portale e per questo non scrive un colore né una
+  dimensione: emette solo queste classi. Qui c'è la veste dell'AREA DI LAVORO,
+  Le dimensioni sono scritte con un RIPIEGO (`var(--font-size-body, 14px)`)
+  perché questo blocco è IDENTICO, carattere per carattere, a quello di
+  apps/portal/src/index.css: nel web i token esistono e vincono (corpo a
+  12px, una console fitta), nel portale non esistono e valgono i ripieghi
+  (14px, per chi ci passa due minuti l'anno). Identico per costruzione:
+  così una divergenza futura si vede in un diff invece di scoprirsi a
+  schermo.
+*/
+.og-form { display: flex; flex-direction: column; gap: 20px; }
+
+.og-form-section { display: flex; flex-direction: column; gap: 8px; }
+.og-form-section-title {
+  font-size: var(--font-size-section-title, 17px);
+  font-weight: 600;
+  color: var(--color-slate-dark);
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+.og-form-section-desc {
+  font-size: var(--font-size-body, 14px);
+  color: var(--color-slate-light);
+  margin: 0;
+}
+
+/*
+  Due colonne per i campi «a metà», una per quelli interi. `minmax(0, …)`
+  perché un campo con un'etichetta lunga non deve allargare la colonna oltre
+  la griglia (è lo stesso motivo di .og-split).
+*/
+.og-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+/*
+  L'ETICHETTA A SINISTRA DEL CONTROLLO (18 set 2026, chiesto dal proprietario).
+
+  Era sopra, in colonna. Ora la cella è una griglia di due colonne:
+  l'etichetta a sinistra, e TUTTO il resto — il controllo, l'aiuto, l'errore —
+  incolonnato a destra. Regge con questo DOM perché l'etichetta è sempre il
+  primo figlio: gli altri figli vanno in colonna 2 uno per riga, senza che il
+  renderer debba aggiungere un involucro.
+
+  L'etichetta ha un filo di `padding-top` per allinearsi alla prima riga del
+  controllo e non al suo bordo.
+
+  Sotto i 700px torna sopra: su un telefono una colonna di etichette larga un
+  quarto dello schermo lascia al controllo una fessura.
+*/
+.og-form-cell {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: clamp(96px, 26%, 180px) minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 4px;
+  align-items: start;
+  min-width: 0;
+}
+/* A DESTRA nella sua colonna: un'etichetta corta in una colonna larga
+   lascerebbe un vuoto fra sé e il controllo, e la coppia non si leggerebbe
+   più come una coppia. */
+.og-form-cell > .og-form-label { grid-column: 1; padding-top: 7px; text-align: right; }
+.og-form-cell > *:not(.og-form-label) { grid-column: 2; }
+/* Una nota non ha etichetta: senza questo il suo testo starebbe in colonna 2,
+   cioè rientrato di una colonna che non esiste. */
+.og-form-note { display: block; }
+.og-form-cell-half { grid-column: auto; }
+@media (max-width: 700px) {
+  .og-form-cell { grid-template-columns: minmax(0, 1fr); }
+  /* Impilata, l'etichetta torna sopra e quindi a sinistra. */
+  .og-form-cell > .og-form-label { padding-top: 0; text-align: left; }
+  .og-form-cell > *:not(.og-form-label) { grid-column: 1; }
+}
+@media (max-width: 700px) {
+  /* Sotto la soglia due colonne di campi diventano illeggibili: una sola. */
+  .og-form-cell-half { grid-column: 1 / -1; }
+}
+
+.og-form-label {
+  font-size: var(--font-size-body, 14px);
+  font-weight: 500;
+  color: var(--color-slate-dark);
+}
+.og-form-required { color: var(--color-danger); margin-left: 2px; }
+
+.og-form-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: var(--font-size-body, 14px);
+  font-family: var(--font-sans, inherit);
+  color: var(--color-slate-dark);
+  background: var(--color-white);
+  box-sizing: border-box;
+}
+.og-form-input:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 1px; }
+.og-form-input-error { border-color: var(--color-danger); }
+
+.og-form-multi { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 2px 0; }
+.og-form-check { display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-size-body, 14px); color: var(--color-slate-dark); }
+
+.og-form-help  { font-size: var(--font-size-table, 12.5px); color: var(--color-slate-light); margin: 0; }
+.og-form-error { font-size: var(--font-size-table, 12.5px); color: var(--color-danger); margin: 0; }
+
+/* Una nota: istruzioni per chi compila, non un campo. */
+.og-form-note {
+  background: var(--color-slate-bg);
+  border-left: 3px solid var(--color-brand);
+  border-radius: 4px;
+  padding: 8px 12px;
+}
+.og-form-note p { margin: 0; font-size: var(--font-size-body, 14px); color: var(--color-slate-dark); }
+
+/*
+  Un campo che il modulo cita e che la libreria non ha più. L'API lo impedisce
+  (rifiuta il modulo nominando il campo), ma se accadesse il silenzio sarebbe
+  peggio di un riquadro rosso.
+*/
+.og-form-missing {
+  grid-column: 1 / -1;
+  font-size: var(--font-size-body, 14px);
+  font-family: var(--font-mono);
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin: 0;
+}
+
+/*
+  Ondata 2 — allegati e riferimenti. Stesse regole del blocco sopra: identico
+  nelle due applicazioni, misure a ripiego.
+*/
+.og-form-files { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.og-form-file-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.og-form-file-list li {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--color-slate-bg); border-radius: 5px; padding: 4px 8px;
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark);
+}
+.og-form-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
+.og-form-file-size { font-size: var(--font-size-table, 12.5px); color: var(--color-slate-light); white-space: nowrap; }
+.og-form-file-remove {
+  border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1;
+  font-size: 1.1em; color: var(--color-slate-light);
+}
+.og-form-file-remove:hover { color: var(--color-danger); }
+
+/* Il controllo di sistema è brutto e diverso in ogni browser: si nasconde e si veste l'etichetta. */
+.og-form-file-add input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.og-form-file-add {
+  display: inline-flex; align-items: center; gap: 6px; position: relative;
+  padding: 5px 12px; border: 1px dashed var(--color-border); border-radius: 6px;
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark); cursor: pointer;
+}
+.og-form-file-add:hover { border-color: var(--color-brand); color: var(--color-brand); }
+.og-form-file-add:focus-within { outline: 2px solid var(--color-brand); outline-offset: 1px; }
+
+.og-form-ref { position: relative; }
+.og-form-ref-results {
+  list-style: none; margin: 2px 0 0; padding: 4px; position: absolute; z-index: 20;
+  left: 0; right: 0; max-height: 200px; overflow-y: auto;
+  background: var(--color-white); border: 1px solid var(--color-border); border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.og-form-ref-results li button {
+  display: block; width: 100%; text-align: left; border: none; background: none; cursor: pointer;
+  padding: 5px 8px; border-radius: 4px; font-size: var(--font-size-body, 14px); color: var(--color-slate-dark);
+}
+.og-form-ref-results li button:hover { background: var(--color-slate-bg); }
+.og-form-ref-empty { padding: 5px 8px; font-size: var(--font-size-body, 14px); color: var(--color-slate-light); }
+.og-form-ref-chosen {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--color-slate-bg); border-radius: 5px; padding: 4px 8px;
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark);
+}
+/* Un campo CALCOLATO (ondata 6): si legge, non si compila. Il valore ha il
+   corpo di un campo normale perché è un dato, non un'annotazione; il segno
+   accanto all'etichetta dice da dove viene. */
+.og-form-computed {
+  margin: 0; padding: 6px 0;
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark);
+  font-variant-numeric: tabular-nums;
+}
+.og-form-computed-badge {
+  margin-left: 6px; padding: 1px 6px; border-radius: 9999px;
+  background: var(--color-slate-bg); color: var(--color-slate-light);
+  font-size: var(--font-size-table, 12.5px); font-weight: 400; text-transform: none;
+}
+/* Una TABELLA ripetibile (ondata 7): righe che chi compila aggiunge. Scorre da
+   sola in orizzontale, perché con sei colonne su un telefono l'alternativa è
+   una pagina che scorre di traverso. */
+.og-form-table-wrap { overflow-x: auto; }
+.og-form-table { width: 100%; border-collapse: collapse; }
+.og-form-table th {
+  text-align: left; padding: 4px 6px; white-space: nowrap;
+  font-size: var(--font-size-table, 12.5px); font-weight: 600; color: var(--color-slate-light);
+}
+.og-form-table td { padding: 3px 6px; vertical-align: top; }
+.og-form-table-input { min-width: 110px; }
+.og-form-table-actions { width: 28px; }
+.og-form-table-remove {
+  background: none; border: none; cursor: pointer; padding: 2px 4px;
+  color: var(--color-danger); font-size: var(--font-size-body, 14px); line-height: 1;
+}
+.og-form-table-empty {
+  color: var(--color-slate-light); font-size: var(--font-size-table, 12.5px); padding: 6px;
+}
+.og-form-table-add {
+  margin-top: 6px; padding: 4px 10px; border-radius: 6px;
+  border: 1px solid var(--color-border); background: var(--color-white);
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark); cursor: pointer;
+}
+
+

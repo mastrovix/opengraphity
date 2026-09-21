@@ -13,14 +13,17 @@
  * Errors are thrown as lib/errors.js classes (ValidationError, ...): GraphQL
  * lets them bubble up as-is, the REST route translates them into HTTP 400.
  */
+import { firstTeamCypher } from '../lib/ticketTeamHistory.js'
 import { v4 as uuidv4 } from 'uuid'
+import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
+import { creationStepContext } from '../lib/customFieldSteps.js'
 import { workflowEngine } from '@opengraphity/workflow'
-import { getActiveOLAContractsFor, scheduleOLABreaches } from '@opengraphity/sla'
 import { ValidationError } from '../lib/errors.js'
-import { logger } from '../lib/logger.js'
+import { publishEvent } from '../lib/publishEvent.js'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../lib/taskStatus.js'
 import { deriveChangePriority } from '../graphql/resolvers/change/scoring.js'
 import { assertDomainValue } from '../lib/domainMatrix.js'
+import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import {
   writeAudit,
@@ -29,26 +32,20 @@ import {
   assertCIHasOwnerAndSupport,
 } from '../graphql/resolvers/change/helpers.js'
 
-/**
- * Il tipo con cui nasce una change quando il chiamante non lo passa (la rotta
- * REST `POST /api/v1/changes` non lo chiede). È un default DICHIARATO, non un
- * ripiego: viene comunque validato contro il vocabolario del cliente, quindi
- * se lui l'ha rinominato la creazione senza tipo esplicito fallisce e lo dice.
- */
-export const DEFAULT_CHANGE_TYPE = 'normal'
-
 export interface ChangeCreationInput {
   title:         string
   why:           string          // motivazione (WHY) — obbligatorio
   what:          string          // cosa si cambia (WHAT) — obbligatorio
   changeOwner?:  string | null
   affectedCIIds: string[]
-  changeType?:   string | null   // un valore del vocabolario `change_type` del cliente (assente → DEFAULT_CHANGE_TYPE)
+  changeType?:   string | null   // un valore del vocabolario `change_type` del cliente — obbligatorio
+  /** Campi personalizzati (ondata 4): assenti dai canali che non li conoscono (azione di passo). */
+  customFields?: CustomFieldInput[] | null
 }
 
 export interface ChangeCreationCtx {
   tenantId: string
-  userId:   string | null
+  userId:   string
 }
 
 export interface CreatedChange {
@@ -73,13 +70,14 @@ export async function createChangeRFC(
   // change ordinaria. Ora un tipo fuori vocabolario è un rifiuto che elenca
   // gli ammessi.
   //
-  // L'ASSENZA del tipo resta un default dichiarato (`DEFAULT_CHANGE_TYPE`):
-  // la rotta REST `POST /api/v1/changes` non lo chiede e non si rompe un
-  // contratto pubblico dentro quest'ondata. Ma il default passa comunque dalla
-  // validazione: un cliente che rinomina o toglie `normal` ottiene un errore
-  // che gli dice di passare il tipo esplicitamente, non una change con un
-  // valore che il suo Dizionario non ha.
-  const changeType = await assertDomainValue(ctx.tenantId, 'change_type', input.changeType ?? DEFAULT_CHANGE_TYPE)
+  // Il tipo è OBBLIGATORIO (verifica «Cosa resta cablato», ondata 1). Era un
+  // default dichiarato, `normal`, per chi non lo passava (REST, azione di
+  // passo): la scelta di come nasce una change non la fa il codice, e un
+  // valore di ripiego è comunque un valore che il cliente non ha scelto.
+  if (!input.changeType || input.changeType.trim() === '') {
+    throw new ValidationError('changeType is required: pass a value of the change_type vocabulary', { key: 'errors.change.typeRequired' })
+  }
+  const changeType = await assertDomainValue(ctx.tenantId, 'change_type', input.changeType)
   if (!affectedCIIds || affectedCIIds.length === 0) {
     throw new ValidationError('A change must have at least one impacted CI', { key: 'errors.change.needsCI' })
   }
@@ -88,7 +86,12 @@ export async function createChangeRFC(
   }
   if (!why)  throw new ValidationError('The "why" field is required', { key: 'errors.change.whyRequired' })
   if (!what) throw new ValidationError('The "what" field is required', { key: 'errors.change.whatRequired' })
-  return withSession(async (session) => {
+  // CM-8 (revisione del 15 set 2026): i tipi di CI esclusi per le change. Prima
+  // le regole «change» (cinque su c-one) non erano applicate da nessuna parte.
+  await assertCIsLinkable(ctx.tenantId, 'change', affectedCIIds)
+  const customProps = input.customFields == null ? {} : await withSession(async (session) =>
+    resolveCustomFieldWrites(ctx.tenantId, 'change', await customFieldDefs(session, ctx.tenantId, 'change'), input.customFields, { current: null, stepContext: await creationStepContext(session, ctx.tenantId, 'change', null) }))
+  const created = await withSession(async (session) => {
     // Letture e validazioni PRIMA della transazione: se falliscono non c'è nulla da annullare.
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, affectedCIIds)
     const code = await nextChangeCode(session, ctx.tenantId)
@@ -113,7 +116,8 @@ export async function createChangeRFC(
     await session.executeWrite(async (tx) => {
       await tx.run(`
       CREATE (c:Change {
-        id: $id, tenant_id: $tenantId, code: $code,
+        // F18 (revisione del 14 set 2026): number come gli altri ticket, stesso valore di code.
+        id: $id, tenant_id: $tenantId, code: $code, number: $code,
         title: $title, why: $why, what: $what,
         change_type: $changeType,
         aggregate_risk_score: null,
@@ -121,10 +125,12 @@ export async function createChangeRFC(
         approval_route: null, approval_status: null,
         created_at: $now, updated_at: $now
       })
+      SET c += $customProps
       WITH c
       OPTIONAL MATCH (req:User {id: $requesterId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN req IS NULL THEN [] ELSE [1] END |
         CREATE (c)-[:REQUESTED_BY]->(req)
+        MERGE (req)-[:WATCHES {watched_at: $now}]->(c)
       )
       WITH c
       OPTIONAL MATCH (owner:User {id: $ownerId, tenant_id: $tenantId})
@@ -137,25 +143,34 @@ export async function createChangeRFC(
       MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
       MATCH (ci)-[:SUPPORTED_BY]->(supportTeam:Team)
       CREATE (c)-[:AFFECTS_CI {ci_phase: 'assessment'}]->(ci)
+      // change_key identifica il task per (change, CI, ruolo): è la chiave su
+      // cui addCIToChange fa MERGE. I task creati qui non l'avevano, quindi
+      // quel MERGE non li trovava e ri-aggiungere un CI già collegato creava un
+      // SECONDO assessment owner, uno support e un piano — la change non
+      // usciva più dall'analisi, perché all_assessments_complete aspettava i
+      // duplicati (revisione totale · B-8).
       CREATE (ownerT:AssessmentTask {
         id: randomUUID(), code: ct.ownerCode, tenant_id: $tenantId, ci_id: ci.id,
+        change_key: $id + '-' + ci.id + '-owner',
         responder_role: '${ASSESSMENT_ROLE.OWNER}', status: '${TASK_STATUS.PENDING}', score: null, created_at: $now
       })
       CREATE (c)-[:HAS_ASSESSMENT]->(ownerT)
-      CREATE (ownerT)-[:ASSIGNED_TO_TEAM]->(ownerTeam)
+      ${firstTeamCypher('ownerT', 'ownerTeam', '$now')}
       CREATE (supportT:AssessmentTask {
         id: randomUUID(), code: ct.supportCode, tenant_id: $tenantId, ci_id: ci.id,
+        change_key: $id + '-' + ci.id + '-support',
         responder_role: '${ASSESSMENT_ROLE.SUPPORT}', status: '${TASK_STATUS.PENDING}', score: null, created_at: $now
       })
       CREATE (c)-[:HAS_ASSESSMENT]->(supportT)
-      CREATE (supportT)-[:ASSIGNED_TO_TEAM]->(supportTeam)
+      ${firstTeamCypher('supportT', 'supportTeam', '$now')}
       CREATE (dp:DeployPlanTask {
         id: randomUUID(), code: ct.planCode, tenant_id: $tenantId, ci_id: ci.id,
+        change_key: $id + '-' + ci.id + '-deployplan',
         status: '${TASK_STATUS.PENDING}', steps: '[]',
         created_at: $now
       })
       CREATE (c)-[:HAS_DEPLOY_PLAN]->(dp)
-      CREATE (dp)-[:ASSIGNED_TO_TEAM]->(supportTeam)
+      ${firstTeamCypher('dp', 'supportTeam', '$now')}
       `, {
         id, code, title, why, what,
         changeType,
@@ -165,33 +180,22 @@ export async function createChangeRFC(
         ciTasks,
         tenantId: ctx.tenantId,
         now,
+        customProps,
       })
 
       await workflowEngine.createInstance(tx, ctx.tenantId, id, 'change')
 
       await writeAudit(tx, id, ctx.tenantId, 'change_created', ctx.userId,
-        `Change ${code} creato con ${affectedCIIds.length} CI`)
+        `Change ${code} created with ${affectedCIIds.length} CIs`,
+        { key: 'changeCreated', params: { code, count: String(affectedCIIds.length) } })
     })
-
-    // Schedule OLA/UC breach checks for this change. Changes don't get an
-    // SLAStatus (their SLA is window-based), so — unlike incident/problem/SR,
-    // which the SLA engine schedules on entity.created — we schedule here.
-    // Best-effort: a scheduling failure must not fail the RFC creation.
-    try {
-      const contracts = await getActiveOLAContractsFor(ctx.tenantId, 'change')
-      if (contracts.length > 0) {
-        await scheduleOLABreaches({
-          entityId:   id,
-          entityType: 'change',
-          tenantId:   ctx.tenantId,
-          timezone:   'Europe/Rome',
-          contracts,
-        })
-      }
-    } catch (err) {
-      logger.error({ err, changeId: id, code }, '[changeCreationService] OLA breach scheduling failed')
-    }
 
     return { id, code }
   }, true)
+
+  // L'evento di creazione: prima le change non ne avevano uno, quindi nessun
+  // trigger, regola, notifica o webhook poteva reagire a una change nuova
+  // (revisione del 14 set 2026 · AU-1).
+  await publishEvent('change.created', ctx.tenantId, ctx.userId, { id: created.id, code: created.code, title, change_type: changeType }, new Date().toISOString())
+  return created
 }

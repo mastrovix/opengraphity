@@ -28,9 +28,18 @@
  * Vive in `@opengraphity/types` perché lo leggono in due, API e web.
  */
 export const INBOUND_TICKET_FIELDS = {
-  incident: ['title', 'description', 'severity', 'category'],
+  // `affectedCI`: il CI impattato, per id o per nome (revisione totale · M-18).
+  // Un incident senza CI impattato non si crea (regola ITIL applicata da
+  // incidentService), quindi senza questo bersaglio un webhook di tipo incident
+  // falliva SEMPRE con «An incident must have at least one impacted CI»: la
+  // funzione non era usabile. La consegna risolve il riferimento come fa Slack
+  // (id, oppure nome esatto senza distinzione di maiuscole).
+  incident: ['title', 'description', 'severity', 'category', 'affectedCI'],
   problem:  ['title', 'description', 'priority', 'category'],
 } as const
+
+/** Il bersaglio che nomina il CI impattato di un incident (id o nome). */
+export const INBOUND_AFFECTED_CI_FIELD = 'affectedCI'
 
 /** I tipi di entità che un webhook in ingresso può creare, oltre a `event`. */
 export type InboundTicketEntityType = keyof typeof INBOUND_TICKET_FIELDS

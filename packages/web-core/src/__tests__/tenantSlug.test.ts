@@ -69,7 +69,10 @@ describe('requireTenantSlug', () => {
 
   it('throws a readable error (with the hint) instead of guessing a tenant', () => {
     expect(() => requireTenantSlug({ hostname: 'localhost', hint: 'c-one.localhost:5173' }))
-      .toThrow(/Nessun tenant nel sottodominio \("localhost"\).*c-one\.localhost:5173.*VITE_TENANT_SLUG/)
-    expect(() => requireTenantSlug({ hostname: '192.168.1.5', hint: 'x' })).toThrow(/Nessun tenant/)
+      // CONTRATTO RINEGOZIATO (revisione totale · H-34): i messaggi di
+      // bootstrap sono in inglese — succedono prima che ci sia un tenant, e
+      // quindi prima che ci sia una lingua del cliente.
+      .toThrow(/No tenant in the subdomain \("localhost"\).*c-one\.localhost:5173.*VITE_TENANT_SLUG/)
+    expect(() => requireTenantSlug({ hostname: '192.168.1.5', hint: 'x' })).toThrow(/No tenant/)
   })
 })

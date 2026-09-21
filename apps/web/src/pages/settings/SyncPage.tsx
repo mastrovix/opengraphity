@@ -29,18 +29,19 @@ export function SyncPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: colors.slateBg, padding: 4, borderRadius: 8, width: 'fit-content' }}>
-        {TABS.map(t => (
+        {TABS.map(tab => (
           <button type="button"
-            key={t}
-            onClick={() => hook.setTab(t)}
+            key={tab}
+            aria-pressed={hook.tab === tab}
+            onClick={() => hook.setTab(tab)}
             style={{
               padding: '8px 20px', borderRadius: 6, border: 'none', cursor: 'pointer',
               fontSize: 'var(--font-size-body)', fontWeight: 500,
-              background: hook.tab === t ? 'var(--color-brand)' : 'transparent',
-              color: hook.tab === t ? colors.white : 'var(--color-slate)',
+              background: hook.tab === tab ? 'var(--color-brand)' : 'transparent',
+              color: hook.tab === tab ? colors.white : 'var(--color-slate)',
             }}
           >
-            {t}
+            {t(`pages.sync.tab.${tab}`)}
           </button>
         ))}
       </div>
@@ -73,6 +74,9 @@ export function SyncPage() {
           conflicts={hook.conflicts}
           loading={hook.conflictsLoading}
           onResolveConflict={hook.handleResolveConflict}
+          total={hook.conflictsTotal}
+          status={hook.conflictStatus}
+          onStatusChange={hook.setConflictStatus}
         />
       )}
 

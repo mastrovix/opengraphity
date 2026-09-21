@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { NewSourceWizard } from './NewSourceWizard'
-import { GET_SAMPLE_INBOUND_PAYLOAD, GET_PAYLOAD_KEYS, GET_MONITORING_SOURCES } from '@/graphql/queries'
+import { GET_SAMPLE_INBOUND_PAYLOAD, GET_PAYLOAD_KEYS, GET_MONITORING_SOURCE } from '@/graphql/queries'
 import { PREVIEW_INBOUND_EVENTS, CREATE_MONITORING_SOURCE, SEND_SAMPLE_EVENT } from '@/graphql/mutations'
-import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { renderWithProviders, attendiURL, type GqlMock } from '@/test/utils'
 import type { MonitoringSource } from '@/types/events'
 
 vi.mock('sonner', () => ({
@@ -67,19 +67,31 @@ function createMock(seen: CreateInput[], over: Partial<{ id: string; name: strin
   }
 }
 
-const sendSampleMock = (sourceId = 'src-new'): GqlMock => ({
-  request: { query: SEND_SAMPLE_EVENT, variables: { sourceId } },
+/**
+ * Revisione totale · G-MON-1: per una sorgente «generic» la prova manda
+ * l'esempio incollato dall'admin, non il campione fisso del connettore.
+ */
+const sendSampleMock = (sourceId = 'src-new', payload: string | null = null): GqlMock => ({
+  request: { query: SEND_SAMPLE_EVENT, variables: { sourceId, payload } },
   result: { data: { sendSampleEvent: 1 } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
-/** `monitoringSources` interrogata dal passo Prova dopo l'invio (D·2.3). */
+/**
+ * La sorgente interrogata dal passo Prova dopo l'invio (D·2.3).
+ * CONTRATTO RINEGOZIATO (revisione totale · G-MON-9): si legge UNA sorgente
+ * (`monitoringSource(id:)`), non l'elenco completo con tutte le configurazioni.
+ */
 function sourcesMock(over: Partial<MonitoringSource> & { id: string }): GqlMock {
   const src: MonitoringSource = {
     name: 'My tool', entityType: 'event', connectorKind: 'generic', fieldMapping: '{}', defaultValues: null, valueMapping: null,
     enabled: true, lastReceivedAt: null, receiveCount: 0, lastError: null, lastErrorAt: null, errorCount: 0, createdAt: '2026-09-09T10:00:00Z', ...over,
   }
-  return { request: { query: GET_MONITORING_SOURCES }, result: { data: { monitoringSources: [{ __typename: 'InboundWebhook', ...src }] } }, maxUsageCount: Number.POSITIVE_INFINITY }
+  return {
+    request: { query: GET_MONITORING_SOURCE, variables: { id: over.id } },
+    result: { data: { monitoringSource: { __typename: 'InboundWebhook', ...src } } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  }
 }
 
 /** Percorso via input + datalist (D·2.2): si digita il percorso; le opzioni leggibili sono nella datalist. */
@@ -110,7 +122,7 @@ describe('NewSourceWizard — percorso generico', () => {
     const creates: CreateInput[] = []
     const { user } = renderWithProviders(<NewSourceWizard sampleCheckDelayMs={0} />, {
       route: '/monitoring/sources/new',
-      mocks: [sampleMock, keysMock, previewMock(previews), createMock(creates), sendSampleMock(), sourcesMock({ id: 'src-new', lastReceivedAt: '2026-09-09T10:16:00Z', receiveCount: 1 })],
+      mocks: [sampleMock, keysMock, previewMock(previews), createMock(creates), sendSampleMock('src-new', SAMPLE_TEXT), sourcesMock({ id: 'src-new', lastReceivedAt: '2026-09-09T10:16:00Z', receiveCount: 1 })],
     })
 
     // Passo 1: scelta esclusiva (radiogroup, D·3.4); senza strumento non si avanza e il motivo è annunciato (role=status)
@@ -344,9 +356,22 @@ describe('NewSourceWizard — strumenti noti', () => {
     // "Esci comunque" → elenco delle sorgenti
     await user.click(screen.getByRole('button', { name: 'Finish' }))
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Leave anyway' }))
-    expect(screen.getByTestId('location')).toHaveTextContent('/monitoring/sources')
-    expect(screen.getByTestId('location')).not.toHaveTextContent('/monitoring/sources/new')
-  })
+    /*
+     * Prima qui c'erano due asserzioni sincrone, e tutte e due sbagliate
+     * (21 set 2026). `toHaveTextContent('/monitoring/sources')` è vero anche
+     * su `/monitoring/sources/new` — è una SOTTOSTRINGA — quindi passava
+     * pure quando la navigazione non era ancora avvenuta; e la seconda, che
+     * quella navigazione la pretendeva davvero, leggeva l'URL prima che il
+     * router l'avesse aggiornato. `attendiURL` aspetta e confronta il
+     * percorso per intero.
+     */
+    await attendiURL('/monitoring/sources')
+  /*
+   * Procedura a più passi con attese vere fra l'uno e l'altro: 30 secondi
+   * perché la CI è più lenta di un portatile, non perché sia lenta lei
+   * (21 set 2026, stessa ragione del test della barra laterale).
+   */
+  }, 30_000)
 
   it('Dynatrace: istruzioni, header Bearer e payload personalizzato con {ImpactedEntities} senza virgolette', async () => {
     const creates: CreateInput[] = []

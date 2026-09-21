@@ -5,6 +5,7 @@ import { authMiddleware } from '../middleware/auth.js'
 import { streamReportAI } from '../services/reportAI.js'
 import { runReportConversation } from '../services/reportConversation.js'
 import { logger } from '../lib/logger.js'
+import { aiDisabledError, aiFeatureEnabled } from '../lib/aiSettings.js'
 
 const router: ExpressRouter = Router()
 
@@ -13,21 +14,26 @@ router.post('/report/stream', authMiddleware, asyncHandler(handleReportStream))
 router.use(restErrorHandler)
 
 async function handleReportStream(req: Request, res: Response): Promise<void> {
-  const { tenantId, role } = req.user!
+  const { tenantId, role, permissions } = req.user!
   const { question, conversationId: inputConvId } = req.body as {
     question?: string
     conversationId?: string | null
   }
 
   // Same policy as GraphQL askReport: the AI tool runs model-generated
-  // (guarded, read-only) Cypher — admin/operator only.
-  if (role !== 'admin' && role !== 'operator') {
-    res.status(403).json({ error: `Role '${role}' is not authorized. Required: admin, operator` })
+  // (guarded, read-only) Cypher — the report.ai permission.
+  if (!permissions.has('report.ai')) {
+    res.status(403).json({ error: `Role '${role}' is not authorized. Requires: report.ai` })
     return
   }
 
   if (typeof question !== 'string' || !question.trim()) {
     res.status(400).json({ error: 'question is required' })
+    return
+  }
+  // Funzione spenta dall'organizzazione (ondata 6): si dice prima di aprire lo stream.
+  if (!(await aiFeatureEnabled(tenantId, 'reportAnalysis'))) {
+    res.status(403).json({ error: { code: 'AI_DISABLED', feature: 'reportAnalysis', message: aiDisabledError('reportAnalysis').message } })
     return
   }
 

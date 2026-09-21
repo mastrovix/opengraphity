@@ -41,10 +41,17 @@ import { closeAllQueues } from './lib/bullmq.js'
 import { wireDomainEventFailureMetric } from './lib/domainEventFailures.js'
 import { startMetricsServer } from './lib/metricsServer.js'
 import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
+import { accendiSinkDeiLog, spegniSinkDeiLog } from './lib/serverLogSink.js'
 // Canale del metamodello (A-16): questo processo ha la SUA copia delle cache
 // derivate dal metamodello e prima non veniva mai avvisato dei cambiamenti.
 import { startMetamodelBus, stopMetamodelBus } from './lib/metamodelBus.js'
+// Import a effetto: registra sul canale il clearer delle cache del
+// dispatcher delle notifiche (regole, lingua e fuso) — revisione totale ·
+// E-20/A-15: erano invalidate solo nel processo che serviva la mutation.
+import './lib/notificationRuleCache.js'
 import { logger } from './lib/logger.js'
+import { assertMigrationsAppliedAtBoot } from './lib/migrationState.js'
+import { startInAppBus, stopInAppBus } from './lib/inAppBus.js'
 import type { Worker } from 'bullmq'
 
 registerSessionTracker((durationMs, query) => {
@@ -53,7 +60,11 @@ registerSessionTracker((durationMs, query) => {
 })
 
 async function main() {
+  // Revisione del 14 set 2026 · F8: come l'API (lib/migrationState.ts).
+  await assertMigrationsAppliedAtBoot({ require: config.requireAppliedMigrations, log: logger })
   startMetamodelBus()
+  // F10: anche il worker consegna notifiche (servizi, allarmi): si salvano e si pubblicano.
+  startInAppBus()
 
   const workers: Worker[] = []
   const consumers: Closable[] = []
@@ -80,6 +91,15 @@ async function main() {
   }
 
   const metricsServer = await startMetricsServer(config.port)
+
+  /*
+   * Il sink dei log vive anche QUI (ondata 3): metà dei log del prodotto sono
+   * dei worker — code, correlazione degli eventi, impatto sui servizi — e un
+   * sink che stesse solo nell'API vedrebbe metà dei guasti. Il campo
+   * `service` (lib/serviceName.ts) tiene separati i tre processi.
+   */
+  await accendiSinkDeiLog()
+
   logger.info({ profile: config.workerProfile, workGroups, workers: workers.map((w) => w.name), consumers: consumers.map((c) => c.name) }, 'Worker process started')
 
   // ── Graceful shutdown (lib/shutdown.ts, revisione 2 · D1.2) ───────────────
@@ -95,7 +115,9 @@ async function main() {
         ...consumers,
       ],
       resources: [
+        { name: 'server-log-sink',  close: () => spegniSinkDeiLog() },
         { name: 'metamodel-bus',    close: () => stopMetamodelBus() },
+        { name: 'inapp-bus',        close: () => stopInAppBus() },
         { name: 'bullmq-queues',    close: () => closeAllQueues() },
         { name: 'event-connection', close: () => closeConnection() },
         { name: 'neo4j-driver',     close: () => closeDriver() },

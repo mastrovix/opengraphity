@@ -8,6 +8,8 @@ import { logger as appLogger } from './logger.js'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import { getQueue } from './bullmq.js'
 import { createAutomationCache, evaluateRules } from './automationEngine.js'
+import { invalidateSchema } from './schemaInvalidator.js'
+import { parseConditions } from './conditionEvaluator.js'
 
 const WORKFLOW_JOBS_QUEUE = 'workflow-jobs'
 
@@ -67,14 +69,22 @@ export async function evaluateTriggers(
   eventType:  TriggerEventType,
   entity:     Record<string, unknown>,
   userId:     string,
-  _previousEntity?: Record<string, unknown>,
+  opts?:      { changedFields: readonly string[] },
 ): Promise<TriggerResult[]> {
-  const triggers = await loadTriggers(tenantId, entityType, eventType)
+  const loaded = await loadTriggers(tenantId, entityType, eventType)
+  // «Campo cambiato» (AU-1): il trigger è candidato solo se almeno uno dei
+  // campi che le sue condizioni nominano è fra quelli cambiati; senza
+  // condizioni, qualunque cambiamento. Le condizioni poi si valutano sul
+  // valore NUOVO, come per gli altri eventi.
+  const triggers = eventType === 'on_field_change' && opts
+    ? loaded.filter((t) => fieldsNamedBy(t.conditions).length === 0 || fieldsNamedBy(t.conditions).some((f) => opts.changedFields.includes(f)))
+    : loaded
   if (triggers.length === 0) return []
 
   const outcomes = await evaluateRules({
     kind: 'trigger',
     tenantId, entityType, entity, userId,
+    changedFields: opts?.changedFields,
     records: triggers.map((t) => ({
       id: t.id, name: t.name, conditions: t.conditions, actions: t.actions,
       conditionLogic: 'and', stopOnMatch: false,
@@ -133,7 +143,21 @@ export async function scheduleTimerTriggers(
   }
 }
 
-/** Invalidate the trigger cache for a tenant. */
+/** I campi nominati dalle condizioni di un trigger (JSON corrotto → nessuno: lo segnala poi evaluateRules). */
+function fieldsNamedBy(conditions: string | null): string[] {
+  try {
+    return parseConditions(conditions).map((c) => c.field).filter((f): f is string => typeof f === 'string')
+  } catch {
+    return []
+  }
+}
+
+/**
+ * I trigger del tenant sono cambiati: svuota le cache di QUESTO processo e
+ * avvisa gli altri (revisione totale · C-23). Prima l'invalidazione era
+ * locale: il worker che esegue le automazioni teneva la regola vecchia fino
+ * alla scadenza del TTL, anche quando l'admin la spegneva per fermarla.
+ */
 export function invalidateTriggerCache(tenantId: string): void {
-  cache.invalidate(tenantId)
+  invalidateSchema(tenantId)
 }

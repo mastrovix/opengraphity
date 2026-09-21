@@ -27,6 +27,10 @@
  */
 import { getSession, runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import { audit } from '../../lib/audit.js'
+import { SYSTEM_PERMISSIONS } from '../../lib/permissions.js'
+import { systemTextIn } from '../../lib/systemText.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
+import type { Lingua } from '../../lib/enumValueLabels.js'
 import { logger } from '../../lib/logger.js'
 import { ValidationError } from '../../lib/errors.js'
 import { runPagedPass, type PagedPassResult } from '../../lib/pagedPass.js'
@@ -231,20 +235,21 @@ export async function notifyChangeWindowChanged(tenantId: string, changeId: stri
  * con un componente dismesso non deve produrre una voce di cronologia ogni
  * mezz'ora (stesso criterio della voce «oltre il tetto»).
  */
-export function serviceSyncNote(trigger: ServiceMapSyncTrigger, counts: { added: number; removed: number; moved: number; retired?: number }, actorId: string): string {
-  const what = `+${counts.added}, −${counts.removed}, ~${counts.moved} spostati`
+export function serviceSyncNote(lingua: Lingua, trigger: ServiceMapSyncTrigger, counts: { added: number; removed: number; moved: number; retired?: number }, actorName: string): string {
+  const what = systemTextIn(lingua, 'serviceMap.sync.counts', { added: counts.added, removed: counts.removed, moved: counts.moved })
   const retired = counts.retired && counts.retired > 0
-    ? `; ${counts.retired} ${counts.retired === 1 ? 'componente dismesso escluso' : 'componenti dismessi esclusi'} dal calcolo`
+    ? systemTextIn(lingua, counts.retired === 1 ? 'serviceMap.sync.retiredOne' : 'serviceMap.sync.retiredMany', { count: counts.retired })
     : ''
   return (trigger === 'manual'
-    ? `Sincronizzazione richiesta da ${actorId}: ${what}`
-    : `Sincronizzazione automatica: ${what}`) + retired
+    ? systemTextIn(lingua, 'serviceMap.sync.manual', { actor: actorName, counts: what })
+    : systemTextIn(lingua, 'serviceMap.sync.automatic', { counts: what })) + retired
 }
 
 /** Motivo dello stop oltre il tetto: dice il numero e cosa fare (mai una mappa tagliata a metà). */
-export function serviceSyncLimitNote(totalProposed: number | null, detail: string): string {
-  const count = totalProposed == null ? 'La mappa costruita adesso' : `La mappa costruita adesso avrebbe ${totalProposed} componenti e`
-  return `Sincronizzazione saltata: ${count} supera il tetto di ${SERVICE_MAP_MAX_NODES} componenti (${detail}). Riduci la profondità o escludi dei componenti.`
+export function serviceSyncLimitNote(lingua: Lingua, totalProposed: number | null, detail: string): string {
+  return totalProposed == null
+    ? systemTextIn(lingua, 'serviceMap.sync.limitUnknown', { cap: SERVICE_MAP_MAX_NODES, detail })
+    : systemTextIn(lingua, 'serviceMap.sync.limit', { total: totalProposed, cap: SERVICE_MAP_MAX_NODES, detail })
 }
 
 // ── Scritture ────────────────────────────────────────────────────────────────
@@ -358,6 +363,22 @@ export function syncPlanOf(diff: ServiceMapDiff): { add: ServiceMapDiff['added']
   }
 }
 
+export const ACTOR_NAME_CYPHER = `
+  MATCH (u:User {id: $actorId, tenant_id: $tenantId})
+  RETURN coalesce(u.name, u.email) AS name`
+
+/**
+ * Il nome di chi ha chiesto la sincronizzazione, per la cronologia (SV-8: era
+ * l'UUID). Un attore che non è un utente del tenant (una API key, uno script)
+ * resta col suo id, che è la verità, e il log lo dice.
+ */
+export async function actorNameOf(session: Queryable, tenantId: string, actorId: string): Promise<string> {
+  const row = await runQueryOne<{ name: string | null }>(session, ACTOR_NAME_CYPHER, { tenantId, actorId })
+  if (row?.name) return row.name
+  log.warn({ tenantId, actorId }, 'Service map synchronization requested by an actor that is not a user of the tenant: the history shows its id')
+  return actorId
+}
+
 /**
  * Sincronizza la mappa con il grafo di adesso.
  *
@@ -373,6 +394,7 @@ export async function syncServiceMap(
   actorId: string = MONITORING_ACTOR,
   now: string = new Date().toISOString(),
 ): Promise<SyncServiceMapResult> {
+  const lingua = await languageFor(tenantId)
   const session = getSession(undefined, 'WRITE')
   let result: SyncServiceMapResult
   try {
@@ -384,7 +406,7 @@ export async function syncServiceMap(
         // Tetto superato dalla COSTRUZIONE (la proposta non si può nemmeno
         // calcolare per intero): la mappa resta com'è, marcata da rivedere.
         if (err instanceof ServiceMapTooLargeError) {
-          return skipOverLimit(tx, { tenantId, mapId, now, note: serviceSyncLimitNote(null, err.message) })
+          return skipOverLimit(tx, { tenantId, mapId, now, note: serviceSyncLimitNote(lingua, null, err.message) })
         }
         throw err
       }
@@ -408,7 +430,7 @@ export async function syncServiceMap(
       if (diff.totalProposed > SERVICE_MAP_MAX_NODES || finalCount > SERVICE_MAP_MAX_NODES) {
         return skipOverLimit(tx, {
           tenantId, mapId, now,
-          note: serviceSyncLimitNote(Math.max(diff.totalProposed, finalCount), `${diff.totalProposed} proposti, ${finalCount} dopo la sincronizzazione`),
+          note: serviceSyncLimitNote(lingua, Math.max(diff.totalProposed, finalCount), systemTextIn(lingua, 'serviceMap.sync.limitDetail', { proposed: diff.totalProposed, final: finalCount })),
         })
       }
 
@@ -422,7 +444,7 @@ export async function syncServiceMap(
       }
 
       const counts = { added: plan.add.length, removed: plan.removeIds.length, moved: plan.move.length }
-      const note = serviceSyncNote(trigger, { ...counts, retired: plan.retired }, actorId)
+      const note = serviceSyncNote(lingua, trigger, { ...counts, retired: plan.retired }, trigger === 'manual' ? await actorNameOf(tx, tenantId, actorId) : actorId)
       const row = await runQueryOne<SyncRow & { added: unknown; removed: unknown; moved: unknown }>(tx, SYNC_APPLY_CYPHER, {
         mapId, tenantId, expectedVersion: diff.version, now, actorId,
         addNodes: plan.add.map((n) => ({ ciId: n.ciId, level: n.level, role: n.role, propagate: n.propagate, weight: n.weight, critical: n.critical, via: n.via })),
@@ -471,7 +493,7 @@ export async function syncServiceMap(
   }
 
   log.info({ tenantId, mapId, trigger, version: result.version, added: result.added, removed: result.removed, moved: result.moved, retired: result.retired }, 'Service map synchronized with the CMDB')
-  void audit(actorId === MONITORING_ACTOR ? monitoringContext(tenantId) : { tenantId, userId: actorId, userEmail: actorId, role: 'admin' }, 'service_map.synced', 'ServiceMap', mapId, {
+  void audit(actorId === MONITORING_ACTOR ? monitoringContext(tenantId) : { tenantId, userId: actorId, userEmail: actorId, role: 'admin', permissions: SYSTEM_PERMISSIONS }, 'service_map.synced', 'ServiceMap', mapId, {
     trigger, version: result.version, added: result.added, removed: result.removed, moved: result.moved, note: result.note,
   })
   // La composizione è cambiata: la salute va ricalcolata subito (un componente

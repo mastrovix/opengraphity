@@ -14,7 +14,14 @@ export interface TopologyNode {
   id:            string
   name:          string
   type:          string
-  status:        string
+  /** Lo stato del ciclo di vita, dal Dizionario; null se il CI non ne ha uno. */
+  status:        string | null
+  /**
+   * In manutenzione secondo la policy degli allarmi DEL CLIENTE (revisione del
+   * 15 set 2026 · CM-11): prima si confrontava `status` col letterale
+   * `maintenance`, e uno stato rinominato non si vedeva più attenuato.
+   */
+  inMaintenance: boolean
   environment:   string | null
   ownerGroup:    string | null
   incidentCount: number
@@ -284,7 +291,7 @@ export default function TopologyGraph({
       .attr('fill', (d) => nodeFill(d, rootNodeId, highlightHealthRef.current))
       .attr('stroke', (d) => nodeStroke(d, highlightHealthRef.current))
       .attr('stroke-width', 2.5)
-      .attr('opacity', (d) => d.status === 'maintenance' ? 0.65 : 1)
+      .attr('opacity', (d) => d.inMaintenance ? 0.65 : 1)
 
     // Layer 5: icon — white on root node (cyan bg), slate on all others
     nodeEl.each(function(d) {
@@ -417,7 +424,7 @@ export default function TopologyGraph({
     nodeEl.select<SVGCircleElement>('.node-bg')
       .attr('fill', (d) => nodeFill(d, rootNodeId, highlightHealthRef.current))
       .attr('stroke', (d) => nodeStroke(d, highlightHealthRef.current))
-      .attr('opacity', (d) => d.status === 'maintenance' ? 0.65 : 1)
+      .attr('opacity', (d) => d.inMaintenance ? 0.65 : 1)
     nodeEl.select<SVGTextElement>('.node-label')
       .text((d) => nodeLabel(d, rootNodeId))
   }, [nodes, rootNodeId])

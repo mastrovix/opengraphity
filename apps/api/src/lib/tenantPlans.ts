@@ -15,8 +15,36 @@
 import type { Tenant } from '@opengraphity/types'
 
 export const DEFAULT_TENANT_PLAN: Tenant['plan'] = 'starter'
-export const DEFAULT_TENANT_TIMEZONE = 'Europe/Rome'
+/**
+ * UTC, non Europe/Rome (revisione totale · C-27).
+ *
+ * Il prodotto è «inglese per default» e il fuso decide le scadenze SLA, l'ora
+ * del digest e le passate OLA: un cliente irlandese onboardato senza
+ * `--timezone` si ritrovava le scadenze calcolate sull'ora di Roma. UTC non è
+ * la scelta di nessuno in particolare, quindi non finge di essere giusta: lo
+ * script di onboarding lo scrive a schermo quando usa il default.
+ */
+export const DEFAULT_TENANT_TIMEZONE = 'UTC'
 
+/**
+ * QUALI DI QUESTI NUMERI CONTANO DAVVERO (revisione AI, ondata 10).
+ *
+ * Due sono LETTI e fanno qualcosa:
+ * - `scripting_enabled` — `lib/scriptingPlan.ts`, ed è diventato un
+ *   interruttore in Organizzazione, non più un limite di piano;
+ * - `max_service_maps` — il motore dei servizi rifiuta la mappa in più.
+ *
+ * Tre sono SCRITTI E MAI LETTI: `sla_enabled`, `max_users`, `max_ci`. Nessun
+ * codice li interroga, nessuna interfaccia li mostra, nessuna API li espone:
+ * un'installazione «starter» crea il ventiseiesimo utente e il cinquecentounesimo
+ * CI senza che niente se ne accorga, e un `sla_enabled: false` non spegnerebbe
+ * nessuno SLA. Sono scritti sul nodo perché un giorno serviranno.
+ *
+ * Non si tolgono e non si applicano PER DECISIONE DEL PROPRIETARIO: i limiti
+ * di piano sono il punto F11 della revisione del 14 set 2026, rinviato
+ * esplicitamente. Sta qui scritto perché nessuno li legga come una difesa che
+ * esiste — il difetto vero sarebbe crederli attivi.
+ */
 export const PLAN_SETTINGS: Record<Tenant['plan'], Tenant['settings']> = {
   starter:    { sla_enabled: true, scripting_enabled: false, max_users: 25,   max_ci: 500,     max_service_maps: 5 },
   pro:        { sla_enabled: true, scripting_enabled: true,  max_users: 250,  max_ci: 10_000,  max_service_maps: 50 },

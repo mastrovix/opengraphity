@@ -20,8 +20,13 @@ const KEYCLOAK_INTERNAL_URL = config.keycloakUrl
  */
 const KEYCLOAK_PUBLIC_URLS = config.keycloakPublicUrls
 
-/** Per-issuer JWKS client cache — one entry per tenant */
+/**
+ * Per-issuer JWKS client cache — one entry per tenant. Bounded (revisione
+ * totale · A-14): the key comes from a token that is not verified yet, so an
+ * unbounded map grew with every forged `iss`. The oldest entry goes first.
+ */
 const clientCache = new Map<string, ReturnType<typeof jwksClient>>()
+export const JWKS_CLIENT_CACHE_MAX = 500
 
 /**
  * Returns a JWKS client for the given token issuer.
@@ -44,6 +49,10 @@ function getJwksClient(issuer: string): ReturnType<typeof jwksClient> {
     cacheMaxEntries: 10,
     cacheMaxAge:     10 * 60 * 1000, // 10 min
   })
+  if (clientCache.size >= JWKS_CLIENT_CACHE_MAX) {
+    const oldest = clientCache.keys().next().value
+    if (oldest !== undefined) clientCache.delete(oldest)
+  }
   clientCache.set(issuer, client)
   return client
 }
@@ -59,6 +68,9 @@ const ALLOWED_ISSUER_ORIGINS = new Set(
   [...KEYCLOAK_PUBLIC_URLS, KEYCLOAK_INTERNAL_URL].map((u) => new URL(u).origin),
 )
 
+/** Il nome di un realm è lo slug di un'organizzazione: nient'altro arriva al fetch delle chiavi. */
+const REALM_PATH_RE = /^\/realms\/[a-z0-9][a-z0-9-]{0,62}\/?$/
+
 function validateIssuer(iss: string): void {
   if (!iss.includes('/realms/')) {
     throw new Error(`Invalid issuer — not a Keycloak realm URL: ${iss}`)
@@ -72,6 +84,15 @@ function validateIssuer(iss: string): void {
   if (!ALLOWED_ISSUER_ORIGINS.has(origin)) {
     throw new Error(`Untrusted token issuer origin: ${origin}`)
   }
+  if (!REALM_PATH_RE.test(new URL(iss).pathname)) {
+    throw new Error(`Invalid issuer — realm is not an organization slug: ${iss}`)
+  }
+}
+
+let appClientIds: ReadonlySet<string> | null = null
+function allowedClientIds(): ReadonlySet<string> {
+  appClientIds ??= new Set(config.keycloakAppClientIds)
+  return appClientIds
 }
 
 export interface KeycloakTokenPayload {
@@ -80,6 +101,8 @@ export interface KeycloakTokenPayload {
   preferred_username: string
   realm_access:       { roles: string[] }
   iss:                string
+  /** Il client per cui il token è stato emesso. */
+  azp?:               string
 }
 
 export async function verifyKeycloakToken(token: string): Promise<KeycloakTokenPayload> {
@@ -113,7 +136,13 @@ export async function verifyKeycloakToken(token: string): Promise<KeycloakTokenP
           logger.error({ err: err.message }, 'verify error')
           reject(err)
         } else {
-          resolve(decoded as KeycloakTokenPayload)
+          const payload = decoded as KeycloakTokenPayload
+          const allowed = allowedClientIds()
+          if (!payload.azp || !allowed.has(payload.azp)) {
+            reject(new Error(`Token issued for client ${JSON.stringify(payload.azp ?? null)}, not for an OpenGrafo app (${[...allowed].join(', ')})`))
+            return
+          }
+          resolve(payload)
         }
       },
     )

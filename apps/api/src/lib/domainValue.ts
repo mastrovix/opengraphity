@@ -22,7 +22,7 @@
  */
 import { ValidationError } from './errors.js'
 import {
-  DOMAIN_MATRIX_KINDS, assertDomainValue, domainVocabulary, matrixKey,
+  DOMAIN_MATRIX_KINDS, assertDomainValue, matrixOutputValues, matrixKey,
   resolveDomainMatrix, type DomainMatrixKind,
 } from './domainMatrix.js'
 
@@ -36,7 +36,7 @@ export async function resolveDomainValue(
 ): Promise<string> {
   const out  = await resolveDomainMatrix(tenantId, kind, ...values)
   const spec = DOMAIN_MATRIX_KINDS[kind]
-  const allowed = await domainVocabulary(tenantId, spec.output)
+  const allowed = await matrixOutputValues(tenantId, kind)
   if (!allowed.includes(out)) {
     throw new ValidationError(
       `Matrix "${kind}", cell "${matrixKey(...values)}": the stored value "${out}" is not (any more) in the `

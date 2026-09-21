@@ -10,8 +10,11 @@ import { toast } from 'sonner'
 import { Search } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { GET_ALL_CIS } from '@/graphql/queries'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { ADD_CI_TO_CHANGE } from '@/graphql/mutations'
 import { colors } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
 
 export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, refetchImpacted, refetchAudit }: {
   changeId: string
@@ -21,10 +24,13 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
   refetchImpacted: () => Promise<unknown>
   refetchAudit:    () => Promise<unknown>
 }) {
+  const ciLabels = useCILabels()
   const { t } = useTranslation()
   const [search, setSearch] = useState('')
+  // CM-8: i tipi di CI esclusi per le change non si propongono (l'API li rifiuta comunque).
+  const { excluded: excludedCITypes } = useTicketCIExclusions('change')
   const { data: ciData } = useQuery<{ allCIs: { items: Array<{ id: string; name: string; type: string | null; environment: string | null; ownerGroup: { id: string; name: string } | null; supportGroup: { id: string; name: string } | null }> } }>(
-    GET_ALL_CIS, { variables: { search, limit: 20 }, skip: search.length < 2, fetchPolicy: 'network-only' },
+    GET_ALL_CIS, { variables: { search, limit: 20, excludeCiTypes: excludedCITypes }, skip: search.length < 2 || excludedCITypes === undefined, fetchPolicy: 'network-only' },
   )
   const [addCI, { loading }] = useMutation(ADD_CI_TO_CHANGE, {
     onCompleted: () => {
@@ -33,7 +39,7 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
       void refetchAudit()
       toast.success(t('toast.change.ciAdded'))
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const results = ciData?.allCIs?.items ?? []
 
@@ -62,12 +68,12 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 500, color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)' }}>{ci.name}</div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
-                    {ci.type && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 4px', borderRadius: 3, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ci.type}</span>}
-                    {ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 4px', borderRadius: 3, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ci.environment}</span>}
+                    {ci.type && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 4px', borderRadius: 3, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.typeLabel(ci.type)}</span>}
+                    {ci.environment && <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 4px', borderRadius: 3, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(ci.environment)}</span>}
                   </div>
                   <div style={{ display: 'flex', gap: 12, marginTop: 3, fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
-                    <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasOwner ? 'var(--color-success)' : 'var(--color-danger)', marginRight: 4, verticalAlign: 'middle' }} />Owner: {ci.ownerGroup?.name ?? '—'}</span>
-                    <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasSupport ? 'var(--color-success)' : 'var(--color-danger)', marginRight: 4, verticalAlign: 'middle' }} />Support: {ci.supportGroup?.name ?? '—'}</span>
+                    <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasOwner ? 'var(--color-success)' : 'var(--color-danger)', marginRight: 4, verticalAlign: 'middle' }} />{t('pages.addCIModal.owner', { name: ci.ownerGroup?.name ?? '—' })}</span>
+                    <span><span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', backgroundColor: hasSupport ? 'var(--color-success)' : 'var(--color-danger)', marginRight: 4, verticalAlign: 'middle' }} />{t('pages.addCIModal.support', { name: ci.supportGroup?.name ?? '—' })}</span>
                   </div>
                 </div>
                 {alreadyAdded ? (

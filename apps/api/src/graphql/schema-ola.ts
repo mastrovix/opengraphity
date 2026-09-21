@@ -15,6 +15,12 @@ export function olaSDL(): string {
     responseMinutes: Int!
     resolveMinutes:  Int!
     businessHours:   Boolean!
+    # Il calendario di servizio con cui conta (null = 24×7), e il suo nome.
+    calendarId:      ID
+    calendarName:    String
+    # L'obiettivo di conformità e la soglia d'attenzione, in percentuale.
+    complianceTarget:  Float
+    complianceWarning: Float
     partyType:       String    # team (sourcing internal) | supplier (sourcing external)
     # Legacy: il nome del fornitore scritto a mano. Oggi il responsabile e sempre un team (teamId/teamName).
     partyName:       String
@@ -31,7 +37,10 @@ export function olaSDL(): string {
     entityType:      String!
     responseMinutes: Int!
     resolveMinutes:  Int!
-    businessHours:   Boolean
+    # Il calendario di servizio; null o assente = 24×7.
+    calendarId:      ID
+    complianceTarget:  Float!
+    complianceWarning: Float!
     # team → un team con sourcing internal; supplier → un team con sourcing external
     partyType:       String
     teamId:          String
@@ -43,7 +52,10 @@ export function olaSDL(): string {
     entityType:      String
     responseMinutes: Int
     resolveMinutes:  Int
-    businessHours:   Boolean
+    # Il calendario di servizio; null = 24×7, assente = invariato.
+    calendarId:      ID
+    complianceTarget:  Float
+    complianceWarning: Float
     partyType:       String
     teamId:          String
     enabled:         Boolean
@@ -68,6 +80,9 @@ export function olaSDL(): string {
     entityType:      String
     responseMinutes: Int
     resolveMinutes:  Int
+    # L'obiettivo della policy (null per SLA senza policy): colora la percentuale di rispetto.
+    complianceTarget:  Float
+    complianceWarning: Float
     total:           Int!
     met:             Int!
     breached:        Int!
@@ -98,6 +113,47 @@ export function olaSDL(): string {
     met:            Int!
     breached:       Int!
     attainmentPct:  Float
+    # Quanti dei ticket valutati hanno tempo ricostruito dall'apertura (prima della storia delle assegnazioni).
+    inferred:       Int!
+    complianceTarget:  Float
+    complianceWarning: Float
+  }
+
+  """
+  Un contratto OLA/UC su un ticket (il riquadro nel dettaglio): il tempo in cui il
+  ticket è stato del team del contratto. \`applies\` false: il contratto è del tipo
+  del ticket ma non conta, e \`reason\` dice perché (\`other_team\`: il team non
+  l'ha mai avuto; \`before_contract\`: l'ha avuto solo prima che il contratto
+  esistesse). \`state\`: \`met\`, \`breached\`, \`running\`, \`handed_off\`
+  (passato ad altri entro l'obiettivo) o \`scheduled\` (la finestra del piano non è ancora iniziata), null se non conta. \`inferred\`: parte del
+  tempo è ricostruita dall'apertura del ticket (ticket di prima della storia delle assegnazioni).
+  """
+  type TicketOLA {
+    contractId:     ID!
+    name:           String!
+    type:           String!
+    teamName:       String
+    resolveMinutes: Int!
+    calendarId:     ID
+    calendarName:   String
+    applies:        Boolean!
+    reason:         String
+    deadline:       String
+    concludedAt:    String
+    state:          String
+    usedMinutes:      Int!
+    remainingMinutes: Int!
+    inferred:         Boolean!
+    """Solo change: la misura del task (assessment, validation, release); null = il ticket intero."""
+    unitKind:         String
+    unitKey:          String
+    ciName:           String
+    """Assessment: owner (funzionale) o support (tecnico)."""
+    responderRole:    String
+    """Validazione e rilascio: il titolo del passo del piano."""
+    stepTitle:        String
+    """Validazione e rilascio: l'inizio della finestra, da cui il tempo corre."""
+    startsAt:         String
   }
 
   type SLAReport {

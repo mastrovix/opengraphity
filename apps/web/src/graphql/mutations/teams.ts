@@ -24,6 +24,12 @@ export const SET_TEAM_MANAGER = gql`
   }
 `
 
+export const SET_TEAM_MEMBER = gql`
+  mutation SetTeamMember($teamId: ID!, $userId: ID!, $member: Boolean!) {
+    setTeamMember(teamId: $teamId, userId: $userId, member: $member) { id }
+  }
+`
+
 export const REMOVE_TEAM_MANAGER = gql`
   mutation RemoveTeamManager($teamId: ID!) {
     removeTeamManager(teamId: $teamId) { id }
@@ -33,5 +39,19 @@ export const REMOVE_TEAM_MANAGER = gql`
 export const SET_CHANGE_MANAGER_TEAM = gql`
   mutation SetChangeManagerTeam($teamId: ID!, $value: Boolean!) {
     setChangeManagerTeam(teamId: $teamId, value: $value) { id isChangeManager }
+  }
+`
+
+/** Revisione del 14 set 2026 · CO-1: la propria scelta di ricevere le e-mail di notifica. */
+export const SET_MY_EMAIL_NOTIFICATIONS = gql`
+  mutation SetMyEmailNotifications($enabled: Boolean!) {
+    setMyEmailNotifications(enabled: $enabled) { id emailNotifications }
+  }
+`
+
+/** La lingua della persona, per web e portale (null = quella dell'organizzazione). */
+export const SET_MY_LANGUAGE = gql`
+  mutation SetMyLanguage($language: String) {
+    setMyLanguage(language: $language) { id language }
   }
 `

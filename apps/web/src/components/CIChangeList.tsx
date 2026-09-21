@@ -143,7 +143,7 @@ export function CIChangeList({ ciId }: { ciId: string }) {
           display:    'flex',
           alignItems: 'center',
         }}>
-          Change <CountBadge count={changes.length} />
+          {t('components.ciChangeList.title')} <CountBadge count={changes.length} />
         </span>
         {open
           ? <ChevronDown size={16} color="var(--color-slate-light)" />

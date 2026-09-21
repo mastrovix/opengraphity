@@ -74,7 +74,11 @@ export function DetailField({ label, value, mono, editable, onSave }: DetailFiel
         <div style={{
           fontSize:   'var(--font-size-body)',
           color:      value ? 'var(--color-slate-dark)' : colors.slateLight,
-          fontFamily: mono ? 'monospace' : "'Plus Jakarta Sans', system-ui, sans-serif",
+          // I DUE token, non due elenchi scritti a mano: `mono` prendeva il
+          // monospace del browser (un carattere che non e del prodotto, e si
+          // vedeva su ogni «ID» delle schede di dettaglio) e l'altro ramo
+          // ricopiava la pila di caratteri invece di leggerla da index.css.
+          fontFamily: mono ? 'var(--font-mono)' : 'var(--font-sans)',
           whiteSpace: 'pre-wrap',
           lineHeight: 1.6,
           wordBreak:  mono ? 'break-all' : undefined,

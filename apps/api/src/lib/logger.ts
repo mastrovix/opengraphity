@@ -1,6 +1,7 @@
 import pino from 'pino'
 import { randomUUID } from 'node:crypto'
 import { pushLog } from './logBuffer.js'
+import { currentLogTenant } from './logTenantScope.js'
 import { config } from './config.js'
 import { serviceNameFor } from './serviceName.js'
 
@@ -15,17 +16,52 @@ const LEVEL_MAP: Record<number, string> = {
 
 const SKIP_KEYS = new Set(['level', 'time', 'msg', 'module', 'pid', 'hostname', 'service', 'env'])
 
+/*
+ * IL SINK PERSISTENTE, COLLEGATO DA FUORI (20 set 2026, ondata 3).
+ *
+ * `logger.ts` è importato da quasi tutto il codice: se importasse il sink, e
+ * il sink il driver di Neo4j, si aprirebbe un ciclo e ogni test che tocca un
+ * logger si porterebbe dietro il database. Quindi è il sink a presentarsi —
+ * `index.ts` lo collega all'avvio — e finché nessuno lo collega, qui non
+ * succede niente: è il caso dei test e degli script.
+ */
+type SinkDeiLog = (raw: Record<string, unknown>, livello: string, tenantId: string | null) => void
+let sinkDeiLog: SinkDeiLog | null = null
+
+export function collegaSinkDeiLog(fn: SinkDeiLog | null): void { sinkDeiLog = fn }
+
 function bufferLog(raw: Record<string, unknown>): void {
   const extra = Object.fromEntries(
     Object.entries(raw).filter(([k]) => !SKIP_KEYS.has(k)),
   )
+  const livello = LEVEL_MAP[raw['level'] as number] ?? 'info'
+  /*
+   * Il sink riceve la riga GREZZA, non quella bufferizzata: `SKIP_KEYS` qui
+   * sotto butta via `service` ed `env`, e il sink ha bisogno di `service` per
+   * sapere quale processo ha sbagliato — era il difetto che `serviceName.ts`
+   * ha chiuso nei log di Loki, e ripeterlo nel grafo sarebbe stato comico.
+   */
+  /*
+   * DI CHI È LA RIGA: lo stesso calcolo che fa `pushLog` qui sotto, fatto una
+   * volta sola. Serve al sink per sapere se questa riga va anche nella pagina
+   * Log di un cliente (20 set 2026, sera): prima il tenant lo buttavamo via e
+   * gli errori dei job di sfondo di un cliente sparivano al riavvio.
+   */
+  const tenantDellaRiga = currentLogTenant() ?? (typeof raw['tenantId'] === 'string' ? raw['tenantId'] : null)
+  if (sinkDeiLog) { try { sinkDeiLog(raw, livello, tenantDellaRiga) } catch { /* mai far cadere una riga di log */ } }
   pushLog({
     id:        randomUUID(),
     timestamp: new Date(raw['time'] as number).toISOString(),
-    level:     LEVEL_MAP[raw['level'] as number] ?? 'info',
+    level:     livello,
     module:    (raw['module'] as string | undefined) ?? 'api',
     message:   (raw['msg'] as string) ?? '',
     data:      Object.keys(extra).length > 0 ? JSON.stringify(extra) : null,
+    /*
+     * DI CHI È LA RIGA (20 set 2026): la richiesta in corso, se c'è;
+     * altrimenti il `tenantId` che la riga stessa porta — i job di sfondo lo
+     * scrivono già. Nessuno dei due = riga di piattaforma.
+     */
+    tenantId:  tenantDellaRiga,
   })
 }
 

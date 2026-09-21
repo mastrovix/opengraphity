@@ -10,6 +10,7 @@ const ITIL_TYPE_FRAGMENT = gql`
       required enumValues order isSystem
       enumTypeId enumTypeName
       validationScript visibilityScript defaultScript
+      visibleToEndUser
     }
   }
 `
@@ -50,16 +51,11 @@ export const DELETE_ITIL_FIELD = gql`
   }
 `
 
-export const CREATE_ITIL_CI_RELATION_RULE = gql`
-  mutation CreateITILCIRelationRule($itilType: String!, $ciType: String!, $relationType: String!, $direction: String!, $description: String) {
-    createITILCIRelationRule(itilType: $itilType, ciType: $ciType, relationType: $relationType, direction: $direction, description: $description) {
-      id itilType ciType relationType direction description
+/** I tipi di CI esclusi per un tipo di ticket: sostituisce l'elenco intero (revisione del 15 set 2026 · CM-8). */
+export const SET_TICKET_CI_EXCLUSIONS = gql`
+  mutation SetTicketCIExclusions($ticketType: String!, $ciTypes: [String!]!) {
+    setTicketCIExclusions(ticketType: $ticketType, ciTypes: $ciTypes) {
+      ticketType ciTypes
     }
-  }
-`
-
-export const DELETE_ITIL_CI_RELATION_RULE = gql`
-  mutation DeleteITILCIRelationRule($id: ID!) {
-    deleteITILCIRelationRule(id: $id)
   }
 `

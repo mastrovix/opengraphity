@@ -9,12 +9,14 @@ interface Props {
   value: string
   onChange: (value: string) => void
   placeholder?: string
+  /** Il nome accessibile del campo (il segnaposto non lo è). */
+  label?: string
   onSubmit?: () => void
   rows?: number
   style?: React.CSSProperties
 }
 
-export function MentionInput({ value, onChange, placeholder, onSubmit, rows = 3, style }: Props) {
+export function MentionInput({ value, onChange, placeholder, label, onSubmit, rows = 3, style }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [mentionState, setMentionState] = useState<{
     active: boolean
@@ -93,6 +95,7 @@ export function MentionInput({ value, onChange, placeholder, onSubmit, rows = 3,
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
+        aria-label={label ?? placeholder}
         rows={rows}
         style={{ width: '100%', padding: 8, borderRadius: 6, border: `1px solid ${palette.neutral.borderStrong}`, resize: 'vertical', fontFamily: 'inherit', fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }}
       />
