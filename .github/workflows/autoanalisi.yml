@@ -99,7 +99,7 @@ jobs:
               exit 1 ;;
           esac
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -111,8 +111,8 @@ jobs:
       # perché isolated-vm non compila contro il V8 di Node 22, e i pacchetti
       # condivisi costruiti prima perché le app risolvono `@opengraphity/*`
       # contro il loro `dist/`.
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: pnpm

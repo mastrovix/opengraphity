@@ -10,7 +10,19 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, Copy, Link2Off, Plug, Slack } from 'lucide-react'
+/*
+ * NIENTE ICONA «Slack» (21 set 2026).
+ *
+ * `lucide-react` ha tolto i MARCHI nella 1.0, e l'aggiornamento (PR #19,
+ * 0.577 → 1.44) si fermava su questa riga sola: delle 148 icone che il
+ * prodotto usa, era l'unica sparita. Verificato scaricando le esportazioni
+ * della 1.44 e confrontandole con quelle importate nei sorgenti.
+ *
+ * Al suo posto un fumetto, che dice «chat» senza pretendere di essere il
+ * logo di nessuno — e che, a differenza di quel glifo, esiste in entrambe
+ * le versioni, quindi questa riga non lega il prodotto a una delle due.
+ */
+import { CheckCircle2, Copy, Link2Off, Plug, MessageSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { Button } from '@/components/Button'
@@ -133,7 +145,7 @@ export function SlackSection() {
             <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: colors.slate, lineHeight: 1.5 }}>{t('admin.integrations.slack.appBody')}</p>
               {s.appInstallAvailable
-                ? <div><Button icon={<Slack size={14} aria-hidden="true" />} disabled={starting} onClick={() => void onInstall()}>{t('admin.integrations.slack.addToSlack')}</Button></div>
+                ? <div><Button icon={<MessageSquare size={14} aria-hidden="true" />} disabled={starting} onClick={() => void onInstall()}>{t('admin.integrations.slack.addToSlack')}</Button></div>
                 : <Notice tone="info">{t('admin.integrations.slack.appUnavailable')}</Notice>}
             </div>
           </SectionCard>

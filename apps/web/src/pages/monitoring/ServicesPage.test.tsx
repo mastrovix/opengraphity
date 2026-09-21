@@ -160,7 +160,9 @@ describe('ServicesPage', () => {
     const pressed = screen.getAllByRole('button', { name: /\bDegraded\b/ }).find((b) => b.getAttribute('aria-pressed') === 'true')
     expect(pressed).toBeDefined()
     expect(screen.getAllByText('page 2 of 2').length).toBeGreaterThan(0)
-  })
+  // Una ricerca con 300 ms di debounce in mezzo: il tempo si dichiara, se no
+  // i 5 s di default del test taglierebbero l'attesa dell'URL.
+  }, 30_000)
 
   // C-13: prima `?health=unknown` era accettato dall'URL ma il riquadro non era
   // cliccabile: il filtro arrivava da un link e non si poteva togliere.
