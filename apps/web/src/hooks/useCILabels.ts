@@ -9,6 +9,8 @@
  * un'etichetta inventata (come `useFieldValueLabel`).
  */
 import { useCallback, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
+import { localizedLabel } from '@opengraphity/types'
 import { useMetamodel } from '@/contexts/MetamodelContext'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
@@ -26,10 +28,45 @@ export interface CILabels {
 }
 
 export function useCILabels(): CILabels {
-  const { getCIType } = useMetamodel()
+  const { getCIType, ciTypes } = useMetamodel()
   const { labelOf } = useDomainVocabularies()
+  const { i18n } = useTranslation()
+  const lingua = i18n.resolvedLanguage ?? i18n.language
   return useMemo(() => {
-    const typeLabel = (type: string) => getCIType(type)?.label || type
+    /*
+     * UNA SOLA REGOLA PER IL NOME DI UN TIPO (20 set 2026, dal giro nel
+     * browser: «Portale clienti — businessapplication»).
+     *
+     * Ne giravano tre: la CMDB metteva davanti l'etichetta del disegnatore
+     * (regola F-22), cinque pagine una tabella CABLATA di sei traduzioni, e
+     * la pagina Anomalie quella tabella senza ripiego — quindi ogni tipo
+     * creato dal cliente usciva col nome interno. Lo stesso tipo si leggeva
+     * «Application», «Applicazione» o «businessapplication» secondo la
+     * pagina.
+     *
+     * Ora c'è un ordine solo, e sono le stesse due regole che il prodotto usa
+     * già per i campi e le relazioni:
+     *  1. le `labels` che il CLIENTE scrive nel disegnatore, nella lingua di
+     *     chi guarda — il suo tipo, il suo nome, in ogni lingua che parla;
+     *  2. l'etichetta del nodo, che per i tipi spediti arriva già tradotta
+     *     dal `MetamodelProvider` (`shippedLabel('type', …)`): tradotta
+     *     finché è quella spedita, intoccata se il cliente l'ha rinominata.
+     * Il nome interno resta l'ultima spiaggia: un'anomalia storica può citare
+     * un tipo cancellato, e il nome è meglio del nulla.
+     */
+    /*
+     * Il tipo arriva in due grafie: il NOME del metamodello
+     * (`business_application`) e, da chi legge il grafo, l'etichetta Neo4j
+     * minuscola (`businessapplication` — visto dal vivo nelle anomalie). Si
+     * confronta senza maiuscole e senza trattini bassi, così le due si
+     * incontrano: cercare solo per nome lasciava «businessapplication» a
+     * schermo.
+     */
+    const senzaForma = (x: string) => x.toLowerCase().replace(/_/g, '')
+    const typeLabel = (type: string) => {
+      const def = getCIType(type) ?? ciTypes.find((t) => senzaForma(t.name) === senzaForma(type))
+      return def ? localizedLabel(def.label || type, def.labels ?? [], lingua) : type
+    }
     const environmentLabel = (environment: string) => labelOf(CI_ENVIRONMENT_VOCABULARY, environment) || environment
     return {
       typeLabel,
@@ -37,7 +74,7 @@ export function useCILabels(): CILabels {
       statusLabel: (status: string) => labelOf(CI_STATUS_VOCABULARY, status) || status,
       subtitle: (ci) => (ci.environment ? `${typeLabel(ci.type)} · ${environmentLabel(ci.environment)}` : typeLabel(ci.type)),
     }
-  }, [getCIType, labelOf])
+  }, [getCIType, ciTypes, labelOf, lingua])
 }
 
 /** Il vocabolario della criticità di un servizio (BusinessApplication.criticality). */

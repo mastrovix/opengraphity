@@ -123,6 +123,20 @@ describe('addWorkflowStep (B2-1 / B-3): il passo nasce con il dato completo', ()
     expect(params['category']).toBe('active')
   })
 
+  /*
+   * ONDATA 10: un tipo che il motore non esegue non si aggiunge. Il
+   * disegnatore offriva «Biforcazione»: il motore la trattava come un passo
+   * normale e ne seguiva UNA transizione sola, in silenzio.
+   */
+  it('un tipo che il motore non esegue si rifiuta, dicendo perché, senza scrivere niente', async () => {
+    results = [{ records: [makeRecord({ entityType: 'incident' })] }]
+    for (const tipo of ['parallel_fork', 'parallel_join', 'sub_workflow']) {
+      await expect(M.addWorkflowStep(null, { definitionId: 'def-1', name: 'x', label: 'X', type: tipo }, ctx))
+        .rejects.toThrow(/is not executed by the workflow engine/)
+    }
+    expect(calls.filter((c) => c.cypher.includes('CREATE (s:WorkflowStep'))).toHaveLength(0)
+  })
+
   it('marchia la definizione come personalizzata e invalida la cache', async () => {
     results = [{ records: [makeRecord({ entityType: 'incident' })] }]
     await M.addWorkflowStep(null, { definitionId: 'def-1', name: 'x', label: 'X', type: 'standard' }, ctx)
@@ -247,12 +261,25 @@ describe('removeWorkflowStep (B2-2 / B-1): non si cancella un passo con dei tick
  */
 describe('la versione della definizione si muove a ogni modifica (ondata 8)', () => {
   it('aggiungere, modificare e togliere una transizione incrementano wd.version', async () => {
+    /**
+     * CONTRATTO RINEGOZIATO (revisione totale · B-26/B-27):
+     *  - `addWorkflowTransition` interroga PRIMA il grafo per rifiutare un
+     *    arco identico (stessa coppia di passi, stesso innesco): la prima
+     *    risposta del mock deve dire «nessun duplicato».
+     *  - `updateWorkflowTransition` vuole la definizione, perché la
+     *    transizione deve essere di QUELLA definizione e non di un'altra
+     *    dello stesso tenant.
+     */
     for (const run of [
       () => M.addWorkflowTransition(null, { definitionId: 'def-1', fromStepName: 'a', toStepName: 'b', trigger: 'manual' }, ctx),
-      () => M.updateWorkflowTransition(null, { transitionId: 't-1', label: 'x' }, ctx),
+      () => M.updateWorkflowTransition(null, { definitionId: 'def-1', transitionId: 't-1', input: { requiresInput: false, label: 'x' } }, ctx),
       () => M.removeWorkflowTransition(null, { definitionId: 'def-1', transitionId: 't-1' }, ctx),
     ]) {
-      results = [{ records: [makeRecord({ tr: { properties: { id: 't-1' } }, fromStep: 'a', toStep: 'b', entityType: 'incident', deletedId: 't-1' } )] }, { records: [] }]
+      results = [
+        { records: [] },   // nessun arco identico / nessuna riga da leggere
+        { records: [makeRecord({ tr: { properties: { id: 't-1' } }, fromStep: 'a', toStep: 'b', entityType: 'incident', deletedId: 't-1', id: 't-1' })] },
+        { records: [] },
+      ]
       await run().catch(() => undefined)   // alcune rispondono NOT_FOUND col mock minimo: conta il Cypher
       expect(writtenCypher(), 'la versione deve essere incrementata').toContain('wd.version = wd.version + 1')
       expect(writtenCypher()).toContain('wd.customized_at = $customizedAt')
@@ -337,7 +364,11 @@ describe('saveWorkflowChanges (B2-3 / B-8): lo step iniziale non può essere ter
 
 describe('marchio di personalizzazione (contratto con i seed)', () => {
   it('addWorkflowTransition, removeWorkflowTransition e updateWorkflowTransition marchiano', async () => {
-    results = [{ records: [makeRecord({ tr: { properties: { trigger: 'manual', label: 'x' } }, fromStep: 'a', toStep: 'b', entityType: 'incident' })] }]
+    // B-27: la prima risposta è il controllo dei duplicati (nessuno).
+    results = [
+      { records: [] },
+      { records: [makeRecord({ tr: { properties: { trigger: 'manual', label: 'x' } }, fromStep: 'a', toStep: 'b', entityType: 'incident' })] },
+    ]
     await M.addWorkflowTransition(null, { definitionId: 'def-1', fromStepName: 'a', toStepName: 'b' }, ctx)
     expect(writtenCypher()).toContain('wd.customized_at = $customizedAt')
 
@@ -347,8 +378,9 @@ describe('marchio di personalizzazione (contratto con i seed)', () => {
     expect(writtenCypher()).toContain('wd.customized_at = $customizedAt')
 
     calls.length = 0
+    // B-26: la SET restituisce l'id toccato — se non tocca niente, NOT_FOUND.
     results = [
-      { records: [] },
+      { records: [makeRecord({ id: 'tr-1' })] },
       { records: [makeRecord({ wd: { properties: { id: 'def-1', entity_type: 'incident' } }, steps: [] })] },
     ]
     await M.updateWorkflowTransition(null, {
@@ -356,6 +388,32 @@ describe('marchio di personalizzazione (contratto con i seed)', () => {
       input: { requiresInput: false },
     }, ctx)
     expect(writtenCypher()).toContain('wd.customized_at = $customizedAt')
+  })
+
+  /**
+   * Revisione totale · M-9: `coalesce($condition, t.condition)` non permetteva
+   * di CANCELLARE una condizione: passare null lasciava quella vecchia, e una
+   * condizione sbagliata su una transizione restava per sempre a bloccarla.
+   * Ora conta se il campo è presente nell'input.
+   */
+  it('updateWorkflowTransition: null CANCELLA il campo presente, l\'assenza lo lascia (M-9)', async () => {
+    const paramsOf = () => calls.find((c) => /SET t\.label/.test(c.cypher))!.params as Record<string, unknown>
+
+    calls.length = 0
+    results = [{ records: [makeRecord({ id: 'tr-1' })] }, { records: [makeRecord({ wd: { properties: { id: 'def-1', entity_type: 'incident' } }, steps: [] })] }]
+    await M.updateWorkflowTransition(null, { definitionId: 'def-1', transitionId: 'tr-1', input: { requiresInput: false, condition: null, timerHours: null } }, ctx)
+    expect(paramsOf()).toMatchObject({ conditionGiven: true, condition: null, timerHoursGiven: true, timerHours: null })
+
+    calls.length = 0
+    results = [{ records: [makeRecord({ id: 'tr-1' })] }, { records: [makeRecord({ wd: { properties: { id: 'def-1', entity_type: 'incident' } }, steps: [] })] }]
+    await M.updateWorkflowTransition(null, { definitionId: 'def-1', transitionId: 'tr-1', input: { requiresInput: false } }, ctx)
+    expect(paramsOf()).toMatchObject({ conditionGiven: false, timerHoursGiven: false, triggerGiven: false })
+
+    // L'etichetta vuota NON cancella: un arco senza etichetta non si clicca.
+    calls.length = 0
+    results = [{ records: [makeRecord({ id: 'tr-1' })] }, { records: [makeRecord({ wd: { properties: { id: 'def-1', entity_type: 'incident' } }, steps: [] })] }]
+    await M.updateWorkflowTransition(null, { definitionId: 'def-1', transitionId: 'tr-1', input: { requiresInput: false, label: null } }, ctx)
+    expect(paramsOf()).toMatchObject({ labelGiven: false })
   })
 
   it('updateWorkflowStep marchia e invalida la cache', async () => {

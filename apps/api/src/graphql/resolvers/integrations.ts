@@ -316,6 +316,8 @@ async function testOutboundWebhook(_: unknown, args: { id: string }, ctx: GraphQ
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 10_000)
       const res = await fetch(w['url'] as string, { method: (w['method'] as string) ?? 'POST', headers, body, signal: controller.signal })
+      // C-29: il corpo non serve alla prova, e tenerlo aperto tratterrebbe la connessione.
+      await res.body?.cancel().catch(() => undefined)
       clearTimeout(timer)
       const resBody = await res.text().catch(() => '')
       return { success: res.ok, statusCode: res.status, responseBody: resBody.slice(0, 500), error: null, duration: Date.now() - t0 }

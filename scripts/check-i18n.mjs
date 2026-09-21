@@ -125,6 +125,16 @@ const RE_T_LITERAL = /(?:^|[^A-Za-z0-9_$.])(?:i18n(?:ext)?\.)?t\(\s*(['"])([^'"`
 const RE_T_TEMPLATE = /(?:^|[^A-Za-z0-9_$.])(?:i18n(?:ext)?\.)?t\(\s*`([^`$]*)\$\{/g
 // qualsiasi letterale stringa che coincide con una chiave definita (labelKey: 'roles.admin', ecc.)
 const RE_ANY_LITERAL = /(['"`])((?:[A-Za-z0-9_]+\.)+[A-Za-z0-9_]+)\1/g
+/**
+ * Un template literal che COMPONE una chiave, anche fuori da `t(`)`
+ * (revisione totale · H-23). `configurationIssueText.ts` costruisce
+ * `configurationIssues.gap.${kind}` e la passa a un helper; `menu.ts` mette
+ * `labelKey` in una tabella. Il prefisso entra solo se qualche chiave definita
+ * comincia cosi: un template che non e una chiave (`${kind}:${id}`) non ha
+ * prefisso e resta fuori.
+ */
+const RE_ANY_TEMPLATE_PREFIX = /`((?:[A-Za-z0-9_]+\.)+)\$\{/g
+
 // toast.success('…') / toast.error(`…`)
 const RE_TOAST_LITERAL = /toast\.(success|error|warning|info)\(\s*(['"`])/g
 // <button …>testo</button> con testo letterale (non un'espressione {…})
@@ -149,6 +159,9 @@ for (const file of files) {
   }
   for (const m of src.matchAll(RE_ANY_LITERAL)) {
     if (keyExists(m[2])) usedKeys.add(m[2])
+  }
+  for (const m of src.matchAll(RE_ANY_TEMPLATE_PREFIX)) {
+    if ([...defined].some((k) => k.startsWith(m[1]))) usedPrefixes.add(m[1])
   }
   // `t` RINOMINATO: le sue chiavi diventano invisibili a questo controllo.
   // Terza revisione: `ReportListView.tsx` faceva `const { t: tr } = ...` perche
@@ -182,7 +195,23 @@ for (const file of files) {
   l'API, questo controllo le dichiarava tutte «mai usate»: 410 avvisi che
   nascondevano quelli veri.
 */
+/**
+ * `key:` non e sempre una chiave i18n: `olaChangeUnits.ts` compone
+ * `key: ${m.kind}:${p.id}` (un identificativo di tratto), e ci sono chiavi di
+ * cache e di mappa. Questi prefissi restano fuori dal controllo di esistenza.
+ */
+const PREFISSI_NON_I18N = ['cache.', 'queue.', 'metric.']
+
 const API_SRC = path.join(ROOT, 'apps/api/src')
+/**
+ * Anche i PACCHETTI mandano chiavi (revisione totale · H-23):
+ * `packages/workflow` compone `errors.workflow.condition.<nome>` e
+ * `packages/notifications` ha le sue. Scansionando solo apps/api quelle chiavi
+ * risultavano «definite e mai usate».
+ */
+const PKG_SRCS = fs.readdirSync(path.join(ROOT, 'packages'))
+  .map((d) => path.join(ROOT, 'packages', d, 'src'))
+  .filter((d) => fs.existsSync(d))
 function sorgentiApi(dir, out = []) {
   if (!fs.existsSync(dir)) return out
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -192,11 +221,98 @@ function sorgentiApi(dir, out = []) {
   }
   return out
 }
-for (const p of sorgentiApi(API_SRC)) {
+for (const p of [API_SRC, ...PKG_SRCS].flatMap((d) => sorgentiApi(d))) {
   const src = fs.readFileSync(p, 'utf8')
-  for (const m of src.matchAll(/key: '([A-Za-z0-9_.]+)'/g)) usedKeys.add(m[1])
-  // `errors.ciType.inUse${suffisso}`: la chiave si compone, e si valida il prefisso
-  for (const m of src.matchAll(/key: `([A-Za-z0-9_.]*)\$\{/g)) usedPrefixes.add(m[1])
+  const catalogoPermessi = p.endsWith(path.join('types', 'src', 'permissions.ts'))
+  for (const m of src.matchAll(/key: '([A-Za-z0-9_.]+)'/g)) {
+    usedKeys.add(m[1])
+    if (catalogoPermessi) {
+      // Un permesso senza etichetta compare nell'editor dei ruoli come
+      // «permissions.items.incident_write.label»: si controllano entrambe le
+      // parti, perché la descrizione è quello che l'amministratore legge per
+      // decidere se dare o no quel permesso.
+      for (const parte of ['label', 'description']) {
+        const chiave = `permissions.items.${m[1].replace('.', '_')}.${parte}`
+        usedKeys.add(chiave)
+        if (!keyExists(chiave)) {
+          err(`[missing] ${path.relative(ROOT, p)} — il permesso «${m[1]}» non ha «${chiave}»: nell'editor dei ruoli si leggerebbe la chiave`)
+        }
+      }
+    }
+    /*
+     * E SI CONTROLLA CHE ESISTA (19 set 2026, dalla revisione).
+     *
+     * Questo blocco serviva solo a non dichiarare «mai usate» le chiavi che
+     * manda il server: l'esistenza si verificava soltanto per i `t('...')`
+     * del web. Cosi una chiave mandata dall'API e mai definita arrivava a
+     * schermo COME CHIAVE — ed e successo: `proposal.discard.fieldName`, una
+     * su 614, trovata dalla revisione e non dal guardiano. Le chiavi degli
+     * scarti dei progettisti AI nascono tutte qui e nessun `tsc` le vede.
+     */
+    /*
+     * Solo le chiavi PUNTATE: `key: 'responseSubmitted'` è il tipo di una voce
+     * d'audit, non una frase da tradurre. Una chiave i18n ha sempre un punto —
+     * «errors.*», «pages.*», «proposal.discard.*».
+     *
+     * Il CATALOGO DEI PERMESSI è l'altra eccezione, e non si salta: le sue
+     * `key` sono identificativi («incident.write»), ma il web ne mostra
+     * l'etichetta come `permissions.items.<chiave con _>.label`. Quelle sono
+     * le chiavi da verificare, e si verificano sotto.
+     */
+    if (catalogoPermessi) continue
+    if (m[1].includes('.') && !keyExists(m[1]) && !PREFISSI_NON_I18N.some((x) => m[1].startsWith(x))) {
+      err(`[missing] ${path.relative(ROOT, p)} — l'API manda la chiave «${m[1]}» e nessun file di lingua la definisce: a schermo si leggerebbe la chiave`)
+    }
+  }
+  /**
+   * Qualunque letterale che SIA una chiave definita (revisione totale · H-23).
+   * `key: '...'` non copre tutte le forme con cui l'API manda una chiave:
+   * `consequenceKey`, il ternario dentro `i18n: { key: ... }`, le chiavi nei
+   * `params`. Quelle chiavi erano segnalate come «definite e mai usate»
+   * mentre e l'API a mandarle — e prima del fix del prefisso vuoto il
+   * controllo non parlava affatto.
+   */
+  for (const m of src.matchAll(/(['"`])((?:[A-Za-z0-9_]+\.)+[A-Za-z0-9_]+)\1/g)) {
+    // `keyExists`, non `defined.has`: l'API manda la chiave BASE di un plurale
+    // (`errors.ciType.relationUsedByServiceMaps`), e definite sono `_one`/`_other`.
+    if (keyExists(m[2])) usedKeys.add(m[2])
+  }
+  /**
+   * `errors.ciType.inUse${suffisso}`: la chiave si compone, e si valida il
+   * prefisso. Un prefisso VUOTO non entra (revisione totale · H-23): non tutti
+   * i `key:` dell'API sono chiavi i18n — `olaChangeUnits.ts` ha
+   * `key: ${m.kind}:${p.id}:${i}`, che e l'identificativo di un tratto — e un
+   * prefisso vuoto rende `k.startsWith(prefisso)` sempre vero, cioe spegne del
+   * tutto il controllo (c) «chiavi definite e mai usate». Si vedeva
+   * nell'intestazione: «prefissi dinamici (, admin.sla…)».
+   */
+  for (const m of src.matchAll(/key: `([A-Za-z0-9_.]*)\$\{/g)) {
+    if (m[1].length > 0) usedPrefixes.add(m[1])
+  }
+  // Un template che compone una chiave anche fuori da `key:` (`consequenceKey`,
+  // `errorI18n`, i `params`): il prefisso entra solo se e di chiavi vere.
+  for (const m of src.matchAll(/`((?:[A-Za-z0-9_]+\.)+)\$\{/g)) {
+    if ([...defined].some((k) => k.startsWith(m[1]))) usedPrefixes.add(m[1])
+  }
+  /**
+   * RADICE IN UNA COSTANTE: `const K = 'errors.metamodelName'` e poi
+   * `` `${K}.typeTaken` `` (revisione totale · H-23). E il modo con cui
+   * `packages/schema-generator/src/nameValidation.ts` tiene le sue chiavi in un
+   * posto solo, ed e buono — ma il template non ha prefisso statico, quindi
+   * quelle 21 chiavi risultavano «mai usate». Qui si legge la costante e si
+   * risolve `${NOME}.` nel suo valore.
+   */
+  const radici = new Map()
+  for (const m of src.matchAll(/\bconst ([A-Z][A-Za-z0-9_]*) = '((?:[A-Za-z0-9_]+\.)+[A-Za-z0-9_]+)'/g)) {
+    radici.set(m[1], m[2])
+  }
+  for (const m of src.matchAll(/`\$\{([A-Z][A-Za-z0-9_]*)\}((?:\.[A-Za-z0-9_]+)*)/g)) {
+    const radice = radici.get(m[1])
+    if (!radice) continue
+    // `${K}.typeSyntax` e una chiave intera; `${K}.consequence.${x}` un prefisso.
+    usedKeys.add(`${radice}${m[2]}`)
+    usedPrefixes.add(`${radice}${m[2]}.`)
+  }
 }
 
 // (c) chiavi mai usate: coperte da un uso letterale o da un prefisso dinamico
@@ -239,6 +355,21 @@ for (const k of [...defined].sort()) {
         .matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
       chiavi:  (v) => [`workflow.actions.${v}`],
     },
+    /**
+     * Le code dei job. Il nome di una coda (`events-maintenance`, `sla-jobs`)
+     * dice a chi l'ha scritta cosa fa, e a nessun altro: la pagina Code mostra
+     * sotto ogni nome la descrizione `pages.queueStats.queue.<nome>`. Il
+     * perimetro e il registro UNICO delle code dell'API, non un elenco copiato
+     * qui: una coda nuova la si dichiara in un posto solo e questo controllo
+     * pretende subito la sua descrizione, nelle due lingue.
+     */
+    {
+      nome:    'QUEUE_REGISTRY',
+      valori:  [...(leggi('apps/api/src/lib/queueRegistry.ts')
+        .match(/export const QUEUE_REGISTRY[^=]*= \[([\s\S]*?)\n\]/)?.[1] ?? '')
+        .matchAll(/(?:name: '([a-z-]+)'|consumerEntry\('([a-z-]+)')/g)].map((m) => m[1] ?? m[2]),
+      chiavi:  (v) => [`pages.queueStats.queue.${v}`],
+    },
   ]
   for (const ins of insiemi) {
     if (ins.valori.length === 0) {
@@ -268,11 +399,97 @@ for (const k of [...defined].sort()) {
 // quelli sono difetti veri (`Sync triggered`, `Heap Memory`, `Auto-refresh
 // 10s`, `External ID`): l'elenco puo solo accorciarsi.
 const IT_EN_IDENTICHE_ACCETTATE = new Set([
+  // «p90» e un termine statistico, non una parola: si scrive cosi in ogni
+  // lingua, come «SLA» o «p95». Tradurlo sarebbe inventare un nome che
+  // nessuno usa. (Ondata 2 di «Miglioramento continuo», 20 set 2026.)
+  'pages.dailyWork.steps.p90',
+  // I nomi dei TIPI SPEDITI non sono più qui: dal 20 set 2026 stanno in
+  // `packages/types/src/shippedLabels.ts`, perché le legge anche il server
+  // (le intestazioni delle colonne dei report). Quelli che in italiano si
+  // dicono in inglese — «Server», «Database», «Incident» — sono dichiarati lì.
+  // Il titolo della pagina e la voce di menu sono LA STESSA COSA: si
+  // chiamavano «Report Builder» nel menu e «Costruttore di report» nella
+  // pagina (20 set 2026, dal giro nel browser). Vale la regola degli altri
+  // disegnatori del prodotto — «Workflow Designer», «CI Type Designer»,
+  // «Service Request Designer»: e il nome della cosa, non una frase.
+  'pages.reportBuilder.title',
+  /**
+   * «Task» è la parola che il PRODOTTO usa già in italiano per questa cosa:
+   * la voce di menu è «I miei task», il conteggio dice «{{total}} task», la
+   * change ha «Task attivi». Il compito generico nuovo (20 set 2026) si
+   * chiama così per non avere due parole per la stessa cosa nella stessa
+   * schermata. Se un giorno si decide di dire «compito», si cambia
+   * dappertutto insieme, non qui da solo.
+   */
+  'tasks.kindOne',
+  /**
+   * Le entità e le relazioni dei TASK nel costruttore di report (20 set
+   * 2026). «Task», «Assessment» e «Review» sono le parole che il prodotto
+   * usa già in italiano — «Task attivi» sulla change, «Assessment
+   * funzionale» nel suo piano, «Review» fra i suoi passi — e sono le stesse
+   * che chi fa ITSM usa parlando italiano. Tradurle qui e non altrove
+   * darebbe due nomi alla stessa cosa a seconda della pagina.
+   */
+  'reportBuilder.entity.task',
+  'reportBuilder.entity.reviewTask',
+  'reportBuilder.relation.task',
+  'reportBuilder.relation.assessment',
+  'reportBuilder.relation.review',
+  // «Designer» e «Workflow» nominano due cose del prodotto e si chiamano cosi
+  // anche in italiano: il primo e la parola che il prodotto usa gia nella barra
+  // laterale («Workflow Designer», «CI Type Designer»), il secondo e il nome
+  // dell'oggetto — «iter» era una traduzione nostra che nessuno usava, e chi
+  // configura cerca «workflow» (deciso dal proprietario, 18 set 2026).
+  'pages.catalogForms.tabs.forms',
+  'pages.catalogForms.tabs.itinerary',
+  // L'interruttore «Designer | Anteprima» dentro la pagina: stesso nome della
+  // scheda, e per la stessa ragione — e il nome della cosa, non una frase.
+  'pages.catalogForms.builder.viewCanvas',
+  // La riga «Workflow: …» della proposta dell'AI: e lo stesso nome, per la
+  // stessa ragione delle due chiavi sopra.
+  'pages.catalogForms.ai.itemWorkflow',
+  // «Formula» si scrive e si legge cosi nelle due lingue: e la parola che
+  // nomina la cosa (il prodotto la usa gia nell'editor dei campi calcolati).
+  'pages.catalogForms.ai.formula',
+  // «Service request» e il nome dell'oggetto, e in italiano si dice cosi: la
+  // pagina si chiama Service Request Designer, e chiamare «voce di catalogo»
+  // la stessa cosa in una tendina era il solito secondo nome.
+  'pages.catalogForms.builder.item',
+  // «Service Request Designer» e il nome della pagina, nella stessa famiglia di
+  // «CI Type Designer» e «Workflow Designer» che stanno gia nella barra
+  // laterale: un nome, non una frase (scelto dal proprietario, 18 set 2026).
+  'sidebar.catalogForms',
+  'pages.catalogForms.title',
+  // «Gantt» e il cognome di Henry Gantt: e il nome del diagramma, e i nomi
+  // propri non si traducono (regola delle parole tecniche: resta inglese cio
+  // che NOMINA). E l'etichetta della scheda, accanto a «Elenco»/«List», che
+  // invece e tradotta.
+  'pages.releasePlan.tabGantt',
+  // «Workflow» è il nome della funzione del prodotto — il disegnatore si
+  // chiama così anche in italiano, e l'intestazione di questa colonna nomina
+  // lui (regola delle parole tecniche: resta inglese ciò che NOMINA).
+  'pages.catalogForms.itinerary.workflow',
+  // «File» è la parola italiana per un file: «archivio» vuol dire un'altra
+  // cosa e «documento» pure. È il tipo di campo del modulo, non una frase
+  // (regola delle parole tecniche: resta inglese ciò che NOMINA).
+  'pages.catalogForms.fieldType.attachment',
+  // «discovery» e il nome della funzione che scopre i CI da sola: l'origine di
+  // un alias si chiama cosi anche in italiano (regola delle parole tecniche).
+  // L'altra origine, «manual», e invece tradotta in «a mano» (revisione
+  // totale · G-EVT-8).
+  'events.aliases.source.discovery',
   // «business rule» e «trigger» sono nomi di funzioni del prodotto e restano
   // inglesi anche in italiano (regola delle parole tecniche); al singolare la
   // frase del conto coincide («1 business rule», «1 trigger»).
   'ciTypeDesigner.deleteImpact.businessRules_one',
   'ciTypeDesigner.deleteImpact.autoTriggers_one',
+  // «Task» e «CI» nominano due oggetti del prodotto e si chiamano così anche in
+  // italiano: il primo è il nome che l'interfaccia usa da sempre per i task di
+  // una change (`changeTasks.*`), il secondo è la sigla di Configuration Item,
+  // che non si traduce (regola delle parole tecniche: resta inglese ciò che
+  // NOMINA). Sono intestazioni di colonna del piano complessivo.
+  'pages.releasePlan.task',
+  'pages.releasePlan.ci',
   // Nomi di prodotti esterni (ondata 8 di «Nulla cablato»): Slack, Microsoft
   // Entra ID e Google Workspace si chiamano così in ogni lingua.
   'admin.integrations.slack.tab',
@@ -282,11 +499,31 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   // uguali nelle due lingue; i giorni invece no («d» / «gg»).
   'time.short.minutes',
   'time.short.hoursMinutes',
+  // «span» è il termine di OpenTelemetry per un tratto di traccia: si chiama
+  // così anche in italiano (regola delle parole tecniche), e al singolare la
+  // frase coincide (revisione totale · G-19).
+  'pages.monitoring.spans_one',
+  // «incident» e «problem» sono i nomi ITIL delle entità e restano uguali in
+  // italiano, come in tutto il prodotto (regola delle parole tecniche): qui
+  // servono a comporre «Risolvi incident INC…» invece del valore grezzo
+  // interpolato di prima (revisione totale · F-27).
+  'entities.incident',
+  'entities.problem',
+  // Nomi delle ENTITÀ nel costruttore dei report (revisione totale · C-18):
+  // «Team», «CI», «Incident» e «Change» sono i nomi che il prodotto usa in
+  // italiano, come in tutto il resto dell'interfaccia (regola delle parole
+  // tecniche). Gli altri nomi dello stesso gruppo sono tradotti («Utente»,
+  // «CI impattato», «Team assegnato»…), quindi non è una lista non tradotta.
+  'reportBuilder.entity.team',
+  'reportBuilder.entity.ci',
+  'reportBuilder.entity.incident',
+  'reportBuilder.entity.change',
   // «OLA / UC» sono due sigle ITIL: la stessa cosa nelle due lingue.
-  'pages.slaReport.contracts',
+  // (`pages.slaReport.contracts` e `.slaSection` erano qui e sono state tolte
+  // insieme alle loro chiavi, rimaste indietro dalla separazione fra SLA
+  // Report e OLA/UC Report: un permesso che non serve piu e una porta aperta.)
   'sidebar.olaContracts',
   // Sigle e termini del reporting SLA, uguali nelle due lingue.
-  'pages.slaReport.slaSection',
   'pages.slaReport.policy',
   'pages.slaReport.attainmentShort',
   /*
@@ -440,8 +677,6 @@ const IT_EN_IDENTICHE_ACCETTATE = new Set([
   'notificationRules.eventGroupStandard',
   'notificationRules.severity.info',
   'pages.audit.colIp',
-  'pages.changeCatalogAdmin.colWorkflow',
-  'pages.changeCatalogAdmin.workflow',
   'pages.changes.count_one',
   'pages.cmdb.count_one',
   'pages.dashboard.badgeTeam',
@@ -585,11 +820,50 @@ const RE_TESTO_JSX = new RegExp('>([^<>{}]{4,}?)</', 'g')
 const RE_TESTO_JSX_APERTO = /(?<![=\-])>([^<>{}]*[A-Za-z][^<>{}]*?)(?=\{|<[A-Za-z/])/g
 /** Un letterale scelto da una condizione e messo come figlio JSX: `>{ok ? 'enabled' : 'disabled'}<`. */
 const RE_TERNARIO_JSX = />\s*\{[^{}\n]*\?\s*'([^']*)'\s*:\s*'([^']*)'\s*\}\s*</g
+/**
+ * LE PAROLE CHE NESSUN NODO DI TESTO CONTIENE: se compaiono, si e catturato
+ * codice e non prosa.
+ *
+ * Costante e non ripetuta, perche serve a DUE controlli: la prosa senza `t()`
+ * (`testoAperto`) e l'italiano cablato (i due rami JSX di (e2)). Il secondo
+ * non la usava, e con nomi di variabile ITALIANI — `conflitti`, `gruppi`,
+ * `righe` — un tratto di codice a cavallo di due righe veniva segnalato come
+ * testo italiano a schermo (18 set 2026). Il guardiano lo sapeva gia e lo
+ * diceva in un commento: «Il nome della variabile e italiano, il testo a
+ * schermo no».
+ */
+/*
+ * PAROLE CHE IN UN'INTERFACCIA NON COMPAIONO MAI (corretto il 19 set 2026).
+ *
+ * Il 18 set ci avevo messo anche `for`, `of`, `as`, `new`, `while`, `null`,
+ * `undefined`, `Set`, `Map`, `Record` — e avevo applicato l'elenco al ramo
+ * principale del controllo. Sono parole INGLESI di uso quotidiano e nomi di
+ * tipo che in italiano sono sostantivi: la revisione del 19 set l'ha
+ * dimostrato misurandolo, sei stringhe su otto passavano —
+ * «Waiting for approval», «Save as draft», «Out of range», «Add new item»,
+ * «Il Set di regole non e completo», «Nessun Record trovato». Cioe' il
+ * guardiano nato per trovare i letterali a schermo aveva smesso di trovarli,
+ * e il prezzo era pagato per togliere CINQUE falsi positivi.
+ *
+ * Adesso l'elenco ha solo parole che a schermo non si leggono mai, e i falsi
+ * positivi si tolgono dove nascono davvero: `RE_CODICE_A CAPO` riconosce il
+ * pezzo di codice preso a cavallo di due righe, che e' la loro forma comune.
+ */
+const RE_PAROLE_DI_CODICE = /\b(const|return|let|await|async|function|export|import|interface|readonly|typeof|extends|Promise|Partial|Pick|Omit)\b/
+
+/**
+ * Un tratto preso A CAVALLO DI DUE RIGHE con indentazione di codice: e' quello
+ * che produceva i falsi positivi (un `&&`, una graffa e il nome italiano di
+ * una variabile alla riga dopo). Un nodo di testo JSX non contiene mai un a
+ * capo seguito da due o piu' spazi seguiti da codice.
+ */
+const RE_CODICE_A_CAPO = /\n\s{2,}\S/
+
 /** Il pezzo di testo di `RE_TESTO_JSX_APERTO`, ripulito; `null` se e codice. */
 function testoAperto(grezzo) {
   const t = grezzo.trim()
   if (/[=;"'`()\[\]?]|&&|\|\||\n/.test(t)) return null
-  if (/\b(const|return|if|let|await|async|function|export|import|type|interface|Record|Promise|Array|Partial|Pick|Omit|Set|Map|typeof|as|extends)\b/.test(t)) return null
+  if (RE_PAROLE_DI_CODICE.test(t)) return null
   return t.replace(/^[·•|,–—-]+\s*/, '').replace(/[\s:]+$/, '')
 }
 
@@ -698,6 +972,17 @@ function prosa(v) {
     for (const m of src.matchAll(RE_TESTO_JSX)) {
       const riga = lineOf(src, m.index)
       if (commenti.has(riga)) continue
+      /*
+        LE PAROLE DI CODICE VALGONO ANCHE QUI (18 set 2026).
+
+        L'altro ramo JSX le filtrava, questo no: e la firma di una funzione
+        generica — `<T extends {...}>(\n  vocabolari: readonly T[],\n): T[]` —
+        veniva segnalata come italiano a schermo, perche fra il `>` del
+        generico e un `</` piu avanti non c'e nessun carattere vietato. Un
+        guardiano che grida al lupo sulla prima funzione generica del giorno
+        insegna a ignorarlo.
+      */
+      if (RE_PAROLE_DI_CODICE.test(m[1]) || RE_CODICE_A_CAPO.test(m[1])) continue
       if (prosa(m[1])) trovati.push({ dove: `testo JSX «${m[1].trim()}»`, riga })
     }
     for (const m of src.matchAll(RE_TESTO_JSX_APERTO)) {
@@ -905,23 +1190,57 @@ function prosa(v) {
     i pezzi FUORI dalle graffe (le graffe diventano uno spazio), e si scarta
     tutto cio che contiene `=` o virgolette, che nel JSX vuol dire attributo.
   */
-  const RE_TESTO_CON_ESPRESSIONI = /> {0,400}([^<>]{2,400}?)</gs
+  const RE_TESTO_CON_ESPRESSIONI = /(?<![=\-])> {0,400}([^<>]{2,400}?)</gs
+  /*
+    `(?<![=\-])` su entrambe: il `>` di una FUNZIONE FRECCIA non apre un nodo
+    di testo. Senza, `useMemo(() => intervallo(modo, riferimento), [...])`
+    veniva segnalato come «testo JSX in italiano» — i nomi delle variabili sono
+    italiani, il testo a schermo no. La regex gemella della verifica sulla
+    prosa (`RE_TESTO_JSX_APERTO`) aveva già questa guardia; a queste due
+    mancava, e un guardiano che grida su codice insegna a ignorarlo (17 set
+    2026).
+  */
   /*
     E il testo che finisce dove COMINCIA un'espressione, non dove comincia un
     tag: `>Salva modifiche{pendingCount > 0 && (`. Il `>` dentro `pendingCount
     > 0` fa si che il primo `<` utile sia righe piu sotto, quindi la regex qui
     sopra cattura mezzo blocco di codice e la scarta. Questa si fermaal `{`.
   */
-  const RE_TESTO_PRIMA_DI_ESPRESSIONE = /> {0,400}([^<>{}]{3,400}?)\{/gs
+  const RE_TESTO_PRIMA_DI_ESPRESSIONE = /(?<![=\-])> {0,400}([^<>{}]{3,400}?)\{/gs
 
   const daScansionare = [...files.map((f) => [f, WEB_SRC])]
   if (fs.existsSync(PORTAL_SRC)) {
     for (const f of walk(PORTAL_SRC)) daScansionare.push([f, path.join(ROOT, 'apps')])
   }
+  /*
+   * E `packages/web-core`, che era FUORI dal perimetro (revisione del 17 set
+   * 2026). Dentro vive il renderer che disegna OGNI modulo del catalogo in
+   * ENTRAMBE le app: un testo italiano cablato lì lo vedrebbero sia gli
+   * operatori sia gli utenti finali, e nessun controllo lo guardava.
+   */
+  const WEB_CORE_SRC = path.join(ROOT, 'packages/web-core/src')
+  if (fs.existsSync(WEB_CORE_SRC)) {
+    for (const f of walk(WEB_CORE_SRC)) daScansionare.push([f, path.join(ROOT, 'packages')])
+  }
 
   for (const [file, base] of daScansionare) {
     const relPath = path.relative(base, file)
     const pulito = senzaCommenti(fs.readFileSync(file, 'utf8'))
+    /*
+     * IL JSX STA NEI `.tsx`, E LE REGEX DI FORMA JSX SOLO LI (17 set 2026).
+     *
+     * `RE_TESTO_CON_ESPRESSIONI` e `RE_TESTO_PRIMA_DI_ESPRESSIONE` hanno il
+     * flag `s`, quindi scavalcano le righe: in un file `.ts` il `>` di una
+     * funzione freccia apre una cattura che arriva fino alla prima graffa utile
+     * e porta dentro mezzo blocco di codice. Su
+     * `pages/changes/releasePlanSummary.ts` ha segnalato come «testo JSX»
+     * la riga `steps.some((s) => ordinabile(...) || ordinabile(...))`, che
+     * testo a schermo non e: un guardiano che grida su codice insegna a
+     * ignorarlo. TypeScript rifiuta il JSX in un `.ts`, quindi restringere non
+     * perde niente — `RE_STRINGA`, che e il controllo vero sull'italiano
+     * cablato, continua a guardare TUTTI i file.
+     */
+    const forseJSX = file.endsWith('.tsx')
     const visti = new Set()
     const segnala = (riga, dove) => {
       const chiave = `${riga}|${dove}`
@@ -935,12 +1254,15 @@ function prosa(v) {
       const testo = m[1] ?? m[2] ?? m[3] ?? ''
       if (italiano(testo)) segnala(lineOf(pulito, m.index), `«${testo.slice(0, 80).replace(/\n/g, ' ')}»`)
     }
-    for (const m of pulito.matchAll(RE_TESTO_PRIMA_DI_ESPRESSIONE)) {
+    for (const m of forseJSX ? pulito.matchAll(RE_TESTO_PRIMA_DI_ESPRESSIONE) : []) {
       const testo = m[1]
       if (/[="']/.test(testo)) continue
+      // Codice, non un nodo di testo: i nomi di variabile italiani di questo
+      // prodotto lo facevano sembrare prosa.
+      if (RE_PAROLE_DI_CODICE.test(testo) || RE_CODICE_A_CAPO.test(testo)) continue
       if (italiano(testo)) segnala(lineOf(pulito, m.index), `testo JSX «${testo.trim().slice(0, 80)}»`)
     }
-    for (const m of pulito.matchAll(RE_TESTO_CON_ESPRESSIONI)) {
+    for (const m of forseJSX ? pulito.matchAll(RE_TESTO_CON_ESPRESSIONI) : []) {
       const grezzo = m[1]
       if (/[="']/.test(grezzo)) continue
       const testo = grezzo.replace(/\{[^{}]*\}/g, ' ')
@@ -952,6 +1274,7 @@ function prosa(v) {
         testo a schermo no.
       */
       if (/[{}]/.test(testo)) continue
+      if (RE_PAROLE_DI_CODICE.test(testo) || RE_CODICE_A_CAPO.test(testo)) continue
       if (italiano(testo)) segnala(lineOf(pulito, m.index), `testo JSX «${testo.trim().slice(0, 80)}»`)
     }
   }
@@ -1013,6 +1336,24 @@ function prosa(v) {
     const pEn = flatten(JSON.parse(fs.readFileSync(path.join(PORTAL_I18N, 'en.json'), 'utf8')))
     const pIt = flatten(JSON.parse(fs.readFileSync(path.join(PORTAL_I18N, 'it.json'), 'utf8')))
     const esiste = (tab, k) => tab[k] !== undefined || Object.keys(tab).some((x) => x.startsWith(k + '_'))
+    /**
+     * PARITA' fra le due lingue e nessun valore vuoto (revisione totale · H-24).
+     * Il controllo guardava solo `t('chiave')`: una chiave aggiunta al solo
+     * `en.json` passava, e il portale italiano mostrava il NOME della chiave a
+     * schermo. Le due tabelle devono avere le stesse chiavi (i plurali a parte,
+     * che dipendono dalla lingua) e nessun valore vuoto.
+     */
+    const pluraleDi = (k) => k.replace(/_(zero|one|two|few|many|other)$/, '')
+    const basiEn = new Set(Object.keys(pEn).map(pluraleDi))
+    const basiIt = new Set(Object.keys(pIt).map(pluraleDi))
+    for (const k of basiEn) if (!basiIt.has(k)) err(`[portal] chiave in portal/en.json e non in portal/it.json: ${k}`)
+    for (const k of basiIt) if (!basiEn.has(k)) err(`[portal] chiave in portal/it.json e non in portal/en.json: ${k}`)
+    for (const [lingua, tab] of [['en', pEn], ['it', pIt]]) {
+      for (const [k, v] of Object.entries(tab)) {
+        if (typeof v !== 'string' || v.trim() === '') err(`[portal] valore vuoto in portal/${lingua}.json: ${k}`)
+      }
+    }
+
     for (const file of walk(PORTAL_SRC)) {
       const src = fs.readFileSync(file, 'utf8')
       for (const m of src.matchAll(/\bt\(\s*'([a-zA-Z0-9_.]+)'/g)) {
@@ -1021,7 +1362,101 @@ function prosa(v) {
           if (!esiste(tab, k)) err(`[portal] ${path.relative(ROOT, file)}:${lineOf(src, m.index)} chiave non definita in portal/${lingua}.json: ${k}`)
         }
       }
+      /**
+       * Anche i TEMPLATE (H-24): `t(\`ticket.status.${status}\`)`,
+       * `t(\`portal.languageName.${l}\`)`, `t(\`ticket.empty.${filter}\`)`.
+       * Si valida il prefisso: almeno una chiave deve cominciare cosi, in
+       * entrambe le lingue.
+       */
+      for (const m of src.matchAll(/\bt\(\s*`([a-zA-Z0-9_.]*)\$\{/g)) {
+        const prefisso = m[1]
+        const riga = lineOf(src, m.index)
+        if (!prefisso) {
+          err(`[portal] ${path.relative(ROOT, file)}:${riga} t(\`\${…}\`) senza prefisso statico: non verificabile`)
+          continue
+        }
+        for (const [lingua, tab] of [['en', pEn], ['it', pIt]]) {
+          if (!Object.keys(tab).some((k) => k.startsWith(prefisso))) {
+            err(`[portal] ${path.relative(ROOT, file)}:${riga} nessuna chiave con prefisso "${prefisso}" in portal/${lingua}.json`)
+          }
+        }
+      }
     }
+  }
+}
+
+// ── (h) ETICHETTE LETTERALI: `label: 'Testo'` ────────────────────────────────
+//
+// Da dove viene questo controllo: la pagina Log aveva QUATTRO intestazioni di
+// colonna scritte in inglese nel sorgente («Timestamp», «Level», «Module»,
+// «Message»), in un elenco a livello di modulo dove `t` non arriva. Le chiavi
+// tradotte esistevano da sempre e restavano inutilizzate — ed era l'unica
+// traccia del difetto, un warning «chiave definita e mai usata» fra i tanti.
+// Le liste di incident, problem e richieste avevano «Number», l'amministrazione
+// della Knowledge Base «Status» e «Views», l'editor delle azioni le tre
+// modalità di approvazione in inglese. Per quelle la chiave non era mai stata
+// scritta, quindi NESSUN controllo poteva accorgersene: il guardiano cerca
+// l'italiano cablato, non l'inglese.
+//
+// Cosa si segnala: `label: '…'` il cui valore SEMBRA testo da leggere, cioè
+// contiene uno spazio oppure comincia con la maiuscola.
+//
+// Cosa NON si segnala, e perché:
+//  - `label: ''` — una colonna senza intestazione (icone, azioni): non è testo;
+//  - una parola minuscola (`label: 'pause'`, `label: 'majority'`) — in questo
+//    codice è quasi sempre un FRAMMENTO DI CHIAVE (`t(\`…actions.${a.label}\`)`)
+//    o il nome di un parametro, non una frase. È il limite dichiarato di
+//    questo controllo: preferisce non gridare al lupo.
+//  - quello che sta in LABEL_LETTERALI_ACCETTATI qui sotto, con il suo perché.
+{
+  /**
+   * Etichette che restano letterali, ognuna con la sua ragione. Sono NOMI di
+   * valori tecnici che si scrivono così in ogni lingua: tradurli qui
+   * spezzerebbe la corrispondenza con quello che la riga accanto mostra.
+   */
+  const LABEL_LETTERALI_ACCETTATI = new Map([
+    // Operatori logici del costruttore di regole: si scrivono AND e OR ovunque.
+    ['AND', 'operatore logico'],
+    ['OR',  'operatore logico'],
+    // Livelli del logger (pino): la colonna «Livello» li mostra GREZZI e in
+    // maiuscolo (`LevelBadge`), quindi il filtro deve dire la stessa parola.
+    ['Trace', 'livello del logger'], ['Debug', 'livello del logger'],
+    ['Info',  'livello del logger'], ['Warn',  'livello del logger'],
+    ['Error', 'livello del logger'], ['Fatal', 'livello del logger'],
+    // Moduli che scrivono nel log: sono l'identificativo scritto nel record
+    // (`module: 'frontend'`), e la colonna «Modulo» li mostra grezzi.
+    ['HTTP', 'modulo del log'], ['GraphQL', 'modulo del log'], ['Auth', 'modulo del log'],
+    ['Workflow', 'modulo del log'], ['Notification', 'modulo del log'], ['Frontend', 'modulo del log'],
+  ])
+
+  const RE_LABEL_LETTERALE = /\blabel:\s*(['"])((?:[^'"\\]|\\.)*)\1/g
+  const sorgentiEtichette = [
+    ...files.map((f) => [f, WEB_SRC]),
+    ...(fs.existsSync(path.join(ROOT, 'apps/portal/src'))
+      ? [...walk(path.join(ROOT, 'apps/portal/src'))].map((f) => [f, path.join(ROOT, 'apps')])
+      : []),
+  ]
+
+  const usati = new Set()
+  for (const [file, base] of sorgentiEtichette) {
+    // I mock dei test dichiarano dati finti, non interfaccia.
+    if (file.includes('/test/') || /\.test\.[jt]sx?$/.test(file)) continue
+    const src = fs.readFileSync(file, 'utf8')
+    for (const m of src.matchAll(RE_LABEL_LETTERALE)) {
+      const valore = m[2]
+      if (valore === '') continue
+      const sembraTesto = valore.includes(' ') || /^[A-ZÀ-Ö]/.test(valore)
+      if (!sembraTesto) continue
+      if (LABEL_LETTERALI_ACCETTATI.has(valore)) { usati.add(valore); continue }
+      err(`[etichetta] ${path.relative(base, file)}:${lineOf(src, m.index)} etichetta scritta nel sorgente: label: "${valore}". `
+        + `Passa da i18n (t('…')), oppure aggiungila a LABEL_LETTERALI_ACCETTATI in scripts/check-i18n.mjs spiegando perche resta letterale`)
+    }
+  }
+
+  // Un permesso che non serve piu e una porta aperta: stessa regola di IT_EN_IDENTICHE_ACCETTATE.
+  const morti = [...LABEL_LETTERALI_ACCETTATI.keys()].filter((v) => !usati.has(v))
+  if (morti.length > 0) {
+    err(`[etichetta] LABEL_LETTERALI_ACCETTATI porta ${morti.length} voci che nessun sorgente usa piu: toglile. ${morti.join(', ')}`)
   }
 }
 

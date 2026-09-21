@@ -84,7 +84,11 @@ describe('entity_type → percorso (condiviso con il pannello in-app del web)', 
       event:           '/events/:id',
       service:         '/monitoring/services/:id',
       inbound_webhook: '/monitoring/sources/:id',
+      // B-21: l'articolo si apre per slug, ma notifiche e approvazioni portano
+      // l'id: la rotta `/kb-articles/:id` del web lo risolve e reindirizza.
+      kb_article:      '/kb-articles/:id',
     })
+    expect(notificationEntityPath('kb_article', 'kb-1')).toBe('/kb-articles/kb-1')
     expect(notificationEntityPath('service', 'map-1')).toBe('/monitoring/services/map-1')
     expect(notificationEntityPath('inbound_webhook', 'src-1')).toBe('/monitoring/sources/src-1')
     expect(notificationEntityPath('event', 'ev-1')).toBe('/events/ev-1')

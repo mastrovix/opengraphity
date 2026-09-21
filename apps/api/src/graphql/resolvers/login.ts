@@ -6,7 +6,7 @@
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
 import {
-  deactivateLoginProvider, loginProviderAddresses, loginProviders, passwordRules, removeLoginProvider, saveLoginProvider, setPasswordRules, testLoginProvider,
+  deactivateLoginProvider, loginProviderAddresses, loginProviders, passwordRules, passwordRulesOutOfRange, removeLoginProvider, saveLoginProvider, setPasswordRules, testLoginProvider,
   type LoginProviderInput,
 } from '../../lib/tenantLogin.js'
 
@@ -14,7 +14,11 @@ export const loginResolvers = {
   Query: {
     loginSettings: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
       const [rules, providers] = await Promise.all([passwordRules(ctx.tenantId), loginProviders(ctx.tenantId)])
-      return { passwordRules: rules, providers, addresses: loginProviderAddresses(ctx.tenantId) }
+      // A-19: quello che il realm porta fuori intervallo si DICE alla pagina.
+      return {
+        passwordRules: rules, providers, addresses: loginProviderAddresses(ctx.tenantId),
+        passwordRulesOutOfRange: passwordRulesOutOfRange(rules),
+      }
     },
   },
   Mutation: {

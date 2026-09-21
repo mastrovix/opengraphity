@@ -1,5 +1,6 @@
 import { GraphQLError } from 'graphql'
 import { assertDefinitionDeadlines } from '../../lib/stepDeadlineWrite.js'
+import { ADDABLE_STEP_TYPES, isUnimplementedStepType } from '@opengraphity/types'
 import { ValidationError } from '../../lib/errors.js'
 import { randomUUID } from 'crypto'
 import { withSession } from './ci-utils.js'
@@ -19,6 +20,7 @@ import {
   incidentAvailableTransitions,
   incidentWorkflowHistory,
   workflowDefinition,
+  workflowStepLabels,
   workflowDefinitionById,
   workflowDefinitions,
   incidentWorkflowInstance,
@@ -36,6 +38,8 @@ import {
   removeWorkflowTransition,
   executeWorkflowTransition,
   saveWorkflowChanges,
+  duplicateWorkflowDefinition,
+  setWorkflowDefinitionActive,
   MARK_CUSTOMIZED,
   customizedParams,
 } from './workflowMutations.js'
@@ -92,8 +96,23 @@ async function addWorkflowStep(
   },
   ctx: GraphQLContext,
 ) {
-  const ALLOWED_TYPES = new Set(['standard', 'parallel_fork', 'parallel_join', 'timer_wait', 'sub_workflow'])
-  if (!ALLOWED_TYPES.has(type)) throw new ValidationError(`Invalid step type: ${type}`)
+  /*
+   * SI AGGIUNGE SOLO QUELLO CHE IL MOTORE ESEGUE (ondata 10).
+   *
+   * `parallel_fork`, `parallel_join` e `sub_workflow` si potevano aggiungere e
+   * il motore li trattava come passi normali: una biforcazione disegnata
+   * seguiva UNA transizione sola, in silenzio. L'elenco di quello che il
+   * motore sa fare sta in `@opengraphity/types`, e il rifiuto lo nomina invece
+   * di dire «tipo non valido» a chi ha appena visto quel tipo nella palette.
+   */
+  if (isUnimplementedStepType(type)) {
+    throw new ValidationError(
+      `Step type "${type}" is not executed by the workflow engine: a step of this type would behave like a standard step, `
+      + `following a single transition. It cannot be added until the engine implements it.`,
+      { key: 'errors.workflow.stepTypeNotImplemented', params: { type } },
+    )
+  }
+  if (!(ADDABLE_STEP_TYPES as readonly string[]).includes(type)) throw new ValidationError(`Invalid step type: ${type}`)
   // Il nome del passo diventa lo `status` dell'entità (`engine.ts`), e da lì va
   // nei filtri, nei report e nel vocabolario `status_*`: ha la stessa forma di
   // ogni altro identificatore di dominio. Non era validato — dall'interfaccia
@@ -341,6 +360,7 @@ export const workflowResolvers = {
     incidentAvailableTransitions,
     incidentWorkflowHistory,
     workflowDefinition,
+    workflowStepLabels,
     workflowDefinitionById,
     workflowDefinitions,
   },
@@ -355,6 +375,9 @@ export const workflowResolvers = {
     executeWorkflowTransition,
     saveWorkflowLayout,
     saveWorkflowChanges,
+    // Duplicare una definizione (moduli del catalogo, ondata 3).
+    duplicateWorkflowDefinition,
+    setWorkflowDefinitionActive,
   },
   WorkflowStep: {
     currentInstances: workflowStepCurrentInstances,

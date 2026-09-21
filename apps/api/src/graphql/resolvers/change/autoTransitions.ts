@@ -159,7 +159,7 @@ async function syncLinkedIncidents(
       'automatic resolution of an incident solved by a closed change')
     const res = await workflowEngine.transition(
       session,
-      { instanceId: r.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.resolvedByChange', { code: r.code }) },
+      { instanceId: r.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.resolvedByChange', { code: r.code }), tenantId: ctx.tenantId },
       { userId: ctx.userId ?? 'system', entityData: {} },
     )
     if (!res.success) logger.warn({ changeId, instanceId: r.instanceId, toStep, error: res.error }, '[syncLinkedIncidents] auto-resolve incident non riuscito')
@@ -203,7 +203,7 @@ async function syncLinkedProblems(
     const drive = async (toStep: string): Promise<void> => {
       const res = await workflowEngine.transition(
         session,
-        { instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.changeInStep', { step: changeStep }) },
+        { instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.changeInStep', { step: changeStep }), tenantId: ctx.tenantId },
         { userId: ctx.userId ?? 'system', entityData: {} },
       )
       if (res.success) problemStep = toStep
@@ -249,7 +249,7 @@ export async function revertProblemAfterChangeDetached(
     'problem return to investigation after the change is unlinked')
   const res = await workflowEngine.transition(
     session,
-    { instanceId: row.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.resolvingDetached') },
+    { instanceId: row.instanceId, toStepName: toStep, triggeredBy: ctx.userId ?? 'system', triggerType: 'automatic', notes: await systemText(ctx.tenantId, 'change.resolvingDetached'), tenantId: ctx.tenantId },
     { userId: ctx.userId ?? 'system', entityData: {} },
   )
   if (!res.success) logger.warn({ problemId, from: row.step, toStep, error: res.error }, '[revertProblemAfterChangeDetached] transizione non riuscita')
@@ -330,6 +330,7 @@ async function walkAutoTransitions(
         toStepName:  tr.toStep,
         triggeredBy: 'system',
         triggerType: 'automatic',
+        tenantId:    ctx.tenantId,
       }, actionCtx)
 
       if (!result.success) {

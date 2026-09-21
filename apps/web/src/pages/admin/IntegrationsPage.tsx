@@ -7,6 +7,8 @@
  * `/api/webhooks/inbound/:id`); etichette e messaggi in i18n (D·6.4).
  */
 import { useId, useState } from 'react'
+import { formatDateTime } from '@/lib/datetime'
+import { InvalidFilterNotice } from '@/components/InvalidFilterNotice'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
@@ -106,7 +108,12 @@ const hintS: React.CSSProperties = { fontSize: 'var(--font-size-caption)', color
 const PILL_S: React.CSSProperties = { fontWeight: 400, marginRight: 4 }
 const ROW_ACTIONS: React.CSSProperties = { display: 'flex', gap: 6 }
 
-function fmtDate(d: string | null) { return d ? new Date(d).toLocaleString(i18n.language, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—' }
+/**
+ * G-26: `formatDateTime` come in tutto il resto dell'app. Qui c'era un formato
+ * proprio, con l'anno a due cifre: le date di Integrazioni si leggevano
+ * «25/09/26» mentre ogni altra pagina scriveva «25 set 2026».
+ */
+const fmtDate = formatDateTime
 function copyText(text: string) { void navigator.clipboard.writeText(text); toast.success(i18n.t('toast.integration.copied')) }
 
 /** Chiave i18n del titolo di ogni modale. */
@@ -126,9 +133,26 @@ function ModalPortal({ modalType, children, onClose }: { modalType: ModalKey; ch
 
 // ── Component ───────────────────────────────────────────────────────────────
 
+/** Le entità che un webhook in ingresso può creare. */
+const ENTITA_WEBHOOK = ['incident', 'change', 'problem', 'event'] as const
+
 export function IntegrationsPage() {
   const { t } = useTranslation()
   const confirm = useConfirm()
+  /*
+   * Il nome dell'entità (20 set 2026, dal giro nel browser): la colonna
+   * mostrava il nome interno — «event» — mentre il filtro sopra, sulla stessa
+   * pagina, diceva «Evento di monitoraggio». Una sola funzione per tutti e
+   * due, e l'elenco delle entità in un posto solo.
+   */
+  const etichettaEntita = (v: string) => {
+    const chiavi: Record<string, string> = {
+      incident: 'admin.integrations.entityIncident', change: 'admin.integrations.entityChange',
+      problem:  'admin.integrations.entityProblem',  event:  'admin.integrations.entityEvent',
+    }
+    const chiave = chiavi[v]
+    return chiave ? t(chiave) : v
+  }
   // La scheda è nell'indirizzo (?tab=slack): il ritorno da Slack deve riaprire quella.
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')
@@ -153,10 +177,7 @@ export function IntegrationsPage() {
 
   const yesNo = [{ value: 'true', label: t('common.yes') }, { value: 'false', label: t('common.no') }]
   const INBOUND_FILTERS: FieldConfig[] = [
-    { key: 'entityType', label: t('admin.integrations.filters.entityType'), type: 'enum', options: [
-      { value: 'incident', label: t('admin.integrations.entityIncident') }, { value: 'change', label: t('admin.integrations.entityChange') }, { value: 'problem', label: t('admin.integrations.entityProblem') },
-      { value: 'event', label: t('admin.integrations.entityEvent') },
-    ]},
+    { key: 'entityType', label: t('admin.integrations.filters.entityType'), type: 'enum', options: ENTITA_WEBHOOK.map((v) => ({ value: v, label: etichettaEntita(v) })) },
     { key: 'enabled', label: t('admin.integrations.filters.enabled'), type: 'enum', options: yesNo },
     { key: 'name', label: t('admin.integrations.filters.name'), type: 'text' },
   ]
@@ -312,7 +333,8 @@ export function IntegrationsPage() {
 
   const inboundColumns: ColumnDef<InboundWebhook>[] = [
     { key: 'name', label: t('admin.integrations.columns.name'), sortable: true },
-    { key: 'entityType', label: t('admin.integrations.columns.entityType'), sortable: true, render: (v) => <Pill bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{String(v)}</Pill> },
+    // Il nome dell'entità come nel filtro qui sopra, non `event` (20 set 2026).
+    { key: 'entityType', label: t('admin.integrations.columns.entityType'), sortable: true, render: (v) => <Pill bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{etichettaEntita(String(v))}</Pill> },
     { key: 'connectorKind', label: t('admin.integrations.connectorKind'), sortable: true, render: (v) => v ? <Pill bg={palette.purple.bg} color={palette.purple.dark} radius={12} style={PILL_S}>{String(v)}</Pill> : '—' },
     // Endpoint reale (rotta /api/webhooks/inbound/:id). Per le sorgenti evento
     // l'URL si copia da Monitoraggio → Sorgenti, insieme al token: qui solo il link.
@@ -324,7 +346,7 @@ export function IntegrationsPage() {
         </Link>
       ) : (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{url}</span>
+          <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>{url}</span>
           <Button variant="ghost" size="xs" aria-label={t('admin.integrations.copyEndpoint')} title={t('admin.integrations.copyEndpoint')} onClick={() => copyText(url)} style={{ padding: 2, color: 'var(--color-slate)' }}>
             <Copy size={12} aria-hidden="true" />
           </Button>
@@ -344,7 +366,7 @@ export function IntegrationsPage() {
 
   const outboundColumns: ColumnDef<OutboundWebhook>[] = [
     { key: 'name', label: t('admin.integrations.columns.name'), sortable: true },
-    { key: 'url', label: t('admin.integrations.columns.url'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
+    { key: 'url', label: t('admin.integrations.columns.url'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'var(--font-mono)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
     { key: 'events', label: t('admin.integrations.columns.events'), sortable: true, render: (v) => {
       const events: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
       return <>{events.map(e => <Pill key={e} bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{e}</Pill>)}</>
@@ -367,7 +389,7 @@ export function IntegrationsPage() {
 
   const apiKeyColumns: ColumnDef<ApiKeyRow>[] = [
     { key: 'name', label: t('admin.integrations.columns.name'), sortable: true },
-    { key: 'keyPrefix', label: t('admin.integrations.columns.keyPrefix'), sortable: true, render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
+    { key: 'keyPrefix', label: t('admin.integrations.columns.keyPrefix'), sortable: true, render: (v) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
     { key: 'permissions', label: t('admin.integrations.columns.permissions'), sortable: true, render: (v) => {
       const perms: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
       return <>{perms.map(p => <Pill key={p} bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{p}</Pill>)}</>
@@ -390,6 +412,8 @@ export function IntegrationsPage() {
 
   return (
     <PageContainer>
+      {/* F-17: un filtro dell'URL illeggibile si dice, non si ignora. */}
+      <InvalidFilterNotice show={inList.filtersInvalid || outList.filtersInvalid || keyList.filtersInvalid} />
       <div style={{ marginBottom: 24 }}>
         <PageTitle icon={<Plug size={22} color="var(--color-icon-accent)" />}>{t('admin.integrations.title')}</PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>

@@ -11,7 +11,8 @@
  * cliente): nessuna lista copiata nel web. Una regola che cita un tipo tolto
  * dopo il salvataggio mostra il problema invece di sembrare a posto.
  */
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
+import { showError } from '@/lib/showError'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
@@ -23,10 +24,11 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { Toggle } from '@/components/ui/Toggle'
 import { Button } from '@/components/Button'
 import { Select, Input, LabelledField } from '@/components/ui/FormControls'
-import { SeverityBadge } from '@/components/SeverityBadge'
+// G-ANO-6: la severità delle anomalie è una scala del prodotto, non il vocabolario del cliente.
+import { AnomalySeverityBadge } from '@/components/ui/badges'
 import { GET_ANOMALY_RULES, UPDATE_ANOMALY_RULE } from '@/graphql/queries'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
-import { ciTypeLabelKey } from '@/lib/ciEnums'
+import { useCILabels } from '@/hooks/useCILabels'
 import { colors } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
 import { RULE_LABEL_KEYS } from './AnomalyPage'
@@ -94,22 +96,33 @@ function Chips({ values, selected, labelOf, onChange, label }: {
   values: readonly string[]; selected: readonly string[]; labelOf: (v: string) => string
   onChange: (next: string[]) => void; label: string
 }) {
+  const { t } = useTranslation()
+  /**
+   * Anche i valori SALVATI che non sono (più) fra le opzioni (revisione totale
+   * · G-ANO-5): prima si disegnavano solo le opzioni, quindi un tipo di CI
+   * cancellato restava nella regola — invisibile, non deselezionabile, e
+   * spedito a ogni salvataggio, che l'API rifiutava: la regola non era più
+   * riparabile dall'interfaccia.
+   */
+  const orphans = selected.filter((v) => !values.includes(v))
   return (
     <div role="group" aria-label={label} style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-      {values.map((v) => {
+      {[...values, ...orphans].map((v) => {
         const on = selected.includes(v)
+        const orphan = orphans.includes(v)
         return (
           <button
             key={v} type="button" aria-pressed={on}
+            title={orphan ? t('pages.anomalyRules.orphanValue', { value: v }) : undefined}
             onClick={() => onChange(on ? selected.filter((x) => x !== v) : [...selected, v])}
             style={{
               font: 'inherit', fontSize: 'var(--font-size-body)', cursor: 'pointer', padding: '4px 10px', borderRadius: 999,
-              border: `1px solid ${on ? colors.brand : colors.border}`,
-              background: on ? 'var(--color-brand-light)' : 'var(--surface)',
-              color: on ? colors.brandHover : colors.slate, fontWeight: on ? 600 : 400,
+              border: `1px solid ${orphan ? 'var(--color-danger-text)' : on ? colors.brand : colors.border}`,
+              background: orphan ? 'var(--color-danger-bg)' : on ? 'var(--color-brand-light)' : 'var(--surface)',
+              color: orphan ? 'var(--color-danger-text)' : on ? colors.brandHover : colors.slate, fontWeight: on ? 600 : 400,
             }}
           >
-            {labelOf(v)}
+            {orphan ? t('pages.anomalyRules.orphanChip', { value: v }) : labelOf(v)}
           </button>
         )
       })}
@@ -137,15 +150,23 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
   const current = draft ?? settingsOf(rule)
   const set = (patch: Partial<AnomalyRuleSettings>) => setDraft({ ...current, ...patch })
   const problem = ruleDraftProblem(current, rule.spec)
+  /**
+   * La bozza si azzera QUANDO i dati nuovi sono arrivati (revisione totale ·
+   * G-ANO-9): `onCompleted` la buttava subito e il refetch non era atteso,
+   * quindi su una rete lenta la scheda diceva «salvato» e tornava a mostrare
+   * la soglia di PRIMA per qualche secondo — sembrava che il salvataggio non
+   * avesse funzionato. `awaitRefetchQueries` aspetta la risposta.
+   */
   const [save, { loading: saving }] = useMutation(UPDATE_ANOMALY_RULE, {
     refetchQueries: [GET_ANOMALY_RULES],
+    awaitRefetchQueries: true,
     onCompleted: () => { toast.success(t('pages.anomalyRules.saved')); setDraft(null) },
+    onError: (e) => showError(e),
   })
 
-  const typeLabel = useMemo(() => {
-    const byName = new Map(options.ciTypes.map((c) => [c.name, c.label]))
-    return (name: string) => { const key = ciTypeLabelKey(name); return key ? t(key) : (byName.get(name) ?? name) }
-  }, [options.ciTypes, t])
+  // F-22 (prima l'etichetta del cliente, poi la chiave dei tipi spediti) vive
+  // in `useCILabels`: qui era una copia della stessa regola.
+  const { typeLabel } = useCILabels()
   const title = t(RULE_LABEL_KEYS[rule.ruleKey] ?? rule.ruleKey)
   const thresholdId = `anomaly-threshold-${rule.ruleKey}`
   const severityId = `anomaly-severity-${rule.ruleKey}`
@@ -160,7 +181,7 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
           <span style={{ color: rule.enabled ? colors.success : colors.slateLight, fontWeight: 600 }}>
             {rule.enabled ? t('pages.anomalyRules.on') : t('pages.anomalyRules.off')}
           </span>
-          <SeverityBadge value={rule.severity} />
+          <AnomalySeverityBadge value={rule.severity} />
           <span style={{ color: colors.slateLight }}>{t('pages.anomalyRules.openCount', { count: rule.openCount })}</span>
         </span>
       )}
@@ -172,7 +193,7 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
 
         {rule.problem && (
           <div role="alert" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '10px 12px', borderRadius: 6, background: 'var(--color-danger-bg)', color: 'var(--color-danger-text)', fontSize: 'var(--font-size-body)' }}>
-            <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+            <AlertTriangle size={16} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
             <span>
               {t('pages.anomalyRules.problemSaved')}{' '}
               {t(rule.problem.key, { defaultValue: rule.problem.message, ...Object.fromEntries(rule.problem.params.map((p) => [p.key, p.value])) })}
@@ -259,7 +280,7 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
               })}
               <div>
                 <Button variant="secondary" onClick={() => set({ forbidden: [...current.forbidden, { fromType: '', relation: '', toType: '' }] })}>
-                  <Plus size={14} /> {t('pages.anomalyRules.addForbidden')}
+                  <Plus size={14} aria-hidden="true" /> {t('pages.anomalyRules.addForbidden')}
                 </Button>
               </div>
             </div>
@@ -271,7 +292,7 @@ function RuleCard({ rule, options }: { rule: AnomalyRule; options: Options }) {
             onClick={() => void save({ variables: { ruleKey: rule.ruleKey, settings: current } })}
             disabled={draft === null || problem !== null || saving}
           >
-            <Save size={14} /> {t('common.save')}
+            <Save size={14} aria-hidden="true" /> {t('common.save')}
           </Button>
           {draft !== null && (
             <Button variant="secondary" onClick={() => setDraft(null)}>{t('common.cancel')}</Button>
@@ -299,7 +320,7 @@ export function AnomalyRulesPage() {
         <Link to="/anomalies" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-label)', color: colors.brand, textDecoration: 'none', marginBottom: 8 }}>
           <ArrowLeft size={13} aria-hidden="true" /> {t('pages.anomalyRules.backToAnomalies')}
         </Link>
-        <PageTitle icon={<ShieldAlert size={22} color="var(--color-icon-accent)" />}>{t('pages.anomalyRules.title')}</PageTitle>
+        <PageTitle icon={<ShieldAlert size={22} color="var(--color-icon-accent)" aria-hidden="true" />}>{t('pages.anomalyRules.title')}</PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0, maxWidth: '80ch' }}>
           {t('pages.anomalyRules.subtitle')}
         </p>

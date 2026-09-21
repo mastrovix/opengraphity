@@ -80,6 +80,7 @@ export const EVENT_HISTORY_FIELDS = gql`
 export const SERVICE_MAP_ROW_FIELDS = gql`
   fragment ServiceMapRowFields on ServiceMap {
     id name status health healthIfActive healthSince impactScore stale staleReason nodeCount evaluatedAt
+    unhealthyCount
     service { id name criticality ownerGroup { id name } }
     explanation { ci { id name type } health weight critical path { id name } }
   }

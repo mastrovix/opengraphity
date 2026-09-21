@@ -100,6 +100,25 @@ describe('Sidebar — gruppi collassabili', () => {
     expect(onToggle).toHaveBeenCalledTimes(1)
   })
 
+  /*
+   * IL MENU A COMPARSA (20 set 2026, dal giro nel browser: «con la sidebar
+   * compressa i sotto-menu non esistono»).
+   *
+   * Con la sidebar stretta il gruppo si riduceva alla sua icona, che porta
+   * alla PRIMA voce: Costruttore di report, Report SLA e OLA/UC sparivano dal
+   * menu, e nessuno poteva sapere che esistessero. Ora le voci sono nel DOM,
+   * in un pannellino accanto (si mostra con CSS al passaggio o col Tab):
+   * quello che il test può pretendere è che ci SIANO e che portino dove
+   * devono.
+   */
+  it('sidebar collassata: le voci del gruppo restano raggiungibili nel menu a comparsa', async () => {
+    renderSidebar('admin', { collapsed: true })
+    const gruppo = await within(nav()).findByRole('group', { name: 'Reporting' })
+    const voci = within(gruppo).getAllByRole('link').map((a) => a.getAttribute('href'))
+    expect(voci).toContain('/custom-reports')
+    expect(voci.length).toBeGreaterThan(1)
+  })
+
   it('sidebar espansa: il bottone "Collapse sidebar" ha aria-expanded=true', () => {
     renderSidebar('operator')
     expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toHaveAttribute('aria-expanded', 'true')
@@ -175,7 +194,21 @@ describe('Sidebar — una voce accesa sola', () => {
       expect({ pagina: href, accese }).toEqual({ pagina: href, accese: [href] })
       r.unmount()
     }
-  })
+  /*
+   * IL TEMPO, DICHIARATO (21 set 2026).
+   *
+   * Questo test monta la barra una volta per OGNI voce del menu — decine di
+   * render con il metamodello e i provider dentro. Sul mio Mac finisce in
+   * poco; sul runner della CI, che fa girare tutti i pacchetti insieme, ha
+   * misurato 5055 ms contro i 5000 del default, ed era rosso per 55
+   * millisecondi.
+   *
+   * Non si accorcia il test — quello che prova (su ogni pagina è accesa una
+   * voce sola, e la sua) vale esattamente perché le guarda tutte. Si dice
+   * invece quanto tempo gli serve, invece di lasciarlo dipendere da quanto è
+   * scattante la macchina di turno.
+   */
+  }, 60_000)
 
   it('una pagina interna accende la voce da cui discende, e solo quella', async () => {
     const { container } = renderSidebar('admin', { route: '/reports/sla/qualcosa' })

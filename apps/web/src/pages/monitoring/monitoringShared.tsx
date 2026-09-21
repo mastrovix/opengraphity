@@ -80,7 +80,7 @@ export function CopyButton({ text, label, size = 'xs', onCopied }: { text: strin
 }
 
 const monoBox: CSSProperties = {
-  fontFamily: 'monospace', fontSize: 'var(--font-size-body)', color: colors.slateDark,
+  fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-body)', color: colors.slateDark,
   background: 'var(--color-slate-bg)', border: `1px solid ${colors.border}`, borderRadius: 6,
   padding: '8px 10px', wordBreak: 'break-all', flex: 1, minWidth: 0, margin: 0,
 }

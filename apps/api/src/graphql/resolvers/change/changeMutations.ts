@@ -30,6 +30,7 @@ import { assertCIsLinkable } from '../../../lib/ticketCIExclusions.js'
 import {
   writeAudit,
   getNextTaskCodes,
+  chiaviDaCreare,
   assertCIHasOwnerAndSupport,
   assertInitialStep,
   getCIName,
@@ -258,7 +259,7 @@ async function linkChangeToRequestingProblem(
     }
     const res = await workflowEngine.transition(
       session,
-      { instanceId, toStepName: toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.rfcCreated', { code: changeCode }) },
+      { instanceId, toStepName: toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.rfcCreated', { code: changeCode }), tenantId: ctx.tenantId },
       { userId: ctx.userId, entityData: {} } as ActionContext,
     )
     if (!res.success) {
@@ -279,7 +280,26 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
   return withSession(async (session) => {
     await assertInitialStep(session, args.changeId, ctx.tenantId)
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, [args.ciId])
-    const [ownerCode, supportCode, planCode] = await getNextTaskCodes(session, ctx.tenantId, 3)
+    /**
+     * I CODICI SOLO PER I TASK CHE NASCERANNO DAVVERO (rimedio, 20 set 2026).
+     *
+     * Le MERGE qui sotto sono sulla chiave naturale, quindi rimettere lo
+     * stesso CI non crea niente di nuovo — ma i tre codici si prendevano
+     * comunque, e la numerazione usciva coi buchi. Ora si contano prima.
+     */
+    const chiaveOwner   = `${args.changeId}-${args.ciId}-owner`
+    const chiaveSupport = `${args.changeId}-${args.ciId}-support`
+    const chiavePiano   = `${args.changeId}-${args.ciId}`
+    const daCreare = new Set([
+      ...await chiaviDaCreare(session, 'AssessmentTask', [chiaveOwner, chiaveSupport]),
+      ...await chiaviDaCreare(session, 'DeployPlanTask', [chiavePiano]),
+    ])
+    const codici = await getNextTaskCodes(session, ctx.tenantId, daCreare.size)
+    let prossimo = 0
+    const codicePer = (chiave: string) => (daCreare.has(chiave) ? codici[prossimo++]! : null)
+    const ownerCode   = codicePer(chiaveOwner)
+    const supportCode = codicePer(chiaveSupport)
+    const planCode    = codicePer(chiavePiano)
     const ciName = await getCIName(session, args.ciId, ctx.tenantId)
     const now = new Date().toISOString()
     await session.executeWrite(async (tx) => {

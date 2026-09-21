@@ -127,6 +127,36 @@ const readers = {
   /** Secret: required in every environment, read lazily (only createUser/onboarding need it). */
   keycloakAdminPassword: (): string => requireEnv('KEYCLOAK_ADMIN_PASSWORD'),
 
+  /*
+   * LA CONSOLE DI PIATTAFORMA (17 set 2026): il realm Keycloak dei suoi
+   * amministratori e l'host su cui vive.
+   *
+   * Non hanno un default, nemmeno fuori produzione, e il motivo è la
+   * sicurezza: un default farebbe esistere la console — quella che crea e
+   * cancella i tenant — su ogni installazione, anche dove nessuno l'ha voluta.
+   * Assenti, il suo cammino di autenticazione rifiuta tutto e nginx non la
+   * espone.
+   *
+   * L'host si confronta per INTERO (`opengrafo.admin`, non un primo pezzo):
+   * così nessun nome di tenant diventa vietato, mentre riservare l'etichetta
+   * `admin.` avrebbe impedito per sempre a un cliente di chiamarsi così.
+   */
+  platformRealm: (): string | undefined => optionalEnv('PLATFORM_REALM'),
+  platformHost:  (): string | undefined => optionalEnv('PLATFORM_CONSOLE_HOST'),
+  /*
+   * GLI INDIRIZZI DELLE APP DI UN TENANT, con `{slug}` al posto del nome.
+   *
+   * Sono una scelta dell'installazione, non una costante: in locale i tenant
+   * stanno su `http://{slug}.localhost`, in produzione su
+   * `https://{slug}.azienda.com`, e c'è chi mette il portale su un dominio a
+   * parte. Dedurli dall'host della console sarebbe un ripiego silenzioso che
+   * indovina bene finché le due cose stanno sullo stesso dominio, e poi mostra
+   * link rotti senza dirlo — quindi se non sono configurati la console scrive
+   * «not configured» invece di inventarli.
+   */
+  tenantUrlTemplate: (): string | undefined => optionalEnv('TENANT_URL_TEMPLATE'),
+  portalUrlTemplate: (): string | undefined => optionalEnv('PORTAL_URL_TEMPLATE'),
+
   // Auth
   /** Legacy HS256 dev tokens (auth/resolveAuth.ts). Off unless ALLOW_LEGACY_JWT=true. */
   allowLegacyJwt: (): boolean            => boolEnv('ALLOW_LEGACY_JWT', false),
@@ -136,8 +166,19 @@ const readers = {
   // HTTP
   /** Undefined → server.ts refuses to start in production, allows everything in dev. */
   corsOrigin:           (): string | undefined => optionalEnv('CORS_ORIGIN'),
-  /** Requests/min per client for the GraphQL rate limiter (production only). */
+  /**
+   * Richieste per FINESTRA e per client (IP) del limitatore HTTP, in
+   * produzione. La finestra è `RATE_LIMIT_WINDOW_MINUTES` — prima era un
+   * quarto d'ora scritto nel codice mentre questo commento diceva «al
+   * minuto» (revisione totale · A-10).
+   */
   rateLimitMax:         (): number  => intEnv('RATE_LIMIT_MAX', 1000),
+  /** La finestra del limitatore, in minuti (default: 1 → «al minuto»). */
+  rateLimitWindowMinutes: (): number => {
+    const n = intEnv('RATE_LIMIT_WINDOW_MINUTES', 1)
+    if (!Number.isInteger(n) || n < 1) throw new Error(`RATE_LIMIT_WINDOW_MINUTES must be a whole number of minutes >= 1 (got "${String(n)}")`)
+    return n
+  },
   /** Apollo introspection in production (off by default; always on outside). */
   graphqlIntrospection: (): boolean => boolEnv('GRAPHQL_INTROSPECTION', false),
   /**
@@ -293,7 +334,7 @@ export const CONFIG_PROFILES = {
     'nodeEnv', 'port', 'logLevel', 'workerProfile', 'requireAppliedMigrations',
     'neo4jUri', 'neo4jUser', 'neo4jPassword', 'neo4jMaxPoolSize',
     'keycloakUrl', 'keycloakPublicUrls', 'keycloakAppClientIds', 'keycloakAdminUser',
-    'allowLegacyJwt', 'corsOrigin', 'rateLimitMax', 'graphqlIntrospection', 'graphqlSchemaCacheMax', 'maxCITypesPerTenant', 'metricsToken', 'appUrl',
+    'allowLegacyJwt', 'corsOrigin', 'rateLimitMax', 'rateLimitWindowMinutes', 'graphqlIntrospection', 'graphqlSchemaCacheMax', 'maxCITypesPerTenant', 'metricsToken', 'appUrl',
     'attachmentDir', 'backupDir', 'reportDir',
     'embeddingsProvider', 'transformersCache', 'embeddingWorkerExternal',
     'emailFrom', 'otelEnabled', 'otelEndpoint',

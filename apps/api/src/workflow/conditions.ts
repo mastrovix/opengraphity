@@ -7,7 +7,7 @@
  * transizioni li ha. L'engine li valuta per OGNI trigger, manuale o automatico:
  * non esiste più il bypass "automatic salta le condizioni".
  */
-import { workflowEngine } from '@opengraphity/workflow'
+import { workflowEngine, registerTaskCreator } from '@opengraphity/workflow'
 import type { ConditionEvaluator } from '@opengraphity/workflow'
 import { runQueryOne } from '../graphql/resolvers/ci-utils.js'
 import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT } from '../lib/taskStatus.js'
@@ -38,10 +38,27 @@ export const CHANGE_CONDITIONS: Record<string, { evaluate: ConditionEvaluator; f
     },
   },
 
-  // Tutti gli assessment completati = per ogni AFFECTS_CI i task
-  // Functional, Technical e Planning sono 'completed'.
+  /*
+   * TRE task per ogni AFFECTS_CI, non due: l'assessment funzionale, quello
+   * tecnico E IL PIANO di rilascio (`areAllAssessmentsComplete`).
+   *
+   * Il nome della condizione ne nomina solo due, e per questo etichetta e
+   * messaggio di rifiuto devono nominare il piano — era l'unico posto dove la
+   * verità stava scritta, e stava in un commento, dove il cliente non guarda.
+   * Il difetto era già stato corretto per `all_deployments_complete`, la cui
+   * etichetta dice «e le verifiche» perché anche lì le cose verificate sono
+   * due: la stessa cura non era mai arrivata qui, che ne verifica tre (17 set
+   * 2026). Chi disegnava un arco e scegliva «Tutti gli assessment completati»
+   * lo vedeva non scattare, andava a guardare i due assessment, li trovava
+   * completati, e non aveva modo di sapere che mancava il piano.
+   *
+   * Il NOME resta com'è: è una stringa salvata sugli archi dei workflow di
+   * ogni tenant, e cambiarla vuol dire una migrazione dove un refuso
+   * trasforma l'arco in un muro (vedi il commento di
+   * `WORKFLOW_TRANSITION_CONDITIONS` in `packages/types`).
+   */
   all_assessments_complete: {
-    failureMessage: 'Assessments are not yet complete for every CI',
+    failureMessage: 'The assessments or the release plan are not yet complete for every CI',
     evaluate: async (session, c) => areAllAssessmentsComplete(session, c.entityId, c.tenantId),
   },
 
@@ -80,6 +97,26 @@ export const CHANGE_CONDITIONS: Record<string, { evaluate: ConditionEvaluator; f
       return pendingCount(row) === 0
     },
   },
+
+  /**
+   * I COMPITI DEL PASSO CHE SI STA LASCIANDO sono tutti chiusi (20 set 2026).
+   *
+   * È la decisione del proprietario: «il passo aspetta». Finché un compito
+   * creato in quel passo è aperto o in attesa, non si esce — ed è la ragione
+   * per cui esiste un compito invece di una nota: se non blocca, nessuno lo
+   * chiude. Gli annullati non contano (annullare è una decisione, non un
+   * lavoro rimasto), i compiti di ALTRI passi nemmeno.
+   *
+   * Vale per qualunque entità, non solo per le change: i compiti generici
+   * sono del motore.
+   */
+  all_tasks_complete: {
+    failureMessage: 'Some tasks of this step are still to be done',
+    evaluate: async (session, c) => {
+      const { compitiDaFareNelPasso } = await import('../lib/ticketTasks.js')
+      return (await compitiDaFareNelPasso(session, c.tenantId, c.entityId, c.fromStepName)) === 0
+    },
+  },
 }
 
 /** Idempotente: registra tutte le condizioni ITSM sull'engine. */
@@ -90,3 +127,23 @@ export function registerWorkflowConditions(): void {
 }
 
 registerWorkflowConditions()
+
+/**
+ * CHI SCRIVE I COMPITI, registrato qui accanto alle condizioni e per la
+ * stessa ragione (20 set 2026).
+ *
+ * L'azione `create_task` di un passo non può prendere il suo scrittore dal
+ * contesto della chiamata: tre dei cinque punti che costruiscono un
+ * `ActionContext` lo costruiscono povero (l'approvazione, due cammini delle
+ * change), e fra quelli c'è proprio «richiesta approvata → partono i
+ * compiti». Lì il ticket sarebbe avanzato SENZA i suoi compiti, e il motore
+ * raccoglie gli errori delle azioni invece di annullare la transizione,
+ * quindi nessuno se ne sarebbe accorto.
+ *
+ * Questo modulo è importato (per effetto) da ogni processo che esegue
+ * transizioni: le condizioni valgono dappertutto, e da oggi anche i compiti.
+ */
+registerTaskCreator(async (task) => {
+  const { creaCompito } = await import('../lib/ticketTasks.js')
+  return creaCompito(task)
+})

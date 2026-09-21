@@ -57,9 +57,13 @@ describe('email digest helpers (C-14)', () => {
   it('digestMarkerKey è per tenant e data locale', () => {
     expect(digestMarkerKey('t1', '2026-09-08')).toBe('digest:t1:2026-09-08')
   })
-  it('resolveTenantTimezone: valido → usato; assente → UTC; invalido → errore', () => {
+  it('resolveTenantTimezone: valido → usato; assente → ERRORE (C-10); invalido → errore', () => {
     expect(resolveTenantTimezone({ id: 'a', timezone: 'Europe/Rome' })).toBe('Europe/Rome')
-    expect(resolveTenantTimezone({ id: 'b', timezone: null })).toBe('UTC')
+    // CONTRATTO RINEGOZIATO (revisione totale · C-10): un tenant senza fuso è
+    // un ERRORE, non UTC con un avviso. Il digest partiva all'ora sbagliata e
+    // il cliente non aveva modo di accorgersene; ovunque altrove nel prodotto
+    // un tenant senza fuso si ferma e lo dice.
+    expect(() => resolveTenantTimezone({ id: 'b', timezone: null })).toThrow(/has no timezone/)
     expect(() => resolveTenantTimezone({ id: 'c', timezone: 'Mars/Olympus' })).toThrow(/invalid timezone/)
   })
 })

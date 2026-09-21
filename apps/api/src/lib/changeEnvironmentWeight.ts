@@ -18,13 +18,16 @@
  * esplicito, così il primo giorno non cambia nessun punteggio.
  */
 import { getSession } from '@opengraphity/neo4j'
+import { MAX_ENVIRONMENT_WEIGHT } from '@opengraphity/types'
 import { ValidationError } from './errors.js'
 import { createMetamodelCache } from './metamodelCache.js'
 import { invalidateSchema } from './schemaInvalidator.js'
 
 /** Il peso che il codice usava. */
 export const FACTORY_ENVIRONMENT_WEIGHT = 5
-export const MAX_ENVIRONMENT_WEIGHT = 20
+// Il tetto sta in @opengraphity/types: lo legge anche la pagina «Matrici di
+// dominio», e due copie a mano derivano (revisione totale · G-25).
+export { MAX_ENVIRONMENT_WEIGHT }
 
 export interface EnvironmentWeight { weight: number; isDefault: boolean }
 

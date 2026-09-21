@@ -57,7 +57,14 @@ const READ_CYPHER = `
   WITH c, collect(DISTINCT p.name) AS policies
   OPTIONAL MATCH (o:OLAContract {tenant_id: $tenantId, calendar_id: c.id})
   WITH c, policies, collect(DISTINCT o.name) AS contracts
-  OPTIONAL MATCH (wd:WorkflowDefinition {tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep {deadline_calendar_id: c.id})
+  // «Usato dai passi» guarda la SCADENZA, non solo la proprietà di comodo
+  // (revisione totale · C-35): deadline_calendar_id la scrive solo il
+  // disegnatore, quindi una scadenza arrivata da un seed o da una migrazione
+  // non impediva di cancellare il calendario — e la passata delle scadenze
+  // finiva «failed» ogni ora. Gli id dei calendari sono UUID: la scadenza che
+  // li cita li contiene per intero.
+  OPTIONAL MATCH (wd:WorkflowDefinition {tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep)
+    WHERE s.deadline_calendar_id = c.id OR (s.deadline IS NOT NULL AND s.deadline CONTAINS c.id)
   RETURN c.id AS id, c.name AS name, c.days AS days, c.start AS start, c.end AS end, c.holidays AS holidays,
          policies, contracts, collect(DISTINCT wd.name + ' · ' + coalesce(s.label, s.name)) AS steps
   ORDER BY toLower(c.name)
@@ -105,8 +112,11 @@ export async function createServiceCalendar(tenantId: string, input: { name: unk
   const id = uuidv4()
   const session = getSession(undefined, 'WRITE')
   try {
+    // C-34: `name_key` è la chiave del vincolo di unicità (init.ts). La
+    // lettura qui sopra dà il messaggio buono; il vincolo chiude la corsa fra
+    // due salvataggi simultanei.
     await runQuery(session, `
-      CREATE (c:ServiceCalendar {id: $id, tenant_id: $tenantId, name: $name, days: $days, start: $start, end: $end, holidays: $holidays, created_at: $now, updated_at: $now})
+      CREATE (c:ServiceCalendar {id: $id, tenant_id: $tenantId, name: $name, name_key: toLower($name), days: $days, start: $start, end: $end, holidays: $holidays, created_at: $now, updated_at: $now})
     `, { id, tenantId, name, ...calendar, now: new Date().toISOString() })
   } finally {
     await session.close()
@@ -118,6 +128,8 @@ export async function updateServiceCalendar(tenantId: string, id: string, input:
   const sets: Record<string, unknown> = {}
   if (input.name !== undefined) {
     sets['name'] = assertName(input.name)
+    // C-34: la chiave del vincolo di unicità segue il nome.
+    sets['name_key'] = (sets['name'] as string).toLowerCase()
     await assertUniqueName(tenantId, sets['name'] as string, id)
   }
   if (input.calendar !== undefined) Object.assign(sets, toCalendar(input.calendar))

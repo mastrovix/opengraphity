@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Modal } from '@/components/Modal'
 import { toast } from 'sonner'
@@ -30,6 +30,15 @@ export function CreateTypeDialog({
   const id = useId()
   const [form, setForm] = useState({ name: '', label: '', icon: 'box', color: 'var(--color-brand)' })
   const [saving, setSaving] = useState(false)
+  /**
+   * Il modale RIPARTE VUOTO ogni volta che si apre (revisione totale · G-13):
+   * è sempre montato, quindi riaprendo «Nuovo tipo» si ritrovavano nome ed
+   * etichetta di quello appena creato, con l'avviso «nome già esistente»
+   * addosso — e sembrava un difetto del salvataggio.
+   */
+  useEffect(() => {
+    if (open) setForm({ name: '', label: '', icon: 'box', color: 'var(--color-brand)' })
+  }, [open])
   const set = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }))
 
   // A-12: il nome non è un'etichetta, è un identificatore. Da qui nascono il

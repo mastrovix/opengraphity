@@ -21,10 +21,11 @@ import {
   actionLabel,
   paramsToRaw,
   buildActionParams,
+  titoliCompitiOffribili,
 } from './workflow-panel-helpers'
 import { Input, Select } from '@/components/ui/FormControls'
 import { useTargetOptions, withCurrent } from '@/pages/settings/NotificationRuleList'
-import { WORKFLOW_STEP_PURPOSES, WORKFLOW_STEP_CATEGORIES } from '@opengraphity/types'
+import { WORKFLOW_STEP_PURPOSES, WORKFLOW_STEP_CATEGORIES, TICKET_ENTITY_TYPES } from '@opengraphity/types'
 import { StepDeadlineEditor, deadlineFromDraft, draftFromDeadline, draftProblem, type DeadlineTarget } from './StepDeadlineEditor'
 
 const ACCENT_COLOR = colors.brand
@@ -401,7 +402,22 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
   }
 
   // ── Editor di una bozza (tipo + parametri + condizioni), condiviso tra add/edit ──
-  const renderDraftEditor = (draft: ActionDraft, setDraft: (updater: (d: ActionDraft) => ActionDraft) => void) => (
+  /**
+   * I titoli degli altri `create_task` dello stesso passo: servono alla
+   * tendina «parte quando è chiuso». Si escludono i vuoti e il compito
+   * stesso, perché un compito che aspetta sé stesso non parte mai.
+   */
+  const titoliDeiCompiti = (draft: ActionDraft): string[] => {
+    const compiti = [...editableEnterActions, ...editableExitActions]
+      .filter((a) => a.type === 'create_task')
+      .map((a) => {
+        const p = a.params as Record<string, unknown> | undefined
+        return { titolo: String(p?.['title_template'] ?? '').trim(), dopo: String(p?.['after'] ?? '').trim() }
+      })
+    return titoliCompitiOffribili(compiti, (draft.params['title_template'] ?? '').trim())
+  }
+
+  const renderDraftEditor = (draft: ActionDraft, setDraft: (updater: (d: ActionDraft) => ActionDraft) => void, fase: 'enter' | 'exit' = 'enter') => (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={sectionLabelStyle}>{t('workflow.actionType')}</span>
@@ -410,7 +426,22 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
           onChange={(e) => setDraft((d) => ({ ...d, type: e.target.value, params: {} }))}
           style={inputStyle}
         >
-          {WORKFLOW_STEP_ACTION_TYPES.map((ty) => <option key={ty} value={ty}>{ty}</option>)}
+          {/*
+            «Crea un compito» solo fra le azioni d'INGRESSO: il motore esegue
+            quelle di uscita con l'istanza già sul passo nuovo, quindi un
+            compito creato uscendo nascerebbe col nome del passo sbagliato.
+            L'API lo rifiuta comunque; qui non si offre nemmeno.
+          */}
+          {WORKFLOW_STEP_ACTION_TYPES
+            /*
+              «Crea un compito» solo sui TICKET: su un articolo della
+              knowledge base il compito nascerebbe legale e irraggiungibile —
+              nessuna pagina lo mostra, «I miei compiti» non sa dove portare,
+              e con la guardia l'articolo resterebbe bloccato senza rimedio.
+              L'API lo rifiuta comunque; qui non si offre nemmeno.
+            */
+            .filter((ty) => ty !== 'create_task' || (fase === 'enter' && (TICKET_ENTITY_TYPES as readonly string[]).includes(entityType)))
+            .map((ty) => <option key={ty} value={ty}>{ty}</option>)}
         </Select>
       </div>
       <ActionParamsEditor
@@ -418,6 +449,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
         actionType={draft.type}
         params={draft.params}
         entityType={entityType}
+        compitiFratelli={titoliDeiCompiti(draft)}
         onChange={(key, value) => setDraft((d) => ({ ...d, params: { ...d.params, [key]: value } }))}
       />
       <ConditionsSection
@@ -490,7 +522,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                   <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: palette.teal.base }}>
                     {actionLabel(t, a.type, a.params)}
                   </div>
-                  {renderDraftEditor(editingAction, (updater) => setEditingAction((prev) => prev ? { ...prev, ...updater(prev) } : null))}
+                  {renderDraftEditor(editingAction, (updater) => setEditingAction((prev) => prev ? { ...prev, ...updater(prev) } : null), forKey)}
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
                       type="button"
@@ -520,7 +552,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
         const blocked = conditionsError(newAction.conditions) !== null
         return (
           <div style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: 'var(--color-slate-bg)' }}>
-            {renderDraftEditor(newAction, (updater) => setNewAction((d) => updater(d)))}
+            {renderDraftEditor(newAction, (updater) => setNewAction((d) => updater(d)), forKey)}
             <div style={{ display: 'flex', gap: 6 }}>
               <button type="button" disabled={blocked} onClick={() => handleConfirmAdd(forKey)} style={{ ...saveButtonStyle(blocked), flex: 1, padding: '6px 0' }}>
                 {t('common.confirm')}

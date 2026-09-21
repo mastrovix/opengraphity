@@ -31,7 +31,7 @@ import { GraphQLError } from 'graphql'
 // dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
 // fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
 // I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
-vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 // L'etichetta del passo nel commento di una transizione del monitoraggio: qui il nome stesso.
 vi.mock('../../lib/stepEvent.js', async (orig) => ({ ...(await orig<typeof import('../../lib/stepEvent.js')>()), loadStepFacts: vi.fn(async (_s: unknown, _t: string, _e: string, step: string) => ({ step_id: step, step_name: step, step_label: step, step_purpose: null, step_category: null })) }))
 vi.mock('@opengraphity/sla', () => ({ getTenantTimezone: vi.fn(async () => 'Europe/Rome') }))

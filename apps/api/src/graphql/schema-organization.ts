@@ -76,6 +76,16 @@ export function organizationSDL(): string {
     postIncident:   Boolean!
     kbArticles:     Boolean!
     embeddings:     Boolean!
+    """Disegna il modulo di una service request da una descrizione (19 set 2026)."""
+    formDesigner:   Boolean!
+    """Disegna una sezione di report da una descrizione (19 set 2026)."""
+    reportDesigner: Boolean!
+    """Il prodotto analizza i propri errori e propone rimedi (20 set 2026). L'unico spento di fabbrica: legge un archivio che attraversa il perimetro fra i clienti."""
+    platformSelfAnalysis: Boolean!
+    """Il prodotto guarda il registro di questo cliente e propone come velocizzare il lavoro (20 set 2026). Spento di fabbrica."""
+    dailyWorkAnalysis: Boolean!
+    """Il prodotto guarda la configurazione di questo cliente e propone come completarla (20 set 2026). Spento di fabbrica."""
+    configurationAssist: Boolean!
   }
 
   type AISettings {
@@ -94,6 +104,11 @@ export function organizationSDL(): string {
     postIncident:   Boolean!
     kbArticles:     Boolean!
     embeddings:     Boolean!
+    formDesigner:   Boolean!
+    reportDesigner: Boolean!
+    platformSelfAnalysis: Boolean!
+    dailyWorkAnalysis: Boolean!
+    configurationAssist: Boolean!
   }
 
   input AISettingsInput {
@@ -115,6 +130,19 @@ export function organizationSDL(): string {
     attachmentPolicy: AttachmentPolicy!
     """Quali funzioni AI sono accese: lo leggono le pagine che le offrono."""
     aiSettings: AISettings!
+    """
+    Se gli script scritti dal cliente possono girare: validazione dei campi,
+    azione «esegui script», trasformazione dei webhook e le FORMULE dei campi
+    calcolati dei moduli (ondata 6). Era un limite di piano senza interruttore.
+    """
+    scriptingSettings: ScriptingSettings!
+  }
+
+  """L'interruttore degli script del cliente, e il piano con cui il tenant e' nato."""
+  type ScriptingSettings {
+    enabled: Boolean!
+    """Il piano: resta come informazione (decide il valore iniziale), non come divieto."""
+    plan:    String!
   }
 
   extend type Mutation {
@@ -125,6 +153,11 @@ export function organizationSDL(): string {
     setAttachmentPolicy(input: AttachmentPolicyInput!): AttachmentPolicy!
     """Una funzione spenta non chiama il modello."""
     setAISettings(input: AISettingsInput!): AISettings!
+    """
+    Accende o spegne gli script del cliente. Spenti, chi ne ha configurato uno
+    riceve un rifiuto che lo dice: nessuno script viene saltato in silenzio.
+    """
+    setScriptingEnabled(enabled: Boolean!): ScriptingSettings!
   }
   `
 }

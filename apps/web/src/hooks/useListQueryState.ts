@@ -42,6 +42,8 @@ export interface ListQueryState {
   sortField:      string | null
   sortDir:        SortDir
   filterGroup:    FilterGroup | null
+  /** F-17: il filtro c'era nell'URL e non si legge. La pagina lo dice. */
+  filtersInvalid: boolean
   page:           number
   pageSize:       number
   /** Query variables for the `(filters, sortField, sortDirection)` list resolvers. */
@@ -66,12 +68,23 @@ function parseSort(raw: string | null): { field: string; dir: SortDir } | null {
   return { field: raw.slice(0, idx), dir }
 }
 
-function parseFilters(raw: string | null): FilterGroup | null {
+/**
+ * `null` = nessun filtro nell'URL, `'invalid'` = c'era e non si legge
+ * (revisione totale · F-17).
+ *
+ * Un filtro corrotto (un link troncato dalla mail, scritto a mano) veniva
+ * ignorato con un `console.warn` e la lista si mostrava SENZA filtri: chi
+ * apriva un collegamento «solo P1 aperti» vedeva l'elenco completo e credeva
+ * che quelli fossero i P1. Adesso è come in `lib/filterGroupUrl.ts`: si
+ * distingue, e la pagina lo dice.
+ */
+function parseFilters(raw: string | null): FilterGroup | 'invalid' | null {
   if (!raw) return null
-  try { return JSON.parse(raw) as FilterGroup }
-  catch (e) {
-    console.warn('[useListQueryState] invalid "filters" parameter in the URL, ignored', e)
-    return null
+  try {
+    const parsed = JSON.parse(raw) as FilterGroup
+    return Array.isArray(parsed.rules) ? parsed : 'invalid'
+  } catch {
+    return 'invalid'
   }
 }
 
@@ -86,9 +99,11 @@ export function useListQueryState(options: ListQueryStateOptions = {}): ListQuer
     field: initialSort?.field ?? defaultSortField,
     dir:   initialSort?.dir ?? defaultSortDir,
   })
-  const [localFilters, setLocalFilters] = useState<FilterGroup | null>(
-    () => persistInQuery ? parseFilters(searchParams.get(FILTERS_KEY)) : null,
-  )
+  const [localFilters, setLocalFilters] = useState<FilterGroup | null>(() => {
+    if (!persistInQuery) return null
+    const parsed = parseFilters(searchParams.get(FILTERS_KEY))
+    return parsed === 'invalid' ? null : parsed
+  })
   const [localPage, setLocalPage] = useState<number>(() => {
     if (!persistInQuery) return 0
     const n = Number(searchParams.get(PAGE_KEY) ?? '1')
@@ -98,10 +113,13 @@ export function useListQueryState(options: ListQueryStateOptions = {}): ListQuer
   const urlSort    = persistInQuery ? parseSort(searchParams.get(SORT_KEY)) : null
   const sortField  = persistInQuery ? (urlSort?.field ?? defaultSortField) : localSort.field
   const sortDir    = persistInQuery ? (urlSort?.dir ?? defaultSortDir) : localSort.dir
-  const filterGroup = useMemo(
+  // F-17: `'invalid'` non diventa «nessun filtro» in silenzio.
+  const parsedFilters = useMemo(
     () => persistInQuery ? parseFilters(searchParams.get(FILTERS_KEY)) : localFilters,
     [persistInQuery, searchParams, localFilters],
   )
+  const filtersInvalid = parsedFilters === 'invalid'
+  const filterGroup    = filtersInvalid ? null : parsedFilters
   const page = persistInQuery
     ? Math.max(0, (Number(searchParams.get(PAGE_KEY) ?? '1') || 1) - 1)
     : localPage
@@ -147,7 +165,7 @@ export function useListQueryState(options: ListQueryStateOptions = {}): ListQuer
   }, [page, pageSize])
 
   return {
-    sortField, sortDir, filterGroup, page, pageSize, variables,
+    sortField, sortDir, filterGroup, filtersInvalid, page, pageSize, variables,
     handleSort, setFilterGroup, setPage,
     nextPage: () => setPage(page + 1),
     prevPage: () => setPage(page - 1),

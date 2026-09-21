@@ -299,9 +299,30 @@ export async function createIncident(
     }
   }
 
-  await withSession(async (session) => {
-    await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident', undefined, input.category ?? null)
-  }, true)
+  /**
+   * Un incident SENZA workflow non deve restare nel grafo (revisione totale ·
+   * B-6): la creazione passa da più transazioni, e se `createInstance`
+   * falliva — un workflow di categoria senza passo iniziale, due passi
+   * marcati iniziali, un errore transiente — l'incident era già committato,
+   * numerato e collegato ai CI, ma senza istanza: non si poteva transizionare
+   * né chiudere, e l'unico rimedio era il database. Si annulla come per i CI
+   * mancanti, e si dice perché.
+   */
+  try {
+    await withSession(async (session) => {
+      await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident', undefined, input.category ?? null)
+    }, true)
+  } catch (err) {
+    await withSession(async (session) => {
+      await runQuery(session, 'MATCH (i:Incident {id: $id, tenant_id: $tenantId}) DETACH DELETE i', { id, tenantId: ctx.tenantId })
+    }, true)
+    logger.error({ err, incidentId: id, tenantId: ctx.tenantId, number: created.number, category: input.category ?? null },
+      '[incidentService] istanza di workflow non creata: incident annullato (resterebbe senza workflow)')
+    throw new ValidationError(
+      `Incident not created: its workflow instance could not be started (${err instanceof Error ? err.message : String(err)})`,
+      { key: 'errors.incident.workflowInstance', params: { reason: err instanceof Error ? err.message : String(err) } },
+    )
+  }
 
   // Auto-watch: creator becomes watcher
   await withSession(async (session) => {
@@ -358,7 +379,7 @@ export async function resolveIncident(
     const result = await workflowEngine.transition(
       session,
       { instanceId: instanceRow.instanceId, toStepName: resolvedStep.name,
-        triggeredBy: ctx.userId, triggerType: 'manual', notes: notes ?? undefined },
+        triggeredBy: ctx.userId, triggerType: 'manual', notes: notes ?? undefined, tenantId: ctx.tenantId },
       { userId: ctx.userId, notes, entityData: {} },
     )
     // Revisione del 14 set 2026 · IT-2: l'esito era ignorato. Un rifiuto del
@@ -402,9 +423,25 @@ export async function assignIncidentToTeam(
   // la persona ha chiesto, ed è già scritta), l'evento parte, e poi l'errore
   // dice che il ticket non è avanzato e perché.
   let advanceRefused: { result: Awaited<ReturnType<typeof workflowEngine.transition>>; toStep: string } | null = null
+  /*
+   * I nomi escono dal servizio perché il REGISTRO li vuole (20 set 2026,
+   * ondata 2): `incident.assigned` non diceva né a chi né da chi, e le due
+   * mutation — a squadra e a persona — scrivevano la stessa identica riga.
+   */
+  let nomi: { teamName: string; previousTeamName: string | null; unassignedUserName: string | null } =
+    { teamName: '', previousTeamName: null, unassignedUserName: null }
   const assigned = await withSession(async (session) => {
-    const { teamName } = await setTicketTeam(session, 'Incident', id, teamId, ctx.tenantId)
+    const { teamName, previousTeamName, unassignedUserName } = await setTicketTeam(session, 'Incident', id, teamId, ctx.tenantId)
+    nomi = { teamName, previousTeamName, unassignedUserName }
     const transitionNotes = await systemText(ctx.tenantId, 'incident.reassignedTeam', { team: teamName })
+    // M-10: l'assegnatario che non è nel gruppo nuovo è stato staccato. Non è
+    // un dettaglio tecnico: chi guarda il ticket deve sapere che non ha più un
+    // assegnatario, e perché.
+    if (unassignedUserName) {
+      await createTransitionComment(session, id, ctx.tenantId, ctx.userId,
+        await systemText(ctx.tenantId, 'incident.unassignedOnTeamChange', { user: unassignedUserName, team: teamName }),
+        ctx.actorLabel ?? null)
+    }
 
     const wiResult = await session.executeRead((tx) => tx.run(`
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
@@ -424,7 +461,7 @@ export async function assignIncidentToTeam(
         if (next) {
           const result = await workflowEngine.transition(
             session,
-            { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes },
+            { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes, tenantId: ctx.tenantId },
             { userId: ctx.userId, entityData: {} },
           )
           if (!result.success) advanceRefused = { result, toStep: next.toStep }
@@ -470,7 +507,7 @@ export async function assignIncidentToTeam(
     return assigned
   }, true)
   if (advanceRefused) throw assignedButNotAdvanced(id, advanceRefused)
-  return assigned
+  return { incident: assigned, ...nomi }
 }
 
 /**
@@ -515,10 +552,14 @@ export async function assignIncidentToUser(
 ) {
   const now = new Date().toISOString()
   let advanceRefused: { result: Awaited<ReturnType<typeof workflowEngine.transition>>; toStep: string } | null = null
+  // I nomi escono dal servizio perché il registro li vuole: vedi
+  // `assignIncidentToTeam`.
+  let nomi: { userName: string | null; previousUserName: string | null } = { userName: null, previousUserName: null }
 
   const assigned = await withSession(async (session) => {
     if (!userId) {
-      await setTicketUser(session, 'Incident', id, null, ctx.tenantId)
+      const { previousUserName } = await setTicketUser(session, 'Incident', id, null, ctx.tenantId)
+      nomi = { userName: null, previousUserName }
       const r = await session.executeRead((tx) => tx.run(
         `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
         { id, tenantId: ctx.tenantId },
@@ -530,8 +571,9 @@ export async function assignIncidentToUser(
     // Regola ITSM condivisa con il problem (services/ticketAssignment.ts):
     // prima il gruppo, poi un utente di quel gruppo.
     await assertUserInAssignedTeam(session, 'Incident', id, userId, ctx.tenantId)
-    const { userName: assignedName } = await setTicketUser(session, 'Incident', id, userId, ctx.tenantId)
+    const { userName: assignedName, previousUserName } = await setTicketUser(session, 'Incident', id, userId, ctx.tenantId)
     const userName = assignedName ?? userId
+    nomi = { userName: assignedName, previousUserName }
 
     const wiResult = await session.executeRead((tx) => tx.run(`
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
@@ -553,7 +595,7 @@ export async function assignIncidentToUser(
       if (currentStep === initialStep && next) {
         const result = await workflowEngine.transition(
           session,
-          { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: assignedNote },
+          { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: assignedNote, tenantId: ctx.tenantId },
           { userId: ctx.userId, entityData: {} },
         )
         if (!result.success) advanceRefused = { result, toStep: next.toStep }
@@ -591,7 +633,7 @@ export async function assignIncidentToUser(
     return assigned
   }, true)
   if (advanceRefused) throw assignedButNotAdvanced(id, advanceRefused)
-  return assigned
+  return { incident: assigned, ...nomi }
 }
 
 export async function inProgressIncident(
@@ -675,7 +717,7 @@ export async function escalateIncident(
     const result = await workflowEngine.transition(
       session,
       { instanceId: instanceRow.instanceId, toStepName: target,
-        triggeredBy: ctx.userId, triggerType: 'manual' },
+        triggeredBy: ctx.userId, triggerType: 'manual', tenantId: ctx.tenantId },
       { userId: ctx.userId, entityData: {} },
     )
     // IT-2: senza questo controllo `incident.escalated` partiva anche quando

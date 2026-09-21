@@ -83,10 +83,35 @@ export class EscalationConsumer extends BaseConsumer<unknown> {
       }
       const result = await workflowEngine.transition(
         session,
-        { instanceId, toStepName: toStep, triggeredBy: 'sla-engine', triggerType: 'sla_breach' },
+        { instanceId, toStepName: toStep, triggeredBy: 'sla-engine', triggerType: 'sla_breach', tenantId },
         { userId: 'system', entityData: {} },
       )
       if (!result.success) {
+        /**
+         * RIFIUTATA DA UNA GUARDIA ≠ ANDATA STORTA (rimedio, 20 set 2026).
+         *
+         * Rilanciare faceva ritentare BullMQ, ma una guardia non dipende dal
+         * tempo: dipende da qualcuno che chiuda un compito o completi un
+         * assessment. I tentativi si esaurivano, l'evento finiva marcato
+         * «lost», e **l'incident che doveva escalare non escalava** senza
+         * che comparisse niente sul ticket. Con la guardia sui compiti
+         * (`all_tasks_complete`) il caso è diventato ordinario.
+         *
+         * Ora il rifiuto si scrive SUL TICKET, dove lo vede chi aspettava
+         * l'escalation, e l'evento si chiude senza ritentare.
+         */
+        if (result.refusedByCondition) {
+          logger.warn({ instanceId, toStep, condition: result.refusedByCondition, error: result.error },
+            '[escalation] escalation refused by a transition guard: not retried')
+          const { writeTicketComment } = await import('../lib/ticketComments.js')
+          const { systemText } = await import('../lib/systemText.js')
+          const testo = await systemText(tenantId, 'escalation.refusedByGuard', { step: toStep, reason: result.error ?? '' })
+          await session.executeWrite((tx) => writeTicketComment(tx as never, {
+            entityType, entityId, tenantId, text: testo,
+            authorId: 'system', authorLabel: 'system', isInternal: true,
+          }))
+          return
+        }
         logger.error({ instanceId, toStep, error: result.error }, '[escalation] auto-escalation transition failed')
         throw new Error(`[escalation] transition to ${toStep} failed for instance ${instanceId}: ${result.error ?? 'unknown'}`)
       }

@@ -36,6 +36,9 @@ const SYNC_RUNS = gql`
   }
 `
 
+/** Quanti conflitti per pagina (G-21): il totale dice se ce ne sono altri. */
+const CONFLICTS_PAGE_SIZE = 50
+
 const SYNC_CONFLICTS = gql`
   query SyncConflicts($sourceId: ID, $status: String, $limit: Int) {
     syncConflicts(sourceId: $sourceId, status: $status, limit: $limit) {
@@ -168,6 +171,10 @@ export interface UseSyncPageReturn {
   // Conflicts tab
   conflicts: SyncConflict[]
   conflictsLoading: boolean
+  /** G-21: quanti sono in tutto con questo filtro, e qual è il filtro. */
+  conflictsTotal: number
+  conflictStatus: 'open' | 'resolved' | 'all'
+  setConflictStatus: (s: 'open' | 'resolved' | 'all') => void
   handleResolveConflict: (conflictId: string, resolution: string) => Promise<void>
 }
 
@@ -276,9 +283,20 @@ export function useSyncPage(): UseSyncPageReturn {
 
   // ── Conflicts ────────────────────────────────────────────────────────────────
 
-  const { data: conflictsData, loading: conflictsLoading } = useQuery(SYNC_CONFLICTS, { variables: { limit: 50 } })
-  const conflicts: SyncConflict[] =
-    (conflictsData as { syncConflicts?: { total: number; items: SyncConflict[] } } | undefined)?.syncConflicts?.items ?? []
+  /**
+   * Il filtro «aperti / risolti» lo applica il SERVER, e il totale si sa
+   * (revisione totale · G-21): la scheda leggeva i 50 più recenti e filtrava
+   * nel browser, quindi un tenant con 80 conflitti aperti ne vedeva 50 senza
+   * che niente lo dicesse — e «risolti» mostrava solo quelli finiti fra i 50.
+   */
+  const [conflictStatus, setConflictStatus] = useState<'open' | 'resolved' | 'all'>('open')
+  const { data: conflictsData, loading: conflictsLoading } = useQuery(SYNC_CONFLICTS, {
+    variables: { limit: CONFLICTS_PAGE_SIZE, status: conflictStatus === 'all' ? null : conflictStatus },
+    fetchPolicy: 'cache-and-network',
+  })
+  const conflictsResult = (conflictsData as { syncConflicts?: { total: number; items: SyncConflict[] } } | undefined)?.syncConflicts
+  const conflicts: SyncConflict[] = conflictsResult?.items ?? []
+  const conflictsTotal = conflictsResult?.total ?? 0
 
   const [resolveConflictMut] = useMutation(RESOLVE_CONFLICT, { refetchQueries: ['SyncConflicts', 'SyncStats'] })
 
@@ -298,5 +316,6 @@ export function useSyncPage(): UseSyncPageReturn {
     handleCreateSource, handleDeleteSource, handleTriggerSync, handleTestConnection, handleSaveSchedule,
     historySourceId, setHistorySourceId, historyRuns, historyLoading,
     conflicts, conflictsLoading, handleResolveConflict,
+    conflictsTotal, conflictStatus, setConflictStatus,
   }
 }

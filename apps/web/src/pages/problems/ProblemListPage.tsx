@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { pausedWhenHidden } from '@/lib/polling'
 import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery, useLazyQuery } from '@apollo/client/react'
 import { gql } from '@apollo/client'
@@ -66,14 +67,22 @@ export function ProblemListPage() {
   // Campi del cliente (verifica «Cosa resta cablato», ondata 4): una colonna per campo.
   const customColumns = useCustomFieldColumns<Problem>('problem')
   const baseColumns: ColumnDef<Problem>[] = [
-    { key: 'number',   label: 'Number',                               width: '120px', sortable: true },
+    // Intestazione TRADOTTA (revisione totale · i 29 warning): era la stringa
+    // inglese «Number» scritta nel codice, in mezzo a colonne che passano da
+    // i18n — e nessun guardiano poteva vederla, perché per quella colonna una
+    // chiave non era mai stata scritta.
+    { key: 'number',   label: t('common.number'),                               width: '120px', sortable: true },
     { key: 'title',    label: t('pages.problems.title_col'), sortable: true },
     {
       key:     'priority',
       label:   t('pages.problems.priority'),
       width:   '130px',
       sortable: true,
-      render:  (v) => <SeverityBadge value={String(v)} />,
+      // La priorità viene dal vocabolario `priority` (le uscite della matrice),
+      // non da `severity`: col vocabolario sbagliato un cliente con `p1..p4`
+      // vedeva la pill rossa «valore fuori vocabolario» su ogni riga, con un
+      // `console.error` per riga (revisione totale · F-5).
+      render:  (v) => <SeverityBadge value={String(v)} vocabulary="priority" />,
     },
     {
       key:     'status',
@@ -112,7 +121,8 @@ export function ProblemListPage() {
   const { data, loading, error, refetch } = useQuery<{ problems: { items: Problem[]; total: number } }>(GET_PROBLEMS, {
     variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
-    pollInterval: 30_000,   // keep the list fresh without manual reload
+    // F-21: il polling si ferma quando la scheda è in background.
+    ...pausedWhenHidden(30_000),
   })
 
   const items      = data?.problems?.items ?? []

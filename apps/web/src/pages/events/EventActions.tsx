@@ -20,6 +20,7 @@
  * dentro una riga cliccabile non navigano al dettaglio.
  */
 import { useState, useId, type MouseEvent, type ReactNode } from 'react'
+import { CI_ALIAS_KINDS, type CIAliasKind } from '@/types/events'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -192,7 +193,16 @@ function LinkCIDialog({ event, onClose, onDone }: { event: EventRow; onClose: ()
   const aliasId  = useId()
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<CISearchRow | null>(null)
-  const [createAlias, setCreateAlias] = useState(true)
+  /**
+   * «Ricorda alias» solo per i generi che UN ALIAS PUÒ AVERE (revisione
+   * totale · G-EVT-2): la casella era spuntata per qualunque
+   * `resourceKind`, ma l'API crea l'alias solo per hostname, ip, fqdn ed
+   * external_id — con `name` non creava nulla, senza errore, e il toast
+   * diceva «collegato». Ora, quando l'alias non è possibile, la casella non
+   * c'è e una riga dice perché.
+   */
+  const aliasable = CI_ALIAS_KINDS.includes(event.resourceKind as CIAliasKind)
+  const [createAlias, setCreateAlias] = useState(aliasable)
   const [link, { loading }] = useMutation(LINK_EVENT_TO_CI)
 
   // Una richiesta per pausa di scrittura, non per tasto; finché il debounce
@@ -212,7 +222,7 @@ function LinkCIDialog({ event, onClose, onDone }: { event: EventRow; onClose: ()
   async function submit() {
     if (!selected) return
     try {
-      await link({ variables: { eventId: event.id, ciId: selected.id, createAlias } })
+      await link({ variables: { eventId: event.id, ciId: selected.id, createAlias: aliasable && createAlias } })
       toast.success(t('toast.events.linked', { ci: selected.name }))
       onDone()
     } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
@@ -276,10 +286,16 @@ function LinkCIDialog({ event, onClose, onDone }: { event: EventRow; onClose: ()
           })}
         </ul>
       )}
-      <label htmlFor={aliasId} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', cursor: 'pointer' }}>
-        <input id={aliasId} type="checkbox" checked={createAlias} onChange={(e) => setCreateAlias(e.target.checked)} disabled={loading} />
-        {t('events.actions.rememberAlias')}
-      </label>
+      {aliasable ? (
+        <label htmlFor={aliasId} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', cursor: 'pointer' }}>
+          <input id={aliasId} type="checkbox" checked={createAlias} onChange={(e) => setCreateAlias(e.target.checked)} disabled={loading} />
+          {t('events.actions.rememberAlias')}
+        </label>
+      ) : (
+        <p style={{ marginTop: 14, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+          {t('events.actions.aliasNotPossible', { kind: t(`monitoring.mapper.resourceKinds.${event.resourceKind}`) })}
+        </p>
+      )}
     </Modal>
   )
 }

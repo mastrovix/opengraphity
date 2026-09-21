@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
+import { MAX_ENVIRONMENT_WEIGHT } from '@opengraphity/types'
 import { AlertTriangle, Save, Table2, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
@@ -90,9 +91,19 @@ function MatrixCard({ matrix }: { matrix: DomainMatrix }) {
   const [inVocab, colVocab] = [matrix.inputs[0] ?? '', matrix.inputs[1] ?? '']
   const [draft, setDraft] = useState<Draft>({})
 
-  // Quando il server ristampa la matrice (salvataggio, o vocabolario cambiato)
-  // le modifiche locali non hanno più senso: si riparte dal dato vero.
-  useEffect(() => { setDraft({}) }, [matrix])
+  /**
+   * Le modifiche locali si scartano quando la matrice CAMBIA DAVVERO, non a
+   * ogni oggetto nuovo (revisione totale · G-5). `DomainMatrix` non ha `id`,
+   * quindi ogni `refetch` produceva oggetti nuovi per TUTTE le matrici: dopo
+   * il salvataggio di una card, le celle modificate e non salvate delle altre
+   * tornavano al valore vecchio in silenzio. Il confronto è sul CONTENUTO
+   * (le celle salvate), non sull'identità dell'oggetto.
+   */
+  const matrixFingerprint = useMemo(
+    () => JSON.stringify([matrix.kind, matrix.cells.map((c) => [c.key, c.value]), matrix.outputValues]),
+    [matrix.kind, matrix.cells, matrix.outputValues],
+  )
+  useEffect(() => { setDraft({}) }, [matrixFingerprint])
 
   const valueOf = (cell: Cell): string => draft[cell.key] ?? cell.value ?? ''
 
@@ -424,7 +435,7 @@ function RiskBandsCard() {
 // Giro nel browser del 14 set 2026 (#32): il peso dell'ambiente era 5 nel
 // codice, contro 1 per domanda, e ogni change in produzione risultava ad alto
 // rischio qualunque fossero le risposte.
-const MAX_ENVIRONMENT_WEIGHT = 20
+// G-25: il tetto è quello dell'API (@opengraphity/types), non una copia.
 
 function EnvironmentWeightCard() {
   const { t } = useTranslation()

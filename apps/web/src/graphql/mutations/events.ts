@@ -65,6 +65,7 @@ export const UPDATE_EVENT_POLICY = gql`
       suppressUpstreamHops flapThreshold flapWindowMinutes flapStableMinutes
       stormThresholdPerMinute stormCooldownMinutes retentionDays matchShortHostname severityMap
       ignoreLifecycleStatuses retiredStatuses maintenanceStatuses
+      highImpactDependents
     }
   }
 `

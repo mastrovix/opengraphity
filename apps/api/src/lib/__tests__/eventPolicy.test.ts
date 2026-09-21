@@ -11,6 +11,7 @@ import {
   DEFAULT_EVENT_POLICY, DEFAULT_EVENT_POLICY_JSON, EVENT_POLICY_V2_KEYS, EVENT_POLICY_V2_MIGRATION,
   EVENT_POLICY_V3_KEYS, EVENT_POLICY_V3_MIGRATION, EVENT_POLICY_V4_KEYS, EVENT_POLICY_V4_MIGRATION,
   EVENT_POLICY_V5_KEYS, EVENT_POLICY_V5_MIGRATION, EVENT_POLICY_V6_KEYS, EVENT_POLICY_V6_MIGRATION,
+  EVENT_POLICY_V7_KEYS, EVENT_POLICY_V7_MIGRATION,
   EVENT_POLICY_MAX, assertLifecycleStatuses,
   assertEventPolicy, parseEventPolicy, completeEventPolicy, toEventPolicyGQL, applyEventPolicyInput,
   EVENT_POLICY_CACHE_TTL_MS, getCachedEventPolicy, cacheEventPolicy, invalidateEventPolicyCache,
@@ -212,6 +213,22 @@ describe('ignore_lifecycle_statuses (D6.3) e la semantica del ciclo di vita (ond
     })
   })
 
+  it('G-MON-7: la soglia «un guasto si propaga» e nella policy, non nel web', () => {
+    // Era `HIGH_IMPACT = 5` in CIHealthPage: la stessa soglia per una CMDB da
+    // 50 CI e per una da 50.000. Il valore iniziale e quello che il web usava,
+    // cosi il primo giorno non cambia niente.
+    expect(DEFAULT_EVENT_POLICY.high_impact_dependents).toBe(5)
+    expect(EVENT_POLICY_V7_KEYS).toEqual(['high_impact_dependents'])
+    expect(EVENT_POLICY_V7_MIGRATION).toBe('20261002_1050_event_policy_high_impact')
+    expect(toEventPolicyGQL(DEFAULT_EVENT_POLICY)).toMatchObject({ highImpactDependents: 5 })
+    // Una policy a cui manca la chiave dice quale migrazione la aggiunge.
+    const senza = { ...DEFAULT_EVENT_POLICY } as Record<string, unknown>
+    delete senza['high_impact_dependents']
+    expect(() => parseEventPolicy(JSON.stringify(senza), 'c-test'))
+      .toThrow(/20261002_1050_event_policy_high_impact/)
+    expect(completeEventPolicy(senza)).toMatchObject({ high_impact_dependents: 5 })
+  })
+
   it('policy senza le chiavi dell\'ondata 7 → errore che indica la migrazione 1810; completeEventPolicy le aggiunge', () => {
     const { retired_statuses: _r, maintenance_statuses: _m, ...withoutV6 } = DEFAULT_EVENT_POLICY
     expect(() => parseEventPolicy(JSON.stringify(withoutV6), 'acme')).toThrow(/ — missing retired_statuses, maintenance_statuses: run the 20260917_1810_ci_lifecycle_semantics migration/)
@@ -312,5 +329,33 @@ describe('cache della policy per tenant', () => {
     expect(getCachedEventPolicy('t2', 0)).not.toBeNull()
     invalidateEventPolicyCache()
     expect(getCachedEventPolicy('t2', 0)).toBeNull()
+  })
+})
+
+/**
+ * C-37 (revisione totale): le chiavi della `severity_map` sono le severità che
+ * i sistemi di monitoraggio MANDANO, non un vocabolario che il cliente
+ * rinomina. Le due cose devono restare d'accordo: se un giorno qualcuno
+ * togliesse `event_severity` dai vocabolari «di collegamento», la rinomina
+ * diventerebbe possibile, la mappa resterebbe sulle chiavi vecchie e la
+ * validazione rifiuterebbe quelle nuove — il vicolo cieco già visto con
+ * `impact`. Questo test lega la validazione al divieto.
+ */
+describe('C-37 · la mappa delle severità e il Dizionario dicono la stessa cosa', () => {
+  it('event_severity è un vocabolario di collegamento: i suoi valori non si rinominano', async () => {
+    const { WIRE_VOCABULARIES } = await import('../../graphql/resolvers/enumType.js')
+    expect(Object.keys(WIRE_VOCABULARIES)).toContain('event_severity')
+  })
+
+  it('assertSeverityMap pretende esattamente le severità del protocollo', async () => {
+    const { assertSeverityMap } = await import('../eventPolicy.js')
+    const { EVENT_SEVERITIES } = await import('../eventVocabularies.js')
+    const good = Object.fromEntries(EVENT_SEVERITIES.map((s) => [s, { impact: 'high', urgency: 'high' }]))
+    expect(Object.keys(assertSeverityMap(good))).toEqual([...EVENT_SEVERITIES])
+    // una chiave inventata (o rinominata a mano nel grafo) si dice
+    expect(() => assertSeverityMap({ ...good, avviso: { impact: 'high', urgency: 'high' } })).toThrow(/unknown keys: avviso/)
+    // e una che manca pure
+    const { info: _info, ...incomplete } = good
+    expect(() => assertSeverityMap(incomplete)).toThrow(/info is missing/)
   })
 })

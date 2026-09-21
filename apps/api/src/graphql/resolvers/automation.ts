@@ -4,6 +4,8 @@ import { withSession } from './ci-utils.js'
 import { runQuery } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { invalidateTriggerCache } from '../../lib/triggerEngine.js'
+import { assertStepFieldValue, stepFieldMetas } from '../../lib/stepFieldWrites.js'
+import { formFieldAutomationMetas } from '../../lib/catalogForm.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { invalidateRulesCache } from '../../lib/rulesEngine.js'
 import { parseConditions, usesChangedOperator, type ConditionOperator } from '../../lib/conditionEvaluator.js'
@@ -19,6 +21,8 @@ import {
   type AutomationEventType, isNotificationTarget, AUTOMATION_NOTIFICATION_CHANNELS, DEFAULT_SLA_WARNING_MINUTES,
 } from '@opengraphity/types'
 import { assertRolesExist, roleKeysInActions } from '../../lib/roles.js'
+import { assertAccensioneAmmessa, origineDi } from '../../lib/automationOrigin.js'
+import type { AutomationOrigin } from '@opengraphity/types'
 
 type Props = Record<string, unknown>
 
@@ -142,6 +146,14 @@ export async function assertStepTargets(
   entityType: string,
   opts: { actions?: string | null; conditions?: string | null },
 ): Promise<void> {
+  // I CAMPI che l'automazione scrive (revisione totale · C-4): `set_field` e
+  // `set_priority` passano dalla stessa validazione dell'azione di passo
+  // `update_field` — il campo deve essere del metamodello del cliente e il
+  // valore del suo vocabolario. Prima la scrittura accettava qualunque
+  // proprietà non compresa in una lista di dieci nomi, e il rifiuto arrivava
+  // (se arrivava) solo a runtime, in un log.
+  await assertAutomationFieldWrites(session, tenantId, entityType, opts.actions)
+
   const hasActionTarget    = opts.actions    != null && opts.actions.includes('transition_workflow')
   const hasStatusCondition = opts.conditions != null && opts.conditions.includes('"status"')
   if (!hasActionTarget && !hasStatusCondition) return
@@ -183,6 +195,48 @@ export async function assertStepTargets(
       if (value == null || String(value).trim() === '') return
       if (!known.has(String(value))) reject(`Invalid conditions: item ${i} (status ${c.operator})`, String(value))
     })
+  }
+}
+
+/**
+ * I campi scritti da `set_field` / `set_priority`, validati contro il
+ * metamodello e i vocabolari del cliente (revisione totale · C-4). Un valore
+ * con un segnaposto `{campo}` si risolve a runtime e lì viene validato di
+ * nuovo, come per le azioni di passo.
+ */
+async function assertAutomationFieldWrites(
+  session: Session, tenantId: string, entityType: string, actions?: string | null,
+): Promise<void> {
+  if (actions == null || (!actions.includes('set_field') && !actions.includes('set_priority'))) return
+  const parsed = parseActions(actions)
+  const writes = parsed.map((a, i) => ({ a, i })).filter(({ a }) => a?.type === 'set_field' || a?.type === 'set_priority')
+  if (writes.length === 0) return
+  /*
+   * IL METAMODELLO **PIÙ** I CAMPI DEI MODULI (ondata 8).
+   *
+   * Un'azione `set_field` su una richiesta può scrivere una risposta al modulo:
+   * l'esecutore la manda a `writeFormAnswer`, che riapplica le
+   * regole del modulo (revisione con cui è stata compilata, condizioni,
+   * vocabolario, validationScript). Senza questi campi la validazione rifiutava
+   * una regola che poi avrebbe funzionato — «modello_richiesto non è un campo di
+   * questo tipo di ticket», su un campo che la tendina offriva (visto dal vivo
+   * su c-test). Il metamodello VINCE sui nomi uguali: è quello che il ticket
+   * scrive davvero.
+   */
+  const metas = new Map([
+    ...await formFieldAutomationMetas(session, tenantId, entityType),
+    ...await stepFieldMetas(session, tenantId, entityType),
+  ])
+  for (const { a, i } of writes) {
+    const field = a.type === 'set_priority' ? 'priority' : String(a.params?.['field'] ?? '')
+    const value = a.type === 'set_priority' ? (a.params?.['priority'] ?? a.params?.['value']) : a.params?.['value']
+    if (!field) {
+      throw new ValidationError(`Invalid actions: item ${i} (${a.type}) needs the field name.`, { key: 'errors.automation.fieldRequired', params: { item: i, type: a.type } })
+    }
+    // La priorità di un incident vive su `severity`: è la stessa coppia che
+    // `writeTicketField` conosce, e il metamodello la dichiara così.
+    const metaField = field === 'priority' && entityType === 'incident' && !metas.has('priority') ? 'severity' : field
+    assertStepFieldValue(metas, entityType, metaField, value, `Invalid actions: item ${i} (${a.type})`, { allowTemplate: true })
   }
 }
 
@@ -245,6 +299,9 @@ function mapTrigger(p: Props) {
     enabled:           p['enabled']         ?? false,
     executionCount:    Number(p['execution_count'] ?? 0),
     lastExecutedAt:    p['last_executed_at'] ?? null,
+    // Chi l'ha scritta. Un nodo senza la proprietà è di prima di questo
+    // campo, quindi l'ha scritta una persona: `origineDi` lo dice.
+    origin:            origineDi(p),
   }
 }
 
@@ -328,6 +385,16 @@ async function createAutoTrigger(_: unknown, args: { input: Props }, ctx: GraphQ
   assertEventSupported(eventType, entityType)
   assertChangedOperatorEvent(conditions, eventType)
   await assertRolesExist(ctx.tenantId, roleKeysInActions(actions))
+  /*
+   * L'ORIGINE NON ARRIVA DALL'INPUT GraphQL (20 set 2026).
+   *
+   * `createAutoTrigger` è la mutation che usa una persona dalla pagina, e una
+   * persona non può dichiararsi «proposta AI»: sarebbe un modo di far nascere
+   * un'automazione con meno controlli invece che con più. L'origine
+   * `ai_proposal` la scrive solo il catalogo delle azioni delle proposte,
+   * che passa da `creaAutomazioneDaProposta` (lib/proposalActions.ts).
+   */
+  const origin: AutomationOrigin = 'manual'
   return withSession(async (session) => {
     await assertStepTargets(session, ctx.tenantId, entityType, { actions, conditions })
     const rows = await runQuery<{ props: Props }>(session, `
@@ -336,6 +403,7 @@ async function createAutoTrigger(_: unknown, args: { input: Props }, ctx: GraphQ
         name: $name, entity_type: $entityType, event_type: $eventType,
         conditions: $conditions, timer_delay_minutes: $timerDelayMinutes,
         actions: $actions, enabled: $enabled,
+        origin: $origin,
         execution_count: 0, last_executed_at: null,
         created_at: $now, updated_at: $now
       })
@@ -346,7 +414,7 @@ async function createAutoTrigger(_: unknown, args: { input: Props }, ctx: GraphQ
       conditions,
       timerDelayMinutes,
       actions,
-      enabled: input['enabled'] ?? true, now,
+      enabled: input['enabled'] ?? true, origin, now,
     })
     invalidateTriggerCache(ctx.tenantId)
     return mapTrigger(rows[0]!.props)
@@ -390,6 +458,26 @@ async function updateAutoTrigger(_: unknown, args: { id: string; input: Props },
         actions:    params['actions']    as string | null | undefined,
         conditions: params['conditions'] as string | null | undefined,
       })
+    }
+    /*
+     * L'ACCENSIONE RIVALIDA (20 set 2026, prerequisito dell'ondata 6).
+     *
+     * Il momento pericoloso di un'automazione nata da una proposta non è la
+     * creazione — nasce spenta e con le azioni già filtrate — ma
+     * l'ACCENSIONE, perché fra i due momenti il contenuto può essere
+     * cambiato. Qui si rileggono origine e azioni come saranno DOPO questo
+     * aggiornamento, e se l'origine è una proposta le azioni ripassano dalla
+     * sbarra ristretta.
+     */
+    if (args.input['enabled'] === true) {
+      const attuale = await runQuery<{ props: Props }>(session, `
+        MATCH (t:AutoTrigger {id: $id, tenant_id: $tenantId}) RETURN properties(t) AS props
+      `, { id: args.id, tenantId: ctx.tenantId })
+      const props = attuale[0]?.props
+      if (props) {
+        const azioniDopo = args.input['actions'] !== undefined ? params['actions'] : props['actions']
+        assertAccensioneAmmessa(origineDi(props), azioniDopo)
+      }
     }
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (t:AutoTrigger {id: $id, tenant_id: $tenantId})

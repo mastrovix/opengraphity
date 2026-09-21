@@ -55,7 +55,7 @@ export function ChangeInfoCard({
         {change.priority && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, lineHeight: 1 }}>
             <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('detail.priority')}</span>
-            <SeverityBadge value={change.priority} />
+            <SeverityBadge value={change.priority} vocabulary="priority" />
           </span>
         )}
         {/* Giro UI del 15 set · U-24: senza rischio aggregato (assessment non finito) si dice, invece di tacere accanto a una priorità provvisoria. */}

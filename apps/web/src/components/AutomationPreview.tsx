@@ -56,7 +56,8 @@ export function AutomationPreview({ entityType, eventType, conditions, condition
         if (meta?.fieldType === 'user') val = userMap.get(c.value) ?? c.value
         if (meta?.fieldType === 'team') val = teamMap.get(c.value) ?? c.value
         // V-19: «Urgenza = "high"» → «Urgenza = "Alta"», l'etichetta del Dizionario.
-        if (meta?.fieldType === 'enum' && meta.enumTypeName) val = vocab.labelOf(meta.enumTypeName, c.value) ?? c.value
+        // Anche la scelta multipla (ondata 5): il valore è UNA scelta del vocabolario.
+        if ((meta?.fieldType === 'enum' || meta?.fieldType === 'multi_enum') && meta.enumTypeName) val = vocab.labelOf(meta.enumTypeName, c.value) ?? c.value
         return `${fieldName} ${op} "${val}"`
       }).join(logic)
     : null

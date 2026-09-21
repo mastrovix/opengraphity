@@ -37,7 +37,7 @@ import type { Session } from 'neo4j-driver'
 import { logger } from '../../../lib/logger.js'
 import { requirePermission } from '../../../lib/permissions.js'
 import { isPreApprovedChangeType } from '../../../lib/changePolicy.js'
-import { getStepPurpose, getStepNamesByPurpose } from '../../../lib/workflowHelpers.js'
+import { getStepPurpose, getStepRow, getStepNamesByPurpose } from '../../../lib/workflowHelpers.js'
 import { assertAllApprovalsSatisfied, areAllApprovalsSatisfied } from './approvalCreation.js'
 import { areAllAssessmentsComplete } from '../../../lib/changeAssessments.js'
 import { changeWindowGateBlockedTotal } from '../../../middleware/metrics.js'
@@ -88,10 +88,25 @@ export type ChangeGateOutcome =
  * aggiungere una lettura a ogni transizione di ogni workflow.
  */
 export async function changeGateOutcome(session: Session, input: ChangeGateInput): Promise<ChangeGateOutcome> {
-  const [currentPurpose, targetPurpose] = await Promise.all([
+  const [currentPurpose, target] = await Promise.all([
     getStepPurpose(session, input.tenantId, 'change', input.currentStep),
-    getStepPurpose(session, input.tenantId, 'change', input.toStep),
+    getStepRow(session, input.tenantId, 'change', input.toStep),
   ])
+  const targetPurpose = target?.purpose ?? null
+
+  /**
+   * ABBANDONARE la change non è entrare nella finestra di rilascio (revisione
+   * totale · B-11). Il varco esiste per impedire che una change non approvata
+   * vada in produzione; un passo TERMINALE che non è un passo della finestra
+   * («Annullata», «Ritirata», aggiunti dal cliente — il workflow di fabbrica
+   * non ne ha) è un'uscita, e pretendere prima tutte le approvazioni o tutte
+   * le valutazioni significava che una change da buttare non si poteva
+   * buttare. La transizione deve comunque esistere nel workflow: qui si
+   * percorre un arco che il cliente ha disegnato.
+   */
+  const abandons = target?.isTerminal === true
+    && (targetPurpose == null || !(CHANGE_WINDOW_PURPOSES as readonly string[]).includes(targetPurpose))
+  if (abandons) return { kind: 'open' }
 
   // Uscire dall'analisi (verso qualunque passo, per qualunque tipo) chiede
   // valutazioni e piano completi. Il ritorno all'analisi resta libero.
@@ -161,11 +176,29 @@ export async function assertChangeWindowGate(
  * e i requisiti non sono soddisfatti: chi chiama NON deve transire, e il
  * rifiuto è già stato scritto a `warn` e contato qui.
  */
-export async function automaticTransitionAllowed(
-  session: Session, input: ChangeGateInput, path: GatePath,
-): Promise<boolean> {
+/**
+ * LA DECISIONE, SENZA CONSEGUENZE: percorribile o no, e perché.
+ *
+ * Estratta da `automaticTransitionAllowed` (18 set 2026) perché serve anche a
+ * chi vuole solo SAPERE, senza dichiarare un rifiuto: la diagnostica delle
+ * «change ferme pur avendo la strada aperta». Quella diagnostica valutava la
+ * sola CONDIZIONE dell'arco e ignorava il varco, quindi elencava change che
+ * non si muoveranno mai — consigliando di aprirle e spingere il passo, che non
+ * fa niente. Un rilievo che manda a premere un bottone inutile è peggio di
+ * nessun rilievo.
+ *
+ * Non si poteva riusare `automaticTransitionAllowed`: quella INCREMENTA la
+ * metrica dei rifiuti e scrive un `warn`, e una diagnostica che gira ogni
+ * minuto per ogni tenant avrebbe riempito le due cose di rifiuti immaginari —
+ * cioè avrebbe reso illeggibile la traccia dei rifiuti veri. E non si poteva
+ * riscrivere la decisione lì: sono due copie della stessa regola di dominio,
+ * ed è esattamente il difetto da cui nasce questo file.
+ */
+export async function automaticTransitionOutcome(
+  session: Session, input: ChangeGateInput,
+): Promise<{ allowed: boolean; reason: ChangeGateOutcome['kind'] }> {
   const outcome = await changeGateOutcome(session, input)
-  if (outcome.kind === 'open') return true
+  if (outcome.kind === 'open') return { allowed: true, reason: 'open' }
 
   // `areAllApprovalsSatisfied` è la stessa regola di `assertAllApprovalsSatisfied`
   // in forma booleana: è il pezzo che l'auto-advance legittimo usa già quando
@@ -176,10 +209,11 @@ export async function automaticTransitionAllowed(
   // lanciare, e la direzione sicura e rifiutare: trovato eseguendo la verifica
   // dal vivo, dove un changeId inesistente faceva uscire un NOT_FOUND da una
   // funzione che dichiara di rispondere si o no.
-  let satisfied = false
   if (outcome.kind === 'needs_approvals') {
     try {
-      satisfied = await areAllApprovalsSatisfied(session, input.changeId, input.tenantId)
+      if (await areAllApprovalsSatisfied(session, input.changeId, input.tenantId)) {
+        return { allowed: true, reason: 'open' }
+      }
     } catch (e) {
       logger.warn(
         { changeId: input.changeId, tenantId: input.tenantId, err: e },
@@ -187,7 +221,15 @@ export async function automaticTransitionAllowed(
       )
     }
   }
-  if (satisfied) return true
+  return { allowed: false, reason: outcome.kind }
+}
+
+export async function automaticTransitionAllowed(
+  session: Session, input: ChangeGateInput, path: GatePath,
+): Promise<boolean> {
+  const { allowed, reason } = await automaticTransitionOutcome(session, input)
+  if (allowed) return true
+  const outcome = { kind: reason } as ChangeGateOutcome
 
   changeWindowGateBlockedTotal.inc({ path, reason: outcome.kind })
   logger.warn(

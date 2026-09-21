@@ -141,7 +141,11 @@ export const INCIDENT_WORKFLOW_BASE: Omit<WorkflowDefinition, 'id' | 'tenantId'>
       fromStepName:  'in_progress',
       toStepName:    'escalated',
       trigger:       'manual',
+      // E-15: la traduzione mancava qui e in due altri punti, mentre tutte le
+      // altre etichette dei seed l'avevano: in un'interfaccia italiana, in
+      // mezzo ad «Assegna» e «Metti in attesa», compariva «Escalate».
       label:         'Escalate',
+      labels:        { it: 'Escala' },
       condition:     null,
       requiresInput: false,
       inputField:    null,
@@ -220,7 +224,7 @@ export const INCIDENT_SECURITY_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenant
   steps: [
     { id: 'step-new',             name: 'new',             label: 'New', labels: { it: 'Nuovo' },           type: 'start',    enterActions: [], exitActions: [], metadata: { step_order: 1, is_initial: true,  is_terminal: false, is_open: true,  category: 'active' } },
     { id: 'step-assigned',        name: 'assigned',        label: 'Assigned', labels: { it: 'Assegnato' },       type: 'standard', enterActions: [{ type: 'sla_start', params: { sla_type: 'response' } }], exitActions: [], metadata: { step_order: 2, is_initial: false, is_terminal: false, is_open: true,  category: 'active' } },
-    { id: 'step-security_review', name: 'security_review', label: 'Security Review', type: 'standard', enterActions: [{ type: 'publish_event', params: { event: 'incident.security_review' } }], exitActions: [], metadata: { step_order: 3, is_initial: false, is_terminal: false, is_open: true,  category: 'active', purpose: 'review' } },
+    { id: 'step-security_review', name: 'security_review', label: 'Security Review', labels: { it: 'Revisione di sicurezza' }, type: 'standard', enterActions: [{ type: 'publish_event', params: { event: 'incident.security_review' } }], exitActions: [], metadata: { step_order: 3, is_initial: false, is_terminal: false, is_open: true,  category: 'active', purpose: 'review' } },
     { id: 'step-in_progress',     name: 'in_progress',     label: 'In Progress', labels: { it: 'In Lavorazione' },  type: 'standard', enterActions: [{ type: 'sla_stop', params: { sla_type: 'response' } }, { type: 'sla_start', params: { sla_type: 'resolve' } }], exitActions: [], metadata: { step_order: 4, is_initial: false, is_terminal: false, is_open: true,  category: 'active' } },
     { id: 'step-pending',         name: 'pending',         label: 'On Hold', labels: { it: 'In Attesa' },       type: 'standard', enterActions: [{ type: 'sla_pause', params: { sla_type: 'resolve' } }], exitActions: [{ type: 'sla_resume', params: { sla_type: 'resolve' } }], metadata: { step_order: 5, is_initial: false, is_terminal: false, is_open: true,  category: 'waiting' } },
     { id: 'step-escalated',       name: 'escalated',       label: 'Escalated', labels: { it: 'Escalato' },        type: 'standard', enterActions: [], exitActions: [], metadata: { step_order: 6, is_initial: false, is_terminal: false, is_open: true,  category: 'escalated' } },
@@ -234,7 +238,7 @@ export const INCIDENT_SECURITY_WORKFLOW: Omit<WorkflowDefinition, 'id' | 'tenant
     { id: 'tr-security-assigned',      fromStepName: 'security_review', toStepName: 'assigned',        trigger: 'manual',     label: 'Reject (reassign)', labels: { it: 'Rigetta (riassegna)' },         condition: null, requiresInput: true,  inputField: 'notes' },
     { id: 'tr-inprogress-pending',     fromStepName: 'in_progress',     toStepName: 'pending',         trigger: 'manual',     label: 'Put on hold', labels: { it: 'Metti in attesa' },            condition: null, requiresInput: true,  inputField: 'notes' },
     { id: 'tr-pending-inprogress',     fromStepName: 'pending',         toStepName: 'in_progress',     trigger: 'manual',     label: 'Resume', labels: { it: 'Riprendi' },                   condition: null, requiresInput: false, inputField: null },
-    { id: 'tr-inprogress-escalated',   fromStepName: 'in_progress',     toStepName: 'escalated',       trigger: 'manual',     label: 'Escalate',                   condition: null, requiresInput: false, inputField: null },
+    { id: 'tr-inprogress-escalated',   fromStepName: 'in_progress',     toStepName: 'escalated',       trigger: 'manual',     label: 'Escalate', labels: { it: 'Escala' },                  condition: null, requiresInput: false, inputField: null },
     { id: 'tr-sla-escalated',          fromStepName: 'in_progress',     toStepName: 'escalated',       trigger: 'sla_breach', label: 'Automatic escalation (SLA)', labels: { it: 'Escalate automatico (SLA)' },   condition: null, requiresInput: false, inputField: null },
     { id: 'tr-escalated-inprogress',   fromStepName: 'escalated',       toStepName: 'in_progress',     trigger: 'manual',     label: 'Back to in progress', labels: { it: 'Torna in lavorazione' },       condition: null, requiresInput: false, inputField: null },
     { id: 'tr-inprogress-resolved',    fromStepName: 'in_progress',     toStepName: 'resolved',        trigger: 'manual',     label: 'Resolve', labels: { it: 'Risolvi' },                    condition: 'rootCause != null', requiresInput: true, inputField: 'rootCause' },

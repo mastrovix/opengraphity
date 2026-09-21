@@ -32,13 +32,48 @@ vi.mock('../roles.js', () => ({
 vi.mock('../domainMatrixSeed.js', () => ({
   seedDomainMatrices: vi.fn(async () => ['priority', 'change_priority']),
 }))
+// Le severità del portale hanno i loro test (`portalSeverityOptions.test.ts`):
+// qui conta che il provisioning le semini, non COME.
+vi.mock('../portalSeverityOptions.js', () => ({
+  seedPortalSeverityOptions: vi.fn(async (_s: unknown, t: string) => { seeded.push(`severities:${t}`); return { seeded: ['low', 'high'] } }),
+}))
+// Idem per la lingua: il seme ha i suoi test in `tenantLanguageSeed.test.ts`.
+vi.mock('../tenantLanguage.js', () => ({
+  seedDefaultLanguage: vi.fn(async (_s: unknown, t: string) => { seeded.push(`language:${t}`); return { seeded: 'en' } }),
+}))
 
 const { provisionTenantData, tenantProvisioningGaps, formatGap, REQUIRED_WORKFLOW_ENTITY_TYPES } = await import('../provisionTenantData.js')
 
 interface Row { get: (k: string) => unknown }
+
+/**
+ * Il tenant COMPLETO, come lo vede `tenantProvisioningGaps`: dalla revisione
+ * totale (C-21) il provisioning si RILEGGE alla fine e fallisce se manca un
+ * pezzo — non essendo atomico, un'interruzione a metà lasciava un tenant
+ * mezzo fatto in silenzio. Il finto database deve quindi saper rispondere
+ * anche a quella lettura.
+ */
+const COMPLETE_TENANT: Record<string, unknown> = {
+  roleKeys:       ['admin', 'operator', 'viewer', 'end_user'],
+  userRoles:      ['admin'],
+  dashboards:     1,
+  rules:          35,
+  matrices:       2,
+  questions:      4,
+  teams:          2,
+  changeManagers: 1,
+  entityTypes:    ['incident', 'problem', 'kb_article', 'change', 'service_request'],
+}
+
 function session(rows: Row[] = []) {
-  const run = vi.fn().mockResolvedValue({ records: rows })
-  return { run, calls: () => run.mock.calls as Array<[string, Record<string, unknown>]> }
+  // La riga del tenant completo si usa solo se il test non ne ha dato una sua
+  // (i test di `tenantProvisioningGaps` descrivono tenant INCOMPLETI).
+  const run = vi.fn(async (cypher: string) => {
+    const isGapQuery = cypher.includes('collect(ro.key) AS roleKeys')
+    const givenByTest = rows.some((r) => r.get('roleKeys') !== undefined)
+    return isGapQuery && !givenByTest ? { records: [row(COMPLETE_TENANT)] } : { records: rows }
+  })
+  return { run, calls: () => run.mock.calls as unknown as Array<[string, Record<string, unknown>]> }
 }
 const row = (m: Record<string, unknown>) => ({ get: (k: string) => m[k] })
 
@@ -56,8 +91,15 @@ describe('provisionTenantData — tutti i pezzi, una volta sola', () => {
     expect(out.matricesCreated).toEqual(['priority', 'change_priority'])
     // cinque definizioni: incident (base + security), problem, kb, change, service request
     expect(out.workflows).toHaveLength(5)
+    // Le severità del portale, dichiarate alla nascita: senza, il tenant
+    // nasceva con un rilievo di gravità ERRORE e il portale non apriva ticket
+    // (17 set 2026).
+    expect(out.portalSeveritiesSeeded).toEqual(['low', 'high'])
+    // La lingua del prodotto, dichiarata: a schermo non cambia niente, ma da
+    // ripiego diventa una scelta (e il rilievo sparisce).
+    expect(out.defaultLanguageSeeded).toBe('en')
     expect(seeded).toEqual([
-      'roles:c-two',
+      'roles:c-two', 'severities:c-two', 'language:c-two',
       'incident:c-two', 'problem:c-two', 'kb:c-two',
       'Change RFC Process:c-two', 'Service Request Fulfillment:c-two',
     ])
@@ -68,8 +110,19 @@ describe('provisionTenantData — tutti i pezzi, una volta sola', () => {
     const out = await provisionTenantData(s as never, 'c-two')
     expect(out.dashboardCreated).toBe(false)
     const [cypher, params] = s.calls()[0]!
-    expect(cypher).toContain("MERGE (d:DashboardConfig {tenant_id: $tenantId, name: 'Dashboard', is_default: true})")
+    /*
+     * La chiave è tenant + NOME, e non porta `is_default` (revisione del 17
+     * set 2026): quella proprietà la riscrive la pagina delle dashboard, e
+     * tenerla nella chiave faceva sì che la seconda esecuzione non
+     * riconoscesse più la dashboard provisionata e ne creasse una seconda. È
+     * lo stesso schema che ha creato i doppioni del metamodello. Questo test
+     * prima pinnava la stringa col difetto dentro: cementava il difetto invece
+     * di trovarlo.
+     */
+    expect(cypher).toContain("MERGE (d:DashboardConfig {tenant_id: $tenantId, name: 'Dashboard'})")
+    expect(cypher).not.toContain('is_default: true}')
     expect(cypher).toContain('ON CREATE SET')
+    expect(cypher).toContain('d.is_default = true')
     expect(params['tenantId']).toBe('c-two')
     // Da una migrazione non c'è nessuno a cui intestarla: resta null, non inventata.
     expect(params['userId']).toBeNull()
@@ -136,8 +189,10 @@ describe('tenantProvisioningGaps — dire cosa manca, invece di scoprirlo al pri
   })
 
   it('nessuna riga = il tenant non esiste, e lo dice', async () => {
-    const s = session([])
-    await expect(tenantProvisioningGaps(s as never, 'fantasma')).resolves.toEqual([{ kind: 'tenant_missing' }])
+    // Sessione nuda: qui NON vale il tenant completo del mock condiviso, la
+    // domanda del test è proprio «cosa risponde senza righe».
+    const bare = { run: vi.fn().mockResolvedValue({ records: [] }) }
+    await expect(tenantProvisioningGaps(bare as never, 'fantasma')).resolves.toEqual([{ kind: 'tenant_missing' }])
   })
 })
 

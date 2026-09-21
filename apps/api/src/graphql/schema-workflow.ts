@@ -44,6 +44,13 @@ export function workflowSDL(): string {
     actionErrors: [String!]
   }
 
+  """Il nome di un passo e la sua etichetta, per lingua: serve solo a leggere uno stato."""
+  type WorkflowStepLabel {
+    name:   String!
+    label:  String!
+    labels: [LocalizedLabel!]!
+  }
+
   type WorkflowTransition {
     toStep:        String!
     label:         String!

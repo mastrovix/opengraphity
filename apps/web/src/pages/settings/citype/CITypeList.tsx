@@ -58,7 +58,7 @@ export function CITypeList({
         <div style={{ padding: 20, color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
       )}
 
-      <div style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
+      <div style={{ maxHeight: 'calc(var(--vh-app) - 220px)', overflowY: 'auto' }}>
         {/* Campi Base special entry */}
         <button type="button" onClick={onSelectBase} style={baseEntryStyle(selectedBase)}>
           <Layout size={15} color={selectedBase ? 'var(--color-brand)' : 'var(--color-slate)'} />

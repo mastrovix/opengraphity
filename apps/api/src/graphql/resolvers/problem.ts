@@ -12,7 +12,7 @@ import { getScalarFields } from '../../lib/schemaFields.js'
 import { assertDomainValue } from '../../lib/domainMatrix.js'
 import { audit } from '../../lib/audit.js'
 import { ValidationError } from '../../lib/errors.js'
-import { auditStepEntered } from '../../lib/stepEvent.js'
+import {} from '../../lib/stepEvent.js'
 import { logger } from '../../lib/logger.js'
 import { requirePermission } from '../../lib/permissions.js'
 import { publishEvent } from '../../lib/publishEvent.js'
@@ -33,6 +33,7 @@ import { writeTicketComment } from '../../lib/ticketComments.js'
 import { notifyCommentAudience } from './comments.js'
 import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
 import { listPage } from '../../lib/listLimit.js'
+import { orderByOrThrow } from '../../lib/sortField.js'
 
 type Props = Record<string, unknown>
 
@@ -42,7 +43,8 @@ export function mapProblem(props: Props) {
     number:        (props['number'] ?? '') as string,
     title:         props['title']         as string,
     description:   (props['description']  ?? null) as string | null,
-    priority:      (props['priority']     ?? 'medium') as string,
+    // B-25: un problem senza priorità si mostra senza priorità, non «medium».
+    priority:      (props['priority']     ?? null) as string | null,
     impact:        (props['impact']       ?? null) as string | null,
     urgency:       (props['urgency']      ?? null) as string | null,
     // B-3: la categoria è sul nodo e va esposta (le policy SLA la leggono).
@@ -95,10 +97,10 @@ export const PROBLEM_SORT_WHITELIST: Record<string, string> = {
 }
 
 function problemOrderBy(sortField?: string | null, sortDirection?: string | null): string {
-  const col = sortField && PROBLEM_SORT_WHITELIST[sortField]
-  if (!col) return 'p.created_at DESC'
-  const dir = sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
-  return `p.${col} ${dir}`
+  // A-22: un campo non ordinabile è un errore, non un ordine diverso in
+  // silenzio. Le colonne della whitelist sono senza alias: si aggiunge qui.
+  const prefixed = Object.fromEntries(Object.entries(PROBLEM_SORT_WHITELIST).map(([k, v]) => [k, `p.${v}`]))
+  return orderByOrThrow(prefixed, sortField, sortDirection ?? 'desc', 'p.created_at DESC', 'problems(sortField)')
 }
 
 async function problems(
@@ -236,16 +238,22 @@ async function updateProblem(
     )
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId})
+      // I campi di TESTO si possono SVUOTARE (revisione totale · B-17): con
+      // «coalesce» null e assente erano la stessa cosa, e l'operatore che
+      // cancellava un workaround sbagliato lo ritrovava lì. Ora conta se il
+      // campo è presente nell'input: presente e vuoto = cancella, assente =
+      // non si tocca. Il titolo non si svuota: un ticket senza titolo non si
+      // riconosce.
       SET p += {
         title:          coalesce($title,        p.title),
-        description:    coalesce($description,  p.description),
+        description:    CASE WHEN $descriptionGiven   THEN $description   ELSE p.description    END,
         priority:       coalesce($priority,     p.priority),
         impact:         coalesce($impact,       p.impact),
         urgency:        coalesce($urgency,      p.urgency),
         category:       coalesce($category,     p.category),
-        root_cause:     coalesce($rootCause,    p.root_cause),
-        workaround:     coalesce($workaround,   p.workaround),
-        affected_users: coalesce($affectedUsers, p.affected_users),
+        root_cause:     CASE WHEN $rootCauseGiven     THEN $rootCause     ELSE p.root_cause     END,
+        workaround:     CASE WHEN $workaroundGiven    THEN $workaround    ELSE p.workaround     END,
+        affected_users: CASE WHEN $affectedUsersGiven THEN $affectedUsers ELSE p.affected_users END,
         updated_at:     $now
       }
       RETURN properties(p) as props
@@ -258,6 +266,11 @@ async function updateProblem(
       impact:        prio.impact,
       urgency:       prio.urgency,
       category:      input.category      ?? null,
+      // B-17: «presente nell'input» distingue il vuoto dall'assenza.
+      descriptionGiven:   Object.prototype.hasOwnProperty.call(input, 'description'),
+      rootCauseGiven:     Object.prototype.hasOwnProperty.call(input, 'rootCause'),
+      workaroundGiven:    Object.prototype.hasOwnProperty.call(input, 'workaround'),
+      affectedUsersGiven: Object.prototype.hasOwnProperty.call(input, 'affectedUsers'),
       rootCause:     input.rootCause     ?? null,
       workaround:    input.workaround    ?? null,
       affectedUsers: input.affectedUsers ?? null,
@@ -300,8 +313,13 @@ async function deleteProblem(
       OPTIONAL MATCH (wi)-[:STEP_HISTORY]->(e:WorkflowStepExecution)
       OPTIONAL MATCH (p)-[:HAS_COMMENT]->(c)
       OPTIONAL MATCH (p)-[:HAS_SLA]->(sla:SLAStatus)
+      // I segmenti della storia dei team vivono SOLO per questo problem
+      // (revisione totale · B-20): il DETACH toglieva la relazione e lasciava
+      // i nodi nel grafo, con il loro tenant_id, per sempre.
+      OPTIONAL MATCH (p)-[:TEAM_SEGMENT]->(seg:TicketTeamSegment)
       WITH p, collect(DISTINCT wi) AS wis, collect(DISTINCT e) AS execs,
-           collect(DISTINCT c) AS comments, collect(DISTINCT sla) AS slas
+           collect(DISTINCT c) AS comments, collect(DISTINCT sla) AS slas,
+           collect(DISTINCT seg) AS segments
       // Nodi legati per proprietà (entity_type/entity_id), non per relazione.
       // Aggregato dentro la subquery: una riga sempre, anche senza nodi legati
       // (una CALL senza righe toglierebbe la riga del problem).
@@ -313,12 +331,13 @@ async function deleteProblem(
         }
         RETURN collect(x) AS linkedNodes
       }
-      WITH p, wis, execs, comments, slas, linkedNodes,
+      WITH p, wis, execs, comments, slas, segments, linkedNodes,
            [n IN linkedNodes WHERE n:Attachment | n.storage_path] AS files
       FOREACH (x IN execs       | DETACH DELETE x)
       FOREACH (x IN wis         | DETACH DELETE x)
       FOREACH (x IN comments    | DETACH DELETE x)
       FOREACH (x IN slas        | DETACH DELETE x)
+      FOREACH (x IN segments    | DETACH DELETE x)
       FOREACH (x IN linkedNodes | DETACH DELETE x)
       DETACH DELETE p
       RETURN files
@@ -534,11 +553,10 @@ async function executeProblemTransition(
     // che era fallita. Trovato dal browser su un problem vero (terza
     // revisione). L'audit non deve far fallire la mutazione: il suo errore si
     // registra e si va avanti — ma in fila, non in parallelo.
-    await auditStepEntered(session, ctx, 'problem', 'Problem', args.problemId, args.toStep)
-      .catch((err: unknown) => {
-        logger.error({ err, problemId: args.problemId, toStep: args.toStep },
-          '[problem] transizione avvenuta, voce di audit NON scritta')
-      })
+    // La voce di audit la scrive l'hook `onStepEntered` per TUTTI i cammini
+    // (revisione totale · B-5): le transizioni del problem guidate dalla sua
+    // change non la scrivevano, e la storia del problem aveva dei buchi.
+    // Scriverla anche qui la sdoppierebbe sulla transizione manuale.
 
     const row = await runQueryOne<{ props: Props }>(session, `
       MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) as props

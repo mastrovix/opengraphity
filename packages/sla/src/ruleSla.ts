@@ -13,9 +13,8 @@ import { randomUUID } from 'crypto'
 import { DEFAULT_SLA_WARNING_MINUTES } from '@opengraphity/types'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { calculateDeadline } from './policy.js'
-import { mapToSLAStatus, SLA_STATUS_PROJECTION, type SLAStatus } from './status.js'
+import { mapToSLAStatus, getSLAStatus, SLA_STATUS_PROJECTION, type SLAStatus } from './status.js'
 import { cancelSLAJobs, scheduleBreachCheck, scheduleResponseCheck, scheduleWarning } from './scheduler.js'
-import { getTenantTimezone } from './olaBreach.js'
 
 export interface RuleSLAInput {
   tenantId:        string
@@ -43,12 +42,42 @@ export function assertRuleSLAMinutes(responseMinutes: unknown, resolveMinutes: u
   return { response, resolve }
 }
 
+/**
+ * LA PRECEDENZA FRA REGOLA E POLICY, dichiarata (revisione totale · E-9).
+ *
+ * La regola VINCE: è una scelta esplicita dell'amministratore per quel caso, e
+ * `handleTeamAssigned` non ricambia un SLA «fissato da una regola». Prima però
+ * l'inverso non era protetto: `applyRuleSLA` cancellava QUALUNQUE SLA — anche
+ * uno di policy, in corso e già parzialmente consumato — senza dire niente, e
+ * se la regola scattava di nuovo (per esempio `on_update`) l'orologio
+ * ripartiva da «adesso», azzerando il tempo già passato.
+ *
+ * Ora: l'istante di partenza e i fatti già avvenuti (violazione, presa in
+ * carico) si CONSERVANO dallo stato precedente, e la sostituzione di uno SLA
+ * di policy viene scritta nel log con il nome della policy che perde.
+ */
 export async function applyRuleSLA(input: RuleSLAInput): Promise<SLAStatus> {
   const { response, resolve } = assertRuleSLAMinutes(input.responseMinutes, input.resolveMinutes)
-  const timezone  = await getTenantTimezone(input.tenantId)
-  const startedAt = input.startedAt ?? new Date()
-  const responseDeadline = calculateDeadline(startedAt, response, false, timezone, null)
-  const resolveDeadline  = calculateDeadline(startedAt, resolve,  false, timezone, null)
+  const previous  = await getSLAStatus(input.tenantId, input.entityId)
+  if (previous && previous.policy_id) {
+    console.log(`[sla:rule] ${input.entityType} ${input.entityId}: the rule "${input.ruleName}" replaces the SLA of policy "${previous.policy_name ?? previous.policy_id}" (the rule wins, as declared)`)
+  }
+  // Il tempo già consumato non si azzera: se uno SLA c'era, la partenza resta
+  // la sua. `input.startedAt` (la creazione del ticket) vale solo al primo giro.
+  const startedAt = previous
+    ? new Date(previous.started_at)
+    : (input.startedAt ?? new Date())
+  /**
+   * Uno SLA da regola è sempre 24×7 (`tier_business_hours: false`), quindi il
+   * fuso dell'organizzazione NON entra nel conto: `calculateDeadline` lo
+   * ignora quando l'orario di servizio è spento. Prima lo si chiedeva comunque
+   * con `getTenantTimezone`, che LANCIA se il tenant non ne ha uno: l'azione
+   * `set_sla` falliva «cannot compute business-hours deadlines» per uno SLA
+   * che non usa l'orario di servizio (revisione totale · E-23).
+   */
+  const TWENTY_FOUR_SEVEN = { businessHours: false, timezone: 'UTC', calendar: null } as const
+  const responseDeadline = calculateDeadline(startedAt, response, TWENTY_FOUR_SEVEN.businessHours, TWENTY_FOUR_SEVEN.timezone, TWENTY_FOUR_SEVEN.calendar)
+  const resolveDeadline  = calculateDeadline(startedAt, resolve,  TWENTY_FOUR_SEVEN.businessHours, TWENTY_FOUR_SEVEN.timezone, TWENTY_FOUR_SEVEN.calendar)
 
   // I job del vecchio stato non devono scattare su uno stato che non c'è più.
   await cancelSLAJobs(input.entityId, 'both')
@@ -70,9 +99,13 @@ export async function applyRuleSLA(input: RuleSLAInput): Promise<SLAStatus> {
         started_at:            $startedAt,
         response_deadline:     $responseDeadline,
         resolve_deadline:      $resolveDeadline,
-        response_met:          false,
+        // I fatti già avvenuti restano: una violazione non si cancella perché
+        // una regola ha cambiato l'obiettivo, e una presa in carico già fatta
+        // non torna da fare (E-9).
+        response_met:          $responseMet,
         resolve_met:           false,
-        breached:              false,
+        breached:              $breached,
+        breached_at:           $breachedAt,
         tier_severity:         'custom',
         tier_response_minutes: $response,
         tier_resolve_minutes:  $resolve,
@@ -85,6 +118,9 @@ export async function applyRuleSLA(input: RuleSLAInput): Promise<SLAStatus> {
       id: randomUUID(), tenantId: input.tenantId, entityId: input.entityId, entityType: input.entityType,
       startedAt: startedAt.toISOString(), responseDeadline: responseDeadline.toISOString(), resolveDeadline: resolveDeadline.toISOString(),
       response, resolve, ruleName: input.ruleName, warning: input.warningMinutes ?? DEFAULT_SLA_WARNING_MINUTES,
+      responseMet: previous?.response_met === true,
+      breached:    previous?.breached === true,
+      breachedAt:  previous?.breached === true ? (previous.breached_at ?? null) : null,
     })
     const row = rows[0]
     if (!row) throw new Error(`set_sla: ${input.entityType} ${input.entityId} not found, or it is not a ticket with an SLA`)

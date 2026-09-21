@@ -134,7 +134,7 @@ export function TicketListPage() {
           <p style={{ marginBottom: 16 }}>{t(`ticket.empty.${filter}`)}</p>
           {canSubmit && <Link
             to="/tickets/new"
-            style={{ color: colors.brand, fontWeight: 500, fontSize: 10 }}
+            style={{ color: colors.brand, fontWeight: 500, fontSize: 12 }}
           >
             + {t('ticket.new')}
           </Link>}
@@ -170,10 +170,10 @@ export function TicketListPage() {
 
               {/* Main info */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 10, fontWeight: 500, color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
                   {ticket.title}
                 </div>
-                <div style={{ display: 'flex', gap: 12, fontSize: 10, color: colors.slateLight, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 12, fontSize: 12, color: colors.slateLight, flexWrap: 'wrap' }}>
                   <span style={{ fontWeight: 600 }}>{ticket.number}</span>
                   {/* Di che ticket si tratta: incident o richiesta dal catalogo (H-2). */}
                   <span style={{ padding: '1px 6px', borderRadius: 100, backgroundColor: colors.slateBg }}>{t(`ticket.kind.${ticket.type}`)}</span>
@@ -221,7 +221,7 @@ export function TicketListPage() {
           >
             {t('ticket.prev')}
           </button>
-          <span style={{ padding: '8px 0', fontSize: 10, color: colors.slateLight }}>
+          <span style={{ padding: '8px 0', fontSize: 12, color: colors.slateLight }}>
             {page} / {totalPages}
           </span>
           <button

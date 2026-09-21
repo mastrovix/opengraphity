@@ -24,7 +24,11 @@ export async function requestApprovalWouldBeSkipped(
     OPTIONAL MATCH (wd:WorkflowDefinition)-[:HAS_STEP]->(ap:WorkflowStep {purpose: 'approval'})
       WHERE (wd)-[:HAS_STEP]->(cur)
     OPTIONAL MATCH (wi)-[:STEP_HISTORY]->(ex:WorkflowStepExecution)
-      WHERE ex.step_name = ap.name
+      // Solo le esecuzioni CONCLUSE: contare quella in corso faceva risultare
+      // «passata dall'approvazione» una richiesta che è ferma proprio lì, e
+      // una scadenza sul passo di approvazione la mandava in lavorazione senza
+      // che nessuno l'avesse approvata (revisione totale · C-12).
+      WHERE ex.step_name = ap.name AND ex.exited_at IS NOT NULL
     RETURN coalesce(r.requires_approval, false) AS requires,
            count(DISTINCT ex) AS approvedPassages,
            target.purpose AS targetPurpose,

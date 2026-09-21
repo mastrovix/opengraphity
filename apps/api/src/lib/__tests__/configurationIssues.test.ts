@@ -24,6 +24,10 @@ let enumRows: Array<{ name: string; owner: string; values: string[]; labels: str
 let linguaDelCliente: string | null = 'it'
 
 vi.mock('@opengraphity/neo4j', () => ({
+  // `runQuery` serve al controllo delle change ferme (changesStuck.ts): senza,
+  // quel controllo falliva e ogni scenario di questo file si ritrovava un
+  // `check_failed` in più — un mock incompleto che fa sembrare rotto il codice.
+  runQuery: vi.fn(async () => []),
   getSession: () => ({
     run: vi.fn(),
     executeRead: (fn: (tx: { run: () => Promise<unknown> }) => unknown) => fn({
@@ -37,6 +41,15 @@ vi.mock('@opengraphity/neo4j', () => ({
   }),
 }))
 vi.mock('../schemaCache.js', () => ({ getSchemaState: vi.fn(async () => degraded) }))
+/**
+ * I campi con una formula e l'interruttore degli script (moduli del catalogo,
+ * ondata 6): di default nessun campo calcolato e script accesi, così questo
+ * controllo non compare nei casi degli altri.
+ */
+let campiConFormula: string[] = []
+let scriptAccesi = true
+vi.mock('../catalogForm.js', () => ({ formFieldsWithFormula: vi.fn(async () => campiConFormula) }))
+vi.mock('../scriptingPlan.js', () => ({ getScriptingPlan: vi.fn(async () => ({ plan: 'enterprise', enabled: scriptAccesi })) }))
 /*
   La lingua predefinita del cliente: da quando e configurazione, «non
   configurata» e uno stato che la diagnostica deve saper dire.
@@ -66,7 +79,12 @@ let ruoliMancanti: Array<Record<string, unknown>> = []
 vi.mock('../workflowStepRoles.js', () => ({ workflowsMissingStepRoles: vi.fn(async () => ruoliMancanti) }))
 /** Le copie dei vocabolari rimaste indietro rispetto ai valori spediti (F20): di default nessuna. */
 let copieIndietro: Array<{ id: string; name: string; newValues: string[] }> = []
-vi.mock('../vocabularyShippedDrift.js', () => ({ vocabulariesBehindShipped: vi.fn(async () => copieIndietro) }))
+/** Le copie di vocabolario identiche alla spedita: di default nessuna. */
+let copieInutili: Array<{ id: string; name: string; label: string }> = []
+vi.mock('../vocabularyShippedDrift.js', () => ({
+  vocabulariesBehindShipped: vi.fn(async () => copieIndietro),
+  vocabulariesCopiedWithoutChanges: vi.fn(async () => copieInutili),
+}))
 /** Le policy SLA con il preavviso non prima della scadenza (giro nel browser): di default nessuna. */
 let preavvisiScaduti: Array<{ name: string; warningMinutes: number; resolveMinutes: number }> = []
 // Verifica «Cosa resta cablato», ondata 1: le severità del portale dichiarate e dentro il vocabolario.
@@ -95,7 +113,13 @@ vi.mock('../customFieldSteps.js', async (importOriginal) => ({ ...(await importO
 ]) }))
 // Contratti OLA/UC (secondo giro UI del 15 set 2026, punto 3): di default tutti misurabili.
 let misurabilitaOLA: { withoutTeam: string[]; unmeasurable: string[] } = { withoutTeam: [], unmeasurable: [] }
+let campiDuplicati: Array<{ typeName: string; field: string; count: number }> = []
+let moduliDaSistemare: Array<{ item: string; reason: string; fields: string[] }> = []
 vi.mock('../olaMeasurability.js', () => ({ olaContractsMeasurability: vi.fn(async () => misurabilitaOLA) }))
+/* I campi duplicati nel metamodello: di norma nessuno (il caso suo sta in metamodelDuplicateFields.test.ts). */
+vi.mock('../metamodelDuplicateFields.js', () => ({ duplicateMetamodelFields: vi.fn(async () => campiDuplicati) }))
+/* I moduli del catalogo da sistemare: di norma nessuno (il caso suo sta in fondo). */
+vi.mock('../catalogFormHealth.js', () => ({ catalogFormsToFix: vi.fn(async () => moduliDaSistemare) }))
 vi.mock('../slaWarningCheck.js', () => ({ slaPoliciesWarningNotBeforeDeadline: vi.fn(async () => preavvisiScaduti) }))
 vi.mock('../../services/events/policy.js', () => ({ getEventPolicy: vi.fn(async () => policy) }))
 vi.mock('../domainMatrix.js', async (importOriginal) => {
@@ -117,7 +141,19 @@ vi.mock('../domainMatrix.js', async (importOriginal) => {
   }
 })
 
-const { configurationIssues } = await import('../configurationIssues.js')
+const { configurationIssues: configurationIssuesCached, invalidateConfigurationIssues } = await import('../configurationIssues.js')
+
+/**
+ * CONTRATTO RINEGOZIATO (revisione totale · C-33): i rilievi stanno in cache
+ * per un minuto — il banner li chiedeva a ogni apertura di pagina e i
+ * ventitré controlli fanno scansioni vere. Questi test cambiano la
+ * configurazione a metà e richiedono i rilievi di nuovo: qui si rilegge
+ * sempre fresco, che è quello che vogliono verificare.
+ */
+const configurationIssues = async (tenantId: string) => {
+  invalidateConfigurationIssues()
+  return configurationIssuesCached(tenantId)
+}
 type Issue = Awaited<ReturnType<typeof configurationIssues>>[number]
 /**
  * I PARAMETRI, non la frase.
@@ -172,7 +208,7 @@ function healthy(): void {
   }))
 }
 
-beforeEach(() => { healthy() })
+beforeEach(() => { healthy(); invalidateConfigurationIssues() })
 
 describe('configurationIssues', () => {
   it('niente da sistemare → lista vuota (un banner che compare sempre diventa invisibile)', async () => {
@@ -578,6 +614,57 @@ describe('configurationIssues — campi che citano fasi sparite', () => {
   })
 })
 
+/**
+ * CAMPI DEFINITI DUE VOLTE NELLO STESSO TIPO (trovato nel browser su c-test:
+ * «Priorità» due volte nelle tendine delle automazioni). È un `error` e non un
+ * avviso: una regola di visibilità scritta su una definizione non vale per
+ * l'altra, quindi la configurazione dice una cosa e il prodotto ne fa un'altra.
+ */
+/**
+ * I MODULI CHE NON SI POSSONO COMPILARE (revisione del 17 set 2026): la
+ * pubblicazione rifiuta le configurazioni impossibili, ma un modulo pubblicato
+ * prima della regola — o rotto cancellando un campo dalla libreria — lo
+ * scoprirebbe solo chi apre la richiesta.
+ */
+describe('configurationIssues — moduli del catalogo da sistemare', () => {
+  it('un modulo impossibile → errore che nomina la voce e il motivo, si rimedia nel costruttore', async () => {
+    moduliDaSistemare = [
+      { item: 'Nuovo portatile', reason: 'requiredNotForEndUser', fields: ['per_chi'] },
+      { item: 'Nuovo accesso', reason: 'fieldsMissing', fields: ['centro_di_costo'] },
+    ]
+    try {
+      const issues = await configurationIssues('t1')
+      expect(issues.filter((i) => i.kind === 'catalog_form_to_fix')).toEqual([
+        {
+          kind: 'catalog_form_to_fix', severity: 'error', where: '/settings/catalog-forms',
+          params: {
+            count: '2',
+            forms: 'Nuovo portatile (requiredNotForEndUser: per_chi); Nuovo accesso (fieldsMissing: centro_di_costo)',
+          },
+        },
+      ])
+    } finally { moduliDaSistemare = [] }
+  })
+})
+
+describe('configurationIssues — campi duplicati nel metamodello', () => {
+  it('doppioni → errore che li nomina col tipo, si rimedia nel disegnatore', async () => {
+    campiDuplicati = [
+      { typeName: 'incident', field: 'priority', count: 2 },
+      { typeName: 'problem',  field: 'impact',   count: 2 },
+    ]
+    try {
+      const issues = await configurationIssues('t1')
+      expect(issues.filter((i) => i.kind === 'metamodel_duplicate_field')).toEqual([
+        {
+          kind: 'metamodel_duplicate_field', severity: 'error', where: '/settings/itil-designer',
+          params: { count: '2', fields: 'incident.priority (2), problem.impact (2)' },
+        },
+      ])
+    } finally { campiDuplicati = [] }
+  })
+})
+
 describe('configurationIssues — contratti OLA/UC che non misurano niente', () => {
   it('senza team e su ticket che nessuno assegna a un team → due avvisi con i nomi, si rimedia nei contratti', async () => {
     misurabilitaOLA = { withoutTeam: ['Vecchio contratto'], unmeasurable: ['Service Desk evade le richieste entro 1 giorno (service_request)'] }
@@ -588,5 +675,50 @@ describe('configurationIssues — contratti OLA/UC che non misurano niente', () 
         { kind: 'ola_contract_unmeasurable', severity: 'warning', where: '/admin/ola-uc', params: { count: '1', names: 'Service Desk evade le richieste entro 1 giorno (service_request)' } },
       ])
     } finally { misurabilitaOLA = { withoutTeam: [], unmeasurable: [] } }
+  })
+})
+
+/**
+ * CAMPI CALCOLATI CON GLI SCRIPT SPENTI (ondata 6). Il rifiuto al salvataggio
+ * lo vede chi compila, che non può rimediare: questo controllo è il modo di
+ * dirlo a chi può.
+ */
+describe('formule e interruttore degli script', () => {
+  it('script spenti e campi con formula → un rilievo ERRORE che nomina i campi e dove si accende', async () => {
+    scriptAccesi = false
+    campiConFormula = ['Costo totale (EUR)', 'Giorni stimati']
+    const issues = await configurationIssues('t1')
+    const mio = issues.find((i) => i.kind === 'formulas_with_scripting_off')!
+    expect(mio).toBeDefined()
+    expect(mio.severity).toBe('error')
+    expect(mio.where).toBe('/settings/organization')
+    expect(mio.params['count']).toBe('2')
+    expect(mio.params['names']).toContain('Costo totale (EUR)')
+  })
+
+  it('script spenti ma NESSUN campo calcolato → niente rilievo: non c'+String.fromCharCode(39)+'è niente di rotto', async () => {
+    scriptAccesi = false
+    campiConFormula = []
+    const issues = await configurationIssues('t1')
+    expect(issues.some((i) => i.kind === 'formulas_with_scripting_off')).toBe(false)
+  })
+
+  it('script accesi → niente rilievo, e la libreria non si legge affatto', async () => {
+    scriptAccesi = true
+    campiConFormula = ['Costo totale (EUR)']
+    const issues = await configurationIssues('t1')
+    expect(issues.some((i) => i.kind === 'formulas_with_scripting_off')).toBe(false)
+  })
+
+  it('una copia di vocabolario identica a quella di fabbrica → avviso che la nomina', async () => {
+    // Non compra niente e paga il prezzo di ogni copia: non ricevera i valori
+    // che il prodotto aggiungera. Avviso e non errore: oggi non e rotto niente.
+    copieInutili = [{ id: 'v1', name: 'priority', label: 'Priority' }]
+    const out = await configurationIssues('c-one')
+    const avviso = out.find((i) => i.kind === 'vocabulary_copy_without_changes')
+    expect(avviso?.severity).toBe('warning')
+    expect(avviso?.params['names']).toContain('Priority')
+    expect(avviso?.where).toBe('/settings/enum-designer')
+    copieInutili = []
   })
 })

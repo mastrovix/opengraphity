@@ -65,7 +65,7 @@ The Apollo Sandbox is available at `http://localhost:4000/graphql` in developmen
 |-------|-------------|
 | `changes(status, type, priority, search, limit, offset, ...)` | List changes |
 | `change(id)` | Get a single change |
-| `changeTasks(changeId, taskType)` | Tasks for a change |
+| `change(id) { assessmentOwner assessmentSupport deployPlan }` | Tasks of a change: they are **fields of `Change`**, not a query. Revisione totale · H-25: `changeTasks(changeId, taskType)` never existed in the schema |
 | `changeImpactAnalysis(ciIds)` | Blast-radius impact |
 
 ### Problems
@@ -231,11 +231,18 @@ Every channel validates the same way: the field must exist for the ticket type, 
 | Mutation | Description |
 |----------|-------------|
 | `createChange(input)` | Create a new change |
-| `approveChange(id)` / `rejectChange(id, reason)` | CAB approval |
-| `deployChange(id)` / `failChange(id, reason)` | Deployment outcome |
-| `executeChangeTransition(instanceId, toStep, notes)` | Manual workflow step |
-| `saveDeploySteps(changeId, steps)` | Define deployment plan |
-| `updateDeployStepStatus(stepId, status, notes)` | Update step status |
+| `approveChangeApproval(changeId, teamId, note)` / `rejectChangeApproval(changeId, teamId, note, reopenAll, reopenTaskIds)` | Multi-party approval: one **team's** requirement at a time; rejecting sends the change back to assessment reopening the chosen tasks |
+| `completeDeployment(changeId, ciId)` / `completeValidationTest(changeId, ciId, result)` / `completeReview(changeId, ciId, result)` | Deployment, validation and review outcome, per impacted CI |
+| `executeChangeTransition(changeId, toStep, notes)` | Manual workflow step (the argument is the **change** id, not the workflow instance) |
+| `saveDeployPlan(taskId, steps)` / `completeDeployPlanTask(taskId)` | Define and close the deployment plan (it hangs off the plan **task**, not off the change) |
+
+> Revisione totale · H-25: this table used to list `approveChange`,
+> `rejectChange`, `deployChange`, `failChange`, `saveDeploySteps` and
+> `updateDeployStepStatus`, none of which exist in the schema — an integrator
+> writing `mutation { approveChange(id: …) }` got «Cannot query field». The
+> operations above are the real ones (`apps/api/src/graphql/schema-change.ts`);
+> `operationPermissions.ts` refuses to start with an operation that has no
+> permission row, so an operation missing from there does not exist.
 
 A change's `aggregateRiskScore` stays `null` until every impacted CI has a risk score from its assessment: meanwhile the priority is the initial one from the `change_priority_initial` matrix (change type only), and the change detail says the risk is not yet assessed. Once all assessments are complete, the priority comes from change type × risk band.
 
@@ -253,7 +260,7 @@ A change's `aggregateRiskScore` stays `null` until every impacted CI has a risk 
 |----------|-------------|
 | `assignCIOwner(ciId, teamId)` | Set owning team; `teamId: null` removes it, refused when the CI type requires it |
 | `assignCISupportGroup(ciId, teamId)` | Set support team (same rule) |
-| `createCI(input)` | Create configuration item (dynamic, per type) |
+| `create<Type>(input)` | Create a configuration item. The mutation is **generated per CI type** from the metamodel (`createServer`, `createDatabase`, …): there is no single `createCI` (revisione totale · H-25). The schema of an organization lists the ones its types produce |
 | `update<Type>(id, input)` / `updateCIFields(id, input)` | Update a CI. Both go through the same write: dictionary values, required fields and scripts are validated, the name key used by alarm matching follows the name, `ownerGroupId`/`supportGroupId` are applied, and the change is audited. `updateCIFields.customFields` accepts only fields of the CI's type, and text values take the field's type |
 | `addCIRelationship` / `removeCIRelationship` | Link / unlink two CIs. A relationship defined in the CI type designer can be created as long as one of the two types declares it (target: a type, or `any`); removing a link does not depend on its definition and fails if the link does not exist |
 | `deleteCIType(id)` | Delete a tenant CI type (`config.metamodel`). The **only** obstacle is a ticket (incident, problem, change or service request, closed ones included) linked to one of its CIs — `errors.ciType.inTicketsDelete` — or a service map following a relationship type only this type declares (`errors.ciType.typeDeleteUsedByServiceMaps`). Everything else goes with the type in the same transaction: its CIs (aliases, service map and history included), the ticket-type exclusions, the dynamic groups (the type leaves their criteria; a group that listed only this type is deleted), field visibility/requirement rules, business rules, triggers, dashboard widgets and report sections on the type, the links to assessment questions (the questions stay). Rule of 15 Sep 2026 |
@@ -419,7 +426,7 @@ RFC-based change process. A change is created against one or more CIs (each CI m
 | `GET` | `/api/v1/changes` | `changes:read` | Paginated list. Query: `page`, `limit`, `phase` (filter by current workflow step) |
 | `GET` | `/api/v1/changes/:id` | `changes:read` | Change detail, including `affectedCIs` with per-CI task states |
 | `POST` | `/api/v1/changes` | `changes:write` | Create an RFC change (same logic as the GraphQL `createChange` mutation) |
-| `GET` | `/api/v1/changes/:id/tasks` | `changes:read` | All tasks of the change (functional/technical assessment, planning, validation, deployment, review) |
+| `GET` | `/api/v1/changes/:id/tasks` | `changes:read` | All tasks of the change: the per-CI ones (functional/technical assessment, planning, validation, deployment, review) plus the generic ones a workflow step created (`type: "task"`, with `title` and `step`, no CI) |
 | `POST` | `/api/v1/changes/:id/transition` | `changes:write` | Execute a workflow transition (guards apply; `400` if not available) |
 | `GET` | `/api/v1/changes/:id/status` | `changes:read` | Compact status: `code`, `phase`, `approvalStatus`, `deployApproved` |
 
@@ -566,7 +573,7 @@ Historical data importer for migrations from other ITSM tools. All endpoints acc
 
 Idempotency: each row's `external_id` is stored as `import_external_id` on the node; re-running the same CSV updates the existing records (`updated`) instead of duplicating them.
 
-**Incident CSV columns** — `external_id` (required, idempotency key), `title` (required), `description`, `severity` (translated by the tenant's `import_severity` domain matrix — Settings → Domain matrices, seeded with 25 synonyms and editable; a value the matrix cannot resolve puts the **row in error**, it is never rewritten to `medium`; an empty cell is a row error too), `status` (matched case-insensitively against the tenant's incident workflow step names; unknown → warning + initial step), `number` (optional: preserved; collision with another incident → row error; when absent the next value of the tenant's `INC…` counter, the same one the app uses — the counter is also raised above every preserved number, so tickets created afterwards never reuse an imported number), `created_at`/`updated_at`/`resolved_at` (ISO; invalid → row error), `assignee_email` (unknown user → warning, row still imported), `team_name` (unknown team → warning), `comments` (JSON array `[{author_email, text, created_at}]`), and one column per **custom field**, named like the field: the value is checked like everywhere else (type, vocabulary, validation script) and a wrong value puts the row in error; an empty cell leaves the field untouched, and the required flag does not apply to imported history.
+**Incident CSV columns** — `external_id` (required, idempotency key), `title` (required), `description`, `severity` (translated by the tenant's `import_severity` domain matrix — Settings → Domain matrices, seeded with 25 synonyms and editable; a value the matrix cannot resolve puts the **row in error**, it is never rewritten to `medium`; an empty cell is a row error too), `status` (matched case-insensitively against the tenant's incident workflow step names; unknown → warning + initial step), `number` (optional: preserved; collision with another incident → row error; when absent the next value of the tenant's `INC…` counter, the same one the app uses — the counter is also raised above every preserved number, so tickets created afterwards never reuse an imported number), `created_at`/`updated_at`/`resolved_at` (ISO; invalid → row error), `assignee_email` (unknown user → warning, row still imported), `team_name` (unknown team → warning), `comments` (JSON array `[{author_email, text, created_at, internal}]` — `internal: false` imports the comment as a **reply visible to the requester** in the portal, which is what a migrated history usually needs; omitted means an internal staff note, and a non-boolean puts the row in error), and one column per **custom field**, named like the field: the value is checked like everywhere else (type, vocabulary, validation script) and a wrong value puts the row in error; an empty cell leaves the field untouched, and the required flag does not apply to imported history.
 
 **Problem, change and service request CSV columns** — the same common columns as incidents (`external_id`*, `title`*, `status`, `number` with the `PRB…`/`CHG…`/`REQ…` counter, `created_at`, `updated_at`, `comments`, one column per custom field of the type), plus:
 

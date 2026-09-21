@@ -50,6 +50,32 @@ async function main(TENANT: string) {
     }
     console.log(`  SLA policies: ${slaPolicies.length} created`)
 
+    /**
+     * I BERSAGLI DELLE REGOLE DI ESEMPIO devono esistere in QUESTO cliente
+     * (revisione totale · H-8). Prima erano letterali: `team_id: 'helpdesk'`
+     * e `'secops'` (i team seminati hanno id uuid), `to_step: 'approved'` (il
+     * workflow change di fabbrica ha `approval`), `status = 'new'` (un nome di
+     * passo cablato). Sono le regole che il cliente vede in Automazioni e
+     * crede funzionanti: puntavano nel vuoto e falliva l'azione, in silenzio,
+     * a ogni esecuzione.
+     *
+     * Qui i bersagli si RISOLVONO dal grafo del cliente, e una regola il cui
+     * bersaglio non esiste non viene seminata: lo si dice, invece di scriverne
+     * una rotta.
+     */
+    const teamRow = await session.executeRead(tx => tx.run(
+      'MATCH (t:Team {tenant_id: $tenantId}) RETURN t.id AS id, t.name AS name ORDER BY t.name LIMIT 1',
+      { tenantId: TENANT },
+    ))
+    const teamId   = teamRow.records[0]?.get('id') as string | undefined
+    const teamName = teamRow.records[0]?.get('name') as string | undefined
+    const { getInitialStepName, getStepNamesByPurpose } = await import('../lib/workflowHelpers.js')
+    const incidentInitialStep = await getInitialStepName(session, TENANT, 'incident')
+    const changeApprovalStep  = (await getStepNamesByPurpose(session, TENANT, 'change', ['approval']))[0]
+    if (teamId) console.log(`  I gruppi delle regole di esempio: «${String(teamName)}»`)
+    else console.log('  ⚠ nessun Team in questo cliente: le regole che assegnano un gruppo non vengono seminate')
+    if (!changeApprovalStep) console.log('  ⚠ nessun passo di scopo «approval» nel workflow change: la regola di auto-approvazione non viene seminata')
+
     // ── Auto Triggers ──────────────────────────────────────────────────────────
 
     const triggers = [
@@ -58,11 +84,11 @@ async function main(TENANT: string) {
         entity_type: 'incident', event_type: 'on_timer',
         conditions: JSON.stringify([
           { field: 'assigned_to', operator: 'is_null' },
-          { field: 'status', operator: 'equals', value: 'new' },
+          { field: 'status', operator: 'equals', value: incidentInitialStep },
         ]),
         timer_delay_minutes: 30,
         actions: JSON.stringify([
-          { type: 'assign_team', params: { team_id: 'helpdesk' } },
+          { type: 'assign_team', params: { team_id: teamId } },
         ]),
       },
       {
@@ -70,7 +96,7 @@ async function main(TENANT: string) {
         entity_type: 'incident', event_type: 'on_timer',
         conditions: JSON.stringify([
           { field: 'severity', operator: 'equals', value: 'critical' },
-          { field: 'status', operator: 'equals', value: 'new' },
+          { field: 'status', operator: 'equals', value: incidentInitialStep },
         ]),
         timer_delay_minutes: 60,
         actions: JSON.stringify([
@@ -90,6 +116,12 @@ async function main(TENANT: string) {
     ]
 
     for (const t of triggers) {
+      // H-8: una regola il cui bersaglio non esiste in questo cliente non si
+      // semina — sarebbe una regola «attiva» che fallisce a ogni esecuzione.
+      if (t.actions.includes('"team_id":null') || t.actions.includes('"to_step":null')) {
+        console.log(`  ⚠ salto «${t.name}»: il bersaglio non esiste in questo cliente`)
+        continue
+      }
       await session.executeWrite(tx => tx.run(`
         MERGE (t:AutoTrigger {tenant_id: $tenantId, name: $name})
         ON CREATE SET t.id = $id, t.entity_type = $entityType, t.event_type = $eventType,
@@ -119,7 +151,7 @@ async function main(TENANT: string) {
           { field: 'category', operator: 'equals', value: 'security' },
         ]),
         actions: JSON.stringify([
-          { type: 'assign_team', params: { team_id: 'secops' } },
+          { type: 'assign_team', params: { team_id: teamId } },
           { type: 'create_notification', params: { channel: 'in_app', message: 'Incident security critico assegnato a SecOps' } },
           { type: 'set_sla', params: { response_minutes: 15, resolve_minutes: 120 } },
         ]),
@@ -134,7 +166,7 @@ async function main(TENANT: string) {
           { field: 'type', operator: 'equals', value: 'emergency' },
         ]),
         actions: JSON.stringify([
-          { type: 'transition_workflow', params: { to_step: 'approved' } },
+          { type: 'transition_workflow', params: { to_step: changeApprovalStep } },
           { type: 'create_comment', params: { text: 'Auto-approvato: change emergency' } },
         ]),
         priority: 1, stop_on_match: false,
@@ -155,6 +187,11 @@ async function main(TENANT: string) {
     ]
 
     for (const r of rules) {
+      // H-8: vedi sopra.
+      if (r.actions.includes('"team_id":null') || r.actions.includes('"to_step":null')) {
+        console.log(`  ⚠ salto «${r.name}»: il bersaglio non esiste in questo cliente`)
+        continue
+      }
       await session.executeWrite(tx => tx.run(`
         MERGE (r:BusinessRule {tenant_id: $tenantId, name: $name})
         ON CREATE SET r.id = $id, r.description = $description,

@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 
 // Le note si compongono nella lingua del cliente: qui italiano, come le attese.
-vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 // SV-6: una mappa viva si sincronizza subito col nuovo ambito (import dinamico in config.ts)
 vi.mock('../serviceImpact/sync.js', () => ({ syncServiceMap: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))

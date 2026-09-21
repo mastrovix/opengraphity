@@ -18,6 +18,18 @@ function encryptionKey(): string {
 }
 const BATCH_SIZE     = 50
 
+/**
+ * Quanto può durare UN run di discovery (revisione totale · D-24).
+ *
+ * I client dei provider (AWS, Azure, GCP, Kubernetes) sono costruiti con i
+ * loro default e non hanno un timeout, e il worker ha due slot: un provider
+ * che non risponde teneva un job `active` a tempo indefinito, occupava metà
+ * della capacità e l'unico rimedio era riavviare il processo. Con il tetto il
+ * run finisce «failed» con un motivo leggibile, lo slot si libera e BullMQ
+ * ritenta.
+ */
+const RUN_TIMEOUT_MS = 30 * 60 * 1_000
+
 // ── Job payload ───────────────────────────────────────────────────────────────
 
 interface SyncJobPayload {
@@ -116,15 +128,32 @@ async function processSyncJob(job: Job<SyncJobPayload>): Promise<void> {
 
   const seenExternalIds = new Set<string>()
   let batch: import('@opengraphity/discovery').DiscoveredCI[] = []
+  // D-24: il tetto si controlla fra un CI e l'altro dello stream. Non
+  // interrompe una scrittura a metà: quello che è già stato riconciliato resta.
+  const deadline = startedAt + RUN_TIMEOUT_MS
 
   try {
     for await (const ci of connector.scan(source, creds)) {
+      if (Date.now() > deadline) {
+        throw new Error(
+          `[sync] run ${runId} stopped after ${String(Math.round(RUN_TIMEOUT_MS / 60_000))} minutes: `
+          + `the "${source.connector_type}" provider is still sending data (or not answering). `
+          + `${String(seenExternalIds.size)} CIs were reconciled; the next run continues from the provider.`,
+        )
+      }
       seenExternalIds.add(ci.external_id)
       batch.push(ci)
 
       if (batch.length >= BATCH_SIZE) {
         await reconcileBatch(batch, source, runId, tenantId, stats)
-        await job.updateProgress(Math.round((seenExternalIds.size / Math.max(seenExternalIds.size, 1)) * 50))
+        /**
+         * L'avanzamento dice QUANTI CI sono stati letti (revisione totale ·
+         * D-18): il conto era `size / max(size, 1) * 50`, cioè sempre 50 —
+         * una barra che non informava di niente. Quanti saranno in tutto non
+         * si sa (la scansione è uno stream), quindi si manda il numero dei
+         * letti come dato, non una percentuale inventata.
+         */
+        await job.updateProgress({ ciScanned: seenExternalIds.size, batches: Math.ceil(seenExternalIds.size / BATCH_SIZE) })
         batch = []
       }
     }

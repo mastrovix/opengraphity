@@ -4,7 +4,9 @@ import { customFieldDefs, customFieldValues, type CustomFieldInput } from '../..
 import type { Session } from 'neo4j-driver'
 import { withSession } from './ci-utils.js'
 import { ForbiddenError, ValidationError } from '../../lib/errors.js'
+import { listPage } from '../../lib/listLimit.js'
 import { audit } from '../../lib/audit.js'
+import { serviceRequestFormAnswers } from './catalogForm.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { validateStringLength } from '../../lib/validation.js'
@@ -186,7 +188,19 @@ async function myTickets(
   { status, page = 1, pageSize = 20, language }: { status?: string | null; page?: number; pageSize?: number; language?: string | null },
   ctx: GraphQLContext,
 ) {
-  const offset = (page - 1) * pageSize
+  /**
+   * Pagina e dimensione VALIDATE (revisione totale · B-24 e H-38, lo stesso
+   * difetto visto da due revisori): `page: 0` dava uno
+   * SKIP negativo e un errore Cypher invece di un messaggio, e `pageSize` non
+   * aveva tetto — una richiesta poteva chiedere tutto.
+   */
+  const { limit: safePageSize, offset } = listPage(
+    { limit: pageSize, offset: (Math.max(1, Math.trunc(page)) - 1) * Math.max(1, Math.trunc(pageSize)) },
+    20,
+  )
+  if (!Number.isInteger(page) || page < 1) {
+    throw new ValidationError(`page must be an integer >= 1 (got ${String(page)})`, { key: 'errors.list.page', params: { got: String(page) } })
+  }
 
   return withSession(async (session) => {
     // Una classe di stato vale per entrambi i workflow: i passi si risolvono
@@ -195,7 +209,7 @@ async function myTickets(
       ? { incident: await resolveStatusClass(session, ctx.tenantId, status, 'incident'), service_request: await resolveStatusClass(session, ctx.tenantId, status, 'service_request') }
       : null
     const params = {
-      tenantId: ctx.tenantId, userId: ctx.userId, offset, limit: pageSize,
+      tenantId: ctx.tenantId, userId: ctx.userId, offset, limit: safePageSize,
       incidentStatuses: statuses?.incident ?? null, requestStatuses: statuses?.service_request ?? null,
     }
     const whereClause = `
@@ -347,7 +361,8 @@ async function myTicket(
     // più resta col suo nome; la prima voce non ha un passo di partenza.
     const stepLabel = await stepMeta(session, ctx.tenantId, lingua)
     const history = historyResult.records.map((r) => ({
-      fromStep:    (r.get('fromStep')    ?? 'start') as string,
+      // H-49: niente «start» inventato — la prima voce non ha un passo di partenza.
+      fromStep:    (r.get('fromStep') ?? null) as string | null,
       toStep:      r.get('toStep')      as string,
       fromLabel:   r.get('fromStep') == null ? null : stepLabel(r.get('fromStep') as string, kind).statusLabel,
       toLabel:     stepLabel(r.get('toStep') as string, kind).statusLabel,
@@ -361,7 +376,23 @@ async function myTicket(
     const customFields = customFieldValues(await customFieldDefs(session, ctx.tenantId, kind), props, { onlyVisibleToEndUser: true, stepContext: await ticketStepContext(session, ctx.tenantId, id) })
       .filter((f) => f.visible)
 
-    return { ...ticket, comments, attachments, history, customFields }
+    /*
+     * LE RISPOSTE AL MODULO, per chi le ha scritte (revisione del 17 set 2026).
+     *
+     * Chi compilava dodici campi non li rivedeva mai: né per controllare, né
+     * per citarli al telefono. Si mostrano con le domande della revisione con
+     * cui la richiesta è stata compilata, e solo le voci che il modulo offre
+     * agli utenti finali — le altre non gli sono state chieste.
+     */
+    const formAnswers = kind === 'service_request'
+      ? await serviceRequestFormAnswers(
+          { id, catalogItemId: (props['catalog_item_id'] ?? null) as string | null,
+            formRevision: props['form_revision'] == null ? null : Number(props['form_revision']) },
+          undefined, ctx, { endUser: true },
+        )
+      : []
+
+    return { ...ticket, comments, attachments, history, customFields, formAnswers }
   })
 }
 

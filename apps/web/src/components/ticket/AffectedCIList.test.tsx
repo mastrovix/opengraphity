@@ -100,7 +100,8 @@ describe('AffectedCIList — i tipi di CI esclusi non si propongono', () => {
       { mocks: [baseCITypeMock()] },
     )
     await user.click(screen.getByRole('button', { name: /Add CI/i }))
-    expect(screen.getByPlaceholderText(/certificate/)).toBeInTheDocument()
+    // Il tipo si legge con la sua etichetta, non col nome interno (20 set 2026).
+    expect(screen.getByPlaceholderText(/Certificate/)).toBeInTheDocument()
     expect(screen.getByText('SRV-01')).toBeInTheDocument()
     expect(screen.queryByText('cert-portale')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '+' }))

@@ -30,7 +30,7 @@ import { Button } from '@/components/Button'
 import { Input, FieldLabel } from '@/components/ui/FormControls'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
-import { GET_MONITORING_SOURCES } from '@/graphql/queries'
+import { GET_MONITORING_SOURCE } from '@/graphql/queries'
 import { CREATE_MONITORING_SOURCE, SEND_SAMPLE_EVENT } from '@/graphql/mutations'
 import { formatDateTime } from '@/lib/datetime'
 import { colors, palette } from '@/lib/tokens'
@@ -87,7 +87,14 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
 
   const [createSource, { loading: creating }] = useMutation<{ createInboundWebhook: CreatedSource }>(CREATE_MONITORING_SOURCE)
   const [sendSample, { loading: sending }] = useMutation<{ sendSampleEvent: number }>(SEND_SAMPLE_EVENT)
-  const [loadSources] = useLazyQuery<{ monitoringSources: MonitoringSource[] }>(GET_MONITORING_SOURCES, { fetchPolicy: 'network-only' })
+  /**
+   * La verifica legge UNA sorgente, non tutte (revisione totale · G-MON-9):
+   * caricava `monitoringSources` — ogni sorgente con la sua configurazione
+   * completa, script di trasformazione e mappature comprese — per leggere
+   * l'ultimo errore di quella appena creata. Con 40 sorgenti ogni «Verifica
+   * ora» trasferiva 40 configurazioni.
+   */
+  const [loadSource] = useLazyQuery<{ monitoringSource: MonitoringSource | null }>(GET_MONITORING_SOURCE, { fetchPolicy: 'network-only' })
 
   const step: Step = STEPS[stepIdx]!
   const isGeneric = kind === 'generic'
@@ -126,10 +133,10 @@ export function NewSourceWizard({ sampleCheckDelayMs = SAMPLE_CHECK_DELAY_MS }: 
   async function checkReception(sourceId: string) {
     setCheck({ status: 'checking' })
     try {
-      const res = await loadSources()
+      const res = await loadSource({ variables: { id: sourceId } })
       if (res.error) throw res.error
-      if (!res.data) throw new Error(t('monitoring.errors.emptyResponse', { operation: 'monitoringSources' }))
-      const src = res.data.monitoringSources.find((s) => s.id === sourceId)
+      if (!res.data) throw new Error(t('monitoring.errors.emptyResponse', { operation: 'monitoringSource' }))
+      const src = res.data.monitoringSource
       if (!src) { setCheck({ status: 'notFound' }); return }
       // lastError è il motivo dell'ULTIMO payload rifiutato e torna null al primo batch accettato.
       if (src.lastError) setCheck({ status: 'error', error: src.lastError })

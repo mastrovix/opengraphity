@@ -255,6 +255,26 @@ describe('letture — tipi base/sistema + tipi del tenant', () => {
     expect(out).toEqual([expect.objectContaining({ id: 'ct-1', name: 'firewall', fields: [], relations: [], systemRelations: [] })])
   })
 
+  /*
+   * OGNI COSTRUZIONE DI UN TIPO PORTA TUTTI I CAMPI DEL TIPO GraphQL (20 set
+   * 2026).
+   *
+   * `CITypeDefinition` si monta in DUE posti — `mapCITypeNode` e la lettura
+   * di `ciTypes`, che ha la sua copia — e aggiungendo `labels` a uno solo la
+   * query intera falliva: «Cannot return null for non-nullable field
+   * CITypeDefinition.labels», e con lei il metamodello di TUTTE le pagine
+   * (dal vivo: la CMDB ha ricominciato a mostrare «business_application»).
+   * Il test guarda le due strade insieme.
+   */
+  it('ciTypes e baseCIType costruiscono le STESSE chiavi: un campo nuovo non può entrare in una sola', async () => {
+    reset([{ records: [typeRecord()] }])
+    const daLista = (await buildCITypesResolver()(null, null, operator))[0]!
+    reset([{ records: [typeRecord()] }, { records: [] }])
+    const daBase = await buildBaseCITypeResolver()(null, null, operator)
+    expect(Object.keys(daLista as object).sort()).toEqual(Object.keys(daBase as object).sort())
+    expect(daLista).toHaveProperty('labels')
+  })
+
   it('ciTypes: i vocabolari agganciati passano da enumScopeClause, sul tipo e su __base__', async () => {
     reset([{ records: [typeRecord()] }])
     await buildCITypesResolver()(null, null, operator)

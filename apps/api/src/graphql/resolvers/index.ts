@@ -14,6 +14,7 @@ import { ticketCustomFieldResolvers } from './ticketCustomFields.js'
 import type { IResolvers } from '@graphql-tools/utils'
 import { incidentResolvers } from './incident.js'
 import { problemResolvers } from './problem.js'
+import { orderByOrThrow } from '../../lib/sortField.js'
 import {
   linkRelatedTicket, unlinkRelatedTicket,
   incidentRelatedIncidents, incidentRelatedProblems, incidentRelatedChanges,
@@ -33,13 +34,16 @@ import { logsResolvers } from './logs.js'
 import { dashboardResolvers } from './dashboard.js'
 import { buildDynamicCIResolvers, dynamicCIRootFields } from './dynamic-ci.js'
 import { anomalyResolvers } from './anomaly.js'
+import { proposalResolvers } from './proposals.js'
+import { dailyWorkResolvers } from './dailyWork.js'
 import { eventResolvers } from './events.js'
 import { serviceResolvers } from './services.js'
 import { topologyResolvers } from './topology.js'
 import { notificationRuleResolvers } from './notificationRules.js'
 import { queueStatsResolvers } from './queueStats.js'
 import { syncResolvers } from './sync.js'
-import { auditLog, auditActions } from './auditLog.js'
+import { auditLog, auditActions, auditEntityTypes } from './auditLog.js'
+import { ticketTasks, formReferenceFields, claimTicketTask, completeTicketTask, cancelTicketTask } from './ticketTasks.js'
 import { enumTypeResolvers } from './enumType.js'
 import { domainMatrixResolvers } from './domainMatrix.js'
 import { monitoringResolvers } from './monitoring.js'
@@ -52,6 +56,7 @@ import { knowledgeBaseResolvers } from './knowledgeBase.js'
 import { reportExportResolvers } from './reportExport.js'
 import { portalResolvers } from './portal.js'
 import { fieldRulesResolvers } from './fieldRules.js'
+import { catalogFormResolvers, formFieldOptions, formFieldTableColumns } from './catalogForm.js'
 import { ticketCIExclusionResolvers } from './ticketCIExclusions.js'
 import { customWidgetResolvers } from './customWidget.js'
 import { automationResolvers } from './automation.js'
@@ -106,12 +111,12 @@ const meStub = {
   users: async (_: unknown, args: { sortField?: string; sortDirection?: string }, ctx: GraphQLContext) => {
     const session = getSession()
     try {
-      const orderBy = USER_SORT_WHITELIST[args.sortField ?? ''] ?? 'u.name'
-      const orderDir = args.sortDirection === 'desc' ? 'DESC' : 'ASC'
+      // A-22: un campo non ordinabile è un errore, non un ordine diverso in silenzio.
+      const orderBy = orderByOrThrow(USER_SORT_WHITELIST, args.sortField, args.sortDirection, 'u.name ASC', 'users(sortField)')
       type Row = { props: Record<string, unknown>; teamId: string | null }
       const rows = await runQuery<Row>(session, `
         MATCH (u:User {tenant_id: $tenantId})
-        RETURN properties(u) AS props, null AS teamId ORDER BY ${orderBy} ${orderDir}
+        RETURN properties(u) AS props, null AS teamId ORDER BY ${orderBy}
       `, { tenantId: ctx.tenantId })
       return rows.map((r) => mapUser(r.props))
     } finally {
@@ -317,6 +322,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...logsResolvers.Query,
       ...dashboardResolvers.Query,
       ...anomalyResolvers.Query,
+      ...proposalResolvers.Query,
+      ...dailyWorkResolvers.Query,
       ...eventResolvers.Query,
       ...serviceResolvers.Query,
       ...topologyResolvers.Query,
@@ -334,6 +341,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...knowledgeBaseResolvers.Query,
       ...portalResolvers.Query,
       ...fieldRulesResolvers.Query,
+      ...catalogFormResolvers.Query,
       ...ticketCIExclusionResolvers.Query,
       ...customWidgetResolvers.Query,
       ...automationResolvers.Query,
@@ -352,6 +360,9 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...inboxResolvers.Query,
       auditLog,
       auditActions,
+      ticketTasks,
+      formReferenceFields,
+      auditEntityTypes,
       ciIncidents: ciResolvers.Query.ciIncidents,
       ciChanges:   ciResolvers.Query.ciChanges,
       ciProblems:  ciResolvers.Query.ciProblems,
@@ -361,6 +372,9 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       user: userById,
     },
     Mutation: {
+      claimTicketTask,
+      completeTicketTask,
+      cancelTicketTask,
       ...incidentResolvers.Mutation,
       ...problemResolvers.Mutation,
       ...changeResolvers.Mutation,
@@ -376,6 +390,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...customReportResolvers.Mutation,
       ...dashboardResolvers.Mutation,
       ...anomalyResolvers.Mutation,
+      ...proposalResolvers.Mutation,
       ...eventResolvers.Mutation,
       ...serviceResolvers.Mutation,
       ...similarityResolvers.Mutation,
@@ -399,6 +414,7 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...reportExportResolvers.Mutation,
       ...portalResolvers.Mutation,
       ...fieldRulesResolvers.Mutation,
+      ...catalogFormResolvers.Mutation,
       ...ticketCIExclusionResolvers.Mutation,
       ...customWidgetResolvers.Mutation,
       ...automationResolvers.Mutation,
@@ -440,6 +456,9 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     EnumTypeDefinition: {
       ...enumTypeResolvers.EnumTypeDefinition,
     },
+    // Moduli del catalogo (ondata 1): le scelte del vocabolario risolte dall'API,
+    // perche' le rende anche il portale, che non ha accesso al Dizionario.
+    FormField: { options: formFieldOptions, tableColumns: formFieldTableColumns },
     // `currentInstances`: quante istanze stanno ORA su uno step. Era stata
     // aggiunta allo SDL e a `workflowResolvers` senza essere unita QUI: i
     // resolver si uniscono tipo per tipo, a mano, quindi un tipo nuovo che non
@@ -460,6 +479,8 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
       ...ticketCustomFieldResolvers.Problem,
     },
     ProblemComment:     {},
+    // L'iter della voce di catalogo (moduli del catalogo, ondata 3).
+    ServiceCatalogItem: { ...serviceRequestResolvers.ServiceCatalogItem },
     ServiceRequest:     {
       ...serviceRequestResolvers.ServiceRequest,
       ...workflowResolvers.ServiceRequest,
@@ -470,6 +491,10 @@ export function buildResolvers(types: CITypeWithDefinitions[]): IResolvers {
     SLAPolicyNode:      automationResolvers.SLAPolicyNode,  // il nome del calendario (ondata 2)
     OLAContract:        olaResolvers.OLAContract,           // il nome del calendario (ondata 2)
     TicketOLA:          olaResolvers.TicketOLA,             // il riquadro OLA/UC del ticket (secondo giro UI del 15 set 2026)
+    // Il nome di chi ha risolto l'anomalia, letto solo se il client lo chiede
+    // (revisione totale · ANO-8): il campo c'era ma la mappa non era unita qui.
+    Anomaly:            anomalyResolvers.Anomaly,
+    Proposal:           proposalResolvers.Proposal,
     Event:              eventResolvers.Event,
     EventHistoryEntry:  eventResolvers.EventHistoryEntry,   // cronologia dell'allarme (Event Management)
     ServiceMap:         serviceResolvers.ServiceMap,        // servizi monitorati: nodes/edges/history sono field resolver

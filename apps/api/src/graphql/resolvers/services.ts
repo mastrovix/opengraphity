@@ -190,6 +190,9 @@ export function mapServiceMap(row: ServiceMapRow) {
     impactScore:       toNumber(p['impact_score']),
     evaluatedAt:       toStrOrNull(p['evaluated_at']),
     explanation:       parseStoredCauses(p['explanation'], `ServiceMap ${id} explanation`),
+    // G-MON-6: null finché la mappa non viene rivalutata (il motore lo scrive
+    // a ogni valutazione); chi lo legge lo tratta come «non lo so».
+    unhealthyCount:    p['unhealthy_count'] == null ? null : toNumber(p['unhealthy_count']),
     incidentProblem:   mapIncidentProblem(p, id),
     service: {
       id:          row.service.id,

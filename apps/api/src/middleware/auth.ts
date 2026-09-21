@@ -47,8 +47,11 @@ async function handle(
     }
     next()
   } catch (err) {
-    if (err instanceof GraphQLError && err.extensions['code'] === 'UNAUTHORIZED') {
-      res.status(401).json({ error: err.message })
+    const code = err instanceof GraphQLError ? err.extensions['code'] : null
+    if (code === 'UNAUTHORIZED' || code === 'TENANT_SUSPENDED') {
+      // Il codice viaggia nel corpo: un tenant sospeso non è un token da
+      // rinfrescare, e chi chiama deve poterli distinguere senza leggere la frase.
+      res.status(401).json({ error: (err as GraphQLError).message, code })
       return
     }
     // DB outage / corrupt User node is a server error, not an auth failure — surface it as such.

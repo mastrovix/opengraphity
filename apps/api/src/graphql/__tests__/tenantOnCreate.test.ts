@@ -77,6 +77,16 @@ describe('tenant_id su ogni CREATE di un nodo di dominio (tutta l\'API)', () => 
     expect(offenders.map((o) => `${o.file}:${o.line}  CREATE (:${o.label})`)).toEqual([])
   })
 
+  /* Le righe delle tabelle dei moduli sono nel perimetro (revisione del 17 set 2026). */
+  it('riconosce una riga di tabella del modulo scritta senza tenant', () => {
+    const rotto = `
+      MATCH (r:ServiceRequest {id: $requestId, tenant_id: $tenantId})
+      CREATE (row:FormTableRow { id: $rowId, field: $field })
+    `
+    expect(scanCreates(rotto, 'finto.ts')).toHaveLength(1)
+    expect(scanCreates(rotto.replace('id: $rowId,', 'id: $rowId, tenant_id: $tenantId,'), 'finto.ts')).toEqual([])
+  })
+
   it('riconosce il difetto che lo motiva (addWorkflowStep senza tenant_id)', () => {
     const broken = `
       MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})

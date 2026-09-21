@@ -23,10 +23,14 @@
  * (`loadStepFacts`): un'entità senza quel passo nel workflow attivo fa
  * FALLIRE il job, che resta nella coda dei falliti — non si inventano fatti.
  */
+import neo4j from 'neo4j-driver'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { stepEnteredEventType, legacyStepEventType } from '@opengraphity/types'
 import { publishEvent } from './publishEvent.js'
-import { loadStepFacts } from './stepEvent.js'
+import { auditStepEntered, loadStepFacts } from './stepEvent.js'
+import { writeTicketComment } from './ticketComments.js'
+import { systemText } from './systemText.js'
+import type { GraphQLContext } from '../context.js'
 import { logger } from './logger.js'
 
 const log = logger.child({ module: 'step-entered-events' })
@@ -91,6 +95,10 @@ export interface StepEnteredInfo {
   entityId:   string
   stepName:   string
   enteredAt:  string
+  /** Le note della transizione: finiscono nella nota interna sul ticket (B-4). */
+  notes?:     string | null
+  /** Il passo lasciato, per la storia. */
+  fromStep?:  string | null
 }
 
 /**
@@ -116,4 +124,78 @@ export async function publishStepEnteredForEntity(info: StepEnteredInfo): Promis
   const body = { ...payload, ...facts }
   await publishEvent(stepEnteredEventType(info.entityType), info.tenantId, info.actorId, body, info.enteredAt)
   await publishEvent(legacyStepEventType(info.entityType, info.stepName), info.tenantId, info.actorId, body, info.enteredAt)
+
+  // La NOTA e la voce di AUDIT, dallo stesso punto (revisione totale · B-4/B-5).
+  await writeStepEnteredTrace(info)
+}
+
+/**
+ * La nota interna sul ticket e la voce d'Audit Log dell'ingresso nel passo.
+ *
+ * Revisione totale · B-4/B-5: le scriveva solo la transizione MANUALE
+ * dell'incident (e per il problem solo l'audit). Un incident risolto in blocco
+ * dall'elenco, uno chiuso da una change, un problem portato avanti dalla sua
+ * change, una riapertura dal portale, un'escalation: il ticket si muoveva, la
+ * timeline non lo diceva e nell'Audit Log non c'era niente. Adesso passano da
+ * qui, che è l'unico punto comune a tutti i cammini.
+ *
+ * Né la nota né l'audit fanno fallire la transizione: la transizione è già
+ * avvenuta. Un errore si scrive nel log, perché un buco nella storia è un
+ * difetto e non deve restare muto.
+ */
+async function writeStepEnteredTrace(info: StepEnteredInfo): Promise<void> {
+  const session = getSession(undefined, neo4j.session.WRITE)
+  try {
+    const stepLabel = await stepDisplayLabel(session, info.tenantId, info.entityType, info.stepName)
+    const text = info.notes?.trim()
+      ? await systemText(info.tenantId, 'workflow.transitionCommentNotes', { step: stepLabel, notes: info.notes.trim() })
+      : await systemText(info.tenantId, 'workflow.transitionComment', { step: stepLabel })
+    await writeTicketComment(session, {
+      entityType: info.entityType,
+      entityId:   info.entityId,
+      tenantId:   info.tenantId,
+      text,
+      authorId:   info.actorId,
+      isInternal: true,
+      createdAt:  info.enteredAt,
+    })
+  } catch (err) {
+    log.error({ err, tenantId: info.tenantId, entityType: info.entityType, entityId: info.entityId, step: info.stepName },
+      'Nota di transizione non scritta: la storia del ticket non mostra questo passaggio')
+  } finally {
+    await session.close()
+  }
+
+  const auditSession = getSession(undefined, neo4j.session.WRITE)
+  try {
+    const spec = TICKET_ENTITIES[info.entityType]
+    if (!spec) return
+    const actor = await runQueryOne<{ email: string | null }>(auditSession,
+      'MATCH (u:User {id: $actorId, tenant_id: $tenantId}) RETURN u.email AS email',
+      { actorId: info.actorId, tenantId: info.tenantId })
+    await auditStepEntered(
+      auditSession,
+      // Il contesto minimo che `audit()` usa: chi, quale organizzazione, e
+      // l'e-mail se l'attore è una persona (per i cammini automatici è
+      // «system» e non c'è).
+      { tenantId: info.tenantId, userId: info.actorId, userEmail: actor?.email ?? info.actorId } as unknown as GraphQLContext,
+      info.entityType, spec.label, info.entityId, info.stepName,
+    )
+  } catch (err) {
+    log.error({ err, tenantId: info.tenantId, entityType: info.entityType, entityId: info.entityId, step: info.stepName },
+      'Voce di audit dell-ingresso nel passo non scritta')
+  } finally {
+    await auditSession.close()
+  }
+}
+
+/** L'etichetta del passo nella lingua del cliente, o il nome se non c'è. */
+async function stepDisplayLabel(
+  session: ReturnType<typeof getSession>, tenantId: string, entityType: string, stepName: string,
+): Promise<string> {
+  const row = await runQueryOne<{ label: string | null }>(session, `
+    MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})-[:HAS_STEP]->(s:WorkflowStep {name: $stepName})
+    RETURN s.label AS label LIMIT 1
+  `, { tenantId, entityType, stepName })
+  return row?.label ?? stepName
 }

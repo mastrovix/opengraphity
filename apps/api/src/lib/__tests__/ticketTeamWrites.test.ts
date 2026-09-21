@@ -46,6 +46,27 @@ describe('il team di un ticket passa da assignTeamCypher', () => {
     expect(c).toContain('TicketTeamSegment {')
   })
 
+  /*
+   * Il difetto del 20 set 2026: `setTicketTeam` leggeva il team di PRIMA (qui
+   * dentro viene cancellato, quindi leggerlo dopo è impossibile) e il primo
+   * `WITH` del frammento se lo mangiava. La query falliva a tempo di
+   * esecuzione — «Variable `previousTeamName` not defined» — e il guardiano
+   * delle query non la vede, perché è composta. Questo test guarda OGNI `WITH`
+   * del frammento: basta dimenticarsene uno per riaprire il buco.
+   */
+  it('le variabili dichiarate in `carry` sopravvivono a TUTTI i WITH del frammento', async () => {
+    const { assignTeamCypher } = await import('../ticketTeamHistory.js')
+    const c = assignTeamCypher('e', 't', { carry: ['previousTeamName', 'qualcosAltro'] })
+    const withs = c.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('WITH '))
+    expect(withs.length).toBeGreaterThanOrEqual(5)
+    for (const w of withs) {
+      expect(w, `questo WITH perde il valore letto prima: ${w}`).toContain('previousTeamName')
+      expect(w, `questo WITH perde il valore letto prima: ${w}`).toContain('qualcosAltro')
+    }
+    // Senza `carry` il frammento resta com'era: gli altri cinque chiamanti non cambiano.
+    expect(assignTeamCypher('e', 't')).not.toContain(', undefined')
+  })
+
   it('il primo team di un task nuovo: solo se non ne ha già uno, col tratto aperto', async () => {
     const { firstTeamCypher } = await import('../ticketTeamHistory.js')
     const c = firstTeamCypher('dp', 'supportTeam', '$now')

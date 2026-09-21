@@ -20,6 +20,21 @@ export interface ErrorLinkOptions {
   isSessionInvalid: () => boolean
   /** Session invalid or fresh token still rejected: redirect to login (`forceLogin`). */
   onSessionInvalid: () => void
+  /**
+   * IL TENANT È SOSPESO: si FERMA qui (17 set 2026).
+   *
+   * Non è una sessione da rinnovare né un account da riautenticare: è una
+   * decisione di chi amministra la piattaforma, e nessun tentativo la cambia.
+   * Senza questo ramo il client rinfrescava, riprovava, concludeva «account
+   * non accettato» e tornava al login — dove Keycloak dice sì, perché il realm
+   * e la persona esistono ancora. Da lì: app, query, rifiuto, login, per
+   * sempre. Chi guarda vedeva un'app che lampeggia, e nginx un URL che cresce
+   * a ogni giro finché non lo rifiuta con un 414.
+   *
+   * Senza questa funzione il rifiuto resta un errore mostrato come gli altri:
+   * meglio una frase sola che un ciclo.
+   */
+  onTenantSuspended?: (() => void) | undefined
   /** Transport failure (API or Keycloak unreachable). Already deduped: one call per `dedupeMs`. */
   onNetworkError: (error: Error, info: { operation?: string | undefined }) => void
   /** Any other GraphQL error. Deduped per message. */
@@ -84,6 +99,39 @@ function isUnauthorizedServerError(error: unknown): boolean {
   }
 }
 
+/** Il codice che l'API usa per un tenant sospeso (`auth/resolveAuth.ts`). */
+export const TENANT_SUSPENDED_CODE = 'TENANT_SUSPENDED'
+
+function codici(errors: unknown): string[] {
+  if (!Array.isArray(errors)) return []
+  return (errors as readonly { extensions?: Record<string, unknown> }[])
+    .map((e) => e.extensions?.['code'])
+    .filter((c): c is string => typeof c === 'string')
+}
+
+/**
+ * Il tenant sospeso, nelle DUE forme in cui il rifiuto può arrivare: errore
+ * GraphQL combinato, o `ServerError` quando il media type non è quello
+ * GraphQL. La stessa doppia lettura di UNAUTHORIZED qui sotto — mancarne una
+ * rimetterebbe il ciclo.
+ */
+function isTenantSuspended(error: unknown): boolean {
+  if (CombinedGraphQLErrors.is(error)) {
+    return error.errors.some((e) => e.extensions?.['code'] === TENANT_SUSPENDED_CODE)
+  }
+  if (ServerError.is(error)) {
+    try {
+      const body: unknown = JSON.parse(error.bodyText)
+      return codici((body as { errors?: unknown }).errors).includes(TENANT_SUSPENDED_CODE)
+    } catch { return false }
+  }
+  return false
+}
+
+function resultHasTenantSuspended(result: ApolloLink.Result): boolean {
+  return codici((result as { errors?: unknown }).errors).includes(TENANT_SUSPENDED_CODE)
+}
+
 /**
  * UNAUTHORIZED from the API: refresh the token (forced — the API just rejected
  * the one we have) and replay the SAME operation with the new bearer, without
@@ -113,8 +161,13 @@ function retryAfterRefresh(
         if (cancelled) return
         sub = forward(operation).subscribe({
           next: (result) => {
-            if (hasUnauthorized(result)) {
-              logger.error('UNAUTHORIZED dopo refresh del token', { operation: operation.operationName })
+            // Sospeso DOPO il rinfresco (per esempio sospeso proprio adesso):
+            // è una frase, non un ritorno al login.
+            if (resultHasTenantSuspended(result)) {
+              logger.warn('tenant suspended: stopping here', { operation: operation.operationName })
+              o.onTenantSuspended?.()
+            } else if (hasUnauthorized(result)) {
+              logger.error('UNAUTHORIZED after token refresh', { operation: operation.operationName })
               o.onSessionInvalid()
             }
             observer.next(result)
@@ -129,7 +182,7 @@ function retryAfterRefresh(
         if (o.isSessionInvalid()) {
           o.onSessionInvalid()
         } else {
-          logger.error('Token refresh fallito (rete)', { operation: operation.operationName, message: error.message })
+          logger.error('Token refresh failed (network)', { operation: operation.operationName, message: error.message })
           if (once(NETWORK_DEDUPE_KEY)) o.onNetworkError(error, { operation: operation.operationName })
         }
         observer.error(error)
@@ -172,9 +225,21 @@ export function createErrorLink(o: ErrorLinkOptions): ErrorLink {
   const once   = createDeduper(o.dedupeMs ?? DEFAULT_DEDUPE_MS)
 
   return new ErrorLink(({ error, operation, forward }) => {
+    /*
+     * IL TENANT SOSPESO SI GUARDA PRIMA DI TUTTO.
+     * Arriva come un 401 e somiglia a un token scaduto, ma rinfrescare non
+     * serve: il token è buono, è il tenant che è chiuso. Questo ramo sta sopra
+     * gli altri perché sotto c'è il rinfresco, e il rinfresco qui è il primo
+     * passo del ciclo infinito.
+     */
+    if (isTenantSuspended(error)) {
+      logger.warn('tenant suspended: no refresh, no login', { operation: operation.operationName })
+      o.onTenantSuspended?.()
+      return
+    }
     // Stessa decisione per le due forme in cui UNAUTHORIZED può arrivare.
     if (isUnauthorizedServerError(error)) {
-      logger.warn('UNAUTHORIZED arrivato come ServerError (media type non GraphQL): rinfresco comunque', {
+      logger.warn('UNAUTHORIZED arrived as a ServerError (content type is not GraphQL): refreshing anyway', {
         operation: operation.operationName,
       })
       return retryAfterRefresh(o, once, logger, operation, forward)
@@ -242,18 +307,16 @@ interface ErroreConChiave {
  * ricevono gli stessi parametri della frase che li contiene, così «Rinominare
  * «{{from}}» in «{{to}}»» funziona come un pezzo.
  */
-function conPezziTradotti(
-  params: Record<string, string | number>, traduci: TraduciErrore,
-): Record<string, string | number> {
+function conPezziTradotti(params: Record<string, string | number>, translate: TraduciErrore): Record<string, string | number> {
   const fuori: Record<string, string | number> = { ...params }
   for (const [nome, valore] of Object.entries(params)) {
     if (!nome.endsWith('Key') || typeof valore !== 'string') continue
-    fuori[nome.slice(0, -3)] = traduci(valore, params) ?? valore
+    fuori[nome.slice(0, -3)] = translate(valore, params) ?? valore
   }
   return fuori
 }
 
-function conFrasi(result: ApolloLink.Result, traduci: TraduciErrore): ApolloLink.Result {
+function conFrasi(result: ApolloLink.Result, translate: TraduciErrore): ApolloLink.Result {
   const errors = (result as { errors?: ErroreConChiave[] }).errors
   if (!errors || errors.length === 0) return result
   return {
@@ -261,18 +324,18 @@ function conFrasi(result: ApolloLink.Result, traduci: TraduciErrore): ApolloLink
     errors: errors.map((e) => {
       const i18n = e.extensions?.i18n
       if (!i18n || typeof i18n.key !== 'string') return e
-      const params = conPezziTradotti((i18n.params ?? {}) as Record<string, string | number>, traduci)
-      const frase = traduci(i18n.key, params)
+      const params = conPezziTradotti((i18n.params ?? {}) as Record<string, string | number>, translate)
+      const frase = translate(i18n.key, params)
       return frase === null ? e : { ...e, message: frase }
     }),
   } as ApolloLink.Result
 }
 
-export function createI18nLink(traduci: TraduciErrore): ApolloLink {
+export function createI18nLink(translate: TraduciErrore): ApolloLink {
   return new ApolloLinkClass((operation, forward) =>
     new Observable<ApolloLink.Result>((observer) => {
       const sub = forward(operation).subscribe({
-        next:     (result) => observer.next(conFrasi(result, traduci)),
+        next:     (result) => observer.next(conFrasi(result, translate)),
         error:    (err: unknown) => observer.error(err),
         complete: () => observer.complete(),
       })
@@ -296,7 +359,7 @@ export function createAuthLink(getToken: () => string | undefined): ApolloLink {
 
 export function createApolloClient(opts: CreateApolloClientOptions): ApolloClient {
   const { uri, getToken, defaultOptions, traduciErrore, typePolicies, ...linkOptions } = opts
-  if (!uri) throw new Error('createApolloClient: "uri" mancante (VITE_API_URL)')
+  if (!uri) throw new Error('createApolloClient: "uri" is missing (VITE_API_URL)')
   const httpLink = new HttpLink({ uri })
   /*
     L'ORDINE CONTA: il link che traduce sta DENTRO quello che segnala, così la
@@ -310,5 +373,51 @@ export function createApolloClient(opts: CreateApolloClientOptions): ApolloClien
     link:  from(catena),
     cache: new InMemoryCache(typePolicies ? { typePolicies } : undefined),
     ...(defaultOptions ? { defaultOptions } : {}),
+  })
+}
+
+/**
+ * SE UN ERRORE PORTA UNA CHIAVE PRECISA.
+ *
+ * Serve quando una pagina non deve solo mostrare l'errore, ma FARE qualcosa:
+ * il caso che l'ha richiesta è il modulo di catalogo ripubblicato mentre
+ * qualcuno lo compilava (ondata 8) — lì la pagina deve anche buttare le
+ * risposte e ricaricare il modulo nuovo.
+ *
+ * Si guarda la CHIAVE e non il messaggio: il messaggio è prosa e cambia con la
+ * lingua, la chiave è il contratto fra API e client.
+ */
+/**
+ * IL CAMPO che un rifiuto del modulo accusa, se lo dice.
+ *
+ * I rifiuti dei moduli portano nei `params` sia `field` (l'etichetta, che
+ * entra nella frase) sia `name` (il nome interno del campo). Il nome serve a
+ * chi disegna il modulo per accendere l'errore ACCANTO alla casella giusta:
+ * prima il messaggio arrivava solo come avviso all'angolo, spariva dopo pochi
+ * secondi e nessun campo veniva marcato — su un modulo lungo si doveva
+ * indovinare quale (revisione del 17 set 2026).
+ *
+ * `null` quando il rifiuto non riguarda un campo (un tetto, una revisione
+ * cambiata): il chiamante allora mostra solo l'avviso, come prima.
+ */
+export function errorFieldName(error: unknown): string | null {
+  const errori = (error as { errors?: ErroreConChiave[] } | null)?.errors
+  const elenco = Array.isArray(errori) ? errori : [error as ErroreConChiave]
+  for (const e of elenco) {
+    const params = e?.extensions?.i18n?.params
+    if (params && typeof params === 'object') {
+      const nome = (params as Record<string, unknown>)['name']
+      if (typeof nome === 'string' && nome.trim() !== '') return nome
+    }
+  }
+  return null
+}
+
+export function errorHasKey(error: unknown, key: string): boolean {
+  const errori = (error as { errors?: ErroreConChiave[] } | null)?.errors
+  const elenco = Array.isArray(errori) ? errori : [error as ErroreConChiave]
+  return elenco.some((e) => {
+    const chiave = e?.extensions?.i18n?.key
+    return typeof chiave === 'string' && chiave === key
   })
 }

@@ -18,11 +18,19 @@ export const FIELD_SCOPE = `f.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']`
 
 // ── mapITILField ──────────────────────────────────────────────────────────────
 
+/** C-28: un JSON corrotto dice cos'è e da dove viene, non un SyntaxError nudo. */
+function parseJsonArray(raw: string, what: string): unknown[] {
+  let parsed: unknown
+  try { parsed = JSON.parse(raw) } catch (e) {
+    throw new Error(`${what} is not valid JSON (${e instanceof Error ? e.message : String(e)}): ${raw.slice(0, 80)}`)
+  }
+  if (!Array.isArray(parsed)) throw new Error(`${what} is not a JSON array: ${raw.slice(0, 80)}`)
+  return parsed
+}
+
 function parseInlineEnumValues(raw: unknown): string[] {
   if (!raw || typeof raw !== 'string') return []
-  const arr: unknown = JSON.parse(raw)
-  if (!Array.isArray(arr)) throw new Error(`enum_values is not a valid JSON array: ${raw.slice(0, 80)}`)
-  return arr as string[]
+  return parseJsonArray(raw, 'enum_values') as string[]
 }
 
 export function mapITILField(f: Props, enumRef?: { id: string; name: string; values: string[] }) {
@@ -59,9 +67,7 @@ interface ITILFieldRow extends EnumRow {
 function toValues(raw: string[] | string | null, name: string): string[] {
   if (Array.isArray(raw)) return raw
   if (typeof raw === 'string') {
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) throw new Error(`Dictionary "${name}": values is not an array`)
-    return parsed as string[]
+    return parseJsonArray(raw, `Dictionary "${name}": values`) as string[]
   }
   return []
 }

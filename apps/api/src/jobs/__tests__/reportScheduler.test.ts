@@ -50,8 +50,23 @@ vi.mock('@opengraphity/notifications', async () => {
     // CO-2: il messaggio di ripiego nella lingua del cliente.
     loadNotificationLocale: async () => ({ language: 'en', timeZone: 'UTC' }),
     notificationText: texts.notificationText,
+    formatNotificationDate: texts.formatNotificationDate,
+    escapeHtml: (x: string) => x,
+    sendEmail: (...a: unknown[]) => sendEmail(...a),
   }
 })
+
+// ── Ondata 11: il documento ai destinatari ───────────────────────────────────
+const sendEmail = vi.fn()
+const generateReportFile = vi.fn()
+vi.mock('../../graphql/resolvers/reportExport.js', () => ({
+  generateReportFile: (...a: unknown[]) => generateReportFile(...a),
+}))
+const readFile = vi.fn()
+const unlink = vi.fn()
+vi.mock('node:fs/promises', () => ({
+  default: { readFile: (...a: unknown[]) => readFile(...a), unlink: (...a: unknown[]) => unlink(...a) },
+}))
 
 const executeReportSection = vi.fn()
 vi.mock('../../lib/reportExecutor.js', () => ({ executeReportSection: (...a: unknown[]) => executeReportSection(...a) }))
@@ -107,6 +122,64 @@ beforeEach(() => {
   loadTemplateSections.mockResolvedValue([SECTION])
   executeReportSection.mockResolvedValue({ title: 'Open incidents', chartType: 'kpi', data: '{"value": 7}' })
   sendSlackMessage.mockResolvedValue(undefined)
+  sendEmail.mockResolvedValue(undefined)
+  generateReportFile.mockResolvedValue({ filename: 'abc.pdf', filePath: '/tmp/reports/t1/abc.pdf', templateName: 'Weekly ops' })
+  readFile.mockResolvedValue(Buffer.from('%PDF-1.4 finto'))
+  unlink.mockResolvedValue(undefined)
+})
+
+/**
+ * IL DOCUMENTO ARRIVA DAVVERO (ondata 11).
+ *
+ * Il pannello «Pianificazione» raccoglieva le caselle e faceva scegliere fra
+ * PDF ed Excel, e questo job non generava nessun file: mandava una notifica
+ * in-app e, se configurato, un riassunto su Slack. L'amministratore leggeva
+ * «Report eseguito» e aspettava una mail che non sarebbe mai arrivata.
+ */
+describe('report-scheduler — il documento ai destinatari', () => {
+  it('con destinatari: genera nel formato scelto, allega e manda a tutti', async () => {
+    db({ templates: [template({ schedule_recipients: ['a@x.it', 'b@x.it'], schedule_format: 'excel' })], claim: () => [{ id: 'tpl-1' }] })
+
+    await expect(tick()).resolves.toBeUndefined()
+
+    expect(generateReportFile).toHaveBeenCalledWith('excel', 'tpl-1', 't1')
+    const msg = sendEmail.mock.calls[0]![0] as { to: string[]; subject: string; attachments: { filename: string; contentType: string }[] }
+    expect(msg.to).toEqual(['a@x.it', 'b@x.it'])
+    expect(msg.subject).toContain('Weekly ops')
+    // Il nome dell'allegato è il nome del report, non l'UUID del file
+    // temporaneo: chi lo riceve deve riconoscerlo dalla casella di posta.
+    expect(msg.attachments[0]!.filename).toBe('Weekly_ops.xlsx')
+    expect(msg.attachments[0]!.contentType).toContain('spreadsheetml')
+    // Il temporaneo non resta sul disco fino alla passata di pulizia.
+    expect(unlink).toHaveBeenCalledWith('/tmp/reports/t1/abc.pdf')
+  })
+
+  it('senza destinatari non si genera niente: nessun file, nessuna posta', async () => {
+    db({ templates: [template({ schedule_recipients: [] })], claim: () => [{ id: 'tpl-1' }] })
+    await expect(tick()).resolves.toBeUndefined()
+    expect(generateReportFile).not.toHaveBeenCalled()
+    expect(sendEmail).not.toHaveBeenCalled()
+  })
+
+  it('formato assente = PDF, che è quello che l\'interfaccia propone', async () => {
+    db({ templates: [template({ schedule_recipients: ['a@x.it'] })], claim: () => [{ id: 'tpl-1' }] })
+    await expect(tick()).resolves.toBeUndefined()
+    expect(generateReportFile).toHaveBeenCalledWith('pdf', 'tpl-1', 't1')
+    expect((sendEmail.mock.calls[0]![0] as { attachments: { filename: string }[] }).attachments[0]!.filename).toBe('Weekly_ops.pdf')
+  })
+
+  it('una riga vuota fra i destinatari non fa fallire la spedizione agli altri', async () => {
+    db({ templates: [template({ schedule_recipients: ['a@x.it', '  ', ''] })], claim: () => [{ id: 'tpl-1' }] })
+    await expect(tick()).resolves.toBeUndefined()
+    expect((sendEmail.mock.calls[0]![0] as { to: string[] }).to).toEqual(['a@x.it'])
+  })
+
+  it('se la posta fallisce il tick fallisce (visibile in BullMQ) e il temporaneo viene tolto lo stesso', async () => {
+    db({ templates: [template({ schedule_recipients: ['a@x.it'] })], claim: () => [{ id: 'tpl-1' }] })
+    sendEmail.mockRejectedValueOnce(new Error('SMTP down'))
+    await expect(tick()).rejects.toThrow(/1\/1 scheduled report\(s\) failed/)
+    expect(unlink).toHaveBeenCalledWith('/tmp/reports/t1/abc.pdf')
+  })
 })
 
 describe('report-scheduler — claim atomico', () => {
@@ -136,7 +209,9 @@ describe('report-scheduler — claim atomico', () => {
     expect(claim.p).toEqual({ id: 'tpl-1', tenantId: 't1', dueAt: DUE_AT, now: NOW })
 
     expect(loadTemplateSections).toHaveBeenCalledWith(expect.anything(), 'tpl-1', 't1')
-    expect(executeReportSection).toHaveBeenCalledWith(SECTION, 't1')
+    // Nella lingua del CLIENTE: le intestazioni delle colonne le compone il
+    // server, e un report che arriva da solo non ha davanti nessuno che scelga.
+    expect(executeReportSection).toHaveBeenCalledWith(SECTION, 't1', { language: 'en' })
     expect(sendToTenant).toHaveBeenCalledWith('t1', expect.objectContaining({
       type: 'scheduled_report', entity_id: 'tpl-1', entity_type: 'ReportTemplate', severity: 'info', timestamp: NOW, read: false,
       // CO-2: titolo e messaggio come chiavi, e il ripiego nella lingua del cliente.

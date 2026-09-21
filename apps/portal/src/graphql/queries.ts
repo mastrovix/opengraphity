@@ -14,6 +14,14 @@ export const GET_MY_TICKETS = gql`
   }
 `
 
+/**
+ * Il ticket di chi guarda, con le sue risposte al modulo del catalogo.
+ *
+ * `formAnswers` (revisione del 17 set 2026): chi compilava dodici campi non li
+ * rivedeva MAI — né per controllare, né per citarli al telefono. L'API manda
+ * solo le voci che il modulo offre agli utenti finali, con le domande della
+ * revisione con cui la richiesta è stata compilata.
+ */
 export const GET_MY_TICKET = gql`
   query MyTicket($id: ID!, $language: String) {
     myTicket(id: $id, language: $language) {
@@ -30,6 +38,13 @@ export const GET_MY_TICKET = gql`
         fromStep toStep fromLabel toLabel label triggeredAt triggeredBy
       }
       customFields { name label fieldType value valueLabel(language: $language) }
+      formAnswers {
+        name label fieldType value values displayValue displayValues
+        references { id label }
+        files { id filename sizeBytes }
+        tableColumns { name label fieldType }
+        rows { cells { column value displayValue } }
+      }
     }
   }
 `
@@ -132,4 +147,42 @@ export const GET_PORTAL_CUSTOM_FIELDS = gql`
 /** Nome e logo dell'organizzazione nell'intestazione (verifica «Cosa resta cablato», ondata 6). */
 export const GET_TENANT_BRAND = gql`
   query GetTenantBrand { tenantBrand { displayName logoUrl isDefault } }
+`
+
+/**
+ * Il modulo della voce di catalogo (moduli del catalogo, ondata 1).
+ *
+ * `endUser: true` non è un dettaglio: chiede all'API di offrire SOLO i campi
+ * che il modulo destina agli utenti finali. Il server poi rifiuta comunque una
+ * risposta a un campo non offerto — il browser decide cosa mostrare, il server
+ * decide cosa accettare.
+ */
+/**
+ * I CI fra cui scegliere in un campo «riferimento» del modulo (20 set 2026):
+ * non è una ricerca nella CMDB — il server risponde con i CI dei TIPI che
+ * quel campo dichiara, id ed etichetta.
+ */
+export const GET_PORTAL_REFERENCE_CHOICES = gql`
+  query GetPortalReferenceChoices($itemId: ID!, $field: String!, $search: String) {
+    portalReferenceChoices(itemId: $itemId, field: $field, search: $search) {
+      id label
+    }
+  }
+`
+
+export const GET_PORTAL_CATALOG_FORM = gql`
+  query GetPortalCatalogForm($itemId: ID!, $language: String) {
+    catalogFormToFill(itemId: $itemId, endUser: true) {
+      itemId
+      revision
+      definition
+      fields {
+        name fieldType label required vocabulary help formula refTypes
+        labels { language label }
+        helps { language label }
+        options(language: $language) { value label }
+        tableColumns(language: $language) { name label fieldType required options { value label } }
+      }
+    }
+  }
 `

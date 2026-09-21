@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { pausedWhenHidden } from '@/lib/polling'
 import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
@@ -46,14 +47,31 @@ export function IncidentListPage() {
   // Campi del cliente (verifica «Cosa resta cablato», ondata 4): una colonna per campo.
   const customColumns = useCustomFieldColumns<Incident>('incident')
   const baseColumns: ColumnDef<Incident>[] = [
-    { key: 'number',   label: 'Number',                                 width: '120px', sortable: true },
+    // Intestazione TRADOTTA (revisione totale · i 29 warning): era la stringa
+    // inglese «Number» scritta nel codice, in mezzo a colonne che passano da
+    // i18n — e nessun guardiano poteva vederla, perché per quella colonna una
+    // chiave non era mai stata scritta.
+    { key: 'number',   label: t('common.number'),                                 width: '120px', sortable: true },
     { key: 'title',    label: t('pages.incidents.title_col'),    sortable: true },
     {
       key:     'severity',
-      label:   t('pages.incidents.severity'),
+      /*
+       * «PRIORITÀ», non «Severità» (20 set 2026, decisione del proprietario
+       * dal giro nel browser). È lo stesso valore che il dettaglio chiama
+       * «Priorità P1» e che il prodotto calcola da Impatto × Urgenza: la
+       * proprietà sul grafo si chiama `severity` per ragioni storiche (vedi
+       * `lib/fieldProperty.ts`), ma a schermo il nome giusto è uno solo,
+       * altrimenti la lista e il dettaglio sembrano due cose diverse.
+       */
+      label:   t('pages.incidents.priority'),
       width:   '130px',
       sortable: true,
-      render:  (v) => <SeverityBadge value={String(v)} />,
+      // La priorità di un incident vive su `severity` ma i suoi valori sono le
+      // USCITE della matrice, cioè il vocabolario `priority` (revisione totale
+      // · F-5): col vocabolario `severity` un cliente con `p1..p4` vedeva la
+      // pill d'errore su ogni riga, e le etichette scelte nel Dizionario per
+      // `priority` non venivano mai usate.
+      render:  (v) => <SeverityBadge value={String(v)} vocabulary="priority" />,
     },
     {
       key:     'status',
@@ -128,7 +146,7 @@ export function IncidentListPage() {
   }>(GET_INCIDENTS, {
     variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
-    pollInterval: 30_000,   // keep the list fresh without manual reload
+    ...pausedWhenHidden(30_000),   // keep the list fresh without manual reload
   })
 
   const items = data?.incidents?.items ?? []

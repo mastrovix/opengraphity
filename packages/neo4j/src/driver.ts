@@ -124,6 +124,22 @@ function wrapSession(session: Session): Session {
         }
       }
 
+      /**
+       * session.beginTransaction() — la transazione ESPLICITA
+       * (revisione totale · M-22).
+       *
+       * Era l'unico modo di ottenere una transazione non avvolta: le sue
+       * `tx.run` non passavano da `convertResult`, quindi il chiamante
+       * riceveva `neo4j.Integer` invece di numeri, e le sue query non
+       * finivano nel tracciamento. Un chiamante c'e (`backup-neo4j.ts`, che
+       * esporta tutto in una sola transazione di lettura) e leggeva i
+       * conteggi da li.
+       */
+      if (prop === 'beginTransaction') {
+        return (...args: unknown[]) =>
+          wrapManagedTransaction((target['beginTransaction'] as (...a: unknown[]) => unknown)(...args))
+      }
+
       // session.executeRead/executeWrite — used by the majority of resolvers.
       // Proxy the ManagedTransaction passed to the callback so tx.run() is tracked.
       if (prop === 'executeRead' || prop === 'executeWrite') {

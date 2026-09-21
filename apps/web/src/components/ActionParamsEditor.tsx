@@ -9,9 +9,9 @@
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { useQuery } from '@apollo/client/react'
-import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS } from '@/graphql/queries'
+import { GET_TEAMS, GET_WORKFLOW_LIST, GET_USERS, GET_FORM_REFERENCE_FIELDS } from '@/graphql/queries'
 import { useEnumValues } from '@/hooks/useEnumValues'
-import { useEntityFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
+import { useEntityFieldMetas, useFormFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
 import { isStepFieldWritable, AUTOMATION_NOTIFICATION_CHANNELS } from '@opengraphity/types'
 import { useTargetOptions, withCurrent, CHANNEL_LABEL_KEY } from '@/pages/settings/NotificationRuleList'
 import { fieldTypeKey } from '@/lib/automationOperators'
@@ -19,6 +19,7 @@ import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useRoles } from '@/hooks/useRoles'
 
 interface Props {
   actionType: string
@@ -26,10 +27,16 @@ interface Props {
   entityType: string
   onChange:   (key: string, value: string) => void
   vocabulary?: 'automation' | 'workflow_step'
+  /**
+   * I titoli degli ALTRI compiti dello stesso passo: `create_task` li offre
+   * in tendina per dire «parte quando quello è chiuso». Li conosce solo chi
+   * ha in mano il passo intero (il pannello), non questo editor.
+   */
+  compitiFratelli?: readonly string[]
 }
 
 const textareaS: React.CSSProperties = { ...inputS, minHeight: 60, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }
-const monoS: React.CSSProperties     = { ...inputS, minHeight: 80, resize: 'vertical', fontFamily: 'monospace', fontSize: 'var(--font-size-body)', lineHeight: 1.5 }
+const monoS: React.CSSProperties     = { ...inputS, minHeight: 80, resize: 'vertical', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-body)', lineHeight: 1.5 }
 const labelS: React.CSSProperties    = { fontSize: 'var(--font-size-label)', fontWeight: 700, color: 'var(--color-slate-light)', textTransform: 'uppercase', letterSpacing: '0.06em' }
 
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
@@ -41,7 +48,7 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-export function ActionParamsEditor({ actionType, params, entityType, onChange, vocabulary = 'automation' }: Props) {
+export function ActionParamsEditor({ actionType, params, entityType, onChange, vocabulary = 'automation', compitiFratelli = [] }: Props) {
   const { t } = useTranslation()
   const targetOptions = useTargetOptions()
   const { data: teamsData }    = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
@@ -50,7 +57,32 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
   const { values: priorityValues } = useEnumValues(entityType || 'incident', 'priority')
   const { labelOf, entriesOf } = useDomainVocabularies()
   const { values: severityValues } = useEnumValues(entityType || 'incident', 'severity')
-  const { fields: fieldMetas } = useEntityFieldMetas(entityType)
+  const { fields: metamodelFields } = useEntityFieldMetas(entityType)
+  /**
+   * I campi dei MODULI che un'automazione può scrivere (ondata 8): solo quelli
+   * a valore singolo e senza formula — `settableByAutomation` lo decide l'API,
+   * che è anche quella che rifiuta gli altri. Un nome che il metamodello ha già
+   * vince: è quello che il ticket scrive davvero.
+   */
+  const daiModuli = useFormFieldMetas(entityType, { soloScrivibili: true })
+  const fieldMetas = [...metamodelFields, ...daiModuli.filter((f) => !metamodelFields.some((m) => m.name === f.name))]
+  // F-16: i ruoli del cliente, per l'azione «richiedi approvazione».
+  const { roles, labelOf: roleLabelOf } = useRoles()
+  /**
+   * I CAMPI SQUADRA dei moduli: l'azione «crea un compito» può prendere la
+   * squadra da lì invece che sceglierla una volta per tutte. Si chiedono solo
+   * quando servono — è una query in più su ogni apertura del pannello.
+   */
+  const { data: campiModulo } = useQuery<{ formReferenceFields: { name: string; label: string; fieldType: string }[] }>(
+    GET_FORM_REFERENCE_FIELDS, { skip: actionType !== 'create_task', fetchPolicy: METAMODEL_FETCH_POLICY },
+  )
+  /**
+   * I campi da cui si può ricavare una squadra: quelli SQUADRA (la risposta
+   * è la squadra) e quelli CI (la squadra è chi supporta il CI scelto). Una
+   * tendina sola, perché per chi disegna è la stessa domanda: «da dove la
+   * prendo?».
+   */
+  const campiSquadra = (campiModulo?.formReferenceFields ?? []).filter((f) => f.fieldType === 'ref_team' || f.fieldType === 'ref_ci')
 
   const teams = teamsData?.teams ?? []
   const users = usersData?.users ?? []
@@ -267,16 +299,134 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
       )
     }
 
+    /**
+     * UN COMPITO DA FARE per una squadra, all'ingresso nel passo (20 set 2026).
+     *
+     * Il TIPO del compito non si sceglie qui: lo eredita dalla definizione di
+     * workflow che contiene il passo. È la prima delle tre difese sulla regola
+     * «un compito di tipo incident non sta su una change» — qui non è
+     * nemmeno esprimibile.
+     */
+    case 'create_task':
+      return (
+        <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
+          {text('title_template', 'title_template', t('workflow.actionParams.taskTitleExample'))}
+          <Labeled label="team_id">
+            <Select style={selectS} value={params['team_id'] ?? ''} onChange={(e) => onChange('team_id', e.target.value)}>
+              <option value="">{t('automation.params.selectTeam')}</option>
+              {teams.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          </Labeled>
+          {/*
+            …oppure la squadra che sta in un CAMPO del modulo: è la strada per
+            cui «Sede: Milano» finisce al Desk di Milano. Vince sulla squadra
+            fissa qui sopra, e il pannello lo dice invece di lasciarlo capire.
+          */}
+          {campiSquadra.length > 0 && (
+            <Labeled label={t('workflow.actionParams.taskTeamFromField')}>
+              <Select style={selectS} value={params['team_from_field'] ?? ''} onChange={(e) => onChange('team_from_field', e.target.value)}>
+                <option value="">{t('workflow.actionParams.taskTeamFromFieldNone')}</option>
+                {campiSquadra.map((f) => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
+              </Select>
+            </Labeled>
+          )}
+          {params['team_from_field'] && params['team_id'] && (
+            <p style={{ flexBasis: '100%', margin: 0, fontSize: 'var(--font-size-table)', color: 'var(--color-warning-text)' }}>
+              {t('workflow.actionParams.taskTeamFieldWins')}
+            </p>
+          )}
+          {text('due_in_days', 'due_in_days', t('workflow.actionParams.taskDueExample'), 'number')}
+          {text('description', 'description', t('workflow.actionParams.taskDescriptionExample'))}
+          {/*
+            LA SEQUENZA, compito per compito: vuoto = parte subito, che è il
+            caso normale. Si sceglie fra i compiti dello STESSO passo, per
+            titolo — quello che poi si legge sulla pagina del ticket. Senza
+            fratelli la tendina non compare: non c'è niente da aspettare.
+          */}
+          {compitiFratelli.length > 0 && (
+            <Labeled label={t('workflow.actionParams.taskAfter')}>
+              <Select style={selectS} value={params['after'] ?? ''} onChange={(e) => onChange('after', e.target.value)}>
+                <option value="">{t('workflow.actionParams.taskAfterNone')}</option>
+                {compitiFratelli.map((titolo) => <option key={titolo} value={titolo}>{titolo}</option>)}
+              </Select>
+            </Labeled>
+          )}
+        </div>
+      )
+
     case 'create_approval_request':
       return (
         <div style={{ display: 'flex', gap: 6, flex: 1, flexWrap: 'wrap' }}>
           {text('title_template', 'title_template', t('workflow.actionParams.approvalTitleExample'))}
-          {choice('approver_role', 'approver_role', [{ value: 'admin' }, { value: 'manager' }], 'admin')}
+          {/* I ruoli sono del CLIENTE (revisione totale · F-16): le due scelte
+              cablate `admin`/`manager` potevano non esistere, e l'azione
+              «richiedi approvazione» non trovava mai destinatari. */}
+          {choice('approver_role', 'approver_role',
+            roles.map((r) => ({ value: r.key, label: roleLabelOf(r.key) })),
+            params['approver_role'] ?? roles[0]?.key ?? '')}
+          {/* Le tre modalità sono TESTO per chi legge, non nomi di parametro:
+              erano in inglese nel sorgente (revisione totale · i 29 warning).
+              I nomi dei parametri accanto (`approver_role`, `title_template`)
+              restano invece grezzi di proposito: sono il contratto con
+              l'automazione, e si scrivono così anche in italiano. */}
           {choice('approval_type', 'approval_type', [
-            { value: 'any', label: 'any (1 approver sufficient)' },
-            { value: 'all', label: 'all (all approvers required)' },
-            { value: 'majority', label: 'majority' },
+            { value: 'any',      label: t('workflow.actionParams.approvalType.any') },
+            { value: 'all',      label: t('workflow.actionParams.approvalType.all') },
+            { value: 'majority', label: t('workflow.actionParams.approvalType.majority') },
           ], 'any')}
+          {/*
+            Persone e squadre che approvano (moduli del catalogo, ondata 3).
+            Il RUOLO non basta per un catalogo servizi: l'approvazione di una
+            spesa è del responsabile di budget, non di chi amministra il
+            prodotto. Le tre sorgenti si UNISCONO; indicando persone o squadre
+            il ruolo viene ignorato, e il pannello lo dice.
+            Gli id vanno come stringa separata da virgola perché questo editor
+            tiene i parametri come testo: a leggerli c'è un solo posto
+            (`approverIdList` in packages/workflow).
+          */}
+          <Labeled label="approver_user_ids">
+            <Select
+              style={{ ...selectS, flex: 1 }}
+              value=""
+              onChange={(e) => {
+                if (!e.target.value) return
+                const attuali = (params['approver_user_ids'] ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+                if (!attuali.includes(e.target.value)) onChange('approver_user_ids', [...attuali, e.target.value].join(','))
+              }}
+            >
+              <option value="">{t('workflow.actionParams.addApprover')}</option>
+              {(usersData?.users ?? []).map((u) => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}
+            </Select>
+            <ElencoScelti
+              ids={params['approver_user_ids'] ?? ''}
+              nomeDi={(id) => (usersData?.users ?? []).find((u) => u.id === id)?.name ?? id}
+              onChange={(v) => onChange('approver_user_ids', v)}
+            />
+          </Labeled>
+          <Labeled label="approver_team_ids">
+            <Select
+              style={{ ...selectS, flex: 1 }}
+              value=""
+              onChange={(e) => {
+                if (!e.target.value) return
+                const attuali = (params['approver_team_ids'] ?? '').split(',').map((x) => x.trim()).filter(Boolean)
+                if (!attuali.includes(e.target.value)) onChange('approver_team_ids', [...attuali, e.target.value].join(','))
+              }}
+            >
+              <option value="">{t('workflow.actionParams.addApproverTeam')}</option>
+              {(teamsData?.teams ?? []).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </Select>
+            <ElencoScelti
+              ids={params['approver_team_ids'] ?? ''}
+              nomeDi={(id) => (teamsData?.teams ?? []).find((x) => x.id === id)?.name ?? id}
+              onChange={(v) => onChange('approver_team_ids', v)}
+            />
+          </Labeled>
+          {(params['approver_user_ids'] || params['approver_team_ids']) && (
+            <p style={{ flexBasis: '100%', margin: 0, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+              {t('workflow.actionParams.approverRoleIgnored')}
+            </p>
+          )}
         </div>
       )
 
@@ -346,4 +496,31 @@ function renderFieldValue(
   }
 
   return <Input style={{ ...inputS, flex: 1 }} placeholder={t('automation.params.value')} value={value} onChange={e => onValue(e.target.value)} />
+}
+
+/**
+ * Gli id scelti, coi loro nomi e una × per toglierli. Gli id viaggiano come
+ * stringa separata da virgola (vedi il commento in `create_approval_request`):
+ * qui si mostrano come nomi, perché un elenco di identificativi non si rilegge.
+ */
+function ElencoScelti({ ids, nomeDi, onChange }: { ids: string; nomeDi: (id: string) => string; onChange: (v: string) => void }) {
+  const elenco = ids.split(',').map((x) => x.trim()).filter(Boolean)
+  if (elenco.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+      {elenco.map((id) => (
+        <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--color-slate-bg)', borderRadius: 4, padding: '1px 6px', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-dark)' }}>
+          {nomeDi(id)}
+          <button
+            type="button"
+            aria-label={`${nomeDi(id)} ×`}
+            onClick={() => onChange(elenco.filter((x) => x !== id).join(','))}
+            style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--color-slate-light)', padding: 0, lineHeight: 1 }}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+    </div>
+  )
 }

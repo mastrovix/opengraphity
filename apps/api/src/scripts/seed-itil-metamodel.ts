@@ -16,6 +16,10 @@
 import { v4 as uuidv4 } from 'uuid'
 import { parseArgs } from 'node:util'
 import { getSession } from '@opengraphity/neo4j'
+import { runScript } from './lib/runScript.js'
+// H-43: i workflow SPEDITI, per leggerne i nomi dei passi (vedi `stepNames`).
+import { INCIDENT_WORKFLOW_BASE, INCIDENT_SECURITY_WORKFLOW, PROBLEM_WORKFLOW } from '@opengraphity/workflow'
+import { CHANGE_RFC_WORKFLOW, SERVICE_REQUEST_WORKFLOW } from './lib/workflowDefinitions.js'
 
 const { values: args } = parseArgs({
   options: { slug: { type: 'string', default: 'system' } },
@@ -46,14 +50,41 @@ interface ITILType {
   fields:      FieldDef[]
 }
 
-const ITIL_TYPES: ITILType[] = [
+/**
+ * Gli status del metamodello sono i PASSI del workflow spedito
+ * (revisione totale · H-43).
+ *
+ * Erano quattro elenchi scritti a mano e nessuno coincideva col suo workflow:
+ * l'incident aveva un `open` che nessun passo ha, la richiesta di servizio
+ * diceva `open/in_progress/completed/cancelled` mentre il workflow fa
+ * `submitted/approval/in_progress/fulfilled/closed/rejected`, la change
+ * elencava dodici valori di un workflow che non esiste piu (`draft`,
+ * `cab_approval`, `post_review`, …) e il problem dimenticava `known_error` e
+ * aggiungeva `deferred`. Il campo `status` di un ticket lo scrive il motore
+ * dei workflow: i valori ammessi sono i nomi dei suoi passi, e vanno letti da
+ * li — una sorgente sola, che non si puo dimenticare di aggiornare.
+ *
+ * Un cliente che aggiunge un passo suo non deve tornare qui: questo e il
+ * metamodello SPEDITO, cioe come nasce un tenant nuovo.
+ */
+function stepNames(...workflows: ReadonlyArray<{ steps: ReadonlyArray<{ name: string }> }>): string[] {
+  const out: string[] = []
+  for (const wf of workflows) {
+    for (const step of wf.steps) if (!out.includes(step.name)) out.push(step.name)
+  }
+  return out
+}
+
+/** Esportato per il test del contratto status ↔ passi del workflow (H-43). */
+export const ITIL_TYPES: ITILType[] = [
   {
     name: 'incident', label: 'Incident', neo4j_label: 'Incident',
     fields: [
       { name: 'title',       label: 'Title',        field_type: 'string', required: true,  order: 1 },
       { name: 'description', label: 'Description',   field_type: 'string', required: false, order: 2 },
       { name: 'status',      label: 'Status',         field_type: 'enum',   required: true,  order: 3,
-        enum_values: ['new', 'open', 'assigned', 'in_progress', 'pending', 'escalated', 'resolved', 'closed'] },
+        // Entrambi i workflow incident spediti (base e «Security»).
+        enum_values: stepNames(INCIDENT_WORKFLOW_BASE, INCIDENT_SECURITY_WORKFLOW) },
       { name: 'severity',    label: 'Severity',      field_type: 'enum',   required: true,  order: 4,
         uses_enum: 'severity' },
       { name: 'category',    label: 'Category',     field_type: 'enum',   required: false, order: 5,
@@ -94,9 +125,7 @@ const ITIL_TYPES: ITILType[] = [
       { name: 'title',          label: 'Title',        field_type: 'string', required: true,  order: 1 },
       { name: 'description',    label: 'Description',   field_type: 'string', required: false, order: 2 },
       { name: 'status',         label: 'Status',         field_type: 'enum',   required: true,  order: 3,
-        enum_values: ['draft', 'approved', 'scheduled', 'assessment', 'cab_approval',
-                      'emergency_approval', 'validation', 'deployment', 'post_review',
-                      'completed', 'failed', 'rejected'] },
+        enum_values: stepNames(CHANGE_RFC_WORKFLOW) },
       { name: 'type',           label: 'Type',          field_type: 'enum',   required: true,  order: 4,
         uses_enum: 'change_type' },
       { name: 'priority',       label: 'Priority',      field_type: 'enum',   required: true,  order: 5,
@@ -117,8 +146,7 @@ const ITIL_TYPES: ITILType[] = [
       { name: 'title',       label: 'Title',        field_type: 'string', required: true,  order: 1 },
       { name: 'description', label: 'Description',   field_type: 'string', required: false, order: 2 },
       { name: 'status',      label: 'Status',         field_type: 'enum',   required: true,  order: 3,
-        enum_values: ['new', 'under_investigation', 'change_requested', 'change_in_progress',
-                      'deferred', 'resolved', 'closed'] },
+        enum_values: stepNames(PROBLEM_WORKFLOW) },
       { name: 'priority',    label: 'Priority',      field_type: 'enum',   required: true,  order: 4,
         uses_enum: 'priority' },
       { name: 'category',    label: 'Category',     field_type: 'enum',   required: false, order: 5,
@@ -141,7 +169,7 @@ const ITIL_TYPES: ITILType[] = [
       { name: 'title',       label: 'Title',        field_type: 'string', required: true,  order: 1 },
       { name: 'description', label: 'Description',   field_type: 'string', required: false, order: 2 },
       { name: 'status',      label: 'Status',         field_type: 'enum',   required: true,  order: 3,
-        enum_values: ['open', 'in_progress', 'completed', 'cancelled'] },
+        enum_values: stepNames(SERVICE_REQUEST_WORKFLOW) },
       { name: 'priority',    label: 'Priority',      field_type: 'enum',   required: true,  order: 4,
         uses_enum: 'priority' },
       { name: 'category',    label: 'Category',     field_type: 'enum',   required: false, order: 5,
@@ -286,9 +314,13 @@ async function main() {
     console.log(`  Tipi: ${ITIL_TYPES.length} (${ITIL_TYPES.map(t => t.label).join(', ')})`)
     console.log(`  Scope: itil | tenant_id: ${TENANT_ID}`)
   } finally {
+    // Mai `process.exit(0)` qui (revisione totale · H-9): il `finally` gira
+    // anche quando il `try` lancia, e terminava il processo con esito 0 prima
+    // che il `.catch` potesse stampare l'errore e uscire 1 — in una pipeline
+    // di onboarding un metamodello rimasto a metà passava per riuscito.
     await session.close()
-    process.exit(0)
   }
 }
 
-main().catch((err) => { console.error(err); process.exit(1) })
+// H-45: il runner uniforme — errore intero, exit code 1, driver Neo4j chiuso.
+runScript('seed-itil-metamodel', main)

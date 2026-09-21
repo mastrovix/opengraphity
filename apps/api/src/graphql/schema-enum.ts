@@ -73,6 +73,16 @@ export function enumTypeSDL(): string {
     scritte nel web, e un valore del cliente appariva grigio.
     """
     valueColors: [EnumValueColor!]!
+    """
+    Perche questo vocabolario NON porta etichette per valore, come chiave i18n —
+    \`null\` quando le porta (e quindi un'etichetta vuota e vuota davvero).
+
+    Esiste perche il Dizionario scriveva «not written» accanto a tutti i valori
+    di \`status_change\`, in entrambe le lingue, senza dire che e di proposito: la
+    lettura naturale era «manca qualcosa». Il motivo stava nei commenti del
+    server, dove nessun cliente lo legge (17 set 2026).
+    """
+    valueLabelsReasonKey: String
   }
 
   type EnumValueColor {

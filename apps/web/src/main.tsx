@@ -16,6 +16,7 @@ import { CreateProblemPage } from '@/pages/problems/CreateProblemPage'
 import { ChangeListPage } from '@/pages/changes/ChangeListPage'
 import { CreateChangePage } from '@/pages/changes/CreateChangePage'
 import { ChangeDetailPage } from '@/pages/changes/ChangeDetailPage'
+import { ChangeCalendarPage } from '@/pages/changes/ChangeCalendarPage'
 import { TaskViewPage } from '@/pages/tasks/TaskViewPage'
 import { MyTasksPage } from '@/pages/MyTasksPage'
 import { QuestionAdminPage } from '@/pages/admin/QuestionAdminPage'
@@ -34,6 +35,8 @@ function CIDetailRedirect({ typeName }: { typeName: string }) {
 import { CIByIdRedirect } from '@/pages/ci/CIByIdRedirect'
 const WhatIfPage = lazy(() => import('@/pages/analysis/WhatIfPage').then(m => ({ default: m.WhatIfPage })))
 import { AnomalyPage } from '@/pages/anomaly/AnomalyPage'
+const ProposalsPage = lazy(() => import('@/pages/proposals/ProposalsPage').then(m => ({ default: m.ProposalsPage })))
+const DailyWorkPage = lazy(() => import('@/pages/proposals/DailyWorkPage').then(m => ({ default: m.DailyWorkPage })))
 import { AnomalyRulesPage } from '@/pages/anomaly/AnomalyRulesPage'
 import { EventsPage } from '@/pages/events/EventsPage'
 import { EventDetailPage } from '@/pages/events/EventDetailPage'
@@ -51,7 +54,9 @@ import NotificationsPage from '@/pages/settings/NotificationsPage'
 import NotificationRulesPage from '@/pages/settings/NotificationRulesPage'
 import { CITypeDesignerPage } from '@/pages/settings/CITypeDesignerPage'
 import { ITILTypeDesignerPage } from '@/pages/settings/ITILTypeDesignerPage'
+import { CatalogFormsPage } from '@/pages/settings/CatalogFormsPage'
 import { EnumDesignerPage }     from '@/pages/settings/EnumDesignerPage.js'
+import { ConfigurationDiagnosticsPage } from '@/pages/settings/ConfigurationDiagnosticsPage'
 import { OrganizationPage }     from '@/pages/settings/OrganizationPage'
 import { DomainMatricesPage }   from '@/pages/settings/DomainMatricesPage'
 import { SyncPage }             from '@/pages/settings/SyncPage'
@@ -69,6 +74,7 @@ import { ApprovalsPage } from '@/pages/approvals/ApprovalsPage'
 import { KnowledgeBasePage } from '@/pages/knowledge-base/KnowledgeBasePage'
 import { AssistantPage } from '@/pages/assistant/AssistantPage'
 import { KBArticlePage } from '@/pages/knowledge-base/KBArticlePage'
+import { KBArticleByIdRedirect } from '@/pages/knowledge-base/KBArticleByIdRedirect'
 import { KBAdminPage } from '@/pages/admin/KBAdminPage'
 import { AutoTriggersPage } from '@/pages/admin/AutoTriggersPage'
 import { BusinessRulesPage } from '@/pages/admin/BusinessRulesPage'
@@ -154,6 +160,7 @@ const router = createBrowserRouter([
       guarded('problems/:id', <Keyed Page={ProblemDetailPage} />),
       guarded('changes', <ChangeListPage />),
       guarded('changes/new', <CreateChangePage />),
+      guarded('changes/calendar', <ChangeCalendarPage />),
       guarded('changes/:id', <Keyed Page={ChangeDetailPage} />),
       guarded('tasks/:taskId', <Keyed Page={TaskViewPage} />),
       guarded('my-tasks', <MyTasksPage />),
@@ -178,6 +185,8 @@ const router = createBrowserRouter([
       { path: 'certificates/:id',              element: <CIDetailRedirect typeName="certificate" /> },
       guarded('analysis/what-if', <Suspense fallback={<PageLoader />}><WhatIfPage /></Suspense>),
       guarded('anomalies', <AnomalyPage />),
+      guarded('proposals', <Suspense fallback={<PageLoader />}><ProposalsPage /></Suspense>),
+      guarded('analysis/daily-work', <Suspense fallback={<PageLoader />}><DailyWorkPage /></Suspense>),
       // Event Management (console allarmi): le azioni si vedono con event.work.
       guarded('events', <EventsPage />),
       guarded('events/:id', <Keyed Page={EventDetailPage} />),
@@ -204,9 +213,13 @@ const router = createBrowserRouter([
       // Organizzazione: le scelte che valgono per tutti (la lingua predefinita
       // dell'azienda, che era una costante nel codice). La lingua di una
       // PERSONA sta nel Profilo, aperto a ogni ruolo.
+      // Diagnostica: l'elenco dei rilievi che prima era un banner su ogni pagina.
+      guarded('settings/diagnostics', <ConfigurationDiagnosticsPage />),
       guarded('settings/organization', <OrganizationPage />),
       guarded('settings/ci-types', <CITypeDesignerPage />),
       guarded('settings/itil-designer', <ITILTypeDesignerPage />),
+      // Moduli del catalogo servizi (ondata 1): modulo per voce + libreria dei campi.
+      guarded('settings/catalog-forms', <CatalogFormsPage />),
       guarded('settings/enum-designer', <EnumDesignerPage />),
       guarded('settings/domain-matrices', <DomainMatricesPage />),
       guarded('settings/anomaly-rules', <AnomalyRulesPage />),
@@ -246,6 +259,8 @@ const router = createBrowserRouter([
       guarded('knowledge-base', <KnowledgeBasePage />),
       guarded('assistant', <AssistantPage />),
       guarded('knowledge-base/:slug', <Keyed Page={KBArticlePage} />),
+      // B-21: le notifiche di un articolo portano l'id, la pagina vuole lo slug.
+      guarded('kb-articles/:id', <Keyed Page={KBArticleByIdRedirect} />),
     ],
   },
 ])
@@ -286,8 +301,20 @@ initKeycloak().then((authenticated) => {
 }).catch((err: Error) => {
   // initKeycloak throws for: no tenant in subdomain, missing VITE_KEYCLOAK_URL,
   // unknown realm, Keycloak unreachable. Without this the user sees a blank page.
-  root.innerHTML = `<div style="display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui">
-    <div style="font-size:20px;font-weight:600;color:var(--color-danger)">${i18n.t('auth.error')}</div>
-    <div style="color:var(--color-slate);font-size:14px">${err.message}</div>
-  </div>`
+  /**
+   * Il messaggio si scrive come TESTO, non come HTML (revisione totale ·
+   * F-19): arriva dalla rete o dalla configurazione (una risposta di Keycloak,
+   * un proxy), e con `innerHTML` un `<` lo mangiava e un intermediario che
+   * controllasse quel testo poteva iniettare markup nella pagina d'errore.
+   */
+  const box = document.createElement('div')
+  box.setAttribute('style', 'display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui')
+  const title = document.createElement('div')
+  title.setAttribute('style', 'font-size:20px;font-weight:600;color:var(--color-danger)')
+  title.textContent = i18n.t('auth.error')
+  const detail = document.createElement('div')
+  detail.setAttribute('style', 'color:var(--color-slate);font-size:14px')
+  detail.textContent = err.message
+  box.append(title, detail)
+  root.replaceChildren(box)
 })

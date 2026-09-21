@@ -4,6 +4,7 @@ import type { Session, ManagedTransaction } from 'neo4j-driver'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
+import { proponiSezioneDiReport } from '../../services/reportDesignerService.js'
 import { getNavigableEntities, getNavigableRelations } from '../../lib/navigableGraph.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
 import { validateReportSection, type ReportSectionDef } from '../../lib/reportQueryBuilder.js'
@@ -97,6 +98,7 @@ export interface SectionInput {
   chartType:     string
   groupByNodeId?: string | null
   groupByField?:  string | null
+  groupByGranularity?: string | null
   metric:        string
   metricField?:  string | null
   limit?:        number | null
@@ -121,6 +123,7 @@ export function sectionInputToDef(input: SectionInput, id: string, order = 0): R
     chartType:     input.chartType,
     groupByNodeId: input.groupByNodeId ?? null,
     groupByField:  input.groupByField ?? null,
+    groupByGranularity: input.groupByGranularity ?? null,
     metric:        input.metric,
     metricField:   input.metricField ?? null,
     limit:         input.limit ?? null,
@@ -193,6 +196,7 @@ export async function createSectionWithNodesEdges(
         chart_type:        $chartType,
         group_by_node_id:  $groupByNodeId,
         group_by_field:    $groupByField,
+        group_by_granularity: $groupByGranularity,
         metric:            $metric,
         metric_field:      $metricField,
         limit_val:         $limit,
@@ -204,6 +208,7 @@ export async function createSectionWithNodesEdges(
       title: input.title, chartType: input.chartType,
       groupByNodeId,
       groupByField:  input.groupByField ?? null,
+      groupByGranularity: input.groupByGranularity ?? null,
       metric: input.metric,
       metricField: input.metricField ?? null,
       limit: input.limit ?? null, sortDir: input.sortDir ?? null,
@@ -242,8 +247,11 @@ export async function createSectionWithNodesEdges(
   // Create edges
   for (const edge of input.edges) {
     await write(runner, `
-      MATCH (src:ReportNode {temp_id: $sourceTempId, section_id: $sectionId})
-      MATCH (tgt:ReportNode {temp_id: $targetTempId, section_id: $sectionId})
+      // Gli archi sono fra nodi di QUESTO cliente (revisione totale · A-20):
+      // section_id non basta da solo, e ora che ReportNode è nell'elenco
+      // delle label di dominio il lint lo controlla.
+      MATCH (src:ReportNode {temp_id: $sourceTempId, section_id: $sectionId, tenant_id: $tenantId})
+      MATCH (tgt:ReportNode {temp_id: $targetTempId, section_id: $sectionId, tenant_id: $tenantId})
       CREATE (src)-[:REPORT_EDGE {
         id: randomUUID(),
         relationship_type: $relType,
@@ -251,7 +259,7 @@ export async function createSectionWithNodesEdges(
         label: $label
       }]->(tgt)
     `, {
-      sectionId,
+      sectionId, tenantId,
       sourceTempId: edge.sourceNodeId,
       targetTempId: edge.targetNodeId,
       relType: edge.relationshipType,
@@ -448,6 +456,36 @@ async function updateReportSchedule(
   }, true)
 }
 
-const Mutation = { ...ReportMutation, updateReportSchedule }
+/**
+ * «DESCRIVIMI IL REPORT E TE LO DISEGNO» (19 set 2026).
+ *
+ * Non scrive niente: la proposta riempie il costruttore, dove si vede
+ * l'anteprima (che passa dalla validazione vera) e si salva a mano con
+ * `addReportSection`. Cosi l'AI non ha una porta sua per scrivere.
+ */
+const proposeReportSection = async (_: unknown, args: { prompt: string }, ctx: GraphQLContext) => {
+  const esito = await proponiSezioneDiReport({ tenantId: ctx.tenantId, prompt: args.prompt })
+  return {
+    prompt: esito.prompt,
+    title: esito.title,
+    chartType: esito.chartType,
+    metric: esito.metric,
+    metricField: esito.metricField,
+    groupByNodeId: esito.groupByNodeId,
+    groupByField: esito.groupByField,
+    groupByGranularity: esito.groupByGranularity,
+    limit: esito.limit,
+    sortDir: esito.sortDir,
+    nodes: esito.nodes,
+    edges: esito.edges,
+    why: esito.why,
+    // I parametri come JSON: sono una mappa aperta (nomi di campi, entita,
+    // valori ammessi) e tipizzarla vorrebbe dire un tipo per ogni scarto.
+    discarded: esito.scartati.map((x) => ({ what: x.what, key: x.key, params: JSON.stringify(x.params) })),
+    notes: esito.note,
+  }
+}
+
+const Mutation = { ...ReportMutation, updateReportSchedule, proposeReportSection }
 
 export const customReportResolvers = { Query, Mutation }

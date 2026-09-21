@@ -1,5 +1,6 @@
 /** Il nome dell'organizzazione (verifica «Cosa resta cablato», ondata 6): prima solo da riga di comando. */
 import { useEffect, useId, useState } from 'react'
+import { showError } from '@/lib/showError'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -16,6 +17,13 @@ export function OrganizationNameSection() {
   const [name, setName] = useState('')
   useEffect(() => { if (data) setName(data.tenantName) }, [data])
   const [save, { loading: saving }] = useMutation(SET_TENANT_NAME, {
+    /**
+     * `onError` c'è (revisione totale · G-16): mancava, e con `void save(...)`
+     * la promise rifiutata restava senza gestore — un `unhandledRejection` in
+     * console e nessun avviso in pagina, quindi il salvataggio sembrava
+     * riuscito. `showError` è lo stesso avviso di tutte le altre mutation.
+     */
+    onError: (e) => showError(e),
     refetchQueries: [GET_TENANT_NAME],
     onCompleted: () => toast.success(t('pages.organization.nameSaved')),
   })

@@ -3,6 +3,7 @@ import { parseLocalizedLabels } from './labels.js'
 import type { Session, ManagedTransaction } from 'neo4j-driver'
 import pino from 'pino'
 import { toNumber as neo4jToNumber } from '@opengraphity/neo4j'
+import { ENTITY_NEO4J_LABELS } from '@opengraphity/types'
 import type {
   WorkflowInstance,
   WorkflowActionConfig,
@@ -29,19 +30,24 @@ function isSession(s: Session | ManagedTransaction): s is Session {
  * Allowlist esplicita: la label finisce nel Cypher (non parametrizzabile) e
  * un match senza label scriverebbe lo status su qualunque nodo con quell'id.
  */
-export const ENTITY_LABELS: Record<string, string> = {
-  incident:        'Incident',
-  problem:         'Problem',
-  change:          'Change',
-  service_request: 'ServiceRequest',
-  kb_article:      'KBArticle',
-}
+/**
+ * L'allowlist delle entità che il motore sa muovere. La mappa vive in
+ * `@opengraphity/types` (20 set 2026): ce n'erano due copie — questa e
+ * `TICKET_LABELS` dell'esecutore delle automazioni — e sono allowlist che
+ * finiscono dentro al Cypher, quindi divergendo avrebbero fatto funzionare un
+ * tipo di qua e non di là. Qui resta il nome con cui il motore la conosce.
+ */
+export const ENTITY_LABELS: Readonly<Record<string, string>> = ENTITY_NEO4J_LABELS
 
 // Neo4j Integer (o numero nativo) → number: helper unico di @opengraphity/neo4j (D-22).
 const toNumber = neo4jToNumber
 
-function fail(error: string, errorI18n?: TransitionErrorI18n): TransitionResult {
-  return { success: false, error, ...(errorI18n ? { errorI18n } : {}) } as unknown as TransitionResult
+function fail(error: string, errorI18n?: TransitionErrorI18n, refusedByCondition?: string): TransitionResult {
+  return {
+    success: false, error,
+    ...(errorI18n ? { errorI18n } : {}),
+    ...(refusedByCondition ? { refusedByCondition } : {}),
+  } as unknown as TransitionResult
 }
 
 interface RegisteredCondition {
@@ -63,6 +69,22 @@ export function conditionFailureKey(name: string): string {
 }
 
 class ConcurrentTransitionError extends Error {}
+
+/**
+ * L'etichetta del nodo per un tipo di entità con workflow (E-27): la stessa
+ * allowlist che il motore usa per scrivere lo status (`ENTITY_LABELS`, qui
+ * sopra). Un tipo che non conosciamo non si indovina: si dice.
+ */
+function entityLabel(entityType: string): string {
+  const label = ENTITY_LABELS[entityType]
+  if (!label) {
+    throw new Error(
+      `[workflow-engine] entity type "${entityType}" has no node label: a workflow instance cannot be created for it. `
+      + `Known types: ${Object.keys(ENTITY_LABELS).join(', ')}.`,
+    )
+  }
+  return label
+}
 
 export class WorkflowEngine {
   private readonly conditions = new Map<string, RegisteredCondition>()
@@ -120,55 +142,26 @@ export class WorkflowEngine {
     definitionId?: string,
     category?: string | null,
   ): Promise<WorkflowInstance> {
+    // La selezione della definizione e del passo iniziale sta in
+    // `initialStepSelection()`, esportata: l'API ne ha bisogno per scrivere
+    // `status` sul ticket PRIMA di creare l'istanza, e due copie della stessa
+    // priorità divergono — con il risultato che il ticket nasce con lo stato di
+    // una definizione e l'istanza su un'altra.
+
     const instanceId = uuidv4()
     const execId     = uuidv4()
     const now        = new Date().toISOString()
 
     const work = async (tx: ManagedTransaction): Promise<WorkflowInstance> => {
-      let defQuery: string
-      let defParams: Record<string, unknown>
-
-      // Il passo di partenza è quello che il DATO dichiara iniziale
-      // (`is_initial`), non quello che si chiama `type='start'`: il disegnatore
-      // sposta «Step iniziale» scrivendo `is_initial`, e senza questa lettura
-      // l'entità nasceva con `status` = passo marcato e `current_step` = vecchio
-      // `start` (B-8). `coalesce(is_initial, type='start')` è la stessa regola di
-      // `getInitialStepName` nell'API: una sorgente sola. Se per sbaglio ne
-      // risultano due, vince quello con `is_initial` esplicito.
-      const INITIAL_STEP = `
-          MATCH (wd)-[:HAS_STEP]->(startStep:WorkflowStep)
-          WHERE coalesce(startStep.is_initial, startStep.type = 'start')
-          WITH wd, startStep, CASE WHEN startStep.is_initial = true THEN 0 ELSE 1 END AS stepPriority`
-
-      if (definitionId) {
-        defQuery = `
-          MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId, active: true})
-          ${INITIAL_STEP}
-          RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName
-          ORDER BY stepPriority ASC, startStep.name ASC
-          LIMIT 1
-        `
-        defParams = { definitionId, tenantId }
-      } else {
-        // Category-aware selection: prefer category-specific, fallback to default (category IS NULL)
-        defQuery = `
-          MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
-          ${INITIAL_STEP},
-            CASE
-              WHEN wd.category IS NOT NULL AND wd.category = $category THEN 0
-              WHEN wd.category IS NULL THEN 1
-              ELSE 2
-            END AS priority
-          WHERE priority < 2
-          RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName, wd.category AS defCategory
-          ORDER BY priority ASC, wd.version DESC, stepPriority ASC, startStep.name ASC
-          LIMIT 1
-        `
-        defParams = { tenantId, entityType, category: category ?? null }
-      }
-
-      const defResult = await tx.run(defQuery, defParams)
-      if (defResult.records.length === 0) {
+      // La selezione sta in `initialStepSelection` (sopra), una sola volta:
+      // l'API la richiama per scrivere `status` sul ticket con la STESSA
+      // priorita, invece di una lettura sua che con le definizioni per
+      // categoria dava un altro passo.
+      const scelta = await initialStepSelection(tx, { tenantId, entityType, definitionId, category })
+      const defParams: Record<string, unknown> = definitionId
+        ? { definitionId, tenantId }
+        : { tenantId, entityType, category: category ?? null }
+      if (!scelta) {
         // Distinguere «non c'è definizione» da «c'è ma nessun passo è iniziale»:
         // il secondo caso è una definizione mal configurata dal disegnatore e
         // dirlo «non c'è nessuna definizione» manderebbe a cercare la cosa
@@ -212,10 +205,7 @@ export class WorkflowEngine {
         throw new Error(`No active workflow definition for "${entityType}" in tenant "${tenantId}"`)
       }
 
-      const rec      = defResult.records[0]
-      const defId    = rec.get('defId')    as string
-      const stepId   = rec.get('stepId')   as string
-      const stepName = rec.get('stepName') as string
+      const { definitionId: defId, stepId, stepName } = scelta
 
       // Variante per categoria (B-13): la scelta confronta `wd.category` con la
       // categoria dell'entità per UGUAGLIANZA, e ripiega sulla definizione
@@ -226,7 +216,7 @@ export class WorkflowEngine {
       // ticket di sicurezza seguivano il flusso base senza un solo avviso.
       // Non si può decidere al posto suo (la variante potrebbe essere stata
       // dismessa di proposito), ma si dice.
-      if (!definitionId && category != null && category !== '' && rec.get('defCategory') == null) {
+      if (!definitionId && category != null && category !== '' && scelta.definitionCategory == null) {
         const variants = await tx.run(`
           MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
           WHERE wd.category IS NOT NULL
@@ -246,7 +236,11 @@ export class WorkflowEngine {
       // Lo start step è cercato DENTRO la definizione scelta: gli id degli step
       // non sono garantiti unici tra definizioni (seed storici `${tenant}-step-new`).
       const res = await tx.run(`
-        MATCH (entity {id: $entityId, tenant_id: $tenantId})
+        // L'ENTITÀ con la sua etichetta (revisione totale · E-27): senza, il
+        // MATCH è una scansione di tutti i nodi del database a ogni creazione
+        // di ticket. Le etichette sono quelle dei tipi che hanno un workflow e
+        // stanno in un posto solo (allowlist, non interpolazione libera).
+        MATCH (entity:${entityLabel(entityType)} {id: $entityId, tenant_id: $tenantId})
         MATCH (wd:WorkflowDefinition {id: $defId})-[:HAS_STEP]->(startStep:WorkflowStep {id: $stepId})
         CREATE (wi:WorkflowInstance {
           id:            $instanceId,
@@ -320,6 +314,15 @@ export class WorkflowEngine {
       // 1. Stato corrente + arco verso lo step richiesto. Se ci sono più archi
       //    verso lo stesso step (es. manuale + sla_breach) preferisce quello con
       //    il trigger richiesto.
+      //
+      //    E-29 (revisione totale): la preferenza ora è un ordine TOTALE. Con
+      //    un innesco di sistema che non combacia con nessuno dei due archi
+      //    (es. `timer` su archi `manual` e `sla_breach`) l'ordine era parziale
+      //    e la scelta dipendeva dal piano di esecuzione: la stessa scadenza
+      //    poteva passare o essere rifiutata «root cause required» a caso.
+      //    A pari innesco vince l'arco CON la condizione — una guardia scritta
+      //    dal cliente non si scavalca per via di un arco più permissivo — e a
+      //    pari condizione decide l'id, che è stabile.
       const stateResult = await session.executeRead((tx) =>
         tx.run(`
           MATCH (wi:WorkflowInstance {id: $instanceId})
@@ -346,7 +349,9 @@ export class WorkflowEngine {
             tr.trigger                    AS trigger,
             tr.condition                  AS condition,
             exec.entered_at               AS enteredAt
-          ORDER BY CASE WHEN tr.trigger = $triggerType THEN 0 ELSE 1 END
+          ORDER BY CASE WHEN tr.trigger = $triggerType THEN 0 ELSE 1 END,
+                   CASE WHEN tr.condition IS NULL THEN 1 ELSE 0 END,
+                   tr.id
           LIMIT 1
         `, { instanceId: input.instanceId, toStepName: input.toStepName, triggerType: input.triggerType, tenantId: input.tenantId ?? null }),
       )
@@ -422,7 +427,9 @@ export class WorkflowEngine {
           entityData:   context.entityData,
         }
         const ok = await reg.evaluate(session, condCtx)
-        if (!ok) return fail(reg.failureMessage, { key: reg.failureKey, params: { condition } })
+        // Rifiuto, non errore: chi esegue in coda non deve ritentare (vedi
+        // `refusedByCondition` in types.ts).
+        if (!ok) return fail(reg.failureMessage, { key: reg.failureKey, params: { condition } }, condition)
       }
 
       const entityType = wi['entity_type'] as string
@@ -486,7 +493,13 @@ export class WorkflowEngine {
           WITH DISTINCT wi, r
           DELETE r
           WITH wi
-          MATCH (nextStep:WorkflowStep {id: $nextStepId})
+          // Lo step di arrivo è quello della DEFINIZIONE dell'istanza
+          // (revisione totale · E-6): gli id dei passi non sono garantiti
+          // unici fra definizioni (i seed storici usavano step-<nome>),
+          // quindi un id omonimo in un'altra definizione faceva creare DUE
+          // relazioni CURRENT_STEP, e la lettura successiva ne scegliva una a
+          // caso. createInstance passava già dalla definizione; qui no.
+          MATCH (nextStep:WorkflowStep {id: $nextStepId, definition_id: wi.definition_id})
           CREATE (wi)-[:CURRENT_STEP]->(nextStep)
           SET wi.current_step = $nextStepName,
               wi.updated_at   = $now,
@@ -497,6 +510,10 @@ export class WorkflowEngine {
             tenant_id:    $tenantId,
             instance_id:  $instanceId,
             step_name:    $nextStepName,
+            // Da QUALE passo si arriva (revisione totale · B-13): la storia
+            // del portale leggeva from_step e nessuno l'ha mai scritto,
+            // quindi ogni riga diceva «start → …», anche la decima.
+            from_step:    $currentStepName,
             entered_at:   $now,
             exited_at:    null,
             duration_ms:  null,
@@ -508,6 +525,7 @@ export class WorkflowEngine {
         `, {
           instanceId:   input.instanceId,
           currentStepId,
+          currentStepName,
           now,
           durationMs,
           nextStepId,
@@ -624,10 +642,22 @@ export class WorkflowEngine {
       }
 
       // `stepId`/`actionIndex`: il retry di un webhook rilegge da lì gli header, che non viaggiano in Redis (E-11).
-      const allActions = [...exitActions, ...enterActions]
-      for (const [actionIndex, action] of allActions.entries()) {
+      /**
+       * `actionIndex` resta la posizione nella lista concatenata, perché è
+       * quella che il retry del webhook usa per rileggere gli header. Accanto
+       * viaggiano FASE e POSIZIONE NELLA PROPRIA LISTA, che sono l'identità
+       * stabile di un'azione: l'indice concatenato cambia con le azioni di
+       * uscita del passo che si lascia, quindi la stessa azione d'ingresso ha
+       * numeri diversi a seconda da dove si arriva — e chi lo usasse come
+       * chiave (i compiti lo facevano) duplicherebbe a ogni rientro.
+       */
+      const allActions = [
+        ...exitActions.map((a, pos) => ({ a, fase: 'exit'  as const, pos })),
+        ...enterActions.map((a, pos) => ({ a, fase: 'enter' as const, pos })),
+      ]
+      for (const [actionIndex, { a: action, fase, pos }] of allActions.entries()) {
         try {
-          await runAction(action, instance, { ...context, notes: context.notes ?? input.notes, stepId: nextStepId, actionIndex })
+          await runAction(action, instance, { ...context, notes: context.notes ?? input.notes, stepId: nextStepId, actionIndex, actionPhase: fase, actionPosition: pos })
           actionsRun.push(action.type)
         } catch (e) {
           const msg = `${action.type}: ${e instanceof Error ? e.message : String(e)}`
@@ -645,10 +675,19 @@ export class WorkflowEngine {
         workflowLogger.error({ instanceId: input.instanceId, stepName: nextStepName, timerDelayMinutes }, `[workflow-engine] ${msg}`)
         actionErrors.push(msg)
       } else if (nextStepType === 'timer_wait') {
+        /**
+         * La coda si CHIUDE sempre, e il timer ha un id (revisione totale ·
+         * E-28): la `Queue` era creata a ogni transizione e chiusa solo sul
+         * cammino felice, quindi un `queue.add` che lanciava (Redis instabile)
+         * lasciava una connessione Redis aperta per sempre; e senza `jobId`
+         * un rientro nello stesso passo di attesa accodava un SECONDO timer,
+         * che poi transizionava due volte.
+         */
+        let queue: import('bullmq').Queue | null = null
         try {
           const { Queue } = await import('bullmq')
           const { getRedisConnection } = await import('@opengraphity/events')
-          const queue = new Queue('notification-jobs', { connection: getRedisConnection() })
+          queue = new Queue('notification-jobs', { connection: getRedisConnection() })
           // Il passo di arrivo si legge ADESSO solo per dire subito se l'arco
           // manca (un passo di attesa senza uscita automatica è una definizione
           // rotta, e l'amministratore lo deve sapere al primo ingresso). Chi
@@ -669,18 +708,25 @@ export class WorkflowEngine {
               instanceId: input.instanceId,
               toStep,
               tenantId:   wi['tenant_id'] as string,
-            }, { delay: delayMinutes * 60 * 1000 })
+            }, {
+              delay: delayMinutes * 60 * 1000,
+              // E-28: un'attesa per istanza e per passo. Un rientro nello
+              // stesso passo sostituisce il timer, non ne aggiunge un secondo.
+              jobId: `timer_wait:${input.instanceId}:${nextStepId}`,
+            })
             workflowLogger.info({ instanceId: input.instanceId, toStep, delayMinutes }, '[workflow-engine] timer_wait job scheduled')
           } else {
             const msg = `timer_wait: step "${nextStepName}" has no automatic transition — the workflow will never leave this step`
             workflowLogger.error({ instanceId: input.instanceId, stepName: nextStepName }, `[workflow-engine] ${msg}`)
             actionErrors.push(msg)
           }
-          await queue.close()
         } catch (e) {
           const msg = `timer_wait scheduling failed: ${e instanceof Error ? e.message : String(e)} — the workflow will never leave step "${nextStepName}"`
           workflowLogger.error({ err: e, instanceId: input.instanceId }, `[workflow-engine] ${msg}`)
           actionErrors.push(msg)
+        } finally {
+          // E-28: anche quando `add` lancia.
+          if (queue) await queue.close().catch((e: unknown) => workflowLogger.warn({ err: e }, '[workflow-engine] timer queue not closed'))
         }
       }
 
@@ -697,6 +743,9 @@ export class WorkflowEngine {
             category:    nextStepCategory,
             terminal:    nextStepTerminal,
             enteredAt:   now,
+            // B-4: le note viaggiano con l'evento, così la nota sul ticket la
+            // scrive un punto solo per tutti i cammini.
+            notes:       input.notes ?? null,
             actorId:     context.userId,
             triggerType: input.triggerType,
           })
@@ -780,6 +829,73 @@ export class WorkflowEngine {
 
     return result.records.map((r) => r.get('exec').properties as Record<string, unknown>)
   }
+}
+
+
+/**
+ * LA SELEZIONE DELLA DEFINIZIONE E DEL PASSO INIZIALE, in un posto solo.
+ *
+ * `createInstance` la usa per creare l'istanza; l'API la usa per scrivere
+ * `status` sul ticket nello stesso istante. Prima erano due letture diverse —
+ * `createInstance` con la priorità per categoria, `getInitialStepName` con un
+ * MATCH su TUTTE le definizioni del tipo — e finché ogni tipo aveva una sola
+ * definizione combaciavano per caso. Con una definizione per categoria (moduli
+ * del catalogo, ondata 3) il ticket nasceva con lo stato di una e l'istanza su
+ * un'altra.
+ *
+ * La priorità, nell'ordine: la definizione chiesta per id; poi quella della
+ * categoria; poi quella senza categoria (il difetto). Il passo iniziale è
+ * quello che il DATO dichiara tale (`is_initial`), non quello che si chiama
+ * `type='start'`.
+ */
+export const INITIAL_STEP_MATCH = `
+  MATCH (wd)-[:HAS_STEP]->(startStep:WorkflowStep)
+  WHERE coalesce(startStep.is_initial, startStep.type = 'start')
+  WITH wd, startStep, CASE WHEN startStep.is_initial = true THEN 0 ELSE 1 END AS stepPriority`
+
+export interface InitialStepSelection {
+  definitionId: string
+  stepId: string
+  stepName: string
+  /** La categoria della definizione scelta: `null` = quella senza categoria (il ripiego). */
+  definitionCategory: string | null
+}
+
+export async function initialStepSelection(
+  tx: ManagedTransaction,
+  opts: { tenantId: string; entityType: string; definitionId?: string | null; category?: string | null },
+): Promise<InitialStepSelection | null> {
+  const { tenantId, entityType, definitionId, category } = opts
+  if (definitionId) {
+    const res = await tx.run(`
+      MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId, active: true})
+      ${INITIAL_STEP_MATCH}
+      RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName, wd.category AS defCategory
+      ORDER BY stepPriority ASC, startStep.name ASC
+      LIMIT 1`, { definitionId, tenantId })
+    const r = res.records[0]
+    return r ? {
+      definitionId: r.get('defId') as string, stepId: r.get('stepId') as string,
+      stepName: r.get('stepName') as string, definitionCategory: (r.get('defCategory') ?? null) as string | null,
+    } : null
+  }
+  const res = await tx.run(`
+    MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
+    ${INITIAL_STEP_MATCH},
+      CASE
+        WHEN wd.category IS NOT NULL AND wd.category = $category THEN 0
+        WHEN wd.category IS NULL THEN 1
+        ELSE 2
+      END AS priority
+    WHERE priority < 2
+    RETURN wd.id AS defId, startStep.id AS stepId, startStep.name AS stepName, wd.category AS defCategory
+    ORDER BY priority ASC, wd.version DESC, stepPriority ASC, startStep.name ASC
+    LIMIT 1`, { tenantId, entityType, category: category ?? null })
+  const r = res.records[0]
+  return r ? {
+    definitionId: r.get('defId') as string, stepId: r.get('stepId') as string,
+    stepName: r.get('stepName') as string, definitionCategory: (r.get('defCategory') ?? null) as string | null,
+  } : null
 }
 
 export const workflowEngine = new WorkflowEngine()

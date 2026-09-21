@@ -76,6 +76,8 @@ export const FIELD_TYPE_KEYS: Record<string, string> = {
   date:   'automation.fieldType.date',   boolean: 'automation.fieldType.boolean',
   enum:   'automation.fieldType.enum',   user:    'automation.fieldType.user',
   team:   'automation.fieldType.team',
+  // Selezione multipla di un modulo del catalogo (ondata 5).
+  multi_enum: 'automation.fieldType.multiEnum',
 }
 
 export function fieldTypeKey(fieldType: string): string {
@@ -116,6 +118,12 @@ export const CHANGED_OPERATOR = { value: 'changed', labelKey: 'automation.operat
 
 export const OPERATORS_BY_FIELD_TYPE: Record<string, OperatorOption[]> = {
   enum:    [EQ, NE, NUL, NN],
+  /**
+   * Selezione multipla (ondata 5): il valore è una LISTA, quindi «uguale a»
+   * non avrebbe senso — l'unica domanda sensata è se contiene una scelta.
+   * `contains` lo sa: sul server, su una lista, vuol dire «la contiene».
+   */
+  multi_enum: [{ ...CT, labelKey: 'automation.operator.containsChoice' }, NUL, NN],
   string:  [EQ, NE, CT, NUL, NN],
   number:  [EQ, NE, GT, LT, NUL, NN],
   date:    [EQ, NE, { ...GT, labelKey: 'automation.operator.after' }, { ...LT, labelKey: 'automation.operator.before' }, NUL, NN],
@@ -198,6 +206,8 @@ export function automationActionKey(type: string): string {
 export const WORKFLOW_STEP_ACTION_TYPES = [
   'sla_start', 'sla_stop',
   'create_entity', 'assign_to', 'update_field', 'call_webhook', 'create_approval_request',
+  // Un compito da fare per una squadra, creato entrando nel passo (20 set 2026).
+  'create_task',
 ] as const
 
 export type WorkflowStepActionType = typeof WORKFLOW_STEP_ACTION_TYPES[number]

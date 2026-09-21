@@ -10,7 +10,7 @@ import { toast } from 'sonner'
 import { ServicesPage } from './ServicesPage'
 import { GET_SERVICE_MAPS, GET_SERVICE_MAP_CANDIDATES, GET_SERVICE_MAP_CREATION_PREVIEW, GET_BUSINESS_CAPABILITIES_HEALTH, GET_SERVICE_RELATIONSHIP_TYPES } from '@/graphql/queries'
 import { CREATE_SERVICE_MAP } from '@/graphql/mutations'
-import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { renderWithProviders, type GqlMock, attendiURL } from '@/test/utils'
 import { withVocabularyLabels } from '@/test/vocabularies'
 
 /** Le etichette del Dizionario per la criticità (il web non umanizza più il valore). */
@@ -134,13 +134,13 @@ describe('ServicesPage', () => {
 
     await user.click(tile('Down'))
     expect(tile('Down')).toHaveAttribute('aria-pressed', 'true')
-    expect(location()).toBe('/monitoring/services?health=down')
+    await attendiURL('/monitoring/services', { health: 'down' })
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ health: ['down'] }))
     expect(seen.at(-1)).toMatchObject({ limit: 50, offset: 0 })
 
     await user.click(tile('Down'))
     expect(tile('Down')).toHaveAttribute('aria-pressed', 'false')
-    expect(location()).toBe('/monitoring/services')
+    await attendiURL('/monitoring/services')
     await waitFor(() => expect(seen.at(-1)!.filter).toBeNull())
   })
 
@@ -152,7 +152,7 @@ describe('ServicesPage', () => {
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ status: 'paused' }))
     await user.type(screen.getByRole('textbox', { name: 'Search a service by name' }), 'bill')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ status: 'paused', search: 'bill' }))
-    await waitFor(() => expect(location()).toBe('/monitoring/services?status=paused&q=bill'))
+    await attendiURL('/monitoring/services', { status: 'paused', q: 'bill' })
 
     const seen2: Vars[] = []
     renderPage('operator', { seen: seen2, route: '/monitoring/services?health=degraded&status=paused&q=bill&page=2', page: pageMock({ total: 60 }, seen2) })
@@ -171,11 +171,11 @@ describe('ServicesPage', () => {
 
     await user.click(tile('Unknown'))
     expect(tile('Unknown')).toHaveAttribute('aria-pressed', 'true')
-    expect(location()).toBe('/monitoring/services?health=unknown')
+    await attendiURL('/monitoring/services', { health: 'unknown' })
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ health: ['unknown'] }))
 
     await user.click(tile('Unknown'))
-    expect(location()).toBe('/monitoring/services')
+    await attendiURL('/monitoring/services')
     await waitFor(() => expect(seen.at(-1)!.filter).toBeNull())
 
     const seen2: Vars[] = []
@@ -193,7 +193,7 @@ describe('ServicesPage', () => {
     const chip = screen.getByTestId('services-ci-filter')
     expect(chip).toHaveTextContent('Only this CI')
     await user.click(chip)
-    expect(location()).toBe('/monitoring/services')
+    await attendiURL('/monitoring/services')
     await waitFor(() => expect(seen.at(-1)!.filter).toBeNull())
     expect(screen.queryByTestId('services-ci-filter')).not.toBeInTheDocument()
   })

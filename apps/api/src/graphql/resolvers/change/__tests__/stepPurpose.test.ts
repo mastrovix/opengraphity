@@ -47,7 +47,7 @@ const session = {
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 // I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
-vi.mock('../../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
+vi.mock('../../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 vi.mock('../../ci-utils.js', () => ({
   withSession: vi.fn(async (fn: (s: unknown) => Promise<unknown>) => fn(session)),
   runQuery:    vi.fn(),

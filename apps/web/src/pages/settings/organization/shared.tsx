@@ -27,9 +27,18 @@ export function OrgSection({ title, description, loading, error, onRetry, childr
   )
 }
 
-export function Hint({ children, tone = 'muted' }: { children: ReactNode; tone?: 'muted' | 'danger' }) {
+/**
+ * `warning` serve per quello che NON blocca ma va detto: per esempio una
+ * regola che il realm porta fuori dagli intervalli del prodotto (revisione
+ * totale · A-19). Il colore è un token, come tutti gli altri.
+ */
+const HINT_COLOR: Record<'muted' | 'danger' | 'warning', string> = {
+  muted: colors.slateLight, danger: 'var(--color-danger-text)', warning: 'var(--color-warning-text)',
+}
+
+export function Hint({ children, tone = 'muted' }: { children: ReactNode; tone?: 'muted' | 'danger' | 'warning' }) {
   return (
-    <p role={tone === 'danger' ? 'alert' : undefined} style={{ margin: 0, fontSize: 'var(--font-size-label)', lineHeight: 1.5, color: tone === 'danger' ? 'var(--color-danger-text)' : colors.slateLight }}>
+    <p role={tone === 'muted' ? undefined : 'alert'} style={{ margin: 0, fontSize: 'var(--font-size-label)', lineHeight: 1.5, color: HINT_COLOR[tone] }}>
       {children}
     </p>
   )

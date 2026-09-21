@@ -15,6 +15,8 @@ import { aiFeatureEnabled } from '../../lib/aiSettings.js'
 import { suggestTriage } from '../../services/triageService.js'
 import { draftResolutionNotes, problemCandidates as findProblemCandidates, draftKbContent } from '../../services/postIncidentService.js'
 import { createKBArticle } from './knowledgeBase.js'
+import { collegaArticoloAIncident } from '../../lib/kbCoverage.js'
+import { logger } from '../../lib/logger.js'
 
 const num = toNumber
 
@@ -134,7 +136,32 @@ async function createKbDraftFromIncident(
 ): Promise<unknown> {
   const content = await draftKbContent(ctx.tenantId, args.incidentId)
   // Reuses the standard KB creation path: slug, initial (draft) workflow step, audit.
-  return createKBArticle(null, { title: content.title, body: content.body, category: content.category, tags: content.tags }, ctx)
+  const article = await createKBArticle(
+    null, { title: content.title, body: content.body, category: content.category, tags: content.tags }, ctx,
+  ) as { id?: unknown }
+
+  /*
+   * DA DOVE VIENE QUESTO ARTICOLO (20 set 2026).
+   *
+   * Fin qui l'informazione più preziosa di questa mutation veniva buttata un
+   * istante dopo essere stata usata: sapevamo da quale incident stavamo
+   * scrivendo e non lo scrivevamo da nessuna parte. Senza, «questa categoria
+   * di problemi ricorre e non ha un articolo» non era una domanda
+   * rispondibile — ed era il prerequisito mancante dell'ondata 6.
+   *
+   * Non alza e non è dentro la transazione dell'articolo: un collegamento
+   * mancato è un'informazione persa, non un motivo per togliere all'utente
+   * l'articolo che aveva chiesto.
+   */
+  const id = typeof article.id === 'string' ? article.id : null
+  if (id) {
+    const collegato = await collegaArticoloAIncident(ctx.tenantId, id, args.incidentId)
+    if (!collegato) {
+      logger.warn({ module: 'kb', tenantId: ctx.tenantId, articleId: id, incidentId: args.incidentId },
+        'kb: article created but not linked to its incident — coverage will not see it')
+    }
+  }
+  return article
 }
 
 export const similarityResolvers = {

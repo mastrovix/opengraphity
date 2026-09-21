@@ -96,7 +96,10 @@ export function TaskViewPage() {
   const assignableTeamId = task?.kind === 'assessment'
     ? ((ciAffected?.assessmentOwner?.id === id ? ciAffected?.assessmentOwner : ciAffected?.assessmentSupport?.id === id ? ciAffected?.assessmentSupport : null)?.assignedTeam?.id ?? null)
     : task?.kind === 'deploy-plan' ? (ciAffected?.deployPlan?.assignedTeam?.id ?? null) : null
-  const { data: teamData } = useQuery<{ team: { id: string; members: Array<{ id: string; name: string }> } | null }>(GET_TEAM_DETAIL, { variables: { id: assignableTeamId ?? '' }, skip: !assignableTeamId, fetchPolicy: 'cache-first' })
+  const { data: teamData } = useQuery<{ team: { id: string; members: Array<{ id: string; name: string }> } | null }>(GET_TEAM_DETAIL, { variables: { id: assignableTeamId ?? '' }, skip: !assignableTeamId, // F-39: `cache-first` non ricaricava più i membri nella sessione, quindi
+    // una persona aggiunta al team dopo l'apertura dell'app non compariva fra
+    // gli assegnabili finché non si ricaricava la pagina.
+    fetchPolicy: 'cache-and-network' })
   const getTeamUsers = (teamId: string | null | undefined): Array<{ id: string; name: string }> => {
     if (!teamId || teamId !== assignableTeamId) return []
     return (teamData?.team?.members ?? []).map(u => ({ id: u.id, name: u.name }))

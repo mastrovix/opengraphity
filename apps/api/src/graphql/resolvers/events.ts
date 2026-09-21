@@ -34,6 +34,7 @@
  * paginate con un contatore separato (P-5).
  */
 import { v4 as uuidv4 } from 'uuid'
+import { impactRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
 import { getSession, runQuery, runQueryOne, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
@@ -252,6 +253,8 @@ interface EventFilter {
   orphan?: boolean | null
   search?: string | null
   since?: string | null
+  /** G-EVT-3: filtro su `resolved_at`, la stessa domanda del riquadro «Risolti 24h». */
+  resolvedSince?: string | null
   incidentId?: string | null
   suppressedByChangeId?: string | null
 }
@@ -320,6 +323,12 @@ async function events(_: unknown, args: { filter?: EventFilter | null; limit?: n
     const ms = Date.parse(f.since)
     if (Number.isNaN(ms)) throw new ValidationError(`since must be an ISO date, got ${JSON.stringify(f.since)}`)
     conditions.push('e.last_seen_at >= $since'); params['since'] = new Date(ms).toISOString()
+  }
+  if (f.resolvedSince) {
+    // G-EVT-3: la stessa domanda del riquadro, sulla stessa proprietà.
+    const ms = Date.parse(f.resolvedSince)
+    if (Number.isNaN(ms)) throw new ValidationError(`resolvedSince must be an ISO date, got ${JSON.stringify(f.resolvedSince)}`)
+    conditions.push('e.resolved_at >= $resolvedSince'); params['resolvedSince'] = new Date(ms).toISOString()
   }
   const where = 'WHERE ' + conditions.join(' AND ')
   // Con `search` la sorgente delle righe è l'indice full-text (P-4), poi lo
@@ -619,6 +628,15 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
 
   const session = getSession()
   try {
+    /**
+     * I DIPENDENTI si contano lungo le relazioni del CLIENTE (revisione
+     * totale · D-19): qui `DEPENDS_ON` era cablato, mentre impatto,
+     * soppressione e mappe di servizio passano da `impactRelPatternForTenant`.
+     * Un cliente con relazioni proprie (per esempio `RUNS_ON`) vedeva la
+     * colonna «dipendenti» e l'ordinamento per impatto sottostimati, in
+     * silenzio.
+     */
+    const relPattern = await impactRelPatternForTenant(ctx.tenantId)
     const row = await runQueryOne<Record<string, unknown> & { items: CIHealthOverviewRow[] }>(session, `
       CALL {
         MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
@@ -627,8 +645,8 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
           count(CASE WHEN ci.health = 'degraded'    THEN 1 END) AS degraded,
           count(CASE WHEN ci.health = 'operational' THEN 1 END) AS operational,
           count(CASE WHEN ci.health IS NULL         THEN 1 END) AS unmonitored,
-          sum(CASE WHEN ci.health = 'down'     THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci) } ELSE 0 END) AS downDependents,
-          sum(CASE WHEN ci.health = 'degraded' THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci) } ELSE 0 END) AS degradedDependents
+          sum(CASE WHEN ci.health = 'down'     THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:${relPattern}]->(ci) } ELSE 0 END) AS downDependents,
+          sum(CASE WHEN ci.health = 'degraded' THEN COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:${relPattern}]->(ci) } ELSE 0 END) AS degradedDependents
       }
       CALL {
         MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
@@ -638,7 +656,7 @@ async function ciHealthOverview(_: unknown, args: { filter?: CIHealthFilter | nu
       CALL {
         MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
         ${where}
-        WITH ci, COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:DEPENDS_ON]->(ci) } AS dependents
+        WITH ci, COUNT { (:ConfigurationItem {tenant_id: $tenantId})-[:${relPattern}]->(ci) } AS dependents
         ORDER BY ${CI_HEALTH_SEVERITY_ORDER}, dependents DESC, ci.name
         SKIP toInteger($offset) LIMIT toInteger($limit)
         RETURN collect({
@@ -696,7 +714,23 @@ async function previewInboundEvents(_: unknown, args: { input: PreviewInput }, c
     default_values: input.defaultValues ?? null,
     value_mapping:  input.valueMapping ?? null,
   })
-  return normalizeWithConfig(config, payload).map(toPreview)
+  /**
+   * Con il FUSO del cliente, come in produzione (revisione totale · D-25): il
+   * webhook e la prova della sorgente lo passano, l'anteprima del wizard no —
+   * quindi lo stesso payload Zabbix mostrava `startsAt` vuoto nell'anteprima e
+   * valorizzato dal vivo, e l'admin tarava la mappatura su un comportamento
+   * che non era quello vero.
+   */
+  const tzSession = getSession(undefined, 'READ')
+  let timezone: string | null
+  try {
+    const row = await runQueryOne<{ timezone: unknown }>(tzSession,
+      'MATCH (t:Tenant {id: $tenantId}) RETURN t.timezone AS timezone', { tenantId: ctx.tenantId })
+    timezone = typeof row?.timezone === 'string' && row.timezone.trim() ? row.timezone : null
+  } finally {
+    await tzSession.close()
+  }
+  return normalizeWithConfig(config, payload, timezone ? { timezone } : {}).map(toPreview)
 }
 
 /** Etichetta che marca un evento di prova (sendSampleEvent) nei `labels`; l'ingest conserva i labels tali e quali (JSON su Event.labels). */

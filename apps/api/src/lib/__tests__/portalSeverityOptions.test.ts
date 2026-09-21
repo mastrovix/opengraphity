@@ -7,9 +7,23 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 let stored: unknown = null
 const writes: Array<Record<string, unknown>> = []
 
+/** I vocabolari `severity` che il finto database contiene: li decide ogni caso. */
+let vocabolari: Array<{ tenantId: string; values: unknown }> = [{ tenantId: 'system', values: ['low', 'medium', 'high', 'critical'] }]
+/** `false` = la proprietà è già scritta, quindi il MERGE «solo dove manca» non trova righe. */
+let daSeminare = true
+
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({ close: async () => undefined }),
+  runQuery: vi.fn(async (_s: unknown, cypher: string) => {
+    if (cypher.includes('MATCH (e:EnumTypeDefinition {name: $nome})')) return vocabolari
+    return []
+  }),
   runQueryOne: vi.fn(async (_s: unknown, cypher: string, params: Record<string, unknown>) => {
+    if (cypher.includes('WHERE t.portal_severity_options IS NULL')) {
+      if (!daSeminare) return null
+      writes.push(params)
+      return { id: params['tenantId'] }
+    }
     if (cypher.includes('SET t.portal_severity_options')) { writes.push(params); return { id: params['tenantId'] } }
     return { raw: stored }
   }),
@@ -22,11 +36,16 @@ vi.mock('../vocabularyEntries.js', () => ({
     colors: { blocker: 'danger' },
   })),
 }))
-vi.mock('../tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
+vi.mock('../tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 
-const { portalSeverityChoices, setPortalSeverityOptions } = await import('../portalSeverityOptions.js')
+const { portalSeverityChoices, setPortalSeverityOptions, seedPortalSeverityOptions } = await import('../portalSeverityOptions.js')
 
-beforeEach(() => { stored = null; writes.length = 0 })
+beforeEach(() => {
+  stored = null
+  writes.length = 0
+  vocabolari = [{ tenantId: 'system', values: ['low', 'medium', 'high', 'critical'] }]
+  daSeminare = true
+})
 
 describe('portalSeverityChoices', () => {
   it('non dichiarate → si ferma e dice dove si sceglie (niente valori indovinati)', async () => {
@@ -72,6 +91,73 @@ describe('setPortalSeverityOptions', () => {
     [[{ value: 'low', labels: [{ language: 'en', label: 'x'.repeat(81) }] }], /longer than 80 characters/],
   ])('rifiuta %j', async (input, message) => {
     await expect(setPortalSeverityOptions('c-test', input)).rejects.toThrow(message)
+    expect(writes).toHaveLength(0)
+  })
+})
+
+/**
+ * IL SEME ALLA NASCITA (17 set 2026).
+ *
+ * Un tenant appena creato nasceva con `portal_severities_not_set`, gravità
+ * ERRORE, e il portale non apriva ticket: il prodotto si creava un errore
+ * addosso alla nascita. Il seme è la dichiarazione più neutra possibile —
+ * tutti i valori del vocabolario, nessuna etichetta propria — e non viola il
+ * divieto di indovinare, che riguarda la LETTURA di una proprietà assente.
+ */
+describe('seedPortalSeverityOptions', () => {
+  const sessione = {} as never
+
+  it('dichiara TUTTI i valori del vocabolario, nel suo ordine', async () => {
+    const esito = await seedPortalSeverityOptions(sessione, 'nuovo')
+    expect(esito.seeded).toEqual(['low', 'medium', 'high', 'critical'])
+    expect(JSON.parse(writes[0]!['options'] as string)).toEqual([
+      { value: 'low', labels: {} },
+      { value: 'medium', labels: {} },
+      { value: 'high', labels: {} },
+      { value: 'critical', labels: {} },
+    ])
+  })
+
+  it('NESSUNA etichetta propria: la parola resta quella del Dizionario', async () => {
+    // Scriverne una qui creerebbe una seconda fonte per le parole di quei
+    // valori, e la prima rinomina nel Dizionario le farebbe divergere.
+    await seedPortalSeverityOptions(sessione, 'nuovo')
+    for (const o of JSON.parse(writes[0]!['options'] as string) as Array<{ labels: unknown }>) {
+      expect(o.labels).toEqual({})
+    }
+  })
+
+  it('la copia del tenant vince sul vocabolario spedito, come in lettura', async () => {
+    vocabolari = [
+      { tenantId: 'system', values: ['low', 'medium', 'high', 'critical'] },
+      { tenantId: 'suo', values: ['bloccante', 'normale'] },
+    ]
+    const esito = await seedPortalSeverityOptions(sessione, 'suo')
+    expect(esito.seeded).toEqual(['bloccante', 'normale'])
+  })
+
+  it('chi ha GIÀ scelto non viene toccato', async () => {
+    daSeminare = false
+    const esito = await seedPortalSeverityOptions(sessione, 'vecchio')
+    expect(esito.seeded).toBeNull()
+    expect(esito.reason).toBe('already chosen')
+    expect(writes).toHaveLength(0)
+  })
+
+  it('senza vocabolario NON scrive una lista vuota, e dice perché', async () => {
+    // Una lista vuota sarebbe peggio dell'assenza: il portale mostrerebbe una
+    // tendina senza scelte invece di dire che manca la configurazione.
+    vocabolari = []
+    const esito = await seedPortalSeverityOptions(sessione, 'senza')
+    expect(esito.seeded).toBeNull()
+    expect(esito.reason).toMatch(/no "severity" vocabulary/)
+    expect(writes).toHaveLength(0)
+  })
+
+  it('un vocabolario con valori non testuali non passa per buono', async () => {
+    vocabolari = [{ tenantId: 'system', values: 'low,medium' }]
+    const esito = await seedPortalSeverityOptions(sessione, 'storto')
+    expect(esito.seeded).toBeNull()
     expect(writes).toHaveLength(0)
   })
 })

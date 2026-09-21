@@ -79,12 +79,21 @@ export function clearCITypes(tenantId: string): void {
   reportedUnknownLabels.delete(tenantId)
 }
 
+/**
+ * I tipi di OGNI tenant (PRB00000003): serve alla ripresa del canale dopo una
+ * sottoscrizione persa, quando non si sa più quali tenant siano cambiati.
+ */
+export function clearAllCITypes(): void {
+  dynamicLabelToType.clear()
+  reportedUnknownLabels.clear()
+}
+
 /** Vero se i tipi di questo tenant sono stati caricati in QUESTO processo. */
 export function hasCITypes(tenantId: string): boolean {
   return dynamicLabelToType.has(tenantId)
 }
 
-registerMetamodelCacheClearer('ci-type-labels', clearCITypes)
+registerMetamodelCacheClearer('ci-type-labels', clearCITypes, clearAllCITypes)
 
 /**
  * Derives the canonical CI type string from a Neo4j labels array, **for a

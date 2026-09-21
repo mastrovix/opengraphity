@@ -40,10 +40,22 @@ import { slackChannelsWithoutWorkspace } from './slackChannelsWithoutWorkspace.j
 import { serviceMapsWithIncidentProblem } from './serviceIncidentProblems.js'
 import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
+import { getScriptingPlan } from './scriptingPlan.js'
+import { formFieldsWithFormula } from './catalogForm.js'
 import { PORTAL_SEVERITY_VOCABULARY, portalSeverityOptions } from './portalSeverityOptions.js'
 import { catalogItemsWithLegacyCategory, catalogItemsWithoutPriority } from './catalogItemPriority.js'
 import { tenantInAppRetentionDays } from './tenantInAppRetention.js'
 import { getSchemaState } from './schemaCache.js'
+import { ENTITY_NEO4J_LABELS } from '@opengraphity/types'
+import { TASK_STATE } from './ticketTasks.js'
+import { runQuery } from '../graphql/resolvers/ci-utils.js'
+
+/**
+ * Le coppie «tipo dichiarato :: etichetta Neo4j» ammesse per un compito,
+ * dall'allowlist del prodotto. Una coppia che non è qui è un compito appeso a
+ * un ticket che non è del suo tipo.
+ */
+const COPPIE_TIPO_ETICHETTA: string[] = Object.entries(ENTITY_NEO4J_LABELS).map(([tipo, etichetta]) => `${tipo}::${etichetta}`)
 import { tenantProvisioningGaps, type ProvisioningGap } from './provisionTenantData.js'
 import { DOMAIN_MATRIX_KINDS, domainVocabulary, loadDomainMatrix, matrixInputValues, matrixKey, matrixOutputValues, type DomainMatrixKind } from './domainMatrix.js'
 import { CI_STATUS_VOCABULARY } from './eventVocabularies.js'
@@ -56,15 +68,19 @@ import { tenantTimezone } from './tenantTimezone.js'
 import { businessHoursWithoutCalendar } from './serviceCalendars.js'
 import { pendingMigrations } from './migrationState.js'
 import { teamsWithoutSourcing } from './teamSourcing.js'
+import { changesStuckWithOpenPath } from './changesStuck.js'
 import { ticketsWithoutSla } from './ticketsWithoutSla.js'
 import { workflowsMissingStepRoles } from './workflowStepRoles.js'
-import { vocabulariesBehindShipped } from './vocabularyShippedDrift.js'
+import { vocabulariesBehindShipped, vocabulariesCopiedWithoutChanges } from './vocabularyShippedDrift.js'
 import { slaPoliciesWarningNotBeforeDeadline } from './slaWarningCheck.js'
 import { blockedStepDeadlines } from './stepDeadlineBlocked.js'
 import { customFieldDefs } from './ticketCustomFields.js'
 import { stepsNamedBy, workflowStepsByDefinition } from './customFieldSteps.js'
 import { olaContractsMeasurability } from './olaMeasurability.js'
 import { TICKET_CUSTOM_FIELD_ENTITY_TYPES } from '@opengraphity/types'
+import { createMetamodelCache } from './metamodelCache.js'
+import { duplicateMetamodelFields } from './metamodelDuplicateFields.js'
+import { catalogFormsToFix } from './catalogFormHealth.js'
 
 const log = logger.child({ module: 'configuration-issues' })
 
@@ -96,6 +112,7 @@ export type ConfigurationIssueKind =
   | 'workflow_optional_step_categories_missing'
   | 'workflow_optional_step_purposes_missing'
   | 'vocabulary_behind_shipped'
+  | 'vocabulary_copy_without_changes'
   | 'sla_warning_not_before_deadline'
   | 'step_deadlines_blocked'
   | 'slack_not_connected'
@@ -104,6 +121,13 @@ export type ConfigurationIssueKind =
   | 'custom_field_from_step_absent'
   | 'ola_contract_without_team'
   | 'ola_contract_unmeasurable'
+  | 'formulas_with_scripting_off'
+  | 'metamodel_duplicate_field'
+  | 'catalog_form_to_fix'
+  | 'task_type_mismatch'
+  | 'tasks_without_team'
+  | 'tasks_waiting_forever'
+  | 'changes_stuck'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -122,11 +146,40 @@ export interface ConfigurationIssue {
   where: string | null
 }
 
+/**
+ * I RILIEVI in cache per un minuto (revisione totale · C-33).
+ *
+ * I ventitré controlli girano in serie e alcuni sono scansioni vere — tutti i
+ * ticket aperti, i conteggi per tipo per ogni contratto OLA — e il banner
+ * della diagnostica li chiedeva a OGNI apertura di pagina. Su un cliente con
+ * centomila ticket erano decine di query pesanti per un banner che cambia una
+ * volta al giorno. Un minuto è abbastanza per non farne due nella stessa
+ * navigazione e poco per non nascondere un rimedio appena fatto; la cache
+ * passa dal canale del metamodello, quindi una modifica alla configurazione
+ * la svuota subito.
+ */
+const CONFIGURATION_ISSUES_TTL_MS = 60_000
+
+const issuesCache = createMetamodelCache<ConfigurationIssue[]>({
+  name:  'configuration-issues',
+  ttlMs: CONFIGURATION_ISSUES_TTL_MS,
+  load:  (tenantId) => computeConfigurationIssues(tenantId),
+})
+
+export function invalidateConfigurationIssues(tenantId?: string): void {
+  if (tenantId) issuesCache.invalidate(tenantId)
+  else issuesCache.clear()
+}
+
 export async function configurationIssues(tenantId: string): Promise<ConfigurationIssue[]> {
+  return issuesCache.get(tenantId)
+}
+
+async function computeConfigurationIssues(tenantId: string): Promise<ConfigurationIssue[]> {
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkRedundantVocabularyCopies, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms, checkStuckChanges, checkTaskIntegrity]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -372,6 +425,26 @@ async function checkVocabulariesBehindShipped(tenantId: string, session: Session
  * un comportamento senza dirlo (avviso). Una voce per workflow, gravità e tipo di ruolo;
  * i valori mancanti sono dati, la frase la compone il client.
  */
+/**
+ * LE COPIE DI VOCABOLARIO CHE NON AGGIUNGONO NIENTE (18 set 2026).
+ *
+ * Una copia identica alla spedita non compra niente e paga il prezzo di ogni
+ * copia: resta indietro in silenzio quando il prodotto aggiunge un valore. Si
+ * dice, con i nomi, e si rimedia cancellandola dal Dizionario — il prodotto
+ * ripiega da solo su quella di fabbrica.
+ *
+ * Avviso e non errore: oggi non è rotto niente, e la copia potrebbe essere il
+ * primo passo di una personalizzazione appena cominciata.
+ */
+async function checkRedundantVocabularyCopies(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const copie = await vocabulariesCopiedWithoutChanges(session, tenantId)
+  if (copie.length === 0) return []
+  return [{
+    kind: 'vocabulary_copy_without_changes', severity: 'warning', where: '/settings/enum-designer',
+    params: { count: String(copie.length), names: copie.map((c) => `«${c.label}»`).join(', ') },
+  }]
+}
+
 async function checkWorkflowStepRoles(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
   const out: ConfigurationIssue[] = []
   for (const m of await workflowsMissingStepRoles(session, tenantId)) {
@@ -434,6 +507,42 @@ async function checkOLAContracts(tenantId: string, session: Session): Promise<Co
 }
 
 /**
+ * I MODULI DEL CATALOGO CHE NON SI POSSONO COMPILARE (revisione del 17 set
+ * 2026). La pubblicazione rifiuta le configurazioni impossibili, ma un modulo
+ * pubblicato prima della regola resta com'è, e un campo cancellato dalla
+ * libreria rompe un modulo che ieri andava: senza questo controllo il rifiuto
+ * arriva solo a chi apre la richiesta, cioè a chi non può rimediare.
+ */
+async function checkCatalogForms(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const daSistemare = await catalogFormsToFix(session, tenantId)
+  if (daSistemare.length === 0) return []
+  return [{
+    kind: 'catalog_form_to_fix', severity: 'error', where: '/settings/catalog-forms',
+    params: {
+      count: String(daSistemare.length),
+      forms: daSistemare.map((m) => `${m.item} (${m.reason}: ${m.fields.join(', ')})`).join('; '),
+    },
+  }]
+}
+
+/**
+ * DUE CAMPI CON LO STESSO NOME NELLO STESSO TIPO (trovato nel browser su
+ * c-test: «Priorità» due volte nelle tendine delle automazioni). Il perché e
+ * come si rimedia stanno in `lib/metamodelDuplicateFields.ts`; qui si dice.
+ */
+async function checkDuplicateFields(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const doppioni = await duplicateMetamodelFields(session, tenantId)
+  if (doppioni.length === 0) return []
+  return [{
+    kind: 'metamodel_duplicate_field', severity: 'error', where: '/settings/itil-designer',
+    params: {
+      count:  String(doppioni.length),
+      fields: doppioni.map((d) => `${d.typeName}.${d.field} (${d.count})`).join(', '),
+    },
+  }]
+}
+
+/**
  * LE MIGRAZIONI PENDENTI (revisione del 14 set 2026 · F8). Non riguardano un
  * cliente ma tutti: l'admin le vede perché il sintomo — dati e schema non
  * allineati — lo vede lui per primo. Si rimedia lanciando `migrate.js`.
@@ -442,6 +551,48 @@ async function checkMigrations(_tenantId: string): Promise<ConfigurationIssue[]>
   const pending = await pendingMigrations()
   if (pending.length === 0) return []
   return [{ kind: 'migrations_pending', severity: 'error', where: null, params: { count: String(pending.length), migrations: pending.join(', ') } }]
+}
+
+/**
+ * LE CHANGE FERME CON LA STRADA APERTA (17 set 2026). La logica — e il perché
+ * si segnala invece di ripararle — sta in `changesStuck.ts`; qui c'è solo la
+ * voce del banner. `warning` e non `error`: niente è rotto, ma del lavoro
+ * finito è parcheggiato e nessuno lo sa.
+ */
+async function checkStuckChanges(tenantId: string): Promise<ConfigurationIssue[]> {
+  const session = getSession()
+  try {
+    const ferme = await changesStuckWithOpenPath(session, tenantId)
+    if (ferme.length === 0) return []
+    return [{
+      kind: 'changes_stuck', severity: 'warning', where: '/changes',
+      params: { count: String(ferme.length), changes: ferme.join(', ') },
+    }]
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * CAMPI CALCOLATI CON GLI SCRIPT SPENTI (moduli del catalogo, ondata 6).
+ *
+ * Una formula è uno script: con l'interruttore spento non gira, e la richiesta
+ * NON si crea — il rifiuto dice perché, ma arriva a chi sta compilando, che non
+ * può rimediare. Qui lo si dice a chi può: l'amministratore, nel posto dove
+ * guarda già.
+ *
+ * `error` e non `warning`: non è «sarà un problema», è già rotto — quei moduli
+ * non si possono compilare.
+ */
+async function checkFormulasScripting(tenantId: string): Promise<ConfigurationIssue[]> {
+  const { enabled } = await getScriptingPlan(tenantId)
+  if (enabled) return []
+  const names = await formFieldsWithFormula(tenantId)
+  if (names.length === 0) return []
+  return [{
+    kind: 'formulas_with_scripting_off', severity: 'error', where: '/settings/organization',
+    params: { count: String(names.length), names: names.join(', ') },
+  }]
 }
 
 /**
@@ -543,6 +694,93 @@ async function checkCatalogItemPriorities(tenantId: string, session: Session): P
  * dice qui, con i nomi, finché qualcuno non lo sceglie dalla pagina del team.
  * I team nuovi non possono finire in questa lista: l'API pretende il valore.
  */
+/**
+ * LA TERZA DIFESA sui compiti (20 set 2026).
+ *
+ * `Task.entity_type` deve coincidere col tipo del ticket a cui il compito è
+ * appeso. Due difese vengono prima: il tipo non è esprimibile nel disegnatore
+ * (lo eredita dalla definizione di workflow) e la scrittura lo verifica
+ * contro l'etichetta del nodo. Questo conteggio **deve quindi essere sempre
+ * zero**: se un giorno non lo è, l'ha scritto una strada che nessuno aveva
+ * previsto, e si scopre qui invece che dentro un report sbagliato.
+ *
+ * Insieme, i compiti APERTI senza squadra: nascono così quando la squadra
+ * nominata nel passo non esiste più (cancellata dopo aver scritto il
+ * workflow). Non si ripiega su una squadra a caso — sarebbe lavoro assegnato
+ * a gente che non sa di averlo — quindi il compito resta lì, e lo si dice.
+ */
+async function checkTaskIntegrity(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
+  const out: ConfigurationIssue[] = []
+
+  /**
+   * Il confronto è fra la coppia (tipo dichiarato, etichetta vera): un
+   * compito è sano se una delle etichette del suo ticket è quella del tipo
+   * che dichiara. Le coppie ammesse arrivano dall'allowlist del motore, la
+   * stessa che usa per scrivere lo status — non se ne inventa una seconda.
+   */
+  const rotti = await runQuery<{ code: string; declared: string; actual: string }>(session, `
+    MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId})
+    WITH k, ticket, [l IN labels(ticket) | k.entity_type + '::' + l] AS coppie
+    WHERE none(c IN coppie WHERE c IN $ammesse)
+    RETURN k.code AS code, k.entity_type AS declared, head(labels(ticket)) AS actual
+    LIMIT 20
+  `, { tenantId, ammesse: COPPIE_TIPO_ETICHETTA })
+  if (rotti.length > 0) {
+    out.push({
+      kind: 'task_type_mismatch', severity: 'error', where: null,
+      params: {
+        count: String(rotti.length),
+        examples: rotti.slice(0, 5).map((r) => `${r.code} (${r.declared} → ${r.actual})`).join(', '),
+      },
+    })
+  }
+
+  const senzaSquadra = await runQuery<{ code: string }>(session, `
+    MATCH (k:Task {tenant_id: $tenantId, state: $aperto})
+    WHERE NOT EXISTS { (k)-[:ASSIGNED_TO_TEAM]->(:Team) }
+      AND NOT EXISTS { (k)-[:ASSIGNED_TO]->(:User) }
+    RETURN k.code AS code
+    LIMIT 20
+  `, { tenantId, aperto: TASK_STATE.OPEN })
+  if (senzaSquadra.length > 0) {
+    out.push({
+      kind: 'tasks_without_team', severity: 'warning', where: null,
+      params: {
+        count: String(senzaSquadra.length),
+        codes: senzaSquadra.slice(0, 5).map((r) => r.code).join(', '),
+      },
+    })
+  }
+  /**
+   * Compiti IN ATTESA di un compito che sul ticket non c'è. Nascono da un
+   * refuso nel disegnatore — «parte quando è chiuso: ‹un titolo che nessun
+   * altro compito ha›» — e da soli non partirebbero mai, tenendo fermo anche
+   * il passo, perché la guardia conta anche le attese. Meglio dirlo che
+   * lasciare un ticket bloccato senza spiegazione.
+   */
+  const attesePerSempre = await runQuery<{ code: string; after: string }>(session, `
+    MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId, state: $attesa})
+    WHERE k.after_title IS NOT NULL
+      AND NOT EXISTS {
+        MATCH (ticket)-[:HAS_TASK]->(altro:Task {tenant_id: $tenantId})
+        WHERE altro.title = k.after_title AND altro.step_name = k.step_name
+      }
+    RETURN k.code AS code, k.after_title AS after
+    LIMIT 20
+  `, { tenantId, attesa: TASK_STATE.WAITING })
+  if (attesePerSempre.length > 0) {
+    out.push({
+      kind: 'tasks_waiting_forever', severity: 'error', where: null,
+      params: {
+        count: String(attesePerSempre.length),
+        examples: attesePerSempre.slice(0, 5).map((r) => `${r.code} → «${r.after}»`).join(', '),
+      },
+    })
+  }
+
+  return out
+}
+
 async function checkTeamSourcing(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
   const { count, names } = await teamsWithoutSourcing(session, tenantId)
   if (count === 0) return []

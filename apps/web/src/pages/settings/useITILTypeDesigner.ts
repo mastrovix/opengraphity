@@ -3,7 +3,7 @@ import { useQuery, useMutation, useApolloClient } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useConfirm } from '@/hooks/useConfirm'
-import { GET_ITIL_TYPES, GET_ENUM_TYPES, GET_CI_TYPES, GET_WORKFLOW_LIST, GET_ITIL_FIELD_VALUE_COUNT } from '@/graphql/queries'
+import { GET_ITIL_TYPES, GET_ENUM_TYPES, GET_CI_TYPES, GET_ITIL_FIELD_VALUE_COUNT } from '@/graphql/queries'
 import {
   CREATE_ITIL_FIELD, UPDATE_ITIL_FIELD, DELETE_ITIL_FIELD, UPDATE_ITIL_TYPE,
 } from '@/graphql/mutations'
@@ -122,11 +122,10 @@ export function useITILTypeDesigner() {
     fetchPolicy: METAMODEL_FETCH_POLICY,
   })
 
-  const { data: wfData } = useQuery<{ workflowDefinitions: { entityType: string; category: string | null; steps: { name: string }[] }[] }>(GET_WORKFLOW_LIST, { fetchPolicy: METAMODEL_FETCH_POLICY })
-  const ITIL_WORKFLOW_STEPS: Record<string, string[]> = {}
-  for (const wf of wfData?.workflowDefinitions ?? []) {
-    if (!wf.category) ITIL_WORKFLOW_STEPS[wf.entityType] = wf.steps.map(s => s.name)
-  }
+  // Le fasi delle regole per campo le legge ora `ITILTypeRules` con
+  // `ticketWorkflowSteps` (tutti i workflow attivi, etichette tradotte —
+  // revisione totale · G-10): questa mappa offriva solo i workflow SENZA
+  // categoria, col nome tecnico, e non serve più a nessuno.
 
   const { data: enumTypesData } = useQuery<{ enumTypes: EnumTypeOption[] }>(GET_ENUM_TYPES, {
     fetchPolicy: METAMODEL_FETCH_POLICY,
@@ -276,7 +275,6 @@ export function useITILTypeDesigner() {
     selectedType,
     enumTypesData,
     ciTypesData,
-    ITIL_WORKFLOW_STEPS,
     t,
 
     // Handlers

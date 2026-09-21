@@ -1,6 +1,7 @@
 import { getSession, toNumber } from '@opengraphity/neo4j'
 import { buildReportQuery, assertChartType, type ChartType, type ReportSectionDef } from './reportQueryBuilder.js'
 import { getReportWhitelist } from './reportWhitelist.js'
+import { reportFieldLabels } from './reportFieldLabels.js'
 import { identityLabeler, loadReportValueLabeler, type ReportValueLabeler, type ReportValueSource } from './reportValueLabels.js'
 import type { Lingua } from './enumValueLabels.js'
 
@@ -11,6 +12,8 @@ export interface ReportSectionResult {
   data:      string  // JSON
   total:     number | null
   error:     string | null
+  /** La chiave i18n, se l'errore è di quelli che l'utente può causare. */
+  errorKey:  string | null
 }
 
 interface ExecutedData { data: unknown; total: number }
@@ -20,6 +23,38 @@ interface ExecutedData { data: unknown; total: number }
  * the RETURN shape produced by buildReportQuery for each type is the contract
  * this function relies on (see the comment on CHART_TYPES).
  */
+/**
+ * L'ETICHETTA DI UN PUNTO DI UNA SERIE, che non diventi mai «[object Object]».
+ *
+ * Il Cypher la converte già in testo (`toString(date…)`), e questa è la rete:
+ * se un giorno arrivasse di nuovo un oggetto temporale — una query scritta a
+ * mano, un driver che cambia — una data va scritta come data invece di
+ * lasciare all'utente la parola che l'asse ha mostrato per mesi.
+ */
+export function etichettaTemporale(raw: unknown): string {
+  if (raw == null) return ''
+  if (typeof raw === 'string') return raw
+  if (typeof raw === 'object') {
+    const o = raw as Record<string, unknown>
+    const n = (v: unknown): number | null => {
+      if (typeof v === 'number') return v
+      if (typeof v === 'bigint') return Number(v)
+      // I numeri «lossless» del driver: {low, high}.
+      if (v !== null && typeof v === 'object' && 'low' in (v as object)) return Number((v as { low: number }).low)
+      return null
+    }
+    const anno = n(o['year']), mese = n(o['month']), giorno = n(o['day'])
+    if (anno !== null && mese !== null && giorno !== null) {
+      const due = (x: number) => String(x).padStart(2, '0')
+      return `${String(anno)}-${due(mese)}-${due(giorno)}`
+    }
+    // Un oggetto con un `toString` suo (il tipo del driver) lo sa fare da sé.
+    const testo = String(raw)
+    return testo === '[object Object]' ? JSON.stringify(raw) : testo
+  }
+  return String(raw)
+}
+
 export function mapSectionRecords(
   chartType: ChartType,
   section: Pick<ReportSectionDef, 'title'>,
@@ -53,7 +88,7 @@ export function mapSectionRecords(
     case 'line':
     case 'area': {
       const data = records.map(r => ({
-        date:  String(r.get('label') ?? ''),
+        date:  etichettaTemporale(r.get('label')),
         value: toNumber(r.get('value')),
       }))
       return { data, total: data.length }
@@ -76,6 +111,13 @@ export function mapSectionRecords(
   }
 }
 
+/** La chiave i18n dentro `extensions.i18n.key` di un errore GraphQL, se c'è. */
+function chiaveI18n(err: unknown): string | null {
+  const ext = (err as { extensions?: { i18n?: { key?: unknown } } } | null)?.extensions
+  const key = ext?.i18n?.key
+  return typeof key === 'string' ? key : null
+}
+
 export async function executeReportSection(
   section: ReportSectionDef,
   tenantId: string,
@@ -87,7 +129,11 @@ export async function executeReportSection(
     // (GraphQL, dashboard widgets, scheduler, export) goes through here, so a
     // section persisted with a rogue label/field never reaches Neo4j.
     const whitelist = await getReportWhitelist(tenantId)
-    const { query, params, columns, groupSource } = buildReportQuery(section, tenantId, whitelist)
+    // Le etichette dei campi per le intestazioni delle colonne: dallo stesso
+    // metamodello che il costruttore di report mostra all'amministratore, così
+    // la colonna si chiama come la casella che ha spuntato.
+    const fieldLabels = await reportFieldLabels(tenantId, opts.language)
+    const { query, params, columns, groupSource } = buildReportQuery(section, tenantId, whitelist, { fieldLabels })
     const chartType = assertChartType(section.chartType, `section ${JSON.stringify(section.id)}`)
 
     const session = getSession(undefined, 'READ')
@@ -107,6 +153,7 @@ export async function executeReportSection(
       data:      JSON.stringify(executed.data),
       total:     executed.total,
       error:     null,
+      errorKey:  null,
     }
   } catch (err) {
     return {
@@ -116,6 +163,9 @@ export async function executeReportSection(
       data:      '{}',
       total:     null,
       error:     err instanceof Error ? err.message : String(err),
+      // La chiave viaggia con l'errore: il browser la traduce, e se non c'è
+      // mostra il messaggio tecnico, che per un difetto nostro è il dato utile.
+      errorKey:  chiaveI18n(err),
     }
   }
 }

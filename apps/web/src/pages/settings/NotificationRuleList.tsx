@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Lock, Unlock, AlertTriangle } from 'lucide-react'
 import { NOTIFICATION_BASE_TARGETS, NOTIFICATION_SEVERITIES, notificationTargetRole, roleNotificationTarget } from '@opengraphity/types'
@@ -250,15 +250,53 @@ export function RuleRow({
   const stale    = rule.channels.filter((c) => !routable.includes(c))
   const options  = [...routable, ...stale]
 
+  /**
+   * Le modifiche in attesa si ACCUMULANO (revisione totale · G-6). Prima ogni
+   * interazione calcolava il valore dai props e il debounce di 500 ms
+   * SOSTITUIVA la modifica in attesa: spuntare Slack e subito Email mandava
+   * solo Email, e la casella Slack tornava spenta al refetch. Ora la riga
+   * mostra lo stato in attesa e manda la somma delle modifiche.
+   */
+  const [pending, setPending] = useState<UpdateInput>({})
+  const pendingRef = useRef<UpdateInput>({})
+
   const debounce = useCallback((input: UpdateInput) => {
+    const next = { ...pendingRef.current, ...input }
+    pendingRef.current = next
+    setPending(next)
     if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => onUpdate(rule.id, input), 500)
+    timerRef.current = setTimeout(() => {
+      onUpdate(rule.id, next)
+      // Lo stato in attesa resta visibile finché il server non risponde: il
+      // `refetch` riporta i props aggiornati e l'effetto sotto lo scarta.
+    }, 500)
   }, [onUpdate, rule.id])
 
+  // Quando i props riflettono ciò che avevamo mandato, l'attesa è finita.
+  const saved = JSON.stringify([rule.enabled, rule.severityOverride, rule.channels, rule.target])
+  useEffect(() => {
+    if (Object.keys(pendingRef.current).length === 0) return
+    const p = pendingRef.current
+    const arrived =
+      (p.enabled === undefined || p.enabled === rule.enabled)
+      && (p.severityOverride === undefined || p.severityOverride === rule.severityOverride)
+      && (p.target === undefined || p.target === rule.target)
+      && (p.channels === undefined || JSON.stringify([...p.channels].sort()) === JSON.stringify([...rule.channels].sort()))
+    if (arrived) { pendingRef.current = {}; setPending({}) }
+  }, [saved, rule])
+
+  /** La riga come la si vede: i props più le modifiche in attesa. */
+  const view = {
+    enabled:          pending.enabled          ?? rule.enabled,
+    severityOverride: pending.severityOverride ?? rule.severityOverride,
+    target:           pending.target           ?? rule.target,
+    channels:         pending.channels         ?? rule.channels,
+  }
+
   const toggleChannel = (ch: string) => {
-    const next = rule.channels.includes(ch)
-      ? rule.channels.filter((c) => c !== ch)
-      : [...rule.channels, ch]
+    const next = view.channels.includes(ch)
+      ? view.channels.filter((c) => c !== ch)
+      : [...view.channels, ch]
     debounce({ channels: next })
   }
 
@@ -268,7 +306,7 @@ export function RuleRow({
     <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
       {/* Enabled */}
       <td style={{ padding: '10px 12px', width: 52 }}>
-        <Toggle value={rule.enabled} onChange={(v) => debounce({ enabled: v })} label={`${t('notificationRules.enabled')}: ${titleLabel}`} />
+        <Toggle value={view.enabled} onChange={(v) => debounce({ enabled: v })} label={`${t('notificationRules.enabled')}: ${titleLabel}`} />
       </td>
 
       {/* Event */}
@@ -288,7 +326,7 @@ export function RuleRow({
             </span>
           )}
         </div>
-        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontFamily: 'monospace', marginTop: 1 }}>{rule.eventType}</div>
+        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>{rule.eventType}</div>
         {/* Restringimento della regola del passo: si imposta alla creazione ed
             è ciò che la rende riconoscibile senza nominare un passo. */}
         {(rule.stepPurpose || rule.stepCategory) && (
@@ -303,9 +341,9 @@ export function RuleRow({
       {/* Severity */}
       <td style={{ padding: '10px 12px', width: 120 }}>
         <select
-          value={rule.severityOverride}
+          value={view.severityOverride}
           onChange={(e) => debounce({ severityOverride: e.target.value })}
-          style={{ ...selectStyle, color: SEVERITY_COLOR[rule.severityOverride] ?? 'var(--color-slate)', fontWeight: fontWeight.medium }}
+          style={{ ...selectStyle, color: SEVERITY_COLOR[view.severityOverride] ?? 'var(--color-slate)', fontWeight: fontWeight.medium }}
         >
           {SEVERITY_OPTIONS.map((s) => (
             <option key={s} value={s} style={{ color: SEVERITY_COLOR[s] }}>{t(`notificationRules.severity.${s}`)}</option>
@@ -327,7 +365,7 @@ export function RuleRow({
               >
                 <input
                   type="checkbox"
-                  checked={rule.channels.includes(value)}
+                  checked={view.channels.includes(value)}
                   onChange={() => toggleChannel(value)}
                   style={{ accentColor: colors.brand, width: 13, height: 13 }}
                 />
@@ -341,7 +379,7 @@ export function RuleRow({
 
       {/* Target */}
       <td style={{ padding: '10px 12px', width: 160 }}>
-        <select value={rule.target} onChange={(e) => debounce({ target: e.target.value })} style={{ ...selectStyle, color: 'var(--color-slate)' }}>
+        <select value={view.target} onChange={(e) => debounce({ target: e.target.value })} style={{ ...selectStyle, color: 'var(--color-slate)' }}>
           {targets.map(({ value, label, applicable }) => (
             <option key={value} value={value}>
               {applicable ? label : t('notificationRules.target.notApplicable', { target: label })}

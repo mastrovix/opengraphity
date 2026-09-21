@@ -12,9 +12,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const session = { close: vi.fn().mockResolvedValue(undefined), executeRead: vi.fn() }
-vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(() => session) }))
+// `runQuery`: da quando le richieste portano anche i campi della libreria dei
+// moduli (ondata 4), `getNavigableEntities` legge la libreria. La finta la
+// restituisce vuota per difetto — i test che la vogliono la impostano.
+const libreria = vi.fn<() => Promise<Array<Record<string, unknown>>>>(async () => [])
+vi.mock('@opengraphity/neo4j', () => ({
+  getSession: vi.fn(() => session),
+  runQuery: vi.fn(async () => await libreria()),
+}))
 vi.mock('@opengraphity/schema-generator', () => ({ toPascalCase: (s: string) => s.replace(/(^|_)(\w)/g, (_m, _u, c: string) => c.toUpperCase()) }))
-vi.mock('../logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
+// `child`: la finta del logger serve anche ai moduli tirati dentro da
+// `catalogForm.ts` (la lingua del tenant), che si fanno un logger figlio.
+const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: vi.fn(() => log) }
+vi.mock('../logger.js', () => ({ logger: log }))
 vi.mock('../enumScope.js', () => ({
   enumScopeClause: () => '',
   loadTenantEnumOverrides: vi.fn().mockResolvedValue(new Map()),
@@ -55,15 +65,22 @@ beforeEach(() => {
   vi.clearAllMocks()
   // nessun tipo CI dal metamodello: interessano i ticket
   session.executeRead.mockResolvedValue({ records: [] })
+  libreria.mockResolvedValue([])
   steps.mockImplementation(async (_s, _t, entityType) => STEPS[entityType] ?? [])
 })
 
 describe('getNavigableEntities — i ticket dal metamodello ITIL', () => {
   it('tutti e quattro i ticket, nel gruppo itsm, con i campi del metamodello e il loro vocabolario', async () => {
     const entities = await load('c-two')
-    expect(entities.filter((e) => e.group === 'itsm').map((e) => e.entityType)).toEqual(['Incident', 'Change', 'Problem', 'ServiceRequest'])
+    // I quattro ticket, poi i TASK (20 set 2026): il generico del workflow e
+    // i cinque per CI delle change, che prima non si potevano riportare.
+    expect(entities.filter((e) => e.group === 'itsm').map((e) => e.entityType)).toEqual([
+      'Incident', 'Change', 'Problem', 'ServiceRequest',
+      'Task', 'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'DeploymentTask', 'ReviewTask',
+    ])
     const incident = entities.find((e) => e.entityType === 'Incident')!
-    expect(incident.fields.map((f) => f.name)).toEqual(['title', 'status', 'category'])
+    // `number` in testa: è del prodotto, non del metamodello (20 set 2026).
+    expect(incident.fields.map((f) => f.name)).toEqual(['number', 'title', 'status', 'category'])
     expect(incident.fields.find((f) => f.name === 'category')!.enumTypeName).toBe('category')
     expect(entities.filter((e) => e.group === 'organization').map((e) => e.entityType)).toEqual(['Team', 'User'])
   })
@@ -108,5 +125,74 @@ describe('getNavigableEntities — lo stato viene dal workflow del tenant', () =
       expect.objectContaining({ tenantId: 'c-three', entityType: 'Incident' }),
       expect.stringContaining('Nessun passo di workflow'),
     )
+  })
+})
+
+describe('i campi della libreria dei moduli (ondata 4)', () => {
+  const campo = (name: string, fieldType: string, extra: Record<string, unknown> = {}) => ({
+    id: name, name, fieldType, label: name.toUpperCase(), labels: null, help: null, helps: null,
+    required: false, vocabulary: null, validationScript: null, inList: false,
+    createdAt: null, updatedAt: null, ...extra,
+  })
+
+  it('si aggiungono alle RICHIESTE, con il loro vocabolario, e solo se diventano una proprietà', async () => {
+    libreria.mockResolvedValue([
+      campo('ambienti_coinvolti', 'multi_enum', { vocabulary: 'environment' }),
+      campo('istruzioni', 'note'),            // niente risposta
+      campo('preventivo', 'attachment'),      // un file, non una colonna
+      campo('per_chi', 'ref_user'),           // una relazione, non una colonna
+    ])
+    const entities = await load('t1')
+    const richiesta = entities.find((e) => e.entityType === 'ServiceRequest')!
+    const nomi = richiesta.fields.map((f) => f.name)
+    expect(nomi).toContain('ambienti_coinvolti')
+    expect(nomi).not.toContain('istruzioni')
+    expect(nomi).not.toContain('preventivo')
+    expect(nomi).not.toContain('per_chi')
+    expect(richiesta.fields.find((f) => f.name === 'ambienti_coinvolti')!.enumTypeName).toBe('environment')
+  })
+
+  it('agli ALTRI ticket non si aggiungono: i moduli del catalogo li compilano solo le richieste', async () => {
+    libreria.mockResolvedValue([campo('ambienti_coinvolti', 'multi_enum', { vocabulary: 'environment' })])
+    const entities = await load('t1')
+    for (const tipo of ['Incident', 'Change', 'Problem']) {
+      expect(entities.find((e) => e.entityType === tipo)!.fields.map((f) => f.name)).not.toContain('ambienti_coinvolti')
+    }
+  })
+})
+
+/**
+ * L'IDENTIFICATIVO FRA I CAMPI (20 set 2026, dal giro nel browser: «tra le
+ * colonne non c'è l'id del ci (in questo caso il numero del ticket)»).
+ *
+ * `number` di un ticket e `name` di un CI sono proprietà del PRODOTTO: il
+ * metamodello non le dichiara, quindi non arrivavano fra i campi navigabili e
+ * non si potevano mettere in colonna. Una tabella di incident senza
+ * INC00000024 è un elenco di righe che non si sa a cosa si riferiscono.
+ */
+describe('i campi identificativi delle entità navigabili', () => {
+  it('ogni ticket offre «number», ogni task «code», ogni CI «name»', async () => {
+    const entita = await load('t1')
+    // I TASK hanno un `code`, non un `number`: è il loro identificativo
+    // leggibile (TASK00000042), e vale la stessa ragione — una tabella di
+    // righe che non si sa a cosa si riferiscono non serve a niente.
+    const TASK = ['Task', 'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'DeploymentTask', 'ReviewTask']
+    const ticket = entita.filter((e) => e.group === 'itsm' && !TASK.includes(e.entityType))
+    expect(ticket.length).toBeGreaterThan(0)
+    for (const e of ticket) {
+      expect(e.fields.map((f) => f.name)).toContain('number')
+    }
+    for (const e of entita.filter((x) => TASK.includes(x.entityType))) {
+      expect(e.fields.map((f) => f.name), `${e.entityType} senza codice`).toContain('code')
+    }
+    for (const e of entita.filter((x) => x.group === 'cmdb')) {
+      expect(e.fields.map((f) => f.name)).toContain('name')
+    }
+  })
+
+  it('«number» porta la chiave i18n del prodotto, non una etichetta inglese fissa', async () => {
+    const entita = await load('t1')
+    const numero = entita.find((e) => e.entityType === 'Incident')!.fields.find((f) => f.name === 'number')!
+    expect(numero.labelKey).toBe('reportBuilder.field.number')
   })
 })

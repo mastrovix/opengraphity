@@ -173,6 +173,8 @@ const toGraphCI = (c: { id: string; name: string; type: string; status: string |
   ({ id: c.id, name: c.name, type: c.type, status: c.status ?? 'unknown', environment: c.environment ?? undefined })
 
 function CIGroupMembersCard({ groupId }: { groupId: string }) {
+  // F-23: l'etichetta del tipo dal metamodello del cliente.
+  const ciLabels = useCILabels()
   const navigate = useNavigate()
   const { t } = useTranslation()
   const [membersPage, setMembersPage] = useState(0)
@@ -200,8 +202,9 @@ function CIGroupMembersCard({ groupId }: { groupId: string }) {
         <SimpleTable<GroupMember>
           columns={[
             { key: 'name',        label: t('pages.ci.memberName') },
+            // F-23: l'etichetta del tipo, non il nome «umanizzato».
             { key: 'type',        label: t('pages.ci.memberType'),
-              render: v => <span style={{ textTransform: 'capitalize' }}>{String(v ?? '').replace(/_/g, ' ')}</span> },
+              render: v => <span>{v ? ciLabels.typeLabel(String(v)) : '—'}</span> },
             { key: 'environment', label: t('pages.ci.memberEnvironment') },
             { key: 'status',      label: t('pages.ci.memberStatus'),
               render: v => v ? <StatusBadge value={String(v)} /> : '—' },
@@ -283,6 +286,9 @@ function EditField({ label, value, onChange, enumValues, enumTypeName, multiline
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+/** Form «aggiungi relazione» vuoto: nessun tipo cablato (F-31). */
+const EMPTY_REL_FORM = { relationType: '', direction: 'outgoing' as const, search: '', targetCI: null }
+
 export function CIDetailPage() {
   const { typeName, id } = useParams<{ typeName: string; id: string }>()
   const navigate = useNavigate()
@@ -308,9 +314,15 @@ export function CIDetailPage() {
 
   // ── Relation management state ────────────────────────────────────────────
   const [showAddRel, setShowAddRel] = useState(false)
+  // Il tipo di relazione NON è cablato (revisione totale · F-31): la chiusura
+  // del modale riportava il form a `DEPENDS_ON`, che un'organizzazione può
+  // aver tolto dal metamodello — la tendina tornava su un valore che non era
+  // tra le sue opzioni. Vuoto significa «il primo del metamodello», che è poi
+  // quello che `chosenRelation` sceglie.
+
   const [addRelForm, setAddRelForm] = useState<{
     relationType: string; direction: 'outgoing' | 'incoming'; search: string; targetCI: CIRef | null
-  }>({ relationType: '', direction: 'outgoing', search: '', targetCI: null })
+  }>(EMPTY_REL_FORM)
   const [deleteRel, setDeleteRel] = useState<{
     sourceId: string; targetId: string; relationType: string; name: string
   } | null>(null)
@@ -826,7 +838,7 @@ export function CIDetailPage() {
           {showAddRel && ci && createPortal(
               <Modal
                 open
-                onClose={() => { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) }}
+                onClose={() => { setShowAddRel(false); setAddRelForm(EMPTY_REL_FORM) }}
                 title={`${t('pages.ci.addRelation')} — ${ci.name}`}
                 width={480}
                 zIndex={9999}
@@ -834,7 +846,7 @@ export function CIDetailPage() {
                   <>
                     <Button
                       variant="secondary"
-                      onClick={() => { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) }}
+                      onClick={() => { setShowAddRel(false); setAddRelForm(EMPTY_REL_FORM) }}
                       style={{ color: 'var(--color-slate-dark)' }}
                     >
                       {t('common.cancel')}

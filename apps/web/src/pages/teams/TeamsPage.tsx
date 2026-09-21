@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { InvalidFilterNotice } from '@/components/InvalidFilterNotice'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -15,7 +16,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { GET_TEAMS } from '@/graphql/queries'
 import { FilterBuilder, type FieldConfig } from '@/components/FilterBuilder'
 import { Pagination } from '@/components/ui/Pagination'
-import { colors, lookupStyle } from '@/lib/tokens'
+import { vocabularyValueStyle } from '@/lib/domainStyle'
 import { Pill } from '@/components/ui/Pill'
 import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
@@ -37,12 +38,15 @@ interface Team {
 }
 
 function TypeBadge({ type, label }: { type: string | null; label?: string | null }) {
+  // Il tipo di team è un VOCABOLARIO del cliente: lo stile viene da lui
+  // (`vocabularyValueStyle`), non da una mappa di due nomi. Con `lookupStyle`
+  // qualunque valore diverso da `owner`/`support` — per esempio il `vendor`
+  // che l'ondata «team_type configurabile» rende possibile — riceveva lo
+  // stile d'errore rosso e un `console.error` per riga (revisione totale ·
+  // F-9).
+  const { valuesOf, colorOf } = useDomainVocabularies()
   if (!type) return <span style={{ color: 'var(--color-slate-light)' }}>—</span>
-  const styles: Record<string, { bg: string; color: string }> = {
-    owner:   { bg: 'var(--color-info-bg)', color: colors.brand },
-    support: { bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
-  }
-  const s = lookupStyle(styles, type, 'TEAM_TYPE_STYLES')
+  const s = vocabularyValueStyle(TEAM_TYPE_VOCABULARY, type, valuesOf(TEAM_TYPE_VOCABULARY), colorOf(TEAM_TYPE_VOCABULARY, type))
   return (
     <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'inherit', textTransform: 'capitalize' }}>
       {label ?? type}
@@ -121,6 +125,8 @@ export function TeamsPage() {
 
   return (
     <PageContainer>
+      {/* F-17: un filtro dell'URL illeggibile si dice, non si ignora. */}
+      <InvalidFilterNotice show={list.filtersInvalid} />
       <ListPageHeader
         icon={<UsersRound size={22} color="var(--color-icon-accent)" />}
         title={t('pages.teams.title')}

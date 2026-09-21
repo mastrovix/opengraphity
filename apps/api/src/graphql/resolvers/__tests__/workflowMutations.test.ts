@@ -18,11 +18,18 @@ vi.mock('@opengraphity/events', () => ({
   getRedisOptions: vi.fn(() => ({})),
 }))
 
-const WORKFLOW_ACTION_TYPES_MOCK = [
-  'sla_start', 'sla_stop', 'sla_pause', 'sla_resume', 'notify', 'publish_event',
-  'schedule_job', 'cancel_job', 'notify_rule', 'create_entity', 'assign_to',
-  'update_field', 'call_webhook', 'create_approval_request',
-] as const
+/**
+ * IL VOCABOLARIO DELLE AZIONI È QUELLO VERO (20 set 2026).
+ *
+ * Qui c'era una copia scritta a mano, e si era già staccata dalla realtà:
+ * elencava `schedule_job` e `cancel_job`, che il motore non ha, e non aveva
+ * `create_task`, che il motore ha. Un test che valida contro un vocabolario
+ * finto può passare mentre la produzione rifiuta, e viceversa. Il pacchetto
+ * si mocka lo stesso — importarlo per intero apre Redis — ma la lista si
+ * prende da `packages/workflow/src/types.ts`, che non porta dipendenze.
+ */
+const { WORKFLOW_ACTION_TYPES: TIPI_VERI, isWorkflowActionType: eUnTipoVero } =
+  await import('../../../../../../packages/workflow/src/types.js')
 
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
@@ -30,8 +37,8 @@ vi.mock('@opengraphity/workflow', () => ({
     transition:     vi.fn().mockResolvedValue({ success: true }),
     registerCondition: vi.fn(),
   },
-  WORKFLOW_ACTION_TYPES: WORKFLOW_ACTION_TYPES_MOCK,
-  isWorkflowActionType: (t: unknown) => typeof t === 'string' && (WORKFLOW_ACTION_TYPES_MOCK as readonly string[]).includes(t),
+  WORKFLOW_ACTION_TYPES: TIPI_VERI,
+  isWorkflowActionType: eUnTipoVero,
 }))
 
 // Il pacchetto delle notifiche non si importa per intero (apre Redis): qui
@@ -191,6 +198,22 @@ describe('azioni dei passi: vocabolario imposto alla scrittura', () => {
     expect(() => assertStepActions(null, 'enter_actions')).not.toThrow()
     expect(() => assertStepActions('[]', 'enter_actions')).not.toThrow()
     expect(() => assertStepActions(JSON.stringify([{ type: 'publish_event', params: { event: 'x.y' } }]), 'enter_actions')).not.toThrow()
+  })
+
+  /**
+   * UN COMPITO SI CREA SOLO ENTRANDO in un passo (rimedio, 20 set 2026). Il
+   * motore esegue le azioni di uscita con l'istanza già spostata sul passo
+   * NUOVO: un compito creato uscendo da A nascerebbe timbrato «passo B»,
+   * quindi non bloccherebbe l'uscita da A — che è il senso della guardia —
+   * e bloccherebbe quella da B. Il rifiuto arriva qui, nel disegnatore.
+   */
+  it('assertStepActions: `create_task` si accetta in ingresso e si rifiuta in uscita', () => {
+    const azione = JSON.stringify([{ type: 'create_task', params: { title_template: 'X' } }])
+    expect(() => assertStepActions(azione, 'enter_actions', 'enter')).not.toThrow()
+    const err = (() => { try { assertStepActions(azione, 'exit_actions dello step "assigned"', 'exit') } catch (e) { return e } })()
+    expect(err).toBeInstanceOf(GraphQLError)
+    expect((err as GraphQLError).message).toContain('entering a step, not leaving one')
+    expect((err as GraphQLError).message).toContain('exit_actions dello step "assigned"[0]')
   })
 
   it('assertStepActions: `create_notification` è rifiutato con il vocabolario nel messaggio', () => {

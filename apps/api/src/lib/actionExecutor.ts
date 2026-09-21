@@ -7,11 +7,14 @@ import { v4 as uuidv4 } from 'uuid'
 import pino from 'pino'
 import { runQuery } from '@opengraphity/neo4j'
 import { publish } from '@opengraphity/events'
-import { isNotificationTarget, AUTOMATION_NOTIFICATION_CHANNELS, TICKET_TEAM_ASSIGNED_EVENT, type AutomationNotificationPayload, type DomainEvent } from '@opengraphity/types'
+import { isNotificationTarget, AUTOMATION_NOTIFICATION_CHANNELS, TICKET_TEAM_ASSIGNED_EVENT, ENTITY_NEO4J_LABELS, TICKET_ENTITY_TYPES, type AutomationNotificationPayload, type DomainEvent } from '@opengraphity/types'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import { ValidationError } from './errors.js'
 import { assertSafeOutboundUrl, loggableUrl } from './safeUrl.js'
 import { assertScriptingEnabled } from './scriptingPlan.js'
+
+/** I metodi che un webhook di regola può usare (C-29). */
+const WEBHOOK_METHODS: readonly string[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
 const log = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'action-executor' })
 
@@ -64,10 +67,16 @@ export interface Action {
   params: Record<string, unknown>
 }
 
-/** Le etichette dei ticket su cui un'azione può scrivere: allowlist, finisce nel Cypher. */
-const TICKET_LABELS: Record<string, 'Incident' | 'Problem' | 'Change' | 'ServiceRequest'> = {
-  incident: 'Incident', problem: 'Problem', change: 'Change', service_request: 'ServiceRequest',
-}
+/**
+ * Le etichette dei ticket su cui un'azione può scrivere: allowlist, finisce
+ * nel Cypher. I nomi vengono dalla mappa unica in `@opengraphity/types` (20
+ * set 2026, prima erano scritti qui una seconda volta); il PERIMETRO resta
+ * quello di prima — i quattro ticket, non l'articolo della knowledge base,
+ * che non è un ticket e su cui queste azioni non scrivono.
+ */
+const TICKET_LABELS: Readonly<Record<string, string>> = Object.fromEntries(
+  TICKET_ENTITY_TYPES.map((t) => [t, ENTITY_NEO4J_LABELS[t]!]),
+)
 
 export interface ActionExecutionContext {
   tenantId:   string
@@ -144,8 +153,28 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
       const field = action.type === 'set_priority' ? 'priority' : assertSettableField(p['field'])
       const value = action.type === 'set_priority' ? String(p['priority'] ?? p['value'] ?? '') : p['value']
       if (action.type === 'set_priority' && !value) throw new Error('set_priority: priority value is required')
-      const { writeTicketField } = await import('./ticketFieldWrite.js')
-      const written = await withSession((session) => writeTicketField(session, ctx.tenantId, ctx.entityType, ctx.entityId, field, value), true)
+      /**
+       * UNA RISPOSTA DI MODULO passa da un'altra strada (ondata 8): non è una
+       * proprietà come le altre, ha addosso il vocabolario, lo script di
+       * validazione, l'obbligatorietà e le condizioni del modulo con cui il
+       * ticket è stato compilato. `writeTicketField` non le conosce — valida
+       * contro il metamodello ITIL — e fino a qui rifiutava, giustamente.
+       *
+       * Si riconosce dalla libreria, non da una lista di nomi: se quel nome è
+       * un campo della libreria del tenant, è una risposta.
+       */
+      const written = await withSession(async (session) => {
+        if (ctx.entityType === 'service_request' && action.type !== 'set_priority') {
+          const { formFieldsByName, writeFormAnswer } = await import('./catalogForm.js')
+          const daModulo = await formFieldsByName(session, ctx.tenantId, [field])
+          if (daModulo.has(field)) {
+            const esito = await writeFormAnswer(session, ctx.tenantId, ctx.entityId, field, value)
+            return esito as { before: Record<string, unknown>; after: Record<string, unknown> }
+          }
+        }
+        const { writeTicketField } = await import('./ticketFieldWrite.js')
+        return await writeTicketField(session, ctx.tenantId, ctx.entityType, ctx.entityId, field, value)
+      }, true)
       // L'aggiornamento si pubblica (webhook, notifiche); le automazioni non lo
       // rivalutano, perché l'attore è l'automazione (consumers/automationConsumer.ts).
       if (ctx.entityType !== 'change') {
@@ -270,6 +299,7 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
           instanceId, toStepName: toStep,
           triggeredBy: 'system', triggerType: 'automatic',
           notes: `Auto: ${ctx.sourceName}`,
+          tenantId: ctx.tenantId,
         }, { userId: ctx.userId, entityData: ctx.entity })
         // B-18: l'esito del motore era IGNORATO. Un `to_step` che non esiste
         // più (passo rinominato o tolto dal disegnatore), o un arco non
@@ -350,9 +380,17 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
 
     case 'call_webhook': {
       const url     = String(p['url'] ?? '')
-      const method  = String(p['method'] ?? 'POST')
+      const method  = String(p['method'] ?? 'POST').toUpperCase()
       const headers = (p['headers'] ?? {}) as Record<string, string>
       if (!url) throw new Error('call_webhook: url is required')
+      /**
+       * Il METODO è uno di quelli ammessi (revisione totale · C-29): era una
+       * stringa qualunque presa dalla regola, e `fetch` con un metodo
+       * inventato falliva con un errore che non diceva perché.
+       */
+      if (!WEBHOOK_METHODS.includes(method)) {
+        throw new Error(`call_webhook: method "${method}" is not allowed (${WEBHOOK_METHODS.join(', ')})`)
+      }
       // SSRF guard + https-only outside development (policy in safeUrl) —
       // the full entity is posted to this URL, so an internal target would
       // both hit internal services and exfiltrate data.
@@ -367,6 +405,14 @@ async function executeSingleAction(action: Action, ctx: ActionExecutionContext, 
           body:    method !== 'GET' ? payload : undefined,
           signal:  controller.signal,
         })
+        /**
+         * Il CORPO della risposta si consuma sempre (revisione totale ·
+         * C-29): senza, undici tiene aperta la connessione finché non passa
+         * il garbage collector — un endpoint che risponde corpi grandi
+         * tratteneva connessioni e memoria nel processo. Il contenuto non
+         * serve: lo si scarta, e basta.
+         */
+        await res.body?.cancel().catch(() => undefined)
         if (!res.ok) throw new Error(`Webhook ${loggableUrl(url)} returned ${res.status}`)
       } finally {
         clearTimeout(timer)

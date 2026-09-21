@@ -37,10 +37,13 @@ scrape_configs:
       - source_labels: [__meta_docker_container_label_com_docker_compose_service]
         target_label: job
     pipeline_stages:
-      # api/worker log JSON (pino): expose the level as a label for filtering
-      # ({job="api", level="50"} = error). Other containers are left as-is.
+      # api/worker/events-worker log JSON (pino): expose the level as a label
+      # for filtering ({job="api", level="50"} = error). Other containers are
+      # left as-is. H-28: `events-worker` non era nel selettore, quindi gli
+      # errori della pipeline degli allarmi — che vive proprio la — non erano
+      # filtrabili per livello in Grafana.
       - match:
-          selector: '{job=~"api|worker"}'
+          selector: '{job=~"api|worker|events-worker"}'
           stages:
             - json:
                 expressions:

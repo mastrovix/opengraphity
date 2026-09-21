@@ -133,8 +133,17 @@ export async function runStepDeadlineSweep(now = new Date()): Promise<SweepSumma
         const key = `${c.tenantId}/${deadline.calendar_id}`
         if (!calendars.has(key)) calendars.set(key, getServiceCalendarById(c.tenantId, deadline.calendar_id))
         if (!timezones.has(c.tenantId)) timezones.set(c.tenantId, getTenantTimezone(c.tenantId))
-        calendar = await calendars.get(key)!
-        timezone = await timezones.get(c.tenantId)!
+        /**
+         * Entrambe le promesse si attendono INSIEME (revisione totale · C-14):
+         * prima si attendeva la prima e poi la seconda, quindi se la prima
+         * rifiutava la seconda restava senza gestore — `unhandledRejection`,
+         * che da Node 15 termina il processo. Un Neo4j in pausa durante una
+         * passata con scadenze a calendario faceva cadere il worker invece di
+         * contare la scadenza come «failed».
+         */
+        const [cal, tz] = await Promise.all([calendars.get(key)!, timezones.get(c.tenantId)!])
+        calendar = cal
+        timezone = tz
       }
       due = stepDeadlineDueAt(new Date(c.enteredAt), deadline, timezone, calendar)
     } catch (e) {
@@ -266,12 +275,41 @@ export async function fireStepDeadline(c: StepDeadlineCandidate, now: Date): Pro
     }
 
     const { writeTicketField } = await import('./ticketFieldWrite.js')
+
+    /**
+     * I campi della scadenza si scrivono PRIMA di spostare (revisione totale ·
+     * C-13). Prima si scrivevano dopo, fuori dalla transazione della
+     * transizione: una scrittura fallita (un vincolo, un blip del database)
+     * lasciava il ticket già spostato, `recordOutcome('failed')` finiva su
+     * un'esecuzione con `exited_at` — quindi mai ritentata e INVISIBILE nella
+     * diagnostica, che guarda solo le esecuzioni aperte. Restava un log.
+     *
+     * Nell'ordine nuovo un errore lascia il ticket dov'è, l'esito «failed» su
+     * un'esecuzione ancora aperta, e la passata dopo un'ora riprova. I valori
+     * scritti entrano anche in `entityData`, così le condizioni della
+     * transizione vedono lo stato che il cliente ha chiesto.
+     */
+    const writtenFields: Record<string, unknown> = {}
+    try {
+      for (const { field, value } of values) {
+        const written = await writeTicketField(session, c.tenantId, c.entityType, c.entityId, field, value)
+        writtenFields[field] = value
+        if (c.entityType !== 'change' && c.entityType !== 'kb_article') {
+          const { publishTicketUpdated } = await import('./ticketUpdated.js')
+          await publishTicketUpdated({ tenantId: c.tenantId, userId: AUTOMATION_ACTOR }, c.entityType as AutomationEntityType, c.entityId, written.before, written.after)
+        }
+      }
+    } catch (e) {
+      await recordOutcome(c, 'failed', 'field_write', e instanceof Error ? e.message : String(e), toStep, now)
+      return 'failed'
+    }
+
     const result = await workflowEngine.transition(
       session,
       { instanceId: c.instanceId, toStepName: toStep, triggeredBy: STEP_DEADLINE_ACTOR, triggerType: 'timer', tenantId: c.tenantId },
       {
         userId: AUTOMATION_ACTOR,
-        entityData: { ...entity, assigned_to: state['assignedTo'] ?? null, assigned_team: state['assignedTeam'] ?? null },
+        entityData: { ...entity, ...writtenFields, assigned_to: state['assignedTo'] ?? null, assigned_team: state['assignedTeam'] ?? null },
         updateField: async (entityId, field, value) => {
           assertStepFieldValue(metas, c.entityType, field, value, `update_field of step "${toStep}"`, { allowTemplate: false })
           await writeTicketField(session, c.tenantId, c.entityType, entityId, field, value)
@@ -284,14 +322,6 @@ export async function fireStepDeadline(c: StepDeadlineCandidate, now: Date): Pro
     }
     if (result.actionErrors?.length) {
       log.error({ tenantId: c.tenantId, entityId: c.entityId, toStep, actionErrors: result.actionErrors }, '[step-deadline] ticket spostato, ma alcune azioni del passo di arrivo non sono riuscite')
-    }
-
-    for (const { field, value } of values) {
-      const written = await writeTicketField(session, c.tenantId, c.entityType, c.entityId, field, value)
-      if (c.entityType !== 'change' && c.entityType !== 'kb_article') {
-        const { publishTicketUpdated } = await import('./ticketUpdated.js')
-        await publishTicketUpdated({ tenantId: c.tenantId, userId: AUTOMATION_ACTOR }, c.entityType as AutomationEntityType, c.entityId, written.before, written.after)
-      }
     }
 
     await recordOutcome(c, 'moved', 'deadline', null, toStep, now)

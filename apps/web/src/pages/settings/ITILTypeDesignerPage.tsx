@@ -97,7 +97,7 @@ export function ITILTypeDesignerPage() {
                   {h.activeTab === 'settings' && <ITILTypeSettings settingsForm={settingsForm} setSettingsForm={h.setSettingsForm} settingsSaving={h.settingsSaving} onSaveSettings={h.handleSaveSettings} FallbackIcon={FallbackIcon} />}
                   {h.activeTab === 'fields' && <ITILTypeFields typeId={selectedType.id} typeName={selectedType.name} fields={selectedType.fields} editingFieldId={h.editingFieldId} setEditingFieldId={h.setEditingFieldId} addingField={h.addingField} setAddingField={h.setAddingField} onSaveField={h.handleSaveField} onDeleteField={h.handleDeleteField} enumTypesData={h.enumTypesData} />}
                   {h.activeTab === 'ciExclusions' && <ITILTypeCIExclusions ticketType={selectedType.name} ciTypes={h.ciTypesData?.ciTypes ?? []} />}
-                  {h.activeTab === 'rules' && <ITILTypeRules entityType={selectedType.name} fields={selectedType.fields.map((f) => ({ name: f.name, label: f.label, fieldType: f.fieldType, enumValues: f.enumValues, enumTypeName: f.enumTypeName }))} workflowSteps={h.ITIL_WORKFLOW_STEPS[selectedType.name] ?? []} />}
+                  {h.activeTab === 'rules' && <ITILTypeRules entityType={selectedType.name} fields={selectedType.fields.map((f) => ({ name: f.name, label: f.label, fieldType: f.fieldType, enumValues: f.enumValues, enumTypeName: f.enumTypeName }))} />}
                   {h.activeTab === 'preview' && <ITILTypePreview selectedType={selectedType} setActiveTab={h.handleTabChange} />}
                 </div>
               </div>

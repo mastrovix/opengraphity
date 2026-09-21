@@ -8,8 +8,9 @@ import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import type { GraphQLContext } from '../../context.js'
-import { mapTeam } from '../../lib/mappers.js'
+import { mapTeam, mapUser } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { orderByOrThrow } from '../../lib/sortField.js'
 import { audit } from '../../lib/audit.js'
 import { cache } from '../../lib/cache.js'
 import { loadMetamodel } from '@opengraphity/schema-generator'
@@ -37,8 +38,8 @@ async function teams(_: unknown, args: { filters?: string; sortField?: string; s
   return withSession(async (session) => {
     const params: Record<string, unknown> = { tenantId: ctx.tenantId }
     const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, TEAM_ALLOWED_FIELDS, 't') : ''
-    const orderBy = TEAM_SORT_WHITELIST[args.sortField ?? ''] ?? 't.name'
-    const orderDir = args.sortDirection === 'desc' ? 'DESC' : 'ASC'
+    // A-22: nessun ordine diverso in silenzio.
+    const orderBy = orderByOrThrow(TEAM_SORT_WHITELIST, args.sortField, args.sortDirection, 't.name ASC', 'teams(sortField)')
     // Prefetch members / owned+supported CIs / manager with pattern
     // comprehensions: one query, no per-team N+1 and no cartesian blow-up
     // (each comprehension returns an independent list).
@@ -50,7 +51,7 @@ async function teams(_: unknown, args: { filters?: string; sortField?: string; s
         [ (t)<-[:OWNED_BY]-(oci) WHERE oci.tenant_id = $tenantId | { props: properties(oci), label: head([l IN labels(oci) WHERE l <> 'ConfigurationItem']) } ] as ownedCIs,
         [ (t)<-[:SUPPORTED_BY]-(sci) WHERE sci.tenant_id = $tenantId | { props: properties(sci), label: head([l IN labels(sci) WHERE l <> 'ConfigurationItem']) } ] as supportedCIs,
         [ (t)-[:MANAGED_BY]->(mgr:User) | properties(mgr) ] as managers
-      ORDER BY ${orderBy} ${orderDir}
+      ORDER BY ${orderBy}
     `
     const rows = await runQuery<{ props: Props; members: Props[]; ownedCIs: { props: Props; label: string }[]; supportedCIs: { props: Props; label: string }[]; managers: Props[] }>(session, cypher, params)
     const mapCIRow = (c: { props: Props; label: string }) => { c.props['type'] = ciTypeFromLabels(ctx.tenantId, [c.label]); return mapCI(c.props) }
@@ -265,7 +266,11 @@ async function teamMembers(parent: { id: string; _members?: Props[] }, _: unknow
       ORDER BY u.name
     `
     const rows = await runQuery<{ props: Props }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
-    return rows.map((r) => r.props)
+    // `mapUser`, non le proprietà grezze (revisione totale · B-22): il tipo
+    // `User` ha `tenantId` e `createdAt` non nullabili e le proprietà del nodo
+    // sono snake_case, quindi chi chiedeva `members { tenantId createdAt }`
+    // riceveva un errore non-null.
+    return rows.map((r) => mapUser(r.props))
   })
 }
 
@@ -310,7 +315,8 @@ async function teamManager(parent: { id: string; _manager?: Props | null }, _: u
       MATCH (t:Team {id: $id, tenant_id: $tenantId})-[:MANAGED_BY]->(u:User)
       RETURN properties(u) AS props
     `, { id: parent.id, tenantId: ctx.tenantId })
-    return row ? row.props : null
+    // B-22: come per i membri, il mapper del tipo `User`.
+    return row ? mapUser(row.props) : null
   })
 }
 

@@ -75,7 +75,7 @@ export function PortalHeader({ userName }: Props) {
               <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
                 {/* Il nome si vede quando l'organizzazione ne ha scelto uno, anche senza logo. */}
                 {(brand.logoUrl || !brand.isDefault) && <span style={{ fontSize: 13, fontWeight: 700, color: colors.slateDark }}>{brand.displayName}</span>}
-                <span style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>{t('portal.title')}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: colors.slateDark }}>{t('portal.title')}</span>
               </span>
             </>
           )}
@@ -139,7 +139,7 @@ export function PortalHeader({ userName }: Props) {
               }}>
                 {initials(userName)}
               </div>
-              <span style={{ fontSize: 10, color: colors.slateDark, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 12, color: colors.slateDark, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {userName}
               </span>
               <ChevronDown size={14} style={{ color: colors.slateLight }} />
@@ -163,7 +163,7 @@ export function PortalHeader({ userName }: Props) {
               >
                 <button
                   onClick={openProfile}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: colors.slateDark }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: colors.slateDark }}
                 >
                   <User size={14} style={{ color: colors.slate }} />
                   {t('common.profile')}
@@ -173,7 +173,7 @@ export function PortalHeader({ userName }: Props) {
                 <div style={{ height: 1, background: colors.border }} />
                 <button
                   onClick={logout}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: colors.danger }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: colors.danger }}
                 >
                   <LogOut size={14} />
                   {t('common.logout')}

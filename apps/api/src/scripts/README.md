@@ -8,10 +8,16 @@ Quelli senza script npm: `pnpm --filter @opengraphity/api exec tsx src/scripts/<
 Regole comuni (`lib/scriptArgs.ts`, `lib/runScript.ts`):
 
 - **Tenant sempre esplicito**: `--tenant=<slug>` (= `Tenant.id`), nessun default.
+  `resolveTenantArg` accetta anche `--tenant-id` e `--slug`, le forme che alcuni
+  script storici leggevano a mano e che restano nei comandi in giro
+  (revisione totale · H-45).
 - **Cancellazioni solo con conferma**: gli script marcati *distruttivo* richiedono `--yes-delete`.
 - **Seed demo rifiutati in produzione** (`NODE_ENV=production`).
 - **Password mai in argv**: `--password-stdin` oppure password temporanea generata e stampata una volta.
-- Exit code 1 su qualsiasi errore; il driver Neo4j viene chiuso dal runner (niente `process.exit(0)` nei `finally`).
+- Exit code 1 su qualsiasi errore; il driver Neo4j viene chiuso dal runner
+  (niente `process.exit(0)`, nemmeno alla fine: tronca i log asincroni di pino).
+  Revisione totale · H-45: dodici script non usavano `runScript` e chiudevano da
+  soli — ora ci passano tutti.
 
 ## Amministrazione tenant / utenti
 

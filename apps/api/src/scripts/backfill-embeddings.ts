@@ -9,9 +9,10 @@
  * must not be reported as success. Progress is logged per batch.
  */
 import { aiFeatureEnabled } from '../lib/aiSettings.js'
-import { getSession, runQuery, closeDriver } from '@opengraphity/neo4j'
+import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, incidentEmbeddingText, kbEmbeddingText } from '../services/embeddings.js'
 import { ensureVectorIndexes } from '../jobs/embeddingWorker.js'
+import { runScript } from './lib/runScript.js'
 
 const BATCH = 20
 
@@ -76,10 +77,6 @@ async function main(): Promise<void> {
   console.log(`[backfill] DONE — incidents: ${incidents}, kb articles: ${articles}`)
 }
 
-main()
-  .then(() => closeDriver())
-  .then(() => process.exit(0))
-  .catch((err: unknown) => {
-    console.error('[backfill] FAILED:', err)
-    process.exit(1)
-  })
+// H-45: il runner uniforme chiude il driver e mette l'exit code; il
+// `process.exit(0)` finale troncava i log asincroni dell'ultima riga.
+runScript('backfill-embeddings', main)

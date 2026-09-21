@@ -18,6 +18,7 @@ import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { GET_PROBLEM, GET_USERS, GET_TEAMS, GET_ALL_CIS } from '@/graphql/queries'
+import { GET_PROBLEM_DOSSIER } from '@/graphql/queries/proposals'
 import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import {
   UPDATE_PROBLEM,
@@ -43,10 +44,11 @@ import { CommentsSection } from '@/components/ticket/CommentsSection'
 import { UnifiedLinkedTickets, type LinkedTicketItem } from '@/components/UnifiedLinkedTickets'
 import { WatcherBar } from '@/components/WatcherBar'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
+import { TicketTasksSection } from '@/components/ticket/TicketTasksSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { keycloak } from '@/lib/keycloak'
 import { downloadPdf } from '@/lib/downloadPdf'
-import { FileDown, Loader2, Trash2 } from 'lucide-react'
+import { FileDown, Loader2, Trash2, FileSearch, Copy, Check } from 'lucide-react'
 import { DetailField } from '@/components/ui/DetailField'
 import { Input, Select, Textarea } from '@/components/ui/FormControls'
 import { PhaseBadge } from '@/components/ui/badges'
@@ -162,6 +164,23 @@ export function ProblemDetailPage() {
   const [timelineOpen,   setTimelineOpen]   = useState(true)
 
   const [exportingPdf, setExportingPdf] = useState(false)
+
+  /*
+   * IL FASCICOLO D'INDAGINE (20 set 2026).
+   *
+   * Esiste solo per i Problem nati dall'Autoanalisi della piattaforma: per
+   * tutti gli altri il server risponde vuoto e il bottone non compare. Un
+   * bottone che su 99 problem su 100 darebbe una pagina vuota è peggio di
+   * un bottone che non c'è.
+   */
+  const [fascicoloAperto, setFascicoloAperto] = useState(false)
+  const [copiato, setCopiato] = useState(false)
+  const { data: dossierData } = useQuery<{ problemDossier: string | null }>(GET_PROBLEM_DOSSIER, {
+    variables: { problemId: id ?? '' },
+    skip: !id,
+    fetchPolicy: 'cache-and-network',
+  })
+  const fascicolo = dossierData?.problemDossier ?? null
 
   const { can } = useMe()
   const canEditCustomFields = can('ticket.work')
@@ -337,6 +356,15 @@ export function ProblemDetailPage() {
       />
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        {fascicolo && (
+          <Button
+            variant="secondary"
+            icon={<FileSearch size={13} />}
+            onClick={() => { setCopiato(false); setFascicoloAperto(true) }}
+          >
+            {t('pages.problemDetail.dossier')}
+          </Button>
+        )}
         <Button
           variant="secondary"
           disabled={exportingPdf}
@@ -414,7 +442,8 @@ export function ProblemDetailPage() {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <Select value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
+                    {/* F-36: la Select ha un nome accessibile (era senza etichetta). */}
+                    <Select aria-label={t('detail.assignedTeam')} value={selectedTeamId} onChange={(e) => setSelectedTeamId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
                       <option value="">{t('detail.selectTeam')}</option>
                       {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                     </Select>
@@ -455,7 +484,7 @@ export function ProblemDetailPage() {
                   const teamUsers = users.filter((u) => u.teams?.some((tm) => tm.id === problem.assignedTeam!.id))
                   return (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <Select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
+                      <Select aria-label={t('detail.assignee')} value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} style={{ padding: '7px 10px', border: '1px solid var(--border)', fontSize: 'var(--font-size-card-title)', background: 'var(--surface)' }}>
                         <option value="">{t('detail.selectUser')}</option>
                         {teamUsers.map((u) => (
                           <option key={u.id} value={u.id}>{u.name}</option>
@@ -579,6 +608,7 @@ export function ProblemDetailPage() {
           />
 
           {/* Allegati */}
+          <TicketTasksSection entityId={problem.id} />
           <AttachmentsSection entityType="problem" entityId={problem.id} defaultOpen={false} />
 
           {/* Commenti */}
@@ -652,6 +682,44 @@ export function ProblemDetailPage() {
           />
         </Modal>
       )}
+
+      {/*
+        IL FASCICOLO (20 set 2026).
+
+        Si legge e si copia: il posto dove si scrive la patch è il
+        repository, non questa pagina. Il prodotto ha visto il guasto e sa
+        quali moduli guardare; il codice sta altrove e lo modifica una
+        persona.
+      */}
+      <Modal
+        open={fascicoloAperto}
+        onClose={() => setFascicoloAperto(false)}
+        title={t('pages.problemDetail.dossierTitle')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setFascicoloAperto(false)}>{t('common.close')}</Button>
+            <Button
+              icon={copiato ? <Check size={13} /> : <Copy size={13} />}
+              onClick={() => {
+                void navigator.clipboard.writeText(fascicolo ?? '').then(
+                  () => { setCopiato(true); toast.success(t('pages.problemDetail.dossierCopied')) },
+                  () => toast.error(t('pages.problemDetail.dossierCopyFailed')),
+                )
+              }}>
+              {t('pages.problemDetail.dossierCopy')}
+            </Button>
+          </>
+        }
+      >
+        <p style={{ margin: '0 0 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+          {t('pages.problemDetail.dossierHelp')}
+        </p>
+        <pre style={{
+          margin: 0, padding: 12, borderRadius: 6, border: '1px solid var(--color-border)',
+          background: 'var(--color-muted)', maxHeight: '55vh', overflow: 'auto',
+          fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+        }}>{fascicolo}</pre>
+      </Modal>
     </PageContainer>
   )
 }

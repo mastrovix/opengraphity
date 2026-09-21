@@ -25,6 +25,7 @@ import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
 import { publishEvent } from '../../lib/publishEvent.js'
 import { listPage } from '../../lib/listLimit.js'
 import { serviceRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
+import { orderByOrThrow } from '../../lib/sortField.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
@@ -49,10 +50,10 @@ export const INCIDENT_SORT_WHITELIST: Record<string, string> = {
 }
 
 function incidentOrderBy(sortField?: string | null, sortDirection?: string | null): string {
-  const col = sortField && INCIDENT_SORT_WHITELIST[sortField]
-  if (!col) return 'i.created_at DESC'
-  const dir = sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
-  return `i.${col} ${dir}`
+  // A-22: un campo non ordinabile è un errore, non un ordine diverso in
+  // silenzio. Le colonne della whitelist sono senza alias: si aggiunge qui.
+  const prefixed = Object.fromEntries(Object.entries(INCIDENT_SORT_WHITELIST).map(([k, v]) => [k, `i.${v}`]))
+  return orderByOrThrow(prefixed, sortField, sortDirection ?? 'desc', 'i.created_at DESC', 'incidents(sortField)')
 }
 
 async function incidents(
@@ -191,9 +192,14 @@ async function updateIncident(
 
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      // La descrizione si può SVUOTARE (revisione totale · B-17): con
+      // «coalesce» null e assente erano la stessa cosa, e chi cancellava un
+      // testo sbagliato lo ritrovava lì dopo il salvataggio. Ora conta se il
+      // campo è presente nell'input. Il titolo no: un ticket senza titolo non
+      // si riconosce in nessun elenco.
       SET i += {
         title:       coalesce($title, i.title),
-        description: coalesce($description, i.description),
+        description: CASE WHEN $descriptionGiven THEN $description ELSE i.description END,
         severity:    coalesce($severity, i.severity),
         impact:      coalesce($impact, i.impact),
         urgency:     coalesce($urgency, i.urgency),
@@ -209,6 +215,8 @@ async function updateIncident(
       tenantId:    ctx.tenantId,
       title:       input.title       ?? null,
       description: input.description ?? null,
+      // B-17: «presente nell'input» distingue il vuoto dall'assenza.
+      descriptionGiven: Object.prototype.hasOwnProperty.call(input, 'description'),
       severity,
       impact,
       urgency,
@@ -229,14 +237,44 @@ async function resolveIncident(
   return incidentService.resolveIncident(args.id, ctx, args.rootCause)
 }
 
+/*
+ * LE ASSEGNAZIONI DICONO CHI, DA CHI E A COSA (20 set 2026, ondata 2 di
+ * «Miglioramento continuo»).
+ *
+ * Prima queste due scrivevano la STESSA riga — `incident.assigned` senza
+ * dettagli — e dal registro non si poteva sapere né a chi era andato il
+ * ticket, né da chi veniva, né se l'assegnazione era a una squadra o a una
+ * persona. Su c-one tutte e 34 le voci avevano `details = NULL`.
+ *
+ * Adesso sono due azioni distinte con il valore prima e dopo. Le voci
+ * storiche restano povere: un registro di conformità non si riscrive.
+ */
 async function assignIncidentToTeam(
   _: unknown,
   args: { id: string; teamId: string },
   ctx: GraphQLContext,
 ) {
-  const result = await incidentService.assignIncidentToTeam(args.id, args.teamId, ctx)
-  void audit(ctx, 'incident.assigned', 'Incident', args.id)
-  return result
+  const { incident, teamName, previousTeamName, unassignedUserName } =
+    await incidentService.assignIncidentToTeam(args.id, args.teamId, ctx)
+  void audit(ctx, 'incident.assigned_team', 'Incident', args.id, {
+    teamId: args.teamId, to: teamName, from: previousTeamName,
+  })
+  /*
+   * CHI PERDE IL TICKET LO DICE IL REGISTRO (20 set 2026).
+   *
+   * Cambiare squadra stacca l'assegnatario che nella squadra nuova non c'è
+   * (`setTicketTeam`, regola M-10). Finora lo diceva solo la timeline del
+   * ticket: dal registro, una persona si vedeva sparire il lavoro senza che
+   * nessuna riga lo raccontasse, e «quante assegnazioni cadono per un cambio
+   * di squadra» non era una domanda rispondibile. `reason` distingue questa
+   * voce dal distacco che qualcuno ha chiesto a mano.
+   */
+  if (unassignedUserName) {
+    void audit(ctx, 'incident.unassigned_user', 'Incident', args.id, {
+      userId: null, to: null, from: unassignedUserName, reason: 'team_changed',
+    })
+  }
+  return incident
 }
 
 async function assignIncidentToUser(
@@ -244,9 +282,21 @@ async function assignIncidentToUser(
   args: { id: string; userId: string | null },
   ctx: GraphQLContext,
 ) {
-  const result = await incidentService.assignIncidentToUser(args.id, args.userId, ctx)
-  void audit(ctx, 'incident.assigned', 'Incident', args.id)
-  return result
+  const { incident, userName, previousUserName } = await incidentService.assignIncidentToUser(args.id, args.userId, ctx)
+  /*
+   * Un distacco che non stacca nessuno non si scrive (20 set 2026): togliere
+   * l'assegnatario a un ticket che non ne aveva è un'operazione legittima e
+   * senza effetto, e una voce `unassigned_user` con `from: null` e `to: null`
+   * racconta un fatto che non è successo. Il registro dell'ondata 2 esiste
+   * perché lo si possa leggere: il rumore che assomiglia a un evento è peggio
+   * di una voce in meno.
+   */
+  if (args.userId !== null || previousUserName !== null) {
+    void audit(ctx, args.userId === null ? 'incident.unassigned_user' : 'incident.assigned_user', 'Incident', args.id, {
+      userId: args.userId, to: userName, from: previousUserName,
+    })
+  }
+  return incident
 }
 
 async function addAffectedCI(
@@ -419,10 +469,24 @@ async function incidentImpactedApplications(
     // CM-3: le relazioni dei servizi del tenant (anche INSTALLED_ON,
     // USES_CERTIFICATE e quelle del cliente), non due scritte qui.
     const relPattern = await serviceRelPatternForTenant(ctx.tenantId)
+    /**
+     * Le CANDIDATE prima dei cammini (revisione totale · B-34): la query
+     * partiva da OGNI applicazione del cliente e cercava il cammino più breve
+     * verso ogni CI colpito — un prodotto cartesiano (500 applicazioni × 5 CI
+     * = 2.500 `shortestPath` a ogni apertura del dettaglio). Ora si risale
+     * dai CI colpiti, che sono pochi, per trovare le applicazioni davvero
+     * collegate; il cammino più breve si calcola solo per quelle.
+     */
     const cypher = `
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:AFFECTED_BY]->(affected)
       WHERE affected.tenant_id = $tenantId
-      MATCH (app) WHERE app.tenant_id = $tenantId AND 'Application' IN labels(app)
+      WITH collect(DISTINCT affected) AS targets
+      UNWIND targets AS target
+      MATCH (candidate)-[:${relPattern}*0..5]->(target)
+      WHERE candidate.tenant_id = $tenantId AND 'Application' IN labels(candidate)
+      WITH targets, collect(DISTINCT candidate) AS apps
+      UNWIND apps AS app
+      UNWIND targets AS affected
       MATCH p = shortestPath( (app)-[:${relPattern}*0..5]->(affected) )
       WITH app, affected, p
       ORDER BY length(p) ASC

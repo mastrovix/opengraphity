@@ -7,7 +7,8 @@ export function problemSDL(): string {
     number: String!
     title: String!
     description: String
-    priority: String!
+    """Nullabile: un problem senza priorità si mostra senza priorità, non «medium» (revisione totale · B-25)."""
+    priority: String
     impact: String
     urgency: String
     """

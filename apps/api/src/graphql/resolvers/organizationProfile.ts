@@ -12,6 +12,7 @@ import { logoUrlOf, setTenantBrandTexts, tenantBrand } from '../../lib/brand.js'
 import { setTicketNumbering, ticketNumbering, type TicketNumbering } from '../../lib/ticketNumbering.js'
 import { PLATFORM_ATTACHMENT_EXTENSIONS, attachmentPolicy, setAttachmentPolicy, type AttachmentPolicy } from '../../lib/attachmentPolicy.js'
 import { aiSettings, setAISettings, type AISettings } from '../../lib/aiSettings.js'
+import { getScriptingPlan, setScriptingEnabled } from '../../lib/scriptingPlan.js'
 
 const brandSettingsView = (tenantId: string, b: Awaited<ReturnType<typeof tenantBrand>>) => ({
   displayName: b.displayName, senderName: b.senderName, replyTo: b.replyTo,
@@ -39,6 +40,10 @@ export const organizationProfileResolvers = {
     ticketNumbering: async (_: unknown, __: unknown, ctx: GraphQLContext) => numberingView(await ticketNumbering(ctx.tenantId)),
     attachmentPolicy: async (_: unknown, __: unknown, ctx: GraphQLContext) => policyView(await attachmentPolicy(ctx.tenantId)),
     aiSettings: async (_: unknown, __: unknown, ctx: GraphQLContext) => aiView(await aiSettings(ctx.tenantId)),
+    scriptingSettings: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
+      const { plan, enabled } = await getScriptingPlan(ctx.tenantId)
+      return { enabled, plan }
+    },
   },
   Mutation: {
     setTenantName: async (_: unknown, args: { name: string }, ctx: GraphQLContext) => {
@@ -67,6 +72,18 @@ export const organizationProfileResolvers = {
       const p = await setAttachmentPolicy(ctx.tenantId, { ...args.input })
       void audit(ctx, 'tenant.attachment_policy.updated', 'Tenant', ctx.tenantId, { maxSizeMb: p.maxSizeMb, extensions: p.extensions })
       return policyView(p)
+    },
+    /**
+     * L'interruttore degli script (ondata 6). Sta in Organizzazione e non nel
+     * piano: una formula di un campo calcolato è uno script, e legarla al piano
+     * vorrebbe dire campi calcolati spenti su metà dei tenant.
+     */
+    setScriptingEnabled: async (_: unknown, args: { enabled: boolean }, ctx: GraphQLContext) => {
+      requirePermission(ctx, 'config.organization')
+      const before = await getScriptingPlan(ctx.tenantId)
+      const after = await setScriptingEnabled(ctx.tenantId, args.enabled === true)
+      void audit(ctx, 'tenant.scripting.updated', 'Tenant', ctx.tenantId, { from: before.enabled, to: after.enabled })
+      return { enabled: after.enabled, plan: after.plan }
     },
     setAISettings: async (_: unknown, args: { input: AISettings }, ctx: GraphQLContext) => {
       requirePermission(ctx, 'config.organization')

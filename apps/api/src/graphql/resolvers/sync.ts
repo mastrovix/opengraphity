@@ -180,6 +180,7 @@ export const syncResolvers = {
 
         type Row = { p: Props; total: unknown }
         const rows = await runQuery<Row>(session,
+          // tenant-ok: `filters` parte da `n.tenant_id = $tenantId` (riga sopra)
           `MATCH (n:SyncConflict) WHERE ${filters.join(' AND ')}
            WITH count(n) AS total, collect(n) AS all
            UNWIND all AS n
@@ -408,6 +409,17 @@ export const syncResolvers = {
       const syncType = args.syncType ?? 'manual'
 
       return withSession(async (session) => {
+        /**
+         * La sorgente deve ESISTERE nel tenant (revisione totale · D-17):
+         * senza controllo si creava una run `queued` e si accodava il job, che
+         * poi falliva prima di aggiornare lo stato — la run restava «in coda»
+         * per sempre nell'elenco, e l'admin non capiva cosa aspettasse.
+         */
+        const source = await runQueryOne<{ id: string }>(session,
+          'MATCH (n:SyncSource {id: $sourceId, tenant_id: $tenantId}) RETURN n.id AS id',
+          { sourceId: args.sourceId, tenantId: ctx.tenantId })
+        if (!source) throw new NotFoundError('SyncSource', args.sourceId)
+
         await session.executeWrite(tx => tx.run(
           `CREATE (r:SyncRun {
             id: $runId, source_id: $sourceId, tenant_id: $tenantId,
@@ -620,11 +632,16 @@ export const syncResolvers = {
           { id: args.conflictId, tenantId: ctx.tenantId, resolution: args.resolution, now },
         ))
 
+        // La rilettura è SCOPATA al tenant come tutte le altre (revisione
+        // totale · B-31): era l'unica query del file che leggeva un conflitto
+        // per solo id.
         const row = await runQueryOne<{ p: Props }>(session,
-          `MATCH (c:SyncConflict {id: $id}) RETURN properties(c) AS p`, { id: args.conflictId },
+          `MATCH (c:SyncConflict {id: $id, tenant_id: $tenantId}) RETURN properties(c) AS p`,
+          { id: args.conflictId, tenantId: ctx.tenantId },
         )
+        if (!row) throw new NotFoundError('SyncConflict', args.conflictId)
         void audit(ctx, 'sync_conflict.resolved', 'SyncConflict', args.conflictId, { resolution: args.resolution })
-        return mapConflict(row!.p)
+        return mapConflict(row.p)
       }, true)
     },
 

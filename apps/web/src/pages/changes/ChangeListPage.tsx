@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { pausedWhenHidden } from '@/lib/polling'
 import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery } from '@apollo/client/react'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -17,6 +18,7 @@ import { QueryError } from '@/components/QueryError'
 import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { exportToCsv } from '@/lib/csvExport'
 import { apolloClient } from '@/lib/apollo'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { formatDate } from '@/lib/datetime'
 
@@ -67,17 +69,19 @@ export function ChangeListPage() {
   const currentStep = extractStepFromFilter(filterGroup)
   const priorityFilter = extractFieldFromFilter(filterGroup, 'priority')
 
-  const { steps: wfSteps, byName: stepByName } = useWorkflowSteps('change')
+  const { steps: wfSteps, byName: stepByName, labelFor } = useWorkflowSteps('change')
+  // I valori del filtro sono quelli del CLIENTE (revisione totale · F-6): la
+  // priorità era cablata a quattro valori con etichette inglesi letterali — un
+  // cliente che aggiunge `emergency` non poteva filtrarla — e l'etichetta del
+  // filtro sui passi era il letterale «Step» col nome tecnico del passo.
+  const { valuesOf, labelOf } = useDomainVocabularies()
   const filterFields: FieldConfig[] = [
-    { key: 'currentStep', label: 'Step', type: 'enum',
-      options: wfSteps.map((s) => ({ value: s.name, label: s.label || s.name })) },
+    { key: 'currentStep', label: t('pages.changes.phase'), type: 'enum',
+      options: wfSteps.map((s) => ({ value: s.name, label: labelFor(s.name) ?? s.name })) },
     { key: 'priority', label: t('admin.sla.priority'), type: 'enum',
-      options: [
-        { value: 'critical', label: 'Critical' },
-        { value: 'high',     label: 'High'     },
-        { value: 'medium',   label: 'Medium'   },
-        { value: 'low',      label: 'Low'      },
-      ] },
+      // `valuesOf` è null finché i vocabolari non si conoscono: nessun valore
+      // inventato, il filtro resta senza opzioni per un istante.
+      options: (valuesOf('priority') ?? []).map((v) => ({ value: v, label: labelOf('priority', v) ?? v })) },
   ]
 
   // Ordinamento sul server: le colonne erano dichiarate ordinabili e il clic
@@ -91,7 +95,8 @@ export function ChangeListPage() {
   const { data, loading, error, refetch } = useQuery<{ changes: { items: ChangeRow[]; total: number } }>(GET_CHANGES, {
     variables: { currentStep, priority: priorityFilter, limit: PAGE_SIZE, offset: page * PAGE_SIZE, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
-    pollInterval: 30_000,   // keep the list fresh without manual reload
+    // F-21: il polling si ferma quando la scheda è in background.
+    ...pausedWhenHidden(30_000),
   })
 
   useEffect(() => {
@@ -143,7 +148,8 @@ export function ChangeListPage() {
       key:    'priority',
       label:  t('admin.sla.priority'),
       width:  '120px',
-      render: (v) => v ? <SeverityBadge value={v as string} /> : <span style={{ color: 'var(--color-slate-light)' }}>—</span>,
+      // F-5: la priorità viene dal vocabolario `priority`.
+      render: (v) => v ? <SeverityBadge value={v as string} vocabulary="priority" /> : <span style={{ color: 'var(--color-slate-light)' }}>—</span>,
     },
     {
       key:    'aggregateRiskScore',
@@ -194,7 +200,11 @@ export function ChangeListPage() {
           onExport={async () => {
             const res = await apolloClient.query<{ changes: { items: ChangeRow[] } }>({
               query: GET_CHANGES,
-              variables: { currentStep, limit: 10000, offset: 0 },
+              // L'export porta gli STESSI filtri dello schermo (revisione
+              // totale · F-25): la priorità non veniva passata, quindi con
+              // «solo critical» attivo il file conteneva tutte le priorità,
+              // col nome del filtro nel titolo.
+              variables: { currentStep, priority: priorityFilter, limit: 10000, offset: 0 },
               fetchPolicy: 'network-only',
             })
             const rows = (res.data?.changes?.items ?? []).map((r) => ({

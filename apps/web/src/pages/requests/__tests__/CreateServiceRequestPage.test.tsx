@@ -61,4 +61,39 @@ describe('CreateServiceRequestPage', () => {
     await user.selectOptions(await screen.findByRole('combobox', { name: /catalog/i }), 'cat-1')
     expect(screen.getByLabelText(/Priority/)).toHaveValue('high')
   })
+
+  /*
+   * CAMBIANDO VOCE LA DESCRIZIONE SEGUE (20 set 2026, dal giro nel browser).
+   *
+   * Era protetta solo dal «vuoto»: quella messa dalla voce di PRIMA
+   * sopravviveva al cambio, e una richiesta di accesso nasceva con scritto
+   * «Richiesta di un portatile aziendale». Chi guarda due voci prima di
+   * decidere mandava una descrizione che parla di un altro servizio.
+   */
+  const dueVoci = (): GqlMock[] => [
+    { request: { query: GET_SERVICE_CATALOG_ADMIN }, result: { data: { serviceCatalogItems: [
+      { __typename: 'ServiceCatalogItem', id: 'cat-1', name: 'Nuovo portatile', description: 'Richiesta di un portatile aziendale', category: 'Hardware', requiresApproval: false, priority: 'high', active: true, createdAt: 'x' },
+      { __typename: 'ServiceCatalogItem', id: 'cat-2', name: 'Accesso applicazione', description: 'Abilitazione a un applicativo', category: 'Accessi', requiresApproval: false, priority: 'medium', active: true, createdAt: 'x' },
+    ] } }, maxUsageCount: Number.POSITIVE_INFINITY },
+  ]
+
+  it('cambiando voce la descrizione automatica diventa quella della voce nuova', async () => {
+    const { user } = renderWithProviders(<CreateServiceRequestPage />, { mocks: dueVoci() })
+    const tendina = await screen.findByRole('combobox', { name: /catalog/i })
+    await user.selectOptions(tendina, 'cat-1')
+    expect(screen.getByLabelText(/Description/)).toHaveValue('Richiesta di un portatile aziendale')
+    await user.selectOptions(tendina, 'cat-2')
+    expect(screen.getByLabelText(/Description/)).toHaveValue('Abilitazione a un applicativo')
+  })
+
+  it('una descrizione SCRITTA A MANO non si perde cambiando voce', async () => {
+    const { user } = renderWithProviders(<CreateServiceRequestPage />, { mocks: dueVoci() })
+    const tendina = await screen.findByRole('combobox', { name: /catalog/i })
+    await user.selectOptions(tendina, 'cat-1')
+    const descrizione = screen.getByLabelText(/Description/)
+    await user.clear(descrizione)
+    await user.type(descrizione, 'Serve per la nuova assunta')
+    await user.selectOptions(tendina, 'cat-2')
+    expect(descrizione).toHaveValue('Serve per la nuova assunta')
+  })
 })

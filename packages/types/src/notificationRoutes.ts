@@ -26,6 +26,13 @@ export const NOTIFICATION_ENTITY_PATHS = {
   event:           '/events/:id',
   service:         '/monitoring/services/:id',
   inbound_webhook: '/monitoring/sources/:id',
+  /**
+   * L'articolo si apre per SLUG, ma notifiche e approvazioni portano l'ID:
+   * la rotta `/kb-articles/:id` del web risolve e reindirizza (revisione
+   * totale · B-21). Prima `kb_article` non aveva percorso e la notifica
+   * «articolo pubblicato» non era cliccabile.
+   */
+  kb_article:      '/kb-articles/:id',
 } as const
 
 export type NotificationEntityType = keyof typeof NOTIFICATION_ENTITY_PATHS

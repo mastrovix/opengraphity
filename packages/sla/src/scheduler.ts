@@ -220,14 +220,30 @@ async function scheduleJob(
 
   const queue = getQueue()
 
-  // Remove stale job with the same ID (idempotency)
+  /**
+   * Il job vecchio con lo stesso id si toglie per idempotenza, ma un job
+   * ATTIVO non si può rimuovere (revisione totale · E-22): BullMQ rifiuta
+   * `remove()` su un job che un worker ha in mano, quindi la ripianificazione
+   * lanciava e l'evento che l'aveva chiesta (una ripresa dalla pausa, un
+   * cambio di policy) finiva nei falliti. Se il job sta girando non c'è
+   * niente da togliere: sta già facendo il suo, e quello nuovo lo si accoda
+   * con un id distinto per non perderlo.
+   */
   const existing = await queue.getJob(jobId)
+  let scheduledId = jobId
   if (existing) {
-    await existing.remove()
+    try {
+      await existing.remove()
+    } catch (err) {
+      const state = await existing.getState().catch(() => 'unknown')
+      if (state !== 'active') throw err
+      scheduledId = `${jobId}:re${String(Date.now())}`
+      console.warn(`[sla:scheduler] ${jobName} (${jobId}) is running: the new one is queued as ${scheduledId}`)
+    }
   }
 
-  await queue.add(jobName, data, { jobId, delay: delayMs })
-  console.log(`[sla:scheduler] Scheduled ${jobName} (${jobId}) in ${Math.round(delayMs / 1000)}s`)
+  await queue.add(jobName, data, { jobId: scheduledId, delay: delayMs })
+  console.log(`[sla:scheduler] Scheduled ${jobName} (${scheduledId}) in ${Math.round(delayMs / 1000)}s`)
 }
 
 export async function scheduleWarning(status: SLAStatus): Promise<void> {

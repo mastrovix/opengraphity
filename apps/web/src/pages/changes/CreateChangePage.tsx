@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, useEffect } from 'react'
+import { useId, useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
 import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -7,8 +7,9 @@ import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageContainer } from '@/components/PageContainer'
+import { ChangeTypeModal } from './components/ChangeTypeModal'
 import { CREATE_CHANGE } from '@/graphql/mutations'
-import { GET_CHANGES, GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT, GET_PRE_APPROVED_CHANGE_TYPES, GET_CI_GROUPS_BY_ID } from '@/graphql/queries'
+import { GET_ALL_CIS, GET_USERS, GET_PROBLEM, GET_INCIDENT, GET_PRE_APPROVED_CHANGE_TYPES, GET_CI_GROUPS_BY_ID } from '@/graphql/queries'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
@@ -86,6 +87,13 @@ export function CreateChangePage() {
   // default: si sceglie (verifica «Cosa resta cablato», ondata 1). Prima tre
   // bottoni fissi standard/normal/emergency con `normal` preselezionato.
   const [changeType, setChangeType]   = useState('')
+  /*
+   * IL TIPO SI SCEGLIE PRIMA (20 set 2026, richiesta del proprietario).
+   * Il modale si apre arrivando qui e non si chiude finché non si sceglie o
+   * non si esce: il tipo decide se la change salta la catena di
+   * approvazioni, e non è una domanda da mettere in mezzo alle altre.
+   */
+  const [modaleTipoAperto, setModaleTipoAperto] = useState(true)
   const { entriesOf } = useDomainVocabularies()
   const changeTypes = entriesOf('change_type')
   const { data: preApprovedData } = useQuery<{ preApprovedChangeTypes: { types: string[] } }>(
@@ -105,7 +113,9 @@ export function CreateChangePage() {
   useEffect(() => {
     if (requestSource && !prefilled) {
       setSelectedCIs((requestSource.affectedCIs ?? []).map((ci) => ({ id: ci.id, name: ci.name, type: ci.type, environment: ci.environment, ownerGroup: ci.ownerGroup, supportGroup: ci.supportGroup })))
-      const label = requestSource.kind === 'problem' ? 'problem' : 'incident'
+      // F-27: il tipo si traduce («Risolvi problem PRB…» in un'interfaccia
+      // italiana era il valore grezzo interpolato nel titolo).
+      const label = t(requestSource.kind === 'problem' ? 'entities.problem' : 'entities.incident')
       setTitle(t('pages.createChange.resolutionTitle', { kind: label, number: requestSource.number, title: requestSource.title }))
       setPrefilled(true)
     }
@@ -127,7 +137,15 @@ export function CreateChangePage() {
     .filter(ci => !selectedCIs.find(s => s.id === ci.id))
 
   const [createChange, { loading }] = useMutation<{ createChange: { id: string; code: string } }>(CREATE_CHANGE, {
-    refetchQueries: [{ query: GET_CHANGES, variables: { phase: null, limit: 50, offset: 0 } }],
+    /**
+     * Il refetch per NOME dell'operazione (revisione totale · F-14):
+     * `[{ query: GET_X }]` senza variabili rinfresca solo la voce di cache
+     * SENZA variabili, che nessuna lista usa (tutte passano limite, pagina e
+     * filtri) — quindi dopo una creazione l'elenco restava quello di prima.
+     * Col nome, Apollo rinfresca ogni query attiva con quel nome, qualunque
+     * siano le sue variabili.
+     */
+    refetchQueries: ['GetChanges'],
     onCompleted: (data) => {
       toast.success(t('toast.change.created', { code: data.createChange.code }))
       navigate(`/changes/${data.createChange.id}`, { state: { refresh: true } })
@@ -150,8 +168,27 @@ export function CreateChangePage() {
    */
   const apollo = useApolloClient()
   const [rechecking, setRechecking] = useState(false)
-  const recheckGroups = async () => {
-    const stale = selectedCIs.filter(missingGroups)
+  /*
+   * LA SELEZIONE DI ADESSO, NON QUELLA DI QUANDO L'ASCOLTATORE È NATO
+   * (20 set 2026).
+   *
+   * `recheckGroups` legge `selectedCIs`, e gli ascoltatori di `focus` e
+   * `visibilitychange` si registrano una volta sola (F-26: prima si
+   * registravano a ogni render, due ascoltatori per ogni tasto premuto nel
+   * form). Le due cose insieme facevano un difetto: la funzione catturata
+   * dagli ascoltatori portava con sé la selezione di quel momento, e al
+   * ritorno sulla scheda rileggeva i CI di PRIMA — non quelli che ci sono
+   * adesso. Il lint lo segnalava da allora, come dipendenza mancante.
+   *
+   * Un ref tiene la selezione corrente senza rendere instabile la funzione:
+   * così `recheckGroups` non cambia identità, gli ascoltatori restano
+   * registrati come voleva F-26, e leggono il presente.
+   */
+  const selezioneCorrente = useRef(selectedCIs)
+  useEffect(() => { selezioneCorrente.current = selectedCIs }, [selectedCIs])
+
+  const recheckGroups = useCallback(async () => {
+    const stale = selezioneCorrente.current.filter(missingGroups)
     if (stale.length === 0) return
     setRechecking(true)
     try {
@@ -168,7 +205,9 @@ export function CreateChangePage() {
     } finally {
       setRechecking(false)
     }
-  }
+    // `showError` è un import, non un valore del componente: non è una dipendenza.
+  }, [apollo])
+
   useEffect(() => {
     if (ciWithoutGroups.length === 0) return
     // `focus` quando torna la finestra, `visibilitychange` quando torna la scheda:
@@ -181,7 +220,12 @@ export function CreateChangePage() {
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  })
+    // F-26: l'array di dipendenze mancava, quindi l'effetto si ri-registrava a
+    // OGNI render — due ascoltatori aggiunti e togliati a ogni digitazione nel
+    // form. Dipende da quanti CI sono senza gruppo, e da `recheckGroups`, che
+    // ora è stabile (vedi il ref qui sopra): quindi si registra ancora una
+    // volta sola, ma senza portarsi dietro una selezione vecchia.
+  }, [ciWithoutGroups.length, recheckGroups])
   const canSubmit = title.trim() !== '' && why.trim() !== '' && what.trim() !== '' && changeType !== '' && selectedCIs.length > 0 && ciWithoutGroups.length === 0 && !loading
 
   const handleSubmit = () => {
@@ -211,6 +255,18 @@ export function CreateChangePage() {
 
   return (
     <PageContainer style={{ minHeight: '100%', backgroundColor: 'var(--color-slate-bg)', paddingBottom: 64 }}>
+      {/*
+        Il tipo PRIMA della form. Uscire senza scegliere riporta alla lista:
+        una change senza tipo non esiste, e lasciare la form aperta e vuota
+        sarebbe peggio che tornare indietro.
+      */}
+      <ChangeTypeModal
+        open={modaleTipoAperto}
+        types={changeTypes}
+        preApproved={preApproved}
+        onPick={(v) => { setChangeType(v); setModaleTipoAperto(false) }}
+        onCancel={() => { if (changeType === '') navigate('/changes'); else setModaleTipoAperto(false) }}
+      />
       <div style={{ maxWidth: 620, margin: '0 auto' }}>
         <button
           type="button"
@@ -277,28 +333,19 @@ export function CreateChangePage() {
             />
           </div>
 
-          {/* TIPO DI CHANGE */}
+          {/* TIPO DI CHANGE — scelto nel modale, qui si legge e si cambia */}
           <div style={{ marginBottom: 20 }}>
             <div style={fieldLabel}>{t('pages.createChange.changeType')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
-            <div role="radiogroup" aria-label={t('pages.createChange.changeType')} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {changeTypes === null && (
-                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</span>
-              )}
-              {changeTypes?.length === 0 && (
-                <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>{t('pages.createChange.noChangeTypes')}</span>
-              )}
-              {changeTypes?.map(({ value, label }) => {
-                const sel = changeType === value
-                return (
-                  <button key={value} type="button" role="radio" aria-checked={sel} onClick={() => setChangeType(value)}
-                    style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
-                      border: `1.5px solid ${sel ? 'var(--color-brand)' : 'var(--color-border)'}`,
-                      background: sel ? palette.info.light : 'var(--color-slate-bg)',
-                      color: sel ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: sel ? 600 : 400 }}>
-                    {label}
-                  </button>
-                )
-              })}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', fontWeight: 600,
+                border: '1.5px solid var(--color-brand)', background: palette.info.light, color: 'var(--color-brand)' }}>
+                {changeTypes?.find((e) => e.value === changeType)?.label ?? changeType}
+              </span>
+              <button type="button" onClick={() => setModaleTipoAperto(true)}
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                  fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', textDecoration: 'underline' }}>
+                {t('pages.createChange.changeTypeChange')}
+              </button>
             </div>
             <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginTop: 6 }}>
               {preApproved !== null && changeTypes !== null && preApproved.length > 0

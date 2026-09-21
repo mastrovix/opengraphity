@@ -35,6 +35,50 @@ export function changeSDL(): string {
     # Valorizzato SOLO dal risultato di executeChangeTransition: azioni di step
     # (SLA, eventi, timer) fallite DOPO che la transizione è stata persistita.
     actionErrors:         [String!]
+    """
+    Le altre change che RILASCIANO su uno stesso CI in una finestra che si
+    sovrappone alla mia. Solo i deploy: due validazioni sullo stesso CI sono
+    due prove, due rilasci sono due mani sulla stessa macchina.
+
+    Campo risolto a parte: costa una lettura dei piani, e la paga solo la
+    pagina che la chiede. Vuoto = nessun conflitto, ed è una risposta —
+    non «non calcolato».
+    """
+    deployConflicts:      ChangeDeployConflicts!
+  }
+
+  """
+  L'esito del confronto: i conflitti, E i piani che non si sono potuti
+  leggere. Un piano illeggibile non deve diventare «nessun conflitto»: chi
+  approva ha chiesto se ce ne sono, e «non ho potuto guardare» è una risposta
+  diversa da «no» (19 set 2026).
+  """
+  type ChangeDeployConflicts {
+    items:           [ChangeDeployConflict!]!
+    """I piani che non si sono aperti, per nome: «CHG00000002 · srv-web-01»."""
+    unreadablePlans: [String!]!
+  }
+
+  """Due change che si incontrano sullo stesso CI mentre rilasciano."""
+  type ChangeDeployConflict {
+    changeId:    ID!
+    code:        String!
+    title:       String!
+    """Il passo in cui si trova l'altra change: dice quanto è imminente."""
+    currentStep: String
+    ciId:        ID!
+    ciName:      String!
+    """La finestra di rilascio di QUESTA change su quel CI."""
+    mine:        DeployWindowRange!
+    """Quella dell'altra."""
+    theirs:      DeployWindowRange!
+    """La parte in comune: le ore in cui si pestano i piedi."""
+    overlap:     DeployWindowRange!
+  }
+
+  type DeployWindowRange {
+    start: String!
+    end:   String!
   }
 
   # Un requisito di approvazione della change.
@@ -132,6 +176,35 @@ export function changeSDL(): string {
     end:   String!
   }
 
+  """Una finestra pianificata nel calendario, col suo task e il suo CI."""
+  type ChangeCalendarEntry {
+    changeId:    ID!
+    code:        String!
+    title:       String!
+    changeType:  String
+    priority:    String
+    """Il passo in cui la change si trova adesso: dice se la finestra e ancora davanti o gia passata."""
+    currentStep: String
+    """Il tipo di finestra: validation oppure release."""
+    kind:        String!
+    start:       String!
+    end:         String!
+    stepTitle:   String!
+    taskCode:    String
+    ciId:        ID!
+    ciName:      String!
+  }
+
+  type ChangeCalendar {
+    entries: [ChangeCalendarEntry!]!
+    """
+    Quanti piani portano passi con date inservibili (vuote, illeggibili o a
+    rovescio): non si possono mettere in calendario, e tacerli farebbe leggere
+    il calendario come completo.
+    """
+    unreadablePlans: Int!
+  }
+
   type DeployStep {
     title:            String!
     validationWindow: TimeWindow!
@@ -178,17 +251,29 @@ export function changeSDL(): string {
     detailParams: String
   }
 
+  """
+  Qualcosa da fare, per «I miei compiti». Erano solo i cinque compiti delle
+  CHANGE; dal 20 set 2026 c'è anche il compito generico (\`kind: "task"\`),
+  che un passo di workflow crea su qualunque ticket. Per questo i campi
+  parlano di ENTITÀ e non di change, e quelli che valgono solo per le change
+  (il CI) possono mancare.
+  """
   type MyTask {
     id:         ID!
     code:       String!
+    """assessment | deploy-plan | validation | deployment | review | task."""
     kind:       String!
     role:       String!
     action:     String!
     status:     String!
-    changeId:   ID!
-    changeCode: String!
-    ciId:       ID!
-    ciName:     String!
+    """Il tipo del ticket: dove porta il link, e come si chiama quello che si apre."""
+    entityType: String!
+    entityId:   ID!
+    """Il numero leggibile del ticket (CHG00000012, INC00000026)."""
+    entityNumber: String!
+    """Il CI del compito: solo per i compiti delle change, che nascono per CI."""
+    ciId:       ID
+    ciName:     String
     phase:      String!
     createdAt:  String!
   }
@@ -288,8 +373,30 @@ export function changeSDL(): string {
   }
 
   extend type Query {
-    changes(currentStep: String, priority: String, limit: Int, offset: Int, sortField: String, sortDirection: String): ChangeList!
+    """
+    «filters»: il JSON del costruttore di filtri, come per incident e problem
+    (revisione totale · F-8). Serve alla ricerca della modale «collega
+    ticket», che prima caricava le 50 più recenti e filtrava nel browser, e
+    all'export CSV, che ora ripete i filtri di schermo.
+    """
+    changes(currentStep: String, priority: String, limit: Int, offset: Int, filters: String, sortField: String, sortDirection: String): ChangeList!
     change(id: ID!): Change
+    """
+    IL CALENDARIO DELLE CHANGE (17 set 2026): tutte le finestre pianificate che
+    cadono nell'intervallo, una voce per finestra.
+
+    Non esisteva modo di chiedere «cosa va in produzione questa settimana»: le
+    finestre stanno nei passi del piano di rilascio, cioè in un JSON su un nodo
+    attaccato al CI impattato, quindi non erano né filtrabili né ordinabili. Qui
+    l'intervallo si applica una volta sola, sul server.
+
+    «from» e «to» sono ISO 8601 con offset esplicito, come le finestre stesse.
+    Una voce entra se la sua finestra SI SOVRAPPONE all'intervallo, non se è
+    contenuta: un rilascio che comincia domenica e finisce lunedì appartiene a
+    entrambe le settimane, e sparire da una delle due sarebbe peggio che
+    comparire in due.
+    """
+    changeCalendar(from: String!, to: String!): ChangeCalendar!
     changeAffectedCIs(changeId: ID!): [ChangeAffectedCI!]!
     changeAuditTrail(changeId: ID!): [ChangeAuditEntry!]!
     changeImpactedCIs(changeId: ID!, depth: Int): [ImpactedCI!]!

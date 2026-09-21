@@ -59,6 +59,7 @@ export const GET_INCIDENT = gql`
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
       # history: who opened the incident from the alarm (monitoring or an operator)
       correlatedEvents { ...EventRowFields history(limit: 20) { kind incident { id } } }
+      correlatedEventCount
       correlatedEventsPurged
       impactedServices { ...ImpactedServiceFields }
       customFields { ...CustomFieldValueFields }
@@ -69,6 +70,8 @@ export const GET_INCIDENT = gql`
   ${CUSTOM_FIELD_VALUE_FIELDS}
 `
 
+// `formFieldValues`: i campi della libreria dei moduli messi «nelle liste»,
+// per le colonne e per l'esportazione (moduli del catalogo, ondata 4).
 export const GET_SERVICE_REQUESTS = gql`
   query GetServiceRequests($status: String, $priority: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
     serviceRequests(status: $status, priority: $priority, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
@@ -80,12 +83,20 @@ export const GET_SERVICE_REQUESTS = gql`
         status
         createdAt
         customFields { name value }
+        formFieldValues { name label fieldType displayValue displayValues }
       }
       total
     }
   }
 `
 
+/**
+ * `formRevision` e `formAnswers`: le risposte al modulo della voce di catalogo
+ * (moduli del catalogo, ondata 1), nell'ordine del modulo CON CUI la richiesta
+ * e stata compilata — non di quello di adesso. Il commento sta qui e non dentro
+ * il documento GraphQL: un commento `#` dentro il template e una stringa, e il
+ * guardiano i18n lo legge come testo italiano cablato nel sorgente.
+ */
 export const GET_SERVICE_REQUEST = gql`
   query GetServiceRequest($id: ID!) {
     serviceRequest(id: $id) {
@@ -98,6 +109,8 @@ export const GET_SERVICE_REQUEST = gql`
       slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
       customFields { ...CustomFieldValueFields }
       affectedCIs { id name type status environment }
+      formRevision
+      formAnswers { name label fieldType value values displayValue displayValues options { value label } references { id label } files { id filename sizeBytes } tableColumns { name label fieldType } rows { cells { column value displayValue } } }
     }
   }
   ${CUSTOM_FIELD_VALUE_FIELDS}
@@ -106,6 +119,6 @@ export const GET_SERVICE_REQUEST = gql`
 /** Campi filtrabili di un tipo (scalari/enum): sostituisce l'introspezione `__type`, spenta in produzione. */
 export const GET_ENTITY_FILTER_FIELDS = gql`
   query EntityFilterFields($typeName: String!) {
-    entityFilterFields(typeName: $typeName) { name kind scalarName enumValues }
+    entityFilterFields(typeName: $typeName) { name kind scalarName enumValues label choices { value label } formFieldType vocabulary rowFilter settableByAutomation multi }
   }
 `

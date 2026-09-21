@@ -144,7 +144,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
       changeId: string
       ciId: string
       ciLabel: string
-      ciTypeId: string | null
+      ciTypes: { id: string; scope: string; label: string }[]
       ciEnv: string | null
     }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})-[:HAS_ASSESSMENT]->(t:AssessmentTask {id: $taskId})
@@ -162,11 +162,34 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
           AND ct.active = true
           AND (ct.scope = 'base' OR (ct.scope = 'tenant' AND ct.tenant_id = $tenantId))
       RETURN properties(t) AS taskProps, c.id AS changeId,
-             ci.id AS ciId, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS ciLabel, ct.id AS ciTypeId,
+             ci.id AS ciId, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS ciLabel,
+             // TUTTE le definizioni che combaciano, non la prima (revisione
+             // totale · B-16): un CI con due etichette di tipo, o un tipo del
+             // cliente con la stessa neo4j_label di uno base, dava le
+             // domande dell'uno o dell'altro a seconda dell'ordine di ritorno.
+             collect(DISTINCT {id: ct.id, scope: ct.scope, label: ct.neo4j_label}) AS ciTypes,
              ci.environment AS ciEnv
     `, { taskId: args.taskId, tenantId: ctx.tenantId })
     if (!ctx1) throw new NotFoundError('AssessmentTask', args.taskId)
     if (ctx1.taskProps['status'] === TASK_STATUS.COMPLETED) throw new GraphQLError('Task already completed', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.task.alreadyCompleted' } } })
+
+    /**
+     * B-16: il tipo del CLIENTE vince su quello base con la stessa etichetta —
+     * è la stessa precedenza che l'interfaccia applica alle etichette dei tipi.
+     * Due definizioni dello STESSO livello sono un'ambiguità vera: non si
+     * sceglie a caso, si dice quali sono, perché il punteggio del rischio
+     * dipende dalle domande.
+     */
+    const matched   = (ctx1.ciTypes ?? []).filter((t) => t && t.id)
+    const preferred = matched.filter((t) => t.scope === 'tenant')
+    const candidates = preferred.length ? preferred : matched
+    if (candidates.length > 1) {
+      throw new GraphQLError(
+        `CI ${ctx1.ciId} matches ${candidates.length} CI type definitions (${candidates.map((t) => `${t.label} [${t.id}]`).join(', ')}): the assessment questions would be arbitrary`,
+        { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ci.ambiguousType', params: { ci: ctx1.ciId, types: candidates.map((t) => t.label).join(', ') } } } },
+      )
+    }
+    const ciTypeId = candidates[0]?.id ?? null
 
     const role = ctx1.taskProps['responder_role'] === ASSESSMENT_ROLE.SUPPORT ? ASSESSMENT_ROLE.SUPPORT : ASSESSMENT_ROLE.OWNER
     await assertUserInCITeam(session, ctx1.ciId, ctx.tenantId, ctx, role)
@@ -181,10 +204,10 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
       OPTIONAL MATCH (q)-[:HAS_OPTION]->(o:AnswerOption)
       WITH q, rel.weight AS weight, max(o.score) AS maxScore
       RETURN q.id AS questionId, weight, maxScore
-    `, { ciTypeId: ctx1.ciTypeId, tenantId: ctx.tenantId, category: taskCategory })
+    `, { ciTypeId, tenantId: ctx.tenantId, category: taskCategory })
 
     if (questions.length === 0) {
-      logger.error({ taskId: args.taskId, ciTypeId: ctx1.ciTypeId, category: taskCategory },
+      logger.error({ taskId: args.taskId, ciTypeId, category: taskCategory },
         '[completeAssessmentTask] nessuna domanda assegnata al CIType per questa categoria')
       throw new GraphQLError('No assessment question assigned to the CI type for the requested category', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.assessment.noQuestionForCategory' } } })
     }

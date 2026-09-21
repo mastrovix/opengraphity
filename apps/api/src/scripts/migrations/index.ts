@@ -6,6 +6,19 @@
  *
  * Tenant-scoped, operator-driven data fixes (migrate-enum-references.ts,
  * which needs `--tenant`) are NOT migrations: they stay manual scripts.
+ *
+ * REGOLA ROTTA TRE VOLTE, e come si e rimediato (revisione totale · H-16).
+ * Tre migrazioni sono state modificate DOPO il commit che le introduceva:
+ * `20260908_1000_workflow_step_metadata`,
+ * `20260908_1010_ci_configuration_item_label` e
+ * `20260917_1810_ci_lifecycle_semantics`. La piu dannosa e la 1010: la sua
+ * prima versione metteva `:ConfigurationItem` anche sui nodi dei tipi ITIL,
+ * che hanno una `neo4j_label`; il filtro `scope <> 'itil'` e arrivato dopo, e
+ * su un database migrato prima quei ticket sono rimasti etichettati come CI —
+ * `migrate --status` lo mostrava come «drift» informativo e nessuno lo
+ * traduceva in un'azione. La riparazione e la migrazione
+ * `20261002_1070_remove_ci_label_from_tickets`, che toglie la label. Quando il
+ * runner segnala un drift su una di queste tre, e quello: non riapplicarle.
  */
 import type { Migration } from '@opengraphity/neo4j'
 import { workflowStepMetadata }     from './20260908_1000_workflow_step_metadata.js'
@@ -94,6 +107,35 @@ import { userEmailLowercase } from './20261001_1010_user_email_lowercase.js'
 import { answerOptionTenant } from './20261001_1020_answer_option_tenant.js'
 import { requestCreatedBy } from './20261001_1030_request_created_by.js'
 import { slaBreachedAt } from './20261002_1000_sla_breached_at.js'
+import { changeTaskKeys } from './20261002_1010_change_task_keys.js'
+import { slaWarningRepair } from './20261002_1020_sla_warning_repair.js'
+import { stepDeadlineCalendar } from './20261002_1030_step_deadline_calendar.js'
+import { serviceCalendarNameKey } from './20261002_1040_service_calendar_name_key.js'
+import { eventPolicyHighImpact } from './20261002_1050_event_policy_high_impact.js'
+import { slaNullResolveOutcome } from './20261002_1060_sla_null_resolve_outcome.js'
+import { removeCiLabelFromTickets } from './20261002_1070_remove_ci_label_from_tickets.js'
+import { catalogFormSchema } from './20261003_1010_catalog_form_schema.js'
+import { catalogFormLimits } from './20261003_1020_catalog_form_limits.js'
+import { formTableRowsLimit } from './20261004_1010_form_table_rows_limit.js'
+import { metamodelDuplicateFields } from './20261005_1010_metamodel_duplicate_fields.js'
+import { changeTransitionLabels } from './20261005_1020_change_transition_labels.js'
+import { deployPlanWindowEnvelope } from './20261005_1030_deploy_plan_window_envelope.js'
+import { enumTenantDuplicates } from './20261005_1040_enum_tenant_duplicates.js'
+import { portalSeveritiesSeed } from './20261005_1050_portal_severities_seed.js'
+import { defaultLanguageSeed } from './20261005_1060_default_language_seed.js'
+import { enumIdenticalCopies } from './20261005_1070_enum_identical_copies.js'
+import { formFieldsShared } from './20261005_1080_form_fields_shared.js'
+import { aiSettingsFormDesigner } from './20261005_1090_ai_settings_form_designer.js'
+import { aiSettingsMissingFeatures } from './20261005_1100_ai_settings_missing_features.js'
+import { reportEdgeDirection } from './20261005_1110_report_edge_direction.js'
+import { dropChangeTaskIndexes } from './20261005_1120_drop_change_task_indexes.js'
+import { changeTypeLabelsTechnical } from './20261005_1130_change_type_labels_technical.js'
+import { proposalPermissions } from './20261005_1140_proposal_permissions.js'
+import { opengrafoPlatformCI } from './20261006_1010_opengrafo_platform_ci.js'
+import { aiSettingsPlatformSelfAnalysis } from './20261006_1020_ai_settings_platform_self_analysis.js'
+import { aiSettingsDailyWork } from './20261006_1030_ai_settings_daily_work.js'
+import { automationOrigin } from './20261006_1040_automation_origin.js'
+import { aiSettingsConfigurationAssist } from './20261006_1050_ai_settings_configuration_assist.js'
 import { ticketTeamSegments } from './20260930_1030_ticket_team_segments.js'
 import { changeTaskTeamSegments } from './20260930_1040_change_task_team_segments.js'
 
@@ -186,4 +228,33 @@ export const MIGRATIONS: readonly Migration[] = [
   answerOptionTenant,
   requestCreatedBy,
   slaBreachedAt,
+  changeTaskKeys,
+  slaWarningRepair,
+  stepDeadlineCalendar,
+  serviceCalendarNameKey,
+  eventPolicyHighImpact,
+  slaNullResolveOutcome,
+  removeCiLabelFromTickets,
+  catalogFormSchema,
+  catalogFormLimits,
+  formTableRowsLimit,
+  metamodelDuplicateFields,
+  changeTransitionLabels,
+  deployPlanWindowEnvelope,
+  enumTenantDuplicates,
+  portalSeveritiesSeed,
+  defaultLanguageSeed,
+  enumIdenticalCopies,
+  formFieldsShared,
+  aiSettingsFormDesigner,
+  aiSettingsMissingFeatures,
+  reportEdgeDirection,
+  dropChangeTaskIndexes,
+  changeTypeLabelsTechnical,
+  proposalPermissions,
+  opengrafoPlatformCI,
+  aiSettingsPlatformSelfAnalysis,
+  aiSettingsDailyWork,
+  automationOrigin,
+  aiSettingsConfigurationAssist,
 ]

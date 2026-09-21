@@ -15,7 +15,8 @@ export function impactSDL(): string {
     id:          String!
     name:        String!
     type:        String!
-    environment: String!
+    """Nullabile: un CI senza ambiente non è «unknown», è senza ambiente (revisione totale · B-25)."""
+    environment: String
     distance:    Int!
   }
 
@@ -23,7 +24,8 @@ export function impactSDL(): string {
     id:        String!
     number:    String!
     title:     String!
-    severity:  String!
+    """Nullabile: nessuna gravità inventata (B-25)."""
+    severity:  String
     status:    String!
     ciName:    String!
     ciId:      String!

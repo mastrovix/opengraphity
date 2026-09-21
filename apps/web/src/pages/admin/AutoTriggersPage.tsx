@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { InvalidFilterNotice } from '@/components/InvalidFilterNotice'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -162,20 +163,24 @@ export function AutoTriggersPage() {
   }
 
   // ── Condition helpers ──────────────────────────────────────────────────────
-  const addCondition = () => patch({ conditions: [...form.conditions, { field: '', operator: 'equals', value: '' }] })
-  const removeCondition = (i: number) => patch({ conditions: form.conditions.filter((_, idx) => idx !== i) })
-  const setCondition = (i: number, p: Partial<Condition>) => patch({ conditions: form.conditions.map((c, idx) => idx === i ? { ...c, ...p } : c) })
+  /* Da `prev`, non dalla chiusura: vedi la nota in BusinessRulesPage — due
+     modifiche nello stesso gesto (il campo dell'azione e il suo valore) si
+     annullavano, e il campo scelto spariva. */
+  const addCondition = () => modal.setDraft((prev) => ({ ...prev, conditions: [...prev.conditions, { field: '', operator: 'equals', value: '' }] }))
+  const removeCondition = (i: number) => modal.setDraft((prev) => ({ ...prev, conditions: prev.conditions.filter((_, idx) => idx !== i) }))
+  const setCondition = (i: number, p: Partial<Condition>) => modal.setDraft((prev) => ({ ...prev, conditions: prev.conditions.map((c, idx) => idx === i ? { ...c, ...p } : c) }))
 
   // ── Action helpers ─────────────────────────────────────────────────────────
-  const addAction = () => patch({ actions: [...form.actions, { type: 'set_field', params: {} }] })
-  const removeAction = (i: number) => patch({ actions: form.actions.filter((_, idx) => idx !== i) })
-  const setAction = (i: number, p: Partial<TriggerAction>) => patch({ actions: form.actions.map((a, idx) => idx === i ? { ...a, ...p } : a) })
+  const addAction = () => modal.setDraft((prev) => ({ ...prev, actions: [...prev.actions, { type: 'set_field', params: {} }] }))
+  const removeAction = (i: number) => modal.setDraft((prev) => ({ ...prev, actions: prev.actions.filter((_, idx) => idx !== i) }))
+  const setAction = (i: number, p: Partial<TriggerAction>) => modal.setDraft((prev) => ({ ...prev, actions: prev.actions.map((a, idx) => idx === i ? { ...a, ...p } : a) }))
   const setActionParam = (i: number, key: string, val: string) =>
-    patch({ actions: form.actions.map((a, idx) => idx === i ? { ...a, params: { ...a.params, [key]: val } } : a) })
+    modal.setDraft((prev) => ({ ...prev, actions: prev.actions.map((a, idx) => idx === i ? { ...a, params: { ...a.params, [key]: val } } : a) }))
 
   const triggerColumns: ColumnDef<AutoTrigger>[] = [
     { key: 'name', label: t('common.name'), sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
-    { key: 'entityType', label: t('automation.columns.entity'), sortable: true },
+    // Il nome dell'entità, non `service_request` (20 set 2026).
+    { key: 'entityType', label: t('automation.columns.entity'), sortable: true, render: (v) => labelOf(String(v)) },
     { key: 'eventType', label: t('automation.columns.event'), sortable: true, render: (v) => t(eventOptionKey(String(v))) },
     { key: 'enabled', label: t('admin.triggers.enabledLabel'), sortable: true, render: (_v, row) => (
       <Toggle checked={row.enabled} onChange={() => handleToggleEnabled(row)} label={t('admin.triggers.toggleLabel', { name: row.name })} />
@@ -193,6 +198,8 @@ export function AutoTriggersPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <PageContainer>
+      {/* F-17: un filtro dell'URL illeggibile si dice, non si ignora. */}
+      <InvalidFilterNotice show={list.filtersInvalid} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <PageTitle icon={<Zap size={22} color="var(--color-icon-accent)" />}>{t('sidebar.autoTriggers')}</PageTitle>

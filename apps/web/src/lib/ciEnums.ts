@@ -84,20 +84,3 @@ export function toEnumOptions(values: string[]): { value: string; label: string 
 export function ciStatusStyle(status: string, vocabulary: readonly string[] | null, color: ValueColor | null): ValueStyle {
   return vocabularyValueStyle('ci_status', status, vocabulary, color)
 }
-
-// ── Etichette i18n dei tipi CI "storici" ─────────────────────────────────────
-// Unione delle due mappe che vivevano in CIListPage e AnomalyPage.
-
-export const CI_TYPE_LABEL_KEYS: Record<string, string> = {
-  application:       'sidebar.application',
-  server:            'sidebar.server',
-  database:          'sidebar.database',
-  database_instance: 'sidebar.dbInstance',
-  certificate:       'sidebar.certificate',
-  ssl_certificate:   'sidebar.certificate',
-}
-
-/** Chiave i18n del tipo, o null se il tipo non ha un'etichetta fissa (si usa `ciType.label`). */
-export function ciTypeLabelKey(typeName: string | null | undefined): string | null {
-  return typeName ? (CI_TYPE_LABEL_KEYS[typeName] ?? null) : null
-}

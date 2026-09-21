@@ -41,9 +41,17 @@ describe('runOLASweep', () => {
     expect(summary).toMatchObject({ contracts: 2, failed: 1 })
   })
 
-  it('la lettura prende i ticket aperti del team non ancora avvisati per quel contratto', () => {
+  it('CONTRATTO RINEGOZIATO (C-32): prende anche i ticket che il team NON ha più, se ne ha un segmento', () => {
+    /**
+     * Revisione totale · C-32: la lettura partiva da «assegnato adesso a
+     * questo team», quindi un ticket il cui tempo del team aveva superato
+     * l'obiettivo e che era stato passato ad altri non produceva mai
+     * `ola.breached`, mentre il report lo contava violato. Il tempo si misura
+     * sui segmenti, che restano dopo il passaggio di mano.
+     */
     const c = olaOpenTicketsCypher('incident')
-    expect(c).toContain('-[:ASSIGNED_TO_TEAM]->(:Team {id: $teamId, tenant_id: $tenantId})')
+    expect(c).toContain('OPTIONAL MATCH (e)-[:TEAM_SEGMENT]->(s:TicketTeamSegment {team_id: $teamId})')
+    expect(c).toContain('WHERE ct.id = $teamId OR size(segs) > 0')
     expect(c).toContain('e.resolved_at IS NULL')
     expect(c).toContain('NOT $contractId IN coalesce(e.ola_alerted, [])')
   })

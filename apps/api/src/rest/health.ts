@@ -80,4 +80,27 @@ router.get('/health', async (_req, res) => {
   })
 })
 
+/**
+ * `/health/live`: il processo risponde e le sue dipendenze rispondono
+ * (revisione totale · H-48).
+ *
+ * `/health` resta la sonda COMPLETA e con migrazioni pendenti dice 503 —
+ * per scelta: il codice girerebbe su uno schema che non e il suo. Ma quello
+ * stesso endpoint era anche l'healthcheck del container `api`, e il deploy
+ * documentato e in due tempi (immagine nuova su, poi `migrate`): nel mezzo
+ * `docker compose ps` mostrava l'API rossa e chi guardava pensava che fosse
+ * caduta. Questa sonda risponde alla domanda del container — «questo processo
+ * e vivo?» — e ignora lo stato delle migrazioni, che e una cosa del deploy e
+ * la dice `/health` (e `migrate --status`).
+ */
+router.get('/health/live', async (_req, res) => {
+  const [neo4j, redis] = await Promise.all([checkNeo4j(), checkRedis()])
+  const allOk = neo4j === 'ok' && redis === 'ok'
+  res.status(allOk ? 200 : 503).json({
+    status:    allOk ? 'ok' : 'degraded',
+    timestamp: new Date().toISOString(),
+    services:  { neo4j, redis },
+  })
+})
+
 export { router as healthRouter }

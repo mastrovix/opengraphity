@@ -33,7 +33,7 @@ const loadVocabularyEntries = vi.fn(async () => ({
   colors: { database: 'orange', network: 'info' },
 }))
 vi.mock('../../../lib/vocabularyEntries.js', () => ({ loadVocabularyEntries }))
-vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
+vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 
 const { createKBArticle, updateKBArticle, kbCategories } = await import('../knowledgeBase.js')
 const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') }

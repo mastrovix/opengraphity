@@ -68,15 +68,23 @@ const GROUP_BY   = ['ci', 'fingerprint'] as const
  * «sconosciuto», come per gli stati del ciclo di vita: si vede, e si può
  * correggere.
  */
-const DEFAULT_LEVELS = ['low', 'medium', 'high'] as const
-
 type SeverityMap = Record<EventSeverity, { impact: string; urgency: string }>
 
-const DEFAULT_MAP: SeverityMap = {
-  critical: { impact: 'high',   urgency: 'high' },
-  warning:  { impact: 'medium', urgency: 'medium' },
-  info:     { impact: 'low',    urgency: 'low' },
-}
+/**
+ * Nessun valore di ripiego scritto in questo file (revisione totale · G-24):
+ * `low/medium/high` erano un ripiego del web, usato finché la matrice `priority`
+ * non era arrivata e quando il JSON salvato era illeggibile. Su un cliente che
+ * ha rinominato quei valori la tendina proponeva per un istante valori fuori
+ * vocabolario, e con un JSON corrotto il form partiva da valori che il server
+ * avrebbe rifiutato — senza che si capisse perché.
+ *
+ * Adesso una mappa illeggibile parte VUOTA: l'avviso in pagina dice che va
+ * rifatta, le tendine mostrano i valori del cliente e il Salva resta chiuso
+ * finché ogni severità non ha impatto e urgenza.
+ */
+const EMPTY_MAP: SeverityMap = Object.fromEntries(
+  EVENT_SEVERITIES.map((sev) => [sev, { impact: '', urgency: '' }]),
+) as SeverityMap
 
 /** Un valore di vocabolario: una stringa non vuota. Chi decide se è AMMESSO è il server. */
 const isLevel = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0
@@ -94,19 +102,19 @@ const isLevel = (v: unknown): v is string => typeof v === 'string' && v.trim().l
 function parseSeverityMap(raw: string): { map: SeverityMap; error: string | null } {
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (parsed === null || typeof parsed !== 'object') return { map: DEFAULT_MAP, error: i18n.t('events.policy.errors.expectedObject') }
+    if (parsed === null || typeof parsed !== 'object') return { map: EMPTY_MAP, error: i18n.t('events.policy.errors.expectedObject') }
     const obj = parsed as Record<string, unknown>
-    const map = { ...DEFAULT_MAP }
+    const map = { ...EMPTY_MAP }
     for (const sev of EVENT_SEVERITIES) {
       const entry = obj[sev]
-      if (entry === undefined) return { map: DEFAULT_MAP, error: i18n.t('events.policy.errors.missingSeverity', { severity: sev }) }
+      if (entry === undefined) return { map: EMPTY_MAP, error: i18n.t('events.policy.errors.missingSeverity', { severity: sev }) }
       const { impact, urgency } = (entry ?? {}) as Record<string, unknown>
-      if (!isLevel(impact) || !isLevel(urgency)) return { map: DEFAULT_MAP, error: i18n.t('events.policy.errors.invalidLevel', { severity: sev }) }
+      if (!isLevel(impact) || !isLevel(urgency)) return { map: EMPTY_MAP, error: i18n.t('events.policy.errors.invalidLevel', { severity: sev }) }
       map[sev] = { impact, urgency }
     }
     return { map, error: null }
   } catch (e) {
-    return { map: DEFAULT_MAP, error: e instanceof Error ? e.message : String(e) }
+    return { map: EMPTY_MAP, error: e instanceof Error ? e.message : String(e) }
   }
 }
 
@@ -122,6 +130,8 @@ interface FormState {
   stormThresholdPerMinute: number
   stormCooldownMinutes: number
   retentionDays:        number
+  /** G-MON-7: da quanti dipendenti la console della salute segna «si propaga» (0 = nessuna evidenza). */
+  highImpactDependents: number
   matchShortHostname:   boolean
   /** Stati del ciclo di vita ignorati dagli allarmi (D6.3): sempre nell'ordine del vocabolario, così il confronto con i valori letti è stabile. */
   ignoreLifecycleStatuses: string[]
@@ -147,6 +157,8 @@ type NumberField = { [K in keyof FormState]: FormState[K] extends number ? K : n
 const MIN: Record<NumberField, number> = {
   openDelaySeconds: 0, suppressUpstreamHops: 0, stormThresholdPerMinute: 0,
   flapThreshold: 1, flapWindowMinutes: 1, flapStableMinutes: 1, stormCooldownMinutes: 1, retentionDays: 1,
+  // 0 = nessuna evidenza nella console: e una scelta, non un errore.
+  highImpactDependents: 0,
 }
 
 const NUMBER_FIELDS = Object.keys(MIN) as NumberField[]
@@ -174,6 +186,7 @@ function toForm(p: EventPolicy): { form: FormState; mapError: string | null } {
       flapWindowMinutes: p.flapWindowMinutes, flapStableMinutes: p.flapStableMinutes,
       stormThresholdPerMinute: p.stormThresholdPerMinute, stormCooldownMinutes: p.stormCooldownMinutes,
       retentionDays: p.retentionDays,
+      highImpactDependents: p.highImpactDependents,
       matchShortHostname: p.matchShortHostname,
       ignoreLifecycleStatuses: [...p.ignoreLifecycleStatuses],
       retiredStatuses:     [...p.retiredStatuses],
@@ -186,7 +199,7 @@ function toForm(p: EventPolicy): { form: FormState; mapError: string | null } {
 
 const HOW_IT_WORKS = ['threshold', 'grouping', 'autoResolve', 'changeWindow', 'lifecycle', 'flapping', 'storm'] as const
 
-type GroupName = 'recognition' | 'incidents' | 'changeWindow' | 'lifecycle' | 'flapStorm' | 'retention'
+type GroupName = 'recognition' | 'incidents' | 'changeWindow' | 'lifecycle' | 'flapStorm' | 'retention' | 'console'
 
 /**
  * Riquadro titolato: un <fieldset> per gruppo. A livello di modulo (non
@@ -268,14 +281,22 @@ export function EventPolicyPage() {
   const levelOptions = (field: 'impact' | 'urgency', current: string): { value: string; label: string }[] => {
     const i = prioritaMatrice?.inputs.indexOf(field) ?? -1
     const valori = i >= 0 ? (prioritaMatrice?.inputValues[i] ?? []) : []
-    const base = valori.length > 0 ? valori : [...DEFAULT_LEVELS]
-    const voci = base.map((v) => ({ value: v, label: labelOf(field, v) ?? v }))
-    if (current && !base.includes(current)) voci.push({ value: current, label: t('events.policy.lifecycleUnknown', { value: current }) })
+    const voci = valori.map((v) => ({ value: v, label: labelOf(field, v) ?? v }))
+    // G-24: niente valori di fabbrica. Se la matrice non è ancora arrivata la
+    // tendina offre solo quello salvato, e se non c'è nemmeno quello una voce
+    // vuota — non tre valori che il cliente potrebbe non avere.
+    if (current && !valori.includes(current)) voci.push({ value: current, label: t('events.policy.lifecycleUnknown', { value: current }) })
+    if (voci.length === 0) voci.push({ value: '', label: t('events.policy.map.chooseValue') })
+    else if (current === '') voci.unshift({ value: '', label: t('events.policy.map.chooseValue') })
     return voci
   }
 
   const errors = validatePolicyForm(form)
-  const invalid = Object.keys(errors).length > 0
+  // G-24: una mappa incompleta non si salva. Con «Mai» la mappa non ha effetto
+  // e non blocca (D·2.5).
+  const mapIncomplete = form.openIncidentFrom !== 'never'
+    && EVENT_SEVERITIES.some((sev) => form.severityMap[sev].impact === '' || form.severityMap[sev].urgency === '')
+  const invalid = Object.keys(errors).length > 0 || mapIncomplete
   const dirty = JSON.stringify(form) !== JSON.stringify(baseline.form)
   // Una mappa non valida si salva anche senza altre modifiche: è il modo di correggerla.
   const canSave = !saving && !invalid && (dirty || mapError !== null)
@@ -298,6 +319,7 @@ export function EventPolicyPage() {
         flapWindowMinutes: form.flapWindowMinutes, flapStableMinutes: form.flapStableMinutes,
         stormThresholdPerMinute: form.stormThresholdPerMinute, stormCooldownMinutes: form.stormCooldownMinutes,
         retentionDays: form.retentionDays,
+        highImpactDependents: form.highImpactDependents,
         matchShortHostname: form.matchShortHostname,
         ignoreLifecycleStatuses: form.ignoreLifecycleStatuses,
         retiredStatuses:     form.retiredStatuses,
@@ -554,6 +576,14 @@ export function EventPolicyPage() {
         <Group name="retention">
           <div className={grid}>
             {numberField('retentionDays')}
+          </div>
+        </Group>
+
+        {/* 5. Console della salute (revisione totale · G-MON-7): la soglia
+            «un guasto qui si propaga» era il numero 5 scritto nel web. */}
+        <Group name="console">
+          <div className={grid}>
+            {numberField('highImpactDependents')}
           </div>
         </Group>
 

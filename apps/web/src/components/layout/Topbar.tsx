@@ -3,6 +3,7 @@ import { useLocation, Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Bell } from 'lucide-react'
 import { GlobalSearch } from './GlobalSearch'
+import { useMetamodel } from '@/contexts/MetamodelContext'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,18 +19,24 @@ import { layoutPalette as C, alpha, colors } from '@/lib/tokens'
 import { useNotificationContext } from '@/contexts/NotificationContext'
 import { NotificationPanel } from '@/components/ui/NotificationPanel'
 import { posizioneNelMenu } from './menu'
+import { TopbarConfigurationIssues } from './TopbarConfigurationIssues'
 
 /** Dove porta il primo segmento di un indirizzo che non è a sua volta una pagina ('' = nessun link). */
 const FIRST_SEGMENT_PAGE: Readonly<Record<string, string>> = {
   ci:       '/cmdb',
   cis:      '/cmdb',
   tasks:    '/my-tasks',
+  // B-21: `/kb-articles/<id>` è solo la strada che risolve lo slug di un
+  // articolo; la pagina è la knowledge base.
+  'kb-articles': '/knowledge-base',
   settings: '',
 }
 
 export function Breadcrumb() {
   const { t } = useTranslation()
   const { pathname } = useLocation()
+  // F-22: l'etichetta dei tipi CI la decide il disegnatore del cliente.
+  const { getCIType } = useMetamodel()
 
   const LABELS: Record<string, string> = {
     dashboard:          t('sidebar.dashboard'),
@@ -42,6 +49,7 @@ export function Breadcrumb() {
     'custom-reports':   t('sidebar.reportBuilder'),
     cmdb:               t('sidebar.cmdb'),
     ci:                 t('sidebar.cmdb'),
+    'kb-articles':      t('sidebar.knowledgeBase'),
     teams:              t('sidebar.teams'),
     users:              t('sidebar.users'),
     logs:               t('sidebar.logs'),
@@ -66,6 +74,11 @@ export function Breadcrumb() {
     'event-policy':     t('sidebar.eventPolicy'),
   }
   const formatSegment = (part: string): string => {
+    // L'etichetta del cliente per un tipo di CI vince sulle chiavi dei tipi
+    // spediti (revisione totale · F-22): il breadcrumb diceva «Server» anche
+    // dopo che il disegnatore l'aveva rinominato «Host fisico».
+    const ciType = getCIType(part)
+    if (ciType?.label) return ciType.label
     if (LABELS[part]) return LABELS[part]
     if (/^[0-9a-f-]{20,}$/i.test(part)) return t('topbar.detail')
     if (/^\d+$/.test(part)) return t('topbar.detail')
@@ -189,6 +202,10 @@ export function Topbar() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flexShrink: 1 }}>
         {/* Global search */}
         <GlobalSearch />
+
+        {/* Quante cose ci sono da sistemare nella configurazione: il numero
+            resta su ogni pagina, l'elenco sta nella sua pagina. */}
+        <TopbarConfigurationIssues />
 
         {/* Bell */}
         <div style={{ position: 'relative' }}>

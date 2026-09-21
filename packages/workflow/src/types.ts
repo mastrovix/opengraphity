@@ -1,11 +1,11 @@
 import type { Session } from 'neo4j-driver'
 
 // Unica sorgente per i tipi di step: engine (timer_wait, sub_workflow), API e
-// web (parallel_fork/join) usavano liste diverse dello stesso enum.
-export type WorkflowStepType =
-  | 'start' | 'standard' | 'end'
-  | 'timer_wait' | 'sub_workflow'
-  | 'parallel_fork' | 'parallel_join'
+// web (parallel_fork/join) usavano liste diverse dello stesso enum. Dall'ondata
+// 10 vive in `@opengraphity/types`, che leggono anche il disegnatore e l'API:
+// là accanto c'è scritto QUALI il motore esegue davvero.
+import type { WorkflowStepType } from '@opengraphity/types'
+export type { WorkflowStepType }
 
 // ── Condizioni di transizione ────────────────────────────────────────────────
 // L'engine non conosce il dominio: le condizioni (has_linked_change,
@@ -54,6 +54,7 @@ export const WORKFLOW_ACTION_TYPES = [
   'update_field',
   'call_webhook',
   'create_approval_request',
+  'create_task',
 ] as const
 
 export type WorkflowActionType = (typeof WORKFLOW_ACTION_TYPES)[number]
@@ -93,6 +94,54 @@ export interface UpdateFieldParams {
  */
 export { stepFieldRejection, isStepFieldWritable } from '@opengraphity/types'
 
+/**
+ * UN COMPITO DA FARE, creato entrando in un passo (20 set 2026).
+ *
+ * Nasce dalle richieste di servizio: «Nuovo portatile» approvata deve far
+ * partire del lavoro vero — il Desk prepara la macchina, i Sistemi creano
+ * l'utenza — e finché quel lavoro non è fatto la richiesta non è evasa.
+ * L'azione è del MOTORE, quindi vale per qualunque entità: incident, problem
+ * e change la ereditano senza che nessuno scriva una riga in più.
+ *
+ * `team_id` è la squadra scelta disegnando il workflow: il caso base, e il
+ * più frequente («crea l'utenza» va sempre ai Sistemi). Le altre due strade
+ * decise dal proprietario — la squadra che sta in un campo del modulo e
+ * quella che supporta il CI scelto — arrivano nelle ondate 4 e 5, e sono
+ * altri parametri accanto a questo.
+ */
+export interface CreateTaskParams {
+  /** Il titolo del compito, con i segnaposto `{{campo}}` come gli altri template. */
+  title_template: string
+  /** Facoltativa: cosa c'è da fare, per chi lo trova in «I miei compiti». */
+  description?:   string
+  /** La squadra che lo deve fare, scelta disegnando il workflow. */
+  team_id?:       string
+  /**
+   * …oppure il nome di un CAMPO del modulo da cui leggere la squadra. Il
+   * campo può essere di due generi, e per chi disegna è la stessa domanda:
+   *  - un campo SQUADRA → la squadra scelta nella risposta. È la strada per
+   *    cui «Sede: Milano» finisce al Desk di Milano, col campo riempito a
+   *    mano da chi smista o da una formula;
+   *  - un campo CI → chi SUPPORTA il CI scelto. «Accesso ad applicazione»
+   *    con Applicazione = App portale clienti manda il compito a chi la
+   *    tiene su.
+   *
+   * Se ci sono sia questo sia `team_id` vince il campo: è il dato della
+   * singola richiesta, e batte la scelta fatta una volta per tutte.
+   */
+  team_from_field?: string
+  /** Fra quanti giorni scade. Vuoto = nessuna scadenza. */
+  due_in_days?:   string | number
+  /**
+   * LA SEQUENZA: il titolo di un altro compito dello stesso passo. Finché
+   * quello non è chiuso, questo sta fermo («in attesa»). Vuoto = parte
+   * subito, ed è il caso normale — chi non usa le sequenze non se ne
+   * accorge. Il proprietario l'ha chiesto così: «ci possono essere task in
+   * sequenza e task in parallelo, dipende dalla service request».
+   */
+  after?:         string
+}
+
 export interface CallWebhookParams {
   url:               string
   method:            'GET' | 'POST' | 'PUT'
@@ -100,9 +149,30 @@ export interface CallWebhookParams {
   payload_template?: string
 }
 
+/**
+ * Chi deve approvare. Prima c'era solo il RUOLO: «tutti gli admin», o tutti
+ * quelli di un ruolo — e per un catalogo servizi non basta, perché
+ * l'approvazione di una spesa è del responsabile di budget, non di chi
+ * amministra il prodotto (moduli del catalogo, ondata 3).
+ *
+ * I tre si possono combinare: l'insieme degli approvatori è l'UNIONE, senza
+ * ripetizioni. Se nessuno dei tre è indicato vale il ruolo `admin`, come
+ * prima.
+ */
 export interface CreateApprovalRequestParams {
   title_template: string
   approver_role?: string
+  /**
+   * Le persone che approvano, e le squadre (approvano i loro membri).
+   *
+   * DUE FORME, un solo lettore: una lista JSON quando i parametri li scrive
+   * l'API, una stringa di id separati da virgola quando li scrive il
+   * disegnatore — il suo editor tiene i parametri come `Record<string, string>`
+   * e non può produrre un array. `approverIdList()` è l'unico posto che le
+   * legge, così la differenza non si propaga.
+   */
+  approver_user_ids?: string[] | string
+  approver_team_ids?: string[] | string
   approval_type?: 'any' | 'all' | 'majority'
 }
 
@@ -135,7 +205,19 @@ export interface ActionContext {
   userId:           string
   /** Il passo che esegue l'azione e la sua posizione: servono al retry del webhook per rileggere gli header. */
   stepId?:          string
+  /**
+   * La posizione nella lista CONCATENATA `[…uscita, …ingresso]`: è quella che
+   * il retry del webhook usa per rileggere gli header dal passo, e non si
+   * tocca. NON è un'identità stabile dell'azione: dipende da quante azioni di
+   * uscita ha il passo che si sta lasciando, quindi la stessa azione
+   * d'ingresso cambia numero a seconda da dove si arriva. Chi ha bisogno di
+   * riconoscere un'azione usa `actionPhase` + `actionPosition`.
+   */
   actionIndex?:     number
+  /** Se l'azione è fra quelle di USCITA dal passo lasciato o d'INGRESSO in quello nuovo. */
+  actionPhase?:     'enter' | 'exit'
+  /** La posizione dentro la PROPRIA lista: stabile, non dipende dall'altro passo. */
+  actionPosition?:  number
   notes?:           string
   entityData:       Record<string, unknown>      // entity properties for template/condition eval
   isWebhookRetry?:  boolean
@@ -148,6 +230,9 @@ export interface ActionContext {
     entityType:   string
     title:        string
     approverRole?: string
+    /** Persone e squadre che approvano (moduli del catalogo, ondata 3): l'insieme è l'unione. */
+    approverUserIds?: string[]
+    approverTeamIds?: string[]
     approvalType?: string
   }) => Promise<string>
 }
@@ -247,8 +332,15 @@ export interface TransitionInput {
    */
   triggerType: WorkflowTrigger
   notes?:      string
-  /** Se presente, l'istanza deve appartenere a questo tenant (difesa in profondità). */
-  tenantId?:   string
+  /**
+   * L'istanza DEVE appartenere a questo tenant. Era facoltativo («difesa in
+   * profondità») e 8 chiamanti su 14 non lo passavano, quindi la query non
+   * filtrava per tenant nella maggioranza dei cammini: la difesa dichiarata
+   * era spenta, e un futuro chiamante che prendesse `instanceId` dall'input
+   * dell'utente avrebbe ereditato il buco (revisione totale · E-31). Ora è
+   * obbligatorio: chi chiama il motore sa per quale organizzazione lo fa.
+   */
+  tenantId:    string
 }
 
 /** Frase dell'errore per chi lo mostra: chiave i18n del web e parametri. */
@@ -264,6 +356,23 @@ export interface TransitionResult {
   actionsRun: WorkflowActionType[]
   error?:     string
   errorI18n?: TransitionErrorI18n
+  /**
+   * LA TRANSIZIONE È STATA RIFIUTATA DA UNA GUARDIA, non è andata storta
+   * (20 set 2026). Le due cose si trattano in modo opposto e finora si
+   * distinguevano solo leggendo il messaggio:
+   *
+   *  - un ERRORE (config corrotta, condizione sconosciuta) si rilancia, e chi
+   *    esegue in coda ritenta;
+   *  - un RIFIUTO è una risposta: la condizione dice «non ancora». Ritentarla
+   *    non serve — non dipende dal tempo ma da qualcuno che chiuda un
+   *    compito o completi un assessment — e con i tentativi si esauriscono
+   *    anche gli eventi, che finiscono marcati «lost».
+   *
+   * Con la guardia sui compiti il caso è diventato ordinario: un'escalation
+   * da SLA su un arco guardato ritentava fino a perdere l'evento, e
+   * l'incident che doveva escalare non escalava, in silenzio.
+   */
+  refusedByCondition?: string
   /**
    * Errors from step actions (sla_start, publish_event, timer scheduling, …)
    * that failed AFTER the transition was persisted. The transition itself
@@ -298,6 +407,13 @@ export interface StepEnteredInfo {
   enteredAt:   string
   actorId:     string
   triggerType: string
+  /**
+   * Le note della transizione, se chi l'ha chiesta ne ha messe. Servono a chi
+   * scrive la nota interna sul ticket: era scritta solo dalla transizione
+   * manuale dell'incident, quindi le transizioni automatiche non lasciavano
+   * traccia nella storia (revisione totale · B-4).
+   */
+  notes?:      string | null
 }
 
 export type StepEnteredListener = (info: StepEnteredInfo) => Promise<void>

@@ -38,3 +38,42 @@ export async function runValidationScript(
   )
   return result.success ? null : (result.error ?? `${name} failed`)
 }
+
+/**
+ * LA FORMULA DI UN CAMPO CALCOLATO (moduli del catalogo, ondata 6).
+ *
+ * Differenza dalla validazione: quella accetta o rifiuta (`throw`), questa
+ * RESTITUISCE un valore (`return`). Il sandbox avvolge il codice in una
+ * funzione, quindi `return input.costo * input.quantita` è già una formula
+ * valida — ed è lo stesso testo che gira nel browser in QuickJS mentre si
+ * compila, perché lì l'involucro è identico.
+ *
+ * Il limite degli script del piano vale anche qui: una formula è codice
+ * scritto dal cliente. Chi non ha la funzione accesa non la esegue e lo SENTE
+ * dire, invece di ricevere un campo vuoto senza spiegazione.
+ *
+ * Non traduce e non interpreta il risultato: `undefined` e `null` vogliono dire
+ * «nessun valore», e a convertirlo nel tipo del campo pensa chi ha chiesto il
+ * calcolo (`coerce` in lib/catalogForm.ts), con le stesse regole di un valore
+ * scritto a mano.
+ */
+export async function runFormulaScript(
+  code: string,
+  input: Record<string, unknown>,
+  name: string,
+  tenantId: string,
+): Promise<{ ok: true; value: unknown } | { ok: false; error: string }> {
+  await assertScriptingEnabled(tenantId, `formula of "${name}"`, 'errors.scripting.what.formula', { field: name })
+  const { runScript } = await import('@opengraphity/scripting')
+  const now = new Date().toISOString()
+  const result = await runScript(
+    {
+      id: name, tenant_id: tenantId, name, trigger: 'manual',
+      code: `const input = ctx.input;\n${code}`,
+      enabled: true, created_at: now, updated_at: now,
+    },
+    { input, tenantId },
+  )
+  if (!result.success) return { ok: false, error: result.error ?? `${name} failed` }
+  return { ok: true, value: result.output }
+}

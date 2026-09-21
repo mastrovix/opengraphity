@@ -134,6 +134,21 @@ export const TEXTS = {
   digestNoEvents:       { en: 'No recent events', it: 'Nessun evento recente' },
   goToDashboard:        { en: 'Go to the dashboard', it: 'Vai alla dashboard' },
   reportExecuted:       { en: 'Scheduled report "{name}" ran ({count} sections).', it: 'Il report schedulato «{name}» è stato eseguito ({count} sezioni).' },
+  // Il report che ARRIVA per posta (ondata 11): destinatari e formato erano
+  // raccolti dall'interfaccia e nessuno li usava.
+  // I testi del DOCUMENTO esportato (foglio ed PDF): escono dal prodotto come
+  // un'e-mail, quindi stanno qui e non in un letterale (20 set 2026 — nel
+  // foglio si leggeva «Label» e «Valore», una inglese e una italiana).
+  exportLabel:          { en: 'Label', it: 'Etichetta' },
+  exportValue:          { en: 'Value', it: 'Valore' },
+  // L'etichetta davanti a una sezione fallita, nel PDF e nel foglio: era
+  // «ERROR:» cablata in inglese dentro un documento che per il resto era
+  // tradotto (20 set 2026, segnalato dal proprietario: «il pdf dà errore»).
+  exportSectionError:   { en: 'ERROR', it: 'ERRORE' },
+  exportSectionsOne:    { en: '1 section', it: '1 sezione' },
+  exportSectionsMany:   { en: '{count} sections', it: '{count} sezioni' },
+  reportEmailSubject:   { en: 'Report "{name}" — {date}', it: 'Report «{name}» — {date}' },
+  reportEmailBody:      { en: 'The scheduled report "{name}" ran on {date}. The document is attached ({sections} sections).', it: 'Il report schedulato «{name}» è stato eseguito il {date}. Il documento è in allegato ({sections} sezioni).' },
   /**
    * I CORPI dei messaggi che escono (revisione totale · E-13): erano inglese
    * fisso anche per un cliente con il prodotto in italiano — «29 min left

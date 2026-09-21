@@ -6,7 +6,7 @@
  * preselezionato, e la nota nomina i tipi pre-approvati configurati.
  */
 import { describe, it, expect } from 'vitest'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { GET_USERS, GET_PRE_APPROVED_CHANGE_TYPES, GET_ALL_CIS, GET_CI_GROUPS_BY_ID, GET_TICKET_CI_EXCLUSIONS } from '@/graphql/queries'
 import { DomainVocabularyContext } from '@/contexts/DomainVocabularyContext'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
@@ -41,14 +41,48 @@ function withVocabulary(ui: React.ReactElement, entries: typeof CHANGE_TYPES | n
   )
 }
 
+/**
+ * IL TIPO SI SCEGLIE PRIMA, IN UN MODALE (20 set 2026, richiesta del
+ * proprietario: «quando clicco su nuova change deve prima apparirmi un
+ * modale con i tipi di change, non voglio selezionare il tipo direttamente
+ * dalla form»). Prima erano tre bottoni radio in mezzo agli altri campi.
+ *
+ * Quello che questi test tengono fermo, oltre alla forma: i tipi restano
+ * quelli del VOCABOLARIO DEL CLIENTE — «Major» non è uno dei tre spediti — e
+ * nessuno è preselezionato.
+ */
 describe('CreateChangePage — tipo di change', () => {
-  it('offre i tipi del cliente (anche «Major»), senza nessuno preselezionato', async () => {
+  it('il modale si apre da solo e offre i tipi del cliente, «Major» compreso', async () => {
     const { user } = renderWithProviders(withVocabulary(<CreateChangePage />), { route: '/changes/new', mocks: [users, preApproved(['standard'])] })
-    const radios = await screen.findAllByRole('radio')
-    expect(radios.map((r) => r.textContent)).toEqual(['Standard', 'Normal', 'Major'])
-    expect(radios.every((r) => r.getAttribute('aria-checked') === 'false')).toBe(true)
-    await user.click(screen.getByRole('radio', { name: 'Major' }))
-    expect(screen.getByRole('radio', { name: 'Major' })).toHaveAttribute('aria-checked', 'true')
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('What kind of change is this?')).toBeInTheDocument()
+    for (const etichetta of ['Standard', 'Normal', 'Major']) {
+      expect(within(dialog).getByRole('button', { name: new RegExp(etichetta) })).toBeInTheDocument()
+    }
+
+    // Scelto il tipo, il modale si chiude e la form lo MOSTRA: non è una
+    // scelta che sparisce, si rilegge e si può cambiare.
+    await user.click(within(dialog).getByRole('button', { name: /Major/ }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByText('Major')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument()
+  })
+
+  it('«Cambia» riapre il modale: un tipo scelto per sbaglio non blocca nessuno', async () => {
+    const { user } = renderWithProviders(withVocabulary(<CreateChangePage />), { route: '/changes/new', mocks: [users, preApproved(['standard'])] })
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /Normal/ }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: 'Change' }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('il tipo PRE-APPROVATO si vede mentre si sceglie, non dopo', async () => {
+    renderWithProviders(withVocabulary(<CreateChangePage />), { route: '/changes/new', mocks: [users, preApproved(['standard'])] })
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: /Standard/ })).toHaveTextContent('Pre-approved'))
+    expect(within(dialog).getByRole('button', { name: /Normal/ })).not.toHaveTextContent('Pre-approved')
   })
 
   it('la nota nomina i tipi pre-approvati configurati, con le etichette del cliente', async () => {

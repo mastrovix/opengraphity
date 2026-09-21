@@ -21,14 +21,16 @@
  * con la matrice di fabbrica è esattamente `production`.
  */
 import { getSession } from '@opengraphity/neo4j'
+import {
+  IMPACT_WEIGHT_KEYS, IMPACT_WINDOW_KEYS, IMPACT_LIMITS, MAX_IMPACT_WEIGHT, MAX_IMPACT_WINDOW_DAYS,
+} from '@opengraphity/types'
 import { ValidationError } from './errors.js'
 import { createMetamodelCache } from './metamodelCache.js'
 import { invalidateSchema } from './schemaInvalidator.js'
 
-export const IMPACT_WEIGHT_KEYS = [
-  'productionCI', 'blastRadiusCI', 'blastRadiusCap', 'openIncident', 'failedChange', 'ongoingChange',
-] as const
-export const IMPACT_WINDOW_KEYS = ['recentChangesDays', 'recentIncidentsDays'] as const
+// Chiavi e intervalli stanno in @opengraphity/types: li usa anche la pagina
+// dell'interfaccia, e due copie a mano derivano (revisione totale · G-25).
+export { IMPACT_WEIGHT_KEYS, IMPACT_WINDOW_KEYS, MAX_IMPACT_WEIGHT, MAX_IMPACT_WINDOW_DAYS, IMPACT_LIMITS }
 export type ImpactWeightKey = (typeof IMPACT_WEIGHT_KEYS)[number]
 export type ImpactWindowKey = (typeof IMPACT_WINDOW_KEYS)[number]
 export type ImpactWeightValues = Record<ImpactWeightKey | ImpactWindowKey, number>
@@ -41,9 +43,7 @@ export const FACTORY_IMPACT_WEIGHTS: Readonly<ImpactWeightValues> = {
   recentChangesDays: 60, recentIncidentsDays: 30,
 }
 
-/** Un peso è un intero 0..100 (il punteggio è una percentuale); una finestra 1..365 giorni. */
-export const MAX_IMPACT_WEIGHT = 100
-export const MAX_IMPACT_WINDOW_DAYS = 365
+
 
 const cache = createMetamodelCache<ImpactWeights>({
   name: 'impact-analysis-weights',
@@ -69,8 +69,10 @@ export function assertImpactWeights(raw: unknown, where: string): ImpactWeightVa
     throw new ValidationError(`${where}: unknown impact weight(s): ${extra.join(', ')}`, { key: 'errors.impactWeights.unknown', params: { names: extra.join(', ') } })
   }
   const out = {} as ImpactWeightValues
-  for (const key of IMPACT_WEIGHT_KEYS) out[key] = assertInt(obj[key], key, 0, MAX_IMPACT_WEIGHT, where)
-  for (const key of IMPACT_WINDOW_KEYS) out[key] = assertInt(obj[key], key, 1, MAX_IMPACT_WINDOW_DAYS, where)
+  // G-25: gli intervalli vengono dalla sorgente condivisa, non da numeri qui.
+  for (const key of [...IMPACT_WEIGHT_KEYS, ...IMPACT_WINDOW_KEYS]) {
+    out[key] = assertInt(obj[key], key, IMPACT_LIMITS[key].min, IMPACT_LIMITS[key].max, where)
+  }
   return out
 }
 

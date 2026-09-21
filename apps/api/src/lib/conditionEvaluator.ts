@@ -29,16 +29,63 @@ export interface Condition {
   value?:   unknown
 }
 
+/**
+ * DUE VALORI SONO LO STESSO VALORE? (revisione del 17 set 2026)
+ *
+ * La condizione arriva dall'interfaccia, e l'interfaccia salva sempre una
+ * STRINGA: la tendina di una regola scrive `"true"`, `"1200"`, `"2026-03-01"`.
+ * Il ticket invece porta il valore col suo tipo — un modulo del catalogo
+ * scrive un booleano vero e un numero vero (`coerce` in lib/catalogForm.ts) —
+ * e `true === "true"` è falso.
+ *
+ * Il risultato era una regola che restava «attiva» e non partiva MAI, senza un
+ * errore e senza una riga di log: il difetto peggiore di questa famiglia,
+ * perché `maggiore di` funzionava (passa da `Number()`) e l'amministratore
+ * vedeva che «qualcosa funziona». Trovato dalla revisione a tappeto del 17 set
+ * 2026, ed è lo stesso difetto già pagato due volte: l'`equals` su una lista e
+ * il `contains` sui multi-valore.
+ *
+ * La regola: si confronta per TIPO del valore che sta sul ticket, non per
+ * forma. Booleano contro `"true"`/`"false"`, numero contro il numero scritto,
+ * e per tutto il resto il confronto stretto di prima — che per due stringhe è
+ * esattamente quello che era.
+ */
+export function sameValue(actual: unknown, wanted: unknown): boolean {
+  if (actual === wanted) return true
+  if (actual == null || wanted == null) return false
+  if (typeof actual === 'boolean') {
+    const testo = String(wanted).trim().toLowerCase()
+    return testo === (actual ? 'true' : 'false')
+  }
+  if (typeof actual === 'number') {
+    const n = Number(String(wanted).trim())
+    return Number.isFinite(n) && n === actual
+  }
+  // Una LISTA (selezione multipla) non è «uguale» a un valore singolo:
+  // l'appartenenza si chiede con «contiene», che è un operatore suo.
+  return false
+}
+
 function evalCondition(c: Condition, entity: Record<string, unknown>): boolean {
   const actual = entity[c.field]
   switch (c.operator) {
-    case 'equals':       return actual === c.value
-    case 'not_equals':   return actual !== c.value
+    case 'equals':       return sameValue(actual, c.value)
+    case 'not_equals':   return !sameValue(actual, c.value)
     case 'is_null':      return actual == null || actual === ''
     case 'is_not_null':  return actual != null && actual !== ''
     case 'greater_than': return Number(actual) > Number(c.value)
     case 'less_than':    return Number(actual) < Number(c.value)
-    case 'contains':     return typeof actual === 'string' && typeof c.value === 'string' && actual.includes(c.value)
+    /**
+     * «contiene»: dentro un testo, oppure dentro una LISTA (la selezione
+     * multipla di un modulo del catalogo, ondata 5). Prima una lista cadeva
+     * nel `typeof === 'string'` e la condizione era sempre falsa: una regola
+     * che non scattava mai, senza un errore che lo dicesse.
+     */
+    case 'contains':
+      // In una lista si cerca l'APPARTENENZA, con lo stesso confronto per tipo
+      // di `equals`: una lista di numeri contro il «1200» della tendina.
+      if (Array.isArray(actual)) return actual.some((v) => sameValue(v, c.value))
+      return typeof actual === 'string' && typeof c.value === 'string' && actual.includes(c.value)
     case 'changed': {
       const changed = entity[CHANGED_FIELDS_KEY]
       return Array.isArray(changed) && changed.includes(c.field)

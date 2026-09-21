@@ -45,7 +45,9 @@ describe('AnomalyRulesPage', () => {
       { request: { query: GET_ANOMALY_RULES }, result: { data: { anomalyRules: [rule], anomalyRuleOptions: options } }, maxUsageCount: Number.POSITIVE_INFINITY },
       { request: { query: UPDATE_ANOMALY_RULE, variables: { ruleKey: 'spof', settings } }, result: { data: { updateAnomalyRule: { ...rule, ciTypes: ['firewall'], isDefault: false } } } },
     ]
-    const { user } = renderWithProviders(<AnomalyRulesPage />, { mocks })
+    // Il nome di un tipo si legge dal metamodello (20 set 2026): «firewall»
+    // è del cliente, quindi il metamodello di prova deve conoscerlo.
+    const { user } = renderWithProviders(<AnomalyRulesPage />, { mocks, ciTypes: [['firewall', 'Firewall']] })
     await user.click(await screen.findByText('Single Point of Failure'))
     expect(screen.getByText('None selected: every CI type, including those created later.')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Firewall' }))

@@ -19,8 +19,15 @@ interface Props {
   data:      string
   title:     string
   error?:    string | null
+  /** La chiave i18n dell'errore: se c'è, si legge quella. */
+  errorKey?: string | null
   /** L'etichetta di un valore raggruppato (Dizionario, passi del workflow): giro del 14 set 2026, #11. */
   valueLabel?: (value: string) => string
+  /**
+   * Il periodo del raggruppamento (`day`/`week`/`month`/`year`), quando chi
+   * disegna lo conosce: toglie l'indovinello sulle etichette temporali.
+   */
+  granularita?: string | null
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -54,10 +61,20 @@ function ChartError({ title, message }: { title: string; message: string }) {
 
 const REPORT_STYLE = { showValueLabels: true } as const
 
-export function ReportChartRenderer({ chartType, data, title, error, valueLabel }: Props) {
+export function ReportChartRenderer({ chartType, data, title, error, errorKey, valueLabel, granularita }: Props) {
   const { t, i18n } = useTranslation()
   const locale = i18n.language
-  if (error) return <ChartError title={t('components.reportChart.computeError')} message={error} />
+  /*
+   * Con la chiave si legge la frase nella lingua di chi guarda (20 set 2026):
+   * l'anteprima mostrava «a table section needs at least one selected field
+   * on a result node (isResult = true)» a chi usa il prodotto in italiano.
+   * Senza chiave resta il messaggio tecnico, che per un difetto nostro è
+   * l'unica cosa utile.
+   */
+  if (error) {
+    const messaggio = errorKey && i18n.exists(errorKey) ? t(errorKey) : error
+    return <ChartError title={t('components.reportChart.computeError')} message={messaggio} />
+  }
   if (!data) return <EmptyChart />
 
   let parsed: unknown
@@ -87,25 +104,44 @@ export function ReportChartRenderer({ chartType, data, title, error, valueLabel 
     }
 
     case 'pie':
-      return <ReactECharts option={buildPieOption(points(), REPORT_STYLE)} {...echartsProps} />
+      return <ReactECharts option={buildPieOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
 
     case 'donut': {
       const pts = points()
       const total = pts.reduce((s, p) => s + p.value, 0)
-      return <ReactECharts option={buildPieOption(pts, { ...REPORT_STYLE, donut: true, centerText: total.toLocaleString(locale) })} {...echartsProps} />
+      return <ReactECharts option={buildPieOption(pts, { ...REPORT_STYLE, donut: true, centerText: total.toLocaleString(locale), locale: i18n.language, granularita })} {...echartsProps} />
     }
 
     case 'bar':
-      return <ReactECharts option={buildBarOption(points(), REPORT_STYLE)} {...echartsProps} />
+      return <ReactECharts option={buildBarOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
 
     case 'bar_horizontal':
-      return <ReactECharts option={buildHorizontalBarOption(points(), REPORT_STYLE)} {...echartsProps} />
+      return <ReactECharts option={buildHorizontalBarOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
+
+    /*
+     * LA CLASSIFICA si disegna come una barra ORIZZONTALE (19 set 2026).
+     *
+     * `top_n` era valido per l'API, coperto dai suoi test e reso da nessuno:
+     * cadeva sul `default`, cioè «grafico non disponibile». Finché non si
+     * poteva scegliere dalla UI il difetto era invisibile; offrendola, il 19
+     * set, ho tolto una bugia («top_n» come nome del grafico) e ne ho messa
+     * una peggiore — una scelta che il prodotto offre e non disegna.
+     *
+     * Orizzontale e non verticale perché una classifica si legge per nome: le
+     * etichette stanno in riga, e il contratto dei dati è lo stesso delle
+     * barre ({label, value} già ordinati e tagliati dal server).
+     */
+    case 'top_n':
+      return <ReactECharts option={buildHorizontalBarOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
 
     case 'line':
-      return <ReactECharts option={buildLineOption(points())} {...echartsProps} />
+      // `REPORT_STYLE` anche qui (20 set 2026): linea e area erano gli unici
+      // due grafici che non lo ricevevano, quindi i punti restavano senza il
+      // loro valore mentre barre e torte lo scrivevano.
+      return <ReactECharts option={buildLineOption(points(), { ...REPORT_STYLE, locale: i18n.language, granularita })} {...echartsProps} />
 
     case 'area':
-      return <ReactECharts option={buildLineOption(points(), { area: true })} {...echartsProps} />
+      return <ReactECharts option={buildLineOption(points(), { ...REPORT_STYLE, area: true, locale: i18n.language, granularita })} {...echartsProps} />
 
     case 'table': {
       const d = parsed as TableData

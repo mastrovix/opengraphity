@@ -421,7 +421,37 @@ describe('create_approval_request', () => {
     )
     expect(createApprovalRequest).toHaveBeenCalledWith({
       entityId: 'inc-1', entityType: 'incident', title: 'Approve DB down', approverRole: 'APPROVER', approvalType: 'all',
+      // Moduli del catalogo, ondata 3: senza persone né squadre indicate sono
+      // liste vuote, e vale il ruolo — come prima.
+      approverUserIds: [], approverTeamIds: [],
     })
+  })
+
+  it('persone e squadre indicate arrivano al chiamante, in entrambe le forme (lista o stringa)', async () => {
+    const createApprovalRequest = vi.fn(async () => 'apr-1')
+    // Il disegnatore scrive una STRINGA separata da virgola: il suo editor tiene
+    // i parametri come testo e non può produrre un array.
+    await runAction(
+      action('create_approval_request', {
+        title_template: 'X', approver_user_ids: 'u-1, u-2', approver_team_ids: 'team-9',
+      }),
+      instance, ctx({ createApprovalRequest }),
+    )
+    expect(createApprovalRequest).toHaveBeenCalledWith(expect.objectContaining({
+      approverUserIds: ['u-1', 'u-2'], approverTeamIds: ['team-9'],
+    }))
+
+    // L'API scrive una LISTA: stesso risultato.
+    createApprovalRequest.mockClear()
+    await runAction(
+      action('create_approval_request', {
+        title_template: 'X', approver_user_ids: ['u-3'], approver_team_ids: [],
+      }),
+      instance, ctx({ createApprovalRequest }),
+    )
+    expect(createApprovalRequest).toHaveBeenCalledWith(expect.objectContaining({
+      approverUserIds: ['u-3'], approverTeamIds: [],
+    }))
   })
 })
 

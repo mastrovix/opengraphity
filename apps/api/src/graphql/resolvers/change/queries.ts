@@ -2,6 +2,8 @@ import { withSession, runQuery, runQueryOne, getSession, type Props } from '../c
 import { ciTypeFromLabels } from '../../../lib/ciTypeFromLabels.js'
 import type { GraphQLContext } from '../../../context.js'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../../../lib/taskStatus.js'
+import { TASK_STATE } from '../../../lib/ticketTasks.js'
+import { PERMESSO_LETTURA } from '../ticketTasks.js'
 import {
   mapChange,
   mapAssessmentTask,
@@ -18,7 +20,11 @@ import {
 } from './mappers.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { listPage } from '../../../lib/listLimit.js'
+import { buildAdvancedWhere } from '../../../lib/filterBuilder.js'
+import { getScalarFields } from '../../../lib/schemaFields.js'
+import type { GraphQLResolveInfo } from 'graphql'
 import { serviceRelPatternForTenant } from '../../../lib/ciMetamodelForTenant.js'
+import { ValidationError } from '../../../lib/errors.js'
 
 type Session = ReturnType<typeof getSession>
 
@@ -135,7 +141,12 @@ export const CHANGE_SORT_WHITELIST: Record<string, string> = {
   createdAt:          'c.created_at',
 }
 
-export async function changes(_: unknown, args: { currentStep?: string; priority?: string; limit?: number; offset?: number; sortField?: string | null; sortDirection?: string | null }, ctx: GraphQLContext) {
+export async function changes(
+  _: unknown,
+  args: { currentStep?: string; priority?: string; limit?: number; offset?: number; filters?: string; sortField?: string | null; sortDirection?: string | null },
+  ctx: GraphQLContext,
+  info?: GraphQLResolveInfo,
+) {
   const { limit, offset } = listPage(args, 50)
   const sortCol = args.sortField ? CHANGE_SORT_WHITELIST[args.sortField] : undefined
   const sortDir = args.sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'
@@ -146,6 +157,20 @@ export async function changes(_: unknown, args: { currentStep?: string; priority
       : ''
     const conds = ['coalesce(c.deleted, false) = false']
     if (args.priority) conds.push('c.priority = $priority')
+    /**
+     * Le change accettano i FILTRI avanzati come incident e problem
+     * (revisione totale · F-8): la ricerca della modale «collega ticket»
+     * caricava le 50 più recenti e filtrava nel browser, quindi su un tenant
+     * con trecento change cercare per codice non trovava niente. Lo stesso
+     * argomento serve all'export CSV, che ora può ripetere i filtri di
+     * schermo.
+     */
+    const params: Record<string, unknown> = {
+      tenantId: ctx.tenantId, currentStep: args.currentStep ?? null, priority: args.priority ?? null, limit, offset,
+    }
+    const allowedFields = new Set(info ? getScalarFields(info.schema, 'Change') : ['code', 'title', 'status', 'priority', 'change_type'])
+    const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, allowedFields, 'c') : ''
+    if (advWhere) conds.push(`(${advWhere})`)
     const priorityWhere = `WHERE ${conds.join(' AND ')}`
     const items = await runQuery<{
       props: Props
@@ -165,14 +190,14 @@ export async function changes(_: unknown, args: { currentStep?: string; priority
              properties(app)   AS appUser
       ORDER BY ${orderBy}
       SKIP toInteger($offset) LIMIT toInteger($limit)
-    `, { tenantId: ctx.tenantId, currentStep: args.currentStep ?? null, priority: args.priority ?? null, limit, offset })
+    `, params)
 
     const countRows = await runQuery<{ total: unknown }>(session, `
       MATCH (c:Change {tenant_id: $tenantId})
       ${joinWF}
       ${priorityWhere}
       RETURN count(c) AS total
-    `, { tenantId: ctx.tenantId, currentStep: args.currentStep ?? null, priority: args.priority ?? null })
+    `, params)
 
     return {
       items: items.map((r) => ({
@@ -364,10 +389,13 @@ type MyTaskRow = {
   role:       string
   action:     string
   status:     string
-  changeId:   string
-  changeCode: string
-  ciId:       string
-  ciName:     string
+  /** Il tipo del TICKET: i compiti delle change dicono 'change', i generici quello del loro. */
+  entityType: string
+  entityId:   string
+  entityNumber: string
+  /** Solo per i compiti delle change, che nascono per CI. */
+  ciId:       string | null
+  ciName:     string | null
   phase:      string
   createdAt:  string
 }
@@ -391,8 +419,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         coalesce(t.code, '') AS code,
         t.responder_role AS role,
         t.status         AS status,
-        c.id             AS changeId,
-        c.code           AS changeCode,
+        'change'         AS entityType,
+        c.id             AS entityId,
+        c.code           AS entityNumber,
         ci.id            AS ciId,
         ci.name          AS ciName,
         wi.current_step  AS phase,
@@ -414,8 +443,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         coalesce(t.code, '') AS code,
         t.responder_role AS role,
         t.status         AS status,
-        c.id             AS changeId,
-        c.code           AS changeCode,
+        'change'         AS entityType,
+        c.id             AS entityId,
+        c.code           AS entityNumber,
         ci.id            AS ciId,
         ci.name          AS ciName,
         wi.current_step  AS phase,
@@ -435,8 +465,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         vt.id          AS id,
         coalesce(vt.code, '') AS code,
         vt.status      AS status,
-        c.id           AS changeId,
-        c.code         AS changeCode,
+        'change'           AS entityType,
+        c.id           AS entityId,
+        c.code         AS entityNumber,
         ci.id          AS ciId,
         ci.name        AS ciName,
         wi.current_step AS phase,
@@ -455,8 +486,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         dp.id          AS id,
         coalesce(dp.code, '') AS code,
         dp.status      AS status,
-        c.id           AS changeId,
-        c.code         AS changeCode,
+        'change'           AS entityType,
+        c.id           AS entityId,
+        c.code         AS entityNumber,
         ci.id          AS ciId,
         ci.name        AS ciName,
         wi.current_step AS phase,
@@ -477,8 +509,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         dp.id          AS id,
         coalesce(dp.code, '') AS code,
         dp.status      AS status,
-        c.id           AS changeId,
-        c.code         AS changeCode,
+        'change'           AS entityType,
+        c.id           AS entityId,
+        c.code         AS entityNumber,
         ci.id          AS ciId,
         ci.name        AS ciName,
         wi.current_step AS phase,
@@ -498,8 +531,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         dt.id          AS id,
         coalesce(dt.code, '') AS code,
         dt.status      AS status,
-        c.id           AS changeId,
-        c.code         AS changeCode,
+        'change'           AS entityType,
+        c.id           AS entityId,
+        c.code         AS entityNumber,
         ci.id          AS ciId,
         ci.name        AS ciName,
         wi.current_step AS phase,
@@ -519,8 +553,9 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         rv.id          AS id,
         coalesce(rv.code, '') AS code,
         rv.status      AS status,
-        c.id           AS changeId,
-        c.code         AS changeCode,
+        'change'           AS entityType,
+        c.id           AS entityId,
+        c.code         AS entityNumber,
         ci.id          AS ciId,
         ci.name        AS ciName,
         wi.current_step AS phase,
@@ -578,6 +613,65 @@ export async function myTasks(_: unknown, __: unknown, ctx: GraphQLContext) {
         action: 'Confirm the outcome (Confirmed/Rejected)',
       })),
     ]
+
+    /**
+     * I COMPITI GENERICI (20 set 2026): quelli che un passo di workflow crea
+     * su qualunque ticket, non solo sulle change. Una query sola invece di
+     * sei, perché il nodo è uno solo.
+     *
+     * Chi li vede: chi li ha presi in carico (`ASSIGNED_TO`) fra i propri,
+     * e chi è nella squadra a cui sono assegnati fra quelli da prendere.
+     * Quelli IN ATTESA non compaiono: il loro turno non è arrivato, e una
+     * riga su cui non si può fare niente è rumore.
+     */
+    const compitiRows = await runQuery<Omit<MyTaskRow, 'kind'> & { miei: boolean }>(session, `
+      MATCH (ticket)-[:HAS_TASK]->(k:Task {tenant_id: $tenantId, state: $apertoState})
+      // Un ticket CANCELLATO non ha più compiti da fare: la riga porterebbe a
+      // una pagina che non si apre. Lo filtrano tutte e sei le query dei
+      // compiti di change; questa era l'unica che se n'era dimenticata.
+      WHERE coalesce(ticket.deleted, false) = false
+      OPTIONAL MATCH (k)-[:ASSIGNED_TO]->(mio:User {id: $userId, tenant_id: $tenantId})
+      OPTIONAL MATCH (k)-[:ASSIGNED_TO_TEAM]->(:Team)<-[:MEMBER_OF]-(membro:User {id: $userId, tenant_id: $tenantId})
+      WITH k, ticket, mio, membro
+      WHERE mio IS NOT NULL OR (membro IS NOT NULL AND NOT EXISTS { (k)-[:ASSIGNED_TO]->(:User) })
+      RETURN
+        k.id          AS id,
+        k.code        AS code,
+        ''            AS role,
+        k.title       AS action,
+        k.state       AS status,
+        k.entity_type AS entityType,
+        ticket.id     AS entityId,
+        coalesce(ticket.number, ticket.code, '') AS entityNumber,
+        null          AS ciId,
+        null          AS ciName,
+        k.step_name   AS phase,
+        k.created_at  AS createdAt,
+        mio IS NOT NULL AS miei
+      ORDER BY k.created_at DESC
+    `, { ...params, apertoState: TASK_STATE.OPEN })
+
+    /**
+     * IL PERMESSO SEGUE IL TICKET, anche qui (rimedio, 20 set 2026).
+     *
+     * `myTasks` sta sotto il solo `workspace.use`, mentre `ticketTasks` è
+     * sotto l'unione dei permessi di lettura e raffina sul tipo vero. Senza
+     * questo filtro, chi è nella squadra leggeva TITOLO del compito e NUMERO
+     * del ticket anche senza poter aprire quel tipo di ticket — esattamente
+     * quello che il commento in testa a `resolvers/ticketTasks.ts` dice di
+     * voler evitare.
+     */
+    for (const r of compitiRows) {
+      const permesso = PERMESSO_LETTURA[r.entityType]
+      if (!permesso || !ctx.permissions.has(permesso)) continue
+      const { miei, ...riga } = r
+      // Il titolo del compito È l'azione (`k.title AS action`): l'ha scritto
+      // chi ha disegnato il passo, e dice esattamente cosa c'è da fare. Le
+      // altre righe hanno una frase del prodotto perché quei compiti non
+      // hanno un nome proprio.
+      const voce = { ...riga, kind: 'task' }
+      ;(miei ? assignedToMe : unassigned).push(voce)
+    }
 
     assignedToMe.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
     unassigned.sort((a, b)   => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
@@ -731,4 +825,146 @@ export async function changeResolvesProblems(
     `, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => ({ ...r, severity: null }))
   })
+}
+
+/**
+ * IL CALENDARIO DELLE CHANGE (17 set 2026).
+ *
+ * Non esisteva modo di chiedere «cosa va in produzione questa settimana». Le
+ * finestre stanno nei passi del piano di rilascio — un JSON su un
+ * `DeployPlanTask`, che a sua volta punta al CI impattato per proprietà — e i
+ * filtri di lista si costruiscono dai campi scalari del tipo `Change`: quella
+ * data non era né filtrabile né ordinabile, quindi il calendario non si poteva
+ * disegnare.
+ *
+ * ## Il filtro per intervallo sta nel DATABASE
+ * Ogni piano porta l'inviluppo delle sue finestre (`window_start`,
+ * `window_end`, indicizzati e scritti da `saveDeployPlan` nello stesso `SET`
+ * dei passi): la `WHERE` sceglie i pochi piani che toccano l'intervallo, e il
+ * JSON si apre solo per quelli. Senza l'inviluppo si leggerebbero i piani di
+ * TUTTO il tenant a ogni apertura di pagina — su un tenant con migliaia di
+ * change è una scansione per ogni sguardo al calendario.
+ *
+ * ## Il JSON si apre con l'UNICO parser che esiste
+ * `parseDeploySteps` legge quei passi da quando esistono, e pretende l'offset
+ * esplicito su ogni data: una finestra scritta come `2026-09-09T22:00` verrebbe
+ * letta nel fuso del server API, non in quello del tenant, e il calendario
+ * mostrerebbe il rilascio nell'ora sbagliata. Aprire il JSON in Cypher con
+ * APOC eviterebbe questo giro, ma la regola sull'offset finirebbe scritta due
+ * volte — e la seconda copia, dentro una `WHERE`, non la vedrebbe nessun test.
+ *
+ * ## Un piano illeggibile si CONTA, non si salta
+ * Un piano scritto via API o importato prima di quella regola può portare date
+ * vuote o a rovescio: non ha un inviluppo, quindi non può stare in calendario.
+ * Ma tacerlo farebbe leggere il calendario come completo, quindi torna nel
+ * conto `unreadablePlans` — che si chiede al database con un `count`, senza
+ * leggere niente.
+ */
+export async function changeCalendar(
+  _: unknown,
+  args: { from: string; to: string },
+  ctx: GraphQLContext,
+) {
+  const { parseDeploySteps, assertWindowDate } = await import('../../../lib/deployWindows.js')
+  /*
+   * L'intervallo passa dalla stessa regola delle finestre: offset esplicito.
+   * Senza, «questa settimana» vorrebbe dire una cosa diversa per il server e
+   * per chi guarda. Poi si normalizza in ISO `Z`, perché il confronto in Cypher
+   * è fra STRINGHE: `window_start` è scritto da `planEnvelope`, che produce
+   * sempre `Z`, e confrontarlo con un `+02:00` darebbe un ordine alfabetico
+   * senza senso.
+   */
+  const daMs = Date.parse(assertWindowDate(args.from, 'from'))
+  const aMs  = Date.parse(assertWindowDate(args.to, 'to'))
+  if (Number.isNaN(daMs) || Number.isNaN(aMs) || aMs <= daMs) {
+    throw new ValidationError(`The range is empty or reversed: from ${args.from} to ${args.to}`,
+      { key: 'errors.change.calendarRange', params: { from: args.from, to: args.to } })
+  }
+  const daIso = new Date(daMs).toISOString()
+  const aIso  = new Date(aMs).toISOString()
+
+  return withSession(async (session) => {
+    const rows = await runQuery<{
+      changeId: string; code: string; title: string; changeType: string | null; priority: string | null
+      currentStep: string | null; steps: string | null; taskCode: string | null; ciId: string | null; ciName: string | null
+    }>(session, `
+      MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask)
+      WHERE coalesce(c.deleted, false) = false
+        AND dp.window_start IS NOT NULL AND dp.window_end IS NOT NULL
+        AND dp.window_start < $to AND dp.window_end > $from
+      OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
+      OPTIONAL MATCH (ci {id: dp.ci_id, tenant_id: $tenantId})
+      RETURN c.id AS changeId, c.code AS code, c.title AS title, c.change_type AS changeType,
+             c.priority AS priority, wi.current_step AS currentStep,
+             dp.steps AS steps, dp.code AS taskCode, dp.ci_id AS ciId, ci.name AS ciName
+      ORDER BY dp.window_start
+    `, { tenantId: ctx.tenantId, from: daIso, to: aIso })
+
+    /*
+     * I piani con dei passi ma senza inviluppo: date vuote, illeggibili o a
+     * rovescio. Un `count`, non una lettura — e senza intervallo, perché un
+     * piano senza date non cade in nessuna settimana.
+     */
+    const rotti = await runQueryOne<{ n: unknown }>(session, `
+      MATCH (c:Change {tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask)
+      WHERE coalesce(c.deleted, false) = false
+        AND coalesce(dp.steps, '[]') <> '[]'
+        AND (dp.window_start IS NULL OR dp.window_end IS NULL)
+      RETURN count(dp) AS n
+    `, { tenantId: ctx.tenantId })
+    let unreadablePlans = toNumber(rotti?.n)
+
+    const entries: Array<Record<string, unknown>> = []
+    for (const r of rows) {
+      let steps
+      try {
+        steps = parseDeploySteps(r.steps)
+      } catch {
+        // Un piano rotto non fa fallire il calendario di tutti gli altri: ha un
+        // inviluppo (quindi non è nel conto di sopra) ma il JSON non si apre.
+        unreadablePlans += 1
+        continue
+      }
+      for (const s of steps) {
+        for (const [kind, w] of [['validation', s.validationWindow], ['release', s.releaseWindow]] as const) {
+          const da = Date.parse(w?.start ?? '')
+          const a  = Date.parse(w?.end ?? '')
+          if (Number.isNaN(da) || Number.isNaN(a) || a < da) continue
+          // SI SOVRAPPONE all'intervallo, non «è contenuta»: un rilascio che
+          // comincia domenica e finisce lunedì appartiene a entrambe le
+          // settimane, e sparire da una delle due sarebbe peggio.
+          if (da >= aMs || a <= daMs) continue
+          entries.push({
+            changeId: r.changeId, code: r.code, title: r.title,
+            changeType: r.changeType, priority: r.priority, currentStep: r.currentStep,
+            kind, start: w.start, end: w.end, stepTitle: s.title,
+            taskCode: r.taskCode, ciId: r.ciId ?? '', ciName: r.ciName ?? r.ciId ?? '',
+          })
+        }
+      }
+    }
+
+    // In ordine di inizio: il calendario è una cronologia, e a pari ora la
+    // validazione viene prima del rilascio (è l'ordine del processo).
+    entries.sort((x, y) => {
+      const d = Date.parse(x['start'] as string) - Date.parse(y['start'] as string)
+      if (d !== 0) return d
+      const peso = (k: unknown) => (k === 'validation' ? 0 : 1)
+      return peso(x['kind']) - peso(y['kind']) || String(x['code']).localeCompare(String(y['code']))
+    })
+
+    return { entries, unreadablePlans }
+  })
+}
+
+/**
+ * Field resolver `Change.deployConflicts`.
+ *
+ * A parte e non dentro `getChange`: costa una lettura dei piani sui CI
+ * condivisi, e la paga solo chi apre il dettaglio — non ogni lista di change
+ * che chiede quattro campi.
+ */
+export async function changeDeployConflicts(parent: { id: string }, _: unknown, ctx: GraphQLContext) {
+  const { deployConflictsForChange } = await import('../../../lib/changeDeployConflicts.js')
+  return withSession((session) => deployConflictsForChange(session, ctx.tenantId, parent.id))
 }

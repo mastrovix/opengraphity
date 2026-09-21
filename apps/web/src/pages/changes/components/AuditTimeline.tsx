@@ -16,6 +16,18 @@ const AUDIT_CAT_COLOR: Record<AuditCategory, string> = {
   assignments: palette.purple.base, comments: 'var(--color-slate)',
   system: 'var(--color-slate-light)',
 }
+/**
+ * Lo SFONDO del badge, per categoria (revisione totale · F-34): si componeva
+ * come `${color}15`, cioè si attaccava un'opacità esadecimale a un valore che
+ * è `var(--…)` — la stringa `var(--x)15` non è un colore, quindi lo sfondo era
+ * semplicemente trasparente su tutti i badge, senza nessun errore visibile.
+ * Qui sono le tinte dei token, che è quello che gli altri badge usano.
+ */
+const AUDIT_CAT_BG: Record<AuditCategory, string> = {
+  status: 'var(--color-success-tint)', assessment: 'var(--color-brand-light)',
+  assignments: palette.purple.tint, comments: 'var(--color-slate-bg)',
+  system: 'var(--surface-2)',
+}
 /** Le categorie come CHIAVI: la frase la risolve chi la mostra. */
 const AUDIT_CAT_KEY: Record<AuditCategory, string> = {
   status: 'pages.auditTimeline.cat.status', assessment: 'pages.auditTimeline.cat.assessment',
@@ -124,7 +136,7 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
       {filtered.length === 0 && <p style={{ color: 'var(--color-slate-light)', margin: 0 }}>{t('pages.auditTimeline.empty')}</p>}
       <div>
         {visible.map((e, i) => {
-          const cat = categorizeAction(e.action); const color = AUDIT_CAT_COLOR[cat]
+          const cat = categorizeAction(e.action); const color = AUDIT_CAT_COLOR[cat]; const bg = AUDIT_CAT_BG[cat]
           const isLong = (e.detail ?? '').length > 120; const isExp = expandedIdx.has(i)
           const isLast = i === visible.length - 1
           return (
@@ -137,7 +149,7 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
                 <div style={{ padding: '6px 10px', background: 'var(--color-slate-bg)', borderRadius: 6, border: '1px solid var(--color-border-light)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                     <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>{fmtTS(e.timestamp)}</span>
-                    <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 5px', borderRadius: 4, backgroundColor: `${color}15`, color }}>{actionLabel(t, labelFor, e.action, stepOf(e))}</span>
+                    <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 5px', borderRadius: 4, backgroundColor: bg, color }}>{actionLabel(t, labelFor, e.action, stepOf(e))}</span>
                     {e.actor && <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{e.actor.name}</span>}
                   </div>
                   {e.detail && <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-dark)', ...(isLong && !isExp ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : {}) }}>{detailText(t, e)}</div>}

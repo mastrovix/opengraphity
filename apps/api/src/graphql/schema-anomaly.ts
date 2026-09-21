@@ -26,7 +26,15 @@ export function anomalySDL(): string {
     resolvedAt:       String
     resolutionStatus: String
     resolutionNote:   String
+    """L'id di chi l'ha risolta: per mostrarlo usa «resolvedByName» (G-ANO-8)."""
     resolvedBy:       String
+    """
+    Il NOME di chi l'ha risolta (revisione totale · G-ANO-8): il pannello
+    mostrava «resolvedBy», cioè l'UUID — «Risolta da 3f2a9c…» — oppure la
+    stringa «unknown» per una chiusura automatica dello scan. Vuoto quando
+    l'ha chiusa il prodotto e non una persona.
+    """
+    resolvedByName:   String
     """Perché lo scan l'ha chiusa: \`not_detected\` (non c'è più) o \`rule_disabled\` (la regola è stata spenta)."""
     resolvedReason:   String
     tenantId:         String!

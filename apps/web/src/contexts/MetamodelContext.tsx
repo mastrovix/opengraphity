@@ -45,6 +45,12 @@ export interface CITypeDef {
   id: string
   name: string
   label: string
+  /**
+   * L'etichetta per lingua (20 set 2026): il tipo si legge nella lingua di
+   * chi guarda, e i tipi spediti col prodotto hanno l'italiano seminato da
+   * una migrazione. Vuoto = vale `label`.
+   */
+  labels?: { language: string; label: string }[]
   icon: string
   color: string
   active: boolean
@@ -72,7 +78,7 @@ interface MetamodelContextType {
   getCIType: (name: string) => CITypeDef | undefined
 }
 
-const MetamodelContext = createContext<MetamodelContextType>({
+export const MetamodelContext = createContext<MetamodelContextType>({
   ciTypes: [],
   loading: true,
   error: null,
@@ -87,6 +93,11 @@ export function MetamodelProvider({ children }: { children: ReactNode }) {
   // i disegnatori leggono il nodo com'è, perché è quello che si modifica.
   const ciTypes: CITypeDef[] = useMemo(() => (data?.ciTypes ?? []).map((ct) => ({
     ...ct,
+    // Il NOME DEL TIPO nella lingua di chi guarda (20 set 2026): stessa
+    // regola di campi e relazioni — tradotto finché è quello spedito, e
+    // intoccato se il cliente l'ha rinominato. Le `labels` che il cliente
+    // scrive nel disegnatore vincono su tutto (`useCILabels`).
+    label:     shippedLabel('type', ct.name, ct.label),
     fields:    ct.fields.map((f) => ({ ...f, label: shippedLabel('field', f.name, f.label) })),
     relations: ct.relations.map((r) => ({ ...r, label: shippedLabel('relation', r.name, r.label) })),
   // eslint-disable-next-line react-hooks/exhaustive-deps -- la lingua cambia le etichette

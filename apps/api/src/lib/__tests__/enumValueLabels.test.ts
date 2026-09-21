@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest'
 import {
   titleCase, parseValueLabels, valueLabelEntries, pruneValueLabels,
   renameValueLabel, serializeValueLabels, labelFor,
+  valueLabelsReasonKey, VOCABULARIES_WITHOUT_LABELS,
 } from '../enumValueLabels.js'
 
 describe('titleCase — il ripiego quando l\'etichetta manca', () => {
@@ -152,5 +153,42 @@ describe('labelFor', () => {
 
   it('manca del tutto → il valore con le iniziali maiuscole', () => {
     expect(labelFor('mission_critical', labels, 'en', 'it')).toBe('Mission Critical')
+  })
+})
+
+/**
+ * IL MOTIVO PER CUI UN VOCABOLARIO NON PORTA ETICHETTE, detto all'interfaccia
+ * (17 set 2026).
+ *
+ * Il motivo esisteva già, ma solo per il server: migrazione e diagnostica lo
+ * usavano per non lamentarsi, mentre il Dizionario mostrava «not written»
+ * accanto a tutti e tredici i valori di `status_change` senza spiegare niente.
+ * Un motivo che sta solo nei commenti del server non è un motivo: è un
+ * segreto, e chi guarda conclude che manca una traduzione.
+ */
+describe('valueLabelsReasonKey', () => {
+  it('dà la chiave per i quattro stati: la lingua si scrive sul passo del workflow', () => {
+    for (const nome of ['status_incident', 'status_change', 'status_problem', 'status_service_request']) {
+      expect(valueLabelsReasonKey(nome), nome).toBe('pages.dictionary.noValueLabels.workflowStep')
+    }
+  })
+
+  it('e una chiave DIVERSA per import_severity: i valori sono chiavi di riconoscimento', () => {
+    expect(valueLabelsReasonKey('import_severity')).toBe('pages.dictionary.noValueLabels.importKeys')
+  })
+
+  it('`null` per un vocabolario che invece le porta: lì un\'etichetta vuota è vuota davvero', () => {
+    for (const nome of ['priority', 'severity', 'category', 'vocabolario_del_cliente']) {
+      expect(valueLabelsReasonKey(nome), nome).toBeNull()
+    }
+  })
+
+  it('ogni vocabolario senza etichette ha SIA il perché sia la chiave', () => {
+    // Il perché è per chi legge il codice, la chiave per chi guarda lo schermo:
+    // se ne manca una, una delle due platee resta senza risposta.
+    for (const [nome, v] of Object.entries(VOCABULARIES_WITHOUT_LABELS)) {
+      expect(v.why, `manca il perché per "${nome}"`).toBeTruthy()
+      expect(v.i18nKey, `manca la chiave i18n per "${nome}"`).toMatch(/^pages\.dictionary\.noValueLabels\./)
+    }
   })
 })

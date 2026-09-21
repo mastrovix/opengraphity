@@ -80,7 +80,11 @@ export function DesignerFieldRow({
         </div>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button type="button" style={btnSecondary} onClick={onEdit}>{editText}</button>
+        {/* Nessun pulsante VUOTO (revisione totale · G-14): i campi ereditati e
+            i tipi spediti passavano `editLabel=""`, e la riga mostrava un
+            bottoncino senza testo, senza nome accessibile e senza effetto. Se
+            non c'è un'etichetta, non c'è il pulsante. */}
+        {editText !== '' && <button type="button" style={btnSecondary} onClick={onEdit}>{editText}</button>}
         {!field.isSystem && (
           <button type="button" style={btnDanger} onClick={onDelete} aria-label={t('designerFieldRow.deleteField', { name: field.name })}>
             <Trash2 size={12} />

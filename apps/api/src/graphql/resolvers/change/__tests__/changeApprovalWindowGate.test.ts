@@ -63,6 +63,10 @@ vi.mock('../../../../services/changeCreationService.js', () => ({ createChangeRF
 let purposeByStep: Record<string, string | null> = {}
 vi.mock('../../../../lib/workflowHelpers.js', () => ({
   getStepPurpose: vi.fn(async (_s: unknown, _t: string, _e: string, step: string) => purposeByStep[step] ?? null),
+  // Revisione totale · B-11: il varco guarda anche se il passo di arrivo è
+  // terminale (un passo di annullamento è un'uscita, non un ingresso nella
+  // finestra di rilascio). Qui nessun passo è terminale.
+  getStepRow: vi.fn(async (_s: unknown, _t: string, _e: string, step: string) => ({ name: step, purpose: purposeByStep[step] ?? null, isTerminal: false, category: 'active' })),
   getStepNamesByPurpose: vi.fn(async (_s: unknown, _t: string, _e: string, purposes: readonly string[]) =>
     Object.entries(purposeByStep).filter(([, p]) => p != null && purposes.includes(p)).map(([name]) => name)),
 }))

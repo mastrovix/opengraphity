@@ -28,6 +28,9 @@ export function httpStatusForError(err: unknown): { status: number; code: string
     case 'NOT_FOUND':      return { status: 404, code: 'NOT_FOUND' }
     case 'FORBIDDEN':      return { status: 403, code: 'FORBIDDEN' }
     case 'UNAUTHORIZED':   return { status: 401, code: 'UNAUTHORIZED' }
+    // Il tenant è sospeso: accesso negato, ma con il suo codice — chi legge
+    // questa risposta non deve rinfrescare niente né tornare al login.
+    case 'TENANT_SUSPENDED': return { status: 401, code: 'TENANT_SUSPENDED' }
     // Workflow guard rejections / unavailable transitions: the client sent a
     // request the current state does not allow. Kept at 400 with the
     // historical code so existing REST clients keep matching on it.

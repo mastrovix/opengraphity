@@ -118,8 +118,14 @@ describe('fireStepDeadline', () => {
       { instanceId: 'wi-1', toStepName: 'closed', triggeredBy: 'step_deadline', triggerType: 'timer', tenantId: 'c-test' },
       expect.objectContaining({ userId: 'automation' }))
     expect(writeTicketField).toHaveBeenCalledWith(session, 'c-test', 'change', 'chg-1', 'outcome', 'successful')
-    // I campi si scrivono DOPO lo spostamento.
-    expect(transition.mock.invocationCallOrder[0]).toBeLessThan(writeTicketField.mock.invocationCallOrder[0]!)
+    /**
+     * CONTRATTO RINEGOZIATO (revisione totale · C-13): i campi si scrivono
+     * PRIMA di spostare. Nell'ordine vecchio una scrittura fallita lasciava il
+     * ticket già spostato e l'esito «failed» su un'esecuzione con `exited_at`:
+     * mai ritentata, e invisibile nella diagnostica, che guarda solo le
+     * esecuzioni aperte. Restava un log.
+     */
+    expect(writeTicketField.mock.invocationCallOrder[0]!).toBeLessThan(transition.mock.invocationCallOrder[0]!)
     expect(lastOutcome()).toMatchObject({ outcome: 'moved', toStep: 'closed', retryAt: null })
     // Dal vivo: senza `userEmail` la scrittura dell'audit falliva (parametro mancante) e la voce spariva.
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'c-test', userId: 'automation', userEmail: 'automation' }), 'workflow.step_deadline_moved', 'Change', 'chg-1', expect.objectContaining({ fromStep: 'review', toStep: 'closed' }))
@@ -183,12 +189,28 @@ describe('fireStepDeadline', () => {
     expect(writeTicketField).not.toHaveBeenCalled()
   })
 
-  it('il motore rifiuta la transizione → failed con il suo errore, nessun campo scritto', async () => {
+  it('il motore rifiuta la transizione → failed con il suo errore; i campi erano già scritti (C-13)', async () => {
     scriptReads()
     transition.mockResolvedValue({ success: false, error: 'condition not met' })
     await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('failed')
     expect(lastOutcome()).toMatchObject({ reason: 'transition', detail: 'condition not met' })
-    expect(writeTicketField).not.toHaveBeenCalled()
+    // I campi sono già scritti: il ticket non si è mosso, l'esecuzione è
+    // ancora aperta, e la passata dopo un'ora riprova con gli stessi valori.
+    expect(writeTicketField).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * C-13: una scrittura dei campi che falisce lascia il ticket DOV'ERA, con
+   * l'esito «failed» su un'esecuzione ancora aperta — quindi visibile nella
+   * diagnostica e ritentata.
+   */
+  it('la scrittura dei campi che fallisce non sposta il ticket, e l\'esito è ritentabile (C-13)', async () => {
+    scriptReads()
+    writeTicketField.mockRejectedValueOnce(new Error('vincolo violato'))
+    await expect(fireStepDeadline(candidate(), NOW)).resolves.toBe('failed')
+    expect(transition).not.toHaveBeenCalled()
+    expect(lastOutcome()).toMatchObject({ reason: 'field_write', detail: 'vincolo violato' })
+    expect(lastOutcome()!['retryAt']).not.toBeNull()
   })
 })
 

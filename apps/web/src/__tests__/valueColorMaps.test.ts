@@ -22,18 +22,25 @@ function sources(dir: string): string[] {
 /**
  * Tabelle che NON sono di un vocabolario del Dizionario, con la ragione. Ogni
  * voce è un permesso: se la ragione smette di essere vera, va tolta.
+ *
+ * Il permesso è sulla COSTANTE, non sul file (revisione totale · G-ANO-6): in
+ * `ui/badges.tsx` convivono il badge che legge i colori del Dizionario e la
+ * scala del prodotto delle anomalie; un permesso per tutto il file avrebbe
+ * spento il guardiano proprio dove serve di più.
  */
 const PERMESSI: Record<string, string> = {
-  'pages/settings/NotificationRuleList.tsx': 'la severità di una notifica è la scala del prodotto NOTIFICATION_SEVERITIES (info/success/warning/error), non un vocabolario del cliente',
+  'pages/settings/NotificationRuleList.tsx:SEVERITY_COLOR': 'la severità di una notifica è la scala del prodotto NOTIFICATION_SEVERITIES (info/success/warning/error), non un vocabolario del cliente',
+  'components/ui/badges.tsx:ANOMALY_SEVERITY_STYLE': 'la severità di un\'anomalia è la scala del prodotto ANOMALY_SEVERITIES (low/medium/high/critical), che il Dizionario non governa: la tendina della pagina usa le stesse etichette',
 }
 
 describe('colori per valore di vocabolario', () => {
   it('nessuna tabella di colori per priorità, severità, stato del CI o categoria KB nel web', () => {
-    const pattern = /\bconst\s+\w*(PRIORITY|SEVERITY|CI_STATUS|KB_CATEGORY)\w*_(COLOR|COLORS|STYLE|STYLES|DOT|BG|TINT)\b/
+    const pattern = /\bconst\s+(\w*(?:PRIORITY|SEVERITY|CI_STATUS|KB_CATEGORY)\w*_(?:COLOR|COLORS|STYLE|STYLES|DOT|BG|TINT))\b/
     const offenders: string[] = []
     for (const file of sources(SRC)) {
       readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
-        if (pattern.test(line) && !PERMESSI[relative(SRC, file)]) offenders.push(`${relative(SRC, file)}:${i + 1}`)
+        const m = pattern.exec(line)
+        if (m && !PERMESSI[`${relative(SRC, file)}:${m[1]!}`]) offenders.push(`${relative(SRC, file)}:${i + 1}  ${m[1]!}`)
       })
     }
     expect(offenders, 'Il colore di un valore si sceglie nel Dizionario: usa colorOf + vocabularyValueStyle.').toEqual([])

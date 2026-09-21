@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
 import { CI_LIFECYCLE_STATUSES } from '../lib/eventVocabularies.js'
+import { runScript } from './lib/runScript.js'
 
 const TENANT_ID = 'system'
 const now = new Date().toISOString()
@@ -530,8 +531,6 @@ async function main() {
   }
 }
 
-// Exit 0 SOLO in caso di successo: un errore deve produrre exit ≠ 0 e stack
-// (prima process.exit(0) nel finally mascherava qualsiasi fallimento del seed).
-main()
-  .then(() => process.exit(0))
-  .catch((err) => { console.error(err); process.exit(1) })
+// H-45: `runScript` stampa l'errore intero, mette exit code 1 e chiude il
+// driver Neo4j — senza `process.exit`, che troncava i log asincroni (pino).
+runScript('seed-metamodel', main)

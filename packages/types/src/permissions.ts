@@ -65,6 +65,21 @@ export const PERMISSION_CATALOG = [
   { key: 'analysis.read',       area: 'analysis' },
   { key: 'anomaly.resolve',     area: 'analysis' },
   { key: 'anomaly.scan',        area: 'analysis' },
+  /*
+   * LE PROPOSTE DI MIGLIORAMENTO (20 set 2026). Tre permessi e non uno,
+   * perché sono tre gesti diversi: leggere, far girare l'analisi, e
+   * ACCETTARE — che è l'unico che scrive.
+   *
+   * Il proprietario ha deciso che accettare richiede solo `proposal.accept`,
+   * e non anche il permesso dell'azione sottostante. È una scelta presa
+   * sapendo la conseguenza: chi ha questo permesso fa eseguire qualunque
+   * voce del catalogo chiuso. Per questo nei ruoli di fabbrica va SOLO
+   * all'admin — un ruolo su misura può darlo a qualcun altro, ma allora è
+   * una decisione di chi lo configura, scritta e visibile.
+   */
+  { key: 'proposal.read',       area: 'analysis' },
+  { key: 'proposal.accept',     area: 'analysis' },
+  { key: 'proposal.run',        area: 'analysis' },
   { key: 'report.read',         area: 'analysis' },
   { key: 'report.write',        area: 'analysis' },
   { key: 'report.schedule',     area: 'analysis' },

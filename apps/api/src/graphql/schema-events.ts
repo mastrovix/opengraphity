@@ -237,6 +237,12 @@ export function eventsSDL(): string {
     retiredStatuses:      [String!]!
     """Stati del ciclo di vita che contano come «in manutenzione»: il monitoraggio non ne aggiorna la salute e il componente esce dal calcolo (excludedReason lifecycle_maintenance). Valore iniziale: maintenance."""
     maintenanceStatuses:  [String!]!
+    """
+    Da quanti CI dipendenti in su un guasto su un CI «si propaga»: soglia del
+    chip Impatto nella console della salute (revisione totale · G-MON-7).
+    0 = nessuna evidenza, si mostra solo il conteggio.
+    """
+    highImpactDependents: Int!
     """Mappa severità → impatto/urgenza, JSON serializzato."""
     severityMap:          String!
   }
@@ -256,6 +262,13 @@ export function eventsSDL(): string {
     search:    String
     """Solo eventi visti da questo istante (data ISO 8601; una data parsabile in altro formato viene normalizzata a ISO prima del confronto)."""
     since:     String
+    """
+    Solo eventi RISOLTI da questo istante (confronto su resolved_at, revisione
+    totale · G-EVT-3): il riquadro «Risolti 24h» conta così, mentre il suo
+    filtro usava «since» (visti di recente) — un allarme visto tre giorni fa e
+    risolto un'ora prima compariva nel numero e non nell'elenco.
+    """
+    resolvedSince: String
     """Eventi correlati (CORRELATED_INTO) a questo incident."""
     incidentId: ID
     """Eventi silenziati (SUPPRESSED_BY) dalla finestra di questa change."""
@@ -284,6 +297,7 @@ export function eventsSDL(): string {
     retiredStatuses:      [String!]
     """Lista completa: gli stati che contano come «in manutenzione». Valori ammessi: gli stati del vocabolario ci_status di questo cliente."""
     maintenanceStatuses:  [String!]
+    highImpactDependents: Int
     severityMap:          String
   }
 

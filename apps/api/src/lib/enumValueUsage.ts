@@ -160,7 +160,7 @@ export const DOMAIN_VALUE_BINDINGS: Readonly<Record<string, readonly { label: st
  * `object_list`: una lista JSON di oggetti dove il campo `listKey` porta il
  * valore (`risk_band_thresholds` → `band`, `portal_severity_options` → `value`).
  */
-export type ConfigSiteShape = 'scalar' | 'conditions' | 'object_list' | 'string_list'
+export type ConfigSiteShape = 'scalar' | 'conditions' | 'object_list' | 'string_list' | 'actions' | 'deadline'
 
 export interface ConfigValueSite {
   label:    string
@@ -179,6 +179,17 @@ export interface ConfigValueSite {
 export const CONFIG_VALUE_SITES: readonly ConfigValueSite[] = [
   { label: 'BusinessRule',  property: 'conditions', shape: 'conditions', where: 'the conditions of a Business Rule' },
   { label: 'AutoTrigger',   property: 'conditions', shape: 'conditions', where: 'the conditions of an Auto Trigger' },
+  // Revisione totale · C-5: il perimetro copriva le sole CONDIZIONI. I valori
+  // che le AZIONI scrivono (`set_priority`, `set_field`, `update_field`) e
+  // quelli che una scadenza del passo imposta restavano sul nome vecchio: il
+  // conteggio diceva «0 usi», la rinomina non riscriveva, e la regola
+  // «Incident security → set_priority critical» falliva a ogni esecuzione con
+  // un messaggio solo nel log.
+  { label: 'BusinessRule',  property: 'actions',       shape: 'actions', where: 'the actions of a Business Rule' },
+  { label: 'AutoTrigger',   property: 'actions',       shape: 'actions', where: 'the actions of an Auto Trigger' },
+  { label: 'WorkflowStep',  property: 'enter_actions', shape: 'actions', where: 'the entry actions of a workflow step' },
+  { label: 'WorkflowStep',  property: 'exit_actions',  shape: 'actions', where: 'the exit actions of a workflow step' },
+  { label: 'WorkflowStep',  property: 'deadline',      shape: 'deadline', where: 'the fields set by a step deadline' },
   { label: 'SLAPolicyNode', property: 'category',   shape: 'scalar', vocabulary: 'category',    where: 'the category of an SLA Policy' },
   { label: 'DynamicCIGroup', property: 'criteria_environment', shape: 'scalar', vocabulary: 'environment', where: 'the environment of a dynamic CI group' },
   { label: 'StandardChangeCatalogEntry', property: 'default_priority', shape: 'scalar', vocabulary: 'priority', where: 'the priority of a standard change catalog entry' },
@@ -592,9 +603,14 @@ async function configReferences(
   const wanted = new Set(values)
 
   for (const site of CONFIG_VALUE_SITES) {
-    // Il Tenant non porta `tenant_id`: si identifica per slug.
+    // Il Tenant non porta `tenant_id`: si identifica per `id`, come in TUTTO
+    // il resto del codice (revisione totale · C-25). Qui era `slug`, che è
+    // scritto solo ON CREATE: un tenant nato prima di quella proprietà non
+    // veniva trovato, quindi la rinomina di una fascia di rischio o di un
+    // tipo di change non riscriveva le soglie e la creazione delle change si
+    // fermava — il critico della terza revisione, di nuovo.
     const match = site.label === 'Tenant'
-      ? 'MATCH (n:Tenant {slug: $tenantId})'
+      ? 'MATCH (n:Tenant {id: $tenantId})'
       : `MATCH (n:${site.label} {tenant_id: $tenantId})`
 
     if (site.shape === 'scalar') {
@@ -631,6 +647,23 @@ async function configReferences(
       continue
     }
 
+    if (site.shape === 'actions' || site.shape === 'deadline') {
+      const rows = await run(q, `
+        ${match}
+        WHERE n.${site.property} IS NOT NULL
+        RETURN n.${site.property} AS raw, n.entity_type AS entityType, n.name AS name, n.definition_id AS definitionId
+      `, { tenantId })
+      for (const row of rows) {
+        const writes = site.shape === 'actions' ? parseActionWrites(row['raw']) : parseDeadlineWrites(row['raw'])
+        for (const w of writes) {
+          if (fieldVocabulary(w.field) !== vocabularyName) continue
+          if (!wanted.has(w.value)) continue
+          add(w.value, `${site.where}${row['name'] != null ? ` «${String(row['name'])}»` : ''}`)
+        }
+      }
+      continue
+    }
+
     if (site.vocabulary !== vocabularyName) continue
     if (site.shape === 'string_list') {
       const rows = await run(q, `${match} RETURN n.${site.property} AS raw`, { tenantId })
@@ -656,8 +689,9 @@ async function replaceInConfig(
   tx: ManagedTransaction, tenantId: string, vocabularyName: string, from: string, to: string,
 ): Promise<void> {
   for (const site of CONFIG_VALUE_SITES) {
+    // C-25: `id`, non `slug` (vedi `configReferences`).
     const match = site.label === 'Tenant'
-      ? 'MATCH (n:Tenant {slug: $tenantId})'
+      ? 'MATCH (n:Tenant {id: $tenantId})'
       : `MATCH (n:${site.label} {tenant_id: $tenantId})`
 
     if (site.shape === 'scalar') {
@@ -708,6 +742,29 @@ async function replaceInConfig(
       continue
     }
 
+    if (site.shape === 'actions' || site.shape === 'deadline') {
+      // JSON: si rilegge, si riscrive, si risalva. I nodi `WorkflowStep` non
+      // hanno `tenant_id` sulla stessa forma degli altri? Ce l'hanno, e si
+      // riscrivono per id come le condizioni (C-5).
+      const rows = await runWrite(tx, `
+        ${match}
+        WHERE n.${site.property} IS NOT NULL
+        RETURN n.id AS id, n.${site.property} AS raw
+      `, { tenantId })
+      for (const row of rows) {
+        const next = site.shape === 'actions'
+          ? rewriteActionWrites(row['raw'], vocabularyName, from, to)
+          : rewriteDeadlineWrites(row['raw'], vocabularyName, from, to)
+        if (next == null) continue
+        await runWrite(tx, `
+          MATCH (n:${site.label} {id: $id, tenant_id: $tenantId})
+          SET n.${site.property} = $raw
+          RETURN count(*) AS n
+        `, { tenantId, id: row['id'], raw: next })
+      }
+      continue
+    }
+
     if (site.vocabulary !== vocabularyName) continue
     if (site.shape === 'string_list') {
       const rows = await runWrite(tx, `${match} RETURN n.${site.property} AS raw`, { tenantId })
@@ -741,6 +798,125 @@ async function replaceInConfig(
 interface ParsedCondition { field: string; value: string; raw: Record<string, unknown> }
 
 /** Le condizioni di una regola, saltando quelle che non hanno la forma attesa. */
+/**
+ * I VALORI DI VOCABOLARIO CHE UN'AZIONE SCRIVE (revisione totale · C-5).
+ *
+ * `set_priority` scrive la priorità, `set_field`/`update_field` scrivono il
+ * campo che nominano. Un valore con un segnaposto (`{category}`) si risolve a
+ * runtime e non è un valore di vocabolario: si salta.
+ */
+interface FieldWrite { field: string; value: string }
+
+function parseActionWrites(raw: unknown): FieldWrite[] {
+  if (raw == null) return []
+  let parsed: unknown
+  try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return [] }
+  if (!Array.isArray(parsed)) return []
+  const out: FieldWrite[] = []
+  for (const item of parsed) {
+    const w = actionWriteOf(item)
+    if (w) out.push(w)
+  }
+  return out
+}
+
+/** Il campo e il valore scritti da una singola azione, se ne scrive uno. */
+function actionWriteOf(item: unknown): FieldWrite | null {
+  if (item == null || typeof item !== 'object') return null
+  const o = item as Record<string, unknown>
+  const params = o['params']
+  if (params == null || typeof params !== 'object') return null
+  const p = params as Record<string, unknown>
+  if (o['type'] === 'set_priority') {
+    const value = p['priority'] ?? p['value']
+    return typeof value === 'string' && value && !isPlaceholder(value) ? { field: 'priority', value } : null
+  }
+  if (o['type'] === 'set_field' || o['type'] === 'update_field') {
+    const field = p['field']
+    const value = p['value']
+    if (typeof field !== 'string' || !field) return null
+    return typeof value === 'string' && value && !isPlaceholder(value) ? { field, value } : null
+  }
+  return null
+}
+
+/** I campi impostati da una scadenza del passo: `{after, unit, to_step, set_fields: [{field, value}]}`. */
+function parseDeadlineWrites(raw: unknown): FieldWrite[] {
+  if (raw == null) return []
+  let parsed: unknown
+  try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return [] }
+  if (parsed == null || typeof parsed !== 'object') return []
+  const fields = (parsed as Record<string, unknown>)['set_fields']
+  if (!Array.isArray(fields)) return []
+  const out: FieldWrite[] = []
+  for (const f of fields) {
+    if (f == null || typeof f !== 'object') continue
+    const o = f as Record<string, unknown>
+    if (typeof o['field'] === 'string' && typeof o['value'] === 'string' && o['value'] && !isPlaceholder(o['value'])) {
+      out.push({ field: o['field'], value: o['value'] })
+    }
+  }
+  return out
+}
+
+function isPlaceholder(value: string): boolean {
+  return /\{[A-Za-z_][\w.]*\}/.test(value)
+}
+
+/**
+ * Il vocabolario che governa un campo scritto da un'azione. `status` non entra:
+ * i nomi dei passi non sono valori di vocabolario (li valida
+ * `assertStepTargets`).
+ */
+function fieldVocabulary(field: string): string | null {
+  if (field === 'status') return null
+  if (field === 'severity') return 'severity'
+  return CONDITION_FIELD_VOCABULARY[field] ?? null
+}
+
+/** La lista di azioni riscritta, o null se non c'era niente da cambiare. */
+function rewriteActionWrites(raw: unknown, vocabularyName: string, from: string, to: string): string | null {
+  let parsed: unknown
+  try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return null }
+  if (!Array.isArray(parsed)) return null
+  let changed = false
+  const next = parsed.map((item) => {
+    const w = actionWriteOf(item)
+    if (!w || w.value !== from || fieldVocabulary(w.field) !== vocabularyName) return item
+    changed = true
+    const o = item as Record<string, unknown>
+    const p = { ...(o['params'] as Record<string, unknown>) }
+    if (o['type'] === 'set_priority') {
+      if (typeof p['priority'] === 'string') p['priority'] = to
+      if (typeof p['value'] === 'string') p['value'] = to
+    } else {
+      p['value'] = to
+    }
+    return { ...o, params: p }
+  })
+  return changed ? JSON.stringify(next) : null
+}
+
+/** La scadenza riscritta, o null se non c'era niente da cambiare. */
+function rewriteDeadlineWrites(raw: unknown, vocabularyName: string, from: string, to: string): string | null {
+  let parsed: unknown
+  try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return null }
+  if (parsed == null || typeof parsed !== 'object') return null
+  const o = { ...(parsed as Record<string, unknown>) }
+  const fields = o['set_fields']
+  if (!Array.isArray(fields)) return null
+  let changed = false
+  o['set_fields'] = fields.map((f) => {
+    if (f == null || typeof f !== 'object') return f
+    const ff = f as Record<string, unknown>
+    if (typeof ff['field'] !== 'string' || ff['value'] !== from) return f
+    if (fieldVocabulary(ff['field']) !== vocabularyName) return f
+    changed = true
+    return { ...ff, value: to }
+  })
+  return changed ? JSON.stringify(o) : null
+}
+
 function parseConditionList(raw: unknown): ParsedCondition[] {
   if (raw == null) return []
   let parsed: unknown

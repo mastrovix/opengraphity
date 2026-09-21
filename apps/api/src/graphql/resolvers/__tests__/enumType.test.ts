@@ -36,7 +36,7 @@ vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undef
   qui e finta, altrimenti la sua query consumerebbe la coda della sessione finta
   e ogni asserzione su cosa legge il resolver diventerebbe inaffidabile.
 */
-vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it') }))
+vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 
 const { enumTypeResolvers, customizeEnumType } = await import('../enumType.js')
 const { getSession } = await import('@opengraphity/neo4j')
@@ -63,7 +63,10 @@ const ENUM_ROW = { id: 'e-1', tenantId: 'tenant-1', name: 'ticket_source', label
 // Le query delle sedi usano tutte l'alias `n`: la policy degli allarmi legge
 // `MATCH (t:Tenant …) RETURN t.event_policy`, e un filtro sul solo nome
 // dell'etichetta si sarebbe mangiato anche quella (mi e successo).
-const CONFIG_LABELS = /\(n:(?:BusinessRule|AutoTrigger|SLAPolicyNode|DynamicCIGroup|StandardChangeCatalogEntry|FieldVisibilityRule)\b|risk_band_thresholds/
+// Revisione totale · C-5: fra le sedi ci sono anche le AZIONI delle regole e
+// dei passi, e i campi impostati da una scadenza — altre letture con l'alias
+// `n`, da servire vuote senza consumare la coda.
+const CONFIG_LABELS = /\(n:(?:BusinessRule|AutoTrigger|SLAPolicyNode|DynamicCIGroup|StandardChangeCatalogEntry|FieldVisibilityRule|WorkflowStep)\b|risk_band_thresholds/
 
 function fakeSession(responses: Array<{ records: unknown[] }>) {
   const queue = [...responses]
@@ -289,7 +292,10 @@ describe('updateEnumType', () => {
       { records: [rec({ isSystem: true, tenantId: 'tenant-1', name: 'severity', values: ['x'] })] },
       { records: [rec({ ...ENUM_ROW })] },
     ])
-    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-own', input: { values: ['x'] } }, admin)
+    // Una modifica VERA: da quando un salvataggio che non cambia niente viene
+    // rifiutato (18 set 2026), mandare gli stessi valori non arriva piu alla
+    // scrittura — e questo test guarda proprio la query di scrittura.
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-own', input: { values: ['x', 'y'] } }, admin)
     expect(s.txRun.mock.calls[1]![0]).not.toContain("'system'")
   })
 })
@@ -993,5 +999,38 @@ describe('colori per valore', () => {
     const [cypher, params] = s.txRun.mock.calls.at(-1)!
     expect(String(cypher)).toContain('value_colors: $valueColors')
     expect(JSON.parse((params as { valueColors: string }).valueColors)).toEqual({ low: 'success', high: 'orange' })
+  })
+})
+
+/*
+ * NIENTE DA SALVARE, NIENTE SALVATAGGIO (18 set 2026).
+ *
+ * Chiesto dal proprietario: «bisogna impedire di salvare se non ci sono state
+ * modifiche». Un salvataggio a vuoto scrive `updated_at`, lascia una voce
+ * nell'audit e — al primo salvataggio dopo «Personalizza» — fissa una copia
+ * identica a quella spedita, che da quel momento scherma il tenant dai valori
+ * che il prodotto aggiungerà.
+ */
+describe('updateEnumType — niente da salvare', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('lo stesso documento → rifiuto, e nessuna scrittura', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'severity', values: ['low', 'high'] })] },
+    ])
+    await expect(
+      enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-own', input: { values: ['low', 'high'] } }, admin),
+    ).rejects.toThrow(/Nothing to save/)
+    // La LETTURA c'e (serve a sapere cosa c'e gia); la SCRITTURA no.
+    expect(s.txRun.mock.calls.some((c) => String(c[0]).includes('SET e.'))).toBe(false)
+  })
+
+  it('un valore in piu → si salva', async () => {
+    const s = fakeSession([
+      { records: [rec({ isSystem: false, tenantId: 'tenant-1', name: 'severity', values: ['low', 'high'] })] },
+      { records: [rec({ ...ENUM_ROW })] },
+    ])
+    await enumTypeResolvers.Mutation.updateEnumType(null, { id: 'e-own', input: { values: ['low', 'high', 'critical'] } }, admin)
+    expect(s.txRun).toHaveBeenCalled()
   })
 })

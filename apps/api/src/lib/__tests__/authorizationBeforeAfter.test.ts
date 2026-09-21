@@ -39,6 +39,16 @@ const DECLARED: Record<string, { before: string[]; after: string[]; why: string 
   // Allineamento, nessun effetto: il resolver (`requireAgent` in collaboration.ts)
   // rifiutava già il viewer; ora lo dice la policy, con il permesso della chat.
   'Query.internalMessages': { before: STAFF, after: WRITERS, why: 'requireAgent already refused viewer' },
+  /**
+   * Moduli del catalogo, ondata 2: un campo allegato si compila caricando i
+   * file su una BOZZA, prima che il ticket esista, e chi compila dal portale
+   * deve poter togliere un file scelto per sbaglio. Il guardiano vero resta il
+   * resolver, che cancella solo ciò che hai caricato tu (o se moderi).
+   */
+  'Mutation.deleteAttachment': {
+    before: ['admin', 'operator'], after: ['admin', 'operator', 'end_user'],
+    why: 'the portal removes its own draft file before submitting; the resolver still allows only the uploader',
+  },
 }
 
 /**

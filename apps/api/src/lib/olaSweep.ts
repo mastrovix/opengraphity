@@ -40,13 +40,25 @@ export function olaOpenTicketsCypher(entityType: string): string {
   const m = OLA_CONCLUDED_FIELD[entityType]
   if (!m) throw new Error(`olaOpenTicketsCypher: unknown ticket type "${entityType}"`)
   if (entityType === 'change') throw new Error('olaOpenTicketsCypher: a change is measured on its tasks (olaChangeUnits.ts), it has no team of its own')
+  /**
+   * Anche i ticket che il team NON ha più (revisione totale · C-32): la
+   * passata partiva da «assegnato adesso a questo team», quindi un ticket il
+   * cui tempo del team aveva superato l'obiettivo e che era stato passato ad
+   * altri prima della passata successiva — o durante una passata fallita — non
+   * produceva mai `ola.breached`, benché il report lo contasse violato.
+   * Il tempo si misura sui SEGMENTI (`TicketTeamSegment`), che restano anche
+   * dopo il passaggio di mano: basta che il team ne abbia almeno uno.
+   */
   return `
-    MATCH (e:${m.label} {tenant_id: $tenantId})-[:ASSIGNED_TO_TEAM]->(:Team {id: $teamId, tenant_id: $tenantId})
+    MATCH (e:${m.label} {tenant_id: $tenantId})
     WHERE e.${m.field} IS NULL AND coalesce(e.deleted, false) = false
       AND NOT $contractId IN coalesce(e.ola_alerted, [])
+    OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(ct:Team {tenant_id: $tenantId})
     OPTIONAL MATCH (e)-[:TEAM_SEGMENT]->(s:TicketTeamSegment {team_id: $teamId})
-    RETURN e.id AS id, e.number AS number, e.title AS title, e.created_at AS createdAt, null AS concludedAt, $teamId AS currentTeamId,
-           [x IN collect(DISTINCT s) | {teamId: x.team_id, startedAt: x.started_at, endedAt: x.ended_at, inferred: coalesce(x.inferred, false)}] AS segments`
+    WITH e, ct, collect(DISTINCT s) AS segs
+    WHERE ct.id = $teamId OR size(segs) > 0
+    RETURN e.id AS id, e.number AS number, e.title AS title, e.created_at AS createdAt, null AS concludedAt, ct.id AS currentTeamId,
+           [x IN segs | {teamId: x.team_id, startedAt: x.started_at, endedAt: x.ended_at, inferred: coalesce(x.inferred, false)}] AS segments`
 }
 
 export async function runOLASweep(now: Date = new Date()): Promise<OLASweepSummary> {
@@ -66,8 +78,19 @@ export async function runOLASweep(now: Date = new Date()): Promise<OLASweepSumma
     const timezones = new Map<string, string>()
     for (const c of contracts) {
       try {
-        if (!timezones.has(c.tenantId)) timezones.set(c.tenantId, await getTenantTimezone(c.tenantId))
         const calendar: ServiceCalendar | null = await calendarFor(c.tenantId, { name: c.name, businessHours: c.businessHours, calendarId: c.calendarId })
+        /**
+         * Il fuso si legge SOLO quando il contratto usa l'orario di servizio
+         * (revisione totale · C-11): `olaTeamMeasure` lo ignora per un 24×7,
+         * ma `getTenantTimezone` LANCIA se il tenant non ne ha uno — quindi un
+         * tenant appena creato con contratti 24×7 contava ogni contratto come
+         * «failed» e scriveva una riga di errore al minuto, senza che nessun
+         * avviso OLA partisse.
+         */
+        if (c.businessHours && !timezones.has(c.tenantId)) {
+          timezones.set(c.tenantId, await getTenantTimezone(c.tenantId))
+        }
+        const timezone = timezones.get(c.tenantId) ?? 'UTC'
         const rule = { teamId: c.teamId, createdAt: c.createdAt, resolveMinutes: toNumber(c.resolveMinutes), businessHours: c.businessHours, calendar }
         for (const entityType of olaEntityTypes(c.entityType || 'incident')) {
           if (entityType === 'change') {
@@ -75,7 +98,7 @@ export async function runOLASweep(now: Date = new Date()): Promise<OLASweepSumma
               .filter((u) => !u.alerted.includes(olaUnitAlertKey(c.id, u)))
             summary.candidates += units.length
             for (const u of units) {
-              const m = olaTeamMeasure(u, rule, timezones.get(c.tenantId)!, now)
+              const m = olaTeamMeasure(u, rule, timezone, now)
               if (m.state !== 'breached') continue
               await alertUnit(session, c, u, m.usedMinutes, rule.resolveMinutes, now)
               summary.alerted++
@@ -87,7 +110,7 @@ export async function runOLASweep(now: Date = new Date()): Promise<OLASweepSumma
           })
           summary.candidates += tickets.length
           for (const t of tickets) {
-            const m = olaTeamMeasure(t, rule, timezones.get(c.tenantId)!, now)
+            const m = olaTeamMeasure(t, rule, timezone, now)
             if (m.state !== 'breached') continue
             await alert(session, c, entityType, t, m.usedMinutes, rule.resolveMinutes, now)
             summary.alerted++

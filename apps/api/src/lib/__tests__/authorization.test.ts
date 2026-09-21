@@ -52,12 +52,33 @@ describe('policy ↔ schema', () => {
     const q = queryFields.filter((f) => allowedRoles('Query', f).includes('end_user')).sort()
     const m = mutationFields.filter((f) => allowedRoles('Mutation', f).includes('end_user')).sort()
     expect(q).toEqual([
-      'attachmentPolicy', 'fieldRequirementRules', 'fieldVisibilityRules', 'kbArticle', 'kbArticleBySlug', 'kbArticles', 'kbCategories',
-      'me', 'myTicket', 'myTicketStats', 'myTickets', 'portalCustomFields', 'portalSeverityChoices', 'serviceCatalogItems',
+      'attachmentPolicy',
+      // Moduli del catalogo (ondata 1): il portale legge il modulo della voce
+      // che l'utente ha scelto, quindi la query entra nella sua superficie.
+      'catalogFormToFill',
+      'fieldRequirementRules', 'fieldVisibilityRules', 'kbArticle', 'kbArticleBySlug', 'kbArticles', 'kbCategories',
+      'me', 'myTicket', 'myTicketStats', 'myTickets', 'portalCustomFields',
+      /*
+       * Le scelte di un campo «riferimento» del modulo (20 set 2026,
+       * decisione del proprietario). NON è la CMDB: risponde con i CI dei
+       * TIPI che quel campo dichiara — «le Business Application» — e con
+       * id ed etichetta soltanto. Senza, una voce come «Richiesta di
+       * accesso ad applicazione» non poteva chiedere dal portale QUALE
+       * applicazione, e il dato arrivava a parole nella motivazione.
+       */
+      'portalReferenceChoices',
+      'portalSeverityChoices', 'serviceCatalogItems',
       'tenantBrand', 'tenantLanguageSettings', 'ticketCategories',
     ])
     // setMyLanguage: la lingua della persona, anche dal portale (secondo giro UI del 15 set 2026)
-    expect(m).toEqual(['addTicketComment', 'createServiceRequest', 'createTicket', 'deleteComment', 'rateKBArticle', 'reopenTicket', 'setMyLanguage', 'updateComment'])
+    expect(m).toEqual([
+      'addTicketComment', 'createServiceRequest', 'createTicket',
+      // Moduli del catalogo, ondata 2: chi compila un campo allegato dal
+      // portale deve poter togliere un file scelto per sbaglio PRIMA di
+      // inviare. Il resolver cancella solo cio che hai caricato tu.
+      'deleteAttachment',
+      'deleteComment', 'rateKBArticle', 'reopenTicket', 'setMyLanguage', 'updateComment',
+    ])
   })
 
   it('viewer non scrive tranne le azioni personali', () => {

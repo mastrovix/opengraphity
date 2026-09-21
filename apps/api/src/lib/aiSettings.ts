@@ -18,6 +18,16 @@
  * e dice chi può riaccenderla. La proprietà assente è «tutto acceso, 0,72 e 3»,
  * cioè il comportamento di prima, e la migrazione `20260927_1020_ai_settings`
  * lo scrive esplicito.
+ *
+ * ## Una funzione che nasce dopo (19 set 2026)
+ * `formDesigner` — l'AI che disegna il modulo di una service request da una
+ * descrizione — è il settimo interruttore, e `reportDesigner` — quella che
+ * disegna una sezione di report — l'ottavo. I tenant che avevano già salvato
+ * le loro impostazioni non ce li hanno. In LETTURA l'interruttore assente vale
+ * fabbrica (acceso), che è la regola di questo file; le migrazioni
+ * `20261005_1090` e `20261005_1100` li scrivono espliciti su chi aveva già
+ * salvato, così nel documento delle impostazioni non resta un buco che nessuno
+ * sa spiegare.
  */
 import { GraphQLError } from 'graphql'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
@@ -25,7 +35,19 @@ import { NotFoundError, ValidationError } from './errors.js'
 import { createMetamodelCache } from './metamodelCache.js'
 import { invalidateSchema } from './schemaInvalidator.js'
 
-export const AI_FEATURES = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings'] as const
+/*
+ * `platformSelfAnalysis` È IL PRIMO SPENTO DI FABBRICA (20 set 2026, ondata 4).
+ *
+ * Gli altri otto nascono accesi perché sono aiuti dentro il perimetro di un
+ * cliente: leggono i suoi ticket e rispondono a lui. Questo no. L'analista
+ * della piattaforma legge la proiezione dei log del SERVER, che è l'unico
+ * archivio del prodotto che attraversa il perimetro fra i clienti — scelta
+ * dichiarata nel progetto, e per questo l'unica che nessuno si trova accesa
+ * senza averla scelta. È anche la decisione del proprietario, presa il 20 set
+ * sapendo la conseguenza: finché nessuno lo accende, l'area D non gira e lo
+ * dice invece di tacere.
+ */
+export const AI_FEATURES = ['triage', 'assistant', 'reportAnalysis', 'postIncident', 'kbArticles', 'embeddings', 'formDesigner', 'reportDesigner', 'platformSelfAnalysis', 'dailyWorkAnalysis', 'configurationAssist'] as const
 export type AIFeature = (typeof AI_FEATURES)[number]
 
 export interface AISettings {
@@ -37,7 +59,34 @@ export interface AISettings {
 }
 
 export const FACTORY_AI_SETTINGS: Readonly<AISettings> = {
-  features: { triage: true, assistant: true, reportAnalysis: true, postIncident: true, kbArticles: true, embeddings: true },
+  features: {
+    triage: true, assistant: true, reportAnalysis: true, postIncident: true,
+    kbArticles: true, embeddings: true, formDesigner: true, reportDesigner: true,
+    /*
+     * I DUE SPENTI DI FABBRICA, e non sono lo stesso interruttore (20 set 2026).
+     *
+     * `platformSelfAnalysis` legge l'archivio degli errori del SERVER, che
+     * attraversa il perimetro fra i clienti: esiste solo sul tenant di
+     * piattaforma. `dailyWorkAnalysis` legge il registro DI QUESTO cliente e
+     * propone dentro casa sua. Rischi diversi, perimetri diversi, decisioni
+     * diverse — un interruttore solo avrebbe costretto a sceglierli insieme.
+     *
+     * Entrambi spenti, e per la stessa ragione: sono gli unici due che
+     * SCRIVONO qualcosa di propria iniziativa, di notte, senza che nessuno
+     * clicchi. Decisione del proprietario.
+     */
+    platformSelfAnalysis: false,
+    dailyWorkAnalysis: false,
+    /*
+     * Il terzo, e l'ultimo del programma. Legge la CONFIGURAZIONE di questo
+     * cliente — vocabolari, workflow — e propone di completarla. È l'unico
+     * dei tre le cui proposte, se accettate, fanno scrivere al modello del
+     * TESTO che le persone leggeranno sullo schermo: le etichette dei valori.
+     * Per questo nasce spento come gli altri due, e per questo l'azione non
+     * sovrascrive MAI un'etichetta che una persona ha già scritto.
+     */
+    configurationAssist: false,
+  },
   clusterMinSimilarity: 0.72,
   clusterMinSize: 3,
 }
@@ -74,7 +123,15 @@ export async function assertAIFeature(tenantId: string, feature: AIFeature): Pro
   if (!(await aiFeatureEnabled(tenantId, feature))) throw aiDisabledError(feature)
 }
 
-export function assertAISettings(raw: unknown): AISettings {
+/**
+ * `tollerante` serve a LEGGERE impostazioni scritte prima che una funzione
+ * esistesse (19 set 2026: `formDesigner`). In scrittura no: l'interruttore
+ * mancante in un input verrebbe da un client che non conosce quella funzione, e
+ * accettarlo vorrebbe dire spegnere in silenzio quello che l'utente vede acceso.
+ * In lettura l'assenza vale quello che vale dappertutto qui: il valore di
+ * fabbrica, cioè il comportamento di prima.
+ */
+export function assertAISettings(raw: unknown, opts: { tollerante?: boolean } = {}): AISettings {
   const obj = (raw ?? {}) as Record<string, unknown>
   const features = (obj['features'] ?? null) as Record<string, unknown> | null
   if (!features || typeof features !== 'object') {
@@ -83,6 +140,7 @@ export function assertAISettings(raw: unknown): AISettings {
   const out = {} as Record<AIFeature, boolean>
   for (const f of AI_FEATURES) {
     if (typeof features[f] !== 'boolean') {
+      if (opts.tollerante === true && !(f in features)) { out[f] = FACTORY_AI_SETTINGS.features[f]; continue }
       throw new ValidationError(`AI settings: "${f}" must be on or off`, { key: 'errors.aiSettings.shape', params: {} })
     }
     out[f] = features[f] as boolean
@@ -109,7 +167,7 @@ async function loadSettings(tenantId: string): Promise<AISettings & { isDefault:
     let parsed: unknown
     try { parsed = JSON.parse(String(row.raw)) }
     catch (e) { throw new Error(`Tenant ${tenantId}: ai_settings is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
-    return { ...assertAISettings(parsed), isDefault: false }
+    return { ...assertAISettings(parsed, { tollerante: true }), isDefault: false }
   } finally {
     await session.close()
   }

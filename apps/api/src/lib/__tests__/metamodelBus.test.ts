@@ -465,3 +465,155 @@ describe('il contatore di versione che riparte da capo (D·#2)', () => {
     await p.bus.stopMetamodelBus()
   })
 })
+
+/**
+ * PRB00000003 — le invalidazioni perdute mentre l'ascolto era caduto.
+ *
+ * La caduta in sé è un guasto di trasporto e nessuna riga di codice la ripara.
+ * Il difetto è la REAZIONE: il pub/sub di Redis non ha arretrato, quindi i
+ * messaggi pubblicati mentre questo processo era staccato sono perduti per
+ * sempre — e alla ripresa `subscribeNow()` scriveva «in ascolto sul canale» e
+ * rimetteva `metamodel_bus_subscribed = 1` senza svuotare niente. Il processo
+ * tornava «sano» tenendo cache che nessuno gli avrebbe più detto di buttare, e
+ * le serviva fino al TTL: 60 s le cache del metamodello, 5 minuti lo schema.
+ * Cioè il difetto per cui il canale è stato costruito, con un nome nuovo.
+ *
+ * Questi test mettono in piedi due processi veri, staccano il SECONDO, fanno
+ * cambiare il metamodello mentre è staccato, e guardano cosa ha in cache
+ * quando torna.
+ */
+describe('la ripresa dopo una sottoscrizione persa (PRB00000003)', () => {
+  /**
+   * Il client di ascolto dell'i-esimo processo avviato. `hub.clients` è un
+   * `Set`, quindi conserva l'ordine di creazione: un processo, un client.
+   */
+  function client(i = 0): { emit: (e: string) => void; channels: Set<string> } {
+    return [...hub.clients][i]!
+  }
+
+  /** Come una connessione caduta: staccato da Redis, non riceve più niente. */
+  function stacca(c: { emit: (e: string) => void; channels: Set<string> }): void {
+    c.channels.clear()
+    c.emit('close')
+  }
+
+  it('i messaggi persi mentre era staccato non tornano: alla ripresa svuota TUTTO', async () => {
+    const a = await startProcess()
+    const b = await startProcess()
+    warm(b, 'c-uno'); warm(b, 'c-due')
+
+    const clientB = client(1)
+    stacca(clientB)
+    expect(b.bus.metamodelBusStatus().subscribed).toBe(false)
+
+    // Il metamodello di c-uno cambia mentre B non ascolta. Il messaggio esiste,
+    // ma per B è perduto: Redis pub/sub non lo riconsegnerà mai.
+    a.inv.invalidateSchema('c-uno')
+    await vi.waitFor(() => expect(hub.published).toHaveLength(1))
+    expect(isWarm(b, 'c-uno'), 'staccato: nessuno lo ha avvisato').toBe(true)
+
+    clientB.emit('ready')
+    await vi.waitFor(() => expect(b.bus.metamodelBusStatus().subscribed).toBe(true))
+
+    // Il difetto: B tornava sottoscritto tenendo la cache di c-uno, che è
+    // proprio quella cambiata. Ora la butta — e con lei quella di c-due, perché
+    // QUALI tenant siano cambiati non si sa più.
+    expect(isWarm(b, 'c-uno')).toBe(false)
+    expect(isWarm(b, 'c-due')).toBe(false)
+  })
+
+  it('lo dichiara nel log invece di sembrare un avvio pulito', async () => {
+    await startProcess()
+    await import('../reportWhitelist.js')
+    stacca(client())
+    client().emit('ready')
+
+    await vi.waitFor(() => expect(logChild.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cleared: expect.arrayContaining(['memory-cache', 'ci-type-labels', 'report-whitelist']),
+        failed: [],
+        withoutClearAll: [],
+      }),
+      expect.stringContaining('ri-sottoscritto dopo una perdita di ascolto'),
+    ))
+  })
+
+  it('la PRIMA sottoscrizione non svuota niente: non c\'è niente di perduto', async () => {
+    const p = await startProcess()
+    warm(p, 'c-uno')
+    // `ready` arriva anche al primo collegamento, e `subscribeNow()` è già
+    // stata chiamata da `startMetamodelBus()`: due passaggi, nessuna perdita.
+    client().emit('ready')
+    await vi.waitFor(() => expect(p.bus.metamodelBusStatus().subscribed).toBe(true))
+
+    expect(isWarm(p, 'c-uno')).toBe(true)
+    expect(logChild.warn).not.toHaveBeenCalledWith(
+      expect.anything(), expect.stringContaining('ri-sottoscritto dopo una perdita'),
+    )
+  })
+
+  it('una cache senza svuotamento totale viene NOMINATA, non saltata in silenzio', async () => {
+    const p = await startProcess()
+    // Registrata solo per tenant: non sa buttare tutto.
+    p.inv.registerMetamodelCacheClearer('solo-per-tenant', () => undefined)
+    expect(p.inv.metamodelCacheClearersWithoutClearAll()).toEqual(['solo-per-tenant'])
+
+    stacca(client())
+    client().emit('ready')
+
+    await vi.waitFor(() => expect(logChild.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ withoutClearAll: ['solo-per-tenant'] }),
+      expect.stringContaining('ri-sottoscritto dopo una perdita di ascolto'),
+    ))
+  })
+
+  it('una cache che lancia non ferma le altre ed è raccolta in `failed`', async () => {
+    const p = await startProcess()
+    p.inv.registerMetamodelCacheClearer('rotta', () => undefined, () => { throw new Error('boom') })
+    warm(p, 'c-uno')
+
+    stacca(client())
+    client().emit('ready')
+
+    await vi.waitFor(() => expect(logChild.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        failed: [{ name: 'rotta', error: 'boom' }],
+        cleared: expect.arrayContaining(['memory-cache', 'ci-type-labels']),
+      }),
+      expect.stringContaining('ri-sottoscritto dopo una perdita di ascolto'),
+    ))
+    expect(isWarm(p, 'c-uno')).toBe(false)
+  })
+
+  it('e si conta: `metamodel_resubscribe_flush_total` è la finestra di buio', async () => {
+    vi.resetModules()
+    const metrics = await import('../../middleware/metrics.js')
+    const bus     = await import('../metamodelBus.js')
+    await import('../cache.js')
+    bus.startMetamodelBus()
+    await vi.waitFor(() => expect(bus.metamodelBusStatus().subscribed).toBe(true))
+    // Un avvio pulito non è una perdita: il contatore non è mai stato toccato.
+    expect(metrics.metamodelResubscribeFlushTotal.snapshot()).toEqual([])
+
+    stacca(client())
+    client().emit('ready')
+
+    await vi.waitFor(() => expect(metrics.metamodelResubscribeFlushTotal.snapshot())
+      .toEqual([{ labels: {}, value: 1 }]))
+    await bus.stopMetamodelBus()
+  })
+
+  it('dopo uno spegnimento ordinato il canale riparte pulito, senza svuotare', async () => {
+    const p = await startProcess()
+    await p.bus.stopMetamodelBus()
+    warm(p, 'c-uno')
+
+    p.bus.startMetamodelBus()
+    await vi.waitFor(() => expect(p.bus.metamodelBusStatus().subscribed).toBe(true))
+
+    // Riavvio deliberato, non una perdita: non c'è nessuna finestra di buio da
+    // compensare, e le cache appena riscaldate restano.
+    expect(isWarm(p, 'c-uno')).toBe(true)
+    await p.bus.stopMetamodelBus()
+  })
+})

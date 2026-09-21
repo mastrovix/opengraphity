@@ -45,6 +45,9 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
       'enumTypes', 'enumType', 'criticalServiceCriticalities', 'preApprovedChangeTypes', 'riskBandThresholds',
       'navigableEntities', 'navigableRelations', 'reachableEntities',
       'workflowDefinitions', 'workflowDefinition', 'workflowDefinitionById', 'workflowEventTypes',
+      // Solo nome ed etichetta dei passi, per LEGGERE uno stato: stesso
+      // permesso di `workflowDefinition`, che è dove si leggono oggi.
+      'workflowStepLabels',
       'olaContracts', 'ticketOLAs', 'slaCoverage', 'ticketCreationCustomFields',
     ],
     mutation: ['watchEntity', 'unwatchEntity', 'linkSlackAccount'],
@@ -56,6 +59,32 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   { anyOf: ['portal.read'], query: ['myTickets', 'myTicket', 'myTicketStats', 'portalSeverityChoices', 'portalCustomFields'] },
   { anyOf: ['workspace.use', 'portal.read'], query: ['ticketCategories', 'fieldVisibilityRules', 'fieldRequirementRules'] },
   { anyOf: ['portal.submit'], mutation: ['createTicket', 'addTicketComment', 'reopenTicket'] },
+
+  /**
+   * I COMPITI DI UN TICKET non hanno un permesso proprio: vale quello del
+   * ticket a cui sono appesi. Qui la regola è l'UNIONE dei permessi dei tipi
+   * che possono avere compiti — questo guardiano pretende una regola per ogni
+   * campo dello schema, e il tipo del ticket si sa solo a runtime — mentre il
+   * controllo PRECISO lo fa il resolver (`resolvers/ticketTasks.ts`), sul
+   * tipo che il compito ha davvero. Un permesso «task.read» a sé sarebbe la
+   * strada per cui un giorno qualcuno legge dai titoli dei compiti quello che
+   * il ticket non gli mostra.
+   */
+  {
+    anyOf: ['incident.read', 'problem.read', 'change.read', 'request.read', 'kb.read'],
+    query: ['ticketTasks'],
+  },
+  /**
+   * I CAMPI RIFERIMENTO dei moduli, per il disegnatore dei workflow: nome,
+   * etichetta e tipo, niente altro. Prima si allargava `formFields` a
+   * `config.workflow`, ma quella porta anche gli script di validazione e le
+   * formule del cliente — per una tendina bastano tre stringhe (20 set 2026).
+   */
+  { anyOf: ['config.workflow', 'config.catalog'], query: ['formReferenceFields'] },
+  {
+    anyOf: ['incident.write', 'problem.write', 'change.write', 'request.write', 'kb.write'],
+    mutation: ['claimTicketTask', 'completeTicketTask', 'cancelTicketTask'],
+  },
 
   // ── Ticket ─────────────────────────────────────────────────────────────────
   {
@@ -84,7 +113,7 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   { anyOf: ['problem.delete'], mutation: ['deleteProblem'] },
   {
     anyOf: ['change.read'],
-    query: ['changes', 'change', 'changeAffectedCIs', 'changeAuditTrail', 'changeImpactAnalysis', 'changeImpactedCIs',
+    query: ['changes', 'change', 'changeAffectedCIs', 'changeAuditTrail', 'changeCalendar', 'changeImpactAnalysis', 'changeImpactedCIs',
       'ciChanges', 'taskById', 'approvalRequests', 'assessmentQuestionCatalog'],
   },
   {
@@ -98,19 +127,30 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   { anyOf: ['change.delete'], mutation: ['deleteChange'] },
   { anyOf: ['request.read'], query: ['serviceRequests', 'serviceRequest', 'ciServiceRequests'] },
   { anyOf: ['request.write'], mutation: ['addCIToServiceRequest', 'removeCIFromServiceRequest'] },
-  { anyOf: ['request.read', 'portal.read'], query: ['serviceCatalogItems'] },
-  { anyOf: ['request.write'], mutation: ['updateServiceRequest', 'assignServiceRequestToUser'] },
+  { anyOf: ['request.read', 'portal.read'], query: ['serviceCatalogItems', 'catalogFormToFill',
+    // Le scelte di un campo «riferimento» del modulo: chi può vedere il
+    // modulo può vedere le sue scelte, e sono i CI dei tipi che il campo
+    // dichiara — non la CMDB (20 set 2026).
+    'portalReferenceChoices'] },
+  { anyOf: ['request.write'], mutation: ['updateServiceRequest', 'assignServiceRequestToUser', 'setServiceRequestFormAnswer'] },
   { anyOf: ['request.write', 'portal.submit'], mutation: ['createServiceRequest'] },
   // Il passo di workflow per id d'istanza: vale per incident, richieste e articoli.
   { anyOf: ['incident.write', 'problem.write', 'request.write', 'kb.write'], mutation: ['executeWorkflowTransition'] },
   { anyOf: TICKET_READ, query: ['comments', 'attachments'] },
   {
     anyOf: ['ticket.work'],
-    mutation: ['addComment', 'setTicketCustomFields', 'addAffectedCI', 'removeAffectedCI', 'deleteAttachment',
+    mutation: ['addComment', 'setTicketCustomFields', 'addAffectedCI', 'removeAffectedCI',
       'addWatcher', 'removeWatcher', 'linkRelatedTicket', 'unlinkRelatedTicket', 'linkResolvedTicket', 'unlinkResolvedTicket'],
   },
   // Il resolver limita la modifica ai commenti propri (e pubblici, dal portale).
   { anyOf: ['ticket.work', 'portal.submit'], mutation: ['updateComment', 'deleteComment'] },
+  /**
+   * `deleteAttachment` anche dal portale (moduli del catalogo, ondata 2): un
+   * campo allegato si compila caricando i file su una BOZZA, e chi compila deve
+   * poter togliere un file scelto per sbaglio prima di inviare. Il resolver
+   * resta il guardiano vero — cancella solo chi ha caricato, o chi modera.
+   */
+  { anyOf: ['ticket.work', 'portal.submit'], mutation: ['deleteAttachment'] },
   {
     anyOf: ['ticket.internalChat'],
     query: ['internalMessages'],
@@ -145,6 +185,26 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   { anyOf: ['analysis.read'], query: ['anomalies', 'anomaly', 'anomalyStats', 'anomalyScanStatus', 'whatIfAnalysis', 'whatIfCompare'] },
   { anyOf: ['anomaly.resolve'], mutation: ['resolveAnomaly'] },
   { anyOf: ['anomaly.scan'], mutation: ['runAnomalyScanner'] },
+  // Le proposte di miglioramento. Accettare e rifiutare stanno sotto lo
+  // STESSO permesso: rifiutare scrive la lapide che zittisce l'impronta, e
+  // zittire una proposta è una decisione quanto accettarla.
+  { anyOf: ['proposal.read'],   query: ['proposals', 'proposal'] },
+  // Gli aggregati del lavoro quotidiano: misure della squadra, non dati di un
+  // ticket — stesso permesso delle anomalie.
+  { anyOf: ['analysis.read'],   query: ['dailyWorkAggregates'] },
+  { anyOf: ['proposal.accept'], mutation: ['acceptProposal', 'rejectProposal', 'postponeProposal', 'undoProposal', 'acknowledgeProposal'] },
+  /*
+   * «Apri un Problem» vuole DUE permessi (20 set 2026): decidere sulle
+   * proposte e scrivere un problem. Chi decide non è automaticamente chi può
+   * aprire ticket, e questo gesto ne apre uno vero. Qui sta la porta
+   * d'ingresso; il secondo controllo è nel resolver, dove si vede accanto a
+   * ciò che fa.
+   */
+  { anyOf: ['proposal.accept'], mutation: ['openProblemFromProposal'] },
+  { anyOf: ['proposal.run'],    mutation: ['runProposalAnalysis'] },
+  // Il fascicolo è la lettura di un Problem, e chiede il permesso di leggere
+  // i problem: la sbarra sul perimetro (solo piattaforma) è nel modulo.
+  { anyOf: ['problem.read'],    query: ['problemDossier'] },
   {
     anyOf: ['report.read'],
     query: ['reportTemplates', 'reportTemplate', 'executeReport', 'previewReportSection', 'slaReport', 'reportConversations', 'reportConversation'],
@@ -153,7 +213,10 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   {
     anyOf: ['report.write'],
     mutation: ['createReportTemplate', 'updateReportTemplate', 'deleteReportTemplate', 'duplicateReportTemplate',
-      'addReportSection', 'updateReportSection', 'removeReportSection', 'reorderReportSections', 'exportReportPDF', 'exportReportExcel'],
+      'addReportSection', 'updateReportSection',
+      // La PROPOSTA dell'AI non scrive niente, ma costa una chiamata al
+      // modello e riempie il costruttore: la puo chiedere chi salva i report.
+      'proposeReportSection', 'removeReportSection', 'reorderReportSections', 'exportReportPDF', 'exportReportExcel'],
   },
   { anyOf: ['report.schedule'], mutation: ['updateReportSchedule'] },
   { anyOf: ['report.ai'], mutation: ['askReport'] },
@@ -168,9 +231,11 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   // ── Configurazione ─────────────────────────────────────────────────────────
   {
     anyOf: ['config.organization'],
-    query: ['tenantName', 'tenantBrandSettings', 'ticketNumbering', 'portalSeverityOptions'],
+    query: ['tenantName', 'tenantBrandSettings', 'ticketNumbering', 'portalSeverityOptions', 'scriptingSettings'],
     mutation: ['setTenantName', 'setTenantBrand', 'setTenantDefaultLanguage', 'setTenantTimezone', 'setTenantInAppRetentionDays',
       'setTicketNumbering', 'setAttachmentPolicy', 'setAISettings', 'setPortalSeverityOptions',
+      // L'interruttore degli script del cliente (moduli del catalogo, ondata 6).
+      'setScriptingEnabled',
       'createServiceCalendar', 'updateServiceCalendar', 'deleteServiceCalendar'],
   },
   {
@@ -183,12 +248,22 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
       'adoptShippedValues', 'acknowledgeShippedValues',
       'updateDomainMatrix', 'updatePreApprovedChangeTypes', 'updateRiskBandThresholds', 'updateChangeEnvironmentWeight', 'updateImpactAnalysisWeights',
       'createFieldVisibilityRule', 'updateFieldVisibilityRule', 'deleteFieldVisibilityRule', 'setFieldRequirement', 'deleteFieldRequirement',
+      // La libreria dei campi dei moduli (moduli del catalogo, ondata 1):
+      // definisce PROPRIETA dei ticket, quindi sta col metamodello e non col
+      // catalogo — chi compone un modulo (config.catalog) sceglie fra i campi
+      // che esistono, chi ne crea uno nuovo tocca la forma dei dati.
+      'createFormField', 'updateFormField', 'deleteFormField',
+      // Il tetto tecnico sulla libreria e sui moduli (ondata 4): sta con chi
+      // puo' creare i campi, perche' alzarlo vuol dire poterne creare altri.
+      'setCatalogFormLimits',
     ],
   },
   {
     anyOf: ['config.workflow'],
     mutation: ['addWorkflowStep', 'removeWorkflowStep', 'updateWorkflowStep', 'addWorkflowTransition', 'removeWorkflowTransition',
-      'updateWorkflowTransition', 'saveWorkflowLayout', 'saveWorkflowChanges'],
+      'updateWorkflowTransition', 'saveWorkflowLayout', 'saveWorkflowChanges',
+      // Duplicare una definizione e metterla in servizio (moduli del catalogo, ondata 3).
+      'duplicateWorkflowDefinition', 'setWorkflowDefinitionActive'],
   },
   {
     anyOf: ['config.sla'],
@@ -208,8 +283,13 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   {
     anyOf: ['config.catalog'],
-    query: ['assessmentQuestionsAdmin', 'questionCITypeAssignments'],
-    mutation: ['createServiceCatalogItem', 'updateServiceCatalogItem', 'createAssessmentQuestion', 'updateAssessmentQuestion',
+    query: ['assessmentQuestionsAdmin', 'questionCITypeAssignments', 'formFields', 'catalogForm', 'catalogFormLimits'],
+    mutation: ['saveCatalogForm',
+      // La PROPOSTA dell'AI non scrive niente, quindi basta poter comporre un
+      // modulo; se chi chiede non ha anche `config.metamodel` la proposta
+      // esce di solo riuso, perche' i campi nuovi non potrebbe crearli.
+      'proposeServiceRequestDesign',
+      'createServiceCatalogItem', 'updateServiceCatalogItem', 'createAssessmentQuestion', 'updateAssessmentQuestion',
       'deleteAssessmentQuestion', 'assignQuestionToCIType', 'removeQuestionFromCIType', 'setQuestionCore'],
   },
   {
@@ -248,7 +328,9 @@ const RULES: ReadonlyArray<{ anyOf: OperationRequirement; query?: readonly strin
   },
   // I ruoli li legge chi assegna ruoli alle persone e chi indirizza notifiche «per ruolo».
   { anyOf: ['admin.users', 'config.notifications', 'config.workflow', 'config.automation'], query: ['roles'] },
-  { anyOf: ['admin.audit'], query: ['logs', 'auditLog', 'auditActions'] },
+  // `auditEntityTypes`: i tipi di entità presenti nel registro, per il filtro
+  // della pagina Audit Log (revisione totale · G-20). Stesso permesso del resto.
+  { anyOf: ['admin.audit'], query: ['logs', 'auditLog', 'auditActions', 'auditEntityTypes'] },
   {
     anyOf: ['admin.system'],
     query: ['tenantProvisioningGaps', 'configurationIssues', 'queueStats', 'queueJobs', 'systemHealth', 'systemMetrics', 'traceInfo'],

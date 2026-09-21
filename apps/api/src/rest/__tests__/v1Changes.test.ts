@@ -293,7 +293,7 @@ describe('GET /api/v1/changes/:id/tasks', () => {
     expect(runQuery).not.toHaveBeenCalled()
   })
 
-  it('collects the five task sources with functional/technical split and completion fields', async () => {
+  it('collects the five per-CI task sources plus the generic step tasks', async () => {
     vi.mocked(runQueryOne).mockResolvedValueOnce({ id: 'chg-1' })
     vi.mocked(runQuery)
       .mockResolvedValueOnce([
@@ -304,6 +304,10 @@ describe('GET /api/v1/changes/:id/tasks', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ props: { id: 'r1', code: 'RV-1', status: 'done', reviewed_at: 't9' }, ciId: 'ci-1', ciName: 'db-01', team: null, completedBy: null }])
+      // I compiti GENERICI del passo (20 set 2026): senza, l'endpoint
+      // prometteva «tutti i task della change» e non mostrava quelli che
+      // possono BLOCCARLA.
+      .mockResolvedValueOnce([{ props: { id: 'k1', code: 'TASK00000042', state: 'open', title: 'Prepara la finestra', step_name: 'scheduled' }, team: { id: 'team-2', name: 'Rete' } }])
 
     const res = await fetch(`${base}/chg-1/tasks`)
     expect(res.status).toBe(200)
@@ -312,13 +316,14 @@ describe('GET /api/v1/changes/:id/tasks', () => {
       { id: 'a2', code: 'AT-2', type: 'technical', status: 'open', ci: { id: 'ci-1', name: 'db-01' }, assignedTeam: null, completedBy: null, completedAt: null },
       { id: 'd1', code: 'DP-1', type: 'planning', status: 'open', ci: null, assignedTeam: null, completedBy: null, completedAt: null },
       { id: 'r1', code: 'RV-1', type: 'review', status: 'done', ci: { id: 'ci-1', name: 'db-01' }, assignedTeam: null, completedBy: null, completedAt: 't9' },
+      { id: 'k1', code: 'TASK00000042', type: 'task', title: 'Prepara la finestra', step: 'scheduled', status: 'open', ci: null, assignedTeam: { id: 'team-2', name: 'Rete' }, completedBy: null, completedAt: null },
     ] })
-    expect(runQuery).toHaveBeenCalledTimes(5)
+    expect(runQuery).toHaveBeenCalledTimes(6)
     for (const call of vi.mocked(runQuery).mock.calls) {
       expect(call[2]).toEqual({ id: 'chg-1', tenantId: 'tenant-1' })
     }
     expect(vi.mocked(runQuery).mock.calls.map((c) => /\[:(HAS_\w+)\]/.exec(c[1])?.[1])).toEqual([
-      'HAS_ASSESSMENT', 'HAS_DEPLOY_PLAN', 'HAS_VALIDATION', 'HAS_DEPLOYMENT', 'HAS_REVIEW',
+      'HAS_ASSESSMENT', 'HAS_DEPLOY_PLAN', 'HAS_VALIDATION', 'HAS_DEPLOYMENT', 'HAS_REVIEW', 'HAS_TASK',
     ])
   })
 })

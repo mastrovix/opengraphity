@@ -58,6 +58,8 @@ describe('tipi del contratto', () => {
     expect(fieldsOf('ServiceMap')).toEqual({
       id: 'ID!', service: 'ServiceRef!', name: 'String!', status: 'ServiceMapStatus!', version: 'Int!', updatedAt: 'String',
       maxDepth: 'Int!', relationshipTypes: '[String!]!', builtFrom: 'String!', stale: 'Boolean!', staleReason: 'ServiceStaleReason',
+      // G-MON-6: quanti componenti sono non operativi in tutto (le cause sono tagliate a 20).
+      unhealthyCount: 'Int',
       autoSync: 'Boolean!', syncedAt: 'String',
       rules: 'ServiceImpactRules!',
       health: 'ServiceHealth!', healthIfActive: 'ServiceHealth', healthNote: 'String', healthSince: 'String', impactScore: 'Int!', evaluatedAt: 'String',

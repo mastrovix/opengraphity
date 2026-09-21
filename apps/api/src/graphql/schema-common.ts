@@ -60,6 +60,16 @@ export function cmdbSDL(): string {
     id: ID!
     name: String!
     label: String!
+    """
+    L'etichetta PER LINGUA (20 set 2026, dal giro nel browser). Il tipo aveva
+    una sola etichetta, e quelli spediti col prodotto ce l'hanno in inglese
+    («Application»): il web la mostrava in cinque pagine e nelle altre tre
+    usava una traduzione fissa del prodotto, quindi lo stesso tipo si leggeva
+    «Application» o «Applicazione» a seconda della pagina. Ora la lingua sta
+    nel metamodello, come per i valori dei vocabolari: una regola sola, e un
+    cliente può rinominare il tipo in ogni lingua che parla.
+    """
+    labels: [LocalizedLabel!]!
     icon: String
     color: String
     active: Boolean!

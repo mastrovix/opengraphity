@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
 import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
+import { FormAnswersCard, type FormAnswer } from '@/components/ticket/FormAnswersCard'
 import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
 import { useMe } from '@/hooks/useMe'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -17,6 +18,7 @@ import { WatcherBar } from '@/components/WatcherBar'
 import { EntityCommentsSection } from '@/components/ticket/EntityCommentsSection'
 import { timeAgo, formatDate } from '@/lib/datetime'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
+import { TicketTasksSection } from '@/components/ticket/TicketTasksSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { Modal } from '@/components/Modal'
 import { Button } from '@/components/Button'
@@ -52,6 +54,10 @@ interface ServiceRequest {
   slaStatus: SlaStatusInfo | null
   /** I CI che la richiesta riguarda (revisione del 15 set 2026 · CM-8). */
   affectedCIs: AffectedCIRef[]
+  /** La revisione del modulo con cui e stata compilata (moduli del catalogo, ondata 1). */
+  formRevision: number | null
+  /** Le risposte al modulo, nell'ordine di QUELLA revisione. */
+  formAnswers: FormAnswer[]
 }
 
 /**
@@ -70,8 +76,13 @@ export function ServiceRequestDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const ids = { title: useId(), description: useId(), priority: useId(), dueDate: useId(), notes: useId(), assignee: useId() }
-  const { role: myRole } = useMe()
-  const canEditCustomFields = myRole === 'admin' || myRole === 'operator'
+  const { can } = useMe()
+  // Il permesso, non il NOME del ruolo (revisione totale · F-2): dall'ondata
+  // «Nulla cablato» i ruoli sono del cliente, e l'API concede
+  // `setTicketCustomFields` a `ticket.work`. Col confronto sul nome un ruolo
+  // «tecnico L2» con quel permesso vedeva i campi in sola lettura, e un ruolo
+  // chiamato «operator» SENZA il permesso vedeva il form e prendeva un 403.
+  const canEditCustomFields = can('ticket.work')
   const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ serviceRequest: ServiceRequest | null }>(GET_SERVICE_REQUEST, { variables: { id }, skip: !id, fetchPolicy: 'cache-and-network' })
   const sr = data?.serviceRequest
   const srTransitions = (sr?.availableTransitions ?? []).map(withLocalizedLabel)
@@ -150,9 +161,20 @@ export function ServiceRequestDetailPage() {
   }
 
   const runTransition = (instanceId: string, toStep: string, notes?: string) => {
+    /**
+     * Il toast di successo arriva SOLO se la transizione è avvenuta
+     * (revisione totale · F-3): era agganciato alla promise della mutation,
+     * che si risolve anche quando il motore rifiuta (`success: false`) —
+     * quindi una transizione bloccata da una guardia mostrava insieme
+     * l'errore e «spostato in …». L'esito lo dice `onCompleted`, che è il
+     * solo che lo conosce.
+     */
     void executeTransition({ variables: { instanceId, toStep, notes: notes?.trim() || null } })
-      // Giro del 14 set 2026 (#42): il toast ripeteva il pulsante («Evadi»), non l'esito.
-      .then(() => toast.success(t('toast.transition.movedTo', { step: stepLabel(toStep) })))
+      .then((res) => {
+        if (res.data?.executeWorkflowTransition?.success === false) return
+        // Giro del 14 set 2026 (#42): il toast dice l'esito, non il pulsante.
+        toast.success(t('toast.transition.movedTo', { step: stepLabel(toStep) }))
+      })
       .catch(() => { /* onError handles toast */ })
   }
 
@@ -210,6 +232,8 @@ export function ServiceRequestDetailPage() {
           <div style={{ marginBottom: 16 }}>
             <TicketOLACard entityType="service_request" entityId={sr.id} />
             <CustomFieldsCard entityType="service_request" ticketId={sr.id} fields={sr.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
+            {/* Le risposte al modulo della voce di catalogo (moduli del catalogo, ondata 1) */}
+            <FormAnswersCard answers={sr.formAnswers ?? []} revision={sr.formRevision ?? null} requestId={sr.id} />
           </div>
 
           {/* CI della richiesta (CM-8) */}
@@ -225,6 +249,7 @@ export function ServiceRequestDetailPage() {
           </div>
 
           {/* Allegati */}
+          <TicketTasksSection entityId={sr.id} />
           <AttachmentsSection entityType="service_request" entityId={sr.id} />
 
           {/* F13: le richieste non avevano commenti. */}

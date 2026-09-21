@@ -11,6 +11,13 @@ import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
 vi.mock('../../services/assistantService.js', () => ({ streamAssistantChat: vi.fn() }))
+/**
+ * Il limite per persona dell'assistente passa da Redis (revisione totale ·
+ * D-27): qui si finge «passa», e un test suo verifica il rifiuto.
+ */
+vi.mock('../../lib/webhookRateLimit.js', () => ({
+  consumeMinuteRate: vi.fn(async () => ({ allowed: true, count: 1, limit: 20, retryAfterSeconds: 60 })),
+}))
 vi.mock('../../middleware/auth.js', () => ({
   authMiddleware: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     const role = typeof req.headers['x-test-role'] === 'string' ? req.headers['x-test-role'] : 'operator'
@@ -61,5 +68,24 @@ describe('POST /api/assistant/stream — permesso assistant.use', () => {
     expect(tenantId).toBe('tenant-1')
     expect([...permissions]).toContain('incident.read')
     expect([...permissions]).not.toContain('incident.write')
+  })
+})
+
+/**
+ * D-27: `assistant.use` è anche del viewer e ogni richiesta rimanda l'intera
+ * conversazione al modello, quindi senza tetto la spesa era illimitata. Il
+ * limite è per persona e per minuto, con la stessa forma di quello dei
+ * webhook: qui si verifica che il rifiuto arrivi come 429 con `Retry-After`,
+ * e che il modello non venga chiamato affatto.
+ */
+describe('POST /api/assistant/stream — tetto per persona (D-27)', () => {
+  it('limite superato → 429 con Retry-After, il modello non viene chiamato', async () => {
+    const { consumeMinuteRate } = await import('../../lib/webhookRateLimit.js')
+    vi.mocked(consumeMinuteRate).mockResolvedValueOnce({ allowed: false, count: 21, limit: 20, retryAfterSeconds: 42 })
+    const res = await post('operator')
+    expect(res.status).toBe(429)
+    expect(res.headers.get('retry-after')).toBe('42')
+    expect(await res.json()).toMatchObject({ error: { code: 'RATE_LIMITED', retry_after: 42 } })
+    expect(streamAssistantChat).not.toHaveBeenCalled()
   })
 })

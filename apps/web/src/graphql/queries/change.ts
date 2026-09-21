@@ -2,8 +2,8 @@ import { gql } from '@apollo/client'
 import { EVENT_ROW_FIELDS, CUSTOM_FIELD_VALUE_FIELDS } from '../fragments'
 
 export const GET_CHANGES = gql`
-  query GetChanges($currentStep: String, $priority: String, $limit: Int, $offset: Int, $sortField: String, $sortDirection: String) {
-    changes(currentStep: $currentStep, priority: $priority, limit: $limit, offset: $offset, sortField: $sortField, sortDirection: $sortDirection) {
+  query GetChanges($currentStep: String, $priority: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
+    changes(currentStep: $currentStep, priority: $priority, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
       total
       items {
         id
@@ -50,7 +50,19 @@ export const GET_CHANGE = gql`
       resolvesIncidents { id number title status severity removable }
       resolvesProblems { id number title status priority removable }
       approvals { kind teamId teamName status approvedByName approvedAt canApprove onBehalf }
+      # Release conflicts: other changes deploying on the same CI in an
+      # overlapping window. Validation windows are not compared.
+      deployConflicts {
+        items {
+          changeId code title currentStep ciId ciName
+          mine { start end } theirs { start end } overlap { start end }
+        }
+        # Plans that could not be read: "no conflict" and "I could not look"
+        # are different answers in front of an approval.
+        unreadablePlans
+      }
       suppressedEvents { ...EventRowFields }
+      suppressedEventCount
       customFields { ...CustomFieldValueFields }
     }
   }
@@ -249,11 +261,11 @@ export const GET_MY_TASKS = gql`
     myTasks {
       assignedToMe {
         id code kind role action status
-        changeId changeCode ciId ciName phase createdAt
+        entityType entityId entityNumber ciId ciName phase createdAt
       }
       unassigned {
         id code kind role action status
-        changeId changeCode ciId ciName phase createdAt
+        entityType entityId entityNumber ciId ciName phase createdAt
       }
     }
   }
@@ -268,6 +280,77 @@ export const GET_CHANGE_IMPACT = gql`
       blastRadius { id name type environment distance }
       openIncidents { id number title severity status ciName ciId createdAt isOpen }
       recentChanges { id code title phase ciName ciId createdAt }
+    }
+  }
+`
+
+/**
+ * IL CALENDARIO DELLE CHANGE (17 set 2026): le finestre pianificate che cadono
+ * nell'intervallo, una voce per finestra. L'intervallo lo applica il server,
+ * che filtra sull'inviluppo indicizzato del piano — qui non si scarica tutto
+ * per poi tagliare nel browser.
+ */
+export const GET_CHANGE_CALENDAR = gql`
+  query GetChangeCalendar($from: String!, $to: String!) {
+    changeCalendar(from: $from, to: $to) {
+      unreadablePlans
+      entries {
+        changeId
+        code
+        title
+        changeType
+        priority
+        currentStep
+        kind
+        start
+        end
+        stepTitle
+        taskCode
+        ciId
+        ciName
+      }
+    }
+  }
+`
+
+/**
+ * L'ANTEPRIMA di una change per il calendario (17 set 2026): titolo, perché,
+ * cosa e i CI impattati.
+ *
+ * Volutamente MAGRA e chiesta solo quando il modale si apre: mettere `why`,
+ * `what` e l'elenco dei CI su ogni voce del calendario avrebbe ripetuto gli
+ * stessi campi per ogni finestra della stessa change — un piano con tre passi
+ * li avrebbe portati sei volte.
+ */
+export const GET_CHANGE_PREVIEW = gql`
+  query GetChangePreview($id: ID!) {
+    change(id: $id) {
+      id
+      code
+      title
+      why
+      what
+      changeType
+      priority
+    }
+    changeAffectedCIs(changeId: $id) {
+      ci {
+        id
+        name
+        type
+        environment
+        supportGroup { id name }
+      }
+      deployPlan {
+        code
+        status
+        steps {
+          title
+          validationWindow { start end }
+          releaseWindow { start end }
+        }
+        assignedTeam { id name }
+      }
     }
   }
 `

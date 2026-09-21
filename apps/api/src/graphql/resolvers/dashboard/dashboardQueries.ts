@@ -1,4 +1,5 @@
 import { getSession } from '@opengraphity/neo4j'
+import { mapTeam, mapUser } from '../../../lib/mappers.js'
 import type { GraphQLContext } from '../../../context.js'
 import { withSession } from '../ci-utils.js'
 import { loadReportSection, mapDashboardConfig, mapDashboardWidget, type Props } from './helpers.js'
@@ -123,8 +124,10 @@ export async function dashboardCreatedBy(parent: { id: string }, _: unknown, ctx
       ),
     )
     if (!result.records.length) return null
-    const u = result.records[0].get('u') as Props
-    return { id: u['id'] as string, name: u['name'] as string, email: u['email'] as string }
+    // `mapUser`, non tre campi a mano (revisione totale · B-22): il tipo
+    // `User` ha `tenantId`, `role` e `createdAt` non nullabili, e chi li
+    // chiedeva riceveva un errore non-null.
+    return mapUser(result.records[0].get('u') as Props)
   })
 }
 
@@ -137,10 +140,8 @@ export async function dashboardSharedWith(parent: { id: string }, _: unknown, ct
         { id: parent.id, tenantId: ctx.tenantId },
       ),
     )
-    return result.records.map((r) => {
-      const t = r.get('t') as Props
-      return { id: t['id'] as string, name: t['name'] as string }
-    })
+    // B-22: `mapTeam` (il tipo `Team` ha `code` e `createdAt` non nullabili).
+    return result.records.map((r) => mapTeam(r.get('t') as Props))
   })
 }
 

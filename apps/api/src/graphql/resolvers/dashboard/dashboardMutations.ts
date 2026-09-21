@@ -209,9 +209,21 @@ export async function deleteDashboard(
     const cnt = Math.round(Number(countResult.records[0].get('cnt')))
     if (cnt <= 1) throw new GraphQLError('The only dashboard cannot be deleted', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.dashboard.lastOne' } } })
 
+    /**
+     * Via anche i widget della dashboard (revisione totale · B-23): erano
+     * legati per `dashboard_id`, quindi un `DETACH DELETE` della sola
+     * dashboard li lasciava nel grafo — invisibili, perché nessuno li trova
+     * più, e per sempre.
+     */
     await session.executeWrite((tx) =>
       tx.run(
-        `MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId, user_id: $userId}) DETACH DELETE d`,
+        `MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId, user_id: $userId})
+         OPTIONAL MATCH (w:DashboardWidget {tenant_id: $tenantId, dashboard_id: d.id})
+         OPTIONAL MATCH (cw:CustomWidget {tenant_id: $tenantId, dashboard_id: d.id})
+         WITH d, collect(DISTINCT w) AS widgets, collect(DISTINCT cw) AS customWidgets
+         FOREACH (x IN widgets       | DETACH DELETE x)
+         FOREACH (x IN customWidgets | DETACH DELETE x)
+         DETACH DELETE d`,
         { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId },
       ),
     )

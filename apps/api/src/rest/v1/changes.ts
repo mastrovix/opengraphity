@@ -242,7 +242,8 @@ router.get('/:id/tasks', requirePermission('changes:read'), asyncHandler(async (
       }>(session, `
         MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:${src.rel}]->(t:${src.label})
         WHERE coalesce(c.deleted, false) = false
-        OPTIONAL MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
+        // D-29: l'etichetta ConfigurationItem, altrimenti è una scansione per ogni task.
+        OPTIONAL MATCH (ci:ConfigurationItem {id: t.ci_id, tenant_id: $tenantId})
         OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
         OPTIONAL MATCH (t)-[:${src.byRel}]->(u:User)
         RETURN properties(t) AS props, ci.id AS ciId, coalesce(ci.name, ci.id) AS ciName,
@@ -265,6 +266,38 @@ router.get('/:id/tasks', requirePermission('changes:read'), asyncHandler(async (
         })
       }
     }
+    /**
+     * I COMPITI GENERICI del passo (20 set 2026), quelli che un'azione
+     * `create_task` crea entrando in un passo. L'endpoint promette «tutti i
+     * task della change» e senza questi mentiva: possono BLOCCARE la change
+     * (guardia `all_tasks_complete`) e un'integrazione che chiede perché non
+     * avanza non li vedeva.
+     *
+     * Non hanno un CI — non nascono per CI come i cinque sopra — e portano
+     * il passo che li ha creati, che è la cosa che spiega perché esistono.
+     */
+    const generici = await runQuery<{ props: Props; team: Props | null }>(session, `
+      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_TASK]->(t:Task {tenant_id: $tenantId})
+      WHERE coalesce(c.deleted, false) = false
+      OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
+      RETURN properties(t) AS props, properties(team) AS team
+      ORDER BY t.code
+    `, { id, tenantId })
+    for (const r of generici) {
+      tasks.push({
+        id:           r.props['id'],
+        code:         (r.props['code'] ?? '') as string,
+        type:         'task',
+        title:        r.props['title'],
+        step:         r.props['step_name'],
+        status:       r.props['state'],
+        ci:           null,
+        assignedTeam: r.team && r.team['id'] ? { id: r.team['id'], name: r.team['name'] ?? null } : null,
+        completedBy:  null,
+        completedAt:  (r.props['completed_at'] ?? null) as string | null,
+      })
+    }
+
     res.json({ data: tasks })
   })
 }))

@@ -19,8 +19,11 @@
  *    per valore spedite): contengono l'italiano di proposito;
  *  - le descrizioni SDL (`schema*.ts`): documentazione dello schema;
  *  - le righe di log: diagnostica per chi gestisce l'installazione;
- *  - i prompt dei modelli (assistente, triage, report AI, post-incident):
+ *  - i prompt dei modelli (assistente, triage, report AI, post-incident,
+ *    progettista dei moduli, progettista dei report):
  *    istruzioni al modello, che risponde nella lingua che gli si chiede;
+ *  - il glossario dei termini inglesi: il motivo di ogni voce è documentazione
+ *    per chi scrive, e non esce verso nessuno;
  *  - script e migrazioni.
  */
 import { describe, it, expect } from 'vitest'
@@ -34,6 +37,24 @@ const EXCLUDED_DIRS = new Set(['__tests__', 'scripts', 'migrations'])
 const EXCLUDED_FILES = new Set([
   'lib/systemText.ts', 'lib/pdf/texts.ts', 'lib/enumValueLabels.ts',
   'services/assistantService.ts', 'services/triageService.ts', 'services/reportAgent.ts', 'services/postIncidentService.ts',
+  // Il progettista dei moduli (19 set 2026): prompt di sistema e `description`
+  // dello schema JSON sono istruzioni AL MODELLO, che poi scrive etichette e
+  // spiegazioni nella lingua del cliente (gliela si chiede nel system).
+  'services/formDesignerService.ts',
+  // Il progettista dei report (19 set 2026): stessa ragione — prompt di
+  // sistema e `description` dello schema JSON sono istruzioni al modello.
+  'services/reportDesignerService.ts',
+  /*
+   * Il glossario dei termini che restano inglesi (20 set 2026, ondata 4).
+   *
+   * Ogni voce porta il MOTIVO per cui quel termine non si traduce, e il motivo
+   * è in italiano perché è documentazione per chi un domani vorrà aggiungerne
+   * uno: «esiste una voce di menu che si chiama così?». Non esce da nessuna
+   * parte — l'unica cosa che il file compone è `rigaDelGlossario()`, che è
+   * inglese e va nel prompt. Il motivo sta accanto al termine, e non in un
+   * commento, perché aggiungere una parola senza dire perché resti impossibile.
+   */
+  'lib/glossarioModello.ts',
 ])
 
 function files(dir: string, out: string[] = []): string[] {

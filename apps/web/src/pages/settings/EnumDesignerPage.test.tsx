@@ -12,7 +12,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import { EnumDesignerPage } from './EnumDesignerPage'
-import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT, GET_ENUM_VALUE_USAGE } from '@/graphql/queries'
+import { GET_ENUM_TYPES, GET_ENUM_SHIPPED_DRIFT, GET_ENUM_VALUE_USAGE, GET_TENANT_LANGUAGE_SETTINGS } from '@/graphql/queries'
 import { ACKNOWLEDGE_SHIPPED_VALUES, ADOPT_SHIPPED_VALUES, CUSTOMIZE_ENUM_TYPE, UPDATE_ENUM_TYPE, CREATE_ENUM_TYPE, RENAME_ENUM_VALUE } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 
@@ -42,6 +42,7 @@ const enumType = (over: Record<string, unknown>) => {
     __typename: 'EnumTypeDefinition',
     id: 'e-1', name: 'severity', label: 'Severità', values: ['low', 'high'],
     isSystem: true, isShipped: true, scope: 'itil',
+    valueLabelsReasonKey: null,
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     ...over,
   }
@@ -51,6 +52,21 @@ const enumType = (over: Record<string, unknown>) => {
 const SHIPPED = enumType({})
 const OWN     = enumType({ id: 'e-2', name: 'colore_sede', label: 'Colore sede', values: ['rosso'], isSystem: false, isShipped: false, scope: 'cmdb' })
 const COPY    = enumType({ id: 'e-3', isSystem: false, isShipped: false })
+
+/**
+ * LE LINGUE DEL CLIENTE, che la pagina chiede all'API.
+ *
+ * Senza questa finzione `lingue` è vuota e le colonne delle etichette NON si
+ * disegnano affatto: un test che cercava «not written» passava senza guardare
+ * niente. Trovato scrivendo il contro-test dei vocabolari senza etichette
+ * (17 set 2026) — il modo più economico di scoprire un'asserzione a vuoto è
+ * scrivere quella opposta.
+ */
+const lingueMock: GqlMock = {
+  request: { query: GET_TENANT_LANGUAGE_SETTINGS },
+  result:  { data: { tenantLanguageSettings: { __typename: 'TenantLanguageSettings', available: ['en', 'it'], defaultLanguage: 'it', fallback: 'en' } } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+}
 
 const listMock = (items: unknown[]): GqlMock => ({
   request: { query: GET_ENUM_TYPES },
@@ -265,5 +281,79 @@ describe('Dizionario — rinominare un valore chiede conferma dicendo cosa riscr
     expect(renamed).not.toHaveBeenCalled()
     await user.click(within(dialog).getByRole('button', { name: 'Rename' }))
     await waitFor(() => expect(renamed).toHaveBeenCalled())
+  })
+})
+
+/**
+ * I VOCABOLARI CHE NON PORTANO ETICHETTE, e perché la pagina lo deve dire
+ * (17 set 2026).
+ *
+ * Aperto `Change Status` su un tenant nuovo, si leggeva «en not written / it
+ * not written» accanto a tutti e tredici i valori: la conclusione naturale è
+ * «le traduzioni sono vuote, manca qualcosa». Invece è una scelta — per gli
+ * stati la lingua si scrive sul passo del workflow — e il motivo esisteva solo
+ * nei commenti del server, dove nessun cliente lo legge.
+ */
+describe('Dizionario — i vocabolari senza etichette per valore', () => {
+  const STATI = enumType({
+    id: 'e-st', name: 'status_change', label: 'Change Status',
+    values: ['draft', 'assessment', 'cab_approval'],
+    valueLabelsReasonKey: 'pages.dictionary.noValueLabels.workflowStep',
+  })
+
+  it('dice DOVE si scrive la lingua, invece di mostrare caselle vuote', async () => {
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [listMock([STATI]), lingueMock] })
+    await user.click(await screen.findByRole('button', { name: /Change Status/ }))
+
+    expect(screen.getByText(/Workflow Designer/)).toBeInTheDocument()
+    // E nessun «not written»: era il testo che si leggeva come una mancanza.
+    expect(screen.queryByText('not written')).not.toBeInTheDocument()
+  })
+
+  it('i valori restano visibili: quello che spariscono sono le etichette, non i valori', async () => {
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [listMock([STATI]), lingueMock] })
+    await user.click(await screen.findByRole('button', { name: /Change Status/ }))
+    for (const v of ['draft', 'assessment', 'cab_approval']) {
+      expect(screen.getByText(v)).toBeInTheDocument()
+    }
+  })
+
+  it('un vocabolario che INVECE porta etichette continua a mostrare «not written» dove manca', async () => {
+    // La sponda dell'altro caso: senza questa, spegnere le etichette per tutti
+    // passerebbe il test di sopra e romperebbe il Dizionario intero.
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [listMock([SHIPPED]), lingueMock] })
+    await user.click(await screen.findByRole('button', { name: /Severità/ }))
+    expect(screen.getAllByText('not written').length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * I CAMPI IN SOLA LETTURA SI DEVONO LEGGERE (17 set 2026).
+ *
+ * Lo stile c'era: il suo colore era `slateLight`, che tokens.ts dichiara
+ * «tertiary text, placeholders». Su un vocabolario spedito il nome tecnico,
+ * l'etichetta e lo scope si leggevano quindi come suggerimenti dentro caselle
+ * vuote, e dal vivo si è concluso che il vocabolario fosse vuoto.
+ */
+describe('Dizionario — un valore bloccato non si confonde con un campo vuoto', () => {
+  it('i campi di un vocabolario spedito portano il colore del TESTO, non quello dei placeholder', async () => {
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [listMock([SHIPPED]), lingueMock] })
+    await user.click(await screen.findByRole('button', { name: /Severità/ }))
+
+    for (const campo of ['Technical name', 'Label']) {
+      const el = screen.getByLabelText(campo)
+      expect(el, campo).toHaveAttribute('readonly')
+      expect(el.style.color, campo).toBe('var(--color-slate-dark)')
+      // Lo sfondo è quello che dice «bloccato», e resta.
+      expect(el.style.backgroundColor, campo).toBe('var(--color-slate-bg)')
+    }
+  })
+
+  it('un vocabolario proprio resta un campo normale, scrivibile', async () => {
+    const { user } = renderWithProviders(<EnumDesignerPage />, { mocks: [listMock([OWN]), lingueMock] })
+    await user.click(await screen.findByRole('button', { name: /Colore sede/ }))
+    const label = screen.getByLabelText('Label')
+    expect(label).not.toHaveAttribute('readonly')
+    expect(label.style.backgroundColor).not.toBe('var(--color-slate-bg)')
   })
 })

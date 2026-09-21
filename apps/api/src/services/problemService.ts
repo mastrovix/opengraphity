@@ -159,9 +159,26 @@ export async function createProblem(
     }, true)
   }
 
-  await withSession(async (session) => {
-    await workflowEngine.createInstance(session, ctx.tenantId, id, 'problem', undefined, input.category ?? null)
-  }, true)
+  /**
+   * Come per gli incident (revisione totale · B-6): un problem senza istanza
+   * di workflow non si può muovere né chiudere, quindi se la creazione
+   * dell'istanza non riesce il problem si annulla invece di restare lì.
+   */
+  try {
+    await withSession(async (session) => {
+      await workflowEngine.createInstance(session, ctx.tenantId, id, 'problem', undefined, input.category ?? null)
+    }, true)
+  } catch (err) {
+    await withSession(async (session) => {
+      await runQuery(session, 'MATCH (p:Problem {id: $id, tenant_id: $tenantId}) DETACH DELETE p', { id, tenantId: ctx.tenantId })
+    }, true)
+    logger.error({ err, problemId: id, tenantId: ctx.tenantId, category: input.category ?? null },
+      '[problemService] istanza di workflow non creata: problem annullato (resterebbe senza workflow)')
+    throw new ValidationError(
+      `Problem not created: its workflow instance could not be started (${err instanceof Error ? err.message : String(err)})`,
+      { key: 'errors.problem.workflowInstance', params: { reason: err instanceof Error ? err.message : String(err) } },
+    )
+  }
 
   const initialStatus = await withSession((s) => getInitialStepName(s, ctx.tenantId, 'problem'))
   await publishEvent('problem.created', ctx.tenantId, ctx.userId, {

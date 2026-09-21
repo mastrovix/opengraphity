@@ -22,8 +22,11 @@ import { perms } from '../../../../lib/__tests__/testPermissions.js'
 // conditions.ts): evaluateCondition delega al registro reale così i test
 // esercitano le query di condizione.
 // I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
-vi.mock('../../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en') }))
+vi.mock('../../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 vi.mock('@opengraphity/workflow', () => ({
+  // `conditions.js` registra anche chi scrive i compiti (20 set 2026): senza
+  // questa, importarlo fa fallire tutta la suite prima del primo test.
+  registerTaskCreator: vi.fn(),
   workflowEngine: {
     createInstance:    vi.fn().mockResolvedValue({ id: 'wi-1' }),
     transition:        vi.fn().mockResolvedValue({ success: true }),
@@ -133,7 +136,8 @@ describe('evaluateAutoTransitions', () => {
       expect(workflowEngine.transition).toHaveBeenCalledOnce()
       expect(workflowEngine.transition).toHaveBeenCalledWith(
         mockSession,
-        { instanceId: 'wi-1', toStepName: 'planning', triggeredBy: 'system', triggerType: 'automatic' },
+        // CONTRATTO RINEGOZIATO (revisione totale · E-31): tenant obbligatorio sul motore.
+        { instanceId: 'wi-1', toStepName: 'planning', triggeredBy: 'system', triggerType: 'automatic', tenantId: 'tenant-1' },
         { userId: 'user-1', entityData: { id: 'chg-1', code: 'CHG00000001' } },
       )
       expect(afterEnterStep).toHaveBeenCalledWith(mockSession, 'chg-1', 'tenant-1', 'planning')
@@ -463,7 +467,8 @@ describe('il varco della finestra di rilascio (terza revisione * C1)', () => {
     await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
     expect(transizioniDellaChange()).toHaveLength(1)
     expect(transizioniDellaChange()[0]![1]).toEqual(
-      { instanceId: 'wi-1', toStepName: 'rilascio_programmato', triggeredBy: 'system', triggerType: 'automatic' },
+      // CONTRATTO RINEGOZIATO (revisione totale · E-31): tenant obbligatorio sul motore.
+      { instanceId: 'wi-1', toStepName: 'rilascio_programmato', triggeredBy: 'system', triggerType: 'automatic', tenantId: 'tenant-1' },
     )
   })
 

@@ -29,10 +29,13 @@ import { showError } from '@/lib/showError'
 
 export interface ReportNode { id: string; entityType: string; neo4jLabel: string; label: string; isResult: boolean; isRoot: boolean; positionX: number; positionY: number; filters: string | null; selectedFields: string[] }
 export interface ReportEdge { id: string; sourceNodeId: string; targetNodeId: string; relationshipType: string; direction: string; label: string }
-export interface ReportSection { id: string; order: number; title: string; chartType: string; groupByNodeId: string | null; groupByField: string | null; metric: string; metricField: string | null; limit: number | null; sortDir: string | null; nodes: ReportNode[]; edges: ReportEdge[] }
+export interface ReportSection { id: string; order: number; title: string; chartType: string; groupByNodeId: string | null; groupByField: string | null; groupByGranularity: string | null; metric: string; metricField: string | null; limit: number | null; sortDir: string | null; nodes: ReportNode[]; edges: ReportEdge[] }
 export interface ReportTemplate { id: string; name: string; description: string | null; icon: string | null; visibility: string; scheduleEnabled: boolean; scheduleCron: string | null; scheduleChannelId?: string | null; scheduleRecipients: string[]; scheduleFormat: string | null; lastScheduledRun: string | null; createdAt: string; updatedAt?: string; createdBy: { id: string; name: string } | null; sharedWith: { id: string; name: string }[]; sections: ReportSection[] }
 export interface Channel { id: string; name: string; platform: string }
-export interface SectionResult { sectionId: string; title: string; chartType: string; data: string; total: number | null; error: string | null }
+// `errorKey` c'era nella query e NON nel tipo: la pagina non poteva
+// passarla al renderer nemmeno volendo, e ogni errore di sezione si leggeva
+// in inglese (20 set 2026).
+export interface SectionResult { sectionId: string; title: string; chartType: string; data: string; total: number | null; error: string | null; errorKey: string | null }
 
 export type View = 'list' | 'detail' | 'add-section' | 'edit-section' | 'settings'
 
@@ -147,8 +150,18 @@ export function useCustomReports() {
     onError: (e) => showError(e),
   })
 
+  /**
+   * La vista si chiude quando il salvataggio è COMPLETO, non a metà (revisione
+   * totale · G-23): `onCompleted` faceva `setView('detail')` subito, e il
+   * salvataggio delle impostazioni è DUE mutation in fila — se la seconda
+   * (pianificazione, destinatari, formato) falliva, la scheda era già chiusa
+   * con nome e visibilità salvati e il resto no, con un toast d'errore su una
+   * pagina che non mostrava più il form. Ora chiude `handleSaveSettings`,
+   * dopo entrambe.
+   */
   const [updateTemplate, { loading: updating }] = useMutation(UPDATE_REPORT_TEMPLATE, {
-    onCompleted: () => { refetch(); setView('detail') },
+    onCompleted: () => { refetch() },
+    onError: (e) => showError(e),
   })
 
   const [deleteTemplate] = useMutation(DELETE_REPORT_TEMPLATE, {
@@ -239,7 +252,7 @@ export function useCustomReports() {
   function sectionToInput(s: ReportSection): ReportSectionInput {
     return {
       title: s.title, chartType: s.chartType,
-      groupByNodeId: s.groupByNodeId, groupByField: s.groupByField,
+      groupByNodeId: s.groupByNodeId, groupByField: s.groupByField, groupByGranularity: s.groupByGranularity,
       metric: s.metric, metricField: s.metricField,
       limit: s.limit, sortDir: s.sortDir,
       nodes: s.nodes.map(n => ({
@@ -293,6 +306,8 @@ export function useCustomReports() {
           format:     settingsFormat,
         },
       })
+      // G-23: solo qui, quando ENTRAMBE sono passate.
+      setView('detail')
     } catch (err: unknown) {
       showError(err, err instanceof Error ? err.message : t('toast.report.saveFailed'))
     }

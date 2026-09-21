@@ -30,6 +30,18 @@ export function serviceRequestSDL(): string {
     slaStatus: SLAStatusInfo
     """I CI che la richiesta riguarda (revisione del 15 set 2026 · CM-8)."""
     affectedCIs: [CIBase!]!
+    """La revisione del modulo con cui e stata compilata: 0 o null = nessun modulo (moduli del catalogo, ondata 1)."""
+    formRevision: Int
+    """Le risposte del modulo, nell'ordine del modulo con cui e stata compilata."""
+    formAnswers: [FormAnswer!]!
+    """
+    I valori dei campi della LIBRERIA messi «nelle liste», per le colonne e per
+    l'esportazione (moduli del catalogo, ondata 4). Diverso da \`formAnswers\`:
+    quello racconta il modulo di allora, con le domande nel loro ordine; questo
+    dice solo cosa c'e scritto adesso, e non ha bisogno della revisione — quindi
+    funziona anche sui ticket che non nascono da un modulo.
+    """
+    formFieldValues: [FormAnswer!]!
   }
 
   type ServiceCatalogItem {
@@ -49,6 +61,14 @@ export function serviceRequestSDL(): string {
     priority: String
     active: Boolean!
     createdAt: String!
+    """
+    L'iter di QUESTA voce (moduli del catalogo, ondata 3): l'identificativo
+    della definizione di workflow da usare. Assente = si sceglie per categoria,
+    come prima. Il motore la preferisce alla categoria.
+    """
+    workflowDefinitionId: ID
+    """Il nome della definizione scelta, per mostrarlo senza una seconda query."""
+    workflowDefinitionName: String
   }
 
   input CreateServiceCatalogItemInput {
@@ -57,6 +77,8 @@ export function serviceRequestSDL(): string {
     category: String
     requiresApproval: Boolean
     priority: String!
+    """L'iter di questa voce: assente = si sceglie per categoria (moduli del catalogo, ondata 3)."""
+    workflowDefinitionId: ID
   }
 
   input UpdateServiceCatalogItemInput {
@@ -66,6 +88,8 @@ export function serviceRequestSDL(): string {
     requiresApproval: Boolean
     priority: String
     active: Boolean
+    """L'iter di questa voce: assente = si sceglie per categoria (moduli del catalogo, ondata 3)."""
+    workflowDefinitionId: ID
   }
 
   input CreateServiceRequestInput {
@@ -83,6 +107,24 @@ export function serviceRequestSDL(): string {
     senza SLA: la diagnostica di configurazione non lo conta.
     """
     acknowledgeNoSla: Boolean
+    """Le risposte al modulo della voce di catalogo (moduli del catalogo, ondata 1)."""
+    formAnswers: [FormAnswerInput!]
+    """
+    L'identificativo della BOZZA su cui sono stati caricati i file dei campi
+    allegato (ondata 2). Lo scegli il client PRIMA di caricare; alla creazione i
+    file passano dalla bozza al ticket. Le bozze mai reclamate le pulisce la
+    manutenzione notturna.
+    """
+    formDraftId: ID
+    """
+    La revisione del modulo che il client ha COMPILATO (ondata 8). Se
+    l'amministratore ripubblica il modulo mentre qualcuno lo sta compilando, le
+    risposte sono di un altro modulo: la richiesta viene rifiutata dicendolo —
+    «il modulo e' cambiato, ricomincia» — invece di ricevere un rifiuto
+    incomprensibile su un campo che non ha mai visto. Assente = il client non la
+    manda (un client vecchio): si accetta come prima.
+    """
+    formRevision: Int
   }
 
   input UpdateServiceRequestInput {

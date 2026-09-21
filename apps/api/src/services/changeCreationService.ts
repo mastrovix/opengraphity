@@ -143,20 +143,29 @@ export async function createChangeRFC(
       MATCH (ci)-[:OWNED_BY]->(ownerTeam:Team)
       MATCH (ci)-[:SUPPORTED_BY]->(supportTeam:Team)
       CREATE (c)-[:AFFECTS_CI {ci_phase: 'assessment'}]->(ci)
+      // change_key identifica il task per (change, CI, ruolo): è la chiave su
+      // cui addCIToChange fa MERGE. I task creati qui non l'avevano, quindi
+      // quel MERGE non li trovava e ri-aggiungere un CI già collegato creava un
+      // SECONDO assessment owner, uno support e un piano — la change non
+      // usciva più dall'analisi, perché all_assessments_complete aspettava i
+      // duplicati (revisione totale · B-8).
       CREATE (ownerT:AssessmentTask {
         id: randomUUID(), code: ct.ownerCode, tenant_id: $tenantId, ci_id: ci.id,
+        change_key: $id + '-' + ci.id + '-owner',
         responder_role: '${ASSESSMENT_ROLE.OWNER}', status: '${TASK_STATUS.PENDING}', score: null, created_at: $now
       })
       CREATE (c)-[:HAS_ASSESSMENT]->(ownerT)
       ${firstTeamCypher('ownerT', 'ownerTeam', '$now')}
       CREATE (supportT:AssessmentTask {
         id: randomUUID(), code: ct.supportCode, tenant_id: $tenantId, ci_id: ci.id,
+        change_key: $id + '-' + ci.id + '-support',
         responder_role: '${ASSESSMENT_ROLE.SUPPORT}', status: '${TASK_STATUS.PENDING}', score: null, created_at: $now
       })
       CREATE (c)-[:HAS_ASSESSMENT]->(supportT)
       ${firstTeamCypher('supportT', 'supportTeam', '$now')}
       CREATE (dp:DeployPlanTask {
         id: randomUUID(), code: ct.planCode, tenant_id: $tenantId, ci_id: ci.id,
+        change_key: $id + '-' + ci.id + '-deployplan',
         status: '${TASK_STATUS.PENDING}', steps: '[]',
         created_at: $now
       })

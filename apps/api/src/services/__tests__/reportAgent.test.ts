@@ -7,7 +7,9 @@ import type Anthropic from '@anthropic-ai/sdk'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
 vi.mock('../../lib/logger.js', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  // `child()` serve: da qui passa anche `lib/aiClient.ts`, che è il client
+  // condiviso di tutte le funzioni AI (ondata 8).
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
 }))
 
 const { runReportAgent, REPORT_AI_LIMITS, DEFAULT_REPORT_AI_MODEL, resolveReportAIModel, CYPHER_TOOL } = await import('../reportAgent.js')

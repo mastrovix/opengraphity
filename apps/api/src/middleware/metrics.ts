@@ -518,10 +518,31 @@ export const metamodelPublishedTotal = createCounter('metamodel_published_total'
 export const metamodelReceivedTotal = createCounter('metamodel_received_total', 'Metamodel channel messages received by THIS process, by outcome: applied = caches cleared, stale = version already applied or out of order, malformed = message dropped', ['result'])
 export const metamodelCacheClearFailuresTotal = createCounter('metamodel_cache_clear_failures_total', 'Metamodel caches that did NOT clear (the clearer threw): that process keeps stale data for that tenant until the TTL expires', ['cache'])
 export const metamodelBusSubscribed = createGauge('metamodel_bus_subscribed', 'This process is subscribed to the metamodel channel (1) or not (0): at 0 it is not told about changes made elsewhere', [])
+// Ogni incremento è una finestra in cui questo processo NON è stato avvisato:
+// Redis pub/sub non ha arretrato, quindi quei messaggi sono perduti e le cache
+// vengono svuotate per intero (PRB00000003).
+export const metamodelResubscribeFlushTotal = createCounter('metamodel_resubscribe_flush_total', 'Times this process re-subscribed to the metamodel channel AFTER losing its subscription and therefore dropped all its metamodel caches: each one is a window of invalidation messages lost for good (Redis pub/sub has no backlog)', [])
 
 /** Metriche del canale del metamodello, nell'ordine di esposizione. */
+/**
+ * L'AI COSTA E SI MISURA (revisione AI, ondata 8).
+ *
+ * Sei funzioni chiamavano il modello e nessuna era contata: quanto spende un
+ * cliente, quante risposte arrivano tagliate, quanto del prompt rilegge la
+ * cache — niente. `ai_tokens_total{kind="cache_read"}` in particolare è il
+ * numero che dice se il punto di cache è messo dove serve: se resta a zero,
+ * il prefisso non si ripete e la cache non sta lavorando.
+ */
+export const aiCallsTotal = createCounter('ai_calls_total', 'Calls to the language model by AI feature and outcome (ok, truncated, refused, unreadable, failed)', ['feature', 'outcome'])
+export const aiTokensTotal = createCounter('ai_tokens_total', 'Tokens exchanged with the language model by AI feature and kind (input, output, cache_read, cache_write)', ['feature', 'kind'])
+export const aiDiscardsTotal = createCounter('ai_discards_total', 'Pieces of a model proposal thrown away by the validation filter, by AI feature: it measures how well the prompt matches what the product accepts', ['feature'])
+export const aiCallDurationSeconds = createHistogram('ai_call_duration_seconds', 'Wall time of a model call by AI feature', ['feature'], [1, 2, 5, 10, 20, 40, 80])
+
+export const AI_METRICS = [aiCallsTotal, aiTokensTotal, aiDiscardsTotal, aiCallDurationSeconds] as const
+
 export const METAMODEL_BUS_METRICS = [
   metamodelPublishedTotal, metamodelReceivedTotal, metamodelCacheClearFailuresTotal, metamodelBusSubscribed,
+  metamodelResubscribeFlushTotal,
 ] as const
 
 export const METRICS_CONTENT_TYPE = 'text/plain; version=0.0.4; charset=utf-8'
@@ -539,6 +560,7 @@ export function renderMetrics(): string {
     ...EVENT_MANAGEMENT_METRICS.map((m) => m.collect()),
     ...SCHEMA_METRICS.map((m) => m.collect()),
     ...METAMODEL_BUS_METRICS.map((m) => m.collect()),
+    ...AI_METRICS.map((m) => m.collect()),
   ].join('\n\n')
 }
 
@@ -645,9 +667,33 @@ export interface ProcessMetricsData {
 const slowQueryBuffer: SlowQueryEntry[] = []
 const MAX_SLOW_QUERIES = 20
 
+/**
+ * La query come la LEGGE chi guarda il pannello: senza i commenti del
+ * sorgente e su una riga.
+ *
+ * Prima si prendevano i primi 200 caratteri del testo cosi com'era, e le
+ * nostre query hanno spesso un commento in testa che spiega perche sono
+ * scritte cosi. Risultato, visto nel pannello «Query lente»: al posto della
+ * query si leggeva «// OGNI PARTE nella sua sottoquery (revisione totale ·
+ * E-36): i sette // OPTIONAL MATCH in fila prima del RETURN facevano il
+ * prodotto…», cioe la spiegazione e non la cosa da guardare. Con 200
+ * caratteri di budget, un commento lungo mangia tutta la query.
+ *
+ * Limite noto: un `//` dentro una stringa della query (un URL) taglierebbe il
+ * resto della riga. E' solo la vista del pannello, non la query eseguita, e
+ * nessuna query del prodotto contiene un URL.
+ */
+export function queryPerIlPannello(query: string): string {
+  return query
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .split('\n').map((riga) => riga.replace(/\/\/.*$/, '')).join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function recordSlowQuery(query: string, durationMs: number): void {
   slowQueryBuffer.push({
-    query: query.slice(0, 200),
+    query: queryPerIlPannello(query).slice(0, 200),
     durationMs,
     timestamp: new Date().toISOString(),
   })

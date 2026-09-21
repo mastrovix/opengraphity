@@ -55,3 +55,16 @@ export const SET_MY_LANGUAGE = gql`
     setMyLanguage(language: $language) { id language }
   }
 `
+
+/**
+ * Toglie un file caricato per sbaglio sulla bozza di un modulo. Serve davvero:
+ * togliere il file solo dallo stato della pagina non lo cancella, e il reclamo
+ * alla creazione guarda il GRAFO — quindi tornerebbe sul ticket (revisione del
+ * 17 set 2026). `deleteAttachment` è fra i permessi di `portal.submit`, e il
+ * resolver resta il guardiano: solo chi l'ha caricato.
+ */
+export const DELETE_FORM_ATTACHMENT = gql`
+  mutation DeletePortalFormAttachment($id: ID!) {
+    deleteAttachment(id: $id)
+  }
+`

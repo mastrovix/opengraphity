@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { InvalidFilterNotice } from '@/components/InvalidFilterNotice'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -241,7 +242,9 @@ export function BusinessRulesPage() {
     } },
     { key: 'priority', label: '#', sortable: true, render: (v) => <span style={{ fontWeight: 600, color: 'var(--color-brand)' }}>{String(v)}</span> },
     { key: 'name', label: t('common.name'), sortable: true, render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
-    { key: 'entityType', label: t('automation.columns.entity'), sortable: true },
+    // Il nome dell'entità, non `service_request` (20 set 2026, dal giro nel
+    // browser): `labelOf` è lo stesso che riempie il filtro qui sopra.
+    { key: 'entityType', label: t('automation.columns.entity'), sortable: true, render: (v) => labelOf(String(v)) },
     { key: 'eventType', label: t('automation.columns.event'), sortable: true, render: (v) => t(eventOptionKey(String(v))) },
     { key: 'conditionLogic', label: t('admin.rules.logic'), sortable: true, render: (v) => <Pill bg={v === 'and' ? palette.info.tint : palette.warning.tint} color={v === 'and' ? palette.info.text : palette.warning.strong} radius={10}>{String(v).toUpperCase()}</Pill> },
     { key: 'stopOnMatch', label: t('admin.rules.stop'), sortable: true, render: (v) => v ? <Pill bg={palette.danger.tint} color="var(--color-trigger-sla-breach)" radius={10}>STOP</Pill> : null },
@@ -258,19 +261,30 @@ export function BusinessRulesPage() {
 
   // ── Condition / Action builders ───────────────────────────────────────────
 
-  const updateCondition = (i: number, p: Partial<Condition>) => patch({ conditions: draft.conditions.map((c, j) => j === i ? { ...c, ...p } : c) })
-  const removeCondition = (i: number) => patch({ conditions: draft.conditions.filter((_, j) => j !== i) })
-  const addCondition = () => patch({ conditions: [...draft.conditions, { ...EMPTY_CONDITION }] })
+  /*
+   * Ogni aiutante legge le condizioni e le azioni da `prev`, non dalla bozza
+   * della chiusura. Non è stile: `ActionParamsEditor`, quando si sceglie il
+   * campo di «Imposta campo», fa DUE modifiche nello stesso gesto — il campo e
+   * il valore da azzerare — e due `patch` calcolati sulla stessa bozza vecchia
+   * si annullano: vinceva il secondo e il CAMPO SPARIVA. La tendina tornava
+   * vuota e l'azione non era configurabile (trovato nel browser su c-test,
+   * ondata 8). Con `prev` le due modifiche si compongono.
+   */
+  const updateCondition = (i: number, p: Partial<Condition>) => modal.setDraft((prev) => ({ ...prev, conditions: prev.conditions.map((c, j) => j === i ? { ...c, ...p } : c) }))
+  const removeCondition = (i: number) => modal.setDraft((prev) => ({ ...prev, conditions: prev.conditions.filter((_, j) => j !== i) }))
+  const addCondition = () => modal.setDraft((prev) => ({ ...prev, conditions: [...prev.conditions, { ...EMPTY_CONDITION }] }))
 
-  const setActionParam = (i: number, key: string, val: string) => patch({ actions: draft.actions.map((a, j) => j === i ? { ...a, params: { ...a.params, [key]: val } } : a) })
-  const updateAction = (i: number, p: Partial<RuleAction>) => patch({ actions: draft.actions.map((a, j) => j === i ? { ...a, ...p } : a) })
-  const removeAction = (i: number) => patch({ actions: draft.actions.filter((_, j) => j !== i) })
-  const addAction = () => patch({ actions: [...draft.actions, { ...EMPTY_ACTION }] })
+  const setActionParam = (i: number, key: string, val: string) => modal.setDraft((prev) => ({ ...prev, actions: prev.actions.map((a, j) => j === i ? { ...a, params: { ...a.params, [key]: val } } : a) }))
+  const updateAction = (i: number, p: Partial<RuleAction>) => modal.setDraft((prev) => ({ ...prev, actions: prev.actions.map((a, j) => j === i ? { ...a, ...p } : a) }))
+  const removeAction = (i: number) => modal.setDraft((prev) => ({ ...prev, actions: prev.actions.filter((_, j) => j !== i) }))
+  const addAction = () => modal.setDraft((prev) => ({ ...prev, actions: [...prev.actions, { ...EMPTY_ACTION }] }))
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <PageContainer>
+      {/* F-17: un filtro dell'URL illeggibile si dice, non si ignora. */}
+      <InvalidFilterNotice show={list.filtersInvalid} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
         <div>
           <PageTitle icon={<GitBranch size={22} color="var(--color-icon-accent)" />}>{t('sidebar.businessRules')}</PageTitle>

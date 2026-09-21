@@ -61,14 +61,12 @@ import { Pill } from '@/components/ui/Pill'
 import { useMe } from '@/hooks/useMe'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
-import { useMetamodel } from '@/contexts/MetamodelContext'
 import { GET_SERVICE_MAP, GET_SERVICE_MAP_STATUS } from '@/graphql/queries'
 import { REEVALUATE_SERVICE_MAP, SET_SERVICE_MAP_STATUS, DELETE_SERVICE_MAP, SYNC_SERVICE_MAP } from '@/graphql/mutations'
 import { formatDateTime, formatDuration, timeAgo } from '@/lib/datetime'
 import { pausedWhenHidden } from '@/lib/polling'
 import { ciPath } from '@/lib/ciPath'
-import { ciTypeLabelKey, enumLabel } from '@/lib/ciEnums'
-import { useCriticalityLabel } from '@/hooks/useCILabels'
+import { useCILabels, useCriticalityLabel } from '@/hooks/useCILabels'
 import { colors, lookupOrError, palette } from '@/lib/tokens'
 import { AMBER_BANNER, TINT_NEUTRAL, TINT_WARNING } from '@/lib/eventPalette'
 import { ServiceMapCanvas } from './ServiceMapCanvas'
@@ -129,7 +127,6 @@ export function ServiceDetailPage() {
   const managesServices = can('config.services')
   const mayReevaluate = can('service.reevaluate')
   const confirm = useConfirm()
-  const { ciTypes } = useMetamodel()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   /** «Isola»: la mappa mostra solo la catena di questo componente. Vive qui perché il pulsante sta nel pannello del componente. */
   const [isolatedId, setIsolatedId] = useState<string | null>(null)
@@ -161,8 +158,27 @@ export function ServiceDetailPage() {
 
   const [reevaluate, { loading: reevaluating }] = useMutation<{ reevaluateServiceMap: ServiceMapDetail }>(REEVALUATE_SERVICE_MAP)
   const [setStatus, { loading: settingStatus }] = useMutation<{ setServiceMapStatus: ServiceMapDetail }>(SET_SERVICE_MAP_STATUS)
-  const [deleteMap, { loading: deleting }] = useMutation<{ deleteServiceMap: boolean }>(DELETE_SERVICE_MAP)
+  /**
+   * La mappa eliminata sparisce anche dalla CACHE (revisione totale · G-MON-12).
+   *
+   * Dopo la cancellazione la lista (`cache-and-network`) ridisegnava dalla
+   * cache e mostrava ancora la riga: cliccandola si arrivava a un «non
+   * trovato». Con il polling in pausa a scheda nascosta poteva restare a
+   * lungo. Qui si butta via il nodo e si rilegge la lista.
+   */
+  const [deleteMap, { loading: deleting }] = useMutation<{ deleteServiceMap: boolean }>(DELETE_SERVICE_MAP, {
+    update(cache, result) {
+      if (result.data?.deleteServiceMap !== true) return
+      cache.evict({ id: cache.identify({ __typename: 'ServiceMap', id }) })
+      cache.gc()
+    },
+    refetchQueries: ['GetServiceMaps', 'GetServiceHealthCounts'],
+  })
   const [syncMap, { loading: syncing }] = useMutation<{ syncServiceMap: ServiceMapSyncResult }>(SYNC_SERVICE_MAP)
+  // La stessa funzione di CMDB, anomalie e mappa (20 set 2026): qui la chiave
+  // i18n veniva prima dell'etichetta del disegnatore, cioè il contrario della
+  // regola F-22. Sta con gli altri hook, PRIMA delle uscite anticipate.
+  const { typeLabel: ciTypeLabel } = useCILabels()
 
   if (loading && !data && !previousData) return <PageLoader />
   if (error && !data) return <PageContainer><QueryError message={error.message} onRetry={() => void refetch()} /></PageContainer>
@@ -175,10 +191,6 @@ export function ServiceDetailPage() {
     )
   }
 
-  const ciTypeLabel = (type: string) => {
-    const key = ciTypeLabelKey(type)
-    return key ? t(key) : (ciTypes.find((ct) => ct.name === type)?.label ?? enumLabel(type))
-  }
   const nodeById = new Map(map.nodes.map((n) => [n.ci.id, n]))
   const selected = selectedId ? (nodeById.get(selectedId) ?? null) : null
   const since = map.healthSince ? formatDuration(Date.now() - new Date(map.healthSince).getTime()) : null

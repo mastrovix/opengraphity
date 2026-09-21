@@ -73,6 +73,33 @@ export const PDF_TEXTS = {
   notAvailable:       { en: 'n/a', it: 'n/d' },
   deployPlan:         { en: 'Deploy plan', it: 'Piano di deploy' },
   daysShort:          { en: 'd', it: 'g' },
+  /**
+   * Titoli dei dossier e etichette dei badge (revisione totale · C-18): erano
+   * letterali inglesi dentro i costruttori dei PDF, quindi un dossier scaricato
+   * in italiano aveva il corpo tradotto e le intestazioni in inglese.
+   */
+  reportIncident:     { en: 'Incident Audit Report', it: 'Dossier incident' },
+  reportProblem:      { en: 'Problem Audit Report', it: 'Dossier problem' },
+  reportChange:       { en: 'Change Audit Report', it: 'Dossier change' },
+  badgeSeverity:      { en: 'SEVERITY', it: 'GRAVITÀ' },
+  badgePriority:      { en: 'PRIORITY', it: 'PRIORITÀ' },
+  badgeStatus:        { en: 'STATUS', it: 'STATO' },
+  badgePhase:         { en: 'PHASE', it: 'FASE' },
+  badgeApproval:      { en: 'APPROVAL', it: 'APPROVAZIONE' },
+  badgeRisk:          { en: 'RISK', it: 'RISCHIO' },
+  badgeSla:           { en: 'SLA', it: 'SLA' },
+  slaBreached:        { en: 'BREACHED', it: 'VIOLATO' },
+  slaOk:              { en: 'OK', it: 'OK' },
+  changeOwner:        { en: 'Change owner', it: 'Responsabile della change' },
+  riskScore:          { en: 'Risk score', it: 'Punteggio di rischio' },
+  team:               { en: 'Team', it: 'Team' },
+  watchers:           { en: 'Watchers', it: 'Osservatori' },
+  rootCause:          { en: 'Root cause', it: 'Causa radice' },
+  workaround:         { en: 'Workaround', it: 'Workaround' },
+  colEnvironment:     { en: 'Environment', it: 'Ambiente' },
+  colStatus:          { en: 'Status', it: 'Stato' },
+  colTrigger:         { en: 'Trigger', it: 'Innesco' },
+  colFilename:        { en: 'Filename', it: 'Nome del file' },
 } as const satisfies Record<string, Texts>
 
 export type PdfTextKey = keyof typeof PDF_TEXTS

@@ -1,7 +1,7 @@
 import { useQuery } from '@apollo/client/react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GET_WORKFLOW_DEFINITION } from '@/graphql/queries/workflow'
+import { GET_WORKFLOW_DEFINITION, GET_WORKFLOW_STEP_LABELS } from '@/graphql/queries/workflow'
 import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 import { localizedLabel, withLocalizedLabel, type LocalizedLabel } from '@/lib/localizedLabel'
 
@@ -34,10 +34,32 @@ export interface WorkflowStepMeta {
  * Returns the raw steps plus derived lookups and filter helpers so callers
  * never need to hardcode a step name.
  */
+/** Un arco del workflow: serve a chi deve sapere DOVE si può andare da un passo. */
+export interface WorkflowTransitionMeta {
+  id:           string
+  fromStepName: string
+  toStepName:   string
+  trigger:      string
+}
+
 export function useWorkflowSteps(entityType: string) {
-  const { data, loading, error } = useQuery<{ workflowDefinition: { steps: WorkflowStepMeta[] } | null }>(
+  const { data, loading, error } = useQuery<{ workflowDefinition: { steps: WorkflowStepMeta[]; transitions?: WorkflowTransitionMeta[] } | null }>(
     GET_WORKFLOW_DEFINITION,
     // Entità vuota = chi chiama non ha un workflow da leggere (un CI, un evento): nessuna richiesta.
+    { variables: { entityType }, fetchPolicy: METAMODEL_FETCH_POLICY, skip: !entityType },
+  )
+  /*
+   * LE ETICHETTE DI TUTTE LE DEFINIZIONI (20 set 2026, dal giro nel browser).
+   *
+   * `workflowDefinition` ne restituisce UNA — deve, perché il disegnatore ne
+   * modifica una — e un tenant può averne più d'una attiva per la stessa
+   * entità. Un ticket fermo su un passo dell'altra si leggeva col nome
+   * interno: nella stessa lista «Inviata» e «submitted». Il PROCESSO resta
+   * quello scelto (transizioni, passo iniziale, terminali); solo LEGGERE uno
+   * stato guarda tutte.
+   */
+  const { data: etichette } = useQuery<{ workflowStepLabels: { name: string; label: string; labels: { language: string; label: string }[] }[] }>(
+    GET_WORKFLOW_STEP_LABELS,
     { variables: { entityType }, fetchPolicy: METAMODEL_FETCH_POLICY, skip: !entityType },
   )
 
@@ -65,8 +87,18 @@ export function useWorkflowSteps(entityType: string) {
       !!stepName && terminalSet.has(stepName)
     const isOpen = (stepName: string | null | undefined) =>
       !!stepName && openSet.has(stepName)
-    const labelFor = (stepName: string | null | undefined) =>
-      (stepName && byName.get(stepName) && localizedLabel(byName.get(stepName)!)) || stepName || ''
+    /** Le etichette di tutte le definizioni attive: vedi sopra. */
+    const etichetteDiTutti = new Map((etichette?.workflowStepLabels ?? []).map((s) => [s.name, s]))
+    const labelFor = (stepName: string | null | undefined) => {
+      if (!stepName) return ''
+      const dalProcesso = byName.get(stepName)
+      if (dalProcesso) return localizedLabel(dalProcesso) || stepName
+      const altrove = etichetteDiTutti.get(stepName)
+      return (altrove && localizedLabel(altrove)) || stepName
+    }
+    /** Il passo è dichiarato da QUALCHE definizione attiva? Falso = orfano davvero. */
+    const isKnownStep = (stepName: string | null | undefined) =>
+      !!stepName && (byName.has(stepName) || etichetteDiTutti.has(stepName))
     const categoryOf = (stepName: string | null | undefined) =>
       (stepName && byName.get(stepName)?.category) || null
     /** Lo scopo di un passo, `null` se il passo non c'è o non lo dichiara. */
@@ -78,9 +110,25 @@ export function useWorkflowSteps(entityType: string) {
     /** I passi con quello scopo, in ordine di flusso (un tenant può averne più di uno). */
     const stepsByPurpose = (purpose: string) => steps.filter((s) => s.purpose === purpose)
 
+    /**
+     * I passi RAGGIUNGIBILI da `from`, nell'ordine della definizione
+     * (revisione totale · G-9): chi manda un articolo «in revisione»
+     * scegliendo il primo passo non iniziale e non terminale scommetteva sulla
+     * POSIZIONE — con un `rejected` inserito prima di `review` l'articolo
+     * finiva rifiutato, o la transizione veniva rifiutata dal motore.
+     */
+    const transitions = data?.workflowDefinition?.transitions ?? []
+    const reachableFrom = (from: string | null | undefined): WorkflowStepMeta[] => {
+      if (!from) return []
+      const targets = new Set(transitions.filter((tr) => tr.fromStepName === from).map((tr) => tr.toStepName))
+      return steps.filter((st) => targets.has(st.name))
+    }
+
     return {
       loading, error,
       steps,
+      transitions,
+      reachableFrom,
       byName,
       initialStep: initial ?? null,
       terminalSet,
@@ -88,11 +136,12 @@ export function useWorkflowSteps(entityType: string) {
       isTerminal,
       isOpen,
       labelFor,
+      isKnownStep,
       categoryOf,
       purposeOf,
       hasPurpose,
       stepsByPurpose,
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `language` rifà le etichette quando cambia la lingua
-  }, [data, loading, error, language])
+  }, [data, etichette, loading, error, language])
 }

@@ -8,7 +8,6 @@
  * suggerimenti/bozze da rivedere — mai auto-azioni. No-fallback: chiave
  * mancante, errori provider e violazioni di schema propagano.
  */
-import Anthropic from '@anthropic-ai/sdk'
 import { config } from '../lib/config.js'
 import { GraphQLError } from 'graphql'
 import { NotFoundError } from '../lib/errors.js'
@@ -22,17 +21,12 @@ import { statusNamesForClasses, concludedStatusNames } from '../lib/statusStepNa
 import { modelLanguageFor } from '../lib/systemText.js'
 import { domainVocabulary } from '../lib/domainMatrix.js'
 import { aiSettings, assertAIFeature } from '../lib/aiSettings.js'
+import { getAnthropic, leggiJSONDalModello, leggiTestoDalModello, registraDurata } from '../lib/aiClient.js'
+
+/** Le stesse due chiavi per tutte e tre le chiamate di questo servizio. */
+const CHIAVI_AI = { troncata: 'errors.ai.truncated', illeggibile: 'errors.ai.badAnswer' } as const
 
 const log = logger.child({ module: 'post-incident' })
-
-function getClient(): Anthropic {
-  if (!config.anthropicApiKey) {
-    throw new GraphQLError('AI not configured: ANTHROPIC_API_KEY missing', {
-      extensions: { code: 'FAILED_PRECONDITION', i18n: { key: 'errors.ai.notConfigured' } },
-    })
-  }
-  return new Anthropic()
-}
 
 async function readQuery<T>(cypher: string, params: Record<string, unknown>): Promise<T[]> {
   const session = getSession(undefined, 'READ')
@@ -82,7 +76,7 @@ async function loadIncidentContext(tenantId: string, incidentId: string): Promis
 export async function draftResolutionNotes(tenantId: string, incidentId: string): Promise<string> {
   await assertAIFeature(tenantId, 'postIncident')
   const ctx = await loadIncidentContext(tenantId, incidentId)
-  const client = getClient()
+  const client = getAnthropic()
   const language = await modelLanguageFor(tenantId)
   const t0 = Date.now()
 
@@ -103,13 +97,10 @@ export async function draftResolutionNotes(tenantId: string, incidentId: string)
     }, null, 1) }],
   })
 
-  if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('The model refused the request', { extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.ai.modelRefused' } } })
-  }
-  const text = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text
-  if (!text?.trim()) throw new Error('[post-incident] empty draft from the model')
+  registraDurata('postIncident', Date.now() - t0)
+  const text = leggiTestoDalModello(response, 'postIncident', CHIAVI_AI)
   log.info({ incidentId, ms: Date.now() - t0 }, '[post-incident] resolution draft generated')
-  return text.trim()
+  return text
 }
 
 // ── 2. Candidati Problem ─────────────────────────────────────────────────────
@@ -119,6 +110,13 @@ export interface ProblemCandidate {
   motivation: string
   incidents: Array<{ id: string; number: string | null; title: string; status: string; severity: string }>
 }
+
+/**
+ * Quanti incident aperti entrano nella ricerca dei cluster (D-22): oltre
+ * questo numero la ricerca costerebbe più di quanto vale, perché è una query
+ * vettoriale per incident dentro una richiesta dell'interfaccia.
+ */
+const CLUSTER_MAX_INCIDENTS = 300
 
 export async function problemCandidates(tenantId: string): Promise<ProblemCandidate[]> {
   // Il raggruppamento usa gli embedding e il modello: servono entrambe le funzioni.
@@ -130,12 +128,26 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
   // candidato: il cluster serve a capire se il problema si ripete). «Chiuso» è
   // la classe di stato del workflow del cliente, non il nome `closed`.
   const closedSteps = await statusNamesForClasses(tenantId, 'incident', ['closed'])
+  /**
+   * Un TETTO agli incident esaminati (revisione totale · D-22): la ricerca dei
+   * cluster fa una query vettoriale PER incident, dentro una richiesta
+   * GraphQL. Su un cliente con migliaia di incident aperti erano migliaia di
+   * query e la pagina andava in timeout. Si guardano i più RECENTI, che sono
+   * quelli su cui un problem ha senso, e quando il tetto è pieno lo si dice —
+   * l'analisi non finge di aver guardato tutto.
+   */
   const incidents = await readQuery<{ id: string; number: string | null; title: string; status: string; severity: string; embedding: number[] }>(`
     MATCH (i:Incident {tenant_id: $tenantId})
     WHERE NOT i.status IN $closedSteps AND i.embedding IS NOT NULL
     RETURN i.id AS id, i.number AS number, i.title AS title,
            i.status AS status, i.severity AS severity, i.embedding AS embedding
-  `, { tenantId, closedSteps })
+    ORDER BY i.created_at DESC
+    LIMIT toInteger($maxIncidents)
+  `, { tenantId, closedSteps, maxIncidents: CLUSTER_MAX_INCIDENTS })
+  if (incidents.length === CLUSTER_MAX_INCIDENTS) {
+    log.warn({ tenantId, maxIncidents: CLUSTER_MAX_INCIDENTS },
+      'Cluster dei problem candidati: raggiunto il tetto degli incident esaminati, l-analisi guarda i più recenti')
+  }
 
   // Cluster: for each incident query its similar peers above threshold, then union-find
   const parent = new Map<string, string>()
@@ -185,7 +197,7 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
   if (clusters.length === 0) return []
 
   // Claude names each cluster and motivates the Problem candidate
-  const client = getClient()
+  const client = getAnthropic()
   const language = await modelLanguageFor(tenantId)
   const schema = {
     type: 'object',
@@ -224,12 +236,7 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
     ) }],
   })
 
-  if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('The model refused the request', { extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.ai.modelRefused' } } })
-  }
-  const text = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text
-  if (!text) throw new Error('[post-incident] response without text')
-  const parsed = JSON.parse(text) as { candidates: Array<{ cluster_index: number; title: string; motivation: string }> }
+  const parsed = leggiJSONDalModello(response, 'postIncident', CHIAVI_AI) as { candidates: Array<{ cluster_index: number; title: string; motivation: string }> }
 
   return parsed.candidates
     .filter(c => clusters[c.cluster_index])
@@ -272,7 +279,7 @@ export async function draftKbContent(tenantId: string, incidentId: string): Prom
     )
   }
 
-  const client = getClient()
+  const client = getAnthropic()
   const language = await modelLanguageFor(tenantId)
   // F5: il modello sceglie fra le categorie KB del cliente. Prima scriveva
   // «una parola», e l'articolo nasceva con una categoria che la pagina e il
@@ -307,10 +314,5 @@ export async function draftKbContent(tenantId: string, incidentId: string): Prom
     }, null, 1) }],
   })
 
-  if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('The model refused the request', { extensions: { code: 'INTERNAL_SERVER_ERROR', i18n: { key: 'errors.ai.modelRefused' } } })
-  }
-  const text = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text
-  if (!text) throw new Error('[post-incident] response without text')
-  return JSON.parse(text) as KbDraftContent
+  return leggiJSONDalModello(response, 'kbArticles', CHIAVI_AI) as KbDraftContent
 }

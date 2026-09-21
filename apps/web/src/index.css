@@ -224,6 +224,16 @@
   --color-vendor-dynatrace:  #1496ff;
   --color-vendor-slack:      #4a154b;
   --color-vendor-teams:      #464eb8;
+
+  /*
+    LA FRECCIA DELLE SELECT, qui e non nei sorgenti (revisione totale · F-35):
+    era un data-URI SVG con l'esadecimale `%238892a4` scritto in tre file
+    TypeScript — fuori dai token e invisibile al lint, perché codificato. Un
+    cambio di palette lasciava la freccia del vecchio grigio. Il colore del
+    tratto è lo stesso `--text-muted` di tutti i segni secondari; se cambia,
+    si cambia qui.
+  */
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
 @theme inline {
@@ -438,7 +448,23 @@ table thead tr {
 
 /* ── Utility classes ───────────────────────────────────── */
 .font-mono {
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: var(--font-mono);
+}
+
+/*
+ * `code`, `pre`, `kbd`, `samp` seguono il TOKEN, non il browser.
+ *
+ * Senza questa regola quegli elementi prendono il monospace predefinito del
+ * browser — un carattere che non e del prodotto — e a schermo si vede, perche
+ * la riga accanto ne ha un altro. Si vedeva nella pagina delle code (l'id del
+ * job e un `code`) e vale anche per i `<code>` scritti dentro le frasi
+ * tradotte, che nessuna regola in un componente potrebbe raggiungere.
+ *
+ * Cambiare `--font-mono` qui sopra cambia ogni punto: oggi vale «Plus Jakarta
+ * Sans», cioe il prodotto ha un solo carattere.
+ */
+code, kbd, samp, pre {
+  font-family: var(--font-mono);
 }
 
 /* ── Typography system ─────────────────────────────────── */
@@ -514,6 +540,72 @@ table thead tr {
    ────────────────────────────────────────────────────────────────────────── */
 
 /* La soglia. Sotto, due colonne diventano una. */
+
+/*
+ * L'ALTEZZA VERA DEL VIEWPORT (20 set 2026, dal giro su iPad: «non si vede il
+ * pulsante avanti in basso a destra»).
+ *
+ * Su Safari di iOS/iPadOS `100vh` è l'altezza della finestra CON le barre del
+ * browser NASCOSTE: è più alta di quello che si vede. Un guscio alto `100vh`
+ * con `overflow: hidden` finisce sotto la barra di Safari, e con lui la
+ * barra dei pulsanti del wizard dei report: «Avanti» c'era, non si poteva né
+ * vedere né raggiungere, perché la pagina non scorre e il canvas si prende il
+ * dito.
+ *
+ * `100dvh` è l'altezza VISIBILE, e cambia quando le barre compaiono. Sta
+ * dietro a `@supports` perché un browser che non la conosce deve restare con
+ * `100vh`, che è il comportamento di prima.
+ */
+:root { --vh-app: 100vh; }
+@supports (height: 100dvh) {
+  :root { --vh-app: 100dvh; }
+}
+
+
+/*
+ * IL MENU A COMPARSA DELLA SIDEBAR COMPRESSA (20 set 2026, dal giro nel
+ * browser).
+ *
+ * Con la sidebar stretta un gruppo si riduceva alla sua icona, che porta alla
+ * PRIMA voce: le altre non erano raggiungibili e non c'era modo di sapere che
+ * esistessero — il Costruttore di report, i Report SLA e gli OLA/UC
+ * sparivano dal menu (ed è il motivo per cui il proprietario non trovava il
+ * box dell'AI). Ora passando sull'icona — o arrivandoci col tasto Tab, da cui
+ * `:focus-within` — compare accanto il pannellino col nome del gruppo e le
+ * sue voci.
+ *
+ * In CSS e non in React: senza stato non ci sono render a ogni movimento del
+ * mouse, e la tastiera funziona senza scrivere niente.
+ */
+.sidebar-flyout-anchor { position: relative; }
+.sidebar-flyout {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: 0;
+  margin-left: 6px;
+  min-width: 210px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--chrome-bg);
+  border: 1px solid var(--chrome-border);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  z-index: 60;
+}
+.sidebar-flyout-anchor:hover > .sidebar-flyout,
+.sidebar-flyout-anchor:focus-within > .sidebar-flyout { display: block; }
+.sidebar-flyout-title {
+  padding: 4px 10px 8px;
+  font-size: var(--font-size-table);
+  font-weight: 600;
+  color: var(--chrome-text);
+  opacity: 0.75;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sidebar-flyout { animation: sidebar-flyout-in 120ms ease-out; }
+  @keyframes sidebar-flyout-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+}
+
 :root { --og-split-min: 900px; }
 
 /*
@@ -545,6 +637,143 @@ table thead tr {
 }
 @media (max-width: 900px) {
   .og-split { grid-template-columns: minmax(0, 1fr); }
+}
+
+/*
+  LA BARRA DEL DESIGNER: APPICCICATA SOLO DOVE CI STA (19 set 2026).
+
+  La barra (service request, viste, salva) e `sticky` per restare a portata
+  mentre si scorre un modulo lungo. Su uno schermo stretto pero va a capo e
+  diventa alta duecento pixel: il contenuto le scorre SOTTO, e i campi che
+  finiscono in quella fascia non si possono nemmeno toccare — il tocco arriva
+  alla barra. Il proprietario l'ha trovato cosi, da iPad: «in anteprima non
+  riesco a compilare i campi».
+
+  Sotto i 900px quindi scorre via con la pagina: risalire di uno scorrimento
+  costa meno che avere un quarto dello schermo occupato e inerte.
+*/
+.og-designer-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+@media (max-width: 900px) {
+  .og-designer-bar { position: static; }
+}
+
+/*
+  IL COSTRUTTORE DEI MODULI: ATTREZZI A SINISTRA, TELA A DESTRA (18 set 2026).
+
+  La prima versione aveva la barra degli strumenti in alto; il proprietario l'ha
+  provata e ha chiesto il lato: «non mi piace la barra degli strumenti in alto,
+  meglio laterale». Ha ragione per una ragione pratica — una striscia
+  orizzontale con venti campi si scorre a mano, una colonna li mostra tutti — e
+  perché la tela cresce in altezza, non in larghezza.
+
+  La colonna degli attrezzi RESTA IN VISTA mentre la tela scorre: prendere un
+  campo e portarlo a una sezione in fondo, senza, vorrebbe dire scorrere con il
+  dito già premuto.
+
+  Sotto i 900px le due colonne si impilano e gli attrezzi vanno SOPRA, con la
+  loro altezza limitata: la presa e il bersaglio devono stare a schermo insieme
+  (è la lezione dell'iPad, vedi `.og-split-tools`).
+*/
+.og-designer {
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.og-designer > :first-child {
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+@media (max-width: 900px) {
+  .og-designer { grid-template-columns: minmax(0, 1fr); }
+  .og-designer > :first-child { max-height: 38vh; }
+}
+
+/*
+  LA PRESA DI UN TRASCINAMENTO (`.og-grip`) (18 set 2026).
+
+  `touch-action: none` toglie lo scorrimento sotto il dito; le due righe di
+  WebKit tolgono la selezione del testo e il menù della pressione lunga, che su
+  iOS si riprendono il gesto a metà.
+
+  E su un dispositivo a tocco la presa diventa 44px: il puntino del «grip» è
+  disegnato a 14px e da mouse è giusto così, ma col dito un bersaglio di 20px
+  si manca — e mancare la presa è indistinguibile da «il trascinamento non
+  funziona». 44px è il minimo che Apple indica, e vale solo dove il puntatore
+  è grosso: col mouse la riga resta compatta.
+*/
+.og-grip {
+  /* L'icona al centro del bottone: senza, con un bersaglio da 44px resta
+     incollata in alto e la presa sembra fuori posto. Sta qui e non nello
+     stile in linea perché la misura del bottone la decide questo file. */
+  align-items: center;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+@media (pointer: coarse) {
+  .og-grip {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+    /*
+      L'allineamento NON si corregge qui con un padding: la presa cambia
+      misura (22px col mouse, 44 col dito) e un numero fisso vale per una
+      sola delle due. Chi la usa la centra sulla riga di testo
+      dell'etichetta, e allora la misura non conta — vedi `FormCanvas`.
+    */
+  }
+}
+
+/*
+  LA COLONNA DELLA PRESA È LARGA QUANTO LA PRESA.
+
+  Sulla tela del costruttore la griglia di un campo è «presa | etichetta |
+  controllo». Con una colonna fissa da 20px e una presa che su un dispositivo
+  a tocco diventa 44, la presa sbordava sull'etichetta — su iPad si vedeva la
+  maniglia addosso al testo. Una variabile, due misure, un posto solo.
+*/
+:root { --og-grip-col: 20px; }
+@media (pointer: coarse) {
+  :root { --og-grip-col: 44px; }
+}
+
+/*
+  LA CASSETTA DEGLI ATTREZZI SOPRA, QUANDO LE COLONNE SI IMPILANO (18 set 2026).
+
+  Nel costruttore dei moduli la colonna destra è la palette dei campi: si
+  prende un campo di lì e lo si lascia cadere in una sezione a sinistra.
+  Sotto i 900px — un iPad in verticale — le due colonne diventano una, e la
+  palette finisce SOTTO tutto il modulo: per trascinare un campo bisognava
+  attraversare l'intera pagina, cioè non si poteva. È così che il proprietario
+  ha trovato il difetto, da iPad.
+
+  Quindi: la palette va SOPRA (`order: -1`) e resta appiccicata in alto mentre
+  si scorrono le sezioni, così la presa e il bersaglio sono a schermo insieme.
+  Si limita in altezza e scorre per conto suo: una palette lunga che occupa
+  mezzo schermo è un altro modo di non far vedere il modulo.
+
+  Si applica solo dove serve (classe aggiunta dalla pagina quando la scheda
+  aperta è la palette, non l'anteprima): l'anteprima deve poter essere alta.
+*/
+@media (max-width: 900px) {
+  .og-split-tools > :last-child {
+    order: -1;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--color-surface);
+    max-height: 42vh;
+    overflow-y: auto;
+    border-bottom: 1px solid var(--color-border-light);
+  }
 }
 
 /* Due colonne pari (form affiancati). */
@@ -580,3 +809,227 @@ table thead tr {
   flex-wrap: wrap;
   gap: 12px 16px;
 }
+
+/*
+  IL MODULO DI UNA VOCE DI CATALOGO (moduli del catalogo, ondata 1).
+
+  La struttura la rende `CatalogFormRenderer` di @opengraphity/web-core, che è
+  condiviso con il portale e per questo non scrive un colore né una
+  dimensione: emette solo queste classi. Qui c'è la veste dell'AREA DI LAVORO,
+  Le dimensioni sono scritte con un RIPIEGO (`var(--font-size-body, 14px)`)
+  perché questo blocco è IDENTICO, carattere per carattere, a quello di
+  apps/portal/src/index.css: nel web i token esistono e vincono (corpo a
+  12px, una console fitta), nel portale non esistono e valgono i ripieghi
+  (14px, per chi ci passa due minuti l'anno). Identico per costruzione:
+  così una divergenza futura si vede in un diff invece di scoprirsi a
+  schermo.
+*/
+.og-form { display: flex; flex-direction: column; gap: 20px; }
+
+.og-form-section { display: flex; flex-direction: column; gap: 8px; }
+.og-form-section-title {
+  font-size: var(--font-size-section-title, 17px);
+  font-weight: 600;
+  color: var(--color-slate-dark);
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+.og-form-section-desc {
+  font-size: var(--font-size-body, 14px);
+  color: var(--color-slate-light);
+  margin: 0;
+}
+
+/*
+  Due colonne per i campi «a metà», una per quelli interi. `minmax(0, …)`
+  perché un campo con un'etichetta lunga non deve allargare la colonna oltre
+  la griglia (è lo stesso motivo di .og-split).
+*/
+.og-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+/*
+  L'ETICHETTA A SINISTRA DEL CONTROLLO (18 set 2026, chiesto dal proprietario).
+
+  Era sopra, in colonna. Ora la cella è una griglia di due colonne:
+  l'etichetta a sinistra, e TUTTO il resto — il controllo, l'aiuto, l'errore —
+  incolonnato a destra. Regge con questo DOM perché l'etichetta è sempre il
+  primo figlio: gli altri figli vanno in colonna 2 uno per riga, senza che il
+  renderer debba aggiungere un involucro.
+
+  L'etichetta ha un filo di `padding-top` per allinearsi alla prima riga del
+  controllo e non al suo bordo.
+
+  Sotto i 700px torna sopra: su un telefono una colonna di etichette larga un
+  quarto dello schermo lascia al controllo una fessura.
+*/
+.og-form-cell {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: clamp(96px, 26%, 180px) minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 4px;
+  align-items: start;
+  min-width: 0;
+}
+/* A DESTRA nella sua colonna: un'etichetta corta in una colonna larga
+   lascerebbe un vuoto fra sé e il controllo, e la coppia non si leggerebbe
+   più come una coppia. */
+.og-form-cell > .og-form-label { grid-column: 1; padding-top: 7px; text-align: right; }
+.og-form-cell > *:not(.og-form-label) { grid-column: 2; }
+/* Una nota non ha etichetta: senza questo il suo testo starebbe in colonna 2,
+   cioè rientrato di una colonna che non esiste. */
+.og-form-note { display: block; }
+.og-form-cell-half { grid-column: auto; }
+@media (max-width: 700px) {
+  .og-form-cell { grid-template-columns: minmax(0, 1fr); }
+  /* Impilata, l'etichetta torna sopra e quindi a sinistra. */
+  .og-form-cell > .og-form-label { padding-top: 0; text-align: left; }
+  .og-form-cell > *:not(.og-form-label) { grid-column: 1; }
+}
+@media (max-width: 700px) {
+  /* Sotto la soglia due colonne di campi diventano illeggibili: una sola. */
+  .og-form-cell-half { grid-column: 1 / -1; }
+}
+
+.og-form-label {
+  font-size: var(--font-size-body, 14px);
+  font-weight: 500;
+  color: var(--color-slate-dark);
+}
+.og-form-required { color: var(--color-danger); margin-left: 2px; }
+
+.og-form-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: var(--font-size-body, 14px);
+  font-family: var(--font-sans, inherit);
+  color: var(--color-slate-dark);
+  background: var(--color-white);
+  box-sizing: border-box;
+}
+.og-form-input:focus-visible { outline: 2px solid var(--color-brand); outline-offset: 1px; }
+.og-form-input-error { border-color: var(--color-danger); }
+
+.og-form-multi { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 2px 0; }
+.og-form-check { display: inline-flex; align-items: center; gap: 5px; font-size: var(--font-size-body, 14px); color: var(--color-slate-dark); }
+
+.og-form-help  { font-size: var(--font-size-table, 12.5px); color: var(--color-slate-light); margin: 0; }
+.og-form-error { font-size: var(--font-size-table, 12.5px); color: var(--color-danger); margin: 0; }
+
+/* Una nota: istruzioni per chi compila, non un campo. */
+.og-form-note {
+  background: var(--color-slate-bg);
+  border-left: 3px solid var(--color-brand);
+  border-radius: 4px;
+  padding: 8px 12px;
+}
+.og-form-note p { margin: 0; font-size: var(--font-size-body, 14px); color: var(--color-slate-dark); }
+
+/*
+  Un campo che il modulo cita e che la libreria non ha più. L'API lo impedisce
+  (rifiuta il modulo nominando il campo), ma se accadesse il silenzio sarebbe
+  peggio di un riquadro rosso.
+*/
+.og-form-missing {
+  grid-column: 1 / -1;
+  font-size: var(--font-size-body, 14px);
+  font-family: var(--font-mono);
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin: 0;
+}
+
+/*
+  Ondata 2 — allegati e riferimenti. Stesse regole del blocco sopra: identico
+  nelle due applicazioni, misure a ripiego.
+*/
+.og-form-files { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.og-form-file-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.og-form-file-list li {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--color-slate-bg); border-radius: 5px; padding: 4px 8px;
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark);
+}
+.og-form-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
+.og-form-file-size { font-size: var(--font-size-table, 12.5px); color: var(--color-slate-light); white-space: nowrap; }
+.og-form-file-remove {
+  border: none; background: none; cursor: pointer; padding: 0 2px; line-height: 1;
+  font-size: 1.1em; color: var(--color-slate-light);
+}
+.og-form-file-remove:hover { color: var(--color-danger); }
+
+/* Il controllo di sistema è brutto e diverso in ogni browser: si nasconde e si veste l'etichetta. */
+.og-form-file-add input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.og-form-file-add {
+  display: inline-flex; align-items: center; gap: 6px; position: relative;
+  padding: 5px 12px; border: 1px dashed var(--color-border); border-radius: 6px;
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark); cursor: pointer;
+}
+.og-form-file-add:hover { border-color: var(--color-brand); color: var(--color-brand); }
+.og-form-file-add:focus-within { outline: 2px solid var(--color-brand); outline-offset: 1px; }
+
+.og-form-ref { position: relative; }
+.og-form-ref-results {
+  list-style: none; margin: 2px 0 0; padding: 4px; position: absolute; z-index: 20;
+  left: 0; right: 0; max-height: 200px; overflow-y: auto;
+  background: var(--color-white); border: 1px solid var(--color-border); border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.og-form-ref-results li button {
+  display: block; width: 100%; text-align: left; border: none; background: none; cursor: pointer;
+  padding: 5px 8px; border-radius: 4px; font-size: var(--font-size-body, 14px); color: var(--color-slate-dark);
+}
+.og-form-ref-results li button:hover { background: var(--color-slate-bg); }
+.og-form-ref-empty { padding: 5px 8px; font-size: var(--font-size-body, 14px); color: var(--color-slate-light); }
+.og-form-ref-chosen {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--color-slate-bg); border-radius: 5px; padding: 4px 8px;
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark);
+}
+/* Un campo CALCOLATO (ondata 6): si legge, non si compila. Il valore ha il
+   corpo di un campo normale perché è un dato, non un'annotazione; il segno
+   accanto all'etichetta dice da dove viene. */
+.og-form-computed {
+  margin: 0; padding: 6px 0;
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark);
+  font-variant-numeric: tabular-nums;
+}
+.og-form-computed-badge {
+  margin-left: 6px; padding: 1px 6px; border-radius: 9999px;
+  background: var(--color-slate-bg); color: var(--color-slate-light);
+  font-size: var(--font-size-table, 12.5px); font-weight: 400; text-transform: none;
+}
+/* Una TABELLA ripetibile (ondata 7): righe che chi compila aggiunge. Scorre da
+   sola in orizzontale, perché con sei colonne su un telefono l'alternativa è
+   una pagina che scorre di traverso. */
+.og-form-table-wrap { overflow-x: auto; }
+.og-form-table { width: 100%; border-collapse: collapse; }
+.og-form-table th {
+  text-align: left; padding: 4px 6px; white-space: nowrap;
+  font-size: var(--font-size-table, 12.5px); font-weight: 600; color: var(--color-slate-light);
+}
+.og-form-table td { padding: 3px 6px; vertical-align: top; }
+.og-form-table-input { min-width: 110px; }
+.og-form-table-actions { width: 28px; }
+.og-form-table-remove {
+  background: none; border: none; cursor: pointer; padding: 2px 4px;
+  color: var(--color-danger); font-size: var(--font-size-body, 14px); line-height: 1;
+}
+.og-form-table-empty {
+  color: var(--color-slate-light); font-size: var(--font-size-table, 12.5px); padding: 6px;
+}
+.og-form-table-add {
+  margin-top: 6px; padding: 4px 10px; border-radius: 6px;
+  border: 1px solid var(--color-border); background: var(--color-white);
+  font-size: var(--font-size-body, 14px); color: var(--color-slate-dark); cursor: pointer;
+}
+
+

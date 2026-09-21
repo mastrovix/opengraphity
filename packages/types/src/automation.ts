@@ -12,6 +12,50 @@
  */
 import { SLA_ENTITY_TYPES } from './events.js'
 
+/**
+ * CHI HA SCRITTO QUESTA AUTOMAZIONE (20 set 2026, prerequisito dell'ondata 6).
+ *
+ * Il nodo `:AutoTrigger` non portava nessuna traccia della propria origine:
+ * un'automazione nata da una proposta accettata era indistinguibile da una
+ * scritta a mano da un amministratore. Finché a scriverle erano solo le
+ * persone la domanda non esisteva; dal momento in cui una proposta può
+ * crearne una, è la domanda più importante che si possa fare su quel nodo.
+ *
+ * Non è decorazione: `ai_proposal` cambia le REGOLE. Un'automazione di quella
+ * origine nasce spenta, e ogni volta che qualcuno prova ad accenderla le sue
+ * azioni vengono rivalidate contro un'allowlist più stretta di quella
+ * generale (`AZIONI_AMMESSE_DA_PROPOSTA`). Il motivo è scritto nel progetto:
+ * «automazione disattivata riapre `execute_script`/`call_webhook`» — cioè una
+ * proposta potrebbe creare un'automazione innocua e qualcuno (o qualcosa)
+ * modificarla prima dell'accensione.
+ */
+export const AUTOMATION_ORIGINS = ['manual', 'ai_proposal'] as const
+export type AutomationOrigin = (typeof AUTOMATION_ORIGINS)[number]
+
+/** L'origine di fabbrica: tutto quello che esisteva prima l'ha scritto una persona. */
+export const DEFAULT_AUTOMATION_ORIGIN: AutomationOrigin = 'manual'
+
+export function isAutomationOrigin(v: unknown): v is AutomationOrigin {
+  return typeof v === 'string' && (AUTOMATION_ORIGINS as readonly string[]).includes(v)
+}
+
+/**
+ * LE SOLE AZIONI CHE UN'AUTOMAZIONE NATA DA UNA PROPOSTA PUÒ CONTENERE.
+ *
+ * Molto più stretta del catalogo generale delle automazioni (dieci voci).
+ * Queste quattro hanno in comune una cosa: scrivono un campo del ticket e
+ * basta. Non eseguono codice, non chiamano nessuno fuori, non fanno avanzare
+ * un workflow — cioè non fanno nessuna delle tre cose che il programma ha
+ * vietato per sempre.
+ *
+ * Si applica DUE volte: quando la proposta crea l'automazione, e di nuovo a
+ * ogni accensione. La seconda volta è quella che conta, perché fra la
+ * creazione e l'accensione il contenuto può essere cambiato.
+ */
+export const AZIONI_AMMESSE_DA_PROPOSTA: readonly string[] = [
+  'set_field', 'assign_team', 'set_sla', 'create_comment',
+]
+
 export const AUTOMATION_ENTITY_TYPES = ['incident', 'change', 'problem', 'service_request'] as const
 export type AutomationEntityType = (typeof AUTOMATION_ENTITY_TYPES)[number]
 

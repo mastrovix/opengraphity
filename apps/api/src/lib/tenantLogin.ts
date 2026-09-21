@@ -20,6 +20,7 @@
  *    (`testLoginProvider`): un provider salvato senza prova resta spento;
  *  - il blocco dopo troppi tentativi è sempre temporaneo (mai permanente).
  */
+import { PASSWORD_RULE_RANGES } from '@opengraphity/types'
 import { config } from './config.js'
 import { ValidationError } from './errors.js'
 import { createKeycloakAdmin, type KeycloakAdmin } from '../scripts/lib/keycloakAdmin.js'
@@ -72,10 +73,9 @@ export interface PasswordRules {
   lockoutMinutes:  number
 }
 
-export const PASSWORD_RULE_RANGES = {
-  minLength: [6, 128], uppercase: [0, 10], lowercase: [0, 10], digits: [0, 10], special: [0, 10],
-  history: [0, 24], expireDays: [0, 3650], lockoutFailures: [3, 30], lockoutMinutes: [1, 1440],
-} as const satisfies Record<string, readonly [number, number]>
+// Gli intervalli stanno in @opengraphity/types: li usa anche la pagina
+// «Accesso», e due copie a mano derivano (revisione totale · G-25).
+export { PASSWORD_RULE_RANGES }
 
 /** I token di `passwordPolicy` che questa pagina governa; gli altri (es. hashAlgorithm) si conservano. */
 const MANAGED_TOKENS = ['length', 'upperCase', 'lowerCase', 'digits', 'specialChars', 'notUsername', 'notEmail', 'passwordHistory', 'forceExpiredPasswordChange'] as const
@@ -118,15 +118,44 @@ export function rulesFromRealm(realm: { passwordPolicy?: string | null; bruteFor
   }
 }
 
-export function assertPasswordRules(raw: unknown): PasswordRules {
+/**
+ * Le regole FUORI dall'intervallo che il prodotto governa, con il valore che
+ * il realm porta davvero (revisione totale · A-19).
+ *
+ * Un realm configurato dalla console di Keycloak può avere `failureFactor: 2`
+ * o non avere `length` affatto: la pagina «Accesso» mostrava quei numeri e poi
+ * ogni salvataggio — anche di un altro campo — veniva rifiutato, senza una via
+ * d'uscita. Chi salva deve poter lasciare com'è ciò che non ha toccato; quello
+ * che CAMBIA, invece, resta dentro l'intervallo.
+ */
+export function passwordRulesOutOfRange(rules: PasswordRules): { rule: string; value: number; min: number; max: number }[] {
+  const out: { rule: string; value: number; min: number; max: number }[] = []
+  for (const [k, [min, max]] of Object.entries(PASSWORD_RULE_RANGES)) {
+    const v = (rules as unknown as Record<string, unknown>)[k]
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < min || v > max) {
+      out.push({ rule: k, value: typeof v === 'number' ? v : 0, min, max })
+    }
+  }
+  return out
+}
+
+/**
+ * `current` sono le regole che il realm ha ADESSO: un valore fuori intervallo
+ * che arriva identico a quello del realm si accetta (l'admin non l'ha
+ * toccato), tutto il resto passa dall'intervallo (A-19).
+ */
+export function assertPasswordRules(raw: unknown, current?: PasswordRules): PasswordRules {
   const o = (raw ?? {}) as Record<string, unknown>
   const out = {} as Record<string, number | boolean>
+  const unchanged = (k: string, v: unknown) =>
+    current !== undefined && (current as unknown as Record<string, unknown>)[k] === v
   for (const [k, [min, max]] of Object.entries(PASSWORD_RULE_RANGES)) {
     const v = o[k]
-    if (typeof v !== 'number' || !Number.isInteger(v) || v < min || v > max) {
+    const inRange = typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max
+    if (!inRange && !(typeof v === 'number' && Number.isInteger(v) && unchanged(k, v))) {
       throw new ValidationError(`Password rule "${k}" must be a whole number between ${String(min)} and ${String(max)}`, { key: `errors.login.rule.${k}`, params: { min, max } })
     }
-    out[k] = v
+    out[k] = v as number
   }
   for (const k of ['notUsername', 'notEmail', 'lockoutEnabled']) {
     if (typeof o[k] !== 'boolean') throw new ValidationError(`Password rule "${k}" must be on or off`, { key: 'errors.login.ruleShape', params: {} })
@@ -161,10 +190,12 @@ export async function passwordRules(tenantId: string): Promise<PasswordRules> {
 }
 
 export async function setPasswordRules(tenantId: string, raw: unknown): Promise<{ before: PasswordRules; after: PasswordRules }> {
-  const rules = assertPasswordRules(raw)
   const { kc, token } = await admin()
   const realm = await kc.get<RealmRep>(token, realmPath(tenantId))
   const before = rulesFromRealm(realm)
+  // A-19: si legge PRIMA com'è il realm, così un valore fuori intervallo che
+  // l'admin non ha toccato non blocca il salvataggio del resto.
+  const rules = assertPasswordRules(raw, before)
   await kc.put(token, realmPath(tenantId), {
     passwordPolicy: policyString(rules, realm.passwordPolicy),
     bruteForceProtected: rules.lockoutEnabled,

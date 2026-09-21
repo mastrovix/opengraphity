@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { useRoles } from '@/hooks/useRoles'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { Trans, useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -23,10 +25,12 @@ import { TEAM_SOURCINGS, teamSourcingKey } from '@/lib/teamSourcing'
 import { SET_TEAM_MANAGER, REMOVE_TEAM_MANAGER, SET_TEAM_MEMBER, SET_CHANGE_MANAGER_TEAM } from '@/graphql/mutations'
 import { ciPath } from '@/lib/ciPath'
 import { toast } from 'sonner'
-import { colors, palette, lookupStyle } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
+import { vocabularyValueStyle } from '@/lib/domainStyle'
 import { formatDate } from '@/lib/datetime'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
 import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
 
 interface Member {
   id:    string
@@ -64,12 +68,15 @@ interface Team {
 }
 
 function TypeBadge({ type, label }: { type: string | null; label?: string | null }) {
+  // Il tipo di team è un VOCABOLARIO del cliente: lo stile viene da lui
+  // (`vocabularyValueStyle`), non da una mappa di due nomi. Con `lookupStyle`
+  // qualunque valore diverso da `owner`/`support` — per esempio il `vendor`
+  // che l'ondata «team_type configurabile» rende possibile — riceveva lo
+  // stile d'errore rosso e un `console.error` per riga (revisione totale ·
+  // F-9).
+  const { valuesOf, colorOf } = useDomainVocabularies()
   if (!type) return <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>—</span>
-  const styles: Record<string, { bg: string; color: string }> = {
-    owner:   { bg: 'var(--color-info-bg)', color: colors.brand },
-    support: { bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
-  }
-  const s = lookupStyle(styles, type, 'TEAM_TYPE_STYLES')
+  const s = vocabularyValueStyle(TEAM_TYPE_VOCABULARY, type, valuesOf(TEAM_TYPE_VOCABULARY), colorOf(TEAM_TYPE_VOCABULARY, type))
   return (
     <Pill bg={s.bg} color={s.color} radius={4} style={{ fontSize: 'var(--font-size-body)', textTransform: 'capitalize' }}>
       {label ?? type}
@@ -81,9 +88,11 @@ function TypeBadge({ type, label }: { type: string | null; label?: string | null
 
 function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: (ci: CIRef) => void; emptyMsg: string }) {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const columns: SimpleColumn<CIRef>[] = [
     { key: 'name',        label: t('pages.cmdb.name'),        render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
-    { key: 'type',        label: t('pages.teams.type'),       render: (v) => <span style={{ color: 'var(--color-slate)', textTransform: 'capitalize' }}>{String(v).replace(/_/g, ' ')}</span> },
+    // F-23: l'etichetta del tipo dal metamodello, non il nome «umanizzato».
+    { key: 'type',        label: t('pages.teams.type'),       render: (v) => <span style={{ color: 'var(--color-slate)' }}>{ciLabels.typeLabel(String(v))}</span> },
     { key: 'environment', label: t('pages.cmdb.environment'), render: (v) => <EnvBadge environment={v as string | null} /> },
     { key: 'status',      label: t('pages.cmdb.status'),      render: (v) => <StatusBadge value={String(v)} /> },
   ]
@@ -101,6 +110,8 @@ function CITable({ items, onRowClick, emptyMsg }: { items: CIRef[]; onRowClick: 
 
 export function TeamDetailPage() {
   const { t } = useTranslation()
+  // F-29: i ruoli dell'organizzazione, per mostrarne il NOME e non la chiave.
+  const { labelOf: roleLabel } = useRoles()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [showManagerModal, setShowManagerModal] = useState(false)
@@ -108,6 +119,8 @@ export function TeamDetailPage() {
   const [pendingManagerUser, setPendingManagerUser] = useState<{ id: string; name: string } | null>(null)
   // Giro del 14 set 2026 (#48): i membri si aggiungono e si tolgono dal team.
   const [showMemberModal, setShowMemberModal] = useState(false)
+  // F-43: conferma prima di togliere il manager.
+  const [confirmRemoveManager, setConfirmRemoveManager] = useState(false)
   const [memberSearch, setMemberSearch] = useState('')
 
   const { data, loading, error, refetch } = useQuery<{ team: Team | null }>(GET_TEAM, {
@@ -130,7 +143,7 @@ export function TeamDetailPage() {
     onCompleted: () => { toast.success(t('toast.team.managerUpdated')); refetch(); setShowManagerModal(false) },
     onError: (err) => showError(err),
   })
-  const [removeManager] = useMutation(REMOVE_TEAM_MANAGER, {
+  const [removeManager, { loading: removingManager }] = useMutation(REMOVE_TEAM_MANAGER, {
     onCompleted: () => { toast.success(t('toast.team.managerRemoved')); refetch() },
     onError: (err) => showError(err),
   })
@@ -247,7 +260,10 @@ export function TeamDetailPage() {
                   <Button variant="ghost" onClick={() => { setManagerSearch(''); setPendingManagerUser(null); setShowManagerModal(true) }} style={{ color: 'var(--color-brand)', fontWeight: 500, fontSize: 'var(--font-size-table)', padding: 0 }}>{t('pages.teams.changeManager')}</Button>
                   <button
                     type="button"
-                    onClick={() => removeManager({ variables: { teamId: team.id } })}
+                    // F-43: si CHIEDE conferma, come per ogni altra rimozione
+                    // della pagina. Un clic per sbaglio lasciava il team senza
+                    // manager, e le escalation al manager senza destinatario.
+                    onClick={() => setConfirmRemoveManager(true)}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', borderRadius: 4 }}
                     title={t('pages.teams.removeManager')}
                     aria-label={t('pages.teams.removeManager')}
@@ -363,7 +379,10 @@ export function TeamDetailPage() {
                           <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{u.name}</div>
                           <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{u.email}</div>
                         </div>
-                        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>{u.role}</span>
+                        {/* Il NOME del ruolo dell'organizzazione, non la chiave con l'iniziale maiuscola
+                            (revisione totale · F-29): un ruolo creato dall'admin si leggeva l2_support
+                            invece di «Supporto L2». */}
+                        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{roleLabel(u.role)}</span>
                       </button>
                     ))}
                   </div>
@@ -385,7 +404,8 @@ export function TeamDetailPage() {
               columns={[
                 { key: 'name',  label: t('pages.users.name'),  render: (v) => <span style={{ fontWeight: 500 }}>{String(v)}</span> },
                 { key: 'email', label: t('pages.users.email'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
-                { key: 'role',  label: t('pages.users.role'),  render: (v) => <span style={{ color: 'var(--color-slate)', textTransform: 'capitalize' }}>{String(v)}</span> },
+                // F-29: il nome del ruolo dell'organizzazione, non la chiave tecnica.
+                { key: 'role',  label: t('pages.users.role'),  render: (v) => <span style={{ color: 'var(--color-slate)' }}>{roleLabel(String(v))}</span> },
                 { key: 'id',    label: '', width: '48px', render: (_v, m) => (
                   <button
                     type="button"
@@ -442,7 +462,10 @@ export function TeamDetailPage() {
                       <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)' }}>{u.name}</div>
                       <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{u.email}</div>
                     </div>
-                    <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>{u.role}</span>
+                    {/* Il NOME del ruolo dell'organizzazione, non la chiave con l'iniziale maiuscola
+                        (revisione totale · F-29): un ruolo creato dall'admin si leggeva l2_support
+                        invece di «Supporto L2». */}
+                    <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{roleLabel(u.role)}</span>
                   </button>
                 ))}
               </div>
@@ -463,6 +486,18 @@ export function TeamDetailPage() {
         {/* Allegati */}
         <AttachmentsSection entityType="team" entityId={team.id} />
       </div>
-    </PageContainer>
+          <ConfirmModal
+        open={confirmRemoveManager}
+        title={t('pages.teams.removeManager')}
+        body={t('pages.teams.removeManagerConfirm', { team: team?.name ?? '' })}
+        danger
+        loading={removingManager}
+        onConfirm={() => {
+          if (team) void removeManager({ variables: { teamId: team.id } })
+          setConfirmRemoveManager(false)
+        }}
+        onCancel={() => setConfirmRemoveManager(false)}
+      />
+</PageContainer>
   )
 }

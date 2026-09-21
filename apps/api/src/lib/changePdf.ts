@@ -6,6 +6,10 @@
  * ./pdf/ticketDossier.ts.
  */
 import { pdfText } from './pdf/texts.js'
+import { valueColorInk } from './pdf/common.js'
+import type { ValueColor } from '@opengraphity/types'
+import { riskBandOf } from './riskBands.js'
+import { loadVocabularyEntries } from './vocabularyEntries.js'
 import { runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import { ciTypeFromLabels } from './ciTypeFromLabels.js'
 import { ASSESSMENT_ROLE } from './taskStatus.js'
@@ -46,6 +50,8 @@ export interface ChangeCIDossier {
 }
 
 export interface ChangeDossier {
+  /** Il colore della fascia di rischio del cliente per questo punteggio (C-17). */
+  riskBandColor?: ValueColor | null
   change: {
     id:                 string
     code:               string
@@ -152,7 +158,18 @@ export async function loadChangeDossier(
     ORDER BY e.timestamp ASC
   `, { id, tenantId })
 
+  /**
+   * C-17: la fascia del punteggio e il colore che il cliente le ha dato. Un
+   * punteggio assente non ha fascia (il badge non viene disegnato affatto).
+   */
+  const score = p['aggregate_risk_score'] == null ? null : Number(p['aggregate_risk_score'])
+  const riskBandColor = score == null ? null : await (async () => {
+    const band = await riskBandOf(tenantId, score)
+    return (await loadVocabularyEntries(tenantId, 'risk_band')).colors[band] ?? null
+  })()
+
   return {
+    riskBandColor,
     change: {
       id:                 p['id']           as string,
       code:               (p['code']  ?? '') as string,
@@ -196,8 +213,16 @@ export async function loadChangeDossier(
 
 // ── Builder ───────────────────────────────────────────────────────────────────
 
-const RISK_COLORS = (score: number): string =>
-  score <= 30 ? '#16a34a' : score <= 60 ? '#d97706' : '#dc2626'
+/**
+ * Il colore del badge RISK viene dalla FASCIA del cliente (revisione totale ·
+ * C-17): qui c'erano le soglie 30/60 scritte nel codice, mentre le fasce di
+ * rischio sono dato del cliente (`Tenant.risk_band_thresholds`). Con fasce
+ * ≤20/≤50/100 un rischio 25 era «medio» nel prodotto e verde nel dossier.
+ * Il colore è quello che il cliente ha scelto nel Dizionario per quel valore
+ * di `risk_band`; se non ne ha scelto nessuno resta il grigio neutro, come
+ * per gli altri badge di vocabolario.
+ */
+
 
 export async function buildChangePdf(data: ChangeDossier, meta: PdfMeta): Promise<Buffer> {
   return createPdfBuffer(
@@ -211,18 +236,19 @@ function renderDossier(doc: Doc, data: ChangeDossier, locale: PdfLocale): void {
   const ch = data.change
 
   renderTicketDossier(doc, {
-    reportTitle: 'Change Audit Report',
+    reportTitle: pdfText(locale, 'reportChange'),
     entityTitle: `${ch.code || ch.id} ${DASH} ${ch.title}`,
     badges: (doc, x, y) => {
       let bx = x
-      bx += badge(doc, bx, y, `PHASE: ${(data.phase || 'n/d').toUpperCase().replace(/_/g, ' ')}`, COLOR.brand) + 6
+      // C-18: etichette dei badge tradotte, come il resto del dossier.
+      bx += badge(doc, bx, y, `${pdfText(locale, 'badgePhase')}: ${(data.phase || pdfText(locale, 'notAvailable')).toUpperCase().replace(/_/g, ' ')}`, COLOR.brand) + 6
       if (ch.approvalRoute || ch.approvalStatus) {
         bx += badge(doc, bx, y,
-          `APPROVAL: ${[ch.approvalRoute, ch.approvalStatus].filter(Boolean).join(' / ').toUpperCase()}`,
+          `${pdfText(locale, 'badgeApproval')}: ${[ch.approvalRoute, ch.approvalStatus].filter(Boolean).join(' / ').toUpperCase()}`,
           COLOR.dark) + 6
       }
       if (ch.aggregateRiskScore != null) {
-        badge(doc, bx, y, `RISK: ${ch.aggregateRiskScore}`, RISK_COLORS(ch.aggregateRiskScore))
+        badge(doc, bx, y, `${pdfText(locale, 'badgeRisk')}: ${ch.aggregateRiskScore}`, valueColorInk(data.riskBandColor ?? null))
       }
     },
     sections: [
@@ -245,13 +271,13 @@ function detailsSection(data: ChangeDossier, locale: PdfLocale) {
     keyValue(doc, pdfText(locale, 'requester'), data.requester
       ? `${data.requester.name} <${data.requester.email}>`
       : DASH)
-    keyValue(doc, 'Change owner', data.changeOwner
+    keyValue(doc, pdfText(locale, 'changeOwner'), data.changeOwner
       ? `${data.changeOwner.name} <${data.changeOwner.email}>`
       : DASH)
     keyValue(doc, pdfText(locale, 'approval'), ch.approvalRoute || ch.approvalStatus
       ? `${orDash(ch.approvalRoute)} ${DASH} ${orDash(ch.approvalStatus)} (${fmtDate(ch.approvalAt, locale)})`
       : DASH)
-    keyValue(doc, 'Risk score', ch.aggregateRiskScore != null ? String(ch.aggregateRiskScore) : DASH)
+    keyValue(doc, pdfText(locale, 'riskScore'), ch.aggregateRiskScore != null ? String(ch.aggregateRiskScore) : DASH)
     keyValue(doc, pdfText(locale, 'createdAt'), fmtDate(ch.createdAt, locale))
     keyValue(doc, pdfText(locale, 'updatedAt'), fmtDate(ch.updatedAt, locale))
   }

@@ -24,6 +24,7 @@ import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { FieldLabel } from '@/components/ui/FormControls'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
+import { TicketTasksSection } from '@/components/ticket/TicketTasksSection'
 import { EntityCommentsSection } from '@/components/ticket/EntityCommentsSection'
 import { WatcherBar } from '@/components/WatcherBar'
 import { EmptyState } from '@/components/EmptyState'
@@ -51,12 +52,14 @@ import type { AffectedCI, ChangeAuditEntryData, ChangeData, MeData } from '@/typ
 import { PhaseChipBar } from './components/PhaseChipBar'
 import { ChangeInfoCard } from './components/ChangeInfoCard'
 import { CITasksTable } from './components/CITasksTable'
+import { ReleasePlanCard } from './components/ReleasePlanCard'
 import { AuditTimeline } from './components/AuditTimeline'
 import { AddCIModal } from './components/AddCIModal'
 import { fmtDate } from './components/shared'
 import { formatDateTime } from '@/lib/datetime'
 import { UnifiedLinkedTickets } from '@/components/UnifiedLinkedTickets'
 import { SuppressedAlarmsSection } from '@/pages/events/CorrelatedEventsSection'
+import { DeployConflictsSection } from './components/DeployConflictsSection'
 import { colors, palette } from '@/lib/tokens'
 import { withLocalizedLabel, localizedLabel } from '@/lib/localizedLabel'
 import { showError } from '@/lib/showError'
@@ -241,7 +244,7 @@ export function ChangeDetailPage() {
 
   return (
     <PageContainer style={{ padding: '16px 24px' }}>
-      <button type="button" onClick={() => navigate('/changes')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 12, padding: 0 }}>← Changes</button>
+      <button type="button" onClick={() => navigate('/changes')} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginBottom: 12, padding: 0 }}>← {t('pages.changeDetail.backToChanges')}</button>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
         <h1 style={{ fontSize: 'var(--font-size-page-title)', fontWeight: 600, color: 'var(--color-slate-dark)', margin: 0 }}>{change.code}</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -375,8 +378,14 @@ export function ChangeDetailPage() {
         ]}
       />
 
+      {/* I conflitti di RILASCIO: altre change che deployano sugli stessi CI in
+          una finestra sovrapposta (18 set 2026). Sta accanto al piano e sopra
+          gli allarmi silenziati, perché è la domanda che si fa prima di
+          approvare — non un dettaglio da cercare. */}
+      <DeployConflictsSection conflitti={change.deployConflicts?.items ?? []} illeggibili={change.deployConflicts?.unreadablePlans ?? []} />
+
       {/* Allarmi silenziati dalla finestra di rilascio (Event Management, ondata 3) */}
-      <SuppressedAlarmsSection events={change.suppressedEvents ?? []} changeId={change.id} />
+      <SuppressedAlarmsSection events={change.suppressedEvents ?? []} total={change.suppressedEventCount} changeId={change.id} />
 
       {!wfIsTerminal(currentStep) && affected.some(a => a.deployPlan && a.deployPlan.steps.length > 0 && !a.validation) && (
         <SectionCard title={t('pages.changeDetail.nextSteps')} collapsible count={affected.filter(a => (a.deployPlan?.steps?.length ?? 0) > 0).length}>
@@ -405,6 +414,12 @@ export function ChangeDetailPage() {
         activeColor={atApproval ? undefined : palette.yellow.bg}
         activeTextColor={atApproval ? undefined : 'var(--color-slate-dark)'}
       />
+
+      {/* IL PIANO COMPLESSIVO, in ordine di data (17 set 2026). Sta subito sotto
+          i task perché è la loro somma: si popola task per task, e al CAB è già
+          il documento da leggere. Si nasconde da sé finché non c'è niente da
+          riepilogare, quindi non serve un varco di fase qui. */}
+      <ReleasePlanCard affected={affected} />
 
       <SectionCard title={t('pages.changeDetail.involvedCIs')} collapsible count={affected.length}>
         <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)' }}>
@@ -482,8 +497,9 @@ export function ChangeDetailPage() {
                     <span style={{ width: 24, flexShrink: 0 }} />
                     <span style={{ flex: 1 }}>{t('pages.changeDetail.impactedCI')}</span>
                     <span style={{ width: 80 }}>{t('common.type')}</span>
-                    <span style={{ width: 80 }}>Env</span>
-                    <span style={{ width: 60 }}>Dist.</span>
+                    {/* F-28: intestazioni tradotte (erano letterali inglesi). */}
+                    <span style={{ width: 80 }}>{t('pages.changeDetail.colEnvironment')}</span>
+                    <span style={{ width: 60 }}>{t('pages.changeDetail.colDistance')}</span>
                     <span style={{ width: 140 }}>{t('pages.changeDetail.impactedVia')}</span>
                     {currentStep === wfInitialStep?.name && <span style={{ width: 100, flexShrink: 0 }} />}
                   </div>
@@ -504,7 +520,7 @@ export function ChangeDetailPage() {
                           <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)' }}>{b.ci.name}</span>
                           <span style={{ width: 80 }}>{b.ci.type ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.typeLabel(b.ci.type)}</span> : null}</span>
                           <span style={{ width: 80 }}>{b.ci.environment ? <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)' }}>{ciLabels.environmentLabel(b.ci.environment)}</span> : null}</span>
-                          <span style={{ width: 60 }}><span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, backgroundColor: b.distance === 1 ? 'var(--color-danger-bg)' : b.distance === 2 ? palette.orange.bg : colors.slateBg, color: b.distance === 1 ? 'var(--color-danger)' : b.distance === 2 ? palette.warning.text : 'var(--color-slate)' }}>{b.distance} hop</span></span>
+                          <span style={{ width: 60 }}><span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '1px 6px', borderRadius: 4, backgroundColor: b.distance === 1 ? 'var(--color-danger-bg)' : b.distance === 2 ? palette.orange.bg : colors.slateBg, color: b.distance === 1 ? 'var(--color-danger)' : b.distance === 2 ? palette.warning.text : 'var(--color-slate)' }}>{t('pages.changeDetail.hops', { count: b.distance })}</span></span>
                           <span style={{ width: 140, fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{b.affectedBy.name}</span>
                           {currentStep === wfInitialStep?.name && (
                             <span style={{ width: 100, flexShrink: 0, display: 'flex', justifyContent: 'flex-end' }}>
@@ -573,9 +589,9 @@ export function ChangeDetailPage() {
         const taskGroups = affected.map((a) => ({
           ciName: a.ci.name,
           tasks: [
-            a.assessmentOwner   ? { id: a.assessmentOwner.id,   label: 'Functional', code: a.assessmentOwner.code,   status: a.assessmentOwner.status } : null,
-            a.assessmentSupport ? { id: a.assessmentSupport.id, label: 'Technical',  code: a.assessmentSupport.code, status: a.assessmentSupport.status } : null,
-            a.deployPlan        ? { id: a.deployPlan.id,        label: 'Planning',   code: a.deployPlan.code,        status: a.deployPlan.status } : null,
+            a.assessmentOwner   ? { id: a.assessmentOwner.id,   label: t('pages.changeDetail.taskFunctional'), code: a.assessmentOwner.code,   status: a.assessmentOwner.status } : null,
+            a.assessmentSupport ? { id: a.assessmentSupport.id, label: t('pages.changeDetail.taskTechnical'), code: a.assessmentSupport.code, status: a.assessmentSupport.status } : null,
+            a.deployPlan        ? { id: a.deployPlan.id,        label: t('pages.changeDetail.taskPlanning'), code: a.deployPlan.code,        status: a.deployPlan.status } : null,
           ].filter((x): x is { id: string; label: string; code: string; status: string } => !!x),
         })).filter((g) => g.tasks.length > 0)
         const canConfirm = rejectNote.trim() !== '' && (reopenMode === 'all' || reopenIds.size > 0)
@@ -592,13 +608,21 @@ export function ChangeDetailPage() {
                 size="xs"
                 disabled={!canConfirm}
                 onClick={async () => {
+                  /**
+                   * Il modale si chiude DOPO (revisione totale · F-15): si
+                   * chiudeva prima della mutation, quindi se la rete cadeva
+                   * l'utente vedeva un errore e doveva riscrivere da zero la
+                   * motivazione e rifare la scelta sui task da riaprire.
+                   * Adesso quello che ha scritto resta lì finché il rifiuto
+                   * non è andato a buon fine.
+                   */
                   const m = rejectModal
-                  setRejectModal(null)
                   await rejectApproval({ variables: {
                     changeId, teamId: m.teamId, note: rejectNote.trim(),
                     reopenAll: reopenMode === 'all',
                     reopenTaskIds: reopenMode === 'some' ? [...reopenIds] : null,
                   } })
+                  setRejectModal(null)
                 }}
                 style={{ backgroundColor: 'var(--color-danger)', fontWeight: 600, opacity: canConfirm ? 1 : 0.6 }}
               >
@@ -686,7 +710,7 @@ export function ChangeDetailPage() {
           }
         >
           <FieldLabel htmlFor={transitionNotesId} style={{ fontWeight: 400 }}>
-            {transitionModal.inputField ?? 'Note'}
+            {transitionModal.inputField ?? t('pages.changeDetail.notesField')}
           </FieldLabel>
           <textarea
             id={transitionNotesId}
@@ -700,7 +724,8 @@ export function ChangeDetailPage() {
         </Modal>
       )}
 
-      <AttachmentsSection entityType="change" entityId={change.id} defaultOpen={false} />
+      <TicketTasksSection entityId={change.id} titleKey="tasks.titleStep" />
+          <AttachmentsSection entityType="change" entityId={change.id} defaultOpen={false} />
       {/* F13: le change avevano solo l'audit, nessun commento. */}
       <EntityCommentsSection entityType="change" entityId={change.id} />
 

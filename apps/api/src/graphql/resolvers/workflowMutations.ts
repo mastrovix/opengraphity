@@ -1,5 +1,5 @@
 import { GraphQLError } from 'graphql'
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { v4 as uuidv4 } from 'uuid'
 import { workflowEngine, isWorkflowActionType, WORKFLOW_ACTION_TYPES } from '@opengraphity/workflow'
 import { parseLocalizedLabels } from '@opengraphity/types'
@@ -20,9 +20,10 @@ import { withSession } from './ci-utils.js'
 import { loadTransitionRows, mapWorkflowDefinition } from './workflowMapping.js'
 import { workflowLogger } from '../../lib/logger.js'
 import { audit } from '../../lib/audit.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { validateRequiredFields } from '../../lib/validateRequiredFields.js'
 import { invalidateWorkflowCache } from '../../lib/workflowHelpers.js'
-import { auditStepEntered, loadStepFacts } from '../../lib/stepEvent.js'
+import { auditStepEntered} from '../../lib/stepEvent.js'
 import { systemText } from '../../lib/systemText.js'
 import { requestApprovalWouldBeSkipped } from '../../lib/requestApproval.js'
 import { transitionErrorFields } from '../../lib/transitionError.js'
@@ -33,12 +34,17 @@ import { labelTranslationsCypher } from '../../lib/workflowLabelTranslations.js'
 import { assignTeamCypher, TEAM_NOW_PARAM } from '../../lib/ticketTeamHistory.js'
 import { workflowChangeDetails, workflowSnapshot } from '../../lib/workflowAuditDetails.js'
 
-// Safe label map — prevents Cypher injection when creating entities dynamically
+// Safe label map — prevents Cypher injection when creating entities dynamically.
+// Le richieste di servizio c'erano nel workflow ma NON qui (revisione totale ·
+// B-28): un `on_enter_fields` su un passo delle richieste veniva saltato in
+// silenzio. Ora ci sono, e un tipo che non conosciamo ferma la transizione
+// invece di far finta di avere applicato i campi del passo.
 const ENTITY_LABELS: Record<string, string> = {
-  incident:   'Incident',
-  problem:    'Problem',
-  change:     'Change',
-  kb_article: 'KBArticle',
+  incident:        'Incident',
+  problem:         'Problem',
+  change:          'Change',
+  service_request: 'ServiceRequest',
+  kb_article:      'KBArticle',
 }
 
 /**
@@ -75,7 +81,13 @@ async function applyOnEnterFields(
   const tenantId   = rec.get('tenantId')   as string
   const entityType = rec.get('entityType') as string
   const label      = ENTITY_LABELS[entityType]
-  if (!label) return
+  // B-28: niente fallback silenzioso. Se il passo dichiara campi da scrivere e
+  // non sappiamo su quale nodo scriverli, la transizione non è riuscita.
+  if (!label) {
+    throw new GraphQLError(`Step "${stepName}" writes fields on enter, but entity type "${entityType}" is not writable`, {
+      extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.onEnterFieldsEntity', params: { step: stepName, entityType } } },
+    })
+  }
 
   let parsed: Record<string, string>
   try { parsed = JSON.parse(raw) as Record<string, string> }
@@ -179,7 +191,7 @@ async function publishNotifyRuleActions(
  * pannello del designer offriva `role:admin, role:manager`: il secondo non è un
  * ruolo che l'autenticazione conosce.
  */
-export function assertStepActions(raw: string | null | undefined, label: string): void {
+export function assertStepActions(raw: string | null | undefined, label: string, fase: 'enter' | 'exit' = 'enter'): void {
   if (raw == null) return
   let parsed: unknown
   try { parsed = JSON.parse(raw) }
@@ -223,6 +235,20 @@ export function assertStepActions(raw: string | null | undefined, label: string)
       if (params['entity_type'] === 'change' && (params['change_type'] == null || String(params['change_type']).trim() === '')) {
         throw new GraphQLError(`${label}[${i}]: create_entity of a change needs the change type (params.change_type).`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.createChangeNeedsType', params: { field: `${label}[${i}]` } } } })
       }
+    }
+    /**
+     * UN COMPITO SI CREA SOLO ENTRANDO in un passo (rimedio, 20 set 2026). Le
+     * azioni di USCITA girano con l'istanza già spostata sul passo nuovo:
+     * un compito creato lì nascerebbe timbrato col passo sbagliato, non
+     * bloccherebbe l'uscita che doveva bloccare e bloccherebbe quella dopo.
+     * Il rifiuto arriva qui, nel disegnatore, e non dentro un log a ticket
+     * rotto.
+     */
+    if (type === 'create_task' && fase === 'exit') {
+      throw new GraphQLError(
+        `${label}[${i}]: a task can only be created entering a step, not leaving one.`,
+        { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.taskOnlyOnEnter', params: { field: `${label}[${i}]` } } } },
+      )
     }
     if (type === 'notify_rule') {
       // I CANALI del passo: la scheda «Notifiche» del disegnatore offriva
@@ -591,7 +617,7 @@ export async function updateWorkflowStep(
   ctx: GraphQLContext,
 ) {
   assertStepActions(enterActions, `enter_actions of step "${stepName}"`)
-  assertStepActions(exitActions,  `exit_actions of step "${stepName}"`)
+  assertStepActions(exitActions,  `exit_actions of step "${stepName}"`, 'exit')
   await assertRolesExist(ctx.tenantId, [...roleKeysInActions(enterActions), ...roleKeysInActions(exitActions)])
   const purposeValue = normalizeStepPurpose(purpose, `step "${stepName}"`)
   return withSession(async (session) => {
@@ -680,23 +706,38 @@ export async function updateWorkflowTransition(
   // rende l'arco inerte, una condizione non registrata lo rende un muro.
   const trigger   = assertTransitionTrigger(input.trigger,    `transizione ${transitionId}`)
   const condition = assertTransitionCondition(input.condition, `transizione ${transitionId}`)
+  /**
+   * `coalesce($x, t.x)` non permetteva di CANCELLARE un valore: passare null
+   * lasciava quello vecchio, e una condizione sbagliata su una transizione non
+   * si poteva più togliere dalla mutation puntuale — restava e bloccava la
+   * transizione (revisione totale · M-9). Ora conta se il campo è PRESENTE
+   * nell'input: presente e null = cancella, assente = non si tocca. Il
+   * commento di `assertTransitionCondition` promette esattamente questo.
+   */
+  const given = (field: keyof typeof input) => Object.prototype.hasOwnProperty.call(input, field)
   return withSession(async (session) => {
-    await session.executeWrite((tx) =>
+    const written = await session.executeWrite((tx) =>
       tx.run(`
-        // tenant-ok: la definizione dello step di partenza è scopata alla riga dopo
-        MATCH (src:WorkflowStep)-[t:TRANSITIONS_TO {id: $transitionId}]->()
-        MATCH (wd:WorkflowDefinition {id: src.definition_id, tenant_id: $tenantId})
+        // La transizione DEVE essere di questa definizione (revisione totale ·
+        // B-26): prima era cercata per solo id, e il «customizzato» veniva
+        // segnato sulla definizione dello step di partenza — cioè un'altra
+        // definizione dello stesso tenant si modificava per conto di questa.
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        // tenant-ok: lo step di partenza è della definizione appena scopata
+        MATCH (src:WorkflowStep {definition_id: $definitionId})-[t:TRANSITIONS_TO {id: $transitionId}]->()
         ${MARK_CUSTOMIZED_BUMP}
         // Un'etichetta CAMBIATA nel disegnatore è del cliente: le traduzioni spedite non valgono più (#22).
         ${labelTranslationsCypher('t', 'coalesce($label, t.label)')}
-        SET t.label          = coalesce($label, t.label),
-            t.trigger        = coalesce($trigger, t.trigger),
+        SET t.label          = CASE WHEN $labelGiven      THEN $label      ELSE t.label       END,
+            t.trigger        = CASE WHEN $triggerGiven    THEN $trigger    ELSE t.trigger     END,
             t.requires_input = $requiresInput,
-            t.input_field    = coalesce($inputField, t.input_field),
-            t.condition      = coalesce($condition, t.condition),
-            t.timer_hours    = coalesce($timerHours, t.timer_hours)
+            t.input_field    = CASE WHEN $inputFieldGiven THEN $inputField ELSE t.input_field END,
+            t.condition      = CASE WHEN $conditionGiven  THEN $condition  ELSE t.condition   END,
+            t.timer_hours    = CASE WHEN $timerHoursGiven THEN $timerHours ELSE t.timer_hours END
+        RETURN t.id AS id
       `, {
         transitionId,
+        definitionId,
         tenantId: ctx.tenantId,
         ...customizedParams(ctx),
         label:         label         ?? null,
@@ -705,8 +746,19 @@ export async function updateWorkflowTransition(
         inputField:    inputField    ?? null,
         condition:     condition     ?? null,
         timerHours:    timerHours    ?? null,
+        // M-9: presente e null = cancella; assente = lascia com'è. L'etichetta
+        // vuota non cancella (un arco senza etichetta non si può cliccare):
+        // per lei «presente» vale solo con un testo.
+        labelGiven:      given('label') && label != null,
+        triggerGiven:    given('trigger'),
+        inputFieldGiven: given('inputField'),
+        conditionGiven:  given('condition'),
+        timerHoursGiven: given('timerHours'),
       }),
     )
+    // B-26: se la transizione non è di questa definizione non si tocca nulla e
+    // lo si dice, invece di restituire la definizione come se fosse cambiata.
+    if (!written.records.length) throw new NotFoundError('WorkflowTransition', transitionId)
     const wdResult = await session.executeRead((tx) =>
       tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
@@ -740,10 +792,31 @@ export async function addWorkflowTransition(
   },
   ctx: GraphQLContext,
 ) {
+  const resolvedTrigger = assertTransitionTrigger(trigger, `new transition ${fromStepName} → ${toStepName}`) ?? 'manual'
   return withSession(async (session) => {
     const id = uuidv4()
-    const result = await session.executeWrite((tx) =>
-      tx.run(`
+    const result = await session.executeWrite(async (tx) => {
+      /**
+       * Due archi IDENTICI (stessa coppia di passi, stesso innesco) non si
+       * creano (revisione totale · B-27): il motore ne sceglie uno con
+       * `LIMIT 1` senza un ordine dichiarato, quindi con condizioni diverse
+       * l'esito della transizione dipenderebbe dal piano di esecuzione. Chi
+       * vuole due strade diverse usa due inneschi diversi.
+       */
+      const dup = await tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        // tenant-ok: step della definizione appena scopata
+        MATCH (from:WorkflowStep {definition_id: $definitionId, name: $fromStepName})
+              -[tr:TRANSITIONS_TO {trigger: $trigger}]->
+              (:WorkflowStep {definition_id: $definitionId, name: $toStepName})
+        RETURN tr.id AS id LIMIT 1
+      `, { definitionId, tenantId: ctx.tenantId, fromStepName, toStepName, trigger: resolvedTrigger })
+      if (dup.records.length) {
+        throw new GraphQLError(`A ${resolvedTrigger} transition from ${fromStepName} to ${toStepName} already exists`, {
+          extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.workflow.duplicateTransition', params: { from: fromStepName, to: toStepName, trigger: resolvedTrigger } } },
+        })
+      }
+      return tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
         // tenant-ok: step della definizione appena scopata
         MATCH (from:WorkflowStep {definition_id: $definitionId, name: $fromStepName})
@@ -758,12 +831,12 @@ export async function addWorkflowTransition(
         RETURN tr, from.name AS fromStep, to.name AS toStep, wd.entity_type AS entityType
       `, {
         definitionId, tenantId: ctx.tenantId, fromStepName, toStepName, id,
-        trigger: assertTransitionTrigger(trigger, `new transition ${fromStepName} → ${toStepName}`) ?? 'manual',
+        trigger: resolvedTrigger,
         label: label ?? 'New transition',
         sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null,
         ...customizedParams(ctx),
-      }),
-    )
+      })
+    })
     if (!result.records.length) {
       throw new GraphQLError('Steps not found, or not part of this definition', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.workflow.stepsNotInDefinition' } } })
     }
@@ -952,21 +1025,62 @@ export async function executeWorkflowTransition(
         })
       },
 
-      createApprovalRequest: async ({ entityId, entityType, title, approverRole, approvalType }) => {
+      createApprovalRequest: async ({ entityId, entityType, title, approverRole, approverUserIds, approverTeamIds, approvalType }) => {
         const now = new Date().toISOString()
 
-        // Find approvers by role
-        const adminsRes = await session.executeRead((tx) =>
-          tx.run(
+        /**
+         * CHI APPROVA (moduli del catalogo, ondata 3).
+         *
+         * Prima solo il RUOLO: «tutti gli admin», o tutti quelli di un ruolo.
+         * Per un catalogo servizi non basta — l'approvazione di una spesa è del
+         * responsabile di budget, non di chi amministra il prodotto.
+         *
+         * Ora tre sorgenti che si UNISCONO senza ripetizioni: il ruolo, le
+         * persone indicate, i membri delle squadre indicate. Se non è indicato
+         * niente vale il ruolo `admin`, come prima.
+         *
+         * Le persone e i membri si verificano nel tenant: un id inventato non
+         * diventa un approvatore fantasma che blocca il ticket per sempre.
+         */
+        const perRuolo = approverUserIds?.length || approverTeamIds?.length
+          ? []
+          : (await session.executeRead((tx) => tx.run(
             `MATCH (u:User {tenant_id: $tenantId, role: $role}) RETURN u.id AS id`,
             { tenantId: ctx.tenantId, role: approverRole ?? 'admin' },
-          ),
-        )
-        const approverIds = adminsRes.records.map((r) => r.get('id') as string)
-        if (approverIds.length === 0) {
-          throw new GraphQLError(`No user with role "${approverRole ?? 'admin'}" configured to approve`, { extensions: { code: 'NO_APPROVER', i18n: { key: 'errors.workflow.noApprover', params: { role: approverRole ?? 'admin' } } } })
+          ))).records.map((r) => r.get('id') as string)
+
+        const perNome = approverUserIds?.length
+          ? (await session.executeRead((tx) => tx.run(
+            `MATCH (u:User {tenant_id: $tenantId}) WHERE u.id IN $ids AND coalesce(u.active, true) RETURN u.id AS id`,
+            { tenantId: ctx.tenantId, ids: approverUserIds },
+          ))).records.map((r) => r.get('id') as string)
+          : []
+
+        const perSquadra = approverTeamIds?.length
+          ? (await session.executeRead((tx) => tx.run(
+            `MATCH (t:Team {tenant_id: $tenantId})<-[:MEMBER_OF]-(u:User {tenant_id: $tenantId})
+             WHERE t.id IN $ids AND coalesce(u.active, true)
+             RETURN DISTINCT u.id AS id`,
+            { tenantId: ctx.tenantId, ids: approverTeamIds },
+          ))).records.map((r) => r.get('id') as string)
+          : []
+
+        const finalApprovers = [...new Set([...perRuolo, ...perNome, ...perSquadra])]
+        if (finalApprovers.length === 0) {
+          // Il messaggio dice QUALE delle tre sorgenti era stata chiesta: «nessun
+          // admin» e «la squadra indicata è vuota» si correggono in due posti diversi.
+          const chiesto = approverUserIds?.length || approverTeamIds?.length
+            ? `the people/teams configured to approve (users: ${(approverUserIds ?? []).length}, teams: ${(approverTeamIds ?? []).length}) have no active member in this organization`
+            : `no user with role "${approverRole ?? 'admin'}" configured to approve`
+          throw new GraphQLError(`Approval cannot start: ${chiesto}`, {
+            extensions: {
+              code: 'NO_APPROVER',
+              i18n: approverUserIds?.length || approverTeamIds?.length
+                ? { key: 'errors.workflow.noApproverTarget', params: {} }
+                : { key: 'errors.workflow.noApprover', params: { role: approverRole ?? 'admin' } },
+            },
+          })
         }
-        const finalApprovers = approverIds
 
         const approvalId = uuidv4()
         await session.executeWrite((tx) =>
@@ -1095,38 +1209,21 @@ export async function executeWorkflowTransition(
         const tenantId = r.get('tenantId') as string
         const incidentId = r.get('id') as string
 
-        // Add automatic comment for every incident workflow transition
-        // Il nome del passo nella sua etichetta, e il testo nella lingua del cliente.
-        const stepLabel = (await loadStepFacts(session, tenantId, 'incident', toStep)).step_label
-        const commentText = notes
-          ? await systemText(tenantId, 'workflow.transitionCommentNotes', { step: stepLabel, notes })
-          : await systemText(tenantId, 'workflow.transitionComment', { step: stepLabel })
-        const now = new Date().toISOString()
-        await session.executeWrite((tx) => tx.run(`
-          MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})
-          CREATE (c:Comment {
-            id:         randomUUID(),
-            tenant_id:  $tenantId,
-            text:       $text,
-            // Nota di transizione: interna (lib/ticketComments.ts).
-            is_internal: true,
-            author_id:  $userId,
-            created_at: $now,
-            updated_at: $now
-          })
-          CREATE (i)-[:HAS_COMMENT]->(c)
-        `, { incidentId, tenantId, text: commentText, userId: ctx.userId, now }))
+        // La NOTA di transizione non si scrive più qui: la scrive l'hook
+        // `onStepEntered` (lib/stepEnteredPublisher.ts), che vede anche i
+        // cammini automatici — prima un incident risolto in blocco o chiuso
+        // da una change non lasciava traccia nella storia (revisione totale ·
+        // B-4). Scriverla anche qui darebbe due note per ogni transizione
+        // manuale.
 
         // L'evento di dominio dell'ingresso nel passo NON si pubblica qui: lo
         // pubblica l'hook `onStepEntered` del motore, che vede anche i cammini
         // automatici (revisione totale · C-1, lib/stepEnteredPublisher.ts).
         // Pubblicarlo anche qui darebbe due eventi per ogni transizione
         // manuale, cioè due notifiche e due webhook.
-        // Azione di audit STABILE, passo nei dettagli (D-22): l'azione non è
-        // più composta col nome del passo, che una rinomina cambiava spezzando
-        // in due la storia dei filtri e dei report. Il taglio nel vocabolario è
-        // dichiarato (vedi auditStepEntered): le voci storiche NON si riscrivono.
-        await post('audit step entered', () => auditStepEntered(session, ctx, 'incident', 'Incident', incidentId, toStep))
+        // Anche la voce di AUDIT dell'ingresso nel passo viene dall'hook
+        // (B-4): l'azione è stabile e il passo sta nei dettagli (D-22), e ora
+        // la scrivono TUTTI i cammini, non solo questo.
 
         await post('on_enter_fields', () => applyOnEnterFields(session, instanceId, toStep, ctx.userId, notes, ctx.tenantId))
 
@@ -1209,7 +1306,7 @@ export async function saveWorkflowChanges(
   await assertRolesExist(ctx.tenantId, (steps ?? []).flatMap((st) => [...roleKeysInActions(st.enterActions), ...roleKeysInActions(st.exitActions)]))
   const stepRows = (steps ?? []).map((st) => {
     assertStepActions(st.enterActions, `enter_actions of step "${st.stepName}"`)
-    assertStepActions(st.exitActions,  `exit_actions of step "${st.stepName}"`)
+    assertStepActions(st.exitActions,  `exit_actions of step "${st.stepName}"`, 'exit')
     const purposeValue = normalizeStepPurpose(st.purpose, `step "${st.stepName}"`)
     const category     = normalizeStepCategory(st.category, `step "${st.stepName}"`)
     const deadline     = normalizeStepDeadlineInput(st.deadline, `deadline of step "${st.stepName}"`)
@@ -1398,5 +1495,214 @@ export async function saveWorkflowChanges(
     // ReferenceError — «Salva modifiche» del disegnatore non salvava niente.
     const savedTransitions = await loadTransitionRows(session, definitionId, ctx.tenantId)
     return mapWorkflowDefinition(wd.saved, savedSteps, savedTransitions)
+  }, true)
+}
+
+/**
+ * DUPLICARE UNA DEFINIZIONE DI WORKFLOW (moduli del catalogo, ondata 3).
+ *
+ * Perché serve: il motore sa già scegliere l'iter per categoria o per
+ * identificativo, ma non c'era modo di CREARE una definizione nuova — si
+ * potevano solo modificare quelle seminate. Senza questa mutation «un iter per
+ * ogni voce di catalogo» resta una promessa: ogni richiesta segue lo stesso
+ * flusso.
+ *
+ * Come copia, e perché in tre passi:
+ *  1. la definizione, con `properties(src)` così nessun campo si perde per
+ *     strada quando ne aggiungeremo altri, poi le sovrascritture (id, nome,
+ *     categoria, versione, i marchi).
+ *  2. i passi, ognuno con un riferimento TEMPORANEO all'originale
+ *     (`copied_from`): serve solo a ricostruire le transizioni.
+ *  3. le transizioni, cercate fra le coppie di passi copiati grazie a quel
+ *     riferimento, e poi il riferimento si cancella — un dato di servizio che
+ *     resta nel grafo diventa un dato che qualcuno legge per sbaglio.
+ *
+ * La copia nasce SPENTA e marcata come personalizzata: spenta perché una
+ * definizione attiva senza categoria entrerebbe subito nella scelta di ogni
+ * ticket nuovo di quel tipo (il ripiego «senza categoria»), e nessuno se lo
+ * aspetta da un «duplica»; personalizzata perché il seed di fabbrica non deve
+ * mai sovrascriverla.
+ */
+export async function duplicateWorkflowDefinition(
+  _: unknown,
+  args: { definitionId: string; name: string; category?: string | null },
+  ctx: GraphQLContext,
+) {
+  requirePermission(ctx, 'config.workflow')
+  const nome = args.name.trim()
+  if (nome === '') {
+    throw new ValidationError('The copy needs a name.', { key: 'errors.workflow.copyNameRequired', params: {} })
+  }
+  const categoria = args.category == null || args.category.trim() === '' ? null : args.category.trim()
+  const nuovoId = uuidv4()
+  const now = new Date().toISOString()
+
+  return withSession(async (session) => {
+    const creata = await session.executeWrite(async (tx) => {
+      const sorgente = await tx.run(`
+        MATCH (src:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        RETURN src.entity_type AS entityType, src.name AS name`,
+      { definitionId: args.definitionId, tenantId: ctx.tenantId })
+      const srcRec = sorgente.records[0]
+      if (!srcRec) throw new NotFoundError('WorkflowDefinition', args.definitionId)
+      const entityType = srcRec.get('entityType') as string
+
+      // Il nome identifica una definizione per (tenant, tipo): `seedWorkflowDefinition`
+      // cerca proprio così, e due omonime renderebbero il seed imprevedibile.
+      const omonima = await tx.run(`
+        MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, name: $name})
+        RETURN wd.id AS id LIMIT 1`, { tenantId: ctx.tenantId, entityType, name: nome })
+      if (omonima.records.length > 0) {
+        throw new ValidationError(`A ${entityType} workflow called "${nome}" already exists.`,
+          { key: 'errors.workflow.copyNameTaken', params: { name: nome, entityType } })
+      }
+
+      /**
+       * La copia si scrive con una PROIEZIONE DI MAPPA (`src { .*, id: … }`),
+       * non con `SET dst = properties(src)` seguito dalle sovrascritture: quella
+       * forma scrive prima l'id ORIGINALE, e il vincolo di unicità su
+       * `WorkflowDefinition.id` scatta lì — non al commit. Il primo giro nel
+       * browser è finito esattamente così, con «Node already exists with
+       * property id». Qui le sovrascritture sono dentro la stessa SET, quindi
+       * il nodo nasce già con il suo id.
+       */
+      await tx.run(`
+        MATCH (src:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        CREATE (dst:WorkflowDefinition)
+        SET dst = src {
+          .*,
+          id: $newId,
+          name: $name,
+          category: $category,
+          version: 1,
+          active: false,
+          created_at: $now,
+          updated_at: $now,
+          customized_at: $now,
+          customized_by: $userId,
+          copied_from_id: $definitionId
+        }`,
+      { definitionId: args.definitionId, tenantId: ctx.tenantId, newId: nuovoId, name: nome, category: categoria, now, userId: ctx.userId })
+
+      await tx.run(`
+        MATCH (src:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})-[:HAS_STEP]->(s:WorkflowStep)
+        MATCH (dst:WorkflowDefinition {id: $newId, tenant_id: $tenantId})
+        CREATE (ns:WorkflowStep)
+        SET ns = s {
+          .*,
+          id: randomUUID(),
+          definition_id: $newId,
+          tenant_id: $tenantId,
+          copied_from: s.id
+        }
+        CREATE (dst)-[:HAS_STEP]->(ns)`,
+      { definitionId: args.definitionId, tenantId: ctx.tenantId, newId: nuovoId })
+
+      // I passi copiati sono limitati al tenant come tutto il resto: il
+      // `definition_id` basterebbe (è un uuid appena creato), ma una query di
+      // dominio senza `tenant_id` è una query che un domani qualcuno riusa
+      // altrove — e lì l'uuid non sarebbe più appena creato.
+      await tx.run(`
+        MATCH (a:WorkflowStep {definition_id: $newId, tenant_id: $tenantId})
+        MATCH (b:WorkflowStep {definition_id: $newId, tenant_id: $tenantId})
+        MATCH (oa:WorkflowStep {id: a.copied_from, tenant_id: $tenantId})-[t:TRANSITIONS_TO]->(ob:WorkflowStep {id: b.copied_from, tenant_id: $tenantId})
+        CREATE (a)-[nt:TRANSITIONS_TO]->(b)
+        SET nt = properties(t)`,
+      { newId: nuovoId, tenantId: ctx.tenantId })
+
+      // Il riferimento temporaneo se ne va: ha finito il suo lavoro.
+      await tx.run(`
+        MATCH (s:WorkflowStep {definition_id: $newId, tenant_id: $tenantId})
+        REMOVE s.copied_from`, { newId: nuovoId, tenantId: ctx.tenantId })
+
+      const dst = await tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $newId, tenant_id: $tenantId})
+        OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
+        RETURN properties(wd) AS props, collect(s) AS steps`, { newId: nuovoId, tenantId: ctx.tenantId })
+      const rec = dst.records[0]!
+      return {
+        props: rec.get('props') as Record<string, unknown>,
+        steps: (rec.get('steps') ?? []) as Array<{ properties: Record<string, unknown> }>,
+        entityType,
+      }
+    })
+
+    invalidateWorkflowCache(ctx.tenantId, creata.entityType)
+    void audit(ctx, 'workflow.duplicated', 'WorkflowDefinition', nuovoId, {
+      copiedFrom: args.definitionId, name: nome, category: categoria,
+    })
+    const transizioni = await loadTransitionRows(session, nuovoId, ctx.tenantId)
+    return mapWorkflowDefinition(creata.props, creata.steps, transizioni)
+  }, true)
+}
+
+/**
+ * ACCENDERE O SPEGNERE una definizione (moduli del catalogo, ondata 3).
+ *
+ * Senza questa, `duplicateWorkflowDefinition` era un vicolo cieco: la copia
+ * nasce spenta — di proposito, perché una definizione attiva senza categoria
+ * entra subito nel ripiego di ogni ticket nuovo di quel tipo — e non c'era
+ * modo di metterla in servizio.
+ *
+ * Spegnere NON tocca le istanze già create: un ticket a metà del suo iter
+ * resta dov'è. Toglie solo la definizione dalla SCELTA dei ticket nuovi, ed è
+ * il motivo per cui si può spegnere senza paura.
+ *
+ * Una cosa la si rifiuta: spegnere l'ULTIMA definizione attiva di un tipo
+ * senza categoria. Dopo quella non nasce più nessun ticket di quel tipo, e il
+ * messaggio arriverebbe a chi apre un incident invece che a chi ha configurato.
+ */
+export async function setWorkflowDefinitionActive(
+  _: unknown,
+  args: { definitionId: string; active: boolean },
+  ctx: GraphQLContext,
+) {
+  requirePermission(ctx, 'config.workflow')
+  return withSession(async (session) => {
+    const aggiornata = await session.executeWrite(async (tx) => {
+      const trovata = await tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        RETURN wd.entity_type AS entityType, wd.name AS name, wd.category AS category, wd.active AS active`,
+      { definitionId: args.definitionId, tenantId: ctx.tenantId })
+      const rec = trovata.records[0]
+      if (!rec) throw new NotFoundError('WorkflowDefinition', args.definitionId)
+      const entityType = rec.get('entityType') as string
+      const categoria = (rec.get('category') ?? null) as string | null
+
+      if (!args.active && categoria == null) {
+        const altre = await tx.run(`
+          MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
+          WHERE wd.id <> $definitionId AND wd.category IS NULL
+          RETURN count(wd) AS n`, { tenantId: ctx.tenantId, entityType, definitionId: args.definitionId })
+        if (Number(altre.records[0]?.get('n') ?? 0) === 0) {
+          throw new ValidationError(
+            `"${rec.get('name') as string}" is the last active ${entityType} workflow without a category: switching it off would stop every new ${entityType} from being created. Activate another one first.`,
+            { key: 'errors.workflow.lastActiveDefinition', params: { name: rec.get('name') as string, entityType } },
+          )
+        }
+      }
+
+      // `WITH` fra SET e MATCH: Cypher lo pretende, e senza si prende un
+      // «WITH is required between SET and MATCH» a runtime — che i test con il
+      // driver mockato non vedono. Trovato premendo l'interruttore nel browser.
+      const scritta = await tx.run(`
+        MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+        SET wd.active = $active, wd.updated_at = $now
+        WITH wd
+        OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
+        RETURN properties(wd) AS props, collect(s) AS steps`,
+      { definitionId: args.definitionId, tenantId: ctx.tenantId, active: args.active, now: new Date().toISOString() })
+      const out = scritta.records[0]!
+      return {
+        props: out.get('props') as Record<string, unknown>,
+        steps: (out.get('steps') ?? []) as Array<{ properties: Record<string, unknown> }>,
+        entityType,
+      }
+    })
+
+    invalidateWorkflowCache(ctx.tenantId, aggiornata.entityType)
+    void audit(ctx, args.active ? 'workflow.activated' : 'workflow.deactivated', 'WorkflowDefinition', args.definitionId)
+    const transizioni = await loadTransitionRows(session, args.definitionId, ctx.tenantId)
+    return mapWorkflowDefinition(aggiornata.props, aggiornata.steps, transizioni)
   }, true)
 }

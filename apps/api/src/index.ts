@@ -27,6 +27,7 @@ import { getAllQueues, getQueue, closeAllQueues } from './lib/bullmq.js'
 import { QUEUE_REGISTRY } from './lib/queueRegistry.js'
 import { wireDomainEventFailureMetric } from './lib/domainEventFailures.js'
 import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
+import { accendiSinkDeiLog, spegniSinkDeiLog } from './lib/serverLogSink.js'
 // Canale del metamodello (A-16): l'import registra i clearer dei moduli che
 // tengono cache derivate dal metamodello; `startMetamodelBus()` apre la
 // sottoscrizione Redis e registra il publisher usato da invalidateSchema.
@@ -43,6 +44,7 @@ registerSessionTracker((durationMs, query) => {
 })
 import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
+import { startProposalScanner } from './jobs/proposalScanner.js'
 import { startWorkflowJobWorker, startNotificationJobWorker, scheduleStepDeadlineSweep, scheduleOLASweep } from './jobs/workflowJobWorker.js'
 import { startWebhookDeliveryWorker } from './jobs/webhookDeliveryWorker.js'
 import { startEventIngestWorker } from './jobs/eventIngestWorker.js'
@@ -99,6 +101,9 @@ async function main() {
   // Start anomaly scanner (BullMQ, every 1h)
   const anomalyWorker = await startAnomalyScanner()
 
+  // Le proposte di miglioramento: un giro a notte, un job per cliente.
+  const proposalWorker = await startProposalScanner()
+
   // Start workflow job worker (BullMQ: step deadlines, webhook retries, timed triggers)
   const workflowWorker = startWorkflowJobWorker()
   await scheduleStepDeadlineSweep()
@@ -147,6 +152,16 @@ async function main() {
   // Start maintenance worker (backup scheduler)
   const maintenanceWorker = await startMaintenanceWorker()
 
+  /*
+   * IL SINK DEI LOG DEL SERVER (20 set 2026, ondata 3). Da qui in poi ogni
+   * riga `error`/`fatal` di QUESTO processo finisce nel grafo come template
+   * scrubbato. Si accende dopo il driver, perché la prima cosa che fa è
+   * aprire una sessione; le righe di avvio precedenti restano solo su stdout,
+   * ed è un limite dichiarato — un errore che impedisce l'avvio non si legge
+   * in un database a cui il processo non è ancora arrivato.
+   */
+  await accendiSinkDeiLog()
+
   // BullMQ queue-depth gauges for /metrics and the admin "System metrics" page
   // (A-14). Every queue of the registry is opened here as a producer handle so
   // the gauge covers ALL of them — the consumer queues of packages/events and
@@ -162,7 +177,7 @@ async function main() {
   // redelivered at-least-once on the next boot (idempotency in BaseConsumer and
   // the SLAStatus MERGE keep that safe, but draining cleanly avoids the churn).
   const bullWorkers: Worker[] = [
-    anomalyWorker, workflowWorker, syncWorker, maintenanceWorker,
+    anomalyWorker, proposalWorker, workflowWorker, syncWorker, maintenanceWorker,
     notificationWorker, webhookDeliveryWorker, ...eventWorkers,
     emailDigestWorker, reportScheduler,
     ...(embeddingWorker ? [embeddingWorker] : []),
@@ -190,6 +205,9 @@ async function main() {
       workers: closables,
       // Code singleton (lib/bullmq), poi SLA scheduler, poi publisher (D-24, A-13), poi il driver
       resources: [
+        // Per primo: scrive le righe in attesa, e ha bisogno del driver che
+        // viene chiuso in fondo a questa stessa lista.
+        { name: 'server-log-sink',  close: () => spegniSinkDeiLog() },
         { name: 'metamodel-bus',    close: () => stopMetamodelBus() },
         { name: 'inapp-bus',        close: () => stopInAppBus() },
         { name: 'bullmq-queues',    close: () => closeAllQueues() },

@@ -40,11 +40,19 @@ export const CHANGE_RFC_WORKFLOW: SeedableWorkflow = {
     changeStep('closed',     'Closed',     'end',      6, { is_initial: false, is_terminal: true,  is_open: false, category: 'closed',  on_enter_create: null }, { it: 'Chiusa' }),
   ],
   transitions: [
-    changeTr('assessment', 'approval',   'automatic', ['Assessment completed', 'Assessment completato'], 'all_assessments_complete'),
+    // L'etichetta nomina TUTTO quello che la condizione verifica: per ogni CI
+    // i due assessment E il piano di rilascio. Diceva solo «Assessment
+    // completed», e chi vedeva l'arco non scattare andava a guardare i due
+    // assessment, li trovava completati, e non sapeva che mancava il piano
+    // (17 set 2026 — vedi `workflow/conditions.ts`).
+    changeTr('assessment', 'approval',   'automatic', ['Assessments and plan completed', 'Valutazioni e piano completati'], 'all_assessments_complete'),
     changeTr('approval',   'scheduled',  'manual',    ['Approve', 'Approva']),
     changeTr('approval',   'assessment', 'manual',    ['Reject', 'Rigetta'], null, 'rejection_reason'),
     changeTr('scheduled',  'deployment', 'manual',    ['Move to Deployment', 'Avanza a Deployment']),
-    changeTr('deployment', 'review',     'automatic', ['Deployment completed', 'Deployment completato'], 'all_deployments_complete'),
+    // Stessa regola: `all_deployments_complete` verifica la validazione E il
+    // deployment, e l'etichetta della condizione lo diceva già («e le
+    // verifiche») mentre quella dell'arco no.
+    changeTr('deployment', 'review',     'automatic', ['Deployment and validations completed', 'Deployment e verifiche completati'], 'all_deployments_complete'),
     changeTr('review',     'closed',     'automatic', ['Reviews completed', 'Review completate'],     'all_reviews_confirmed'),
   ],
 }
@@ -68,7 +76,18 @@ export const SERVICE_REQUEST_WORKFLOW: SeedableWorkflow = {
     srStep('submitted',   ['Submitted', 'Inviata'],        'start',    1, { is_initial: true,  is_terminal: false, is_open: true,  category: 'active' }),
     srStep('approval',    ['Approval', 'Approvazione'],   'standard', 2, { is_initial: false, is_terminal: false, is_open: true,  category: 'waiting' }),
     srStep('in_progress', ['In Progress', 'In lavorazione'], 'standard', 3, { is_initial: false, is_terminal: false, is_open: true,  category: 'active' }),
-    srStep('fulfilled',   ['Fulfilled', 'Evasa'],          'standard', 4, { is_initial: false, is_terminal: false, is_open: true,  category: 'active' }),
+    /**
+     * «Evasa» e RISOLTA, non aperta (revisione totale · H-41).
+     *
+     * Era `category: 'active'` con `is_open: true`, quindi una richiesta
+     * evasa — il lavoro e fatto, resta solo la chiusura — contava come aperta
+     * per lo SLA, per i contatori e per la classe `open` del portale: la
+     * scheda «Aperti» la mostrava e il tempo di risoluzione continuava a
+     * correre. La categoria `resolved` e quella che ferma lo SLA
+     * (`stepStatusClasses`, `lib/workflowHelpers.ts`), come il passo
+     * «resolved» degli incident.
+     */
+    srStep('fulfilled',   ['Fulfilled', 'Evasa'],          'standard', 4, { is_initial: false, is_terminal: false, is_open: false, category: 'resolved' }),
     srStep('closed',      ['Closed', 'Chiusa'],         'end',      5, { is_initial: false, is_terminal: true,  is_open: false, category: 'closed' }),
     srStep('rejected',    ['Rejected', 'Rifiutata'],      'end',      6, { is_initial: false, is_terminal: true,  is_open: false, category: 'closed' }),
   ],

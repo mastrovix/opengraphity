@@ -33,11 +33,10 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { DetailField } from '@/components/ui/DetailField'
 import { Pill } from '@/components/ui/Pill'
 import { useMe } from '@/hooks/useMe'
-import { useMetamodel } from '@/contexts/MetamodelContext'
 import { GET_EVENT, GET_EVENT_POLICY } from '@/graphql/queries'
 import { formatDateTime, timeAgo } from '@/lib/datetime'
 import { ciPath } from '@/lib/ciPath'
-import { ciTypeLabelKey, enumLabel } from '@/lib/ciEnums'
+import { useListReturn } from '@/lib/listReturn'
 import { colors } from '@/lib/tokens'
 import { TINT_NEUTRAL } from '@/lib/eventPalette'
 import { ToolBadge } from '@/pages/monitoring/monitoringShared'
@@ -56,9 +55,9 @@ export function EventDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const { goBack: goBackToList } = useListReturn('/events')
   const { can } = useMe()
-  const { ciTypes } = useMetamodel()
-  const { statusLabel } = useCILabels()
+  const { statusLabel, typeLabel: ciTypeLabel } = useCILabels()
   const canAct = can('event.work')
   const matchHelpId = useId()
 
@@ -82,11 +81,8 @@ export function EventDetailPage() {
 
   const labels = parseLabels(ev.labels, t)
   const kindLabel = resourceKindLabel(t, ev.resourceKind)
-  // Tipo del CI: etichetta fissa dei tipi storici, altrimenti quella del metamodello, altrimenti il nome leggibile.
-  const ciTypeLabel = (type: string) => {
-    const key = ciTypeLabelKey(type)
-    return key ? t(key) : (ciTypes.find((ct) => ct.name === type)?.label ?? enumLabel(type))
-  }
+  // Tipo del CI: la funzione unica di `useCILabels` (20 set 2026) — prima
+  // l'etichetta del disegnatore, poi la chiave dei tipi spediti.
   const ambiguous = ev.matchReason === 'ambiguous' && !ev.ci
   // La severità massima del ciclo conta solo se diversa da quella attuale (altrimenti è già scritta sopra).
   const peak = ev.maxSeverity && ev.maxSeverity !== ev.severity ? ev.maxSeverity : null
@@ -94,7 +90,8 @@ export function EventDetailPage() {
   return (
     <PageContainer>
       <div style={{ marginBottom: 24 }}>
-        <button type="button" onClick={() => navigate('/events')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
+        {/* G-EVT-13: torna alla console con i filtri con cui ci si era arrivati. */}
+        <button type="button" onClick={goBackToList} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 'var(--font-size-card-title)', padding: 0 }}>
           <ArrowLeft size={14} aria-hidden="true" />
           {t('events.detail.back')}
         </button>
@@ -167,7 +164,7 @@ export function EventDetailPage() {
                 <tbody>
                   {labels.entries.map(([k, v]) => (
                     <tr key={k}>
-                      <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: colors.slate, borderBottom: '1px solid var(--color-border-light)', whiteSpace: 'nowrap' }}>{k}</td>
+                      <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)', color: colors.slate, borderBottom: '1px solid var(--color-border-light)', whiteSpace: 'nowrap' }}>{k}</td>
                       <td style={{ padding: '6px 8px', color: colors.slateDark, borderBottom: '1px solid var(--color-border-light)', wordBreak: 'break-all' }}>{v}</td>
                     </tr>
                   ))}

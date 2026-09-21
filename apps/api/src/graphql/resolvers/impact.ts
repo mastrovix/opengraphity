@@ -49,7 +49,8 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
     id:          r.get('id') as string,
     name:        r.get('name') as string,
     type:        ciTypeFromLabels(tenantId, [r.get('label') as string]),
-    environment: (r.get('environment') ?? 'unknown') as string,
+    // B-25: un CI senza ambiente non è «unknown», è senza ambiente.
+    environment: (r.get('environment') ?? null) as string | null,
     distance:    toNumber(r.get('distance')),
   }))
 
@@ -86,7 +87,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
     id:        r.get('id') as string,
     number:    (r.get('number') ?? '') as string,
     title:     r.get('title') as string,
-    severity:  (r.get('severity') ?? 'medium') as string,
+    severity:  (r.get('severity') ?? null) as string | null,
     status:    r.get('status') as string,
     ciName:    r.get('ciName') as string,
     ciId:      r.get('ciId') as string,

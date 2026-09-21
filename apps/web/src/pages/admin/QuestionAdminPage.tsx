@@ -2,6 +2,7 @@ import { useId, useState, useEffect } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { Trans, useTranslation } from 'react-i18next'
+import i18n from '@/i18n/i18n'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { useConfirm } from '@/hooks/useConfirm'
 import { lookupOrError, colors, palette } from '@/lib/tokens'
@@ -79,9 +80,19 @@ function CategoryBadge({ category }: { category: string }) {
   const s = lookupOrError(CATEGORY_COLORS, category, 'CATEGORY_COLORS', { bg: 'var(--color-danger)', color: colors.white })
   return (
     <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'uppercase' }}>
-      {category}
+      {categoriaTradotta(category)}
     </Pill>
   )
+}
+
+/**
+ * La categoria di una domanda nella lingua di chi guarda (20 set 2026, dal
+ * giro nel browser): la pastiglia diceva «FUNCTIONAL» sopra i filtri che
+ * dicono «Funzionale» — lo stesso valore, due lingue, nella stessa schermata.
+ * Le parole ci sono già (`changeTasks.*`, le usa il dettaglio della change).
+ */
+function categoriaTradotta(category: string): string {
+  return i18n.exists(`changeTasks.${category}`) ? i18n.t(`changeTasks.${category}`) : category
 }
 
 /**
@@ -307,10 +318,10 @@ export function QuestionAdminPage() {
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     <CategoryBadge category={q.category} />
                     {q.isCore && (
-                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: colors.slateBg, color: 'var(--color-slate)' }}>CORE</span>
+                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: colors.slateBg, color: 'var(--color-slate)' }}>{t('pages.questionAdmin.coreBadge')}</span>
                     )}
                     {!q.isActive && (
-                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: palette.danger.tint, color: palette.danger.text }}>INATTIVA</span>
+                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: palette.danger.tint, color: palette.danger.text }}>{t('pages.questionAdmin.inactiveBadge')}</span>
                     )}
                   </div>
                 </button>
@@ -347,7 +358,7 @@ export function QuestionAdminPage() {
                   <label htmlFor={ids.category} style={labelStyle}>{t('pages.serviceCatalogAdmin.category')}</label>
                   <select id={ids.category} value={category} onChange={e => setCategory(e.target.value as QuestionCategoryKey)} style={inputStyle} title={t('pages.questions.categoryTitle')}>
                     {Object.values(QUESTION_CATEGORY).map((v) => (
-                      <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
+                      <option key={v} value={v}>{categoriaTradotta(v)}</option>
                     ))}
                   </select>
                 </div>

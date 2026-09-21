@@ -109,6 +109,37 @@ export async function getNextTaskCodes(session: SessionOrTx, tenantId: string, c
   return Array.from({ length: count }, (_, i) => 'TASK' + String(last - count + 1 + i).padStart(8, '0'))
 }
 
+/**
+ * QUANTE CHIAVI NATURALI MANCANO DAVVERO, fra quelle che si sta per creare
+ * (rimedio, 20 set 2026).
+ *
+ * I task nascono con una MERGE sulla chiave naturale, quindi rimettere lo
+ * stesso CI in una change non ne crea di nuovi — giusto. Ma i codici si
+ * prendevano PRIMA, sempre e tutti: ogni ripetizione bruciava tre numeri, e
+ * la numerazione usciva coi buchi («dov'è il TASK00000065?»). Con questa si
+ * chiedono solo i codici che serviranno.
+ *
+ * Resta una corsa possibile — due scritture simultanee vedono entrambe «non
+ * c'è» e prendono un numero a testa, poi la MERGE ne fa nascere uno solo — e
+ * quel buco è il prezzo di non tenere un lucchetto sul contatore. La
+ * differenza è fra un buco per ogni ripetizione e un buco solo quando due
+ * persone premono nello stesso istante.
+ */
+export async function chiaviDaCreare(
+  session: SessionOrTx,
+  // Un'etichetta finisce dentro al Cypher e non può essere un parametro:
+  // l'insieme è chiuso, così non ci arriva niente da fuori.
+  label: 'AssessmentTask' | 'DeployPlanTask' | 'ValidationTest' | 'DeploymentTask' | 'ReviewTask',
+  chiavi: readonly string[],
+): Promise<Set<string>> {
+  if (chiavi.length === 0) return new Set()
+  const righe = await runQuery<{ chiave: string }>(session, `
+    MATCH (t:${label}) WHERE t.change_key IN $chiavi RETURN t.change_key AS chiave
+  `, { chiavi: [...chiavi] })
+  const esistenti = new Set(righe.map((r) => r.chiave))
+  return new Set(chiavi.filter((k) => !esistenti.has(k)))
+}
+
 // ── sanity checks ─────────────────────────────────────────────────────────────
 
 export async function assertCIHasOwnerAndSupport(session: Session, tenantId: string, ciIds: string[]) {
@@ -444,7 +475,7 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
       const instanceId = await getInstanceId(session as Session, changeId, tenantId)
       const toStep = await targetStepByPurpose(session as Session, tenantId, 'change', ['scheduled'],
         'pre-approval of a standard change')
-      const res = await workflowEngine.transition(session as Session, { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: await systemText(tenantId, 'change.preApproved') }, { userId: 'system', entityData: {} })
+      const res = await workflowEngine.transition(session as Session, { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: await systemText(tenantId, 'change.preApproved'), tenantId }, { userId: 'system', entityData: {} })
       // Fail-loud: una pre-approvata ferma in approvazione senza requisiti non
       // si sbloccherebbe mai (nessun record da approvare).
       if (!res.success) {

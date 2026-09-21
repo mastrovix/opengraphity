@@ -122,6 +122,39 @@ export async function auditLog(
  * `incident.assigned` lo trova ancora, e vede che dopo una certa data le
  * transizioni stanno sotto l'azione stabile.
  */
+/**
+ * I TIPI DI ENTITÀ presenti nel registro, con il numero di voci (revisione
+ * totale · G-20).
+ *
+ * La tendina del filtro era una lista di sette valori scritta a mano, con
+ * etichette letterali («User», «Team», «Trigger», «Business Rule») e senza
+ * ServiceRequest, CI, vocabolari, workflow, mappe di servizio: quelle voci del
+ * registro esistevano e non si potevano isolare. Come per le azioni, l'elenco
+ * lo dice il registro stesso.
+ */
+export async function auditEntityTypes(
+  _: unknown,
+  __: unknown,
+  ctx: GraphQLContext,
+): Promise<Array<{ entityType: string; count: number }>> {
+  requirePermission(ctx, 'admin.audit')
+  const session = getSession(undefined, 'READ')
+  try {
+    const res = await session.executeRead((tx) => tx.run(`
+      MATCH (a:AuditEntry {tenant_id: $tenantId})
+      WHERE a.entity_type IS NOT NULL AND a.entity_type <> ''
+      RETURN a.entity_type AS entityType, count(*) AS n
+      ORDER BY entityType
+    `, { tenantId: ctx.tenantId }))
+    return res.records.map((r) => ({
+      entityType: r.get('entityType') as string,
+      count:      Number(r.get('n')),
+    }))
+  } finally {
+    await session.close()
+  }
+}
+
 export async function auditActions(
   _: unknown,
   __: unknown,

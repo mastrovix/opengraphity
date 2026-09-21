@@ -7,7 +7,7 @@ import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
-import { GET_PROBLEMS, GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
+import { GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
 import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { CREATE_PROBLEM, ASSIGN_PROBLEM_TO_TEAM } from '@/graphql/mutations'
 import { colors, palette, alpha } from '@/lib/tokens'
@@ -97,7 +97,15 @@ export function CreateProblemPage() {
   })
 
   const [createProblem, { loading }] = useMutation<{ createProblem: { id: string } }>(CREATE_PROBLEM, {
-    refetchQueries: [{ query: GET_PROBLEMS }],
+    /**
+     * Il refetch per NOME dell'operazione (revisione totale · F-14):
+     * `[{ query: GET_X }]` senza variabili rinfresca solo la voce di cache
+     * SENZA variabili, che nessuna lista usa (tutte passano limite, pagina e
+     * filtri) — quindi dopo una creazione l'elenco restava quello di prima.
+     * Col nome, Apollo rinfresca ogni query attiva con quel nome, qualunque
+     * siano le sue variabili.
+     */
+    refetchQueries: ['GetProblems'],
     onCompleted: async (data) => {
       if (selectedTeam) {
         await assignToTeam({ variables: { problemId: data.createProblem.id, teamId: selectedTeam.id } })

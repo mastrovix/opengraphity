@@ -111,7 +111,7 @@ function VersionHistory({ articleId, onRestored }: { articleId: string; onRestor
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-table)' }}>
         <thead>
           <tr style={{ textAlign: 'left' }}>
-            <th style={{ padding: '7px 12px' }}>Ver.</th>
+            <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.colVersion')}</th>
             <th style={{ padding: '7px 12px' }}>{t('common.title')}</th>
             <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.editedBy')}</th>
             <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.date')}</th>
@@ -232,7 +232,9 @@ export function KBAdminPage() {
   // lista pubblica e del portale.
   const { entriesOf, labelOf } = useDomainVocabularies()
   const CATEGORY_ENTRIES = entriesOf('kb_category') ?? []
-  const { steps: kbSteps, byName: kbStepByName, initialStep: kbInitialStep } = useWorkflowSteps('kb_article')
+  const { steps: kbSteps, byName: kbStepByName, initialStep: kbInitialStep, reachableFrom: kbReachableFrom } = useWorkflowSteps('kb_article')
+  // G-9: dove si può andare dal passo iniziale, secondo gli archi del workflow.
+  const kbReachableFromInitial = kbReachableFrom(kbInitialStep?.name).filter((st) => !st.isTerminal)
 
   // List state
   const [page,    setPage]    = useState(0)
@@ -289,9 +291,12 @@ export function KBAdminPage() {
       // defined by the workflow, not by this page.
       if (publishingRef.current && d.createKBArticle.workflowInstanceId) {
         publishingRef.current = false
-        const forwardFromInitial = kbSteps
-          .filter((s) => !s.isInitial && !s.isTerminal)
-          .map((s) => s.name)[0]
+        // La destinazione la decide il WORKFLOW: il primo passo RAGGIUNGIBILE
+        // dal passo iniziale che non sia terminale (revisione totale · G-9 —
+        // prima si prendeva il primo passo non iniziale e non terminale
+        // nell'ORDINE della definizione, quindi un `rejected` inserito prima
+        // di `review` riceveva l'articolo, o la transizione veniva rifiutata).
+        const forwardFromInitial = kbReachableFromInitial[0]?.name
         if (forwardFromInitial) {
           void execTransition({
             variables: { instanceId: d.createKBArticle.workflowInstanceId, toStep: forwardFromInitial },
@@ -317,9 +322,8 @@ export function KBAdminPage() {
         // initial step (workflow decides which step that leads to).
         publishingRef.current = false
         const wi = d.updateKBArticle.workflowInstanceId ?? editArticle?.workflowInstanceId
-        const forwardFromInitial = kbSteps
-          .filter((s) => !s.isInitial && !s.isTerminal)
-          .map((s) => s.name)[0]
+        // G-9: vedi sopra, la destinazione viene dagli archi del workflow.
+        const forwardFromInitial = kbReachableFromInitial[0]?.name
         if (wi && forwardFromInitial) {
           void execTransition({ variables: { instanceId: wi, toStep: forwardFromInitial } }).then((res) => {
             const r = res.data?.executeWorkflowTransition
@@ -398,13 +402,15 @@ export function KBAdminPage() {
       <div style={{ fontWeight: 500, color: colors.slateDark, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v)}</div>
     ) },
     { key: 'category', label: t('pages.kb.category'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{labelOf('kb_category', String(v)) ?? String(v)}</span> },
-    { key: 'status', label: 'Status', render: (v) => {
+    // Intestazioni TRADOTTE (revisione totale · i 29 warning): «Status» e
+    // «Views» erano stringhe inglesi in mezzo a colonne che passano da i18n.
+    { key: 'status', label: t('pages.kbAdmin.colStatus'), render: (v) => {
       const status = String(v)
       const meta = kbStepByName.get(status)
       return <StatusBadge status={status} label={meta?.label} category={meta?.category ?? null} />
     } },
     { key: 'authorName', label: t('pages.kbAdmin.colAuthor'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
-    { key: 'views', label: 'Views', render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
+    { key: 'views', label: t('pages.kbAdmin.colViews'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
     { key: 'updatedAt', label: t('pages.kbAdmin.colUpdated'), render: (v) => <span style={{ color: 'var(--color-slate-light)' }}>{formatDate(String(v))}</span> },
     { key: 'id', label: t('common.actions'), render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

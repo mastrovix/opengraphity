@@ -20,6 +20,9 @@ vi.mock('../queries.js', () => ({
 }))
 
 vi.mock('@opengraphity/workflow', () => ({
+  // `conditions.js` registra anche chi scrive i compiti (20 set 2026): senza
+  // questa, importarlo fa fallire tutta la suite prima del primo test.
+  registerTaskCreator: vi.fn(),
   workflowEngine: {
     createInstance: vi.fn().mockResolvedValue({ id: 'wi-1' }),
     transition:     vi.fn().mockResolvedValue({ success: true }),

@@ -1,5 +1,7 @@
 /**
- * Il banner della diagnostica (terza revisione).
+ * Il pannello della diagnostica (terza revisione; dal 20 set 2026 è il corpo
+ * della pagina Configurazione ▸ Diagnostica, e non più un banner su ogni
+ * pagina).
  *
  * Non aveva test. Due difetti sono venuti fuori solo aprendo un browser vero:
  * l'enfasi `**…**` dei messaggi resa come asterischi, e il pulsante «Vai a
@@ -15,8 +17,8 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import i18n from '@/i18n/i18n'
-import { ConfigurationIssuesBanner } from './ConfigurationIssuesBanner'
-import { renderWithProviders, userEvent } from '@/test/utils'
+import { ConfigurationIssuesPanel } from './ConfigurationIssuesPanel'
+import { renderWithProviders } from '@/test/utils'
 import { meMock } from '@/test/mocks/gql'
 import { GET_CONFIGURATION_ISSUES } from '@/graphql/queries'
 
@@ -58,38 +60,38 @@ const CHIAVI_RESIDUE: Issue = {
 
 afterEach(async () => { await i18n.changeLanguage('en') })
 
-describe('ConfigurationIssuesBanner', () => {
-  it('un admin con un problema vede il banner', async () => {
-    renderWithProviders(<ConfigurationIssuesBanner />, {
+describe('ConfigurationIssuesPanel', () => {
+  it('un admin con un problema vede i rilievi', async () => {
+    renderWithProviders(<ConfigurationIssuesPanel />, {
       mocks: [meMock('admin'), issuesMock([SENZA_SEMANTICA])],
     })
-    expect(await screen.findByRole('status')).toBeInTheDocument()
+    expect(await screen.findByRole('region')).toBeInTheDocument()
   })
 
   it('L\'ENFASI si rende come grassetto, non come asterischi', async () => {
-    renderWithProviders(<ConfigurationIssuesBanner />, {
+    renderWithProviders(<ConfigurationIssuesPanel />, {
       mocks: [meMock('admin'), issuesMock([SENZA_SEMANTICA])],
     })
-    const banner = await screen.findByRole('status')
+    const pannello = await screen.findByRole('region')
     // Questa è l'asserzione che il difetto violava.
-    expect(banner.textContent).not.toContain('**')
-    expect(banner.textContent).toContain('in service')
+    expect(pannello.textContent).not.toContain('**')
+    expect(pannello.textContent).toContain('in service')
     // E l'enfasi è vera enfasi, non testo normale.
-    const forti = banner.querySelectorAll('strong')
+    const forti = pannello.querySelectorAll('strong')
     expect([...forti].map((e) => e.textContent)).toContain('in service')
   })
 
   it('il resto della frase NON è in grassetto (l\'enfasi dice quale metà conta)', async () => {
-    renderWithProviders(<ConfigurationIssuesBanner />, {
+    renderWithProviders(<ConfigurationIssuesPanel />, {
       mocks: [meMock('admin'), issuesMock([SENZA_SEMANTICA])],
     })
-    const banner = await screen.findByRole('status')
-    const forti = [...banner.querySelectorAll('strong')].map((e) => e.textContent ?? '')
+    const pannello = await screen.findByRole('region')
+    const forti = [...pannello.querySelectorAll('strong')].map((e) => e.textContent ?? '')
     expect(forti.some((f) => f.includes('expired'))).toBe(false)
   })
 
   it('una frase senza enfasi si rende intatta', async () => {
-    renderWithProviders(<ConfigurationIssuesBanner />, {
+    renderWithProviders(<ConfigurationIssuesPanel />, {
       mocks: [meMock('admin'), issuesMock([CHIAVI_RESIDUE])],
     })
     expect(await screen.findByText('Matrix «priority»: 1 key left over from a rename.')).toBeInTheDocument()
@@ -101,27 +103,27 @@ describe('ConfigurationIssuesBanner', () => {
    * mostra la stessa diagnosi — gli stessi byte dall'API — nelle due lingue.
    */
   it('la STESSA diagnosi si legge nella lingua dell\'interfaccia', async () => {
-    renderWithProviders(<ConfigurationIssuesBanner />, {
+    renderWithProviders(<ConfigurationIssuesPanel />, {
       mocks: [meMock('admin'), issuesMock([SENZA_SEMANTICA])],
     })
-    const banner = await screen.findByRole('status')
-    expect(banner.textContent).toContain('in no list of the alarm policy')
+    const pannello = await screen.findByRole('region')
+    expect(pannello.textContent).toContain('in no list of the alarm policy')
 
     await i18n.changeLanguage('it')
     await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toContain('in nessuna lista della policy degli allarmi')
+      expect(screen.getByRole('region').textContent).toContain('in nessuna lista della policy degli allarmi')
     })
     // I DATI non cambiano: cambia la frase intorno.
-    expect(screen.getByRole('status').textContent).toContain('expired, revoked')
+    expect(screen.getByRole('region').textContent).toContain('expired, revoked')
   })
 
   it('il plurale segue il numero, che arriva come dato', async () => {
-    renderWithProviders(<ConfigurationIssuesBanner />, {
+    renderWithProviders(<ConfigurationIssuesPanel />, {
       mocks: [meMock('admin'), issuesMock([CHIAVI_RESIDUE, { ...CHIAVI_RESIDUE, params: [{ name: 'matrix', value: 'severity' }, { name: 'count', value: '3' }] }])],
     })
-    const banner = await screen.findByRole('status')
-    expect(banner.textContent).toContain('1 key left over')
-    expect(banner.textContent).toContain('3 keys left over')
+    const pannello = await screen.findByRole('region')
+    expect(pannello.textContent).toContain('1 key left over')
+    expect(pannello.textContent).toContain('3 keys left over')
   })
 
   /**
@@ -133,13 +135,13 @@ describe('ConfigurationIssuesBanner', () => {
       kind: 'teams_without_sourcing', severity: 'warning', where: '/teams', gaps: [],
       params: [{ name: 'count', value: count }, { name: 'teams', value: teams }, { name: 'others', value: others }],
     })
-    renderWithProviders(<ConfigurationIssuesBanner />, {
+    renderWithProviders(<ConfigurationIssuesPanel />, {
       mocks: [meMock('admin'), issuesMock([voce('3', 'Rete, Server, Desk', '0'), voce('12', 'Alfa, Beta', '10')])],
     })
-    const banner = await screen.findByRole('status')
-    expect(banner.textContent).toContain('Rete, Server, Desk.')
-    expect(banner.textContent).not.toContain('(and 0 more)')
-    expect(banner.textContent).toContain('Alfa, Beta (and 10 more)')
+    const pannello = await screen.findByRole('region')
+    expect(pannello.textContent).toContain('Rete, Server, Desk.')
+    expect(pannello.textContent).not.toContain('(and 0 more)')
+    expect(pannello.textContent).toContain('Alfa, Beta (and 10 more)')
   })
 
   /**
@@ -148,17 +150,17 @@ describe('ConfigurationIssuesBanner', () => {
    * Mostrare niente sarebbe peggio: «C'e 1 cosa da sistemare» e sotto il vuoto.
    */
   it('una diagnosi che il client non conosce si legge grezza, non sparisce', async () => {
-    renderWithProviders(<ConfigurationIssuesBanner />, {
+    renderWithProviders(<ConfigurationIssuesPanel />, {
       mocks: [meMock('admin'), issuesMock([{ kind: 'kind_del_futuro', severity: 'error', params: [{ name: 'x', value: '7' }], gaps: [], where: null }])],
     })
-    const banner = await screen.findByRole('status')
-    expect(banner.textContent).toContain('configurationIssues.issue.kind_del_futuro')
-    expect(banner.textContent).toContain('x=7')
+    const pannello = await screen.findByRole('region')
+    expect(pannello.textContent).toContain('configurationIssues.issue.kind_del_futuro')
+    expect(pannello.textContent).toContain('x=7')
   })
 
   /** I buchi sono un elenco di CHIAVI: le risolve il client, una per una. */
   it('i buchi di configurazione si leggono uno per uno, nella lingua giusta', async () => {
-    renderWithProviders(<ConfigurationIssuesBanner />, {
+    renderWithProviders(<ConfigurationIssuesPanel />, {
       mocks: [meMock('admin'), issuesMock([{
         kind: 'provisioning_gap', severity: 'error', params: [{ name: 'count', value: '2' }],
         gaps: [
@@ -168,39 +170,35 @@ describe('ConfigurationIssuesBanner', () => {
         where: '/workflow',
       }])],
     })
-    const banner = await screen.findByRole('status')
-    expect(banner.textContent).toContain('no teams')
-    expect(banner.textContent).toContain('no active workflow for: incident, change')
+    const pannello = await screen.findByRole('region')
+    expect(pannello.textContent).toContain('no teams')
+    expect(pannello.textContent).toContain('no active workflow for: incident, change')
   })
 
   it('chi non è admin non lo vede: non è lui che può rimediare', async () => {
-    renderWithProviders(<ConfigurationIssuesBanner />, {
+    renderWithProviders(<ConfigurationIssuesPanel />, {
       mocks: [meMock('operator'), issuesMock([SENZA_SEMANTICA])],
     })
-    await waitFor(() => { expect(screen.queryByRole('status')).not.toBeInTheDocument() })
+    await waitFor(() => { expect(screen.queryByRole('region')).not.toBeInTheDocument() })
   })
 
-  it('niente da sistemare → niente banner (un banner sempre acceso diventa invisibile)', async () => {
-    renderWithProviders(<ConfigurationIssuesBanner />, {
+  /**
+   * Nella sua pagina «niente da sistemare» si DICE: una pagina vuota non
+   * distingue «tutto a posto» da «la diagnostica non ha risposto». È la
+   * differenza col banner, che quando non c'era niente semplicemente non c'era.
+   */
+  it('niente da sistemare → lo dice', async () => {
+    renderWithProviders(<ConfigurationIssuesPanel />, {
       mocks: [meMock('admin'), issuesMock([])],
     })
-    await waitFor(() => { expect(screen.queryByRole('status')).not.toBeInTheDocument() })
-  })
-
-  it('si può chiudere', async () => {
-    renderWithProviders(<ConfigurationIssuesBanner />, {
-      mocks: [meMock('admin'), issuesMock([SENZA_SEMANTICA])],
-    })
-    const banner = await screen.findByRole('status')
-    await userEvent.click(screen.getByRole('button', { name: /Nascondi fino al prossimo caricamento|Hide until the next load/i }))
-    expect(banner).not.toBeInTheDocument()
+    expect(await screen.findByText(/nothing to fix|niente da sistemare/i)).toBeInTheDocument()
   })
 
   it('una voce senza `where` non offre il pulsante, invece di offrirne uno che non porta da nessuna parte', async () => {
-    renderWithProviders(<ConfigurationIssuesBanner />, {
+    renderWithProviders(<ConfigurationIssuesPanel />, {
       mocks: [meMock('admin'), issuesMock([{ ...SENZA_SEMANTICA, where: null }])],
     })
-    await screen.findByRole('status')
+    await screen.findByRole('region')
     expect(screen.queryByRole('button', { name: /Vai a sistemare|Go and fix it/i })).not.toBeInTheDocument()
   })
 })

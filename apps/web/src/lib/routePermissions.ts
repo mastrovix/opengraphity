@@ -27,6 +27,7 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, readonly Permission[]>> 
   'problems/:id':                  ['problem.read'],
   'changes':                       ['change.read'],
   'changes/new':                   ['change.write'],
+  'changes/calendar':              ['change.read'],
   'changes/:id':                   ['change.read'],
   'tasks/:taskId':                 ['change.read'],
   'requests':                      ['request.read'],
@@ -35,6 +36,8 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, readonly Permission[]>> 
 
   'knowledge-base':                ['kb.read'],
   'knowledge-base/:slug':          ['kb.read'],
+  // B-21: apre l'articolo dal suo id (le notifiche portano l'id, non lo slug).
+  'kb-articles/:id':               ['kb.read'],
   'admin/knowledge-base':          ['kb.write'],
 
   'cmdb':                          ['cmdb.read'],
@@ -55,15 +58,28 @@ export const ROUTE_PERMISSIONS: Readonly<Record<string, readonly Permission[]>> 
   'settings/anomaly-rules':        ['config.monitoring'],
 
   'anomalies':                     ['analysis.read'],
+  'proposals':                     ['proposal.read'],
+  'analysis/daily-work':           ['analysis.read'],
   'analysis/what-if':              ['analysis.read'],
   'reports':                       ['report.read'],
   'reports/sla':                   ['report.read'],
   'reports/ola-uc':                ['report.read'],
   'custom-reports':                ['report.read'],
 
+  // La diagnostica della configurazione è della salute della piattaforma:
+  // lo stesso permesso con cui l'hook la chiede (useConfigurationIssues).
+  'settings/diagnostics':          ['admin.system'],
   'settings/organization':         ['config.organization'],
   'settings/ci-types':             ['config.metamodel'],
   'settings/itil-designer':        ['config.metamodel'],
+  /**
+   * Moduli del catalogo (ondata 1): la pagina si apre con `config.catalog`,
+   * che e il permesso per comporre un modulo. La scheda della libreria dei
+   * campi tocca la forma dei dati e le sue mutation chiedono
+   * `config.metamodel`: chi ha solo il catalogo vede la libreria ma l'API gli
+   * rifiuta la creazione, con il suo messaggio.
+   */
+  'settings/catalog-forms':        ['config.catalog'],
   'settings/enum-designer':        ['config.metamodel'],
   'settings/domain-matrices':      ['config.metamodel'],
   'workflow':                      ['config.workflow'],

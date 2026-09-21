@@ -12,6 +12,8 @@ export const automationSchema = `
     enabled: Boolean!
     executionCount: Int!
     lastExecutedAt: String
+    """Chi l'ha scritta: "manual" una persona, "ai_proposal" una proposta di miglioramento accettata. Non si sceglie in ingresso."""
+    origin: String!
   }
 
   input CreateAutoTriggerInput {

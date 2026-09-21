@@ -5,11 +5,16 @@ import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import type { GraphQLResolveInfo } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
 import { withSession, mapCI, ciTypeFromLabels } from './ci-utils.js'
-import { TICKET_CI_RELATIONSHIP } from '@opengraphity/types'
+import { FORM_FIELD_TYPES_MULTI, TICKET_CI_RELATIONSHIP } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { assertCIsLinkable } from '../../lib/ticketCIExclusions.js'
 import { mapUser } from '../../lib/mappers.js'
-import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import type { Session } from 'neo4j-driver'
+import { buildAdvancedWhere, type RelationFieldDef } from '../../lib/filterBuilder.js'
+import {
+  FORM_REFERENCE_LABELS, FORM_REFERENCE_REL_TYPES, FORM_REFERENCE_SEARCH_PROPS, isFormReferenceType,
+} from '@opengraphity/types'
+import { formFields, formTableFilterFields } from '../../lib/catalogForm.js'
 import { getScalarFields } from '../../lib/schemaFields.js'
 import * as requestService from '../../services/requestService.js'
 import { audit } from '../../lib/audit.js'
@@ -22,13 +27,16 @@ type Props = Record<string, unknown>
 // Mapper unico in requestService (la copia locale perdeva catalogItemId e
 // requiresApproval: dichiarati nello schema ma sempre null in lettura).
 import { mapRequest } from '../../services/requestService.js'
+import type { FormAnswerInput } from '../../lib/catalogForm.js'
 import { assertMayAcknowledgeNoSla } from '../../lib/slaAcknowledgement.js'
+import { serviceRequestFormAnswers, serviceRequestFormFieldValues } from './catalogForm.js'
 import { ticketSlaStatusResolver } from './ticketSlaStatus.js'
 import { publishTicketUpdated } from '../../lib/ticketUpdated.js'
 import { assertDomainValue } from '../../lib/domainMatrix.js'
 import { listPage } from '../../lib/listLimit.js'
 import { setTicketUser } from '../../services/ticketAssignment.js'
 import { roleHasPermission } from '../../lib/roles.js'
+import { orderByOrThrow } from '../../lib/sortField.js'
 
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
@@ -63,11 +71,58 @@ async function serviceRequests(
       offset,
       limit,
     }
-    // I campi del cliente si filtrano come quelli del prodotto (ondata 4).
-    const allowedFields = new Set([...getScalarFields(info.schema, 'ServiceRequest'), ...(await requestCustomFieldDefs(ctx, 'service_request')).map((d) => d.name)])
-    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r') : ''
-    const orderBy = REQUEST_SORT_WHITELIST[args.sortField ?? ''] ?? 'r.created_at'
-    const orderDir = args.sortDirection === 'asc' ? 'ASC' : 'DESC'
+    /**
+     * I campi del cliente si filtrano come quelli del prodotto (ondata 4), e
+     * dai moduli del catalogo (ondata 1) vale anche per i campi della LIBRERIA:
+     * una risposta a un modulo e una proprieta del ticket, quindi filtrabile.
+     * E la ragione per cui le risposte non sono un documento JSON — se la lista
+     * dei campi ammessi non le conoscesse, quella ragione sarebbe sulla carta.
+     */
+    const libreria = await formFields(session, ctx.tenantId)
+    const allowedFields = new Set([
+      ...getScalarFields(info.schema, 'ServiceRequest'),
+      ...(await requestCustomFieldDefs(ctx, 'service_request')).map((d) => d.name),
+      ...libreria.map((d) => d.name),
+      // I campi virtuali delle TABELLE (ondata 7): `persone__ruolo` filtra le
+      // righe, e senza questi nomi nella lista ammessa il filtro sarebbe
+      // rifiutato come «campo non consentito».
+      ...Object.keys(formTableFilterFields(libreria)),
+    ])
+    /**
+     * I campi di RIFERIMENTO (ondata 2) non sono proprietà: sono relazioni.
+     * Il costruttore di filtri sa già interrogarle, e con `relProps` distingue
+     * due campi che usano lo stesso tipo di relazione (`rel.field`). Si filtra
+     * per NOME del nodo puntato — «assegnato a Mario Rossi» — che è ciò che una
+     * persona cerca, non un identificativo.
+     */
+    const relationFields: Record<string, RelationFieldDef> = {}
+    for (const campo of libreria) {
+      if (!isFormReferenceType(campo.fieldType)) continue
+      const relType = FORM_REFERENCE_REL_TYPES[campo.fieldType]
+      const targetLabel = FORM_REFERENCE_LABELS[campo.fieldType]
+      const searchProp = FORM_REFERENCE_SEARCH_PROPS[campo.fieldType]
+      if (!relType || !targetLabel || !searchProp) continue
+      relationFields[campo.name] = { relType, targetLabel, searchProp, relProps: { field: campo.name } }
+    }
+    /**
+     * Le TABELLE (ondata 7) si filtrano per RIGA: `EXISTS { … (r)-[:FORM_TABLE_ROW
+     * {field}]->(:FormTableRow) WHERE riga.<colonna> … }`. Stesso meccanismo dei
+     * riferimenti, quindi nessuna Cypher nuova — è il senso di aver fatto le
+     * righe dei nodi invece di un JSON.
+     */
+    Object.assign(relationFields, formTableFilterFields(libreria))
+    /**
+     * I campi che sul nodo portano una LISTA (selezione multipla): serve al
+     * costruttore dei filtri per rifiutare un operatore di testo su una lista
+     * con un messaggio, invece di generare Cypher invalida e far cadere tutta
+     * la pagina (revisione del 17 set 2026).
+     */
+    const campiLista = new Set(
+      libreria.filter((c) => FORM_FIELD_TYPES_MULTI.includes(c.fieldType)).map((c) => c.name),
+    )
+    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'r', relationFields, '', campiLista) : ''
+    // A-22: un campo non ordinabile è un errore, non un ordine diverso in silenzio.
+    const orderBy = orderByOrThrow(REQUEST_SORT_WHITELIST, args.sortField, args.sortDirection ?? 'desc', 'r.created_at DESC', 'serviceRequests(sortField)')
     // Revisione totale · B-1: `advWhere` è un'espressione nuda e va unita con
     // AND — interpolata così com'era rendeva il Cypher invalido, quindi QUALUNQUE
     // filtro della pagina Richieste faceva fallire l'elenco (riprodotto su c-test).
@@ -79,7 +134,7 @@ async function serviceRequests(
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (r:ServiceRequest {tenant_id: $tenantId})
       ${whereClause}
-      WITH r ORDER BY ${orderBy} ${orderDir}
+      WITH r ORDER BY ${orderBy}
       SKIP toInteger($offset) LIMIT toInteger($limit)
       RETURN properties(r) as props
     `, params)
@@ -113,9 +168,37 @@ async function serviceRequest(
 
 // ── Mutation resolvers ───────────────────────────────────────────────────────
 
+/**
+ * Le risposte con le RIGHE appiattite: `rows: [{cells: [{column, value}]}]`
+ * diventa `rows: [{<colonna>: <valore>}]`.
+ *
+ * Perché lo schema chiede le celle per nome: un oggetto libero in GraphQL vuol
+ * dire uno scalare JSON, e con quello si perde il controllo dello schema su
+ * cosa arriva. Perché dentro sono una mappa: una riga è un record, e scriverla
+ * su un nodo vuol dire `SET r += $valori`.
+ */
+function righePiatte(answers: readonly FormAnswerGraphQLInput[]): FormAnswerInput[] {
+  return answers.map((a) => {
+    if (!a.rows) return a as FormAnswerInput
+    return {
+      ...a,
+      rows: a.rows.map((r) => Object.fromEntries(r.cells.map((c) => [c.column, c.value ?? null]))),
+    } as FormAnswerInput
+  })
+}
+
+/** Una risposta come arriva da GraphQL: le righe con le celle per nome. */
+interface FormAnswerGraphQLInput {
+  name: string
+  value?: string | null
+  values?: readonly string[] | null
+  refIds?: readonly string[] | null
+  rows?: ReadonlyArray<{ cells: ReadonlyArray<{ column: string; value?: string | null }> }> | null
+}
+
 async function createServiceRequest(
   _: unknown,
-  args: { input: { title: string; description?: string; priority?: string | null; dueDate?: string; catalogItemId?: string; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null } },
+  args: { input: { title: string; description?: string; priority?: string | null; dueDate?: string; catalogItemId?: string; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null; formAnswers?: FormAnswerGraphQLInput[] | null } },
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
@@ -131,13 +214,36 @@ async function createServiceRequest(
     // un'altra; l'utente del portale no — la priorità la decide la voce.
     let requiresApproval = false
     let category: string | null = null
+    // L'iter della voce (moduli del catalogo, ondata 3): lo decide la voce, non chi apre la richiesta.
+    let workflowDefinitionId: string | null = null
     let priority = args.input.priority ?? null
     if (args.input.catalogItemId) {
-      const item = await runQueryOne<{ requiresApproval: boolean; priority: string | null; name: string; category: string | null }>(session,
-        'MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId}) RETURN ci.requires_approval AS requiresApproval, ci.priority AS priority, ci.name AS name, ci.category AS category',
+      const item = await runQueryOne<{ requiresApproval: boolean; priority: string | null; name: string; category: string | null; workflowDefinitionId: string | null; active: boolean | null }>(session,
+        `MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId})
+         RETURN ci.requires_approval AS requiresApproval, ci.priority AS priority, ci.name AS name,
+                ci.category AS category, ci.workflow_definition_id AS workflowDefinitionId,
+                ci.active AS active`,
         { id: args.input.catalogItemId, tenantId: ctx.tenantId })
       if (!item) throw new NotFoundError('ServiceCatalogItem', args.input.catalogItemId)
+      /*
+       * UNA VOCE SPENTA NON APRE PIÙ RICHIESTE (revisione del 17 set 2026).
+       *
+       * La creazione leggeva approvazione, priorità, categoria e iter della
+       * voce e non guardava `active`: il catalogo non la mostrava più, ma chi
+       * aveva l'id — un collegamento salvato, una pagina rimasta aperta, una
+       * chiamata REST — continuava ad aprire richieste su un servizio che
+       * l'amministratore aveva spento (il fornitore è cambiato, il servizio
+       * non esiste più). Le richieste GIÀ aperte su quella voce continuano il
+       * loro iter: si chiude la porta, non si buttano fuori le persone.
+       */
+      if (item.active === false) {
+        throw new ValidationError(
+          `The catalog item "${item.name}" is not active: no new request can be opened from it.`,
+          { key: 'errors.serviceRequest.catalogItemInactive', params: { item: item.name } },
+        )
+      }
       requiresApproval = item.requiresApproval ?? false
+      workflowDefinitionId = item.workflowDefinitionId ?? null
       // La categoria della richiesta è quella della voce (ondata 2): le policy SLA per categoria la usano.
       category = item.category ?? null
       if (isPortalOnly(ctx) && priority !== null && priority !== item.priority) {
@@ -164,7 +270,18 @@ async function createServiceRequest(
     // Dal portale i campi del cliente passano sempre dal controllo (ondata 4): un
     // campo obbligatorio offerto all'utente finale va compilato.
     const customFields = isPortalOnly(ctx) ? (args.input.customFields ?? []) : args.input.customFields
-    const result = await requestService.createRequest({ ...args.input, customFields, priority, requiresApproval, ...(category ? { category } : {}) }, ctx, isPortalOnly(ctx) ? 'portal' : 'agent')
+    const result = await requestService.createRequest({
+      ...args.input,
+      // Le righe delle tabelle arrivano nella forma dello SCHEMA (celle per
+      // nome, ondata 7) e il servizio le vuole piatte: la conversione sta qui,
+      // al confine, perché è una faccenda di trasporto — dentro, una riga è una
+      // mappa colonna → valore e basta.
+      formAnswers: args.input.formAnswers ? righePiatte(args.input.formAnswers) : null,
+      customFields, priority, requiresApproval,
+      ...(category ? { category } : {}),
+      // L'iter della voce: chi apre la richiesta non lo sceglie.
+      ...(workflowDefinitionId ? { workflowDefinitionId } : {}),
+    }, ctx, isPortalOnly(ctx) ? 'portal' : 'agent')
     void audit(ctx, 'request.created', 'ServiceRequest', result.id as string)
     return result
   })
@@ -189,11 +306,15 @@ async function updateServiceRequest(
     if (!before[0]) throw new NotFoundError('ServiceRequest')
     const cypher = `
       MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
+      // Descrizione e data attesa si possono SVUOTARE (revisione totale ·
+      // B-17): con «coalesce» null e assente erano la stessa cosa, quindi una
+      // data sbagliata non si poteva togliere più. Il titolo no: una richiesta
+      // senza titolo non si riconosce in nessun elenco.
       SET r += {
         title:       coalesce($title,       r.title),
-        description: coalesce($description, r.description),
+        description: CASE WHEN $descriptionGiven THEN $description ELSE r.description END,
         priority:    coalesce($priority,    r.priority),
-        due_date:    coalesce($dueDate,     r.due_date),
+        due_date:    CASE WHEN $dueDateGiven     THEN $dueDate     ELSE r.due_date    END,
         updated_at:  $now
       }
       RETURN properties(r) as props
@@ -205,6 +326,9 @@ async function updateServiceRequest(
       description: input.description ?? null,
       priority:    input.priority    ?? null,
       dueDate:     input.dueDate     ?? null,
+      // B-17: «presente nell'input» distingue il vuoto dall'assenza.
+      descriptionGiven: Object.prototype.hasOwnProperty.call(input, 'description'),
+      dueDateGiven:     Object.prototype.hasOwnProperty.call(input, 'dueDate'),
       now,
     })
     const row = rows[0]
@@ -213,6 +337,80 @@ async function updateServiceRequest(
     await publishTicketUpdated(ctx, 'service_request', id, before[0].props, row.props)
     return mapRequest(row.props)
   }, true)
+}
+
+/**
+ * CORREGGERE UNA RISPOSTA AL MODULO di una richiesta già creata (decisione del
+ * proprietario, 17 set 2026).
+ *
+ * Prima non si poteva da nessuna interfaccia: l'unica scrittura dopo la
+ * creazione era quella di un'automazione, quindi un ambiente scelto male
+ * restava sbagliato per sempre — in filtri, report, widget e SLA — e l'unica
+ * strada era chiudere la richiesta e riaprirla.
+ *
+ * Passa dalla STESSA funzione che usa un'automazione, quindi dalle stesse
+ * cinque regole: il ticket deve venire da un modulo, comanda la revisione con
+ * cui è stato compilato, un campo nascosto da una condizione si rifiuta, un
+ * calcolato si rifiuta, e vocabolario più `validationScript` si applicano. I
+ * campi calcolati che dipendono da questo si ricalcolano.
+ *
+ * `request.write` e non `ticket.work`: correggere una risposta è cambiare il
+ * DATO della richiesta, non lavorarla. Ogni correzione è una voce dell'Audit
+ * Log (il plugin la registra da sé) e, come ogni modifica, pubblica
+ * `ticket.updated`.
+ */
+async function setServiceRequestFormAnswer(
+  _: unknown,
+  args: { requestId: string; field: string; value?: string | null },
+  ctx: GraphQLContext,
+) {
+  requirePermission(ctx, 'request.write')
+  return withSession(async (session) => {
+    const { writeFormAnswer } = await import('../../lib/catalogForm.js')
+    const prima = await runQueryOne<{ props: Props }>(session, `
+      MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
+      RETURN properties(r) AS props`, { id: args.requestId, tenantId: ctx.tenantId })
+    if (!prima) throw new NotFoundError('ServiceRequest', args.requestId)
+
+    await writeFormAnswer(session, ctx.tenantId, args.requestId, args.field, args.value ?? null)
+
+    const dopo = await runQueryOne<{ props: Props }>(session, `
+      MATCH (r:ServiceRequest {id: $id, tenant_id: $tenantId})
+      RETURN properties(r) AS props`, { id: args.requestId, tenantId: ctx.tenantId })
+    if (!dopo) throw new NotFoundError('ServiceRequest', args.requestId)
+
+    /*
+     * NELL'AUDIT CI VA IL VALORE, non solo il nome del campo. Registrava
+     * `{field}` e basta, e il valore di prima non era scritto in nessun posto:
+     * una correzione sbagliata non si poteva rileggere né disfare. E con le
+     * risposte che una correzione SPEGNE (perché il modulo non le chiede più)
+     * la voce senza valori era peggio che inutile — diceva che era cambiato
+     * «Ambiente» mentre tre risposte erano state svuotate.
+     */
+    const svuotate = Object.keys(prima.props).filter((k) =>
+      prima.props[k] != null && dopo.props[k] == null && k !== args.field)
+    void audit(ctx, 'request.formAnswerChanged', 'ServiceRequest', args.requestId, {
+      field: args.field,
+      from: valoreDiAudit(prima.props[args.field]),
+      to: valoreDiAudit(dopo.props[args.field]),
+      ...(svuotate.length > 0
+        ? { cleared: svuotate.map((k) => ({ field: k, from: valoreDiAudit(prima.props[k]) })) }
+        : {}),
+    })
+    await publishTicketUpdated(ctx, 'service_request', args.requestId, prima.props, dopo.props)
+    return mapRequest(dopo.props)
+  }, true)
+}
+
+/**
+ * Un valore di risposta come si scrive nell'Audit Log: testo, e `null` se non
+ * c'era. I numeri di Neo4j sono oggetti (`Integer`), quindi passano da
+ * `String(...)`; una lista si legge separata da virgole.
+ */
+function valoreDiAudit(raw: unknown): string | null {
+  if (raw == null) return null
+  if (Array.isArray(raw)) return raw.map((v) => String(v)).join(', ')
+  return String(raw)
 }
 
 /**
@@ -303,35 +501,80 @@ function mapCatalogItem(props: Props) {
     priority:         (props['priority'] ?? null) as string | null,
     active:           (props['active'] ?? true) as boolean,
     createdAt:        props['created_at'] as string,
+    // L'iter di questa voce (moduli del catalogo, ondata 3): null = per categoria.
+    workflowDefinitionId: (props['workflow_definition_id'] ?? null) as string | null,
+    // Il nome lo risolve il field resolver `ServiceCatalogItem.workflowDefinitionName`.
+  }
+}
+
+/**
+ * La definizione indicata da una voce deve esistere, essere ATTIVA, essere del
+ * tipo `service_request` e avere un passo iniziale. Un iter scelto e poi
+ * disattivato (o senza passo iniziale) farebbe fallire la creazione di ogni
+ * richiesta di quella voce, e il messaggio arriverebbe a chi apre il ticket
+ * invece che a chi ha configurato.
+ */
+async function assertWorkflowDefinition(session: Session, tenantId: string, definitionId: string): Promise<void> {
+  const rows = await runQuery<{ name: string; entityType: string; iniziali: number }>(session, `
+    MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId, active: true})
+    OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
+      WHERE coalesce(s.is_initial, s.type = 'start')
+    RETURN wd.name AS name, wd.entity_type AS entityType, count(s) AS iniziali
+    LIMIT 1`, { definitionId, tenantId })
+  const row = rows[0]
+  if (!row) {
+    throw new ValidationError('That workflow does not exist here, or it is not active.',
+      { key: 'errors.serviceCatalog.workflowNotFound', params: {} })
+  }
+  if (row.entityType !== 'service_request') {
+    throw new ValidationError(`The workflow "${row.name}" is for ${row.entityType}, not for service requests.`,
+      { key: 'errors.serviceCatalog.workflowWrongType', params: { name: row.name, entityType: row.entityType } })
+  }
+  if (Number(row.iniziali) === 0) {
+    throw new ValidationError(`The workflow "${row.name}" has no initial step: mark one in the designer before using it here.`,
+      { key: 'errors.serviceCatalog.workflowNoInitialStep', params: { name: row.name } })
   }
 }
 
 async function serviceCatalogItems(_: unknown, args: { activeOnly?: boolean }, ctx: GraphQLContext) {
+  /*
+   * DAL PORTALE SI VEDONO SOLO LE VOCI ATTIVE, e non perché il client lo chiede.
+   *
+   * `activeOnly` era facoltativo: il portale lo passa, ma chi chiamava senza —
+   * un client scritto a mano, una pagina vecchia — riceveva anche le voci
+   * spente e con esse il loro id, che fino a oggi bastava per aprire una
+   * richiesta (chiuso in `createServiceRequest`). Per un utente finale una
+   * voce spenta non esiste: lo decide il server (revisione del 17 set 2026).
+   */
+  const soloAttive = args.activeOnly === true || isPortalOnly(ctx)
   return withSession(async (session) => {
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (ci:ServiceCatalogItem {tenant_id: $tenantId})
-      ${args.activeOnly ? 'WHERE ci.active = true' : ''}
+      ${soloAttive ? 'WHERE ci.active = true' : ''}
       RETURN properties(ci) AS props ORDER BY ci.category, ci.name
     `, { tenantId: ctx.tenantId })
     return rows.map((r) => mapCatalogItem(r.props))
   })
 }
 
-async function createServiceCatalogItem(_: unknown, args: { input: { name: string; description?: string; category?: string; requiresApproval?: boolean; priority: string } }, ctx: GraphQLContext) {
+async function createServiceCatalogItem(_: unknown, args: { input: { name: string; description?: string; category?: string; requiresApproval?: boolean; priority: string; workflowDefinitionId?: string | null } }, ctx: GraphQLContext) {
   requirePermission(ctx, 'config.catalog')
   const priority = await assertDomainValue(ctx.tenantId, 'priority', args.input.priority)
   // La categoria è un valore del Dizionario (ondata 2), non più testo libero: la eredita la richiesta.
   const category = args.input.category == null || args.input.category === '' ? null : await assertDomainValue(ctx.tenantId, 'category', args.input.category)
   const id = uuidv4(); const now = new Date().toISOString()
   return withSession(async (session) => {
+    if (args.input.workflowDefinitionId) await assertWorkflowDefinition(session, ctx.tenantId, args.input.workflowDefinitionId)
     const rows = await runQuery<{ props: Props }>(session, `
       CREATE (ci:ServiceCatalogItem {
         id: $id, tenant_id: $tenantId, name: $name, description: $description,
-        category: $category, requires_approval: $requiresApproval, priority: $priority, active: true, created_at: $now
+        category: $category, requires_approval: $requiresApproval, priority: $priority, active: true, created_at: $now,
+        workflow_definition_id: $workflowDefinitionId
       })
       RETURN properties(ci) AS props
     `, { id, tenantId: ctx.tenantId, name: args.input.name, description: args.input.description ?? null,
-         category, requiresApproval: args.input.requiresApproval ?? false, priority, now })
+         category, requiresApproval: args.input.requiresApproval ?? false, priority, now,
+         workflowDefinitionId: args.input.workflowDefinitionId ?? null })
     void audit(ctx, 'service_catalog_item.created', 'ServiceCatalogItem', id)
     return mapCatalogItem(rows[0]!.props)
   }, true)
@@ -339,7 +582,7 @@ async function createServiceCatalogItem(_: unknown, args: { input: { name: strin
 
 async function updateServiceCatalogItem(
   _: unknown,
-  args: { id: string; input: { name?: string; description?: string; category?: string; requiresApproval?: boolean; priority?: string | null; active?: boolean } },
+  args: { id: string; input: { name?: string; description?: string; category?: string; requiresApproval?: boolean; priority?: string | null; active?: boolean; workflowDefinitionId?: string | null } },
   ctx: GraphQLContext,
 ) {
   requirePermission(ctx, 'config.catalog')
@@ -356,6 +599,24 @@ async function updateServiceCatalogItem(
   }
   if (input.requiresApproval !== undefined) sets['requires_approval'] = input.requiresApproval
   if (input.active !== undefined)           sets['active']            = input.active
+  /**
+   * L'iter della voce (ondata 3). `null` esplicito lo TOGLIE e riporta alla
+   * scelta per categoria: è una scelta, non un valore mancante, e va distinta
+   * da «non l'ho mandato» (undefined).
+   */
+  if (input.workflowDefinitionId !== undefined) {
+    sets['workflow_definition_id'] = input.workflowDefinitionId === null || input.workflowDefinitionId === ''
+      ? null
+      : input.workflowDefinitionId
+  }
+  /**
+   * La validazione dell'iter serve ANCHE qui, non solo alla creazione della
+   * voce: provando dal browser ho assegnato un workflow SPENTO e la modifica
+   * l'ha accettato — da quel momento ogni richiesta di quella voce sarebbe
+   * fallita, e il messaggio sarebbe arrivato a chi apre il ticket invece che a
+   * chi ha configurato.
+   */
+  const iterDaValidare = sets['workflow_definition_id']
   // La priorità si cambia, non si toglie: senza, dalla voce non nasce nessuna richiesta.
   if (input.priority !== undefined) {
     if (input.priority === null || input.priority.trim() === '') {
@@ -367,6 +628,7 @@ async function updateServiceCatalogItem(
     throw new ValidationError('updateServiceCatalogItem: no field to update', { key: 'errors.nothingToUpdate' })
   }
   return withSession(async (session) => {
+    if (typeof iterDaValidare === 'string') await assertWorkflowDefinition(session, ctx.tenantId, iterDaValidare)
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (ci:ServiceCatalogItem {id: $id, tenant_id: $tenantId})
       SET ci += $sets
@@ -448,9 +710,30 @@ async function removeCIFromServiceRequest(_: unknown, args: { requestId: string;
 
 export const serviceRequestResolvers = {
   Query:    { serviceRequests, serviceRequest, serviceCatalogItems },
-  Mutation: { createServiceRequest, updateServiceRequest, assignServiceRequestToUser, createServiceCatalogItem, updateServiceCatalogItem, addCIToServiceRequest, removeCIFromServiceRequest },
+  Mutation: { createServiceRequest, updateServiceRequest, setServiceRequestFormAnswer, assignServiceRequestToUser, createServiceCatalogItem, updateServiceCatalogItem, addCIToServiceRequest, removeCIFromServiceRequest },
+  ServiceCatalogItem: {
+    /**
+     * Il nome dell'iter scelto, risolto qui e non nella lettura della voce:
+     * serve solo a chi mostra la voce, e una join su ogni elenco di catalogo la
+     * pagherebbero anche il portale e la creazione di una richiesta.
+     */
+    workflowDefinitionName: async (parent: { workflowDefinitionId?: string | null }, _a: unknown, ctx: GraphQLContext) => {
+      if (!parent.workflowDefinitionId) return null
+      return withSession(async (session) => {
+        const rows = await runQuery<{ name: string }>(session, `
+          MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
+          RETURN wd.name AS name LIMIT 1`, { definitionId: parent.workflowDefinitionId, tenantId: ctx.tenantId })
+        return rows[0]?.name ?? null
+      })
+    },
+  },
+
   ServiceRequest: {
     affectedCIs: requestAffectedCIs,
+    // Le risposte al modulo della voce di catalogo (moduli del catalogo, ondata 1).
+    formAnswers: serviceRequestFormAnswers,
+    // I valori dei campi della libreria, per le colonne delle liste (ondata 4).
+    formFieldValues: serviceRequestFormFieldValues,
     requestedBy: requestRequestedBy,
     assignee:    requestAssignee,
     slaStatus:   ticketSlaStatusResolver('ServiceRequest'),

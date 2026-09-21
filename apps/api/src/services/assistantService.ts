@@ -11,7 +11,6 @@
  */
 import { kbArticlePublishedCypher } from '../lib/kbPublished.js'
 import { vectorSearchForTenant } from '../lib/vectorSearch.js'
-import Anthropic from '@anthropic-ai/sdk'
 import type { Permission } from '@opengraphity/types'
 
 /** Limite chiesto dal modello: intero in [1, max]; assente/NaN/negativo → default (mai LIMIT NaN o negativo in Cypher). */
@@ -24,6 +23,7 @@ import { betaTool } from '@anthropic-ai/sdk/helpers/beta/json-schema'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { getEmbedder, vectorIndexName } from './embeddings.js'
 import { aiDisabledError, aiFeatureEnabled } from '../lib/aiSettings.js'
+import { getAnthropic, registraChiamataFallita, registraDurata, registraRisposta } from '../lib/aiClient.js'
 // Le etichette dei CI vengono dal metamodello del tenant (A-9): con la lista
 // fissa l'assistente non trovava i CI dei tipi creati dal cliente e rispondeva
 // «non trovato» — un buco invisibile a chi fa la domanda.
@@ -182,11 +182,14 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
         WHERE $seeIncidents AND NOT inc.status IN $incidentConcluded
         WITH ci, dipendenti_diretti, dipendenti_secondo_livello, business_capability,
              collect(DISTINCT inc.number) AS incident_aperti
-        OPTIONAL MATCH (ch:Change {tenant_id: $tenantId})-[:AFFECTS]->(ci)
+        // La relazione delle CHANGE è AFFECTS_CI (revisione totale · D-10):
+        // AFFECTS lega i PROBLEM ai CI, quindi «change in corso su questo CI»
+        // era sempre vuoto — e all'assistente sembrava che non ce ne fossero.
+        OPTIONAL MATCH (ch:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(ci)
         WHERE $seeChanges AND NOT ch.status IN $changeConcluded AND coalesce(ch.deleted, false) = false
         RETURN ci.name AS nome, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS tipo, ci.environment AS ambiente,
                dipendenti_diretti, dipendenti_secondo_livello, business_capability,
-               incident_aperti, collect(DISTINCT ch.number) AS change_in_corso
+               incident_aperti, collect(DISTINCT coalesce(ch.number, ch.code)) AS change_in_corso
       `, {
         tenantId, labels: await ciLabelsForTenant(tenantId), key: ci_id_o_nome,
         incidentConcluded: await concludedStatusNames(tenantId, 'incident'),
@@ -257,11 +260,15 @@ function buildTools(tenantId: string, permissions: ReadonlySet<Permission>) {
       const rows = await readQuery(`
         MATCH (ch:Change {tenant_id: $tenantId})
         WHERE NOT ch.status IN $concluded AND coalesce(ch.deleted, false) = false
-        OPTIONAL MATCH (ch)-[:AFFECTS]->(ci)
+        // D-10: AFFECTS_CI, e i campi che una change ha DAVVERO: risk_level e
+        // planned_start non esistono sul nodo (il rischio sta in
+        // aggregate_risk_score), quindi l'assistente rispondeva «rischio:
+        // null» su ogni change.
+        OPTIONAL MATCH (ch)-[:AFFECTS_CI]->(ci)
         WITH ch, collect(DISTINCT ci.name) AS cis
-        RETURN ch.number AS numero, ch.title AS titolo, ch.status AS stato,
-               ch.change_type AS tipo, ch.risk_level AS rischio,
-               ch.planned_start AS inizio_pianificato, cis AS ci_toccati
+        RETURN coalesce(ch.number, ch.code) AS numero, ch.title AS titolo, ch.status AS stato,
+               ch.change_type AS tipo, ch.aggregate_risk_score AS punteggio_rischio,
+               ch.priority AS priorita, cis AS ci_toccati
         ORDER BY ch.created_at DESC
         LIMIT ${clampLimit(limit, 10, 25)}
       `, { tenantId, concluded: await concludedStatusNames(tenantId, 'change') })
@@ -341,7 +348,7 @@ export async function streamAssistantChat(
     return
   }
 
-  const client = new Anthropic()
+  const client = getAnthropic()
   const t0 = Date.now()
   let fullText = ''
 
@@ -373,15 +380,21 @@ export async function streamAssistantChat(
         }
       }
       const message = await messageStream.finalMessage()
+      // Ogni giro dell'agente è una chiamata al modello e si conta come tale:
+      // l'assistente ne fa fino a `max_iterations`, ed è la funzione AI che
+      // può costare di più senza che nessuno se ne accorga.
+      registraRisposta('assistant', message.stop_reason === 'refusal' ? 'refused' : 'ok', message)
       if (message.stop_reason === 'refusal') {
         emit.error('Il modello ha rifiutato la richiesta')
         return
       }
     }
 
+    registraDurata('assistant', Date.now() - t0)
     log.info({ ms: Date.now() - t0, turns: messages.length }, '[assistant] chat completed')
     emit.done(fullText)
   } catch (err) {
+    registraChiamataFallita('assistant', err)
     const msg = err instanceof Error ? err.message : String(err)
     log.error({ err, tenantId }, '[assistant] chat failed')
     emit.error(msg)

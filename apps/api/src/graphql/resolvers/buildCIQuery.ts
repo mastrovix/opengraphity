@@ -1,4 +1,5 @@
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { orderByOrThrow } from '../../lib/sortField.js'
 
 export { buildAdvancedWhere }
 
@@ -31,6 +32,18 @@ export const CI_SORT_WHITELIST: Record<string, string> = {
 export const CI_TYPE_ORDER_EXPR = "head([l IN labels(n) WHERE l <> 'ConfigurationItem'])"
 
 /**
+ * LA SALUTE SI ORDINA PER GRAVITÀ, non in ordine alfabetico (20 set 2026, dal
+ * giro nel browser: la colonna era l'unica non ordinabile).
+ *
+ * In alfabetico verrebbe «degraded, down, operational», che non è l'ordine in
+ * cui si guarda una CMDB: chi ordina per salute vuole i guasti in cima.
+ * Crescente = dal peggio al meglio, e i CI senza monitoraggio in fondo —
+ * `null` non è «sano», è «non lo sappiamo», e in mezzo ai sani sparirebbe.
+ */
+export const CI_HEALTH_ORDER_EXPR =
+  "CASE n.health WHEN 'down' THEN 0 WHEN 'degraded' THEN 1 WHEN 'operational' THEN 2 ELSE 3 END"
+
+/**
  * CMDB (`allCIs`, tutti i tipi insieme): `sortField`/`sortDirection` erano
  * dichiarati nello schema e il resolver NON li leggeva affatto — ogni clic su
  * un'intestazione della CMDB mostrava la freccia e lasciava l'ordine per nome
@@ -40,20 +53,18 @@ export const CI_TYPE_ORDER_EXPR = "head([l IN labels(n) WHERE l <> 'Configuratio
 export const ALL_CIS_SORT_WHITELIST: Record<string, string> = {
   name: 'n.name', status: 'n.status', environment: 'n.environment', createdAt: 'n.created_at',
   type: CI_TYPE_ORDER_EXPR,
+  health: CI_HEALTH_ORDER_EXPR,
 }
 
 export function allCIsOrderBy(sortField?: string | null, sortDirection?: string | null): string {
-  const col = sortField ? ALL_CIS_SORT_WHITELIST[sortField] : undefined
-  const dir = sortDirection?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
-  return col ? `${col} ${dir}` : 'n.name ASC'
+  return orderByOrThrow(ALL_CIS_SORT_WHITELIST, sortField, sortDirection, 'n.name ASC', 'allCIs(sortField)')
 }
 
 // ── ciOrderBy ─────────────────────────────────────────────────────────────────
 
 export function ciOrderBy(sortField?: string, sortDirection?: string): string {
-  const sortCol = sortField && CI_SORT_WHITELIST[sortField]
-  const sortDir = sortDirection?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
-  return sortCol ? `${sortCol} ${sortDir}` : 'n.name ASC'
+  // A-22: nessun ordine diverso in silenzio.
+  return orderByOrThrow(CI_SORT_WHITELIST, sortField, sortDirection, 'n.name ASC', 'sortField')
 }
 
 // ── buildBaseWhere ────────────────────────────────────────────────────────────

@@ -35,10 +35,24 @@ export class UnsafeCypherError extends Error {
 
 export const MAX_CYPHER_LENGTH = 4000
 
-/** Nodes holding integration secrets, credentials or configuration code: never readable by a report. */
+/**
+ * Nodes holding integration secrets, credentials or configuration code: never readable by a report.
+ *
+ * I REGISTRI NON SONO DATI DI DOMINIO (20 set 2026, ondata 3).
+ *
+ * `AuditEntry`, `LogEntry` e `ServerLogEntry` sono entrati qui perché un
+ * report non deve poterli leggere. Non contengono ticket: contengono il
+ * RACCONTO di tutto quello che è successo, con i parametri delle mutation
+ * (`auditableArgs()` oscura per NOME di chiave, quindi `url` e `headers` di
+ * un webhook passano) e, nei log, il payload libero di chi ha scritto la
+ * riga. Un operatore con `report.ai` poteva già chiederli oggi — buco
+ * preesistente, trovato rileggendo il progetto. Si chiude PRIMA di
+ * persistere i log del server, non dopo.
+ */
 export const SENSITIVE_LABELS: ReadonlySet<string> = new Set([
   'OutboundWebhook', 'InboundWebhook', 'ApiKey', 'NotificationChannel', 'SlackInstallation',
   'SyncSource', 'SyncConflict', 'SyncChangeRecord', 'MigrationLock', 'Migration', 'LoginProvider',
+  'AuditEntry', 'LogEntry', 'ServerLogEntry',
 ])
 
 /** Property names that hold secrets on any node. */
@@ -46,6 +60,11 @@ export const SENSITIVE_PROPERTY_KEYS: ReadonlySet<string> = new Set([
   'secret', 'headers', 'key_hash', 'key_prefix', 'webhook_url', 'transform_script', 'token', 'password',
   'credentials', 'encrypted_credentials', 'signing_secret', 'signing_secret_enc', 'bot_token', 'bot_token_enc',
   'client_secret', 'embedding',
+  // Il corpo libero di una voce di registro: `AuditEntry.details` e
+  // `LogEntry.data` sono JSON scritto da chi ha generato l'evento, e nessuno
+  // ne ha mai promesso il contenuto. Vietati per nome anche fuori dai nodi
+  // di sopra, perché la stessa chiave può ricomparire altrove.
+  'details', 'data',
 ])
 
 const WRITE_KEYWORD_RE = /(?<![\w.$])(CREATE|MERGE|SET|DELETE|DETACH|REMOVE|DROP|FOREACH|LOAD|USING|ALTER|GRANT|DENY|REVOKE|START|STOP|TERMINATE|INSTALL|IMPORT|EXPORT|SHOW|USE|ENABLE|RENAME|DEALLOCATE|ASSIGN|PERIODIC|COMMIT)(?!\w)/i

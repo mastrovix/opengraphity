@@ -139,9 +139,19 @@ describe('le sedi di configurazione trovate dal vivo restano coperte', () => {
     }
   })
 
-  it('una sede o ha un vocabolario fisso, o dice da quale campo prenderlo, o è una condizione', () => {
+  it('una sede o ha un vocabolario fisso, o dice da quale campo prenderlo, o lo ricava dalla forma', () => {
+    /**
+     * CONTRATTO RINEGOZIATO (revisione totale · ondata 4): oltre alle
+     * condizioni, ci sono due forme che ricavano il vocabolario dal CAMPO
+     * SCRITTO, non da una dichiarazione nella sede — le azioni
+     * (`set_field`/`update_field` dentro `actions`) e le scadenze dei passi
+     * (`set_fields` dentro `deadline`). Lì il vocabolario lo dice
+     * `fieldVocabulary(campo)`, perché una sola sede scrive campi diversi:
+     * un'azione può toccare `priority` e la successiva `category`.
+     */
+    const FROM_SHAPE = new Set(['conditions', 'actions', 'deadline'])
     for (const s of CONFIG_VALUE_SITES) {
-      const ok = s.vocabulary != null || s.vocabularyFromField != null || s.shape === 'conditions'
+      const ok = s.vocabulary != null || s.vocabularyFromField != null || FROM_SHAPE.has(s.shape)
       expect(ok, `${s.label}.${s.property} non dice quale vocabolario governa i suoi valori`).toBe(true)
     }
   })
