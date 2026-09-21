@@ -56,7 +56,7 @@
     "migrate:ci-labels": "tsx src/scripts/migrate-ci-labels.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.126.0",
+    "@anthropic-ai/sdk": "^0.127.0",
     "@apollo/server": "^5.5.1",
     "@as-integrations/express5": "^1.1.2",
     "@aws-sdk/client-acm": "^3.1135.0",
