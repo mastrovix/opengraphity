@@ -23,6 +23,7 @@ import { enqueueEvents } from '../jobs/eventIngestWorker.js'
 import { assertInboundTicketTargets } from '../lib/inboundTicketTargets.js'
 import { INBOUND_AFFECTED_CI_FIELD } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
+import { parametro } from './parametroDiRotta.js'
 
 const log = logger.child({ module: 'webhook-inbound' })
 const router: ExpressRouter = Router()
@@ -86,7 +87,7 @@ export function tokenMatches(token: string, storedHashHex: string): boolean {
 export const WEBHOOK_BODY_LIMIT = '2mb'
 
 router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), async (req: Request, res: Response) => {
-  const { hookId } = req.params
+  const hookId = parametro(req, 'hookId')
   if (!hookId) { res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Missing hookId' } }); return }
 
   const session = getSession(undefined, 'WRITE')

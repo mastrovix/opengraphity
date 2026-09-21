@@ -1,6 +1,6 @@
 # ── Stage 1: builder ─────────────────────────────────────────────────────────
-# Pinned tag + digest (G-16): `docker buildx imagetools inspect node:20.20.2-bookworm-slim`
-FROM node:20.20.2-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS builder
+# Pinned tag + digest (G-16): `docker buildx imagetools inspect node:24.11.1-bookworm-slim`
+FROM node:24.11.1-bookworm-slim@sha256:48abc13a19400ca3985071e287bd405a1d99306770eb81d61202fb6b65cf0b57 AS builder
 
 # pnpm 11+ requires Node 22 (node:sqlite) — pin to the 10.x line used locally
 RUN corepack enable && corepack prepare pnpm@10.30.3 --activate
@@ -55,7 +55,7 @@ RUN pnpm --filter @opengraphity/portal build
 
 # ── Stage 2: nginx ────────────────────────────────────────────────────────────
 # Same image as the front-door nginx (infra/docker-compose.yml), pinned by digest.
-FROM nginx:1.31.5-alpine@sha256:72ba65eb42c10344912a84ff42408db7d34f2feb642204570ab8fc5ffd29f1d3 AS runtime
+FROM nginx:1.31.6-alpine@sha256:adad2ae9204d0fd7a34f40299bc838c3782be1293b10005eac4315ff5a1abf4e AS runtime
 
 COPY --from=builder /app/apps/portal/dist /usr/share/nginx/html
 

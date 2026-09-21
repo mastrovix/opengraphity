@@ -21,7 +21,15 @@ import type { Job } from 'bullmq'
 type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
 const queueAdd = vi.fn().mockResolvedValue(undefined)
-const removeRepeatable = vi.fn().mockResolvedValue(false)
+/*
+ * `upsertJobScheduler` nel finto (21 set 2026, BullMQ 6): le ricorrenze non
+ * passano piu' da `add({ repeat })` — quella API non esiste piu' — ma da un
+ * Job Scheduler con identita' esplicita. Il finto deve esporre quello che il
+ * codice chiama davvero, se no il test prova un cammino che non esiste.
+ */
+const upsertScheduler = vi.fn().mockResolvedValue(undefined)
+const removeScheduler = vi.fn().mockResolvedValue(true)
+// rimpiazzato da removeScheduler (BullMQ 6)
 /** Job già in coda con quell'id (revisione 2 · B2-02): null = nessuno. */
 const queueGetJob = vi.fn().mockResolvedValue(null)
 
@@ -30,7 +38,7 @@ vi.mock('../../lib/bullmq.js', () => ({
     processors.set(name, processor)
     return { name, opts, on: vi.fn(), close: vi.fn() }
   }),
-  getQueue: vi.fn(() => ({ add: queueAdd, removeRepeatable, getJob: queueGetJob })),
+  getQueue: vi.fn(() => ({ add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler, getJob: queueGetJob })),
 }))
 vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
@@ -71,7 +79,7 @@ const NOW = '2026-09-09T10:00:00.000Z'
 beforeEach(() => {
   vi.clearAllMocks()
   processors.clear()
-  removeRepeatable.mockResolvedValue(false)
+  removeScheduler.mockResolvedValue(false)
   queueGetJob.mockResolvedValue(null)
   vi.mocked(reevaluateClosedWindows).mockResolvedValue({ evaluated: 2, failed: 0, truncated: false })
   vi.mocked(reevaluatePendingEvents).mockResolvedValue({ evaluated: 1, failed: 0, truncated: false })
@@ -139,10 +147,10 @@ describe('enqueueChangeWindowReevaluation (fine finestra come job)', () => {
 
 describe('worker events-correlate', () => {
   it('startEventCorrelateWorker: rimuove il repeat job legacy `reevaluate-windows` e avvia il worker (concurrency 2) senza registrare job ripetuti', async () => {
-    removeRepeatable.mockResolvedValueOnce(true)
+    removeScheduler.mockResolvedValueOnce(true)
     const w = await startEventCorrelateWorker()
     expect(w.name).toBe(EVENT_CORRELATE_QUEUE)
-    expect(removeRepeatable).toHaveBeenCalledWith(LEGACY_REEVALUATE_WINDOWS_JOB, { every: EVENT_MAINTENANCE_EVERY_MS }, LEGACY_REEVALUATE_WINDOWS_JOB)
+    expect(removeScheduler).toHaveBeenCalledWith(LEGACY_REEVALUATE_WINDOWS_JOB)
     expect(queueAdd).not.toHaveBeenCalled()
     expect(createWorker).toHaveBeenCalledWith(EVENT_CORRELATE_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 2 }))
   })
@@ -180,11 +188,11 @@ describe('worker events-correlate', () => {
 })
 
 describe('worker events-maintenance (periodico)', () => {
-  it('startEventMaintenanceWorker: registra il repeat job ogni 5 minuti sulla coda dedicata e avvia il worker con concurrency 1 e lockDuration 10 min', async () => {
+  it('startEventMaintenanceWorker: registra lo scheduler ogni 5 minuti sulla coda dedicata e avvia il worker con concurrency 1 e lockDuration 10 min', async () => {
     const w = await startEventMaintenanceWorker()
     expect(w.name).toBe(EVENT_MAINTENANCE_QUEUE)
     expect(getQueue).toHaveBeenCalledWith(EVENT_MAINTENANCE_QUEUE)
-    expect(queueAdd).toHaveBeenCalledWith(EVENT_MAINTENANCE_JOB, {}, expect.objectContaining({ repeat: { every: EVENT_MAINTENANCE_EVERY_MS }, jobId: EVENT_MAINTENANCE_JOB, removeOnComplete: { count: 20 } }))
+    expect(upsertScheduler).toHaveBeenCalledWith(EVENT_MAINTENANCE_JOB, { every: EVENT_MAINTENANCE_EVERY_MS }, expect.objectContaining({ name: EVENT_MAINTENANCE_JOB }))
     expect(EVENT_MAINTENANCE_EVERY_MS).toBe(5 * 60 * 1000)
     expect(EVENT_MAINTENANCE_LOCK_MS).toBe(10 * 60 * 1000)
     expect(createWorker).toHaveBeenCalledWith(EVENT_MAINTENANCE_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 1, lockDuration: EVENT_MAINTENANCE_LOCK_MS }))

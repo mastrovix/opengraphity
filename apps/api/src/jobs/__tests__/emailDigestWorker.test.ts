@@ -34,10 +34,12 @@ const redis = new FakeRedis()
 type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
 const queueAdd = vi.fn().mockResolvedValue(undefined)
+const upsertScheduler = vi.fn().mockResolvedValue(undefined)
+const removeScheduler = vi.fn().mockResolvedValue(true)
 vi.mock('../../lib/bullmq.js', () => ({
   getSharedRedis: () => redis,
   createWorker: vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => { processors.set(name, processor); return { name, opts } }),
-  getQueue: vi.fn(() => ({ add: queueAdd })),
+  getQueue: vi.fn(() => ({ add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler })),
 }))
 
 // ── Neo4j: runQuery dispatches on the Cypher text ───────────────────────────
@@ -231,14 +233,16 @@ describe('processDigestTick — destinatari', () => {
 describe('startEmailDigestWorker', () => {
   it('registra il tick ogni 5 minuti (UTC) con jobId fisso e un worker a concorrenza 1', async () => {
     await startEmailDigestWorker()
-    expect(queueAdd).toHaveBeenCalledWith('digest-tick', {}, {
-      repeat: { pattern: '*/5 * * * *', tz: 'UTC' }, jobId: 'email-digest-tick', removeOnComplete: true,
-    })
+    expect(upsertScheduler).toHaveBeenCalledWith(
+      'email-digest-tick',
+      { pattern: '*/5 * * * *', tz: 'UTC' },
+      { name: 'digest-tick', data: {}, opts: { removeOnComplete: true } },
+    )
     expect(processors.has(EMAIL_DIGEST_QUEUE)).toBe(true)
   })
 
   it('registrazione del repeatable che fallisce → errore di startup propagato', async () => {
-    queueAdd.mockRejectedValueOnce(new Error('redis down'))
+    upsertScheduler.mockRejectedValueOnce(new Error('redis down'))
     await expect(startEmailDigestWorker()).rejects.toThrow('redis down')
   })
 

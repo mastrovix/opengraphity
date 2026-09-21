@@ -11,8 +11,9 @@ export const GET_QUEUE_STATS = gql`
       name
       group
       retryable
+      paused
       counts {
-        waiting active completed failed delayed paused
+        waiting active completed failed delayed
       }
     }
   }

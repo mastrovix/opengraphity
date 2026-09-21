@@ -11,6 +11,7 @@ import { ciLabelForTypeName, ciTypeNamesForTenant } from '../../lib/ciTypeNameTo
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { asyncHandler } from '../errorHandler.js'
 import { apiKeyOf, optionalString, parsePagination } from '../apiContext.js'
+import { parametro } from '../parametroDiRotta.js'
 
 const router: ExpressRouter = Router()
 
@@ -57,7 +58,7 @@ router.get('/', requirePermission('ci:read'), asyncHandler(async (req: Request, 
 }))
 
 router.get('/:id', requirePermission('ci:read'), asyncHandler(async (req: Request, res: Response) => {
-  const id = req.params['id']!
+  const id = parametro(req, 'id')
   const tenantId = apiKeyOf(req).tenantId
   const ciPredicate = await ciLabelPredicateForTenant('ci', tenantId)
   // `:ConfigurationItem` davanti (revisione totale · D-29): un MATCH senza

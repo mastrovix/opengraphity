@@ -494,7 +494,7 @@
       "delayed": "delayed",
       "failed": "failed",
       "completed": "completed",
-      "paused": "paused",
+      "paused": "Paused",
       "keptHelp": {
         "completed": "The completed jobs the queue keeps. The oldest are removed as new ones arrive, so this number stops growing: a job that has just succeeded may not make it go up.",
         "failed": "The failed jobs the queue keeps for diagnosis. They are removed after a while, and a retried job leaves this count as soon as it succeeds."
@@ -516,7 +516,8 @@
       "stackTrace_other": "Stack trace ({{count}} lines)",
       "returnValue": "Return: {{value}}",
       "retry": "Retry",
-      "retrying": "Retrying…"
+      "retrying": "Retrying…",
+      "pausedHelp": "The queue is paused: jobs stay waiting and are not picked up until it resumes."
     },
     "profile": {
       "title": "Profile",
@@ -970,6 +971,7 @@
       "provisionPartial": "Configuration created, but this is still missing: {{gaps}}",
       "loading": "Loading workflow…",
       "noneForTenant": "No workflow found for this tenant.",
+      "openTransition": "Open transition {{name}}",
       "stepsFixedHint": "The steps of this workflow are fixed. You can customise labels, actions and conditions.",
       "defaultBadge": "Default",
       "deleteTransition": "Delete transition",
@@ -4682,6 +4684,10 @@
       "analysisAlreadyRunning": "An analysis is already running for this organization. Try again in a moment.",
       "acknowledgeHasAction": "This proposal carries an action: accept it to run it.",
       "notProblemMaterial": "A Problem cannot be opened from this proposal: a Problem is the cause of faults, and this is not one."
+    },
+    "rest": {
+      "repeatedRouteParam": "Route parameter “{{name}}” arrived as a list: this route declares a repeated parameter, which its callers do not expect.",
+      "missingRouteParam": "Route parameter “{{name}}” is missing."
     }
   },
   "errorBoundary": {

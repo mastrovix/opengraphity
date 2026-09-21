@@ -17,11 +17,12 @@
   "dependencies": {
     "@opengraphity/types": "workspace:*",
     "bullmq": "catalog:",
-    "ioredis": "catalog:"
+    "ioredis": "catalog:",
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
-    "@types/node": "^20.19.43",
-    "typescript": "^5.4.0",
+    "@types/node": "^24.11.1",
+    "typescript": "^7.0.2",
     "vitest": "catalog:"
   }
 }

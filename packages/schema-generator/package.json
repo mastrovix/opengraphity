@@ -19,11 +19,12 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@opengraphity/neo4j": "workspace:*"
+    "@opengraphity/neo4j": "workspace:*",
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
-    "@types/node": "^20.19.43",
-    "typescript": "^5.0.0",
+    "@types/node": "^24.11.1",
+    "typescript": "^7.0.2",
     "vitest": "catalog:"
   }
 }

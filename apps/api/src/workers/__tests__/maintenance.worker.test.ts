@@ -16,8 +16,15 @@ type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
 const createWorker = vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => { processors.set(name, processor); return { name, opts } })
 const queue = {
-  getRepeatableJobs: vi.fn(),
-  removeRepeatableByKey: vi.fn().mockResolvedValue(undefined),
+  /*
+   * JOB SCHEDULER (21 set 2026, BullMQ 6): `getRepeatableJobs` e
+   * `removeRepeatableByKey` non esistono piu'. Lo scheduler ha un'identita'
+   * esplicita — il NOME del job — invece di una chiave composta da
+   * riconoscere, quindi togliere il vecchio e' una riga e non un giro
+   * sull'elenco.
+   */
+  upsertJobScheduler: vi.fn().mockResolvedValue(undefined),
+  removeJobScheduler: vi.fn().mockResolvedValue(true),
   add: vi.fn().mockResolvedValue(undefined),
 }
 vi.mock('../../lib/bullmq.js', () => ({
@@ -95,7 +102,6 @@ let processor: AnyProcessor
 
 beforeEach(async () => {
   vi.clearAllMocks()
-  queue.getRepeatableJobs.mockResolvedValue([])
   runBackup.mockResolvedValue({ archivePath: ARCHIVE, nodeCount: 10, relCount: 4, durationMs: 42 })
   verifyBackup.mockResolvedValue({ archivePath: ARCHIVE, ok: true, problems: [], warnings: [], nodes: 10, rels: 4, restorableRels: 4, manifest: null })
   readdirSync.mockReturnValue([])
@@ -116,22 +122,19 @@ describe('readBackupRetention', () => {
 
 describe('startMaintenanceWorker', () => {
   it('rimuove i repeatable backup_database esistenti e ri-registra il job giornaliero a mezzanotte', async () => {
-    queue.getRepeatableJobs.mockResolvedValue([
-      { name: 'backup_database', key: 'stale-key-1' },
-      { name: 'other_job',       key: 'other-key' },
-    ])
-
     await startMaintenanceWorker()
 
-    expect(queue.removeRepeatableByKey).toHaveBeenCalledTimes(1)
-    expect(queue.removeRepeatableByKey).toHaveBeenCalledWith('stale-key-1')
-    expect(queue.add).toHaveBeenCalledWith('backup_database', {}, { repeat: { pattern: '0 0 * * *' } })
+    // Si toglie per NOME: ogni ricorrenza dichiarata viene ripulita e rimessa,
+    // cosi' un pattern cambiato non lascia in piedi il vecchio.
+    expect(queue.removeJobScheduler).toHaveBeenCalledWith('backup_database')
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      'backup_database', { pattern: '0 0 * * *' }, { name: 'backup_database', data: {} },
+    )
     expect(createWorker).toHaveBeenCalledWith(MAINTENANCE_QUEUE, expect.any(Function), { concurrency: 1 })
     expect(logInfo).toHaveBeenCalledWith({ backupDir: BACKUP_DIR, retention: 14 }, 'Maintenance worker started')
   })
 
   it('ondata 4: registra anche purge_events alle 03:30 e rimuove le sue copie stantie', async () => {
-    queue.getRepeatableJobs.mockResolvedValue([{ name: 'purge_events', key: 'stale-purge' }, { name: 'backup_database', key: 'stale-backup' }])
     await startMaintenanceWorker()
     expect(REPEATABLE_JOBS.map((j) => [j.name, j.pattern])).toEqual([
       ['backup_database', '0 0 * * *'],
@@ -145,13 +148,18 @@ describe('startMaintenanceWorker', () => {
       // un guasto in corso non aspetta la notte.
       ['server_logs_to_events', '*/15 * * * *'],
     ])
-    expect(queue.removeRepeatableByKey.mock.calls.map((c) => c[0]).sort()).toEqual(['stale-backup', 'stale-purge'])
-    expect(queue.add).toHaveBeenCalledWith('purge_events', {}, { repeat: { pattern: '30 3 * * *' } })
-    expect(queue.add).toHaveBeenCalledTimes(REPEATABLE_JOBS.length)
+    // Ogni ricorrenza dichiarata viene tolta per nome e rimessa: nessuna
+    // chiave composta da riconoscere, e il conto deve tornare su entrambe.
+    expect(queue.removeJobScheduler.mock.calls.map((c) => c[0]).sort())
+      .toEqual(REPEATABLE_JOBS.map((j) => j.name).sort())
+    expect(queue.upsertJobScheduler).toHaveBeenCalledWith(
+      'purge_events', { pattern: '30 3 * * *' }, { name: 'purge_events', data: {} },
+    )
+    expect(queue.upsertJobScheduler).toHaveBeenCalledTimes(REPEATABLE_JOBS.length)
   })
 
   it('registrazione del repeatable che fallisce → errore di startup, nessun worker creato', async () => {
-    queue.add.mockRejectedValueOnce(new Error('redis down'))
+    queue.upsertJobScheduler.mockRejectedValueOnce(new Error('redis down'))
     await expect(startMaintenanceWorker()).rejects.toThrow('redis down')
     expect(createWorker).not.toHaveBeenCalled()
   })

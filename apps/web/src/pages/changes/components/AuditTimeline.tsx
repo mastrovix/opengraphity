@@ -153,7 +153,7 @@ export function AuditTimeline({ audit }: { audit: ChangeAuditEntryData[] }) {
                     {e.actor && <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>{e.actor.name}</span>}
                   </div>
                   {e.detail && <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-dark)', ...(isLong && !isExp ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : {}) }}>{detailText(t, e)}</div>}
-                  {isLong && <button type="button" onClick={() => setExpandedIdx(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n })} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', marginTop: 2 }}>{t(isExp ? 'common.showLess' : 'common.showAll')}</button>}
+                  {isLong && <button type="button" onClick={() => setExpandedIdx(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n })} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', marginTop: 2 }}>{t(isExp ? 'common.showLess' : 'common.showAll')}</button>}
                 </div>
               </div>
             </div>

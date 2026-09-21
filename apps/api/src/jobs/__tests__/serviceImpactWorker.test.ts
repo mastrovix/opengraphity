@@ -18,6 +18,14 @@ import type { Job } from 'bullmq'
 type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
 const queueAdd = vi.fn().mockResolvedValue(undefined)
+/*
+ * `upsertJobScheduler` nel finto (21 set 2026, BullMQ 6): le ricorrenze non
+ * passano piu' da `add({ repeat })` — quella API non esiste piu' — ma da un
+ * Job Scheduler con identita' esplicita. Il finto deve esporre quello che il
+ * codice chiama davvero, se no il test prova un cammino che non esiste.
+ */
+const upsertScheduler = vi.fn().mockResolvedValue(undefined)
+const removeScheduler = vi.fn().mockResolvedValue(true)
 const queueGetJobs = vi.fn().mockResolvedValue([])
 const queueRemoveDeduplicationKey = vi.fn().mockResolvedValue(1)
 
@@ -26,7 +34,7 @@ vi.mock('../../lib/bullmq.js', () => ({
     processors.set(name, processor)
     return { name, opts, on: vi.fn(), close: vi.fn() }
   }),
-  getQueue: vi.fn(() => ({ add: queueAdd, getJobs: queueGetJobs, removeDeduplicationKey: queueRemoveDeduplicationKey })),
+  getQueue: vi.fn(() => ({ add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler, getJobs: queueGetJobs, removeDeduplicationKey: queueRemoveDeduplicationKey })),
 }))
 vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
@@ -105,7 +113,7 @@ describe('worker services-impact', () => {
   it('startServiceImpactWorker: registra il repeat job ogni 5 minuti e avvia il worker con concurrency 2 e lockDuration 10 min', async () => {
     const w = await startServiceImpactWorker()
     expect(w.name).toBe(SERVICE_IMPACT_QUEUE)
-    expect(queueAdd).toHaveBeenCalledWith(SERVICE_PERIODIC_JOB, {}, expect.objectContaining({ repeat: { every: SERVICE_PERIODIC_EVERY_MS }, jobId: SERVICE_PERIODIC_JOB, removeOnComplete: { count: 20 } }))
+    expect(upsertScheduler).toHaveBeenCalledWith(SERVICE_PERIODIC_JOB, { every: SERVICE_PERIODIC_EVERY_MS }, expect.objectContaining({ name: SERVICE_PERIODIC_JOB }))
     expect(SERVICE_PERIODIC_EVERY_MS).toBe(5 * 60 * 1000)
     expect(SERVICE_IMPACT_LOCK_MS).toBe(10 * 60 * 1000)
     expect(createWorker).toHaveBeenCalledWith(SERVICE_IMPACT_QUEUE, expect.any(Function), expect.objectContaining({ concurrency: 2, lockDuration: SERVICE_IMPACT_LOCK_MS }))
@@ -164,7 +172,7 @@ describe('sincronizzazione con la CMDB (ondata 5)', () => {
 
   it('rete di sicurezza `services-sync-periodic`: repeat job ogni 30 minuti (rada di proposito: l\'immediatezza la dà notifyCIGraphChanged)', async () => {
     await startServiceImpactWorker()
-    expect(queueAdd).toHaveBeenCalledWith(SERVICE_SYNC_PERIODIC_JOB, {}, expect.objectContaining({ repeat: { every: SERVICE_MAP_SYNC_EVERY_MS }, jobId: SERVICE_SYNC_PERIODIC_JOB }))
+    expect(upsertScheduler).toHaveBeenCalledWith(SERVICE_SYNC_PERIODIC_JOB, { every: SERVICE_MAP_SYNC_EVERY_MS }, expect.objectContaining({ name: SERVICE_SYNC_PERIODIC_JOB }))
     expect(SERVICE_MAP_SYNC_EVERY_MS).toBe(30 * 60 * 1000)
     const proc = processors.get(SERVICE_IMPACT_QUEUE)!
     await proc(job(SERVICE_SYNC_PERIODIC_JOB))

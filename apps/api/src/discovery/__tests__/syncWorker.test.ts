@@ -14,11 +14,19 @@ type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
 const workerOn = vi.fn()
 const queueAdd = vi.fn().mockResolvedValue(undefined)
+/*
+ * `upsertJobScheduler` nel finto (21 set 2026, BullMQ 6): le ricorrenze non
+ * passano piu' da `add({ repeat })` — quella API non esiste piu' — ma da un
+ * Job Scheduler con identita' esplicita. Il finto deve esporre quello che il
+ * codice chiama davvero, se no il test prova un cammino che non esiste.
+ */
+const upsertScheduler = vi.fn().mockResolvedValue(undefined)
+const removeScheduler = vi.fn().mockResolvedValue(true)
 const getRepeatableJobs = vi.fn().mockResolvedValue([])
 const removeRepeatableByKey = vi.fn().mockResolvedValue(undefined)
 vi.mock('../../lib/bullmq.js', () => ({
   createWorker: vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => { processors.set(name, processor); return { name, opts, on: workerOn } }),
-  getQueue: vi.fn(() => ({ add: queueAdd, getRepeatableJobs: getRepeatableJobs, removeRepeatableByKey: removeRepeatableByKey })),
+  getQueue: vi.fn(() => ({ add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler, getRepeatableJobs: getRepeatableJobs, removeRepeatableByKey: removeRepeatableByKey })),
 }))
 
 interface Rec { get(k: string): unknown }
@@ -68,7 +76,7 @@ vi.stubEnv('NODE_ENV', 'test')
 vi.stubEnv('DISCOVERY_ENCRYPTION_KEY', 'a'.repeat(64))
 resetConfigCache()
 
-const { startSyncWorker, loadScheduledSyncs, syncQueue } = await import('../syncWorker.js')
+const { startSyncWorker, loadScheduledSyncs } = await import('../syncWorker.js')
 
 startSyncWorker()
 const processor = processors.get('discovery-sync')!
@@ -301,17 +309,25 @@ describe('startSyncWorker / loadScheduledSyncs', () => {
     readRows = [{ id: 'src-1', tenantId: 't1', cron: '0 */6 * * *' }, { id: 'src-2', tenantId: 't2', cron: '30 2 * * *' }]
 
     await loadScheduledSyncs()
-    // Revisione totale · D-6: prima di registrarlo si toglie l'eventuale
-    // repeat job vecchio, così un cron cambiato non ne lascia due.
-    expect(getRepeatableJobs).toHaveBeenCalledTimes(2)
+    /*
+     * Revisione totale · D-6: prima di registrarlo si toglie il vecchio, così
+     * un cron cambiato non ne lascia due. Con BullMQ 6 si toglie per ID —
+     * quello dello scheduler — invece di scorrere l'elenco dei ripetibili
+     * cercando una chiave composta.
+     */
+    expect(removeScheduler).toHaveBeenCalledTimes(2)
+    expect(removeScheduler).toHaveBeenCalledWith('sync-scheduled-src-1')
 
-    expect(queueAdd).toHaveBeenCalledTimes(2)
-    expect(queueAdd).toHaveBeenCalledWith(
-      'sync',
-      { runId: 'scheduled-src-1', sourceId: 'src-1', tenantId: 't1', syncType: 'scheduled' },
-      { repeat: { pattern: '0 */6 * * *' }, jobId: 'sync-scheduled-src-1', removeOnComplete: 50, removeOnFail: 20 },
+    expect(upsertScheduler).toHaveBeenCalledTimes(2)
+    expect(upsertScheduler).toHaveBeenCalledWith(
+      'sync-scheduled-src-1',
+      { pattern: '0 */6 * * *' },
+      {
+        name: 'sync',
+        data: { runId: 'scheduled-src-1', sourceId: 'src-1', tenantId: 't1', syncType: 'scheduled' },
+        opts: { removeOnComplete: 50, removeOnFail: 20 },
+      },
     )
-    expect(syncQueue.add).toBe(queueAdd)
   })
 
   it('errore DB nel caricamento degli scheduled sync dovrebbe propagare — BUG: syncWorker.ts:278-280 logga e ingoia (all\'avvio nessuna sync schedulata viene registrata, senza errore per il chiamante)', async () => {

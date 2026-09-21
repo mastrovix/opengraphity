@@ -57,7 +57,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: steps.target.outputs.configured == 'true'
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       # Only the root devDependencies (@playwright/test) are needed: skip the

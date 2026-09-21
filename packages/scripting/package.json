@@ -16,11 +16,12 @@
   },
   "dependencies": {
     "@opengraphity/types": "workspace:*",
-    "isolated-vm": "^4.7.2"
+    "isolated-vm": "^7.0.1",
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
-    "@types/node": "^20.19.43",
-    "typescript": "^5.4.0",
+    "@types/node": "^24.11.1",
+    "typescript": "^7.0.2",
     "vitest": "catalog:"
   }
 }
