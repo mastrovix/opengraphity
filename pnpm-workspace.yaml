@@ -11,3 +11,18 @@ catalog:
   bullmq: ^5.71.0
   ioredis: ^5.10.0
   vitest: ^4.1.0
+
+# VERSIONI BLOCCATE: non stanno qui, stanno in `package.json` → `pnpm.overrides`.
+# Provato a metterle qui (21 set 2026) e pnpm 10.30 NON le legge da questo file:
+# il blocco sembrava messo e non faceva niente. Verificato cambiando il numero e
+# guardando che cosa veniva installato davvero.
+#
+# Blocco attivo: `@types/d3-selection` fermo a 3.0.11.
+#   La 3.0.12 rompe `@types/d3-transition`, il pacchetto che innesta
+#   `.transition()` su `Selection`: il build del web cade con «Property
+#   'transition' does not exist on type Selection<...>» in `TopologyGraph.tsx` e
+#   `CIGraph.tsx` (PR #27). Non e' una nostra scelta di versione: a monte 3.0.12
+#   e 3.0.9 sono ENTRAMBE le ultime, e non si parlano.
+#   SI TOGLIE quando `@types/d3-transition` pubblica una versione che regge la
+#   3.0.12. Per provarlo: togliere l'override, `pnpm install`,
+#   `pnpm --filter @opengraphity/web exec tsc --noEmit`.
