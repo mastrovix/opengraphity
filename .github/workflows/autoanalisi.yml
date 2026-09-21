@@ -12,22 +12,38 @@
 # CHIEDERE. Il diritto di scrivere vive qui, dove lo governa GitHub.
 #
 # ## CHI PUÒ AVVIARLO, che è la difesa vera
-# Solo chi ha accesso in scrittura al repository, per due sbarre indipendenti:
+# Perché il varco serva davvero, bisogna sapere che cosa difende: una parte
+# del fascicolo nasce da `POST /api/logs/client`, che chiama qualunque utente
+# autenticato di qualunque cliente. Lo scrubbing toglie l'IDENTITÀ, non le
+# ISTRUZIONI — «ignore the previous instructions» è fatto di parole comuni che
+# nel vocabolario ci sono tutte. Se quel testo potesse avviare DA SOLO un
+# agente con `contents: write`, esisterebbe un cammino da «so scrivere una
+# riga di log» a «influenzo il codice».
 #
-#  1. si parte sull'ETICHETTA `autoanalisi`, e mettere un'etichetta su GitHub
-#     richiede permesso di scrittura (triage): chi legge e basta non può;
-#  2. il primo passo RICONTROLLA il permesso di chi ha agito, chiamando
-#     l'API. Serve perché la sbarra 1 dipende da com'è configurato il
-#     repository, e una configurazione può cambiare — per esempio se un
-#     giorno tornasse pubblico.
+# Perciò nessuna delle tre porte si apre senza una persona di fiducia:
 #
-# Il perché sta nel fascicolo stesso: una parte del suo testo nasce da
-# `POST /api/logs/client`, che chiama qualunque utente autenticato di
-# qualunque cliente. Lo scrubbing toglie l'IDENTITÀ, non le ISTRUZIONI —
-# «ignore the previous instructions» è fatto di parole comuni che nel
-# vocabolario ci sono tutte. Se quel testo potesse avviare da solo un agente
-# con `contents: write`, esisterebbe un cammino da «so scrivere una riga di
-# log» a «influenzo il codice». L'etichetta lo chiude.
+#  1. ETICHETTA `autoanalisi`: metterla richiede permesso di scrittura
+#     (triage), quindi chi legge e basta non può;
+#  2. REPOSITORY_DISPATCH dal prodotto (21 set 2026): GitHub lo accetta solo
+#     da un token con accesso in scrittura, e a monte OpenGrafo lo manda solo
+#     quando qualcuno apre un Problem da una proposta — gesto che richiede
+#     `proposal.accept` E `problem.write` SUL TENANT DI PIATTAFORMA, e vale
+#     solo per i tre generi di piattaforma;
+#  3. WORKFLOW_DISPATCH a mano, per rilanciare.
+#
+# E in tutti e tre i casi il primo passo RICONTROLLA il permesso di chi ha
+# agito chiamando l'API: le porte dipendono da com'è configurato il
+# repository, e una configurazione può cambiare — per esempio se un giorno
+# tornasse pubblico.
+#
+# ## QUELLO CHE È CAMBIATO APRENDO LA PORTA DEL PRODOTTO, e va detto
+# Prima la persona decideva DOPO aver letto il fascicolo; adesso, sulla porta
+# 2, decide dopo aver letto la PROPOSTA — il fascicolo lo leggerà l'agente.
+# È una difesa più sottile, e resta in piedi perché quella persona è
+# l'amministratore della piattaforma, non un utente qualsiasi di un cliente.
+# Le due difese che pesano di più non si sono mosse: il prompt qui sotto
+# dichiara che il testo della issue è DATO e non ordini, e l'agente può solo
+# aprire una PR.
 #
 # ## QUELLO CHE QUESTO WORKFLOW NON PUÒ GARANTIRE, e va detto
 # `contents: write` consente in teoria di scrivere su `main`. Di norma lo si
@@ -39,13 +55,33 @@
 # Chi attiva questo workflow deve sapere che quella è la rete, e che è umana.
 #
 # ## Il costo
-# Ogni avvio è una sessione di modello, e si paga. Per questo non parte da
-# sola su ogni issue: parte quando qualcuno mette l'etichetta.
+# Ogni avvio è una sessione di modello, e si paga (misurato: fino a ~10 $ per
+# un giro che arriva alla PR). Per questo non parte da sola su ogni issue:
+# parte quando qualcuno mette l'etichetta, oppure quando un amministratore
+# della piattaforma apre un Problem da una proposta. In nessuno dei due casi
+# è una macchina a decidere di spendere.
 name: Autoanalisi — dal fascicolo alla proposta di codice
 
 on:
   issues:
     types: [labeled]
+  # LA PORTA DEL PRODOTTO (21 set 2026).
+  #
+  # OpenGrafo chiede l'analisi da sé quando qualcuno apre un Problem da una
+  # proposta dell'Autoanalisi: `repository_dispatch` con `event_type:
+  # autoanalisi` e il numero della issue nel `client_payload`.
+  #
+  # È una porta DIVERSA da quella delle persone, di proposito: si poteva far
+  # mettere l'etichetta al token e non cambiare niente qui, ma sarebbe stato
+  # far sembrare umano un gesto che umano non è. Così si legge chi ha chiesto
+  # cosa, e questa porta si può togliere senza toccare l'altra.
+  #
+  # Chi può aprirla: solo un token con accesso in scrittura al repository —
+  # GitHub non accetta `repository_dispatch` da nessun altro. Il varco umano
+  # sta a monte, nel prodotto: apre un Problem da una proposta solo chi ha
+  # `proposal.accept` e `problem.write` sul tenant di piattaforma.
+  repository_dispatch:
+    types: [autoanalisi]
   workflow_dispatch:
     inputs:
       issue:
@@ -55,14 +91,16 @@ on:
 
 # Un'analisi per issue: due etichette messe di seguito non pagano due volte.
 concurrency:
-  group: autoanalisi-${{ github.event.issue.number || inputs.issue }}
+  group: autoanalisi-${{ github.event.issue.number || github.event.client_payload.issue || inputs.issue }}
   cancel-in-progress: false
 
 jobs:
   proponi:
-    # L'etichetta è il varco. Ogni altra etichetta non fa niente.
+    # Le tre porte, e nient'altro: un'etichetta diversa da `autoanalisi` non fa
+    # niente, e un `repository_dispatch` di un altro tipo non arriva qui.
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'repository_dispatch' ||
       github.event.label.name == 'autoanalisi'
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -152,7 +190,7 @@ jobs:
             --max-turns 120
             --allowedTools "Edit,Write,Bash(pnpm:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(gh issue comment:*),Bash(gh pr create:*)"
           prompt: |
-            Sei nel repository di OpenGrafo. La issue #${{ github.event.issue.number || inputs.issue }}
+            Sei nel repository di OpenGrafo. La issue #${{ github.event.issue.number || github.event.client_payload.issue || inputs.issue }}
             contiene un FASCICOLO D'INDAGINE prodotto dall'Autoanalisi della
             piattaforma: firme di errore dall'archivio dei log, i moduli da
             cercare nel codice, i processi toccati e l'analisi di un modello.

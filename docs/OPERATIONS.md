@@ -1817,3 +1817,64 @@ import('bullmq').then(async ({ Queue }) => {
 
 Il filtro sulle 32 cifre esadecimali e' quello che distingue una voce vecchia
 da uno scheduler nostro: i nostri hanno un nome che si legge.
+
+## Autoanalisi: dal Problem alla modifica, senza gesti in mezzo
+
+L'Autoanalisi apre proposte sul tenant di piattaforma (`opengrafo`) quando il
+prodotto sbaglia. Da una proposta si apre un **Problem**, e da lì in poi il
+giro cammina da solo:
+
+1. il Problem nasce e **va subito in analisi** — il passo si cerca per scopo
+   (`purpose: 'investigation'`), così regge alla rinomina, e solo fra quelli
+   raggiungibili dal passo iniziale;
+2. il prodotto costruisce il **fascicolo d'indagine**, apre una **issue** su
+   GitHub e chiede l'analisi con `repository_dispatch`;
+3. l'agente legge la issue nel repository, e se c'è qualcosa da cambiare apre
+   una **PR** che una persona rilegge e unisce;
+4. una ricorrenza chiede a GitHub com'è finita: **PR unita → il Problem passa
+   a «risolto»**. Non si chiude: la verifica della soluzione resta un giudizio
+   di chi gestisce il processo.
+
+### Che cosa serve
+
+| Variabile | A che serve |
+|---|---|
+| `AUTOANALISI_GITHUB_REPO` | `proprietario/nome` del repository del codice |
+| `AUTOANALISI_GITHUB_TOKEN` | token con `contents`, `issues` e `pull-requests` in scrittura su quel repository |
+
+Vuote: il giro si ferma al punto 1. Il Problem resta un Problem come un altro,
+col suo fascicolo da leggere a mano, e la **diagnostica del tenant di
+piattaforma** lo dichiara (`autoanalisi_github_missing`, warning).
+
+### Chi può avviare l'analisi, e perché conta
+
+Una parte del fascicolo nasce da `POST /api/logs/client`, che chiama qualunque
+utente autenticato di qualunque cliente: lo scrubbing toglie l'identità, **non
+le istruzioni**. Perciò nessuna delle porte del workflow si apre senza una
+persona di fiducia — l'etichetta `autoanalisi` richiede scrittura sul
+repository, e il `repository_dispatch` del prodotto parte solo quando un
+amministratore **del tenant di piattaforma** apre un Problem da una proposta
+(`proposal.accept` + `problem.write`, e solo per i tre generi di piattaforma).
+Il workflow ricontrolla comunque il permesso di chi ha agito.
+
+Ogni avvio è una sessione di modello e si paga: misurato, fino a ~10 $ per un
+giro che arriva alla PR.
+
+### Quando l'agente dice «non c'è niente da cambiare»
+
+Succede, ed è successo al primo giro vero: la caduta di una connessione è un
+guasto di trasporto, e nessuna riga di codice la ripara. In quel caso il
+Problem **resta aperto e in analisi**, col verdetto scritto sulla issue. Una
+diagnosi non è una soluzione, e chiudere il Problem da soli nasconderebbe un
+problema vero che nessuno ha risolto. Lo stesso vale per una PR chiusa senza
+essere unita.
+
+### Come si guarda
+
+- coda `autoanalisi` in *Amministrazione → Code* (lavoro `porta-il-fascicolo`
+  a ogni Problem aperto da una proposta, `controlla` ogni quarto d'ora);
+- log del modulo `autoanalisi` e `autoanalisi-github`;
+- il numero della issue è sul Problem (`autoanalisi_issue`).
+
+Si **interroga** GitHub invece di farsi chiamare: l'installazione non è
+raggiungibile da internet, e un webhook in ingresso non arriverebbe.
