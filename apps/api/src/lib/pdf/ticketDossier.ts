@@ -6,14 +6,17 @@
  * live here once. Entity-specific parts (SLA, assessment tasks, root cause…)
  * stay in the per-entity builder and are plugged in as sections.
  */
+import { pdfText } from './texts.js'
+import type { Session } from 'neo4j-driver'
+import { customFieldDefs } from '../ticketCustomFields.js'
 import { runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import { NotFoundError } from '../errors.js'
 import { ciTypeFromLabels } from '../ciTypeFromLabels.js'
 import {
-  DASH, fmtDate, fmtDuration, fmtBytes, orDash,
+  DASH, fmtDate, fmtDuration, fmtBytes, orDash, type PdfLocale,
   PAGE_MARGIN, COLOR, type Doc,
   contentWidth, ensureSpace, sectionHeading, emptyLine,
-  drawTable, docHeader,
+  drawTable, docHeader, keyValue,
 } from './common.js'
 
 export type Props = Record<string, unknown>
@@ -84,7 +87,11 @@ export interface TicketDossierCommon {
   workflowHistory: WorkflowHistoryEntry[]
   comments:        CommentEntry[]
   attachments:     AttachmentEntry[]
+  /** I campi personalizzati del cliente (ondata 4), con l'etichetta che il cliente ha scritto. */
+  customFields:    CustomFieldLine[]
 }
+
+export interface CustomFieldLine { label: string; value: string | null }
 
 /**
  * Loads the parts every ticket dossier shares: the ticket itself with its
@@ -147,11 +154,17 @@ export async function loadTicketDossier(
     ORDER BY a.uploaded_at DESC
   `, { id, tenantId, entityType: spec.entityType })
 
+  // I campi del cliente, nell'ordine del designer: anche vuoti, perché il
+  // dossier è un rendiconto e «non compilato» è un'informazione.
+  const customFields = (await customFieldDefs(session as Session, tenantId, spec.entityType))
+    .map((d) => ({ label: d.label, value: base.props[d.name] == null || base.props[d.name] === '' ? null : String(base.props[d.name]) }))
+
   return {
+    customFields,
     props:    base.props,
     assignee: userRef(base.uProps),
     team:     base.tProps ? { name: (base.tProps['name'] ?? '') as string } : null,
-    affectedCIs: ciRows.map(mapAffectedCI),
+    affectedCIs: ciRows.map((r) => mapAffectedCI(tenantId, r)),
     workflowHistory: historyRows.map((r) => mapWorkflowHistory(r.eProps)),
     comments: commentRows.map((r) => ({
       author:    r.uProps ? ((r.uProps['name'] ?? r.uProps['email'] ?? null) as string | null) : null,
@@ -168,10 +181,10 @@ export async function loadTicketDossier(
   }
 }
 
-export function mapAffectedCI(r: { props: Props; nodeLabels: string[] }): AffectedCI {
+export function mapAffectedCI(tenantId: string, r: { props: Props; nodeLabels: string[] }): AffectedCI {
   return {
     name:        (r.props['name'] ?? r.props['id'] ?? '') as string,
-    type:        ciTypeFromLabels(r.nodeLabels ?? []),
+    type:        ciTypeFromLabels(tenantId, r.nodeLabels ?? []),
     environment: (r.props['environment'] ?? null) as string | null,
     status:      (r.props['status'] ?? null) as string | null,
   }
@@ -202,6 +215,15 @@ export interface TicketRenderSpec {
   sections:    Section[]
 }
 
+/** I campi del cliente; nessuna sezione se il tipo non ne ha. */
+export function customFieldsSection(fields: CustomFieldLine[], locale: PdfLocale): Section {
+  return (doc) => {
+    if (fields.length === 0) return
+    sectionHeading(doc, pdfText(locale, 'customFields'))
+    for (const f of fields) keyValue(doc, f.label, orDash(f.value))
+  }
+}
+
 /** Header + badges, then every section in order. */
 export function renderTicketDossier(doc: Doc, spec: TicketRenderSpec): void {
   docHeader(doc, spec.reportTitle, spec.entityTitle)
@@ -217,41 +239,41 @@ export function renderTicketDossier(doc: Doc, spec: TicketRenderSpec): void {
   }
 }
 
-export function affectedCIsSection(cis: AffectedCI[]): Section {
+export function affectedCIsSection(cis: AffectedCI[], locale: PdfLocale): Section {
   return (doc) => {
-    sectionHeading(doc, `CI impattati (${cis.length})`)
-    if (!cis.length) { emptyLine(doc, 'Nessun CI collegato.'); return }
+    sectionHeading(doc, pdfText(locale, 'affectedCIs', { count: cis.length }))
+    if (!cis.length) { emptyLine(doc, pdfText(locale, 'noCIs')); return }
     drawTable(doc,
       [
-        { header: 'Nome',        width: 190 },
-        { header: 'Tipo',        width: 120 },
-        { header: 'Environment', width: 95 },
-        { header: 'Status',      width: 90 },
+        { header: pdfText(locale, 'colName'), width: 190 },
+        { header: pdfText(locale, 'colType'), width: 120 },
+        { header: pdfText(locale, 'colEnvironment'), width: 95 },
+        { header: pdfText(locale, 'colStatus'),      width: 90 },
       ],
       cis.map((ci) => [ci.name, ci.type, orDash(ci.environment), orDash(ci.status)]),
     )
   }
 }
 
-export function workflowHistorySection(history: WorkflowHistoryEntry[]): Section {
+export function workflowHistorySection(history: WorkflowHistoryEntry[], locale: PdfLocale): Section {
   return (doc) => {
-    sectionHeading(doc, `Cronologia workflow (${history.length})`)
-    if (!history.length) { emptyLine(doc, 'Nessuna cronologia workflow.'); return }
+    sectionHeading(doc, pdfText(locale, 'workflowHistory', { count: history.length }))
+    if (!history.length) { emptyLine(doc, pdfText(locale, 'noWorkflowHistory')); return }
     drawTable(doc,
       [
-        { header: 'Step',       width: 75 },
-        { header: 'Entrata',    width: 82 },
-        { header: 'Uscita',     width: 82 },
-        { header: 'Durata',     width: 50 },
-        { header: 'Attore',     width: 78 },
-        { header: 'Trigger',    width: 48 },
-        { header: 'Note',       width: 80 },
+        { header: pdfText(locale, 'colStep'),     width: 75 },
+        { header: pdfText(locale, 'colEntered'),  width: 82 },
+        { header: pdfText(locale, 'colExited'),   width: 82 },
+        { header: pdfText(locale, 'colDuration'), width: 50 },
+        { header: pdfText(locale, 'colActor'),    width: 78 },
+        { header: pdfText(locale, 'colTrigger'),    width: 48 },
+        { header: pdfText(locale, 'colNotes'),    width: 80 },
       ],
       history.map((h) => [
         h.stepName.replace(/_/g, ' '),
-        fmtDate(h.enteredAt),
-        fmtDate(h.exitedAt),
-        fmtDuration(h.durationMs),
+        fmtDate(h.enteredAt, locale),
+        fmtDate(h.exitedAt, locale),
+        fmtDuration(h.durationMs, pdfText(locale, 'daysShort')),
         orDash(h.triggeredBy),
         orDash(h.triggerType),
         orDash(h.notes),
@@ -260,16 +282,16 @@ export function workflowHistorySection(history: WorkflowHistoryEntry[]): Section
   }
 }
 
-export function commentsSection(comments: CommentEntry[]): Section {
+export function commentsSection(comments: CommentEntry[], locale: PdfLocale): Section {
   return (doc) => {
-    sectionHeading(doc, `Commenti (${comments.length})`)
-    if (!comments.length) { emptyLine(doc, 'Nessun commento.'); return }
+    sectionHeading(doc, pdfText(locale, 'comments', { count: comments.length }))
+    if (!comments.length) { emptyLine(doc, pdfText(locale, 'noComments')); return }
     for (const c of comments) {
       ensureSpace(doc, 34)
       doc.fontSize(9).font('Helvetica-Bold').fillColor(COLOR.dark)
-        .text(c.author ?? 'Utente sconosciuto', PAGE_MARGIN.left, doc.y, { continued: true })
+        .text(c.author ?? pdfText(locale, 'unknownUser'), PAGE_MARGIN.left, doc.y, { continued: true })
       doc.font('Helvetica').fillColor(COLOR.muted)
-        .text(`  ${c.type ? `[${c.type}]  ` : ''}${DASH}  ${fmtDate(c.createdAt)}`)
+        .text(`  ${c.type ? `[${c.type}]  ` : ''}${DASH}  ${fmtDate(c.createdAt, locale)}`)
       doc.moveDown(0.15)
       doc.fontSize(9).font('Helvetica').fillColor(COLOR.text)
         .text(c.text || DASH, PAGE_MARGIN.left + 10, doc.y,
@@ -280,22 +302,22 @@ export function commentsSection(comments: CommentEntry[]): Section {
   }
 }
 
-export function attachmentsSection(attachments: AttachmentEntry[]): Section {
+export function attachmentsSection(attachments: AttachmentEntry[], locale: PdfLocale): Section {
   return (doc) => {
-    sectionHeading(doc, `Allegati (${attachments.length})`)
-    if (!attachments.length) { emptyLine(doc, 'Nessun allegato.'); return }
+    sectionHeading(doc, pdfText(locale, 'attachments', { count: attachments.length }))
+    if (!attachments.length) { emptyLine(doc, pdfText(locale, 'noAttachments')); return }
     drawTable(doc,
       [
-        { header: 'Filename',    width: 210 },
-        { header: 'Dimensione',  width: 70 },
-        { header: 'Caricato da', width: 120 },
-        { header: 'Caricato il', width: 95 },
+        { header: pdfText(locale, 'colFilename'),    width: 210 },
+        { header: pdfText(locale, 'colSize'),       width: 70 },
+        { header: pdfText(locale, 'colUploadedBy'), width: 120 },
+        { header: pdfText(locale, 'colUploadedAt'), width: 95 },
       ],
       attachments.map((a) => [
         a.filename,
         fmtBytes(a.sizeBytes),
         orDash(a.uploadedBy),
-        fmtDate(a.uploadedAt),
+        fmtDate(a.uploadedAt, locale),
       ]),
     )
   }

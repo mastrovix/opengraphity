@@ -6,21 +6,41 @@
 
 import { getNavigableEntities } from './navigableGraph.js'
 import { LABEL_RE, REL_TYPE_RE } from './cypherIdentifiers.js'
+import { isTemporalField } from '@opengraphity/types'
+import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
 
 export interface ReportWhitelist {
   labels:            ReadonlySet<string>
   relationshipTypes: ReadonlySet<string>
+  /**
+   * Per etichetta, i campi su cui si può chiedere un PERIODO — quelli che il
+   * metamodello dichiara data e quelli che il prodotto spedisce tali
+   * (`isTemporalField`). Serve a rifiutare al salvataggio un «raggruppa per
+   * mese» su «Stato», che a esecuzione dava «Text cannot be parsed to a
+   * DateTime "completed"».
+   */
+  temporalFields:    ReadonlyMap<string, ReadonlySet<string>>
 }
 
 /**
- * Fixed labels that are always reportable (ITSM core + CI base labels).
- * CI type labels from the metamodel are added dynamically per tenant.
+ * Fixed labels that are always reportable (ITSM core + SHIPPED CI type labels).
+ * CI type labels from the metamodel are added dynamically per tenant. No label
+ * without a shipped type (`NetworkDevice`/`VirtualMachine` were: revisione del
+ * 14 set 2026 · F19, pinned by lib/__tests__/staticCiLabels.test.ts).
  */
 export const STATIC_REPORT_LABELS: readonly string[] = [
   'ConfigurationItem', 'CIBase',
   'Application', 'Server', 'Database', 'DatabaseInstance', 'Certificate',
-  'NetworkDevice', 'VirtualMachine', 'BusinessApplication',
-  'Incident', 'Change', 'ChangeTask', 'Problem', 'KnownError', 'ServiceRequest',
+  'BusinessApplication',
+  // `ChangeTask` NON c'è più (20 set 2026): nessun nodo la porta, nessuna
+  // query la nomina. Restava riportabile — cioè un report la poteva nominare
+  // e non avrebbe trovato mai niente.
+  'Incident', 'Change', 'Problem', 'KnownError', 'ServiceRequest',
+  // I TASK (20 set 2026): quello generico che un passo di workflow crea su
+  // qualunque ticket, e i cinque per CI delle change. Erano invisibili ai
+  // report — «quanti aperti per squadra» non si poteva chiedere — e i cinque
+  // lo erano da sempre, non da adesso.
+  'Task', 'AssessmentTask', 'DeployPlanTask', 'ValidationTest', 'DeploymentTask', 'ReviewTask',
   'Team', 'User',
   'WorkflowDefinition', 'WorkflowInstance',
   'ReportTemplate',
@@ -34,6 +54,7 @@ export const STATIC_REPORT_RELATIONSHIP_TYPES: readonly string[] = [
   'MEMBER_OF', 'HAS_MEMBER', 'OWNED_BY', 'SUPPORTED_BY', 'MANAGED_BY',
   'BELONGS_TO', 'PARENT_OF', 'RELATED_TO', 'CAUSED_BY', 'REALIZES',
   'DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE',
+  'HAS_TASK',
   'HAS_CHANGE_TASK', 'HAS_ASSESSMENT', 'HAS_DEPLOY_PLAN', 'HAS_DEPLOYMENT',
   'HAS_VALIDATION', 'HAS_APPROVAL', 'HAS_REVIEW', 'HAS_COMMENT', 'HAS_SLA',
   'HAS_WORKFLOW', 'CURRENT_STEP', 'STEP_HISTORY', 'HAS_STEP', 'TRANSITIONS_TO',
@@ -53,6 +74,8 @@ export async function getReportWhitelist(tenantId: string): Promise<ReportWhitel
   const labels = new Set<string>(STATIC_REPORT_LABELS)
   const relationshipTypes = new Set<string>(STATIC_REPORT_RELATIONSHIP_TYPES)
 
+  const temporalFields = new Map<string, ReadonlySet<string>>()
+
   const entities = await getNavigableEntities(tenantId)
   for (const e of entities) {
     if (LABEL_RE.test(e.neo4jLabel)) labels.add(e.neo4jLabel)
@@ -60,14 +83,31 @@ export async function getReportWhitelist(tenantId: string): Promise<ReportWhitel
       if (REL_TYPE_RE.test(r.relationshipType)) relationshipTypes.add(r.relationshipType)
       if (r.targetNeo4jLabel && LABEL_RE.test(r.targetNeo4jLabel)) labels.add(r.targetNeo4jLabel)
     }
+    const date = new Set(e.fields.filter((f) => isTemporalField(f.name, f.fieldType)).map((f) => f.name))
+    if (date.size > 0) temporalFields.set(e.neo4jLabel, date)
   }
 
-  const value: ReportWhitelist = { labels, relationshipTypes }
+  const value: ReportWhitelist = { labels, relationshipTypes, temporalFields }
   cache.set(tenantId, { value, expiresAt: Date.now() + CACHE_TTL_MS })
   return value
 }
 
-/** Test hook / metamodel change hook: drop cached whitelists. */
+/**
+ * Ogni whitelist in cache, di ogni tenant. La chiamano i test e il canale del
+ * metamodello alla ripresa dopo una sottoscrizione persa (PRB00000003).
+ */
 export function clearReportWhitelistCache(): void {
   cache.clear()
 }
+
+/**
+ * Un tenant solo: la chiama il canale del metamodello (A-16) quando un tipo,
+ * un campo o una relazione cambiano — qui o in un altro processo. Prima questa
+ * cache restava vecchia per 60 s anche nel processo che aveva servito la
+ * mutation: un tipo nuovo non era riportabile e uno cancellato lo era ancora.
+ */
+export function invalidateReportWhitelist(tenantId: string): void {
+  cache.delete(tenantId)
+}
+
+registerMetamodelCacheClearer('report-whitelist', invalidateReportWhitelist, clearReportWhitelistCache)

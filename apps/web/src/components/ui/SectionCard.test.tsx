@@ -80,4 +80,11 @@ describe('SectionCard', () => {
     rerender(<SectionCard title="C" open onToggle={onToggle}><p>corpo</p></SectionCard>)
     expect(screen.getByText('corpo')).toBeInTheDocument()
   })
+
+  it('intestazione aperta: tinta del turchese e testo scuro, non il turchese pieno con testo bianco', () => {
+    render(<SectionCard title="Info" defaultOpen><p>corpo</p></SectionCard>)
+    const header = screen.getByRole('button', { name: 'Info' }).parentElement!
+    expect(header).toHaveStyle({ background: 'var(--color-brand-a32)' })
+    expect(screen.getByText('Info')).toHaveStyle({ color: 'var(--color-brand-hover)' })
+  })
 })

@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
+import { pausedWhenHidden } from '@/lib/polling'
+import { useCustomFieldColumns, withCustomFieldCells } from '@/components/ticket/customFields/customFieldColumns'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { PageContainer } from '@/components/PageContainer'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { AlertCircle, Users, CheckCircle2, Loader2 } from 'lucide-react'
+import { AlertCircle, Users, CheckCircle2, Loader2, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { ListPageHeader } from '@/components/ListPageHeader'
 import { Button } from '@/components/Button'
@@ -12,7 +14,7 @@ import { BulkActionsBar } from '@/components/BulkActionsBar'
 import { Select, Textarea, FieldLabel } from '@/components/ui/FormControls'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { SeverityBadge } from '@/components/SeverityBadge'
-import { StatusBadge } from '@/components/StatusBadge'
+import { TicketStatusBadge } from '@/components/StatusBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { GET_INCIDENTS, GET_TEAMS } from '@/graphql/queries'
 import { ASSIGN_INCIDENT_TO_TEAM, RESOLVE_INCIDENT } from '@/graphql/mutations'
@@ -24,6 +26,7 @@ import { ExportCsvButton } from '@/components/ExportCsvButton'
 import { SlaBadge, type SlaStatusInfo } from '@/components/SlaBadge'
 import { exportToCsv } from '@/lib/csvExport'
 import { apolloClient } from '@/lib/apollo'
+import { formatDate } from '@/lib/datetime'
 
 interface Incident {
   id:        string
@@ -33,6 +36,7 @@ interface Incident {
   status:    string
   createdAt: string
   slaStatus: SlaStatusInfo | null
+  customFields?: { name: string; value: string | null }[]
 }
 
 const PAGE_SIZE = 50
@@ -40,22 +44,41 @@ const PAGE_SIZE = 50
 export function IncidentListPage() {
   const { t } = useTranslation()
 
-  const columns: ColumnDef<Incident>[] = [
-    { key: 'number',   label: 'Number',                                 width: '120px', sortable: true },
+  // Campi del cliente (verifica «Cosa resta cablato», ondata 4): una colonna per campo.
+  const customColumns = useCustomFieldColumns<Incident>('incident')
+  const baseColumns: ColumnDef<Incident>[] = [
+    // Intestazione TRADOTTA (revisione totale · i 29 warning): era la stringa
+    // inglese «Number» scritta nel codice, in mezzo a colonne che passano da
+    // i18n — e nessun guardiano poteva vederla, perché per quella colonna una
+    // chiave non era mai stata scritta.
+    { key: 'number',   label: t('common.number'),                                 width: '120px', sortable: true },
     { key: 'title',    label: t('pages.incidents.title_col'),    sortable: true },
     {
       key:     'severity',
-      label:   t('pages.incidents.severity'),
+      /*
+       * «PRIORITÀ», non «Severità» (20 set 2026, decisione del proprietario
+       * dal giro nel browser). È lo stesso valore che il dettaglio chiama
+       * «Priorità P1» e che il prodotto calcola da Impatto × Urgenza: la
+       * proprietà sul grafo si chiama `severity` per ragioni storiche (vedi
+       * `lib/fieldProperty.ts`), ma a schermo il nome giusto è uno solo,
+       * altrimenti la lista e il dettaglio sembrano due cose diverse.
+       */
+      label:   t('pages.incidents.priority'),
       width:   '130px',
       sortable: true,
-      render:  (v) => <SeverityBadge value={String(v)} />,
+      // La priorità di un incident vive su `severity` ma i suoi valori sono le
+      // USCITE della matrice, cioè il vocabolario `priority` (revisione totale
+      // · F-5): col vocabolario `severity` un cliente con `p1..p4` vedeva la
+      // pill d'errore su ogni riga, e le etichette scelte nel Dizionario per
+      // `priority` non venivano mai usate.
+      render:  (v) => <SeverityBadge value={String(v)} vocabulary="priority" />,
     },
     {
       key:     'status',
       label:   t('pages.incidents.status'),
       width:   '130px',
       sortable: true,
-      render:  (v) => <StatusBadge value={String(v)} />,
+      render:  (v) => <TicketStatusBadge value={String(v)} entityType="incident" />,
     },
     {
       key:      'slaStatus',
@@ -71,11 +94,13 @@ export function IncidentListPage() {
       sortable: true,
       render:   (v) => (
         <span style={{ color: "var(--color-slate-light)" }}>
-          {new Date(String(v)).toLocaleDateString()}
+          {formatDate(String(v))}
         </span>
       ),
     },
   ]
+  const columns = [...baseColumns, ...customColumns]
+
 
   const { fields: filterFields } = useEntityFields('Incident')
   const navigate = useNavigate()
@@ -121,7 +146,7 @@ export function IncidentListPage() {
   }>(GET_INCIDENTS, {
     variables: { limit: PAGE_SIZE, offset: page * PAGE_SIZE, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
     fetchPolicy: 'cache-and-network',
-    pollInterval: 30_000,   // keep the list fresh without manual reload
+    ...pausedWhenHidden(30_000),   // keep the list fresh without manual reload
   })
 
   const items = data?.incidents?.items ?? []
@@ -194,7 +219,7 @@ export function IncidentListPage() {
           </p>
         }
         actions={
-          <Button onClick={() => navigate('/incidents/new')}>
+          <Button icon={<Plus size={15} aria-hidden="true" />} onClick={() => navigate('/incidents/new')}>
             {t('pages.incidents.new')}
           </Button>
         }
@@ -214,7 +239,7 @@ export function IncidentListPage() {
               variables: { limit: 10000, offset: 0, filters: filterGroup ? JSON.stringify(filterGroup) : null, sortField, sortDirection: sortDir },
               fetchPolicy: 'network-only',
             })
-            exportToCsv('incidents', columns, res.data?.incidents?.items ?? [])
+            exportToCsv('incidents', columns, withCustomFieldCells(res.data?.incidents?.items ?? []))
           }}
         />
       </div>
@@ -246,7 +271,7 @@ export function IncidentListPage() {
 
           <SortableFilterTable<Incident>
             columns={columns}
-            data={items}
+            data={withCustomFieldCells(items)}
             loading={loading}
             emptyComponent={<EmptyState icon={<AlertCircle size={32} />} title={t('pages.incidents.noResults')} description={t('pages.incidents.noResultsDesc')} />}
             onRowClick={(row) => navigate(`/incidents/${row.id}`)}

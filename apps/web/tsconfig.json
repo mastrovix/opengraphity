@@ -4,7 +4,14 @@
     "useDefineForClassFields": true,
     "module": "ESNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
+    /*
+      `node` accanto a `vite/client`: i test STATICI del web leggono i sorgenti
+      dal disco (src/__tests__/responsive.test.ts controlla le griglie e le
+      tabelle di tutti i .tsx). Senza, `node:fs` non ha tipi e `tsc` si ferma
+      su un test che gira benissimo. Non cambia niente per il bundle: Vite non
+      compila i test.
+    */
+    "types": ["vite/client", "node"],
     "skipLibCheck": true,
 
     /* Bundler mode */

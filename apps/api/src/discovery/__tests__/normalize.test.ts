@@ -27,7 +27,7 @@ describe('toSnake', () => {
   it('fails loudly when nothing usable is left', () => {
     expect(() => toSnake('###')).toThrow(NormalizeError)
     expect(() => toSnake('')).toThrow(NormalizeError)
-    expect(() => toSnake('   ')).toThrow(/impossibile derivare/)
+    expect(() => toSnake('   ')).toThrow(/cannot derive a name/)
   })
 
   it('rejects non-string keys', () => {
@@ -43,7 +43,7 @@ describe('normalizeKeys', () => {
 
   it('throws on collisions instead of overwriting silently', () => {
     expect(() => normalizeKeys({ 'Cost Center': 'A', costCenter: 'B' }, 'csv header row'))
-      .toThrow(/csv header row: le chiavi "Cost Center" e "costCenter" collidono su "cost_center"/)
+      .toThrow(/csv header row: keys "Cost Center" and "costCenter" collide on "cost_center"/)
   })
 
   it('prefixes the source in the error for unusable keys', () => {

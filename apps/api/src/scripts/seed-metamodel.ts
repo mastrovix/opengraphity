@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession } from '@opengraphity/neo4j'
+import { CI_LIFECYCLE_STATUSES } from '../lib/eventVocabularies.js'
+import { runScript } from './lib/runScript.js'
 
 const TENANT_ID = 'system'
 const now = new Date().toISOString()
@@ -58,15 +60,19 @@ const BASE_TYPE: CIType = {
   active: false,
   fields: [
     { name: 'id',          label: 'ID',           field_type: 'string', is_system: true, order: 0 },
-    { name: 'name',        label: 'Nome',         field_type: 'string', is_system: true, order: 1 },
-    { name: 'status',      label: 'Stato',        field_type: 'enum',   is_system: true, order: 2,
-      enum_values: ['active', 'inactive', 'maintenance'] },
-    { name: 'environment', label: 'Ambiente',     field_type: 'enum',   is_system: true, order: 3,
+    { name: 'name',        label: 'Name',         field_type: 'string', is_system: true, order: 1 },
+    // Ciclo di vita del CI: fonte unica lib/eventVocabularies.ts (la stessa da
+    // cui nasce l'enum `ci_status`). Il seed elencava tre valori a mano e si
+    // era già scollato dal dato vero (mancavano decommissioned, expired e
+    // revoked: B0-4).
+    { name: 'status',      label: 'Status',        field_type: 'enum',   is_system: true, order: 2,
+      enum_values: [...CI_LIFECYCLE_STATUSES] },
+    { name: 'environment', label: 'Environment',     field_type: 'enum',   is_system: true, order: 3,
       enum_values: ['production', 'staging', 'development'] },
-    { name: 'description', label: 'Descrizione',  field_type: 'string', is_system: true, order: 4 },
-    { name: 'notes',       label: 'Note',         field_type: 'string', is_system: true, order: 5 },
-    { name: 'createdAt',   label: 'Creato il',    field_type: 'date',   is_system: true, order: 6 },
-    { name: 'updatedAt',   label: 'Aggiornato il',field_type: 'date',   is_system: true, order: 7 },
+    { name: 'description', label: 'Description',  field_type: 'string', is_system: true, order: 4 },
+    { name: 'notes',       label: 'Notes',         field_type: 'string', is_system: true, order: 5 },
+    { name: 'createdAt',   label: 'Created at',    field_type: 'date',   is_system: true, order: 6 },
+    { name: 'updatedAt',   label: 'Updated at',field_type: 'date',   is_system: true, order: 7 },
     { name: 'chain',       label: 'Chain',        field_type: 'enum',   is_system: true, order: 8,
       enum_values: ['Application', 'Infrastructure'] },
   ],
@@ -117,8 +123,8 @@ const CI_TYPES: CIType[] = [
     relations: [
       { name: 'realizes',     label: 'Realized By',       relationship_type: 'REALIZES',   target_type: 'Application',        cardinality: 'many', direction: 'outgoing', order: 1, description: 'Istanze applicative tecniche che realizzano questa business application' },
       { name: 'enables',      label: 'Enables Capability', relationship_type: 'ENABLED_BY', target_type: 'BusinessCapability', cardinality: 'many', direction: 'incoming', order: 2, description: 'Business capability abilitate da questa business application' },
-      { name: 'dependencies', label: 'Dipendenze',        relationship_type: 'DEPENDS_ON', target_type: 'any',                cardinality: 'many', direction: 'outgoing', order: 3, description: 'CI da cui questa business application dipende' },
-      { name: 'dependents',   label: 'Dipendenti',        relationship_type: 'DEPENDS_ON', target_type: 'any',                cardinality: 'many', direction: 'incoming', order: 4, description: 'CI che dipendono da questa business application' },
+      { name: 'dependencies', label: 'Dependencies',        relationship_type: 'DEPENDS_ON', target_type: 'any',                cardinality: 'many', direction: 'outgoing', order: 3, description: 'CI da cui questa business application dipende' },
+      { name: 'dependents',   label: 'Dependents',        relationship_type: 'DEPENDS_ON', target_type: 'any',                cardinality: 'many', direction: 'incoming', order: 4, description: 'CI che dipendono da questa business application' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
@@ -139,8 +145,8 @@ const CI_TYPES: CIType[] = [
         visibility_script: `return true` },
     ],
     relations: [
-      { name: 'dependencies', label: 'Dipendenze',             relationship_type: 'DEPENDS_ON',      target_type: 'any',         cardinality: 'many', direction: 'outgoing', order: 1, description: 'CI da cui questa applicazione dipende (database, server, altre applicazioni)' },
-      { name: 'dependents',   label: 'Dipendenti',             relationship_type: 'DEPENDS_ON',      target_type: 'any',         cardinality: 'many', direction: 'incoming', order: 2, description: 'CI che dipendono da questa applicazione' },
+      { name: 'dependencies', label: 'Dependencies',             relationship_type: 'DEPENDS_ON',      target_type: 'any',         cardinality: 'many', direction: 'outgoing', order: 1, description: 'CI da cui questa applicazione dipende (database, server, altre applicazioni)' },
+      { name: 'dependents',   label: 'Dependents',             relationship_type: 'DEPENDS_ON',      target_type: 'any',         cardinality: 'many', direction: 'incoming', order: 2, description: 'CI che dipendono da questa applicazione' },
       { name: 'hostedOn',     label: 'Hosted On',              relationship_type: 'HOSTED_ON',       target_type: 'Server',      cardinality: 'many', direction: 'outgoing', order: 3, description: 'Server su cui è ospitata questa applicazione' },
       { name: 'certificates', label: 'Uses Certificate',       relationship_type: 'USES_CERTIFICATE',target_type: 'Certificate', cardinality: 'many', direction: 'outgoing', order: 4, description: 'Certificati SSL/TLS utilizzati da questa applicazione' },
       { name: 'realizedBy',   label: 'Realizes Business App',  relationship_type: 'REALIZES',        target_type: 'BusinessApplication', cardinality: 'many', direction: 'incoming', order: 5, description: 'Business application realizzate da questa istanza applicativa' },
@@ -154,12 +160,12 @@ const CI_TYPES: CIType[] = [
     name: 'database', label: 'Database', icon: 'database', color: '#0891b2', neo4j_label: 'Database',
     chain_families: ['Application', 'Infrastructure'],
     fields: [
-      { name: 'port',         label: 'Porta',         field_type: 'string', order: 10 },
+      { name: 'port',         label: 'Port',         field_type: 'string', order: 10 },
       { name: 'instanceType', label: 'Instance Type', field_type: 'enum',   order: 11, enum_values: ['PostgreSQL', 'Oracle', 'SQL Server'] },
     ],
     relations: [
-      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 1, description: 'Istanze database su cui gira questo database' },
-      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 2, description: 'CI che dipendono da questo database' },
+      { name: 'dependencies', label: 'Dependencies', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 1, description: 'Istanze database su cui gira questo database' },
+      { name: 'dependents',   label: 'Dependents', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 2, description: 'CI che dipendono da questo database' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
@@ -171,7 +177,7 @@ const CI_TYPES: CIType[] = [
     chain_families: ['Application', 'Infrastructure'],
     fields: [
       { name: 'ipAddress',    label: 'IP Address',    field_type: 'string', order: 10 },
-      { name: 'port', label: 'Porta', field_type: 'string', order: 11,
+      { name: 'port', label: 'Port', field_type: 'string', order: 11,
         visibility_script: `return input.instanceType !== null && input.instanceType !== undefined`,
         default_script: `
           if (input.instanceType === 'PostgreSQL') return '5432'
@@ -180,7 +186,7 @@ const CI_TYPES: CIType[] = [
           return null
         ` },
       { name: 'instanceType', label: 'Instance Type', field_type: 'enum', order: 12, enum_values: ['PostgreSQL', 'Oracle', 'SQL Server'] },
-      { name: 'version', label: 'Versione', field_type: 'string', order: 13,
+      { name: 'version', label: 'Version', field_type: 'string', order: 13,
         visibility_script: `return input.instanceType !== null && input.instanceType !== undefined`,
         default_script: `
           if (input.instanceType === 'PostgreSQL') return '14.5'
@@ -190,8 +196,8 @@ const CI_TYPES: CIType[] = [
         ` },
     ],
     relations: [
-      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'DEPENDS_ON', target_type: 'any',    cardinality: 'many', direction: 'outgoing', order: 1, description: 'CI da cui questa istanza dipende' },
-      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'DEPENDS_ON', target_type: 'any',    cardinality: 'many', direction: 'incoming', order: 2, description: 'Database che girano su questa istanza' },
+      { name: 'dependencies', label: 'Dependencies', relationship_type: 'DEPENDS_ON', target_type: 'any',    cardinality: 'many', direction: 'outgoing', order: 1, description: 'CI da cui questa istanza dipende' },
+      { name: 'dependents',   label: 'Dependents', relationship_type: 'DEPENDS_ON', target_type: 'any',    cardinality: 'many', direction: 'incoming', order: 2, description: 'Database che girano su questa istanza' },
       { name: 'hostedOn',     label: 'Hosted On',  relationship_type: 'HOSTED_ON',  target_type: 'Server', cardinality: 'many', direction: 'outgoing', order: 3, description: 'Server che ospita questa istanza database' },
     ],
     systemRels: [
@@ -218,11 +224,11 @@ const CI_TYPES: CIType[] = [
       { name: 'location', label: 'Location', field_type: 'string', order: 11 },
       { name: 'vendor',   label: 'Vendor',   field_type: 'string', order: 12 },
       { name: 'os',       label: 'OS',       field_type: 'enum',   order: 13, enum_values: ['Windows', 'Linux'] },
-      { name: 'version',  label: 'Versione', field_type: 'string', order: 14 },
+      { name: 'version',  label: 'Version', field_type: 'string', order: 14 },
     ],
     relations: [
-      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'DEPENDS_ON|HOSTED_ON',             target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 1, description: 'CI da cui questo server dipende o che ospita' },
-      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 2, description: 'CI che dipendono da questo server, sono ospitati su di esso, o vi hanno installato certificati' },
+      { name: 'dependencies', label: 'Dependencies', relationship_type: 'DEPENDS_ON|HOSTED_ON',             target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 1, description: 'CI da cui questo server dipende o che ospita' },
+      { name: 'dependents',   label: 'Dependents', relationship_type: 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 2, description: 'CI che dipendono da questo server, sono ospitati su di esso, o vi hanno installato certificati' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
@@ -238,19 +244,19 @@ const CI_TYPES: CIType[] = [
       }
     `,
     fields: [
-      { name: 'serialNumber', label: 'Numero Seriale', field_type: 'string', required: true, order: 10 },
-      { name: 'expiresAt', label: 'Scadenza', field_type: 'date', required: true, order: 11,
+      { name: 'serialNumber', label: 'Serial number', field_type: 'string', required: true, order: 10 },
+      { name: 'expiresAt', label: 'Expires at', field_type: 'date', required: true, order: 11,
         validation_script: `
           if (!value) throw 'Data obbligatoria'
           if (new Date(value) < new Date()) throw 'La data deve essere futura'
         ` },
-      { name: 'certificateType', label: 'Tipo', field_type: 'enum', required: true, order: 12,
+      { name: 'certificateType', label: 'Type', field_type: 'enum', required: true, order: 12,
         enum_values: ['public', 'external'],
         default_script: `return 'public'` },
     ],
     relations: [
-      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'INSTALLED_ON',     target_type: 'Server',      cardinality: 'many', direction: 'outgoing', order: 1, description: 'Server su cui è installato questo certificato' },
-      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'USES_CERTIFICATE', target_type: 'Application', cardinality: 'many', direction: 'incoming', order: 2, description: 'Applicazioni che utilizzano questo certificato' },
+      { name: 'dependencies', label: 'Dependencies', relationship_type: 'INSTALLED_ON',     target_type: 'Server',      cardinality: 'many', direction: 'outgoing', order: 1, description: 'Server su cui è installato questo certificato' },
+      { name: 'dependents',   label: 'Dependents', relationship_type: 'USES_CERTIFICATE', target_type: 'Application', cardinality: 'many', direction: 'incoming', order: 2, description: 'Applicazioni che utilizzano questo certificato' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: true,  order: 1 },
@@ -282,8 +288,8 @@ const CI_TYPES: CIType[] = [
     ],
     relations: [
       { name: 'members',      label: 'Members',    relationship_type: 'HAS_MEMBER', target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 1, description: 'CI membri del gruppo (membership manuale)' },
-      { name: 'dependencies', label: 'Dipendenze', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 2, description: 'CI da cui questo gruppo dipende' },
-      { name: 'dependents',   label: 'Dipendenti', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 3, description: 'CI che dipendono da questo gruppo' },
+      { name: 'dependencies', label: 'Dependencies', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'outgoing', order: 2, description: 'CI da cui questo gruppo dipende' },
+      { name: 'dependents',   label: 'Dependents', relationship_type: 'DEPENDS_ON', target_type: 'any', cardinality: 'many', direction: 'incoming', order: 3, description: 'CI che dipendono da questo gruppo' },
     ],
     systemRels: [
       { name: 'ownerGroup',   label: 'Owner Group',   relationship_type: 'OWNED_BY',     target_entity: 'Team', required: false, order: 1 },
@@ -506,7 +512,13 @@ async function main() {
          WITH e
          MATCH (f:CIFieldDefinition {name: 'chain', tenant_id: $tenantId})
          MERGE (f)-[:USES_ENUM]->(e)`,
-        { tenantId: TENANT_ID, values: JSON.stringify(['Application', 'Infrastructure']), now },
+        // A-18: `values` è una LISTA, come in ogni altro vocabolario. Qui era
+        // l'unico posto che la scriveva come stringa JSON, e `mapEnum` doveva
+        // tollerare le due forme: bastava un consumatore che facesse
+        // `values.length` (o l'SDL che dichiarasse l'enum ITIL) perché
+        // diventasse un difetto. La migrazione 20260918_1910 normalizza il
+        // nodo già scritto.
+        { tenantId: TENANT_ID, values: ['Application', 'Infrastructure'], now },
       ),
     )
     console.log('✓ ci_chain enum created + linked via USES_ENUM')
@@ -519,8 +531,6 @@ async function main() {
   }
 }
 
-// Exit 0 SOLO in caso di successo: un errore deve produrre exit ≠ 0 e stack
-// (prima process.exit(0) nel finally mascherava qualsiasi fallimento del seed).
-main()
-  .then(() => process.exit(0))
-  .catch((err) => { console.error(err); process.exit(1) })
+// H-45: `runScript` stampa l'errore intero, mette exit code 1 e chiude il
+// driver Neo4j — senza `process.exit`, che troncava i log asincroni (pino).
+runScript('seed-metamodel', main)

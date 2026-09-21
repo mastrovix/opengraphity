@@ -25,6 +25,7 @@ import { createChangeRFC } from '../../services/changeCreationService.js'
 import { executeChangeTransition } from '../../graphql/resolvers/change/changeMutations.js'
 import { asyncHandler } from '../errorHandler.js'
 import { apiCtx, apiKeyOf, optionalString, parsePagination, requiredString } from '../apiContext.js'
+import { customFieldDefs, parseRestCustomFields, restCustomFieldValues, type CustomFieldDef } from '../../lib/ticketCustomFields.js'
 
 const router: ExpressRouter = Router()
 
@@ -37,7 +38,7 @@ function mapUserLite(p: Props | null | undefined) {
   return { id: p['id'], name: p['name'] ?? null, email: p['email'] ?? null }
 }
 
-function mapChange(props: Props, phase: string | null, requester: Props | null, changeOwner: Props | null) {
+function mapChange(props: Props, phase: string | null, requester: Props | null, changeOwner: Props | null, defs: readonly CustomFieldDef[]) {
   return {
     id:                 props['id'],
     code:               props['code'] ?? null,
@@ -52,6 +53,8 @@ function mapChange(props: Props, phase: string | null, requester: Props | null, 
     approvalStatus:     props['approval_status'] ?? null,
     createdAt:          props['created_at'],
     updatedAt:          props['updated_at'],
+    // I campi del cliente (ondata 4), come oggetto {nome: valore}.
+    customFields:       restCustomFieldValues(defs, props),
   }
 }
 
@@ -147,6 +150,7 @@ router.get('/', requirePermission('changes:read'), asyncHandler(async (req: Requ
       RETURN count(c) AS total
     `, params)
 
+    const defs = await customFieldDefs(session, apiKeyOf(req).tenantId, 'change')
     const rows = await runQuery<ChangeRow>(session, `
       MATCH (c:Change {tenant_id: $tenantId})
       WHERE coalesce(c.deleted, false) = false
@@ -160,7 +164,7 @@ router.get('/', requirePermission('changes:read'), asyncHandler(async (req: Requ
     `, params)
 
     res.json({
-      data: rows.map((r) => mapChange(r.props, r.phase, r.requester, r.changeOwner)),
+      data: rows.map((r) => mapChange(r.props, r.phase, r.requester, r.changeOwner, defs)),
       meta: { page, limit, total: Number(countRow?.total ?? 0) },
     })
   })
@@ -175,7 +179,8 @@ router.get('/:id', requirePermission('changes:read'), asyncHandler(async (req: R
     const row = await loadChangeRow(session, id, tenantId)
     if (!row) throw new NotFoundError('Change', id)
     const affectedCIs = await loadAffectedCIs(session, id, tenantId)
-    res.json({ data: { ...mapChange(row.props, row.phase, row.requester, row.changeOwner), affectedCIs } })
+    const defs = await customFieldDefs(session, tenantId, 'change')
+    res.json({ data: { ...mapChange(row.props, row.phase, row.requester, row.changeOwner, defs), affectedCIs } })
   })
 }))
 
@@ -187,6 +192,7 @@ router.post('/', requirePermission('changes:write'), asyncHandler(async (req: Re
   const why         = requiredString(body, 'why')
   const what        = requiredString(body, 'what')
   const changeOwner = requiredString(body, 'changeOwner')
+  const changeType  = requiredString(body, 'changeType')
   const affectedCIIds = body['affectedCIIds']
   if (!Array.isArray(affectedCIIds) || affectedCIIds.length === 0 || affectedCIIds.some((v) => typeof v !== 'string')) {
     throw new ValidationError('affectedCIIds must be a non-empty array of CI ids')
@@ -194,7 +200,7 @@ router.post('/', requirePermission('changes:write'), asyncHandler(async (req: Re
 
   const ctx = apiCtx(req)
   const { id, code } = await createChangeRFC(
-    { title, why, what, changeOwner, affectedCIIds: affectedCIIds as string[] },
+    { title, why, what, changeOwner, changeType, affectedCIIds: affectedCIIds as string[], customFields: parseRestCustomFields(body) },
     { tenantId: ctx.tenantId, userId: ctx.userId },
   )
   await audit(ctx, 'change_created', 'change', id, { code, title, affectedCIIds })
@@ -203,7 +209,8 @@ router.post('/', requirePermission('changes:write'), asyncHandler(async (req: Re
     const row = await loadChangeRow(session, id, ctx.tenantId)
     if (!row) throw new Error(`Change ${id} not readable right after creation`)
     const affectedCIs = await loadAffectedCIs(session, id, ctx.tenantId)
-    res.status(201).json({ data: { ...mapChange(row.props, row.phase, row.requester, row.changeOwner), affectedCIs } })
+    const defs = await customFieldDefs(session, ctx.tenantId, 'change')
+    res.status(201).json({ data: { ...mapChange(row.props, row.phase, row.requester, row.changeOwner, defs), affectedCIs } })
   })
 }))
 
@@ -235,7 +242,8 @@ router.get('/:id/tasks', requirePermission('changes:read'), asyncHandler(async (
       }>(session, `
         MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:${src.rel}]->(t:${src.label})
         WHERE coalesce(c.deleted, false) = false
-        OPTIONAL MATCH (ci {id: t.ci_id, tenant_id: $tenantId})
+        // D-29: l'etichetta ConfigurationItem, altrimenti è una scansione per ogni task.
+        OPTIONAL MATCH (ci:ConfigurationItem {id: t.ci_id, tenant_id: $tenantId})
         OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
         OPTIONAL MATCH (t)-[:${src.byRel}]->(u:User)
         RETURN properties(t) AS props, ci.id AS ciId, coalesce(ci.name, ci.id) AS ciName,
@@ -258,6 +266,38 @@ router.get('/:id/tasks', requirePermission('changes:read'), asyncHandler(async (
         })
       }
     }
+    /**
+     * I COMPITI GENERICI del passo (20 set 2026), quelli che un'azione
+     * `create_task` crea entrando in un passo. L'endpoint promette «tutti i
+     * task della change» e senza questi mentiva: possono BLOCCARE la change
+     * (guardia `all_tasks_complete`) e un'integrazione che chiede perché non
+     * avanza non li vedeva.
+     *
+     * Non hanno un CI — non nascono per CI come i cinque sopra — e portano
+     * il passo che li ha creati, che è la cosa che spiega perché esistono.
+     */
+    const generici = await runQuery<{ props: Props; team: Props | null }>(session, `
+      MATCH (c:Change {id: $id, tenant_id: $tenantId})-[:HAS_TASK]->(t:Task {tenant_id: $tenantId})
+      WHERE coalesce(c.deleted, false) = false
+      OPTIONAL MATCH (t)-[:ASSIGNED_TO_TEAM]->(team:Team)
+      RETURN properties(t) AS props, properties(team) AS team
+      ORDER BY t.code
+    `, { id, tenantId })
+    for (const r of generici) {
+      tasks.push({
+        id:           r.props['id'],
+        code:         (r.props['code'] ?? '') as string,
+        type:         'task',
+        title:        r.props['title'],
+        step:         r.props['step_name'],
+        status:       r.props['state'],
+        ci:           null,
+        assignedTeam: r.team && r.team['id'] ? { id: r.team['id'], name: r.team['name'] ?? null } : null,
+        completedBy:  null,
+        completedAt:  (r.props['completed_at'] ?? null) as string | null,
+      })
+    }
+
     res.json({ data: tasks })
   })
 }))
@@ -281,7 +321,7 @@ router.post('/:id/transition', requirePermission('changes:write'), asyncHandler(
   await withSession(async (session) => {
     const row = await loadChangeRow(session, changeId, ctx.tenantId)
     if (!row) throw new NotFoundError('Change', changeId)
-    res.json({ data: mapChange(row.props, row.phase, row.requester, row.changeOwner) })
+    res.json({ data: mapChange(row.props, row.phase, row.requester, row.changeOwner, await customFieldDefs(session, ctx.tenantId, 'change')) })
   })
 }))
 
@@ -299,15 +339,25 @@ router.get('/:id/status', requirePermission('changes:read'), asyncHandler(async 
     `, { id, tenantId })
     if (!row) throw new NotFoundError('Change', id)
 
-    // deployApproved: the workflow has reached (or passed) the deployment
-    // step. Computed by comparing step_order metadata on the WorkflowStep
-    // nodes — the deployment step is located via its category/name key,
-    // never by hardcoding the step sequence.
+    // deployApproved: the workflow has reached (or passed) the release step.
+    // Computed by comparing step_order metadata on the WorkflowStep nodes —
+    // the release step is the one with purpose `implementation`. It used to be
+    // looked up by category `deployment` (not a category at all) and then by
+    // the NAME `deployment`: a customer who renamed the step got
+    // `deployApproved: false` forever, silently (revisione del 14 set 2026 · F17).
     let deployApproved = false
     if (row.phase) {
       const steps = await getWorkflowSteps(session, tenantId, 'change')
       const currentStep = steps.find((s) => s.name === row.phase)
-      const deployStep  = steps.find((s) => s.category === 'deployment') ?? steps.find((s) => s.name === 'deployment')
+      const deployStep  = steps
+        .filter((s) => s.purpose === 'implementation')
+        .sort((a, b) => (a.stepOrder ?? Number.MAX_SAFE_INTEGER) - (b.stepOrder ?? Number.MAX_SAFE_INTEGER))[0]
+      if (!deployStep) {
+        throw new Error(
+          `Tenant ${tenantId}: no step of the change workflow declares the purpose "implementation", so whether the ` +
+          `deployment is approved cannot be known. Give the purpose to the release step in the workflow designer.`,
+        )
+      }
       if (currentStep?.stepOrder != null && deployStep?.stepOrder != null) {
         deployApproved = Number(currentStep.stepOrder) >= Number(deployStep.stepOrder)
       }

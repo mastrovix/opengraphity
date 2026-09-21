@@ -25,6 +25,35 @@ function firstCellTexts() {
 }
 
 describe('SortableFilterTable — rendering', () => {
+  it('un clic su un controllo dentro la riga NON apre la riga: e del controllo', async () => {
+    // Visto nella pagina SLA Policies: con la riga cliccabile, spegnere una policy
+    // o premere Elimina avrebbe aperto anche la modifica.
+    const onRowClick = vi.fn()
+    const onButton = vi.fn()
+    const cols: ColumnDef<Row>[] = [
+      ...COLUMNS,
+      { key: 'id', label: 'Azioni', render: () => <button type="button" onClick={onButton}>Elimina</button> },
+    ]
+    render(<SortableFilterTable columns={cols} data={ROWS} label="Utenti" onRowClick={onRowClick} />)
+    await userEvent.click(within(bodyRows()[0]!).getByRole('button', { name: 'Elimina' }))
+    expect(onButton).toHaveBeenCalledTimes(1)
+    expect(onRowClick).not.toHaveBeenCalled()
+    await userEvent.click(within(bodyRows()[0]!).getAllByRole('cell')[0]!)
+    expect(onRowClick).toHaveBeenCalledTimes(1)
+  })
+
+  it('nessuna riga ha un bordo sinistro: in border-collapse sposta la tabella e lascia bianco prima della testata', () => {
+    // Il difetto visto nel browser: `border-left: 8px transparent` sulle righe
+    // (per la striscia al passaggio del mouse) faceva riservare alla tabella
+    // 4px a sinistra di OGNI riga, testata compresa, che restavano bianchi.
+    // La striscia ora e un'ombra interna della prima cella (`.sft-row`).
+    render(<SortableFilterTable columns={COLUMNS} data={ROWS} label="Utenti" onRowClick={() => {}} />)
+    for (const r of screen.getAllByRole('row')) {
+      expect(r.style.borderLeft).toBe('')
+    }
+    expect(bodyRows().every((r) => r.classList.contains('sft-row'))).toBe(true)
+  })
+
   it('tabella con aria-label, intestazioni e celle (render personalizzato incluso)', () => {
     render(<SortableFilterTable columns={COLUMNS} data={ROWS} label="Utenti" />)
     expect(screen.getByRole('table', { name: 'Utenti' })).toBeInTheDocument()

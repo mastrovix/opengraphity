@@ -91,6 +91,7 @@ export async function saveDashboardLayout(
            UNWIND $creates AS c
            CREATE (w:DashboardWidget {
              id: randomUUID(),
+             tenant_id: $tenantId,
              dashboard_id: $dashboardId,
              report_template_id: c.reportTemplateId,
              report_section_id: c.reportSectionId,
@@ -167,6 +168,7 @@ export async function addDashboardWidget(
         MATCH (d:DashboardConfig {id: $dashId, tenant_id: $tenantId})
         CREATE (w:DashboardWidget {
           id: randomUUID(),
+          tenant_id: $tenantId,
           dashboard_id: $dashId,
           report_template_id: $reportTemplateId,
           report_section_id: $reportSectionId,

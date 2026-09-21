@@ -18,6 +18,7 @@ import {
 } from '@/graphql/mutations'
 import type { PendingWidget } from './DashboardEditMode'
 import type { CustomWidgetData } from './CustomWidgetCard'
+import { showError } from '@/lib/showError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -88,7 +89,9 @@ function serverWidgetToPending(w: DashboardWidgetServer, idx: number): PendingWi
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useDashboard() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  // V-20: le etichette dei valori nei widget seguono la lingua di chi guarda
+  const language = i18n.resolvedLanguage ?? i18n.language
   const [activeDashboardId, setActiveDashboardId] = useState<string | null>(null)
   const [editMode, setEditMode]                   = useState(false)
   const [pendingWidgets, setPendingWidgets]        = useState<PendingWidget[]>([])
@@ -105,7 +108,7 @@ export function useDashboard() {
 
   const { data: dashData, loading: dashLoading, refetch: refetchDash } =
     useQuery<{ dashboard: DashboardConfig | null }>(GET_DASHBOARD, {
-      variables: { id: activeDashboardId },
+      variables: { id: activeDashboardId, language },
       skip: !activeDashboardId,
     })
 
@@ -174,7 +177,7 @@ export function useDashboard() {
       setCustomWidgets((prev) => prev.filter((w) => w.id !== widgetId))
       toast.success(t('toast.widget.removed'))
     } catch (err: unknown) {
-      toast.error(t('toast.widget.removeFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.widget.removeFailed', { error: errorMessage(err) }))
     }
   }
 
@@ -192,7 +195,7 @@ export function useDashboard() {
         }).sort((a, b) => a.position - b.position),
       )
     } catch (err: unknown) {
-      toast.error(t('toast.widget.reorderFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.widget.reorderFailed', { error: errorMessage(err) }))
     }
   }
 
@@ -216,7 +219,7 @@ export function useDashboard() {
           colSpan:          w.colSpan,
         }))
 
-      const result = await saveLayoutMutation({ variables: { dashboardId: activeDashboardId, widgets: layout } })
+      const result = await saveLayoutMutation({ variables: { dashboardId: activeDashboardId, widgets: layout, language } })
       const saved = result.data?.saveDashboardLayout
       if (!saved) throw new Error(t('toast.dashboard.emptyResponse'))
 
@@ -226,7 +229,7 @@ export function useDashboard() {
     } catch (err: unknown) {
       // Atomic on the server: nothing was applied. Stay in edit mode with the
       // untouched pending layout so a retry does not duplicate anything.
-      toast.error(t('toast.dashboard.saveFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.dashboard.saveFailed', { error: errorMessage(err) }))
     } finally {
       setSaving(false)
     }

@@ -1,4 +1,6 @@
+import { useTranslation } from 'react-i18next'
 import { ReportChartRenderer } from './ReportChartRenderer'
+import { colors, palette } from '@/lib/tokens'
 
 export interface SectionResult {
   sectionId:  string
@@ -7,6 +9,8 @@ export interface SectionResult {
   data:       string
   total:      number | null
   error:      string | null
+  /** La chiave i18n dell'errore, quando è di quelli che l'utente può causare. */
+  errorKey?:  string | null
 }
 
 interface Props {
@@ -14,29 +18,34 @@ interface Props {
   data:        SectionResult | null
   title?:      string
   placeholder?: string
+  /** Il periodo del raggruppamento: lo sa il costruttore, e toglie l'indovinello sulle date. */
+  granularita?: string | null
 }
 
-export function ReportPreview({ loading, data, title, placeholder }: Props) {
+export function ReportPreview({ loading, data, title, placeholder, granularita }: Props) {
+  const { t } = useTranslation()
   return (
     <div style={{
-      border: '1px solid #e5e7eb', borderRadius: 8, padding: 16,
-      background: '#fafafa', minHeight: 220,
+      border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16,
+      background: palette.neutral.surface1, minHeight: 220,
       display: 'flex',
       alignItems:     loading || !data ? 'center' : 'flex-start',
       justifyContent: loading || !data ? 'center' : 'flex-start',
     }}>
       {loading ? (
-        <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Caricamento anteprima...</div>
+        <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('reportBuilder.loadingPreview')}</div>
       ) : data ? (
         <ReportChartRenderer
           chartType={data.chartType}
           data={data.data}
           title={title ?? data.title}
           error={data.error}
+          errorKey={data.errorKey}
+          granularita={granularita}
         />
       ) : (
         <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)', textAlign: 'center' }}>
-          {placeholder ?? "Configura il grafico per vedere l'anteprima"}
+          {placeholder ?? t('reportChart.configureToPreview')}
         </div>
       )}
     </div>

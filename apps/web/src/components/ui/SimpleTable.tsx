@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { palette } from '@/lib/tokens'
 
 export interface SimpleColumn<T> {
   key:     keyof T & string
@@ -20,11 +21,17 @@ export function SimpleTable<T extends { id: string }>({ columns, rows, onRowClic
 }) {
   if (rows.length === 0) return <>{empty ?? null}</>
   return (
+    /*
+      Dentro un contenitore che scorre (`og-scroll-x`, index.css): questa
+      tabella vive nelle pagine di dettaglio, dentro una colonna che su schermo
+      stretto si restringe. Senza, spingeva la pagina di lato.
+    */
+    <div className="og-scroll-x">
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-body)' }}>
       <thead>
-        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+        <tr>
           {columns.map((c) => (
-            <th key={c.key} style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 600, color: 'var(--color-slate)', fontSize: 'var(--font-size-body)', textTransform: 'uppercase', letterSpacing: '0.04em', width: c.width }}>
+            <th key={c.key} style={{ textAlign: 'left', padding: '6px 8px', width: c.width }}>
               {c.label}
             </th>
           ))}
@@ -39,7 +46,7 @@ export function SimpleTable<T extends { id: string }>({ columns, rows, onRowClic
             tabIndex={onRowClick ? 0 : undefined}
             onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row) } } : undefined}
             className={onRowClick ? 'hover-bg' : undefined}
-            style={{ cursor: onRowClick ? 'pointer' : undefined, borderBottom: '1px solid #f3f4f6' }}
+            style={{ cursor: onRowClick ? 'pointer' : undefined, borderBottom: `1px solid ${palette.neutral.borderLight}` }}
           >
             {columns.map((c) => (
               <td key={c.key} style={{ padding: '8px 8px', color: 'var(--color-slate-dark)' }}>
@@ -50,5 +57,6 @@ export function SimpleTable<T extends { id: string }>({ columns, rows, onRowClic
         ))}
       </tbody>
     </table>
+    </div>
   )
 }

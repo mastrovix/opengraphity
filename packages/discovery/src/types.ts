@@ -20,7 +20,20 @@ export interface DiscoveredCI {
 
 // ── Mapping rules ─────────────────────────────────────────────────────────────
 
+/**
+ * Una regola di mappatura della sorgente. Due generi:
+ *
+ *  - `property` (default, e l'unico che esisteva): `source_field` è un TAG
+ *    dell'elemento scoperto, `target_field` la proprietà del CI su cui
+ *    scriverlo, con una trasformazione facoltativa.
+ *  - `ci_type` (ondata 6 · A-11): un **alias di tipo**. `source_field` è il
+ *    valore che il connettore mette in `ci_type` (`load_balancer`,
+ *    `Bilanciatore`, `ELB`), `target_field` il NOME di un tipo CI esistente
+ *    del cliente. Senza alias un tipo che non esiste non crea più
+ *    un'etichetta inventata: crea un conflitto `unknown_ci_type`.
+ */
 export interface MappingRule {
+  kind?:        'property' | 'ci_type'
   source_field: string
   target_field: string
   transform?:   'lowercase' | 'uppercase' | 'trim' | 'none'

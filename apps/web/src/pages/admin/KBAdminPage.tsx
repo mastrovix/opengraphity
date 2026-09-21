@@ -5,6 +5,7 @@ import { PageContainer } from '@/components/PageContainer'
 import { SortableFilterTable, type ColumnDef } from '@/components/SortableFilterTable'
 import { FilterBuilder, type FilterGroup, type FieldConfig } from '@/components/FilterBuilder'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   BookOpen, Plus, Pencil, Trash2,
   CheckCircle, Archive, Clock, Send,
@@ -17,6 +18,12 @@ import { Pagination } from '@/components/ui/Pagination'
 import { inputS } from '@/components/ui/styles'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { styleForCategory } from '@/lib/workflowStepStyle'
+import { colors } from '@/lib/tokens'
+import { formatDate, formatDateTime } from '@/lib/datetime'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { Link, useSearchParams } from 'react-router-dom'
+import { transitionErrorText, type TransitionFailure } from '@/lib/transitionError'
+import { showError } from '@/lib/showError'
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 
@@ -57,12 +64,11 @@ const DELETE_ARTICLE = gql`
 const EXECUTE_TRANSITION = gql`
   mutation KBTransition($instanceId: ID!, $toStep: String!, $notes: String) {
     executeWorkflowTransition(instanceId: $instanceId, toStep: $toStep, notes: $notes) {
-      success error
+      success error errorKey errorParams { name value }
     }
   }
 `
 
-const GET_KB_CATEGORIES = gql`query KBAdminCategories { kbCategories { name } }`
 
 const GET_KB_VERSIONS = gql`
   query KBArticleVersions($articleId: ID!) {
@@ -92,45 +98,47 @@ function VersionHistory({ articleId, onRestored }: { articleId: string; onRestor
   })
   const [restore, { loading: restoring }] = useMutation<{ restoreKBArticleVersion: RestoredArticle }>(RESTORE_KB_VERSION, {
     onCompleted: (d) => { toast.success(t('toast.kb.versionRestored')); void refetch(); onRestored(d.restoreKBArticleVersion) },
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
   const versions = data?.kbArticleVersions ?? []
 
-  if (loading && !data) return <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>Caricamento cronologia…</p>
-  if (versions.length === 0) return <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>Nessuna versione precedente. Le modifiche future creeranno lo storico.</p>
+  if (loading && !data) return <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>{t('pages.kbAdmin.loadingHistory')}</p>
+  if (versions.length === 0) return <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '12px 0 0' }}>{t('pages.kbAdmin.noVersions')}</p>
 
   return (
-    <div style={{ marginTop: 8, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ marginTop: 8, border: `1px solid ${colors.border}`, overflow: 'hidden' }}>
+      <div className="og-scroll-x">
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-size-table)' }}>
         <thead>
-          <tr style={{ background: '#fff', textAlign: 'left', color: 'var(--color-slate-light)' }}>
-            <th style={{ padding: '7px 12px', fontWeight: 600 }}>Ver.</th>
-            <th style={{ padding: '7px 12px', fontWeight: 600 }}>Titolo</th>
-            <th style={{ padding: '7px 12px', fontWeight: 600 }}>Modificato da</th>
-            <th style={{ padding: '7px 12px', fontWeight: 600 }}>Data</th>
-            <th style={{ padding: '7px 12px', fontWeight: 600, textAlign: 'right' }}></th>
+          <tr style={{ textAlign: 'left' }}>
+            <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.colVersion')}</th>
+            <th style={{ padding: '7px 12px' }}>{t('common.title')}</th>
+            <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.editedBy')}</th>
+            <th style={{ padding: '7px 12px' }}>{t('pages.kbAdmin.date')}</th>
+            <th style={{ padding: '7px 12px', textAlign: 'right' }}></th>
           </tr>
         </thead>
         <tbody>
           {versions.map((v) => (
-            <tr key={v.version} style={{ borderTop: '1px solid #e2e8f0', background: '#fff' }}>
+            <tr key={v.version} style={{ borderTop: `1px solid ${colors.border}`, background: colors.white }}>
               <td style={{ padding: '7px 12px', color: 'var(--color-slate)' }}>v{v.version}</td>
               <td style={{ padding: '7px 12px', color: 'var(--color-slate-dark)' }}>{v.title}</td>
               <td style={{ padding: '7px 12px', color: 'var(--color-slate)' }}>{v.editedByName ?? '—'}</td>
-              <td style={{ padding: '7px 12px', color: 'var(--color-slate-light)' }}>{new Date(v.editedAt).toLocaleString('it-IT')}</td>
+              <td style={{ padding: '7px 12px', color: 'var(--color-slate-light)' }}>{formatDateTime(v.editedAt)}</td>
               <td style={{ padding: '7px 12px', textAlign: 'right' }}>
                 <button type="button"
                   disabled={restoring}
                   onClick={() => restore({ variables: { articleId, version: v.version } })}
-                  style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: 'var(--color-brand)', cursor: restoring ? 'default' : 'pointer', fontSize: 'var(--font-size-table)', fontWeight: 600, opacity: restoring ? 0.6 : 1 }}
+                  style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, color: 'var(--color-brand)', cursor: restoring ? 'default' : 'pointer', fontSize: 'var(--font-size-table)', fontWeight: 600, opacity: restoring ? 0.6 : 1 }}
                 >
-                  Ripristina
+                  {t('pages.kbAdmin.restore')}
                 </button>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
     </div>
   )
 }
@@ -157,28 +165,28 @@ interface KBListFilter { status?: string; category?: string; search?: string }
  * the same field twice) throws — the UI shows the reason instead of a filter
  * badge that silently changes nothing.
  */
-function kbFilterFromGroup(group: FilterGroup | null): KBListFilter {
+function kbFilterFromGroup(group: FilterGroup | null, t: TFunction): KBListFilter {
   const out: KBListFilter = {}
   if (!group) return out
   group.rules.forEach((rule, i) => {
     const isLast = i === group.rules.length - 1
-    if (!isLast && rule.logic !== 'AND') throw new Error('La ricerca articoli supporta solo condizioni in AND')
+    if (!isLast && rule.logic !== 'AND') throw new Error(t('pages.kbAdmin.filter.onlyAnd'))
     const value = typeof rule.value === 'string' ? rule.value.trim() : ''
-    if (!value) throw new Error(`Valore mancante per il filtro "${rule.field}"`)
+    if (!value) throw new Error(t('pages.kbAdmin.filter.missingValue', { field: rule.field }))
     switch (rule.field) {
       case 'status':
       case 'category':
-        if (rule.operator !== 'equals') throw new Error(`Il filtro "${rule.field}" supporta solo "uguale a"`)
-        if (out[rule.field]) throw new Error(`Il filtro "${rule.field}" può comparire una sola volta`)
+        if (rule.operator !== 'equals') throw new Error(t('pages.kbAdmin.filter.onlyEquals', { field: rule.field }))
+        if (out[rule.field]) throw new Error(t('pages.kbAdmin.filter.onlyOnce', { field: rule.field }))
         out[rule.field] = value
         break
       case 'title':
-        if (rule.operator !== 'contains') throw new Error('Il filtro "Titolo" supporta solo "contiene"')
-        if (out.search) throw new Error('Il filtro "Titolo" può comparire una sola volta')
+        if (rule.operator !== 'contains') throw new Error(t('pages.kbAdmin.filter.titleOnlyContains'))
+        if (out.search) throw new Error(t('pages.kbAdmin.filter.onlyOnce', { field: t('common.title') }))
         out.search = value
         break
       default:
-        throw new Error(`Filtro non supportato dalla ricerca articoli: ${rule.field}`)
+        throw new Error(t('pages.kbAdmin.filter.unsupported', { field: rule.field }))
     }
   })
   return out
@@ -186,8 +194,8 @@ function kbFilterFromGroup(group: FilterGroup | null): KBListFilter {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-// KB categories loaded dynamically via kbCategories query inside component
-const EMPTY_FORM: ArticleForm = { title: '', body: '', category: 'how-to', tags: '' }
+// Nessuna categoria preselezionata: la sceglie chi scrive, dal vocabolario.
+const EMPTY_FORM: ArticleForm = { title: '', body: '', category: '', tags: '' }
 const PAGE_SIZE = 20
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -216,15 +224,24 @@ function StatusBadge({ status, label, category }: {
 
 export function KBAdminPage() {
   const { t } = useTranslation()
-  const { data: catData } = useQuery<{ kbCategories: { name: string }[] }>(GET_KB_CATEGORIES, { fetchPolicy: 'cache-first' })
-  const CATEGORIES = (catData?.kbCategories ?? []).map(c => c.name)
-  const { steps: kbSteps, byName: kbStepByName, initialStep: kbInitialStep } = useWorkflowSteps('kb_article')
+  // Le categorie sono il vocabolario «kb_category» del Dizionario (revisione
+  // del 14 set 2026 · F5). Nel giro del 14 settembre la tendina era stata
+  // agganciata al vocabolario `category` degli incident, perché `kbCategories`
+  // contava solo le categorie già pubblicate: la fonte era sbagliata, e le
+  // categorie KB avevano tre fonti diverse. Ora ne hanno una, la stessa della
+  // lista pubblica e del portale.
+  const { entriesOf, labelOf } = useDomainVocabularies()
+  const CATEGORY_ENTRIES = entriesOf('kb_category') ?? []
+  const { steps: kbSteps, byName: kbStepByName, initialStep: kbInitialStep, reachableFrom: kbReachableFrom } = useWorkflowSteps('kb_article')
+  // G-9: dove si può andare dal passo iniziale, secondo gli archi del workflow.
+  const kbReachableFromInitial = kbReachableFrom(kbInitialStep?.name).filter((st) => !st.isTerminal)
 
   // List state
   const [page,    setPage]    = useState(0)
 
-  // Form state
-  const [showForm,     setShowForm]     = useState(false)
+  // Form state — `?new=1` (dal pulsante della Knowledge Base) apre subito il modulo.
+  const [searchParams] = useSearchParams()
+  const [showForm,     setShowForm]     = useState(() => searchParams.get('new') === '1')
   const [editId,       setEditId]       = useState<string | null>(null)
   const [editArticle,  setEditArticle]  = useState<KBArticle | null>(null)
   const [form,         setForm]         = useState<ArticleForm>(EMPTY_FORM)
@@ -238,18 +255,18 @@ export function KBAdminPage() {
   // title "contains") — see kbFilterFromGroup.
   const [listFilter, setListFilter] = useState<KBListFilter>({})
   const KB_FILTER_FIELDS: FieldConfig[] = [
-    { key: 'status', label: 'Stato', type: 'enum',
+    { key: 'status', label: t('common.status'), type: 'enum',
       options: kbSteps.map((s) => ({ value: s.name, label: s.label || s.name })) },
-    { key: 'category', label: 'Categoria', type: 'enum',
-      options: CATEGORIES.map((c) => ({ value: c, label: c })) },
-    { key: 'title', label: 'Titolo', type: 'text' },
+    { key: 'category', label: t('pages.kb.category'), type: 'enum',
+      options: CATEGORY_ENTRIES.map((c) => ({ value: c.value, label: c.label ?? c.value })) },
+    { key: 'title', label: t('common.title'), type: 'text' },
   ]
   function applyListFilter(group: FilterGroup | null) {
     try {
-      setListFilter(kbFilterFromGroup(group))
+      setListFilter(kbFilterFromGroup(group, t))
       setPage(0)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     }
   }
   const { data, loading, refetch } = useQuery<{ kbArticles: { items: KBArticle[]; total: number } }>(
@@ -274,22 +291,28 @@ export function KBAdminPage() {
       // defined by the workflow, not by this page.
       if (publishingRef.current && d.createKBArticle.workflowInstanceId) {
         publishingRef.current = false
-        const forwardFromInitial = kbSteps
-          .filter((s) => !s.isInitial && !s.isTerminal)
-          .map((s) => s.name)[0]
+        // La destinazione la decide il WORKFLOW: il primo passo RAGGIUNGIBILE
+        // dal passo iniziale che non sia terminale (revisione totale · G-9 —
+        // prima si prendeva il primo passo non iniziale e non terminale
+        // nell'ORDINE della definizione, quindi un `rejected` inserito prima
+        // di `review` riceveva l'articolo, o la transizione veniva rifiutata).
+        const forwardFromInitial = kbReachableFromInitial[0]?.name
         if (forwardFromInitial) {
           void execTransition({
             variables: { instanceId: d.createKBArticle.workflowInstanceId, toStep: forwardFromInitial },
           }).then((res) => {
-            if (res.data?.executeWorkflowTransition.success) {
+            const r = res.data?.executeWorkflowTransition
+            if (r?.success) {
               toast.success(t('toast.kb.sentForReview'))
               void refetch()
+            } else if (r) {
+              toast.error(transitionErrorText(r, t('toast.kb.sendForReviewFailed')))
             }
           })
         }
       }
     },
-    onError: (e: { message: string }) => { publishingRef.current = false; toast.error(e.message) },
+    onError: (e: { message: string }) => { publishingRef.current = false; showError(e) },
   })
 
   const [updateArticle, { loading: updating }] = useMutation<{ updateKBArticle: KBArticle }>(UPDATE_ARTICLE, {
@@ -299,15 +322,17 @@ export function KBAdminPage() {
         // initial step (workflow decides which step that leads to).
         publishingRef.current = false
         const wi = d.updateKBArticle.workflowInstanceId ?? editArticle?.workflowInstanceId
-        const forwardFromInitial = kbSteps
-          .filter((s) => !s.isInitial && !s.isTerminal)
-          .map((s) => s.name)[0]
+        // G-9: vedi sopra, la destinazione viene dagli archi del workflow.
+        const forwardFromInitial = kbReachableFromInitial[0]?.name
         if (wi && forwardFromInitial) {
           void execTransition({ variables: { instanceId: wi, toStep: forwardFromInitial } }).then((res) => {
-            if (res.data?.executeWorkflowTransition.success) {
+            const r = res.data?.executeWorkflowTransition
+            if (r?.success) {
               toast.success(t('toast.kb.sentForReview'))
               closeForm()
               void refetch()
+            } else if (r) {
+              toast.error(transitionErrorText(r, t('toast.kb.sendForReviewFailed')))
             }
           })
         } else {
@@ -319,16 +344,16 @@ export function KBAdminPage() {
         void refetch()
       }
     },
-    onError: (e: { message: string }) => { publishingRef.current = false; toast.error(e.message) },
+    onError: (e: { message: string }) => { publishingRef.current = false; showError(e) },
   })
 
   const [deleteArticle] = useMutation(DELETE_ARTICLE, {
     onCompleted: () => { toast.success(t('pages.kbAdmin.deleted')); setDeleteId(null); void refetch() },
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
 
-  const [execTransition, { loading: transitioning }] = useMutation<{ executeWorkflowTransition: { success: boolean; error: string | null } }>(EXECUTE_TRANSITION, {
-    onError: (e: { message: string }) => toast.error(e.message),
+  const [execTransition, { loading: transitioning }] = useMutation<{ executeWorkflowTransition: TransitionFailure & { success: boolean } }>(EXECUTE_TRANSITION, {
+    onError: (e: { message: string }) => showError(e),
   })
 
   // ── Helpers ──
@@ -347,6 +372,7 @@ export function KBAdminPage() {
   function handleSave() {
     const tags = form.tags.split(',').map((s) => s.trim()).filter(Boolean)
     if (!form.title.trim() || !form.body.trim()) { toast.error(t('toast.kb.titleBodyRequired')); return }
+    if (!form.category) { toast.error(t('toast.kb.categoryRequired')); return }
     publishingRef.current = false
     if (editId) {
       void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags } })
@@ -359,6 +385,7 @@ export function KBAdminPage() {
     if (!editId) return  // only available when editing an existing draft
     const tags = form.tags.split(',').map((s) => s.trim()).filter(Boolean)
     if (!form.title.trim() || !form.body.trim()) { toast.error(t('toast.kb.titleBodyRequiredPublish')); return }
+    if (!form.category) { toast.error(t('toast.kb.categoryRequired')); return }
     publishingRef.current = true
     void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags } })
   }
@@ -371,25 +398,27 @@ export function KBAdminPage() {
   // No `sortable`: the API orders by updated_at DESC and paginates server-side,
   // a client-side sort would only reorder the current page.
   const articleColumns: ColumnDef<KBArticle>[] = [
-    { key: 'title', label: 'Titolo', render: (v) => (
-      <div style={{ fontWeight: 500, color: '#1a2332', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v)}</div>
+    { key: 'title', label: t('common.title'), render: (v) => (
+      <div style={{ fontWeight: 500, color: colors.slateDark, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(v)}</div>
     ) },
-    { key: 'category', label: 'Categoria', render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
-    { key: 'status', label: 'Status', render: (v) => {
+    { key: 'category', label: t('pages.kb.category'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{labelOf('kb_category', String(v)) ?? String(v)}</span> },
+    // Intestazioni TRADOTTE (revisione totale · i 29 warning): «Status» e
+    // «Views» erano stringhe inglesi in mezzo a colonne che passano da i18n.
+    { key: 'status', label: t('pages.kbAdmin.colStatus'), render: (v) => {
       const status = String(v)
       const meta = kbStepByName.get(status)
       return <StatusBadge status={status} label={meta?.label} category={meta?.category ?? null} />
     } },
-    { key: 'authorName', label: 'Autore', render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
-    { key: 'views', label: 'Views', render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
-    { key: 'updatedAt', label: 'Aggiornato', render: (v) => <span style={{ color: 'var(--color-slate-light)' }}>{new Date(String(v)).toLocaleDateString()}</span> },
-    { key: 'id', label: 'Azioni', render: (_v, row) => (
+    { key: 'authorName', label: t('pages.kbAdmin.colAuthor'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
+    { key: 'views', label: t('pages.kbAdmin.colViews'), render: (v) => <span style={{ color: 'var(--color-slate)' }}>{String(v)}</span> },
+    { key: 'updatedAt', label: t('pages.kbAdmin.colUpdated'), render: (v) => <span style={{ color: 'var(--color-slate-light)' }}>{formatDate(String(v))}</span> },
+    { key: 'id', label: t('common.actions'), render: (_v, row) => (
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <button type="button" onClick={() => startEdit(row)} style={{ color: 'var(--color-brand)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.edit')}><Pencil size={14} /></button>
         {deleteId === row.id ? (
           <div style={{ display: 'flex', gap: 4 }}>
-            <button type="button" onClick={() => void deleteArticle({ variables: { id: row.id } })} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: 'none', background: 'var(--color-danger)', color: '#fff', cursor: 'pointer' }}>{t('common.confirm')}</button>
-            <button type="button" onClick={() => setDeleteId(null)} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer' }}>{t('common.cancel')}</button>
+            <button type="button" onClick={() => void deleteArticle({ variables: { id: row.id } })} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: 'none', background: 'var(--color-danger)', color: colors.white, cursor: 'pointer' }}>{t('common.confirm')}</button>
+            <button type="button" onClick={() => setDeleteId(null)} style={{ padding: '2px 6px', fontSize: 'var(--font-size-table)', borderRadius: 4, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer' }}>{t('common.cancel')}</button>
           </div>
         ) : (
           <button type="button" onClick={() => setDeleteId(row.id)} style={{ color: 'var(--color-slate-light)', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }} title={t('common.delete')}><Trash2 size={14} /></button>
@@ -411,12 +440,12 @@ export function KBAdminPage() {
             {t('pages.kbAdmin.title')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : total === 1 ? '1 articolo' : `${total} articoli`}
+            {loading ? '—' : t('pages.kbAdmin.articleCount', { count: total })}
           </p>
         </div>
         <button type="button"
           onClick={() => { closeForm(); setShowForm(true) }}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', backgroundColor: 'var(--color-brand)', color: colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: 'pointer', transition: 'background-color 150ms' }}
         >
           <Plus size={14} /> {t('pages.kbAdmin.new')}
         </button>
@@ -424,10 +453,10 @@ export function KBAdminPage() {
 
       {/* ── Article form ── */}
       {showForm && (
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 20, marginBottom: 20, background: 'var(--color-slate-bg)' }}>
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: 10, padding: 20, marginBottom: 20, background: 'var(--color-slate-bg)' }}>
           {/* Form header: title + status badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-            <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332' }}>
+            <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark }}>
               {editId ? t('pages.kbAdmin.editArticle') : t('pages.kbAdmin.newArticle')}
             </h3>
             {editArticle && (() => {
@@ -437,33 +466,38 @@ export function KBAdminPage() {
           </div>
 
           {/* Fields */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div className="og-pair" style={{ marginBottom: 12 }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <label htmlFor={ids.title} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('common.title')} *</label>
-              <input id={ids.title} value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} style={inputStyle} placeholder="Titolo articolo" />
+              <input id={ids.title} value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} style={inputStyle} placeholder={t('pages.kbAdmin.titlePlaceholder')} />
             </div>
             <div>
-              <label htmlFor={ids.category} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Categoria *</label>
+              <label htmlFor={ids.category} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.kbAdmin.categoryRequired')}</label>
               <select id={ids.category} value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} style={inputStyle}>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                <option value="" disabled>{t('pages.kbAdmin.chooseCategory')}</option>
+                {CATEGORY_ENTRIES.map((c) => <option key={c.value} value={c.value}>{c.label ?? c.value}</option>)}
+                {/* Una categoria che il vocabolario non ha più resta visibile, invece di sparire dal campo. */}
+                {form.category && !CATEGORY_ENTRIES.some((c) => c.value === form.category) && (
+                  <option value={form.category}>{labelOf('kb_category', form.category) ?? form.category}</option>
+                )}
               </select>
             </div>
             <div>
-              <label htmlFor={ids.tags} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Tag (separati da virgola)</label>
-              <input id={ids.tags} value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} style={inputStyle} placeholder="vpn, windows, accesso" />
+              <label htmlFor={ids.tags} style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.kbAdmin.tags')}</label>
+              <input id={ids.tags} value={form.tags} onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value }))} style={inputStyle} placeholder={t('pages.kbAdmin.tagsPlaceholder')} />
             </div>
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>Contenuto *</div>
+            <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', display: 'block', marginBottom: 4 }}>{t('pages.kbAdmin.contentRequired')}</div>
             <RichTextEditor
               key={editId ?? 'new'}
               value={form.body}
               onChange={(md) => setForm((f) => ({ ...f, body: md }))}
-              placeholder="Scrivi il contenuto dell'articolo..."
+              placeholder={t('pages.kbAdmin.bodyPlaceholder')}
               minHeight="320px"
             />
-            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{form.body.length} / 50000 caratteri</div>
+            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('pages.kbAdmin.charCount', { used: form.body.length, max: 50000 })}</div>
           </div>
 
           {/* ── Action buttons ── */}
@@ -472,20 +506,27 @@ export function KBAdminPage() {
             <button type="button"
               onClick={handleSave}
               disabled={isBusy}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: colors.white, cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
             >
               {creating || updating ? t('common.loading') : t('common.save')}
             </button>
+
+            {/* In revisione: la pubblicazione si approva nella pagina Approvazioni. Prima qui non c'era nessuna indicazione. */}
+            {editId && editArticle && editArticle.status !== kbInitialStep?.name && kbStepByName.get(editArticle.status)?.category !== 'published' && (
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+                {t('pages.kbAdmin.awaitingApproval')} <Link to="/approvals" style={{ color: 'var(--color-brand)' }}>{t('pages.kbAdmin.openApprovals')}</Link>
+              </span>
+            )}
 
             {/* Publish — only when editing an existing draft */}
             {editId && editArticle?.status === kbInitialStep?.name && (
               <button type="button"
                 onClick={handlePublish}
                 disabled={isBusy}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: '#fff', cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 6, border: 'none', backgroundColor: 'var(--color-brand)', color: colors.white, cursor: isBusy ? 'not-allowed' : 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, opacity: isBusy ? 0.7 : 1, transition: 'background-color 150ms' }}
               >
                 <Send size={14} />
-                Invia per revisione
+                {t('pages.kbAdmin.submitForReview')}
               </button>
             )}
 
@@ -493,7 +534,7 @@ export function KBAdminPage() {
 
             <button type="button"
               onClick={closeForm}
-              style={{ display: 'inline-flex', alignItems: 'center', padding: '8px 16px', borderRadius: 6, border: '1px solid #e2e8f0', background: '#fff', color: 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}
+              style={{ display: 'inline-flex', alignItems: 'center', padding: '8px 16px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, color: 'var(--color-slate)', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500 }}
             >
               {t('common.cancel')}
             </button>
@@ -502,15 +543,15 @@ export function KBAdminPage() {
           {/* Info note — only when editing an existing draft */}
           {editId && editArticle?.status === kbInitialStep?.name && (
             <p style={{ margin: '10px 0 0', fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
-              "Salva" aggiorna il contenuto senza cambiare stato. "Invia per revisione" salva e avvia il processo di approvazione.
+              {t('pages.kbAdmin.saveVsSubmitHint')}
             </p>
           )}
 
           {/* Version history — only when editing an existing article */}
           {editId && (
-            <div style={{ marginTop: 20, borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
-              <h4 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: '#1a2332', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Clock size={14} /> Cronologia versioni
+            <div style={{ marginTop: 20, borderTop: `1px solid ${colors.border}`, paddingTop: 16 }}>
+              <h4 style={{ margin: '0 0 4px', fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Clock size={14} /> {t('pages.kbAdmin.versions')}
               </h4>
               <VersionHistory
                 articleId={editId}
@@ -529,7 +570,7 @@ export function KBAdminPage() {
         data={articles}
         loading={loading}
         emptyComponent={<EmptyState icon={<BookOpen size={32} color="var(--color-slate-light)" />} title={t('pages.kbAdmin.noArticles')} />}
-        label="KB Articles"
+        label={t('pages.kbAdmin.articles')}
       />
 
       {/* ── Pagination ── */}

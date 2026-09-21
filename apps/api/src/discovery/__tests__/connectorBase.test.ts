@@ -71,7 +71,7 @@ describe('resourceTypeSet', () => {
     expect([...resourceTypeSet('aws', 'rds, ec2', ALL)]).toEqual(['rds', 'ec2'])
   })
   it('fails loudly on unknown types (no silent empty scan)', () => {
-    expect(() => resourceTypeSet('aws', 'ec3', ALL)).toThrow(/\[aws\] config failed: resource_types sconosciuti: ec3 \(ammessi: ec2, rds\)/)
+    expect(() => resourceTypeSet('aws', 'ec3', ALL)).toThrow(/\[aws\] config failed: unknown resource_types: ec3 \(allowed: ec2, rds\)/)
   })
   it('resourceTypesField documents the allowed values', () => {
     expect(resourceTypesField(ALL)).toMatchObject({ name: 'resource_types', default_value: 'ec2, rds', required: false })
@@ -85,11 +85,11 @@ describe('requireCreds / requireConfigString', () => {
   })
   it('lists every missing credential', () => {
     expect(() => requireCreds('aws', { a: 'x', b: ' ' }, ['a', 'b', 'c']))
-      .toThrow('[aws] credentials failed: credenziali mancanti: b, c')
+      .toThrow('[aws] credentials failed: missing credentials: b, c')
   })
   it('requires a non-empty config string', () => {
     expect(requireConfigString('azure', { subscription_id: ' sub ' }, 'subscription_id')).toBe('sub')
-    expect(() => requireConfigString('azure', {}, 'subscription_id')).toThrow(/obbligatorio mancante: subscription_id/)
+    expect(() => requireConfigString('azure', {}, 'subscription_id')).toThrow(/field missing: subscription_id/)
     expect(() => requireConfigString('azure', { subscription_id: 3 }, 'subscription_id')).toThrow(ConnectorError)
   })
 })
@@ -132,7 +132,7 @@ describe('paginate', () => {
 
   it('detects a repeated token instead of looping forever', async () => {
     await expect(collect(paginate(async () => ({ next: 'same' }), p => p.next)))
-      .rejects.toThrow(/loop di paginazione/)
+      .rejects.toThrow(/pagination loop/)
   })
 })
 

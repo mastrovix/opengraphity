@@ -16,15 +16,40 @@ vi.mock('../../lib/logger.js', () => {
 })
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn() }))
+// Le etichette dei CI vengono dal metamodello del tenant (M-18: il webhook
+// risolve il CI impattato per id o per nome, come il comando Slack).
+vi.mock('../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Server OR ${alias}:Application)`),
+}))
 vi.mock('../../services/problemService.js', () => ({ createProblem: vi.fn() }))
 vi.mock('@opengraphity/scripting', () => ({ runScript: vi.fn() }))
+// D-12: lo script di trasformazione è del cliente e passa dal limite di piano
+// (`Tenant.scripting_enabled`). Qui la lettura del tenant è simulata: il suo
+// contratto è pinnato da lib/__tests__/scriptingPlan.test.ts.
+const assertScriptingEnabled = vi.fn<(tenantId: string, what: string, whatKey?: string) => Promise<void>>(async () => {})
+vi.mock('../../lib/scriptingPlan.js', () => ({ assertScriptingEnabled: (t: string, w: string, k?: string) => assertScriptingEnabled(t, w, k) }))
+// Redis in memoria: lo script Lua INCR+EXPIRE conta per chiave; il suffisso
+// `:<minuto>` viene ignorato così un test a cavallo di due minuti non si azzera.
+const rateCounts = new Map<string, number>()
+const redis = {
+  eval: vi.fn(async (_lua: string, _n: number, key: string) => {
+    const k = key.replace(/:\d+$/, '')
+    const c = (rateCounts.get(k) ?? 0) + 1
+    rateCounts.set(k, c)
+    return c
+  }),
+}
+vi.mock('../../lib/bullmq.js', () => ({ getSharedRedis: () => redis }))
 
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { createIncident } = await import('../../services/incidentService.js')
 const { createProblem } = await import('../../services/problemService.js')
 const { runScript } = await import('@opengraphity/scripting')
 const { logger } = await import('../../lib/logger.js')
-const { webhookInboundRouter } = await import('../webhooks-inbound.js')
+const { webhookRateLimitedTotal } = await import('../../middleware/metrics.js')
+const { webhookInboundRouter, transformScriptSemaphore, TRANSFORM_SCRIPT_MAX_CONCURRENCY, TRANSFORM_SCRIPT_MAX_WAIT_MS, TRANSFORM_SCRIPT_RETRY_AFTER_SECONDS, WEBHOOK_BODY_LIMIT } = await import('../webhooks-inbound.js')
+const { SemaphoreTimeoutError } = await import('../../lib/semaphore.js')
+const { ValidationError } = await import('../../lib/errors.js')
 
 const TOKEN = 'wh-secret-token'
 const sha = (s: string) => createHash('sha256').update(s).digest('hex')
@@ -37,7 +62,9 @@ function hook(overrides: HookProps = {}): { props: HookProps } {
       tenant_id:        'tenant-1',
       secret:           sha(TOKEN),
       entity_type:      'incident',
-      field_mapping:    JSON.stringify({ summary: 'title', level: 'severity', body: 'description' }),
+      // Revisione totale · M-18: un incident senza CI impattato non si crea, e
+      // il webhook lo nomina (`affectedCI`, per id o per nome).
+      field_mapping:    JSON.stringify({ summary: 'title', level: 'severity', body: 'description', host: 'affectedCI' }),
       default_values:   JSON.stringify({ severity: 'medium' }),
       transform_script: null,
       ...overrides,
@@ -51,7 +78,8 @@ const session = { close: vi.fn().mockResolvedValue(undefined) }
 
 beforeAll(async () => {
   const app = express()
-  app.use(express.json())
+  // Nessun express.json a livello app: il router monta il proprio parser (2 MB)
+  // sulla route, così gli errori del body-parser finiscono nel suo restErrorHandler (B4).
   app.use('/api', webhookInboundRouter)
   await new Promise<void>((resolve) => { server = app.listen(0, resolve) })
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/webhooks/inbound`
@@ -59,11 +87,19 @@ beforeAll(async () => {
 afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())) })
 beforeEach(() => {
   vi.clearAllMocks()
+  assertScriptingEnabled.mockImplementation(async () => {})
   vi.mocked(getSession).mockReturnValue(session as never)
-  vi.mocked(runQuery).mockResolvedValue([])
+  // Il CI impattato che il webhook nomina (M-18): la risoluzione per id o nome.
+  vi.mocked(runQuery).mockImplementation(async (_s: unknown, cypher: string) =>
+    (typeof cypher === 'string' && cypher.includes('toLower(ci.name)') ? [{ id: 'ci-1', name: 'db-01' }] : []) as never)
   vi.mocked(createIncident).mockResolvedValue({ id: 'inc-new', number: 'INC00000007' } as never)
   vi.mocked(createProblem).mockResolvedValue({ id: 'prb-new' } as never)
 })
+
+/** Valore corrente del contatore 429 per connector (metrica webhook_rate_limited_total). */
+function rateLimited(connector: string): number {
+  return webhookRateLimitedTotal.snapshot().find((s) => s.labels['connector'] === connector)?.value ?? 0
+}
 
 interface PostOpts { token?: string | null; query?: string; body?: unknown; rawBody?: string }
 function post(hookId: string, opts: PostOpts = {}) {
@@ -71,7 +107,7 @@ function post(hookId: string, opts: PostOpts = {}) {
   if (opts.token !== null) headers['authorization'] = `Bearer ${opts.token ?? TOKEN}`
   return fetch(`${base}/${hookId}${opts.query ?? ''}`, {
     method: 'POST', headers,
-    body: opts.rawBody ?? JSON.stringify(opts.body ?? { summary: 'Disk full', level: 'high', body: 'on db-01' }),
+    body: opts.rawBody ?? JSON.stringify(opts.body ?? { summary: 'Disk full', level: 'high', body: 'on db-01', host: 'db-01' }),
   })
 }
 
@@ -128,18 +164,18 @@ describe('happy path', () => {
     expect(res.status).toBe(201)
     expect(await res.json()).toEqual({ id: 'hook-1', entity_type: 'incident', entity_id: 'inc-new' })
     expect(createIncident).toHaveBeenCalledWith(
-      { title: 'Disk full', description: 'on db-01', severity: 'high', category: undefined },
+      { title: 'Disk full', description: 'on db-01', severity: 'high', category: undefined, affectedCIIds: ['ci-1'] },
       { tenantId: 'tenant-1', userId: 'webhook' },
     )
-    expect(runQuery).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(runQuery).mock.calls[0]![1]).toMatch(/SET w\.receive_count/)
-    expect(vi.mocked(runQuery).mock.calls[0]![2]).toMatchObject({ hookId: 'hook-1', tenantId: 'tenant-1' })
+    // Due letture: il CI impattato (M-18) e le statistiche della sorgente.
+    const statsCall = vi.mocked(runQuery).mock.calls.find((c) => String(c[1]).includes('SET w.receive_count'))!
+    expect(statsCall[2]).toMatchObject({ hookId: 'hook-1', tenantId: 'tenant-1' })
     expect(session.close).toHaveBeenCalled()
   })
 
   it('default_values fill only missing fields (severity from defaults when the payload has none)', async () => {
     vi.mocked(runQueryOne).mockResolvedValue(hook())
-    const res = await post('hook-1', { body: { summary: 'No level given' } })
+    const res = await post('hook-1', { body: { summary: 'No level given', host: 'db-01' } })
     expect(res.status).toBe(201)
     expect(createIncident).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'No level given', severity: 'medium' }),
@@ -176,16 +212,119 @@ describe('rate limit is applied AFTER authentication (A-20)', () => {
     expect(createIncident).toHaveBeenCalledTimes(1)
   })
 
-  it('the 101st authenticated request within a minute → 429 and nothing created', async () => {
+  it('the 101st authenticated request within a minute → 429 with Retry-After (default limit 100 when the source has none) and nothing created', async () => {
     vi.mocked(runQueryOne).mockResolvedValue(hook({ id: 'hook-rl-b' }))
     for (let i = 0; i < 100; i++) {
       const res = await post('hook-rl-b')
       expect(res.status).toBe(201)
     }
+    const before = rateLimited('incident')
     const res = await post('hook-rl-b')
     expect(res.status).toBe(429)
-    expect(await err(res)).toMatchObject({ code: 'RATE_LIMITED' })
+    const retryAfter = Number(res.headers.get('retry-after'))
+    expect(retryAfter).toBeGreaterThanOrEqual(1)
+    expect(retryAfter).toBeLessThanOrEqual(60)
+    expect(await res.json()).toEqual({ error: { code: 'RATE_LIMITED', message: 'Max 100 requests/min per webhook', retry_after: retryAfter } })
     expect(createIncident).toHaveBeenCalledTimes(100)
+    expect(rateLimited('incident')).toBe(before + 1)
+  })
+
+  it('il bucket è per (tenant, webhook) su Redis con INCR+EXPIRE atomici: chiave og:webhook:rate:<tenant>:<hook>:<minuto>', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(hook({ id: 'hook-rl-key' }))
+    await post('hook-rl-key')
+    const [lua, nKeys, key, ttl] = redis.eval.mock.calls.at(-1)!
+    expect(lua).toMatch(/INCR.*EXPIRE/s)
+    expect(nKeys).toBe(1)
+    expect(key).toMatch(/^og:webhook:rate:tenant-1:hook-rl-key:\d+$/)
+    expect(ttl).toBe(120)
+  })
+
+  it('limite per sorgente (rate_limit_per_minute = 2): la terza → 429 che cita il limite della sorgente, metrica etichettata col connettore', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(hook({ id: 'hook-rl-c', rate_limit_per_minute: 2, connector_kind: 'zabbix' }))
+    expect((await post('hook-rl-c')).status).toBe(201)
+    expect((await post('hook-rl-c')).status).toBe(201)
+    const before = rateLimited('zabbix')
+    const res = await post('hook-rl-c')
+    expect(res.status).toBe(429)
+    expect((await err(res)).message).toBe('Max 2 requests/min per webhook')
+    expect(rateLimited('zabbix')).toBe(before + 1)
+    expect(createIncident).toHaveBeenCalledTimes(2)
+  })
+
+  it('rate_limit_per_minute corrotto sul webhook → 400 (errore di configurazione, come un field_mapping corrotto)', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(hook({ id: 'hook-rl-bad', rate_limit_per_minute: 0 }))
+    const res = await post('hook-rl-bad')
+    expect(res.status).toBe(400)
+    expect((await err(res)).message).toMatch(/rate_limit_per_minute must be an integer in 1\.\.10000/)
+    expect(createIncident).not.toHaveBeenCalled()
+  })
+
+  it('Redis irraggiungibile → 500 generico, MAI "limite disattivato" (nessuna entità creata)', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(hook({ id: 'hook-rl-d' }))
+    redis.eval.mockRejectedValueOnce(new Error('ECONNREFUSED 127.0.0.1:6379'))
+    const res = await post('hook-rl-d')
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Processing error' } })
+    expect(createIncident).not.toHaveBeenCalled()
+  })
+})
+
+describe('transform script sotto semaforo (B3)', () => {
+  it('costanti: 4 isolate concorrenti, attesa massima 10 s, Retry-After 5 s', () => {
+    expect(TRANSFORM_SCRIPT_MAX_CONCURRENCY).toBe(4)
+    expect(TRANSFORM_SCRIPT_MAX_WAIT_MS).toBe(10_000)
+    expect(TRANSFORM_SCRIPT_RETRY_AFTER_SECONDS).toBe(5)
+    expect(transformScriptSemaphore.limit).toBe(4)
+  })
+
+  it('5 richieste con script insieme: al massimo 4 runScript in volo, la quinta ATTENDE e poi passa (nessuno scartato)', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(hook({ id: 'hook-sem', transform_script: 'return input' }))
+    let inFlight = 0; let maxInFlight = 0
+    const gates: Array<() => void> = []
+    vi.mocked(runScript).mockImplementation(() => new Promise((resolve) => {
+      inFlight++; maxInFlight = Math.max(maxInFlight, inFlight)
+      gates.push(() => { inFlight--; resolve({ success: true, output: { summary: 'ok', level: 'low', host: 'db-01' }, logs: [], executionTimeMs: 1 } as never) })
+    }))
+    const requests = Array.from({ length: 5 }, () => post('hook-sem'))
+    await vi.waitFor(() => expect(runScript).toHaveBeenCalledTimes(4))
+    expect(transformScriptSemaphore.active).toBe(4)
+    expect(transformScriptSemaphore.waiting).toBe(1)
+    gates.shift()!()
+    await vi.waitFor(() => expect(runScript).toHaveBeenCalledTimes(5))
+    while (gates.length) gates.shift()!()
+    const statuses = (await Promise.all(requests)).map((r) => r.status)
+    expect(statuses).toEqual([201, 201, 201, 201, 201])
+    expect(maxInFlight).toBe(4)
+    expect(transformScriptSemaphore.active).toBe(0)
+  })
+
+  it('attesa scaduta → 503 con Retry-After e codice SERVICE_UNAVAILABLE; niente last_error sulla sorgente (non è colpa del payload)', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(hook({ id: 'hook-sem-busy', transform_script: 'return input' }))
+    vi.spyOn(transformScriptSemaphore, 'run').mockRejectedValueOnce(new SemaphoreTimeoutError('webhook-transform-script', TRANSFORM_SCRIPT_MAX_WAIT_MS, TRANSFORM_SCRIPT_RETRY_AFTER_SECONDS))
+    const res = await post('hook-sem-busy')
+    expect(res.status).toBe(503)
+    expect(res.headers.get('retry-after')).toBe('5')
+    expect(await res.json()).toEqual({ error: { code: 'SERVICE_UNAVAILABLE', message: expect.stringMatching(/webhook-transform-script.*busy.*10000 ms/), retry_after: 5 } })
+    expect(createIncident).not.toHaveBeenCalled()
+    expect(runQuery).not.toHaveBeenCalled()
+  })
+})
+
+describe('errori del body-parser gestiti dal router (B4)', () => {
+  it('JSON malformato → 400 JSON { error: { code: BAD_REQUEST } }, nessuna query', async () => {
+    const res = await fetch(`${base}/hook-1`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` }, body: '{not json' })
+    expect(res.status).toBe(400)
+    expect(res.headers.get('content-type')).toMatch(/application\/json/)
+    expect(await res.json()).toMatchObject({ error: { code: 'BAD_REQUEST', message: expect.stringMatching(/JSON|token/i) } })
+    expect(runQueryOne).not.toHaveBeenCalled()
+  })
+
+  it('corpo oltre WEBHOOK_BODY_LIMIT (2 MB) → 413 JSON { error: { code: BAD_REQUEST } }', async () => {
+    expect(WEBHOOK_BODY_LIMIT).toBe('2mb')
+    const res = await fetch(`${base}/hook-1`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` }, body: `{"pad":"${'x'.repeat(2 * 1024 * 1024 + 64)}"}` })
+    expect(res.status).toBe(413)
+    expect(await res.json()).toMatchObject({ error: { code: 'BAD_REQUEST', message: expect.stringMatching(/too large/i) } })
+    expect(runQueryOne).not.toHaveBeenCalled()
   })
 })
 
@@ -203,7 +342,23 @@ describe('fail-loud payload/config handling', () => {
       expect.objectContaining({ tenantId: 'tenant-1', userId: 'webhook' }),
     )
     expect(createIncident).not.toHaveBeenCalled()
-    expect(runQuery).not.toHaveBeenCalled()
+    // nessuna statistica di ricezione: l'unica scrittura è il motivo del rifiuto sul webhook
+    // Una sola scrittura di servizio: l'errore del servizio finisce in last_error
+    // (la lettura del CI impattato non conta, M-18).
+    expect(vi.mocked(runQuery).mock.calls.filter((c) => String(c[1]).includes('w.last_error'))).toHaveLength(1)
+    expect(vi.mocked(runQuery).mock.calls[0]![1]).toMatch(/SET w\.last_error = \$message/)
+    expect(vi.mocked(runQuery).mock.calls[0]![1]).not.toMatch(/receive_count/)
+  })
+
+  it('piano senza script → 400 con il motivo, lo script di trasformazione NON gira e il payload grezzo non passa avanti (D-12)', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(hook({ transform_script: 'return input' }))
+    assertScriptingEnabled.mockRejectedValueOnce(new ValidationError('script di trasformazione del webhook hook-1: il piano "starter" del tenant tenant-1 non include gli script (scripting_enabled = false). Rimuovi lo script dalla configurazione oppure passa a un piano che li include.'))
+    const res = await post('hook-1', { body: { summary: 'Da trasformare' } })
+    expect(res.status).toBe(400)
+    expect((await err(res)).message).toMatch(/non include gli script/)
+    expect(assertScriptingEnabled).toHaveBeenCalledWith('tenant-1', 'transform script of webhook hook-1', 'errors.scripting.what.webhook')
+    expect(runScript).not.toHaveBeenCalled()
+    expect(createIncident).not.toHaveBeenCalled()
   })
 
   it('transform script returning a non-object → 400', async () => {
@@ -217,7 +372,7 @@ describe('fail-loud payload/config handling', () => {
 
   it('transform script output replaces the payload before mapping', async () => {
     vi.mocked(runQueryOne).mockResolvedValue(hook({ transform_script: 'return {...}' }))
-    vi.mocked(runScript).mockResolvedValueOnce({ success: true, output: { summary: 'Transformed', level: 'critical' }, logs: [], executionTimeMs: 1 } as never)
+    vi.mocked(runScript).mockResolvedValueOnce({ success: true, output: { summary: 'Transformed', level: 'critical', host: 'db-01' }, logs: [], executionTimeMs: 1 } as never)
     const res = await post('hook-1', { body: { unrelated: true } })
     expect(res.status).toBe(201)
     expect(createIncident).toHaveBeenCalledWith(expect.objectContaining({ title: 'Transformed', severity: 'critical' }), expect.anything())
@@ -252,6 +407,28 @@ describe('fail-loud payload/config handling', () => {
     expect(createIncident).not.toHaveBeenCalled()
   })
 
+  // Ondata 8 · D-25: un bersaglio fuori elenco veniva costruito e poi SCARTATO
+  // dallo switch di creazione, con risposta 201 e l'id dell'entità. Dall'ondata
+  // 8 il salvataggio lo rifiuta; qui può arrivare solo da una configurazione
+  // più vecchia della regola, e allora è un errore che lascia traccia in
+  // `last_error` sulla sorgente, non un silenzio.
+  it('bersaglio della mappa che il server non scrive → 400 che nomina gli ammessi, nessun incident', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(hook({
+      field_mapping: JSON.stringify({ summary: 'title', level: 'severity', cc: 'costCenter' }),
+    }))
+    const res = await post('hook-1', { body: { summary: 'x', level: 'high', cc: 'IT-42' } })
+    expect(res.status).toBe(400)
+    expect((await err(res)).message).toMatch(/"costCenter".*Allowed targets: title, description, severity, category/s)
+    expect(createIncident).not.toHaveBeenCalled()
+  })
+
+  it('un bersaglio ammesso passa come prima (nessuna regressione sulla via felice)', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(hook())
+    const res = await post('hook-1', { body: { summary: 'x', level: 'high', body: 'b', host: 'db-01' } })
+    expect(res.status).toBe(201)
+    expect(createIncident).toHaveBeenCalled()
+  })
+
   it('unsupported entity_type → 400', async () => {
     vi.mocked(runQueryOne).mockResolvedValue(hook({ entity_type: 'change' }))
     const res = await post('hook-1')
@@ -262,11 +439,16 @@ describe('fail-loud payload/config handling', () => {
 
   it('service ValidationError → 400 with the service message', async () => {
     const { ValidationError } = await import('../../lib/errors.js')
-    vi.mocked(createIncident).mockRejectedValueOnce(new ValidationError('Un incident deve avere almeno un CI impattato'))
+    vi.mocked(createIncident).mockRejectedValueOnce(new ValidationError('An incident must have at least one impacted CI'))
     const res = await post('hook-1')
     expect(res.status).toBe(400)
-    expect((await err(res)).message).toMatch(/CI impattato/)
-    expect(runQuery).not.toHaveBeenCalled()
+    expect((await err(res)).message).toMatch(/impacted CI/)
+    // Nessuna statistica di ricezione: l'unica SCRITTURA è il motivo del
+    // rifiuto sul webhook (la lettura del CI impattato non conta, M-18).
+    const errorCalls = vi.mocked(runQuery).mock.calls.filter((c) => String(c[1]).includes('SET w.last_error = $message'))
+    expect(errorCalls).toHaveLength(1)
+    expect(vi.mocked(runQuery).mock.calls.filter((c) => String(c[1]).includes('SET w.receive_count'))).toHaveLength(0)
+    expect(errorCalls[0]![2]).toMatchObject({ hookId: 'hook-1', tenantId: 'tenant-1', message: expect.stringMatching(/impacted CI/) })
   })
 
   it('unexpected error → 500 with a generic body; details only in the log', async () => {

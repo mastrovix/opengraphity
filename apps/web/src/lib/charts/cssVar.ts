@@ -17,10 +17,10 @@ export function cssVar(name: string): string {
   const hit = cache.get(name)
   if (hit !== undefined) return hit
   if (typeof document === 'undefined') {
-    throw new Error(`[cssVar] ${name}: nessun document (chiamata fuori dal browser)`)
+    throw new Error(`[cssVar] ${name}: no document (called outside the browser)`)
   }
   const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-  if (!raw) throw new Error(`[cssVar] variabile CSS non definita in :root: ${name}`)
+  if (!raw) throw new Error(`[cssVar] CSS variable not defined on :root: ${name}`)
   cache.set(name, raw)
   return raw
 }
@@ -29,7 +29,7 @@ export function cssVar(name: string): string {
 export function cssVarPx(name: string): number {
   const raw = cssVar(name)
   const n = Number.parseFloat(raw)
-  if (!Number.isFinite(n)) throw new Error(`[cssVar] ${name} non è una misura in px: "${raw}"`)
+  if (!Number.isFinite(n)) throw new Error(`[cssVar] ${name} is not a px measure: "${raw}"`)
   return n
 }
 

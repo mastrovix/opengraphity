@@ -2,11 +2,12 @@ import { lazy, Suspense, useId } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
-import { useWidgetConfig } from './useWidgetConfig'
+import { useWidgetConfig, DATA_FREE_WIDGET_TYPES, DATA_FREE_HINT_KEY } from './useWidgetConfig'
 import { WidgetTypeSelector } from './WidgetTypeSelector'
 import { WidgetFilterConfig } from './WidgetFilterConfig'
 const WidgetPreview = lazy(() => import('./WidgetPreview').then(m => ({ default: m.WidgetPreview })))
 import type { CustomWidgetData } from './CustomWidgetCard'
+import { alpha, colors, palette } from '@/lib/tokens'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ const labelStyle: React.CSSProperties = {
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 7,
-  border: '1.5px solid #e2e8f0', fontSize: 'var(--font-size-body)',
+  border: '1.5px solid var(--color-border)', fontSize: 'var(--font-size-body)',
   boxSizing: 'border-box', color: 'var(--color-slate-dark)',
   outline: 'none',
 }
@@ -47,18 +48,18 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
     // bottone "Chiudi" nell'header. Stesso pattern di components/Modal.tsx.
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- overlay: chiusura via mouse, Escape/bottone per la tastiera
     <div
-      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: alpha.scrim, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId}
-        style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 900, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.22)', display: 'flex', flexDirection: 'column' }}
+        style={{ background: colors.white, borderRadius: 14, width: '100%', maxWidth: 900, maxHeight: '92vh', overflowY: 'auto', boxShadow: '0 24px 80px var(--color-black-a20)', display: 'flex', flexDirection: 'column' }}
       >
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #f3f4f6', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid var(--color-border-light)', flexShrink: 0 }}>
           <h2 id={headingId} style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 700, color: 'var(--color-slate-dark)' }}>
             {c.isEdit ? t('pages.dashboard.editWidget') : t('pages.dashboard.newWidget')}
           </h2>
@@ -71,7 +72,7 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
         <div style={{ display: 'flex', flex: 1, gap: 0, minHeight: 0 }}>
 
           {/* Form column */}
-          <div style={{ flex: '0 0 420px', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18, overflowY: 'auto', borderRight: '1px solid #f3f4f6' }}>
+          <div style={{ flex: '0 0 420px', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18, overflowY: 'auto', borderRight: '1px solid var(--color-border-light)' }}>
             {/* Title */}
             <div>
               <label htmlFor={titleId} style={labelStyle}>{t('common.title')} *</label>
@@ -88,7 +89,13 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
 
             <WidgetTypeSelector widgetType={c.widgetType} color={c.color} onSelect={c.setWidgetType} />
 
+            {DATA_FREE_HINT_KEY[c.widgetType] && (
+              <p style={{ margin: 0, padding: '10px 12px', borderRadius: 8, background: 'var(--color-brand-light)', color: palette.info.text, fontSize: 'var(--font-size-body)', lineHeight: 1.5 }}>
+                {t(DATA_FREE_HINT_KEY[c.widgetType]!)}
+              </p>
+            )}
             <WidgetFilterConfig
+              dataConfigurable={!DATA_FREE_WIDGET_TYPES.includes(c.widgetType)}
               entityType={c.entityType} onEntityChange={c.handleEntityChange}
               metric={c.metric} onMetricChange={(v) => { c.setMetric(v); c.setGroupByField('') }}
               groupByField={c.groupByField} onGroupByChange={c.setGroupByField}
@@ -97,7 +104,7 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
               timeRange={c.timeRange} onTimeRangeChange={c.setTimeRange}
               size={c.size} onSizeChange={c.setSize}
               color={c.color} onColorChange={c.setColor}
-              fields={c.fields} needsGroupBy={c.needsGroupBy}
+              entities={c.entities} groupByFields={c.groupByFields} filterFields={c.filterFields} needsGroupBy={c.needsGroupBy}
               fieldMetaMap={c.fieldMetaMap} selectedFilterMeta={c.selectedFilterMeta}
             />
           </div>
@@ -108,13 +115,14 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
               widgetType={c.widgetType} color={c.color} title={c.title}
               previewData={c.previewData} previewLoading={c.previewLoading}
               timeRange={c.timeRange}
+              entityType={c.entityType} groupByField={c.groupByField}
             />
           </Suspense>
         </div>
 
         {/* Footer */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '14px 24px', borderTop: '1px solid #f3f4f6', flexShrink: 0, background: '#fff' }}>
-          <button type="button" onClick={onClose} style={{ padding: '8px 18px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, padding: '14px 24px', borderTop: '1px solid var(--color-border-light)', flexShrink: 0, background: colors.white }}>
+          <button type="button" onClick={onClose} style={{ padding: '8px 18px', borderRadius: 7, border: '1px solid var(--color-border-strong)', background: colors.white, color: 'var(--color-slate)', fontSize: 'var(--font-size-card-title)', cursor: 'pointer' }}>
             {t('common.cancel')}
           </button>
           <button
@@ -124,8 +132,8 @@ export function WidgetConfigPanel({ dashboardId, widget, onClose, onSaved }: Pro
             style={{
               padding: '8px 22px', borderRadius: 7, border: 'none', fontSize: 'var(--font-size-card-title)', fontWeight: 600,
               cursor: c.saving || !c.title.trim() ? 'not-allowed' : 'pointer',
-              background: c.saving || !c.title.trim() ? '#bfdbfe' : c.color,
-              color: '#fff',
+              background: c.saving || !c.title.trim() ? palette.info.border : c.color,
+              color: colors.white,
             }}
           >
             {c.saving ? t('pages.dashboard.saving') : c.isEdit ? t('pages.dashboard.updateWidget') : t('pages.dashboard.createWidget')}

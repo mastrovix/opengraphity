@@ -21,9 +21,23 @@ describe('resolveTemplate (fail-fast)', () => {
       .toThrow(/placeholder \{missing\.field\} did not resolve/)
   })
 
-  it('THROWS when the named field is null — no "null" strings in titles', () => {
-    expect(() => resolveTemplate('{description}', { description: null }))
-      .toThrow(/did not resolve/)
+  /**
+   * CONTRATTO RINEGOZIATO (revisione totale · E-10). Un campo che NON esiste
+   * resta un errore: il template è sbagliato. Un campo che esiste ed è VUOTO è
+   * un dato legittimo — un incident aperto dal portale senza descrizione — e
+   * prima faceva fallire l'INTERA azione: il problem da creare non nasceva, e
+   * l'errore finiva in `actionErrors`, che per gli incident il web non chiede.
+   * Nessuna stringa «null» nei titoli: risolve al vuoto.
+   */
+  it('un campo che esiste ed è vuoto risolve al vuoto, non fa fallire l\'azione (E-10)', () => {
+    expect(resolveTemplate('Da {title}: {description}', { title: 'DB giù', description: null })).toBe('Da DB giù: ')
+    expect(resolveTemplate('{description}', { description: '' })).toBe('')
+    // Nessuna stringa «null» o «undefined» finisce nel testo.
+    expect(resolveTemplate('{description}', { description: undefined })).toBe('')
+  })
+
+  it('un campo che NON esiste resta un errore: il template è sbagliato', () => {
+    expect(() => resolveTemplate('{description}', { title: 'x' })).toThrow(/did not resolve/)
   })
 
   it('does NOT fall back to the last path segment as a flat key', () => {

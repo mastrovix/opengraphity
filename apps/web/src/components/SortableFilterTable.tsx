@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { SkeletonLine } from '@/components/SkeletonLoader'
-import { colors } from '@/lib/tokens'
+import { colors, palette } from '@/lib/tokens'
 
 export interface ColumnDef<T> {
   key:      keyof T
@@ -10,6 +10,56 @@ export interface ColumnDef<T> {
   sortable?: boolean
   width?:   string
   render?:  (value: unknown, row: T) => React.ReactNode
+  /**
+   * La SCALA della colonna, dal valore piu grave al meno grave (revisione
+   * totale · G-EVT-7). Quando c'e, l'ordinamento la segue invece di confrontare
+   * il testo: «severita crescente» dava critical, info, warning.
+   * Va dichiarata colonna per colonna, mai indovinata dal nome: «resolved» e
+   * uno stato degli eventi ma anche uno stato dei ticket, e le due scale non
+   * hanno lo stesso ordine.
+   */
+  rank?:    readonly string[]
+}
+
+const getRawValue = (row: object, key: string): unknown => (row as Record<string, unknown>)[key]
+
+/** Valore su cui si ordina: per un oggetto con `name` (CI, sorgente, squadra) è il nome, non `[object Object]`. */
+function getSortValue(row: object, key: string): unknown {
+  const v = getRawValue(row, key)
+  if (v && typeof v === 'object' && !Array.isArray(v) && 'name' in v) return (v as { name: string }).name
+  return v
+}
+
+function rankOf(value: unknown, scale?: readonly string[]): number | null {
+  if (!scale) return null
+  const i = scale.indexOf(String(value))
+  return i === -1 ? null : i
+}
+
+/**
+ * L'ordinamento lato client della tabella, esportato perché una pagina che
+ * tiene l'ordinamento nell'URL (modalità «controllata») deve ordinare le righe
+ * con la STESSA regola con cui le ordinerebbe la tabella: null in fondo,
+ * confronto testuale con i numeri in ordine numerico, o la `rank` della
+ * colonna quando quella colonna e una scala. Non muta `rows`.
+ */
+export function sortRowsBy<T extends object>(
+  rows: T[], key: string, dir: 'asc' | 'desc', rank?: readonly string[],
+): T[] {
+  return [...rows].sort((a, b) => {
+    const av = getSortValue(a, key)
+    const bv = getSortValue(b, key)
+    if (av == null) return 1
+    if (bv == null) return -1
+    const ar = rankOf(av, rank)
+    const br = rankOf(bv, rank)
+    // Un valore fuori scala (aggiunto a mano, arrivato da un import) va in
+    // fondo invece di mescolarsi: si vede che non è della scala.
+    const cmp = ar !== null || br !== null
+      ? (ar ?? Number.MAX_SAFE_INTEGER) - (br ?? Number.MAX_SAFE_INTEGER)
+      : String(av).localeCompare(String(bv), undefined, { numeric: true })
+    return dir === 'asc' ? cmp : -cmp
+  })
 }
 
 interface Props<T> {
@@ -23,6 +73,13 @@ interface Props<T> {
   onSort?:         (field: string, direction: 'asc' | 'desc') => void
   sortField?:      string | null
   sortDir?:        'asc' | 'desc'
+  /**
+   * Frase che dice DOVE vale l'ordinamento, nel `title` delle intestazioni
+   * ordinabili (D·2.8): una lista paginata il cui server non ordina riordina
+   * solo la pagina caricata, e una colonna «ordinata» che non lo è su tutto il
+   * risultato inganna. Omesso = nessuna precisazione (l'ordinamento è del server).
+   */
+  sortHint?:       string
   label?:          string  // aria-label per la tabella
   /** If provided, renders an expanded row below the row whose id matches expandedRowId */
   expandedRowId?:  string | null
@@ -33,10 +90,22 @@ interface Props<T> {
   onToggleRow?:    (id: string) => void
   /** Called with the ids of the currently rendered rows (page-level select-all). */
   onToggleAll?:    (ids: string[]) => void
+  /**
+   * Righe cliccabili raggiungibili da tastiera (tabIndex=0, Enter/Spazio).
+   * Passare `false` quando ogni riga contiene già un `<Link>` alla stessa
+   * destinazione di `onRowClick`: una <tr> focalizzabile non annuncia di
+   * essere un link e raddoppia le tappe di tabulazione; il focus va al Link.
+   */
+  focusableRows?:  boolean
 }
 
 const thStyle: React.CSSProperties = {
-  background:    'var(--color-slate-bg)',
+  // Tinta del turchese (20 %) invece del grigio freddo: l'intestazione della
+  // tabella appartiene alla stessa famiglia di quella delle sezioni (32 %), un
+  // gradino sotto. NON scendere sotto: l'8 % su bianco dà (235, 245, 251), a
+  // occhio identico al grigio di prima (241, 245, 249) — cambiava il token,
+  // non il colore.
+  background:    'var(--color-brand-a20)',
   borderBottom:  `2px solid ${colors.border}`,
   padding:       '8px 12px 6px',
   textAlign:     'left',
@@ -55,6 +124,7 @@ export function SortableFilterTable<T extends object>({
   onSort,
   sortField: controlledSortField,
   sortDir: controlledSortDir,
+  sortHint,
   label,
   expandedRowId,
   renderExpandedRow,
@@ -62,6 +132,7 @@ export function SortableFilterTable<T extends object>({
   selectedIds,
   onToggleRow,
   onToggleAll,
+  focusableRows = true,
 }: Props<T>) {
   const { t } = useTranslation()
   const resolvedEmptyMessage = emptyMessage ?? t('common.noResults')
@@ -89,27 +160,15 @@ export function SortableFilterTable<T extends object>({
     }
   }
 
-  const getRawVal = (row: T, key: keyof T): unknown =>
-    (row as Record<string, unknown>)[String(key)]
-
-  const getSortVal = (row: T, key: keyof T): unknown => {
-    const v = getRawVal(row, key)
-    if (v && typeof v === 'object' && !Array.isArray(v) && 'name' in v)
-      return (v as { name: string }).name
-    return v
-  }
+  const getRawVal = (row: T, key: keyof T): unknown => getRawValue(row, String(key))
 
   // Only sort client-side when in uncontrolled mode
   const sorted = isControlled || localSortKey == null
     ? data
-    : [...data].sort((a, b) => {
-        const av = getSortVal(a, localSortKey)
-        const bv = getSortVal(b, localSortKey)
-        if (av == null) return 1
-        if (bv == null) return -1
-        const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true })
-        return localSortDir === 'asc' ? cmp : -cmp
-      })
+    : sortRowsBy(
+        data, String(localSortKey), localSortDir,
+        columns.find((c) => c.key === localSortKey)?.rank,
+      )
 
   const rowIds = selectable
     ? sorted.map((row, i) => String((row as Record<string, unknown>)['id'] ?? i))
@@ -130,8 +189,8 @@ export function SortableFilterTable<T extends object>({
   const totalCols = columns.length + (selectable ? 1 : 0)
 
   return (
-    <div className="card-border" style={{ overflow: 'hidden' }}>
-      <table role="table" aria-label={label} style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <div className="og-table-card og-scroll-x">
+      <table role="table" aria-label={label} style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse' }}>
         <colgroup>
           {selectable && <col style={{ width: '40px' }} />}
           {columns.map((col) => (
@@ -171,12 +230,19 @@ export function SortableFilterTable<T extends object>({
                     <button
                       type="button"
                       onClick={() => handleSort(col.key)}
+                      title={sortHint}
                       style={{
+                        // `font` PRIMA delle dichiarazioni specifiche: è una
+                        // scorciatoia e azzera quel che viene prima di lei —
+                        // messa in fondo cancellava corpo e peso, e
+                        // l'intestazione ordinabile restava più smorta di
+                        // quella fissa.
+                        font:          'inherit',
                         display:       'flex',
                         alignItems:    'center',
                         gap:           4,
                         fontSize:      11,
-                        fontWeight:    500,
+                        fontWeight:    600,
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px',
                         color:         isActive ? colors.brand : colors.slateDark,
@@ -184,8 +250,6 @@ export function SortableFilterTable<T extends object>({
                         background:    'none',
                         border:        'none',
                         padding:       0,
-                        font:          'inherit',
-                        fontFamily:    'inherit',
                       }}
                     >
                       {col.label}
@@ -200,7 +264,7 @@ export function SortableFilterTable<T extends object>({
                         alignItems:    'center',
                         gap:           4,
                         fontSize:      11,
-                        fontWeight:    500,
+                        fontWeight:    600,
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px',
                         color:         colors.slateDark,
@@ -219,9 +283,9 @@ export function SortableFilterTable<T extends object>({
           {loading ? (
             Array.from({ length: 5 }).map((_, i) => (
               <tr key={i}>
-                {selectable && <td style={{ padding: '12px 0 12px 12px', borderBottom: '1px solid #f1f3f9' }} />}
+                {selectable && <td style={{ padding: '12px 0 12px 12px', borderBottom: `1px solid ${palette.neutral.borderLight}` }} />}
                 {columns.map((col, ci) => (
-                  <td key={String(col.key)} style={{ padding: '12px', borderBottom: '1px solid #f1f3f9' }}>
+                  <td key={String(col.key)} style={{ padding: '12px', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
                     <SkeletonLine width={ci === 0 ? '80%' : ci % 2 === 0 ? '60%' : '70%'} />
                   </td>
                 ))}
@@ -245,22 +309,38 @@ export function SortableFilterTable<T extends object>({
               return (
                 <React.Fragment key={rowId}>
                   <tr
-                    onClick={() => onRowClick?.(row)}
-                    // Clickable rows are reachable and activatable from the keyboard (E-14).
-                    tabIndex={onRowClick ? 0 : undefined}
-                    onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row) } } : undefined}
+                    /*
+                      Un clic su un CONTROLLO dentro la riga (pulsante, link,
+                      interruttore, tendina) e del controllo, non della riga:
+                      senza questo, spegnere una policy o premere «Elimina»
+                      apriva anche il dettaglio. Qui una volta sola, invece di
+                      un `stopPropagation` da ricordarsi in ogni pagina.
+                    */
+                    onClick={(e) => {
+                      if (!onRowClick) return
+                      const controllo = (e.target as HTMLElement).closest('button, a, input, select, textarea, label, [role="switch"]')
+                      if (controllo && e.currentTarget.contains(controllo)) return
+                      onRowClick(row)
+                    }}
+                    // Clickable rows are reachable and activatable from the keyboard (E-14),
+                    // unless the caller says the row already carries a Link (`focusableRows`).
+                    tabIndex={onRowClick && focusableRows ? 0 : undefined}
+                    onKeyDown={onRowClick ? (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onRowClick(row) } } : undefined}
+                    /*
+                      La striscia turchese al passaggio del mouse NON e un
+                      bordo della riga. Lo era (`border-left: 8px transparent`),
+                      e con `border-collapse: collapse` la tabella riservava
+                      meta di quel bordo — 4px — a sinistra di OGNI riga,
+                      testata compresa: la testata non ha il bordo, quindi i
+                      4px restavano bianchi prima della tinta. Ora e un'ombra
+                      interna della prima cella (`.sft-row`, index.css), che
+                      nel calcolo della tabella non occupa spazio.
+                    */
+                    className="sft-row"
                     style={{
-                      borderBottom:    expandedContent ? 'none' : '1px solid #f1f3f9',
+                      borderBottom:    expandedContent ? 'none' : `1px solid ${palette.neutral.borderLight}`,
                       cursor:          onRowClick ? 'pointer' : 'default',
                       backgroundColor: colors.white,
-                      borderLeft:      '8px solid transparent',
-                      transition:      'border-color 0.15s',
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLTableRowElement).style.borderLeft = '8px solid var(--color-icon-accent)'
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLTableRowElement).style.borderLeft = '8px solid transparent'
                     }}
                   >
                     {selectable && (
@@ -292,7 +372,7 @@ export function SortableFilterTable<T extends object>({
                     ))}
                   </tr>
                   {expandedContent && (
-                    <tr style={{ backgroundColor: '#ffffff' }}>
+                    <tr style={{ backgroundColor: colors.white }}>
                       <td colSpan={totalCols} style={{ padding: 0 }}>
                         {expandedContent}
                       </td>

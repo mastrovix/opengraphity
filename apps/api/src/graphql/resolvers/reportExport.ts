@@ -4,6 +4,8 @@ import type ExcelJS from 'exceljs'
 import { v4 as uuidv4 } from 'uuid'
 import type { GraphQLContext } from '../../context.js'
 import { NotFoundError } from '../../lib/errors.js'
+import { isLingua } from '../../lib/tenantLanguage.js'
+import { reportSectionErrorIn } from '../../lib/systemText.js'
 import { audit } from '../../lib/audit.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
 import type { ReportSectionDef } from '../../lib/reportQueryBuilder.js'
@@ -13,6 +15,7 @@ import { logger } from '../../lib/logger.js'
 import { ValidationError } from '../../lib/errors.js'
 import { assertReportTemplateAccess } from './reportAccess.js'
 import { config } from '../../lib/config.js'
+import { loadNotificationLocale, notificationText, formatNotificationDate, type NotificationLocale } from '@opengraphity/notifications'
 
 const REPORT_DIR = config.reportDir
 
@@ -85,18 +88,33 @@ interface SectionData {
   error: string | null
 }
 
-async function fetchSectionData(sections: ReportSectionDef[], tenantId: string): Promise<SectionData[]> {
-  const results = await Promise.all(sections.map(s => executeReportSection(s, tenantId)))
-  return results.map(r => {
+async function fetchSectionData(sections: ReportSectionDef[], tenantId: string, lingua: string): Promise<SectionData[]> {
+  const sezioni = sections
+  // La lingua serve anche QUI, non solo a schermo: le intestazioni delle
+  // colonne le compone il server, e senza lingua il PDF e l'Excel uscivano in
+  // inglese («TITLE», «NUMBER») mentre il costruttore diceva «Titolo».
+  const results = await Promise.all(sections.map(s => executeReportSection(s, tenantId, { language: isLingua(lingua) ? lingua : undefined })))
+  return results.map((r, i) => {
     // A failed section must appear AS FAILED in the exported document — an
     // empty page in a delivered audit PDF is a lie.
     if (r.error) {
-      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: null, tableRows: null, error: r.error }
+      /*
+       * L'errore si legge nella LINGUA DEL DOCUMENTO (20 set 2026,
+       * segnalato dal proprietario: «il pdf dà errore»). Qui finiva il
+       * messaggio tecnico — «section "942cc018-…": groupByGranularity
+       * "month" needs a date field to group by» — in inglese e con l'id
+       * interno della sezione, stampato in rosso dentro un PDF che
+       * qualcuno allega. `reportSectionErrorIn` traduce quello che ha una
+       * frase per chi legge; per un difetto nostro resta il tecnico, che
+       * in quel caso è l'unica cosa utile.
+       */
+      const leggibile = reportSectionErrorIn(isLingua(lingua) ? lingua : 'en', r.errorKey)
+      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: null, tableRows: null, error: leggibile ?? r.error }
     }
     let parsed: unknown
     try { parsed = JSON.parse(r.data) }
     catch (e) {
-      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: null, tableRows: null, error: `Dati sezione corrotti: ${e instanceof Error ? e.message : String(e)}` }
+      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: null, tableRows: null, error: `Corrupt section data: ${e instanceof Error ? e.message : String(e)}` }
     }
     if (r.chartType === 'kpi') {
       return { title: r.title, chartType: r.chartType, rows: null, kpiValue: (parsed as { value: number } | null)?.value ?? null, tableRows: null, error: null }
@@ -110,11 +128,77 @@ async function fetchSectionData(sections: ReportSectionDef[], tenantId: string):
         error: tableRows ? null : 'Formato dati tabella inatteso',
       }
     }
-    return { title: r.title, chartType: r.chartType, rows: Array.isArray(parsed) ? parsed as Array<{ name: string; value: number }> : null, kpiValue: null, tableRows: null, error: null }
+    return {
+      title: r.title, chartType: r.chartType,
+      rows: Array.isArray(parsed)
+        ? righeDiSerie(parsed as unknown[], r.chartType, { granularita: sezioni[i]?.groupByGranularity, lingua })
+        : null,
+      kpiValue: null, tableRows: null, error: null,
+    }
   })
 }
 
-async function generatePDF(templateName: string, data: SectionData[], filePath: string): Promise<void> {
+/**
+ * IL PERIODO SI SCRIVE COME SUL GRAFICO (20 set 2026, dal giro nel browser:
+ * «in teoria non dovrebbe contenere la data… intera»).
+ *
+ * La query tronca al periodo e restituisce una data ISO: un raggruppamento
+ * PER ANNO esce «2026-01-01», per mese «2026-09-01». Sul grafico il browser
+ * le rende «2026» e «set 2026»; nel foglio e nel PDF finiva la data intera,
+ * che per un raggruppamento annuale dice pure una cosa falsa — «il primo
+ * gennaio», non «il 2026». Lo stesso report deve leggersi allo stesso modo a
+ * schermo e nel file che si allega.
+ *
+ * Una riga per cella: il foglio non ha l'asse a due righe del grafico, quindi
+ * l'anno c'è sempre.
+ */
+export function etichettaDelPeriodo(raw: string, granularita: string | null | undefined, lingua: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw)
+  if (!m) return raw
+  const [, anno, mese, giorno] = m
+  if (granularita === 'year') return anno!
+  const locale = lingua === 'it' ? 'it-IT' : 'en-GB'
+  // Mezzogiorno UTC: a mezzanotte un «1 gennaio» scivolerebbe a dicembre nei
+  // fusi a ovest.
+  const d = new Date(Date.UTC(Number(anno), Number(mese) - 1, Number(giorno), 12))
+  return granularita === 'month'
+    ? `${d.toLocaleDateString(locale, { month: 'short', timeZone: 'UTC' })} ${anno!}`
+    : d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
+
+/**
+ * LE DUE FORME DI UNA SERIE (20 set 2026, dal giro nel browser: «esportando in
+ * excel la colonna label è vuota»).
+ *
+ * `reportExecutor` produce `{name, value}` per barre, torte e classifiche e
+ * `{date, value}` per linee e aree — due contratti, perché i grafici del
+ * browser leggono l'uno o l'altro. L'esportazione ne conosceva UNO SOLO:
+ * `row.name`. Su una sezione a linea la colonna «Label» del foglio usciva
+ * vuota e il PDF stampava «undefined: 5» — il documento che si allega a un
+ * rapporto mensile.
+ *
+ * Qui le due forme si uniscono in una, e una riga che non porta NESSUNA
+ * etichetta è un errore dichiarato: una cella vuota in un foglio consegnato
+ * non si distingue da un dato che vale davvero niente.
+ */
+export function righeDiSerie(
+  parsed: readonly unknown[], chartType: string,
+  periodo: { granularita?: string | null; lingua: string } = { lingua: 'en' },
+): Array<{ name: string; value: number }> {
+  return parsed.map((raw, i) => {
+    const r = (raw ?? {}) as { name?: unknown; date?: unknown; value?: unknown }
+    const etichetta = r.name ?? r.date
+    if (etichetta === undefined || etichetta === null || String(etichetta) === '') {
+      throw new Error(`[report-export] row ${String(i)} of a "${chartType}" section has no label (neither "name" nor "date")`)
+    }
+    return {
+      name: etichettaDelPeriodo(String(etichetta), periodo.granularita, periodo.lingua),
+      value: Number(r.value ?? 0),
+    }
+  })
+}
+
+async function generatePDF(templateName: string, data: SectionData[], filePath: string, locale: NotificationLocale): Promise<void> {
   const PDFDocument = (await import('pdfkit')).default
   const doc = new PDFDocument({ margin: 50, size: 'A4' })
   const stream = fs.createWriteStream(filePath)
@@ -123,7 +207,7 @@ async function generatePDF(templateName: string, data: SectionData[], filePath: 
   // Title
   doc.fontSize(20).fillColor('#1a2332').text(templateName, { align: 'center' })
   doc.moveDown(0.5)
-  doc.fontSize(10).fillColor('#94a3b8').text(new Date().toLocaleString(), { align: 'center' })
+  doc.fontSize(10).fillColor('#94a3b8').text(formatNotificationDate(locale), { align: 'center' })
   doc.moveDown(1.5)
 
   for (const sec of data) {
@@ -131,7 +215,7 @@ async function generatePDF(templateName: string, data: SectionData[], filePath: 
     doc.moveDown(0.5)
 
     if (sec.error) {
-      doc.fontSize(10).fillColor('#dc2626').text(`ERRORE: ${sec.error}`)
+      doc.fontSize(10).fillColor('#dc2626').text(`${notificationText(locale, 'exportSectionError')}: ${sec.error}`)
     } else if (sec.chartType === 'kpi' && sec.kpiValue !== null) {
       doc.fontSize(28).fillColor('#0f172a').text(String(sec.kpiValue), { align: 'center' })
     } else if (sec.rows) {
@@ -157,18 +241,32 @@ async function generatePDF(templateName: string, data: SectionData[], filePath: 
   })
 }
 
-async function generateExcel(templateName: string, data: SectionData[], filePath: string): Promise<void> {
-  const ExcelJS = await import('exceljs')
-  const workbook = new ExcelJS.Workbook()
+/**
+ * `exceljs` è CommonJS: in Node ESM `await import('exceljs')` mette la classe
+ * sotto `default` («ExcelJS.Workbook is not a constructor», giro nel browser del
+ * 14 set 2026). Vitest invece la espone anche in cima, per questo i test non
+ * lo vedevano: si gestiscono le due forme, e una terza è un errore.
+ */
+export function excelJsFrom(mod: { default?: typeof ExcelJS } & Partial<typeof ExcelJS>): typeof ExcelJS {
+  if (typeof mod.default?.Workbook === 'function') return mod.default
+  if (typeof mod.Workbook === 'function') return mod as typeof ExcelJS
+  throw new Error('exceljs: no Workbook export found (neither default.Workbook nor Workbook)')
+}
+
+export async function generateExcel(templateName: string, data: SectionData[], filePath: string, locale: NotificationLocale): Promise<void> {
+  const Excel = excelJsFrom(await import('exceljs') as never)
+  const workbook = new Excel.Workbook()
   workbook.creator = 'OpenGraphity'
   workbook.created = new Date()
 
   const summary = workbook.addWorksheet('Summary')
   summary.getCell('A1').value = templateName
   summary.getCell('A1').font = { bold: true, size: 14 }
-  summary.getCell('A2').value = new Date().toLocaleString()
+  summary.getCell('A2').value = formatNotificationDate(locale)
   summary.getCell('A2').font = { color: { argb: 'FF94A3B8' } }
-  summary.getCell('A3').value = `${data.length} sezione/i`
+  summary.getCell('A3').value = data.length === 1
+    ? notificationText(locale, 'exportSectionsOne')
+    : notificationText(locale, 'exportSectionsMany', { count: String(data.length) })
   summary.columns = [{ width: 40 }]
 
   for (const sec of data) {
@@ -180,14 +278,14 @@ async function generateExcel(templateName: string, data: SectionData[], filePath
     sheet.getRow(1).height = 24
 
     if (sec.error) {
-      sheet.getCell('A2').value = `ERRORE: ${sec.error}`
+      sheet.getCell('A2').value = `${notificationText(locale, 'exportSectionError')}: ${sec.error}`
       sheet.getCell('A2').font = { color: { argb: 'FFDC2626' }, bold: true }
     } else if (sec.chartType === 'kpi' && sec.kpiValue !== null) {
-      sheet.getCell('A2').value = 'Valore'
+      sheet.getCell('A2').value = notificationText(locale, 'exportValue')
       sheet.getCell('B2').value = sec.kpiValue
       sheet.getCell('B2').font = { bold: true, size: 16 }
     } else if (sec.rows && sec.rows.length > 0) {
-      sheet.getRow(2).values = ['Label', 'Valore']
+      sheet.getRow(2).values = [notificationText(locale, 'exportLabel'), notificationText(locale, 'exportValue')]
       sheet.getRow(2).font = { bold: true }
       sheet.columns = [{ key: 'name', width: 30 }, { key: 'value', width: 15 }]
       sec.rows.forEach((row, i) => { sheet.getRow(i + 3).values = [row.name, row.value] })
@@ -207,6 +305,51 @@ async function generateExcel(templateName: string, data: SectionData[], filePath
   await workbook.xlsx.writeFile(filePath)
 }
 
+/**
+ * IL FILE, SENZA CHI LO CHIEDE (ondata 11).
+ *
+ * Era dentro il resolver, quindi esisteva solo per chi premeva «Esporta»: il
+ * report SCHEDULATO raccoglieva destinatari e formato dall'interfaccia e non
+ * produceva niente — «i generatori PDF/Excel vivono dentro i resolver e non
+ * sono riusabili qui», diceva il commento dello scheduler. Ora la produzione
+ * del file è una funzione sola, e la usano tutti e due.
+ *
+ * Il controllo dei permessi NON sta qui: lo fa chi chiama. Il resolver
+ * verifica che l'utente possa leggere il template; lo scheduler esegue un
+ * report che un amministratore ha già programmato.
+ */
+export async function generateReportFile(
+  format: 'pdf' | 'excel', templateId: string, tenantId: string,
+): Promise<{ filename: string; filePath: string; templateName: string }> {
+  const tpl = await loadTemplateForExport(templateId, tenantId)
+  if (!tpl) throw new NotFoundError('ReportTemplate', templateId)
+
+  /*
+   * LINGUA E FUSO DEL CLIENTE (20 set 2026). Il documento che si allega esce
+   * dal prodotto come un'e-mail: si legge nella lingua dell'organizzazione e
+   * le sue date sono nel suo fuso. Prima l'intestazione portava
+   * `new Date().toLocaleString()` — cioè il formato e l'ora del PROCESSO, che
+   * in un container è en-US su UTC: «9/19/2026, 12:42:48 PM» in un foglio
+   * italiano.
+   */
+  const locale = await loadNotificationLocale(tenantId)
+  const data = await fetchSectionData(tpl.sections, tenantId, locale.language)
+  const ext  = format === 'pdf' ? 'pdf' : 'xlsx'
+  const filename = `${uuidv4()}.${ext}`
+  const dir      = tenantReportDir(tenantId)
+  fs.mkdirSync(dir, { recursive: true })
+  const filePath = path.join(dir, filename)
+
+  if (format === 'pdf') {
+    await generatePDF(tpl.name, data, filePath, locale)
+  } else {
+    await generateExcel(tpl.name, data, filePath, locale)
+  }
+
+  logger.info({ filename, templateId }, `[report-export] ${ext} generated`)
+  return { filename, filePath, templateName: tpl.name }
+}
+
 async function exportReport(format: 'pdf' | 'excel', args: { templateId: string }, ctx: GraphQLContext): Promise<string> {
   const accessSession = getSession(undefined, 'READ')
   try {
@@ -215,24 +358,8 @@ async function exportReport(format: 'pdf' | 'excel', args: { templateId: string 
     await accessSession.close()
   }
 
-  const tpl = await loadTemplateForExport(args.templateId, ctx.tenantId)
-  if (!tpl) throw new NotFoundError('ReportTemplate', args.templateId)
-
-  const data = await fetchSectionData(tpl.sections, ctx.tenantId)
-  const ext  = format === 'pdf' ? 'pdf' : 'xlsx'
-  const filename = `${uuidv4()}.${ext}`
-  const dir      = tenantReportDir(ctx.tenantId)
-  fs.mkdirSync(dir, { recursive: true })
-  const filePath = path.join(dir, filename)
-
-  if (format === 'pdf') {
-    await generatePDF(tpl.name, data, filePath)
-  } else {
-    await generateExcel(tpl.name, data, filePath)
-  }
-
-  logger.info({ filename, templateId: args.templateId }, `[report-export] ${ext} generated`)
-  void audit(ctx, `report.export_${ext}`, 'ReportTemplate', args.templateId)
+  const { filename } = await generateReportFile(format, args.templateId, ctx.tenantId)
+  void audit(ctx, `report.export_${format === 'pdf' ? 'pdf' : 'xlsx'}`, 'ReportTemplate', args.templateId)
   return `/api/reports/${filename}`
 }
 

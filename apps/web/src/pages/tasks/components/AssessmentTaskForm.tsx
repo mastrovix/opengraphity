@@ -3,9 +3,11 @@
  * come from the server; every answer change fires `onSubmitAnswer`, and
  * "complete" is only enabled when the count matches the catalog.
  */
+import { useTranslation } from 'react-i18next'
 import { TASK_STATUS } from '@/lib/taskStatus'
 import type { AssessmentTaskData, QuestionData } from '@/types/change'
 import { StickyAction, inputStyle } from './shared'
+import { colors, palette } from '@/lib/tokens'
 
 interface CatalogEntry { weight: number; sortOrder: number; question: QuestionData }
 
@@ -16,24 +18,26 @@ export function AssessmentTaskForm({ task, catalog, canEdit, onSubmitAnswer, onC
   onSubmitAnswer: (questionId: string, optionId: string) => void
   onComplete: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <div>
       {catalog.map((entry) => {
         const q = entry.question
         const selectedId = task.responses.find(r => r.question.id === q.id)?.selectedOption.id ?? null
         return (
-          <div key={q.id} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid #f3f4f6' }}>
+          <div key={q.id} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
               <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{q.text}</span>
-              <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, backgroundColor: '#f1f5f9', color: 'var(--color-slate)', whiteSpace: 'nowrap' }}>W:{entry.weight}</span>
+              <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)', whiteSpace: 'nowrap' }} title={t('pages.taskView.weightHint')}>{t('pages.taskView.weight', { weight: entry.weight })}</span>
             </div>
             <select
+              aria-label={q.text}
               disabled={!canEdit || task.status === TASK_STATUS.COMPLETED}
               value={selectedId ?? ''}
               onChange={(e) => { if (e.target.value) onSubmitAnswer(q.id, e.target.value) }}
               style={{ ...inputStyle, maxWidth: 400 }}
             >
-              <option value="">— Seleziona —</option>
+              <option value="">{t('pages.taskView.choose')}</option>
               {q.options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
           </div>
@@ -41,9 +45,9 @@ export function AssessmentTaskForm({ task, catalog, canEdit, onSubmitAnswer, onC
       })}
       {task.status !== TASK_STATUS.COMPLETED && (
         <StickyAction
-          label={`Completa (${task.responses.length}/${catalog.length})`}
+          label={t('changeTasks.completeCount', { done: task.responses.length, total: catalog.length })}
           disabled={!canEdit || task.responses.length < catalog.length}
-          blockReason={!canEdit ? 'Non sei nel team corretto per completare questa task' : undefined}
+          blockReason={!canEdit ? t('changeTasks.wrongTeam') : undefined}
           onClick={onComplete}
         />
       )}

@@ -5,6 +5,7 @@
  */
 import { createElement } from 'react'
 import { iconPathsOrError, isBrokenIconKey, BROKEN_ICON_COLOR, CI_ICON_PATHS } from '@/lib/ciIconPaths'
+import i18n from '@/i18n/i18n'
 
 export function CIIcon({
   icon,
@@ -31,7 +32,7 @@ export function CIIcon({
       strokeLinecap="round"
       strokeLinejoin="round"
       style={style}
-      aria-label={known ? icon : `icona sconosciuta: ${icon}`}
+      aria-label={known ? icon : i18n.t('components.ciIcon.unknown', { icon })}
       role="img"
     >
       {nodes.map(([tag, attrs], i) => createElement(tag, { key: i, ...attrs }))}

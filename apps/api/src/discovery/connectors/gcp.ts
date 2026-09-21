@@ -31,7 +31,7 @@ function parseKeyFile(creds: Record<string, string>): Record<string, unknown> {
   try {
     const parsed = JSON.parse(creds['service_account_json']!) as unknown
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      throw new Error('deve essere un oggetto JSON')
+      throw new Error('must be a JSON object')
     }
     return parsed as Record<string, unknown>
   } catch (err) {
@@ -41,7 +41,7 @@ function parseKeyFile(creds: Record<string, string>): Record<string, unknown> {
 
 function projectIdsOf(cfg: GcpConfig): string[] {
   const ids = splitList(requireConfigString(TYPE, cfg, 'project_ids'))
-  if (!ids.length) throw connectorError(TYPE, 'config', new Error('project_ids non contiene alcun progetto'))
+  if (!ids.length) throw connectorError(TYPE, 'config', new Error('project_ids contains no project'))
   return ids
 }
 
