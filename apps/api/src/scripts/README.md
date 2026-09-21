@@ -8,17 +8,23 @@ Quelli senza script npm: `pnpm --filter @opengraphity/api exec tsx src/scripts/<
 Regole comuni (`lib/scriptArgs.ts`, `lib/runScript.ts`):
 
 - **Tenant sempre esplicito**: `--tenant=<slug>` (= `Tenant.id`), nessun default.
+  `resolveTenantArg` accetta anche `--tenant-id` e `--slug`, le forme che alcuni
+  script storici leggevano a mano e che restano nei comandi in giro
+  (revisione totale · H-45).
 - **Cancellazioni solo con conferma**: gli script marcati *distruttivo* richiedono `--yes-delete`.
 - **Seed demo rifiutati in produzione** (`NODE_ENV=production`).
 - **Password mai in argv**: `--password-stdin` oppure password temporanea generata e stampata una volta.
-- Exit code 1 su qualsiasi errore; il driver Neo4j viene chiuso dal runner (niente `process.exit(0)` nei `finally`).
+- Exit code 1 su qualsiasi errore; il driver Neo4j viene chiuso dal runner
+  (niente `process.exit(0)`, nemmeno alla fine: tronca i log asincroni di pino).
+  Revisione totale · H-45: dodici script non usavano `runScript` e chiudevano da
+  soli — ora ci passano tutti.
 
 ## Amministrazione tenant / utenti
 
 | Script | Scopo | Invocazione | Distruttivo |
 |---|---|---|---|
 | `onboard-tenant` | Crea realm Keycloak, client, ruoli, admin, nodo `Tenant`, dashboard, enum, notifiche e tutti i workflow. **Idempotente davvero**: un secondo giro sullo stesso slug non riscrive niente — le definizioni di workflow già presenti vengono *saltate*, non riallineate al seed (B-2), così le modifiche fatte dal disegnatore sopravvivono. | `onboard-tenant -- --slug acme --admin-email a@acme.com --admin-first-name A --admin-last-name B [--password-stdin] [--plan starter] [--timezone Europe/Rome]` — env: `KEYCLOAK_ADMIN_PASSWORD` obbligatoria | no |
-| `add-user` | Aggiunge/aggiorna un utente in un realm esistente (+ nodo `User`). Password reimpostata su utente esistente solo con `--password-stdin`. | `add-user -- --slug acme --email m@acme.com [--role user] [--password-stdin]` — env: `KEYCLOAK_ADMIN_PASSWORD` | no |
+| `add-user` | Aggiunge/aggiorna un utente in un realm esistente (+ nodo `User`). `--role` è la chiave di un ruolo dell'organizzazione (di fabbrica o creato dalla pagina Ruoli), verificata nel grafo prima di Keycloak; il ruolo non si copia nel realm. Password reimpostata su utente esistente solo con `--password-stdin`. | `add-user -- --slug acme --email m@acme.com --role operator [--password-stdin]` — env: `KEYCLOAK_ADMIN_PASSWORD` | no |
 | `gen-token` | JWT HS256 di sviluppo (24h), accettato solo fuori produzione. | `JWT_SECRET=… gen-token -- --tenant=<slug> --user-id=<id> --email=<email> --role=admin` | no |
 
 ## Import / migrazioni
@@ -65,7 +71,6 @@ migrazioni dell'API: per fare tutto in un colpo usare
 | `seed-enum-types.ts` | Enum di sistema del tenant. | `exec tsx … --tenant <slug>` | no |
 | `seed-notification-rules.ts` | Regole di notifica di default. | `exec tsx … --slug <slug>` | no |
 | `seed-dashboards.ts` | 3 dashboard di ruolo. | `exec tsx … --tenant-id <slug>` | no |
-| `seed-itil-ci-rules.ts` | Regole di relazione ITIL↔CI. | `exec tsx … --tenant-id <slug>` | no |
 | `seed:field-rules` | Regole visibilità/obbligatorietà campi. | `seed:field-rules -- --tenant=<slug>` | no |
 | `seed:assessment-questions` | Domande di assessment change. | `seed:assessment-questions` | no |
 | `seed:automation` | SLA policy, trigger e business rule di esempio. | `seed:automation -- --tenant=<slug>` | no |

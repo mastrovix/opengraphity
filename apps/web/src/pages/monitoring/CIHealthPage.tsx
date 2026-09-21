@@ -49,12 +49,13 @@ import { Input, Select } from '@/components/ui/FormControls'
 import { Button } from '@/components/Button'
 import { useMe } from '@/hooks/useMe'
 import { useMetamodel } from '@/contexts/MetamodelContext'
+import { useCILabels } from '@/hooks/useCILabels'
 import { CIIcon } from '@/lib/ciIcon'
 import { ciPath } from '@/lib/ciPath'
-import { ciTypeLabelKey, enumLabel, useCIBaseEnums } from '@/lib/ciEnums'
+import { useCIBaseEnums } from '@/lib/ciEnums'
 import { timeAgo, formatDateTime, formatDuration, currentLocale } from '@/lib/datetime'
 import { pausedWhenHidden } from '@/lib/polling'
-import { GET_CI_HEALTH_OVERVIEW, GET_TEAMS } from '@/graphql/queries'
+import { GET_CI_HEALTH_OVERVIEW, GET_EVENT_POLICY, GET_TEAMS } from '@/graphql/queries'
 import { CIHealthBadge, CI_HEALTH_ACCENT } from '@/pages/events/eventShared'
 import { servicesForCIPath } from './ServicesPage'
 import type { CIHealth, CIHealthOverview, CIHealthRow, CIHealthFilterVars } from '@/types/events'
@@ -65,8 +66,13 @@ import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 const PAGE_SIZE       = 50
 const POLL_MS         = 15_000
 const SEARCH_DEBOUNCE = 300
-/** Da questo numero di dipendenti in su il chip "Impatto" diventa scuro: un guasto qui si propaga. */
-const HIGH_IMPACT     = 5
+/**
+ * La soglia «un guasto qui si propaga» viene dalla Policy eventi
+ * (revisione totale · G-MON-7): era il numero 5 scritto qui, lo stesso per una
+ * CMDB da 50 CI e per una da 50.000. Finche la policy non e arrivata la soglia
+ * non si conosce: il chip mostra il solo conteggio, senza dire «si propaga»
+ * sulla base di un numero che non abbiamo letto.
+ */
 
 const CI_HEALTHS: readonly CIHealth[] = ['down', 'degraded', 'operational']
 const isCIHealth = (v: string | null): v is CIHealth => v !== null && (CI_HEALTHS as readonly string[]).includes(v)
@@ -191,10 +197,14 @@ function HealthTile({ tileKey, label, value, context, hint, extra, active, onCli
 // ── Celle ────────────────────────────────────────────────────────────────────
 
 /** Il motivo (soglia di propagazione / quanti dipendono) è nel tooltip E in una descrizione per le tecnologie assistive. */
-function ImpactChip({ dependents, describedBy }: { dependents: number; describedBy: string }) {
+function ImpactChip({ dependents, highImpact, describedBy }: { dependents: number; highImpact: number | null; describedBy: string }) {
   const { t } = useTranslation()
-  const high = dependents >= HIGH_IMPACT
-  const reason = high ? t('monitoring.health.dependentsHigh') : t('monitoring.health.dependentsHint', { count: dependents })
+  // 0 = l'organizzazione ha spento l'evidenza; null = policy non ancora letta.
+  const high = highImpact !== null && highImpact > 0 && dependents >= highImpact
+  // G-MON-7: anche la frase diceva «Almeno 5»: il 5 era nella traduzione.
+  const reason = high && highImpact !== null
+    ? t('monitoring.health.dependentsHigh', { min: highImpact })
+    : t('monitoring.health.dependentsHint', { count: dependents })
   return (
     <>
       <span
@@ -278,13 +288,13 @@ const TD: React.CSSProperties = { padding: '10px 12px', fontSize: 'var(--font-si
  * da tastiera è il Link sul nome (D·3.2: niente `tabIndex` sulla riga, che
  * non saprebbe dichiararsi link). I link secondari fermano la propagazione.
  */
-function HealthRowView({ row }: { row: CIHealthRow }) {
+function HealthRowView({ row, highImpact }: { row: CIHealthRow; highImpact: number | null }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { getCIType } = useMetamodel()
+  const { environmentLabel, typeLabel: etichettaTipo } = useCILabels()
   const ciType = getCIType(row.type)
-  const typeKey = ciTypeLabelKey(row.type)
-  const typeLabel = typeKey ? t(typeKey) : (ciType?.label ?? enumLabel(row.type))
+  const typeLabel = etichettaTipo(row.type)
   const accent = CI_HEALTH_ACCENT[row.health]
   const since = row.healthSince ? formatDuration(Date.now() - new Date(row.healthSince).getTime()) : null
   const to = ciPath(row)
@@ -304,7 +314,7 @@ function HealthRowView({ row }: { row: CIHealthRow }) {
               {row.name}
             </Link>
             <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 2 }}>
-              {typeLabel}{row.environment ? ` · ${enumLabel(row.environment)}` : ''}
+              {typeLabel}{row.environment ? ` · ${environmentLabel(row.environment)}` : ''}
             </div>
           </div>
         </div>
@@ -323,7 +333,7 @@ function HealthRowView({ row }: { row: CIHealthRow }) {
           ? <Link to={`/events?ciId=${row.id}`} onClick={(e) => e.stopPropagation()} aria-label={t('monitoring.health.alarmsLink', { count: row.firingEvents, name: row.name })} style={{ color: accent, fontWeight: 700, textDecoration: 'none' }}>{row.firingEvents}</Link>
           : <span style={{ color: 'var(--color-slate-light)' }}>0</span>}
       </td>
-      <td style={TD}><ImpactChip dependents={row.dependents} describedBy={ids.impact} /></td>
+      <td style={TD}><ImpactChip dependents={row.dependents} highImpact={highImpact} describedBy={ids.impact} /></td>
       <td style={{ ...TD, fontVariantNumeric: 'tabular-nums' }}><ServicesCell count={row.servicesCount} ciId={row.id} name={row.name} describedBy={ids.services} /></td>
       <td style={TD}>{row.ownerTeam ?? <span style={{ color: 'var(--color-slate-light)' }}>—</span>}</td>
       <td style={TD}>
@@ -352,9 +362,12 @@ function HealthRowView({ row }: { row: CIHealthRow }) {
 export function CIHealthPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { isAdmin } = useMe()
+  const { can } = useMe()
+  const managesSources = can('config.monitoring')
   const { ciTypes } = useMetamodel()
   const baseEnums = useCIBaseEnums()
+  // Secondo giro UI del 15 set 2026 · V-21: ambienti con l'etichetta del Dizionario, non umanizzati
+  const { environmentLabel, typeLabel } = useCILabels()
 
   // Filtri e pagina vivono nell'URL; qui si legge e si scrive solo quello.
   const [searchParams, setSearchParams] = useSearchParams()
@@ -415,6 +428,12 @@ export function CIHealthPage() {
   }, [liveTotal, page, setPage])
 
   const { data: teamsData, error: teamsError } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  /**
+   * G-MON-7: la soglia dell'evidenza «si propaga» e una scelta
+   * dell'organizzazione (Policy eventi). null = non ancora letta.
+   */
+  const { data: policyData } = useQuery<{ eventPolicy: { highImpactDependents: number } }>(GET_EVENT_POLICY, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  const highImpact = policyData?.eventPolicy.highImpactDependents ?? null
   const teams = teamsData?.teams ?? []
   const typeOptions = useMemo(() => ciTypes.filter((ct) => ct.name !== '__base__'), [ciTypes])
 
@@ -464,8 +483,8 @@ export function CIHealthPage() {
         <EmptyState
           icon={<Radar size={32} />}
           title={t('monitoring.health.empty.title')}
-          description={`${t('monitoring.health.empty.description')}${isAdmin ? '' : ` ${t('monitoring.health.empty.askAdmin')}`}`}
-          action={isAdmin ? <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => navigate('/monitoring/sources/new')}>{t('monitoring.health.empty.cta')}</Button> : undefined}
+          description={`${t('monitoring.health.empty.description')}${managesSources ? '' : ` ${t('monitoring.health.empty.askAdmin')}`}`}
+          action={managesSources ? <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => navigate('/monitoring/sources/new')}>{t('monitoring.health.empty.cta')}</Button> : undefined}
         />
       </div>
     )
@@ -494,7 +513,7 @@ export function CIHealthPage() {
             <tbody>
               {items.length === 0
                 ? <tr><td colSpan={headers.length} style={{ ...TD, textAlign: 'center', color: 'var(--color-slate-light)', padding: '28px 12px' }}>{t('monitoring.health.noMatch')}</td></tr>
-                : items.map((row) => <HealthRowView key={row.id} row={row} />)}
+                : items.map((row) => <HealthRowView key={row.id} row={row} highImpact={highImpact} />)}
             </tbody>
           </table>
         </div>
@@ -568,11 +587,11 @@ export function CIHealthPage() {
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <Select aria-label={t('monitoring.health.filters.type')} value={filter.type} onChange={(e) => setParams({ type: e.target.value })} style={{ width: 180 }}>
           <option value="">{t('monitoring.health.filters.allTypes')}</option>
-          {typeOptions.map((ct) => { const k = ciTypeLabelKey(ct.name); return <option key={ct.name} value={ct.name}>{k ? t(k) : ct.label}</option> })}
+          {typeOptions.map((ct) => <option key={ct.name} value={ct.name}>{typeLabel(ct.name)}</option>)}
         </Select>
         <Select aria-label={t('monitoring.health.filters.environment')} value={filter.environment} onChange={(e) => setParams({ environment: e.target.value })} style={{ width: 170 }}>
           <option value="">{t('monitoring.health.filters.allEnvironments')}</option>
-          {baseEnums.environments.map((v) => <option key={v} value={v}>{enumLabel(v)}</option>)}
+          {baseEnums.environments.map((v) => <option key={v} value={v}>{environmentLabel(v)}</option>)}
         </Select>
         {baseEnums.error && (
           <span role="alert" style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)' }}>

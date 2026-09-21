@@ -304,7 +304,7 @@ describe('ServiceDetailPage', () => {
     await screen.findByRole('heading', { level: 1 })
     await user.click(screen.getByRole('button', { name: 'Update map' }))
     const dialog = await screen.findByRole('dialog', { name: 'Update the map of "Enterprise Billing"' })
-    expect(within(dialog).getByTestId('proposal-summary')).toHaveTextContent('+0 −0 excluded 0')
+    expect(within(dialog).getByTestId('proposal-summary')).toHaveTextContent('+0 −0 · 0 excluded')
     expect(await within(dialog).findAllByTestId('proposal-added')).toHaveLength(2)
   })
 

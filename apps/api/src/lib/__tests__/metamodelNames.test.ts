@@ -50,7 +50,7 @@ describe('reservedNamesFromSDL — calcolato, non scritto a mano', () => {
   })
 
   it('un SDL illeggibile ferma tutto: un elenco riservato incompleto lascerebbe passare una collisione', () => {
-    expect(() => reservedNamesFromSDL('type { nope')).toThrow(/SDL non analizzabile/)
+    expect(() => reservedNamesFromSDL('type { nope')).toThrow(/SDL cannot be parsed/)
   })
 
   it('sullo schema di base vero trova i tipi e le query del prodotto', () => {

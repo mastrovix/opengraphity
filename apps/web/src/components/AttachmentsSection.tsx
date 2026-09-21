@@ -6,9 +6,11 @@ import { toast } from 'sonner'
 import { Paperclip, Trash2, Download, Loader2 } from 'lucide-react'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { apiUrl, authHeader } from '@/lib/apiBase'
+import { GET_ATTACHMENT_POLICY } from '@/graphql/queries'
 import { useConfirm } from '@/hooks/useConfirm'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { colors } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 const GET_ATTACHMENTS = gql`
   query GetAttachments($entityType: String!, $entityId: String!) {
@@ -70,10 +72,13 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
     variables: { entityType, entityId },
   })
   const attachments = data?.attachments ?? []
+  // Cosa accetta l'organizzazione (ondata 6 di «Nulla cablato»): lo si dice prima di scegliere il file.
+  const { data: policyData } = useQuery<{ attachmentPolicy: { maxSizeMb: number; extensions: string[] } }>(GET_ATTACHMENT_POLICY, { fetchPolicy: 'cache-first' })
+  const policy = policyData?.attachmentPolicy
 
   const [deleteAttachment] = useMutation(DELETE_ATTACHMENT, {
     onCompleted: () => { toast.success(t('attachments.deleted')); void refetch() },
-    onError:     (e: { message: string }) => toast.error(e.message),
+    onError:     (e: { message: string }) => showError(e),
   })
 
   async function handleUpload(files: FileList | null) {
@@ -98,7 +103,7 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
       toast.success(t('attachments.uploaded'))
       void refetch()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t('attachments.uploadFailed'))
+      showError(err, err instanceof Error ? err.message : t('attachments.uploadFailed'))
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -119,7 +124,7 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
       URL.revokeObjectURL(url)
     } catch (err) {
       // The real cause (401, 404, network) must reach the user, not a generic label.
-      toast.error(t('toast.attachments.downloadFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.attachments.downloadFailed', { error: errorMessage(err) }))
     }
   }
 
@@ -175,9 +180,15 @@ export function AttachmentsSection({ entityType, entityId, defaultOpen = true }:
             {uploading ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Paperclip size={13} aria-hidden="true" />}
             {uploading ? t('attachments.uploading') : t('attachments.upload')}
           </button>
+          {policy && (
+            <p style={{ fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', margin: '6px 0 0' }}>
+              {t('attachments.policyHint', { size: policy.maxSizeMb, types: policy.extensions.map((e) => '.' + e).join(', ') })}
+            </p>
+          )}
           <input
             ref={fileInputRef}
             type="file"
+            accept={policy ? policy.extensions.map((e) => '.' + e).join(',') : undefined}
             multiple
             style={{ display: 'none' }}
             onChange={(e) => void handleUpload(e.target.files)}

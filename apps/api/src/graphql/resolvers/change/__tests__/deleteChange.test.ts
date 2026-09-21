@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../../context.js'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 const runQueryMock = vi.fn()
 vi.mock('../../ci-utils.js', () => ({
@@ -47,8 +48,8 @@ const { notifyChangeWindowChanged } = await import('../../../../services/service
 const { reevaluateSuppressedEvents } = await import('../../../../services/eventCorrelation.js')
 const { enqueueChangeWindowReevaluation } = await import('../../../../jobs/eventCorrelateWorker.js')
 
-const admin: GraphQLContext = { tenantId: 't1', userId: 'adm-1', userEmail: 'adm@test.io', role: 'admin' }
-const operator: GraphQLContext = { ...admin, userId: 'op-1', role: 'operator' }
+const admin: GraphQLContext = { tenantId: 't1', userId: 'adm-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
+const operator: GraphQLContext = { ...admin, userId: 'op-1', role: 'operator', permissions: perms('operator') }
 
 /** La transazione di cancellazione riesce; la lettura dei problem collegati non trova nulla. */
 function mockGraph(deleted = true) {

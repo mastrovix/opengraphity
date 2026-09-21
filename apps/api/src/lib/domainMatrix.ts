@@ -75,7 +75,49 @@ export const DOMAIN_MATRIX_KINDS = {
   change_priority_initial: { inputs: ['change_type'], output: 'priority' },
   /** Severità in ingresso dall'import dei ticket → severità del tenant. */
   import_severity:  { inputs: ['import_severity'], output: 'severity' },
+  /**
+   * Ambiente del CI → punteggio di rischio dell'assessment della change
+   * (revisione del 14 set 2026 · CH-3). L'uscita non è un vocabolario ma una
+   * SCALA del prodotto (`scale`): il punteggio entra nella formula di
+   * `calculateTaskScore` con il suo massimo, quindi i valori ammessi sono
+   * quelli della formula e non si rinominano. Prima erano due letterali nel
+   * codice (`production` → 3, `staging` → 1, il resto 0).
+   */
+  environment_risk: { inputs: ['environment'], output: 'environment_risk_score', scale: ['0', '1', '2', '3'] },
+  /**
+   * Severità dell'allarme firing → salute del CI (revisione del 14 set 2026 ·
+   * EV-3). La scala è quella di `ci.health`, dal migliore al peggiore: vince la
+   * salute peggiore fra gli allarmi firing. Prima era `CI_HEALTH_RULES` con
+   * `critical` e `warning` scritti nel codice, mentre la severità degli
+   * allarmi è un vocabolario del cliente.
+   */
+  ci_health:        { inputs: ['event_severity'], output: 'ci_health', scale: ['operational', 'degraded', 'down'] },
+  /**
+   * Salute del servizio → urgenza dell'incident aperto dai Servizi monitorati
+   * (verifica «Cosa resta cablato», ondata 2). L'INGRESSO non è un vocabolario
+   * ma una scala del prodotto (`inputScales`): la salute la calcola la mappa,
+   * e solo «giù» e «degradato» aprono un incident. Prima era `URGENCY_BY_HEALTH`
+   * scritto nel codice (down → high, degraded → medium).
+   */
+  service_urgency:  { inputs: ['service_health'], output: 'urgency', inputScales: { service_health: ['degraded', 'down'] } },
 } as const
+
+/**
+ * I valori ammessi per ogni dimensione d'ingresso, nell'ordine di `inputs`: la
+ * scala del prodotto quando la dimensione ne ha una (`inputScales`), altrimenti
+ * il vocabolario del cliente.
+ */
+export function matrixInputValues(tenantId: string, kind: DomainMatrixKind): Promise<readonly (readonly string[])[]> {
+  const spec: { inputs: readonly string[]; inputScales?: Readonly<Record<string, readonly string[]>> } = DOMAIN_MATRIX_KINDS[kind]
+  return Promise.all(spec.inputs.map((input) => spec.inputScales?.[input] ?? domainVocabulary(tenantId, input)))
+}
+
+/** I valori ammessi in uscita da una matrice: la sua scala, o il vocabolario del cliente. */
+export function matrixOutputValues(tenantId: string, kind: DomainMatrixKind): Promise<readonly string[]> {
+  const spec: { output: string; scale?: readonly string[] } = DOMAIN_MATRIX_KINDS[kind]
+  return spec.scale ? Promise.resolve(spec.scale) : domainVocabulary(tenantId, spec.output)
+}
+
 
 export type DomainMatrixKind = keyof typeof DOMAIN_MATRIX_KINDS
 
@@ -161,6 +203,18 @@ export const DOMAIN_MATRIX_SEEDS: Readonly<Record<DomainMatrixKind, DomainMatrix
     critical: 'critical', high: 'high', medium: 'medium', low: 'low',
     blocker: 'critical', major: 'high', minor: 'low', trivial: 'low',
   },
+  /** Trascritto da `environmentScore` (resolvers/change/scoring.ts), valore per valore del vocabolario spedito. */
+  environment_risk: {
+    production: '3', staging: '1', development: '0', testing: '0', dr: '0',
+  },
+  /** Trascritto da `CI_HEALTH_RULES` (services/events/ciHealth.ts): critical → down, warning → degraded. */
+  ci_health: {
+    critical: 'down', warning: 'degraded', info: 'operational',
+  },
+  /** Trascritto da `URGENCY_BY_HEALTH` (services/serviceImpact/incident.ts): down → high, degraded → medium. */
+  service_urgency: {
+    down: 'high', degraded: 'medium',
+  },
 }
 
 // ── Lettura ──────────────────────────────────────────────────────────────────
@@ -216,18 +270,18 @@ async function loadMatrixFromGraph(tenantId: string, kind: DomainMatrixKind): Pr
 }
 
 function parseEntries(raw: unknown, kind: DomainMatrixKind): DomainMatrixEntries {
-  if (raw == null) throw new Error(`Matrice "${kind}": nodo senza \`entries\``)
+  if (raw == null) throw new Error(`Matrix "${kind}": node without \`entries\``)
   let parsed: unknown = raw
   if (typeof raw === 'string') {
     try { parsed = JSON.parse(raw) }
-    catch (e) { throw new Error(`Matrice "${kind}": \`entries\` non è JSON valido (${e instanceof Error ? e.message : String(e)})`) }
+    catch (e) { throw new Error(`Matrix "${kind}": \`entries\` is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`Matrice "${kind}": \`entries\` deve essere un oggetto chiave → valore`)
+    throw new Error(`Matrix "${kind}": \`entries\` must be a key → value object`)
   }
   const out: Record<string, string> = {}
   for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-    if (typeof v !== 'string') throw new Error(`Matrice "${kind}": la cella "${k}" non è una stringa (${typeof v})`)
+    if (typeof v !== 'string') throw new Error(`Matrix "${kind}": cell "${k}" is not a string (${typeof v})`)
     out[k] = v
   }
   return out
@@ -243,7 +297,7 @@ export async function resolveDomainMatrix(
 ): Promise<string> {
   const spec = DOMAIN_MATRIX_KINDS[kind]
   if (values.length !== spec.inputs.length) {
-    throw new Error(`Matrice "${kind}": attesi ${spec.inputs.length} valori (${spec.inputs.join(', ')}), ricevuti ${values.length}`)
+    throw new Error(`Matrix "${kind}": ${spec.inputs.length} values expected (${spec.inputs.join(', ')}), got ${values.length}`)
   }
   const matrix = await loadDomainMatrix(tenantId, kind)
   const key = matrixKey(...values)
@@ -320,8 +374,8 @@ async function loadVocabularyFromGraph(tenantId: string, vocabulary: string): Pr
     )
     if (!r.records.length) {
       throw new Error(
-        `Vocabolario "${vocabulary}" inesistente (né del cliente ${tenantId} né di sistema): ` +
-        `il codice sta chiedendo un nome che il Dizionario non ha.`,
+        `Dictionary "${vocabulary}" does not exist (neither for tenant ${tenantId} nor shipped): ` +
+        `the code is asking for a name the Dictionary does not have.`,
       )
     }
     const raw = r.records[0].get('values')

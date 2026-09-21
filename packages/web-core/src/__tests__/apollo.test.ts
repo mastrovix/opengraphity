@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ApolloClient, ApolloLink, InMemoryCache, from, gql } from '@apollo/client/core'
 import { Observable } from '@apollo/client/utilities'
 import { CombinedGraphQLErrors } from '@apollo/client/errors'
-import { createErrorLink, createAuthLink, createDeduper, type ErrorLinkOptions } from '../apollo.js'
+import { createErrorLink, createAuthLink, createDeduper, errorFieldName, type ErrorLinkOptions } from '../apollo.js'
 import type { ClientLogger } from '../logger.js'
 
 const QUERY = gql`query Me { me { id } }`
@@ -88,7 +88,7 @@ describe('errorLink — UNAUTHORIZED', () => {
     expect(opts.refreshToken).toHaveBeenCalledTimes(1)
     expect(script.calls()).toBe(2)
     expect(opts.onSessionInvalid).toHaveBeenCalledTimes(1)
-    expect(logger.error).toHaveBeenCalledWith('UNAUTHORIZED dopo refresh del token', expect.objectContaining({ operation: 'Me' }))
+    expect(logger.error).toHaveBeenCalledWith('UNAUTHORIZED after token refresh', expect.objectContaining({ operation: 'Me' }))
     expect(opts.onGraphQLError).not.toHaveBeenCalled()
   })
 
@@ -273,5 +273,121 @@ describe('lo stato HTTP di un errore di autenticazione (401 o 500) non cambia la
     await expect(client.query({ query: QUERY, fetchPolicy: 'no-cache' })).rejects.toThrow()
     expect(opts.refreshToken).not.toHaveBeenCalled()
     expect(opts.onNetworkError).toHaveBeenCalled()
+  })
+})
+
+/**
+ * IL CAMPO CHE UN RIFIUTO ACCUSA (revisione del 17 set 2026).
+ *
+ * I rifiuti dei moduli portano nei `params` l'etichetta (`field`, che entra
+ * nella frase) e il nome interno (`name`, che serve a trovare la casella). Il
+ * secondo è nato perché il messaggio arrivava solo come avviso all'angolo:
+ * spariva dopo pochi secondi e nessun campo veniva marcato.
+ */
+describe('errorFieldName', () => {
+  const conParams = (params: Record<string, unknown>) =>
+    ({ errors: [{ extensions: { i18n: { key: 'errors.formField.required', params } } }] })
+
+  it('legge il nome interno del campo', () => {
+    expect(errorFieldName(conParams({ field: 'Costo stimato (EUR)', name: 'costo_stimato' }))).toBe('costo_stimato')
+  })
+
+  it('un rifiuto che non riguarda un campo non ne inventa uno', () => {
+    expect(errorFieldName(conParams({ item: 'Nuovo portatile', filled: '5', current: '6' }))).toBeNull()
+    expect(errorFieldName(null)).toBeNull()
+    expect(errorFieldName({ message: 'boom' })).toBeNull()
+  })
+
+  it('l\'etichetta da sola non basta: senza `name` non si accende nessun campo', () => {
+    expect(errorFieldName(conParams({ field: 'Costo stimato (EUR)' }))).toBeNull()
+  })
+
+  it('con più errori prende il primo che nomina un campo', () => {
+    const errore = { errors: [
+      { extensions: { i18n: { key: 'errors.x', params: { a: 1 } } } },
+      { extensions: { i18n: { key: 'errors.formField.required', params: { name: 'preventivo' } } } },
+    ] }
+    expect(errorFieldName(errore)).toBe('preventivo')
+  })
+})
+
+/**
+ * IL TENANT SOSPESO: si ferma, non gira (17 set 2026).
+ *
+ * Sospendendo `c-one` dalla console di piattaforma, l'app di quel tenant è
+ * finita in un ciclo: 401 → rinfresca → 401 → «account non accettato» →
+ * login → Keycloak dice sì → app → 401. Ogni giro passava da Keycloak e
+ * allungava l'URL, finché nginx ha risposto **414**.
+ *
+ * Quello che si pinna qui è soprattutto ciò che NON deve accadere: nessun
+ * rinfresco, nessun ritorno al login. Il codice `TENANT_SUSPENDED` è
+ * definitivo per costruzione — non c'è niente da riprovare.
+ */
+describe('errorLink — TENANT_SUSPENDED', () => {
+  it('non rinfresca il token e non torna al login: chiama il ramo del tenant sospeso', async () => {
+    const onTenantSuspended = vi.fn()
+    const { opts } = makeOptions({ onTenantSuspended })
+    const script = scriptedLink([{ kind: 'gqlError', code: 'TENANT_SUSPENDED', message: 'Unauthorized: tenant suspended' }])
+    const client = makeClient(opts, script.link, () => 'tok')
+
+    await expect(client.query({ query: QUERY, fetchPolicy: 'no-cache' })).rejects.toThrow()
+
+    expect(onTenantSuspended).toHaveBeenCalledTimes(1)
+    expect(opts.refreshToken).not.toHaveBeenCalled()
+    expect(opts.onSessionInvalid).not.toHaveBeenCalled()
+    // Una sola richiesta: nessun replay, quindi nessun giro.
+    expect(script.calls()).toBe(1)
+  })
+
+  it('non lo mostra come un errore qualunque: la frase la dà la pagina', async () => {
+    const onTenantSuspended = vi.fn()
+    const { opts } = makeOptions({ onTenantSuspended })
+    const script = scriptedLink([{ kind: 'gqlError', code: 'TENANT_SUSPENDED' }])
+    const client = makeClient(opts, script.link, () => 'tok')
+    await expect(client.query({ query: QUERY, fetchPolicy: 'no-cache' })).rejects.toThrow()
+    expect(opts.onGraphQLError).not.toHaveBeenCalled()
+  })
+
+  it('anche quando arriva come `ServerError` (media type non GraphQL)', async () => {
+    // La forma che il prodotto produce davvero dietro un proxy che riscrive il
+    // Content-Type: mancarla rimetterebbe il ciclo esattamente com'era.
+    const { HttpLink } = await import('@apollo/client/link/http')
+    const corpo = JSON.stringify({ errors: [{ message: 'Unauthorized: tenant suspended', extensions: { code: 'TENANT_SUSPENDED' } }] })
+    const fetchFinto = vi.fn(async () => new Response(corpo, { status: 401, headers: { 'content-type': 'application/json' } }))
+    const onTenantSuspended = vi.fn()
+    const { opts } = makeOptions({ onTenantSuspended })
+    const client = new ApolloClient({
+      link:  from([createErrorLink(opts), createAuthLink(() => 'tok').concat(new HttpLink({ uri: 'http://x/graphql', fetch: fetchFinto as unknown as typeof fetch }))]),
+      cache: new InMemoryCache(),
+    })
+    await expect(client.query({ query: QUERY, fetchPolicy: 'no-cache' })).rejects.toThrow()
+    expect(onTenantSuspended).toHaveBeenCalled()
+    expect(opts.refreshToken).not.toHaveBeenCalled()
+    expect(fetchFinto).toHaveBeenCalledTimes(1)
+  })
+
+  it('sospeso DOPO un rinfresco riuscito: non diventa un ritorno al login', async () => {
+    // Il caso di chi era già dentro quando la sospensione è arrivata: il primo
+    // rifiuto è un UNAUTHORIZED vero, il secondo dice che il tenant è chiuso.
+    const onTenantSuspended = vi.fn()
+    const { opts } = makeOptions({ onTenantSuspended })
+    const script = scriptedLink([
+      { kind: 'gqlError', code: 'UNAUTHORIZED' },
+      { kind: 'gqlError', code: 'TENANT_SUSPENDED' },
+    ])
+    const client = makeClient(opts, script.link, () => 'tok')
+    await expect(client.query({ query: QUERY, fetchPolicy: 'no-cache' })).rejects.toThrow()
+    expect(opts.refreshToken).toHaveBeenCalled()
+    expect(onTenantSuspended).toHaveBeenCalled()
+    expect(opts.onSessionInvalid).not.toHaveBeenCalled()
+  })
+
+  it('senza il ramo collegato il rifiuto non si perde: resta un errore, non un ciclo', async () => {
+    const { opts } = makeOptions()   // nessun onTenantSuspended
+    const script = scriptedLink([{ kind: 'gqlError', code: 'TENANT_SUSPENDED' }])
+    const client = makeClient(opts, script.link, () => 'tok')
+    await expect(client.query({ query: QUERY, fetchPolicy: 'no-cache' })).rejects.toThrow()
+    expect(opts.refreshToken).not.toHaveBeenCalled()
+    expect(opts.onSessionInvalid).not.toHaveBeenCalled()
   })
 })

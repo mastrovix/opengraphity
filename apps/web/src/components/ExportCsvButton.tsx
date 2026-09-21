@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { Download, Loader2 } from 'lucide-react'
 import { colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 interface Props {
   /** Fetches ALL rows to export (not just the current page) and triggers the download. */
@@ -18,7 +18,7 @@ export function ExportCsvButton({ onExport }: Props) {
       onClick={() => {
         setBusy(true)
         onExport()
-          .catch((err: unknown) => toast.error(err instanceof Error ? err.message : t('csvExport.failed')))
+          .catch((err: unknown) => showError(err, err instanceof Error ? err.message : t('csvExport.failed')))
           .finally(() => setBusy(false))
       }}
       disabled={busy}

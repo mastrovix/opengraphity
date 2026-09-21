@@ -25,11 +25,29 @@ interface SidebarGroupProps {
 export function SidebarGroup({ title, icon: Icon, active, open, onToggle, collapsed, collapsedTo, children }: SidebarGroupProps) {
   const panelId = useId()
 
+  /*
+   * SIDEBAR COMPRESSA: L'ICONA PIÙ IL MENU A COMPARSA (20 set 2026, dal giro
+   * nel browser).
+   *
+   * Prima c'era la sola icona, che porta alla PRIMA voce del gruppo: le altre
+   * non erano raggiungibili e nessuno poteva sapere che esistessero — il
+   * Costruttore di report, i Report SLA e gli OLA/UC sparivano dal menu. Ora
+   * le voci ci sono sempre, in un pannellino accanto che compare al
+   * passaggio del mouse o col tasto Tab (`:focus-within`, vedi `index.css`).
+   * L'icona continua a portare alla prima voce: chi la usava così non perde
+   * niente.
+   */
   if (collapsed) {
     return (
-      <Link to={collapsedTo} title={title} style={navItemStyle(active, true)} className="hover-bg">
-        <Icon size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
-      </Link>
+      <div className="sidebar-flyout-anchor" style={{ marginBottom: 2 }}>
+        <Link to={collapsedTo} title={title} style={navItemStyle(active, true)} className="hover-bg">
+          <Icon size={16} aria-hidden="true" style={{ flexShrink: 0, color: C.brand }} />
+        </Link>
+        <div className="sidebar-flyout" role="group" aria-label={title}>
+          <div className="sidebar-flyout-title">{title}</div>
+          {children}
+        </div>
+      </div>
     )
   }
 

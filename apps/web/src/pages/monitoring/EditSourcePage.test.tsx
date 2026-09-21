@@ -96,10 +96,17 @@ describe('EditSourcePage — regole dei preset (A1)', () => {
     }]))
   })
 
-  it('configurazione salvata che l\'editor non sa rappresentare (default_values.title via API) → errore in chiaro e Salva disabilitato: nessuna regola persa in silenzio', async () => {
-    render({ ...SOURCE, defaultValues: JSON.stringify({ title: 'fallback' }) })
-    expect(await screen.findByRole('alert')).toHaveTextContent('The saved configuration cannot be edited from this page (saving disabled so it is not lost): defaultValues.title: cannot be edited from this page')
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  /**
+   * Revisione totale · G-MON-2: la configurazione illeggibile non blocca più
+   * tutto il salvataggio (il nome e il limite si correggono comunque), ma il
+   * salvataggio NON la riscrive: i JSON delle regole non viaggiano.
+   */
+  it('configurazione salvata che l\'editor non sa rappresentare (default_values.title via API) → errore in chiaro, e il salvataggio lascia intatta la configurazione', async () => {
+    const updates: UpdateInput[] = []
+    const { user } = render({ ...SOURCE, defaultValues: JSON.stringify({ title: 'fallback' }) }, updates)
+    expect(await screen.findByRole('alert')).toHaveTextContent('The saved configuration cannot be edited from this page: saving leaves it untouched and only updates name, status and rate limit. defaultValues.title: cannot be edited from this page')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(updates).toEqual([{ name: 'Prometheus prod', enabled: true, rateLimitPerMinute: 100 }]))
   })
 })
 
@@ -134,8 +141,11 @@ describe('EditSourcePage — round-trip del connettore generic (D·1.2)', () => 
     expect(JSON.parse(updates[0]!['valueMapping'] as string)).toEqual({ severity: { major: 'critical' } })
   })
 
-  it('default_values.severity fuori vocabolario → errore in chiaro (il mappatore non lo rappresenta)', async () => {
-    render({ ...GENERIC, defaultValues: JSON.stringify({ resourceKind: 'hostname', severity: 'major' }) })
-    expect(await screen.findByRole('alert')).toHaveTextContent('Cannot read the fields: defaultValues.severity: expected one of critical, warning, info')
+  it('default_values.severity fuori vocabolario → errore in chiaro e configurazione non riscritta (G-MON-2)', async () => {
+    const updates: UpdateInput[] = []
+    const { user } = render({ ...GENERIC, defaultValues: JSON.stringify({ resourceKind: 'hostname', severity: 'major' }) }, updates)
+    expect(await screen.findByRole('alert')).toHaveTextContent('The saved configuration cannot be edited from this page: saving leaves it untouched and only updates name, status and rate limit. defaultValues.severity: expected one of critical, warning, info')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(updates).toEqual([{ name: 'Custom tool', enabled: true, rateLimitPerMinute: 100 }]))
   })
 })

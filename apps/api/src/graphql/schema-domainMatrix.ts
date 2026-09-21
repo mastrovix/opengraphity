@@ -98,6 +98,22 @@ export function domainMatrixSDL(): string {
     riskBandThresholds: RiskBandThresholds!
 
     """
+    Quanto pesa l'ambiente del CI (matrice \`environment_risk\`) contro le domande
+    nel punteggio di un compito di assessment. Era 5 scritto nel codice: ogni
+    change in produzione risultava ad alto rischio qualunque fossero le
+    risposte. Admin.
+    """
+    changeEnvironmentWeight: ChangeEnvironmentWeight!
+
+    """
+    I pesi dell'analisi d'impatto della change e le sue due finestre. Erano
+    scritti in \`riskScore.ts\` (×20, ×10 fino a 40, ×15, ×10, ×5; 60 e 30
+    giorni), e il livello aveva soglie proprie invece delle fasce del cliente.
+    Admin.
+    """
+    impactAnalysisWeights: ImpactAnalysisWeights!
+
+    """
     Cosa c'è da sistemare nella configurazione di questo cliente: schema
     degradato, buchi di configurazione, matrici incomplete, liste della policy
     che citano valori fuori vocabolario, stati del ciclo di vita senza
@@ -170,6 +186,42 @@ export function domainMatrixSDL(): string {
     isDefault:  Boolean!
   }
 
+  type ChangeEnvironmentWeight {
+    """Intero 0..20: 0 toglie l'ambiente dal punteggio, ogni domanda pesa per il suo peso."""
+    weight:    Int!
+    """Vero quando il cliente non l'ha scelto e vale quello di fabbrica (5)."""
+    isDefault: Boolean!
+  }
+
+  type ImpactAnalysisWeights {
+    """Punti per ogni CI toccato il cui ambiente vale il punteggio più alto della matrice \`environment_risk\`."""
+    productionCI:        Int!
+    """Punti per ogni CI nel blast radius…"""
+    blastRadiusCI:       Int!
+    """…fino a questo massimo."""
+    blastRadiusCap:      Int!
+    openIncident:        Int!
+    failedChange:        Int!
+    ongoingChange:       Int!
+    """Giorni: quali change recenti contano (fallite e in corso)."""
+    recentChangesDays:   Int!
+    """Giorni: quali incident chiusi di recente si mostrano."""
+    recentIncidentsDays: Int!
+    """Vero quando il cliente non li ha scelti e valgono quelli di fabbrica."""
+    isDefault:           Boolean!
+  }
+
+  input ImpactAnalysisWeightsInput {
+    productionCI:        Int!
+    blastRadiusCI:       Int!
+    blastRadiusCap:      Int!
+    openIncident:        Int!
+    failedChange:        Int!
+    ongoingChange:       Int!
+    recentChangesDays:   Int!
+    recentIncidentsDays: Int!
+  }
+
   input RiskBandThresholdInput {
     band: String!
     upTo: Int!
@@ -207,6 +259,12 @@ export function domainMatrixSDL(): string {
     cioè un errore nel momento peggiore — l'apertura di una change.
     """
     updateRiskBandThresholds(entries: [RiskBandThresholdInput!]!): RiskBandThresholds!
+
+    """Imposta il peso dell'ambiente nel punteggio dell'assessment (intero 0..20)."""
+    updateChangeEnvironmentWeight(weight: Int!): ChangeEnvironmentWeight!
+
+    """Sostituisce i pesi dell'analisi d'impatto (interi 0..100, finestre 1..365 giorni)."""
+    updateImpactAnalysisWeights(input: ImpactAnalysisWeightsInput!): ImpactAnalysisWeights!
   }
   `
 }

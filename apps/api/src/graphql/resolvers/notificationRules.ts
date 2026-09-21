@@ -1,26 +1,19 @@
 import { GraphQLError } from 'graphql'
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { randomUUID } from 'crypto'
-import type { Queue } from 'bullmq'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
 import { invalidateRuleCache, DEFAULT_ROUTABLE_CHANNELS, ROUTABLE_CHANNELS_BY_EVENT, routableChannels, unroutableChannels } from '@opengraphity/notifications'
 import {
-  NOTIFICATION_TARGETS, isNotificationTarget, applicableNotificationTargets, isTargetApplicable,
+  NOTIFICATION_BASE_TARGETS, isNotificationTarget, notificationTargetRole, roleNotificationTarget, applicableNotificationTargets, isTargetApplicable,
   WORKFLOW_STEP_PURPOSES, isWorkflowStepPurpose, isStepEnteredEventType,
+  NOTIFICATION_SEVERITIES, type NotificationSeverity,
 } from '@opengraphity/types'
 import { SEEDED_EVENT_TYPES } from '../../lib/seedNotificationRules.js'
 import { workflowEventTypeRows } from '../../lib/stepEvent.js'
 import { validateEnum } from '../../lib/validation.js'
 import { audit } from '../../lib/audit.js'
-import { getQueue } from '../../lib/bullmq.js'
-
-// Shared queue for notification jobs
-let _notifQueue: Queue | null = null
-function getNotifQueue(): Queue {
-  if (!_notifQueue) _notifQueue = getQueue('notification-jobs')
-  return _notifQueue
-}
+import { assertRolesExist, tenantRoles } from '../../lib/roles.js'
 
 function mapRule(props: Record<string, unknown>, eventProduced = true) {
   const digestRecipients = props['digest_recipients']
@@ -47,15 +40,31 @@ function mapRule(props: Record<string, unknown>, eventProduced = true) {
   }
 }
 
-async function syncDigestJob(ruleId: string, digestTime: string | null | undefined, enabled: boolean) {
-  if (!digestTime || !enabled) return
-  const [hour, minute] = (digestTime ?? '08:00').split(':').map(Number)
-  const cron = `${minute ?? 0} ${hour ?? 8} * * *`
-  const queue = getNotifQueue()
-  await queue.upsertJobScheduler(`digest-${ruleId}`, { pattern: cron }, {
-    name: 'digest',
-    data: { type: 'digest', ruleId },
-  })
+/**
+ * I campi speciali delle regole — revisione del 14 set 2026 · NT-8.
+ *  - `digestTime` è l'ora (HH:MM, nel fuso del cliente) del digest: la legge il
+ *    job del digest (jobs/emailDigestWorker.ts). Prima creava un job per regola
+ *    che non faceva niente, nel fuso del server.
+ *  - `escalationTarget` e `slaWarningTarget` duplicavano il bersaglio della
+ *    regola e nessuno li leggeva: i destinatari sono il bersaglio (`target`).
+ *  - `slaWarningThresholdPercent` non apparteneva alla regola: il preavviso è
+ *    della policy SLA (pagina SLA Policies), che è ciò che programma l'avviso.
+ */
+function assertSpecialFields(input: { digestTime?: string | null; escalationTarget?: string | null; slaWarningTarget?: string | null; slaWarningThresholdPercent?: number | null; escalationDelayMinutes?: number | null }): void {
+  if (input.digestTime != null && !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.digestTime)) {
+    throw new ValidationError(`digestTime must be HH:MM (24h). Got: "${input.digestTime}"`, { key: 'errors.notificationRule.digestTime' })
+  }
+  if (input.escalationDelayMinutes != null && (!Number.isInteger(input.escalationDelayMinutes) || input.escalationDelayMinutes <= 0)) {
+    throw new ValidationError('escalationDelayMinutes must be a positive whole number of minutes', { key: 'errors.notificationRule.escalationDelay' })
+  }
+  for (const [field, value] of [['escalationTarget', input.escalationTarget], ['slaWarningTarget', input.slaWarningTarget], ['slaWarningThresholdPercent', input.slaWarningThresholdPercent]] as const) {
+    if (value != null) {
+      throw new ValidationError(
+        `${field} is no longer a rule field: the recipients are the rule's target, and the SLA warning lead time belongs to the SLA policy.`,
+        { key: 'errors.notificationRule.retiredField', params: { field } },
+      )
+    }
+  }
 }
 
 /**
@@ -90,11 +99,11 @@ function assertChannelsRoutable(eventType: string, channels: readonly string[]):
 function assertTargetKnown(target: string): void {
   if (!isNotificationTarget(target)) {
     throw new GraphQLError(
-      `Target "${target}" is not a valid recipient. Allowed: ${NOTIFICATION_TARGETS.join(', ')}`,
+      `Target "${target}" is not a valid recipient. Allowed: ${[...NOTIFICATION_BASE_TARGETS, 'role:<role>'].join(', ')}`,
       {
         extensions: {
-          code: 'BAD_USER_INPUT', target, allowedTargets: [...NOTIFICATION_TARGETS],
-          i18n: { key: 'errors.notificationRule.badTarget', params: { target, allowed: NOTIFICATION_TARGETS.join(', ') } },
+          code: 'BAD_USER_INPUT', target, allowedTargets: [...NOTIFICATION_BASE_TARGETS, 'role:<role>'],
+          i18n: { key: 'errors.notificationRule.badTarget', params: { target, allowed: [...NOTIFICATION_BASE_TARGETS, 'role:<role>'].join(', ') } },
         },
       },
     )
@@ -187,13 +196,22 @@ async function producedEventTypes(session: Parameters<typeof workflowEventTypeRo
   return new Set<string>([...SEEDED_EVENT_TYPES, ...UI_ONLY_EVENT_TYPES, ...rows.map((r) => r.eventType)])
 }
 
-/** La tabella dei canali instradabili, così com'è nel pacchetto: l'interfaccia non conosce nomi di eventi o canali. */
-function notificationRouting() {
+/**
+ * La tabella dei canali instradabili, così com'è nel pacchetto: l'interfaccia
+ * non conosce nomi di eventi o canali.
+ *
+ * I bersagli per ruolo sono quelli DEL TENANT (revisione totale · E-39): i
+ * ruoli creati dall'organizzazione non comparivano nella tendina, pur essendo
+ * accettati dall'API.
+ */
+async function notificationRouting(tenantId: string) {
+  const roles = await tenantRoles(tenantId)
+  const roleTargets = [...roles.keys()].map(roleNotificationTarget)
   return {
     defaultChannels: [...DEFAULT_ROUTABLE_CHANNELS],
     byEventType:     Object.entries(ROUTABLE_CHANNELS_BY_EVENT).map(([eventType, channels]) => ({ eventType, channels: [...channels] })),
-    targetsByEventType: SEEDED_EVENT_TYPES.map((eventType) => ({ eventType, targets: [...applicableNotificationTargets(eventType)] })),
-    defaultTargets:  [...NOTIFICATION_TARGETS],
+    targetsByEventType: SEEDED_EVENT_TYPES.map((eventType) => ({ eventType, targets: [...applicableNotificationTargets(eventType, roleTargets)] })),
+    defaultTargets:  [...NOTIFICATION_BASE_TARGETS, ...roleTargets],
   }
 }
 
@@ -219,6 +237,15 @@ async function workflowEventTypes(_: unknown, args: { entityType?: string | null
   return withSession((session) => workflowEventTypeRows(session, ctx.tenantId, args.entityType ?? null))
 }
 
+/**
+ * La severità del messaggio, dal vocabolario condiviso con la pagina e il
+ * pannello (NT-1: prima la validazione ammetteva le priorità dei ticket, e la
+ * pagina non riusciva a salvare nessuna delle quattro severità che offriva).
+ */
+function assertSeverityKnown(severity: string): void {
+  validateEnum(severity as NotificationSeverity, NOTIFICATION_SEVERITIES, 'severityOverride')
+}
+
 async function updateNotificationRule(
   _: unknown,
   { id, input }: {
@@ -241,10 +268,10 @@ async function updateNotificationRule(
   },
   ctx: GraphQLContext,
 ) {
-  if (input.severityOverride) {
-    validateEnum(input.severityOverride, ['low', 'medium', 'high', 'critical', ''] as const, 'severityOverride')
-  }
+  if (input.severityOverride != null) assertSeverityKnown(input.severityOverride)
+  assertSpecialFields(input)
   if (input.target != null) assertTargetKnown(input.target)
+  if (input.target != null) await assertRolesExist(ctx.tenantId, [notificationTargetRole(input.target)].filter((k): k is string => k !== null))
   return withSession(async (session) => {
     const now = new Date().toISOString()
     let stepPurpose:  string | null | undefined
@@ -309,9 +336,6 @@ async function updateNotificationRule(
     const produced = await producedEventTypes(session, ctx.tenantId)
     const rule = mapRule(props, produced.has(props['event_type'] as string))
     invalidateRuleCache(ctx.tenantId, rule.eventType)
-    if (rule.eventType === 'digest.daily') {
-      await syncDigestJob(id, rule.digestTime, rule.enabled)
-    }
     void audit(ctx, 'notification_rule.updated', 'NotificationRule', id)
     return rule
   }, true)
@@ -341,8 +365,11 @@ async function createNotificationRule(
   ctx: GraphQLContext,
 ) {
   assertChannelsRoutable(input.eventType, input.channels)
+  if (input.severityOverride != null) assertSeverityKnown(input.severityOverride)
+  assertSpecialFields(input)
   assertTargetKnown(input.target)
   assertTargetApplicable(input.eventType, input.target)
+  await assertRolesExist(ctx.tenantId, [notificationTargetRole(input.target)].filter((k): k is string => k !== null))
   const stepPurpose  = normalizeStepNarrowing(input.eventType, input.stepPurpose,  'stepPurpose')
   const stepCategory = normalizeStepNarrowing(input.eventType, input.stepCategory, 'stepCategory')
   return withSession(async (session) => {
@@ -424,9 +451,6 @@ async function createNotificationRule(
     const props = result.records[0].get('r').properties as Record<string, unknown>
     const produced = await producedEventTypes(session, ctx.tenantId)
     const rule = mapRule(props, produced.has(props['event_type'] as string))
-    if (rule.eventType === 'digest.daily') {
-      await syncDigestJob(id, rule.digestTime, rule.enabled)
-    }
     void audit(ctx, 'notification_rule.created', 'NotificationRule', id)
     return rule
   }, true)
@@ -451,17 +475,16 @@ async function deleteNotificationRule(
     if (!result.records.length) throw new GraphQLError('Rule not found, or not deletable', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.notificationRule.notDeletable' } } })
     const eventType = result.records[0].get('eventType') as string
     invalidateRuleCache(ctx.tenantId, eventType)
-    // Remove digest job if any. A failure here leaves a ghost digest job
-    // firing for a deleted rule — the deletion must fail so the user retries.
-    if (eventType === 'digest.daily') {
-      await getNotifQueue().removeJobScheduler(`digest-${id}`)
-    }
     void audit(ctx, 'notification_rule.deleted', 'NotificationRule', id)
     return true
   }, true)
 }
 
 export const notificationRuleResolvers = {
-  Query:    { notificationRules, notificationRouting, workflowEventTypes },
+  Query:    {
+    notificationRules, workflowEventTypes,
+    // E-39: l'instradamento dipende dai RUOLI del tenant, quindi passa dal contesto.
+    notificationRouting: (_: unknown, __: unknown, ctx: GraphQLContext) => notificationRouting(ctx.tenantId),
+  },
   Mutation: { createNotificationRule, updateNotificationRule, deleteNotificationRule },
 }

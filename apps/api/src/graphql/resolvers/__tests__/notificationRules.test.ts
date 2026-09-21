@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
 import { ROUTABLE_CHANNELS_BY_EVENT, DEFAULT_ROUTABLE_CHANNELS } from '@opengraphity/notifications'
-import { NOTIFICATION_TARGETS, USER_ROLES } from '@opengraphity/types'
+import { NOTIFICATION_TARGETS, USER_ROLES, NOTIFICATION_SEVERITIES } from '@opengraphity/types'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
@@ -21,6 +21,20 @@ vi.mock('../ci-utils.js', () => ({
 }))
 vi.mock('../../../lib/bullmq.js', () => ({ getQueue: vi.fn() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
+// I ruoli dell'organizzazione (ondata 7): i quattro di fabbrica più «service_desk», creato dall'admin.
+vi.mock('../../../lib/roles.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../lib/roles.js')>()
+  const keys = new Set(['admin', 'operator', 'viewer', 'end_user', 'service_desk'])
+  return {
+    ...real,
+    assertRolesExist: vi.fn(async (_t: string, roleKeys: readonly string[]) => {
+      const missing = roleKeys.filter((k) => !keys.has(k))
+      if (missing.length) throw new (await import('../../../lib/errors.js')).ValidationError(`Recipients name roles this organization does not have: ${missing.join(', ')}`, { key: 'errors.role.unknownTarget', params: { roles: missing.join(', ') } })
+    }),
+    // E-39: la tendina offre i ruoli DEL TENANT, quindi l'instradamento li legge.
+    tenantRoles: vi.fn(async () => new Map([...keys].map((k) => [k, { key: k, name: k, permissions: [] }]))),
+  }
+})
 vi.mock('@opengraphity/notifications', async (importOriginal) => {
   const orig = await importOriginal<typeof import('@opengraphity/notifications')>()
   return { ...orig, invalidateRuleCache: vi.fn() }
@@ -28,8 +42,9 @@ vi.mock('@opengraphity/notifications', async (importOriginal) => {
 
 const { notificationRuleResolvers } = await import('../notificationRules.js')
 import { isTargetApplicable } from '@opengraphity/types'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
 const ruleNode = (props: Record<string, unknown>) => ({ records: [{ get: () => ({ properties: props }) }] })
 
 async function expectBadInput(p: Promise<unknown>, pattern: RegExp) {
@@ -42,16 +57,29 @@ async function expectBadInput(p: Promise<unknown>, pattern: RegExp) {
 beforeEach(() => vi.clearAllMocks())
 
 describe('Query.notificationRouting', () => {
-  it('restituisce i canali predefiniti e una voce per ogni tipo con formatter dedicato, copiati dal pacchetto', () => {
-    const out = notificationRuleResolvers.Query.notificationRouting()
+  it('restituisce i canali predefiniti e una voce per ogni tipo con formatter dedicato, copiati dal pacchetto', async () => {
+    // CONTRATTO RINEGOZIATO (revisione totale · E-39): l'instradamento dipende
+    // dai ruoli del tenant (anche quelli creati dall'organizzazione), quindi
+    // vuole il contesto ed è asincrono.
+    const out = await notificationRuleResolvers.Query.notificationRouting(null, null, ctx)
     expect(out.defaultChannels).toEqual([...DEFAULT_ROUTABLE_CHANNELS])
     expect(out.byEventType).toEqual(Object.entries(ROUTABLE_CHANNELS_BY_EVENT).map(([eventType, channels]) => ({ eventType, channels: [...channels] })))
     expect(out.byEventType.find((e) => e.eventType === 'incident.created')!.channels).toEqual(['in_app', 'email', 'slack', 'teams'])
-    expect(out.byEventType.find((e) => e.eventType === 'change.approved')!.channels).toEqual(['in_app', 'email', 'slack'])
+    // Revisione totale · E-18: le change hanno anche la card Teams.
+    expect(out.byEventType.find((e) => e.eventType === 'change.approved')!.channels).toEqual(['in_app', 'email', 'slack', 'teams'])
     expect(out.byEventType.some((e) => e.eventType === 'event.storm_started')).toBe(false)
     // copie: chi legge non può mutare la tabella del pacchetto
     out.defaultChannels.push('sms')
     expect(DEFAULT_ROUTABLE_CHANNELS).toEqual(['in_app', 'email'])
+  })
+
+  it('E-39: i bersagli offerti comprendono i ruoli creati dall\'organizzazione', async () => {
+    const out = await notificationRuleResolvers.Query.notificationRouting(null, null, ctx)
+    expect(out.defaultTargets).toContain('role:service_desk')
+    const created = out.targetsByEventType.find((e) => e.eventType === 'incident.created')
+    expect(created?.targets).toContain('role:service_desk')
+    // e restano i bersagli che quell'evento NON può risolvere
+    expect(created?.targets).not.toContain('assignee')
   })
 })
 
@@ -86,11 +114,11 @@ describe('createNotificationRule — canali non instradabili → BAD_USER_INPUT 
 })
 
 /**
- * D-23 — il destinatario viene validato in scrittura contro il vocabolario
- * condiviso (`NOTIFICATION_TARGETS`), che ha un bersaglio per ruolo VERO
- * (USER_ROLES). Prima `target` veniva scritto senza controllo e poi ignorato
- * in consegna: `role:manager` era salvabile e non avrebbe mai selezionato
- * nessuno.
+ * D-23 — il destinatario viene validato in scrittura: la forma contro il
+ * vocabolario condiviso, e un bersaglio per ruolo contro i ruoli
+ * dell'organizzazione (ondata 7). Prima `target` veniva scritto senza controllo
+ * e poi ignorato in consegna: `role:manager` era salvabile e non avrebbe mai
+ * selezionato nessuno.
  */
 describe('target — validato in scrittura contro NOTIFICATION_TARGETS', () => {
   it('il vocabolario ha un bersaglio per ogni ruolo vero e nessun role:manager', () => {
@@ -98,12 +126,19 @@ describe('target — validato in scrittura contro NOTIFICATION_TARGETS', () => {
     expect(NOTIFICATION_TARGETS).not.toContain('role:manager')
   })
 
-  it('create con role:manager → BAD_USER_INPUT con i valori ammessi, nessuna scrittura', async () => {
+  it('create con role:manager (un ruolo che l\'organizzazione non ha) → BAD_USER_INPUT, nessuna scrittura', async () => {
     await expectBadInput(
       notificationRuleResolvers.Mutation.createNotificationRule(null, { input: { titleKey: 'k', eventType: 'incident.created', channels: ['in_app'], target: 'role:manager' } }, ctx),
-      /Target "role:manager" is not a valid recipient\. Allowed: all, assignee, team_owner, role:admin/,
+      /roles this organization does not have: manager/,
     )
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('create con un bersaglio malformato → BAD_USER_INPUT con i valori ammessi', async () => {
+    await expectBadInput(
+      notificationRuleResolvers.Mutation.createNotificationRule(null, { input: { titleKey: 'k', eventType: 'incident.created', channels: ['in_app'], target: 'role:Service Desk' } }, ctx),
+      /Target "role:Service Desk" is not a valid recipient\. Allowed: all, assignee, team_owner, role:<role>/,
+    )
   })
 
   it('update con un bersaglio inventato → BAD_USER_INPUT, nessuna lettura e nessuna scrittura', async () => {
@@ -126,11 +161,16 @@ describe('target — validato in scrittura contro NOTIFICATION_TARGETS', () => {
 })
 
 describe('updateNotificationRule — il tipo si legge dal nodo, poi i canali vengono verificati', () => {
-  it('teams su una regola change.approved → BAD_USER_INPUT, nessuna scrittura', async () => {
-    mockSession.executeRead.mockImplementationOnce(async () => ({ records: [{ get: () => 'change.approved' }] }))
+  /**
+   * Revisione totale · E-18: `teams` su una regola `change.approved` ORA è
+   * ammesso (la card Teams delle change esiste). Il rifiuto resta per i tipi
+   * che davvero non hanno un formatter, come `event.storm_started`.
+   */
+  it('slack su una regola event.storm_started → BAD_USER_INPUT, nessuna scrittura', async () => {
+    mockSession.executeRead.mockImplementationOnce(async () => ({ records: [{ get: () => 'event.storm_started' }] }))
     await expectBadInput(
-      notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { channels: ['in_app', 'teams'] } }, ctx),
-      /Channels \[teams\] cannot be routed for change\.approved/,
+      notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { channels: ['in_app', 'slack'] } }, ctx),
+      /Channels \[slack\] cannot be routed for event\.storm_started/,
     )
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
@@ -183,5 +223,45 @@ describe('target — applicabilità per tipo di evento', () => {
     // lo stesso bersaglio su un evento in cui l'assegnazione esiste: nessun errore di applicabilità
     expect(isTargetApplicable('incident.assigned', 'team_owner')).toBe(true)
     expect(isTargetApplicable('change.task_assigned', 'assignee')).toBe(true)
+  })
+})
+
+/**
+ * Revisione del 14 set 2026 · NT-1: la pagina offre info/success/warning/error;
+ * l'API accettava low/medium/high/critical. Dal vivo, cambiare la severità di
+ * una regola falliva sempre. Il vocabolario ora è uno solo.
+ */
+describe('severità della regola — lo stesso vocabolario della pagina', () => {
+  it('update: ogni severità che la pagina offre si salva', async () => {
+    for (const severity of NOTIFICATION_SEVERITIES) {
+      mockSession.executeWrite.mockImplementationOnce(async () => ruleNode({ id: 'r1', event_type: 'incident.created', enabled: true, title_key: 'k', channels: ['in_app'], target: 'all', severity_override: severity }))
+      const out = await notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { severityOverride: severity } }, ctx)
+      expect(out.severityOverride).toBe(severity)
+    }
+  })
+
+  it('update e create: una priorità del ticket non è una severità → BAD_USER_INPUT, nessuna scrittura', async () => {
+    await expectBadInput(
+      notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { severityOverride: 'high' } }, ctx),
+      /severityOverride must be one of: info, success, warning, error/,
+    )
+    await expectBadInput(
+      notificationRuleResolvers.Mutation.createNotificationRule(null, { input: { titleKey: 'k', eventType: 'incident.created', channels: ['in_app'], target: 'all', severityOverride: 'critical' } }, ctx),
+      /severityOverride must be one of/,
+    )
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+})
+
+/** NT-8: i campi che nessuno leggeva sono rifiutati con il motivo; l'ora del digest è validata. */
+describe('campi speciali delle regole', () => {
+  it('escalationTarget, slaWarningTarget e slaWarningThresholdPercent non si scrivono più', async () => {
+    for (const input of [{ escalationTarget: 'all' }, { slaWarningTarget: 'all' }, { slaWarningThresholdPercent: 80 }]) {
+      await expectBadInput(notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input }, ctx), /no longer a rule field/)
+    }
+    expect(mockSession.executeWrite).not.toHaveBeenCalled()
+  })
+  it('digestTime deve essere HH:MM', async () => {
+    await expectBadInput(notificationRuleResolvers.Mutation.updateNotificationRule(null, { id: 'r1', input: { digestTime: '8' } }, ctx), /HH:MM/)
   })
 })

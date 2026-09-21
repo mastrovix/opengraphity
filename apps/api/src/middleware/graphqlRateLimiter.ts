@@ -28,6 +28,11 @@ export const MUTATION_LIMITS: Readonly<Record<string, number>> = {
   // Heavy — max 5/min per tenant
   triggerSync:             5,
   runAnomalyScanner:       5,
+  // «Analizza adesso»: oggi non spende token (l'analista dell'ondata 1 è
+  // deterministico), ma il tetto si mette adesso — quando entrerà un analista
+  // AI, questo sarà il solo cammino il cui costo dipende da quante volte
+  // qualcuno clicca.
+  runProposalAnalysis:     5,
   createSyncSource:        5,
   deleteSyncSource:        5,
   exportReportPDF:         5,
@@ -35,6 +40,15 @@ export const MUTATION_LIMITS: Readonly<Record<string, number>> = {
   testNotificationChannel: 5,
   // AI — max 10/min per tenant
   askReport:               10,
+  /*
+   * I due PROGETTISTI (19 set 2026, dalla revisione): erano le uniche
+   * chiamate al modello senza tetto, e sono le più care del prodotto —
+   * 8000 e 6000 token di uscita, con tutto il metamodello nel prompt. La
+   * chiave API è una sola per la piattaforma: un tenant che le mette in
+   * ciclo brucia il budget di tutti gli altri, triage e assistente compresi.
+   */
+  proposeServiceRequestDesign: 10,
+  proposeReportSection:        10,
   // Moderate — max 30/min per tenant
   createIncident:          30,
   createChange:            30,

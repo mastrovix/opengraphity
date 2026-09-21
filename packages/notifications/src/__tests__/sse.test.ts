@@ -143,3 +143,61 @@ describe('SseManager — no heartbeat', () => {
     expect(res.write).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * Revisione totale · E-19: la consegna in-app era fire-and-forget. Se la
+ * scrittura falliva (Neo4j in pausa di due secondi) restava solo una riga di
+ * log: il job del dispatcher risultava RIUSCITO, la deduplica veniva
+ * impostata, e la notifica arrivava ai client collegati per poi sparire al
+ * ricaricamento. Ora la consegna attesa propaga l'errore: il job fallisce e
+ * viene ritentato.
+ */
+describe('consegna in-app attesa (E-19)', () => {
+  it('la scrittura che fallisce arriva a chi chiama', async () => {
+    const persist = vi.fn().mockRejectedValue(new Error('neo4j in pausa'))
+    const publish = vi.fn().mockResolvedValue(undefined)
+    sseManager.useTransport({ persist, publish })
+    try {
+      await expect(sseManager.deliverToTenant('t1', notification())).rejects.toThrow('neo4j in pausa')
+      expect(publish).not.toHaveBeenCalled()
+    } finally {
+      sseManager.useTransport(null)
+    }
+  })
+
+  it('la pubblicazione fra processi che fallisce NON perde la notifica: è salvata e i client di questo processo la ricevono', async () => {
+    const writes: string[] = []
+    const id = sseManager.connect('t1', 'u1', { write: (d: string) => writes.push(d) })
+    const persist = vi.fn().mockResolvedValue(undefined)
+    const publish = vi.fn().mockRejectedValue(new Error('redis giù'))
+    sseManager.useTransport({ persist, publish })
+    try {
+      await expect(sseManager.deliverToUser('t1', 'u1', notification())).resolves.toBeUndefined()
+      expect(persist).toHaveBeenCalledTimes(1)
+      expect(writes.join('')).toContain('n-1')
+    } finally {
+      sseManager.useTransport(null)
+      sseManager.disconnect(id)
+    }
+  })
+
+  it('senza trasporto la notifica va ai client collegati (sviluppo senza coda)', async () => {
+    const writes: string[] = []
+    const id = sseManager.connect('t1', 'u1', { write: (d: string) => writes.push(d) })
+    try {
+      await sseManager.deliverToUser('t1', 'u1', notification())
+      expect(writes.join('')).toContain('n-1')
+    } finally {
+      sseManager.disconnect(id)
+    }
+  })
+})
+
+/** Una notifica minima per le prove di consegna. */
+function notification() {
+  return {
+    id: 'n-1', type: 'incident.created', title: 't', message: 'm',
+    severity: 'info' as const, entity_id: 'inc-1', entity_type: 'incident',
+    timestamp: '2026-09-16T10:00:00.000Z', read: false,
+  }
+}

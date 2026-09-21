@@ -22,6 +22,10 @@ import { calculateCIRiskScore, determineApprovalRoute, deriveChangePriority } fr
 import { getInitialStepName, getStepPurpose } from '../../../lib/workflowHelpers.js'
 import { targetStepByPurpose } from '../../../lib/workflowTargets.js'
 import { toNumber } from '@opengraphity/neo4j'
+import { systemText } from '../../../lib/systemText.js'
+import { nextSequenceBlock } from '../../../lib/sequence.js'
+import { nextTicketNumber } from '../../../lib/ticketNumbering.js'
+import { hasPermission } from '../../../lib/permissions.js'
 
 export type Session = ReturnType<typeof getSession>
 
@@ -54,13 +58,21 @@ export async function writeAudit(
   action: string,
   actorId: string | null,
   detail: string | null,
+  /**
+   * La frase del dettaglio come chiave e dati (revisione del 14 set 2026 ·
+   * CH-5): la timeline la compone nella lingua di chi guarda. `detail` resta il
+   * testo inglese per chi legge l'API. Prima i dettagli erano scritti in
+   * italiano e salvati così.
+   */
+  detailI18n?: { key: string; params: Record<string, string> },
 ) {
   const now = new Date().toISOString()
   await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     CREATE (e:ChangeAuditEntry {
       id: $id, tenant_id: $tenantId, timestamp: $now,
-      action: $action, detail: $detail
+      action: $action, detail: $detail,
+      detail_key: $detailKey, detail_params: $detailParams
     })
     CREATE (c)-[:HAS_AUDIT]->(e)
     WITH e, $actorId AS aid
@@ -68,36 +80,64 @@ export async function writeAudit(
     FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END |
       CREATE (e)-[:BY]->(u)
     )
-  `, { changeId, tenantId, id: uuidv4(), now, action, detail, actorId })
+  `, {
+    changeId, tenantId, id: uuidv4(), now, action, detail, actorId,
+    detailKey: detailI18n?.key ?? null, detailParams: detailI18n ? JSON.stringify(detailI18n.params) : null,
+  })
 }
 
 // ── code generators ───────────────────────────────────────────────────────────
 
-export async function nextChangeCode(session: Session, tenantId: string): Promise<string> {
-  const rows = await runQuery<{ maxNum: unknown }>(session, `
-    MATCH (c:Change {tenant_id: $tenantId})
-    WHERE c.code STARTS WITH 'CHG'
-    WITH max(toInteger(substring(c.code, 3))) AS maxNum
-    RETURN coalesce(maxNum, 0) AS maxNum
-  `, { tenantId })
-  const maxNum = toNumber(rows[0]?.maxNum)
-  return 'CHG' + String(maxNum + 1).padStart(8, '0')
+/**
+ * Codici delle change e dei task — revisione del 14 set 2026 · CH-2.
+ *
+ * Erano `max()+1` letto e poi scritto: due change create insieme leggevano lo
+ * stesso massimo e la seconda falliva sul vincolo di unicità; i codici dei task
+ * scandivano TUTTI i nodi del database senza etichetta. Ora il contatore
+ * atomico di `lib/sequence.ts`, come per incident, problem e richieste (i
+ * contatori sono stati allineati al massimo esistente dalla migrazione
+ * 20260923_1060).
+ */
+export async function nextChangeCode(session: SessionOrTx, tenantId: string): Promise<string> {
+  // Il formato è del cliente (ondata 6 di «Nulla cablato»); il contatore resta del prodotto.
+  return nextTicketNumber(session, tenantId, 'change')
 }
 
 export async function getNextTaskCodes(session: SessionOrTx, tenantId: string, count: number): Promise<string[]> {
-  const rows = await runQuery<{ code: string }>(session, `
-    MATCH (t)
-    WHERE t.tenant_id = $tenantId AND t.code STARTS WITH 'TASK'
-    RETURN t.code AS code
-    ORDER BY t.code DESC
-    LIMIT 1
-  `, { tenantId })
-  let next = 1
-  if (rows.length > 0) {
-    const n = parseInt(rows[0]!.code.slice(4), 10)
-    if (!isNaN(n)) next = n + 1
-  }
-  return Array.from({ length: count }, (_, i) => 'TASK' + String(next + i).padStart(8, '0'))
+  if (count <= 0) return []
+  const last = await nextSequenceBlock(session, tenantId, 'task', count)
+  return Array.from({ length: count }, (_, i) => 'TASK' + String(last - count + 1 + i).padStart(8, '0'))
+}
+
+/**
+ * QUANTE CHIAVI NATURALI MANCANO DAVVERO, fra quelle che si sta per creare
+ * (rimedio, 20 set 2026).
+ *
+ * I task nascono con una MERGE sulla chiave naturale, quindi rimettere lo
+ * stesso CI in una change non ne crea di nuovi — giusto. Ma i codici si
+ * prendevano PRIMA, sempre e tutti: ogni ripetizione bruciava tre numeri, e
+ * la numerazione usciva coi buchi («dov'è il TASK00000065?»). Con questa si
+ * chiedono solo i codici che serviranno.
+ *
+ * Resta una corsa possibile — due scritture simultanee vedono entrambe «non
+ * c'è» e prendono un numero a testa, poi la MERGE ne fa nascere uno solo — e
+ * quel buco è il prezzo di non tenere un lucchetto sul contatore. La
+ * differenza è fra un buco per ogni ripetizione e un buco solo quando due
+ * persone premono nello stesso istante.
+ */
+export async function chiaviDaCreare(
+  session: SessionOrTx,
+  // Un'etichetta finisce dentro al Cypher e non può essere un parametro:
+  // l'insieme è chiuso, così non ci arriva niente da fuori.
+  label: 'AssessmentTask' | 'DeployPlanTask' | 'ValidationTest' | 'DeploymentTask' | 'ReviewTask',
+  chiavi: readonly string[],
+): Promise<Set<string>> {
+  if (chiavi.length === 0) return new Set()
+  const righe = await runQuery<{ chiave: string }>(session, `
+    MATCH (t:${label}) WHERE t.change_key IN $chiavi RETURN t.change_key AS chiave
+  `, { chiavi: [...chiavi] })
+  const esistenti = new Set(righe.map((r) => r.chiave))
+  return new Set(chiavi.filter((k) => !esistenti.has(k)))
 }
 
 // ── sanity checks ─────────────────────────────────────────────────────────────
@@ -184,11 +224,11 @@ export async function loadChangeWorkflow(session: Session, changeId: string, ten
   `, { id: changeId, tenantId })
   if (!row) throw new NotFoundError('Change', changeId)
   if (row.deleted) throw new GraphQLError('The change was deleted: no operation is possible any more', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.deleted' } } })
-  if (!row.instanceId) throw new GraphQLError(`Change ${changeId} senza WorkflowInstance collegata`, { extensions: { code: 'CONFLICT' } })
-  if (!row.relStep) throw new GraphQLError(`Change ${changeId}: istanza di workflow senza CURRENT_STEP (ri-esegui il seed del workflow per ricollegarla)`, { extensions: { code: 'CONFLICT' } })
+  if (!row.instanceId) throw new GraphQLError(`Change ${changeId} has no linked WorkflowInstance`, { extensions: { code: 'CONFLICT' } })
+  if (!row.relStep) throw new GraphQLError(`Change ${changeId}: workflow instance without CURRENT_STEP (run the workflow seed again to relink it)`, { extensions: { code: 'CONFLICT' } })
   if (row.wiStep !== row.relStep) {
     logger.error({ changeId, wiStep: row.wiStep, relStep: row.relStep }, '[change] istanza di workflow incoerente')
-    throw new GraphQLError(`Change ${changeId}: istanza di workflow incoerente (current_step="${row.wiStep}", CURRENT_STEP="${row.relStep}")`, { extensions: { code: 'CONFLICT' } })
+    throw new GraphQLError(`Change ${changeId}: inconsistent workflow instance (current_step="${row.wiStep}", CURRENT_STEP="${row.relStep}")`, { extensions: { code: 'CONFLICT' } })
   }
   return { instanceId: row.instanceId, currentStep: row.relStep, props: row.props }
 }
@@ -230,7 +270,7 @@ export async function getInstanceId(session: Session, changeId: string, tenantId
   `, { id: changeId, tenantId })
   if (!row) throw new NotFoundError('Change', changeId)
   if (row.deleted) throw new GraphQLError('The change was deleted: no operation is possible any more', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.deleted' } } })
-  if (!row.id) throw new GraphQLError(`Change ${changeId} senza WorkflowInstance collegata`, { extensions: { code: 'CONFLICT' } })
+  if (!row.id) throw new GraphQLError(`Change ${changeId} has no linked WorkflowInstance`, { extensions: { code: 'CONFLICT' } })
   return row.id
 }
 
@@ -241,14 +281,15 @@ export async function assertInitialStep(session: Session, changeId: string, tena
   const initial = await getInitialStepName(session, tenantId, 'change')
   if (current !== initial) {
     logger.error({ changeId, current, initial }, '[change] operazione permessa solo nello step iniziale')
-    throw new GraphQLError(`Operazione permessa solo nello step iniziale: step corrente "${current}"`, { extensions: { code: 'CONFLICT' } })
+    throw new GraphQLError(`Operation allowed only in the initial step: current step "${current}"`, { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.onlyInInitialStep', params: { current } } } })
   }
   return props
 }
 
 /**
  * Verifica che l'utente corrente sia membro dell'Owner Group o del Support Group
- * del CI. Solleva errore "Non autorizzato" altrimenti. Admin bypass.
+ * del CI. Solleva errore "Non autorizzato" altrimenti. Chi ha `approval.override`
+ * agisce per qualunque team (ondata 7: prima era «admin»).
  */
 export async function assertUserInCITeam(
   session: Session,
@@ -257,7 +298,7 @@ export async function assertUserInCITeam(
   ctx: GraphQLContext,
   role: 'owner' | 'support',
 ) {
-  if (ctx.role === 'admin') return
+  if (hasPermission(ctx, 'approval.override')) return
   if (!ctx.userId) {
     logger.error({ ciId, role }, '[authz] utente non identificato')
     throw new ForbiddenError('Not authorized: the user is not identified', { key: 'errors.authz.noUser' })
@@ -275,10 +316,11 @@ export async function assertUserInCITeam(
   }
 }
 
-export function assertAdmin(ctx: GraphQLContext) {
-  if (ctx.role !== 'admin') {
-    logger.error({ userId: ctx.userId, role: ctx.role }, '[authz] reopen tentativo non-admin')
-    throw new ForbiddenError('Only admins can reopen tasks', { key: 'errors.authz.reopenAdmin' })
+/** Riaprire un compito chiuso scavalca il team che l'ha chiuso: `approval.override` (prima «admin»). */
+export function assertMayReopenTasks(ctx: GraphQLContext) {
+  if (!hasPermission(ctx, 'approval.override')) {
+    logger.error({ userId: ctx.userId, role: ctx.role }, '[authz] reopen tentativo senza approval.override')
+    throw new ForbiddenError('Only someone who can act for any team can reopen tasks', { key: 'errors.authz.reopenAdmin' })
   }
 }
 
@@ -306,19 +348,29 @@ export async function recomputeCIRiskIfReady(session: SessionOrTx, changeId: str
   `, { changeId, ciId, tenantId, risk: ciRisk })
 
   const ciName = await getCIName(session, ciId, tenantId)
-  await writeAudit(session, changeId, tenantId, 'ci_risk_computed', actorId, `${ciName}: risk ${ciRisk}`)
+  await writeAudit(session, changeId, tenantId, 'ci_risk_computed', actorId, `${ciName}: risk ${ciRisk}`,
+    { key: 'ciRisk', params: { ci: ciName, score: String(ciRisk) } })
 }
 
 export async function computeAggregateRisk(session: SessionOrTx, changeId: string, tenantId: string) {
-  const row = await runQueryOne<{ maxRisk: unknown; changeType: string | null }>(session, `
+  const row = await runQueryOne<{ maxRisk: unknown; unassessed: unknown; changeType: string | null }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->()
-    RETURN max(r.risk_score) AS maxRisk, c.change_type AS changeType
+    RETURN max(r.risk_score) AS maxRisk, count(CASE WHEN r.risk_score IS NULL THEN 1 END) AS unassessed, c.change_type AS changeType
   `, { changeId, tenantId })
-  const maxRisk = row?.maxRisk != null ? toNumber(row.maxRisk) : 0
-  const approvalRoute = determineApprovalRoute(maxRisk)
+  // Giro UI del 15 set 2026 · U-24 (scelta del proprietario): finché un CI
+  // della change non ha il suo rischio, il rischio aggregato NON è noto. Prima
+  // `max` ignorava i null e ne usciva 0: dopo la prima attività su tre la
+  // change passava da MEDIUM a «LOW · 0», una fascia bassa mai misurata. Ora
+  // resta la priorità iniziale del tipo, come in `resetChangeRisk`.
+  if (!row || toNumber(row.unassessed) > 0) {
+    await resetChangeRisk(session, changeId, tenantId)
+    return
+  }
+  const maxRisk = row.maxRisk != null ? toNumber(row.maxRisk) : 0
+  const approvalRoute = await determineApprovalRoute(tenantId, maxRisk)
   // Priorità (ITIL) = tipo × rischio, ricalcolata e MEMORIZZATA quando il
   // rischio aggregato cambia.
-  const priority = await deriveChangePriority(tenantId, row?.changeType, maxRisk)
+  const priority = await deriveChangePriority(tenantId, row.changeType, maxRisk)
   await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     SET c.aggregate_risk_score = $maxRisk,
@@ -422,8 +474,8 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
       const { workflowEngine } = await import('@opengraphity/workflow')
       const instanceId = await getInstanceId(session as Session, changeId, tenantId)
       const toStep = await targetStepByPurpose(session as Session, tenantId, 'change', ['scheduled'],
-        'pre-approvazione di una change standard')
-      const res = await workflowEngine.transition(session as Session, { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: 'Standard: pre-approvata' }, { userId: 'system', entityData: {} })
+        'pre-approval of a standard change')
+      const res = await workflowEngine.transition(session as Session, { instanceId, toStepName: toStep, triggeredBy: 'system', triggerType: 'automatic', notes: await systemText(tenantId, 'change.preApproved'), tenantId }, { userId: 'system', entityData: {} })
       // Fail-loud: una pre-approvata ferma in approvazione senza requisiti non
       // si sbloccherebbe mai (nessun record da approvare).
       if (!res.success) {
@@ -440,7 +492,7 @@ export async function afterEnterStep(session: SessionOrTx, changeId: string, ten
     // fase la change entrerebbe in deployment/review "vuota" e sembrerebbe
     // completa. Meglio bloccare.
     logger.error({ changeId, stepName, hook }, '[afterEnterStep] on_enter_create hook sconosciuto')
-    throw new GraphQLError(`Workflow mal configurato: hook on_enter_create "${hook}" sconosciuto per lo step "${stepName}"`, { extensions: { code: 'CONFLICT' } })
+    throw new GraphQLError(`Workflow misconfigured: unknown on_enter_create hook "${hook}" for step "${stepName}"`, { extensions: { code: 'CONFLICT' } })
   }
   await creator(session, changeId, tenantId)
 }

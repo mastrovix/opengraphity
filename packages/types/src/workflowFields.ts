@@ -1,50 +1,74 @@
 /**
- * Quali campi dell'entità un'azione di passo `update_field` può scrivere — e
- * perché lo stato non è fra quelli (B-9).
+ * Quali campi di un ticket può scrivere un passo di workflow — l'azione
+ * `update_field` e i campi impostati da una scadenza — e perché alcuni no.
  *
- * ## Il difetto
- * `status` era nell'elenco, e il pannello del disegnatore offriva
- * `update_field` con la tendina di TUTTI i campi dell'entità: bastava
- * configurare un passo con `update_field(status = closed)` per scrivere lo
- * stato **scavalcando il motore dei workflow**. Da lì `entity.status` e
- * `WorkflowInstance.current_step` divergevano: le liste e il portale
- * mostravano il ticket chiuso, il processo lo teneva aperto, il monitoraggio
- * continuava ad agganciarci allarmi e lo SLA restava in corso. In silenzio, e
- * senza un modo di accorgersene dall'interfaccia.
+ * ## Prima (B-9)
+ * `status` era scrivibile e la tendina del disegnatore offriva tutti i campi:
+ * `update_field(status = closed)` scavalcava il motore, e `entity.status` e il
+ * passo del processo divergevano in silenzio. Il rimedio fu un'allow-list di
+ * quattro campi (severity, priority, description, category).
  *
- * Lo stato dell'entità è **derivato** dal passo: lo scrive il motore nella
- * stessa transazione della transizione. Si cambia con una transizione — a
- * mano, o con un arco `automatic` del workflow. Lo stesso divieto vale già
- * per le automazioni (`SET_FIELD_FORBIDDEN` in `lib/actionExecutor.ts`):
- * questa era l'ultima porta aperta.
+ * ## Ora (verifica «Cosa resta cablato», ondata 3)
+ * La scelta del proprietario è «ogni campo non riservato»: un campo aggiunto
+ * dal cliente nel metamodello si deve poter impostare da un passo. L'elenco si
+ * rovescia — qui ci sono i campi RISERVATI, con la ragione — e il resto lo
+ * decide il metamodello del cliente (l'API verifica che il campo esista per il
+ * tipo di ticket e che il valore stia nel suo vocabolario).
  *
- * Vive in `@opengraphity/types` perché lo leggono in tre: il motore a runtime,
- * l'API in scrittura (`assertStepActions`) e il **disegnatore** (la tendina
- * offre solo questi). Il web non dipende da `@opengraphity/workflow`.
+ * Vive in `@opengraphity/types` perché lo leggono il motore a runtime, l'API in
+ * scrittura e il disegnatore.
  */
 
-/** I campi scrivibili da `update_field`. */
-export const UPDATE_FIELD_ALLOWED = ['severity', 'priority', 'description', 'category'] as const
-export type UpdateFieldAllowed = (typeof UPDATE_FIELD_ALLOWED)[number]
+/** Campi che appartengono al motore dei workflow: si cambiano con una transizione. */
+export const STEP_FIELDS_ENGINE_OWNED = [
+  'status', 'workflow_step', 'workflow_instance_id', 'resolved_at', 'completed_at', 'published_at',
+] as const
 
-/**
- * Campi che appartengono al motore: rifiutati con il motivo, non con un
- * generico «non ammesso», perché chi li configura sta cercando di fare una
- * cosa legittima (cambiare stato) dalla porta sbagliata.
- */
-export const UPDATE_FIELD_ENGINE_OWNED = ['status', 'workflow_step', 'workflow_instance_id'] as const
+/** Identità, numerazione e traccia: nessuna automazione li riscrive. */
+export const STEP_FIELDS_IDENTITY = [
+  'id', 'tenant_id', 'number', 'code', 'created_at', 'created_by', 'updated_at',
+  'deleted', 'deleted_at', 'deleted_by',
+] as const
 
 /**
- * `null` se il campo è scrivibile; altrimenti il messaggio di rifiuto —
- * lo stesso a runtime, in scrittura e nel disegnatore, così l'amministratore
- * legge una frase sola.
+ * Campi DERIVATI per tipo di ticket: li calcola il prodotto da altri dati.
+ * La priorità di una change viene dal tipo e dal rischio, e il tipo stesso
+ * decide il varco delle approvazioni: cambiarlo da un passo lo scavalcherebbe.
  */
-export function updateFieldRejection(field: string): string | null {
-  if ((UPDATE_FIELD_ALLOWED as readonly string[]).includes(field)) return null
-  if ((UPDATE_FIELD_ENGINE_OWNED as readonly string[]).includes(field)) {
-    return `il campo "${field}" lo scrive il motore dei workflow e non si cambia con un'azione di passo: ` +
-      `usa una transizione (un arco del workflow, anche "automatic"), altrimenti lo stato del ticket e il passo del ` +
-      `processo divergono. Campi ammessi: ${UPDATE_FIELD_ALLOWED.join(', ')}.`
+export const STEP_FIELDS_DERIVED: Readonly<Record<string, readonly string[]>> = {
+  change: ['priority', 'impact', 'urgency', 'type', 'change_type', 'aggregate_risk_score', 'approval_route'],
+}
+
+export type StepFieldRejectionReason = 'engine_owned' | 'identity' | 'derived'
+
+export interface StepFieldRejection {
+  reason:  StepFieldRejectionReason
+  /** La frase per i log e per chi non traduce. */
+  message: string
+}
+
+/**
+ * `null` se un passo può scrivere il campo (quanto alla riserva: l'esistenza nel
+ * metamodello la verifica l'API); altrimenti perché no.
+ */
+export function stepFieldRejection(field: string, entityType: string): StepFieldRejection | null {
+  if ((STEP_FIELDS_ENGINE_OWNED as readonly string[]).includes(field)) {
+    return {
+      reason: 'engine_owned',
+      message: `The field "${field}" is written by the workflow engine and cannot be set by a step: use a transition `
+        + '(an arc of the workflow), otherwise the ticket status and the process step drift apart.',
+    }
   }
-  return `il campo "${field}" non è fra quelli che update_field può scrivere (${UPDATE_FIELD_ALLOWED.join(', ')}).`
+  if ((STEP_FIELDS_IDENTITY as readonly string[]).includes(field)) {
+    return { reason: 'identity', message: `The field "${field}" identifies or traces the ticket and cannot be set by a step.` }
+  }
+  if ((STEP_FIELDS_DERIVED[entityType] ?? []).includes(field)) {
+    return { reason: 'derived', message: `The field "${field}" of a ${entityType} is derived by the product and cannot be set by a step.` }
+  }
+  return null
+}
+
+/** Vero se un passo può scrivere il campo (quanto alla riserva). */
+export function isStepFieldWritable(field: string, entityType: string): boolean {
+  return stepFieldRejection(field, entityType) === null
 }

@@ -34,4 +34,15 @@ void i18n
     },
   })
 
+/**
+ * `<html lang>` segue la lingua vera, come nel web (secondo giro UI del 15 set
+ * 2026): nel portale restava quella dell'HTML, e un lettore di schermo leggeva
+ * l'inglese con la pronuncia italiana dopo un cambio di lingua.
+ */
+function allineaLang(lingua: string): void {
+  document.documentElement.lang = lingua
+}
+allineaLang(i18n.resolvedLanguage ?? i18n.language)
+i18n.on('languageChanged', allineaLang)
+
 export default i18n

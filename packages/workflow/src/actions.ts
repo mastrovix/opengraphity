@@ -13,8 +13,10 @@ import type {
   UpdateFieldParams,
   CallWebhookParams,
   CreateApprovalRequestParams,
+  CreateTaskParams,
 } from './types.js'
-import { updateFieldRejection } from '@opengraphity/types'
+import { stepFieldRejection } from '@opengraphity/types'
+import { currentTaskCreator } from './taskCreator.js'
 
 const log = pino({ level: process.env['LOG_LEVEL'] ?? 'info' }).child({ module: 'workflow:actions' })
 
@@ -23,12 +25,20 @@ const redisConnection = getRedisConnection()
 
 // ── Webhook retry job data ────────────────────────────────────────────────────
 
+/**
+ * Il job del retry NON porta gli header (revisione totale · E-11): erano in
+ * chiaro in Redis — tipicamente un `Authorization` del cliente — e con
+ * `removeOnFail: false` restavano lì per sempre. Il worker li rilegge dal passo
+ * del workflow (stepId), che è la sorgente della configurazione.
+ */
 export interface WebhookRetryJobData {
   type:     'webhook_retry'
   url:      string
   method:   string
-  headers:  Record<string, string>
   payload:  string
+  /** Il passo che ha l'azione `call_webhook`: da lì il worker rilegge gli header. */
+  stepId?:  string
+  actionIndex?: number
   attempt:  number
   tenantId: string
   entityId: string
@@ -53,15 +63,28 @@ export function resolveTemplate(template: string, ctx: Record<string, unknown>):
   // Solo `{a.b.c}`: le graffe di un body JSON (`{"id":"{incident.id}"}`) non sono placeholder.
   return template.replace(/\{([A-Za-z_][\w.]*)\}/g, (_match, path: string) => {
     const parts = path.trim().split('.')
+    let container: Record<string, unknown> | null = ctx
     let value: unknown = ctx
+    let exists = true
     for (const part of parts) {
-      if (value == null || typeof value !== 'object') { value = undefined; break }
-      value = (value as Record<string, unknown>)[part]
+      if (value == null || typeof value !== 'object') { exists = false; break }
+      container = value as Record<string, unknown>
+      if (!Object.prototype.hasOwnProperty.call(container, part)) { exists = false; break }
+      value = container[part]
     }
-    if (value == null) {
+    /**
+     * Un campo che NON ESISTE nel contesto è un template sbagliato: si ferma,
+     * come prima. Un campo che esiste ed è VUOTO è un dato legittimo (un
+     * incident aperto dal portale senza descrizione, una categoria non
+     * scelta): risolve alla stringa vuota (revisione totale · E-10). Prima
+     * faceva fallire l'intera azione — `create_entity`, `update_field`,
+     * `call_webhook`, `assign_to` — e non c'era modo di scrivere un template
+     * tollerante.
+     */
+    if (!exists) {
       throw new Error(`resolveTemplate: placeholder {${path.trim()}} did not resolve (available keys: ${Object.keys(ctx).join(', ')})`)
     }
-    return String(value)
+    return value == null ? '' : String(value)
   })
 }
 
@@ -195,32 +218,6 @@ export async function runAction(
       // handled separately via publishNotifyRuleActions in the GraphQL resolver
       break
 
-    // ── Scheduled jobs ─────────────────────────────────────────────────────────
-
-    case 'schedule_job': {
-      if (!action.params['job']) throw new Error('schedule_job: missing required param "job"')
-      const jobName = String(action.params['job'])
-      const delayMs = parseInt(String(action.params['delay_hours'] ?? '0'), 10) * 60 * 60 * 1000
-      const queue   = new Queue('workflow-jobs', { connection: redisConnection })
-      await queue.add(
-        jobName,
-        { instanceId: instance.id, entityId: instance.entityId, tenantId: instance.tenantId, job: jobName },
-        { delay: delayMs, jobId: `${jobName}_${instance.entityId}`, removeOnComplete: true },
-      )
-      await queue.close()
-      break
-    }
-
-    case 'cancel_job': {
-      if (!action.params['job']) throw new Error('cancel_job: missing required param "job"')
-      const jobName = String(action.params['job'])
-      const queue   = new Queue('workflow-jobs', { connection: redisConnection })
-      const job     = await queue.getJob(`${jobName}_${instance.entityId}`)
-      if (job) await job.remove()
-      await queue.close()
-      break
-    }
-
     // ── New: create_entity ─────────────────────────────────────────────────────
 
     case 'create_entity': {
@@ -236,6 +233,7 @@ export async function runAction(
       }
       const title = resolveTemplate(p.title_template ?? '', buildTemplateCtx(instance, ctx.entityData))
       const data: Record<string, unknown> = { title, tenant_id: instance.tenantId }
+      if (p.change_type) data['change_type'] = p.change_type
       if (p.link_to_current) {
         data['parent_id']   = instance.entityId
         data['parent_type'] = instance.entityType
@@ -246,8 +244,10 @@ export async function runAction(
         }
       }
       const newId = await ctx.createEntity(p.entity_type, data)
+      // L'evento di creazione lo pubblica chi crea il ticket (il servizio del
+      // suo tipo, revisione del 14 set 2026 · WA-2): pubblicarlo anche qui lo
+      // duplicava, con un payload che nessun consumatore sapeva leggere.
       log.info({ entityType: p.entity_type, newId }, 'workflow-action: create_entity succeeded')
-      await ctx.publishEvent?.(`${p.entity_type}.created`, { id: newId, tenant_id: instance.tenantId, created_by: ctx.userId })
       break
     }
 
@@ -279,12 +279,13 @@ export async function runAction(
         throw new Error('update_field: updateField callback not provided by the calling context')
       }
       const p = action.params as unknown as UpdateFieldParams
-      // Allow-list e messaggi in types.ts: la stessa regola vale a runtime,
-      // in scrittura (`assertStepActions`) e nel disegnatore. `status` non è
-      // più scrivibile (B-9): lo scrive il motore, e scavalcarlo faceva
-      // divergere il ticket dal suo processo.
-      const rejection = updateFieldRejection(p.field)
-      if (rejection) throw new Error(rejection)
+      // Campi riservati in @opengraphity/types: la stessa regola vale a
+      // runtime, in scrittura (`assertStepActions`) e nel disegnatore. `status`
+      // non è scrivibile (B-9): lo scrive il motore, e scavalcarlo faceva
+      // divergere il ticket dal suo processo. L'esistenza del campo nel
+      // metamodello e il vocabolario li verifica chi scrive (`ctx.updateField`).
+      const rejection = stepFieldRejection(p.field, instance.entityType)
+      if (rejection) throw new Error(rejection.message)
       const resolved = typeof p.value === 'string' ? resolveTemplate(p.value, buildTemplateCtx(instance, ctx.entityData)) : p.value
       await ctx.updateField(instance.entityId, p.field, resolved)
       await ctx.publishEvent?.(`${instance.entityType}.updated`, {
@@ -297,6 +298,7 @@ export async function runAction(
     }
 
     // ── New: create_approval_request ─────────────────────────────────────────
+    // (il lettore delle due forme di `approver_*_ids` è `approverIdList`, in fondo)
 
     case 'create_approval_request': {
       // Fail-loud: a missing approval request leaves the workflow waiting for
@@ -311,9 +313,84 @@ export async function runAction(
         entityType:   instance.entityType,
         title,
         approverRole: p.approver_role,
+        // Persone e squadre (moduli del catalogo, ondata 3): l'insieme degli
+        // approvatori e l'unione dei tre, senza ripetizioni.
+        approverUserIds: approverIdList(p.approver_user_ids),
+        approverTeamIds: approverIdList(p.approver_team_ids),
         approvalType: p.approval_type,
       })
       log.info({ approvalId, entityId: instance.entityId }, 'workflow-action: create_approval_request succeeded')
+      break
+    }
+
+    // ── New: create_task ─────────────────────────────────────────────────────
+
+    /**
+     * UN COMPITO DA FARE per una squadra, creato entrando nel passo.
+     *
+     * Chi lo scrive nel grafo è il REGISTRO (`taskCreator.ts`), non un
+     * callback del contesto: tre dei cinque punti che costruiscono un
+     * `ActionContext` lo costruiscono povero, e fra quelli c'è il cammino
+     * dell'approvazione — cioè proprio «richiesta approvata → partono i
+     * compiti». Con un callback, lì i compiti non sarebbero nati e la
+     * transizione sarebbe riuscita lo stesso.
+     *
+     * Il TIPO del compito non è un parametro: è `instance.entityType`, cioè
+     * il tipo dell'entità di questo workflow. È la prima delle tre difese
+     * sulla regola «un compito di tipo incident non sta su una change» —
+     * qui non si può nemmeno esprimere.
+     */
+    case 'create_task': {
+      /**
+       * SOLO ALL'INGRESSO (rimedio, 20 set 2026). Il motore esegue le azioni
+       * di uscita con l'istanza già spostata sul passo NUOVO, quindi un
+       * compito creato uscendo da A nascerebbe timbrato «passo B»: non
+       * bloccherebbe l'uscita da A — che è il senso della guardia — e
+       * bloccherebbe quella da B. Chi disegna non ha modo di accorgersene,
+       * quindi la strada si chiude qui, in scrittura (`assertStepActions`) e
+       * nel disegnatore, che non la offre più fra le azioni di uscita.
+       */
+      if (ctx.actionPhase === 'exit') {
+        throw new Error(
+          'create_task: a task can only be created ENTERING a step, not leaving one — ' +
+          'on exit it would be stamped with the step being entered, and would guard the wrong step',
+        )
+      }
+      const creaCompito = currentTaskCreator()
+      if (!creaCompito) {
+        throw new Error('create_task: nobody registered a task creator in this process (registerTaskCreator)')
+      }
+      const p     = action.params as unknown as CreateTaskParams
+      const title = resolveTemplate(p.title_template ?? '', buildTemplateCtx(instance, ctx.entityData)).trim()
+      // Un compito senza titolo è una riga vuota in «I miei compiti»: chi la
+      // trova non sa cosa deve fare, e non c'è modo di indovinarlo.
+      if (!title) throw new Error('create_task: empty title — the task would say nothing to whoever has to do it')
+
+      const giorni = p.due_in_days == null || p.due_in_days === '' ? null : Number(p.due_in_days)
+      if (giorni !== null && (!Number.isFinite(giorni) || giorni < 0)) {
+        throw new Error(`create_task: "due_in_days" is not a number of days (${String(p.due_in_days)})`)
+      }
+
+      const taskId = await creaCompito({
+        tenantId:    instance.tenantId,
+        entityId:    instance.entityId,
+        entityType:  instance.entityType,
+        stepName:    instance.currentStep,
+        // La posizione nella PROPRIA lista, non nella concatenata: è l'unica
+        // stabile, e finisce nella chiave naturale contro i doppioni.
+        actionIndex: ctx.actionPosition ?? ctx.actionIndex ?? 0,
+        title,
+        description: p.description?.trim() || null,
+        teamId:        p.team_id?.trim() || null,
+        teamFromField: p.team_from_field?.trim() || null,
+        dueInDays:   giorni,
+        // Il compito da aspettare si nomina col suo titolo, e il titolo può
+        // avere i segnaposto: si risolve con lo stesso contesto, altrimenti
+        // «Prepara {title}» non combacerebbe mai con quello che è nato.
+        after:       p.after?.trim() ? resolveTemplate(p.after.trim(), buildTemplateCtx(instance, ctx.entityData)) : null,
+        createdBy:   ctx.userId,
+      })
+      log.info({ taskId, entityId: instance.entityId, entityType: instance.entityType }, 'workflow-action: create_task succeeded')
       break
     }
 
@@ -366,8 +443,9 @@ export async function runAction(
                   type:     'webhook_retry',
                   url:      p.url,
                   method:   p.method ?? 'POST',
-                  headers:  p.headers ?? {},
                   payload:  rawPayload,
+                  ...(ctx.stepId ? { stepId: ctx.stepId } : {}),
+                  ...(typeof ctx.actionIndex === 'number' ? { actionIndex: ctx.actionIndex } : {}),
                   attempt:  1,
                   tenantId: instance.tenantId,
                   entityId: instance.entityId,
@@ -376,7 +454,8 @@ export async function runAction(
                   attempts:  3,
                   backoff: { type: 'exponential', delay: 30_000 },
                   removeOnComplete: true,
-                  removeOnFail:     false,
+                  // Sette giorni, non «per sempre»: il payload di un webhook non resta in Redis a vita (E-11).
+                  removeOnFail:     { age: 7 * 24 * 3600 },
                 },
               )
             } finally {
@@ -395,4 +474,18 @@ export async function runAction(
       // Unknown action type = corrupt/newer config this engine can't run.
       throw new Error(`Unknown workflow action type: ${String((action as WorkflowActionConfig).type)}`)
   }
+}
+
+
+/**
+ * Gli id degli approvatori, da una lista JSON o da una stringa separata da
+ * virgola. È l'UNICO posto che legge le due forme: il disegnatore scrive una
+ * stringa (il suo editor tiene i parametri come `Record<string, string>`),
+ * l'API può scrivere un array. Vuoto = nessun id indicato, che non è lo stesso
+ * di «nessun approvatore»: senza id vale il ruolo.
+ */
+export function approverIdList(raw: string[] | string | undefined): string[] {
+  if (raw == null) return []
+  const parti = Array.isArray(raw) ? raw : raw.split(',')
+  return [...new Set(parti.map((v) => String(v).trim()).filter((v) => v !== ''))]
 }

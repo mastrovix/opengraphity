@@ -61,6 +61,9 @@ import { incidents } from './deps.js'
 import { getEventPolicy } from './policy.js'
 import { MAX_EVENT_SEVERITY, MONITORING_ACTOR, incidentSeverityFromEvent, monitoringContext, toNumber, toStr, type Props } from './shared.js'
 import { invalidateSourceCache, loadSource } from './sourceCache.js'
+import { systemText, systemTextIn, formatInstantIn } from '../../lib/systemText.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
+import { getTenantTimezone } from '@opengraphity/sla'
 
 const log = logger.child({ module: 'event-storm' })
 
@@ -216,10 +219,12 @@ async function openStormIncident(tenantId: string, sourceId: string, sourceName:
     ciNames = rows.map((r) => r.name).filter(Boolean)
   } finally { await session.close() }
 
+  // Nella lingua del cliente e con l'istante nel suo fuso, non in italiano ISO.
+  const [lingua, fuso] = await Promise.all([languageFor(tenantId), getTenantTimezone(tenantId)])
   const description = [
-    `Tempesta di allarmi dalla sorgente "${sourceName}": ${rate} allarmi nuovi al minuto (soglia della policy raggiunta alle ${since}).`,
-    'Gli allarmi ricevuti durante la tempesta vengono agganciati a questo incident invece di aprire un incident per ogni CI.',
-    ciNames.length ? `Primi CI coinvolti: ${ciNames.join(', ')}` : 'Nessun CI riconosciuto finora tra gli allarmi della tempesta.',
+    systemTextIn(lingua, 'storm.description.head', { source: sourceName, rate, since: formatInstantIn(lingua, since, fuso) }),
+    systemTextIn(lingua, 'storm.description.body'),
+    ciNames.length ? systemTextIn(lingua, 'storm.description.cis', { cis: ciNames.join(', ') }) : systemTextIn(lingua, 'storm.description.noCis'),
   ].join('\n')
 
   const incidentService = await incidents()
@@ -232,7 +237,7 @@ async function openStormIncident(tenantId: string, sourceId: string, sourceName:
   // — ma il NOME lo decide il cliente, non il codice.
   const severity = await incidentSeverityFromEvent(tenantId, MAX_EVENT_SEVERITY)
   const incident = await incidentService.createIncident({
-    title:         `Tempesta di allarmi da ${sourceName}: ${rate} allarmi al minuto`,
+    title:         systemTextIn(lingua, 'storm.title', { source: sourceName, rate }),
     description,
     severity,
     affectedCIIds: [ciId],
@@ -265,7 +270,7 @@ async function openStormIncident(tenantId: string, sourceId: string, sourceName:
     if (!winnerId) throw new Error(`Storm incident ${incident.id} created but InboundWebhook ${sourceId} has no storm_incident_id to attach to (tenant ${tenantId})`)
     log.error({ tenantId, sourceId, duplicateIncidentId: incident.id, incidentId: winnerId }, 'Duplicate storm incident: a concurrent job won the source; attaching to the winner')
     void audit(monitoringContext(tenantId), 'event_storm.duplicate_incident', 'InboundWebhook', sourceId, { duplicateIncidentId: incident.id, incidentId: winnerId, sourceName })
-    await incidentService.addIncidentComment(incident.id, { tenantId, userId: MONITORING_ACTOR }, `Incident duplicato: la tempesta della sorgente "${sourceName}" è già tracciata dall'incident ${winnerId}; gli allarmi vengono agganciati a quello`)
+    await incidentService.addIncidentComment(incident.id, { tenantId, userId: MONITORING_ACTOR }, await systemText(tenantId, 'storm.duplicate', { source: sourceName, incident: winnerId }))
     return winnerId
   }
   incidentsAutoOpenedTotal.inc({})
@@ -362,7 +367,7 @@ export async function replaceClosedStormIncident(tenantId: string, sourceId: str
     const rate = Math.max(await currentRate(tenantId, sourceId, Date.parse(now)), 1)
     const next = { ...state, incidentId: await openStormIncident(tenantId, sourceId, state.sourceName, ciId, rate, state.since ?? now, now) }
     await (await incidents()).addIncidentComment(closedIncidentId, { tenantId, userId: MONITORING_ACTOR },
-      `La tempesta della sorgente "${state.sourceName}" continua dopo la chiusura di questo incident: i nuovi allarmi vengono agganciati all'incident ${next.incidentId}`)
+      await systemText(tenantId, 'storm.continuesAfterClose', { source: state.sourceName, incident: next.incidentId ?? '' }))
     return next
   })
 }
@@ -403,7 +408,7 @@ async function endStorm(tenantId: string, source: Props, actorId: string, now: s
 
   const durationMinutes = Math.max(1, Math.round((Date.parse(now) - Date.parse(state.since)) / 60_000))
   if (state.incidentId) {
-    await (await incidents()).addIncidentComment(state.incidentId, { tenantId, userId: MONITORING_ACTOR }, `Tempesta terminata: ${events} eventi in ${durationMinutes} minuti`)
+    await (await incidents()).addIncidentComment(state.incidentId, { tenantId, userId: MONITORING_ACTOR }, await systemText(tenantId, 'storm.ended', { events, minutes: durationMinutes }))
   }
   const payload: EventStormPayload = {
     id: state.incidentId ?? sourceId, source_id: sourceId, source_name: state.sourceName, rate_per_minute: 0, incident_id: state.incidentId, since: state.since,
@@ -412,9 +417,53 @@ async function endStorm(tenantId: string, source: Props, actorId: string, now: s
   }
   await publishEvent('event.storm_ended', tenantId, actorId, payload, now)
   void audit(monitoringContext(tenantId), 'event.storm_ended', 'InboundWebhook', sourceId, { events, durationMinutes, incidentId: state.incidentId })
+  await reevaluateResolvedDuringStorm(tenantId, sourceId, state.since, actorId)
   await refreshStormGauge()
   log.info({ tenantId, sourceId, events, durationMinutes, incidentId: state.incidentId }, 'Alert storm ended')
   return true
+}
+
+/**
+ * A fine tempesta, gli allarmi RIENTRATI durante la tempesta tornano in
+ * pipeline — revisione del 14 set 2026 · EV-1.
+ *
+ * In tempesta un allarme che rientra aggiorna solo la salute del CI: la
+ * chiusura automatica aspetta la fine (`handleResolvedEvent`). Ma se l'ultimo
+ * allarme di un incident rientrava proprio durante la tempesta, nessun payload
+ * successivo lo rivalutava: l'incident per CI aperto prima della tempesta, o
+ * l'incident di tempesta stesso, restava aperto per sempre. Qui, per ogni
+ * incident a cui un allarme rientrato nella tempesta è collegato, si rivaluta
+ * l'ultimo di quegli allarmi: la pipeline decide se l'incident si chiude
+ * (tutti gli allarmi rientrati, passi percorribili, policy con chiusura
+ * automatica) esattamente come per un rientro fuori tempesta.
+ */
+export async function reevaluateResolvedDuringStorm(tenantId: string, sourceId: string, since: string, actorId: string): Promise<number> {
+  const session = getSession()
+  let eventIds: string[]
+  try {
+    const rows = await runQuery<{ eventId: string }>(session, `
+      MATCH (e:Event {tenant_id: $tenantId, source_id: $sourceId, status: 'resolved'})-[:CORRELATED_INTO]->(i:Incident {tenant_id: $tenantId})
+      WHERE e.resolved_at >= $since
+      WITH i, e ORDER BY e.resolved_at DESC
+      WITH i, head(collect(e.id)) AS eventId
+      RETURN eventId
+    `, { tenantId, sourceId, since })
+    eventIds = rows.map((r) => r.eventId)
+  } finally { await session.close() }
+  if (eventIds.length === 0) return 0
+  const { runEventPipeline } = await import('./pipeline.js')
+  let failed = 0
+  for (const eventId of eventIds) {
+    try {
+      await runEventPipeline({ tenantId, eventId, actorId, mode: 'reevaluate' })
+    } catch (err) {
+      failed++
+      log.error({ err, tenantId, sourceId, eventId }, 'Re-evaluation of an alarm cleared during the storm failed')
+    }
+  }
+  log.info({ tenantId, sourceId, count: eventIds.length, failed }, 'Alarms cleared during the storm re-evaluated for auto-resolve')
+  if (failed > 0) throw new Error(`reevaluateResolvedDuringStorm: ${failed}/${eventIds.length} alarms cleared during the storm of source ${sourceId} failed re-evaluation (see logs)`)
+  return eventIds.length
 }
 
 // ── All'ingest ───────────────────────────────────────────────────────────────

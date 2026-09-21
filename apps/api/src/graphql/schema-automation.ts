@@ -12,6 +12,8 @@ export const automationSchema = `
     enabled: Boolean!
     executionCount: Int!
     lastExecutedAt: String
+    """Chi l'ha scritta: "manual" una persona, "ai_proposal" una proposta di miglioramento accettata. Non si sceglie in ingresso."""
+    origin: String!
   }
 
   input CreateAutoTriggerInput {
@@ -84,10 +86,21 @@ export const automationSchema = `
     category: String
     teamId: String
     teamName: String
-    timezone: String!
+    """Fuso proprio della policy; null = segue il fuso del cliente (pagina Organizzazione)."""
+    timezone: String
     responseMinutes: Int!
     resolveMinutes: Int!
+    """Vero quando conta l'orario di servizio del calendario scelto; falso = 24×7."""
     businessHours: Boolean!
+    """Il calendario di servizio con cui conta; null = 24×7."""
+    calendarId: ID
+    calendarName: String
+    """L'obiettivo di conformità in percentuale (es. 99.5): sopra, il report è verde."""
+    complianceTarget: Float
+    """La soglia d'attenzione in percentuale: fra questa e l'obiettivo, giallo; sotto, rosso."""
+    complianceWarning: Float
+    """Minuti prima della scadenza di risoluzione in cui parte l'avviso SLA."""
+    warningMinutes: Int!
     enabled: Boolean!
   }
 
@@ -100,7 +113,11 @@ export const automationSchema = `
     timezone: String
     responseMinutes: Int!
     resolveMinutes: Int!
-    businessHours: Boolean
+    """Il calendario di servizio; null o assente = 24×7."""
+    calendarId: ID
+    complianceTarget: Float!
+    complianceWarning: Float!
+    warningMinutes: Int
   }
 
   input UpdateSLAPolicyInput {
@@ -111,7 +128,11 @@ export const automationSchema = `
     timezone: String
     responseMinutes: Int
     resolveMinutes: Int
-    businessHours: Boolean
+    """Il calendario di servizio; null = 24×7, assente = invariato."""
+    calendarId: ID
+    complianceTarget: Float
+    complianceWarning: Float
+    warningMinutes: Int
     enabled: Boolean
   }
 

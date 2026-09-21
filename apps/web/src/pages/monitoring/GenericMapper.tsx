@@ -18,7 +18,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import { Wand2, Plus, X, Loader2, AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/Button'
 import { Input, Select, Textarea, FieldLabel } from '@/components/ui/FormControls'
@@ -36,6 +35,7 @@ import {
   suggestSeverity, suggestStatus, syncValueTable, type GenericMapping, type MapperField,
 } from './sourceConfig'
 import { hintStyle, sectionTitleStyle } from './monitoringShared'
+import { showError } from '@/lib/showError'
 
 const DEBOUNCE_MS = 300
 
@@ -100,7 +100,7 @@ export function GenericMapper({ mapping, onChange, payload, onPayloadChange, onP
       if (!res.data) throw new Error(t('monitoring.errors.emptyResponse', { operation: 'sampleInboundPayload' }))
       onPayloadChange(res.data.sampleInboundPayload)
     } catch (e) {
-      toast.error(t('monitoring.mapper.sampleFailed', { error: errorMessage(e) }))
+      showError(e, t('monitoring.mapper.sampleFailed', { error: errorMessage(e) }))
     }
   }
 
@@ -187,7 +187,7 @@ export function GenericMapper({ mapping, onChange, payload, onPayloadChange, onP
             placeholder={t('monitoring.mapper.payloadPlaceholder')}
             rows={8}
             spellCheck={false}
-            style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-table)' }}
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-table)' }}
           />
           {parsed.error && <p role="alert" style={{ ...hintStyle, color: colors.danger, marginTop: 4 }}>{t('monitoring.mapper.payloadInvalid', { error: parsed.error })}</p>}
           {keysError && <p role="alert" style={{ ...hintStyle, color: colors.danger, marginTop: 4 }}>{t('monitoring.mapper.keysError', { error: keysError.message })}</p>}
@@ -215,7 +215,7 @@ export function GenericMapper({ mapping, onChange, payload, onPayloadChange, onP
                     <Input
                       id={fid(field)} list={listId} value={current} onChange={(e) => setField(field, e.target.value)}
                       placeholder={t('monitoring.mapper.pathPlaceholder')} required={required} autoComplete="off" spellCheck={false}
-                      style={{ fontFamily: 'monospace' }}
+                      style={{ fontFamily: 'var(--font-mono)' }}
                     />
                     <datalist id={listId}>
                       {keys.map((k) => <option key={k.path} value={k.path}>{optionLabel(k)}</option>)}
@@ -325,7 +325,7 @@ export function GenericMapper({ mapping, onChange, payload, onPayloadChange, onP
               </>}
               {preview.externalId && <>
                 <dt style={{ color: colors.slateLight }}>{t('monitoring.mapper.fields.externalId')}</dt>
-                <dd style={{ margin: 0, fontFamily: 'monospace', color: colors.slate }}>{preview.externalId}</dd>
+                <dd style={{ margin: 0, fontFamily: 'var(--font-mono)', color: colors.slate }}>{preview.externalId}</dd>
               </>}
             </dl>
           )}

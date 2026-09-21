@@ -1,7 +1,7 @@
 /**
  * Dialogo «Aggiorna mappa» (ondata 2): i tre elenchi del diff col grafo,
  * spunte che partono vuote, «includi» ed «escludi» che si escludono,
- * riepilogo «+N −M esclusi K», apply con `expectedVersion`, mappa già
+ * riepilogo «+N −M · K esclusi», apply con `expectedVersion`, mappa già
  * allineata, errore della proposta e riammissione di un CI escluso.
  * Revisione 2: `expectedVersion` dalla proposta e rilettura quando la mappa
  * avanza (C-5), sezione «Inclusi automaticamente» (C-1) e «Includi e tieni
@@ -14,7 +14,7 @@ import { UpdateServiceMapDialog } from './UpdateServiceMapDialog'
 import { GET_SERVICE_MAP_PROPOSAL } from '@/graphql/queries'
 import { APPLY_SERVICE_MAP_PROPOSAL, REMOVE_SERVICE_MAP_EXCLUSION } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
-import { mapDetail, proposal } from '@/test/mocks/services'
+import { mapDetail, node, proposal } from '@/test/mocks/services'
 import type { ServiceMapDetail } from '@/types/services'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }))
@@ -47,7 +47,7 @@ describe('UpdateServiceMapDialog', () => {
     expect(rowOf('proposal-added', 'lb-09')).toHaveTextContent('level 2 · Infrastructure · Weighted · weight 5')
     expect(rowOf('proposal-moved', 'db-01')).toHaveTextContent('level 2 → 3')
     for (const box of screen.getAllByRole('checkbox')) expect(box).not.toBeChecked()
-    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −0 excluded 0')
+    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −0 · 0 excluded')
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled()
   })
 
@@ -55,12 +55,12 @@ describe('UpdateServiceMapDialog', () => {
     const { user } = renderDialog()
     await screen.findByText('2 new components')
     await user.click(screen.getByLabelText('Include lb-09'))
-    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+1 −0 excluded 0')
+    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+1 −0 · 0 excluded')
     await user.click(screen.getByLabelText('Never propose lb-09 again'))
     expect(screen.getByLabelText('Include lb-09')).not.toBeChecked()
-    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −0 excluded 1')
+    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −0 · 1 excluded')
     await user.click(screen.getByLabelText('Remove cache-02 from the map'))
-    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −1 excluded 1')
+    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −1 · 1 excluded')
   })
 
   it('applica con expectedVersion e chiude; il toast dice cosa è cambiato', async () => {
@@ -113,6 +113,18 @@ describe('UpdateServiceMapDialog', () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('old-vm re-admitted: it comes back in the next proposal'))
   })
 
+  /** Secondo giro UI del 15 set 2026 · V-11: su una mappa viva il componente riammesso è già rientrato. */
+  it('V-11: se la mappa restituita contiene già il componente, il toast dice che è di nuovo nella mappa', async () => {
+    const readmit: GqlMock = {
+      request: { query: REMOVE_SERVICE_MAP_EXCLUSION, variables: () => true },
+      result: { data: { removeServiceMapExclusion: mapDetail({ version: 5, nodes: [...(mapDetail().nodes as unknown[]), node({ id: 'old-vm', name: 'old-vm' })] }) } },
+    }
+    const { user } = renderDialog({ map: detail({ autoSync: true }), mocks: [proposalMock(), readmit] })
+    await user.click(await screen.findByRole('button', { name: 'Re-admit old-vm' }))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('old-vm re-admitted: it is back in the map'))
+    expect(screen.queryByTestId('proposal-refreshed')).toBeNull()
+  })
+
   it('nessuna esclusione: lo dice invece di lasciare la sezione vuota', async () => {
     renderDialog({ mocks: [proposalMock({ excluded: [] })] })
     expect(await screen.findByText('No exclusion.')).toBeInTheDocument()
@@ -143,13 +155,13 @@ describe('UpdateServiceMapDialog', () => {
     const { user, rerender } = renderDialog({ map: detail({ autoSync: false, version: 3 }), mocks: [proposalMock({ version: 3 })] })
     await screen.findByText('2 new components')
     await user.click(screen.getByLabelText('Include lb-09'))
-    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+1 −0 excluded 0')
+    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+1 −0 · 0 excluded')
     expect(screen.queryByTestId('proposal-refreshed')).not.toBeInTheDocument()
 
     // il polling del genitore porta la mappa alla versione 5: gli elenchi mostrati sono di un'altra lettura
     rerender(<UpdateServiceMapDialog map={detail({ autoSync: false, version: 5 })} open onClose={() => {}} />)
     expect(await screen.findByTestId('proposal-refreshed')).toHaveTextContent('The map changed in the meantime: the list has been refreshed, check your ticks again.')
-    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −0 excluded 0')
+    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −0 · 0 excluded')
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled()
   })
 
@@ -164,9 +176,11 @@ describe('UpdateServiceMapDialog', () => {
     // cache-02 è già nell'elenco degli spariti: non si ripete qui
     expect(screen.getAllByTestId('proposal-auto').map((r) => r.getAttribute('data-ci-id'))).toEqual(['api-03', 'db-01', 'cert-billing'])
     await user.click(screen.getByLabelText('Exclude db-01 from the map'))
-    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −0 excluded 1')
+    // U-1: escludere un componente già nella mappa lo toglie, e il riepilogo lo conta
+    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+0 −1 · 1 excluded')
     await user.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() => expect(seen).toEqual([{ id: 'map-1', expectedVersion: 3, add: [], exclude: ['db-01'], remove: [] }]))
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Map updated: +0 −1, 1 excluded'))
   })
 
   it('C-5: in modalità viva «Includi» dice che il componente resterà per sempre', async () => {
@@ -176,7 +190,7 @@ describe('UpdateServiceMapDialog', () => {
     const box = screen.getByLabelText('Include lb-09 and keep it for good')
     expect(box.parentElement).toHaveAttribute('title', 'It stays in the map even if it disappears from the graph: the automatic sync never removes a component added by hand.')
     await user.click(box)
-    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+1 −0 excluded 0')
+    expect(screen.getByTestId('proposal-summary')).toHaveTextContent('+1 −0 · 0 excluded')
   })
 
   it('proposta che fallisce → errore visibile, mai un dialogo muto', async () => {

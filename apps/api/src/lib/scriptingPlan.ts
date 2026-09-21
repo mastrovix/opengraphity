@@ -1,6 +1,13 @@
 /**
- * Limite di piano sugli script del cliente (`TenantSettings.scripting_enabled`
- * — lib/tenantPlans.ts: starter no, pro e enterprise sì).
+ * L'INTERRUTTORE degli script del cliente (`TenantSettings.scripting_enabled`).
+ *
+ * Nato come limite di PIANO (starter no, pro e enterprise sì —
+ * lib/tenantPlans.ts, che resta il valore iniziale di un tenant nuovo). Dai
+ * moduli del catalogo (ondata 6) è un interruttore dell'amministratore, nella
+ * pagina Organizzazione: i campi calcolati sono una formula, cioè uno script,
+ * e legarli a un piano vorrebbe dire spegnerli su metà dei tenant. Il varco
+ * resta identico — chi lo tiene spento non esegue niente e lo sente dire — ma
+ * chi decide è il cliente, non la tabella dei piani.
  *
  * La proprietà esisteva, veniva scritta dall'onboarding e dalle migrazioni e
  * **non veniva letta da nessuno** (D-12): gli script del cliente giravano anche
@@ -43,7 +50,7 @@ interface CachedPlan extends ScriptingPlan { expiresAt: number }
 
 const planCache = new Map<string, CachedPlan>()
 
-/** Senza argomento svuota tutto (test, cambio di piano, shutdown). */
+/** Senza argomento svuota tutto (test, interruttore cambiato, shutdown). */
 export function invalidateScriptingPlanCache(tenantId?: string): void {
   if (tenantId === undefined) planCache.clear()
   else planCache.delete(tenantId)
@@ -99,9 +106,9 @@ export async function assertScriptingEnabled(
   const { plan, enabled } = await getScriptingPlan(tenantId)
   if (!enabled) {
     throw new ValidationError(
-      `${what}: the "${plan}" plan of tenant ${tenantId} does not include scripts (scripting_enabled = false). `
-      + `Remove the script from the configuration, or move to a plan that includes them.`,
-      { key: 'errors.scripting.planExcludesScripts', params: { whatKey, plan, ...whatParams } },
+      `${what}: scripts are switched off for tenant ${tenantId} (scripting_enabled = false). `
+      + `Switch them on in Settings > Organization, or remove the script from the configuration.`,
+      { key: 'errors.scripting.scriptsSwitchedOff', params: { whatKey, plan, ...whatParams } },
     )
   }
 }
@@ -116,4 +123,26 @@ export const SHARED_DEFINITION_SCOPES: readonly string[] = ['base', 'itil']
 
 export function isTenantOwnedDefinition(scope: string | undefined): boolean {
   return !SHARED_DEFINITION_SCOPES.includes(scope ?? '')
+}
+
+/**
+ * Accende o spegne gli script del tenant. La cache si svuota subito e nelle
+ * altre repliche entro il TTL: un interruttore che ci mette un minuto ad
+ * arrivare altrove è il limite noto di tutte le cache in memoria dell'API.
+ */
+export async function setScriptingEnabled(tenantId: string, enabled: boolean): Promise<ScriptingPlan> {
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const result = await session.executeWrite((tx) => tx.run(`
+      MATCH (t:Tenant {id: $tenantId})
+      SET t.scripting_enabled = $enabled
+      RETURN t.plan AS plan, t.scripting_enabled AS scriptingEnabled
+    `, { tenantId, enabled }))
+    const record = result.records[0]
+    if (!record) throw new Error(`Tenant ${tenantId} has no :Tenant node: fix the tenant before switching scripts`)
+    invalidateScriptingPlanCache(tenantId)
+    return { plan: String(record.get('plan')), enabled: record.get('scriptingEnabled') === true }
+  } finally {
+    await session.close()
+  }
 }

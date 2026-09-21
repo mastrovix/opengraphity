@@ -15,8 +15,11 @@ function pickDepCount(): number {
 async function seed(TENANT_ID: string) {
   const session = getSession(undefined, neo4j.session.WRITE)
 
+  // H-7: il tipo è la LABEL, non una proprietà. Con `type: 'application'`
+  // questo seed stampava «Loaded 0 applications … created: 0» e usciva con
+  // successo senza fare niente.
   const result = await session.run(
-    `MATCH (c:ConfigurationItem {tenant_id: $tenantId, type: 'application'})
+    `MATCH (c:ConfigurationItem) WHERE c.tenant_id = $tenantId AND 'Application' IN labels(c)
      RETURN c.id AS id`,
     { tenantId: TENANT_ID }
   )

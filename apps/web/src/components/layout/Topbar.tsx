@@ -3,6 +3,7 @@ import { useLocation, Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Bell } from 'lucide-react'
 import { GlobalSearch } from './GlobalSearch'
+import { useMetamodel } from '@/contexts/MetamodelContext'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,15 +13,30 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useAuth } from '@/hooks/useAuth'
 import { useMe } from '@/hooks/useMe'
+import { routePermissions } from '@/lib/routePermissions'
 import { keycloak } from '@/lib/keycloak'
 import { layoutPalette as C, alpha, colors } from '@/lib/tokens'
 import { useNotificationContext } from '@/contexts/NotificationContext'
 import { NotificationPanel } from '@/components/ui/NotificationPanel'
 import { posizioneNelMenu } from './menu'
+import { TopbarConfigurationIssues } from './TopbarConfigurationIssues'
+
+/** Dove porta il primo segmento di un indirizzo che non è a sua volta una pagina ('' = nessun link). */
+const FIRST_SEGMENT_PAGE: Readonly<Record<string, string>> = {
+  ci:       '/cmdb',
+  cis:      '/cmdb',
+  tasks:    '/my-tasks',
+  // B-21: `/kb-articles/<id>` è solo la strada che risolve lo slug di un
+  // articolo; la pagina è la knowledge base.
+  'kb-articles': '/knowledge-base',
+  settings: '',
+}
 
 export function Breadcrumb() {
   const { t } = useTranslation()
   const { pathname } = useLocation()
+  // F-22: l'etichetta dei tipi CI la decide il disegnatore del cliente.
+  const { getCIType } = useMetamodel()
 
   const LABELS: Record<string, string> = {
     dashboard:          t('sidebar.dashboard'),
@@ -33,6 +49,7 @@ export function Breadcrumb() {
     'custom-reports':   t('sidebar.reportBuilder'),
     cmdb:               t('sidebar.cmdb'),
     ci:                 t('sidebar.cmdb'),
+    'kb-articles':      t('sidebar.knowledgeBase'),
     teams:              t('sidebar.teams'),
     users:              t('sidebar.users'),
     logs:               t('sidebar.logs'),
@@ -57,6 +74,11 @@ export function Breadcrumb() {
     'event-policy':     t('sidebar.eventPolicy'),
   }
   const formatSegment = (part: string): string => {
+    // L'etichetta del cliente per un tipo di CI vince sulle chiavi dei tipi
+    // spediti (revisione totale · F-22): il breadcrumb diceva «Server» anche
+    // dopo che il disegnatore l'aveva rinominato «Host fisico».
+    const ciType = getCIType(part)
+    if (ciType?.label) return ciType.label
     if (LABELS[part]) return LABELS[part]
     if (/^[0-9a-f-]{20,}$/i.test(part)) return t('topbar.detail')
     if (/^\d+$/.test(part)) return t('topbar.detail')
@@ -84,7 +106,12 @@ export function Breadcrumb() {
   } else {
     parts.forEach((part, i) => {
       const path = '/' + parts.slice(0, i + 1).join('/')
-      crumbs.push({ key: path, label: formatSegment(part), to: path })
+      // Il primo segmento di un indirizzo fuori dal menu non sempre è una
+      // pagina: `/ci`, `/cis` e `/tasks` non esistono (la lista è la CMDB o i
+      // miei compiti), `/settings` è solo un gruppo. Prima erano link a «Page
+      // not found» (giro nel browser del 14 set 2026, BreadcrumbLinks.test.tsx).
+      const to = i === 0 && part in FIRST_SEGMENT_PAGE ? FIRST_SEGMENT_PAGE[part]! : path
+      crumbs.push({ key: path, label: formatSegment(part), to: to === '' ? null : to })
     })
   }
 
@@ -140,9 +167,9 @@ export function Topbar() {
   const { t } = useTranslation()
   const { logout } = useAuth()
   const navigate = useNavigate()
-  // Same role source as RequireRole/Sidebar (`me.role`): the "Settings" entry
-  // leads to admin-only routes, so it is only offered to admins.
-  const { isAdmin } = useMe()
+  // Same source as the route guards and the Sidebar (permissions of `me.role`):
+  // the "Settings" entry is offered only when its page opens.
+  const { can } = useMe()
   const { display, initials } = getUserInfo()
   const { unreadCount, connected: sseConnected } = useNotificationContext()
   const [panelOpen, setPanelOpen] = useState(false)
@@ -175,6 +202,10 @@ export function Topbar() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flexShrink: 1 }}>
         {/* Global search */}
         <GlobalSearch />
+
+        {/* Quante cose ci sono da sistemare nella configurazione: il numero
+            resta su ogni pagina, l'elenco sta nella sua pagina. */}
+        <TopbarConfigurationIssues />
 
         {/* Bell */}
         <div style={{ position: 'relative' }}>
@@ -306,7 +337,7 @@ export function Topbar() {
             <DropdownMenuItem onClick={() => navigate('/profile')} style={{ fontSize: 12, padding: '10px 16px' }}>
               {t('sidebar.profile')}
             </DropdownMenuItem>
-            {isAdmin && (
+            {can(...routePermissions('/settings/notifications')) && (
               <DropdownMenuItem onClick={() => navigate('/settings/notifications')} style={{ fontSize: 12, padding: '10px 16px' }}>
                 {t('sidebar.settings')}
               </DropdownMenuItem>

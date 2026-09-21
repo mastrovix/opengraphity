@@ -1,8 +1,10 @@
 import { getSession } from '@opengraphity/neo4j'
+import { mapTeam, mapUser } from '../../../lib/mappers.js'
 import type { GraphQLContext } from '../../../context.js'
 import { withSession } from '../ci-utils.js'
 import { loadReportSection, mapDashboardConfig, mapDashboardWidget, type Props } from './helpers.js'
 import { executeReportSection } from '../../../lib/reportExecutor.js'
+import { viewerLanguage } from '../../../lib/tenantLanguage.js'
 
 // ── Query resolvers ───────────────────────────────────────────────────────────
 
@@ -122,8 +124,10 @@ export async function dashboardCreatedBy(parent: { id: string }, _: unknown, ctx
       ),
     )
     if (!result.records.length) return null
-    const u = result.records[0].get('u') as Props
-    return { id: u['id'] as string, name: u['name'] as string, email: u['email'] as string }
+    // `mapUser`, non tre campi a mano (revisione totale · B-22): il tipo
+    // `User` ha `tenantId`, `role` e `createdAt` non nullabili, e chi li
+    // chiedeva riceveva un errore non-null.
+    return mapUser(result.records[0].get('u') as Props)
   })
 }
 
@@ -136,10 +140,8 @@ export async function dashboardSharedWith(parent: { id: string }, _: unknown, ct
         { id: parent.id, tenantId: ctx.tenantId },
       ),
     )
-    return result.records.map((r) => {
-      const t = r.get('t') as Props
-      return { id: t['id'] as string, name: t['name'] as string }
-    })
+    // B-22: `mapTeam` (il tipo `Team` ha `code` e `createdAt` non nullabili).
+    return result.records.map((r) => mapTeam(r.get('t') as Props))
   })
 }
 
@@ -218,12 +220,13 @@ interface WidgetParent {
   __widgetResult?: Promise<{ data: string | null; error: string | null }>
 }
 
-function resolveWidgetResult(parent: WidgetParent, ctx: GraphQLContext) {
+function resolveWidgetResult(parent: WidgetParent, ctx: GraphQLContext, language: string | null | undefined) {
   parent.__widgetResult ??= (async () => {
     try {
       const section = await loadReportSection(parent.reportSectionId, ctx.tenantId)
-      if (!section) return { data: null, error: 'Sezione non trovata' }
-      const result = await executeReportSection(section, ctx.tenantId)
+      if (!section) return { data: null, error: 'Report section not found' }
+      // V-20: le etichette dei valori nella lingua di chi guarda.
+      const result = await executeReportSection(section, ctx.tenantId, { language: viewerLanguage(language) })
       // Never discard the section error: an empty widget must say WHY.
       return { data: result.error ? null : result.data, error: result.error }
     } catch (err: unknown) {
@@ -235,18 +238,18 @@ function resolveWidgetResult(parent: WidgetParent, ctx: GraphQLContext) {
 
 export async function widgetData(
   parent: { reportSectionId: string },
-  _: unknown,
+  args: { language?: string | null },
   ctx: GraphQLContext,
 ) {
   if (!parent.reportSectionId) return null
-  return (await resolveWidgetResult(parent, ctx)).data
+  return (await resolveWidgetResult(parent, ctx, args?.language)).data
 }
 
 export async function widgetError(
   parent: { reportSectionId: string },
-  _: unknown,
+  args: { language?: string | null },
   ctx: GraphQLContext,
 ) {
   if (!parent.reportSectionId) return null
-  return (await resolveWidgetResult(parent, ctx)).error
+  return (await resolveWidgetResult(parent, ctx, args?.language)).error
 }

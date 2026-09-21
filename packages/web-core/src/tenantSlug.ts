@@ -44,8 +44,27 @@ export function getTenantSlug(hostHeader: string): string | null {
   // portal.c-one.localhost → tenant is the second segment, not "portal"
   if (first === 'portal' && parts.length >= 3) return parts[1]!
 
+  /**
+   * Le etichette che NON sono un tenant (revisione totale · E-43): qualunque
+   * prima etichetta veniva presa per uno slug, quindi `www.opengrafo.com`
+   * mandava al realm Keycloak «www» e `api.opengrafo.com` al realm «api», con
+   * un errore che non spiegava niente. Sono nomi tecnici che nessun cliente
+   * può avere come slug: qui valgono come «nessun tenant», e chi serve l'app
+   * su un host così passa `VITE_TENANT_SLUG` (come per Tailscale).
+   */
+  if (NON_TENANT_LABELS.has(first.toLowerCase())) return null
+
   return first
 }
+
+/**
+ * Nomi tecnici che non sono clienti (E-43). L'elenco è corto di proposito:
+ * ogni voce è un'etichetta che un'installazione usa per sé, non uno slug che
+ * l'onboarding possa assegnare.
+ */
+const NON_TENANT_LABELS: ReadonlySet<string> = new Set([
+  'www', 'api', 'app', 'admin', 'static', 'assets', 'cdn', 'mail', 'grafana', 'prometheus',
+])
 
 export interface RequireTenantSlugOptions {
   /** Usually `window.location.hostname`. */
@@ -89,8 +108,10 @@ export function requireTenantSlug(opts: RequireTenantSlugOptions): string {
   if (slug && isLocalhostSubdomain(opts.hostname)) return slug
   if (opts.override) return opts.override
   if (slug) return slug
+  // H-34: in inglese come gli altri messaggi di bootstrap — qui non c'e
+  // ancora un tenant, quindi non c'e una lingua del cliente da rispettare.
   throw new Error(
-    `Nessun tenant nel sottodominio ("${opts.hostname}"). ` +
-    `Accedi tramite: ${opts.hint} oppure imposta VITE_TENANT_SLUG.`,
+    `No tenant in the subdomain ("${opts.hostname}"). ` +
+    `Open the app as: ${opts.hint} — or set VITE_TENANT_SLUG.`,
   )
 }

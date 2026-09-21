@@ -47,7 +47,7 @@ interface Offender { file: string; line: number; text: string }
  * Un nodo la cui chiave viene INTERAMENTE da un alias già legato nella query
  * (`{instance_id: wi.id}`, `{definition_id: wd.id}`) è vincolato dal grafo, non
  * dall'input del chiamante: se `wi` è scopato, lo è anche lui. È la convenzione
- * che `lib/ciTypeUsage.ts:77-78` già annotava a mano; qui diventa la regola,
+ * che la vecchia `lib/ciTypeUsage.ts` annotava a mano; qui diventa la regola,
  * così i figli di un nodo scopato non chiedono un marcatore a testa.
  *
  * Vincolo stretto: nessun `$parametro` nella mappa (un parametro arriva dal
@@ -61,7 +61,10 @@ function keyedOnBoundAlias(props: string): boolean {
 }
 
 function scan(file: string): Offender[] {
-  const lines = readFileSync(file, 'utf8').split('\n')
+  return scanText(readFileSync(file, 'utf8').split('\n'), relative(apiSrc, file))
+}
+
+function scanText(lines: string[], file = '<inline>'): Offender[] {
   const out: Offender[] = []
   lines.forEach((line, i) => {
     MATCH_RE.lastIndex = 0
@@ -72,10 +75,19 @@ function scan(file: string): Offender[] {
       if (keyedOnBoundAlias(props)) continue
       const next = lines[i + 1] ?? ''
       const prev = lines[i - 1] ?? ''
-      if (line.slice(m.index + m[0].length).includes('tenant_id')) continue // WHERE inline sulla stessa riga
-      if (next.includes('tenant_id')) continue           // WHERE x.tenant_id = … sulla riga dopo
+      // Il tenant deve essere di QUESTO alias (revisione totale · A-21): «il
+      // tenant_id sulla riga dopo» accettava quello di un altro alias, ed è
+      // così che `MATCH (ct:CITypeDefinition {id: $ciTypeId})` seguito da
+      // `MATCH (q:AssessmentQuestion {… tenant_id …})` è passato (B-10).
+      const alias = m[1]!
+      // Una mappa con un'interpolazione (`c.${spec.x}`) non si legge fino alla
+      // graffa di chiusura: per quella riga vale l'euristica larga.
+      const interpolated = props.includes('${')
+      const scopedHere = interpolated ? /tenant_id/ : new RegExp(`(?:^|[^\\w.])${alias}\\.tenant_id|(?:^|[^\\w.])${alias}[^)]*tenant_id\\s*:\\s*\\$tenantId`)
+      if (scopedHere.test(line.slice(m.index + m[0].length))) continue   // WHERE inline sulla stessa riga
+      if (scopedHere.test(next)) continue                                // WHERE <alias>.tenant_id = … sulla riga dopo
       if (line.includes('tenant-ok') || prev.includes('tenant-ok')) continue
-      out.push({ file: relative(apiSrc, file), line: i + 1, text: line.trim() })
+      out.push({ file, line: i + 1, text: line.trim() })
     }
   })
   return out
@@ -84,6 +96,22 @@ function scan(file: string): Offender[] {
 describe('tenant scoping sui MATCH di dominio (tutta l\'API)', () => {
   const files = SCOPE.flatMap(listFiles)
   it('perimetro non vuoto', () => { expect(files.length).toBeGreaterThan(100) })
+  it('A-21: il tenant sulla riga dopo vale solo se è dell\'alias di quel MATCH', () => {
+    const offenders = scanText(['MATCH (ct:CITypeDefinition {id: $ciTypeId})', 'MATCH (q:AssessmentQuestion {id: $q, tenant_id: $tenantId})'])
+    expect(offenders).toHaveLength(1)
+    expect(scanText(['MATCH (ct:CITypeDefinition {id: $ciTypeId})', 'WHERE ct.tenant_id = $tenantId'])).toHaveLength(0)
+  })
+  /*
+   * Le etichette dei MODULI sono nel perimetro (revisione del 17 set 2026).
+   * Erano fuori dall'elenco di dominio, quindi questo lint e il suo gemello
+   * giravano a vuoto su tutte e otto le ondate: qui si pretende che vedano.
+   */
+  it('i moduli del catalogo sono nel perimetro: una lettura senza tenant è un rilievo', () => {
+    expect(scanText(['MATCH (f:FormField {name: $name})'])).toHaveLength(1)
+    expect(scanText(['MATCH (rev:CatalogFormRevision {item_id: $itemId, revision: $revision})'])).toHaveLength(1)
+    expect(scanText(['MATCH (row:FormTableRow {id: $id})'])).toHaveLength(1)
+    expect(scanText(['MATCH (f:FormField {tenant_id: $tenantId, name: $name})'])).toHaveLength(0)
+  })
   it('la chiave presa da un alias già legato non chiede il tenant, un parametro sì', () => {
     expect(keyedOnBoundAlias('instance_id: wi.id')).toBe(true)
     expect(keyedOnBoundAlias('definition_id: wi.definition_id, name: wi.current_step')).toBe(true)

@@ -22,11 +22,16 @@ vi.mock('@opengraphity/neo4j', () => ({
                resolved_at: params['resolvedAt'], paused_at: null, paused_type: null }
     }
     if (cypher.includes('RETURN e.created_at')) return currentStatus ? { created_at: currentStatus['created_at'] } : null
+    // E-2: anche il cambio di policy scrive con `runQueryOne`.
+    if (cypher.includes('s.policy_id             = $policyId')) {
+      writes.push({ cypher, params })
+      return { ...currentStatus, policy_id: params['policyId'] ?? currentStatus?.['policy_id'] }
+    }
     return currentStatus
   }),
 }))
 
-const { markResolveMet, getEntityCreatedAt } = await import('../status.js')
+const { markResolveMet, getEntityCreatedAt, resumeSLA, repolicySLA } = await import('../status.js')
 
 function status(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -114,5 +119,43 @@ describe('getEntityCreatedAt (D-29)', () => {
     await expect(getEntityCreatedAt('t1', 'inc-1')).rejects.toThrow('missing or not an ISO string')
     currentStatus = status({ created_at: 'yesterday' })
     await expect(getEntityCreatedAt('t1', 'inc-1')).rejects.toThrow('not a valid instant')
+  })
+})
+
+/**
+ * Revisione totale · E-2: `repolicySLA` ricostruiva la scadenza «vecchia senza
+ * pause» con i minuti del tier VECCHIO ma il fuso e il CALENDARIO della policy
+ * NUOVA. Con un tier vecchio in orario di servizio e una policy nuova 24×7
+ * (nessun calendario) `calculateDeadline` lanciava: l'evento
+ * `ticket.team_assigned` falliva quattro volte, lo SLA restava sulla policy
+ * vecchia, e il log diceva «senza calendario» su una policy che non ne ha
+ * bisogno. Ora lo spostamento delle pause è un dato registrato.
+ */
+describe('lo spostamento delle pause è registrato, non ricalcolato (E-2)', () => {
+  it('la ripresa accumula i millisecondi di pausa sullo stato', async () => {
+    currentStatus = status({ paused_at: '2026-05-01T11:00:00.000Z', paused_type: 'both' })
+    await resumeSLA('t1', 'inc-1', new Date('2026-05-01T11:30:00.000Z'))
+    const w = writes.find((c) => c.cypher.includes('s.paused_total_ms'))
+    expect(w, 'la pausa non viene accumulata').toBeDefined()
+    expect(w!.params['shiftMs']).toBe(30 * 60_000)
+  })
+
+  it('cambio di policy da orario di servizio a 24×7: nessun errore, e la pausa già scontata resta', async () => {
+    currentStatus = status({
+      policy_id: 'pol-vecchia',
+      tier_business_hours: true, tier_response_minutes: 60, tier_resolve_minutes: 480,
+      paused_total_ms: 30 * 60_000,
+    })
+    const policy24x7 = {
+      id: 'pol-nuova', name: '24×7 DBA', timezone: 'Europe/Rome', calendar: null,
+      tiers: [{ severity: 'high', response_minutes: 30, resolve_minutes: 240, business_hours: false, warning_minutes: 15 }],
+    }
+    const out = await repolicySLA('t1', 'inc-1', policy24x7 as never, 'high')
+    expect(out).not.toBeNull()
+    const w = writes.find((c) => c.cypher.includes('s.policy_id'))
+    expect(w).toBeDefined()
+    // 09:00 + 240 min = 13:00, più i 30 minuti di pausa già scontati.
+    expect(w!.params['newResolve']).toBe('2026-05-01T13:30:00.000Z')
+    expect(w!.params['newResponse']).toBe('2026-05-01T10:00:00.000Z')
   })
 })

@@ -8,15 +8,16 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/ui/badges'
 import { colors, palette } from '@/lib/tokens'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
 
 const GET_SIMILAR_INCIDENTS = gql`
   query SimilarIncidents($incidentId: ID!, $limit: Int) {
     similarIncidents(incidentId: $incidentId, limit: $limit) {
-      ready
+      ready disabled
       items { id number title status severity createdAt resolvedAt score }
     }
     suggestedArticles(incidentId: $incidentId, limit: 3) {
-      ready
+      ready disabled
       items { id title slug category score }
     }
   }
@@ -28,8 +29,8 @@ interface SimilarItem {
 }
 interface ArticleItem { id: string; title: string; slug: string | null; category: string | null; score: number }
 interface QueryData {
-  similarIncidents: { ready: boolean; items: SimilarItem[] }
-  suggestedArticles: { ready: boolean; items: ArticleItem[] }
+  similarIncidents: { ready: boolean; disabled: boolean; items: SimilarItem[] }
+  suggestedArticles: { ready: boolean; disabled: boolean; items: ArticleItem[] }
 }
 
 function scorePct(score: number): string {
@@ -51,7 +52,9 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
   // The embedding is computed asynchronously right after creation: while the
   // backend reports ready=false, poll until it flips — never show "nessun
   // risultato" for an incident that simply hasn't been embedded yet.
-  const pending = !!data && (!data.similarIncidents.ready || !data.suggestedArticles.ready)
+  // Embedding spenti dall'organizzazione (ondata 6): niente attesa, lo si dice.
+  const disabled = !!data && (data.similarIncidents.disabled || data.suggestedArticles.disabled)
+  const pending = !!data && !disabled && (!data.similarIncidents.ready || !data.suggestedArticles.ready)
   useEffect(() => {
     if (pending) startPolling(4000)
     else stopPolling()
@@ -76,6 +79,8 @@ export function SimilarIncidentsPanel({ incidentId }: { incidentId: string }) {
         </div>
       ) : loading && !data ? (
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>{t('common.loading')}</p>
+      ) : disabled ? (
+        <AIDisabledNotice feature="embeddings" />
       ) : pending ? (
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0 }}>
           {t('components.similar.pending')}

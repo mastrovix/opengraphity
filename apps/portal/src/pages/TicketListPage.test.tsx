@@ -82,3 +82,17 @@ describe('TicketListPage — le schede mandano una classe di stato', () => {
     expect(screen.queryByText(/No open tickets|Nessun ticket/i)).not.toBeInTheDocument()
   })
 })
+
+/**
+ * Giro nel browser del 14 set 2026: un incident aperto da un allarme non ha
+ * categoria. L'API ora risponde `category: null` invece di far fallire
+ * l'elenco, e la pagina non deve scrivere «null».
+ */
+describe('TicketListPage — ticket senza categoria', () => {
+  it('si elenca senza scrivere «null»', async () => {
+    const seen: Record<string, unknown>[] = []
+    renderWithProviders(<TicketListPage />, { mocks: [ticketsMock(seen, [{ ...ticket('t-9', 'new'), category: null as unknown as string }])] })
+    expect(await screen.findByText('Ticket t-9')).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/\bnull\b|ticket\.category/)
+  })
+})

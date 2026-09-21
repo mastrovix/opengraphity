@@ -21,7 +21,7 @@
  * Revisione 2 (D6.4): il selettore «Durante una tempesta della sorgente»
  * (`duringStorm`) — sospendi la valutazione (default) o valuta comunque.
  */
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -31,6 +31,7 @@ import { Input, Select, FieldLabel } from '@/components/ui/FormControls'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { UPDATE_SERVICE_IMPACT_RULES } from '@/graphql/mutations'
+import { toast } from 'sonner'
 import { colors, palette } from '@/lib/tokens'
 import { ServiceImpactPreviewLine } from './ServiceImpactPreviewLine'
 import {
@@ -123,7 +124,29 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
   const baselineKey = JSON.stringify(toForm(map.rules))
   const baseline = useMemo(() => JSON.parse(baselineKey) as ServiceImpactRulesInput, [baselineKey])
   const [form, setForm] = useState<ServiceImpactRulesInput>(baseline)
-  useEffect(() => { setForm(JSON.parse(baselineKey) as ServiceImpactRulesInput); setSaveError(null) }, [baselineKey])
+  /**
+   * Una modifica sovrascritta da un altro amministratore si DICE
+   * (revisione totale · G-MON-4).
+   *
+   * Il polling ogni 15 s rimpiazzava il form con i valori salvati e azzerava
+   * l'errore senza una parola: chi stava scrivendo `downSharePct` vedeva il
+   * campo tornare al valore di prima e non sapeva perche. La tabella dei
+   * componenti gia trattava lo stesso caso con una riga `role="alert"`; qui
+   * mancava. Il proprio salvataggio non conta: il valore che torna e quello
+   * appena mandato, quindi il form non era piu modificato.
+   */
+  const [overwritten, setOverwritten] = useState(false)
+  const previousBaselineKey = useRef(baselineKey)
+  const formRef = useRef(form)
+  formRef.current = form
+  useEffect(() => {
+    if (previousBaselineKey.current === baselineKey) return
+    const wasDirty = JSON.stringify(formRef.current) !== previousBaselineKey.current
+    previousBaselineKey.current = baselineKey
+    if (wasDirty && JSON.stringify(formRef.current) !== baselineKey) setOverwritten(true)
+    setForm(JSON.parse(baselineKey) as ServiceImpactRulesInput)
+    setSaveError(null)
+  }, [baselineKey])
 
   // Il minimo di componenti non può superare i componenti della mappa: è il
   // limite che applica anche l'API, detto qui prima di provare a salvare.
@@ -146,7 +169,11 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
   const blocked = Object.values(fieldErrors).some((e) => e !== undefined)
   const invalid = blocked || savedMinNodesStale
 
-  const set = <K extends keyof ServiceImpactRulesInput>(key: K, value: ServiceImpactRulesInput[K]) => setForm((f) => ({ ...f, [key]: value }))
+  const set = <K extends keyof ServiceImpactRulesInput>(key: K, value: ServiceImpactRulesInput[K]) => {
+    // L'avviso «sovrascritto» lo chiude chi ricomincia a scrivere, non il polling.
+    setOverwritten(false)
+    setForm((f) => ({ ...f, [key]: value }))
+  }
   // Campo vuoto → NaN (non 0): la validazione lo segnala invece di salvare uno zero mai scritto.
   const setNum = (key: NumField) => (e: React.ChangeEvent<HTMLInputElement>) =>
     set(key, e.target.value.trim() === '' ? Number.NaN : Number(e.target.value))
@@ -157,6 +184,9 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
     try {
       const res = await update({ variables: { id: map.id, expectedVersion: map.version, rules: form } })
       if (!res.data?.updateServiceImpactRules) throw new Error(t('monitoring.services.detail.noResult', { operation: 'updateServiceImpactRules' }))
+      // Giro UI del 15 set 2026 · U-5: il salvataggio riuscito non dava nessun riscontro.
+      // Secondo giro UI · V-8: la versione della MAPPA (24 → 25), non quella del formato delle regole (sempre 1).
+      toast.success(t('toast.services.rulesSaved', { version: res.data.updateServiceImpactRules.version }))
     } catch (e) {
       setSaveError(errorMessage(e))
     }
@@ -229,6 +259,13 @@ export function ServiceRulesCard({ map, canEdit, onReload }: Props) {
         <p style={{ ...hint, marginTop: 0 }}>{t('monitoring.services.rulesEdit.openIncidentNote')}</p>
         {/* D6.4: una tempesta è di norma un guasto della raccolta, non N guasti reali: di default la valutazione si sospende. */}
         {selectField('duringStorm', DURING_STORM_MODES)}
+
+        {/* G-MON-4: la modifica persa per il salvataggio di un altro admin. */}
+        {overwritten && (
+          <div role="alert" data-testid="rules-overwritten" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 12px', borderRadius: 8, background: palette.warning.bg, border: `1px solid ${palette.warning.border}`, color: palette.warning.text, fontSize: 'var(--font-size-body)' }}>
+            <span>{t('monitoring.services.rulesEdit.overwritten')}</span>
+          </div>
+        )}
 
         {saveError && (
           <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '8px 12px', borderRadius: 8, background: palette.danger.bg, border: `1px solid ${palette.danger.border}`, color: palette.danger.text, fontSize: 'var(--font-size-body)' }}>

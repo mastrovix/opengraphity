@@ -180,3 +180,24 @@ describe('la cache è limitata', () => {
     expect(Object.is(await getSchemaForTenant(`t-${max + 1}`), last)).toBe(true)
   })
 })
+
+// ── Revisione del 15 set 2026 · CM-10 ─────────────────────────────────────────
+describe('una costruzione superata da un\'invalidazione non entra in cache', () => {
+  it('il metamodello cambia mentre lo schema si costruisce: la richiesta dopo ne costruisce uno nuovo', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    // La prima costruzione legge il metamodello VECCHIO e resta in attesa.
+    loadMetamodel.mockImplementationOnce(async () => { await gate; return [ciType('sede')] })
+    const building = getSchemaForTenant('c-one')
+    // Nel frattempo l'amministratore salva: il metamodello ora ha un tipo in più.
+    loadMetamodel.mockImplementation(async () => [ciType('sede'), ciType('cabina')])
+    invalidateSchema('c-one')
+    release()
+    const stale = await building
+    expect(stale.getType('Cabina')).toBeUndefined()   // chi l'aveva chiesta riceve il suo
+    // Prima entrava in cache e restava fino al TTL di 5 minuti.
+    const fresh = await getSchemaForTenant('c-one')
+    expect(fresh.getType('Cabina')).toBeDefined()
+    expect(Object.is(fresh, stale)).toBe(false)
+  })
+})

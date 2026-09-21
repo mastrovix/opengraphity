@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getSession, toNumber } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
-import { ForbiddenError, NotFoundError, ValidationError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { audit } from '../../lib/audit.js'
 import { SYSTEM_TENANT } from '../../lib/enumScope.js'
 import { countEnumValueUsage, enumValueUsageMessage, replaceEnumValue } from '../../lib/enumValueUsage.js'
@@ -10,9 +10,16 @@ import {
   type EnumValueLabelEntry, type EnumValueLabels, type Lingua,
   LINGUE,
   parseValueLabels, valueLabelEntries, pruneValueLabels, renameValueLabel, serializeValueLabels,
+  valueLabelsReasonKey,
 } from '../../lib/enumValueLabels.js'
+import {
+  parseValueColors, valueColorEntries, renameValueColor, pruneValueColors, serializeValueColors, assertValueColorsInput,
+  type EnumValueColors, type EnumValueColorEntry,
+} from '../../lib/enumValueColors.js'
 import { languageFor } from '../../lib/tenantLanguage.js'
 import { logger } from '../../lib/logger.js'
+import { newShippedValues, stessaMappa, vocabulariesBehindShipped } from '../../lib/vocabularyShippedDrift.js'
+import { requirePermission } from '../../lib/permissions.js'
 
 /**
  * Il vocabolario di questo cliente è cambiato: svuota le cache derivate e
@@ -42,6 +49,10 @@ interface EnumTypeDef {
   values:    string[]
   /** Le etichette come stanno sul nodo: valore → lingua → etichetta. Risolte dal field resolver. */
   valueLabelsRaw: EnumValueLabels
+  /** I colori per valore, nell'ordine dei valori (revisione del 14 set 2026 · F9). */
+  valueColors: EnumValueColorEntry[]
+  /** Perche non porta etichette per valore (chiave i18n), `null` se le porta. */
+  valueLabelsReasonKey: string | null
   isSystem:  boolean
   /** `tenant_id = 'system'`: spedito col prodotto, uguale per tutti i clienti. */
   isShipped: boolean
@@ -156,9 +167,9 @@ function assertValuesUsable(values: readonly string[], name: string): void {
 function assertEnumValues(vals: unknown, tenantId: unknown, name: unknown): string[] {
   if (Array.isArray(vals) && vals.every((v) => typeof v === 'string')) return vals as string[]
   throw new Error(
-    `EnumTypeDefinition ${String(tenantId)}/${String(name)}: "values" non è una lista di stringhe ` +
-    `(${typeof vals === 'string' ? 'è una stringa' : typeof vals}). ` +
-    `Esegui la migrazione 20260918_1910_provision_tenant_data, che normalizza i vocabolari scritti come stringa JSON.`,
+    `EnumTypeDefinition ${String(tenantId)}/${String(name)}: "values" is not a list of strings ` +
+    `(${typeof vals === 'string' ? 'it is a string' : typeof vals}). ` +
+    `Run the 20260918_1910_provision_tenant_data migration, which normalizes dictionaries written as a JSON string.`,
   )
 }
 
@@ -189,10 +200,21 @@ function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
       '[vocabolario] etichette per valore non leggibili: a schermo si legge il valore',
     )
   }
+  const { colors: colori, error: erroreColori } = parseValueColors(r.get('valueColors'))
+  if (erroreColori) {
+    logger.warn(
+      { module: 'enum-type', tenantId, name: r.get('name'), err: erroreColori },
+      '[vocabolario] colori per valore non leggibili: a schermo il valore resta neutro',
+    )
+  }
+  const nome = r.get('name') as string
   return {
     id:        r.get('id')        as string,
     tenantId,
-    name:      r.get('name')      as string,
+    name:      nome,
+    // Il motivo viaggia col vocabolario: la pagina non deve tenere una sua
+    // copia dell'elenco, che divergerebbe al primo vocabolario nuovo.
+    valueLabelsReasonKey: valueLabelsReasonKey(nome),
     label:     r.get('label')     as string,
     // A-18: `values` è una lista, sempre. Il ripiego `JSON.parse` copriva UN
     // nodo (`ci_chain`, scritto come stringa JSON dal seed del metamodello) e
@@ -206,6 +228,7 @@ function mapEnum(r: { get: (k: string) => unknown }): EnumTypeDef {
       che e' l'unico posto che conosce l'argomento `language`.
     */
     valueLabelsRaw: etichette,
+    valueColors: valueColorEntries(valori, colori),
     isSystem:  r.get('isSystem')  as boolean,
     // `is_system` è un flag di protezione scritto anche sulle copie per tenant
     // (A-3): il proprietario si legge dal tenant, non da quel flag.
@@ -251,7 +274,7 @@ export async function enumTypes(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
         ORDER BY e.scope, e.name
       `, params),
     )
@@ -281,7 +304,7 @@ export async function enumType(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
       `, { id: args.id, tenantId: ctx.tenantId }),
     )
     return result.records.length ? mapEnum(result.records[0]) : null
@@ -295,15 +318,15 @@ export async function createEnumType(
   args: { input: { name: string; label: string; values: string[]; scope: string } },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
   const { input } = args
   if (!input.name.match(/^[a-z][a-z0-9_]*$/)) {
-    throw new ValidationError('name must be snake_case (lowercase letters, numbers, underscores)')
+    throw new ValidationError('name must be snake_case (lowercase letters, numbers, underscores)', { key: 'errors.enum.nameFormat', params: { name: input.name } })
   }
   assertValuesUsable(input.values, input.name)
   const VALID_SCOPES = ['itil', 'cmdb', 'shared'] as const
   if (!VALID_SCOPES.includes(input.scope as typeof VALID_SCOPES[number])) {
-    throw new ValidationError(`scope must be one of: ${VALID_SCOPES.join(', ')}`)
+    throw new ValidationError(`scope must be one of: ${VALID_SCOPES.join(', ')}`, { key: 'errors.enum.scopeInvalid', params: { allowed: VALID_SCOPES.join(', ') } })
   }
 
   const id  = uuidv4()
@@ -339,12 +362,12 @@ export async function createEnumType(
       // Corsa persa contro un altro processo: il vincolo ha parlato. Lo stesso
       // rifiuto di sempre, non un errore interno.
       if (String(err).includes('already exists') || String(err).includes('ConstraintValidationFailed')) {
-        throw new ValidationError(`An enum type named "${input.name}" already exists for this tenant`)
+        throw new ValidationError(`An enum type named "${input.name}" already exists for this tenant`, { key: 'errors.enum.nameExists', params: { name: input.name } })
       }
       throw err
     }
     if (createdId !== id) {
-      throw new ValidationError(`An enum type named "${input.name}" already exists for this tenant`)
+      throw new ValidationError(`An enum type named "${input.name}" already exists for this tenant`, { key: 'errors.enum.nameExists', params: { name: input.name } })
     }
 
     vocabularyChanged(ctx.tenantId)
@@ -353,9 +376,13 @@ export async function createEnumType(
     return {
       id, tenantId: ctx.tenantId, name: input.name, label: input.label,
       values: input.values, isSystem: false, isShipped: false, scope: input.scope,
+      // Un vocabolario del cliente porta etichette: l'elenco di quelli che non
+      // le portano è dei vocabolari spediti, e chi crea non può entrarci.
+      valueLabelsReasonKey: valueLabelsReasonKey(input.name),
       // Un vocabolario nuovo nasce senza etichette: a schermo si legge il
       // valore, e l'admin le scrive dal Dizionario quando vuole.
       valueLabelsRaw: {},
+      valueColors: [],
       defaultValue: null,
       createdAt: now, updatedAt: now,
     }
@@ -381,7 +408,7 @@ export async function customizeEnumType(
   args: { id: string },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
   if (ctx.tenantId === SYSTEM_TENANT) {
     throw new ValidationError('The system tenant does not customize the shipped dictionaries: the product changes those.', { key: 'errors.enum.systemTenant' })
   }
@@ -394,7 +421,7 @@ export async function customizeEnumType(
         WHERE e.tenant_id IN [$tenantId, $systemTenant]
         RETURN e.tenant_id AS tenantId, e.name AS name, e.label AS label,
                e.values AS values, e.scope AS scope, e.default_value AS defaultValue,
-               e.value_labels AS valueLabels
+               e.value_labels AS valueLabels, e.value_colors AS valueColors
       `, { id: args.id, tenantId: ctx.tenantId, systemTenant: SYSTEM_TENANT }),
     )
     if (!src.records.length) throw new NotFoundError('EnumTypeDefinition', args.id)
@@ -447,6 +474,11 @@ export async function customizeEnumType(
           // tre in inglese. Chi personalizza parte da dov'era, e cambia quel
           // che vuole.
           value_labels: $valueLabels,
+          // E i COLORI (F9), per la stessa ragione delle etichette.
+          value_colors: $valueColors,
+          // I valori spediti che la copia ha VISTO (F20): quelli spediti dopo si
+          // riconoscono e la diagnostica li segnala; quelli tolti di proposito no.
+          shipped_values_seen: $shippedValuesSeen,
           created_at: $now,
           updated_at: $now
         })
@@ -459,16 +491,18 @@ export async function customizeEnumType(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
       `, {
         id, tenantId: ctx.tenantId, name,
         label: row.get('label') as string, values,
         scope: row.get('scope') as string, now,
         defaultValue: (row.get('defaultValue') ?? null) as string | null,
         valueLabels: (row.get('valueLabels') ?? null) as string | null,
+        valueColors: (row.get('valueColors') ?? null) as string | null,
+        shippedValuesSeen: values,
       }),
     )
-    if (!created.records.length) throw new Error(`customizeEnumType("${name}"): la CREATE non ha restituito il nodo`)
+    if (!created.records.length) throw new Error(`customizeEnumType("${name}"): the CREATE returned no node`)
 
     vocabularyChanged(ctx.tenantId)
     void audit(ctx, 'enum_type.customized', 'EnumTypeDefinition', id, { name, shippedId: args.id })
@@ -500,10 +534,10 @@ export async function customizeEnumType(
  */
 export async function updateEnumType(
   _: unknown,
-  args: { id: string; input: { label?: string; values?: string[]; scope?: string; defaultValue?: string; replacements?: { from: string; to: string }[]; valueLabels?: { value: string; language: string; label: string }[] } },
+  args: { id: string; input: { label?: string; values?: string[]; scope?: string; defaultValue?: string; replacements?: { from: string; to: string }[]; valueLabels?: { value: string; language: string; label: string }[]; valueColors?: { value: string; color: string }[] } },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
   const { id, input } = args
 
   const session = getSession(undefined, 'WRITE')
@@ -513,7 +547,8 @@ export async function updateEnumType(
         MATCH (e:EnumTypeDefinition {id: $id})
         WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
         RETURN e.is_system AS isSystem, e.tenant_id AS tenantId, e.name AS name, e.values AS values,
-               e.default_value AS defaultValue, e.value_labels AS valueLabels
+               e.default_value AS defaultValue, e.value_labels AS valueLabels, e.value_colors AS valueColors,
+               e.label AS label, e.scope AS scope
       `, { id, tenantId: ctx.tenantId }),
     )
     if (!check.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -532,7 +567,7 @@ export async function updateEnumType(
     }
 
     if (isSystem && input.scope) {
-      throw new ValidationError('Cannot change scope of system enum types')
+      throw new ValidationError('Cannot change scope of system enum types', { key: 'errors.enum.systemScope' })
     }
     if (input.values) {
       assertVocabularyEditable(check.records[0]!.get('name') as string, 'errors.enum.op.changeValues')
@@ -565,7 +600,7 @@ export async function updateEnumType(
     const orphaned = removed.filter((v) => !replaced.has(v))
     if (orphaned.length) {
       const usages = await countEnumValueUsage(session, ctx.tenantId, name, orphaned)
-      if (usages.length) throw new ValidationError(enumValueUsageMessage(name, usages))
+      if (usages.length) throw new ValidationError(enumValueUsageMessage(name, usages), { key: 'errors.enum.valuesInUse', params: { name, usages: usages.map((u) => u.value).join(', ') } })
     }
 
     // ── IL DEFAULT SEGUE I VALORI (terza revisione · C2) ──────────────────
@@ -616,6 +651,13 @@ export async function updateEnumType(
     for (const [from, to] of replaced) etichette = renameValueLabel(etichette, from, to)
     const etichetteFinali = serializeValueLabels(pruneValueLabels(etichette, next))
 
+    // I COLORI (F9) seguono le stesse tre regole delle etichette.
+    let colori: EnumValueColors = input.valueColors
+      ? assertValueColorsInput(input.valueColors, next, name)
+      : parseValueColors(check.records[0]!.get('valueColors')).colors
+    for (const [from, to] of replaced) colori = renameValueColor(colori, from, to)
+    const coloriFinali = serializeValueColors(pruneValueColors(colori, next))
+
     if (finalDefault != null && !next.includes(finalDefault)) {
       // Chi lo legge deve sapere quali sono le sue due uscite.
       throw new ValidationError(
@@ -628,6 +670,43 @@ export async function updateEnumType(
           ? { key: 'errors.enum.removingDefault', params: { value: finalDefault, name } }
           : { key: 'errors.enum.defaultNotInValues', params: { value: finalDefault, name, values: next.join(', ') } },
       )
+    }
+
+    /*
+     * NIENTE DA SALVARE, NIENTE SALVATAGGIO (18 set 2026).
+     *
+     * Chiesto dal proprietario guardando un vocabolario personalizzato che non
+     * aveva cambiato niente: «bisogna impedire di salvare se non ci sono state
+     * modifiche». Non è pignoleria: un salvataggio a vuoto scrive `updated_at`,
+     * lascia una voce nell'audit e — sul primo salvataggio dopo
+     * «Personalizza» — fissa una copia identica alla spedita, che da quel
+     * momento scherma il tenant dai valori che il prodotto aggiungerà.
+     *
+     * Il confronto è sul RISULTATO, non sull'input: `next`, `etichetteFinali`,
+     * `coloriFinali` e `finalDefault` sono già quello che finirebbe scritto. Le
+     * mappe si confrontano come mappe — l'ordine delle chiavi non è una
+     * modifica — ed è lo stesso errore che aveva lasciato in piedi tre copie
+     * identiche su un tenant vero.
+     *
+     * Una RISCRITTURA di valori (`replacements`) non passa di qui: tocca i
+     * ticket, quindi è una modifica anche quando le liste finali coincidono.
+     */
+    if (replaced.size === 0) {
+      const etichettaCorrente = (check.records[0]!.get('label') ?? '') as string
+      const scopeCorrente     = (check.records[0]!.get('scope') ?? '') as string
+      const valoriUguali      = next.length === current.length && next.every((v, i) => v === current[i])
+      const nulladiNuovo = valoriUguali
+        && (input.label === undefined || input.label === etichettaCorrente)
+        && (input.scope === undefined || input.scope === scopeCorrente)
+        && finalDefault === currentDefault
+        && stessaMappa(etichetteFinali, check.records[0]!.get('valueLabels'))
+        && stessaMappa(coloriFinali, check.records[0]!.get('valueColors'))
+      if (nulladiNuovo) {
+        throw new ValidationError(
+          `Nothing to save on "${name}": the document you sent is identical to the one already stored.`,
+          { key: 'errors.enum.noChanges', params: { name } },
+        )
+      }
     }
 
     const now = new Date().toISOString()
@@ -658,6 +737,7 @@ export async function updateEnumType(
             e.scope      = CASE WHEN $scope IS NOT NULL AND NOT e.is_system THEN $scope ELSE e.scope END,
             e.default_value = $finalDefault,
             e.value_labels = $valueLabels,
+            e.value_colors = $valueColors,
             e.updated_at = $now
         RETURN e.id        AS id,
                e.tenant_id AS tenantId,
@@ -668,7 +748,7 @@ export async function updateEnumType(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
       `, {
         id,
         tenantId: ctx.tenantId,
@@ -677,6 +757,7 @@ export async function updateEnumType(
         scope:  input.scope  ?? null,
         finalDefault,
         valueLabels: etichetteFinali,
+        valueColors: coloriFinali,
         now,
       })
     })
@@ -698,7 +779,7 @@ export async function deleteEnumType(
   args: { id: string },
   ctx: GraphQLContext,
 ): Promise<boolean> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
 
   const session = getSession(undefined, 'WRITE')
   try {
@@ -732,10 +813,10 @@ export async function deleteEnumType(
     const usageCount = toNumber(check.records[0]!.get('usageCount'))
 
     if (isSystem) {
-      throw new ValidationError('System enum types cannot be deleted')
+      throw new ValidationError('System enum types cannot be deleted', { key: 'errors.enum.systemDelete' })
     }
     if (usageCount > 0) {
-      throw new ValidationError(`Enum in use by ${usageCount} field${usageCount > 1 ? 's' : ''}`)
+      throw new ValidationError(`Enum in use by ${usageCount} field${usageCount > 1 ? 's' : ''}`, { key: 'errors.enum.inUseByFields', params: { count: usageCount } })
     }
 
     // ── Ondata 7 · B7-2: cancellare la copia del cliente NON è mai silenzioso
@@ -837,7 +918,7 @@ export async function renameEnumValue(
   args: { id: string; from: string; to: string },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
   const { id } = args
   const from = args.from.trim()
   const to   = args.to.trim()
@@ -850,7 +931,7 @@ export async function renameEnumValue(
         MATCH (e:EnumTypeDefinition {id: $id})
         WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
         RETURN e.tenant_id AS tenantId, e.name AS name, e.values AS values, e.default_value AS defaultValue,
-               e.value_labels AS valueLabels
+               e.value_labels AS valueLabels, e.value_colors AS valueColors
       `, { id, tenantId: ctx.tenantId }),
     )
     if (!check.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -895,6 +976,8 @@ export async function renameEnumValue(
     // perderebbe del tutto l'etichetta che l'admin aveva scritto.
     const { labels: etichetteCorrenti } = parseValueLabels(row.get('valueLabels'))
     const etichetteNuove = serializeValueLabels(renameValueLabel(etichetteCorrenti, from, to))
+    // E il COLORE (F9), per la stessa ragione.
+    const coloriNuovi = serializeValueColors(renameValueColor(parseValueColors(row.get('valueColors')).colors, from, to))
 
     /** Quanti record ha toccato l'ULTIMO tentativo: l'audit va dopo il commit. */
     let touchedRecords = 0
@@ -910,6 +993,7 @@ export async function renameEnumValue(
         SET e.values        = $values,
             e.default_value = CASE WHEN e.default_value = $from THEN $to ELSE e.default_value END,
             e.value_labels  = $valueLabels,
+            e.value_colors  = $valueColors,
             e.updated_at    = $now
         RETURN e.id        AS id,
                e.tenant_id AS tenantId,
@@ -920,8 +1004,8 @@ export async function renameEnumValue(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels
-      `, { id, tenantId: ctx.tenantId, values: next, from, to, now, valueLabels: etichetteNuove })
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
+      `, { id, tenantId: ctx.tenantId, values: next, from, to, now, valueLabels: etichetteNuove, valueColors: coloriNuovi })
     })
     if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)
     vocabularyChanged(ctx.tenantId)
@@ -950,7 +1034,7 @@ export async function reorderEnumValues(
   args: { id: string; values: string[] },
   ctx: GraphQLContext,
 ): Promise<EnumTypeDef> {
-  if (ctx.role !== 'admin') throw new ForbiddenError()
+  requirePermission(ctx, 'config.metamodel')
   const { id, values } = args
 
   const session = getSession(undefined, 'WRITE')
@@ -1003,7 +1087,7 @@ export async function reorderEnumValues(
                e.scope     AS scope,
                e.default_value AS defaultValue,
                e.created_at AS createdAt,
-               e.updated_at AS updatedAt, e.value_labels AS valueLabels
+               e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors
       `, { id, tenantId: ctx.tenantId, values, now: new Date().toISOString() }),
     )
     if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', id)
@@ -1013,6 +1097,137 @@ export async function reorderEnumValues(
   } finally {
     await session.close()
   }
+}
+
+// ── I valori spediti dopo la copia (revisione del 14 set 2026 · F20) ─────────
+
+const ENUM_RETURN = `
+  RETURN e.id AS id, e.tenant_id AS tenantId, e.name AS name, e.label AS label, e.values AS values,
+         e.is_system AS isSystem, e.scope AS scope, e.default_value AS defaultValue,
+         e.created_at AS createdAt, e.updated_at AS updatedAt, e.value_labels AS valueLabels, e.value_colors AS valueColors`
+
+function stringList(value: unknown, what: string): string[] {
+  if (!Array.isArray(value) || value.some((v) => typeof v !== 'string')) {
+    throw new Error(`${what} is not a list of strings (${JSON.stringify(value)})`)
+  }
+  return value as string[]
+}
+
+/** La copia del cliente e il suo gemello spedito, già validati per le due decisioni. */
+async function loadCopyAndShipped(session: ReturnType<typeof getSession>, id: string, tenantId: string) {
+  const r = await session.executeRead((tx) => tx.run(`
+    MATCH (c:EnumTypeDefinition {id: $id})
+    WHERE c.tenant_id IN [$tenantId, 'system']
+    OPTIONAL MATCH (s:EnumTypeDefinition {tenant_id: 'system', name: c.name})
+    RETURN c.tenant_id AS owner, c.name AS name, c.values AS values, c.shipped_values_seen AS seen,
+           c.value_labels AS valueLabels, c.value_colors AS valueColors,
+           s.values AS shipped, s.value_labels AS shippedLabels, s.value_colors AS shippedColors
+  `, { id, tenantId }))
+  const row = r.records[0]
+  if (!row) throw new NotFoundError('EnumTypeDefinition', id)
+  const name = row.get('name') as string
+  if ((row.get('owner') as string) === SYSTEM_TENANT) {
+    throw new ValidationError(
+      `Dictionary "${name}" ships with the product: shipped values are adopted or declined on YOUR copy, not on the shipped dictionary.`,
+      { key: 'errors.enum.shippedValuesOnlyCopies', params: { name } },
+    )
+  }
+  if (row.get('shipped') == null) {
+    throw new ValidationError(
+      `Dictionary "${name}" is your own: there is no shipped dictionary with this name, so there are no shipped values to adopt or decline.`,
+      { key: 'errors.enum.noShippedCounterpart', params: { name } },
+    )
+  }
+  const values  = stringList(row.get('values'), `Dictionary "${name}": values`)
+  const shipped = stringList(row.get('shipped'), `Shipped dictionary "${name}": values`)
+  const rawSeen = row.get('seen')
+  const seen    = rawSeen == null ? null : stringList(rawSeen, `Dictionary "${name}": shipped_values_seen`)
+  return { row, name, values, shipped, newValues: newShippedValues(shipped, values, seen) }
+}
+
+/**
+ * Aggiunge alla copia i valori spediti che non aveva visto, IN CODA e con le
+ * etichette e i colori spediti; le etichette e i colori dei valori che il
+ * cliente ha già restano i suoi. Segna vista la lista spedita di adesso.
+ */
+export async function adoptShippedValues(_: unknown, args: { id: string }, ctx: GraphQLContext): Promise<EnumTypeDef> {
+  requirePermission(ctx, 'config.metamodel')
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const { row, name, values, shipped, newValues } = await loadCopyAndShipped(session, args.id, ctx.tenantId)
+    const next = [...values, ...newValues]
+    assertValuesUsable(next, name)
+    const shippedLabels = parseValueLabels(row.get('shippedLabels')).labels
+    const shippedColors = parseValueColors(row.get('shippedColors')).colors
+    const labels: Record<string, EnumValueLabels[string]> = { ...parseValueLabels(row.get('valueLabels')).labels }
+    const colors: Record<string, EnumValueColors[string]> = { ...parseValueColors(row.get('valueColors')).colors }
+    for (const v of newValues) {
+      if (shippedLabels[v] !== undefined) labels[v] = shippedLabels[v]
+      if (shippedColors[v] !== undefined) colors[v] = shippedColors[v]
+    }
+    const now = new Date().toISOString()
+    const result = await session.executeWrite((tx) => tx.run(`
+      MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId})
+      SET e.values = $values,
+          e.value_labels = $valueLabels,
+          e.value_colors = $valueColors,
+          e.shipped_values_seen = $seen,
+          e.updated_at = $now
+      ${ENUM_RETURN}
+    `, {
+      id: args.id, tenantId: ctx.tenantId, values: next, seen: shipped, now,
+      valueLabels: serializeValueLabels(pruneValueLabels(labels, next)),
+      valueColors: serializeValueColors(pruneValueColors(colors, next)),
+    }))
+    if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', args.id)
+    vocabularyChanged(ctx.tenantId)
+    void audit(ctx, 'enum_type.shipped_values_adopted', 'EnumTypeDefinition', args.id, { name, values: newValues })
+    return mapEnum(result.records[0]!)
+  } finally {
+    await session.close()
+  }
+}
+
+/** Tiene fuori i valori spediti non ancora visti: la lista resta com'è, e smettono di essere segnalati. */
+export async function acknowledgeShippedValues(_: unknown, args: { id: string }, ctx: GraphQLContext): Promise<EnumTypeDef> {
+  requirePermission(ctx, 'config.metamodel')
+  const session = getSession(undefined, 'WRITE')
+  try {
+    const { name, shipped, newValues } = await loadCopyAndShipped(session, args.id, ctx.tenantId)
+    const now = new Date().toISOString()
+    const result = await session.executeWrite((tx) => tx.run(`
+      MATCH (e:EnumTypeDefinition {id: $id, tenant_id: $tenantId})
+      SET e.shipped_values_seen = $seen,
+          e.updated_at = $now
+      ${ENUM_RETURN}
+    `, { id: args.id, tenantId: ctx.tenantId, seen: shipped, now }))
+    if (!result.records.length) throw new NotFoundError('EnumTypeDefinition', args.id)
+    vocabularyChanged(ctx.tenantId)
+    void audit(ctx, 'enum_type.shipped_values_declined', 'EnumTypeDefinition', args.id, { name, values: newValues })
+    return mapEnum(result.records[0]!)
+  } finally {
+    await session.close()
+  }
+}
+
+/** Una lettura per richiesta: il Dizionario chiede il campo per ogni vocabolario. */
+const driftPerRequest = new WeakMap<GraphQLContext, Promise<Map<string, string[]>>>()
+
+async function newShippedValuesField(parent: EnumTypeDef, _args: unknown, ctx: GraphQLContext): Promise<string[]> {
+  if (parent.isShipped) return []
+  let pending = driftPerRequest.get(ctx)
+  if (!pending) {
+    pending = (async () => {
+      const session = getSession()
+      try {
+        return new Map((await vocabulariesBehindShipped(session, ctx.tenantId)).map((d) => [d.id, d.newValues]))
+      } finally {
+        await session.close()
+      }
+    })()
+    driftPerRequest.set(ctx, pending)
+  }
+  return (await pending).get(parent.id) ?? []
 }
 
 /**
@@ -1037,8 +1252,31 @@ async function enumValueLabelsField(
   return valueLabelEntries(parent.values, parent.valueLabelsRaw, lingua, predefinita)
 }
 
+/**
+ * Cosa tocca rinominare (o togliere) un valore, prima di farlo: record per tipo
+ * e campo, liste della policy degli allarmi, matrici di dominio, configurazione
+ * (secondo giro UI del 15 set 2026: la rinomina riscriveva i record senza una
+ * conferma né un conteggio). Stesso conteggio del rifiuto della cancellazione.
+ */
+export async function enumValueUsage(_: unknown, args: { id: string; value: string }, ctx: GraphQLContext) {
+  const session = getSession(undefined, 'READ')
+  try {
+    const found = await session.executeRead((tx) => tx.run(`
+      MATCH (e:EnumTypeDefinition {id: $id})
+      WHERE e.tenant_id = $tenantId OR (e.is_system = true AND e.tenant_id = 'system')
+      RETURN e.name AS name
+    `, { id: args.id, tenantId: ctx.tenantId }))
+    if (!found.records.length) throw new NotFoundError('EnumTypeDefinition', args.id)
+    const name = found.records[0]!.get('name') as string
+    const [usage] = await countEnumValueUsage(session, ctx.tenantId, name, [args.value])
+    return usage ?? { value: args.value, records: [], policyLists: [], matrices: [], configSites: [], total: 0 }
+  } finally {
+    await session.close()
+  }
+}
+
 export const enumTypeResolvers = {
-  Query:    { enumTypes, enumType },
-  Mutation: { createEnumType, updateEnumType, deleteEnumType, customizeEnumType, renameEnumValue, reorderEnumValues },
-  EnumTypeDefinition: { valueLabels: enumValueLabelsField },
+  Query:    { enumTypes, enumType, enumValueUsage },
+  Mutation: { createEnumType, updateEnumType, deleteEnumType, customizeEnumType, renameEnumValue, reorderEnumValues, adoptShippedValues, acknowledgeShippedValues },
+  EnumTypeDefinition: { valueLabels: enumValueLabelsField, newShippedValues: newShippedValuesField },
 }

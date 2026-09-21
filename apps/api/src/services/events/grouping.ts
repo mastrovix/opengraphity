@@ -32,6 +32,10 @@ import { attachEventToIncident, setCorrelation } from './repo.js'
 import { incidentStep, incidentStepInfo, reopenIncident, type IncidentStepInfo, type OpenIncidentRow } from './incidentWorkflow.js'
 import { replaceClosedStormIncident, stormLockKey, STORM_LOCK_TTL_SECONDS, STORM_LOCK_WAIT_MS, STORM_LOCK_POLL_MS, type StormState } from './storm.js'
 import type { EventRecord, PipelineMode, PipelineOutcome, PipelineResult } from './types.js'
+import { systemTextIn, formatInstantIn } from '../../lib/systemText.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
+import { getTenantTimezone } from '@opengraphity/sla'
+import { systemText } from '../../lib/systemText.js'
 
 const log = logger.child({ module: 'event-correlation' })
 
@@ -105,11 +109,18 @@ export async function openIncidentFromEvent(args: OpenIncidentArgs) {
   const policy = args.policy ?? await getEventPolicy(tenantId)
   const iu = policy.severity_map[severity]
 
+  // Testo salvato sul ticket: nella lingua del cliente e con le date nel suo
+  // fuso, non in italiano con gli istanti ISO (giro del 14 set 2026).
+  const [lingua, fuso] = await Promise.all([languageFor(tenantId), getTenantTimezone(tenantId)])
   const description = [
-    `Evento di monitoraggio: ${toStr(props['title'])}`,
-    `Risorsa: ${toStr(props['resource'])} (${toStr(props['resource_kind'])})`,
-    `Severità: ${severity}`,
-    `Occorrenze: ${toNumber(props['count'])} (prima: ${toStr(props['first_seen_at'])}, ultima: ${toStr(props['last_seen_at'])})`,
+    systemTextIn(lingua, 'event.incident.title', { title: toStr(props['title']) }),
+    systemTextIn(lingua, 'event.incident.resource', { resource: toStr(props['resource']), kind: toStr(props['resource_kind']) }),
+    systemTextIn(lingua, 'event.incident.severity', { severity }),
+    systemTextIn(lingua, 'event.incident.occurrences', {
+      count: toNumber(props['count']),
+      first: formatInstantIn(lingua, toStr(props['first_seen_at']), fuso),
+      last:  formatInstantIn(lingua, toStr(props['last_seen_at']), fuso),
+    }),
     props['description'] ? `\n${toStr(props['description'])}` : '',
   ].filter(Boolean).join('\n')
 
@@ -181,7 +192,7 @@ async function noteReturnAfterClose(session: Session, tenantId: string, ev: Even
   if (!closed) return
   const ref = opened.number || opened.id
   await (await incidents()).addIncidentComment(closed.incidentId, { tenantId, userId: MONITORING_ACTOR },
-    `Allarme tornato dopo la chiusura: ${toStr(ev.props['title'])} (${toStr(ev.props['resource'])}) — aperto ${ref}`)
+    await systemText(tenantId, 'event.alarmReturnedAfterClose', { title: toStr(ev.props['title']), resource: toStr(ev.props['resource']), ref }))
   log.info({ tenantId, eventId, closedIncidentId: closed.incidentId, incidentId: opened.id }, 'Alarm returned after its incident was closed: new incident opened, closed one annotated')
 }
 
@@ -229,7 +240,7 @@ export async function correlateFiringEvent(session: Session, tenantId: string, e
   interface Grouped { outcome: CorrelationOutcome; incidentId: string; created: boolean }
   const joinIncident = async (open: OpenIncidentRow): Promise<Grouped> => {
     if (open.step === info.resolvedStep) {
-      await reopenIncident(session, tenantId, open, info, `Allarme tornato: ${toStr(ev.props['title'])} (${toStr(ev.props['resource'])})`)
+      await reopenIncident(session, tenantId, open, info, await systemText(tenantId, 'event.alarmReturned', { title: toStr(ev.props['title']), resource: toStr(ev.props['resource']) }))
       const created = await attachEventToIncident(session, tenantId, eventId, open.incidentId, false, now)
       incidentsReopenedTotal.inc({})
       return { outcome: 'reopened', incidentId: open.incidentId, created }
@@ -237,7 +248,7 @@ export async function correlateFiringEvent(session: Session, tenantId: string, e
     const created = await attachEventToIncident(session, tenantId, eventId, open.incidentId, false, now)
     if (created) {
       await (await incidents()).addIncidentComment(open.incidentId, { tenantId, userId: MONITORING_ACTOR },
-        `Allarme correlato: ${toStr(ev.props['title'])}, ${severity}, ricorrenze ${toNumber(ev.props['count'])}`)
+        await systemText(tenantId, 'event.alarmCorrelated', { title: toStr(ev.props['title']), severity, count: toNumber(ev.props['count']) }))
     }
     return { outcome: 'attached', incidentId: open.incidentId, created }
   }
@@ -310,7 +321,7 @@ export async function correlateIntoStorm(session: Session, tenantId: string, ev:
     await withRedisLock(stormLockKey(tenantId, sourceId), STORM_LOCK_OPTS, async () => {
       const fresh = await incidentStep(session, tenantId, inc.incidentId)
       if (fresh?.step === info.resolvedStep) {
-        await reopenIncident(session, tenantId, fresh, info, `Tempesta ancora in corso dalla sorgente "${storm.sourceName}": allarme tornato (${toStr(ev.props['title'])})`)
+        await reopenIncident(session, tenantId, fresh, info, await systemText(tenantId, 'event.stormStillRunning', { source: storm.sourceName, title: toStr(ev.props['title']) }))
         incidentsReopenedTotal.inc({})
       }
     })

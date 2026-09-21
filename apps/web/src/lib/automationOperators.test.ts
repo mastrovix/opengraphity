@@ -89,8 +89,8 @@ describe('chiavi delle etichette', () => {
 })
 
 describe('vocabolari', () => {
-  it('NO_VALUE_OPERATORS contiene solo is_null / is_not_null', () => {
-    expect([...NO_VALUE_OPERATORS].sort()).toEqual(['is_not_null', 'is_null'])
+  it('NO_VALUE_OPERATORS contiene is_null / is_not_null e «changed» (V-19: non confronta con un valore)', () => {
+    expect([...NO_VALUE_OPERATORS].sort()).toEqual(['changed', 'is_not_null', 'is_null'])
   })
   it('ITIL_ENTITIES / isITILEntity', () => {
     expect([...ITIL_ENTITIES].sort()).toEqual(['change', 'incident', 'problem', 'service_request'])

@@ -3,9 +3,9 @@ import { getSession } from '@opengraphity/neo4j'
 import type { Session, ManagedTransaction } from 'neo4j-driver'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../context.js'
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
+import { proponiSezioneDiReport } from '../../services/reportDesignerService.js'
 import { getNavigableEntities, getNavigableRelations } from '../../lib/navigableGraph.js'
-import type { NavigableEntity } from '../../lib/navigableGraph.js'
 import { executeReportSection } from '../../lib/reportExecutor.js'
 import { validateReportSection, type ReportSectionDef } from '../../lib/reportQueryBuilder.js'
 import { loadTemplateSections } from '../../lib/reportTemplates.js'
@@ -98,6 +98,7 @@ export interface SectionInput {
   chartType:     string
   groupByNodeId?: string | null
   groupByField?:  string | null
+  groupByGranularity?: string | null
   metric:        string
   metricField?:  string | null
   limit?:        number | null
@@ -122,6 +123,7 @@ export function sectionInputToDef(input: SectionInput, id: string, order = 0): R
     chartType:     input.chartType,
     groupByNodeId: input.groupByNodeId ?? null,
     groupByField:  input.groupByField ?? null,
+    groupByGranularity: input.groupByGranularity ?? null,
     metric:        input.metric,
     metricField:   input.metricField ?? null,
     limit:         input.limit ?? null,
@@ -167,17 +169,34 @@ export async function createSectionWithNodesEdges(
   // stored, otherwise the scheduler/dashboards would execute it without a user.
   validateReportSection(sectionInputToDef(input, sectionId, order), await getReportWhitelist(tenantId))
 
+  // Ogni nodo riceve qui il suo id definitivo; l'id che manda il client resta
+  // come `temp_id`. Il nodo del raggruppamento va tradotto nello STESSO id: il
+  // loader restituisce i nodi con l'id definitivo, e una sezione che ricordava
+  // quello del client («node_…») si rompeva al primo Run — anche appena creata.
+  const nodeIds = new Map(input.nodes.map((n) => [n.id, uuidv4()] as const))
+  let groupByNodeId: string | null = null
+  if (input.groupByNodeId) {
+    const mapped = nodeIds.get(input.groupByNodeId)
+    if (!mapped) {
+      throw new ValidationError(`groupByNodeId ${JSON.stringify(input.groupByNodeId)} is not one of the section nodes`)
+    }
+    groupByNodeId = mapped
+  }
+
   await write(runner, `
       MATCH (r:ReportTemplate {id: $templateId, tenant_id: $tenantId})
-      // tenant-ok: la sezione vive solo appesa al ReportTemplate scopato sopra
+      // Revisione del 14 set 2026 · F15: il tenant anche sul nodo figlio, non
+      // solo sul padre — una lettura per id non deve poterlo trovare altrove.
       CREATE (s:ReportSection {
         id:                $id,
+        tenant_id:         $tenantId,
         template_id:       $templateId,
         order:             $order,
         title:             $title,
         chart_type:        $chartType,
         group_by_node_id:  $groupByNodeId,
         group_by_field:    $groupByField,
+        group_by_granularity: $groupByGranularity,
         metric:            $metric,
         metric_field:      $metricField,
         limit_val:         $limit,
@@ -187,8 +206,9 @@ export async function createSectionWithNodesEdges(
     `, {
       id: sectionId, templateId, tenantId, order,
       title: input.title, chartType: input.chartType,
-      groupByNodeId: input.groupByNodeId ?? null,
+      groupByNodeId,
       groupByField:  input.groupByField ?? null,
+      groupByGranularity: input.groupByGranularity ?? null,
       metric: input.metric,
       metricField: input.metricField ?? null,
       limit: input.limit ?? null, sortDir: input.sortDir ?? null,
@@ -196,11 +216,12 @@ export async function createSectionWithNodesEdges(
 
   // Create nodes
   for (const node of input.nodes) {
-    const nodeId = uuidv4()
+    const nodeId = nodeIds.get(node.id)!
     await write(runner, `
       MATCH (:ReportTemplate {tenant_id: $tenantId})-[:HAS_SECTION]->(s:ReportSection {id: $sectionId})
       CREATE (s)-[:HAS_NODE]->(n:ReportNode {
         id:             $id,
+        tenant_id:      $tenantId,
         temp_id:        $tempId,
         section_id:     $sectionId,
         entity_type:    $entityType,
@@ -226,8 +247,11 @@ export async function createSectionWithNodesEdges(
   // Create edges
   for (const edge of input.edges) {
     await write(runner, `
-      MATCH (src:ReportNode {temp_id: $sourceTempId, section_id: $sectionId})
-      MATCH (tgt:ReportNode {temp_id: $targetTempId, section_id: $sectionId})
+      // Gli archi sono fra nodi di QUESTO cliente (revisione totale · A-20):
+      // section_id non basta da solo, e ora che ReportNode è nell'elenco
+      // delle label di dominio il lint lo controlla.
+      MATCH (src:ReportNode {temp_id: $sourceTempId, section_id: $sectionId, tenant_id: $tenantId})
+      MATCH (tgt:ReportNode {temp_id: $targetTempId, section_id: $sectionId, tenant_id: $tenantId})
       CREATE (src)-[:REPORT_EDGE {
         id: randomUUID(),
         relationship_type: $relType,
@@ -235,7 +259,7 @@ export async function createSectionWithNodesEdges(
         label: $label
       }]->(tgt)
     `, {
-      sectionId,
+      sectionId, tenantId,
       sourceTempId: edge.sourceNodeId,
       targetTempId: edge.targetNodeId,
       relType: edge.relationshipType,
@@ -329,12 +353,6 @@ const Query = {
       )
 
       const allEntities = navigableEntities
-      const allFixed: NavigableEntity[] = [
-        { entityType: 'Incident', label: 'Incident', neo4jLabel: 'Incident', fields: [], relations: [] },
-        { entityType: 'Change',   label: 'Change',   neo4jLabel: 'Change',   fields: [], relations: [] },
-        { entityType: 'Team',     label: 'Team',     neo4jLabel: 'Team',     fields: [], relations: [] },
-        { entityType: 'User',     label: 'User',     neo4jLabel: 'User',     fields: [], relations: [] },
-      ]
 
       return result.records
         .map(r => ({
@@ -344,13 +362,20 @@ const Query = {
           cnt:              (r.get('cnt') as { toNumber?: () => number } | number),
         }))
         .filter(r => r.neo4jLabel)
+        // Giro nel browser del 14 set 2026 (#12): «Connect to…» offriva ogni
+        // etichetta collegata nel grafo — `ChangeAuditEntry`, `WorkflowInstance`,
+        // i compiti dell'assessment — senza campi e col nome tecnico. Si offre
+        // solo ciò che il costruttore sa descrivere: ticket, organizzazione e
+        // tipi di CI del metamodello (getNavigableEntities).
+        .flatMap(r => {
+          const found = allEntities.find(e => e.neo4jLabel === r.neo4jLabel || e.entityType === r.neo4jLabel)
+          return found ? [{ ...r, found }] : []
+        })
         .map(r => {
           const count = typeof r.cnt === 'object' && r.cnt && 'toNumber' in r.cnt
             ? r.cnt.toNumber!()
             : Number(r.cnt)
-          const found = allEntities.find(e => e.neo4jLabel === r.neo4jLabel || e.entityType === r.neo4jLabel)
-          const fixed = allFixed.find(e => e.neo4jLabel === r.neo4jLabel || e.entityType === r.neo4jLabel)
-          const base  = found ?? fixed ?? { entityType: r.neo4jLabel, label: r.neo4jLabel, neo4jLabel: r.neo4jLabel, fields: [], relations: [] }
+          const base  = r.found
           return {
             entityType:       base.entityType,
             label:            base.label,
@@ -366,30 +391,32 @@ const Query = {
     }
   },
 
-  async executeReport(_: unknown, args: { templateId: string }, ctx: GraphQLContext) {
+  async executeReport(_: unknown, args: { templateId: string; language?: string | null }, ctx: GraphQLContext) {
+    const language = viewerLanguage(args.language)
     await withSession(s => assertReportTemplateAccess(s, args.templateId, ctx, 'read'))
     const template = await loadFullTemplate(args.templateId, ctx.tenantId)
     if (!template) throw new NotFoundError('ReportTemplate', args.templateId)
 
     const results = await Promise.all(
-      template.sections.map(sec => executeReportSection(sec, ctx.tenantId)),
+      template.sections.map(sec => executeReportSection(sec, ctx.tenantId, { language })),
     )
     return { sections: results }
   },
 
   async previewReportSection(
     _: unknown,
-    args: { input: SectionInput },
+    args: { input: SectionInput; language?: string | null },
     ctx: GraphQLContext,
   ) {
     // Identifiers are validated inside executeReportSection (buildReportQuery)
     // against the tenant whitelist; a rejected preview surfaces as section error.
-    return executeReportSection(sectionInputToDef(args.input, 'preview'), ctx.tenantId)
+    return executeReportSection(sectionInputToDef(args.input, 'preview'), ctx.tenantId, { language: viewerLanguage(args.language) })
   },
 }
 
 // ── Import Mutation from reportMutations.ts ───────────────────────────────────
 import { Mutation as ReportMutation } from './reportMutations.js'
+import { viewerLanguage } from '../../lib/tenantLanguage.js'
 
 async function updateReportSchedule(
   _: unknown,
@@ -429,6 +456,36 @@ async function updateReportSchedule(
   }, true)
 }
 
-const Mutation = { ...ReportMutation, updateReportSchedule }
+/**
+ * «DESCRIVIMI IL REPORT E TE LO DISEGNO» (19 set 2026).
+ *
+ * Non scrive niente: la proposta riempie il costruttore, dove si vede
+ * l'anteprima (che passa dalla validazione vera) e si salva a mano con
+ * `addReportSection`. Cosi l'AI non ha una porta sua per scrivere.
+ */
+const proposeReportSection = async (_: unknown, args: { prompt: string }, ctx: GraphQLContext) => {
+  const esito = await proponiSezioneDiReport({ tenantId: ctx.tenantId, prompt: args.prompt })
+  return {
+    prompt: esito.prompt,
+    title: esito.title,
+    chartType: esito.chartType,
+    metric: esito.metric,
+    metricField: esito.metricField,
+    groupByNodeId: esito.groupByNodeId,
+    groupByField: esito.groupByField,
+    groupByGranularity: esito.groupByGranularity,
+    limit: esito.limit,
+    sortDir: esito.sortDir,
+    nodes: esito.nodes,
+    edges: esito.edges,
+    why: esito.why,
+    // I parametri come JSON: sono una mappa aperta (nomi di campi, entita,
+    // valori ammessi) e tipizzarla vorrebbe dire un tipo per ogni scarto.
+    discarded: esito.scartati.map((x) => ({ what: x.what, key: x.key, params: JSON.stringify(x.params) })),
+    notes: esito.note,
+  }
+}
+
+const Mutation = { ...ReportMutation, updateReportSchedule, proposeReportSection }
 
 export const customReportResolvers = { Query, Mutation }

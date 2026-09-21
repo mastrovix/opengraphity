@@ -6,7 +6,10 @@ export function topologySDL(): string {
     id:            ID!
     name:          String!
     type:          String!
-    status:        String!
+    """Lo stato del ciclo di vita del CI, dal Dizionario del cliente; null se il CI non ne ha uno."""
+    status:        String
+    """Vero se lo stato è fra quelli che la policy degli allarmi del cliente considera «in manutenzione»."""
+    inMaintenance: Boolean!
     """Salute dal monitoraggio: operational | degraded | down; null se nessun evento ha mai riguardato il CI."""
     health:        String
     environment:   String

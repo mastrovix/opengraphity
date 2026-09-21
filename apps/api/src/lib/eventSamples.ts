@@ -170,3 +170,74 @@ export function sampleInboundPayload(connectorKind: string): Record<string, unkn
   }
   return structuredClone(SAMPLE_PAYLOADS[connectorKind as ConnectorKind]) as Record<string, unknown>
 }
+
+/**
+ * Campione per una sorgente «generic» con una mappatura propria (revisione
+ * totale · G-MON-1). Il campione fisso GENERIC_SAMPLE ha i percorsi
+ * dell'esempio (`alert.name`, `host.name`…): una sorgente che mappa
+ * `event.summary` non li ha, e la prova finiva sempre con
+ * «field_mapping.title (event.summary) is missing».
+ *
+ * Qui il payload si costruisce AL CONTRARIO: per ogni campo mappato si scrive
+ * un valore dimostrativo al percorso che la sorgente dichiara. I campi con un
+ * `default_values` restano fuori (li riempie la normalizzazione), severity e
+ * status usano una chiave del `value_mapping` della sorgente se ce n'è una, per
+ * non farsi rifiutare dalla traduzione.
+ */
+const GENERIC_FIELD_DEMO: Readonly<Record<string, string>> = {
+  title:              'Sample alarm from OpenGrafo',
+  description:        'Test event sent from the monitoring source wizard',
+  resource:           'sample-host.example.local',
+  resourceKind:       'hostname',
+  severity:           'critical',
+  status:             'firing',
+  externalId:         'SAMPLE-1',
+  resourceExternalId: 'SAMPLE-CI-1',
+  startsAt:           '2026-09-09T10:00:00Z',
+  endsAt:             '',
+  labels:             'sample:true',
+}
+
+function setPath(target: Record<string, unknown>, path: string, value: unknown): void {
+  const parts = path.split('.').map((p) => p.trim()).filter(Boolean)
+  if (parts.length === 0) return
+  let node = target
+  for (const key of parts.slice(0, -1)) {
+    const next = node[key]
+    if (next == null || typeof next !== 'object' || Array.isArray(next)) node[key] = {}
+    node = node[key] as Record<string, unknown>
+  }
+  node[parts[parts.length - 1]!] = value
+}
+
+/**
+ * `fieldMapping` = la mappatura della sorgente (campo normalizzato → percorso),
+ * `valueMapping` = le sue traduzioni, `defaults` = i suoi valori predefiniti.
+ */
+export function genericSamplePayload(
+  fieldMapping: Record<string, string>,
+  valueMapping: Record<string, Record<string, string>> = {},
+  defaults: Record<string, unknown> = {},
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {}
+  for (const [field, path] of Object.entries(fieldMapping)) {
+    if (typeof path !== 'string' || !path.trim()) continue
+    const demo = GENERIC_FIELD_DEMO[field]
+    if (demo === undefined || demo === '') continue
+    // Il valore deve sopravvivere alla traduzione della sorgente: se c'è una
+    // tabella per questo campo, si manda una delle chiavi che essa conosce.
+    const table = valueMapping[field]
+    const keys = table ? Object.keys(table) : []
+    const value = keys.length > 0 ? (keys.find((k) => table![k] === demo) ?? keys[0]!) : demo
+    setPath(payload, path, value)
+  }
+  // Un campo obbligatorio non mappato si legge alla chiave omonima alla radice;
+  // se nemmeno i default lo coprono, va nel payload.
+  for (const field of ['title', 'resource', 'severity'] as const) {
+    if (fieldMapping[field] || (defaults[field] !== undefined && defaults[field] !== null && defaults[field] !== '')) continue
+    const table = valueMapping[field]
+    const keys = table ? Object.keys(table) : []
+    payload[field] = keys.length > 0 ? (keys.find((k) => table![k] === GENERIC_FIELD_DEMO[field]) ?? keys[0]!) : GENERIC_FIELD_DEMO[field]!
+  }
+  return payload
+}

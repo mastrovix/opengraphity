@@ -96,7 +96,7 @@ describe('serviceRelationshipTypesForTenant', () => {
 
   it('un relationship_type fuori forma sul grafo FERMA la lettura (finisce interpolato nel Cypher)', async () => {
     loadMetamodel.mockResolvedValue([type({ relations: [{ name: 'brutta', relationshipType: 'bilancia*]->(x)' }] })])
-    await expect(serviceRelationshipTypesForTenant('c-one')).rejects.toThrow(/non è un tipo di relazione valido/)
+    await expect(serviceRelationshipTypesForTenant('c-one')).rejects.toThrow(/is not a valid relationship type/)
   })
 
   it('due clienti non si vedono le relazioni', async () => {

@@ -15,8 +15,9 @@
  * Revisione 2 (D6.3): l'esito `skipped_lifecycle` — il CI dell'allarme è in
  * uno degli stati del ciclo di vita che la policy ignora: chip grigio
  * "Ciclo di vita · <stato>" e frase che dice quale CI, quale stato e come
- * far ripartire la valutazione. Lo stato del CI è una stringa del
- * metamodello: si mostra con `enumLabel`, come ovunque nell'app.
+ * far ripartire la valutazione. Lo stato del CI è un valore del vocabolario
+ * `ci_status`: si mostra con l'etichetta del Dizionario (`useCILabels`), non
+ * umanizzando il valore (secondo giro UI del 15 set 2026 · V-21).
  *
  * Un esito fuori vocabolario non viene "abbellito": la cella mostra il link o
  * il trattino e la frase dice che l'esito è sconosciuto (fail-loud).
@@ -33,13 +34,16 @@ import type { TFunction } from 'i18next'
 import { Zap, RotateCcw, Link2, CheckCircle2 } from 'lucide-react'
 import { Pill } from '@/components/ui/Pill'
 import { formatDateTime } from '@/lib/datetime'
-import { enumLabel } from '@/lib/ciEnums'
+import { useCILabels } from '@/hooks/useCILabels'
 import { colors } from '@/lib/tokens'
 import { srOnlyStyle } from '@/lib/a11y'
 import { TINT_INFO, TINT_WARNING, TINT_NEUTRAL, TINT_FLAPPING, type Tint } from '@/lib/eventPalette'
 import { REEVALUABLE_CORRELATIONS, type MonitoringEvent, type EventPolicy, type EventCorrelation } from '@/types/events'
 
 /** Sottoinsieme della policy che serve alla correlazione (il resto non è necessario ai chiamanti). */
+/** L'etichetta di uno stato del ciclo di vita del CI (dal Dizionario del cliente). */
+export type CIStatusLabel = (status: string) => string
+
 export type CorrelationPolicy = Pick<EventPolicy, 'openIncidentFrom' | 'openDelaySeconds' | 'flapStableMinutes'>
 
 type CorrelationEvent = Pick<MonitoringEvent, 'status' | 'severity' | 'incident' | 'suppressedBy' | 'correlation' | 'correlationAt' | 'flappingSince' | 'transitions24h' | 'source' | 'ci'>
@@ -49,9 +53,9 @@ type CorrelationEvent = Pick<MonitoringEvent, 'status' | 'severity' | 'incident'
  * `skipped_lifecycle`: etichetta del metamodello, oppure null se il CI manca
  * o non ha stato — in quel caso la frase lo dice invece di inventarlo.
  */
-function lifecycleStatusLabel(ev: Pick<CorrelationEvent, 'ci'>): string | null {
+function lifecycleStatusLabel(ev: Pick<CorrelationEvent, 'ci'>, statusLabel: CIStatusLabel): string | null {
   const status = ev.ci?.status
-  return status ? enumLabel(status) : null
+  return status ? statusLabel(status) : null
 }
 
 /** "Rivaluta ora" ha senso solo quando la policy può ancora cambiare idea. */
@@ -123,6 +127,7 @@ interface CellProps {
 
 export function EventIncidentCell({ event, policy, stopRowClick = false }: CellProps) {
   const { t } = useTranslation()
+  const { statusLabel } = useCILabels()
   const stop = stopRowClick ? (e: MouseEvent<HTMLAnchorElement>) => e.stopPropagation() : undefined
 
   // Sfarfallio e tempesta vengono PRIMA del link all'incident: l'esito della
@@ -149,9 +154,9 @@ export function EventIncidentCell({ event, policy, stopRowClick = false }: CellP
       return <HintedChip tint={STORM_CHIP} label={t('events.correlation.chip.storm_no_ci')} hint={t('events.correlation.text.storm_no_ci', { source: event.source?.name ?? '—' })} />
     case 'skipped_lifecycle': {
       // Grigio come la soppressione: l'allarme resta in console, ma non muove nulla.
-      const status = lifecycleStatusLabel(event)
+      const status = lifecycleStatusLabel(event, statusLabel)
       const label = status ? t('events.correlation.chip.skipped_lifecycle', { status }) : t('events.correlation.chip.skipped_lifecycleNoStatus')
-      return <HintedChip tint={TINT_NEUTRAL} label={label} hint={lifecycleSentence(t, event)} />
+      return <HintedChip tint={TINT_NEUTRAL} label={label} hint={lifecycleSentence(t, event, statusLabel)} />
     }
   }
 
@@ -190,8 +195,20 @@ export function EventIncidentCell({ event, policy, stopRowClick = false }: CellP
       return <HintedChip tint={TINT_INFO} label={t('events.correlation.chip.pending')} hint={t('events.correlation.text.pending')} />
     case 'skipped_orphan':
       return <HintedChip tint={TINT_WARNING} label={t('events.correlation.chip.linkCI')} hint={t('events.correlation.text.skipped_orphan')} />
+    /**
+     * «Sotto soglia» e «Nessun incident» erano un trattino (revisione totale ·
+     * G-EVT-12): con una policy che apre da critical, un allarme warning
+     * mostrava una colonna vuota, indistinguibile da un allarme che la policy
+     * non ha ancora valutato. La frase che spiega perche esisteva gia
+     * (`correlationSentence`), non arrivava alla colonna.
+     */
+    case 'skipped_severity':
+      return <HintedChip tint={TINT_NEUTRAL} label={t('events.correlation.chip.skipped_severity')} hint={correlationSentence(t, event, policy, { statusLabel })} />
+    case 'none':
+      return <HintedChip tint={TINT_NEUTRAL} label={t('events.correlation.chip.none')} hint={t('events.correlation.text.none')} />
     default:
-      return <span style={{ color: colors.slateLight }}>—</span>
+      // Un esito nuovo dell'API non e un trattino muto: la frase lo nomina.
+      return <HintedChip tint={TINT_NEUTRAL} label={event.correlation} hint={t('events.correlation.text.unknown', { value: event.correlation })} />
   }
 }
 
@@ -200,8 +217,8 @@ export function EventIncidentCell({ event, policy, stopRowClick = false }: CellP
  * cosa fare per far ripartire la valutazione. Senza CI o senza stato la frase
  * lo dice (nessun valore inventato).
  */
-function lifecycleSentence(t: TFunction, ev: Pick<CorrelationEvent, 'ci'>): string {
-  const status = lifecycleStatusLabel(ev)
+function lifecycleSentence(t: TFunction, ev: Pick<CorrelationEvent, 'ci'>, statusLabel: CIStatusLabel): string {
+  const status = lifecycleStatusLabel(ev, statusLabel)
   if (!ev.ci)  return t('events.correlation.text.skipped_lifecycleNoCI')
   if (!status) return t('events.correlation.text.skipped_lifecycleNoStatus', { name: ev.ci.name })
   return t('events.correlation.text.skipped_lifecycle', { name: ev.ci.name, status })
@@ -211,11 +228,20 @@ function lifecycleSentence(t: TFunction, ev: Pick<CorrelationEvent, 'ci'>): stri
  * La frase del dettaglio: cosa ha fatto la policy con l'evento. Con la policy
  * a disposizione le frasi "in attesa" e "sotto soglia" dicono anche i numeri.
  */
-export function correlationSentence(t: TFunction, ev: CorrelationEvent, policy: CorrelationPolicy | null | undefined): string {
+export function correlationSentence(
+  t: TFunction, ev: CorrelationEvent, policy: CorrelationPolicy | null | undefined,
+  opts: {
+    /** L'incident l'ha aperto un operatore con «Open incident»: la frase non dice «automaticamente». */
+    openedManually?: boolean
+    /** Etichetta dello stato del CI per `skipped_lifecycle` (da `useCILabels`). */
+    statusLabel: CIStatusLabel
+  },
+): string {
+  const { openedManually = false, statusLabel } = opts
   const when   = formatDateTime(ev.correlationAt)
   const number = ev.incident?.number ?? '—'
   switch (ev.correlation) {
-    case 'opened':        return t('events.correlation.text.opened', { number, when })
+    case 'opened':        return t(openedManually ? 'events.correlation.text.openedManually' : 'events.correlation.text.opened', { number, when })
     case 'attached':      return t('events.correlation.text.attached', { number, when })
     case 'reopened':      return t('events.correlation.text.reopened', { number, when })
     case 'auto_resolved': return t('events.correlation.text.auto_resolved', { number, when })
@@ -249,7 +275,7 @@ export function correlationSentence(t: TFunction, ev: CorrelationEvent, policy: 
         : t('events.correlation.text.stormNoIncident', { source, when })
     }
     case 'storm_no_ci': return t('events.correlation.text.storm_no_ci', { source: ev.source?.name ?? '—' })
-    case 'skipped_lifecycle': return lifecycleSentence(t, ev)
+    case 'skipped_lifecycle': return lifecycleSentence(t, ev, statusLabel)
     default:     return t('events.correlation.text.unknown', { value: String(ev.correlation) })
   }
 }

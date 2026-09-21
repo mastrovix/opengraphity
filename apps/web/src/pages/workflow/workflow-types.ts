@@ -4,6 +4,8 @@ export interface WFStep {
   id:           string
   name:         string
   label:        string
+  /** Le traduzioni spedite dell'etichetta (secondo giro UI · V-5: il pannello avvisa prima di perderle). */
+  labels?:      { language: string; label: string }[]
   type:         'start' | 'standard' | 'end' | 'parallel_fork' | 'parallel_join' | 'timer_wait' | 'sub_workflow'
   enterActions: string | null
   exitActions:  string | null
@@ -21,6 +23,8 @@ export interface WFStep {
    * passo rinominato continua a funzionare. `null` = nessuno scopo, legittimo.
    */
   purpose?:     string | null
+  /** La SCADENZA del passo (JSON di `StepDeadline`); null = nessuna. */
+  deadline?:    string | null
   /**
    * Istanze di workflow ferme ORA su questo step. > 0 ⇒ eliminarlo lascerebbe
    * quei ticket senza step corrente: il pannello spegne «Elimina step» e dice

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../../context.js'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ vi.mock('../../../../lib/workflowHelpers.js', () => ({
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-const { assertUserInCITeam, assertAdmin } = await import('../helpers.js')
+const { assertUserInCITeam, assertMayReopenTasks } = await import('../helpers.js')
 const { runQueryOne } = await import('../../ci-utils.js')
 
 // ── Test context ──────────────────────────────────────────────────────────────
@@ -35,8 +36,8 @@ const mockSession = {
   close:        vi.fn().mockResolvedValue(undefined),
 } as never
 
-const operatorCtx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator' }
-const adminCtx:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'admin@test.io', role: 'admin' }
+const operatorCtx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator', permissions: perms('operator') }
+const adminCtx:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'admin@test.io', role: 'admin', permissions: perms('admin') }
 
 const expectForbidden = async (promise: Promise<unknown>, messagePart: string) => {
   const error = await promise.then(() => null, (e: unknown) => e)
@@ -112,21 +113,21 @@ describe('assertUserInCITeam', () => {
   })
 })
 
-describe('assertAdmin', () => {
+describe('assertMayReopenTasks (approval.override)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('admin → non lancia', () => {
-    expect(() => assertAdmin(adminCtx)).not.toThrow()
+  it('admin (ha approval.override) → non lancia', () => {
+    expect(() => assertMayReopenTasks(adminCtx)).not.toThrow()
   })
 
-  it('non-admin → ForbiddenError con code FORBIDDEN', () => {
+  it('senza approval.override → ForbiddenError con code FORBIDDEN', () => {
     let error: unknown = null
-    try { assertAdmin(operatorCtx) } catch (e) { error = e }
+    try { assertMayReopenTasks(operatorCtx) } catch (e) { error = e }
 
     expect(error).toBeInstanceOf(GraphQLError)
-    expect((error as GraphQLError).message).toContain('Only admins')
+    expect((error as GraphQLError).message).toContain('reopen')
     expect((error as GraphQLError).extensions['code']).toBe('FORBIDDEN')
   })
 })

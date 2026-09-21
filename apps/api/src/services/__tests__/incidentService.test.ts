@@ -7,6 +7,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
 // dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
 // fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+// Le note si compongono nella lingua del cliente: qui italiano, come le attese.
+// Ondata 6 di «Nulla cablato»: il formato dei numeri è del cliente; qui quello di fabbrica.
+vi.mock('../../lib/ticketCIExclusions.js', () => import('../../lib/__tests__/ticketCIExclusionsFake.js'))
+vi.mock('../../lib/ticketNumbering.js', () => import('../../lib/__tests__/ticketNumberingFake.js'))
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
 
 vi.mock('../../lib/ciLabelsForTenant.js', () => ({
@@ -82,10 +87,13 @@ vi.mock('../../lib/mappers.js', () => ({
   })),
 }))
 
+vi.mock('../../lib/stepEnteredPublisher.js', () => ({ publishStepEnteredForEntity: vi.fn() }))
+
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 const { createIncident, resolveIncident, escalateIncident, publishIncidentTransition } = await import('../incidentService.js')
 const { publish } = await import('@opengraphity/events')
+const { publishStepEnteredForEntity } = await import('../../lib/stepEnteredPublisher.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 
@@ -116,6 +124,10 @@ describe('createIncident', () => {
     primeIncidentRow({ id: 'inc-1', title: 'Test incident', severity: 'high', status: 'open' })
     // incident-number progressive count
     vi.mocked(runQueryOne).mockResolvedValue({ cnt: 0 })
+    // Revisione totale · B-7: `incident.created` rilegge il payload dal grafo
+    // (prima ciName e assignedTo erano «—» scritti a mano).
+    const payloadRow = { get: (k: string) => (({ id: 'inc-1', title: 'Test incident', severity: 'high', status: 'open', ciName: 'srv-1', assignedTo: 'Mario' }) as Record<string, string>)[k] }
+    mockSession.executeRead.mockResolvedValue({ records: [payloadRow] })
   })
 
   it('rifiuta la creazione senza CI impattato', async () => {
@@ -209,10 +221,41 @@ describe('createIncident', () => {
     )
   })
 
+  /**
+   * Revisione del 14 set 2026 · IT-4: il portale apre l'incident da qui. Unica
+   * differenza dichiarata: l'utente finale non conosce i CI, quindi il canale
+   * `portal` può nascere senza CI; la categoria però è obbligatoria e validata
+   * contro il Dizionario (anche senza copia del cliente: IT-7).
+   */
+  it('canale portal: nasce senza CI, con created_by e canale, e pubblica incident.created', async () => {
+    await createIncident({ title: 'Stampante', severity: 'high', category: 'hardware' }, ctx, 'portal')
+    const create = vi.mocked(runQuery).mock.calls.find(c => (c[1] as string).includes('CREATE (i:Incident'))!
+    expect(create[1]).toContain('created_by:   $userId')
+    expect(create[2]).toMatchObject({ userId: 'user-1', channel: 'portal', category: 'hardware' })
+    expect(vi.mocked(runQuery).mock.calls.some(c => (c[1] as string).includes('AFFECTED_BY'))).toBe(false)
+    const event = vi.mocked(publish).mock.calls[0]![0] as { type: string }
+    expect(event.type).toBe('incident.created')
+    expect(workflowEngine.createInstance).toHaveBeenCalledOnce()
+  })
+
+  it('canale portal: categoria assente o fuori Dizionario → rifiutato prima di scrivere', async () => {
+    await expect(createIncident({ title: 'T', severity: 'high' }, ctx, 'portal')).rejects.toThrow(/category is required/)
+    await expect(createIncident({ title: 'T', severity: 'high', category: 'caffè' }, ctx, 'portal')).rejects.toThrow(/caffè/)
+    await expect(createIncident({ title: 'T', severity: 'urgentissimo', category: 'hardware' }, ctx, 'portal')).rejects.toThrow(/urgentissimo/)
+    expect(vi.mocked(runQuery).mock.calls.some(c => (c[1] as string).includes('CREATE (i:Incident'))).toBe(false)
+    expect(publish).not.toHaveBeenCalled()
+  })
+
+  it('canale agent (default): il CI resta obbligatorio', async () => {
+    await expect(createIncident({ title: 'T', severity: 'high', category: 'hardware' }, ctx)).rejects.toThrow(/at least one impacted CI/)
+  })
+
   it('include tenantId e severity nell\'evento', async () => {
-    // The event carries the created incident's severity (derived priority) —
-    // make the CREATE mock echo it.
+    // L'evento porta la gravità dell'incident CREATO (la priorità derivata):
+    // il payload si rilegge dal grafo (B-7), quindi è la rilettura a dirla.
     primeIncidentRow({ id: 'inc-1', title: 'Alert critico', severity: 'critical', status: 'open' })
+    const criticalRow = { get: (k: string) => (({ id: 'inc-1', title: 'Alert critico', severity: 'critical', status: 'open', ciName: 'srv-1', assignedTo: '—' }) as Record<string, string>)[k] }
+    mockSession.executeRead.mockResolvedValue({ records: [criticalRow] })
     await createIncident(
       { title: 'Alert critico', severity: 'critical', affectedCIIds: ['ci-1'] },
       ctx,
@@ -280,48 +323,23 @@ describe('escalateIncident', () => {
 })
 
 /**
- * D-22 — l'identità dell'evento di transizione non è più il NOME del passo.
+ * D-22 — l'identità dell'evento di transizione non è il NOME del passo, e
+ * revisione totale · C-1 — la pubblicazione non vive più qui.
  *
- * Prima: `publishEvent(\`incident.${stepName}\`, …)`. Dopo una rinomina l'API
- * pubblicava `incident.lavorazione`, nessuna regola di notifica
- * corrispondeva, nessun webhook aveva quel tipo, e niente lo diceva.
- *
- * Ora vengono pubblicati DUE eventi con lo stesso payload e lo stesso
- * istante: il tipo **stabile** `incident.step_entered` (col passo nel
- * payload: nome, etichetta, scopo, categoria, id) e l'**alias** storico
- * `incident.<passo>`, mantenuto perché a lui sono agganciate le 35 regole di
- * fabbrica, le regole già scritte dai tenant e i formatter Slack/Teams (che
- * sono per tipo esatto). Il dispatcher non consegna due volte.
+ * I due eventi (il tipo stabile `incident.step_entered` e l'alias storico
+ * `incident.<passo>`) nascono dall'hook `onStepEntered` del motore, che vede
+ * anche i cammini automatici: il contratto è pinnato in
+ * `src/lib/__tests__/stepEnteredPublisher.test.ts`. Qui resta la prova che il
+ * servizio DELEGA, senza pubblicare nulla di suo (pubblicare in entrambi i
+ * posti darebbe due notifiche per ogni transizione manuale).
  */
-describe('publishIncidentTransition — tipo stabile + alias storico', () => {
-  beforeEach(() => {
+describe('publishIncidentTransition — delega al publisher condiviso (C-1)', () => {
+  it('non pubblica eventi di suo: chiama il publisher dell\'ingresso nel passo', async () => {
     vi.clearAllMocks()
-    const payloadRow = { get: (k: string) => (({ id: 'inc-1', title: 'DB down', severity: 'high', status: 'in_attesa_fornitore', ciName: 'srv-1', assignedTo: 'Mario' }) as Record<string, string>)[k] }
-    mockSession.executeRead.mockResolvedValue({ records: [payloadRow] })
-    vi.mocked(runQueryOne).mockResolvedValue({ stepId: 'st-7', label: 'In attesa del fornitore', purpose: null, category: 'waiting' })
-  })
-
-  it('pubblica il tipo stabile E l\'alias del passo rinominato, con gli stessi fatti del passo', async () => {
     await publishIncidentTransition('inc-1', 'in_attesa_fornitore', ctx)
-
-    const types = vi.mocked(publish).mock.calls.map((c) => (c[0] as { type: string }).type)
-    expect(types).toEqual(['incident.step_entered', 'incident.in_attesa_fornitore'])
-    for (const call of vi.mocked(publish).mock.calls) {
-      const payload = (call[0] as { payload: Record<string, unknown> }).payload
-      expect(payload).toMatchObject({
-        id: 'inc-1', title: 'DB down',
-        step_id: 'st-7', step_name: 'in_attesa_fornitore', step_label: 'In attesa del fornitore',
-        step_purpose: null, step_category: 'waiting',
-      })
-    }
-    // stesso istante: le due pubblicazioni sono la STESSA transizione
-    const [a, b] = vi.mocked(publish).mock.calls.map((c) => (c[0] as { timestamp: string }).timestamp)
-    expect(a).toBe(b)
-  })
-
-  it('un passo che non esiste nel workflow attivo ferma l\'evento invece di inventarne i fatti', async () => {
-    vi.mocked(runQueryOne).mockResolvedValue(null)
-    await expect(publishIncidentTransition('inc-1', 'fantasma', ctx)).rejects.toThrow(/"fantasma"/)
+    expect(publishStepEnteredForEntity).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-1', actorId: 'user-1', entityType: 'incident', entityId: 'inc-1', stepName: 'in_attesa_fornitore',
+    }))
     expect(publish).not.toHaveBeenCalled()
   })
 })

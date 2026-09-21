@@ -16,6 +16,7 @@ import { GraphQLError } from 'graphql'
 import { lookupOrError } from '../../lib/lookupOrError.js'
 import { getQueue } from '../../lib/bullmq.js'
 import { QUEUE_REGISTRY, isRegisteredQueue, queueEntry } from '../../lib/queueRegistry.js'
+import { requirePermission } from '../../lib/permissions.js'
 
 const STATUS_TYPES: Record<string, JobType[]> = {
   waiting:   ['waiting'],
@@ -26,10 +27,8 @@ const STATUS_TYPES: Record<string, JobType[]> = {
   paused:    ['paused'],
 }
 
-function requireAdmin(ctx: GraphQLContext): void {
-  if (ctx.role !== 'admin') {
-    throw new GraphQLError('Forbidden — admin role required', { extensions: { code: 'FORBIDDEN' } })
-  }
+function requireSystemPermission(ctx: GraphQLContext): void {
+  requirePermission(ctx, 'admin.system')
 }
 
 function requireRegistered(queueName: string): void {
@@ -41,7 +40,7 @@ function requireRegistered(queueName: string): void {
 export const queueStatsResolvers = {
   Query: {
     queueJobs: async (_: unknown, args: { queueName: string; status?: string; limit?: number }, ctx: GraphQLContext) => {
-      requireAdmin(ctx)
+      requireSystemPermission(ctx)
       const { queueName, status = 'failed', limit = 50 } = args
       requireRegistered(queueName)
       const types = lookupOrError(STATUS_TYPES, status, 'STATUS_TYPES')
@@ -69,7 +68,7 @@ export const queueStatsResolvers = {
     },
 
     queueStats: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
-      requireAdmin(ctx)
+      requireSystemPermission(ctx)
       return Promise.all(
         QUEUE_REGISTRY.map(async (entry) => {
           const counts = await getQueue(entry.name).getJobCounts(
@@ -94,7 +93,7 @@ export const queueStatsResolvers = {
   },
   Mutation: {
     retryQueueJob: async (_: unknown, args: { queueName: string; jobId: string }, ctx: GraphQLContext) => {
-      requireAdmin(ctx)
+      requireSystemPermission(ctx)
       const { queueName, jobId } = args
       requireRegistered(queueName)
       const entry = queueEntry(queueName)

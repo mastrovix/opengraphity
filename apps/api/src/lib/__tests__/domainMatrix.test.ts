@@ -72,14 +72,14 @@ describe('loadDomainMatrix', () => {
 
   it('entries corrotte → errore che nomina la matrice, e niente resta in cache', async () => {
     reads([{ entries: '{non json', updatedAt: null }])
-    await expect(loadDomainMatrix('c-one', 'priority')).rejects.toThrow(/Matrice "priority".*non è JSON valido/)
+    await expect(loadDomainMatrix('c-one', 'priority')).rejects.toThrow(/Matrix "priority".*is not valid JSON/)
     reads([])
     expect((await loadDomainMatrix('c-one', 'priority')).isDefault).toBe(true)
   })
 
   it('una cella non testuale è un errore che la nomina', async () => {
     reads([{ entries: '{"high|high": 3}', updatedAt: null }])
-    await expect(loadDomainMatrix('c-one', 'priority')).rejects.toThrow(/la cella "high\|high" non è una stringa/)
+    await expect(loadDomainMatrix('c-one', 'priority')).rejects.toThrow(/cell "high\|high" is not a string/)
   })
 
   it('legge una volta per tenant e tipo, e di nuovo dopo l\'invalidazione', async () => {
@@ -111,7 +111,7 @@ describe('resolveDomainMatrix — mai un default silenzioso', () => {
 
   it('il numero di valori deve corrispondere alle dimensioni', async () => {
     reads([])
-    await expect(resolveDomainMatrix('c-one', 'priority', 'high')).rejects.toThrow(/attesi 2 valori \(impact, urgency\)/)
+    await expect(resolveDomainMatrix('c-one', 'priority', 'high')).rejects.toThrow(/2 values expected \(impact, urgency\)/)
   })
 
   it('una matrice a una dimensione si risolve con un valore solo, con le chiavi VERE del vocabolario', async () => {
@@ -148,7 +148,7 @@ describe('assertDomainValue — il punto unico', () => {
 
   it('un vocabolario che non esiste da nessuna parte è un errore, non un elenco vuoto', async () => {
     reads([])
-    await expect(domainVocabulary('c-one', 'inventato')).rejects.toThrow(/Vocabolario "inventato" inesistente/)
+    await expect(domainVocabulary('c-one', 'inventato')).rejects.toThrow(/Dictionary "inventato" does not exist/)
   })
 
   it('isDomainValue risponde senza lanciare, per i rami che devono decidere', async () => {

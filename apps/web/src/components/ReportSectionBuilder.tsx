@@ -8,18 +8,21 @@ import {
   type Node, type Edge,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Star, X, Check, ChevronLeft, ChevronRight } from 'lucide-react'
-import { toast } from 'sonner'
+import { Star, X, Check, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
 import { GET_NAVIGABLE_ENTITIES, GET_REACHABLE_ENTITIES, PREVIEW_REPORT_SECTION } from '@/graphql/queries'
 import {
-  nodeTypes, edgeTypes,
+  nodeTypes, edgeTypes, navigableLabel,
   type FilterState, type NodeData, type NavigableEntity, type ReachableEntity, type NavigableField,
 } from './ReportFlowNodes'
 import { ReportPreview, type SectionResult } from './ReportPreview'
+import { Button } from '@/components/Button'
+import { ModaleProgettoReportAI, type ProgettoReport } from './ProgettoReportAI'
+import { useAIFeature } from '@/hooks/useAIFeature'
 import { ReportQueryBuilder } from './ReportQueryBuilder'
-import { ReportChartConfig, CHART_TYPES, DATE_FIELD_NAMES } from './ReportChartConfig'
+import { ReportChartConfig, CHART_TYPES, eUnaData, periodoDaSalvare } from './ReportChartConfig'
 import { useCIBaseEnums } from '@/lib/ciEnums'
 import { colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,6 +31,7 @@ export interface ReportSectionInput {
   chartType:     string
   groupByNodeId: string | null
   groupByField:  string | null
+  groupByGranularity?: string | null
   metric:        string
   metricField:   string | null
   limit:         number | null
@@ -76,8 +80,49 @@ const labelStyle: React.CSSProperties = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+/**
+ * UN FILTRO COME LO VUOLE IL SERVER (19 set 2026).
+ *
+ * L'interfaccia scrive sempre testo — è quello che una casella produce — ma
+ * «ultimi N giorni» è un NUMERO e «è fra» una LISTA, e il Cypher li usa così
+ * (`duration({days: $p})`, `IN $p`). Prima il costruttore sapeva scrivere solo
+ * `eq`, quindi la differenza non si vedeva; da quando gli operatori si possono
+ * scegliere, va tradotta qui — una volta, sul confine.
+ *
+ * Gli operatori senza valore mandano `null`: un valore lasciato in giro
+ * sarebbe un dato che nessuno usa ma che chi rilegge il JSON deve spiegare.
+ */
+function normalizzaFiltro(f: FilterState, campi: readonly NavigableField[] = []): { field: string; operator: string; value: string | number | string[] | boolean | null } {
+  /*
+   * IL TIPO DEL CAMPO decide la forma del valore (19 set 2026, dalla
+   * revisione): in Cypher `n.porta = "443"` su una proprietà intera non
+   * corrisponde MAI, e il report resta vuoto senza un errore. Il costruttore
+   * il tipo ce l'ha — lo porta `NavigableField` — e finora lo ignorava,
+   * mandando tutto come testo.
+   */
+  const tipo = campi.find((c) => c.name === f.field)?.fieldType
+  if (f.operator === 'is_null' || f.operator === 'is_not_null') return { field: f.field, operator: f.operator, value: null }
+  if (f.operator === 'last_n_days') {
+    const giorni = Number(Array.isArray(f.value) ? f.value[0] : f.value)
+    return { field: f.field, operator: f.operator, value: Number.isFinite(giorni) ? giorni : 0 }
+  }
+  if (f.operator === 'in') {
+    const valori = Array.isArray(f.value)
+      ? f.value
+      : String(f.value).split(',').map((x) => x.trim()).filter((x) => x !== '')
+    return { field: f.field, operator: f.operator, value: valori }
+  }
+  const grezzo = Array.isArray(f.value) ? (f.value[0] ?? '') : String(f.value)
+  if (tipo === 'number') {
+    const n = Number(grezzo)
+    return { field: f.field, operator: f.operator, value: Number.isFinite(n) ? n : grezzo }
+  }
+  if (tipo === 'boolean') return { field: f.field, operator: f.operator, value: grezzo.toLowerCase() === 'true' }
+  return { field: f.field, operator: f.operator, value: grezzo }
+}
+
 export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const titleInputId = useId()
   const [wizardStep,    setWizardStep]    = useState<1 | 2 | 3 | 4>(1)
   const [title,         setTitle]         = useState(initialValues?.title ?? '')
@@ -86,6 +131,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   const [metricField,   setMetricField]   = useState(initialValues?.metricField ?? '')
   const [groupByNodeId, setGroupByNodeId] = useState(initialValues?.groupByNodeId ?? '')
   const [groupByField,  setGroupByField]  = useState(initialValues?.groupByField ?? '')
+  const [granularita,   setGranularita]   = useState(initialValues?.groupByGranularity ?? 'day')
   const [limit,         setLimit]         = useState<number>(initialValues?.limit ?? 20)
   const [sortDir,       setSortDir]       = useState(initialValues?.sortDir ?? 'DESC')
 
@@ -93,6 +139,17 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [connectingNodeId, setConnectingNodeId] = useState<string | null>(null)
+  /*
+   * IL PROGETTISTA AI (19 set 2026): una casella dove descrivere il report a
+   * parole, e il disegno entra qui come se fosse stato fatto a mano.
+   *
+   * `aiAccesa` è `null` finché non si sa: in quel momento il bottone non si
+   * mostra e non si mostra nemmeno l'avviso, invece di indovinare.
+   */
+  const aiAccesa = useAIFeature('reportDesigner')
+  const [progettoAI, setProgettoAI] = useState(false)
+  /** L'ultima descrizione data all'AI: riaprendo il modale si riparte da lì. */
+  const [descrizioneAI, setDescrizioneAI] = useState('')
 
   const { data: entitiesData } = useQuery<{ navigableEntities: NavigableEntity[] }>(GET_NAVIGABLE_ENTITIES)
   const entities: NavigableEntity[] = useMemo(() => entitiesData?.navigableEntities ?? [], [entitiesData])
@@ -114,7 +171,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
   const getNodeFields = useCallback((neo4jLabel: string): NavigableField[] => {
     const entity     = entities.find(e => e.neo4jLabel === neo4jLabel)
     const typeFields = entity?.fields ?? []
-    const isCIEntity = !['Incident', 'Change', 'Team', 'User'].includes(entity?.entityType ?? '')
+    const isCIEntity = entity?.group === 'cmdb'
     if (!isCIEntity) return typeFields
     const baseFields: NavigableField[] = [
       { name: 'name',        label: t('common.name'),        fieldType: 'string', enumValues: [] },
@@ -232,28 +289,39 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     setEdges([])
     setNodeDataMap({})
     setTimeout(() => {
-      addNode(entity.entityType, entity.neo4jLabel, entity.label, getNodeFields(entity.neo4jLabel), true, { x: 300, y: 80 })
+      // C-18: l'etichetta mostrata è quella tradotta quando è del prodotto.
+      addNode(entity.entityType, entity.neo4jLabel, navigableLabel(t, entity), getNodeFields(entity.neo4jLabel), true, { x: 300, y: 80 })
     }, 0)
   }, [addNode, getNodeFields]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Reconstruct graph from initialValues ────────────────────────────────────
-
-  useEffect(() => {
-    if (!initialValues?.nodes?.length || !entities.length || nodes.length > 0) return
+  /**
+   * METTE UNA SEZIONE NEL WIZARD — riaperta a mano, o PROPOSTA DALL'AI.
+   *
+   * Una funzione sola per due strade (19 set 2026): la proposta dell'AI ha la
+   * stessa forma di una sezione salvata, e farla atterrare per una strada sua
+   * vorrebbe dire due ricostruzioni da tenere d'accordo — e la seconda che si
+   * dimentica un pezzo (i filtri, il nodo risultato) senza che nessuno se ne
+   * accorga.
+   *
+   * Non salva niente: riempie il costruttore. `passo` dice dove portare chi
+   * guarda — al grafo quando riapre, alla visualizzazione quando arriva una
+   * proposta (lì c'è l'anteprima, che è il modo di verificarla).
+   */
+  const applicaSezione = useCallback((v: ReportSectionInput, passo: 2 | 3) => {
     // Se i filtri salvati di un nodo non sono JSON valido NON ricostruiamo il
     // grafo senza filtri (un salvataggio li perderebbe in silenzio): blocchiamo
     // l'apertura e rendiamo l'errore visibile.
-    for (const n of initialValues.nodes) {
+    for (const n of v.nodes) {
       if (!n.filters) continue
       try {
         JSON.parse(n.filters)
       } catch (e) {
-        toast.error(t('toast.report.corruptFilters', { node: n.label, error: e instanceof Error ? e.message : String(e) }))
+        showError(e, t('toast.report.corruptFilters', { node: n.label, error: e instanceof Error ? e.message : String(e) }))
         return
       }
     }
     const newNodeDataMap: Record<string, NodeDataEntry> = {}
-    const newNodes: Node[] = initialValues.nodes.map(n => {
+    const newNodes: Node[] = v.nodes.map(n => {
       let filters: FilterState[] = []
       if (n.filters) filters = JSON.parse(n.filters) as FilterState[]
       const nd: NodeDataEntry = {
@@ -265,15 +333,31 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       newNodeDataMap[n.id] = nd
       return { id: n.id, type: 'reportEntity', dragHandle: '.node-drag-handle', position: { x: n.positionX, y: n.positionY }, data: makeNodeData(n.id, nd, n.neo4jLabel) }
     })
-    const newEdges: Edge[] = initialValues.edges.map(e => ({
+    const newEdges: Edge[] = v.edges.map(e => ({
       id: e.id, type: 'reportEdge',
       source: e.sourceNodeId, target: e.targetNodeId,
       data: { relationshipType: e.relationshipType, direction: e.direction, label: e.label },
     }))
+    setTitle(v.title)
+    setChartType(v.chartType)
+    setMetric(v.metric)
+    setMetricField(v.metricField ?? '')
+    setGroupByNodeId(v.groupByNodeId ?? '')
+    setGroupByField(v.groupByField ?? '')
+    setGranularita(v.groupByGranularity ?? 'day')
+    setLimit(v.limit ?? 20)
+    setSortDir(v.sortDir ?? 'DESC')
     setNodeDataMap(newNodeDataMap)
     setNodes(newNodes)
     setEdges(newEdges)
-    setWizardStep(2)
+    setWizardStep(passo)
+  }, [getNodeFields, makeNodeData, setNodes, setEdges, t])
+
+  // ── Reconstruct graph from initialValues ────────────────────────────────────
+
+  useEffect(() => {
+    if (!initialValues?.nodes?.length || !entities.length || nodes.length > 0) return
+    applicaSezione(initialValues, 2)
   }, [entities.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Connect reachable entity ─────────────────────────────────────────────────
@@ -282,23 +366,75 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
     if (!connectingNodeId) return
     const sourceNode = nodes.find(n => n.id === connectingNodeId)
     const newPos = { x: (sourceNode?.position.x ?? 300) + (Math.random() * 200 - 100), y: (sourceNode?.position.y ?? 100) + 200 }
-    const newNodeId = addNode(re.entityType, re.neo4jLabel, re.label, getNodeFields(re.neo4jLabel), false, newPos)
+    const newNodeId = addNode(re.entityType, re.neo4jLabel, navigableLabel(t, re), getNodeFields(re.neo4jLabel), false, newPos)
+    /*
+     * UNA CONVENZIONE SOLA PER LA DIREZIONE (19 set 2026).
+     *
+     * `sorgente → bersaglio` È il verso della relazione, sempre: chi
+     * collega una relazione ENTRANTE ottiene un arco che parte dal nodo
+     * nuovo e arriva su quello di prima. `direction` resta per l'etichetta e
+     * per chi chiama l'API, e vale rispetto a sorgente→bersaglio.
+     *
+     * Prima ce n'erano DUE, e non si incontravano mai: l'interfaccia scriveva
+     * `direction` dal punto di vista del nodo da cui si collegava, il
+     * generatore Cypher lo leggeva rispetto a sorgente/bersaglio. Finché il
+     * grafo si costruiva sempre dalla radice in giù i due errori si
+     * annullavano; il progettista AI, che gli archi li orienta secondo il
+     * metamodello, ha fatto emergere la differenza — una relazione percorsa
+     * al contrario, cioè un report che non trova mai niente.
+     */
+    const entrante = re.direction !== 'outgoing'
     setEdges(prev => [...prev, {
       id: `edge_${Date.now()}`, type: 'reportEdge',
-      source: re.direction === 'outgoing' ? connectingNodeId : newNodeId,
-      target: re.direction === 'outgoing' ? newNodeId : connectingNodeId,
-      data: { relationshipType: re.relationshipType, direction: re.direction, label: `${re.direction === 'outgoing' ? '→' : '←'} ${re.relationshipType}` },
+      source: entrante ? newNodeId : connectingNodeId,
+      target: entrante ? connectingNodeId : newNodeId,
+      data: {
+        relationshipType: re.relationshipType,
+        direction: 'outgoing',
+        label: `${entrante ? '←' : '→'} ${re.relationshipType}`,
+      },
     }])
     setConnectingNodeId(null)
   }, [connectingNodeId, nodes, addNode, getNodeFields]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Build output ─────────────────────────────────────────────────────────────
 
+  /**
+   * Il periodo da salvare: `null` se il campo del raggruppamento non è una
+   * data. Stessa risposta del pannello e dell'API (`isTemporalField`).
+   */
+  const periodo = periodoDaSalvare(
+    granularita,
+    groupByField,
+    (nodeDataMap[groupByNodeId]?.fields ?? []).find(f => f.name === groupByField)?.fieldType,
+  )
+
   const buildInput = useCallback((): ReportSectionInput => ({
-    title, chartType, metric,
-    metricField:   metricField || null,
+    title, chartType,
+    /*
+     * Una TABELLA elenca righe e non aggrega: la misura non le appartiene.
+     * Restava nello stato passando da un istogramma «Media · Costo» a una
+     * tabella, e la scheda dichiarava una media che il Cypher non calcolava
+     * (19 set 2026). Adesso il server la rifiuta: qui si manda quello che la
+     * tabella è, invece di far fallire un salvataggio per una tendina
+     * nascosta.
+     */
+    metric: chartType === 'table' ? 'count' : metric,
+    metricField:   chartType === 'table' ? null : (metricField || null),
     groupByNodeId: groupByNodeId || null,
     groupByField:  groupByField || null,
+    /*
+     * IL PERIODO SI MANDA SOLO SE C'È UNA DATA SU CUI APPLICARLO (20 set
+     * 2026). Qui c'era `granularita || 'day'`, cioè SEMPRE: un istogramma
+     * «Incident per stato» partiva con `groupByGranularity: 'day'`, e il
+     * costruttore lo prendeva sul serio —
+     * `toString(date(datetime(n0.status)))`. Neo4j: «Text cannot be parsed
+     * to a DateTime "completed"». Ogni grafico a categorie salvato dal
+     * wizard dal 19 set in poi nasceva così, morto, e l'errore arrivava
+     * all'esecuzione. La tendina del periodo, intanto, era già nascosta:
+     * quello che si mandava non era una scelta di nessuno.
+     */
+    groupByGranularity: periodo,
     limit, sortDir,
     nodes: nodes.map(n => {
       const nd = nodeDataMap[n.id]
@@ -306,7 +442,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         id: n.id, entityType: nd?.entityType ?? '', neo4jLabel: nd?.neo4jLabel ?? '', label: nd?.label ?? '',
         isResult: nd?.isResult ?? false, isRoot: nd?.isRoot ?? false,
         positionX: n.position.x, positionY: n.position.y,
-        filters: nd?.filters?.length ? JSON.stringify(nd.filters.map(f => ({ field: f.field, operator: f.operator, value: f.value }))) : null,
+        filters: nd?.filters?.length ? JSON.stringify(nd.filters.map((f) => normalizzaFiltro(f, nd.fields))) : null,
         selectedFields: nd?.selectedFields ?? [],
       }
     }),
@@ -321,7 +457,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
         label:            d?.label || d?.relationshipType || '',
       }
     }),
-  }), [nodes, edges, nodeDataMap, title, chartType, metric, metricField, groupByNodeId, groupByField, limit, sortDir])
+  }), [nodes, edges, nodeDataMap, title, chartType, metric, metricField, groupByNodeId, groupByField, periodo, limit, sortDir])
 
   // ── Derived ──────────────────────────────────────────────────────────────────
 
@@ -344,17 +480,38 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
   const lastNode        = nodes[nodes.length - 1]
   const lastEntity      = entities.find(e => e.neo4jLabel === (lastNode?.data as NodeData | undefined)?.neo4jLabel)
-  const step3DateFields = (lastEntity?.fields ?? []).filter(f => f.fieldType === 'date' || DATE_FIELD_NAMES.includes(f.name))
+  const step3DateFields = (lastEntity?.fields ?? []).filter(eUnaData)
   const canProceedStep3 = !isTimeSeries || step3DateFields.length > 0
 
   // ── Auto-preview on step 3 ───────────────────────────────────────────────────
 
+  /*
+   * L'ANTEPRIMA DIPENDE DA TUTTO QUELLO CHE MANDA, NON DA UN ELENCO SCRITTO A
+   * MANO (20 set 2026, dal giro nel browser: «se scelgo tabella, selezionando
+   * le colonne non si aggiorna automaticamente»).
+   *
+   * Le dipendenze erano una lista compilata a mano che copriva le tendine e
+   * si fermava a `nodes.length`. Tutto quello che vive in `nodeDataMap` — le
+   * COLONNE di una tabella e i FILTRI di un nodo — cambiava senza che
+   * l'anteprima se ne accorgesse: si spuntava una colonna e sotto restava la
+   * tabella di prima. Già successo con «Periodo» a settembre, e la toppa fu
+   * aggiungere una voce alla lista: la lista era il difetto.
+   *
+   * Ora si dipende da `buildInput`, che è la memo di TUTTO ciò che l'anteprima
+   * spedisce: un pezzo nuovo della sezione è coperto il giorno in cui nasce.
+   * `runPreview` sta in un ref perché è l'unica cosa che non descrive la
+   * sezione, e metterla fra le dipendenze rischia di riarmare il timer a ogni
+   * render della query.
+   */
+  const runPreviewRef = useRef(runPreview)
+  runPreviewRef.current = runPreview
+
   useEffect(() => {
     if (wizardStep !== 3 || nodes.length === 0) return
-    const timer = setTimeout(() => { runPreview({ variables: { input: buildInput() } }) }, 500)
+    const lingua = i18n.resolvedLanguage ?? i18n.language
+    const timer = setTimeout(() => { runPreviewRef.current({ variables: { input: buildInput(), language: lingua } }) }, 500)
     return () => clearTimeout(timer)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wizardStep, chartType, groupByNodeId, groupByField, metric, metricField, limit, sortDir, nodes.length, edges.length])
+  }, [wizardStep, nodes, buildInput, i18n.resolvedLanguage, i18n.language])
 
   // ── Wizard navigation ────────────────────────────────────────────────────────
 
@@ -482,7 +639,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                   onMouseLeave={e => { e.currentTarget.style.background = palette.neutral.surface1 }}
                 >
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{re.label}</div>
+                    <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{navigableLabel(t, re)}</div>
                     <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{re.direction === 'outgoing' ? '→' : '←'} {re.relationshipType}</div>
                   </div>
                   <div style={{ fontSize: 'var(--font-size-body)', color: palette.purple.light }}>{re.count}</div>
@@ -565,7 +722,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
 
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={labelStyle}>{t('reportBuilder.finalPreview')}</div>
-            <ReportPreview loading={previewLoading} data={previewData} title={title || undefined} placeholder={t('reportBuilder.noPreview')} />
+            <ReportPreview loading={previewLoading} data={previewData} title={title || undefined} placeholder={t('reportBuilder.noPreview')} granularita={granularita} />
           </div>
         </div>
       </div>
@@ -607,6 +764,27 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {wizardStep === 2 ? renderStep2() : (
           <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+            {wizardStep === 1 && aiAccesa === true && (
+              /* Sopra la scelta a mano, non invece: chi sa già cosa vuole
+                 clicca l'entità e va avanti come prima. */
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                border: `1px solid ${colors.border}`, borderRadius: 8, padding: '12px 14px', marginBottom: 20,
+              }}>
+                <div style={{ flex: '1 1 260px' }}>
+                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
+                    {t('reportAI.title')}
+                  </div>
+                  <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+                    {t('reportAI.subtitle')}
+                  </div>
+                </div>
+                <Button onClick={() => { setProgettoAI(true) }}>
+                  <Sparkles size={14} style={{ marginRight: 6 }} />
+                  {t('reportAI.button')}
+                </Button>
+              </div>
+            )}
             {wizardStep === 1 && (
               <ReportQueryBuilder
                 entities={entities}
@@ -622,6 +800,7 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
                 metricField={metricField}       onMetricFieldChange={setMetricField}
                 groupByNodeId={groupByNodeId}   onGroupByNodeIdChange={setGroupByNodeId}
                 groupByField={groupByField}     onGroupByFieldChange={setGroupByField}
+                groupByGranularity={granularita} onGroupByGranularityChange={setGranularita}
                 limit={limit}                   onLimitChange={setLimit}
                 sortDir={sortDir}               onSortDirChange={setSortDir}
                 nodeDataMap={nodeDataMap}
@@ -641,6 +820,39 @@ export function ReportSectionBuilder({ onSave, onCancel, initialValues }: Props)
       <div style={{ flexShrink: 0, padding: '12px 32px', borderTop: `1px solid ${colors.border}`, background: colors.white }}>
         {navConfig && renderNavButtons(navConfig.onBack, navConfig.onNext, navConfig.nextDisabled, (navConfig as { nextLabel?: string }).nextLabel, (navConfig as { isLastStep?: boolean }).isLastStep)}
       </div>
+
+      {progettoAI && (
+        <ModaleProgettoReportAI
+          descrizioneIniziale={descrizioneAI}
+          onChiudi={() => { setProgettoAI(false) }}
+          onApplica={(p: ProgettoReport) => {
+            // La frase da cui è nato il disegno: riaprendo l'AI si riparte da
+            // lì invece che da una casella vuota.
+            setDescrizioneAI(p.prompt)
+            /*
+             * Il progetto entra dalla STESSA porta di una sezione riaperta a
+             * mano (`applicaSezione`), e si va al passo della visualizzazione:
+             * lì c'è l'anteprima sui dati veri, che è il modo di verificarlo.
+             */
+            applicaSezione({
+              title: p.title, chartType: p.chartType, metric: p.metric, metricField: p.metricField,
+              groupByNodeId: p.groupByNodeId, groupByField: p.groupByField,
+              groupByGranularity: p.groupByGranularity,
+              limit: p.limit, sortDir: p.sortDir,
+              nodes: p.nodes.map((n) => ({
+                id: n.id, entityType: n.entityType, neo4jLabel: n.neo4jLabel, label: n.label,
+                isResult: n.isResult, isRoot: n.isRoot, positionX: n.positionX, positionY: n.positionY,
+                filters: n.filters, selectedFields: n.selectedFields,
+              })),
+              edges: p.edges.map((e) => ({
+                id: e.id, sourceNodeId: e.sourceNodeId, targetNodeId: e.targetNodeId,
+                relationshipType: e.relationshipType, direction: e.direction, label: e.label,
+              })),
+            }, 3)
+          }}
+        />
+      )}
     </div>
+
   )
 }

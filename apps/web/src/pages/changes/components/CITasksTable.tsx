@@ -15,7 +15,8 @@ import type { AffectedCI, AssessmentTaskData } from '@/types/change'
 import { AssessmentModal } from './AssessmentModal'
 import { PlanModal } from './PlanModal'
 import { EyeButton, OpenTaskButton, RiskBadge, TaskStatusRow } from './shared'
-import { colors, palette } from '@/lib/tokens'
+import { colors } from '@/lib/tokens'
+import { useCILabels } from '@/hooks/useCILabels'
 
 function CIExpandedRow({ a }: { a: AffectedCI }) {
   const { t } = useTranslation()
@@ -56,11 +57,11 @@ function CIExpandedRow({ a }: { a: AffectedCI }) {
   return (
     <div style={{ padding: '12px 0 12px 16px', fontSize: 'var(--font-size-body)' }}>
       {modal === 'functional' && a.assessmentOwner && (
-        <AssessmentModal task={a.assessmentOwner} ciName={a.ci.name} roleLabel="Functional"
+        <AssessmentModal task={a.assessmentOwner} ciName={a.ci.name} roleLabel={t('changeTasks.functional')}
           bothAssessDone={bothAssessDone} onClose={() => setModal(null)} />
       )}
       {modal === 'technical' && a.assessmentSupport && (
-        <AssessmentModal task={a.assessmentSupport} ciName={a.ci.name} roleLabel="Technical"
+        <AssessmentModal task={a.assessmentSupport} ciName={a.ci.name} roleLabel={t('changeTasks.technical')}
           bothAssessDone={bothAssessDone} onClose={() => setModal(null)} />
       )}
       {modal === 'plan' && (
@@ -109,7 +110,7 @@ function CIExpandedRow({ a }: { a: AffectedCI }) {
 
       {bothAssessDone && (
         <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)' }}>
-          Functional score: <strong>{a.assessmentOwner?.score ?? '—'}</strong> · Technical score: <strong>{a.assessmentSupport?.score ?? '—'}</strong> · Risk CI: <RiskBadge score={a.riskScore} />
+          {t('changeTasks.functionalScore')}: <strong>{a.assessmentOwner?.score ?? '—'}</strong> · {t('changeTasks.technicalScore')}: <strong>{a.assessmentSupport?.score ?? '—'}</strong> · {t('changeTasks.riskCI')}: <RiskBadge score={a.riskScore} />
         </div>
       )}
     </div>
@@ -125,29 +126,37 @@ function isCIDone(a: AffectedCI): boolean {
     && validationDone && taskDone(a.deployment) && reviewDone
 }
 
-export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = true, activeColor, activeTextColor }: {
+export function CITasksTable({ affected, actsForAnyTeam, userTeamIds, defaultOpen = true, activeColor, activeTextColor }: {
   affected: AffectedCI[]
-  isAdmin: boolean
+  /** approval.override: lavora i compiti di qualunque team. */
+  actsForAnyTeam: boolean
   userTeamIds: Set<string>
   defaultOpen?: boolean
   activeColor?: string
   activeTextColor?: string
 }) {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const [expandedCIId, setExpandedCIId] = useState<string | null>(null)
   // Conteggio = CI con task ancora attivi (non completati), non il totale dei CI.
   const activeCount = affected.filter(a => !isCIDone(a)).length
 
-  const findPendingTaskId = (a: AffectedCI): string | null => {
-    const inTeam = (tid: string | null) => isAdmin || (!!tid && userTeamIds.has(tid))
+  /*
+    Il prossimo task su cui chi guarda può agire, CON il suo tipo: il bottone
+    diceva solo «Apri il task» e portava al piano di deploy mentre la change era
+    ancora in assessment (giro UI del 15 set 2026). Ora dice quale task apre.
+  */
+  const findPendingTask = (a: AffectedCI): { id: string; labelKey: string } | null => {
+    const inTeam = (tid: string | null) => actsForAnyTeam || (!!tid && userTeamIds.has(tid))
     const oOk = inTeam(a.ci.ownerGroup?.id ?? null)
     const sOk = inTeam(a.ci.supportGroup?.id ?? null)
-    if (oOk && a.assessmentOwner   && a.assessmentOwner.status   !== TASK_STATUS.COMPLETED) return a.assessmentOwner.id
-    if (sOk && a.assessmentSupport && a.assessmentSupport.status !== TASK_STATUS.COMPLETED) return a.assessmentSupport.id
-    if (sOk && a.deployPlan        && a.deployPlan.status        !== TASK_STATUS.COMPLETED) return a.deployPlan.id
-    if (oOk && a.validation        && a.validation.status        !== TASK_STATUS.COMPLETED) return a.validation.id
-    if (sOk && a.deployment        && a.deployment.status        !== TASK_STATUS.COMPLETED) return a.deployment.id
-    if (oOk && a.review            && a.review.status            !== TASK_STATUS.COMPLETED) return a.review.id
+    const open = (task: { id: string; status?: string | null } | null | undefined) => !!task && task.status !== TASK_STATUS.COMPLETED
+    if (oOk && open(a.assessmentOwner))   return { id: a.assessmentOwner!.id,   labelKey: 'changeTasks.functional' }
+    if (sOk && open(a.assessmentSupport)) return { id: a.assessmentSupport!.id, labelKey: 'changeTasks.technical' }
+    if (sOk && open(a.deployPlan))        return { id: a.deployPlan!.id,        labelKey: 'changeTasks.planning' }
+    if (oOk && open(a.validation))        return { id: a.validation!.id,        labelKey: 'changeTasks.validation' }
+    if (sOk && open(a.deployment))        return { id: a.deployment!.id,        labelKey: 'changeTasks.deploy' }
+    if (oOk && open(a.review))            return { id: a.review!.id,            labelKey: 'changeTasks.review' }
     return null
   }
 
@@ -160,11 +169,11 @@ export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = tru
         <span style={{ width: 80 }}>{t('changeTasks.colEnv')}</span>
         <span style={{ width: 80 }}>{t('changeTasks.colRisk')}</span>
         <span style={{ width: 130 }}>{t('common.status')}</span>
-        <span style={{ width: 90 }} />
+        <span style={{ width: 130 }} />
       </div>
       {affected.map((a) => {
         const isOpen = expandedCIId === a.ci.id
-        const tid = findPendingTaskId(a)
+        const pending = findPendingTask(a)
         const done = isCIDone(a)
         return (
           <div key={a.ci.id} style={{ borderLeft: isOpen ? '3px solid var(--color-brand)' : '3px solid transparent', marginBottom: 2, transition: 'border-color 0.15s' }}>
@@ -173,18 +182,21 @@ export function CITasksTable({ affected, isAdmin, userTeamIds, defaultOpen = tru
                 <ChevronRight size={16} color="var(--color-slate-light)" style={{ transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }} />
               </button>
               <span style={{ flex: 1, fontWeight: 500, color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)' }}>{a.ci.name}</span>
-              <span style={{ width: 80, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{a.ci.type ?? ''}</span>
-              <span style={{ width: 80, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{a.ci.environment ?? ''}</span>
-              <span style={{ width: 80 }}>{a.riskScore != null && (
-                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: a.riskScore <= 30 ? palette.success.text : a.riskScore <= 60 ? palette.warning.text : palette.danger.text }}>{a.riskScore}</span>
-              )}</span>
+              <span style={{ width: 80, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{a.ci.type ? ciLabels.typeLabel(a.ci.type) : ''}</span>
+              <span style={{ width: 80, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{a.ci.environment ? ciLabels.environmentLabel(a.ci.environment) : ''}</span>
+              {/* Le fasce di rischio sono dato del cliente
+                  (`risk_band_thresholds`): il colore veniva da soglie cablate
+                  30/60, quindi con fasce 0-20/21-50/51-100 un CI con rischio
+                  45 era «medio» in tutta l'app e verde qui (revisione totale ·
+                  F-7). `RiskBadge` legge le soglie del cliente. */}
+              <span style={{ width: 80 }}>{a.riskScore != null && <RiskBadge score={a.riskScore} compact />}</span>
               <span style={{ width: 130 }}>
                 {done
                   ? <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-success)', textTransform: 'uppercase' }}>{t('changeTasks.completed')}</span>
                   : <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-trigger-sla-breach)', textTransform: 'uppercase' }}>{t('changeTasks.notCompleted')}</span>
                 }
               </span>
-              <span style={{ width: 90 }}>{tid && <Link to={`/tasks/${tid}`} style={{ padding: '3px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, backgroundColor: 'var(--color-brand)', color: colors.white, textDecoration: 'none' }}>{t('changeTasks.openTask')}</Link>}</span>
+              <span style={{ width: 130 }}>{pending && <Link to={`/tasks/${pending.id}`} style={{ padding: '3px 8px', borderRadius: 6, fontSize: 'var(--font-size-label)', fontWeight: 600, backgroundColor: 'var(--color-brand)', color: colors.white, textDecoration: 'none', whiteSpace: 'nowrap' }}>{t('changeTasks.openTaskOf', { task: t(pending.labelKey) })}</Link>}</span>
             </div>
             {isOpen && <div style={{ paddingLeft: 28 }}><CIExpandedRow a={a} /></div>}
           </div>

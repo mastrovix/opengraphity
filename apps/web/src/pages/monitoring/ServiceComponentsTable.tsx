@@ -125,7 +125,22 @@ export function ServiceComponentsTable({ map, canEdit, ciTypeLabel, onReload }: 
     setDrafts((d) => {
       const current = d[ciId]
       if (!current) return d
-      return { ...d, [ciId]: { ...current, ...patch } }
+      const next = { ...current, ...patch }
+      /**
+       * Passando a «mai» il peso torna al valore salvato
+       * (revisione totale · G-MON-11).
+       *
+       * Svuotare il campo del peso mette NaN nel draft; scegliendo poi «non
+       * pesa mai» il campo si disabilita ma il NaN resta, quindi «Peso fuori
+       * scala 1-10» bloccava il Salva su un campo che non si poteva piu
+       * correggere — e il nodo sarebbe partito con `weight: NaN`. Il peso di
+       * un nodo che non pesa non e una scelta dell'utente: si rimette quello
+       * salvato, che e sempre valido.
+       */
+      if (patch.propagate === 'never' && weightInvalid(next)) {
+        next.weight = baseline[ciId]?.weight ?? NODE_WEIGHT_MIN
+      }
+      return { ...d, [ciId]: next }
     })
   }
 

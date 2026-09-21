@@ -15,6 +15,7 @@
  * nel Dizionario del cliente.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const run = vi.fn()
 const runQuery = vi.fn()
@@ -36,7 +37,7 @@ vi.mock('../../../lib/ciLabelsForTenant.js', () => ({ ciLabelPredicateForTenant:
 vi.mock('../../../lib/filterBuilder.js', () => ({ buildAdvancedWhere: () => '' }))
 
 const { teamResolvers } = await import('../team.js')
-const ctx = { tenantId: 'c-test', userId: 'u1', role: 'admin' } as never
+const ctx = { tenantId: 'c-test', userId: 'u1', role: 'admin', permissions: perms('admin') } as never
 
 beforeEach(() => {
   vi.clearAllMocks()

@@ -138,7 +138,12 @@ Procedura consigliata per un ripristino completo:
 8. Keycloak: importare `keycloak/<realm>.json` da console admin
    (Realm settings → Action → Partial import) o via Admin API
    (`POST /admin/realms/{realm}/partialImport`). Gli **utenti non sono nel
-   backup**: Keycloak va salvato a parte (dump del suo database Postgres).
+   backup**: Keycloak va salvato a parte. In questo stack Keycloak gira con
+   `KC_DB: dev-file` (`infra/docker-compose.yml`), quindi il suo stato sta nel
+   volume `keycloak_data`, **non** in un Postgres: si salva copiando quel
+   volume a container fermo. Revisione totale · H-27: qui c'era scritto «dump
+   del suo database Postgres», e durante un restore l'operatore cercava un
+   database che non c'è.
 9. Riavviare l'API; il worker embedding ricrea l'indice vettoriale e ricalcola
    gli embedding mancanti (`backfill-embeddings` se serve).
 
@@ -185,6 +190,18 @@ Come funziona:
 - `checksum` = sha256 del sorgente normalizzato di `up`. `--status` segnala
   il *drift* (codice cambiato dopo l'applicazione): informativo, non rieseguito.
 
+> **I tre drift che ci sono già** (revisione totale · H-16).
+> `20260908_1000_workflow_step_metadata`,
+> `20260908_1010_ci_configuration_item_label` e
+> `20260917_1810_ci_lifecycle_semantics` sono state modificate dopo essere
+> state applicate: `--status` le segnala e **non** vanno riapplicate. La 1010
+> è quella con una conseguenza sui dati: la sua prima versione metteva
+> `:ConfigurationItem` anche sui nodi dei tipi ITIL (che hanno una
+> `neo4j_label`), quindi su un database migrato l'8 settembre i ticket
+> risultavano anche CI — ricerca globale con doppioni e stati degli incident
+> raccolti nel vocabolario `ci_status`. La toglie la migrazione
+> `20261002_1070_remove_ci_label_from_tickets`.
+
 **Aggiungere una migrazione**
 
 1. Creare `migrations/YYYYMMDD_HHMM_nome.ts` che esporta un `Migration`
@@ -198,10 +215,32 @@ Come funziona:
 4. In deploy: `migrate.ts` (o `--init-schema`) **prima** di avviare la nuova
    versione dell'API. L'avvio dell'API non migra da solo.
 
+**Migrazioni pendenti** (revisione del 14 set 2026 · F8). L'API e i worker non
+migrano, ma **se ne accorgono**: all'avvio loggano `All migrations applied`
+oppure `N migrations pending` (livello `error`, con gli id), `GET /health`
+risponde **503** con `pendingMigrations` finché ne resta una, e la diagnostica
+dell'amministratore mostra `migrations_pending`. Con
+`REQUIRE_APPLIED_MIGRATIONS=true` l'avvio si **ferma** invece di servire con
+uno schema che non corrisponde al codice (default `false`: il deploy in due
+tempi descritto in §8 resta possibile). Lo stato è letto con una cache di 60 s.
+
+L'**healthcheck del container** interroga `GET /health/live`, non `/health`
+(revisione totale · H-48): `/health/live` dice solo se il processo è vivo e se
+Neo4j e Redis rispondono, e ignora le migrazioni. Prima il container usava
+`/health`, quindi nel mezzo del deploy in due tempi `docker compose ps`
+mostrava l'API `unhealthy` come se fosse caduta. Per l'operatore la sonda
+resta `/health`: è lei che dice `pendingMigrations`.
+
 **Rollback** = nuova migrazione che inverte la precedente (mai modificare
 una migrazione applicata: verrebbe ignorata e segnalata come drift).
 
 Migrazioni presenti:
+
+> Questa tabella NON è l'elenco delle migrazioni: ne commenta una ventina,
+> quelle con un seguito operativo. L'elenco vero — oggi 94 — è
+> `apps/api/src/scripts/migrations/index.ts`, e quello applicato lo dice
+> `migrate --status`. Revisione totale · H-27: la tabella si leggeva come
+> completa.
 
 | id | Cosa fa |
 |---|---|
@@ -241,14 +280,23 @@ invocazioni: `apps/api/src/scripts/README.md`.
 *opt-out*: il dispatcher delle notifiche e il digest email trattano il flag
 **assente come `true`** (`coalesce(u.notifications_enabled, true)`). Gli utenti
 demo dei seed (`seed:users`, `seed:users-bulk`, email fittizie `USR-nnn@…`)
-non hanno il flag, quindi in un ambiente con `RESEND_API_KEY`/`SLACK_BOT_TOKEN`
-reali riceverebbero email e digest. Prima di collegare un provider reale a un
+non hanno il flag, quindi in un ambiente con `RESEND_API_KEY` o un workspace Slack
+collegato reali riceverebbero email e digest. Prima di collegare un provider reale a un
 ambiente con dati demo:
 
 ```cypher
-MATCH (u:User {tenant_id: $tenant}) WHERE u.email ENDS WITH '@example.com' OR u.id STARTS WITH 'USR-'
+MATCH (u:User {tenant_id: $tenant})
+WHERE u.email ENDS WITH '@demo.opengrafo.io' OR u.email ENDS WITH '@demo.opengraphity.io' OR u.email ENDS WITH '@example.com'
 SET u.notifications_enabled = false
 ```
+
+> Revisione totale · H-18: la query di prima cercava `@example.com` o
+> `u.id STARTS WITH 'USR-'` e **non prendeva nessun utente dei seed**. Le
+> e-mail finiscono in `@demo.opengrafo.io` (`seed-users-bulk`, 700 utenti) o
+> `@demo.opengraphity.io` (`seed-users`, 10 utenti); `USR-nnn` e il **nome**,
+> non l'id (gli id sono UUID o `user-00n`). Chi la eseguiva e poi collegava
+> Resend spediva il digest a 710 indirizzi inventati.
+
 
 e verificare chi resta abilitato:
 `MATCH (u:User) WHERE coalesce(u.notifications_enabled, true) RETURN u.tenant_id, u.email`.
@@ -302,7 +350,7 @@ regole, matrici o workflow) e dice quale migrazione li completa.
 | `KEYCLOAK_ADMIN_PASSWORD` | `onboard-tenant`, `add-user`, `createUser` GraphQL, export realm nel backup | Cambiarla in Keycloak (utente admin del realm `master`) e nell'env dell'API. Fino ad allora: creazione utenti 500 e **backup notturno fallito** (Keycloak auth fallita) — voluto. Le sessioni degli utenti finali non sono toccate. |
 | `DISCOVERY_ENCRYPTION_KEY` (64 hex = 32 byte) | credenziali dei connettori discovery cifrate at rest (`packages/discovery/src/encryption.ts`) | **Non ruotabile a caldo**: le credenziali salvate con la vecchia chiave non sono più decifrabili (sync in errore `Decryption failed: invalid key or corrupted data`). Procedura: annotare le credenziali di ogni `SyncSource` (dalle console dei provider, non sono esportabili in chiaro), cambiare chiave, reinserirle dall'UI. Non perderla: il backup contiene solo il cifrato. |
 | `NEO4J_PASSWORD` | tutto | `ALTER CURRENT USER SET PASSWORD` in Neo4j, poi env di API/worker e riavvio. Con la password vecchia l'API non parte (fail-fast del driver). |
-| `KEYCLOAK_CLIENT_SECRET` (portal) | portale self-service | Rigenerare in Keycloak → client `opengrafo-portal` e aggiornare l'env del portale. |
+| ~~`KEYCLOAK_CLIENT_SECRET` (portal)~~ | — | **Non esiste** (revisione totale · H-27): il client `opengrafo-portal` è un client **pubblico** (`publicClient: true`, `onboard-tenant.ts`), come quello del web: un'applicazione che gira nel browser non può tenere un segreto. Non c'è niente da ruotare; chi lo cercava durante una rotazione cercava una cosa che il prodotto non ha. |
 | `METRICS_TOKEN` | `GET /metrics` da Prometheus | Aggiornare lo scrape config; senza token l'endpoint resta accessibile solo da reti private. |
 
 Regola generale: i segreti si cambiano in un solo deploy (env + servizio),
@@ -365,6 +413,22 @@ dice quale dipendenza è giù.
   `MATCH (l:MigrationLock {id:'global'}) SET l.locked_at = null, l.owner = null`.
 
 ---
+
+### Audit Log: ogni mutation riuscita lascia una voce
+
+Le mutation scrivono la loro voce con un nome di dominio (`incident.resolved`,
+`service_map.synced`…). Quelle che non la scrivono sono coperte dal plugin
+`graphql/auditMutationsPlugin.ts`: a fine richiesta, per ogni mutation riuscita
+che non ha chiamato `audit()`, scrive `mutation.<nome>` con gli argomenti
+(chiavi con segreti oscurate — `secret`, `token`, `password`, `apiKey`,
+`webhookUrl`, `privateKey`… — stringhe oltre 500 caratteri e liste oltre 50
+elementi troncate) e `source: audit-registry`. Il conteggio è per richiesta
+(`lib/auditScope.ts`, AsyncLocalStorage aperto in `server.ts`). Sono escluse
+solo le mutation personali o di sola lettura elencate in
+`AUDIT_REGISTRY_SKIPPED`. Se nel log compare
+`Audit registry: the request has no audit scope`, la richiesta non è passata
+da `runInAuditScope`: è un difetto di cablaggio, non un caso normale.
+Il test `auditMutationsPlugin.test.ts` tiene il meccanismo.
 
 ## 7. Event Management
 
@@ -513,7 +577,7 @@ subito.
 
 | id | Cosa fa |
 |---|---|
-| `20260909_1000_event_management_bootstrap` | ondata 1: constraint/indici su `Event`/`CIAlias`, prima scrittura di `event_policy` (difettosa sui tenant senza nodo `:Tenant`, corretta dalla 1010) |
+| `20260909_1000_event_management_bootstrap` | ondata 1: `status_source = 'manual'` sui CI che avevano già uno stato, prima scrittura di `event_policy` (difettosa sui tenant senza nodo `:Tenant`, corretta dalla 1010). Revisione totale · H-27: qui c'era scritto «constraint/indici su `Event`/`CIAlias`», che questa migrazione non crea — constraint e indici stanno in `packages/neo4j/src/init.ts` (`migrate --init-schema`), che è la loro sorgente unica |
 | `20260909_1010_event_management_fixup` | rimuove `status_source` dai CI (la salute vive in `ci.health`), crea i nodi `:Tenant` mancanti dai `tenant_id` degli utenti, scrive la policy predefinita dove manca |
 | `20260909_1020_event_management_notification_rules` | regole di notifica `event.received/resolved/orphan`, `ci.health_changed` su ogni tenant; `max_users/max_ci` interi |
 | `20260909_1030_event_management_correlation_rules` | regole `event.suppressed/correlated`; `Event.correlation = 'none'` dove assente |
@@ -602,9 +666,25 @@ vedeva solo nei log; dall'ondata 8 ci sono le metriche e tre regole d'allarme
 | `metamodel_published_total{result}` | counter | `delivered` (almeno un ascoltatore), `no_receivers` (nessuno: le altre repliche e i worker restano vecchi), `error` (PUBLISH fallito, Redis giù). Allarme `MetamodelChangesNotDelivered` |
 | `metamodel_received_total{result}` | counter | `applied`, `stale` (versione già applicata o fuori ordine: normale), `malformed` |
 | `metamodel_cache_clear_failures_total{cache}` | counter | un clearer ha lanciato: quel processo resta con dati vecchi per quel tenant. Allarme `MetamodelCacheClearFailures` |
+| `metamodel_resubscribe_flush_total` | counter | quante volte questo processo si è ri-sottoscritto **dopo** aver perso l'ascolto, e ha quindi svuotato tutte le sue cache del metamodello. Ogni incremento è una finestra di messaggi perduti (vedi sotto). Nessun allarme: è la RIPRESA, non il guasto — il guasto lo dicono `metamodel_bus_subscribed` e i log di ioredis |
 
 Sintomo tipico di un canale muto: una relazione appena definita nel disegnatore
 viene rifiutata da un'altra replica con «Invalid relation type».
+
+**Quando l'ascolto cade (PRB00000003).** Il pub/sub di Redis **non ha
+arretrato**: i messaggi pubblicati mentre un processo è staccato vengono
+consegnati a chi ascolta in quel momento e buttati per gli altri, e nessuno li
+riconsegnerà. Un processo che si ri-sottoscrive non sa quindi quali tenant
+siano cambiati nella finestra di buio — sa solo di aver perso qualcosa. Perciò
+una ri-sottoscrizione **dopo una perdita** (non la prima, all'avvio) svuota
+**tutte** le cache del metamodello, di tutti i tenant, e lo scrive in un `warn`
+di `metamodel-bus` («ri-sottoscritto dopo una perdita di ascolto»). Il campo
+`withoutClearAll` di quella riga elenca le cache registrate che **non** sanno
+svuotarsi per intero: quelle restano vecchie fino al loro TTL, e la riga lo
+dice invece di lasciar credere a uno svuotamento totale. Cosa aspettarsi dopo
+una caduta di Redis: un picco breve di query al metamodello mentre le cache si
+ricostruiscono. È il prezzo previsto — l'alternativa è servire un metamodello
+vecchio fino a 5 minuti.
 
 **Chi tira la leva.** `invalidateSchema(tenantId)` è il punto unico: svuota le
 cache di questo processo **e** pubblica. La chiamano le mutation del metamodello
@@ -1139,12 +1219,23 @@ status `active` o `draft`), `reevaluateServiceMap`, `setServiceMapStatus` (con
 `expectedVersion`: rimettere in servizio una mappa — da `paused` o da `draft` —
 la rivaluta subito),
 `updateServiceImpactRules`, `updateServiceMapNodes`,
-`applyServiceMapProposal`, `removeServiceMapExclusion`,
+`applyServiceMapProposal`, `removeServiceMapExclusion` (su una mappa viva
+sincronizza anche subito: un CI riammesso non aspetta la passata periodica;
+se la sincronizzazione fallisce la riammissione resta e il log dice
+`Exclusion removed, but the live map could NOT be synchronized right away`),
 `setServiceMapAutoSync` (interruttore mappa viva/congelata, con
 `expectedVersion`), `syncServiceMap` (sincronizza ora: restituisce
 `ServiceMapSyncResult` — mappa aggiornata, `added`/`removed`/`moved`,
 `skipped` + `reason` quando il tetto dei 500 ha rifiutato tutto), `deleteServiceMap`
 (mappa e cronologia; il servizio e i CI restano) solo admin.
+
+**Cronologia: voci di configurazione.** Esclusione, riammissione,
+sincronizzazione, regole e ambito scrivono una voce `rules_changed` o
+`map_changed` con `previous_health` null e salute e punteggio della mappa
+**prima** della rivalutazione; la rivalutazione che segue scrive la sua voce
+solo se la salute cambia. La pagina le presenta come «Mappa modificata. Salute
+in quel momento … (punteggio N, prima della rivalutazione)», non come un cambio
+di salute.
 
 **Cosa fa il motore quando…** (una riga per caso; il dettaglio è nelle
 sottosezioni che seguono):
@@ -1153,10 +1244,11 @@ sottosezioni che seguono):
 |---|---|---|---|
 | la **salute cambia** | scrive salute, punteggio, spiegazione, `health_since`, `evaluated_at` | voce `ServiceHealthEntry` con il trigger + evento `service.health_changed` + audit | riconciliato: apre, riapre, aggiorna o chiude secondo `open_incident_from` |
 | la salute **non cambia** ma cambiano le **cause** | scrive punteggio e spiegazione (un punteggio stantio sarebbe un dato falso) | nessuna voce, nessun evento | riconciliato: se un incident è aperto riceve **un** commento «Causa aggiornata» |
-| la salute **non cambia** e le cause **nemmeno** | solo `evaluated_at`, punteggio e spiegazione | nulla | non riconciliato: non prende nemmeno il lock |
+| la salute **non cambia** e le cause **nemmeno** | solo `evaluated_at`, punteggio e spiegazione | nulla | riconciliato lo stesso, dallo stato (revisione del 15 set 2026 · SV-1/SV-2): prende il lock e legge l'incident collegato, e scrive solo ciò che manca — così una riconciliazione fallita, una bozza attivata a servizio già giù o una soglia abbassata aprono l'incident alla valutazione dopo |
+| la **riconciliazione fallisce** (tipo di CI escluso dagli incident, matrice incompleta, lock occupato…) | il motivo resta sulla mappa (`incident_problem`, `incident_problem_at`) e si vede nel riquadro «Incident aperto» e nella diagnostica (`service_incident_problem`) | l'errore propaga: il job fallisce, visibile, e ritenta | ritentato a ogni valutazione; la prima riuscita toglie il motivo |
 | il servizio va in **manutenzione** (change in finestra su un componente **critico**) | salute `maintenance`, più `health_if_active` = la salute che avrebbe senza quella finestra | voce + evento se la salute cambia | né apertura né chiusura; un incident aperto riceve **una** nota (`maintenance_noted_at`), rimossa all'uscita dalla manutenzione |
 | un componente ha `ci.status = maintenance` (ciclo di vita) | il nodo **non conta** (fuori dal denominatore, mai fra le cause): la salute segue gli altri componenti, `maintenance` **no** | come sempre | come sempre: se il servizio è giù l'incident si apre |
-| una change **entra** o **esce** dai passi di finestra (`deployment`/`scheduled`), viene eliminata, oppure un CI entra/esce da `status = maintenance` | le mappe che includono quei CI si rivalutano entro pochi secondi (`notifyCIMaintenanceChanged`, trigger `maintenance`) | voce + evento se la salute cambia | riconciliato dalla rivalutazione |
+| una change **entra** o **esce** dai passi di finestra (`deployment`/`scheduled`), viene eliminata, oppure un CI entra/esce dal ciclo di vita «in manutenzione» o «dismesso» (SV-5) | le mappe che includono quei CI si rivalutano entro pochi secondi (`notifyCIMaintenanceChanged`, trigger `maintenance`) | voce + evento se la salute cambia | riconciliato dalla rivalutazione |
 | il servizio non raggiunge più la soglia ma **non è operativo** (degradato sotto soglia, `unknown`, regola passata a `never`) | salute scritta normalmente | come sempre | l'incident **resta aperto** con UN commento onesto (`kept_open_noted_at`, azzerato quando si torna sopra soglia): mai chiuso con «tornato operativo» |
 | la mappa è in **pausa** (`paused`) | nessuna valutazione automatica: il consumer la salta, la passata periodica prende solo le `active` e le scritture di configurazione non la rivalutano — la salute mostrata resta l'ultima nota. `reevaluateServiceMap` la valuta comunque a mano; rimetterla in servizio (da `paused` o da `draft`) la rivaluta subito | nulla, finché non viene valutata | nessuna apertura né riapertura; un incident già aperto può comunque essere **chiuso** |
 | la mappa è una **bozza** (`draft`) | valutata dal consumer e dalle scritture di configurazione come le attive, **non** dalla passata periodica (che filtra `status: 'active'`) | voce + evento come le attive | nessuna apertura né riapertura; chiusura sì |
@@ -1516,6 +1608,47 @@ migrazioni introdotti da questa versione): `up -d api` prima, poi il comando,
 poi `up -d worker events-worker web`. Gli indici di questa ondata
 (`event_status_id`, `event_status_correlation` in `packages/neo4j/src/init.ts`)
 sono `IF NOT EXISTS`: il comando è idempotente.
+
+### Chiavi di configurazione controllate all'avvio
+
+`APP_URL` e `RESEND_API_KEY` sono obbligatorie in produzione **per chi le usa**:
+l'API, che costruisce i link e invia le e-mail, non parte senza
+(`validateConfig('api')` per `APP_URL`, `assertEmailConfigured()` per la chiave
+e-mail). I container `worker` e `events-worker` **non** le ricevono e non ne
+hanno bisogno: prima il pacchetto `@opengraphity/notifications` lanciava già
+all'import e, da quando i worker lo importano (elenco delle migrazioni, canale
+delle notifiche in-app), li mandava in un ciclo di riavvii. Ora il controllo è
+all'avvio dell'API e al momento dell'invio.
+
+### Notifiche in-app: archivio e canale fra i processi
+
+Le notifiche del pannello (campanella) sono **salvate** come
+`(:InAppNotification)` — lette e rimosse per persona con
+`READ_NOTIFICATION`/`DISMISSED_NOTIFICATION` — e pubblicate sul canale Redis
+`og:inapp.delivered`: ogni processo (API e worker) ascolta e le scrive ai
+propri client SSE, quindi con più repliche dell'API arrivano a tutti. Log
+all'avvio: `[inapp] listening`. Se Redis non risponde la notifica resta
+salvata e il processo la consegna ai propri client; gli altri la vedono alla
+prossima apertura del pannello. Il job di manutenzione
+`purge_inapp_notifications` (ogni notte alle 03:45) elimina, organizzazione per
+organizzazione, quelle più vecchie dei giorni scelti nella pagina Organizzazione
+(`Tenant.inapp_notification_retention_days`). Un'organizzazione che non li ha
+scelti viene saltata con un avviso nel log e segnalata dalla diagnostica. La
+vecchia variabile `INAPP_NOTIFICATION_RETENTION_DAYS` non è più letta: la
+migrazione `20260925_1100` ne ha copiato il valore su ogni organizzazione. Gli indici `InAppNotification(tenant_id, created_at)` e
+`(created_at)` arrivano con `migrate --init-schema`.
+
+### Lingua dei log e dei messaggi
+
+Tutto ciò che **arriva al cliente** — errori GraphQL e REST, voci di audit,
+notifiche, PDF, esiti dell'import, diagnostica — è in inglese nel codice e porta
+una chiave i18n che il client traduce nella lingua di chi legge; il guardiano
+`apps/api/src/lib/__tests__/userFacingItalian.test.ts` fallisce se una stringa
+italiana torna in quei punti. I **log** (`logger.info/warn/error`) sono per chi
+gestisce l'installazione, non per il cliente: molti sono ancora in italiano, per
+scelta dichiarata (revisione del 14 set 2026 · F21). Chi li cerca con
+un'espressione regolare cerchi i campi strutturati (`module`, `tenantId`,
+`err`), che sono stabili, non il testo del messaggio.
 
 ---
 

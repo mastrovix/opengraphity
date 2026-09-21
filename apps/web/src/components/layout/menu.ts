@@ -7,7 +7,7 @@
  * /reports/sla scriveva «AI Analysis / Sla»: /reports è l'indirizzo di AI
  * Analysis, ma SLA Report non ne è una sottopagina.
  */
-import { LayoutDashboard, AlertCircle, Search, GitPullRequest, HelpCircle, ClipboardList, Inbox, Route, UsersRound, User, BrainCircuit, LayoutGrid, ScrollText, Layers, Settings2, Activity, ShieldAlert, ShieldCheck, Share2, Bell, UserCircle, Tag, CheckSquare, BookOpen, Zap, GitBranch, Clock, Plug, FlaskConical, Sparkles, ShoppingCart, Gauge, Radar, HeartPulse, Boxes, Table2, Building2, Handshake } from 'lucide-react'
+import { LayoutDashboard, AlertCircle, Search, GitPullRequest, CalendarDays, HelpCircle, ClipboardList, Inbox, Route, UsersRound, User, BrainCircuit, LayoutGrid, ScrollText, Layers, Settings2, Activity, ShieldAlert, ShieldCheck, Share2, Bell, UserCircle, Tag, CheckSquare, BookOpen, Zap, GitBranch, Clock, Plug, FlaskConical, Sparkles, ShoppingCart, Gauge, Radar, HeartPulse, Boxes, Table2, Building2, Handshake, KeyRound, Stethoscope, Lightbulb } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { voceAttiva } from './menuActive'
 
@@ -22,39 +22,44 @@ export const NAV_ITEM_DEFS = [
 
 export const ANALYSIS_ITEM_DEFS = [
   { to: '/anomalies',        labelKey: 'sidebar.anomalies',   icon: ShieldAlert  },
+  { to: '/proposals',        labelKey: 'sidebar.proposals',   icon: Lightbulb    },
+  { to: '/analysis/daily-work', labelKey: 'sidebar.dailyWork', icon: Gauge      },
   { to: '/topology',         labelKey: 'sidebar.topologyMap', icon: Share2       },
   { to: '/analysis/what-if', labelKey: 'sidebar.whatIf',      icon: FlaskConical },
 ]
 
-// Monitoraggio (Event Management): console allarmi, Servizi monitorati e
-// pagina Salute CI (staff: stesso predicato `isStaff` delle rotte `staff(...)`
-// in main.tsx, il gruppo intero è nascosto agli end user), sorgenti e policy
-// (admin: le voci sono filtrate per ruolo nel render). La mappa con la salute
-// evidenziata resta raggiungibile da "Vedi sulla mappa".
+// Monitoraggio (Event Management): console allarmi, Servizi monitorati,
+// pagina Salute CI, sorgenti e policy. Quali voci si vedono lo dicono i
+// permessi della pagina (lib/routePermissions), come per ogni altra voce. La
+// mappa con la salute evidenziata resta raggiungibile da "Vedi sulla mappa".
 export const MONITORING_ITEM_DEFS = [
-  { to: '/events',                labelKey: 'sidebar.events',            icon: Radar,      adminOnly: false },
-  { to: '/monitoring/services',   labelKey: 'sidebar.services',          icon: Boxes,      adminOnly: false },
-  { to: '/monitoring/health',     labelKey: 'sidebar.ciHealth',          icon: HeartPulse, adminOnly: false },
-  { to: '/monitoring/sources',    labelKey: 'sidebar.monitoringSources', icon: Plug,       adminOnly: true  },
-  { to: '/settings/event-policy', labelKey: 'sidebar.eventPolicy',       icon: Settings2,  adminOnly: true  },
+  { to: '/events',                labelKey: 'sidebar.events',            icon: Radar      },
+  { to: '/monitoring/services',   labelKey: 'sidebar.services',          icon: Boxes      },
+  { to: '/monitoring/health',     labelKey: 'sidebar.ciHealth',          icon: HeartPulse },
+  { to: '/monitoring/sources',    labelKey: 'sidebar.monitoringSources', icon: Plug       },
+  { to: '/settings/event-policy', labelKey: 'sidebar.eventPolicy',       icon: Settings2  },
 ]
 
 export const CONFIG_ITEM_DEFS = [
+  { to: '/settings/diagnostics',      labelKey: 'sidebar.configurationDiagnostics', icon: Stethoscope },
   { to: '/settings/organization',    labelKey: 'sidebar.organization',    icon: Building2 },
   { to: '/settings/ci-types',        labelKey: 'sidebar.ciTypeDesigner',  icon: Layers   },
   { to: '/settings/itil-designer',   labelKey: 'sidebar.itilDesigner',    icon: Settings2 },
+  { to: '/settings/catalog-forms',   labelKey: 'sidebar.catalogForms',    icon: ClipboardList },
   { to: '/settings/enum-designer',   labelKey: 'sidebar.enumDesigner',    icon: Tag      },
   { to: '/settings/domain-matrices', labelKey: 'sidebar.domainMatrices',  icon: Table2   },
+  { to: '/settings/anomaly-rules',   labelKey: 'sidebar.anomalyRules',    icon: ShieldAlert },
   { to: '/workflow',                  labelKey: 'sidebar.workflowDesigner', icon: Route    },
 ]
 
-// Personal page, every role (E-13): language + Slack link.
+// Personal page, the whole workspace (E-13): language + Slack link.
 export const PROFILE_ITEM = { to: '/profile', labelKey: 'sidebar.profile', icon: UserCircle }
 
 export const ITSM_ITEM_DEFS = [
   { to: '/incidents', labelKey: 'sidebar.incidents', icon: AlertCircle    },
   { to: '/problems',  labelKey: 'sidebar.problems',  icon: Search         },
   { to: '/changes',   labelKey: 'sidebar.changes',   icon: GitPullRequest },
+  { to: '/changes/calendar', labelKey: 'sidebar.changeCalendar', icon: CalendarDays },
   { to: '/my-tasks',  labelKey: 'sidebar.myTasks',   icon: ClipboardList  },
   { to: '/requests',  labelKey: 'sidebar.requests',  icon: Inbox          },
 ]
@@ -69,6 +74,8 @@ export const REPORTING_ITEM_DEFS = [
 export const TEAMS_ITEM_DEFS = [
   { to: '/teams', labelKey: 'sidebar.teams', icon: UsersRound },
   { to: '/users', labelKey: 'sidebar.users', icon: User },
+  { to: '/roles', labelKey: 'sidebar.roles', icon: KeyRound },
+  { to: '/security/login', labelKey: 'sidebar.loginSecurity', icon: ShieldCheck },
 ]
 
 export const SETTINGS_ITEM_DEFS = [

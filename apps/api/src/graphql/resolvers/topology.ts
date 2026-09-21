@@ -18,6 +18,7 @@ interface TopologyArgs {
 import { ciLabelsForTenant, apocLabelFilterForTenant } from '../../lib/ciLabelsForTenant.js'
 import { ciLabelsForTypeNames } from '../../lib/ciTypeNameToLabel.js'
 import { toNumber } from '@opengraphity/neo4j'
+import { isMaintenanceLifecycle, resolveCILifecycleSemantics, type CILifecycleSemantics } from '../../lib/ciLifecycle.js'
 
 const NODE_LIMIT = 2000
 const EDGE_LIMIT = 5000
@@ -38,12 +39,17 @@ export const TICKET_COUNT_MATCHES = `
               AND NOT ch.status IN $changeTerminal
               AND coalesce(ch.deleted, false) = false`
 
-function mapNode(tenantId: string, r: { get: (k: string) => unknown }) {
+function mapNode(tenantId: string, r: { get: (k: string) => unknown }, lifecycle: CILifecycleSemantics) {
+  const status = (r.get('status') ?? null) as string | null
   return {
     id:            r.get('id')           as string,
     name:          r.get('name')         as string,
     type:          ciTypeFromLabels(tenantId, [r.get('type') as string]),
-    status:        r.get('status')       as string,
+    // CM-11 (revisione del 15 set 2026): niente `coalesce(ci.status, 'active')`
+    // — un CI senza stato non è «active», e il web decideva la manutenzione
+    // confrontando con il letterale `maintenance`. La semantica è del cliente.
+    status,
+    inMaintenance: isMaintenanceLifecycle(status, lifecycle),
     health:        (r.get('health') ?? null) as string | null,
     environment:   r.get('environment')  as string | null,
     ownerGroup:    r.get('ownerGroup')   as string | null,
@@ -68,6 +74,7 @@ export const topologyResolvers = {
         const changeTerminal   = await getTerminalStepNames(session, ctx.tenantId, 'change')
         const CI_LABELS        = await ciLabelsForTenant(ctx.tenantId)
         const CI_LABEL_FILTER  = await apocLabelFilterForTenant(ctx.tenantId)
+        const lifecycle        = await resolveCILifecycleSemantics(ctx.tenantId)
 
         // ── BRANCH A: ego-network from a specific CI ──────────────────────
         if (args.selectedCiId) {
@@ -123,7 +130,7 @@ export const topologyResolvers = {
               ci.id          AS id,
               ci.name        AS name,
               head([l IN labels(ci) WHERE l <> 'ConfigurationItem'])  AS type,
-              coalesce(ci.status, 'active') AS status,
+              ci.status      AS status,
               ci.health      AS health,
               ci.environment AS environment,
               head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name]) AS ownerGroup,
@@ -132,7 +139,7 @@ export const topologyResolvers = {
             ORDER BY ci.name
           `, { nodeIds, tenantId: ctx.tenantId, ciId: args.selectedCiId, environment, status, incidentTerminal, changeTerminal }))
 
-          const nodes = nodesResult.records.map((r) => mapNode(ctx.tenantId, r))
+          const nodes = nodesResult.records.map((r) => mapNode(ctx.tenantId, r, lifecycle))
 
           // 3. Edges between the loaded nodes
           const edgesResult = await session.executeRead((tx) => tx.run(`
@@ -194,7 +201,7 @@ export const topologyResolvers = {
             ci.id          AS id,
             ci.name        AS name,
             head([l IN labels(ci) WHERE l <> 'ConfigurationItem'])  AS type,
-            coalesce(ci.status, 'active') AS status,
+            ci.status      AS status,
             ci.health      AS health,
             ci.environment AS environment,
             head([(ci)-[:OWNED_BY]->(t:Team {tenant_id: $tenantId}) | t.name]) AS ownerGroup,
@@ -204,7 +211,7 @@ export const topologyResolvers = {
           LIMIT ${NODE_LIMIT}
         `, params))
 
-        const nodes = nodesResult.records.map((r) => mapNode(ctx.tenantId, r))
+        const nodes = nodesResult.records.map((r) => mapNode(ctx.tenantId, r, lifecycle))
         const truncated = nodes.length >= NODE_LIMIT
 
         if (nodes.length === 0) return { nodes: [], edges: [], truncated: false, nodeLimit: NODE_LIMIT }

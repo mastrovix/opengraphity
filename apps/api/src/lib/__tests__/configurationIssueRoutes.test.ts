@@ -42,7 +42,7 @@ const declared = [...issuesSrc.matchAll(/where:\s*'([^']+)'/g)].map((m) => m[1]!
  * `/settings/event-policy`. I segmenti con parametro (`workflow/:id`) diventano
  * un prefisso, perché un `where` non può portare un parametro.
  */
-const routes = [...mainSrc.matchAll(/path:\s*'([^']*)'/g)]
+const routes = [...mainSrc.matchAll(/(?:path:\s*|guarded\()'([^']*)'/g)]
   .map((m) => m[1]!)
   .filter((p) => p !== '' && p !== '*')
   .map((p) => (p.startsWith('/') ? p : `/${p}`))

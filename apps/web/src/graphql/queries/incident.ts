@@ -1,5 +1,5 @@
 import { gql } from '@apollo/client'
-import { EVENT_ROW_FIELDS, IMPACTED_SERVICE_FIELDS } from '../fragments'
+import { EVENT_ROW_FIELDS, IMPACTED_SERVICE_FIELDS, CUSTOM_FIELD_VALUE_FIELDS } from '../fragments'
 
 export const GET_INCIDENTS = gql`
   query GetIncidents($status: String, $severity: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
@@ -7,7 +7,8 @@ export const GET_INCIDENTS = gql`
       total
       items {
         id number title severity status createdAt
-        slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
+        customFields { name value }
+        slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
       }
     }
   }
@@ -32,7 +33,7 @@ export const GET_INCIDENT = gql`
       resolvedAt
       assignee { id name email }
       assignedTeam { id name }
-      affectedCIs { id name type status environment }
+      affectedCIs { id name type status environment ownerGroup { id } supportGroup { id } }
       impactedApplications {
         distance
         via
@@ -44,39 +45,58 @@ export const GET_INCIDENT = gql`
       linkedProblems { id number title status removable }
       linkedChanges { id number title status removable }
       availableTransitions {
-        toStep label requiresInput inputField condition
+        toStep label labels { language label } requiresInput inputField condition
       }
       workflowHistory {
         id stepName enteredAt exitedAt durationMs
         triggeredBy triggerType notes
       }
       comments {
-        id text createdAt updatedAt
+        id text isInternal createdAt updatedAt authorKind authorLabel
         author { id name email }
+        editedAt editedByName deletedAt deletedByName
       }
-      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt }
-      correlatedEvents { ...EventRowFields }
+      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
+      # history: who opened the incident from the alarm (monitoring or an operator)
+      correlatedEvents { ...EventRowFields history(limit: 20) { kind incident { id } } }
+      correlatedEventCount
       correlatedEventsPurged
       impactedServices { ...ImpactedServiceFields }
+      customFields { ...CustomFieldValueFields }
     }
   }
   ${EVENT_ROW_FIELDS}
   ${IMPACTED_SERVICE_FIELDS}
+  ${CUSTOM_FIELD_VALUE_FIELDS}
 `
 
+// `formFieldValues`: i campi della libreria dei moduli messi «nelle liste»,
+// per le colonne e per l'esportazione (moduli del catalogo, ondata 4).
 export const GET_SERVICE_REQUESTS = gql`
   query GetServiceRequests($status: String, $priority: String, $limit: Int, $offset: Int, $filters: String, $sortField: String, $sortDirection: String) {
     serviceRequests(status: $status, priority: $priority, limit: $limit, offset: $offset, filters: $filters, sortField: $sortField, sortDirection: $sortDirection) {
-      id
-      number
-      title
-      priority
-      status
-      createdAt
+      items {
+        id
+        number
+        title
+        priority
+        status
+        createdAt
+        customFields { name value }
+        formFieldValues { name label fieldType displayValue displayValues }
+      }
+      total
     }
   }
 `
 
+/**
+ * `formRevision` e `formAnswers`: le risposte al modulo della voce di catalogo
+ * (moduli del catalogo, ondata 1), nell'ordine del modulo CON CUI la richiesta
+ * e stata compilata — non di quello di adesso. Il commento sta qui e non dentro
+ * il documento GraphQL: un commento `#` dentro il template e una stringa, e il
+ * guardiano i18n lo legge come testo italiano cablato nel sorgente.
+ */
 export const GET_SERVICE_REQUEST = gql`
   query GetServiceRequest($id: ID!) {
     serviceRequest(id: $id) {
@@ -85,14 +105,20 @@ export const GET_SERVICE_REQUEST = gql`
       requestedBy { id name email }
       assignee { id name email }
       workflowInstance { id currentStep status }
-      availableTransitions { toStep label requiresInput inputField }
+      availableTransitions { toStep label labels { language label } requiresInput inputField }
+      slaStatus { startedAt responseDeadline resolveDeadline responseMet resolveMet breached pausedAt warningMinutes }
+      customFields { ...CustomFieldValueFields }
+      affectedCIs { id name type status environment }
+      formRevision
+      formAnswers { name label fieldType value values displayValue displayValues options { value label } references { id label } files { id filename sizeBytes } tableColumns { name label fieldType } rows { cells { column value displayValue } } }
     }
   }
+  ${CUSTOM_FIELD_VALUE_FIELDS}
 `
 
 /** Campi filtrabili di un tipo (scalari/enum): sostituisce l'introspezione `__type`, spenta in produzione. */
 export const GET_ENTITY_FILTER_FIELDS = gql`
   query EntityFilterFields($typeName: String!) {
-    entityFilterFields(typeName: $typeName) { name kind scalarName enumValues }
+    entityFilterFields(typeName: $typeName) { name kind scalarName enumValues label choices { value label } formFieldType vocabulary rowFilter settableByAutomation multi }
   }
 `

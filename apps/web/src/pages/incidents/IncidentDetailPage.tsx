@@ -1,6 +1,12 @@
 import { useId, useState } from 'react'
+import { TicketOLACard } from '@/components/ticket/ola/TicketOLACard'
+import { CustomFieldsCard } from '@/components/ticket/customFields/CustomFieldsCard'
+import type { CustomFieldValueView } from '@/components/ticket/customFields/customFields'
+import { useMe } from '@/hooks/useMe'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useConfirm } from '@/hooks/useConfirm'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { FileDown, Loader2, Sparkles, Network } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
@@ -12,7 +18,8 @@ import { Modal } from '@/components/Modal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SeverityBadge } from '@/components/SeverityBadge'
 
-import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
+import { GET_INCIDENT, GET_USERS, GET_TEAMS, GET_ALL_CIS } from '@/graphql/queries'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { EXECUTE_WORKFLOW_TRANSITION, ASSIGN_INCIDENT_TO_TEAM, ASSIGN_INCIDENT_TO_USER, ADD_INCIDENT_COMMENT, ADD_AFFECTED_CI, REMOVE_AFFECTED_CI, SET_INCIDENT_MAJOR, UPDATE_INCIDENT, LINK_RELATED_TICKET, UNLINK_RELATED_TICKET, LINK_INCIDENT_TO_PROBLEM, UNLINK_INCIDENT_FROM_PROBLEM, LINK_RESOLVED_TICKET, UNLINK_RESOLVED_TICKET } from '@/graphql/mutations'
 import { UnifiedLinkedTickets, type LinkedTicketItem } from '@/components/UnifiedLinkedTickets'
 import { Input, FieldLabel } from '@/components/ui/FormControls'
@@ -28,6 +35,7 @@ import { CommentsSection } from '@/components/ticket/CommentsSection'
 import { WatcherBar } from '@/components/WatcherBar'
 import { SlaBadge, type SlaStatusInfo } from '@/components/SlaBadge'
 import { AttachmentsSection } from '@/components/AttachmentsSection'
+import { TicketTasksSection } from '@/components/ticket/TicketTasksSection'
 import { InternalChatPanel } from '@/components/InternalChatPanel'
 import { keycloak } from '@/lib/keycloak'
 import { downloadPdf } from '@/lib/downloadPdf'
@@ -42,6 +50,14 @@ import { ImpactedServicesSection } from './ImpactedServicesSection'
 import type { EventRow } from '@/types/events'
 import type { ImpactedServiceRef } from '@/types/services'
 import { colors } from '@/lib/tokens'
+import { useSlaSettling } from '@/hooks/useSlaSettling'
+import { transitionErrorText, type TransitionFailure } from '@/lib/transitionError'
+import { withLocalizedLabel } from '@/lib/localizedLabel'
+import { useAIFeature } from '@/hooks/useAIFeature'
+import { useAIDisabledText } from '@/components/ai/AIDisabledNotice'
+import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
+import { ciPath } from '@/lib/ciPath'
 
 const RESOLUTION_DRAFT = gql`
   query ResolutionDraft($incidentId: ID!) {
@@ -95,6 +111,7 @@ interface ImpactedApp { distance: number; via: string | null; ci: CIRef; path: I
 interface Team { id: string; name: string }
 
 interface Incident {
+  customFields:         CustomFieldValueView[]
   id:                   string
   number:               string
   title:                string
@@ -123,6 +140,8 @@ interface Incident {
   slaStatus:            SlaStatusInfo | null
   /** Allarmi di monitoraggio correlati (Event Management, ondata 3). */
   correlatedEvents:     EventRow[]
+  /** Quanti sono in TUTTO: `correlatedEvents` e paginato (revisione totale · G-EVT-11). */
+  correlatedEventCount: number
   correlatedEventsPurged: number
   /** Servizi monitorati collegati all'incident (Servizi monitorati, ondata 3). */
   impactedServices:     ImpactedServiceRef[]
@@ -131,6 +150,7 @@ interface Incident {
 interface Comment {
   id:        string
   text:      string
+  isInternal: boolean
   createdAt: string
   updatedAt: string
   author:    { id: string; name: string; email: string } | null
@@ -143,6 +163,9 @@ interface User { id: string; name: string; email: string; teams: { id: string; n
 export function IncidentDetailPage() {
   const { matrix } = usePriorityMatrix()
   const { t }    = useTranslation()
+  const confirm  = useConfirm()
+  const { labelOf: typeLabel } = useItilTypeLabels()
+  const ciLabels = useCILabels()
   const editIds  = { title: useId(), description: useId(), impact: useId(), urgency: useId(), team: useId(), user: useId() }
   const { id }   = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -158,22 +181,40 @@ export function IncidentDetailPage() {
   const [awaitingUserAssign, setAwaitingUserAssign]  = useState(false)
 
   const [exportingPdf, setExportingPdf] = useState(false)
+  // Funzioni AI spente dall'organizzazione (ondata 6): i bottoni restano, spenti e con il perché.
+  const postIncidentOn = useAIFeature('postIncident')
+  const kbArticlesOn = useAIFeature('kbArticles')
+  const postIncidentOffText = useAIDisabledText('postIncident')
+  const kbArticlesOffText = useAIDisabledText('kbArticles')
   const [genResolutionDraft, { loading: draftLoading }] = useLazyQuery<{ resolutionDraft: { draft: string } }>(RESOLUTION_DRAFT, { fetchPolicy: 'network-only' })
   const [createKbDraft, { loading: kbDraftLoading }] = useMutation<{ createKbDraftFromIncident: { id: string; slug: string; title: string } }>(CREATE_KB_DRAFT, {
-    onCompleted: (d) => toast.success(t('toast.incident.kbDraftCreated', { title: d.createKbDraftFromIncident.title })),
-    onError: (err) => toast.error(t('toast.incident.kbDraftFailed', { error: err.message })),
+    // La bozza nasce in pochi secondi di generazione: il messaggio resta abbastanza
+    // da essere letto e porta dove la bozza si completa (prima spariva e basta).
+    onCompleted: (d) => toast.success(t('toast.incident.kbDraftCreated', { title: d.createKbDraftFromIncident.title }), {
+      duration: 12_000,
+      action: { label: t('toast.incident.kbDraftOpen'), onClick: () => navigate('/admin/knowledge-base') },
+    }),
+    onError: (err) => showError(err, t('toast.incident.kbDraftFailed', { error: err.message })),
   })
 
   const [ciSearch,      setCiSearch]      = useState('')
   const [timelineOpen, setTimelineOpen] = useState(true)
 
-  const { data, loading, error, refetch } = useQuery<{ incident: Incident | null }>(
+  const { can } = useMe()
+  // Chi legge e basta non modifica: la stessa regola dell'API (viewer).
+  // Il permesso, non il NOME del ruolo (revisione totale · F-2): dall'ondata
+  // «Nulla cablato» i ruoli sono del cliente, e l'API concede
+  // `setTicketCustomFields` a `ticket.work`. Col confronto sul nome un ruolo
+  // «tecnico L2» con quel permesso vedeva i campi in sola lettura, e un ruolo
+  // chiamato «operator» SENZA il permesso vedeva il form e prendeva un 403.
+  const canEditCustomFields = can('ticket.work')
+  const { data, loading, error, refetch, startPolling, stopPolling } = useQuery<{ incident: Incident | null }>(
     GET_INCIDENT,
     { variables: { id }, skip: !id },
   )
   // ── Ticket collegati (incident / problem / change): la ricerca vive in
   //    UnifiedLinkedTickets (query lazy per tab) ────────────────────────────
-  const linkOpts = { onError: (e: { message: string }) => toast.error(e.message), onCompleted: () => { void refetch() } }
+  const linkOpts = { onError: (e: { message: string }) => showError(e), onCompleted: () => { void refetch() } }
   const [linkRelated]    = useMutation(LINK_RELATED_TICKET, linkOpts)
   const [unlinkRelated]  = useMutation(UNLINK_RELATED_TICKET, linkOpts)
   const [linkIncProblem] = useMutation(LINK_INCIDENT_TO_PROBLEM, linkOpts)
@@ -183,84 +224,94 @@ export function IncidentDetailPage() {
 
   const { data: usersData } = useQuery<{ users: User[] }>(GET_USERS)
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
-  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { id: string; ciType: string; relationType: string; direction: string; description: string | null }[] }>(
-    GET_ITIL_CI_RELATION_RULES,
-    { variables: { itilType: 'incident' }, fetchPolicy: 'network-only' },
-  )
-
-  const ciTypesFilter = ciRulesData?.itilCIRelationRules?.length
-    ? [...new Set(ciRulesData.itilCIRelationRules.map(r => r.ciType.toLowerCase()))]
-    : undefined
+  // CM-8: i tipi di CI esclusi per questo tipo di ticket non si propongono (l'API li rifiuta comunque).
+  const { excluded: excludedCITypes } = useTicketCIExclusions('incident')
 
   const { data: ciSearchData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch, limit: 20, ciTypes: ciTypesFilter },
-    skip: ciSearch.length < 2 || ciRulesData === undefined,
+    variables: { search: ciSearch, limit: 20, excludeCiTypes: excludedCITypes },
+    skip: ciSearch.length < 2 || excludedCITypes === undefined,
   })
 
   const [execTransition, { loading: transitioning }] = useMutation<{
-    executeWorkflowTransition: { success: boolean; error: string | null; instance: { currentStep: string } }
+    executeWorkflowTransition: TransitionFailure & { success: boolean; instance: { currentStep: string } }
   }>(EXECUTE_WORKFLOW_TRANSITION, {
     onCompleted: (res) => {
       const r = res.executeWorkflowTransition
       if (r.success) {
-        toast.success(t('toast.incident.transitionCompletedTo', { step: r.instance.currentStep }))
+        toast.success(t('toast.incident.transitionCompletedTo', { step: incidentStepLabel(r.instance.currentStep) }))
         setIsTransitionDialogOpen(false)
         setPendingTransition(null)
         setTransitionNotes('')
         void refetch()
       } else {
-        toast.error(r.error ?? t('toast.incident.transitionFailed'))
+        toast.error(transitionErrorText(r, t('toast.incident.transitionFailed')))
       }
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [setMajor, { loading: settingMajor }] = useMutation(SET_INCIDENT_MAJOR, {
     refetchQueries: ['GetIncident'],
     onCompleted: () => toast.success(t('toast.incident.majorUpdated')),
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const [editOpen, setEditOpen] = useState(false)
   const [pathModal, setPathModal] = useState<ImpactedApp | null>(null)
-  const [editForm, setEditForm] = useState({ title: '', description: '', impact: 'medium', urgency: 'medium' })
+  /**
+   * Nessun valore cablato per impatto e urgenza (revisione totale · F-30):
+   * `medium` era scritto qui, e su un'organizzazione con impatti `1..4` il
+   * form partiva da un valore fuori vocabolario — la tendina si vedeva vuota
+   * e il salvataggio mandava comunque `medium`. Il valore iniziale è quello
+   * dell'incident; se non l'ha, il primo della matrice del cliente.
+   */
+  const [editForm, setEditForm] = useState({ title: '', description: '', impact: '', urgency: '' })
   const [updateIncident, { loading: savingEdit }] = useMutation(UPDATE_INCIDENT, {
     onCompleted: () => { setEditOpen(false); toast.success(t('toast.incident.updated')) },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
     refetchQueries: ['GetIncident'],
   })
 
+  /*
+   * CHI STACCA L'ASSEGNATARIO È IL SERVER, NON QUESTA PAGINA (20 set 2026).
+   *
+   * Qui, dopo ogni cambio di team, partiva un secondo giro `assignToUser(null)`
+   * che toglieva SEMPRE la persona. Due cose non andavano. La prima è una
+   * regola contraddetta: `setTicketTeam` stacca l'assegnatario solo se non è
+   * membro del team nuovo, e lascia stare chi lo è ancora (un team allargato
+   * non perde il suo lavoro) — questa riga lo staccava comunque. La seconda è
+   * il registro: scriveva un `incident.unassigned_user` con `from: null` e
+   * `to: null` a ogni assegnazione di squadra, cioè il racconto di un distacco
+   * che non è avvenuto. Il server fa la cosa giusta da solo; qui si rilegge e
+   * basta.
+   */
   const [assignToTeam, { loading: assigningTeam }] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
-    onCompleted: (_data, opts) => {
+    onCompleted: () => {
       toast.success(t('toast.incident.teamAssigned'))
       setSelectedTeamId('')
       setShowReassign(false)
       setSelectedUserId('')
-      const incidentId = (opts?.variables as { id?: string } | undefined)?.id
-      if (incidentId) {
-        void assignToUser({ variables: { id: incidentId, userId: null } })
-          .then(() => { setAwaitingUserAssign(true); void refetch() })
-          // Un un-assign fallito NON è "in attesa di utente": va detto.
-          .catch((e: { message?: string }) => { toast.error(e.message ?? t('toast.incident.unassignFailed')); void refetch() })
-      } else {
-        setAwaitingUserAssign(true)
-        void refetch()
-      }
+      // Nessuna previsione su chi resta assegnato: lo decide `setTicketTeam` e
+      // lo dice la rilettura. Mettere qui «ora non c'è nessuno» mostrerebbe un
+      // riquadro vuoto anche quando la persona è rimasta.
+      void refetch()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [assignToUser, { loading: assigningUser }] = useMutation(ASSIGN_INCIDENT_TO_USER, {
     onCompleted: (_data, opts) => {
       const userId = (opts?.variables as { userId?: string | null } | undefined)?.userId
       if (userId) {
-        toast.success(t('toast.incident.takenOver'))
+        // «Preso in carico» era vero solo per chi assegnava a sé stesso.
+        const name = users.find((u) => u.id === userId)?.name ?? ''
+        toast.success(t('toast.incident.assignedToUser', { name }))
         setAwaitingUserAssign(false)
         setSelectedUserId('')
         void refetch()
       }
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [addComment, { loading: addingComment }] = useMutation(ADD_INCIDENT_COMMENT, {
@@ -268,22 +319,21 @@ export function IncidentDetailPage() {
       toast.success(t('toast.incident.commentAdded'))
       void refetch()
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const [addCI] = useMutation(ADD_AFFECTED_CI, {
     onCompleted: () => { toast.success(t('toast.incident.ciAdded')); setCiSearch(''); void refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
-
-  const ciRules = ciRulesData?.itilCIRelationRules ?? []
 
   const [removeCI] = useMutation(REMOVE_AFFECTED_CI, {
     onCompleted: () => { toast.success(t('toast.incident.ciRemoved')); void refetch() },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const incident  = data?.incident
+  useSlaSettling(incident?.slaStatus, !!incident?.resolvedAt, { startPolling, stopPolling })
   const users     = usersData?.users ?? []
   const teams     = teamsData?.teams ?? []
   const ciResults = ciSearchData?.allCIs?.items ?? []
@@ -294,7 +344,7 @@ export function IncidentDetailPage() {
     // Guard rails come from the workflow definition: if it failed to load we
     // cannot evaluate the gates, so refuse to proceed instead of skipping them.
     if (workflowStepsError) {
-      toast.error(t('toast.incident.workflowRulesNotLoaded', { error: workflowStepsError.message }))
+      showError(workflowStepsError, t('toast.incident.workflowRulesNotLoaded', { error: workflowStepsError.message }))
       return
     }
     // Assignment gates are no longer hardcoded per step name. If the target
@@ -340,7 +390,9 @@ export function IncidentDetailPage() {
     }
   }
 
-  if (loading) {
+  // Solo al primo caricamento: un refetch (dopo un commento) rimetteva lo scheletro,
+  // la pagina si rimontava richiudendo le sezioni e tornava in cima (giro del 14 set 2026, #20).
+  if (loading && !data) {
     return (
       <div className="space-y-4" style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
         <Skeleton style={{ height: 32, width: 200 }} />
@@ -383,7 +435,7 @@ export function IncidentDetailPage() {
     )
   }
 
-  const manualTransitions = incident.availableTransitions.filter((t) => t.toStep !== undefined)
+  const manualTransitions = incident.availableTransitions.filter((t) => t.toStep !== undefined).map(withLocalizedLabel)
   const historyDesc       = [...incident.workflowHistory].reverse()
 
   return (
@@ -413,7 +465,9 @@ export function IncidentDetailPage() {
           onClick={() => {
             setEditForm({
               title: incident.title, description: incident.description ?? '',
-              impact: incident.impact ?? 'medium', urgency: incident.urgency ?? 'medium',
+              // F-30: il primo valore della matrice del cliente, non «medium».
+              impact:  incident.impact  ?? matrix?.impacts[0]   ?? '',
+              urgency: incident.urgency ?? matrix?.urgencies[0] ?? '',
             })
             setEditOpen(true)
           }}
@@ -423,7 +477,15 @@ export function IncidentDetailPage() {
         <Button
           variant="secondary"
           disabled={settingMajor}
-          onClick={() => void setMajor({ variables: { id: incident.id, major: !incident.major } })}
+          onClick={() => void (async () => {
+            // Giro nel browser del 14 set 2026 (#21): dichiarare un Major
+            // Incident avvisa il Change Manager e le regole di escalation;
+            // partiva al primo clic, senza conferma.
+            const ok = await confirm(incident.major
+              ? { title: t('pages.incidentDetail.revokeMajorConfirmTitle'), body: t('pages.incidentDetail.revokeMajorConfirmBody', { number: incident.number }), confirmLabel: t('pages.incidentDetail.revokeMajor') }
+              : { title: t('pages.incidentDetail.declareMajorConfirmTitle'), body: t('pages.incidentDetail.declareMajorConfirmBody', { number: incident.number }), confirmLabel: t('pages.incidentDetail.declareMajor'), danger: true })
+            if (ok) await setMajor({ variables: { id: incident.id, major: !incident.major } })
+          })()}
           style={incident.major ? { color: 'var(--color-danger)', borderColor: 'var(--color-danger)' } : undefined}
         >
           {t(incident.major ? 'pages.incidentDetail.revokeMajor' : 'pages.incidentDetail.declareMajor')}
@@ -436,7 +498,8 @@ export function IncidentDetailPage() {
         {(incidentStepIsTerminal(incident.status) || incidentStepCategory(incident.status) === 'resolved') && (
           <Button
             variant="secondary"
-            disabled={kbDraftLoading}
+            disabled={kbDraftLoading || kbArticlesOn !== true}
+            title={kbArticlesOn === false ? kbArticlesOffText : undefined}
             icon={kbDraftLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
             onClick={() => void createKbDraft({ variables: { incidentId: incident.id } })}
           >
@@ -489,13 +552,14 @@ export function IncidentDetailPage() {
           <div>
             <FieldLabel htmlFor={editIds.impact}>{t('detail.impact')}</FieldLabel>
             <Select id={editIds.impact} value={editForm.impact} onChange={(e) => setEditForm({ ...editForm, impact: e.target.value })}>
-              {(matrix?.impacts ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+              {/* Secondo giro UI · V-18: le etichette del Dizionario, non «low / medium / high». */}
+              {(matrix?.impacts ?? []).map((o) => <option key={o} value={o}>{labelOf('impact', o) ?? o}</option>)}
             </Select>
           </div>
           <div>
             <FieldLabel htmlFor={editIds.urgency}>{t('detail.urgency')}</FieldLabel>
             <Select id={editIds.urgency} value={editForm.urgency} onChange={(e) => setEditForm({ ...editForm, urgency: e.target.value })}>
-              {(matrix?.urgencies ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+              {(matrix?.urgencies ?? []).map((o) => <option key={o} value={o}>{labelOf('urgency', o) ?? o}</option>)}
             </Select>
           </div>
         </div>
@@ -508,7 +572,7 @@ export function IncidentDetailPage() {
               const p = derivePriority(matrix, editForm.impact, editForm.urgency)
               return p === null
                 ? t('pages.domainMatrices.notCovered')
-                : `${priorityCode(matrix?.priorities ?? [], p)} — ${p}`
+                : `${priorityCode(matrix?.priorities ?? [], p)} — ${labelOf('priority', p) ?? p}`
             })()
           }</strong>
         </p>
@@ -532,7 +596,7 @@ export function IncidentDetailPage() {
                 } />
               </div>
               <div className="og-pair" style={{ marginBottom: 16 }}>
-                  <DetailField label={t('detail.priority')} value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(matrix?.priorities ?? [], incident.priority)}</b><SeverityBadge value={incident.priority} /></span>} />
+                  <DetailField label={t('detail.priority')} value={<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><b>{priorityCode(matrix?.priorities ?? [], incident.priority)}</b><SeverityBadge value={incident.priority} vocabulary="priority" /></span>} />
                   {incident.impact && incident.urgency && (
                     <DetailField label={t('detail.impactUrgency')} value={
                       /*
@@ -659,6 +723,12 @@ export function IncidentDetailPage() {
                         <option value="">{t('detail.selectUser')}</option>
                         {teamUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </Select>
+                      {/* Il pulsante assegna la persona scelta: si accende solo dopo la scelta, e lo dice. */}
+                      {!selectedUserId && (
+                        <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--text-muted)' }}>
+                          {teamUsers.length === 0 ? t('detail.noTeamMembers') : t('detail.chooseUserToAssign')}
+                        </span>
+                      )}
                       <button
                         type="button"
                         disabled={!selectedUserId || !selectedUserId.trim() || assigningUser}
@@ -668,7 +738,7 @@ export function IncidentDetailPage() {
                         }}
                         style={{ padding: '7px 0', backgroundColor: (!selectedUserId || assigningUser) ? 'var(--surface-2)' : 'var(--accent)', color: (!selectedUserId || assigningUser) ? 'var(--text-muted)' : colors.white, border: 'none', borderRadius: 6, fontSize: 'var(--font-size-card-title)', fontWeight: 500, cursor: (!selectedUserId || assigningUser) ? 'not-allowed' : 'pointer' }}
                       >
-                        {assigningUser ? t('detail.assigning') : t('detail.takeOwnership')}
+                        {assigningUser ? t('detail.assigning') : t('detail.assignUser')}
                       </button>
                     </div>
                   )
@@ -676,13 +746,17 @@ export function IncidentDetailPage() {
             </div>
           </SectionCard>
 
+          {/* Campi del cliente (verifica «Cosa resta cablato», ondata 4) */}
+          <TicketOLACard entityType="incident" entityId={incident.id} />
+          <CustomFieldsCard entityType="incident" ticketId={incident.id} fields={incident.customFields ?? []} canEdit={canEditCustomFields} onSaved={() => void refetch()} />
+
           {/* CI Impattati */}
           <AffectedCIList
             affectedCIs={incident.affectedCIs}
             ciResults={ciResults}
-            rules={ciRules}
+            excludedTypes={excludedCITypes ?? []}
             onSearchChange={setCiSearch}
-            onAddCI={(ciId, relationType) => void addCI({ variables: { incidentId: incident.id, ciId, relationType } })}
+            onAddCI={(ciId) => void addCI({ variables: { incidentId: incident.id, ciId } })}
             onRemoveCI={(ciId) => void removeCI({ variables: { incidentId: incident.id, ciId } })}
           />
 
@@ -692,19 +766,19 @@ export function IncidentDetailPage() {
             excludeId={incident.id}
             types={[
               {
-                kind: 'INCIDENT', label: 'Incident', routeBase: '/incidents',
+                kind: 'INCIDENT', label: typeLabel('incident'), routeBase: '/incidents',
                 items: incident.linkedIncidents ?? [],
                 onLink: (otherId) => void linkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
                 onUnlink: (otherId) => void unlinkRelated({ variables: { entityType: 'incident', entityId: incident.id, otherId } }),
               },
               {
-                kind: 'PROBLEM', label: 'Problem', routeBase: '/problems',
+                kind: 'PROBLEM', label: typeLabel('problem'), routeBase: '/problems',
                 items: incident.linkedProblems ?? [],
                 onLink: (problemId) => void linkIncProblem({ variables: { problemId, incidentId: incident.id } }),
                 onUnlink: (problemId) => void unlinkIncProblem({ variables: { problemId, incidentId: incident.id } }),
               },
               {
-                kind: 'CHANGE', label: 'Change', routeBase: '/changes',
+                kind: 'CHANGE', label: typeLabel('change'), routeBase: '/changes',
                 items: incident.linkedChanges ?? [],
                 onLink: (changeId) => void linkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
                 onUnlink: (changeId) => void unlinkResolved({ variables: { changeId, entityType: 'incident', entityId: incident.id } }),
@@ -713,7 +787,7 @@ export function IncidentDetailPage() {
           />
 
           {/* Allarmi di monitoraggio correlati (aperti/agganciati dalla policy eventi) */}
-          <MonitoringAlarmsSection events={incident.correlatedEvents} purged={incident.correlatedEventsPurged} incidentId={incident.id} />
+          <MonitoringAlarmsSection events={incident.correlatedEvents} total={incident.correlatedEventCount} purged={incident.correlatedEventsPurged} incidentId={incident.id} />
 
           {/* Servizi monitorati collegati (visibile solo se ce n'è almeno uno) */}
           <ImpactedServicesSection services={incident.impactedServices} />
@@ -729,7 +803,7 @@ export function IncidentDetailPage() {
                 {incident.impactedApplications.map((a) => (
                   <div key={a.ci.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8 }}>
                     <div style={{ minWidth: 0 }}>
-                      <Link to={`/ci/${(a.ci.type || 'application').toLowerCase()}/${a.ci.id}`} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--accent)', textDecoration: 'none' }}>
+                      <Link to={ciPath(a.ci)} style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--accent)', textDecoration: 'none' }}>
                         {a.ci.name}
                       </Link>
                       <div style={{ fontSize: 'var(--font-size-caption)', color: 'var(--text-muted)', marginTop: 2 }}>
@@ -739,8 +813,11 @@ export function IncidentDetailPage() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-                      {a.ci.environment && <Pill bg="var(--surface-2)" color="var(--text-muted)" radius={100} style={{ fontSize: 'var(--font-size-caption)', textTransform: 'capitalize' }}>{a.ci.environment}</Pill>}
-                      {a.ci.status && <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-caption)', textTransform: 'capitalize' }}>{a.ci.status}</Pill>}
+                      {a.ci.environment && <Pill bg="var(--surface-2)" color="var(--text-muted)" radius={100} style={{ fontSize: 'var(--font-size-caption)' }}>{ciLabels.environmentLabel(a.ci.environment)}</Pill>}
+                      {/* L'etichetta del Dizionario, non il valore grezzo (revisione
+                          totale · F-33): con un `ci_status` in italiano la card dei CI
+                          colpiti mostrava ancora «in_service». */}
+                      {a.ci.status && <Pill bg="var(--color-brand-light)" color="var(--color-brand)" radius={100} style={{ fontSize: 'var(--font-size-caption)' }}>{ciLabels.statusLabel(a.ci.status)}</Pill>}
                       <button
                         type="button"
                         onClick={() => setPathModal(a)}
@@ -757,13 +834,15 @@ export function IncidentDetailPage() {
           </SectionCard>
 
           {/* Allegati */}
+          <TicketTasksSection entityId={incident.id} />
           <AttachmentsSection entityType="incident" entityId={incident.id} defaultOpen={false} />
 
           {/* Commenti */}
           <CommentsSection
             comments={incident.comments}
             adding={addingComment}
-            onAdd={(text) => addComment({ variables: { id: incident.id, text } })}
+            onChanged={() => void refetch()}
+            onAdd={(text, isInternal) => addComment({ variables: { id: incident.id, text, isInternal } })}
           />
 
           {/* Internal Chat (agents only) */}
@@ -795,7 +874,7 @@ export function IncidentDetailPage() {
         title={
           pendingTransition?.inputField === 'rootCause'
             ? t('pages.incidents.rootCauseAnalysis')
-            : t('pages.incidents.transitionTo', { step: pendingTransition?.toStep ?? '' })
+            : t('pages.incidents.transitionTo', { step: incidentStepLabel(pendingTransition?.toStep ?? '') })
         }
         width={480}
         footer={
@@ -828,10 +907,10 @@ export function IncidentDetailPage() {
                       setTransitionNotes('')
                       void refetch()
                     } else {
-                      toast.error(data.executeWorkflowTransition.error ?? t('toast.incident.transitionError'))
+                      toast.error(transitionErrorText(data.executeWorkflowTransition, t('toast.incident.transitionError')))
                     }
                   },
-                  onError: (err) => toast.error(err.message),
+                  onError: (err) => showError(err),
                 })
               }}
               style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 500, backgroundColor: transitionNotes.trim().length >= 10 ? 'var(--accent)' : 'var(--surface-2)', color: transitionNotes.trim().length >= 10 ? colors.white : 'var(--text-muted)' }}
@@ -850,10 +929,11 @@ export function IncidentDetailPage() {
             </p>
             <button
               type="button"
-              disabled={draftLoading}
+              disabled={draftLoading || postIncidentOn !== true}
+              title={postIncidentOn === false ? postIncidentOffText : undefined}
               onClick={() => {
                 void genResolutionDraft({ variables: { incidentId: incident.id } }).then((res) => {
-                  if (res.error) toast.error(t('toast.incident.aiDraftFailed', { error: res.error.message }))
+                  if (res.error) showError(res.error, t('toast.incident.aiDraftFailed', { error: res.error.message }))
                   else if (res.data) setTransitionNotes(res.data.resolutionDraft.draft)
                   else toast.error(t('toast.incident.aiDraftNoResponse'))
                 })
@@ -907,7 +987,9 @@ export function IncidentDetailPage() {
                 return (
                   <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <Link
-                      to={`/ci/${(n.type || 'application').toLowerCase()}/${n.id}`}
+                      // F-32: senza tipo si passa dalla rotta che lo risolve dal
+                      // grafo, invece di ripiegare in silenzio su «application».
+                      to={ciPath(n)}
                       style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, minWidth: 96, padding: '8px 10px', border: `1.5px solid ${border}`, borderRadius: 8, background: 'var(--surface-1)', textDecoration: 'none', textAlign: 'center' }}
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--text-primary)' }}>{n.name}</span>

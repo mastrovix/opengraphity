@@ -3,7 +3,7 @@
  * insieme al ramo `if`**.
  *
  * Il gate era `if (currentPurpose === 'approval' && targetPurpose !== 'approval')`,
- * con `requireRole('admin')` e il controllo dei requisiti **dentro** quel ramo.
+ * con `requirePermission('approval.override')` (prima `requireRole('admin')`) e il controllo dei requisiti **dentro** quel ramo.
  * Il disegnatore offre «nessuno» nella tendina dello scopo — per scelta
  * documentata, un passo senza scopo è legittimo — quindi due clic mettevano lo
  * scopo del passo di approvazione a `null` e il ramo non si apriva più: il
@@ -19,6 +19,7 @@
  * qualunque passo arrivi e qualunque scopo abbia quel passo.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 const session = {
   executeRead:  vi.fn(async (fn: (tx: { run: () => Promise<{ records: unknown[] }> }) => unknown) => fn({ run: async () => ({ records: [] }) })),
@@ -62,12 +63,19 @@ vi.mock('../../../../services/changeCreationService.js', () => ({ createChangeRF
 let purposeByStep: Record<string, string | null> = {}
 vi.mock('../../../../lib/workflowHelpers.js', () => ({
   getStepPurpose: vi.fn(async (_s: unknown, _t: string, _e: string, step: string) => purposeByStep[step] ?? null),
+  // Revisione totale · B-11: il varco guarda anche se il passo di arrivo è
+  // terminale (un passo di annullamento è un'uscita, non un ingresso nella
+  // finestra di rilascio). Qui nessun passo è terminale.
+  getStepRow: vi.fn(async (_s: unknown, _t: string, _e: string, step: string) => ({ name: step, purpose: purposeByStep[step] ?? null, isTerminal: false, category: 'active' })),
   getStepNamesByPurpose: vi.fn(async (_s: unknown, _t: string, _e: string, purposes: readonly string[]) =>
     Object.entries(purposeByStep).filter(([, p]) => p != null && purposes.includes(p)).map(([name]) => name)),
 }))
 vi.mock('../../../../lib/workflowTargets.js', () => ({ stepNamesByPurposeOrdered: vi.fn(async () => []) }))
-const requireRole = vi.fn()
-vi.mock('../../../../lib/requireRole.js', () => ({ requireRole: (...a: unknown[]) => requireRole(...a) }))
+const requirePermission = vi.fn()
+vi.mock('../../../../lib/permissions.js', () => ({
+  requirePermission: (...a: unknown[]) => requirePermission(...a),
+  hasPermission: (ctx: { permissions: ReadonlySet<string> }, p: string) => ctx.permissions.has(p),
+}))
 vi.mock('../../../../lib/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
@@ -84,8 +92,8 @@ vi.mock('../../../../lib/changePolicy.js', () => ({
 const { executeChangeTransition } = await import('../changeMutations.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
 
-const admin    = { tenantId: 't1', userId: 'u-1', userEmail: 'adm@test.io', role: 'admin'    as const }
-const operator = { ...admin, role: 'operator' as const }
+const admin    = { tenantId: 't1', userId: 'u-1', userEmail: 'adm@test.io', role: 'admin' as const, permissions: perms('admin') }
+const operator = { ...admin, role: 'operator' as const, permissions: perms('operator') }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -119,13 +127,13 @@ describe('il varco vale anche quando il passo di partenza non ha scopo', () => {
   it('…e il ruolo admin è richiesto, come sul varco di prima', async () => {
     await executeChangeTransition(null, { changeId: 'chg-1', toStep: 'in_calendario' }, operator)
       .catch(() => null)
-    expect(requireRole).toHaveBeenCalledWith(operator, 'admin')
+    expect(requirePermission).toHaveBeenCalledWith(operator, 'approval.override')
   })
 
   it('vale anche entrando nella finestra APERTA (implementation), non solo in quella programmata', async () => {
-    assertAllApprovalsSatisfied.mockImplementation(async () => { throw new Error('Approvazione incompleta: 2 requisiti ancora in attesa') })
+    assertAllApprovalsSatisfied.mockImplementation(async () => { throw new Error('Approval incomplete: 2 requirement(s) still pending') })
     await expect(executeChangeTransition(null, { changeId: 'chg-1', toStep: 'rilascio' }, admin))
-      .rejects.toThrow(/Approvazione incompleta/)
+      .rejects.toThrow(/Approval incomplete/)
   })
 
   it('approvazioni soddisfatte → la transizione passa', async () => {
@@ -138,7 +146,7 @@ describe('il varco vale anche quando il passo di partenza non ha scopo', () => {
     preApproved = ['standard', 'normal']
     await expect(executeChangeTransition(null, { changeId: 'chg-1', toStep: 'in_calendario' }, operator)).resolves.toBeDefined()
     expect(assertAllApprovalsSatisfied).not.toHaveBeenCalled()
-    expect(requireRole).not.toHaveBeenCalled()
+    expect(requirePermission).not.toHaveBeenCalled()
   })
 
   it('un passo che NON è finestra non è gattato: il varco è sulla regola, non su tutti i passi', async () => {
@@ -177,6 +185,6 @@ describe('il varco di prima (uscire dal passo di scopo approval) resta', () => {
 
   it('verso il passo di valutazione si rimanda a «Rigetta»', async () => {
     await expect(executeChangeTransition(null, { changeId: 'chg-1', toStep: 'valutazione' }, admin))
-      .rejects.toThrow(/Per rigettare usa "Rigetta"/)
+      .rejects.toThrow(/To reject, use "Reject"/)
   })
 })

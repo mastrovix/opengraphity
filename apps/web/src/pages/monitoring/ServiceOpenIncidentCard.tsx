@@ -12,6 +12,12 @@
  * Un incident senza istanza di workflow (ticket vecchi) dichiara «passo non
  * disponibile» invece di fingere un passo.
  *
+ * Revisione del 15 set 2026 · SV-4: se il monitoraggio non riesce a portare
+ * l'incident nello stato giusto (tipo di CI escluso, matrice incompleta…) il
+ * motivo sta qui, in una riga `role="alert"` nella lingua di chi guarda —
+ * prima si leggeva solo nel log del worker, e il riquadro diceva «nessun
+ * incident aperto» su un servizio giù.
+ *
  * Revisione 2 · C-12: stato e passo prendono l'etichetta del workflow del
  * tenant (`useWorkflowSteps('incident')`), non un `humanize()` che in una
  * pagina italiana scriveva «in progress». Se la definizione non si carica o
@@ -26,7 +32,9 @@ import { Pill } from '@/components/ui/Pill'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { colors, palette } from '@/lib/tokens'
 import { TINT_NEUTRAL } from '@/lib/eventPalette'
-import type { ServiceOpenIncident } from '@/types/services'
+import { formatDateTime } from '@/lib/datetime'
+import { transitionErrorText } from '@/lib/transitionError'
+import type { ServiceIncidentProblem, ServiceOpenIncident } from '@/types/services'
 
 const emptyStyle = { margin: 0, fontSize: 'var(--font-size-body)', color: colors.slateLight } as const
 
@@ -34,11 +42,13 @@ interface Props {
   incident: ServiceOpenIncident | null
   /** `rules.openIncidentFrom` della mappa: `never` = incident disattivati per questo servizio. */
   openIncidentFrom: string
+  /** SV-4: perché l'incident non è allineato; null quando va tutto bene. */
+  problem: ServiceIncidentProblem | null
 }
 
-export function ServiceOpenIncidentCard({ incident, openIncidentFrom }: Props) {
+export function ServiceOpenIncidentCard({ incident, openIncidentFrom, problem }: Props) {
   const { t } = useTranslation()
-  const { byName, labelFor, error: stepsError } = useWorkflowSteps('incident')
+  const { byName, labelFor, categoryOf, error: stepsError } = useWorkflowSteps('incident')
 
   /** L'etichetta dell'app per un passo del workflow; fuori definizione → detta in chiaro. */
   const stepLabel = (value: string) =>
@@ -79,8 +89,17 @@ export function ServiceOpenIncidentCard({ incident, openIncidentFrom }: Props) {
   }
 
   return (
-    <SectionCard title={t('monitoring.services.openIncident.title')} defaultOpen>
+    // Secondo giro UI · V-10: un incident risolto ma non ancora chiuso non è «aperto».
+    <SectionCard title={incident && categoryOf(incident.workflowInstance?.currentStep ?? incident.status) === 'resolved' ? t('monitoring.services.openIncident.titleResolved') : t('monitoring.services.openIncident.title')} defaultOpen>
       {body}
+      {problem && (
+        <p role="alert" data-testid="service-incident-problem" style={{ margin: '10px 0 0', padding: '8px 12px', borderRadius: 8, background: palette.danger.bg, border: `1px solid ${palette.danger.border}`, color: palette.danger.text, fontSize: 'var(--font-size-body)', lineHeight: 1.5 }}>
+          {t('monitoring.services.openIncident.problem', {
+            reason: transitionErrorText({ error: problem.message, errorKey: problem.key, errorParams: problem.params }, problem.message),
+            since: formatDateTime(problem.since),
+          })}
+        </p>
+      )}
     </SectionCard>
   )
 }

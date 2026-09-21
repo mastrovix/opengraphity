@@ -1,3 +1,12 @@
+/**
+ * Il punteggio dell'analisi d'impatto della change: una somma pesata dei
+ * fattori, con i pesi del cliente (`lib/impactWeights.ts`) e limitata a 100.
+ * Il livello NON si decide qui: è la fascia di rischio del cliente
+ * (`riskBandOf`), che chi chiama applica al punteggio.
+ */
+import { MAX_RISK_SCORE } from './riskBands.js'
+import type { ImpactWeightValues } from './impactWeights.js'
+
 export interface RiskScoreParams {
   productionCIs:  number
   blastRadiusCIs: number
@@ -8,48 +17,24 @@ export interface RiskScoreParams {
 
 export interface RiskScoreResult {
   score:   number
-  level:   string
   details: string[]
 }
 
-export function calculateRiskScore(params: RiskScoreParams): RiskScoreResult {
+export function calculateRiskScore(params: RiskScoreParams, weights: ImpactWeightValues): RiskScoreResult {
   let score = 0
   const details: string[] = []
-
-  const prodScore = params.productionCIs * 20
-  if (prodScore > 0) {
-    score += prodScore
-    details.push(`+${prodScore} (${params.productionCIs} CI in production)`)
+  const add = (points: number, what: string) => {
+    if (points <= 0) return
+    score += points
+    details.push(`+${String(points)} (${what})`)
   }
 
-  const blastScore = Math.min(params.blastRadiusCIs * 10, 40)
-  if (blastScore > 0) {
-    score += blastScore
-    details.push(`+${blastScore} (${params.blastRadiusCIs} CI nel blast radius)`)
-  }
+  add(params.productionCIs * weights.productionCI, `${String(params.productionCIs)} CI in the highest-risk environment`)
+  add(Math.min(params.blastRadiusCIs * weights.blastRadiusCI, weights.blastRadiusCap), `${String(params.blastRadiusCIs)} CI in the blast radius`)
+  add(params.openIncidents * weights.openIncident, `${String(params.openIncidents)} open incidents`)
+  add(params.failedChanges * weights.failedChange, `${String(params.failedChanges)} failed changes`)
+  add(params.ongoingChanges * weights.ongoingChange, `${String(params.ongoingChanges)} ongoing changes`)
 
-  const incidentScore = params.openIncidents * 15
-  if (incidentScore > 0) {
-    score += incidentScore
-    details.push(`+${incidentScore} (${params.openIncidents} incident aperti)`)
-  }
-
-  const failedScore = params.failedChanges * 10
-  if (failedScore > 0) {
-    score += failedScore
-    details.push(`+${failedScore} (${params.failedChanges} change falliti)`)
-  }
-
-  const ongoingScore = params.ongoingChanges * 5
-  if (ongoingScore > 0) {
-    score += ongoingScore
-    details.push(`+${ongoingScore} (${params.ongoingChanges} change in corso)`)
-  }
-
-  const level =
-    score >= 76 ? 'critical' :
-    score >= 51 ? 'high' :
-    score >= 26 ? 'medium' : 'low'
-
-  return { score, level, details }
+  // Le fasce di rischio coprono 0..100: un punteggio oltre sarebbe senza fascia.
+  return { score: Math.min(score, MAX_RISK_SCORE), details }
 }

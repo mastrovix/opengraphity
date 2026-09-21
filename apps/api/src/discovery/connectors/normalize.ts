@@ -42,7 +42,7 @@ export const DIGIT_PREFIX = 'f_'
  * (es. "###" o stringa vuota): non esiste un nome sensato da derivare.
  */
 export function toSnake(key: string): string {
-  if (typeof key !== 'string') throw new NormalizeError(`toSnake: la chiave deve essere una stringa, ricevuto ${preview(key)}`)
+  if (typeof key !== 'string') throw new NormalizeError(`toSnake: the key must be a string, got ${preview(key)}`)
   const snake = key
     .trim()
     // camelCase / PascalCase → separatore
@@ -56,13 +56,13 @@ export function toSnake(key: string): string {
     .replace(/^_+|_+$/g, '')
 
   if (snake === '') {
-    throw new NormalizeError(`toSnake: impossibile derivare un nome da ${JSON.stringify(preview(key))}`)
+    throw new NormalizeError(`toSnake: cannot derive a name from ${JSON.stringify(preview(key))}`)
   }
   const result = /^[0-9]/.test(snake) ? `${DIGIT_PREFIX}${snake}` : snake
   if (!FIELD_NAME_RE.test(result)) {
     // Non dovrebbe accadere: la pipeline sopra produce solo [a-z0-9_]. Difesa
     // contro regressioni della regex condivisa.
-    throw new NormalizeError(`toSnake: ${JSON.stringify(result)} non rispetta ${FIELD_NAME_RE.source}`)
+    throw new NormalizeError(`toSnake: ${JSON.stringify(result)} does not match ${FIELD_NAME_RE.source}`)
   }
   return result
 }
@@ -86,7 +86,7 @@ export function normalizeKeys<V>(obj: Record<string, V>, what: string): Record<s
     const prev = origin[key]
     if (prev !== undefined && prev !== rawKey) {
       throw new NormalizeError(
-        `${what}: le chiavi ${JSON.stringify(prev)} e ${JSON.stringify(rawKey)} collidono su "${key}" dopo la normalizzazione`,
+        `${what}: keys ${JSON.stringify(prev)} and ${JSON.stringify(rawKey)} collide on "${key}" after normalization`,
       )
     }
     origin[key] = rawKey
@@ -104,20 +104,20 @@ const NUMERIC_STRING_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
 export function toNum(value: unknown): number | undefined {
   if (value === null || value === undefined) return undefined
   if (typeof value === 'number') {
-    if (!Number.isFinite(value)) throw new NormalizeError(`toNum: valore non finito ${String(value)}`)
+    if (!Number.isFinite(value)) throw new NormalizeError(`toNum: non-finite value ${String(value)}`)
     return value
   }
   if (typeof value === 'bigint') return Number(value)
   if (typeof value === 'string') {
     const s = value.trim()
     if (s === '') return undefined
-    if (!NUMERIC_STRING_RE.test(s)) throw new NormalizeError(`toNum: stringa non numerica ${JSON.stringify(preview(value))}`)
+    if (!NUMERIC_STRING_RE.test(s)) throw new NormalizeError(`toNum: non-numeric string ${JSON.stringify(preview(value))}`)
     return Number(s)
   }
   if (typeof value === 'object' && typeof (value as { toNumber?: unknown }).toNumber === 'function') {
     return (value as { toNumber(): number }).toNumber()
   }
-  throw new NormalizeError(`toNum: tipo non convertibile (${typeof value}) ${preview(value)}`)
+  throw new NormalizeError(`toNum: type cannot be converted (${typeof value}) ${preview(value)}`)
 }
 
 /**
@@ -134,7 +134,7 @@ export function toBool(value: unknown): boolean | undefined {
     if (s === 'true') return true
     if (s === 'false') return false
   }
-  throw new NormalizeError(`toBool: valore non booleano ${JSON.stringify(preview(value))}`)
+  throw new NormalizeError(`toBool: not a boolean value ${JSON.stringify(preview(value))}`)
 }
 
 /**
@@ -146,12 +146,12 @@ export function splitList(value: unknown): string[] {
   if (value === null || value === undefined) return []
   if (Array.isArray(value)) {
     return value.map((v, i) => {
-      if (typeof v !== 'string') throw new NormalizeError(`splitList: elemento ${i} non è una stringa (${typeof v})`)
+      if (typeof v !== 'string') throw new NormalizeError(`splitList: element ${i} is not a string (${typeof v})`)
       return v.trim()
     }).filter(Boolean)
   }
   if (typeof value === 'string') {
     return value.split(',').map(s => s.trim()).filter(Boolean)
   }
-  throw new NormalizeError(`splitList: atteso array o stringa, ricevuto ${typeof value}`)
+  throw new NormalizeError(`splitList: expected an array or a string, got ${typeof value}`)
 }
