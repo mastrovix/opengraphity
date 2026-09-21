@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { GET_FIELD_VISIBILITY_RULES } from '@/graphql/queries'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 interface VisibilityRule {
   id:           string
@@ -24,7 +25,7 @@ export function useFieldVisibility(
 ): { visibility: Record<string, boolean>; error: Error | null } {
   const { data, error } = useQuery<{ fieldVisibilityRules: VisibilityRule[] }>(
     GET_FIELD_VISIBILITY_RULES,
-    { variables: { entityType }, fetchPolicy: 'cache-first' },
+    { variables: { entityType }, fetchPolicy: METAMODEL_FETCH_POLICY },
   )
 
   const rules = useMemo(() => data?.fieldVisibilityRules ?? [], [data])

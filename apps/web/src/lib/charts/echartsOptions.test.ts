@@ -11,8 +11,20 @@ const POINTS: ChartPoint[] = [
 ]
 const MANY: ChartPoint[] = Array.from({ length: 8 }, (_, i) => ({ label: `L${i}`, value: i }))
 
+/** CHART_CSS_VARS copre solo il tema base: qui si aggiungono i token della palette categorica e degli accenti. */
+const PALETTE_CSS_VARS: Record<string, string> = {
+  ...CHART_CSS_VARS,
+  '--color-purple-light': '#8b5cf6',
+  '--color-teal-light':   '#06b6d4',
+  '--color-lime':         '#84cc16',
+  '--color-teal':         '#0891b2',
+  '--color-pink':         '#ec4899',
+  '--color-white':        '#ffffff',
+  '--color-black-a20':    'rgba(0, 0, 0, 0.20)',
+}
+
 let cleanup: () => void
-beforeEach(() => { resetCssVarCache(); cleanup = setCssVars(CHART_CSS_VARS) })
+beforeEach(() => { resetCssVarCache(); cleanup = setCssVars(PALETTE_CSS_VARS) })
 afterEach(() => { cleanup() })
 
 describe('toPoints', () => {
@@ -67,6 +79,29 @@ describe('buildBarOption', () => {
     expect(compact.grid).toEqual({ top: 12, right: 12, bottom: 20, left: 40, containLabel: true })
   })
 
+  /*
+   * IL VALORE SUI PUNTI (20 set 2026, dal giro nel browser: «nella linea dove
+   * ci sono i puntini dovrebbe esserci anche il valore»). `showValueLabels`
+   * arriva acceso da ogni sezione di report e la linea era l'unico grafico
+   * che lo ignorava.
+   */
+  it('la linea scrive il valore sui punti quando le etichette sono accese', () => {
+    const acceso = buildLineOption(POINTS, { showValueLabels: true }) as { series: Array<{ label?: { show?: boolean } }> }
+    expect(acceso.series[0]!.label?.show).toBe(true)
+    const spento = buildLineOption(POINTS) as { series: Array<{ label?: { show?: boolean } }> }
+    expect(spento.series[0]!.label?.show).toBe(false)
+  })
+
+  it('con le etichette accese la griglia lascia spazio sopra, così il valore più alto non si taglia', () => {
+    // «La linea mostra i valori ma non si vedono bene, alcuni tagliati».
+    const senza = buildLineOption(POINTS) as unknown as { grid: { top: number } }
+    const con   = buildLineOption(POINTS, { showValueLabels: true }) as unknown as { grid: { top: number } }
+    expect(con.grid.top).toBeGreaterThan(senza.grid.top)
+    const barreSenza = buildBarOption(POINTS) as unknown as { grid: { top: number } }
+    const barreCon   = buildBarOption(POINTS, { showValueLabels: true }) as unknown as { grid: { top: number } }
+    expect(barreCon.grid.top).toBeGreaterThan(barreSenza.grid.top)
+  })
+
   it('color forza un colore unico; showValueLabels attiva le etichette valore', () => {
     const opt = buildBarOption(POINTS, { color: '#123456', showValueLabels: true })
     expect(opt.series[0]!.data.every((d) => d.itemStyle.color === '#123456')).toBe(true)
@@ -110,7 +145,7 @@ describe('buildPieOption', () => {
     expect(donut.series[0]!.radius).toEqual(['40%', '65%'])
     expect(donut.graphic?.[0]?.style.text).toBe('9')
     expect(donut.graphic?.[0]?.style.fontSize).toBe(24)
-    expect(donut.graphic?.[1]?.style.text).toBe('totale')
+    expect(donut.graphic?.[1]?.style.text).toBe('total')
   })
 
   it('più fette della palette → i colori ciclano', () => {

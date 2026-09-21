@@ -8,6 +8,7 @@ import express from 'express'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
+vi.mock('../../lib/ticketCustomFields.js', async (importOriginal) => ({ ...(await importOriginal<object>()), customFieldDefs: vi.fn(async () => []) }))
 vi.mock('../../lib/logger.js', () => ({
   logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))
@@ -56,7 +57,7 @@ describe('GET /api/v1/problems', () => {
     const res = await fetch(`${base}?page=3&limit=2`)
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
-      data: [{ id: 'prb-1', tenantId: 'tenant-1', title: 'Recurring outage', description: null, priority: 'P2', status: 'new', rootCause: null, workaround: null, createdAt: 'c', updatedAt: 'u' }],
+      data: [{ id: 'prb-1', tenantId: 'tenant-1', title: 'Recurring outage', description: null, priority: 'P2', status: 'new', rootCause: null, workaround: null, createdAt: 'c', updatedAt: 'u', customFields: {} }],
       meta: { page: 3, limit: 2, total: 7 },
     })
     expect(vi.mocked(runQueryOne).mock.calls[0]![2]).toEqual({ tenantId: 'tenant-1' })

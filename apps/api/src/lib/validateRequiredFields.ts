@@ -64,10 +64,17 @@ export async function validateRequiredFields(
   }
 
   if (missing.length > 0) {
-    const stepSuffix = toStep ? ` per lo step "${toStep}"` : ''
-    const messages = missing.map((f) => `Il campo "${f}" è obbligatorio${stepSuffix}`)
+    // Revisione del 14 set 2026 · IT-14: il messaggio era italiano per tutti.
+    // Ora inglese per log e integrazioni, e una chiave per chi legge.
+    const stepSuffix = toStep ? ` for step "${toStep}"` : ''
+    const messages = missing.map((f) => `Field "${f}" is required${stepSuffix}`)
     throw new GraphQLError(messages.join('; '), {
-      extensions: { code: 'VALIDATION_ERROR', fields: missing },
+      extensions: {
+        code: 'VALIDATION_ERROR', fields: missing,
+        i18n: toStep
+          ? { key: 'errors.fields.requiredForStep', params: { fields: missing.join(', '), step: toStep } }
+          : { key: 'errors.fields.required', params: { fields: missing.join(', ') } },
+      },
     })
   }
 }

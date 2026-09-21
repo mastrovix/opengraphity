@@ -40,8 +40,12 @@ export interface Migration {
   description: string
   /**
    * Run `up` on the auto-commit session instead of inside a managed write
-   * transaction. Required for `CALL { … } IN TRANSACTIONS`. The migration
-   * must be idempotent (the marker is written in a separate statement).
+   * transaction. Required for `CALL { … } IN TRANSACTIONS` and for any
+   * SCHEMA change (`CREATE`/`DROP INDEX` or `CONSTRAINT`): Neo4j refuses to
+   * write a node after a schema modification in the same transaction, so
+   * without this the change lands and the marker does NOT — the migration
+   * then re-runs for ever. The migration must be idempotent (the marker is
+   * written in a separate statement).
    */
   autocommit?: boolean
   up(session: Queryable): Promise<void>
@@ -252,7 +256,18 @@ export async function runMigrations(
 
   await acquireLock(session, owner, now().toISOString(), lockTtlMs)
   try {
+    // Lo stato applicato si rilegge DENTRO il lock (revisione totale · E-5): due
+    // processi che partono insieme leggevano entrambi la lista dei pending prima
+    // che il primo prendesse il lock, e la seconda applicava di nuovo tutto.
+    const appliedNow = await loadApplied(session)
+    const stillPending = toRun.filter((m) => force || !appliedNow.has(m.id))
     for (const m of toRun) {
+      if (!stillPending.includes(m)) {
+        result.skipped.push(m.id)
+        log(`[migrate] ${m.id} applied by another process while waiting for the lock — skipped`)
+      }
+    }
+    for (const m of stillPending) {
       const checksum = migrationChecksum(m)
       const params   = { id: m.id, now: now().toISOString(), checksum, description: m.description }
       log(`[migrate] applying ${m.id} — ${m.description}`)

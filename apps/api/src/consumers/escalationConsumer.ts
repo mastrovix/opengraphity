@@ -45,7 +45,17 @@ export class EscalationConsumer extends BaseConsumer<unknown> {
           MATCH (cur:WorkflowStep {definition_id: wi.definition_id, name: wi.current_step})
                 -[:TRANSITIONS_TO {trigger: 'sla_breach'}]->(to:WorkflowStep)
           RETURN wi.id AS instanceId, wi.entity_type AS entityType, wi.current_step AS fromStep,
-                 to.name AS toStep, e.title AS title, e.severity AS severity
+                 to.name AS toStep, e.title AS title,
+                 // La gravità VERA dell'entità: gli incident la tengono in
+                 // severity, problem/change/richieste in priority, e l'alias
+                 // pubblicato qui inventava «high» per tutti (revisione totale
+                 // · C-16): la notifica diceva una gravità che il dato non ha.
+                 coalesce(e.severity, e.priority) AS severity,
+                 coalesce(e.number, e.code) AS number,
+                 // Per il varco della finestra di rilascio: questo consumatore e
+                 // GENERICO sul tipo di entita, e sla_breach e una delle quattro
+                 // voci della tendina degli inneschi.
+                 CASE WHEN 'Change' IN labels(e) THEN e.change_type ELSE null END AS changeType
           LIMIT 1
         `, { entityId, tenantId }),
       )
@@ -57,12 +67,51 @@ export class EscalationConsumer extends BaseConsumer<unknown> {
       const fromStep   = r.get('fromStep')   as string
       const toStep     = r.get('toStep')     as string
 
+      // IL VARCO DELLA FINESTRA DI RILASCIO (terza revisione * C1, quinto
+      // cammino). Un workflow delle change con un arco `sla_breach` verso il
+      // passo programmato faceva entrare in produzione una change non
+      // approvata allo scadere di un SLA. Non si rilancia: ritentare non fa
+      // comparire le approvazioni.
+      if (entityType === 'change') {
+        const { automaticTransitionAllowed } = await import('../graphql/resolvers/change/windowGate.js')
+        const allowed = await automaticTransitionAllowed(session, {
+          tenantId, changeId: entityId,
+          changeType:  (r.get('changeType') as string | null) ?? '',
+          currentStep: fromStep, toStep,
+        }, 'sla_breach')
+        if (!allowed) return
+      }
       const result = await workflowEngine.transition(
         session,
-        { instanceId, toStepName: toStep, triggeredBy: 'sla-engine', triggerType: 'sla_breach' },
+        { instanceId, toStepName: toStep, triggeredBy: 'sla-engine', triggerType: 'sla_breach', tenantId },
         { userId: 'system', entityData: {} },
       )
       if (!result.success) {
+        /**
+         * RIFIUTATA DA UNA GUARDIA ≠ ANDATA STORTA (rimedio, 20 set 2026).
+         *
+         * Rilanciare faceva ritentare BullMQ, ma una guardia non dipende dal
+         * tempo: dipende da qualcuno che chiuda un compito o completi un
+         * assessment. I tentativi si esaurivano, l'evento finiva marcato
+         * «lost», e **l'incident che doveva escalare non escalava** senza
+         * che comparisse niente sul ticket. Con la guardia sui compiti
+         * (`all_tasks_complete`) il caso è diventato ordinario.
+         *
+         * Ora il rifiuto si scrive SUL TICKET, dove lo vede chi aspettava
+         * l'escalation, e l'evento si chiude senza ritentare.
+         */
+        if (result.refusedByCondition) {
+          logger.warn({ instanceId, toStep, condition: result.refusedByCondition, error: result.error },
+            '[escalation] escalation refused by a transition guard: not retried')
+          const { writeTicketComment } = await import('../lib/ticketComments.js')
+          const { systemText } = await import('../lib/systemText.js')
+          const testo = await systemText(tenantId, 'escalation.refusedByGuard', { step: toStep, reason: result.error ?? '' })
+          await session.executeWrite((tx) => writeTicketComment(tx as never, {
+            entityType, entityId, tenantId, text: testo,
+            authorId: 'system', authorLabel: 'system', isInternal: true,
+          }))
+          return
+        }
         logger.error({ instanceId, toStep, error: result.error }, '[escalation] auto-escalation transition failed')
         throw new Error(`[escalation] transition to ${toStep} failed for instance ${instanceId}: ${result.error ?? 'unknown'}`)
       }
@@ -81,8 +130,13 @@ export class EscalationConsumer extends BaseConsumer<unknown> {
           id:          entityId,
           entity_id:   entityId,
           entity_type: entityType,
-          title:       (r.get('title') as string | null) ?? `${entityType} ${entityId}`,
-          severity:    (r.get('severity') as string | null) ?? 'high',
+          // Il titolo vero, o il numero del ticket: «incident <uuid>» non è un
+          // titolo, è un id travestito (C-16).
+          title:       (r.get('title') as string | null)
+                       ?? (r.get('number') as string | null)
+                       ?? `${entityType} ${entityId}`,
+          // `unknown` si vede che è un ripiego; «high» sembrava un dato.
+          severity:    (r.get('severity') as string | null) ?? 'unknown',
           status:      toStep,
           reason:      event.type === 'ola.breached' ? 'ola_breach' : 'sla_breach',
         },

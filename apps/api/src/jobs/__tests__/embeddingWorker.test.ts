@@ -11,6 +11,8 @@ type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
 const createWorker = vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => { processors.set(name, processor); return { name, opts } })
 const queueAdd = vi.fn().mockResolvedValue(undefined)
+// Ondata 6 di «Nulla cablato»: le funzioni AI sono dell'organizzazione; qui tutte accese.
+vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
 vi.mock('../../lib/bullmq.js', () => ({
   createWorker: (...a: unknown[]) => createWorker(...(a as [string, AnyProcessor, unknown])),
   getQueue: vi.fn(() => ({ add: queueAdd })),
@@ -184,7 +186,7 @@ describe('enqueueEmbedding', () => {
       'embed',
       { entityType: 'incident', entityId: 'inc-1', tenantId: 't1', updatedAt: '2026-09-08T10:00:00.000Z' },
       {
-        jobId: `embed:incident:inc-1:${Date.parse('2026-09-08T10:00:00.000Z')}`,
+        jobId: `embed-incident-inc-1-${Date.parse('2026-09-08T10:00:00.000Z')}`,
         removeOnComplete: true, removeOnFail: 50, attempts: 3, backoff: { type: 'exponential', delay: 5_000 },
       },
     )

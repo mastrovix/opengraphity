@@ -12,7 +12,7 @@ export const GET_REPORT_TEMPLATES = gql`
       sharedWith { id name }
       sections {
         id order title chartType
-        groupByNodeId groupByField metric metricField
+        groupByNodeId groupByField groupByGranularity metric metricField
         limit sortDir
         nodes { id entityType neo4jLabel label isResult isRoot positionX positionY filters selectedFields }
         edges { id sourceNodeId targetNodeId relationshipType direction label }
@@ -32,7 +32,7 @@ export const GET_REPORT_TEMPLATE = gql`
       sharedWith { id name }
       sections {
         id order title chartType
-        groupByNodeId groupByField metric metricField limit sortDir
+        groupByNodeId groupByField groupByGranularity metric metricField limit sortDir
         nodes { id entityType neo4jLabel label isResult isRoot positionX positionY filters selectedFields }
         edges { id sourceNodeId targetNodeId relationshipType direction label }
       }
@@ -43,11 +43,11 @@ export const GET_REPORT_TEMPLATE = gql`
 export const GET_NAVIGABLE_ENTITIES = gql`
   query GetNavigableEntities {
     navigableEntities {
-      entityType label neo4jLabel
-      fields { name label fieldType enumValues }
+      entityType label labelKey neo4jLabel group
+      fields { name label labelKey fieldType enumValues enumTypeName }
       relations {
-        relationshipType direction label
-        targetEntityType targetLabel targetNeo4jLabel
+        relationshipType direction label labelKey
+        targetEntityType targetLabel targetLabelKey targetNeo4jLabel
       }
     }
   }
@@ -64,17 +64,17 @@ export const GET_REACHABLE_ENTITIES = gql`
 `
 
 export const EXECUTE_REPORT = gql`
-  query ExecuteReport($templateId: ID!) {
-    executeReport(templateId: $templateId) {
-      sections { sectionId title chartType data total error }
+  query ExecuteReport($templateId: ID!, $language: String) {
+    executeReport(templateId: $templateId, language: $language) {
+      sections { sectionId title chartType data total error errorKey }
     }
   }
 `
 
 export const PREVIEW_REPORT_SECTION = gql`
-  query PreviewReportSection($input: ReportSectionInput!) {
-    previewReportSection(input: $input) {
-      sectionId title chartType data total error
+  query PreviewReportSection($input: ReportSectionInput!, $language: String) {
+    previewReportSection(input: $input, language: $language) {
+      sectionId title chartType data total error errorKey
     }
   }
 `

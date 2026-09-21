@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const h = vi.hoisted(() => ({
   session: { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn() },
@@ -21,13 +22,15 @@ vi.mock('../../../services/requestService.js', () => ({
   mapRequest:    vi.fn((p: Record<string, unknown>) => p),
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+// La priorità è validata contro il vocabolario `priority` (qui quello spedito).
+vi.mock('../../../lib/domainMatrix.js', () => import('../../../lib/__tests__/domainMatrixFake.js'))
 
 const { serviceRequestResolvers } = await import('../service_request.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { createRequest } = await import('../../../services/requestService.js')
 
 const createServiceRequest = serviceRequestResolvers.Mutation.createServiceRequest
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'u@test.io', role: 'operator', permissions: perms('operator') }
 
 const rule = (field_name: string, workflow_step: string | null = null) =>
   ({ r: { properties: { field_name, required: true, workflow_step } } })
@@ -51,7 +54,7 @@ describe('createServiceRequest — campi obbligatori del tenant', () => {
     const err = await failure(createServiceRequest(undefined, { input: { title: 'T', priority: 'low', description: '  ' } }, ctx))
     expect(err.extensions['code']).toBe('VALIDATION_ERROR')
     expect(err.extensions['fields']).toEqual(['description', 'dueDate'])
-    expect(err.message).toBe('Il campo "description" è obbligatorio; Il campo "dueDate" è obbligatorio')
+    expect(err.message).toBe('Field "description" is required; Field "dueDate" is required')
     expect(createRequest).not.toHaveBeenCalled()
     // le regole sono lette per il tenant e l'entità corrente
     expect(vi.mocked(runQuery).mock.calls[0]![2]).toEqual({ tenantId: 'tenant-1', entityType: 'service_request' })
@@ -79,7 +82,9 @@ describe('createServiceRequest — item di catalogo', () => {
   it('item trovato → requiresApproval ereditato dal catalogo (true), passato al service con l\'input', async () => {
     vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: true })
     const result = await createServiceRequest(undefined, { input: { title: 'VPN', priority: 'high', catalogItemId: 'cat-1' } }, ctx)
-    expect(createRequest).toHaveBeenCalledWith({ title: 'VPN', priority: 'high', catalogItemId: 'cat-1', requiresApproval: true }, ctx)
+    // `formAnswers: null` c'è sempre (ondata 7): il resolver le converte dalla
+    // forma dello schema, quindi la chiave esiste anche quando non ce ne sono.
+    expect(createRequest).toHaveBeenCalledWith({ title: 'VPN', priority: 'high', catalogItemId: 'cat-1', requiresApproval: true, customFields: undefined, formAnswers: null }, ctx, 'agent')
     expect(result).toEqual({ id: 'sr-1', title: 'T' })
   })
 
@@ -91,6 +96,102 @@ describe('createServiceRequest — item di catalogo', () => {
     vi.clearAllMocks()
     await createServiceRequest(undefined, { input: { title: 'T', priority: 'low' } }, ctx)
     expect(runQueryOne).not.toHaveBeenCalled()
-    expect(vi.mocked(createRequest).mock.calls[0]![0]).toEqual({ title: 'T', priority: 'low', requiresApproval: false })
+    expect(vi.mocked(createRequest).mock.calls[0]![0]).toEqual({ title: 'T', priority: 'low', requiresApproval: false, formAnswers: null })
+  })
+})
+
+/**
+ * UNA VOCE SPENTA NON APRE PIÙ RICHIESTE (revisione del 17 set 2026).
+ *
+ * La creazione leggeva approvazione, priorità, categoria e iter della voce e
+ * non guardava `active`: il catalogo non la mostrava più, ma chi aveva l'id —
+ * un collegamento salvato, una pagina rimasta aperta, una chiamata REST —
+ * continuava ad aprire richieste su un servizio spento.
+ */
+describe('createServiceRequest — voce di catalogo disattivata', () => {
+  it('voce spenta → rifiuto che la nomina, nessuna creazione', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'low', name: 'Nuovo mouse', active: false })
+    const err = await failure(createServiceRequest(undefined, { input: { title: 'Mouse', priority: 'low', catalogItemId: 'cat-spenta' } }, ctx))
+    expect(err.extensions['code']).toBe('BAD_USER_INPUT')
+    expect(err.message).toMatch(/is not active/)
+    expect(err.message).toContain('Nuovo mouse')
+    expect(createRequest).not.toHaveBeenCalled()
+  })
+
+  it('una voce attiva (o senza il campo, per i dati di prima) apre come sempre', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'low', name: 'Nuovo mouse', active: true })
+    await createServiceRequest(undefined, { input: { title: 'Mouse', priority: 'low', catalogItemId: 'cat-1' } }, ctx)
+    expect(createRequest).toHaveBeenCalledTimes(1)
+
+    vi.clearAllMocks()
+    vi.mocked(runQuery).mockResolvedValue([])
+    vi.mocked(createRequest).mockResolvedValue({ id: 'sr-1', title: 'T' } as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'low', name: 'Voce vecchia', active: null })
+    await createServiceRequest(undefined, { input: { title: 'Mouse', priority: 'low', catalogItemId: 'cat-2' } }, ctx)
+    expect(createRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it('la query legge anche `active`: senza, il controllo non potrebbe esistere', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'low', name: 'X', active: true })
+    await createServiceRequest(undefined, { input: { title: 'T', priority: 'low', catalogItemId: 'cat-1' } }, ctx)
+    expect(vi.mocked(runQueryOne).mock.calls[0]![1]).toContain('ci.active AS active')
+  })
+})
+
+/**
+ * Verifica «Cosa resta cablato», ondata 1 (scelta del proprietario): la
+ * priorità di una richiesta dal catalogo la decide la voce. Il portale mandava
+ * `medium` scritto nel codice.
+ */
+describe('createServiceRequest — priorità dalla voce del catalogo', () => {
+  const endUser: GraphQLContext = { ...ctx, role: 'end_user', permissions: perms('end_user') }
+
+  it('senza priorità nell\'input vale quella della voce', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'high', name: 'Sblocco account' })
+    await createServiceRequest(undefined, { input: { title: 'Sblocco', catalogItemId: 'cat-1' } }, endUser)
+    expect(vi.mocked(createRequest).mock.calls[0]![0]).toMatchObject({ priority: 'high' })
+  })
+
+  it('l\'utente del portale non può scegliere un\'altra priorità', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'low', name: 'Nuovo laptop' })
+    const err = await failure(createServiceRequest(undefined, { input: { title: 'Laptop', priority: 'critical', catalogItemId: 'cat-1' } }, endUser))
+    expect(err.message).toMatch(/set by the catalog item/)
+    expect(createRequest).not.toHaveBeenCalled()
+  })
+
+  // Ondata 2: la categoria della richiesta è quella della voce, per le policy SLA per categoria.
+  it('la richiesta eredita la categoria della voce', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'high', name: 'Sblocco account', category: 'access' })
+    await createServiceRequest(undefined, { input: { title: 'Sblocco', catalogItemId: 'cat-1' } }, endUser)
+    expect(vi.mocked(createRequest).mock.calls[0]![0]).toMatchObject({ priority: 'high', category: 'access' })
+  })
+
+  it('un operatore può indicarne un\'altra', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'low', name: 'Nuovo laptop' })
+    await createServiceRequest(undefined, { input: { title: 'Laptop', priority: 'high', catalogItemId: 'cat-1' } }, ctx)
+    expect(vi.mocked(createRequest).mock.calls[0]![0]).toMatchObject({ priority: 'high' })
+  })
+
+  it('voce senza priorità → errore che la nomina e dice dove si sistema, nessuna richiesta', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: null, name: 'Vecchia voce' })
+    const err = await failure(createServiceRequest(undefined, { input: { title: 'X', catalogItemId: 'cat-9' } }, endUser))
+    expect(err.message).toMatch(/"Vecchia voce" has no priority.*Admin → Service catalog/)
+    expect(createRequest).not.toHaveBeenCalled()
+  })
+
+  it('richiesta generica senza priorità, o con un valore fuori vocabolario → rifiutata', async () => {
+    expect((await failure(createServiceRequest(undefined, { input: { title: 'X' } }, ctx))).message).toMatch(/priority is required/)
+    expect((await failure(createServiceRequest(undefined, { input: { title: 'X', priority: 'urgentissima' } }, ctx))).message).toMatch(/urgentissima/)
+    expect(createRequest).not.toHaveBeenCalled()
+  })
+})
+
+// Ondata 4: dal portale i campi del cliente passano sempre dal controllo.
+describe('createServiceRequest — campi personalizzati', () => {
+  it('dal portale senza campi → il servizio riceve una lista vuota e il canale portal; da operatore resta assente', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ requiresApproval: false, priority: 'high', name: 'Sblocco account' })
+    await createServiceRequest(undefined, { input: { title: 'Sblocco', catalogItemId: 'cat-1' } }, { ...ctx, role: 'end_user', permissions: perms('end_user') })
+    expect(vi.mocked(createRequest).mock.calls[0]![0]).toMatchObject({ customFields: [] })
+    expect(vi.mocked(createRequest).mock.calls[0]![2]).toBe('portal')
   })
 })

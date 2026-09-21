@@ -9,6 +9,16 @@ const PROCESSED_TTL_SECONDS = 24 * 60 * 60
 /** Retry delays in ms: 5s, 30s, 5min — mirrors original RabbitMQ retry logic */
 const RETRY_DELAYS = [5_000, 30_000, 300_000] as const
 
+/**
+ * Jobs a domain-event consumer processes in parallel. Four consumers share
+ * the API process (or the events worker) with the HTTP resolvers and every
+ * other BullMQ worker on ONE Neo4j pool: at 10 each they were 40 of the ~70
+ * concurrent slots contending for it (revisione 2 · D1.1). None of them
+ * needs more than a few jobs in flight — a consumer mostly enqueues work or
+ * sends one notification.
+ */
+export const CONSUMER_CONCURRENCY = 3
+
 function backoffStrategy(attemptsMade: number): number {
   const idx = Math.min(attemptsMade - 1, RETRY_DELAYS.length - 1)
   return RETRY_DELAYS[idx] ?? 300_000
@@ -65,6 +75,22 @@ export abstract class BaseConsumer<T> {
 
   abstract process(event: DomainEvent<T>): Promise<void>
 
+  /**
+   * I tipi di evento che questo consumatore tratta (revisione totale · E-33).
+   *
+   * Ogni evento va a tutte e cinque le code (fan-out), quindi il motore SLA
+   * riceveva anche `event.received`, `ci.health_changed`, `ticket.updated`…
+   * e per ognuno faceva una EXISTS e una SET su Redis, più una riga «no SLA
+   * rule, skipping». Con una tempesta di allarmi erano migliaia di
+   * operazioni Redis al minuto e un log inutile che copriva il resto.
+   *
+   * Chi lo dichiara scarta l'evento PRIMA della deduplica: nessuna
+   * operazione su Redis e una riga di debug. Chi non lo dichiara continua a
+   * vedere tutto, come prima — il fan-out resta la regola, questa è solo la
+   * possibilità di dire «questo non mi riguarda».
+   */
+  protected handles(_eventType: string): boolean { return true }
+
   async start(): Promise<void> {
     this.redis = new Redis(getRedisConnection())
     this.worker = new Worker(
@@ -76,6 +102,8 @@ export abstract class BaseConsumer<T> {
         // first attempt already succeeded must not fire the side effects again
         // (double notification / double SLAStatus). Mark processed only AFTER
         // success, so a genuine failure still retries.
+        // E-33: quello che non riguarda questo consumatore non costa niente.
+        if (!this.handles(event.type)) return
         if (!event.id) throw new Error(`[consumer:${this.queueName}] event without id cannot be deduplicated (type=${event.type})`)
         const dedupKey = `evt:processed:${this.queueName}:${event.id}`
         if (this.redis && (await this.redis.exists(dedupKey))) {
@@ -84,7 +112,22 @@ export abstract class BaseConsumer<T> {
         }
         try {
           await this.process(event)
-          if (this.redis) await this.redis.set(dedupKey, '1', 'EX', PROCESSED_TTL_SECONDS)
+          /**
+           * Il marcatore si scrive DOPO il successo, e se la scrittura non
+           * riesce l'evento NON si ripete (revisione totale · E-32):
+           * l'errore della SET propagava, BullMQ ritentava e il collaterale
+           * — una notifica, una e-mail — partiva due volte. Il lavoro è
+           * fatto: un marcatore mancato è un rischio di doppione al prossimo
+           * rilancio del job, non una ragione per rifarlo adesso. Si dice a
+           * voce alta.
+           */
+          if (this.redis) {
+            try {
+              await this.redis.set(dedupKey, '1', 'EX', PROCESSED_TTL_SECONDS)
+            } catch (err) {
+              console.error(`[consumer:${this.queueName}] processed ${event.id} but the dedup marker was NOT written:`, err)
+            }
+          }
           console.log(`[consumer:${this.queueName}] Processed successfully: ${event.id}`)
         } catch (err) {
           console.error(`[consumer:${this.queueName}] process() threw:`, err)
@@ -93,7 +136,7 @@ export abstract class BaseConsumer<T> {
       },
       {
         connection: getRedisConnection(),
-        concurrency: 10,
+        concurrency: CONSUMER_CONCURRENCY,
         settings: { backoffStrategy },
       },
     )
@@ -118,7 +161,7 @@ export abstract class BaseConsumer<T> {
       }
     })
 
-    console.log(`[consumer:${this.queueName}] Started — concurrency: 10`)
+    console.log(`[consumer:${this.queueName}] Started — concurrency: ${CONSUMER_CONCURRENCY}`)
   }
 
   async stop(): Promise<void> {

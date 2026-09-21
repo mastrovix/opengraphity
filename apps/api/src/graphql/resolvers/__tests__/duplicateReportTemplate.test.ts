@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(),
@@ -20,7 +21,7 @@ const { Mutation } = await import('../reportMutations.js')
 const { getSession } = await import('@opengraphity/neo4j')
 const { assertReportTemplateAccess } = await import('../reportAccess.js')
 
-const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 't1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') }
 
 const SRC_SECTION = {
   id: 'sec-old', order: 3, title: 'Per team', chart_type: 'bar', group_by_node_id: 'n-team', group_by_field: 'name',

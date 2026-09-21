@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { SEARCH_USERS } from '@/graphql/queries'
+import { alpha, colors, palette } from '@/lib/tokens'
 
 interface UserSuggestion { id: string; name: string; email: string }
 
@@ -8,12 +9,14 @@ interface Props {
   value: string
   onChange: (value: string) => void
   placeholder?: string
+  /** Il nome accessibile del campo (il segnaposto non lo è). */
+  label?: string
   onSubmit?: () => void
   rows?: number
   style?: React.CSSProperties
 }
 
-export function MentionInput({ value, onChange, placeholder, onSubmit, rows = 3, style }: Props) {
+export function MentionInput({ value, onChange, placeholder, label, onSubmit, rows = 3, style }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [mentionState, setMentionState] = useState<{
     active: boolean
@@ -92,14 +95,15 @@ export function MentionInput({ value, onChange, placeholder, onSubmit, rows = 3,
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
+        aria-label={label ?? placeholder}
         rows={rows}
-        style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #d1d5db', resize: 'vertical', fontFamily: 'inherit', fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }}
+        style={{ width: '100%', padding: 8, borderRadius: 6, border: `1px solid ${palette.neutral.borderStrong}`, resize: 'vertical', fontFamily: 'inherit', fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }}
       />
       {mentionState.active && users.length > 0 && (
         <div role="listbox" style={{
           position: 'absolute', top: mentionState.dropdownPos.top, left: mentionState.dropdownPos.left,
-          zIndex: 100, background: '#fff', border: '1px solid var(--border)', borderRadius: 8,
-          boxShadow: '0 4px 12px rgba(0,0,0,.12)', minWidth: 220, maxHeight: 200, overflowY: 'auto',
+          zIndex: 100, background: colors.white, border: '1px solid var(--border)', borderRadius: 8,
+          boxShadow: `0 4px 12px ${alpha.black12}`, minWidth: 220, maxHeight: 200, overflowY: 'auto',
         }}>
           {users.map((u, i) => (
             <div
@@ -110,7 +114,7 @@ export function MentionInput({ value, onChange, placeholder, onSubmit, rows = 3,
               onMouseDown={(e) => { e.preventDefault(); insertMention(u) }}
               style={{
                 padding: '6px 10px', cursor: 'pointer', fontSize: 'var(--font-size-body)',
-                background: i === selectedIdx ? '#f0f9ff' : 'transparent',
+                background: i === selectedIdx ? palette.info.light : 'transparent',
               }}
             >
               <strong>{u.name}</strong>{' '}

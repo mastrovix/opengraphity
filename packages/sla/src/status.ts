@@ -15,15 +15,64 @@ export interface SLAStatus {
   resolve_met: boolean
   /** Set when the resolve deadline elapsed unresolved; NEVER cleared by a later resolution. */
   breached: boolean
+  /** QUANDO la violazione è avvenuta (revisione totale · C-8): il digest conta le violazioni del giorno. */
+  breached_at?: string
   /** Instant the entity was resolved/completed, when known. */
   resolved_at?: string
   paused_at?: string
   paused_type?: string   // 'resolve' | 'response' | 'both' — which clock is paused
+  /**
+   * DA QUALE POLICY È NATO questo SLA. Senza, il report non poteva dire quanto
+   * è stata rispettata ciascuna policy — solo il totale e la severità. `id` è
+   * il riferimento (una policy del cliente, o quella di default del prodotto);
+   * `name` è il nome al momento della creazione, per quando la policy viene poi
+   * eliminata. Assenti sugli SLA creati prima di questo campo: non si ricostruiscono.
+   */
+  policy_id?: string
+  policy_name?: string
+  /**
+   * I millisecondi TOTALI di pausa accumulati (revisione totale · E-2). La
+   * ripresa sposta le scadenze di quanto la pausa è durata; questo campo tiene
+   * il totale, così un cambio di policy può riportare lo stesso spostamento
+   * senza ricalcolare la scadenza «vecchia senza pause» — ricalcolo che usava
+   * il fuso e il CALENDARIO della policy NUOVA con i minuti del tier vecchio,
+   * e con una policy 24×7 lanciava («business-hours deadline without a service
+   * calendar») su una policy che di calendario non ha bisogno.
+   */
+  paused_total_ms?: number
+  /**
+   * Quando l'avviso «tempo di presa in carico scaduto» è già stato mandato
+   * (revisione totale · E-12). Alla ripresa di una pausa l'orologio della
+   * risposta veniva riprogrammato ogni volta che `response_met` era falso,
+   * senza sapere se l'avviso era già uscito: un incident non preso in carico
+   * che entrava in pausa dopo la scadenza riceveva un secondo avviso
+   * identico alla ripresa.
+   */
+  response_breach_notified_at?: string
   tier: SLATier
 }
 
 /** Columns returned by every SLAStatus read — one source for the projection. */
-const SLA_STATUS_PROJECTION = `
+/**
+ * Le letture dei ticket usano l'UNIONE DI ETICHETTE (revisione totale ·
+ * E-27): erano `MATCH (e {id, tenant_id}) WHERE e:Incident OR e:Problem OR
+ * e:ServiceRequest`, cioè una scansione di tutti i nodi del database a ogni
+ * evento e a ogni job SLA, perché senza etichetta nel pattern nessun indice è
+ * utilizzabile. `(e:Incident|Problem|ServiceRequest {...})` dice la stessa
+ * cosa e passa dagli indici per etichetta.
+ *
+ * ATTENZIONE, un difetto pagato caro: riscrivendo `getEntityScope` (che
+ * comprende anche `Change`) era rimasto un `OR e:Change` PENZOLANTE dopo il
+ * pattern — Cypher non valido. Il motore SLA lanciava a ogni
+ * `sla.response.start` e a ogni `ticket.team_assigned`, quindi da quel commit
+ * NESSUN ticket riceveva più uno SLA. Niente l'ha visto: i test di `engine`
+ * simulano `getEntityScope`, TypeScript non guarda dentro una stringa, e un
+ * giro nel browser che si limita ad APRIRE le pagine non esegue il consumer.
+ * L'ha trovato il primo giro che ha creato un ticket davvero. Le query di
+ * questo file ora hanno il loro test contro un Neo4j vero
+ * (`__tests__/statusCypher.test.ts`).
+ */
+export const SLA_STATUS_PROJECTION = `
       s.id as id, s.tenant_id as tenant_id, s.entity_id as entity_id,
       s.entity_type as entity_type, s.started_at as started_at,
       s.response_deadline as response_deadline, s.resolve_deadline as resolve_deadline,
@@ -33,7 +82,12 @@ const SLA_STATUS_PROJECTION = `
       s.tier_severity as tier_severity,
       s.tier_response_minutes as tier_response_minutes,
       s.tier_resolve_minutes as tier_resolve_minutes,
-      s.tier_business_hours as tier_business_hours
+      s.tier_business_hours as tier_business_hours,
+      s.tier_warning_minutes as tier_warning_minutes,
+      s.policy_id as policy_id, s.policy_name as policy_name,
+      s.response_breach_notified_at as response_breach_notified_at,
+      s.paused_total_ms as paused_total_ms,
+      s.breached_at as breached_at
 `
 
 export type SLAPauseType = 'resolve' | 'response' | 'both'
@@ -52,7 +106,7 @@ function writeSession() {
 
 // ── Node → SLAStatus mapping ─────────────────────────────────────────────────
 
-function mapToSLAStatus(props: Record<string, unknown>): SLAStatus {
+export function mapToSLAStatus(props: Record<string, unknown>): SLAStatus {
   return {
     id:                props['id']                as string,
     tenant_id:         props['tenant_id']         as string,
@@ -64,14 +118,23 @@ function mapToSLAStatus(props: Record<string, unknown>): SLAStatus {
     response_met:      props['response_met']      as boolean,
     resolve_met:       props['resolve_met']       as boolean,
     breached:          props['breached']          as boolean,
+    breached_at:       (props['breached_at'] ?? undefined) as string | undefined,
     resolved_at:       (props['resolved_at'] ?? undefined) as string | undefined,
     paused_at:         props['paused_at']         as string | undefined,
     paused_type:       props['paused_type']       as string | undefined,
+    policy_id:         (props['policy_id']   ?? undefined) as string | undefined,
+    policy_name:       (props['policy_name'] ?? undefined) as string | undefined,
+    // E-2 e E-12: lo spostamento accumulato dalle pause e l'avviso della presa
+    // in carico già mandato. `toNumber` non serve: la sessione del pacchetto
+    // converte gli Integer di Neo4j.
+    paused_total_ms:   props['paused_total_ms'] == null ? undefined : Number(props['paused_total_ms']),
+    response_breach_notified_at: (props['response_breach_notified_at'] ?? undefined) as string | undefined,
     tier: {
       severity:         props['tier_severity']         as string,
       response_minutes: props['tier_response_minutes'] as number,
       resolve_minutes:  props['tier_resolve_minutes']  as number,
       business_hours:   props['tier_business_hours']   as boolean,
+      warning_minutes:  props['tier_warning_minutes']  as number,
     },
   }
 }
@@ -87,8 +150,7 @@ function mapToSLAStatus(props: Record<string, unknown>): SLAStatus {
  */
 export async function getEntityCreatedAt(tenantId: string, entityId: string): Promise<Date> {
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})
     RETURN e.created_at AS created_at
   `
   const session = readSession()
@@ -96,6 +158,61 @@ export async function getEntityCreatedAt(tenantId: string, entityId: string): Pr
     const row = await runQueryOne<{ created_at: unknown }>(session, cypher, { tenantId, entityId })
     if (!row) throw new Error(`[sla:status] Entity ${entityId} not found for tenant ${tenantId}`)
     return parseInstant(row.created_at, `created_at of entity ${entityId}`)
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * La CATEGORIA e il TEAM dell'entità, per scegliere la policy SLA.
+ *
+ * Il difetto che questo chiude (terza revisione, provato dal browser): la
+ * pagina «Policy SLA» offre quattro ambiti — priorità, categoria, team, e le
+ * loro combinazioni — e il selettore riceveva `null` per categoria e team,
+ * SEMPRE. Delle cinque specificità che sa distinguere restavano raggiungibili
+ * solo due: «priorità sola» e «tutto». Una policy con una categoria o un team
+ * non si applicava mai, e la pagina la mostrava con la sua riga «Si applica a:
+ * Incident con categoria network» — una promessa che il motore non manteneva,
+ * senza un log, senza un avviso.
+ *
+ * Entità senza categoria o senza team: `null`, che è il valore giusto — una
+ * policy che chiede una categoria non deve applicarsi a un ticket che non ne
+ * ha.
+ */
+export async function getEntityScope(
+  tenantId: string, entityId: string,
+): Promise<{ category: string | null; teamId: string | null }> {
+  const cypher = `
+    MATCH (e:Incident|Problem|ServiceRequest|Change {id: $entityId, tenant_id: $tenantId})
+    OPTIONAL MATCH (e)-[:ASSIGNED_TO_TEAM]->(t:Team)
+    RETURN e.category AS category, t.id AS teamId
+  `
+  const session = readSession()
+  try {
+    const row = await runQueryOne<{ category: unknown; teamId: unknown }>(session, cypher, { tenantId, entityId })
+    if (!row) throw new Error(`[sla:status] Entity ${entityId} not found for tenant ${tenantId}`)
+    return {
+      category: typeof row.category === 'string' && row.category !== '' ? row.category : null,
+      teamId:   typeof row.teamId   === 'string' && row.teamId   !== '' ? row.teamId   : null,
+    }
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * La priorità del ticket con cui si sceglie la policy: l'incident la tiene in
+ * `severity`, problem e richieste in `priority`. Serve a chi avvia uno SLA
+ * dopo la creazione (azione di passo «avvia SLA»).
+ */
+export async function getEntityPriority(tenantId: string, entityType: 'incident' | 'problem' | 'service_request', entityId: string): Promise<unknown> {
+  const label = entityType === 'incident' ? 'Incident' : entityType === 'problem' ? 'Problem' : 'ServiceRequest'
+  const prop  = entityType === 'incident' ? 'severity' : 'priority'
+  const session = readSession()
+  try {
+    const row = await runQueryOne<{ priority: unknown }>(session, `MATCH (e:${label} {id: $entityId, tenant_id: $tenantId}) RETURN e.${prop} AS priority`, { tenantId, entityId })
+    if (!row) throw new Error(`[sla:status] ${entityType} ${entityId} not found for tenant ${tenantId}`)
+    return row.priority
   } finally {
     await session.close()
   }
@@ -130,14 +247,13 @@ export async function createSLAStatus(params: {
   }
 
   const now              = params.startedAt ?? new Date()
-  const responseDeadline = calculateDeadline(now, tier.response_minutes, tier.business_hours, policy.timezone)
-  const resolveDeadline  = calculateDeadline(now, tier.resolve_minutes,  tier.business_hours, policy.timezone)
+  const responseDeadline = calculateDeadline(now, tier.response_minutes, tier.business_hours, policy.timezone, policy.calendar)
+  const resolveDeadline  = calculateDeadline(now, tier.resolve_minutes,  tier.business_hours, policy.timezone, policy.calendar)
 
   const id = randomUUID()
 
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})
     // MERGE (not CREATE): an at-least-once redelivery of entity.created must not
     // create a second SLAStatus for the same entity. ON CREATE sets the fields
     // once; a redelivery returns the existing status unchanged.
@@ -154,7 +270,10 @@ export async function createSLAStatus(params: {
       s.tier_severity         = $tierSeverity,
       s.tier_response_minutes = $tierResponseMinutes,
       s.tier_resolve_minutes  = $tierResolveMinutes,
-      s.tier_business_hours   = $tierBusinessHours
+      s.tier_business_hours   = $tierBusinessHours,
+      s.tier_warning_minutes  = $tierWarningMinutes,
+      s.policy_id             = $policyId,
+      s.policy_name           = $policyName
     RETURN ${SLA_STATUS_PROJECTION}
   `
 
@@ -172,6 +291,9 @@ export async function createSLAStatus(params: {
       tierResponseMinutes:  tier.response_minutes,
       tierResolveMinutes:   tier.resolve_minutes,
       tierBusinessHours:    tier.business_hours,
+      tierWarningMinutes:   tier.warning_minutes,
+      policyId:             policy.id,
+      policyName:           policy.name,
     })
 
     const row = results[0]
@@ -187,8 +309,7 @@ export async function getSLAStatus(
   entityId: string,
 ): Promise<SLAStatus | null> {
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     RETURN ${SLA_STATUS_PROJECTION}
   `
 
@@ -201,10 +322,58 @@ export async function getSLAStatus(
   }
 }
 
+/**
+ * Numero e titolo del ticket che porta lo SLA, per le notifiche. Giro nel
+ * browser del 14 set 2026 (#18): «SLA about to be breached» arrivava col
+ * corpo «29» — i minuti e basta, senza dire di quale ticket.
+ */
+/** Come il ticket compare nelle notifiche SLA: numero, titolo e i suoi valori veri. */
+export interface TicketReference {
+  number:   string
+  title:    string
+  severity: string | null
+  status:   string | null
+}
+
+export async function ticketReference(tenantId: string, entityId: string): Promise<TicketReference | null> {
+  const session = readSession()
+  try {
+    const row = await runQueryOne<{ number: string | null; title: string | null; severity: string | null; status: string | null }>(session, `
+      MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})
+      RETURN coalesce(e.number, e.code) AS number, e.title AS title,
+             coalesce(e.severity, e.priority) AS severity, e.status AS status
+    `, { tenantId, entityId })
+    if (!row) return null
+    if (!row.number || !row.title) throw new Error(`[sla:status] ticket ${entityId} has no number or title: the SLA notification would not say which ticket`)
+    // `severity` e `status` viaggiano con l'evento perché la card Slack/Teams
+    // della violazione li scriveva CABLATI («Severity: HIGH · Status: open»)
+    // per qualunque ticket, anche un critical in escalation (revisione totale
+    // · E-8). Sono facoltativi: un ticket senza priorità resta possibile.
+    return { number: row.number, title: row.title, severity: row.severity ?? null, status: row.status ?? null }
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * Registra che l'avviso di scadenza della presa in carico è stato mandato
+ * (E-12): alla ripresa di una pausa non se ne manda un secondo.
+ */
+export async function markResponseBreachNotified(tenantId: string, entityId: string, at: string = new Date().toISOString()): Promise<void> {
+  const session = writeSession()
+  try {
+    await runQuery(session, `
+      MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
+      SET s.response_breach_notified_at = coalesce(s.response_breach_notified_at, $at)
+    `, { tenantId, entityId, at })
+  } finally {
+    await session.close()
+  }
+}
+
 export async function markResponseMet(tenantId: string, entityId: string): Promise<void> {
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     SET s.response_met = true
   `
   const session = writeSession()
@@ -247,20 +416,31 @@ export async function markResolveMet(
   const effectiveDeadlineMs = deadline.getTime() + pauseShiftMs
   const met = resolvedAt.getTime() <= effectiveDeadlineMs
 
+  /**
+   * La pausa ancora aperta alla risoluzione si SCRIVE nella scadenza, come
+   * farebbe `resumeSLA` (revisione totale · E-21). Prima serviva solo a
+   * decidere l'esito e poi si perdeva: un ticket stato due giorni in attesa e
+   * risolto da un passo «in attesa → risolto» ripartiva, se riaperto, da una
+   * scadenza che non teneva conto di quei due giorni — e violava quasi
+   * subito. Il totale delle pause segue la scadenza, così anche il cambio di
+   * policy lo ritrova.
+   */
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
-    SET s.resolve_met = $met,
-        s.breached    = CASE WHEN $met THEN coalesce(s.breached, false) ELSE true END,
-        s.resolved_at = $resolvedAt,
-        s.paused_at   = null,
-        s.paused_type = null
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
+    SET s.resolve_met       = $met,
+        s.breached          = CASE WHEN $met THEN coalesce(s.breached, false) ELSE true END,
+        s.resolved_at       = $resolvedAt,
+        s.resolve_deadline  = $effectiveDeadline,
+        s.paused_total_ms   = coalesce(s.paused_total_ms, 0) + $pauseShiftMs,
+        s.paused_at         = null,
+        s.paused_type       = null
     RETURN ${SLA_STATUS_PROJECTION}
   `
   const session = writeSession()
   try {
     const row = await runQueryOne<Record<string, unknown>>(session, cypher, {
       tenantId, entityId, met, resolvedAt: resolvedAt.toISOString(),
+      effectiveDeadline: new Date(effectiveDeadlineMs).toISOString(), pauseShiftMs,
     })
     if (!row) throw new Error(`[sla:status] markResolveMet(${entityId}): SLAStatus vanished during update`)
     return mapToSLAStatus(row)
@@ -281,14 +461,15 @@ export async function pauseSLA(
   tenantId: string,
   entityId: string,
   slaType: SLAPauseType = 'both',
+  /** L'istante dell'evento che mette in pausa (SL-8): non quello in cui il consumatore lo elabora. */
+  pausedAt: Date = new Date(),
 ): Promise<SLAStatus | null> {
   const current = await getSLAStatus(tenantId, entityId)
-  if (!current || current.paused_at || current.resolve_met) return null
+  if (!current || current.paused_at || current.resolve_met || current.resolved_at) return null
 
-  const now = new Date().toISOString()
+  const now = pausedAt.toISOString()
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     SET s.paused_at = $now, s.paused_type = $slaType
   `
   const session = writeSession()
@@ -307,12 +488,21 @@ export async function pauseSLA(
  * `paused_type` recorded at pause time. Returns null if the SLA was not paused.
  * The caller re-schedules the timers against the new deadlines.
  */
-export async function resumeSLA(tenantId: string, entityId: string): Promise<SLAStatus | null> {
+export async function resumeSLA(
+  tenantId: string,
+  entityId: string,
+  /**
+   * L'istante dell'evento che fa ripartire l'orologio — revisione del 14 set
+   * 2026 · SL-8: la pausa si misurava con l'ora del consumatore, quindi una
+   * coda in ritardo allungava la pausa (e la scadenza) di quanto era in ritardo.
+   */
+  resumedAt: Date = new Date(),
+): Promise<SLAStatus | null> {
   const current = await getSLAStatus(tenantId, entityId)
   if (!current || !current.paused_at) return null
 
   const pausedType = (current.paused_type ?? 'both') as SLAPauseType
-  const pausedMs = Date.now() - new Date(current.paused_at).getTime()
+  const pausedMs = resumedAt.getTime() - new Date(current.paused_at).getTime()
   // Guard against a corrupt/future paused_at producing a negative shift.
   const shiftMs = Math.max(0, pausedMs)
   const shiftResponse = pausedType === 'response' || pausedType === 'both'
@@ -325,16 +515,17 @@ export async function resumeSLA(tenantId: string, entityId: string): Promise<SLA
     : current.resolve_deadline
 
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
     SET s.response_deadline = $newResponse,
         s.resolve_deadline  = $newResolve,
         s.paused_at         = null,
-        s.paused_type       = null
+        s.paused_type       = null,
+        // E-2: il totale delle pause, che il cambio di policy riporta.
+        s.paused_total_ms   = coalesce(s.paused_total_ms, 0) + $shiftMs
   `
   const session = writeSession()
   try {
-    await runQuery(session, cypher, { tenantId, entityId, newResponse, newResolve })
+    await runQuery(session, cypher, { tenantId, entityId, newResponse, newResolve, shiftMs })
   } finally {
     await session.close()
   }
@@ -347,15 +538,115 @@ export async function resumeSLA(tenantId: string, entityId: string): Promise<SLA
   }
 }
 
-export async function markBreached(tenantId: string, entityId: string): Promise<void> {
+/**
+ * Il ticket riaperto riapre il suo SLA — revisione del 14 set 2026 · SL-3.
+ *
+ * Alla risoluzione lo SLA si chiude (`resolved_at`, `resolve_met`) e i job si
+ * annullano; prima una transizione da risolto a un passo aperto non lo
+ * riapriva, e il ticket tornava in lavorazione senza scadenza. La regola:
+ * il tempo passato da risolto non conta, come una pausa — la scadenza di
+ * risoluzione si sposta in avanti di quanto il ticket è rimasto risolto.
+ * `breached` resta com'era (una violazione non si cancella). `null` se non
+ * c'è uno SLA chiuso da riaprire.
+ */
+export async function reopenSLA(tenantId: string, entityId: string, reopenedAt: Date): Promise<SLAStatus | null> {
+  const current = await getSLAStatus(tenantId, entityId)
+  if (!current || !current.resolved_at) return null
+  const resolvedAt = parseInstant(current.resolved_at, `resolved_at of SLAStatus ${current.id}`)
+  const shiftMs = Math.max(0, reopenedAt.getTime() - resolvedAt.getTime())
+  const newResolve = new Date(parseInstant(current.resolve_deadline, `resolve_deadline of SLAStatus ${current.id}`).getTime() + shiftMs).toISOString()
   const cypher = `
-    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
-    WHERE e:Incident OR e:Problem OR e:ServiceRequest
-    SET s.breached = true
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
+    SET s.resolve_deadline = $newResolve,
+        s.resolved_at      = null,
+        s.resolve_met      = false,
+        s.reopened_at      = $reopenedAt
+    RETURN ${SLA_STATUS_PROJECTION}
   `
   const session = writeSession()
   try {
-    await runQuery(session, cypher, { tenantId, entityId })
+    const row = await runQueryOne<Record<string, unknown>>(session, cypher, { tenantId, entityId, newResolve, reopenedAt: reopenedAt.toISOString() })
+    if (!row) throw new Error(`[sla:status] reopenSLA(${entityId}): SLAStatus vanished during update`)
+    return mapToSLAStatus(row)
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * Sostituisce la policy di uno SLA in corso — SL-10. Le scadenze si ricalcolano
+ * da `started_at` con i minuti della policy nuova, e lo spostamento già
+ * accumulato dalle pause resta (differenza fra la scadenza corrente e quella
+ * che la policy vecchia avrebbe dato senza pause). `null` se lo SLA è chiuso,
+ * fissato da una regola, o già di quella policy.
+ */
+export async function repolicySLA(tenantId: string, entityId: string, policy: SLAPolicy, severity: string): Promise<SLAStatus | null> {
+  const current = await getSLAStatus(tenantId, entityId)
+  if (!current || current.resolved_at || !current.policy_id || current.policy_id === policy.id) return null
+  const tier = policy.tiers.find((t) => t.severity === severity)
+  if (!tier) throw new Error(`[sla:status] repolicySLA(${entityId}): policy "${policy.name}" has no tier for severity "${severity}"`)
+  const started = parseInstant(current.started_at, `started_at of SLAStatus ${current.id}`)
+  /**
+   * Lo spostamento già accumulato dalle pause è un DATO (`paused_total_ms`),
+   * non una differenza da ricalcolare (revisione totale · E-2). Prima si
+   * ricostruiva la scadenza «vecchia senza pause» con i minuti del tier
+   * vecchio ma il fuso e il CALENDARIO della policy NUOVA: se il tier vecchio
+   * era in orario di servizio e la policy nuova è 24×7 (nessun calendario),
+   * `calculateDeadline` lanciava, l'evento `ticket.team_assigned` falliva
+   * quattro volte e lo SLA restava sulla policy vecchia; con calendari
+   * diversi lo spostamento era comunque sbagliato.
+   *
+   * Gli SLA aperti PRIMA di questo campo non l'hanno: per loro lo
+   * spostamento è zero e le scadenze nuove partono pulite dalla policy nuova.
+   * È una perdita dichiarata (il tempo di pausa già scontato), non un errore
+   * silenzioso: ricostruirla richiederebbe il calendario della policy vecchia,
+   * che lo stato non ha mai conservato.
+   */
+  const pausedShift = Math.max(0, current.paused_total_ms ?? 0)
+  const newResponse = new Date(calculateDeadline(started, tier.response_minutes, tier.business_hours, policy.timezone, policy.calendar).getTime() + pausedShift).toISOString()
+  const newResolve  = new Date(calculateDeadline(started, tier.resolve_minutes,  tier.business_hours, policy.timezone, policy.calendar).getTime() + pausedShift).toISOString()
+  const cypher = `
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
+    SET s.response_deadline     = $newResponse,
+        s.resolve_deadline      = $newResolve,
+        s.tier_response_minutes = $response,
+        s.tier_resolve_minutes  = $resolve,
+        s.tier_business_hours   = $bh,
+        s.tier_warning_minutes  = $warning,
+        s.policy_id             = $policyId,
+        s.policy_name           = $policyName
+    RETURN ${SLA_STATUS_PROJECTION}
+  `
+  const session = writeSession()
+  try {
+    const row = await runQueryOne<Record<string, unknown>>(session, cypher, {
+      tenantId, entityId, newResponse, newResolve, response: tier.response_minutes, resolve: tier.resolve_minutes,
+      bh: tier.business_hours, warning: tier.warning_minutes, policyId: policy.id, policyName: policy.name,
+    })
+    if (!row) throw new Error(`[sla:status] repolicySLA(${entityId}): SLAStatus vanished during update`)
+    return mapToSLAStatus(row)
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * Marca la violazione e QUANDO è avvenuta (revisione totale · C-8): senza
+ * `breached_at` il riquadro «SLA violati» del digest contava gli SLA
+ * *iniziati* nelle ultime 24 ore che risultano violati — un numero sbagliato
+ * in entrambe le direzioni (uno violato stanotte ma partito tre giorni fa non
+ * c'era; uno partito ieri e che violerà fra una settimana veniva contato solo
+ * se violava entro le 24 ore). L'istante non si sposta se la funzione viene
+ * ripetuta: la violazione è avvenuta una volta sola.
+ */
+export async function markBreached(tenantId: string, entityId: string, at: string = new Date().toISOString()): Promise<void> {
+  const cypher = `
+    MATCH (e:Incident|Problem|ServiceRequest {id: $entityId, tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
+    SET s.breached = true, s.breached_at = coalesce(s.breached_at, $at)
+  `
+  const session = writeSession()
+  try {
+    await runQuery(session, cypher, { tenantId, entityId, at })
   } finally {
     await session.close()
   }

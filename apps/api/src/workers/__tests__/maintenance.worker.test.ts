@@ -4,8 +4,9 @@
  * the archive (verify-backup) — a failed verification renames it to
  * `.invalid`, fails the job and counts a metric — then prunes to the last
  * BACKUP_RETENTION archives (default 14; `.partial`/`.invalid` rotate too).
- * Rotation runs even after a failed backup. The repeatable job is
- * re-registered at startup (stale copies removed first).
+ * Rotation runs even after a failed backup. The repeatable jobs are
+ * re-registered at startup (stale copies removed first). Ondata 4: the daily
+ * `purge_events` job (03:30) delegates to services/eventRetention.ts.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Job } from 'bullmq'
@@ -38,6 +39,8 @@ vi.mock('../../middleware/metrics.js', () => ({
   backupRunsTotal:            { inc: (...a: unknown[]) => metricInc(...a) },
   backupLastSuccessTimestamp: { set: (...a: unknown[]) => gaugeSet(...a) },
 }))
+const purgeResolvedEvents = vi.fn()
+vi.mock('../../services/eventRetention.js', () => ({ purgeResolvedEvents: (...a: unknown[]) => purgeResolvedEvents(...a) }))
 
 const readdirSync = vi.fn()
 const statSync = vi.fn()
@@ -68,7 +71,14 @@ vi.stubEnv('ATTACHMENT_DIR', '/var/lib/opengraphity/attachments')
 vi.stubEnv('BACKUP_SKIP_KEYCLOAK', 'true')
 resetConfigCache()
 
-const { startMaintenanceWorker, MAINTENANCE_QUEUE, readBackupRetention } = await import('../maintenance.worker.js')
+// F10: la pulizia delle notifiche in-app delega all'archivio del pacchetto.
+const pruneInbox = vi.fn(async (_tenantId: string, _before: string) => 7)
+vi.mock('@opengraphity/notifications', () => ({ pruneInbox: (t: string, b: string) => pruneInbox(t, b) }))
+// Verifica «Cosa resta cablato», ondata 2: la durata è di ogni organizzazione.
+const retentionByTenant = vi.fn(async () => [{ tenantId: 'c-one', days: 30 }, { tenantId: 'c-two', days: 90 }, { tenantId: 'c-new', days: null as number | null }])
+vi.mock('../../lib/tenantInAppRetention.js', () => ({ inAppRetentionByTenant: () => retentionByTenant() }))
+
+const { startMaintenanceWorker, MAINTENANCE_QUEUE, readBackupRetention, REPEATABLE_JOBS } = await import('../maintenance.worker.js')
 
 const BACKUP_DIR = '/var/backups/opengraphity'
 const ARCHIVE    = `${BACKUP_DIR}/backup_new.tar.gz`
@@ -118,6 +128,26 @@ describe('startMaintenanceWorker', () => {
     expect(queue.add).toHaveBeenCalledWith('backup_database', {}, { repeat: { pattern: '0 0 * * *' } })
     expect(createWorker).toHaveBeenCalledWith(MAINTENANCE_QUEUE, expect.any(Function), { concurrency: 1 })
     expect(logInfo).toHaveBeenCalledWith({ backupDir: BACKUP_DIR, retention: 14 }, 'Maintenance worker started')
+  })
+
+  it('ondata 4: registra anche purge_events alle 03:30 e rimuove le sue copie stantie', async () => {
+    queue.getRepeatableJobs.mockResolvedValue([{ name: 'purge_events', key: 'stale-purge' }, { name: 'backup_database', key: 'stale-backup' }])
+    await startMaintenanceWorker()
+    expect(REPEATABLE_JOBS.map((j) => [j.name, j.pattern])).toEqual([
+      ['backup_database', '0 0 * * *'],
+      ['purge_events', '30 3 * * *'],
+      ['purge_inapp_notifications', '45 3 * * *'],
+      // Moduli del catalogo, ondata 2: le bozze di modulo mai reclamate.
+      ['purge_form_drafts', '15 4 * * *'],
+      // Miglioramento continuo, ondata 3: i due registri di log si purgano...
+      ['purge_server_logs', '0 5 * * *'],
+      // ...e le firme degli errori diventano eventi ogni quarto d'ora, perché
+      // un guasto in corso non aspetta la notte.
+      ['server_logs_to_events', '*/15 * * * *'],
+    ])
+    expect(queue.removeRepeatableByKey.mock.calls.map((c) => c[0]).sort()).toEqual(['stale-backup', 'stale-purge'])
+    expect(queue.add).toHaveBeenCalledWith('purge_events', {}, { repeat: { pattern: '30 3 * * *' } })
+    expect(queue.add).toHaveBeenCalledTimes(REPEATABLE_JOBS.length)
   })
 
   it('registrazione del repeatable che fallisce → errore di startup, nessun worker creato', async () => {
@@ -203,9 +233,40 @@ describe('job backup_database', () => {
   })
 })
 
+describe('job purge_events (ondata 4)', () => {
+  it('delega a purgeResolvedEvents e logga i conteggi per tenant; un errore (tenant senza policy) fa fallire il job', async () => {
+    const result = { tenants: 2, purged: 12, failed: 0, perTenant: [{ tenantId: 'acme', retentionDays: 90, cutoff: 'C', purged: 12 }, { tenantId: 'globex', retentionDays: 0, cutoff: null, purged: 0 }] }
+    purgeResolvedEvents.mockResolvedValue(result)
+    await expect(processor(job('purge_events'))).resolves.toBeUndefined()
+    expect(purgeResolvedEvents).toHaveBeenCalledTimes(1)
+    expect(logInfo).toHaveBeenCalledWith({ tenants: 2, purged: 12, perTenant: result.perTenant }, 'Resolved events purged (retention)')
+    expect(runBackup).not.toHaveBeenCalled()
+
+    purgeResolvedEvents.mockRejectedValueOnce(new Error('purgeResolvedEvents: 1/2 tenants failed'))
+    await expect(processor(job('purge_events'))).rejects.toThrow(/1\/2 tenants failed/)
+  })
+})
+
 describe('job sconosciuto', () => {
   it('dovrebbe fallire esplicitamente — BUG: maintenance.worker.ts logga un warn e completa il job (fallback silenzioso)', async () => {
     await expect(processor(job('vacuum_everything'))).rejects.toThrow()
   })
 
 })
+
+/** Revisione del 14 set 2026 · F10, e ondata 2 della verifica «Cosa resta cablato»: la durata la sceglie ogni organizzazione. */
+describe('job purge_inapp_notifications', () => {
+  it('pulisce ogni organizzazione con la SUA durata, e salta dicendolo chi non l\'ha scelta', async () => {
+    const before = Date.now()
+    await expect(processor(job('purge_inapp_notifications'))).resolves.toBeUndefined()
+    expect(pruneInbox.mock.calls.map((c) => c[0])).toEqual(['c-one', 'c-two'])
+    const cutoffOne = Date.parse(pruneInbox.mock.calls[0]![1])
+    const cutoffTwo = Date.parse(pruneInbox.mock.calls[1]![1])
+    expect(before - cutoffOne).toBeGreaterThanOrEqual(30 * 86_400_000 - 1000)
+    expect(before - cutoffOne).toBeLessThan(31 * 86_400_000)
+    expect(before - cutoffTwo).toBeGreaterThanOrEqual(90 * 86_400_000 - 1000)
+    expect(logInfo).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'c-two', deleted: 7, retentionDays: 90 }), 'In-app notifications pruned')
+    expect(logWarn).toHaveBeenCalledWith({ tenantId: 'c-new' }, expect.stringMatching(/NOT pruned.*Settings → Organization/))
+  })
+})
+

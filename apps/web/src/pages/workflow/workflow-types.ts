@@ -4,6 +4,8 @@ export interface WFStep {
   id:           string
   name:         string
   label:        string
+  /** Le traduzioni spedite dell'etichetta (secondo giro UI · V-5: il pannello avvisa prima di perderle). */
+  labels?:      { language: string; label: string }[]
   type:         'start' | 'standard' | 'end' | 'parallel_fork' | 'parallel_join' | 'timer_wait' | 'sub_workflow'
   enterActions: string | null
   exitActions:  string | null
@@ -15,6 +17,20 @@ export interface WFStep {
   isTerminal?:  boolean
   isOpen?:      boolean
   category?:    string | null
+  /**
+   * Lo SCOPO del passo (vocabolario chiuso `WORKFLOW_STEP_PURPOSES`): che ruolo
+   * ha nel processo. È quello che le regole di dominio riconoscono, così un
+   * passo rinominato continua a funzionare. `null` = nessuno scopo, legittimo.
+   */
+  purpose?:     string | null
+  /** La SCADENZA del passo (JSON di `StepDeadline`); null = nessuna. */
+  deadline?:    string | null
+  /**
+   * Istanze di workflow ferme ORA su questo step. > 0 ⇒ eliminarlo lascerebbe
+   * quei ticket senza step corrente: il pannello spegne «Elimina step» e dice
+   * quante sono. `undefined` = la query non l'ha chiesto.
+   */
+  currentInstances?: number
   // Posizione salvata dal designer; null/undefined → layout di default
   positionX?:   number | null
   positionY?:   number | null
@@ -50,7 +66,6 @@ export interface WorkflowDefinition {
   entityType:      string
   version:         number
   active:          boolean
-  changeSubtype:   string | null
   steps:           WFStep[]
   transitions:     WFTransition[]
 }

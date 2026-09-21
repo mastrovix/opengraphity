@@ -6,6 +6,8 @@ export interface OLAContractLite {
   type: string            // ola | uc
   resolve_minutes: number
   business_hours: boolean
+  /** Il calendario con cui conta l'orario di servizio; null quando conta 24×7. */
+  calendar_id: string | null
 }
 
 // Resolution timestamp per entity type — an entity with this field set is
@@ -19,7 +21,8 @@ const OLA_RESOLVED_FIELD: Record<string, { label: string; field: string }> = {
 
 /**
  * Active OLA/UC contracts covering an entity type (its own type or 'any').
- * Used to schedule proactive breach checks when the entity is created.
+ * Used on deletion to drop the per-ticket timers queued before the OLA sweep
+ * (secondo giro UI del 15 set 2026) replaced them.
  */
 export async function getActiveOLAContractsFor(tenantId: string, entityType: string): Promise<OLAContractLite[]> {
   const session = getSession(undefined, 'READ')
@@ -29,7 +32,8 @@ export async function getActiveOLAContractsFor(tenantId: string, entityType: str
         MATCH (o:OLAContract {tenant_id: $tenantId})
         WHERE coalesce(o.enabled, true) = true AND (o.entity_type = $entityType OR o.entity_type = 'any')
         RETURN o.id AS id, o.name AS name, o.type AS type,
-               o.resolve_minutes AS resolveMinutes, coalesce(o.business_hours, false) AS businessHours
+               o.resolve_minutes AS resolveMinutes, coalesce(o.business_hours, false) AS businessHours,
+               o.calendar_id AS calendarId
       `, { tenantId, entityType }),
     )
     return res.records.map((r) => ({
@@ -38,7 +42,28 @@ export async function getActiveOLAContractsFor(tenantId: string, entityType: str
       type:            r.get('type') as string,
       resolve_minutes: toNumber(r.get('resolveMinutes')),
       business_hours:  r.get('businessHours') as boolean,
+      calendar_id:     (r.get('calendarId') as string | null) ?? null,
     }))
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * Il fuso del tenant, per i controlli OLA/UC in orario lavorativo. Fail-loud:
+ * un tenant senza fuso sposterebbe ogni scadenza in silenzio.
+ */
+export async function getTenantTimezone(tenantId: string): Promise<string> {
+  const session = getSession(undefined, 'READ')
+  try {
+    const res = await session.executeRead((tx) =>
+      tx.run('MATCH (t:Tenant {id: $tenantId}) RETURN t.timezone AS timezone', { tenantId }),
+    )
+    const tz = res.records[0]?.get('timezone') as unknown
+    if (typeof tz !== 'string' || tz === '') {
+      throw new Error(`[sla:ola] Tenant ${tenantId} has no timezone configured — OLA/UC checks cannot compute business-hours deadlines`)
+    }
+    return tz
   } finally {
     await session.close()
   }
@@ -66,3 +91,4 @@ export async function isEntityResolved(tenantId: string, entityType: string, ent
     await session.close()
   }
 }
+

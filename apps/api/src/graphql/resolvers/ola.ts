@@ -1,10 +1,15 @@
 import { v4 as uuidv4 } from 'uuid'
-import { runQuery, toNumber } from '@opengraphity/neo4j'
+import { assertComplianceObjective, calendarChoice, calendarNameOf } from '../../lib/serviceTargets.js'
+import { runQuery, runQueryOne, toNumber, type Queryable } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
 import { audit } from '../../lib/audit.js'
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
+import type { TeamSourcing } from '../../lib/teamSourcing.js'
+import { calendarFor, getTenantTimezone } from '@opengraphity/sla'
+import { evaluateOLATeamTickets, OLA_CONCLUDED_FIELD, olaConcludedTicketsCypher, olaEntityTypes, olaTeamMeasure, olaTicketFactsCypher, type OLATeamMeasure, type OLATicketFacts } from '../../lib/olaAttainment.js'
+import { loadChangeUnits, type OLAChangeUnit } from '../../lib/olaChangeUnits.js'
 
 type Props = Record<string, unknown>
 
@@ -15,13 +20,6 @@ function toNum(v: unknown): number | null {
 const VALID_TYPES = ['ola', 'uc']
 const VALID_ENTITY_TYPES = ['incident', 'problem', 'change', 'service_request', 'any']
 
-// Resolved-timestamp field per entity type — used by the attainment calc.
-const RESOLVED_FIELD: Record<string, { label: string; resolvedField: string }> = {
-  incident:        { label: 'Incident',        resolvedField: 'resolved_at' },
-  problem:         { label: 'Problem',         resolvedField: 'resolved_at' },
-  service_request: { label: 'ServiceRequest',  resolvedField: 'completed_at' },
-  change:          { label: 'Change',          resolvedField: 'completed_at' },
-}
 
 function mapOLA(p: Props, teamName: string | null) {
   return {
@@ -33,6 +31,9 @@ function mapOLA(p: Props, teamName: string | null) {
     responseMinutes: toNumber(p['response_minutes']),
     resolveMinutes:  toNumber(p['resolve_minutes']),
     businessHours:   (p['business_hours']  ?? false) as boolean,
+    calendarId:      (p['calendar_id']     ?? null) as string | null,
+    complianceTarget:  p['compliance_target']  == null ? null : Number(p['compliance_target']),
+    complianceWarning: p['compliance_warning'] == null ? null : Number(p['compliance_warning']),
     partyType:       (p['party_type']      ?? null) as string | null,
     partyName:       (p['party_name']      ?? null) as string | null,
     teamId:          (p['team_id']         ?? null) as string | null,
@@ -54,6 +55,76 @@ export async function olaContracts(_: unknown, args: { type?: string }, ctx: Gra
       ORDER BY o.type, o.name
     `, { tenantId: ctx.tenantId, type: args.type ?? null })
     return rows.map((r) => mapOLA(r.props, r.teamName))
+  })
+}
+
+// ── I contratti di un ticket ──────────────────────────────────────────────────
+
+/**
+ * Gli OLA/UC che riguardano un ticket, per il riquadro nel dettaglio (secondo
+ * giro UI del 15 set 2026: nel dettaglio gli OLA non si vedevano). Stesse
+ * regole del report e del controllo allo scatto: un contratto attivo del tipo
+ * del ticket (o `any`) vale se il ticket è del suo team (o il contratto non ha
+ * team) ed è nato dopo il contratto. Gli altri tornano con il motivo, così il
+ * riquadro può dire perché non contano invece di nasconderli.
+ *
+ * Una change non ha un team: un contratto torna una volta per ogni misura dei
+ * suoi task che conta (`olaChangeUnits.ts`), con `unitKind` e il CI.
+ */
+export async function ticketOLAs(_: unknown, args: { entityType: string; entityId: string }, ctx: GraphQLContext) {
+  const mapping = OLA_CONCLUDED_FIELD[args.entityType]
+  if (!mapping) {
+    throw new ValidationError(`"${args.entityType}" is not a ticket type with OLA/UC contracts (${Object.keys(OLA_CONCLUDED_FIELD).join(', ')})`,
+      { key: 'errors.ola.notATicketType', params: { entityType: args.entityType } })
+  }
+  return withSession(async (session) => {
+    const isChange = args.entityType === 'change'
+    const ticket = isChange ? null : await runQueryOne<OLATicketFacts>(session, olaTicketFactsCypher(args.entityType), { entityId: args.entityId, tenantId: ctx.tenantId })
+    const units: OLAChangeUnit[] = isChange ? await loadChangeUnits(session, ctx.tenantId, { by: 'change', changeId: args.entityId }) : []
+    if (isChange) {
+      const exists = await runQueryOne(session, 'MATCH (c:Change {id: $entityId, tenant_id: $tenantId}) RETURN c.id AS id', { entityId: args.entityId, tenantId: ctx.tenantId })
+      if (!exists) throw new NotFoundError(mapping.label)
+    } else if (!ticket) {
+      throw new NotFoundError(mapping.label)
+    }
+    const contracts = await runQuery<{ props: Props; teamName: string | null }>(session, `
+      MATCH (o:OLAContract {tenant_id: $tenantId})
+      WHERE coalesce(o.enabled, true) = true AND o.entity_type IN [$entityType, 'any']
+      OPTIONAL MATCH (t:Team {id: o.team_id, tenant_id: $tenantId})
+      RETURN properties(o) AS props, t.name AS teamName
+      ORDER BY o.type, o.name
+    `, { entityType: args.entityType, tenantId: ctx.tenantId })
+    if (contracts.length === 0) return []
+    const timezone = await getTenantTimezone(ctx.tenantId)
+    const out = []
+    for (const { props: o, teamName } of contracts) {
+      const resolveMinutes = toNumber(o['resolve_minutes'])
+      const businessHours = o['business_hours'] === true
+      const calendar = await calendarFor(ctx.tenantId, { name: o['name'] as string, businessHours, calendarId: (o['calendar_id'] ?? null) as string | null })
+      const rule = { teamId: (o['team_id'] ?? null) as string | null, createdAt: (o['created_at'] ?? null) as string | null, resolveMinutes, businessHours, calendar }
+      const row = (m: OLATeamMeasure, facts: OLATicketFacts, unit: OLAChangeUnit | null) => ({
+        contractId: o['id'] as string, name: o['name'] as string, type: o['type'] as string,
+        teamName, resolveMinutes, calendarId: (o['calendar_id'] ?? null) as string | null,
+        applies: m.applies, reason: m.reason, deadline: m.deadline, concludedAt: facts.concludedAt, state: m.state,
+        usedMinutes: m.usedMinutes, remainingMinutes: m.remainingMinutes, inferred: m.inferred,
+        unitKind: unit?.kind ?? null, unitKey: unit?.key ?? null, ciName: unit?.ciName ?? null,
+        responderRole: unit?.responderRole ?? null, stepTitle: unit?.stepTitle ?? null, startsAt: facts.startsAt ?? null,
+      })
+      if (ticket) {
+        out.push(row(olaTeamMeasure(ticket, rule, timezone), ticket, null))
+        continue
+      }
+      const measured = units.map((u) => ({ u, m: olaTeamMeasure(u, rule, timezone) }))
+      const counting = measured.filter((x) => x.m.applies)
+      if (counting.length > 0) {
+        for (const { u, m } of counting) out.push(row(m, u, u))
+        continue
+      }
+      // Nessuna misura del team: una riga sola che dice perché.
+      const reason = measured.some((x) => x.m.reason === 'before_contract') ? 'before_contract' : 'other_team'
+      out.push({ ...row({ applies: false, reason, usedMinutes: 0, remainingMinutes: resolveMinutes, state: null, deadline: null, inferred: false }, { createdAt: '', concludedAt: null, currentTeamId: null, segments: [] }, null) })
+    }
+    return out
   })
 }
 
@@ -116,6 +187,47 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
       breached: toNumber(r['breached']),
     }))
 
+    // ── By policy ─────────────────────────────────────────────────────────────
+    // Ogni SLA registra da quale policy è nato (`policy_id`, `policy_name`), o
+    // quale regola l'ha impostato (`set_by_rule`). Il nome si legge dalla policy
+    // viva, così una rinomina si vede; se la policy non c'è più resta quello
+    // registrato alla creazione. Gli SLA creati prima di questi campi non hanno
+    // origine: finiscono in una riga loro, non vengono attribuiti a indovinare.
+    const byPolicyRows = await runQuery<Props>(session, `
+      MATCH (e {tenant_id: $tenantId})-[:HAS_SLA]->(s:SLAStatus)
+      WHERE (e:Incident OR e:Problem OR e:ServiceRequest) AND s.started_at >= $cutoff
+      OPTIONAL MATCH (p:SLAPolicyNode {id: s.policy_id, tenant_id: $tenantId})
+      WITH s.policy_id AS policyId,
+        coalesce(p.name, s.policy_name) AS policyName,
+        s.set_by_rule AS setByRule,
+        p.entity_type AS entityType,
+        p.response_minutes AS responseMinutes,
+        p.resolve_minutes AS resolveMinutes,
+        p.compliance_target AS complianceTarget, p.compliance_warning AS complianceWarning,
+        CASE WHEN s.resolve_met = true THEN 1 ELSE 0 END AS met,
+        CASE WHEN s.breached = true AND coalesce(s.resolve_met, false) = false THEN 1 ELSE 0 END AS breached,
+        CASE WHEN s.paused_at IS NOT NULL AND s.resolved_at IS NULL AND coalesce(s.resolve_met, false) = false
+             AND coalesce(s.breached, false) = false THEN 1 ELSE 0 END AS paused
+      RETURN policyId, policyName, setByRule, entityType, responseMinutes, resolveMinutes, complianceTarget, complianceWarning,
+        count(*) AS total, sum(met) AS met, sum(breached) AS breached, sum(paused) AS paused
+      ORDER BY total DESC
+    `, { tenantId: ctx.tenantId, cutoff })
+
+    const byPolicy = byPolicyRows.map((r) => ({
+      policyId:        (r['policyId']   ?? null) as string | null,
+      policyName:      (r['policyName'] ?? null) as string | null,
+      setByRule:       (r['setByRule']  ?? null) as string | null,
+      entityType:      (r['entityType'] ?? null) as string | null,
+      responseMinutes: r['responseMinutes'] == null ? null : toNumber(r['responseMinutes']),
+      resolveMinutes:  r['resolveMinutes']  == null ? null : toNumber(r['resolveMinutes']),
+      complianceTarget:  r['complianceTarget']  == null ? null : Number(r['complianceTarget']),
+      complianceWarning: r['complianceWarning'] == null ? null : Number(r['complianceWarning']),
+      total:    toNumber(r['total']),
+      met:      toNumber(r['met']),
+      breached: toNumber(r['breached']),
+      paused:   toNumber(r['paused']),
+    }))
+
     // ── Average resolution time (incidents resolved within the window) ─────────
     const avgRows = await runQuery<Props>(session, `
       MATCH (i:Incident {tenant_id: $tenantId})
@@ -134,27 +246,28 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
     `, { tenantId: ctx.tenantId })
 
     const ola = []
+    // Ogni contratto misura il tempo in cui il ticket è stato del SUO team, col
+    // SUO calendario: la regola è una sola, in lib/olaAttainment.ts.
+    const timezone = contracts.length > 0 ? await getTenantTimezone(ctx.tenantId) : 'UTC'
     for (const row of contracts) {
       const o = row['props'] as Props
       const entityType = (o['entity_type'] as string) || 'incident'
-      const mapping = RESOLVED_FIELD[entityType === 'any' ? 'incident' : entityType]
       const resolveMinutes = toNumber(o['resolve_minutes'])
-
-      let evaluated = 0, cMet = 0, cBreached = 0
-      if (mapping) {
-        const attRows = await runQuery<Props>(session, `
-          MATCH (e:${mapping.label} {tenant_id: $tenantId})
-          WHERE e.${mapping.resolvedField} IS NOT NULL AND e.${mapping.resolvedField} >= $cutoff AND e.created_at IS NOT NULL
-          WITH duration.inSeconds(datetime(e.created_at), datetime(e.${mapping.resolvedField})).seconds AS secs
-          WITH (secs / 60.0) AS mins
-          RETURN count(*) AS evaluated,
-                 sum(CASE WHEN mins <= $resolveMinutes THEN 1 ELSE 0 END) AS met,
-                 sum(CASE WHEN mins >  $resolveMinutes THEN 1 ELSE 0 END) AS breached
-        `, { tenantId: ctx.tenantId, cutoff, resolveMinutes })
-        evaluated = toNumber(attRows[0]?.['evaluated'])
-        cMet      = toNumber(attRows[0]?.['met'])
-        cBreached = toNumber(attRows[0]?.['breached'])
+      const businessHours = o['business_hours'] === true
+      const calendar = await calendarFor(ctx.tenantId, { name: o['name'] as string, businessHours, calendarId: (o['calendar_id'] ?? null) as string | null })
+      const tickets: OLATicketFacts[] = []
+      for (const type of olaEntityTypes(entityType)) {
+        const teamId = (o['team_id'] ?? null) as string | null
+        // Una change si misura sui suoi task: una valutazione per misura (olaChangeUnits.ts).
+        if (type === 'change') {
+          tickets.push(...await loadChangeUnits(session, ctx.tenantId, { by: 'concluded', cutoff, teamId }))
+          continue
+        }
+        tickets.push(...await runQuery<OLATicketFacts>(session, olaConcludedTicketsCypher(type), { tenantId: ctx.tenantId, cutoff, teamId }))
       }
+      const { evaluated, met: cMet, breached: cBreached, inferred } = evaluateOLATeamTickets(tickets, {
+        teamId: (o['team_id'] ?? null) as string | null, createdAt: (o['created_at'] ?? null) as string | null, resolveMinutes, businessHours, calendar,
+      }, timezone)
 
       ola.push({
         id:             o['id']            as string,
@@ -168,13 +281,16 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
         met:            cMet,
         breached:       cBreached,
         attainmentPct:  evaluated > 0 ? (cMet / evaluated) * 100 : null,
+        inferred,
+        complianceTarget:  o['compliance_target']  == null ? null : Number(o['compliance_target']),
+        complianceWarning: o['compliance_warning'] == null ? null : Number(o['compliance_warning']),
       })
     }
 
     return {
       generatedAt: new Date().toISOString(),
       windowDays,
-      sla: { total, met, breached, paused, openOnTrack, breachRate, avgResolutionMinutes, byPriority },
+      sla: { total, met, breached, paused, openOnTrack, breachRate, avgResolutionMinutes, byPriority, byPolicy },
       ola,
     }
   })
@@ -184,27 +300,93 @@ export async function slaReport(_: unknown, args: { windowDays?: number }, ctx: 
 
 interface OLAInput {
   type?: string; name?: string; description?: string; entityType?: string
-  responseMinutes?: number; resolveMinutes?: number; businessHours?: boolean
-  partyType?: string; partyName?: string; teamId?: string; enabled?: boolean
+  responseMinutes?: number; resolveMinutes?: number; calendarId?: string | null
+  complianceTarget?: number; complianceWarning?: number
+  partyType?: string; teamId?: string; enabled?: boolean
+}
+
+/**
+ * CHI È IL RESPONSABILE: sempre un TEAM, e il suo Sourcing deve tornare.
+ *
+ * Com'era: per un OLA il responsabile era un team scelto (`team_id`), per un
+ * fornitore esterno un NOME scritto a mano (`party_name`). Da quando ogni team
+ * dice se è interno o esterno (`Team.sourcing`), anche il fornitore è un team —
+ * un team con Sourcing = External — e il nome scritto a mano non serve più:
+ * permetteva un fornitore con un refuso, due fornitori dove ce n'è uno, e un
+ * nome che non si aggiornava mai.
+ *
+ *   partyType `team`     → un team con sourcing = `internal`
+ *   partyType `supplier` → un team con sourcing = `external`
+ *
+ * Il contratto cita il team per `team_id`, e il nome lo risolve la lettura
+ * (`teamName`). Un team il cui Sourcing non torna è un rifiuto che dice quale
+ * serviva e quale ha: la tendina filtra già, ma la tendina è una comodità e il
+ * rifiuto è la garanzia (l'API è una strada documentata, usata da script e
+ * integrazioni). Un team che non dice ancora da dove viene (sourcing null) è
+ * rifiutato allo stesso modo: non si indovina.
+ */
+const SOURCING_PER_RESPONSABILE: Readonly<Record<string, TeamSourcing>> = {
+  team:     'internal',
+  supplier: 'external',
+}
+
+async function assertResponsabile(
+  session: Queryable, tenantId: string, partyType: string | null | undefined,
+  teamId: string | null | undefined,
+): Promise<void> {
+  if (partyType == null) return
+  const atteso = SOURCING_PER_RESPONSABILE[partyType]
+  if (!atteso) {
+    throw new ValidationError(`partyType must be one of: ${Object.keys(SOURCING_PER_RESPONSABILE).join(', ')}`,
+      { key: 'errors.ola.partyTypeOneOf', params: { allowed: Object.keys(SOURCING_PER_RESPONSABILE).join(', ') } })
+  }
+  if (!teamId?.trim()) {
+    throw new ValidationError(
+      `teamId is required: the responsible party is a team with sourcing = ${atteso}`,
+      { key: atteso === 'internal' ? 'errors.ola.teamRequired' : 'errors.ola.supplierTeamRequired' },
+    )
+  }
+  const row = await runQueryOne<{ name: string; sourcing: string | null }>(session, `
+    MATCH (t:Team {id: $teamId, tenant_id: $tenantId}) RETURN t.name AS name, t.sourcing AS sourcing
+  `, { teamId, tenantId })
+  if (!row) throw new ValidationError(`Team ${teamId} does not exist in this tenant`, { key: 'errors.ola.teamUnknown', params: { team: teamId } })
+  if (row.sourcing !== atteso) {
+    throw new ValidationError(
+      `Team "${row.name}" has sourcing ${row.sourcing ?? 'not set'}, but this responsible party needs a team with sourcing = ${atteso}`,
+      {
+        key: 'errors.ola.teamWrongSourcing',
+        params: {
+          team: row.name,
+          expectedKey: `pages.teams.sourcing.${atteso}`,
+          actualKey: row.sourcing === 'internal' || row.sourcing === 'external'
+            ? `pages.teams.sourcing.${row.sourcing}` : 'pages.teams.sourcing.notSet',
+        },
+      },
+    )
+  }
 }
 
 export async function createOLAContract(_: unknown, args: { input: OLAInput }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.sla')
   const { input } = args
-  if (!VALID_TYPES.includes(input.type ?? '')) throw new ValidationError(`type deve essere uno di: ${VALID_TYPES.join(', ')}`)
-  if (!VALID_ENTITY_TYPES.includes(input.entityType ?? '')) throw new ValidationError(`entityType deve essere uno di: ${VALID_ENTITY_TYPES.join(', ')}`)
+  if (!VALID_TYPES.includes(input.type ?? '')) throw new ValidationError(`type must be one of: ${VALID_TYPES.join(', ')}`, { key: 'errors.ola.typeOneOf', params: { allowed: VALID_TYPES.join(', ') } })
+  if (!VALID_ENTITY_TYPES.includes(input.entityType ?? '')) throw new ValidationError(`entityType must be one of: ${VALID_ENTITY_TYPES.join(', ')}`, { key: 'errors.ola.entityTypeOneOf', params: { allowed: VALID_ENTITY_TYPES.join(', ') } })
   const name = input.name?.trim()
-  if (!name) throw new ValidationError('name è obbligatorio')
-  if (!input.responseMinutes || input.responseMinutes <= 0) throw new ValidationError('responseMinutes deve essere > 0')
-  if (!input.resolveMinutes || input.resolveMinutes <= 0) throw new ValidationError('resolveMinutes deve essere > 0')
+  if (!name) throw new ValidationError('name is required', { key: 'errors.ola.nameRequired' })
+  if (!input.responseMinutes || input.responseMinutes <= 0) throw new ValidationError('responseMinutes must be > 0', { key: 'errors.ola.responseMinutes' })
+  if (!input.resolveMinutes || input.resolveMinutes <= 0) throw new ValidationError('resolveMinutes must be > 0', { key: 'errors.ola.resolveMinutes' })
 
+  const objective = assertComplianceObjective(input.complianceTarget, input.complianceWarning)
+  const calendar = await calendarChoice(ctx.tenantId, input.calendarId)
   const id = uuidv4(); const now = new Date().toISOString()
   return withSession(async (session) => {
+    await assertResponsabile(session, ctx.tenantId, input.partyType ?? 'team', input.teamId)
     const rows = await runQuery<{ props: Props; teamName: string | null }>(session, `
       CREATE (o:OLAContract {
         id: $id, tenant_id: $tenantId, type: $type, name: $name, description: $description,
         entity_type: $entityType, response_minutes: $responseMinutes, resolve_minutes: $resolveMinutes,
-        business_hours: $businessHours, party_type: $partyType, party_name: $partyName,
+        business_hours: $businessHours, calendar_id: $calendarId, party_type: $partyType, party_name: $partyName,
+        compliance_target: $complianceTarget, compliance_warning: $complianceWarning,
         team_id: $teamId, enabled: true, created_at: $now
       })
       WITH o
@@ -214,20 +396,44 @@ export async function createOLAContract(_: unknown, args: { input: OLAInput }, c
       id, tenantId: ctx.tenantId, type: input.type, name,
       description: input.description ?? null, entityType: input.entityType,
       responseMinutes: input.responseMinutes, resolveMinutes: input.resolveMinutes,
-      businessHours: input.businessHours ?? false, partyType: input.partyType ?? null,
-      partyName: input.partyName ?? null, teamId: input.teamId ?? null, now,
+      businessHours: calendar.business_hours, calendarId: calendar.calendar_id, partyType: input.partyType ?? null,
+      complianceTarget: objective.target, complianceWarning: objective.warning,
+      // Il responsabile è sempre un team, citato per id: nessun nome copiato
+      // sul contratto (lo risolve `teamName` alla lettura).
+      partyName: null,
+      teamId: input.teamId ?? null, now,
     })
     void audit(ctx, 'ola_contract.created', 'OLAContract', id)
     return mapOLA(rows[0]!.props, rows[0]!.teamName)
   }, true)
 }
 
+/**
+ * Cancella un contratto OLA/UC (secondo giro UI del 15 set 2026: si poteva solo
+ * disattivare). I controlli di breach già armati per i ticket aperti non
+ * avvisano più: allo scatto il contratto non c'è (`olaBreachSkipReason`). Il
+ * report non lo mostra più; l'Audit Log tiene com'era.
+ */
+export async function deleteOLAContract(_: unknown, args: { id: string }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const rows = await runQuery<{ props: Props }>(session, `
+      MATCH (o:OLAContract {id: $id, tenant_id: $tenantId})
+      WITH o, properties(o) AS props
+      DETACH DELETE o
+      RETURN props
+    `, { id: args.id, tenantId: ctx.tenantId })
+    if (!rows.length) throw new NotFoundError('OLAContract')
+    void audit(ctx, 'ola_contract.deleted', 'OLAContract', args.id, { previous: rows[0]!.props })
+    return true
+  }, true)
+}
+
 export async function updateOLAContract(_: unknown, args: { id: string; input: OLAInput }, ctx: GraphQLContext) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.sla')
   const { input } = args
-  if (input.type !== undefined) throw new ValidationError('type non è modificabile')
+  if (input.type !== undefined) throw new ValidationError('type cannot be changed', { key: 'errors.ola.typeImmutable' })
   if (input.entityType !== undefined && !VALID_ENTITY_TYPES.includes(input.entityType)) {
-    throw new ValidationError(`entityType deve essere uno di: ${VALID_ENTITY_TYPES.join(', ')}`)
+    throw new ValidationError(`entityType must be one of: ${VALID_ENTITY_TYPES.join(', ')}`, { key: 'errors.ola.entityTypeOneOf', params: { allowed: VALID_ENTITY_TYPES.join(', ') } })
   }
   const sets: Record<string, unknown> = {}
   if (input.name !== undefined)            sets['name']             = input.name
@@ -235,14 +441,40 @@ export async function updateOLAContract(_: unknown, args: { id: string; input: O
   if (input.entityType !== undefined)      sets['entity_type']      = input.entityType
   if (input.responseMinutes !== undefined) sets['response_minutes'] = input.responseMinutes
   if (input.resolveMinutes !== undefined)  sets['resolve_minutes']  = input.resolveMinutes
-  if (input.businessHours !== undefined)   sets['business_hours']   = input.businessHours
+  if (input.calendarId !== undefined) Object.assign(sets, await calendarChoice(ctx.tenantId, input.calendarId))
+  if (input.complianceTarget !== undefined || input.complianceWarning !== undefined) {
+    const current = await withSession((session) => runQueryOne<{ target: unknown; warning: unknown }>(session,
+      'MATCH (o:OLAContract {id: $id, tenant_id: $tenantId}) RETURN o.compliance_target AS target, o.compliance_warning AS warning',
+      { id: args.id, tenantId: ctx.tenantId }))
+    const objective = assertComplianceObjective(input.complianceTarget ?? current?.target, input.complianceWarning ?? current?.warning)
+    sets['compliance_target'] = objective.target
+    sets['compliance_warning'] = objective.warning
+  }
   if (input.partyType !== undefined)       sets['party_type']       = input.partyType
-  if (input.partyName !== undefined)       sets['party_name']       = input.partyName
   if (input.teamId !== undefined)          sets['team_id']          = input.teamId
   if (input.enabled !== undefined)         sets['enabled']          = input.enabled
-  if (Object.keys(sets).length === 0) throw new ValidationError('updateOLAContract: nessun campo da aggiornare')
+  if (Object.keys(sets).length === 0) throw new ValidationError('updateOLAContract: no field to update', { key: 'errors.nothingToUpdate' })
 
   return withSession(async (session) => {
+    /*
+      Il responsabile si valida sullo stato FINALE, non su quello che arriva:
+      una modifica può cambiare solo il tipo (team → fornitore) e lasciare
+      fuori l'altra metà, e allora la metà che conta è quella già salvata.
+    */
+    if (input.partyType !== undefined || input.teamId !== undefined) {
+      const attuale = await runQueryOne<{ partyType: string | null; teamId: string | null }>(session, `
+        MATCH (o:OLAContract {id: $id, tenant_id: $tenantId})
+        RETURN o.party_type AS partyType, o.team_id AS teamId
+      `, { id: args.id, tenantId: ctx.tenantId })
+      if (!attuale) throw new NotFoundError('OLAContract', args.id)
+      const partyType = input.partyType ?? attuale.partyType
+      // Cambiare il TIPO di responsabile senza cambiare il team non basta: il
+      // team di prima ha il Sourcing sbagliato, e il controllo lo dice.
+      const teamId    = input.teamId    ?? attuale.teamId
+      await assertResponsabile(session, ctx.tenantId, partyType, teamId)
+      sets['team_id'] = teamId
+      sets['party_name'] = null
+    }
     const rows = await runQuery<{ props: Props; teamName: string | null }>(session, `
       MATCH (o:OLAContract {id: $id, tenant_id: $tenantId})
       SET o += $sets
@@ -256,7 +488,14 @@ export async function updateOLAContract(_: unknown, args: { id: string; input: O
   }, true)
 }
 
+/** Il nome del calendario del contratto (ondata 2), letto dal calendario vivo. */
+async function olaContractCalendarName(parent: { calendarId: string | null }, _: unknown, ctx: GraphQLContext) {
+  return calendarNameOf(ctx.tenantId, parent.calendarId)
+}
+
 export const olaResolvers = {
-  Query:    { olaContracts, slaReport },
-  Mutation: { createOLAContract, updateOLAContract },
+  Query:    { olaContracts, slaReport, ticketOLAs },
+  Mutation: { createOLAContract, updateOLAContract, deleteOLAContract },
+  OLAContract: { calendarName: olaContractCalendarName },
+  TicketOLA:   { calendarName: olaContractCalendarName },
 }

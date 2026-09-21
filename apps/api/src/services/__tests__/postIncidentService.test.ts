@@ -17,6 +17,10 @@ const h = vi.hoisted(() => {
   return { cfg, create, constructed, session }
 })
 
+// La lingua in cui il modello scrive si legge dal cliente (lib/systemText.ts).
+// Ondata 6 di «Nulla cablato»: le funzioni AI sono dell'organizzazione; qui tutte accese.
+vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 vi.mock('../../lib/config.js', () => ({ config: h.cfg }))
 vi.mock('@anthropic-ai/sdk', () => ({
   default: class {
@@ -31,12 +35,23 @@ vi.mock('@opengraphity/neo4j', () => ({
 vi.mock('../embeddings.js', () => ({
   vectorIndexName: vi.fn((label: string) => `${label.toLowerCase()}_embedding_test`),
 }))
+// ── Ondata 8 (B-22): chiuso e risolto vengono dai passi del workflow ─────────
+// I nomi sono del CLIENTE (`archiviato`, `sistemato`): il servizio non deve
+// conoscere `closed`/`resolved`. Mockato per non aprire una seconda sessione
+// Neo4j (la derivazione dai metadata è provata in workflowHelpers).
+vi.mock('../../lib/statusStepNames.js', () => ({
+  statusNamesForClasses: vi.fn(async () => ['archiviato']),
+  concludedStatusNames:  vi.fn(async () => ['sistemato', 'archiviato']),
+}))
+// F5: la categoria della bozza KB è uno dei valori del vocabolario `kb_category` del cliente.
+vi.mock('../../lib/domainMatrix.js', () => ({ domainVocabulary: vi.fn(async () => ['database', 'network', 'faq']) }))
 vi.mock('../../lib/logger.js', () => ({
   logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
 const { draftResolutionNotes, draftKbContent, problemCandidates } = await import('../postIncidentService.js')
 const { runQuery } = await import('@opengraphity/neo4j')
+import { config } from '../../lib/config.js'
 
 // ── Fixture ───────────────────────────────────────────────────────────────────
 
@@ -45,9 +60,9 @@ const TENANT = 'tenant-A'
 type Ctx = { props: Record<string, unknown>; comments: Array<{ text: string | null; created_at: string }>; steps: Array<{ step: string | null; at: string | null; trigger: string | null }>; cis: string[] }
 
 const CTX: Ctx = {
-  props: { id: 'inc-1', title: 'DB down', description: 'timeout', severity: 'critical', category: 'database', status: 'resolved' },
+  props: { id: 'inc-1', title: 'DB down', description: 'timeout', severity: 'critical', category: 'database', status: 'sistemato' },
   comments: [{ text: 'Riavviato il servizio', created_at: '2026-01-01T10:00:00Z' }, { text: null, created_at: '2026-01-01T10:01:00Z' }],
-  steps: [{ step: 'new', at: '2026-01-01T09:00:00Z', trigger: 'system' }, { step: null, at: null, trigger: null }, { step: 'resolved', at: '2026-01-01T11:00:00Z', trigger: 'manual' }],
+  steps: [{ step: 'new', at: '2026-01-01T09:00:00Z', trigger: 'system' }, { step: null, at: null, trigger: null }, { step: 'sistemato', at: '2026-01-01T11:00:00Z', trigger: 'manual' }],
   cis: ['db-01'],
 }
 
@@ -87,7 +102,7 @@ describe('draftResolutionNotes', () => {
   it('incident inesistente nel tenant → NOT_FOUND, nessuna chiamata al modello (anche con chiave presente)', async () => {
     incident(null)
     const err = await graphqlFailure(draftResolutionNotes(TENANT, 'inc-x'), 'NOT_FOUND')
-    expect(err.message).toBe('Incident non trovato')
+    expect(err.message).toBe('Incident not found')
     expect(h.create).not.toHaveBeenCalled()
     const [, cypher, params] = vi.mocked(runQuery).mock.calls[0]!
     expect(cypher).toContain('tenant_id: $tenantId')
@@ -97,7 +112,8 @@ describe('draftResolutionNotes', () => {
   it('ANTHROPIC_API_KEY assente → FAILED_PRECONDITION senza istanziare l\'SDK', async () => {
     h.cfg.anthropicApiKey = undefined
     const err = await graphqlFailure(draftResolutionNotes(TENANT, 'inc-1'), 'FAILED_PRECONDITION')
-    expect(err.message).toBe('AI non configurata: ANTHROPIC_API_KEY mancante')
+    // Ondata 8: un solo controllo della chiave per tutte le funzioni AI.
+    expect(err.message).toBe('AI is not configured on this platform: ANTHROPIC_API_KEY missing')
     expect(h.constructed).toHaveLength(0)
     expect(h.create).not.toHaveBeenCalled()
   })
@@ -105,21 +121,29 @@ describe('draftResolutionNotes', () => {
   it('passa al modello solo l\'evidenza reale (commenti con testo, step con nome, CI) e ritorna il testo trimmato', async () => {
     h.create.mockResolvedValue(modelReply('  Causa: timeout DB. Intervento: riavvio.  '))
     await expect(draftResolutionNotes(TENANT, 'inc-1')).resolves.toBe('Causa: timeout DB. Intervento: riavvio.')
-    expect(h.create.mock.calls[0]![0]).toMatchObject({ model: 'claude-opus-4-8', max_tokens: 1500, output_config: { effort: 'low' } })
+    expect(h.create.mock.calls[0]![0]).toMatchObject({ model: config.anthropicModel, max_tokens: 1500, output_config: { effort: 'low' } })
     expect(userContent()).toEqual({
       titolo: 'DB down', descrizione: 'timeout', severity: 'critical', categoria: 'database', ci_coinvolti: ['db-01'],
       commenti: [{ text: 'Riavviato il servizio', created_at: '2026-01-01T10:00:00Z' }],
-      passaggi_workflow: [{ step: 'new', at: '2026-01-01T09:00:00Z', trigger: 'system' }, { step: 'resolved', at: '2026-01-01T11:00:00Z', trigger: 'manual' }],
+      passaggi_workflow: [{ step: 'new', at: '2026-01-01T09:00:00Z', trigger: 'system' }, { step: 'sistemato', at: '2026-01-01T11:00:00Z', trigger: 'manual' }],
     })
   })
 
-  it('bozza vuota o assente → errore esplicito; refusal → INTERNAL_SERVER_ERROR', async () => {
+  it('bozza vuota o assente → errore con la chiave, refusal → INTERNAL_SERVER_ERROR, troncata → si dice troncata', async () => {
     h.create.mockResolvedValue(modelReply('   '))
-    await expect(draftResolutionNotes(TENANT, 'inc-1')).rejects.toThrow('[post-incident] bozza vuota dal modello')
+    await graphqlFailure(draftResolutionNotes(TENANT, 'inc-1'), 'INTERNAL_SERVER_ERROR')
     h.create.mockResolvedValue(modelReply(null))
-    await expect(draftResolutionNotes(TENANT, 'inc-1')).rejects.toThrow('[post-incident] bozza vuota dal modello')
+    await graphqlFailure(draftResolutionNotes(TENANT, 'inc-1'), 'INTERNAL_SERVER_ERROR')
     h.create.mockResolvedValue(modelReply('x', 'refusal'))
     await graphqlFailure(draftResolutionNotes(TENANT, 'inc-1'), 'INTERNAL_SERVER_ERROR')
+    /*
+     * IL TRONCAMENTO NON C'ERA (ondata 8). Una nota di risoluzione tagliata a
+     * metà usciva come bozza buona e l'operatore la firmava credendola finita:
+     * qui si pretende che il servizio lo dica.
+     */
+    h.create.mockResolvedValue(modelReply('La causa è stata', 'max_tokens'))
+    const troncata = await graphqlFailure(draftResolutionNotes(TENANT, 'inc-1'), 'INTERNAL_SERVER_ERROR')
+    expect(troncata.extensions['i18n']).toEqual({ key: 'errors.ai.truncated' })
   })
 })
 
@@ -133,7 +157,11 @@ describe('draftKbContent', () => {
     await graphqlFailure(draftKbContent(TENANT, 'inc-x'), 'NOT_FOUND')
     incident({ ...CTX, props: { ...CTX.props, status: 'in_progress' } })
     const err = await graphqlFailure(draftKbContent(TENANT, 'inc-1'), 'BAD_USER_INPUT')
-    expect(err.message).toBe('La bozza KB si genera solo da incident risolti o chiusi')
+    // Il rifiuto nomina il passo e i passi conclusivi del workflow del cliente:
+    // prima diceva solo «risolti o chiusi», che con passi rinominati non
+    // aiutava a capire perché il bottone non funzionava.
+    expect(err.message).toContain('The KB draft is generated only from resolved or closed incidents')
+    expect(err.message).toContain('sistemato, archiviato')
     expect(h.create).not.toHaveBeenCalled()
   })
 
@@ -143,20 +171,28 @@ describe('draftKbContent', () => {
     expect(h.create).not.toHaveBeenCalled()
   })
 
-  it.each(['resolved', 'closed'])('status %s → schema json_schema con title/body/category/tags e bozza parsata', async (status) => {
+  // I due passi CONCLUSIVI del workflow di questo cliente, con i suoi nomi:
+  // prima erano i letterali `resolved`/`closed` e un passo di risoluzione
+  // rinominato rendeva la bozza KB irraggiungibile.
+  it.each(['sistemato', 'archiviato'])('status %s → schema json_schema con title/body/category/tags e bozza parsata', async (status) => {
     incident({ ...CTX, props: { ...CTX.props, status } })
     h.create.mockResolvedValue(modelReply(JSON.stringify(KB)))
     await expect(draftKbContent(TENANT, 'inc-1')).resolves.toEqual(KB)
     const params = h.create.mock.calls[0]![0]
     expect(params).toMatchObject({ max_tokens: 3000, output_config: { effort: 'low', format: { type: 'json_schema', schema: { required: ['title', 'body', 'category', 'tags'] } } } })
+    // Revisione del 14 set 2026 · F5: il modello sceglie fra le categorie KB del cliente, non inventa una parola.
+    expect(params).toMatchObject({ output_config: { format: { schema: { properties: { category: { type: 'string', enum: ['database', 'network', 'faq'] } } } } } })
     expect(userContent()).toMatchObject({ titolo: 'DB down', categoria_incident: 'database', ci_coinvolti: ['db-01'] })
   })
 
   it('JSON non parsabile → errore esplicito; risposta senza testo → errore; refusal → INTERNAL_SERVER_ERROR', async () => {
+    // Il `SyntaxError` crudo di `JSON.parse` non arriva più all'utente: dal
+    // client condiviso esce un errore con la sua chiave (ondata 8).
     h.create.mockResolvedValue(modelReply('{"title": '))
-    await expect(draftKbContent(TENANT, 'inc-1')).rejects.toThrow(SyntaxError)
+    expect((await graphqlFailure(draftKbContent(TENANT, 'inc-1'), 'INTERNAL_SERVER_ERROR')).extensions['i18n'])
+      .toEqual({ key: 'errors.ai.badAnswer' })
     h.create.mockResolvedValue(modelReply(null))
-    await expect(draftKbContent(TENANT, 'inc-1')).rejects.toThrow('[post-incident] risposta senza testo')
+    await graphqlFailure(draftKbContent(TENANT, 'inc-1'), 'INTERNAL_SERVER_ERROR')
     h.create.mockResolvedValue(modelReply('{}', 'refusal'))
     await graphqlFailure(draftKbContent(TENANT, 'inc-1'), 'INTERNAL_SERVER_ERROR')
   })
@@ -197,12 +233,21 @@ describe('problemCandidates', () => {
     await problemCandidates(TENANT)
     const calls = vi.mocked(runQuery).mock.calls
     const list = calls[0]!
-    expect(list[1]).toContain("NOT i.status IN ['closed'] AND i.embedding IS NOT NULL")
-    expect(list[2]).toEqual({ tenantId: TENANT })
+    // I passi della classe «chiuso» del workflow del cliente, non il letterale.
+    expect(list[1]).toContain('NOT i.status IN $closedSteps AND i.embedding IS NOT NULL')
+    // CONTRATTO RINEGOZIATO (revisione totale · D-22): la lettura ha un TETTO
+    // di incident (una query vettoriale per incident dentro una richiesta
+    // dell'interfaccia: su migliaia di incident aperti la pagina andava in
+    // timeout). Si guardano i più recenti, e quando il tetto è pieno lo si dice.
+    expect(list[1]).toContain('LIMIT toInteger($maxIncidents)')
+    expect(list[2]).toEqual({ tenantId: TENANT, closedSteps: ['archiviato'], maxIncidents: 300 })
     const peers = calls[1]!
-    expect(peers[1]).toContain('score >= 0.72')
+    // Ondata 6 di «Nulla cablato»: la soglia è dell'organizzazione e arriva come parametro.
+    expect(peers[1]).toContain('score >= $minSimilarity')
+    expect(peers[2]).toMatchObject({ minSimilarity: 0.72 })
     expect(peers[1]).toContain('node.tenant_id = $tenantId AND node.id <> $selfId')
-    expect(peers[2]).toMatchObject({ tenantId: TENANT, selfId: 'i1', embedding: [1], index: 'incident_embedding_test' })
+    expect(peers[1]).toContain('NOT node.status IN $closedSteps')
+    expect(peers[2]).toMatchObject({ tenantId: TENANT, selfId: 'i1', embedding: [1], index: 'incident_embedding_test', closedSteps: ['archiviato'] })
   })
 
   it('union-find: cluster ≥ 3 → il modello nomina i cluster; candidati con cluster_index inesistente scartati; vicini estranei ignorati', async () => {
@@ -237,8 +282,9 @@ describe('problemCandidates', () => {
     await graphqlFailure(problemCandidates(TENANT), 'FAILED_PRECONDITION')
     h.cfg.anthropicApiKey = 'sk-test'
     h.create.mockResolvedValue(modelReply('nope'))
-    await expect(problemCandidates(TENANT)).rejects.toThrow(SyntaxError)
+    expect((await graphqlFailure(problemCandidates(TENANT), 'INTERNAL_SERVER_ERROR')).extensions['i18n'])
+      .toEqual({ key: 'errors.ai.badAnswer' })
     h.create.mockResolvedValue(modelReply(null))
-    await expect(problemCandidates(TENANT)).rejects.toThrow('[post-incident] risposta senza testo')
+    await graphqlFailure(problemCandidates(TENANT), 'INTERNAL_SERVER_ERROR')
   })
 })

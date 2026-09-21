@@ -18,7 +18,7 @@
  *
  * DISTRUTTIVO per il tenant indicato: cancella TUTTI i suoi incident con
  * workflow, storia, SLA, commenti e i nodi collegati per entity_id
- * (EntityComment, Attachment, AuditEntry, Notification). Per questo:
+ * (Attachment, AuditEntry, Notification). Per questo:
  *   - tenant obbligatorio (--tenant=<slug>), nessun default;
  *   - conferma esplicita --yes-delete;
  *   - rifiutato con NODE_ENV=production.
@@ -31,9 +31,10 @@ import { getSession } from '@opengraphity/neo4j'
 import { INCIDENT_WORKFLOW_BASE } from '@opengraphity/workflow'
 import { v4 as uuidv4 } from 'uuid'
 import { resolveTenantArg, requireConfirmFlag, refuseInProduction } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
 /** Nodi che puntano a un incident per proprietà (entity_type/entity_id), non per relazione. */
-const ENTITY_LINKED_LABELS = ['EntityComment', 'Attachment', 'AuditEntry', 'Notification'] as const
+const ENTITY_LINKED_LABELS = ['Attachment', 'AuditEntry', 'Notification'] as const
 
 const N_CLOSED = 1000
 const N_ASSIGNED = 150
@@ -84,7 +85,7 @@ function derive(impact: IU, urgency: IU): 'critical' | 'high' | 'medium' | 'low'
   if ((impact === 'high' && urgency === 'low') || (impact === 'medium' && urgency === 'medium') || (impact === 'low' && urgency === 'high')) return 'medium'
   return 'low'
 }
-// Default incident SLA tiers (minuti) — allineati a DEFAULT_SLA_POLICIES
+// Livelli SLA dei dati dimostrativi (minuti): solo per questo seed, non sono policy del prodotto
 const TIER: Record<string, { resp: number; res: number }> = {
   critical: { resp: 15, res: 240 }, high: { resp: 60, res: 480 },
   medium: { resp: 240, res: 1440 }, low: { resp: 480, res: 4320 },
@@ -98,6 +99,16 @@ interface Row {
   severity: string; impact: string; urgency: string; status: string; category: string
   createdAt: string; updatedAt: string; resolvedAt: string | null; assignedAt: string | null
   ciId: string; teamId: string; assigneeId: string | null
+  /**
+   * Chi l'ha aperto e da dove (revisione totale · H-44): gli incident demo
+   * nascevano senza `created_by`, `priority` e `channel`, diversamente da
+   * `incidentService.createIncident`. Conseguenze viste: nessuno di essi
+   * compariva nel portale di alcun utente (`myTickets` filtra per
+   * `created_by`) e la colonna «Priorità» delle liste restava vuota su 1500
+   * righe, perché la priorità dell'incident vive in `severity` ma il campo
+   * `priority` del metamodello c'è e viene letto.
+   */
+  createdBy: string; priority: string; channel: string
   currentStep: string; wiStatus: string
   responseDeadline: string; resolveDeadline: string
   responseMet: boolean; resolveMet: boolean; breached: boolean
@@ -117,6 +128,9 @@ function baseRow(i: number, ci: { id: string; name: string; type: string; teamId
     severity, impact, urgency, status: 'new', category: CATEGORY[ci.type]!,
     createdAt: '', updatedAt: '', resolvedAt: null, assignedAt: null,
     ciId: ci.id, teamId: ci.teamId, assigneeId: null,
+    // H-44: `createdBy` lo riempie il chiamante (serve l'elenco degli utenti);
+    // la priorità è la severità derivata da impatto × urgenza, come fa l'API.
+    createdBy: '', priority: severity, channel: 'agent',
     currentStep: 'new', wiStatus: 'active',
     responseDeadline: '', resolveDeadline: '',
     responseMet: false, resolveMet: false, breached: false,
@@ -197,8 +211,8 @@ async function main() {
     // ── 3. Carica CI (con support team) e utenti operativi ──────────────────────
     const ciRes = await session.executeRead((tx) => tx.run(`
       MATCH (ci {tenant_id:$t})-[:SUPPORTED_BY]->(team:Team)
-      WHERE labels(ci)[0] IN ['Server','Database','Application']
-      RETURN ci.id AS id, ci.name AS name, labels(ci)[0] AS type, team.id AS teamId
+      WHERE head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) IN ['Server','Database','Application']
+      RETURN ci.id AS id, ci.name AS name, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS type, team.id AS teamId
     `, { t: TENANT }))
     const cis = ciRes.records.map((r) => ({ id: r.get('id') as string, name: r.get('name') as string, type: r.get('type') as string, teamId: r.get('teamId') as string }))
     if (cis.length === 0) throw new Error('Nessun CI con support team trovato')
@@ -216,6 +230,9 @@ async function main() {
     // CHIUSI: percorso completo, retrodatati sull'ultimo anno
     for (let k = 0; k < N_CLOSED; k++) {
       const r = baseRow(k, pick(cis))
+      // H-44: senza `created_by` nessuno di questi ticket compariva nel portale
+      // di alcun utente (`myTickets` filtra per chi l'ha aperto).
+      r.createdBy = pick(users)
       const tier = TIER[r.severity]!
       // creato tra 1 anno fa e 2h fa, con abbastanza margine per l'intero ciclo
       const createdMs = now - rand(2 * 60 * MIN, 365 * DAY)
@@ -251,6 +268,9 @@ async function main() {
     // ASSEGNATI: new→assigned, assegnati a un utente, ultimi 90 giorni
     for (let k = 0; k < N_ASSIGNED; k++) {
       const r = baseRow(k, pick(cis))
+      // H-44: senza `created_by` nessuno di questi ticket compariva nel portale
+      // di alcun utente (`myTickets` filtra per chi l'ha aperto).
+      r.createdBy = pick(users)
       const tier = TIER[r.severity]!
       const createdMs = now - rand(10 * MIN, 90 * DAY)
       const assignedMs = Math.min(now - MIN, createdMs + rand(2, 240) * MIN)
@@ -274,6 +294,9 @@ async function main() {
     // NUOVI: ancora da assegnare, ultimi 30 giorni
     for (let k = 0; k < N_NEW; k++) {
       const r = baseRow(k, pick(cis))
+      // H-44: senza `created_by` nessuno di questi ticket compariva nel portale
+      // di alcun utente (`myTickets` filtra per chi l'ha aperto).
+      r.createdBy = pick(users)
       const tier = TIER[r.severity]!
       const createdMs = now - rand(1 * MIN, 30 * DAY)
       r.createdAt = iso(createdMs)
@@ -305,7 +328,9 @@ async function main() {
           id: r.id, tenant_id: $t, number: r.number, title: r.title, description: r.description,
           severity: r.severity, impact: r.impact, urgency: r.urgency, status: r.status,
           category: r.category, created_at: r.createdAt, updated_at: r.updatedAt,
-          resolved_at: r.resolvedAt, assigned_at: r.assignedAt, root_cause: r.rootCause
+          resolved_at: r.resolvedAt, assigned_at: r.assignedAt, root_cause: r.rootCause,
+          // H-44: come li scrive createIncident (services/incidentService.ts).
+          created_by: r.createdBy, priority: r.priority, channel: r.channel
         })
         CREATE (i)-[:AFFECTED_BY]->(ci)
         CREATE (i)-[:ASSIGNED_TO_TEAM]->(team)
@@ -344,4 +369,6 @@ async function main() {
   }
 }
 
-main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1) })
+// H-45: `runScript` stampa l'errore intero, mette exit code 1 e chiude il
+// driver Neo4j — senza `process.exit`, che troncava i log asincroni (pino).
+runScript('seed-demo-incidents', main)

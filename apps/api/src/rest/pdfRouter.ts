@@ -3,6 +3,8 @@
  * incident/change/problem routers were three identical copies differing only
  * in entity name (A-23); each is now one `makePdfRouter` call.
  */
+import fs from 'fs'
+import { tenantBrand, tenantLogoFile } from '../lib/brand.js'
 import { Router, type Router as ExpressRouter } from 'express'
 import { getSession, type Queryable } from '@opengraphity/neo4j'
 import { authMiddleware } from '../middleware/auth.js'
@@ -10,6 +12,8 @@ import { logger } from '../lib/logger.js'
 import { audit } from '../lib/audit.js'
 import { NotFoundError } from '../lib/errors.js'
 import type { PdfMeta } from '../lib/pdf/common.js'
+import { languageFor } from '../lib/tenantLanguage.js'
+import { tenantTimezone } from '../lib/tenantTimezone.js'
 import type { GraphQLContext } from '../context.js'
 
 export interface PdfRouteSpec<D> {
@@ -21,6 +25,12 @@ export interface PdfRouteSpec<D> {
   builder:  (dossier: D, meta: PdfMeta) => Promise<Buffer>
   /** Download filename without extension (number/code, falling back to id). */
   filename: (dossier: D) => string
+}
+
+/** Il logo PNG dell'organizzazione, se c'è il file. */
+async function readLogoPng(tenantId: string): Promise<Buffer | null> {
+  const file = await tenantLogoFile(tenantId)
+  return file ? fs.promises.readFile(file.path) : null
 }
 
 export function makePdfRouter<D>(spec: PdfRouteSpec<D>): ExpressRouter {
@@ -37,10 +47,17 @@ export function makePdfRouter<D>(spec: PdfRouteSpec<D>): ExpressRouter {
       const session = getSession(undefined, 'READ')
       try {
         const dossier = await spec.loader(session, id, tenantId)
+        const [language, timeZone, brand] = await Promise.all([languageFor(tenantId), tenantTimezone(tenantId), tenantBrand(tenantId)])
+        if (!timeZone) throw new Error(`Tenant ${tenantId} has no time zone configured: the dates of the dossier cannot be written`)
         const pdf = await spec.builder(dossier, {
           generatedAt: new Date().toISOString(),
           generatedBy: email,
           tenantId,
+          locale: { language, timeZone },
+          brand: {
+            displayName: brand.displayName,
+            logoPng: brand.logo?.mimeType === 'image/png' ? await readLogoPng(tenantId) : null,
+          },
         })
 
         const filename = `${spec.filename(dossier)}.pdf`
@@ -48,7 +65,7 @@ export function makePdfRouter<D>(spec: PdfRouteSpec<D>): ExpressRouter {
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`)
         res.send(pdf)
 
-        const ctx: GraphQLContext = { tenantId, userId, userEmail: email, role: role as GraphQLContext['role'] }
+        const ctx: GraphQLContext = { tenantId, userId, userEmail: email, role: role as GraphQLContext['role'], permissions: req.user!.permissions }
         void audit(ctx, `${kind}.pdf_exported`, spec.entity, id)
         logger.info({ id, tenantId, sizeBytes: pdf.length }, `${logTag} exported`)
       } catch (err) {

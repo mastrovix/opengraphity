@@ -19,7 +19,7 @@ export const ciConfigurationItemLabel: Migration = {
   autocommit: true,
   async up(session) {
     const res = await session.run(`
-      MATCH (t:CITypeDefinition) WHERE t.neo4j_label IS NOT NULL AND t.neo4j_label <> ''
+      MATCH (t:CITypeDefinition) WHERE t.neo4j_label IS NOT NULL AND t.neo4j_label <> '' AND t.scope <> 'itil' // i tipi ITIL (Incident, Problem, …) sono ticket, non CI
       WITH collect(DISTINCT t.neo4j_label) AS ciLabels
       CALL {
         WITH ciLabels

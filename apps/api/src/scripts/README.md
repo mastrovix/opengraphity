@@ -8,17 +8,23 @@ Quelli senza script npm: `pnpm --filter @opengraphity/api exec tsx src/scripts/<
 Regole comuni (`lib/scriptArgs.ts`, `lib/runScript.ts`):
 
 - **Tenant sempre esplicito**: `--tenant=<slug>` (= `Tenant.id`), nessun default.
+  `resolveTenantArg` accetta anche `--tenant-id` e `--slug`, le forme che alcuni
+  script storici leggevano a mano e che restano nei comandi in giro
+  (revisione totale · H-45).
 - **Cancellazioni solo con conferma**: gli script marcati *distruttivo* richiedono `--yes-delete`.
 - **Seed demo rifiutati in produzione** (`NODE_ENV=production`).
 - **Password mai in argv**: `--password-stdin` oppure password temporanea generata e stampata una volta.
-- Exit code 1 su qualsiasi errore; il driver Neo4j viene chiuso dal runner (niente `process.exit(0)` nei `finally`).
+- Exit code 1 su qualsiasi errore; il driver Neo4j viene chiuso dal runner
+  (niente `process.exit(0)`, nemmeno alla fine: tronca i log asincroni di pino).
+  Revisione totale · H-45: dodici script non usavano `runScript` e chiudevano da
+  soli — ora ci passano tutti.
 
 ## Amministrazione tenant / utenti
 
 | Script | Scopo | Invocazione | Distruttivo |
 |---|---|---|---|
-| `onboard-tenant` | Crea realm Keycloak, client, ruoli, admin, nodo `Tenant`, dashboard, enum, notifiche e tutti i workflow. Idempotente. | `onboard-tenant -- --slug acme --admin-email a@acme.com --admin-first-name A --admin-last-name B [--password-stdin] [--plan starter] [--timezone Europe/Rome]` — env: `KEYCLOAK_ADMIN_PASSWORD` obbligatoria | no |
-| `add-user` | Aggiunge/aggiorna un utente in un realm esistente (+ nodo `User`). Password reimpostata su utente esistente solo con `--password-stdin`. | `add-user -- --slug acme --email m@acme.com [--role user] [--password-stdin]` — env: `KEYCLOAK_ADMIN_PASSWORD` | no |
+| `onboard-tenant` | Crea realm Keycloak, client, ruoli, admin, nodo `Tenant`, dashboard, enum, notifiche e tutti i workflow. **Idempotente davvero**: un secondo giro sullo stesso slug non riscrive niente — le definizioni di workflow già presenti vengono *saltate*, non riallineate al seed (B-2), così le modifiche fatte dal disegnatore sopravvivono. | `onboard-tenant -- --slug acme --admin-email a@acme.com --admin-first-name A --admin-last-name B [--password-stdin] [--plan starter] [--timezone Europe/Rome]` — env: `KEYCLOAK_ADMIN_PASSWORD` obbligatoria | no |
+| `add-user` | Aggiunge/aggiorna un utente in un realm esistente (+ nodo `User`). `--role` è la chiave di un ruolo dell'organizzazione (di fabbrica o creato dalla pagina Ruoli), verificata nel grafo prima di Keycloak; il ruolo non si copia nel realm. Password reimpostata su utente esistente solo con `--password-stdin`. | `add-user -- --slug acme --email m@acme.com --role operator [--password-stdin]` — env: `KEYCLOAK_ADMIN_PASSWORD` | no |
 | `gen-token` | JWT HS256 di sviluppo (24h), accettato solo fuori produzione. | `JWT_SECRET=… gen-token -- --tenant=<slug> --user-id=<id> --email=<email> --role=admin` | no |
 
 ## Import / migrazioni
@@ -31,7 +37,7 @@ Regole comuni (`lib/scriptArgs.ts`, `lib/runScript.ts`):
 | `verify-backup.ts` | Verifica un archivio: manifest, JSONL parseabili e conteggi coerenti, allegati e realm dichiarati, restore `--dry-run` in-process. Exit ≠ 0 su qualsiasi incoerenza. Eseguita dal maintenance worker dopo ogni backup schedulato. | `exec tsx --env-file=.env src/scripts/verify-backup.ts --input backup.tar.gz` | no |
 | `restore:neo4j` | Restore additivo del grafo da archivio (non cancella nulla; **non** ripristina allegati, realm Keycloak, constraint/indici). | `restore:neo4j -- --input backup.tar.gz --yes-restore [--dry-run]` | no |
 | `migrate.ts` | Runner delle **migrazioni versionate** (`scripts/migrations/`, stato in `(:Migration)`, lock globale). | `exec tsx --env-file=.env src/scripts/migrate.ts [--status] [--dry-run] [--to <id>] [--init-schema] [--force]` | no |
-| `migrate:workflow-metadata` | Wrapper: applica solo `20260908_1000_workflow_step_metadata` (metadati `WorkflowStep`). Già applicata → no-op, `--force` per riapplicarla. | `migrate:workflow-metadata -- [--force]` | no |
+| `migrate:workflow-metadata` | Wrapper: applica solo `20260908_1000_workflow_step_metadata` (metadati `WorkflowStep`). Completa solo i valori **mancanti** (`coalesce`): `category`/`is_terminal`/`is_initial`/`is_open`/`step_order` già valorizzati non vengono mai riscritti, nemmeno con `--force` (B-15). Il ripristino di fabbrica vero, che cancella le scelte dell'amministratore, è `--reset-from-factory` (stampa il diff; `--dry-run` per vederlo soltanto, `--yes-reset` per scrivere). | `migrate:workflow-metadata -- [--force] [--reset-from-factory [--dry-run|--yes-reset]]` | solo `--reset-from-factory` |
 | `migrate-ci-labels.ts` | Wrapper B-08: applica solo `20260908_1010_ci_configuration_item_label` (aggiunge `:ConfigurationItem` ai CI tipizzati). `--force` dopo aver registrato un nuovo `CITypeDefinition` con nodi preesistenti. | `exec tsx --env-file=.env src/scripts/migrate-ci-labels.ts [--force]` | no |
 | `migrate-enum-references.ts` | Collega `CIFieldDefinition` con enum inline alle `EnumTypeDefinition` (`USES_ENUM`). **Script manuale, non una migrazione versionata**: richiede `--tenant`. | `exec tsx … --tenant=<slug> [--include-shared]` | no |
 | `backfill-embeddings.ts` | Calcola gli embedding mancanti/obsoleti di incident e KB. Fail-fast. | `node dist/scripts/backfill-embeddings.js` (nel container api) | no |
@@ -65,11 +71,10 @@ migrazioni dell'API: per fare tutto in un colpo usare
 | `seed-enum-types.ts` | Enum di sistema del tenant. | `exec tsx … --tenant <slug>` | no |
 | `seed-notification-rules.ts` | Regole di notifica di default. | `exec tsx … --slug <slug>` | no |
 | `seed-dashboards.ts` | 3 dashboard di ruolo. | `exec tsx … --tenant-id <slug>` | no |
-| `seed-itil-ci-rules.ts` | Regole di relazione ITIL↔CI. | `exec tsx … --tenant-id <slug>` | no |
 | `seed:field-rules` | Regole visibilità/obbligatorietà campi. | `seed:field-rules -- --tenant=<slug>` | no |
 | `seed:assessment-questions` | Domande di assessment change. | `seed:assessment-questions` | no |
 | `seed:automation` | SLA policy, trigger e business rule di esempio. | `seed:automation -- --tenant=<slug>` | no |
-| `seed:incident-workflow` / `seed:problem-workflow` / `seed:kb-workflow` / `seed:change-workflow` / `seed:sr-workflow` | Definizioni workflow (step esistenti conservati). | `<script> -- --tenant=<slug>` | no |
+| `seed:incident-workflow` / `seed:problem-workflow` / `seed:kb-workflow` / `seed:change-workflow` / `seed:sr-workflow` | Definizioni workflow. **Una definizione che esiste già NON viene toccata**: il seed la salta e dice perché (B-2). `--overwrite` la riallinea al seed di fabbrica dopo aver stampato il diff (passi, transizioni, azioni); se il disegnatore l'ha marchiata come personalizzata (`customized_at`) l'overwrite si rifiuta e serve anche `--overwrite-customized`, che quelle modifiche le **perde**. | `<script> -- --tenant=<slug> [--overwrite] [--overwrite-customized]` | solo con `--overwrite` |
 | `seed:ci-chain` | Popola il campo `chain` sui CI in base alle chain family. | `seed:ci-chain -- --slug <slug>` | no |
 
 ## Seed di dati demo (casuali; rifiutati con `NODE_ENV=production`)

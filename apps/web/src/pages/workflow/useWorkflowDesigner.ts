@@ -27,14 +27,32 @@ import { colors, lookupOrError } from '@/lib/tokens'
 
 const ACCENT_COLOR = colors.brand
 
+/**
+ * Quale disposizione predefinita degli archi usare sulla tela. È una scelta
+ * COSMETICA (da quale lato di un nodo esce una freccia), non una regola di
+ * dominio.
+ *
+ * B-25: la scelta si faceva annusando il NOME della definizione
+ * (`name.includes('standard' | 'normal' | 'emergency')`), residuo di quando si
+ * pensava a una definizione per tipo di change. Nessuna definizione spedita si
+ * chiama così — quindi quei tre rami non si sono mai accesi e il risultato era
+ * sempre `'standard'` — ma un cliente che chiamasse la sua definizione
+ * «Emergenza normale» si vedeva cambiare la disposizione degli archi senza
+ * capire perché. Ora decide il tipo di entità, che non si rinomina.
+ *
+ * APERTO, e va deciso guardando la tela: `'normal'` e `'emergency'` non sono
+ * più raggiungibili, e le loro tabelle (`NORMAL_HANDLES`/`NORMAL_POSITIONS`,
+ * `EMERGENCY_*` in `WorkflowCanvas.tsx`) NON sono codice morto — sono le
+ * disposizioni scritte per i passi che la definizione «Change RFC Process»
+ * ha davvero (`draft → assessment → cab_approval → …`), mentre
+ * `STANDARD_HANDLES` nomina passi (`draft → approved`) che quella definizione
+ * non ha. Cioè: oggi la tela delle change non usa nessuna disposizione su
+ * misura, e prima non la usava per la stessa ragione (il nome non conteneva
+ * «normal»). Passare le change a `'normal'` è un cambiamento VISIBILE del
+ * disegnatore: si fa vedendolo, non a scatola chiusa.
+ */
 export function defToWorkflowKey(def: WorkflowDefinition | null): WorkflowKey {
-  if (!def) return 'incident'
-  if (def.entityType === 'incident') return 'incident'
-  const n = def.name.toLowerCase()
-  if (n.includes('standard'))  return 'standard'
-  if (n.includes('normal'))    return 'normal'
-  if (n.includes('emergency')) return 'emergency'
-  return 'standard'
+  return def?.entityType === 'incident' || !def ? 'incident' : 'standard'
 }
 
 export interface PendingStepChange {
@@ -46,6 +64,10 @@ export interface PendingStepChange {
   isTerminal?:  boolean
   isOpen?:      boolean
   category?:    string | null
+  /** Scopo del passo: assente = non cambia, '' = tolto, altrimenti uno di WORKFLOW_STEP_PURPOSES. */
+  purpose?:     string | null
+  /** Scadenza del passo: assente = non cambia, '' = tolta, altrimenti il JSON. */
+  deadline?:    string | null
 }
 
 export function useWorkflowDesigner(def: WorkflowDefinition | null) {
@@ -125,7 +147,9 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
       const pending  = pendingStepByName.get(step.name)
       const mergedStep: WFStep = pending
         ? { ...step, label: pending.label, enterActions: pending.enterActions, exitActions: pending.exitActions,
-            isInitial: pending.isInitial, isTerminal: pending.isTerminal, isOpen: pending.isOpen, category: pending.category }
+            isInitial: pending.isInitial, isTerminal: pending.isTerminal, isOpen: pending.isOpen,
+            category: pending.category, purpose: pending.purpose ?? null,
+            deadline: pending.deadline === undefined ? step.deadline : (pending.deadline || null) }
         : step
       return {
         id:       step.id,
@@ -175,7 +199,7 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
         style:               { stroke: edgeColor, strokeWidth: 2 },
         markerEnd:           { type: MarkerType.ArrowClosed, width: 16, height: 16, color: edgeColor },
         labelStyle:          { fontSize: 'var(--font-size-body)', fontWeight: 500, fill: 'var(--color-slate)' },
-        labelBgStyle:        { fill: '#ffffff', fillOpacity: 1, stroke: edgeColor, strokeWidth: 1 },
+        labelBgStyle:        { fill: colors.white, fillOpacity: 1, stroke: edgeColor, strokeWidth: 1 },
         labelBgPadding:      [6, 4] as [number, number],
         labelBgBorderRadius: 4,
         data:                { transition: tr, color: edgeColor } satisfies EdgeNodeData,
@@ -226,7 +250,9 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
       const idx = prev.findIndex((c) => c.stepName === change.stepName)
       if (idx >= 0) {
         const updated = [...prev]
-        updated[idx] = change
+        // Unione, non sostituzione: un campo che il pannello manda solo quando
+        // CAMBIA (la scadenza) non deve sparire al secondo salvataggio locale.
+        updated[idx] = { ...prev[idx], ...change }
         return updated
       }
       return [...prev, change]

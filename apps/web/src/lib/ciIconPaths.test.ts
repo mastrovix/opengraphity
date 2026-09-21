@@ -34,7 +34,7 @@ describe('iconPathsOrError', () => {
   it('chiave sconosciuta → "?" rosso + console.error (mai "box")', () => {
     expect(iconPathsOrError('rocket')).toBe(BROKEN_ICON_PATHS)
     expect(iconPathsOrError('rocket')).not.toBe(CI_ICON_PATHS['box'])
-    expect(consoleError).toHaveBeenCalledWith('[CI_ICON_PATHS] valore sconosciuto: "rocket"')
+    expect(consoleError).toHaveBeenCalledWith('[CI_ICON_PATHS] unknown value: "rocket"')
   })
   it('la chiave riservata __broken__ ritorna il "?" senza loggare (già segnalato a monte)', () => {
     expect(iconPathsOrError(BROKEN_ICON_KEY)).toBe(BROKEN_ICON_PATHS)
@@ -77,7 +77,7 @@ describe('buildTypeIconMap / iconKeyForType', () => {
   it('tipo assente → BROKEN_ICON_KEY + console.error con il tipo', () => {
     expect(iconKeyForType(map, 'no_icon')).toBe(BROKEN_ICON_KEY)
     expect(iconKeyForType(map, 'unknown_type')).toBe(BROKEN_ICON_KEY)
-    expect(consoleError).toHaveBeenCalledWith('[CI_ICON] tipo CI senza icona nel metamodello: "no_icon"')
-    expect(consoleError).toHaveBeenCalledWith('[CI_ICON] tipo CI senza icona nel metamodello: "unknown_type"')
+    expect(consoleError).toHaveBeenCalledWith('[CI_ICON] CI type with no icon in the metamodel: "no_icon"')
+    expect(consoleError).toHaveBeenCalledWith('[CI_ICON] CI type with no icon in the metamodel: "unknown_type"')
   })
 })

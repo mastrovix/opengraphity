@@ -1,38 +1,183 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Lock, Unlock } from 'lucide-react'
-import { colors, fontSize, fontWeight } from '@/lib/tokens'
+import { Trash2, Lock, Unlock, AlertTriangle } from 'lucide-react'
+import { NOTIFICATION_BASE_TARGETS, NOTIFICATION_SEVERITIES, notificationTargetRole, roleNotificationTarget } from '@opengraphity/types'
+import i18n from '@/i18n/i18n'
+import { useRoles } from '@/hooks/useRoles'
+import { colors, fontSize, fontWeight, palette } from '@/lib/tokens'
 import { Toggle as SharedToggle } from '@/components/ui/Toggle'
 
 // ── Re-exported from NotificationRulesPage ────────────────────────────────────
 
 export const SEVERITY_COLOR: Record<string, string> = {
   info:    'var(--color-trigger-manual)',
-  success: '#22c55e',
-  warning: '#eab308',
+  success: palette.success.base,
+  warning: palette.warning.base,
   error:   'var(--color-danger)',
 }
 
-const CHANNELS_OPTIONS: { value: string; labelKey: string }[] = [
-  { value: 'in_app', labelKey: 'notificationRules.channels.inApp' },
-  { value: 'slack',  labelKey: 'notificationRules.channels.slack' },
-  { value: 'teams',  labelKey: 'notificationRules.channels.teams' },
-  { value: 'email',  labelKey: 'notificationRules.channels.email' },
+/** Etichette dei canali; QUALI canali offrire per un evento lo dice il server (`notificationRouting`). */
+export const CHANNEL_LABEL_KEY: Record<string, string> = {
+  in_app: 'notificationRules.channels.inApp',
+  slack:  'notificationRules.channels.slack',
+  teams:  'notificationRules.channels.teams',
+  email:  'notificationRules.channels.email',
+}
+
+/**
+ * Tabella `notificationRouting` così come arriva dall'API: i canali che il
+ * dispatcher sa consegnare per un tipo di evento (D3.1). `routableFor` è la
+ * sola funzione che lista e dialogo usano: nessun nome di evento o di canale
+ * è scritto nel web.
+ */
+export interface NotificationRouting {
+  defaultChannels: string[]
+  byEventType: Array<{ eventType: string; channels: string[] }>
+  defaultTargets: string[]
+  targetsByEventType: Array<{ eventType: string; targets: string[] }>
+}
+
+export function routableFor(routing: NotificationRouting, eventType: string): string[] {
+  return routing.byEventType.find((e) => e.eventType === eventType)?.channels ?? routing.defaultChannels
+}
+
+/**
+ * I bersagli che hanno senso per quel tipo di evento. Alla nascita di un
+ * ticket non esistono ancora assegnatario e team, quindi offrirli sarebbe
+ * offrire una regola che non consegnerà mai niente: il server la rifiuta, e
+ * qui non la proponiamo nemmeno. Un bersaglio già salvato ma non più
+ * applicabile resta visibile (con l'avviso) perché si possa cambiare.
+ */
+export function targetsFor(routing: NotificationRouting, eventType: string): string[] {
+  return routing.targetsByEventType.find((e) => e.eventType === eventType)?.targets ?? routing.defaultTargets
+}
+
+export interface TargetOption { value: string; label: string }
+
+/**
+ * Le opzioni della tendina per quell'evento, più il valore salvato se non è più
+ * fra quelli applicabili. Un destinatario «per ruolo» non dipende dall'entità
+ * dell'evento: vale sempre (`isTargetApplicable` di @opengraphity/types).
+ */
+export function targetOptionsFor(routing: NotificationRouting, eventType: string, current: string, all: readonly TargetOption[]): (TargetOption & { applicable: boolean })[] {
+  const applicable = targetsFor(routing, eventType)
+  const ok = (value: string) => notificationTargetRole(value) !== null || applicable.includes(value)
+  const options = withCurrent(all, current).filter((o) => ok(o.value)).map((o) => ({ ...o, applicable: true }))
+  if (!ok(current)) {
+    const saved = all.find((o) => o.value === current)
+    if (saved) options.unshift({ ...saved, applicable: false })
+  }
+  return options
+}
+
+/**
+ * Sezioni della pagina. Le regole seminate per gli allarmi (`event.*`,
+ * `ci.*`), i servizi monitorati (`service.*`) e la discovery (`sync.*`,
+ * `conflict.*`) hanno la loro sezione: prima finivano tutte sotto
+ * «Personalizzate». Ogni regola con un tipo non elencato qui resta custom.
+ */
+export const RULE_CATEGORIES: { key: string; events: string[] }[] = [
+  {
+    key: 'incident',
+    events: [
+      'incident.created', 'incident.assigned', 'incident.in_progress',
+      // Il tipo STABILE dell'ingresso in un passo (D-22) prende il posto di
+      // `incident.on_hold`, che nessun evento produceva: il passo di attesa di
+      // fabbrica si chiama `pending`. Una regola su questo tipo può essere
+      // ristretta allo scopo o alla categoria del passo, e regge alla rinomina.
+      'incident.step_entered',
+      'incident.escalated', 'incident.resolved', 'incident.closed',
+      'incident.major_declared', 'incident.major_cleared',
+    ],
+  },
+  {
+    key: 'change',
+    events: [
+      'change.approved', 'change.completed', 'change.failed',
+      'change.rejected', 'change.task_assigned',
+    ],
+  },
+  {
+    key: 'problem',
+    events: [
+      'problem.created', 'problem.step_entered', 'problem.under_investigation', 'problem.deferred',
+      'problem.resolved', 'problem.closed',
+    ],
+  },
+  {
+    key: 'sla',
+    events: ['sla.warning', 'sla.breached', 'ola.breached'],
+  },
+  {
+    key: 'escalation',
+    events: ['incident.escalation'],
+  },
+  {
+    key: 'events',
+    events: [
+      'event.received', 'event.resolved', 'event.orphan', 'event.suppressed', 'event.correlated',
+      'event.flapping', 'event.stable', 'event.storm_started', 'event.storm_ended',
+      'ci.health_changed',
+    ],
+  },
+  {
+    key: 'services',
+    events: ['service.health_changed', 'service.incident_opened'],
+  },
+  {
+    key: 'discovery',
+    events: ['sync.completed', 'sync.failed', 'conflict.created'],
+  },
+  {
+    key: 'digest',
+    events: ['digest.daily'],
+  },
 ]
 
-const SEVERITY_OPTIONS = ['info', 'success', 'warning', 'error'] as const
+export const STANDARD_EVENTS = RULE_CATEGORIES.flatMap((c) => c.events)
 
-const TARGET_OPTIONS: { value: string; labelKey: string }[] = [
-  { value: 'all',          labelKey: 'notificationRules.target.all'         },
-  { value: 'assignee',     labelKey: 'notificationRules.target.assignee'    },
-  { value: 'team_owner',   labelKey: 'notificationRules.target.teamOwner'   },
-  { value: 'role:admin',   labelKey: 'notificationRules.target.adminOnly'   },
-  { value: 'role:manager', labelKey: 'notificationRules.target.managerOnly' },
-]
+/** Dal vocabolario condiviso con la validazione dell'API (NT-1). */
+const SEVERITY_OPTIONS = NOTIFICATION_SEVERITIES
+
+/**
+ * Etichette dei destinatari. QUALI destinatari esistono lo dice il
+ * vocabolario condiviso (@opengraphity/types): i bersagli fissi
+ * (`NOTIFICATION_BASE_TARGETS`) e un `role:<chiave>` per ogni ruolo
+ * dell'organizzazione (ondata 7: prima i soli quattro di fabbrica). Prima qui
+ * c'era una lista scritta a mano che offriva `role:manager` — un ruolo che non
+ * esisteva, quindi zero destinatari (D-13/D-23).
+ * Un bersaglio fisso senza etichetta qui è un errore al caricamento del modulo
+ * (lo prende il test): mai un'opzione muta in tendina.
+ */
+const BASE_TARGET_LABEL_KEY: Record<string, string> = {
+  'all':        'notificationRules.target.all',
+  'assignee':   'notificationRules.target.assignee',
+  'team_owner': 'notificationRules.target.teamOwner',
+}
+for (const value of NOTIFICATION_BASE_TARGETS) {
+  if (!BASE_TARGET_LABEL_KEY[value]) throw new Error(`BASE_TARGET_LABEL_KEY: no label for recipient "${value}" — add the key and its it/en translations before offering it`)
+}
+
+/** I destinatari da offrire: quelli fissi e «Ruolo: X» per ogni ruolo dell'organizzazione. */
+export function useTargetOptions(): TargetOption[] {
+  const { t } = useTranslation()
+  const { roles, labelOf } = useRoles()
+  return useMemo(() => [
+    ...NOTIFICATION_BASE_TARGETS.map((value) => ({ value, label: t(BASE_TARGET_LABEL_KEY[value]!) })),
+    ...roles.map((r) => ({ value: roleNotificationTarget(r.key), label: t('notificationRules.target.role', { role: labelOf(r.key) }) })),
+  ], [t, roles, labelOf])
+}
+
+/** Le opzioni con il valore salvato in coda se non c'è (un ruolo mentre i ruoli si caricano). */
+export function withCurrent(options: readonly TargetOption[], current: string | null | undefined): TargetOption[] {
+  if (!current || options.some((o) => o.value === current)) return [...options]
+  const role = notificationTargetRole(current)
+  return [...options, { value: current, label: role ? i18n.t('notificationRules.target.role', { role }) : current }]
+}
 
 const selectStyle: React.CSSProperties = {
-  padding: '4px 8px', border: '1px solid #e2e8f0', borderRadius: 4,
-  fontSize: 'var(--font-size-body)', background: '#fafafa', cursor: 'pointer', width: '100%',
+  padding: '4px 8px', border: `1px solid ${colors.border}`, borderRadius: 4,
+  fontSize: 'var(--font-size-body)', background: palette.neutral.surface1, cursor: 'pointer', width: '100%',
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -46,6 +191,15 @@ export interface NotificationRule {
   channels:         string[]
   target:           string
   isSeed:           boolean
+  /** Restringimento della regola sul tipo stabile del passo: scopo / categoria. */
+  stepPurpose?:     string | null
+  stepCategory?:    string | null
+  /**
+   * Falso = niente, nel prodotto o nei workflow di questo tenant, produce il
+   * tipo di evento della regola: la regola è accesa e non scatterà mai. Prima
+   * non risultava da nessuna parte (il dispatcher usciva in silenzio).
+   */
+  eventProduced?:   boolean
   escalationDelayMinutes?:     number | null
   escalationTarget?:           string | null
   escalationMessage?:          string | null
@@ -73,35 +227,86 @@ export function Toggle({ value, onChange, label }: { value: boolean; onChange: (
 
 export function RuleRow({
   rule,
+  routable,
+  targets,
   onUpdate,
   onDelete,
 }: {
   rule:     NotificationRule
+  /** Canali consegnabili per `rule.eventType` (dal server). */
+  routable: readonly string[]
+  /** Bersagli applicabili a `rule.eventType`, col valore salvato in testa se non lo è più (dal server). */
+  targets:  readonly (TargetOption & { applicable: boolean })[]
   onUpdate: (id: string, input: UpdateInput) => void
   onDelete: (id: string) => void
 }) {
   const { t } = useTranslation()
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // I canali offerti sono quelli instradabili; un canale già salvato ma non
+  // instradabile (regola scritta prima della migrazione 1150 o per altre vie)
+  // resta visibile con un avviso, così l'amministratore lo può togliere: non
+  // sparisce dalla vista mentre continua a far fallire il job di notifica.
+  const stale    = rule.channels.filter((c) => !routable.includes(c))
+  const options  = [...routable, ...stale]
+
+  /**
+   * Le modifiche in attesa si ACCUMULANO (revisione totale · G-6). Prima ogni
+   * interazione calcolava il valore dai props e il debounce di 500 ms
+   * SOSTITUIVA la modifica in attesa: spuntare Slack e subito Email mandava
+   * solo Email, e la casella Slack tornava spenta al refetch. Ora la riga
+   * mostra lo stato in attesa e manda la somma delle modifiche.
+   */
+  const [pending, setPending] = useState<UpdateInput>({})
+  const pendingRef = useRef<UpdateInput>({})
+
   const debounce = useCallback((input: UpdateInput) => {
+    const next = { ...pendingRef.current, ...input }
+    pendingRef.current = next
+    setPending(next)
     if (timerRef.current) clearTimeout(timerRef.current)
-    timerRef.current = setTimeout(() => onUpdate(rule.id, input), 500)
+    timerRef.current = setTimeout(() => {
+      onUpdate(rule.id, next)
+      // Lo stato in attesa resta visibile finché il server non risponde: il
+      // `refetch` riporta i props aggiornati e l'effetto sotto lo scarta.
+    }, 500)
   }, [onUpdate, rule.id])
 
+  // Quando i props riflettono ciò che avevamo mandato, l'attesa è finita.
+  const saved = JSON.stringify([rule.enabled, rule.severityOverride, rule.channels, rule.target])
+  useEffect(() => {
+    if (Object.keys(pendingRef.current).length === 0) return
+    const p = pendingRef.current
+    const arrived =
+      (p.enabled === undefined || p.enabled === rule.enabled)
+      && (p.severityOverride === undefined || p.severityOverride === rule.severityOverride)
+      && (p.target === undefined || p.target === rule.target)
+      && (p.channels === undefined || JSON.stringify([...p.channels].sort()) === JSON.stringify([...rule.channels].sort()))
+    if (arrived) { pendingRef.current = {}; setPending({}) }
+  }, [saved, rule])
+
+  /** La riga come la si vede: i props più le modifiche in attesa. */
+  const view = {
+    enabled:          pending.enabled          ?? rule.enabled,
+    severityOverride: pending.severityOverride ?? rule.severityOverride,
+    target:           pending.target           ?? rule.target,
+    channels:         pending.channels         ?? rule.channels,
+  }
+
   const toggleChannel = (ch: string) => {
-    const next = rule.channels.includes(ch)
-      ? rule.channels.filter((c) => c !== ch)
-      : [...rule.channels, ch]
+    const next = view.channels.includes(ch)
+      ? view.channels.filter((c) => c !== ch)
+      : [...view.channels, ch]
     debounce({ channels: next })
   }
 
   const titleLabel = t(rule.titleKey, { defaultValue: '' }) || rule.eventType
 
   return (
-    <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+    <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
       {/* Enabled */}
       <td style={{ padding: '10px 12px', width: 52 }}>
-        <Toggle value={rule.enabled} onChange={(v) => debounce({ enabled: v })} label={`${t('notificationRules.enabled')}: ${titleLabel}`} />
+        <Toggle value={view.enabled} onChange={(v) => debounce({ enabled: v })} label={`${t('notificationRules.enabled')}: ${titleLabel}`} />
       </td>
 
       {/* Event */}
@@ -109,19 +314,36 @@ export function RuleRow({
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {titleLabel}
           {rule.isSeed
-            ? <span title={t('notificationRules.systemRule',   'Regola di sistema')}     style={{ display: 'inline-flex', flexShrink: 0 }}><Lock   size={14} color="#94a3b8" /></span>
-            : <span title={t('notificationRules.customRule',   'Regola personalizzata')} style={{ display: 'inline-flex', flexShrink: 0 }}><Unlock size={14} color="#94a3b8" /></span>
+            ? <span title={t('notificationRules.systemRule')}     style={{ display: 'inline-flex', flexShrink: 0 }}><Lock   size={14} color={colors.slateLight} /></span>
+            : <span title={t('notificationRules.customRule')} style={{ display: 'inline-flex', flexShrink: 0 }}><Unlock size={14} color={colors.slateLight} /></span>
           }
+          {/* Regola che non scatterà mai: nessun evento di questo tipo viene
+              prodotto. Era il caso di `incident.on_hold`, viva in ogni tenant e
+              morta da sempre, e non si vedeva da nessuna parte (D-22/B-16). */}
+          {rule.eventProduced === false && (
+            <span title={t('notificationRules.eventNotProduced', { eventType: rule.eventType })} style={{ display: 'inline-flex', flexShrink: 0, color: 'var(--color-danger)' }}>
+              <AlertTriangle size={14} aria-label={t('notificationRules.eventNotProduced', { eventType: rule.eventType })} />
+            </span>
+          )}
         </div>
-        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontFamily: 'monospace', marginTop: 1 }}>{rule.eventType}</div>
+        <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>{rule.eventType}</div>
+        {/* Restringimento della regola del passo: si imposta alla creazione ed
+            è ciò che la rende riconoscibile senza nominare un passo. */}
+        {(rule.stepPurpose || rule.stepCategory) && (
+          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 1 }}>
+            {rule.stepPurpose
+              ? t('notificationRules.narrowPurpose', { purpose: t(`workflow.purposeOption.${rule.stepPurpose}`) })
+              : t('notificationRules.narrowCategory', { category: rule.stepCategory })}
+          </div>
+        )}
       </td>
 
       {/* Severity */}
       <td style={{ padding: '10px 12px', width: 120 }}>
         <select
-          value={rule.severityOverride}
+          value={view.severityOverride}
           onChange={(e) => debounce({ severityOverride: e.target.value })}
-          style={{ ...selectStyle, color: SEVERITY_COLOR[rule.severityOverride] ?? 'var(--color-slate)', fontWeight: fontWeight.medium }}
+          style={{ ...selectStyle, color: SEVERITY_COLOR[view.severityOverride] ?? 'var(--color-slate)', fontWeight: fontWeight.medium }}
         >
           {SEVERITY_OPTIONS.map((s) => (
             <option key={s} value={s} style={{ color: SEVERITY_COLOR[s] }}>{t(`notificationRules.severity.${s}`)}</option>
@@ -129,28 +351,39 @@ export function RuleRow({
         </select>
       </td>
 
-      {/* Channels */}
+      {/* Channels: only the ones the dispatcher can route for this event type */}
       <td style={{ padding: '10px 12px' }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          {CHANNELS_OPTIONS.map(({ value, labelKey }) => (
-            <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-              <input
-                type="checkbox"
-                checked={rule.channels.includes(value)}
-                onChange={() => toggleChannel(value)}
-                style={{ accentColor: colors.brand, width: 13, height: 13 }}
-              />
-              {t(labelKey)}
-            </label>
-          ))}
+          {options.map((value) => {
+            const isStale = stale.includes(value)
+            const label   = CHANNEL_LABEL_KEY[value] ? t(CHANNEL_LABEL_KEY[value]) : value
+            return (
+              <label
+                key={value}
+                title={isStale ? t('notificationRules.channelNotRoutable', { channel: label }) : undefined}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: isStale ? 'var(--color-danger)' : 'var(--color-slate)' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={view.channels.includes(value)}
+                  onChange={() => toggleChannel(value)}
+                  style={{ accentColor: colors.brand, width: 13, height: 13 }}
+                />
+                {label}
+                {isStale && <AlertTriangle size={12} aria-label={t('notificationRules.channelNotRoutable', { channel: label })} />}
+              </label>
+            )
+          })}
         </div>
       </td>
 
       {/* Target */}
       <td style={{ padding: '10px 12px', width: 160 }}>
-        <select value={rule.target} onChange={(e) => debounce({ target: e.target.value })} style={{ ...selectStyle, color: 'var(--color-slate)' }}>
-          {TARGET_OPTIONS.map(({ value, labelKey }) => (
-            <option key={value} value={value}>{t(labelKey)}</option>
+        <select value={view.target} onChange={(e) => debounce({ target: e.target.value })} style={{ ...selectStyle, color: 'var(--color-slate)' }}>
+          {targets.map(({ value, label, applicable }) => (
+            <option key={value} value={value}>
+              {applicable ? label : t('notificationRules.target.notApplicable', { target: label })}
+            </option>
           ))}
         </select>
       </td>

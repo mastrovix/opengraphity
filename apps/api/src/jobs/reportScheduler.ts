@@ -7,17 +7,20 @@
  * executes it. Two replicas or a delayed tick can no longer run the same
  * template twice, and a tick delayed by a few minutes no longer skips it.
  *
- * Delivery: in-app SSE notification + optional Slack summary of the KPI
- * sections. No file is generated (the PDF/Excel generators live inside the
- * exportReport resolvers and are not reusable here yet), so the message says
- * "Report eseguito", not "Report pronto".
+ * Consegna: notifica in-app + riassunto Slack dei KPI se il template ha un
+ * canale + IL DOCUMENTO PER POSTA ai destinatari, nel formato scelto
+ * (ondata 11). Fino a ieri gli ultimi due non esistevano: il pannello
+ * raccoglieva caselle e formato, e qui non si generava nessun file — una
+ * promessa che l'interfaccia faceva e questo job non manteneva.
  */
 import { randomUUID } from 'crypto'
 import type { Worker, Job } from 'bullmq'
 import { CronExpressionParser } from 'cron-parser'
 import { getSession } from '@opengraphity/neo4j'
-import { sendSlackMessage, sseManager } from '@opengraphity/notifications'
+import fs from 'node:fs/promises'
+import { sendSlackMessage, sseManager, loadNotificationLocale, notificationText, formatNotificationDate, escapeHtml } from '@opengraphity/notifications'
 import { executeReportSection } from '../lib/reportExecutor.js'
+import { isLingua } from '../lib/tenantLanguage.js'
 import { loadTemplateSections } from '../lib/reportTemplates.js'
 import { logger } from '../lib/logger.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
@@ -52,8 +55,31 @@ interface TemplateRow {
   tenantId:          string
   name:              string
   scheduleChannelId: string | null
+  /** Le caselle a cui mandare il documento. Vuoto = nessuna consegna per posta. */
+  recipients:        string[]
+  /** `pdf` o `excel`; assente = pdf, che è quello che l'interfaccia propone. */
+  format:            'pdf' | 'excel'
   /** The cron tick this run is for (ISO). */
   dueAt:             string
+}
+
+/**
+ * I destinatari come li ha scritti l'amministratore: una lista di caselle.
+ * Una riga vuota o non testuale si butta — mandare a `""` fa fallire tutta la
+ * spedizione, e sarebbe l'unica cosa che l'amministratore non ha chiesto.
+ */
+function destinatari(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map((x) => String(x).trim()).filter((x) => x !== '')
+}
+
+/**
+ * Il nome del template come nome di file: chi riceve l'allegato deve
+ * riconoscerlo dalla casella di posta, non trovarsi un UUID.
+ */
+function nomeDiFile(nome: string): string {
+  const pulito = nome.normalize('NFKD').replace(/[^A-Za-z0-9 _-]/g, '').trim().replace(/\s+/g, '_')
+  return pulito === '' ? 'report' : pulito.slice(0, 60)
 }
 
 async function loadDueTemplates(now: Date): Promise<TemplateRow[]> {
@@ -61,17 +87,27 @@ async function loadDueTemplates(now: Date): Promise<TemplateRow[]> {
   try {
     const result = await session.executeRead(tx =>
       tx.run(`
+        // Job di pianificazione: legge i template di TUTTI i tenant, e ognuno viene
+        // poi eseguito nel proprio (loadTemplate scopa per tenant_id).
+        // tenant-ok: passata di manutenzione cross-tenant, sola lettura.
         MATCH (r:ReportTemplate)
         WHERE r.schedule_enabled = true AND r.schedule_cron IS NOT NULL
-        RETURN properties(r) AS props
+        // Il fuso del cliente viaggia con il template: il cron è orario di
+        // parete del cliente (revisione totale · C-6 — senza il fuso veniva
+        // valutato in quello del PROCESSO, UTC nel container, e un cron alle
+        // 8 partiva alle 10:00 italiane, 11:00 con l'ora legale).
+        OPTIONAL MATCH (t:Tenant {id: r.tenant_id})
+        RETURN properties(r) AS props, t.timezone AS timezone
       `),
     )
     const due: TemplateRow[] = []
     for (const rec of result.records) {
       const p = rec.get('props') as Props
+      const tzRaw = rec.get('timezone') as unknown
+      const tz = typeof tzRaw === 'string' && tzRaw.trim() !== '' ? tzRaw : undefined
       let dueAt: Date | null
       try {
-        dueAt = previousDueAt(p['schedule_cron'] as string, now)
+        dueAt = previousDueAt(p['schedule_cron'] as string, now, tz)
       } catch (err) {
         // One template's corrupt cron must not kill scheduling for every
         // other template — but it must be LOUD, not a silent disable.
@@ -87,6 +123,8 @@ async function loadDueTemplates(now: Date): Promise<TemplateRow[]> {
         tenantId:          p['tenant_id']           as string,
         name:              p['name']                as string,
         scheduleChannelId: (p['schedule_channel_id'] as string | null) ?? null,
+        recipients:        destinatari(p['schedule_recipients']),
+        format:            p['schedule_format'] === 'excel' ? 'excel' : 'pdf',
         dueAt:             dueAt.toISOString(),
       })
     }
@@ -172,7 +210,7 @@ export function buildSlackSummary(templateName: string, templateId: string, resu
     })
   }
   if (malformedKpi > 0) {
-    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `⚠ ${malformedKpi} sezione/i KPI non leggibili — vedi log API` }] })
+    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `⚠ ${malformedKpi} KPI section(s) could not be read — see the API log` }] })
   }
   blocks.push({ type: 'divider' })
   return { blocks, malformedKpi }
@@ -199,16 +237,25 @@ async function reportSchedulerProcessor(_job: Job) {
       let sections
       try { sections = await loadTemplateSections(readSession, tpl.id, tpl.tenantId) }
       finally { await readSession.close() }
+      // Nella lingua del CLIENTE: un report che arriva da solo non ha davanti
+      // nessuno che scelga la lingua, e le intestazioni delle colonne le
+      // compone il server (senza, uscivano in inglese).
+      const locale = await loadNotificationLocale(tpl.tenantId)
       const results  = await Promise.all(
-        sections.map(sec => executeReportSection(sec, tpl.tenantId)),
+        sections.map(sec => executeReportSection(sec, tpl.tenantId, { language: isLingua(locale.language) ? locale.language : undefined })),
       )
 
       // ── SSE in-app notification (always) ────────────────────────────────────
+      // CO-2: titolo e messaggio come chiavi (il pannello li traduce) e, per
+      // chi non ha la chiave, nella lingua del cliente. Erano in italiano fisso.
+      const reportParams = { name: tpl.name, count: String(results.length) }
       sseManager.sendToTenant(tpl.tenantId, {
         id:          randomUUID(),
         type:        'scheduled_report',
-        title:       `Report eseguito: ${tpl.name}`,
-        message:     `Il report schedulato "${tpl.name}" è stato eseguito (${results.length} sezione/i).`,
+        title:       'notification.report.executed.title',
+        message:     notificationText(locale, 'reportExecuted', reportParams),
+        message_key: 'inApp.report.executed',
+        message_params: reportParams,
         severity:    'info',
         entity_id:   tpl.id,
         entity_type: 'ReportTemplate',
@@ -223,14 +270,56 @@ async function reportSchedulerProcessor(_job: Job) {
         if (webhookUrl) {
           const summary = buildSlackSummary(tpl.name, tpl.id, results)
           malformedKpi = summary.malformedKpi
-          await sendSlackMessage(webhookUrl, null, summary.blocks as import('@opengraphity/notifications').SlackBlock[])
+          await sendSlackMessage(tpl.tenantId, webhookUrl, null, summary.blocks as import('@opengraphity/notifications').SlackBlock[])
         } else {
           logger.warn({ templateId: tpl.id, channelId: tpl.scheduleChannelId }, 'report-scheduler: schedule channel not found/inactive in tenant — Slack delivery skipped')
         }
       }
 
+      /*
+       * ── IL DOCUMENTO AI DESTINATARI (ondata 11) ───────────────────────────
+       *
+       * Il pannello «Pianificazione» raccoglie le caselle e fa scegliere fra
+       * PDF ed Excel, e nessuno dei due arrivava da nessuna parte: lo
+       * scheduler mandava una notifica in-app e, se configurato, un riassunto
+       * su Slack. Il commento in testa a questo file lo ammetteva («no file is
+       * generated»), il che non lo rende meno una promessa non mantenuta —
+       * l'amministratore vedeva «Report eseguito» e aspettava una mail.
+       *
+       * La generazione è la STESSA dell'esportazione a mano
+       * (`generateReportFile`), quindi il file che arriva per posta è identico
+       * a quello che si scarica dal pulsante.
+       */
+      let consegnato = 0
+      if (tpl.recipients.length > 0) {
+        const { generateReportFile } = await import('../graphql/resolvers/reportExport.js')
+        const { sendEmail } = await import('@opengraphity/notifications')
+        const { filePath, filename } = await generateReportFile(tpl.format, tpl.id, tpl.tenantId)
+        try {
+          const quando = formatNotificationDate(locale, now)
+          await sendEmail({
+            to: tpl.recipients,
+            subject: notificationText(locale, 'reportEmailSubject', { name: tpl.name, date: quando }),
+            html: `<p>${escapeHtml(notificationText(locale, 'reportEmailBody', { name: tpl.name, date: quando, sections: String(results.length) }))}</p>`,
+            attachments: [{
+              filename: `${nomeDiFile(tpl.name)}.${tpl.format === 'pdf' ? 'pdf' : 'xlsx'}`,
+              content: await fs.readFile(filePath),
+              contentType: tpl.format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            }],
+          })
+          consegnato = tpl.recipients.length
+        } finally {
+          // Il file temporaneo se ne va subito: la passata di pulizia lo
+          // prenderebbe comunque dopo due ore, ma un report schedulato ogni
+          // ora lascerebbe una copia per volta sul disco fino ad allora.
+          await fs.unlink(filePath).catch((err: unknown) => {
+            logger.warn({ err, filename }, 'report-scheduler: temporary report file not removed')
+          })
+        }
+      }
+
       logger.info(
-        { templateId: tpl.id, templateName: tpl.name, sections: results.length, malformedKpi, dueAt: tpl.dueAt },
+        { templateId: tpl.id, templateName: tpl.name, sections: results.length, malformedKpi, consegnato, formato: tpl.format, dueAt: tpl.dueAt },
         'report-scheduler: scheduled report executed',
       )
     } catch (err) {

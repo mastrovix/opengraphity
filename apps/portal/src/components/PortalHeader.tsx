@@ -2,7 +2,11 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, LogOut, User, Menu, X } from 'lucide-react'
+import { useQuery } from '@apollo/client/react'
 import { keycloak } from '@/lib/keycloak'
+import { GET_TENANT_BRAND } from '@/graphql/queries'
+import { colors, alpha } from '@/lib/tokens'
+import { PortalLanguageSelect } from './PortalLanguageSelect'
 
 interface Props {
   userName: string
@@ -17,7 +21,7 @@ const NAV_STYLE_BASE: React.CSSProperties = {
   borderRadius: 20,
   fontSize:   14,
   fontWeight: 500,
-  color:      '#64748B',
+  color:      colors.slate,
   transition: 'background 0.15s, color 0.15s',
   textDecoration: 'none',
   whiteSpace: 'nowrap',
@@ -27,6 +31,9 @@ export function PortalHeader({ userName }: Props) {
   const { t }                   = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  // Il marchio dell'organizzazione (ondata 6 di «Nulla cablato»): senza un logo suo, quello del prodotto.
+  const { data: brandData } = useQuery<{ tenantBrand: { displayName: string; logoUrl: string | null; isDefault: boolean } }>(GET_TENANT_BRAND)
+  const brand = brandData?.tenantBrand
 
   function logout() {
     keycloak.logout({ redirectUri: window.location.origin })
@@ -46,8 +53,8 @@ export function PortalHeader({ userName }: Props) {
       left:            0,
       right:           0,
       zIndex:          100,
-      backgroundColor: '#fff',
-      borderBottom:    '1px solid #E2E8F0',
+      backgroundColor: colors.white,
+      borderBottom:    `1px solid ${colors.border}`,
       height:          60,
     }}>
       <div style={{
@@ -62,10 +69,16 @@ export function PortalHeader({ userName }: Props) {
       }}>
         {/* Logo */}
         <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <img src="/opengrafo-logo.svg" alt="OpenGrafo" style={{ height: 28 }} />
-          <span style={{ fontSize: 10, fontWeight: 600, color: '#0F172A' }}>
-            {t('portal.title')}
-          </span>
+          {brand && (
+            <>
+              <img src={brand.logoUrl ?? '/opengrafo-logo.svg'} alt={brand.displayName} style={{ height: 28, maxWidth: 160, objectFit: 'contain' }} />
+              <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                {/* Il nome si vede quando l'organizzazione ne ha scelto uno, anche senza logo. */}
+                {(brand.logoUrl || !brand.isDefault) && <span style={{ fontSize: 13, fontWeight: 700, color: colors.slateDark }}>{brand.displayName}</span>}
+                <span style={{ fontSize: 12, fontWeight: 600, color: colors.slateDark }}>{t('portal.title')}</span>
+              </span>
+            </>
+          )}
         </a>
 
         {/* Nav — desktop */}
@@ -82,9 +95,9 @@ export function PortalHeader({ userName }: Props) {
               end={to === '/'}
               style={({ isActive }) => ({
                 ...NAV_STYLE_BASE,
-                backgroundColor: isActive ? '#F0F9FF' : 'transparent',
-                color:           isActive ? '#0EA5E9' : '#64748B',
-                borderBottom:    isActive ? '2px solid #0EA5E9' : '2px solid transparent',
+                backgroundColor: isActive ? colors.brandLight : 'transparent',
+                color:           isActive ? colors.brand : colors.slate,
+                borderBottom:    isActive ? `2px solid ${colors.brand}` : '2px solid transparent',
                 borderRadius:    0,
                 padding:         '4px 14px',
               })}
@@ -105,7 +118,7 @@ export function PortalHeader({ userName }: Props) {
                 alignItems:   'center',
                 gap:          6,
                 background:   'none',
-                border:       '1px solid #E2E8F0',
+                border:       `1px solid ${colors.border}`,
                 borderRadius: 24,
                 padding:      '4px 10px 4px 4px',
                 cursor:       'pointer',
@@ -115,8 +128,8 @@ export function PortalHeader({ userName }: Props) {
                 width:           32,
                 height:          32,
                 borderRadius:    '50%',
-                backgroundColor: '#0EA5E9',
-                color:           '#fff',
+                backgroundColor: colors.brand,
+                color:           colors.white,
                 display:         'flex',
                 alignItems:      'center',
                 justifyContent:  'center',
@@ -126,10 +139,10 @@ export function PortalHeader({ userName }: Props) {
               }}>
                 {initials(userName)}
               </div>
-              <span style={{ fontSize: 10, color: '#0F172A', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 12, color: colors.slateDark, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {userName}
               </span>
-              <ChevronDown size={14} style={{ color: '#94A3B8' }} />
+              <ChevronDown size={14} style={{ color: colors.slateLight }} />
             </button>
 
             {menuOpen && (
@@ -139,10 +152,10 @@ export function PortalHeader({ userName }: Props) {
                   top:             '100%',
                   right:           0,
                   marginTop:       6,
-                  backgroundColor: '#fff',
-                  border:          '1px solid #E2E8F0',
+                  backgroundColor: colors.white,
+                  border:          `1px solid ${colors.border}`,
                   borderRadius:    8,
-                  boxShadow:       '0 4px 16px rgba(0,0,0,0.12)',
+                  boxShadow:       `0 4px 16px ${alpha.black12}`,
                   minWidth:        160,
                   zIndex:          200,
                   overflow:        'hidden',
@@ -150,15 +163,17 @@ export function PortalHeader({ userName }: Props) {
               >
                 <button
                   onClick={openProfile}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#0F172A' }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: colors.slateDark }}
                 >
-                  <User size={14} style={{ color: '#64748B' }} />
+                  <User size={14} style={{ color: colors.slate }} />
                   {t('common.profile')}
                 </button>
-                <div style={{ height: 1, background: '#E2E8F0' }} />
+                <div style={{ height: 1, background: colors.border }} />
+                <PortalLanguageSelect />
+                <div style={{ height: 1, background: colors.border }} />
                 <button
                   onClick={logout}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#EF4444' }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: colors.danger }}
                 >
                   <LogOut size={14} />
                   {t('common.logout')}
@@ -185,8 +200,8 @@ export function PortalHeader({ userName }: Props) {
           top:             60,
           left:            0,
           right:           0,
-          backgroundColor: '#fff',
-          borderBottom:    '1px solid #E2E8F0',
+          backgroundColor: colors.white,
+          borderBottom:    `1px solid ${colors.border}`,
           padding:         '12px 24px',
           display:         'flex',
           flexDirection:   'column',
@@ -208,8 +223,8 @@ export function PortalHeader({ userName }: Props) {
                 borderRadius:    8,
                 fontSize:        15,
                 fontWeight:      500,
-                color:           isActive ? '#0EA5E9' : '#0F172A',
-                backgroundColor: isActive ? '#F0F9FF' : 'transparent',
+                color:           isActive ? colors.brand : colors.slateDark,
+                backgroundColor: isActive ? colors.brandLight : 'transparent',
               })}
             >
               {label}

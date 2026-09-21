@@ -4,9 +4,15 @@ import { getSession, toNumber } from '@opengraphity/neo4j'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { GraphQLContext } from '../../context.js'
 import { audit } from '../../lib/audit.js'
+import { hasPermission } from '../../lib/permissions.js'
+import { kbArticlePublishedCypher } from '../../lib/kbPublished.js'
 import { logger } from '../../lib/logger.js'
 import { enqueueEmbedding } from '../../jobs/embeddingWorker.js'
 import { normalizeKbTags } from '../../services/embeddings.js'
+import { assertDomainValue } from '../../lib/domainMatrix.js'
+import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
+import { LINGUE, labelFor, type Lingua } from '../../lib/enumValueLabels.js'
 
 interface KBArticle {
   id:                 string
@@ -32,6 +38,8 @@ interface KBArticle {
 
 interface KBCategory {
   name:  string
+  label: string
+  color: string | null
   count: number
 }
 
@@ -80,7 +88,8 @@ const ARTICLE_RETURN = `
          a.tags              AS tags,
          a.status            AS status,
          a.author_id         AS authorId,
-         a.author_name       AS authorName,
+         // Il nome della persona, non l'e-mail salvata alla scrittura (giro del 14 set 2026, #44).
+         coalesce(COLLECT { MATCH (au:User {id: a.author_id, tenant_id: a.tenant_id}) RETURN au.name }[0], a.author_name) AS authorName,
          a.views             AS views,
          a.helpful_count     AS helpfulCount,
          a.not_helpful_count AS notHelpfulCount,
@@ -90,7 +99,7 @@ const ARTICLE_RETURN = `
          wi.id               AS workflowInstanceId,
          wi.current_step     AS currentStep,
          coalesce(a.version, 1)   AS version,
-         a.last_edited_by_name    AS lastEditedByName
+         coalesce(COLLECT { MATCH (ed:User {id: a.last_edited_by, tenant_id: a.tenant_id}) RETURN ed.name }[0], a.last_edited_by_name) AS lastEditedByName
 `
 
 // Full RETURN including the OPTIONAL MATCH for WorkflowInstance
@@ -116,6 +125,16 @@ function generateSlug(title: string): string {
 
 // ── Queries ───────────────────────────────────────────────────────────────────
 
+/**
+ * Bozze, articoli in revisione e archiviati sono di chi lavora la KB (`kb.read`).
+ * Prima `kbArticles`, `kbArticle` e `kbArticleBySlug` erano aperti a `portal.read`
+ * senza guardare lo stato: un utente del portale leggeva una bozza passando
+ * `status: "draft"` o lo slug (revisione totale · H-1, riprodotto su c-test).
+ */
+function canReadDrafts(ctx: GraphQLContext): boolean {
+  return hasPermission(ctx, 'kb.read')
+}
+
 export async function kbArticles(
   _: unknown,
   args: { search?: string; category?: string; status?: string; page?: number; pageSize?: number },
@@ -127,6 +146,8 @@ export async function kbArticles(
 
   const conditions: string[] = ['a.tenant_id = $tenantId']
   const params: Record<string, unknown> = { tenantId: ctx.tenantId, skip, limit: pageSize }
+  // Chi non lavora la KB (il portale) vede solo il pubblicato, qualunque filtro chieda (revisione totale · H-1).
+  if (!canReadDrafts(ctx)) conditions.push(kbArticlePublishedCypher('a'))
 
   if (args.status)   { conditions.push('a.status = $status');       params['status']   = args.status }
   if (args.category) { conditions.push('a.category = $category');   params['category'] = args.category }
@@ -137,6 +158,7 @@ export async function kbArticles(
   const session = getSession(undefined, 'READ')
   try {
     const dataRes = await session.executeRead((tx) => tx.run(`
+      // tenant-ok: il WHERE interpolato parte da a.tenant_id = $tenantId (conditions, riga 128)
       MATCH (a:KBArticle)
       WHERE ${where}
       ${ARTICLE_RETURN_WITH_WI}
@@ -145,6 +167,7 @@ export async function kbArticles(
     `, params))
 
     const countRes = await session.executeRead((tx) => tx.run(`
+      // tenant-ok: stesso $where della query di pagina, tenant per primo (conditions, riga 128)
       MATCH (a:KBArticle)
       WHERE ${where}
       RETURN count(a) AS total
@@ -166,7 +189,8 @@ export async function kbArticle(
   try {
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
-      SET a.views = a.views + 1
+      ${canReadDrafts(ctx) ? '' : `WHERE ${kbArticlePublishedCypher('a')}`}
+      SET a.views = coalesce(a.views, 0) + 1
       WITH a
       ${ARTICLE_RETURN_WITH_WI}
     `, { id: args.id, tenantId: ctx.tenantId }))
@@ -189,7 +213,8 @@ export async function kbArticleBySlug(
   try {
     const res = await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {slug: $slug, tenant_id: $tenantId})
-      SET a.views = a.views + 1
+      ${canReadDrafts(ctx) ? '' : `WHERE ${kbArticlePublishedCypher('a')}`}
+      SET a.views = coalesce(a.views, 0) + 1
       WITH a
       ${ARTICLE_RETURN_WITH_WI}
     `, { slug: args.slug, tenantId: ctx.tenantId }))
@@ -203,22 +228,35 @@ export async function kbArticleBySlug(
   }
 }
 
+/**
+ * Le categorie della Knowledge Base: il vocabolario `kb_category` del cliente,
+ * nell'ordine dei suoi valori, con l'etichetta nella lingua chiesta, il colore
+ * del Dizionario e quanti articoli pubblicati ha ciascuna (anche zero).
+ * Revisione del 14 set 2026 · F5: prima erano le sole categorie già usate.
+ */
 export async function kbCategories(
   _: unknown,
-  __: unknown,
+  args: { language?: string | null },
   ctx: GraphQLContext,
 ): Promise<KBCategory[]> {
+  const [vocabulary, fallback] = await Promise.all([
+    loadVocabularyEntries(ctx.tenantId, 'kb_category'),
+    languageFor(ctx.tenantId),
+  ])
+  const language: Lingua = (LINGUE as readonly string[]).includes(args.language ?? '') ? args.language as Lingua : fallback
   const session = getSession(undefined, 'READ')
   try {
     const res = await session.executeRead((tx) => tx.run(`
       MATCH (a:KBArticle {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
       WHERE s.category = 'published'
       RETURN a.category AS name, count(a) AS count
-      ORDER BY count DESC
     `, { tenantId: ctx.tenantId }))
-    return res.records.map((r) => ({
-      name:  r.get('name')  as string,
-      count: toNumber(r.get('count')),
+    const counts = new Map(res.records.map((r) => [r.get('name') as string, toNumber(r.get('count'))]))
+    return vocabulary.values.map((name) => ({
+      name,
+      label: labelFor(name, vocabulary.labels, language, fallback),
+      color: vocabulary.colors[name] ?? null,
+      count: counts.get(name) ?? 0,
     }))
   } finally {
     await session.close()
@@ -232,6 +270,8 @@ export async function createKBArticle(
   args: { title: string; body: string; category: string; tags?: string[]; status?: string },
   ctx: GraphQLContext,
 ): Promise<KBArticle> {
+  // F5: la categoria è un valore del vocabolario `kb_category` del cliente.
+  await assertDomainValue(ctx.tenantId, 'kb_category', args.category)
   if (args.body.length > 50_000) {
     throw new GraphQLError('Article body exceeds 50000 characters', { extensions: { code: 'BAD_REQUEST' } })
   }
@@ -287,7 +327,7 @@ export async function createKBArticle(
              a.tags              AS tags,
              a.status            AS status,
              a.author_id         AS authorId,
-             a.author_name       AS authorName,
+             coalesce(COLLECT { MATCH (au:User {id: a.author_id, tenant_id: a.tenant_id}) RETURN au.name }[0], a.author_name) AS authorName,
              a.views             AS views,
              a.helpful_count     AS helpfulCount,
              a.not_helpful_count AS notHelpfulCount,
@@ -297,7 +337,7 @@ export async function createKBArticle(
              null                AS workflowInstanceId,
              null                AS currentStep,
              a.version           AS version,
-             a.last_edited_by_name AS lastEditedByName
+             coalesce(COLLECT { MATCH (ed:User {id: a.last_edited_by, tenant_id: a.tenant_id}) RETURN ed.name }[0], a.last_edited_by_name) AS lastEditedByName
     `, {
       id,
       tenantId:    ctx.tenantId,
@@ -338,6 +378,7 @@ export async function updateKBArticle(
   args: { id: string; title?: string; body?: string; category?: string; tags?: string[] },
   ctx: GraphQLContext,
 ): Promise<KBArticle> {
+  if (args.category !== undefined) await assertDomainValue(ctx.tenantId, 'kb_category', args.category)
   if (args.body && args.body.length > 50_000) {
     throw new GraphQLError('Article body exceeds 50000 characters', { extensions: { code: 'BAD_REQUEST' } })
   }
@@ -428,8 +469,33 @@ export async function deleteKBArticle(
       throw new GraphQLError('Article not found', { extensions: { code: 'NOT_FOUND' } })
     }
 
+    /**
+     * Via anche ciò che vive SOLO per questo articolo (revisione totale ·
+     * B-21): prima era un `DETACH DELETE a` e basta, e restavano nel grafo
+     * l'istanza di workflow con la sua storia, le versioni, i commenti e —
+     * peggio — le richieste di approvazione pendenti, che continuavano a
+     * comparire in «Le mie approvazioni» e si potevano approvare, per un
+     * articolo che non esiste più.
+     */
     await session.executeWrite((tx) => tx.run(`
       MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
+      OPTIONAL MATCH (a)-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+      OPTIONAL MATCH (wi)-[:STEP_HISTORY]->(e:WorkflowStepExecution)
+      OPTIONAL MATCH (a)-[:HAS_VERSION]->(v:KBArticleVersion)
+      OPTIONAL MATCH (a)-[:HAS_COMMENT]->(c:Comment)
+      WITH a, collect(DISTINCT wi) AS wis, collect(DISTINCT e) AS execs,
+           collect(DISTINCT v) AS versions, collect(DISTINCT c) AS comments
+      // Legati per proprietà, non per relazione: l'approvazione della pubblicazione.
+      CALL {
+        WITH a
+        MATCH (r:ApprovalRequest {tenant_id: a.tenant_id, entity_type: 'kb_article', entity_id: a.id})
+        RETURN collect(r) AS approvals
+      }
+      FOREACH (x IN execs     | DETACH DELETE x)
+      FOREACH (x IN wis       | DETACH DELETE x)
+      FOREACH (x IN versions  | DETACH DELETE x)
+      FOREACH (x IN comments  | DETACH DELETE x)
+      FOREACH (x IN approvals | DETACH DELETE x)
       DETACH DELETE a
     `, { id: args.id, tenantId: ctx.tenantId }))
 
@@ -480,7 +546,7 @@ export async function kbArticleVersions(
              v.category       AS category,
              v.tags           AS tags,
              v.edited_by      AS editedById,
-             v.edited_by_name AS editedByName,
+             coalesce(COLLECT { MATCH (ed:User {id: v.edited_by, tenant_id: v.tenant_id}) RETURN ed.name }[0], v.edited_by_name) AS editedByName,
              v.edited_at      AS editedAt
       ORDER BY v.version DESC
     `, { articleId: args.articleId, tenantId: ctx.tenantId }))

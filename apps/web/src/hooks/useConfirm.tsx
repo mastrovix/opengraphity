@@ -70,7 +70,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
 export function useConfirm(): ConfirmFn {
   const fn = useContext(ConfirmContext)
   if (!fn) {
-    throw new Error('useConfirm() richiede un <ConfirmProvider> a monte (montato in AppLayout).')
+    throw new Error('useConfirm() needs a <ConfirmProvider> above it (mounted in AppLayout).')
   }
   return fn
 }

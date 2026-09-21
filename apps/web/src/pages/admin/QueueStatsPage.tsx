@@ -7,6 +7,10 @@ import { PageTitle } from '@/components/PageTitle'
 import { toast } from 'sonner'
 import { GET_QUEUE_STATS, GET_QUEUE_JOBS } from '@/graphql/queries'
 import { RETRY_QUEUE_JOB } from '@/graphql/mutations'
+import { alpha, colors, fontSize, fontWeight, layoutPalette, palette } from '@/lib/tokens'
+import { formatDateTime } from '@/lib/datetime'
+import { showError } from '@/lib/showError'
+import { motivoLeggibile } from '@/lib/failureReason'
 
 interface QueueJobCounts {
   waiting: number
@@ -17,8 +21,16 @@ interface QueueJobCounts {
   paused: number
 }
 
+/**
+ * Una voce di `queueStats`. `group` e `retryable` vengono dal registro unico
+ * delle code dell'API (lib/queueRegistry.ts): qui non c'è nessun nome di coda
+ * scritto a mano — il raggruppamento e il pulsante di rigioco seguono ciò
+ * che il server dichiara (revisione 2, D2.2).
+ */
 interface QueueStat {
   name: string
+  group: string
+  retryable: boolean
   counts: QueueJobCounts
 }
 
@@ -38,111 +50,163 @@ interface QueueJob {
   returnValue: string | null
 }
 
-const COUNTER_STYLE: Record<string, { label: string; color: string; bg: string }> = {
-  active:    { label: 'active',    color: '#3b82f6', bg: 'rgba(59,130,246,0.10)' },
-  waiting:   { label: 'waiting',   color: 'var(--color-warning)', bg: 'rgba(245,158,11,0.10)' },
-  delayed:   { label: 'delayed',   color: '#8b5cf6', bg: 'rgba(139,92,246,0.10)' },
-  failed:    { label: 'failed',    color: 'var(--color-danger)', bg: 'rgba(239,68,68,0.10)'  },
-  completed: { label: 'completed', color: '#22c55e', bg: 'rgba(34,197,94,0.10)'  },
-  paused:    { label: 'paused',    color: 'var(--color-slate-light)', bg: 'rgba(148,163,184,0.10)'},
+const COUNTER_STYLE: Record<string, { color: string; bg: string }> = {
+  active:    { color: colors.brand, bg: alpha.brand08 },
+  waiting:   { color: 'var(--color-warning)', bg: palette.warning.bg },
+  delayed:   { color: palette.purple.light, bg: palette.purple.bg },
+  failed:    { color: 'var(--color-danger)', bg: alpha.danger08  },
+  completed: { color: palette.success.base, bg: alpha.success10  },
+  paused:    { color: 'var(--color-slate-light)', bg: colors.slateBg},
 }
 
 const COUNTER_ORDER = ['active', 'waiting', 'delayed', 'failed', 'completed', 'paused'] as const
 const JOB_STATUSES  = ['failed', 'waiting', 'active', 'completed', 'delayed'] as const
 
+/** Ordine di presentazione dei sottosistemi; un gruppo nuovo dichiarato dal server finisce in coda, col suo nome. */
+const GROUP_ORDER = ['events', 'services', 'itsm', 'platform'] as const
+
 function formatTs(iso: string | null): string {
   if (!iso) return '—'
-  return new Date(iso).toLocaleString()
+  return formatDateTime(iso)
 }
 
-function JobDetail({ job, onRetry, retrying }: { job: QueueJob; onRetry: () => void; retrying: boolean }) {
+/** Raggruppa le code per `group`, nell'ordine di GROUP_ORDER e poi per nome per i gruppi sconosciuti. */
+export function groupQueues(queues: readonly QueueStat[]): Array<{ group: string; queues: QueueStat[] }> {
+  const byGroup = new Map<string, QueueStat[]>()
+  for (const q of queues) {
+    const list = byGroup.get(q.group) ?? []
+    list.push(q)
+    byGroup.set(q.group, list)
+  }
+  const known   = GROUP_ORDER.filter((g) => byGroup.has(g))
+  const unknown = [...byGroup.keys()].filter((g) => !(GROUP_ORDER as readonly string[]).includes(g)).sort()
+  return [...known, ...unknown].map((group) => ({ group, queues: byGroup.get(group)! }))
+}
+
+const LABEL_STYLE: React.CSSProperties = { fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }
+
+function JobDetail({ job, retryable, onRetry, retrying }: { job: QueueJob; retryable: boolean; onRetry: () => void; retrying: boolean }) {
+  const { t } = useTranslation()
   const [showPayload, setShowPayload] = useState(false)
   const [showStack,   setShowStack]   = useState(false)
 
   let prettyData = job.data
   try { prettyData = JSON.stringify(JSON.parse(job.data), null, 2) } catch { /* keep raw */ }
 
+  /**
+   * Un job che NON porta dati. Metà delle code della piattaforma gira su
+   * passate periodiche — `events-maintenance`, il giro dei servizi, il backup,
+   * il tick del digest, il controllo dei report, la scansione delle anomalie —
+   * e una passata e un battito, non un messaggio: il suo payload e `{}` per
+   * costruzione, non perche qualcosa si sia perso per strada.
+   *
+   * Prima la scheda offriva comunque il pulsante «Payload», che apriva una
+   * graffa vuota. Il proprietario, che nelle code con job conservati vede
+   * quasi solo passate periodiche, ne ha concluso che i payload fossero
+   * «sempre vuoti» — cioe che il prodotto li stesse perdendo. Ora la scheda
+   * lo DICE, e il pulsante resta solo dove c'e davvero qualcosa da aprire.
+   */
+  const senzaDati = ['{}', '', 'null', '[]'].includes(prettyData.trim())
+
   return (
     <div style={{ padding: '12px 16px', background: 'var(--color-slate-bg)', borderTop: '1px solid var(--border)', fontSize: 'var(--font-size-body)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Job ID</div>
-          <code style={{ fontSize: 'var(--font-size-body)', color: '#1a2332', wordBreak: 'break-all' }}>{job.id}</code>
+          <div style={LABEL_STYLE}>{t('pages.queueStats.jobId')}</div>
+          <code style={{ fontSize: 'var(--font-size-body)', color: colors.slateDark, wordBreak: 'break-all' }}>{job.id}</code>
         </div>
         <div>
-          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Name</div>
-          <span style={{ color: '#1a2332' }}>{job.name}</span>
+          <div style={LABEL_STYLE}>{t('pages.queueStats.name')}</div>
+          <span style={{ color: colors.slateDark }}>{job.name}</span>
         </div>
         <div>
-          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Attempts</div>
-          <span style={{ color: '#1a2332' }}>{job.attemptsMade} / {job.maxAttempts}</span>
+          <div style={LABEL_STYLE}>{t('pages.queueStats.attempts')}</div>
+          <span style={{ color: colors.slateDark }}>{job.attemptsMade} / {job.maxAttempts}</span>
         </div>
         <div>
-          <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Created</div>
-          <span style={{ color: '#1a2332' }}>{formatTs(job.timestamp)}</span>
+          <div style={LABEL_STYLE}>{t('pages.queueStats.created')}</div>
+          <span style={{ color: colors.slateDark }}>{formatTs(job.timestamp)}</span>
         </div>
         {job.processedOn && (
           <div>
-            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Processed</div>
-            <span style={{ color: '#1a2332' }}>{formatTs(job.processedOn)}</span>
+            <div style={LABEL_STYLE}>{t('pages.queueStats.processed')}</div>
+            <span style={{ color: colors.slateDark }}>{formatTs(job.processedOn)}</span>
           </div>
         )}
         {job.finishedOn && (
           <div>
-            <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>Finished</div>
-            <span style={{ color: '#1a2332' }}>{formatTs(job.finishedOn)}</span>
+            <div style={LABEL_STYLE}>{t('pages.queueStats.finished')}</div>
+            <span style={{ color: colors.slateDark }}>{formatTs(job.finishedOn)}</span>
           </div>
         )}
       </div>
 
       {job.failedReason && (
-        <div style={{ marginBottom: 12, padding: '8px 12px', background: 'rgba(239,68,68,0.06)', borderRadius: 6, border: '1px solid rgba(239,68,68,0.2)' }}>
+        <div style={{ marginBottom: 12, padding: '8px 12px', background: alpha.danger08, borderRadius: 6, border: `1px solid ${palette.danger.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <AlertCircle size={13} color="#ef4444" />
-            <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 700, color: 'var(--color-danger)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Error</span>
+            <AlertCircle size={13} color={palette.danger.base} />
+            <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 700, color: 'var(--color-danger)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('pages.queueStats.error')}</span>
           </div>
-          <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', wordBreak: 'break-all' }}>{job.failedReason}</code>
+          {/**
+            * La stessa causa ripetuta per ogni passata si scioglie in lettura
+            * (lib/failureReason.ts): `failedReason` non cambia piu dopo il
+            * fallimento, quindi un job fallito prima del rimedio porta ancora
+            * il testo lungo. Il testo originale resta a portata di mano nel
+            * suggerimento: nulla viene buttato.
+            */}
+          <code title={job.failedReason} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', wordBreak: 'break-all' }}>{motivoLeggibile(job.failedReason)}</code>
         </div>
       )}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button type="button"
-          onClick={() => setShowPayload((p) => !p)}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#475569' }}
-        >
-          {showPayload ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Payload
-        </button>
+        {senzaDati ? (
+          <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', padding: '4px 10px' }}>
+            {t('pages.queueStats.noPayload')}
+          </span>
+        ) : (
+          <button type="button"
+            onClick={() => setShowPayload((p) => !p)}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: palette.neutral.textStrong }}
+          >
+            {showPayload ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {t('pages.queueStats.payload')}
+          </button>
+        )}
         {job.stacktrace.length > 0 && (
           <button type="button"
             onClick={() => setShowStack((p) => !p)}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#475569' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: palette.neutral.textStrong }}
           >
-            {showStack ? <ChevronDown size={12} /> : <ChevronRight size={12} />} Stack trace ({job.stacktrace.length})
+            {showStack ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {t('pages.queueStats.stackTrace', { count: job.stacktrace.length })}
           </button>
         )}
-        {job.status === 'failed' && (
+        {job.status === 'failed' && retryable && (
           <button type="button"
             onClick={onRetry}
             disabled={retrying}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: 'none', background: 'var(--color-brand)', color: '#fff', cursor: retrying ? 'not-allowed' : 'pointer', opacity: retrying ? 0.6 : 1, fontWeight: 500 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: 'none', background: 'var(--color-brand)', color: colors.white, cursor: retrying ? 'not-allowed' : 'pointer', opacity: retrying ? 0.6 : 1, fontWeight: 500 }}
           >
-            <RotateCcw size={12} /> {retrying ? 'Retrying…' : 'Retry'}
+            <RotateCcw size={12} /> {retrying ? t('pages.queueStats.retrying') : t('pages.queueStats.retry')}
           </button>
         )}
+        {job.status === 'failed' && !retryable && (
+          <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', padding: '3px 8px', background: colors.slateBg, borderRadius: 4 }}>
+            {t('pages.queueStats.notRetryable')}
+          </span>
+        )}
         {job.returnValue && (
-          <span style={{ fontSize: 'var(--font-size-table)', color: '#22c55e', padding: '3px 8px', background: 'rgba(34,197,94,0.08)', borderRadius: 4 }}>
-            Return: {job.returnValue.length > 60 ? job.returnValue.slice(0, 60) + '…' : job.returnValue}
+          <span style={{ fontSize: 'var(--font-size-table)', color: palette.success.base, padding: '3px 8px', background: alpha.success08, borderRadius: 4 }}>
+            {t('pages.queueStats.returnValue', { value: job.returnValue.length > 60 ? job.returnValue.slice(0, 60) + '…' : job.returnValue })}
           </span>
         )}
       </div>
 
       {showPayload && (
-        <pre style={{ marginTop: 10, padding: '10px 12px', background: '#1a2332', color: '#e2e8f0', borderRadius: 6, fontSize: 'var(--font-size-table)', lineHeight: 1.5, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+        <pre style={{ marginTop: 10, padding: '10px 12px', background: colors.slateDark, color: layoutPalette.textDefault, borderRadius: 6, fontSize: 'var(--font-size-table)', lineHeight: 1.5, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
           {prettyData}
         </pre>
       )}
       {showStack && job.stacktrace.length > 0 && (
-        <pre style={{ marginTop: 10, padding: '10px 12px', background: '#1a2332', color: '#fca5a5', borderRadius: 6, fontSize: 'var(--font-size-table)', lineHeight: 1.5, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+        <pre style={{ marginTop: 10, padding: '10px 12px', background: colors.slateDark, color: palette.danger.borderStrong, borderRadius: 6, fontSize: 'var(--font-size-table)', lineHeight: 1.5, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
           {job.stacktrace.join('\n')}
         </pre>
       )}
@@ -168,7 +232,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
       void refetchJobs?.()
       onQueueRefetch()
     },
-    onError: (e) => { toast.error(e.message); setRetryingId(null) },
+    onError: (e) => { showError(e); setRetryingId(null) },
   })
 
   function handleExpand() {
@@ -194,23 +258,59 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
         type="button"
         aria-expanded={expanded}
         onClick={handleExpand}
-        style={{ width: '100%', textAlign: 'left', border: 'none', font: 'inherit', padding: '16px 20px', background: 'white', display: 'flex', alignItems: 'center', gap: 20, cursor: 'pointer' }}
+        style={{ width: '100%', textAlign: 'left', border: 'none', font: 'inherit', padding: '16px 20px', background: colors.white, display: 'flex', alignItems: 'center', gap: 20, cursor: 'pointer' }}
       >
         <div style={{ color: 'var(--color-slate-light)', flexShrink: 0 }}>
           {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </div>
-        <div style={{ minWidth: 180 }}>
-          <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'monospace' }}>
-            {queue.name}
-          </span>
+        {/**
+          * Il nome di una coda (`events-maintenance`, `sla-jobs`) dice a chi
+          * l'ha scritta cosa fa, e a nessun altro: sotto il nome c'e la
+          * descrizione, una frase per coda in `pages.queueStats.queue.<nome>`.
+          *
+          * Il perimetro NON e questa pagina: `scripts/check-i18n.mjs` legge i
+          * nomi da `apps/api/src/lib/queueRegistry.ts` e pretende la
+          * descrizione, nelle due lingue, per ognuno — una coda nuova senza
+          * descrizione fa fallire il guardiano. A schermo, una coda che il
+          * server dichiara e questo bundle non conosce lo DICE, invece di
+          * dipingere il nome della chiave o un vuoto che sembra normale.
+          */}
+        <div style={{ flex: '0 1 340px', minWidth: 240 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'var(--font-mono)' }}>
+              {queue.name}
+            </span>
+            {!queue.retryable && (
+              <span title={t('pages.queueStats.notRetryable')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', padding: '1px 6px', background: colors.slateBg, borderRadius: 4, whiteSpace: 'nowrap' }}>
+                {t('pages.queueStats.notRetryable')}
+              </span>
+            )}
+          </div>
+          <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', lineHeight: 1.4, fontWeight: 400 }}>
+            {t(`pages.queueStats.queue.${queue.name}`, { defaultValue: t('pages.queueStats.queueNoDescription') })}
+          </p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, flex: 1 }}>
+          {/**
+            * `completed` e `failed` NON sono totali: sono i job che la coda
+            * conserva. `events-maintenance` tiene gli ultimi 20 completati,
+            * quindi rigiocare un job riuscito NON fa salire il contatore —
+            * il piu vecchio esce mentre il nuovo entra. Il proprietario ha
+            * rigiocato un job e cercato la conferma proprio qui: il numero
+            * era fermo a 20 e sembrava che il rigioco non avesse funzionato
+            * (era riuscito: il conto dei falliti era passato da 1 a 0).
+            * Adesso i due contatori lo dicono nel suggerimento.
+            */}
           {COUNTER_ORDER.map((key) => {
-            const s   = COUNTER_STYLE[key]
+            const s   = COUNTER_STYLE[key]!
             const val = queue.counts[key]
+            const aiuto = key === 'completed' || key === 'failed'
+              ? t(`pages.queueStats.keptHelp.${key}`)
+              : undefined
             return (
               <span
                 key={key}
+                title={aiuto}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 5,
                   padding: '3px 10px', borderRadius: 20, background: s.bg, fontSize: 'var(--font-size-body)',
@@ -219,7 +319,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
                 }}
               >
                 <span style={{ fontWeight: 700 }}>{val}</span>
-                <span>{t(`pages.queueStats.${key}`, s.label)}</span>
+                <span>{t(`pages.queueStats.${key}`)}</span>
               </span>
             )
           })}
@@ -231,60 +331,81 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
         <div style={{ borderTop: '1px solid var(--border)' }}>
           {/* Status filter tabs */}
           <div style={{ display: 'flex', gap: 4, padding: '10px 16px', background: 'var(--color-slate-bg)', alignItems: 'center' }}>
-            <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginRight: 4 }}>Show:</span>
+            <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginRight: 4 }}>{t('pages.queueStats.show')}</span>
             {JOB_STATUSES.map((s) => (
               <button type="button"
                 key={s}
+                aria-pressed={jobStatus === s}
                 onClick={(e) => { e.stopPropagation(); handleStatusChange(s) }}
                 style={{
                   padding: '3px 10px', borderRadius: 5, border: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer',
                   fontWeight: 500,
-                  background: jobStatus === s ? (COUNTER_STYLE[s]?.color ?? 'var(--color-brand)') : '#e2e8f0',
-                  color: jobStatus === s ? '#fff' : '#475569',
+                  background: jobStatus === s ? (COUNTER_STYLE[s]?.color ?? 'var(--color-brand)') : colors.border,
+                  color: jobStatus === s ? colors.white : palette.neutral.textStrong,
                 }}
               >
-                {s}
+                {t(`pages.queueStats.${s}`)}
               </button>
             ))}
             <button type="button"
               onClick={(e) => { e.stopPropagation(); void loadJobs({ variables: { queueName: queue.name, status: jobStatus, limit: 50 } }) }}
-              style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', color: '#475569' }}
+              style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', fontSize: 'var(--font-size-body)', borderRadius: 5, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: palette.neutral.textStrong }}
             >
-              <RefreshCw size={11} /> Refresh
+              <RefreshCw size={11} /> {t('pages.queueStats.refresh')}
             </button>
           </div>
 
           {jobsLoading && (
-            <div style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>Loading jobs…</div>
+            <div style={{ padding: '20px 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>{t('pages.queueStats.loadingJobs')}</div>
           )}
 
           {!jobsLoading && jobs.length === 0 && (
             <div style={{ padding: '24px 16px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', textAlign: 'center' }}>
-              No {jobStatus} jobs in this queue
+              {t('pages.queueStats.noJobs', { status: t(`pages.queueStats.${jobStatus}`) })}
             </div>
           )}
 
           {!jobsLoading && jobs.map((job) => (
-            <div key={job.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+            <div key={job.id} style={{ borderTop: `1px solid ${colors.slateBg}` }}>
               {/* Job summary row */}
               <button
                 type="button"
                 aria-expanded={expandedJob === job.id}
                 onClick={(e) => { e.stopPropagation(); setExpandedJob(expandedJob === job.id ? null : job.id) }}
-                style={{ width: '100%', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', padding: '10px 20px 10px 52px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', background: expandedJob === job.id ? '#f1f5f9' : 'white' }}
+                style={{ width: '100%', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', padding: '10px 20px 10px 52px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', background: expandedJob === job.id ? colors.slateBg : colors.white }}
               >
                 <div style={{ color: 'var(--color-slate-light)', flexShrink: 0 }}>
                   {expandedJob === job.id ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                 </div>
-                <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', minWidth: 120 }}>{job.id}</code>
-                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: '#1a2332', flex: 1 }}>{job.name}</span>
+                {/**
+                  * TRE TESTI IN UNA RIGA, e uno e lungo: l'id di un job
+                  * ripetibile e `repeat:<32 esadecimali>:<millisecondi>`,
+                  * cinquanta caratteri senza spazi. L'id non aveva ne un tetto
+                  * ne il divieto di restringersi, il nome aveva `flex: 1` (che
+                  * con `min-width: auto` non scende sotto il contenuto) e il
+                  * motivo del fallimento un `maxWidth` fisso: la riga sforava
+                  * e i tre testi si SOVRAPPONEVANO a schermo.
+                  *
+                  * Ora ognuno ha il suo posto: l'id non supera un terzo della
+                  * riga e taglia con i puntini, il nome e il motivo possono
+                  * restringersi (`minWidth: 0`, che e cio che serve dentro un
+                  * flex), e niente esce dai bordi.
+                  */}
+                <code
+                  title={job.id}
+                  style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', flex: '0 1 auto', minWidth: 0, maxWidth: '33%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >{job.id}</code>
+                <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: colors.slateDark, flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.name}</span>
                 {job.failedReason && (
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {job.failedReason}
+                  <span
+                    title={job.failedReason}
+                    style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', flex: '0 1 300px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  >
+                    {motivoLeggibile(job.failedReason)}
                   </span>
                 )}
                 <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', whiteSpace: 'nowrap' }}>
-                  {new Date(job.timestamp).toLocaleString()}
+                  {formatDateTime(job.timestamp)}
                 </span>
               </button>
 
@@ -292,6 +413,7 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
               {expandedJob === job.id && (
                 <JobDetail
                   job={job}
+                  retryable={queue.retryable}
                   retrying={retryingId === job.id}
                   onRetry={() => {
                     setRetryingId(job.id)
@@ -319,6 +441,7 @@ export function QueueStatsPage() {
   }, [refetch])
 
   const queues: QueueStat[] = (data as { queueStats?: QueueStat[] } | undefined)?.queueStats ?? []
+  const groups = groupQueues(queues)
 
   return (
     <PageContainer>
@@ -328,7 +451,7 @@ export function QueueStatsPage() {
             {t('pages.queueStats.title')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${queues.length} code`}
+            {loading ? '—' : t('pages.queueStats.count', { count: queues.length })}
           </p>
         </div>
         <button type="button"
@@ -337,7 +460,7 @@ export function QueueStatsPage() {
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '7px 14px', borderRadius: 8, border: '1px solid var(--color-border)',
-            background: 'white', color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)',
+            background: colors.white, color: 'var(--color-slate-dark)', fontSize: 'var(--font-size-body)',
             cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1,
           }}
         >
@@ -347,14 +470,30 @@ export function QueueStatsPage() {
       </div>
 
       {error && (
-        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', marginBottom: 20 }}>
+        <div style={{ padding: '12px 16px', borderRadius: 8, background: alpha.danger08, color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', marginBottom: 20 }}>
           {error.message}
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {queues.map((q) => (
-          <QueueRow key={q.name} queue={q} onQueueRefetch={() => void refetch()} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {groups.map(({ group, queues: list }) => (
+          <section key={group} aria-labelledby={`queue-group-${group}`}>
+            <h2 id={`queue-group-${group}`} style={{
+              fontSize: fontSize.sectionTitle, fontWeight: fontWeight.semibold,
+              color: 'var(--color-slate-dark)', margin: '0 0 10px', paddingBottom: 8,
+              borderBottom: `2px solid ${colors.border}`, display: 'flex', alignItems: 'baseline', gap: 8,
+            }}>
+              {t(`pages.queueStats.group.${group}`, { defaultValue: group })}
+              <span style={{ fontSize: 'var(--font-size-body)', fontWeight: fontWeight.medium, color: 'var(--color-slate-light)' }}>
+                {t('pages.queueStats.count', { count: list.length })}
+              </span>
+            </h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {list.map((q) => (
+                <QueueRow key={q.name} queue={q} onQueueRefetch={() => void refetch()} />
+              ))}
+            </div>
+          </section>
         ))}
         {!loading && queues.length === 0 && !error && (
           <div style={{ textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-card-title)', padding: 40 }}>
@@ -364,6 +503,9 @@ export function QueueStatsPage() {
       </div>
 
       <p style={{ marginTop: 20, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
+        {t('pages.queueStats.consumerNote')}
+      </p>
+      <p style={{ marginTop: 4, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
         {t('pages.queueStats.autoRefresh')}
       </p>
     </PageContainer>
