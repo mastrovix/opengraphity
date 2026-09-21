@@ -56,6 +56,12 @@ const EXEMPT: Record<string, Exemption> = {
     reason: 'Solo articoli della Knowledge Base: il tipo di entità è il letterale `kb_article` in entrambe le transizioni.',
     proof: (s) => s.includes("'kb_article'") && !mentionsChange(s),
   },
+  'lib/indagineAutomatica.ts': {
+    reason: 'Porta in analisi SOLO un Problem nato da una proposta: la query parte da `(:Problem {...})` '
+      + 'e risale alla sua istanza, quindi un\'istanza di change non può nemmeno essere selezionata. '
+      + 'La prova non si limita a «non nomina le change»: pretende che il vincolo a Problem sia scritto.',
+    proof: (s) => s.includes(':Problem {') && !mentionsChange(s),
+  },
   'graphql/resolvers/portal.ts':    { reason: 'Solo incident.',         proof: (s) => !mentionsChange(s) },
   'graphql/resolvers/problem.ts':   { reason: 'Solo incident e problem.', proof: (s) => !mentionsChange(s) },
   'services/incidentService.ts':    { reason: 'Solo incident.',         proof: (s) => !mentionsChange(s) },

@@ -39,6 +39,7 @@ import {
 } from '../../lib/proposalAgreement.js'
 import { createProblem } from '../../services/problemService.js'
 import { legaAllaProposta, fascicoloDelProblem } from '../../lib/problemDossier.js'
+import { avviaIndagine } from '../../lib/indagineAutomatica.js'
 import { analizzaCliente, conIlLucchetto } from '../../jobs/proposalScanner.js'
 import { PERMESSO_LETTURA } from './ticketTasks.js'
 import { getSession } from '@opengraphity/neo4j'
@@ -417,12 +418,30 @@ async function openProblemFromProposal(
    */
   await legaAllaProposta(ctx.tenantId, problem.id as string, row.id)
 
+  /*
+   * E l'indagine parte da sola (21 set 2026).
+   *
+   * Prima il Problem restava nel passo iniziale finché una persona non
+   * cliccava «Inizia analisi» — un gesto che non aggiungeva niente: chi apre
+   * un Problem da una proposta ha già letto la proposta e ha già deciso che
+   * c'e' qualcosa da capire. Il passo iniziale diceva il falso.
+   *
+   * L'esito NON fa fallire questa mutazione: se il workflow del cliente non
+   * porta in analisi dal passo iniziale, il Problem resta dov'e' e la ragione
+   * sta nei log — perche' il Problem esiste già ed e' già legato, e
+   * cancellarlo per un passo mancato sarebbe peggio.
+   */
+  const indagine = await avviaIndagine(
+    ctx.tenantId, problem.id as string, problem.number as string, ctx.userId,
+  )
+
   const aggiornata = await segnaDecisa(ctx.tenantId, row.id, {
     status: 'accepted', decidedBy: ctx.userId,
     openedProblem: { id: problem.id as string, number: problem.number as string },
   })
   await audit(ctx, 'proposal.problem_opened', 'Proposal', row.id, {
     area: row.area, kind: row.kind, problemId: problem.id as string, problemNumber: problem.number as string,
+    investigationStarted: indagine.avviata, step: indagine.passo,
   })
   logger.info(
     { module: 'proposals', tenantId: ctx.tenantId, proposal: row.id, problem: problem.number },
