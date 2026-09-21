@@ -7,10 +7,10 @@ packages:
 # two majors of vitest meant different behaviour between suites and duplicated
 # dependencies in the image.
 catalog:
-  '@vitest/coverage-v8': ^4.1.0
+  '@vitest/coverage-v8': ^5.0.1
   bullmq: ^6.0.4
   ioredis: ^6.0.0
-  vitest: ^4.1.0
+  vitest: ^5.0.1
 
 # VERSIONI BLOCCATE: non stanno qui, stanno in `package.json` → `pnpm.overrides`.
 # Provato a metterle qui (21 set 2026) e pnpm 10.30 NON le legge da questo file:
@@ -35,6 +35,16 @@ catalog:
 #   E' la stessa ragione del catalogo qui sopra — una versione sola per
 #   dipendenza condivisa — applicata a un pacchetto di soli tipi.
 #   SI TOGLIE quando `@types/compression` dichiarera' `@types/express: ^5`.
+#
+# Blocco attivo: `ip-address` alzata a ^10.7.2.
+#   `express-rate-limit` 8 la FISSA alla 10.1.0 esatta, e quella versione ha
+#   GHSA-mwp4-54f8-5fhr (grave): `Address4` legge un ottetto con lo zero
+#   iniziale come DECIMALE mentre i resolver lo leggono come OTTALE, e da li'
+#   si passa per un indirizzo che non e' quello che sembra (SSRF).
+#   Corretta dalla 10.3.1. La 7 di express-rate-limit non aveva questa
+#   dipendenza affatto: l'avviso e' entrato con l'aggiornamento, ed e' stato
+#   `audit-check` a dirlo prima che uscisse di qui.
+#   SI TOGLIE quando `express-rate-limit` fissera' una versione >= 10.3.1.
 
 # TYPESCRIPT 7 SOPRA, TYPESCRIPT 6 PER IL LINT: DUE COPIE, DI PROPOSITO
 # (21 set 2026).

@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@opengraphity/types": "workspace:*",
-    "isolated-vm": "^7.0.1"
+    "isolated-vm": "^7.0.1",
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
     "@types/node": "^24.11.1",

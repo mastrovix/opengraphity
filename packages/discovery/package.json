@@ -18,5 +18,8 @@
     "@types/node": "^24.11.1",
     "typescript": "^7.0.2",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "uuid": "^14.0.2"
   }
 }

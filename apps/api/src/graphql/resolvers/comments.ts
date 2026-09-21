@@ -125,7 +125,11 @@ export async function addComment(
     const created = mapComment(res.records[0])
     void audit(ctx, 'comment.added', args.entityType, args.entityId, { commentId: created.id, isInternal })
 
+    // `void` voluto (chi commenta non aspetta gli avvisi), `.catch`
+    // obbligatorio: senza, un avviso che fallisce diventa una rejection senza
+    // padrone e su Node 24 quella termina il processo (21 set 2026).
     void notifyCommentAudience(ctx, args.entityType, args.entityId, args.body, isInternal)
+      .catch((err: unknown) => logger.error({ err, entityType: args.entityType, entityId: args.entityId }, '[comments] comment audience NOT notified'))
     // Revisione del 14 set 2026 · CO-2/F10: qui partiva «nuovo commento» a
     // TUTTO il tenant per ogni risposta pubblica, in italiano. Chi deve saperlo
     // (osservatori e menzionati) lo sa da notifyCommentAudience.

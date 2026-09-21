@@ -15,15 +15,16 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@opengraphity/types": "workspace:*",
     "@opengraphity/events": "workspace:*",
     "@opengraphity/neo4j": "workspace:*",
+    "@opengraphity/types": "workspace:*",
     "bullmq": "catalog:",
-    "ioredis": "catalog:"
+    "ioredis": "catalog:",
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
     "@types/node": "^24.11.1",
-    "neo4j-driver": "^5.19.0",
+    "neo4j-driver": "^6.2.0",
     "typescript": "^7.0.2",
     "vitest": "catalog:"
   }
