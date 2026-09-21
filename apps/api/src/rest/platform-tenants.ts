@@ -35,6 +35,7 @@ import {
 } from '../lib/tenantLifecycle.js'
 import { config } from '../lib/config.js'
 import { DEFAULT_TENANT_PLAN, DEFAULT_TENANT_TIMEZONE } from '../lib/tenantPlans.js'
+import { parametro } from './parametroDiRotta.js'
 
 const log = logger.child({ module: 'platform-console' })
 
@@ -85,7 +86,7 @@ router.get('/platform/tenants', asyncHandler(async (req: Request, res: Response)
 }))
 
 router.get('/platform/tenants/:slug/footprint', asyncHandler(async (req: Request, res: Response) => {
-  const slug = String(req.params['slug'])
+  const slug = String(parametro(req, 'slug'))
   const nodi = await conSessioneDiLettura((s) => tenantFootprint(s, slug))
   res.json({ slug, nodes: nodi })
 }))
@@ -214,7 +215,7 @@ router.post('/platform/tenants', asyncHandler(async (req: Request, res: Response
  * dall'elenco, quindi in pratica non si digita: a schermo si conferma chi.
  */
 router.post('/platform/tenants/:slug/admin-password', asyncHandler(async (req: Request, res: Response) => {
-  const slug = String(req.params['slug'])
+  const slug = String(parametro(req, 'slug'))
   const body = req.body as { email?: unknown }
   const chi  = attore(req)
 
@@ -255,7 +256,7 @@ router.post('/platform/tenants/:slug/admin-password', asyncHandler(async (req: R
  * conta: su operazioni come queste, indovinare è la cosa peggiore.
  */
 router.patch('/platform/tenants/:slug', asyncHandler(async (req: Request, res: Response) => {
-  const slug = String(req.params['slug'])
+  const slug = String(parametro(req, 'slug'))
   const body = req.body as { action?: unknown; name?: unknown }
   const chi = attore(req)
 
@@ -294,7 +295,7 @@ router.patch('/platform/tenants/:slug', asyncHandler(async (req: Request, res: R
  * funzione arriva da qui, così `purgeTenant` resta provabile senza rete.
  */
 router.delete('/platform/tenants/:slug', asyncHandler(async (req: Request, res: Response) => {
-  const slug = String(req.params['slug'])
+  const slug = String(parametro(req, 'slug'))
   const body = req.body as { confirm?: unknown }
   const chi = attore(req)
   if (typeof body.confirm !== 'string') {

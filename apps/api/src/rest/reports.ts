@@ -4,6 +4,7 @@ import { Router, type Router as ExpressRouter } from 'express'
 import { authMiddleware } from '../middleware/auth.js'
 import { REPORT_PATH_SEGMENT_RE, tenantReportDir } from '../graphql/resolvers/reportExport.js'
 import { logger } from '../lib/logger.js'
+import { parametro } from './parametroDiRotta.js'
 
 const router: ExpressRouter = Router()
 
@@ -24,7 +25,7 @@ export function resolveTenantReportFile(tenantId: string, filename: string): str
 // ── GET /api/reports/:filename ────────────────────────────────────────────────
 
 router.get('/reports/:filename', authMiddleware, (req, res) => {
-  const { filename } = req.params
+  const filename = parametro(req, 'filename')
   const { tenantId } = req.user!
 
   // Files are served ONLY from the caller's own tenant directory.
