@@ -106,6 +106,12 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Il token che GitHub dà già a questo lavoro, invece dell'app
+          # «Claude Code»: senza, l'action prova a scambiare un token d'app e
+          # muore con «401 — Claude Code is not installed on this repository»
+          # (primo giro vero del 21 set 2026). Così non serve installare
+          # niente, e i diritti restano quelli dichiarati qui sopra e basta.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           # `--max-turns` è il tetto di spesa di questo giro: senza, una
           # indagine che non converge costa finché non se ne accorge qualcuno.
           claude_args: "--max-turns 40"
