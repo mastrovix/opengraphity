@@ -1,4 +1,4 @@
-import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../../lib/errors.js'
 import { randomUUID } from 'crypto'
 import type { GraphQLContext } from '../../context.js'
 import { withSession } from './ci-utils.js'
@@ -7,7 +7,7 @@ import { ValidationError } from '../../lib/errors.js'
 
 const PLATFORMS = ['slack', 'teams', 'email'] as const
 function assertPlatform(p: string): void {
-  if (!(PLATFORMS as readonly string[]).includes(p)) throw new ValidationError(`platform "${p}" non supportata (ammesse: ${PLATFORMS.join(', ')})`)
+  if (!(PLATFORMS as readonly string[]).includes(p)) throw new ValidationError(`platform "${p}" is not supported (allowed: ${PLATFORMS.join(', ')})`, { key: 'errors.channel.platform', params: { platform: p, allowed: PLATFORMS.join(', ') } })
 }
 
 function mapChannel(n: Record<string, unknown>) {
@@ -86,7 +86,7 @@ async function updateNotificationChannel(
         },
       ),
     )
-    if (!result.records.length) throw new GraphQLError('NotificationChannel non trovato')
+    if (!result.records.length) throw new NotFoundError('NotificationChannel')
     return mapChannel(result.records[0]!.get('n').properties as Record<string, unknown>)
   }, true)
 }
@@ -111,25 +111,48 @@ async function testNotificationChannel(_: unknown, { id }: { id: string }, ctx: 
         { id, tenantId: ctx.tenantId },
       ),
     )
-    if (!result.records.length) throw new GraphQLError('NotificationChannel non trovato')
+    if (!result.records.length) throw new NotFoundError('NotificationChannel')
     const ch = mapChannel(result.records[0]!.get('n').properties as Record<string, unknown>)
     // The notifications package re-checks too (UnsafeUrlError); checking here
     // first surfaces a proper ValidationError to the caller.
     if (ch.webhookUrl) await assertSafeOutboundUrl(ch.webhookUrl)
     const { sendTestMessage } = await import('@opengraphity/notifications')
-    return sendTestMessage(ch)
+    return sendTestMessage(ch, ctx.tenantId)
   })
 }
 
-async function linkSlackAccount(_: unknown, { slackId }: { slackId: string }, ctx: GraphQLContext) {
+/**
+ * Collega o scollega l'account Slack di chi chiama. `slackId` null = scollega
+ * (revisione totale · F-20): il web mandava `slackId: ""`, cioè «collega alla
+ * stringa vuota», e il nodo restava con un id vuoto — due persone
+ * «scollegate» avrebbero avuto lo stesso `slack_id`, e le azioni dai messaggi
+ * Slack (`rest/slack.ts` cerca `User {slack_id}`) avrebbero potuto agire come
+ * la persona sbagliata. Un id già usato da un'altra persona del cliente viene
+ * rifiutato per la stessa ragione.
+ */
+async function linkSlackAccount(_: unknown, { slackId }: { slackId?: string | null }, ctx: GraphQLContext) {
+  const trimmed = slackId == null ? null : slackId.trim()
+  if (trimmed !== null && trimmed === '') {
+    throw new ValidationError('slackId cannot be empty: pass null to unlink the Slack account')
+  }
   return withSession(async (session) => {
+    if (trimmed !== null) {
+      const taken = await session.executeRead((tx) => tx.run(
+        'MATCH (o:User {slack_id: $slackId, tenant_id: $tenantId}) WHERE o.id <> $userId RETURN o.name AS name LIMIT 1',
+        { slackId: trimmed, tenantId: ctx.tenantId, userId: ctx.userId },
+      ))
+      const other = taken.records[0]?.get('name') as string | undefined
+      if (other !== undefined) {
+        throw new ValidationError(`Slack account ${trimmed} is already linked to ${other}`, { key: 'errors.slack.idTaken', params: { user: other } })
+      }
+    }
     const result = await session.executeWrite((tx) =>
       tx.run(
         'MATCH (u:User {id: $userId, tenant_id: $tenantId}) SET u.slack_id = $slackId RETURN u',
-        { userId: ctx.userId, tenantId: ctx.tenantId, slackId },
+        { userId: ctx.userId, tenantId: ctx.tenantId, slackId: trimmed },
       ),
     )
-    if (!result.records.length) throw new GraphQLError('User non trovato')
+    if (!result.records.length) throw new NotFoundError('User')
     const u = result.records[0]!.get('u').properties as Record<string, unknown>
     return {
       id:       u['id']        as string,

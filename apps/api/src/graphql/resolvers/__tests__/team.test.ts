@@ -4,8 +4,21 @@
  * team/CI fuori tenant → NotFound; ruoli non ammessi → Forbidden (policy).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
+// `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
+// Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
+// tipo non contavano, in silenzio.
+vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
+  apocLabelFilterForTenant:  vi.fn(async () => '+Application|+LoadBalancer|+Server'),
+  ciTypeNameForLabel:        vi.fn(async (_t: string, label: string) => (label === 'LoadBalancer' ? 'load_balancer' : null)),
+  clearCILabelCache:         vi.fn(),
+}))
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = {
   executeRead:  vi.fn(),
@@ -22,13 +35,25 @@ vi.mock('../ci-utils.js', async (importOriginal) => {
   }
 })
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../../../lib/cache.js', () => ({ cache: { invalidate: vi.fn() } }))
+// CM-6: togliere un gruppo guarda se il TIPO del CI lo vuole obbligatorio.
+const ownerRequired = { value: false }
+vi.mock('@opengraphity/schema-generator', () => ({
+  loadMetamodel: vi.fn(async () => [{
+    name: 'server', label: 'Server', neo4jLabel: 'Server',
+    systemRelations: [
+      { name: 'ownerGroup', label: 'Owner Group', required: ownerRequired.value },
+      { name: 'supportGroup', label: 'Support Group', required: false },
+    ],
+  }]),
+}))
 
 const { teamResolvers } = await import('../team.js')
 const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { withSession } = await import('../ci-utils.js')
-const { authorize, allowedRoles } = await import('../../../lib/authorization.js')
+const { authorizeFactory: authorize, allowedRoles } = await import('../../../lib/__tests__/factoryRoles.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator', permissions: perms('operator') }
 
 const CI_ROW = { props: { id: 'ci-1', name: 'srv-01', status: 'active', created_at: '2026-01-01T00:00:00Z' }, label: 'Server' }
 
@@ -40,7 +65,25 @@ function lastQuery(): { cypher: string; params: Record<string, unknown> } {
 describe('assignCIOwner — relazione OWNED_BY single-valued', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    ownerRequired.value = false
     vi.mocked(runQuery).mockResolvedValue([CI_ROW] as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ label: 'Server' } as never)
+  })
+
+  // CM-6 (revisione del 15 set 2026): il CI restava senza owner obbligatorio.
+  it('teamId null su un gruppo che il tipo vuole obbligatorio → rifiutato, nessuna scrittura', async () => {
+    ownerRequired.value = true
+    await expect(teamResolvers.Mutation.assignCIOwner(null, { ciId: 'ci-1', teamId: null }, ctx))
+      .rejects.toMatchObject({ extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ci.requiredGroup' } } })
+    expect(runQuery).not.toHaveBeenCalled()
+  })
+
+  it('un cambio di gruppo svuota la cache delle liste e scrive l\'audit', async () => {
+    const { cache } = await import('../../../lib/cache.js')
+    const { audit } = await import('../../../lib/audit.js')
+    await teamResolvers.Mutation.assignCIOwner(null, { ciId: 'ci-1', teamId: 'team-9' }, ctx)
+    expect(cache.invalidate).toHaveBeenCalledWith('ci:tenant-1:Server:')
+    expect(audit).toHaveBeenCalledWith(ctx, 'ci.updated', 'ConfigurationItem', 'ci-1', { ownerGroupId: 'team-9' })
   })
 
   it('teamId null → rimuove la relazione: DELETE senza MERGE, nessun MATCH sul Team', async () => {
@@ -53,6 +96,9 @@ describe('assignCIOwner — relazione OWNED_BY single-valued', () => {
     expect(cypher).not.toContain('MERGE')
     expect(cypher).not.toContain('MATCH (t:Team')
     expect(cypher).toContain('MATCH (ci {id: $ciId, tenant_id: $tenantId})')
+    // A-9: le etichette dei CI vengono dal metamodello del tenant, quindi un CI
+    // di un tipo creato dal cliente si trova (prima: «ConfigurationItem or Team»).
+    expect(cypher).toContain('ci:LoadBalancer')
     expect(params).toEqual({ ciId: 'ci-1', teamId: null, tenantId: 'tenant-1' })
     // sessione di scrittura
     expect(vi.mocked(withSession).mock.calls[0]![1]).toBe(true)
@@ -94,6 +140,7 @@ describe('assignCIOwner — relazione OWNED_BY single-valued', () => {
 
   it('CI di un altro tenant con teamId null → NotFoundError (la rimozione non è un no-op silenzioso)', async () => {
     vi.mocked(runQuery).mockResolvedValue([] as never)
+    vi.mocked(runQueryOne).mockResolvedValue(null as never)
     await expect(teamResolvers.Mutation.assignCIOwner(null, { ciId: 'ci-altrui', teamId: null }, ctx))
       .rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
   })
@@ -103,6 +150,7 @@ describe('assignCISupportGroup — stessa semantica su SUPPORTED_BY', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(runQuery).mockResolvedValue([CI_ROW] as never)
+    vi.mocked(runQueryOne).mockResolvedValue({ label: 'Server' } as never)
   })
 
   it('teamId null → DELETE su SUPPORTED_BY senza MERGE', async () => {
@@ -141,8 +189,8 @@ describe('policy di ruolo sui campi root del team resolver', () => {
     }
   })
 
-  it('ruolo sconosciuto → Forbidden esplicito, nessun downgrade a viewer', () => {
-    expect(() => authorize('Mutation', 'assignCIOwner', 'superuser')).toThrow(/Ruolo sconosciuto/)
+  it('un ruolo senza permessi → Forbidden, nessun downgrade a viewer', () => {
+    expect(() => authorize('Mutation', 'assignCIOwner', 'superuser')).toThrow(/cmdb\.write/)
   })
 })
 
@@ -167,5 +215,42 @@ describe('team / setTeamManager — scoping per tenant', () => {
     const call = vi.mocked(runQueryOne).mock.calls[0]!
     expect(call[1]).toContain('MATCH (u:User {id: $userId, tenant_id: $tenantId})')
     expect(call[2]).toEqual({ teamId: 'team-1', userId: 'user-altrui', tenantId: 'tenant-1' })
+  })
+})
+
+/**
+ * Giro nel browser del 14 set 2026 (#48): dal dettaglio del team non si
+ * aggiungevano membri (solo dal dettaglio utente, riscrivendo TUTTI i suoi
+ * team). `setTeamMember` tocca un arco solo, in una statement sola.
+ */
+describe('setTeamMember — un membro alla volta, dal team', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('aggiunge con MERGE (idempotente) e restituisce il team; audit con l\'azione giusta', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ props: { id: 'team-1', name: 'Rete', created_at: 'x' } } as never)
+    const out = await teamResolvers.Mutation.setTeamMember(null, { teamId: 'team-1', userId: 'user-9', member: true }, ctx)
+    expect(out).toMatchObject({ id: 'team-1' })
+    const [, cypher, params] = vi.mocked(runQueryOne).mock.calls[0]!
+    expect(cypher).toContain('MATCH (t:Team {id: $teamId, tenant_id: $tenantId})')
+    expect(cypher).toContain('MATCH (u:User {id: $userId, tenant_id: $tenantId})')
+    expect(cypher).toContain('MERGE (u)-[:MEMBER_OF]->(t)')
+    expect(params).toEqual({ teamId: 'team-1', userId: 'user-9', tenantId: 'tenant-1' })
+    const { audit } = await import('../../../lib/audit.js')
+    expect(audit).toHaveBeenCalledWith(ctx, 'team.member_added', 'Team', 'team-1')
+  })
+
+  it('toglie cancellando solo l\'arco MEMBER_OF fra i due', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue({ props: { id: 'team-1', name: 'Rete', created_at: 'x' } } as never)
+    await teamResolvers.Mutation.setTeamMember(null, { teamId: 'team-1', userId: 'user-9', member: false }, ctx)
+    const [, cypher] = vi.mocked(runQueryOne).mock.calls[0]!
+    expect(cypher).toMatch(/OPTIONAL MATCH \(u\)-\[m:MEMBER_OF\]->\(t\)\s+DELETE m/)
+    expect(cypher).not.toContain('MERGE')
+  })
+
+  it('team o utente fuori tenant → NOT_FOUND; solo admin', async () => {
+    vi.mocked(runQueryOne).mockResolvedValue(null as never)
+    await expect(teamResolvers.Mutation.setTeamMember(null, { teamId: 'team-1', userId: 'user-x', member: true }, ctx))
+      .rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
+    expect(allowedRoles('Mutation', 'setTeamMember')).toEqual(['admin'])
   })
 })

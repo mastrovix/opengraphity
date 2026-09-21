@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import i18n from '@/i18n/i18n'
 import { clientLogger } from '../lib/clientLogger'
+import { colors } from '@/lib/tokens'
 
 interface Props {
   children:  ReactNode
@@ -42,7 +43,7 @@ export class ErrorBoundary extends Component<Props, State> {
               marginTop:    16,
               padding:      '8px 16px',
               background:   'var(--color-brand)',
-              color:        '#fff',
+              color:        colors.white,
               border:       'none',
               borderRadius: 6,
               cursor:       'pointer',

@@ -1,0 +1,229 @@
+/*
+ * LO STESSO LINGUAGGIO VISIVO DEL PORTALE (17 set 2026, su richiesta del
+ * proprietario).
+ *
+ * Gli stessi token, lo stesso brand (#0EA5E9), la stessa intestazione fissa da
+ * 60px, lo stesso contenuto a 1024px, lo stesso raggio: chi passa dal portale
+ * alla console non deve avere l'impressione di aver cambiato prodotto.
+ *
+ * Quello che NON si allinea è il rosso della cancellazione. Là dentro si
+ * distruggono i dati di un cliente, e quella zona deve smettere di somigliare
+ * al resto: è l'unico punto in cui la console si stacca di proposito dal
+ * portale.
+ *
+ * I token sono copiati e non importati perché le due app non condividono un
+ * foglio di stile: `packages/web-core` porta il codice, non il CSS. Copiarli è
+ * un debito piccolo e dichiarato — se un giorno il brand cambia, cambia in due
+ * posti, e questa riga dice dove.
+ */
+:root {
+  --brand:        #0EA5E9;
+  --brand-hover:  #0284C7;
+  --brand-light:  #F0F9FF;
+  --slate-dark:   #0F172A;
+  --slate:        #64748B;
+  --slate-light:  #94A3B8;
+  --slate-bg:     #F1F5F9;
+  --border:       #E2E8F0;
+  --border-light: #f3f4f6;
+  --success:      #22C55E;
+  --success-bg:   #ecfdf5;
+  --success-text: #166534;
+  --warning-bg:   #fffbeb;
+  --warning-text: #92400e;
+  --warning-border: #fde68a;
+  --danger:       #EF4444;
+  --danger-bg:    #fef2f2;
+  --danger-text:  #b91c1c;
+  --white:        #FFFFFF;
+  --surface-1:    #f8fafc;
+
+  --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --radius: 8px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--slate-dark);
+  background: var(--white);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { font-family: inherit; }
+input  { font-family: inherit; font-size: 14px; }
+
+/* ── Intestazione fissa, come quella del portale ───────────────────────────── */
+header.top {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  height: 60px; background: var(--white); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+}
+header.top .inner {
+  max-width: 1024px; width: 100%; margin: 0 auto; padding: 0 24px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+header.top .marchio { display: flex; align-items: center; gap: 10px; min-width: 0; }
+header.top .marchio img { height: 26px; width: auto; }
+header.top .marchio .nome { font-size: 15px; font-weight: 600; color: var(--slate-dark); white-space: nowrap; }
+/* «platform console»: dice dove sei, e che non è l'app di un cliente. */
+header.top .marchio .dove {
+  font-size: 12px; font-weight: 600; color: var(--brand);
+  background: var(--brand-light); border-radius: 20px; padding: 3px 10px; white-space: nowrap;
+}
+header.top .chi { display: flex; align-items: center; gap: 10px; }
+header.top .iniziali {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--brand-light); color: var(--brand-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12.5px; font-weight: 600;
+}
+header.top .email { font-size: 13px; color: var(--slate); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+main { margin-top: 60px; padding: 32px 24px; }
+.wrap { max-width: 1024px; margin: 0 auto; }
+
+h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+.lede { color: var(--slate); font-size: 14px; margin: 0 0 24px; max-width: 74ch; }
+
+/* ── Tabella: bordi tenui e intestazione a tinta, come il portale ──────────── */
+.scheda { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left; font-size: 12.5px; font-weight: 600; color: var(--slate);
+  padding: 10px 14px; background: var(--slate-bg); border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+td { padding: 12px 14px; border-top: 1px solid var(--border-light); vertical-align: middle; }
+tbody tr:first-child td { border-top: none; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.suspended td { background: var(--warning-bg); }
+
+.slug { font-family: var(--mono); font-size: 13px; color: var(--slate-dark); }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 10px; border-radius: 20px; }
+.pill.active    { background: var(--success-bg); color: var(--success-text); }
+.pill.suspended { background: var(--warning-bg); color: var(--warning-text); }
+.unknown { color: var(--slate-light); font-style: italic; }
+
+/* ── Controlli: la forma del portale ──────────────────────────────────────── */
+button {
+  font-size: 13px; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--white); color: var(--slate-dark);
+  transition: background .15s, border-color .15s;
+}
+button:hover:not([disabled]) { background: var(--slate-bg); }
+button:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+button[disabled] { opacity: .5; cursor: not-allowed; }
+button.primario { background: var(--brand); border-color: var(--brand); color: var(--white); }
+button.primario:hover:not([disabled]) { background: var(--brand-hover); border-color: var(--brand-hover); }
+button.danger { border-color: var(--danger); color: var(--danger-text); }
+button.danger:hover:not([disabled]) { background: var(--danger-bg); }
+
+input {
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--slate-dark);
+}
+input:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; border-color: var(--brand); }
+
+.azioni { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.riga   { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+.errore {
+  background: var(--danger-bg); border: 1px solid var(--danger); color: var(--danger-text);
+  padding: 12px 14px; border-radius: var(--radius); margin-bottom: 18px; font-size: 13.5px;
+}
+.nota {
+  background: var(--surface-1); border: 1px solid var(--border); color: var(--slate);
+  padding: 12px 14px; border-radius: var(--radius); margin: 20px 0 0; font-size: 13px;
+}
+.nota code { font-family: var(--mono); font-size: 12.5px; background: var(--white); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+
+/* ── La cancellazione: qui la console SI STACCA dal portale, di proposito ──── */
+.purge {
+  margin-top: 20px; border: 1px solid var(--danger); background: var(--danger-bg);
+  border-radius: var(--radius); padding: 16px 18px;
+}
+.purge h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--danger-text); }
+.purge p  { margin: 0 0 12px; font-size: 13.5px; color: var(--slate-dark); }
+.purge .footprint {
+  font-family: var(--mono); font-size: 12.5px; color: var(--slate-dark);
+  background: var(--white); border: 1px solid var(--border); border-radius: 6px;
+  padding: 10px 12px; margin-bottom: 14px; max-height: 170px; overflow: auto;
+}
+
+footer {
+  border-top: 1px solid var(--border); margin-top: 40px; padding: 16px 24px;
+  text-align: center; font-size: 12.5px; color: var(--slate-light);
+}
+
+/* ── Creare un tenant ──────────────────────────────────────────────────────── */
+.creazione {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-1); padding: 18px 20px; margin-bottom: 20px;
+}
+.creazione h2 { margin: 0 0 14px; font-size: 16px; font-weight: 600; }
+.creazione .campi { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px 18px; }
+.creazione label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--slate-dark); }
+.creazione input, .creazione select { font-weight: 400; }
+.aiuto { font-size: 12px; font-weight: 400; color: var(--slate); line-height: 1.45; }
+
+select {
+  font-family: inherit; font-size: 14px; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--white); color: var(--slate-dark);
+}
+select:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+/*
+ * La password: sfondo del brand e non verde «tutto bene». Non è una conferma,
+ * è una CONSEGNA — l'unico momento in cui quel valore esiste a schermo — e
+ * deve fermare l'occhio invece di rassicurarlo.
+ */
+.password {
+  border: 2px solid var(--brand); background: var(--brand-light);
+  border-radius: var(--radius); padding: 18px 20px; margin-bottom: 20px;
+}
+.password h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--brand-hover); }
+.password p  { margin: 0 0 12px; font-size: 13.5px; color: var(--slate-dark); }
+.password code {
+  font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing: .02em;
+  background: var(--white); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 12px; user-select: all;
+}
+
+/*
+ * IL RIQUADRO DI UN'AZIONE che chiede una conferma (per ora: la password).
+ *
+ * Neutro di proposito: non è un pericolo come la cancellazione (bordo rosso) né
+ * una consegna come la password (bordo del brand). È una domanda — «a chi?» —
+ * e un riquadro che grida davanti a una domanda insegna a non leggerlo.
+ */
+.riquadro {
+  border: 1px solid var(--border); background: var(--slate-bg);
+  border-radius: var(--radius); padding: 18px 20px; margin-bottom: 20px;
+}
+.riquadro h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+.riquadro p  { margin: 0 0 12px; font-size: 13.5px; color: var(--slate-dark); max-width: 74ch; }
+.riquadro .chi { font-family: var(--mono); font-size: 13.5px; color: var(--slate-dark); }
+.riquadro label.campo { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--slate-dark); margin-bottom: 14px; max-width: 360px; }
+.riquadro label.campo select { font-weight: 400; }
+
+/*
+ * «no admin»: un tenant in cui NESSUNO può entrare. Sta accanto allo stato
+ * perché è una condizione del tenant, non un errore dell'operazione, e ha il
+ * colore dell'attenzione — non del guasto: il tenant funziona, ma è chiuso.
+ */
+.pill.senzaAdmin { background: var(--warning-bg); color: var(--warning-text); margin-left: 6px; }
+
+/* Gli indirizzi del tenant: due link, il secondo più tenue perché è il portale. */
+td.urls { font-size: 13px; white-space: nowrap; }
+td.urls a { color: var(--brand-hover); text-decoration: none; }
+td.urls a:hover { text-decoration: underline; }
+td.urls a.portale {
+  margin-left: 8px; font-size: 12px; color: var(--slate);
+  border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px;
+}
+td.urls a.portale:hover { background: var(--slate-bg); text-decoration: none; }

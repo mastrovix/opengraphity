@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 // ── Session mock usato da withSession ─────────────────────────────────────────
 
@@ -12,12 +13,24 @@ const mockSession = {
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+// I campi del cliente hanno i loro test (ticketCustomFields.test.ts): qui il tipo non ne ha.
+// Le fasi del ticket leggono il grafo: qui nessuna fase nota (i campi si vedono e si modificano).
+vi.mock('../../../lib/customFieldSteps.js', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ticketStepContext: vi.fn(async () => null),
+  creationStepContext: vi.fn(async () => null),
+}))
+vi.mock('../../../lib/ticketCustomFields.js', async (importOriginal) => ({ ...(await importOriginal<object>()), customFieldDefs: vi.fn(async () => []) }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession:  vi.fn(),
   runQuery:    vi.fn(),
   runQueryOne: vi.fn(),
 }))
 
+vi.mock('../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
+// Verifica «Cosa resta cablato», ondata 1: le severità offerte nel portale.
+vi.mock('../../../lib/portalSeverityOptions.js', () => import('../../../lib/__tests__/portalSeverityOptionsFake.js'))
+vi.mock('../../../lib/vocabularyEntries.js', () => ({ loadVocabularyEntries: vi.fn(async () => ({ values: ['low', 'medium', 'high', 'critical'], labels: {}, colors: {} })) }))
 vi.mock('@opengraphity/workflow', () => ({
   workflowEngine: {
     createInstance: vi.fn().mockResolvedValue({ id: 'wi-1' }),
@@ -36,6 +49,26 @@ vi.mock('../../../lib/audit.js', () => ({
   audit: vi.fn().mockResolvedValue(undefined),
 }))
 
+/**
+ * Ondata 7 · D-15: il portale espone `statusCategory`/`statusLabel` dal
+ * workflow DEL CLIENTE, perché lo stile della pastiglia viene dalla categoria
+ * del passo e non da una mappa di nomi factory. Qui il workflow del cliente
+ * di prova ha un passo rinominato (`in_carico`) con categoria `active`.
+ */
+vi.mock('../../../lib/workflowHelpers.js', async (importOriginal) => {
+  const orig = await importOriginal<typeof import('../../../lib/workflowHelpers.js')>()
+  return {
+    ...orig,
+    getWorkflowSteps: vi.fn().mockResolvedValue([
+      { name: 'new',       label: 'Nuovo', labels: [],    isInitial: true,  isTerminal: false, isOpen: true,  category: 'active',   purpose: null, stepOrder: 1 },
+      { name: 'in_carico', label: 'In carico', labels: [], isInitial: false, isTerminal: false, isOpen: true,  category: 'active',   purpose: null, stepOrder: 2 },
+      { name: 'closed',    label: 'Chiuso', labels: [],   isInitial: false, isTerminal: true,  isOpen: false, category: 'closed',   purpose: null, stepOrder: 3 },
+    ]),
+  }
+})
+
+vi.mock('../collaboration.js', () => ({ notifyWatchers: vi.fn(), notifyMentions: vi.fn(), autoWatch: vi.fn() }))
+
 vi.mock('../../../lib/publishEvent.js', () => ({
   publishEvent: vi.fn().mockResolvedValue(undefined),
 }))
@@ -43,16 +76,18 @@ vi.mock('../../../lib/publishEvent.js', () => ({
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 const { portalResolvers } = await import('../portal.js')
+const { runQuery } = await import('@opengraphity/neo4j')
 
 const myTicket         = portalResolvers.Query.myTicket
 const addTicketComment = portalResolvers.Mutation.addTicketComment
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'end_user' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'end_user', permissions: perms('end_user') }
 
 const makeRecord = (map: Record<string, unknown>) => ({
-  get: (key: string) => (key in map ? map[key] : null),
+  // `labels`: il portale legge incident E richieste (revisione totale · H-2).
+  get: (key: string) => (key in map ? map[key] : key === 'labels' ? ['Incident'] : null),
 })
 
 const expectForbidden = async (promise: Promise<unknown>, message: string) => {
@@ -80,7 +115,7 @@ describe('myTicket — ownership check', () => {
   it('utente che non è created_by → "Access denied" e nessun dato caricato', async () => {
     mockSession.executeRead.mockResolvedValueOnce({
       records: [makeRecord({
-        props:        { id: 'inc-1', title: 'Altrui', status: 'open', created_by: 'other-user' },
+        props:        { id: 'inc-1', number: 'INC00000001', title: 'Altrui', status: 'open', created_by: 'other-user' },
         assignedTeam: null,
       })],
     })
@@ -95,7 +130,7 @@ describe('myTicket — ownership check', () => {
     mockSession.executeRead.mockResolvedValueOnce({
       records: [makeRecord({
         props: {
-          id: 'inc-1', title: 'Stampante rotta', status: 'open', priority: 'high',
+          id: 'inc-1', number: 'INC00000001', title: 'Stampante rotta', status: 'open', severity: 'high',
           category: 'hardware', created_by: 'user-1',
           created_at: '2026-07-01T10:00:00Z', updated_at: '2026-07-02T10:00:00Z',
         },
@@ -118,6 +153,30 @@ describe('myTicket — ownership check', () => {
     })
     // 1 ticket + 1 commenti + 1 allegati + 1 storia
     expect(mockSession.executeRead).toHaveBeenCalledTimes(4)
+    // `open` non è un passo del workflow di questo cliente: categoria ed
+    // etichetta sono `null`, non inventate (il portale mostra il valore grezzo
+    // e lo stile neutro).
+    expect(result).toMatchObject({ statusCategory: null, statusLabel: null })
+  })
+
+  /**
+   * Ondata 7 · D-15: il passo RINOMINATO dal cliente porta la sua categoria e
+   * la sua etichetta. Prima il portale non aveva né l'una né l'altra: coloriva
+   * per nome di passo factory e mostrava il nome grezzo.
+   */
+  it('passo rinominato dal cliente → categoria ed etichetta del suo workflow', async () => {
+    mockSession.executeRead.mockResolvedValueOnce({
+      records: [makeRecord({
+        props: {
+          id: 'inc-2', number: 'INC00000002', title: 'Monitor', status: 'in_carico', severity: 'low',
+          category: 'hardware', created_by: 'user-1',
+          created_at: '2026-07-01T10:00:00Z', updated_at: '2026-07-02T10:00:00Z',
+        },
+        assignedTeam: null,
+      })],
+    })
+    const result = await myTicket(null, { id: 'inc-2' }, ctx)
+    expect(result).toMatchObject({ status: 'in_carico', statusCategory: 'active', statusLabel: 'In carico' })
   })
 })
 
@@ -140,20 +199,27 @@ describe('addTicketComment — ownership check', () => {
     expect(mockSession.executeWrite).not.toHaveBeenCalled()
   })
 
-  it('owner → crea il commento pubblico con i dati autore', async () => {
-    mockSession.executeRead
-      .mockResolvedValueOnce({ records: [makeRecord({ createdBy: 'user-1' })] })
-      .mockResolvedValueOnce({ records: [makeRecord({ name: 'Mario Rossi', email: 'mario@test.io' })] })
+  /**
+   * Revisione del 14 set 2026 · F1: il portale scriveva `EntityComment`, un
+   * modello che il dettaglio dell'incident non leggeva — il cliente scriveva e
+   * nessuno leggeva, e le risposte dello staff non arrivavano al portale. Ora
+   * il commento è lo stesso `Comment` appeso con `HAS_COMMENT` che lo staff
+   * vede, come risposta pubblica (`is_internal = false`).
+   */
+  it('owner → un Comment pubblico appeso all\'incident, con i dati autore', async () => {
+    mockSession.executeRead.mockResolvedValueOnce({ records: [makeRecord({ createdBy: 'user-1' })] })
+    vi.mocked(runQuery).mockResolvedValueOnce([{
+      comment: { id: 'c-1', text: 'un aggiornamento?', is_internal: false, created_at: 'a', updated_at: 'a' },
+      author:  { name: 'Mario Rossi', email: 'mario@test.io' },
+    }] as never)
 
-    const result = await addTicketComment(null, { ticketId: 'inc-1', body: 'un aggiornamento?' }, ctx)
+    const result = await addTicketComment(null, { ticketId: 'inc-42', body: 'un aggiornamento?' }, ctx)
 
-    expect(mockSession.executeWrite).toHaveBeenCalledOnce()
-    expect(result).toMatchObject({
-      body:        'un aggiornamento?',
-      isInternal:  false,
-      authorId:    'user-1',
-      authorName:  'Mario Rossi',
-      authorEmail: 'mario@test.io',
-    })
+    const [, cypher, params] = vi.mocked(runQuery).mock.calls[0]! as [unknown, string, Record<string, unknown>]
+    expect(cypher).toContain('MATCH (e:Incident {id: $entityId, tenant_id: $tenantId})')
+    expect(cypher).toContain('CREATE (e)-[:HAS_COMMENT]->(c)')
+    expect(cypher).not.toContain('EntityComment')
+    expect(params).toMatchObject({ entityId: 'inc-42', tenantId: 'tenant-1', isInternal: false, authorId: 'user-1' })
+    expect(result).toMatchObject({ id: 'c-1', body: 'un aggiornamento?', isInternal: false, authorName: 'Mario Rossi', authorEmail: 'mario@test.io' })
   })
 })

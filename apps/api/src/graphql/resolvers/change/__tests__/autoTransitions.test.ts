@@ -14,17 +14,24 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../../context.js'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 // L'engine è mockato, ma le condizioni ITSM sono quelle vere (workflow/
 // conditions.ts): evaluateCondition delega al registro reale così i test
 // esercitano le query di condizione.
+// I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
+vi.mock('../../../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'en'), languageForUser: vi.fn(async () => 'en') }))
 vi.mock('@opengraphity/workflow', () => ({
+  // `conditions.js` registra anche chi scrive i compiti (20 set 2026): senza
+  // questa, importarlo fa fallire tutta la suite prima del primo test.
+  registerTaskCreator: vi.fn(),
   workflowEngine: {
     createInstance:    vi.fn().mockResolvedValue({ id: 'wi-1' }),
     transition:        vi.fn().mockResolvedValue({ success: true }),
     registerCondition: vi.fn(),
+    onStepEntered:     vi.fn(),
     hasCondition:      vi.fn(),
     evaluateCondition: vi.fn(async (session: unknown, name: string, ctx: unknown) => {
       const { CHANGE_CONDITIONS } = await import('../../../../workflow/conditions.js')
@@ -42,8 +49,34 @@ vi.mock('../../ci-utils.js', () => ({
   mapCI:       vi.fn(),
 }))
 
-vi.mock('../../../../lib/logger.js', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+vi.mock('../../../../lib/logger.js', () => {
+  const child = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+  return { logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => child } }
+})
+
+// Fine finestra (Event Management, ondata 3 + revisione): i moduli sono
+// importati dinamicamente da syncSuppressedEvents solo quando la change ha
+// eventi soppressi; la mutation ACCODA il job `reevaluate-change-window`, non
+// rivaluta in linea. Qui si verifica quando (e con che cosa) viene accodato.
+vi.mock('../../../../services/eventCorrelation.js', () => ({
+  // Ondata 4 · A4-1: i passi di finestra vengono dallo SCOPO dei passi del
+  // tenant, non da due letterali. Qui il tenant ha i nomi factory.
+  resolveChangeWindowSteps: vi.fn().mockResolvedValue({ implementation: ['deployment'], planned: ['scheduled'], all: ['deployment', 'scheduled'] }),
+  reevaluateSuppressedEvents: vi.fn().mockResolvedValue(2),
+}))
+vi.mock('../../../../jobs/eventCorrelateWorker.js', () => ({
+  enqueueChangeWindowReevaluation: vi.fn().mockResolvedValue(undefined),
+}))
+// Servizi monitorati (revisione 2 · D6.1): ingresso e uscita dalla finestra
+// accodano la valutazione delle mappe che includono i CI della change.
+// Il varco della finestra di rilascio ha i suoi test (`windowGate.test.ts`):
+// qui si prova il CAMMINATORE, quindi il varco e un doppio. Il test in fondo
+// («il varco rifiuta») prova che il camminatore lo ascolta.
+const automaticTransitionAllowed = vi.fn<() => Promise<boolean>>()
+vi.mock('../windowGate.js', () => ({ automaticTransitionAllowed }))
+
+vi.mock('../../../../services/serviceImpact/sync.js', () => ({
+  notifyChangeWindowChanged: vi.fn().mockResolvedValue(1),
 }))
 
 // ── Import after mocks ────────────────────────────────────────────────────────
@@ -52,10 +85,13 @@ const { evaluateAutoTransitions } = await import('../autoTransitions.js')
 const { workflowEngine } = await import('@opengraphity/workflow')
 const { runQuery, runQueryOne } = await import('../../ci-utils.js')
 const { logger } = await import('../../../../lib/logger.js')
+const { reevaluateSuppressedEvents } = await import('../../../../services/eventCorrelation.js')
+const { enqueueChangeWindowReevaluation } = await import('../../../../jobs/eventCorrelateWorker.js')
+const { notifyChangeWindowChanged } = await import('../../../../services/serviceImpact/sync.js')
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator', permissions: perms('operator') }
 const mockSession = {} as never
 
 /**
@@ -72,6 +108,7 @@ function mockDb(opts: { transitions: Array<{ toStep: string; condition: string |
     return { pending: opts.pending ?? 0 } as never
   })
   let transitionsCall = 0
+  automaticTransitionAllowed.mockResolvedValue(true)
   vi.mocked(runQuery).mockImplementation(async () => {
     transitionsCall += 1
     return (transitionsCall === 1 ? opts.transitions : []) as never
@@ -99,7 +136,8 @@ describe('evaluateAutoTransitions', () => {
       expect(workflowEngine.transition).toHaveBeenCalledOnce()
       expect(workflowEngine.transition).toHaveBeenCalledWith(
         mockSession,
-        { instanceId: 'wi-1', toStepName: 'planning', triggeredBy: 'system', triggerType: 'automatic' },
+        // CONTRATTO RINEGOZIATO (revisione totale · E-31): tenant obbligatorio sul motore.
+        { instanceId: 'wi-1', toStepName: 'planning', triggeredBy: 'system', triggerType: 'automatic', tenantId: 'tenant-1' },
         { userId: 'user-1', entityData: { id: 'chg-1', code: 'CHG00000001' } },
       )
       expect(afterEnterStep).toHaveBeenCalledWith(mockSession, 'chg-1', 'tenant-1', 'planning')
@@ -204,5 +242,259 @@ describe('evaluateAutoTransitions', () => {
     await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
 
     expect(workflowEngine.transition).not.toHaveBeenCalled()
+    expect(enqueueChangeWindowReevaluation).not.toHaveBeenCalled()
+  })
+
+  describe('fine finestra (eventi soppressi dalla change): la mutation accoda il job, non rivaluta in linea', () => {
+    const ENTERED = '2026-09-09T10:00:00.000Z'
+
+    /** Nessuna transizione automatica; la lettura "step + eventi soppressi" risponde come indicato. */
+    function mockWindow(step: string, suppressed: number, enteredAt: string | null = ENTERED) {
+      vi.mocked(runQueryOne).mockImplementation(async (_s: unknown, query: string) => {
+        if (query.includes('suppressed_by_change_id')) return { step, enteredAt, suppressed } as never
+        if (query.includes('HAS_WORKFLOW')) return { instanceId: 'wi-1', step, tenantId: 'tenant-1', entityProps: { id: 'chg-1' } } as never
+        return { pending: 1 } as never
+      })
+      vi.mocked(runQuery).mockResolvedValue([] as never)
+    }
+
+    it('change uscita da deployment (review) con eventi soppressi → job accodato con tenant, change ed epoca del passo (updated_at dell\'istanza); NESSUNA rivalutazione in linea', async () => {
+      mockWindow('review', 2)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(enqueueChangeWindowReevaluation).toHaveBeenCalledWith('tenant-1', 'chg-1', Date.parse(ENTERED))
+      expect(reevaluateSuppressedEvents).not.toHaveBeenCalled()
+      const q = vi.mocked(runQueryOne).mock.calls.map((c) => c[1] as string).find((s) => s.includes('suppressed_by_change_id'))!
+      expect(q).toContain("MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})")
+      expect(q).toContain("(e:Event {tenant_id: $tenantId, status: 'suppressed', suppressed_by_change_id: c.id})")
+      expect(q).toContain('wi.updated_at AS enteredAt')
+    })
+
+    it('change chiusa (closed) con eventi soppressi → job accodato', async () => {
+      mockWindow('closed', 1)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(enqueueChangeWindowReevaluation).toHaveBeenCalledOnce()
+    })
+
+    it('accodamento fallito (Redis) → l\'errore propaga (fail-loud, nessun try/catch)', async () => {
+      mockWindow('review', 2)
+      vi.mocked(enqueueChangeWindowReevaluation).mockRejectedValueOnce(new Error('Redis down'))
+      await expect(evaluateAutoTransitions(mockSession, 'chg-1', ctx)).rejects.toThrow('Redis down')
+    })
+
+    it('istanza senza updated_at leggibile → epoca corrente con avviso nel log', async () => {
+      vi.useFakeTimers({ now: Date.parse('2026-09-09T12:00:00.000Z') })
+      try {
+        mockWindow('review', 2, null)
+        await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      } finally { vi.useRealTimers() }
+      expect(enqueueChangeWindowReevaluation).toHaveBeenCalledWith('tenant-1', 'chg-1', Date.parse('2026-09-09T12:00:00.000Z'))
+      expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ changeId: 'chg-1' }), expect.stringMatching(/updated_at non leggibile/))
+    })
+
+    it.each([['deployment'], ['scheduled']])('change ancora in %s → nessun job (finestra aperta)', async (step) => {
+      mockWindow(step, 3)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(enqueueChangeWindowReevaluation).not.toHaveBeenCalled()
+    })
+
+    it('nessun evento soppresso → nessun job (i moduli non vengono nemmeno caricati)', async () => {
+      mockWindow('review', 0)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(enqueueChangeWindowReevaluation).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── Revisione 2 · D6.1: la finestra di change vista dai Servizi ────────────
+
+  describe('segnale ai Servizi monitorati all\'ingresso e all\'uscita dalla finestra', () => {
+    /** Nessuna transizione automatica; la lettura "step + marcatore" risponde come indicato. */
+    function mockWindowState(step: string, notified: boolean | undefined) {
+      vi.mocked(runQueryOne).mockImplementation(async (_s: unknown, query: string) => {
+        if (query.includes('suppressed_by_change_id')) return { step, enteredAt: null, suppressed: 0 } as never
+        if (query.includes('c.service_window AS notified')) return { step, notified } as never
+        if (query.includes('HAS_WORKFLOW')) return { instanceId: 'wi-1', step, tenantId: 'tenant-1', entityProps: { id: 'chg-1' } } as never
+        return { pending: 1 } as never
+      })
+      vi.mocked(runQuery).mockResolvedValue([] as never)
+    }
+    const setCalls = () => vi.mocked(runQueryOne).mock.calls.map((c) => [c[1] as string, c[2] as Record<string, unknown>] as const).filter(([q]) => q.includes('SET c.service_window'))
+
+    it.each([['deployment'], ['scheduled']])('ingresso in %s (marcatore assente) → valutazione accodata e marcatore a true', async (step) => {
+      mockWindowState(step, undefined)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(notifyChangeWindowChanged).toHaveBeenCalledWith('tenant-1', 'chg-1', 'change.window_entered')
+      expect(setCalls()).toHaveLength(1)
+      expect(setCalls()[0]![1]).toEqual({ changeId: 'chg-1', tenantId: 'tenant-1', inWindow: true })
+    })
+
+    it('uscita dalla finestra (marcatore true, passo review) → valutazione accodata e marcatore a false', async () => {
+      mockWindowState('review', true)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(notifyChangeWindowChanged).toHaveBeenCalledWith('tenant-1', 'chg-1', 'change.window_left')
+      expect(setCalls()[0]![1]).toEqual({ changeId: 'chg-1', tenantId: 'tenant-1', inWindow: false })
+    })
+
+    it('stato invariato (dentro la finestra e già segnalato, o fuori e mai segnalato) → nessuna valutazione, nessuna scrittura', async () => {
+      mockWindowState('deployment', true)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      mockWindowState('review', false)
+      await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+      expect(notifyChangeWindowChanged).not.toHaveBeenCalled()
+      expect(setCalls()).toHaveLength(0)
+    })
+
+    it('coda dei servizi giù: notifyChangeWindowChanged non lancia mai, la transizione resta valida', async () => {
+      mockWindowState('deployment', false)
+      vi.mocked(notifyChangeWindowChanged).mockResolvedValueOnce(0)
+      await expect(evaluateAutoTransitions(mockSession, 'chg-1', ctx)).resolves.toBeUndefined()
+      expect(notifyChangeWindowChanged).toHaveBeenCalledTimes(1)
+    })
+  })
+})
+
+// ── Ondata 4 · A4-2/A4-3: change ↔ problem ↔ incident per SCOPO e CATEGORIA ───
+
+/**
+ * Il tenant ha rinominato i passi di change, problem e incident. Con il codice
+ * di prima (`changeStep === 'deployment'`, `problemStep === 'change_requested'`,
+ * `toStepName: 'resolved'`) nessuna di queste sincronizzazioni scattava: il
+ * problem restava per sempre ad aspettare una change già rilasciata.
+ *
+ * Il nucleo `lib/workflowHelpers.ts` non è mockato: la sessione risponde alla
+ * sua query, per entity_type.
+ */
+describe('sincronizzazione con problem e incident su workflow rinominati (A4-2/A4-3)', () => {
+  const rec = (m: Record<string, unknown>) => ({ get: (k: string) => (k in m ? m[k] : null) })
+  const STEPS: Record<string, Array<[string, string | null, string, number]>> = {
+    // nome, scopo, categoria, ordine
+    change:  [['valutazione', 'assessment', 'active', 1], ['cab_settimanale', 'approval', 'waiting', 2],
+              ['in_calendario', 'scheduled', 'waiting', 3], ['rilascio_notturno', 'implementation', 'active', 4],
+              ['verifica', 'review', 'active', 5], ['archiviata', null, 'closed', 6]],
+    problem: [['analisi', 'investigation', 'active', 1], ['attesa_change', 'change_requested', 'waiting', 2],
+              ['change_in_corso', 'change_in_progress', 'waiting', 3], ['risolto', null, 'resolved', 4]],
+    incident:[['nuovo', null, 'active', 1], ['lavorazione', null, 'active', 2], ['sistemato', null, 'resolved', 3]],
+  }
+  const session = {
+    executeRead: (fn: (tx: { run: (c: string, p: Record<string, unknown>) => Promise<{ records: unknown[] }> }) => unknown) =>
+      fn({ run: async (_c: string, p: Record<string, unknown>) => ({
+        records: (STEPS[p['entityType'] as string] ?? []).map(([name, purpose, category, order]) => rec({
+          name, purpose, category, stepOrder: order,
+          isInitial: order === 1, isTerminal: category === 'closed', isOpen: category !== 'closed',
+        })),
+      }) }),
+  } as never
+
+  /** `changeStep` per la change, e una riga di problem/incident collegato. */
+  function mockDb2(changeStep: string, linked: { problemStep?: string; incidentStep?: string }) {
+    vi.mocked(runQueryOne).mockImplementation((async (_s: unknown, q: string) => {
+      if (q.includes('c.service_window AS notified')) return { step: changeStep, notified: false }
+      if (q.includes('HAS_WORKFLOW')) return { instanceId: 'wi-1', step: changeStep, tenantId: 'tenant-1', entityProps: { id: 'chg-1' } }
+      return { pending: 1 }
+    }) as never)
+    vi.mocked(runQuery).mockImplementation((async (_s: unknown, q: string) => {
+      if (q.includes('TRANSITIONS_TO')) return []
+      if (q.includes('(p:Problem')) return linked.problemStep ? [{ changeStep, instanceId: 'pw-1', problemStep: linked.problemStep }] : []
+      if (q.includes('(i:Incident')) return linked.incidentStep ? [{ changeStep, code: 'CHG1', instanceId: 'iw-1', incidentStep: linked.incidentStep }] : []
+      return []
+    }) as never)
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
+    const { invalidateWorkflowCache } = await import('../../../../lib/workflowHelpers.js')
+    invalidateWorkflowCache()
+  })
+
+  it('change nel passo di scopo implementation → il problem in «attesa_change» passa a «change_in_corso»', async () => {
+    mockDb2('rilascio_notturno', { problemStep: 'attesa_change' })
+    await evaluateAutoTransitions(session, 'chg-1', ctx)
+    expect(workflowEngine.transition).toHaveBeenCalledWith(
+      session, expect.objectContaining({ instanceId: 'pw-1', toStepName: 'change_in_corso' }), expect.anything())
+  })
+
+  it('change nel passo di categoria closed → problem risolto (categoria resolved) e incident risolto', async () => {
+    mockDb2('archiviata', { problemStep: 'change_in_corso', incidentStep: 'lavorazione' })
+    await evaluateAutoTransitions(session, 'chg-1', ctx)
+    const targets = vi.mocked(workflowEngine.transition).mock.calls.map((c) => (c[1] as { instanceId: string; toStepName: string }))
+    expect(targets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ instanceId: 'pw-1', toStepName: 'risolto' }),
+      expect.objectContaining({ instanceId: 'iw-1', toStepName: 'sistemato' }),
+    ]))
+  })
+
+  it('incident in un passo non lavorabile (categoria resolved) → nessun auto-resolve, e lo dice', async () => {
+    mockDb2('archiviata', { incidentStep: 'sistemato' })
+    await evaluateAutoTransitions(session, 'chg-1', ctx)
+    expect(vi.mocked(workflowEngine.transition).mock.calls.filter((c) => (c[1] as { instanceId: string }).instanceId === 'iw-1')).toHaveLength(0)
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ incidentStep: 'sistemato' }), expect.stringContaining('nessun auto-resolve'))
+  })
+
+  it('change in un passo che non è né rilascio né chiusura → nessuna sincronizzazione', async () => {
+    mockDb2('cab_settimanale', { problemStep: 'attesa_change', incidentStep: 'lavorazione' })
+    await evaluateAutoTransitions(session, 'chg-1', ctx)
+    expect(workflowEngine.transition).not.toHaveBeenCalled()
+  })
+})
+
+describe('il varco della finestra di rilascio (terza revisione * C1)', () => {
+  // Questo describe e fratello di quello sopra, quindi il suo beforeEach non
+  // gira qui: senza questo, le chiamate di un test restavano nella lista del
+  // successivo e l'asserzione «non parte» passava (o cadeva) per il motivo
+  // sbagliato.
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(workflowEngine.transition).mockResolvedValue({ success: true } as never)
+  })
+
+  /** Lo scenario del difetto: un arco automatico senza condizione verso il passo programmato. */
+  const scenarioC1 = () => mockDb({ transitions: [{ toStep: 'rilascio_programmato', condition: null }] })
+
+  /**
+   * Le transizioni della CHANGE, non quelle che `evaluateAutoTransitions` fa a
+   * valle sui problem e sugli incident collegati (`syncLinkedProblems` &c.):
+   * quelle partono comunque e non c'entrano col varco.
+   */
+  const transizioniDellaChange = () =>
+    vi.mocked(workflowEngine.transition).mock.calls
+      .filter((c) => (c[1] as { toStepName: string }).toStepName === 'rilascio_programmato')
+
+  it('senza varco questo scenario FAREBBE la transizione (cosi era il difetto)', async () => {
+    // Questo test esiste per non lasciare vacui i due che seguono: dimostra che
+    // lo scenario arriva davvero a chiamare il motore quando il varco dice si.
+    scenarioC1()
+    automaticTransitionAllowed.mockResolvedValue(true)
+    await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+    expect(transizioniDellaChange()).toHaveLength(1)
+    expect(transizioniDellaChange()[0]![1]).toEqual(
+      // CONTRATTO RINEGOZIATO (revisione totale · E-31): tenant obbligatorio sul motore.
+      { instanceId: 'wi-1', toStepName: 'rilascio_programmato', triggeredBy: 'system', triggerType: 'automatic', tenantId: 'tenant-1' },
+    )
+  })
+
+  it('se il varco rifiuta, la transizione NON parte', async () => {
+    scenarioC1()
+    automaticTransitionAllowed.mockResolvedValue(false)
+    const afterEnterStep = vi.fn()
+
+    await evaluateAutoTransitions(mockSession, 'chg-1', ctx, afterEnterStep)
+    expect(transizioniDellaChange()).toEqual([])
+    expect(afterEnterStep).not.toHaveBeenCalled()
+  })
+
+  it('e non lancia: l\'azione che ha innescato il cammino resta valida', async () => {
+    scenarioC1()
+    automaticTransitionAllowed.mockResolvedValue(false)
+    await expect(evaluateAutoTransitions(mockSession, 'chg-1', ctx)).resolves.toBeUndefined()
+  })
+
+  it('il varco riceve tenant, change e passi giusti, e l\'etichetta del cammino', async () => {
+    scenarioC1()
+    automaticTransitionAllowed.mockResolvedValue(true)
+    await evaluateAutoTransitions(mockSession, 'chg-1', ctx)
+    const [, input, path] = vi.mocked(automaticTransitionAllowed).mock.calls[0] as unknown as [unknown, Record<string, unknown>, string]
+    expect(input).toMatchObject({ tenantId: 'tenant-1', changeId: 'chg-1', currentStep: 'assessment', toStep: 'rilascio_programmato' })
+    expect(input).toHaveProperty('changeType')
+    expect(path).toBe('auto_transition')
   })
 })

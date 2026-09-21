@@ -248,6 +248,199 @@ export const bullmqQueueDepth = createGauge(
   ['queue'],
 )
 
+// ── Event Management (ondata 4) ──────────────────────────────────────────────
+// Incrementate dalla pipeline (services/eventService.ts, eventCorrelation.ts,
+// eventStorm.ts) e dal job di conservazione (services/eventRetention.ts).
+// `connector` è il connector_kind della sorgente (bounded: CONNECTOR_KINDS).
+
+export const eventsReceivedTotal      = createCounter('events_received_total',      'Monitoring events ingested (new or repeated) by connector kind', ['connector'])
+export const eventsDeduplicatedTotal  = createCounter('events_deduplicated_total',  'Monitoring events merged into an existing Event (same fingerprint)', [])
+export const eventsOrphanTotal        = createCounter('events_orphan_total',        'Monitoring events ingested without a recognised CI', [])
+/** Riconoscimento per nome con più CI candidati (A2): non agganciato, orfano con match_reason = ambiguous (conta anche in events_orphan_total). */
+export const eventsAmbiguousTotal     = createCounter('events_ambiguous_total',     'Monitoring events left orphan because more than one CI matched the resource name (match_reason = ambiguous)', [])
+export const eventsSuppressedTotal    = createCounter('events_suppressed_total',    'Monitoring events silenced by a change window', [])
+export const eventsFlappingTotal      = createCounter('events_flapping_total',      'Monitoring events that entered the flapping state', [])
+/**
+ * Una regola di dominio ha cercato i passi con uno SCOPO (`WORKFLOW_STEP_PURPOSES`)
+ * e nel workflow del tenant non ce n'è nessuno: la regola non si applica a
+ * niente. `rule` è il nome della regola (bounded: oggi solo `change_window`).
+ * Serve perché una regola spenta da una configurazione incompleta deve VEDERSI:
+ * senza questo contatore, un tenant che non ha assegnato lo scopo al passo di
+ * rilascio smetterebbe di silenziare gli allarmi durante i rilasci senza che
+ * nessuno lo sappia (ondata 4 · A4-1).
+ */
+export const workflowPurposeMissingTotal = createCounter('workflow_step_purpose_missing_total', 'Domain rules that found no workflow step declaring the purpose they look for, by rule', ['rule'])
+
+/**
+ * Transizioni automatiche RIFIUTATE dal varco della finestra di rilascio
+ * (terza revisione · C1). Su un cammino automatico il varco non lancia — non
+ * c'e un umano, e far fallire l'azione di un operatore per una configurazione
+ * che non e sua sarebbe un vicolo cieco — quindi il rifiuto vive qui e nel
+ * log. Se questo contatore sale, un cliente ha un arco automatico che porta
+ * dentro la finestra di rilascio scavalcando l'approvazione: e una
+ * configurazione da correggere, non un guasto del prodotto.
+ */
+/**
+ * Le scadenze dei passi di workflow (verifica «Cosa resta cablato», ondata 3):
+ * quante hanno spostato un ticket, quante il varco ha rifiutato e quante non
+ * sono riuscite, per ragione. Un `failed` è configurazione da correggere.
+ */
+export const stepDeadlineOutcomesTotal = createCounter('workflow_step_deadline_outcomes_total', 'Workflow step deadlines that came due, by outcome (moved, refused, failed) and reason', ['outcome', 'reason'])
+
+export const changeWindowGateBlockedTotal = createCounter('change_window_gate_blocked_total', 'Automatic workflow transitions refused because the change would enter the release window without satisfied approvals, by path and reason', ['path', 'reason'])
+
+/**
+ * Quante cose mancano a un cliente per essere usabile (revisione delle otto
+ * ondate · D·D4). Il prodotto lo sapeva già (`tenantProvisioningGaps`) ma lo
+ * diceva solo a chi lanciava `migrate --status`: un tenant incompleto restava
+ * incompleto finché qualcuno non apriva un ticket e vedeva l'errore.
+ */
+export const tenantProvisioningGapsGauge = createGauge('tenant_provisioning_gaps', 'Configuration gaps that make a tenant unusable (0 = complete), by tenant', ['tenant'])
+export const incidentsAutoOpenedTotal = createCounter('incidents_auto_opened_total', 'Incidents opened automatically by event correlation (storm incidents included)', [])
+export const incidentsAutoResolvedTotal = createCounter('incidents_auto_resolved_total', 'Incidents resolved automatically when every correlated event cleared', [])
+export const incidentsReopenedTotal   = createCounter('incidents_reopened_total',   'Resolved incidents reopened by a returning monitoring event', [])
+export const eventsPurgedTotal        = createCounter('events_purged_total',        'Resolved monitoring events deleted by the purge_events retention job', [])
+/**
+ * Payload più vecchio dell'ultimo applicato alla stessa impronta ma con uno
+ * stato DIVERSO: applicato lo stesso (revisione 2 · B2-06) e loggato a warn —
+ * lo scarto silenzioso lasciava acceso per sempre un allarme il cui `resolved`
+ * era arrivato "vecchio" (repliche API con orologi diversi, salto NTP).
+ * Un payload vecchio con lo STESSO stato resta `duplicate` e non conta qui.
+ */
+export const eventsOutOfOrderTotal    = createCounter('events_out_of_order_total',  'Monitoring event payloads applied out of order (older than the last applied one, different status) by connector kind', ['connector'])
+/** Job events-ingest fallito all'ultimo tentativo: l'allarme è perso e la sorgente porta last_error. */
+export const eventsIngestFailedTotal  = createCounter('events_ingest_failed_total', 'Monitoring event ingest jobs that failed after the last retry by connector kind', ['connector'])
+/** Elementi di un payload scartati dalla normalizzazione (A1: accettazione parziale del batch, il resto è stato accodato); la sorgente porta il riepilogo in last_error. */
+export const eventsRejectedTotal      = createCounter('events_rejected_total',      'Monitoring alerts rejected by normalisation (invalid element of an otherwise accepted payload, or the whole payload) by connector kind', ['connector'])
+/** `resolved` di un allarme mai visto (B5): l'Event nasce già risolto, senza avviso event.received/resolved/orphan. */
+export const eventsResolvedUnknownTotal = createCounter('events_resolved_unknown_total', 'Resolved payloads for alerts never seen before (Event created already resolved, no notification) by connector kind', ['connector'])
+export const eventStormsActive        = createGauge('event_storms_active',          'Monitoring sources currently in an alert storm', [])
+/**
+ * Richieste al webhook in ingresso rifiutate con 429 (rest/webhooks-inbound.ts).
+ * `connector` = connector_kind per le sorgenti evento, entity_type
+ * (incident | problem) per i webhook che creano ticket: insieme bounded.
+ * Un valore che cresce durante una tempesta dice "alza rate_limit_per_minute
+ * o raggruppa di più nello strumento", non "la sorgente è rotta".
+ */
+export const webhookRateLimitedTotal  = createCounter('webhook_rate_limited_total', 'Inbound webhook requests rejected with 429 by connector kind', ['connector'])
+
+// ── Event Management, revisione (§4 Osservabilità) ─────────────────────────
+// `outcome` è l'esito finale della pipeline (CORRELATION_OUTCOMES +
+// auto_resolved/auto_resolve_skipped + `error` quando la pipeline lancia):
+// insieme bounded. I cinque contatori sopra restano per i pannelli esistenti;
+// questo dice TUTTI gli esiti, anche attached/skipped_*/delayed/none/storm.
+export const eventsCorrelatedTotal    = createCounter('events_correlated_total',    'Event pipeline runs by final outcome (error = the pipeline threw)', ['outcome'])
+export const eventPipelineDurationSeconds = createHistogram('event_pipeline_duration_seconds', 'Event correlation pipeline duration in seconds by mode (ingest | reevaluate | resume)', ['mode'], [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30])
+/** Passate del job periodico `events-maintenance` (jobs/eventCorrelateWorker.ts): pass = closed_windows | pending | flapping | storms | gauges; result = ok | failed. */
+export const eventPassTotal           = createCounter('event_pass_total',           'Periodic event maintenance passes by pass and result', ['pass', 'result'])
+export const eventPassDurationSeconds = createHistogram('event_pass_duration_seconds', 'Periodic event maintenance pass duration in seconds', ['pass'], [0.1, 0.5, 1, 5, 10, 30, 60, 120, 300])
+/** Eventi `delayed` con `correlation_due_at` scaduta da più di OVERDUE_DELAYED_GRACE_MINUTES: il job `correlate` non è arrivato (services/events/gauges.ts). */
+export const eventsOverdueDelayed     = createGauge('events_overdue_delayed',       'Delayed monitoring events whose correlation due time passed more than 5 minutes ago', [])
+/** Eventi firing con correlazione none/pending da più di UNCORRELATED_AFTER_MINUTES: pipeline fallita e mai ripresa. */
+export const eventsFiringUncorrelated = createGauge('events_firing_uncorrelated',   'Firing monitoring events without a correlation outcome for more than 15 minutes', [])
+/** Ritardo del job `correlate` rispetto alla scadenza del ritardo (processedAt − dueAt): coda in affanno. */
+export const eventCorrelateJobLagSeconds = createHistogram('event_correlate_job_lag_seconds', 'Delay between a correlate job due time and its processing, in seconds', [], [0.5, 1, 5, 10, 30, 60, 300, 900])
+
+// ── Servizi monitorati (mappa del servizio + albero d'impatto, ondata 1) ────
+// Incrementate dal motore (services/serviceImpact/engine.ts): una valutazione
+// per (mappa, innesco); `result` = changed | unchanged | error (bounded).
+/** Valutazioni delle mappe per esito: `changed` (salute cambiata: voce di cronologia + service.health_changed), `unchanged`, `error` (il job ritenta). */
+export const serviceEvaluationsTotal        = createCounter('service_evaluations_total', 'Service map evaluations by result (changed | unchanged | hold = suspended by a storming source | error)', ['result'])
+export const serviceEvaluationDurationSeconds = createHistogram('service_evaluation_duration_seconds', 'Service map evaluation duration in seconds (read + rules + write)', [], [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10])
+/** Mappe per salute su tutti i tenant, riallineato dalla passata periodica (jobs/serviceImpactWorker.ts). */
+export const servicesHealth                 = createGauge('services_health', 'Service maps by current health (all tenants)', ['health'])
+
+// ── Servizi monitorati (ondata 4: osservabilità) ────────────────────────────
+/**
+ * Incident di servizio aperti dal monitoraggio (services/serviceImpact/incident.ts).
+ * La RIAPERTURA di un incident risolto conta come apertura: dal punto di vista
+ * dell'esercizio il servizio è di nuovo fuori servizio, ed è quello che il
+ * cruscotto deve mostrare; non c'è un secondo incident, quindi
+ * `service_incidents_opened_total − service_incidents_resolved_total` non è il
+ * numero di incident aperti ma il saldo delle transizioni.
+ */
+export const serviceIncidentsOpenedTotal   = createCounter('service_incidents_opened_total',   'Service incidents opened by the monitoring (a reopened incident counts as an opening)', [])
+/** Incident di servizio risolti automaticamente al rientro del servizio (mai una chiusura forzata: `resolve_skipped` non conta). */
+export const serviceIncidentsResolvedTotal = createCounter('service_incidents_resolved_total', 'Service incidents resolved automatically when the service came back (auto-resolve skipped does not count)', [])
+/** Ritardo del job `evaluate` rispetto all'istante in cui era atteso (accodamento + delay): coda `services-impact` in affanno. */
+export const serviceEvaluationLagSeconds   = createHistogram('service_evaluation_lag_seconds', 'Delay between a service map evaluation job due time and the start of the evaluation, in seconds', [], [0.5, 1, 5, 10, 30, 60, 300, 900])
+/** Mappe con `stale = true` (un componente non esiste più nella CMDB) su tutti i tenant, riallineato dalla passata periodica insieme a `services_health`. */
+export const serviceMapsStale              = createGauge('service_maps_stale', 'Service maps flagged stale (an included CI no longer exists in the CMDB, all tenants)', [])
+
+// ── Servizi monitorati (ondata 5: mappa viva) ───────────────────────────────
+/**
+ * Sincronizzazioni della mappa con la CMDB per esito
+ * (services/serviceImpact/sync.ts): `changed` (composizione cambiata: versione
+ * nuova, voce di cronologia, rivalutazione), `unchanged` (solo `synced_at`),
+ * `skipped_limit` (proposta oltre il tetto dei 500 nodi: NIENTE è stato
+ * scritto se non `stale`, l'amministratore deve ridurre la profondità o
+ * escludere) ed `error` (il job ritenta; la passata di sicurezza recupera).
+ */
+export const serviceMapSyncsTotal          = createCounter('service_map_syncs_total', 'Service map synchronizations with the CMDB by result (changed | unchanged | skipped_limit | error)', ['result'])
+
+// ── Operatività (revisione 2, ondata 4: D2.2 / D7.2) ────────────────────────
+/**
+ * Ritardo fra la ricezione dell'allarme dal webhook (`receivedAt` del job) e
+ * l'inizio del suo ingest (jobs/eventIngestWorker.ts): l'unica metrica che
+ * dice «gli allarmi arrivano in ritardo» — coda `events-ingest` in affanno,
+ * worker fermo, Redis ripartito con job accumulati. Stessi bucket dei ritardi
+ * di correlazione e di valutazione (code a confronto).
+ */
+export const eventIngestLagSeconds = createHistogram('event_ingest_lag_seconds', 'Delay between the reception of a monitoring alert by the inbound webhook and the start of its ingest, in seconds', [], [0.5, 1, 5, 10, 30, 60, 300, 900])
+/**
+ * Eventi di dominio che hanno esaurito i tentativi di un consumer
+ * (packages/events `onEventFailed`, cablato da lib/domainEventFailures.ts):
+ * una notifica non inviata, uno SLA non avviato, una mappa non rivalutata.
+ * `queue` = coda del consumer (CONSUMER_QUEUES), `type` = tipo dell'evento:
+ * entrambi insiemi chiusi.
+ */
+export const eventsFailedTotal = createCounter('events_failed_total', 'Domain events lost after the last retry of a consumer, by consumer queue and event type', ['queue', 'type'])
+/**
+ * Lock Redis (lib/redisLock.ts): attese scadute e durata della sezione
+ * critica. `lock` = famiglia della chiave (`events:group`, `events:storm-open`,
+ * `services:incident`), mai la chiave intera (che porta tenant e id).
+ * Un timeout non è un guasto (il job ritenta), ma tanti timeout, o sezioni
+ * critiche vicine al TTL di 30 s, dicono che il lock scade sotto il lavoro
+ * (revisione 2 · D2.6) e la gara che evita torna possibile.
+ */
+export const redisLockTimeoutsTotal = createCounter('redis_lock_timeouts_total', 'Redis lock acquisitions abandoned after the wait timeout (the job retries), by lock family', ['lock'])
+export const redisLockHoldSeconds   = createHistogram('redis_lock_hold_seconds', 'Time a Redis lock was held (critical section duration) in seconds, by lock family', ['lock'], [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60])
+
+// ── Schema GraphQL per tenant (ondata 5, A-1) ────────────────────────────────
+// Lo schema non è più uno solo: ogni tenant ha il proprio, generato dal suo
+// metamodello e tenuto in una cache limitata. Queste metriche dicono se la
+// cache sta lavorando e — soprattutto — se lo schema di un tenant NON si
+// costruisce: in quel caso l'API serve lo schema «sicuro» (base + ITIL, senza
+// i tipi del cliente) per non lasciare il tenant senza API e senza la mutation
+// per rimediare, e questo contatore è l'unico modo per accorgersene.
+
+export const graphqlSchemaBuildsTotal = createCounter('graphql_schema_builds_total', 'GraphQL schemas built (per tenant): a value that grows without metamodel changes means the cache does not hold', [])
+export const graphqlSchemaEvictionsTotal = createCounter('graphql_schema_evictions_total', 'Schemas evicted because the cache is full (GRAPHQL_SCHEMA_CACHE_MAX): if it grows, raise the limit or reduce the tenants per replica', [])
+export const graphqlSchemaBuildFailedTotal = createCounter('graphql_schema_build_failed_total', 'Tenant schemas that did NOT build (usually a colliding custom type or field): the tenant is served the safe schema, without its types. Look at it now', [])
+export const graphqlSchemaCacheEntries = createGauge('graphql_schema_cache_entries', 'GraphQL schemas currently cached in this process', [])
+
+/** Metriche dello schema per tenant, nell'ordine di esposizione. */
+export const SCHEMA_METRICS = [
+  graphqlSchemaBuildsTotal, graphqlSchemaEvictionsTotal, graphqlSchemaBuildFailedTotal, graphqlSchemaCacheEntries,
+] as const
+
+/** Tutte le metriche dell'Event Management (e dei servizi monitorati), nell'ordine di esposizione. */
+export const EVENT_MANAGEMENT_METRICS = [
+  eventsReceivedTotal, eventsDeduplicatedTotal, eventsOrphanTotal, eventsAmbiguousTotal, eventsSuppressedTotal, eventsFlappingTotal,
+  workflowPurposeMissingTotal,
+  changeWindowGateBlockedTotal,
+  stepDeadlineOutcomesTotal,
+  tenantProvisioningGapsGauge,
+  incidentsAutoOpenedTotal, incidentsAutoResolvedTotal, incidentsReopenedTotal, eventsPurgedTotal,
+  eventsOutOfOrderTotal, eventsIngestFailedTotal, eventsRejectedTotal, eventsResolvedUnknownTotal, eventStormsActive, webhookRateLimitedTotal,
+  eventsCorrelatedTotal, eventPipelineDurationSeconds, eventPassTotal, eventPassDurationSeconds,
+  eventsOverdueDelayed, eventsFiringUncorrelated, eventCorrelateJobLagSeconds,
+  serviceEvaluationsTotal, serviceEvaluationDurationSeconds, servicesHealth,
+  serviceIncidentsOpenedTotal, serviceIncidentsResolvedTotal, serviceEvaluationLagSeconds, serviceMapsStale,
+  serviceMapSyncsTotal,
+  eventIngestLagSeconds, eventsFailedTotal, redisLockTimeoutsTotal, redisLockHoldSeconds,
+] as const
+
 // ── Route label (A-15) ────────────────────────────────────────────────────────
 
 /**
@@ -313,13 +506,50 @@ export function metricsAccessAllowed(req: Pick<Request, 'headers' | 'socket'>, t
   return isPrivateAddress(req.socket?.remoteAddress)
 }
 
-export function metricsHandler(req: Request, res: Response): void {
-  if (!metricsAccessAllowed(req)) {
-    res.status(config.metricsToken ? 401 : 403).type('text/plain').send('metrics: forbidden')
-    return
-  }
+// ── Canale del metamodello fra i processi (ondata 5 → 8) ─────────────────────
+// `lib/metamodelBus.ts` porta «il metamodello di questo tenant è cambiato» alle
+// altre repliche e ai worker. Finora si vedeva solo nei log, e i due guasti che
+// contano sono silenziosi per chi guarda un grafico: un `PUBLISH` che trova
+// **zero** ascoltatori (le altre repliche resteranno vecchie fino al TTL) e un
+// processo che **non è sottoscritto** (non verrà mai avvisato). Qui diventano
+// numeri, con la regola Prometheus che li sorveglia in infra/prometheus/.
 
-  const metrics = [
+export const metamodelPublishedTotal = createCounter('metamodel_published_total', 'Metamodel changes published on the channel, by outcome: delivered = at least one process listening, no_receivers = none (other replicas stay stale), error = PUBLISH failed', ['result'])
+export const metamodelReceivedTotal = createCounter('metamodel_received_total', 'Metamodel channel messages received by THIS process, by outcome: applied = caches cleared, stale = version already applied or out of order, malformed = message dropped', ['result'])
+export const metamodelCacheClearFailuresTotal = createCounter('metamodel_cache_clear_failures_total', 'Metamodel caches that did NOT clear (the clearer threw): that process keeps stale data for that tenant until the TTL expires', ['cache'])
+export const metamodelBusSubscribed = createGauge('metamodel_bus_subscribed', 'This process is subscribed to the metamodel channel (1) or not (0): at 0 it is not told about changes made elsewhere', [])
+// Ogni incremento è una finestra in cui questo processo NON è stato avvisato:
+// Redis pub/sub non ha arretrato, quindi quei messaggi sono perduti e le cache
+// vengono svuotate per intero (PRB00000003).
+export const metamodelResubscribeFlushTotal = createCounter('metamodel_resubscribe_flush_total', 'Times this process re-subscribed to the metamodel channel AFTER losing its subscription and therefore dropped all its metamodel caches: each one is a window of invalidation messages lost for good (Redis pub/sub has no backlog)', [])
+
+/** Metriche del canale del metamodello, nell'ordine di esposizione. */
+/**
+ * L'AI COSTA E SI MISURA (revisione AI, ondata 8).
+ *
+ * Sei funzioni chiamavano il modello e nessuna era contata: quanto spende un
+ * cliente, quante risposte arrivano tagliate, quanto del prompt rilegge la
+ * cache — niente. `ai_tokens_total{kind="cache_read"}` in particolare è il
+ * numero che dice se il punto di cache è messo dove serve: se resta a zero,
+ * il prefisso non si ripete e la cache non sta lavorando.
+ */
+export const aiCallsTotal = createCounter('ai_calls_total', 'Calls to the language model by AI feature and outcome (ok, truncated, refused, unreadable, failed)', ['feature', 'outcome'])
+export const aiTokensTotal = createCounter('ai_tokens_total', 'Tokens exchanged with the language model by AI feature and kind (input, output, cache_read, cache_write)', ['feature', 'kind'])
+export const aiDiscardsTotal = createCounter('ai_discards_total', 'Pieces of a model proposal thrown away by the validation filter, by AI feature: it measures how well the prompt matches what the product accepts', ['feature'])
+export const aiCallDurationSeconds = createHistogram('ai_call_duration_seconds', 'Wall time of a model call by AI feature', ['feature'], [1, 2, 5, 10, 20, 40, 80])
+
+export const AI_METRICS = [aiCallsTotal, aiTokensTotal, aiDiscardsTotal, aiCallDurationSeconds] as const
+
+export const METAMODEL_BUS_METRICS = [
+  metamodelPublishedTotal, metamodelReceivedTotal, metamodelCacheClearFailuresTotal, metamodelBusSubscribed,
+  metamodelResubscribeFlushTotal,
+] as const
+
+export const METRICS_CONTENT_TYPE = 'text/plain; version=0.0.4; charset=utf-8'
+
+/** L'esposizione Prometheus completa di questo processo (API e worker la servono allo stesso modo). */
+export function renderMetrics(): string {
+  return [
     httpRequestsTotal.collect(),
     httpRequestDurationSeconds.collect(),
     graphqlResolverDurationSeconds.collect(),
@@ -327,10 +557,20 @@ export function metricsHandler(req: Request, res: Response): void {
     bullmqQueueDepth.collect(),
     backupRunsTotal.collect(),
     backupLastSuccessTimestamp.collect(),
+    ...EVENT_MANAGEMENT_METRICS.map((m) => m.collect()),
+    ...SCHEMA_METRICS.map((m) => m.collect()),
+    ...METAMODEL_BUS_METRICS.map((m) => m.collect()),
+    ...AI_METRICS.map((m) => m.collect()),
   ].join('\n\n')
+}
 
-  res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
-  res.send(metrics)
+export function metricsHandler(req: Request, res: Response): void {
+  if (!metricsAccessAllowed(req)) {
+    res.status(config.metricsToken ? 401 : 403).type('text/plain').send('metrics: forbidden')
+    return
+  }
+  res.setHeader('Content-Type', METRICS_CONTENT_TYPE)
+  res.send(renderMetrics())
 }
 
 // ── Apollo Server plugin ──────────────────────────────────────────────────────
@@ -427,9 +667,33 @@ export interface ProcessMetricsData {
 const slowQueryBuffer: SlowQueryEntry[] = []
 const MAX_SLOW_QUERIES = 20
 
+/**
+ * La query come la LEGGE chi guarda il pannello: senza i commenti del
+ * sorgente e su una riga.
+ *
+ * Prima si prendevano i primi 200 caratteri del testo cosi com'era, e le
+ * nostre query hanno spesso un commento in testa che spiega perche sono
+ * scritte cosi. Risultato, visto nel pannello «Query lente»: al posto della
+ * query si leggeva «// OGNI PARTE nella sua sottoquery (revisione totale ·
+ * E-36): i sette // OPTIONAL MATCH in fila prima del RETURN facevano il
+ * prodotto…», cioe la spiegazione e non la cosa da guardare. Con 200
+ * caratteri di budget, un commento lungo mangia tutta la query.
+ *
+ * Limite noto: un `//` dentro una stringa della query (un URL) taglierebbe il
+ * resto della riga. E' solo la vista del pannello, non la query eseguita, e
+ * nessuna query del prodotto contiene un URL.
+ */
+export function queryPerIlPannello(query: string): string {
+  return query
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .split('\n').map((riga) => riga.replace(/\/\/.*$/, '')).join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 export function recordSlowQuery(query: string, durationMs: number): void {
   slowQueryBuffer.push({
-    query: query.slice(0, 200),
+    query: queryPerIlPannello(query).slice(0, 200),
     durationMs,
     timestamp: new Date().toISOString(),
   })

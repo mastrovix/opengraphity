@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 import {
   assertReportTemplateAccess, assertDashboardAccess, assertDashboardOwnerByWidget, resolveDashboardIdForWidget,
 } from '../reportAccess.js'
@@ -18,7 +19,8 @@ function sessionReturning(...rowsPerCall: Array<Record<string, unknown>[]>) {
 }
 
 function ctx(overrides: Partial<GraphQLContext> = {}): GraphQLContext {
-  return { tenantId: 't1', userId: 'u1', userEmail: 'u1@x', role: 'operator', ...overrides }
+  const role = overrides.role ?? 'operator'
+  return { tenantId: 't1', userId: 'u1', userEmail: 'u1@x', role, permissions: perms(role), ...overrides }
 }
 
 async function code(p: Promise<unknown>): Promise<string | null> {

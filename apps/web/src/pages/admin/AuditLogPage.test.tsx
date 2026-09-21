@@ -69,10 +69,10 @@ describe('AuditLogPage', () => {
     await screen.findByText('anna@acme.com')
 
     await user.click(screen.getByRole('button', { name: /Advanced filters/ }))
-    await user.click(screen.getByRole('button', { name: '+ Add filter' }))
+    await user.click(screen.getByRole('button', { name: 'Add filter' }))
     await user.selectOptions(screen.getAllByRole('combobox')[0]!, 'action')
     expect(screen.getAllByRole('combobox')[1]).toHaveValue('contains')
-    await user.type(screen.getByPlaceholderText('Valore…'), 'login')
+    await user.type(screen.getByPlaceholderText('Value…'), 'login')
     await user.click(screen.getByRole('button', { name: 'Apply' }))
 
     await waitFor(() => expect(actions()).toEqual(['login']))
@@ -81,7 +81,7 @@ describe('AuditLogPage', () => {
     const group = JSON.parse(last.filters!) as { rules: { field: string; operator: string; value: string; logic: string }[] }
     expect(group.rules).toHaveLength(1)
     expect(group.rules[0]).toMatchObject({ field: 'action', operator: 'contains', value: 'login', logic: 'AND' })
-    expect(screen.getByText('1 entries')).toBeInTheDocument()
+    expect(screen.getByText('1 entry')).toBeInTheDocument()
   })
 
   it('Reset rimuove i filtri dalla query', async () => {
@@ -89,9 +89,9 @@ describe('AuditLogPage', () => {
     const { user } = renderWithProviders(<AuditLogPage />, { mocks: [auditMock(() => true, ALL, seen)] })
     await screen.findByText('anna@acme.com')
     await user.click(screen.getByRole('button', { name: /Advanced filters/ }))
-    await user.click(screen.getByRole('button', { name: '+ Add filter' }))
+    await user.click(screen.getByRole('button', { name: 'Add filter' }))
     await user.selectOptions(screen.getAllByRole('combobox')[0]!, 'userEmail')
-    await user.type(screen.getByPlaceholderText('Valore…'), 'anna')
+    await user.type(screen.getByPlaceholderText('Value…'), 'anna')
     await user.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() => expect(seen.at(-1)?.filters).toBeDefined())
     await user.click(screen.getByRole('button', { name: 'Reset' }))

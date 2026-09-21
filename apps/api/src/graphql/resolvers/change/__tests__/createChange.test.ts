@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../../context.js'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -19,10 +20,14 @@ vi.mock('../queries.js', () => ({
 }))
 
 vi.mock('@opengraphity/workflow', () => ({
+  // `conditions.js` registra anche chi scrive i compiti (20 set 2026): senza
+  // questa, importarlo fa fallire tutta la suite prima del primo test.
+  registerTaskCreator: vi.fn(),
   workflowEngine: {
     createInstance: vi.fn().mockResolvedValue({ id: 'wi-1' }),
     transition:     vi.fn().mockResolvedValue({ success: true }),
     registerCondition: vi.fn(),
+    onStepEntered:     vi.fn(),
   },
 }))
 
@@ -35,7 +40,9 @@ vi.mock('../../ci-utils.js', () => ({
 }))
 
 vi.mock('../../../../lib/logger.js', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  // `child` serve perché scoring.ts ora importa lib/domainMatrix.js, che si
+  // prende un logger figlio al caricamento del modulo (ondata 7).
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
 vi.mock('../../../../lib/workflowHelpers.js', () => ({
@@ -51,7 +58,7 @@ const { change: getChange } = await import('../queries.js')
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator', permissions: perms('operator') }
 
 describe('createChange (resolver wrapper)', () => {
   beforeEach(() => {
@@ -75,11 +82,11 @@ describe('createChange (resolver wrapper)', () => {
   })
 
   it('errore dal service → propaga e NON rilegge il change', async () => {
-    vi.mocked(createChangeRFC).mockRejectedValue(new Error('Un change deve avere almeno un CI impattato'))
+    vi.mocked(createChangeRFC).mockRejectedValue(new Error('A change must have at least one impacted CI'))
 
     await expect(
       createChange(null, { input: { title: 'X', affectedCIIds: [] } }, ctx),
-    ).rejects.toThrow('Un change deve avere almeno un CI impattato')
+    ).rejects.toThrow('A change must have at least one impacted CI')
 
     expect(getChange).not.toHaveBeenCalled()
   })

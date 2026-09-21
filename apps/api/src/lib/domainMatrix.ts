@@ -1,0 +1,439 @@
+/**
+ * Le matrici di dominio e il punto unico di validazione dei valori (ondata 7:
+ * C-4 / C-7 / C-8 / A-13 / A-14 / B-14 / D-16).
+ *
+ * ## Il difetto
+ * Le regole che traducono un valore di dominio in un altro erano scritte nel
+ * codice: la matrice priorità = impatto × urgenza (`lib/priority.ts`), la
+ * criticità del servizio → impatto (`IMPACT_BY_CRITICALITY`, quattro chiavi e
+ * `?? 'medium'`), la severità dell'allarme → severità dell'incident, i pesi e
+ * le soglie del rischio, la severità dell'import dei ticket, e quali stati del
+ * ciclo di vita contano come «ritirato» o «in manutenzione». Il Dizionario
+ * però **permette di rinominare quei valori** — è una decisione presa: il
+ * cliente può chiamare `critical` → `p1` e `high` → `alto`.
+ *
+ * Conseguenza: il valore rinominato non sta in nessuna di quelle tabelle, e il
+ * codice ripiegava su un default — `medium`, `normal` — **in silenzio**. Un
+ * servizio critico diventava impatto medio; una change «major» veniva trattata
+ * come normal; un CI «dismesso» con un nome nuovo continuava ad aprire
+ * incident perché non risultava ritirato.
+ *
+ * ## La regola
+ * Due cose distinte, e nessuna delle due è un default silenzioso:
+ *
+ *  1. **La validazione**: `assertDomainValue(tenantId, vocabolario, valore)`
+ *     controlla il valore contro il vocabolario **del cliente** (gli enum, con
+ *     la precedenza dell'ondata 1: il suo vince su quello di sistema). Un
+ *     valore fuori vocabolario è un errore che elenca gli ammessi. È il punto
+ *     unico: nessun consumatore deve più avere la sua lista.
+ *  2. **La traduzione**: le matrici sono **dato del cliente**
+ *     (`DomainMatrix {tenant_id, kind, entries}`), seminate esattamente con i
+ *     valori che il codice usava finora — quindi il primo giorno non cambia
+ *     niente — e modificabili dall'interfaccia. Una cella che manca è un
+ *     errore che dice quale coppia manca, non un `medium`.
+ *
+ * ## Perché non un file di configurazione
+ * Perché deve essere modificabile dal cliente senza codice e senza deploy, e
+ * perché due clienti hanno matrici diverse: è dato per tenant, come le regole
+ * di notifica e la policy degli allarmi.
+ */
+import { getSession } from '@opengraphity/neo4j'
+import { ValidationError } from './errors.js'
+import { createMetamodelCache } from './metamodelCache.js'
+import { loadTenantEnumOverrides } from './enumScope.js'
+import { logger } from './logger.js'
+
+const log = logger.child({ module: 'domain-matrix' })
+
+/**
+ * Le matrici, in un vocabolario chiuso. Ogni voce esiste perché una regola di
+ * dominio la usa; `inputs` sono i vocabolari delle dimensioni d'ingresso e
+ * `output` quello del risultato — servono alla validazione e all'interfaccia,
+ * che così sa quali tendine offrire.
+ */
+export const DOMAIN_MATRIX_KINDS = {
+  /** Priorità del ticket = impatto × urgenza (ITIL). */
+  priority:         { inputs: ['impact', 'urgency'], output: 'priority' },
+  /** Criticità della business application → impatto dell'incident di servizio. */
+  service_impact:   { inputs: ['service_criticality'], output: 'impact' },
+  /** Severità dell'allarme → severità dell'incident aperto dal monitoraggio. */
+  event_severity:   { inputs: ['event_severity'], output: 'severity' },
+  /**
+   * Tipo di change × fascia di rischio → priorità (la decisione del prodotto:
+   * NON Impatto×Urgenza, che vale per incident e problem).
+   */
+  change_priority:  { inputs: ['change_type', 'risk_band'], output: 'priority' },
+  /**
+   * Tipo di change → priorità quando il rischio **non è ancora stato
+   * valutato** (prima dell'assessment). È una regola distinta, non la fascia
+   * più bassa: «rischio non valutato» e «rischio basso» sono due cose
+   * diverse, e il codice che questa matrice sostituisce le teneva separate —
+   * una change `normal` appena creata era `medium`, una con rischio basso
+   * misurato era `low`. Collassarle cambierebbe la priorità di ogni change a
+   * rischio basso.
+   */
+  change_priority_initial: { inputs: ['change_type'], output: 'priority' },
+  /** Severità in ingresso dall'import dei ticket → severità del tenant. */
+  import_severity:  { inputs: ['import_severity'], output: 'severity' },
+  /**
+   * Ambiente del CI → punteggio di rischio dell'assessment della change
+   * (revisione del 14 set 2026 · CH-3). L'uscita non è un vocabolario ma una
+   * SCALA del prodotto (`scale`): il punteggio entra nella formula di
+   * `calculateTaskScore` con il suo massimo, quindi i valori ammessi sono
+   * quelli della formula e non si rinominano. Prima erano due letterali nel
+   * codice (`production` → 3, `staging` → 1, il resto 0).
+   */
+  environment_risk: { inputs: ['environment'], output: 'environment_risk_score', scale: ['0', '1', '2', '3'] },
+  /**
+   * Severità dell'allarme firing → salute del CI (revisione del 14 set 2026 ·
+   * EV-3). La scala è quella di `ci.health`, dal migliore al peggiore: vince la
+   * salute peggiore fra gli allarmi firing. Prima era `CI_HEALTH_RULES` con
+   * `critical` e `warning` scritti nel codice, mentre la severità degli
+   * allarmi è un vocabolario del cliente.
+   */
+  ci_health:        { inputs: ['event_severity'], output: 'ci_health', scale: ['operational', 'degraded', 'down'] },
+  /**
+   * Salute del servizio → urgenza dell'incident aperto dai Servizi monitorati
+   * (verifica «Cosa resta cablato», ondata 2). L'INGRESSO non è un vocabolario
+   * ma una scala del prodotto (`inputScales`): la salute la calcola la mappa,
+   * e solo «giù» e «degradato» aprono un incident. Prima era `URGENCY_BY_HEALTH`
+   * scritto nel codice (down → high, degraded → medium).
+   */
+  service_urgency:  { inputs: ['service_health'], output: 'urgency', inputScales: { service_health: ['degraded', 'down'] } },
+} as const
+
+/**
+ * I valori ammessi per ogni dimensione d'ingresso, nell'ordine di `inputs`: la
+ * scala del prodotto quando la dimensione ne ha una (`inputScales`), altrimenti
+ * il vocabolario del cliente.
+ */
+export function matrixInputValues(tenantId: string, kind: DomainMatrixKind): Promise<readonly (readonly string[])[]> {
+  const spec: { inputs: readonly string[]; inputScales?: Readonly<Record<string, readonly string[]>> } = DOMAIN_MATRIX_KINDS[kind]
+  return Promise.all(spec.inputs.map((input) => spec.inputScales?.[input] ?? domainVocabulary(tenantId, input)))
+}
+
+/** I valori ammessi in uscita da una matrice: la sua scala, o il vocabolario del cliente. */
+export function matrixOutputValues(tenantId: string, kind: DomainMatrixKind): Promise<readonly string[]> {
+  const spec: { output: string; scale?: readonly string[] } = DOMAIN_MATRIX_KINDS[kind]
+  return spec.scale ? Promise.resolve(spec.scale) : domainVocabulary(tenantId, spec.output)
+}
+
+
+export type DomainMatrixKind = keyof typeof DOMAIN_MATRIX_KINDS
+
+export function isDomainMatrixKind(v: unknown): v is DomainMatrixKind {
+  return typeof v === 'string' && v in DOMAIN_MATRIX_KINDS
+}
+
+/**
+ * Una matrice: dalla chiave d'ingresso al valore d'uscita. Le dimensioni
+ * multiple si compongono con `|` nell'ordine di `inputs`, così una matrice a
+ * due dimensioni resta una mappa piatta (facile da leggere, da salvare come
+ * JSON e da mostrare come tabella).
+ */
+export type DomainMatrixEntries = Readonly<Record<string, string>>
+
+export interface DomainMatrix {
+  kind:      DomainMatrixKind
+  entries:   DomainMatrixEntries
+  /** `true` quando è il seme del prodotto e il cliente non l'ha mai toccata. */
+  isDefault: boolean
+  updatedAt: string | null
+}
+
+/** La chiave di una cella: i valori delle dimensioni nell'ordine di `inputs`. */
+export function matrixKey(...values: readonly string[]): string {
+  return values.join('|')
+}
+
+// ── Semi: esattamente ciò che il codice faceva finora ────────────────────────
+
+/**
+ * I semi NON sono «valori di default a cui ripiegare»: sono il contenuto con
+ * cui la matrice del cliente nasce, una volta, così il comportamento del primo
+ * giorno è identico a prima. Dopo, comanda il dato.
+ */
+export const DOMAIN_MATRIX_SEEDS: Readonly<Record<DomainMatrixKind, DomainMatrixEntries>> = {
+  priority: {
+    'high|high':     'critical', 'high|medium':   'high',   'high|low':   'medium',
+    'medium|high':   'high',     'medium|medium': 'medium', 'medium|low': 'low',
+    'low|high':      'medium',   'low|medium':    'low',    'low|low':    'low',
+  },
+  /**
+   * Le chiavi sono i valori veri del vocabolario `service_criticality`
+   * (`mission_critical`, `business_critical`, `business_operational`,
+   * `office_productivity`), e i valori sono quelli che
+   * `IMPACT_BY_CRITICALITY` traduceva in `serviceImpact/incident.ts`: i due
+   * livelli «critici» valgono impatto alto, gli altri medio.
+   *
+   * Questo seme era stato scritto con le chiavi `critical/high/medium/low`,
+   * che NON appartengono a nessun vocabolario di criticità: sarebbero state
+   * quattro celle fuori vocabolario e quattro combinazioni mancanti, cioè
+   * ogni incident di servizio senza impatto dal primo giorno. È il motivo per
+   * cui un seme si copia dal codice che sostituisce, non dal buon senso.
+   */
+  service_impact: {
+    mission_critical: 'high', business_critical: 'high',
+    business_operational: 'medium', office_productivity: 'medium',
+  },
+  event_severity: {
+    critical: 'critical', warning: 'medium', info: 'low',
+  },
+  /**
+   * Trascritta da `deriveChangePriority` (`resolvers/change/scoring.ts`) prima
+   * dell'ondata 7, cella per cella: `emergency` → `critical` solo con rischio
+   * alto, altrimenti `high`; `standard` → `medium` solo con rischio alto,
+   * altrimenti `low`; `normal` → la fascia stessa.
+   *
+   * Due celle di questo seme erano state scritte a intuito invece che
+   * trascritte (`emergency|medium` come `critical` e `normal|low` come
+   * `medium`): avrebbero cambiato in silenzio la priorità di change reali. Un
+   * seme si copia dal codice che sostituisce.
+   */
+  change_priority: {
+    'emergency|high': 'critical', 'emergency|medium': 'high',   'emergency|low': 'high',
+    'normal|high':    'high',     'normal|medium':    'medium', 'normal|low':    'low',
+    'standard|high':  'medium',   'standard|medium':  'low',    'standard|low':  'low',
+  },
+  /** Rischio non ancora valutato: la priorità di creazione di prima. */
+  change_priority_initial: {
+    emergency: 'high', normal: 'medium', standard: 'low',
+  },
+  import_severity: {
+    critical: 'critical', high: 'high', medium: 'medium', low: 'low',
+    blocker: 'critical', major: 'high', minor: 'low', trivial: 'low',
+  },
+  /** Trascritto da `environmentScore` (resolvers/change/scoring.ts), valore per valore del vocabolario spedito. */
+  environment_risk: {
+    production: '3', staging: '1', development: '0', testing: '0', dr: '0',
+  },
+  /** Trascritto da `CI_HEALTH_RULES` (services/events/ciHealth.ts): critical → down, warning → degraded. */
+  ci_health: {
+    critical: 'down', warning: 'degraded', info: 'operational',
+  },
+  /** Trascritto da `URGENCY_BY_HEALTH` (services/serviceImpact/incident.ts): down → high, degraded → medium. */
+  service_urgency: {
+    down: 'high', degraded: 'medium',
+  },
+}
+
+// ── Lettura ──────────────────────────────────────────────────────────────────
+
+const cache = createMetamodelCache<DomainMatrix>({
+  name: 'domain-matrix',
+  load: (tenantId, kind) => loadMatrixFromGraph(tenantId, kind as DomainMatrixKind),
+})
+
+/**
+ * Svuota la cache di una matrice **in questo processo**.
+ *
+ * Non è la leva da tirare dopo una scrittura: quella è `invalidateSchema`, che
+ * svuota tutte le cache del metamodello e lo dice agli altri processi (la
+ * revisione ha misurato una matrice corretta dalla pagina che restava vecchia
+ * nell'events-worker, senza scadenza). Questa resta per i test e per chi ha già
+ * invalidato tutto il resto.
+ */
+export function invalidateDomainMatrix(tenantId: string, kind?: DomainMatrixKind): void {
+  cache.invalidate(tenantId, kind)
+}
+
+export function loadDomainMatrix(tenantId: string, kind: DomainMatrixKind): Promise<DomainMatrix> {
+  return cache.get(tenantId, kind)
+}
+
+async function loadMatrixFromGraph(tenantId: string, kind: DomainMatrixKind): Promise<DomainMatrix> {
+  const session = getSession()
+  try {
+    const r = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (m:DomainMatrix {tenant_id: $tenantId, kind: $kind})
+         RETURN m.entries AS entries, m.updated_at AS updatedAt`,
+        { tenantId, kind },
+      ),
+    )
+    if (!r.records.length) {
+      // Nessuna matrice salvata: il cliente non l'ha mai toccata e la
+      // migrazione non è ancora passata. Si usa il seme, e si DICE quale
+      // caso è: non è un ripiego su un valore inventato, è il contenuto di
+      // fabbrica dichiarato.
+      return { kind, entries: DOMAIN_MATRIX_SEEDS[kind], isDefault: true, updatedAt: null }
+    }
+    const raw = r.records[0].get('entries')
+    const entries = parseEntries(raw, kind)
+    return { kind, entries, isDefault: false, updatedAt: (r.records[0].get('updatedAt') as string | null) ?? null }
+  } catch (err) {
+    log.error({ tenantId, kind, err }, 'Matrice di dominio non leggibile')
+    throw err
+  } finally {
+    await session.close()
+  }
+}
+
+function parseEntries(raw: unknown, kind: DomainMatrixKind): DomainMatrixEntries {
+  if (raw == null) throw new Error(`Matrix "${kind}": node without \`entries\``)
+  let parsed: unknown = raw
+  if (typeof raw === 'string') {
+    try { parsed = JSON.parse(raw) }
+    catch (e) { throw new Error(`Matrix "${kind}": \`entries\` is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`Matrix "${kind}": \`entries\` must be a key → value object`)
+  }
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    if (typeof v !== 'string') throw new Error(`Matrix "${kind}": cell "${k}" is not a string (${typeof v})`)
+    out[k] = v
+  }
+  return out
+}
+
+/**
+ * Traduce una combinazione d'ingresso nel valore d'uscita. **Fail-loud**: una
+ * cella che manca è un errore che nomina la matrice, la combinazione e come
+ * rimediare — mai un `medium` silenzioso, che è il difetto che chiudiamo.
+ */
+export async function resolveDomainMatrix(
+  tenantId: string, kind: DomainMatrixKind, ...values: readonly string[]
+): Promise<string> {
+  const spec = DOMAIN_MATRIX_KINDS[kind]
+  if (values.length !== spec.inputs.length) {
+    throw new Error(`Matrix "${kind}": ${spec.inputs.length} values expected (${spec.inputs.join(', ')}), got ${values.length}`)
+  }
+  const matrix = await loadDomainMatrix(tenantId, kind)
+  const key = matrixKey(...values)
+  const out = matrix.entries[key]
+  if (out === undefined) {
+    throw new ValidationError(
+      `Matrix "${kind}" of tenant ${tenantId}: no value for ${spec.inputs.map((i, n) => `${i}="${values[n]}"`).join(', ')}. `
+      + `Complete the matrix in Settings → Domain matrices`
+      + (matrix.isDefault ? ' (it is currently the factory one: you may have renamed a dictionary value without updating it).' : '.'),
+      {
+        key: matrix.isDefault ? 'errors.matrix.noValueFactory' : 'errors.matrix.noValue',
+        params: { matrix: kind, combination: spec.inputs.map((i, n) => `${i}="${values[n]}"`).join(', ') },
+      },
+    )
+  }
+  return out
+}
+
+// ── Il punto unico di validazione di un valore di dominio ────────────────────
+
+/**
+ * Il valore appartiene al vocabolario del cliente?
+ *
+ * Sostituisce le liste sparse (`isImpactUrgency`, `['standard','normal',
+ * 'emergency'].includes`, `SEVERITY_MAP`, le copie di `SERVICE_CRITICALITIES`):
+ * il vocabolario è quello del tenant, che può averlo rinominato.
+ *
+ * `null`/`undefined` **non** sono validi: chi accetta un valore assente deve
+ * dirlo prima, non passare qui.
+ */
+export async function assertDomainValue(tenantId: string, vocabulary: string, value: unknown): Promise<string> {
+  const allowed = await domainVocabulary(tenantId, vocabulary)
+  if (typeof value !== 'string' || value === '') {
+    throw new ValidationError(`${vocabulary}: value missing or not a string (${JSON.stringify(value ?? null)}). Allowed: ${allowed.join(', ')}.`, { key: 'errors.vocabulary.missingValue', params: { vocabulary, allowed: allowed.join(', ') } })
+  }
+  if (!allowed.includes(value)) {
+    throw new ValidationError(`${vocabulary}: "${value}" is not in the dictionary of this tenant. Allowed: ${allowed.join(', ')}.`, { key: 'errors.vocabulary.outOfVocabulary', params: { vocabulary, value, allowed: allowed.join(', ') } })
+  }
+  return value
+}
+
+/** Come `assertDomainValue` ma senza lanciare: per i rami che devono decidere. */
+export async function isDomainValue(tenantId: string, vocabulary: string, value: unknown): Promise<boolean> {
+  if (typeof value !== 'string' || value === '') return false
+  return (await domainVocabulary(tenantId, vocabulary)).includes(value)
+}
+
+const vocabCache = createMetamodelCache<readonly string[]>({
+  name: 'domain-vocabulary',
+  load: (tenantId, vocabulary) => loadVocabularyFromGraph(tenantId, vocabulary),
+})
+
+/**
+ * I valori del vocabolario per questo cliente: il suo enum omonimo se esiste
+ * (precedenza dell'ondata 1), altrimenti quello di sistema. Un vocabolario che
+ * non esiste da nessuna parte è un errore: significa che il codice sta
+ * chiedendo un nome sbagliato, e un elenco vuoto lo nasconderebbe.
+ */
+export function domainVocabulary(tenantId: string, vocabulary: string): Promise<readonly string[]> {
+  return vocabCache.get(tenantId, vocabulary)
+}
+
+async function loadVocabularyFromGraph(tenantId: string, vocabulary: string): Promise<readonly string[]> {
+  const session = getSession()
+  try {
+    const own = await loadTenantEnumOverrides(session, tenantId)
+    const mine = own.get(vocabulary)
+    if (mine) return mine.values
+    const r = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (e:EnumTypeDefinition {tenant_id: 'system', name: $name}) RETURN e.values AS values`,
+        { name: vocabulary },
+      ),
+    )
+    if (!r.records.length) {
+      throw new Error(
+        `Dictionary "${vocabulary}" does not exist (neither for tenant ${tenantId} nor shipped): ` +
+        `the code is asking for a name the Dictionary does not have.`,
+      )
+    }
+    const raw = r.records[0].get('values')
+    const values = Array.isArray(raw) ? raw as string[] : JSON.parse(String(raw)) as string[]
+    return values
+  } finally {
+    await session.close()
+  }
+}
+
+// ── Il valore di DEFAULT di un vocabolario ───────────────────────────────────
+
+const defaultCache = createMetamodelCache<string | null>({
+  name: 'domain-vocabulary-default',
+  load: (tenantId, vocabulary) => loadVocabularyDefaultFromGraph(tenantId, vocabulary),
+})
+
+/**
+ * Il valore dichiarato come default sul vocabolario di questo cliente, o
+ * `null` se non l'ha dichiarato (revisione delle otto ondate · C·N-2).
+ *
+ * Perché esiste: `initialCIStatus` prendeva il **primo** valore della lista, e
+ * il Dizionario sapeva solo aggiungere in coda — quindi rinominare un valore lo
+ * spostava in fondo e un CI nuovo nasceva col primo valore rimasto (dal vivo
+ * `inactive`: subito fuori dalla salute dei servizi, e i suoi allarmi non
+ * aprivano più incident). «Con quale valore si nasce» è un **default**, non una
+ * posizione: si dichiara.
+ *
+ * Stessa precedenza dei valori: il vocabolario del cliente vince su quello
+ * spedito, per nome.
+ */
+export function domainVocabularyDefault(tenantId: string, vocabulary: string): Promise<string | null> {
+  return defaultCache.get(tenantId, vocabulary)
+}
+
+async function loadVocabularyDefaultFromGraph(tenantId: string, vocabulary: string): Promise<string | null> {
+  const session = getSession()
+  try {
+    const r = await session.executeRead((tx) =>
+      tx.run(
+        `MATCH (e:EnumTypeDefinition {name: $name})
+         WHERE e.tenant_id IN [$tenantId, 'system']
+         RETURN e.tenant_id AS tenantId, e.default_value AS defaultValue`,
+        { name: vocabulary, tenantId },
+      ),
+    )
+    const own    = r.records.find((rec) => (rec.get('tenantId') as string) === tenantId)
+    const chosen = own ?? r.records[0]
+    const value  = chosen?.get('defaultValue')
+    return typeof value === 'string' && value !== '' ? value : null
+  } finally {
+    await session.close()
+  }
+}
+
+/** Solo per i test. */
+export function clearDomainCaches(): void {
+  cache.clear()
+  vocabCache.clear()
+  defaultCache.clear()
+}

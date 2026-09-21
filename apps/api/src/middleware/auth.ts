@@ -1,4 +1,5 @@
 import type express from 'express'
+import type { Permission } from '@opengraphity/types'
 import { GraphQLError } from 'graphql'
 import { authLogger } from '../lib/logger.js'
 import { resolveAuth } from '../auth/resolveAuth.js'
@@ -13,6 +14,7 @@ declare global {
         userId:   string
         email:    string
         role:     string
+        permissions: ReadonlySet<Permission>
       }
     }
   }
@@ -41,11 +43,15 @@ async function handle(
       userId:   ctx.userId,
       email:    ctx.userEmail,
       role:     ctx.role,
+      permissions: ctx.permissions,
     }
     next()
   } catch (err) {
-    if (err instanceof GraphQLError && err.extensions['code'] === 'UNAUTHORIZED') {
-      res.status(401).json({ error: err.message })
+    const code = err instanceof GraphQLError ? err.extensions['code'] : null
+    if (code === 'UNAUTHORIZED' || code === 'TENANT_SUSPENDED') {
+      // Il codice viaggia nel corpo: un tenant sospeso non è un token da
+      // rinfrescare, e chi chiama deve poterli distinguere senza leggere la frase.
+      res.status(401).json({ error: (err as GraphQLError).message, code })
       return
     }
     // DB outage / corrupt User node is a server error, not an auth failure — surface it as such.

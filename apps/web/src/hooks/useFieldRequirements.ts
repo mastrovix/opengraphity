@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { GET_FIELD_REQUIREMENT_RULES } from '@/graphql/queries'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 interface RequirementRule {
   id:           string
@@ -21,7 +22,7 @@ export function useFieldRequirements(
     GET_FIELD_REQUIREMENT_RULES,
     {
       variables:   { entityType, workflowStep: workflowStep ?? null },
-      fetchPolicy: 'cache-first',
+      fetchPolicy: METAMODEL_FETCH_POLICY,
     },
   )
 

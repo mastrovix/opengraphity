@@ -120,19 +120,50 @@ export function startGraphQLSpan(initialName: string): GraphQLSpanHandle {
 }
 
 /**
- * Rename the currently active HTTP span (from auto-instrumentation) to include
- * the GraphQL operation. No-op when OTEL is disabled.
+ * Rinomina lo span HTTP attivo (quello dell'auto-strumentazione) perche porti
+ * l'operazione GraphQL. Inerte quando OTEL e spento.
+ *
+ * `name` e SOLO il nome dell'operazione e `type` solo il tipo, come vogliono le
+ * convenzioni OpenTelemetry: il composto vive nel NOME dello span, non
+ * nell'attributo. Prima qui arrivava gia `Query.GetCITypes` e finiva in
+ * `graphql.operation.name`, sovrascrivendo il valore giusto messo dal plugin
+ * Apollo; poi il pannello delle tracce ci premetteva di nuovo il tipo e
+ * mostrava **`Query.Query.GetCITypes`**. Visto a schermo la prima volta che il
+ * tracciamento e stato accesso.
  */
-export function updateActiveSpanName(operationName: string): void {
+export function updateActiveSpanName(type: string, name: string): void {
   if (!_traceApi) return
   const span = _traceApi.getActiveSpan()
   if (!span) return
-  span.updateName(`GraphQL ${operationName}`)
-  span.setAttribute('graphql.operation.name', operationName)
+  const etichetta = type.charAt(0).toUpperCase() + type.slice(1)
+  span.updateName(`GraphQL ${etichetta}.${name}`)
+  span.setAttribute('graphql.operation.name', name)
+  span.setAttribute('graphql.operation.type', type)
 }
+
+/** Vero dopo la prima chiamata: il preload e `index.ts` chiamano entrambi. */
+let initStarted = false
 
 export function initTelemetry(): void {
   if (!config.otelEnabled) return
+  /**
+   * Idempotente e consapevole di essere partita TARDI (revisione totale ·
+   * A-23). L'auto-strumentazione patcha i moduli caricati dopo `sdk.start()`:
+   * chiamata da `index.ts` — dove gli import statici di express, http, del
+   * driver Neo4j e di ioredis sono già valutati — non li vede, e in Jaeger
+   * restano solo gli span dell'operazione GraphQL. Il preload
+   * `telemetry-register.ts` (`node --import ./dist/telemetry-register.js`)
+   * risolve; senza, lo si dice invece di lasciar credere a un guasto del
+   * collettore.
+   */
+  if (initStarted) return
+  initStarted = true
+  const late = Boolean((globalThis as { __OG_TELEMETRY_PRELOADED__?: boolean }).__OG_TELEMETRY_PRELOADED__) === false
+  if (late) {
+    logger.warn({ module: 'telemetry' },
+      'OTEL started from the application: HTTP and database spans will be missing because those modules are already loaded. '
+      + 'Preload it instead: node --import ./dist/telemetry-register.js --no-node-snapshot dist/index.js')
+  }
 
   otelEnabled  = true
   otelEndpoint = config.otelEndpoint
@@ -230,6 +261,29 @@ export function initTelemetry(): void {
         ],
         instrumentations: [getNodeAutoInstrumentations({
           '@opentelemetry/instrumentation-fs': { enabled: false },
+          /**
+           * GraphQL: UN'OPERAZIONE PER CAMPO, non per elemento di lista.
+           *
+           * Acceso il tracciamento per la prima volta (fino a ora
+           * `OTEL_ENABLED` e sempre stato false, e nessuno aveva guardato
+           * dentro Jaeger), la strumentazione predefinita aveva gia prodotto
+           * **398 operazioni, 303 delle quali con un indice nel nome**:
+           * `graphql.resolve incidents.items.0.slaStatus.breached`,
+           * `…items.3.slaStatus.responseDeadline`, una per ogni riga di ogni
+           * lista. L'elenco delle operazioni cresce senza limite, la ricerca
+           * in Jaeger diventa inutilizzabile e l'indice paga per niente.
+           *
+           *  - `mergeItems`: gli elementi diventano `items.*.campo`, una
+           *    operazione sola per campo invece di una per riga;
+           *  - `ignoreTrivialResolveSpans`: niente span per il resolver
+           *    PREDEFINITO, quello che legge una proprieta dall'oggetto e non
+           *    fa altro — e la maggior parte di quelle 303. Gli span che
+           *    contano (i field resolver veri, che interrogano Neo4j) restano.
+           */
+          '@opentelemetry/instrumentation-graphql': {
+            mergeItems: true,
+            ignoreTrivialResolveSpans: true,
+          },
         })],
       })
 

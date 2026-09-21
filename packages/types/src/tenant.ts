@@ -12,4 +12,6 @@ export interface TenantSettings {
   scripting_enabled: boolean
   max_users: number
   max_ci: number
+  /** Servizi monitorati: numero massimo di ServiceMap del tenant (createServiceMap rifiuta oltre il limite). */
+  max_service_maps: number
 }

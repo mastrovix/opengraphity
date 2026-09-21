@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { isITILEntity } from '@/lib/automationOperators'
 import { useMutation, useQuery } from '@apollo/client/react'
 import { toast } from 'sonner'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { CREATE_CUSTOM_WIDGET, UPDATE_CUSTOM_WIDGET } from '@/graphql/mutations'
-import { GET_WIDGET_DATA_PREVIEW, GET_ITIL_TYPES, GET_CI_TYPES } from '@/graphql/queries'
+import { GET_WIDGET_DATA_PREVIEW, GET_WIDGET_CATALOG } from '@/graphql/queries'
 import type { CustomWidgetData } from './CustomWidgetCard'
+import { cssVar } from '@/lib/charts/cssVar'
+import { shippedLabel } from '@/lib/shippedLabel'
+import { showError } from '@/lib/showError'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 // Le etichette visibili sono chiavi i18n (`labelKey`, `descKey`, `subKey`,
@@ -20,21 +22,21 @@ export const WIDGET_TYPES = [
   { value: 'chart_donut', labelKey: 'pages.dashboard.widgetType.chartDonut', icon: 'PieChart',   descKey: 'pages.dashboard.widgetTypeDesc.chartDonut' },
   { value: 'table',       labelKey: 'pages.dashboard.widgetType.table',      icon: 'Table',      descKey: 'pages.dashboard.widgetTypeDesc.table' },
   { value: 'gauge',       labelKey: 'pages.dashboard.widgetType.gauge',      icon: 'Gauge',      descKey: 'pages.dashboard.widgetTypeDesc.gauge' },
+  // Event Management: contatori di eventStats, nessuna entità/metrica da configurare
+  // (entityType/metric vengono salvati con i valori correnti del form ma il widget non li usa).
+  { value: 'active_alarms', labelKey: 'pages.dashboard.widgetType.activeAlarms', icon: 'Radar',  descKey: 'pages.dashboard.widgetTypeDesc.activeAlarms' },
+  // Servizi monitorati: contatori di serviceMaps.counts, stessa regola di active_alarms.
+  { value: 'service_health', labelKey: 'pages.dashboard.widgetType.serviceHealth', icon: 'Boxes', descKey: 'pages.dashboard.widgetTypeDesc.serviceHealth' },
 ] as const
 
-export const ENTITY_TYPES = [
-  { value: 'incident',             labelKey: 'pages.dashboard.entity.incident' },
-  { value: 'problem',              labelKey: 'pages.dashboard.entity.problem' },
-  { value: 'change',               labelKey: 'pages.dashboard.entity.change' },
-  { value: 'service_request',      labelKey: 'pages.dashboard.entity.serviceRequest' },
-  { value: 'server',               labelKey: 'pages.dashboard.entity.server' },
-  { value: 'application',          labelKey: 'pages.dashboard.entity.application' },
-  { value: 'database',             labelKey: 'pages.dashboard.entity.database' },
-  { value: 'certificate',          labelKey: 'pages.dashboard.entity.certificate' },
-  { value: 'network_device',       labelKey: 'pages.dashboard.entity.networkDevice' },
-  { value: 'vm',                   labelKey: 'pages.dashboard.entity.vm' },
-  { value: 'business_application', labelKey: 'pages.dashboard.entity.businessApplication' },
-]
+/** Tipi di widget che NON leggono `widgetData` (la sorgente dei dati è fissa): niente anteprima né configurazione dati. */
+export const DATA_FREE_WIDGET_TYPES: readonly string[] = ['active_alarms', 'service_health']
+
+/** Aiuto mostrato nel pannello di configurazione: dice da dove arrivano i dati del tipo scelto. */
+export const DATA_FREE_HINT_KEY: Record<string, string> = {
+  active_alarms:  'pages.dashboard.activeAlarmsHint',
+  service_health: 'pages.dashboard.serviceHealthHint',
+}
 
 export const METRICS = [
   { value: 'count',          labelKey: 'pages.dashboard.metric.count' },
@@ -42,20 +44,6 @@ export const METRICS = [
   { value: 'avg_field',      labelKey: 'pages.dashboard.metric.avgField' },
   { value: 'sum_field',      labelKey: 'pages.dashboard.metric.sumField' },
 ]
-
-export const ALLOWED_FIELDS: Record<string, string[]> = {
-  incident:        ['status', 'severity', 'category'],
-  problem:         ['status', 'priority', 'category'],
-  change:          ['status', 'type', 'priority', 'risk', 'impact'],
-  service_request: ['status', 'priority', 'category'],
-  server:          ['status', 'environment', 'os'],
-  application:     ['status', 'environment'],
-  database:        ['status', 'environment'],
-  certificate:     ['status', 'environment'],
-  network_device:  ['status', 'environment'],
-  vm:              ['status', 'environment'],
-  business_application: ['status', 'environment', 'criticality', 'businessUnit'],
-}
 
 export const TIME_RANGES = [
   { value: '24h', labelKey: 'pages.dashboard.timeRange.24h' },
@@ -66,14 +54,36 @@ export const TIME_RANGES = [
   { value: 'all', labelKey: 'pages.dashboard.timeRange.all' },
 ]
 
-export const PRESET_COLORS = [
-  { value: '#0EA5E9',              nameKey: 'pages.dashboard.color.cyan' },
-  { value: '#10b981',              nameKey: 'pages.dashboard.color.green' },
-  { value: 'var(--color-danger)',  nameKey: 'pages.dashboard.color.red' },
-  { value: 'var(--color-warning)', nameKey: 'pages.dashboard.color.amber' },
-  { value: '#8b5cf6',              nameKey: 'pages.dashboard.color.purple' },
-  { value: 'var(--color-slate)',   nameKey: 'pages.dashboard.color.slate' },
-]
+/**
+ * Colori proposti per un widget. Il colore del widget è un DATO scelto
+ * dall'utente (salvato sul widget, mostrato in <input type="color">, usato
+ * con suffisso alfa): deve essere un esadecimale concreto, non `var(--…)`.
+ * I preset partono comunque dai token: `cssVar` legge il valore risolto da
+ * :root, così un cambio di tavolozza cambia anche i preset (non i widget già
+ * salvati, che restano col colore scelto allora).
+ */
+export function presetColors(): { value: string; nameKey: string }[] {
+  return [
+    { value: cssVar('--color-brand'),        nameKey: 'pages.dashboard.color.cyan' },
+    { value: cssVar('--color-success'),      nameKey: 'pages.dashboard.color.green' },
+    { value: cssVar('--color-danger'),       nameKey: 'pages.dashboard.color.red' },
+    { value: cssVar('--color-warning'),      nameKey: 'pages.dashboard.color.amber' },
+    { value: cssVar('--color-purple-light'), nameKey: 'pages.dashboard.color.purple' },
+    { value: cssVar('--color-slate'),        nameKey: 'pages.dashboard.color.slate' },
+  ]
+}
+
+/**
+ * Tinta leggera del colore del widget (sfondo di chip e riquadri selezionati).
+ * Con un esadecimale a 6 cifre usa il suffisso alfa (`#rrggbb14` ≈ 8%); con
+ * qualsiasi altra forma (token, rgb) usa color-mix, così non si producono mai
+ * colori CSS non validi.
+ */
+export function widgetTint(color: string, alphaHex: '14' | '33' = '14'): string {
+  if (/^#[0-9a-fA-F]{6}$/.test(color)) return `${color}${alphaHex}`
+  const pct = alphaHex === '33' ? 20 : 8
+  return `color-mix(in srgb, ${color} ${pct}%, transparent)`
+}
 
 export const SIZE_OPTIONS = [
   { value: 'small',  labelKey: 'pages.dashboard.size.small',  subKey: 'pages.dashboard.sizeSub.small' },
@@ -92,10 +102,38 @@ export const FIELD_TYPE_LABEL_KEYS: Record<string, string> = {
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface FieldMeta {
-  name:       string
+  name:         string
+  label:        string
+  fieldType:    string
+  enumValues:   string[]
+  enumTypeName: string | null
+  groupable:    boolean
+  numeric:      boolean
+  custom:       boolean
+}
+
+/**
+ * Un tipo di ticket o di CI su cui costruire un widget, come lo manda l'API
+ * (`widgetCatalog`, ondata 5 di «Nulla cablato»). Prima entità e campi erano
+ * due liste scritte qui, copia di quelle dell'API: un tipo o un campo del
+ * cliente non c'era mai.
+ */
+export interface WidgetCatalogEntity {
+  entityType: string
   label:      string
-  fieldType:  string
-  enumValues: string[]
+  group:      'itsm' | 'cmdb' | string
+  fields:     FieldMeta[]
+}
+
+/** I campi offerti per il raggruppamento: numerici per medie e somme, gli altri per il conteggio. */
+export function groupByFieldsFor(entity: WidgetCatalogEntity | undefined, metric: string): FieldMeta[] {
+  const numeric = metric === 'avg_field' || metric === 'sum_field'
+  return (entity?.fields ?? []).filter((f) => (numeric ? f.numeric : f.groupable))
+}
+
+/** Le metriche che contano o sommano PER CAMPO: senza il campo non c'è niente da calcolare. */
+export function metricNeedsGroupBy(metric: string): boolean {
+  return metric === 'count_by_field' || metric === 'avg_field' || metric === 'sum_field'
 }
 
 export interface PreviewData {
@@ -129,7 +167,11 @@ export interface WidgetConfigState {
 
   // Computed
   isEdit:       boolean
-  fields:       string[]
+  entities:     WidgetCatalogEntity[]
+  /** Campi per il raggruppamento, secondo la metrica. */
+  groupByFields: FieldMeta[]
+  /** Campi per il filtro. */
+  filterFields: FieldMeta[]
   needsGroupBy: boolean
   fieldMetaMap: Record<string, FieldMeta>
   selectedFilterMeta: FieldMeta | null
@@ -165,7 +207,7 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
   const [filterValue,  setFilterValue]  = useState(widget?.filterValue  ?? '')
   const [timeRange,    setTimeRange]    = useState(widget?.timeRange     ?? 'all')
   const [size,         setSize]         = useState(widget?.size          ?? 'medium')
-  const [color,        setColor]        = useState(widget?.color         ?? '#0EA5E9')
+  const [color,        setColor]        = useState(widget?.color         ?? presetColors()[0]!.value)
   const [saving,       setSaving]       = useState(false)
 
   // Debounced preview vars
@@ -174,39 +216,18 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
   } | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const fields      = ALLOWED_FIELDS[entityType] ?? []
-  const needsGroupBy = metric === 'count_by_field' || metric === 'avg_field' || metric === 'sum_field'
+  const needsGroupBy = metricNeedsGroupBy(metric)
 
-  // ── Load field metadata from type definitions ──────────────────────────────
-  const isITIL = isITILEntity(entityType)
-  const { data: itilTypesData } = useQuery(GET_ITIL_TYPES, { skip: !isITIL })
-  const { data: ciTypesData }   = useQuery(GET_CI_TYPES,   { skip: isITIL })
+  // ── Il catalogo del cliente: entità e campi ────────────────────────────────
+  const { data: catalogData } = useQuery<{ widgetCatalog: WidgetCatalogEntity[] }>(GET_WIDGET_CATALOG, { fetchPolicy: 'cache-and-network' })
+  const entities = useMemo(() => catalogData?.widgetCatalog ?? [], [catalogData])
+  const entity = entities.find((e) => e.entityType === entityType)
 
-  const fieldMetaMap = useMemo<Record<string, FieldMeta>>(() => {
-    const map: Record<string, FieldMeta> = {}
-
-    type TypeDef = { name: string; fields: { name: string; label: string; fieldType: string; enumValues?: string[] }[] }
-    const itilTypes = (itilTypesData as { itilTypes?: TypeDef[] } | undefined)?.itilTypes
-    const ciTypes   = (ciTypesData   as { ciTypes?:   TypeDef[] } | undefined)?.ciTypes
-
-    if (isITIL && itilTypes) {
-      const typeDef = itilTypes.find(t => t.name === entityType)
-      if (typeDef) {
-        for (const f of typeDef.fields) {
-          map[f.name] = { name: f.name, label: f.label || f.name, fieldType: f.fieldType, enumValues: f.enumValues ?? [] }
-        }
-      }
-    } else if (!isITIL && ciTypes) {
-      const typeDef = ciTypes.find(t => t.name === entityType)
-      if (typeDef) {
-        for (const f of typeDef.fields) {
-          map[f.name] = { name: f.name, label: f.label || f.name, fieldType: f.fieldType, enumValues: f.enumValues ?? [] }
-        }
-      }
-    }
-
-    return map
-  }, [isITIL, entityType, itilTypesData, ciTypesData])
+  const fieldMetaMap = useMemo<Record<string, FieldMeta>>(() => Object.fromEntries(
+    (entity?.fields ?? []).map((f) => [f.name, { ...f, label: shippedLabel('field', f.name, f.label) }]),
+  ), [entity])
+  const groupByFields = useMemo(() => groupByFieldsFor(entity, metric).map((f) => fieldMetaMap[f.name]!), [entity, metric, fieldMetaMap])
+  const filterFields  = useMemo(() => (entity?.fields ?? []).filter((f) => f.groupable).map((f) => fieldMetaMap[f.name]!), [entity, fieldMetaMap])
 
   const selectedFilterMeta = filterField ? fieldMetaMap[filterField] : null
 
@@ -226,9 +247,15 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [entityType, metric, groupByField, filterField, filterValue, timeRange, needsGroupBy])
 
+  const dataFree = DATA_FREE_WIDGET_TYPES.includes(widgetType)
+  // Giro nel browser del 14 set 2026 (#7): scegliendo «Count by field» partiva
+  // subito l'anteprima senza campo, e il server rispondeva con un errore a
+  // toast prima che si potesse scegliere il campo. L'anteprima aspetta una
+  // configurazione completa.
+  const previewComplete = !!previewVars && !(metricNeedsGroupBy(previewVars.metric) && !previewVars.groupByField)
   const { data: previewRaw, loading: previewLoading } = useQuery(GET_WIDGET_DATA_PREVIEW, {
     variables: previewVars ?? { entityType, metric },
-    skip: !previewVars,
+    skip: !previewComplete || dataFree,
     fetchPolicy: 'cache-and-network',
   })
 
@@ -273,7 +300,7 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
       }
       onSaved(saved)
     } catch (err: unknown) {
-      toast.error(t('toast.widget.saveFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.widget.saveFailed', { error: errorMessage(err) }))
     } finally {
       setSaving(false)
     }
@@ -299,7 +326,9 @@ export function useWidgetConfig({ dashboardId, widget, onClose, onSaved }: UseWi
     color, setColor,
     saving,
     isEdit,
-    fields,
+    entities,
+    groupByFields,
+    filterFields,
     needsGroupBy,
     fieldMetaMap,
     selectedFilterMeta,

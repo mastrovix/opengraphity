@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { enumLabel, toEnumOptions, ciStatusStyle, CI_STATUS_STYLE, ciTypeLabelKey, CI_TYPE_LABEL_KEYS } from './ciEnums'
+import { enumLabel, toEnumOptions, ciStatusStyle } from './ciEnums'
+import { palette } from './tokens'
+import { NEUTRAL_VALUE_STYLE } from './domainStyle'
 
 describe('enumLabel / toEnumOptions', () => {
   it.each([
@@ -22,23 +24,33 @@ describe('enumLabel / toEnumOptions', () => {
 })
 
 describe('ciStatusStyle', () => {
-  it('stato noto → palette', () => {
-    for (const k of Object.keys(CI_STATUS_STYLE)) expect(ciStatusStyle(k)).toBe(CI_STATUS_STYLE[k])
+  const VOCABULARY = ['active', 'inactive', 'maintenance', 'decommissioned', 'expired', 'revoked']
+
+  /** Revisione del 14 set 2026 · F9: il colore dello stato è quello del Dizionario (`ci_status`), non `CI_STATUS_STYLE`. */
+  it('stato con un colore nel Dizionario → quella famiglia della palette', () => {
+    expect(ciStatusStyle('maintenance', VOCABULARY, 'warning')).toMatchObject({ bg: palette.warning.tint, color: palette.warning.text })
+    expect(ciStatusStyle('active', VOCABULARY, 'success')).toMatchObject({ bg: palette.success.tint, color: palette.success.text })
   })
-  it('stato ignoto → stile rotto (rosso) e console.error', () => {
+
+  it('stato NEL vocabolario del cliente senza colore → neutro e silenzioso', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(ciStatusStyle('zombie')).toEqual({ bg: 'var(--color-danger)', color: '#fff' })
-    expect(err).toHaveBeenCalledWith('[CI_STATUS_STYLE] valore sconosciuto: "zombie"')
+    expect(ciStatusStyle('expired', VOCABULARY, null)).toEqual(NEUTRAL_VALUE_STYLE)
+    expect(ciStatusStyle('revoked', VOCABULARY, null)).toEqual(NEUTRAL_VALUE_STYLE)
+    expect(err).not.toHaveBeenCalled()
+  })
+
+  it('stato FUORI dal vocabolario del cliente → stile rotto (rosso) e console.error', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(ciStatusStyle('zombie', VOCABULARY, null)).toMatchObject({ bg: 'var(--color-danger)', color: 'var(--color-white)' })
+    expect(err).toHaveBeenCalledWith(`[ci_status] "zombie" is not in the vocabulary of this tenant (${VOCABULARY.join(', ')})`)
+  })
+
+  it('vocabolario non disponibile → neutro e console.warn', () => {
+    const err  = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(ciStatusStyle('zombie', null, null)).toEqual(NEUTRAL_VALUE_STYLE)
+    expect(err).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledWith('[ci_status] "zombie" has no color and the vocabulary of this tenant is unavailable: neutral style')
   })
 })
 
-describe('ciTypeLabelKey', () => {
-  it('tipo storico → chiave i18n; tipo custom / assente → null (si usa ciType.label)', () => {
-    expect(ciTypeLabelKey('server')).toBe('sidebar.server')
-    expect(ciTypeLabelKey('ssl_certificate')).toBe(CI_TYPE_LABEL_KEYS['certificate'])
-    expect(ciTypeLabelKey('kubernetes_cluster')).toBeNull()
-    expect(ciTypeLabelKey(null)).toBeNull()
-    expect(ciTypeLabelKey(undefined)).toBeNull()
-    expect(ciTypeLabelKey('')).toBeNull()
-  })
-})

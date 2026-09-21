@@ -1,9 +1,11 @@
 import { v4 as uuidv4 } from 'uuid'
 import { GraphQLError } from 'graphql'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { withSession } from './ci-utils.js'
 import { audit } from '../../lib/audit.js'
-import { requireRole } from '../../lib/requireRole.js'
+import { requirePermission } from '../../lib/permissions.js'
+import { getWorkflowSteps } from '../../lib/workflowHelpers.js'
 import type { GraphQLContext } from '../../context.js'
 
 type Props = Record<string, unknown>
@@ -78,12 +80,12 @@ async function createFieldVisibilityRule(
   args: { entityType: string; triggerField: string; triggerValue: string; targetField: string; action: string },
   ctx: GraphQLContext,
 ) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.metamodel')
   if (args.triggerField === args.targetField) {
-    throw new GraphQLError('triggerField e targetField non possono essere lo stesso campo')
+    throw new ValidationError('triggerField and targetField cannot be the same field', { key: 'errors.fieldRule.sameField' })
   }
   if (args.action !== 'show' && args.action !== 'hide') {
-    throw new GraphQLError('action deve essere "show" o "hide"')
+    throw new ValidationError('action must be "show" or "hide"', { key: 'errors.fieldRule.badAction' })
   }
 
   const id  = uuidv4()
@@ -125,7 +127,7 @@ async function updateFieldVisibilityRule(
   args: { id: string; triggerField?: string; triggerValue?: string; targetField?: string; action?: string },
   ctx: GraphQLContext,
 ) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.metamodel')
   const { id } = args
   const now = new Date().toISOString()
 
@@ -148,7 +150,7 @@ async function updateFieldVisibilityRule(
       action:       args.action       ?? null,
       now,
     })
-    if (!rows[0]) throw new GraphQLError('Regola non trovata')
+    if (!rows[0]) throw new NotFoundError('Rule')
     void audit(ctx, 'fieldVisibilityRule.updated', 'FieldVisibilityRule', args.id)
     return mapVisibilityRule(rows[0].p)
   }, true)
@@ -159,13 +161,13 @@ async function deleteFieldVisibilityRule(
   args: { id: string },
   ctx: GraphQLContext,
 ) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.metamodel')
   return withSession(async (session) => {
     const row = await runQueryOne<{ p: Props }>(session, `
       MATCH (r:FieldVisibilityRule {id: $id, tenant_id: $tenantId})
       RETURN properties(r) AS p
     `, { id: args.id, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('Regola non trovata')
+    if (!row) throw new NotFoundError('Rule')
     await session.executeWrite((tx) =>
       tx.run(`MATCH (r:FieldVisibilityRule {id: $id, tenant_id: $tenantId}) DETACH DELETE r`,
         { id: args.id, tenantId: ctx.tenantId }),
@@ -182,10 +184,36 @@ async function setFieldRequirement(
   args: { entityType: string; fieldName: string; required: boolean; workflowStep?: string | null },
   ctx: GraphQLContext,
 ) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.metamodel')
   const now = new Date().toISOString()
 
   return withSession(async (session) => {
+    // Il passo citato dalla regola deve ESISTERE nel workflow di questo cliente
+    // (ondata 8 · B-21). `workflow_step` era testo libero: una regola «campo X
+    // obbligatorio entrando in `resolved`» scritta su un tenant che ha
+    // rinominato quel passo restava nel pannello, apparentemente attiva, e non
+    // si applicava a nessuna transizione. `null` = regola globale, sempre valida.
+    if (args.workflowStep != null && args.workflowStep !== '') {
+      const steps = await getWorkflowSteps(session, ctx.tenantId, args.entityType)
+      if (!steps.some((s) => s.name === args.workflowStep)) {
+        const names = steps.map((s) => s.name)
+        throw new GraphQLError(
+          `Step "${args.workflowStep}" does not exist in the "${args.entityType}" workflow of this tenant, so the rule `
+          + `would apply to no transition. `
+          + (names.length > 0
+            ? `Available steps: ${names.join(', ')}.`
+            : `This tenant has no workflow definition for "${args.entityType}" yet.`),
+          {
+            extensions: {
+              code: 'BAD_USER_INPUT', workflowStep: args.workflowStep, availableSteps: names,
+              i18n: names.length > 0
+                ? { key: 'errors.fieldRule.stepUnknown', params: { step: args.workflowStep, entityType: args.entityType, available: names.join(', ') } }
+                : { key: 'errors.fieldRule.stepNoWorkflow', params: { step: args.workflowStep, entityType: args.entityType } },
+            },
+          },
+        )
+      }
+    }
     // Upsert: match on (tenant, entityType, fieldName, workflowStep)
     const existing = await runQueryOne<{ p: Props }>(session, `
       MATCH (r:FieldRequirementRule {
@@ -247,13 +275,13 @@ async function deleteFieldRequirement(
   args: { id: string },
   ctx: GraphQLContext,
 ) {
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'config.metamodel')
   return withSession(async (session) => {
     const row = await runQueryOne<{ p: Props }>(session, `
       MATCH (r:FieldRequirementRule {id: $id, tenant_id: $tenantId})
       RETURN properties(r) AS p
     `, { id: args.id, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('Regola non trovata')
+    if (!row) throw new NotFoundError('Rule')
     await session.executeWrite((tx) =>
       tx.run(`MATCH (r:FieldRequirementRule {id: $id, tenant_id: $tenantId}) DETACH DELETE r`,
         { id: args.id, tenantId: ctx.tenantId }),

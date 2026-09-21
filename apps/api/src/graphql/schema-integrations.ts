@@ -5,12 +5,24 @@ export const integrationsSchema = `
     id: ID!
     name: String!
     entityType: String!
+    """Solo per entityType = event (enum ConnectorKind, definito nello schema Event Management). Null per gli altri tipi."""
+    connectorKind: ConnectorKind
+    """JSON. Per il connettore generic: { campoNormalizzato: "percorso.puntato.nel.payload" } (title, severity, status, resource, resourceKind, externalId, description, labels, startsAt, endsAt)."""
     fieldMapping: String!
+    """JSON. Valori usati quando il campo non è nel payload; per generic contiene sempre resourceKind (hostname | ip | fqdn | external_id | name)."""
     defaultValues: String
+    """JSON, solo generic: { severity: { valoreSorgente: info|warning|critical }, status: { valoreSorgente: firing|resolved } }, confronto senza maiuscole."""
+    valueMapping: String
     transformScript: String
     enabled: Boolean!
+    """Richieste al minuto accettate da questa sorgente (1..10000); oltre → 429 con header Retry-After. 100 per i webhook creati prima del campo."""
+    rateLimitPerMinute: Int!
     lastReceivedAt: String
     receiveCount: Int!
+    """Motivo dell'ultimo payload rifiutato (400); null dopo il primo batch accettato."""
+    lastError: String
+    lastErrorAt: String
+    errorCount: Int!
     createdAt: String!
   }
 
@@ -19,27 +31,54 @@ export const integrationsSchema = `
     name: String!
     token: String!
     entityType: String!
+    connectorKind: ConnectorKind
     fieldMapping: String!
     defaultValues: String
+    valueMapping: String
     enabled: Boolean!
+    rateLimitPerMinute: Int!
     createdAt: String!
+  }
+
+  """
+  Esito della cancellazione di una sorgente di monitoraggio (revisione 2 ·
+  D4.1): eliminare la sorgente CHIUDE i suoi allarmi ancora accesi — nessun
+  payload di rientro potrebbe più arrivare — e rimette a posto la salute dei CI
+  toccati, così gli incident si chiudono da soli.
+  """
+  type DeleteSourceResult {
+    """false = la sorgente non esisteva (id sbagliato o già eliminata)."""
+    deleted: Boolean!
+    """Allarmi ancora accesi che la cancellazione ha fatto rientrare."""
+    resolvedEvents: Int!
+    """CI la cui salute è stata ricalcolata dopo la cancellazione."""
+    affectedCIs: Int!
   }
 
   input CreateInboundWebhookInput {
     name: String!
     entityType: String!
+    """Obbligatorio se entityType = event; vietato altrimenti."""
+    connectorKind: ConnectorKind
     fieldMapping: String!
     defaultValues: String
+    valueMapping: String
     transformScript: String
+    """Richieste al minuto (1..10000). Omesso → 100, l'unico default ammesso (documentato in lib/webhookRateLimit.ts)."""
+    rateLimitPerMinute: Int
   }
 
   input UpdateInboundWebhookInput {
     name: String
     entityType: String
+    connectorKind: ConnectorKind
     fieldMapping: String
     defaultValues: String
+    valueMapping: String
     transformScript: String
     enabled: Boolean
+    """Richieste al minuto (1..10000)."""
+    rateLimitPerMinute: Int
   }
 
   # ── Outbound Webhooks ───────────────────────────────────────────────────────
@@ -120,7 +159,9 @@ export const integrationsSchema = `
   input CreateApiKeyInput {
     name: String!
     permissions: [String!]!
-    rateLimit: Int
+    """Richieste al minuto, obbligatorio (1..100000)."""
+    rateLimit: Int!
+    """Vuoto o null = nessuna scadenza. Una data AAAA-MM-GG vale fino alla fine di quel giorno nel fuso dell'organizzazione; un istante ISO vale così com'è."""
     expiresAt: String
   }
 
@@ -143,7 +184,7 @@ export const integrationsSchema = `
   extend type Mutation {
     createInboundWebhook(input: CreateInboundWebhookInput!): InboundWebhookWithToken!
     updateInboundWebhook(id: ID!, input: UpdateInboundWebhookInput!): InboundWebhook!
-    deleteInboundWebhook(id: ID!): Boolean!
+    deleteInboundWebhook(id: ID!): DeleteSourceResult!
     regenerateWebhookToken(id: ID!): InboundWebhookWithToken!
 
     createOutboundWebhook(input: CreateOutboundWebhookInput!): OutboundWebhook!

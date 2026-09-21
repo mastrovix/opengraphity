@@ -13,9 +13,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Pill } from '@/components/ui/Pill'
 import { Pagination } from '@/components/ui/Pagination'
 import { Input } from '@/components/ui/FormControls'
-import { RiskBadge, riskLevel, SEVERITY_STYLE } from '@/components/ui/badges'
+import { RiskBadge, useRiskScoreStyle } from '@/components/ui/badges'
 import { GET_ALL_CIS, GET_CI_TYPES, WHAT_IF_ANALYSIS } from '@/graphql/queries'
-import { lookupOrError, lookupStyle } from '@/lib/tokens'
+import { lookupStyle, colors, palette } from '@/lib/tokens'
+import { NEUTRAL_VALUE_STYLE } from '@/lib/domainStyle'
 import { buildTypeIconMap } from '@/lib/ciIconPaths'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -29,7 +30,7 @@ interface WhatIfResult {
   targetCI: WhatIfCI; action: string; impactedCIs: WhatIfCI[]
   impactedServices: WhatIfCI[]; impactedTeams: WhatIfTeam[]
   totalImpacted: number; riskScore: number; hasRedundancy: boolean
-  openIncidents: number; summary: string
+  openIncidents: number
 }
 interface CIOption { id: string; name: string; type: string }
 
@@ -38,23 +39,28 @@ type Action = 'impact' | 'remove'
 // ── Styles ───────────────────────────────────────────────────────────────────
 
 const ACTIONS: { key: Action; icon: typeof Zap; labelKey: string; bg: string; fg: string }[] = [
-  { key: 'impact', icon: Zap,    labelKey: 'pages.whatIf.impact',  bg: '#e0f2fe', fg: 'var(--color-trigger-manual)' },
-  { key: 'remove', icon: Trash2, labelKey: 'pages.whatIf.remove',  bg: '#e0f2fe', fg: 'var(--color-trigger-manual)' },
+  { key: 'impact', icon: Zap,    labelKey: 'pages.whatIf.impact',  bg: palette.info.tint, fg: 'var(--color-trigger-manual)' },
+  { key: 'remove', icon: Trash2, labelKey: 'pages.whatIf.remove',  bg: palette.info.tint, fg: 'var(--color-trigger-manual)' },
 ]
 
-// Livello di impatto (critical/high/medium/low): stessa palette della severità
-// (ui/badges.tsx) — prima WhatIf aveva un quarto set di colori proprio.
-function impactBadge(level: string, label: string) {
-  const s = lookupStyle(SEVERITY_STYLE, level, 'SEVERITY_STYLE')
-  return badge(s.bg, s.color, label)
+/**
+ * Livello di impatto di un CI nello scenario: lo calcola il What-if dalla
+ * DISTANZA dal CI colpito (`impactLevel` in resolvers/whatif.ts), non è un
+ * valore di un vocabolario del cliente — quindi la palette resta qui. Prima
+ * passava da `RISK_STYLE`, che non aveva `critical` né `target`: i CI più
+ * vicini uscivano con la pastiglia rossa d'errore.
+ */
+const IMPACT_DISTANCE_STYLE: Record<string, { bg: string; color: string }> = {
+  target:   { bg: palette.info.tint,    color: palette.info.text },
+  critical: { bg: palette.danger.tint,  color: palette.danger.text },
+  high:     { bg: palette.orange.tint,  color: palette.orange.text },
+  medium:   { bg: palette.warning.tint, color: palette.warning.text },
+  low:      { bg: palette.success.tint, color: palette.success.text },
 }
 
-// Colore del cerchio del risk score: stesso livello di RiskBadge (soglie di
-// riskLevel(), le stesse del backend) — prima WhatIf usava 4 soglie proprie.
-const RISK_LEVEL_COLOR: Record<ReturnType<typeof riskLevel>, string> = {
-  low:    'var(--color-success)',
-  medium: 'var(--color-warning)',
-  high:   'var(--color-danger)',
+function impactBadge(level: string, label: string) {
+  const s = lookupStyle(IMPACT_DISTANCE_STYLE, level, 'IMPACT_DISTANCE_STYLE')
+  return badge(s.bg, s.color, label)
 }
 
 function badge(bg: string, fg: string, text: string) {
@@ -172,8 +178,8 @@ export function WhatIfPage() {
 
   const columns: ColumnDef<WhatIfCI>[] = [
     { key: 'name', label: t('pages.whatIf.colName'), sortable: true },
-    { key: 'type', label: t('pages.whatIf.colType'), sortable: true, width: '120px', render: (v) => badge('#e0f2fe', '#0369a1', String(v)) },
-    { key: 'environment', label: t('pages.whatIf.colEnv'), sortable: true, width: '110px', render: (v) => v ? badge('var(--color-success-bg)', '#166534', String(v)) : <span style={{ color: '#cbd5e1' }}>—</span> },
+    { key: 'type', label: t('pages.whatIf.colType'), sortable: true, width: '120px', render: (v) => badge(palette.info.tint, palette.info.text, String(v)) },
+    { key: 'environment', label: t('pages.whatIf.colEnv'), sortable: true, width: '110px', render: (v) => v ? badge('var(--color-success-bg)', palette.success.strong, String(v)) : <span style={{ color: colors.slateLight }}>—</span> },
     { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, width: '100px', render: (v) => impactBadge(String(v), impactLabel(String(v))) },
     { key: 'impactPath', label: t('pages.whatIf.colPath'), sortable: true, render: (v) => {
       const path = v as unknown as string[]
@@ -191,7 +197,8 @@ export function WhatIfPage() {
     )},
   ]
 
-  const scoreColor = (s: number) => lookupOrError(RISK_LEVEL_COLOR, riskLevel(s), 'RISK_LEVEL_COLOR', 'var(--color-danger)')
+  // Il cerchio del punteggio prende lo stile della FASCIA del cliente, come il badge accanto.
+  const riskScoreStyle = useRiskScoreStyle()
 
   return (
     <PageContainer>
@@ -200,25 +207,26 @@ export function WhatIfPage() {
         <PageTitle icon={<FlaskConical size={22} color="var(--color-icon-accent)" />}>
           {t('pages.whatIf.title')}
         </PageTitle>
-        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
           {t('pages.whatIf.subtitle')}
         </p>
       </div>
 
       {/* Input bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 16, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 16, background: colors.white, border: '1px solid var(--color-border)', borderRadius: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         {/* CI search */}
         <div style={{ position: 'relative', width: 300 }}>
           <Input
-            style={{ padding: '8px 12px', border: '1px solid #e5e7eb' }}
+            style={{ padding: '8px 12px', border: '1px solid var(--color-border)' }}
             placeholder={t('pages.whatIf.searchCI')}
+            aria-label={t('pages.whatIf.searchCI')}
             value={selectedCI ? selectedCI.name : ciSearch}
             onChange={e => { setCiSearch(e.target.value); setSelectedCI(null); setDropdownOpen(true) }}
             onFocus={() => { if (ciSearch.length >= 1) setDropdownOpen(true) }}
             onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
           />
           {dropdownOpen && ciOptions.length > 0 && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, marginTop: 2, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: colors.white, border: '1px solid var(--color-border)', borderRadius: 6, marginTop: 2, maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 12px var(--color-black-a10)' }}>
               {ciOptions.map(ci => {
                 const pick = () => { setSelectedCI(ci); setCiSearch(''); setDropdownOpen(false) }
                 return (
@@ -229,7 +237,7 @@ export function WhatIfPage() {
                     onMouseDown={pick}
                     onClick={pick}
                     className="hover-bg"
-                    style={{ width: '100%', background: 'none', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', display: 'flex', justifyContent: 'space-between', ['--hover-bg' as string]: '#f0f9ff' }}
+                    style={{ width: '100%', background: 'none', border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', padding: '8px 12px', cursor: 'pointer', fontSize: 'var(--font-size-body)', display: 'flex', justifyContent: 'space-between', ['--hover-bg' as string]: palette.info.light }}
                   >
                     <span style={{ fontWeight: 500 }}>{ci.name}</span>
                     <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>{ci.type}</span>
@@ -252,8 +260,8 @@ export function WhatIfPage() {
                 onClick={() => setAction(a.key)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px',
-                  borderRadius: 20, border: sel ? `2px solid ${a.fg}` : '2px solid #e5e7eb',
-                  background: sel ? a.bg : '#fff', color: sel ? a.fg : 'var(--color-slate)',
+                  borderRadius: 20, border: sel ? `2px solid ${a.fg}` : '2px solid var(--color-border)',
+                  background: sel ? a.bg : colors.white, color: sel ? a.fg : 'var(--color-slate)',
                   fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer', transition: 'all 100ms',
                 }}
               >
@@ -266,9 +274,10 @@ export function WhatIfPage() {
 
         {/* Depth */}
         <select
+          aria-label={t('pages.whatIf.depth')}
           value={depth}
           onChange={e => setDepth(Number(e.target.value))}
-          style={{ width: 'auto', padding: '7px 12px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', cursor: 'pointer' }}
+          style={{ width: 'auto', padding: '7px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', cursor: 'pointer' }}
         >
           {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
             <option key={n} value={n}>{t('pages.whatIf.depth')}: {n}</option>
@@ -283,8 +292,8 @@ export function WhatIfPage() {
           style={{
             marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
             padding: '8px 20px', borderRadius: 6, border: 'none',
-            background: selectedCI ? 'var(--color-brand)' : '#e5e7eb',
-            color: selectedCI ? '#fff' : 'var(--color-slate-light)',
+            background: selectedCI ? 'var(--color-brand)' : colors.border,
+            color: selectedCI ? colors.white : 'var(--color-slate-light)',
             fontSize: 'var(--font-size-card-title)', fontWeight: 600, cursor: selectedCI ? 'pointer' : 'not-allowed',
             transition: 'background 150ms',
           }}
@@ -317,15 +326,15 @@ export function WhatIfPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, animation: 'fadeIn 300ms ease' }}>
 
           {/* Summary card */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: 20, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: 20, background: colors.white, border: '1px solid var(--color-border)', borderRadius: 10 }}>
             {/* Risk score circle */}
             <div style={{
               width: 80, height: 80, borderRadius: '50%', flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: `4px solid ${scoreColor(result.riskScore)}`,
-              background: `${scoreColor(result.riskScore)}10`,
+              border: `4px solid ${(riskScoreStyle(result.riskScore) ?? NEUTRAL_VALUE_STYLE).accent}`,
+              background: (riskScoreStyle(result.riskScore) ?? NEUTRAL_VALUE_STYLE).bg,
             }}>
-              <span style={{ fontSize: 28, fontWeight: 800, color: scoreColor(result.riskScore) }}>
+              <span style={{ fontSize: 28, fontWeight: 800, color: (riskScoreStyle(result.riskScore) ?? NEUTRAL_VALUE_STYLE).color }}>
                 {result.riskScore}
               </span>
             </div>
@@ -337,7 +346,11 @@ export function WhatIfPage() {
                 <RiskBadge score={result.riskScore} />
               </div>
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: 0, lineHeight: 1.5 }}>
-                {result.summary}
+                {/* Giro del 14 set 2026 (#59): la frase era italiana, composta dall'API. */}
+                {t(result.action === 'remove' ? 'pages.whatIf.summaryRemove' : 'pages.whatIf.summaryImpact', {
+                  target: result.targetCI.name, cis: result.totalImpacted, services: result.impactedServices.length,
+                  teams: result.impactedTeams.length, risk: result.riskScore,
+                })}
               </p>
             </div>
 
@@ -358,7 +371,7 @@ export function WhatIfPage() {
           </div>
 
           {/* Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)' }}>
             {(['cis', 'services', 'teams'] as const).map(tab => {
               const sel = resultTab === tab
               const count = tab === 'cis' ? result.totalImpacted : tab === 'services' ? result.impactedServices.length : result.impactedTeams.length
@@ -390,7 +403,7 @@ export function WhatIfPage() {
                   onSort={(f, d) => { setSortField(f); setSortDir(d); setCisPage(0) }}
                   sortField={sortField}
                   sortDir={sortDir}
-                  emptyComponent={<EmptyState icon={<ShieldCheck size={32} color="#16a34a" />} title={t('pages.whatIf.noImpacted')} />}
+                  emptyComponent={<EmptyState icon={<ShieldCheck size={32} color={palette.success.text} />} title={t('pages.whatIf.noImpacted')} />}
                   onRowClick={row => navigate(`/ci/${labelToRoute(row.type)}/${row.id}`)}
                   expandedRowId={expandedGraphId}
                   renderExpandedRow={row => {
@@ -414,18 +427,18 @@ export function WhatIfPage() {
             const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
             const paged = all.slice(svcPage * PAGE_SIZE, (svcPage + 1) * PAGE_SIZE)
             return total === 0
-              ? <EmptyState icon={<ShieldCheck size={32} color="#16a34a" />} title={t('pages.whatIf.noServices')} />
+              ? <EmptyState icon={<ShieldCheck size={32} color={palette.success.text} />} title={t('pages.whatIf.noServices')} />
               : <>
                   <SortableFilterTable<WhatIfCI>
                     columns={[
                       { key: 'name', label: t('pages.whatIf.colName'), sortable: true },
-                      { key: 'environment', label: t('pages.whatIf.colEnv'), sortable: true, width: '110px', render: (v) => v ? badge('var(--color-success-bg)', '#166534', String(v)) : <span style={{ color: '#cbd5e1' }}>—</span> },
+                      { key: 'environment', label: t('pages.whatIf.colEnv'), sortable: true, width: '110px', render: (v) => v ? badge('var(--color-success-bg)', palette.success.strong, String(v)) : <span style={{ color: colors.slateLight }}>—</span> },
                       { key: 'impactLevel', label: t('pages.whatIf.colImpact'), sortable: true, width: '100px', render: (v) => impactBadge(String(v), impactLabel(String(v))) },
                       { key: 'impactPath', label: t('pages.whatIf.colPath'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{(v as unknown as string[])?.join(' → ') || '—'}</span> },
                     ]}
                     data={paged}
                     loading={false}
-                    emptyComponent={<EmptyState icon={<ShieldCheck size={32} color="#16a34a" />} title={t('pages.whatIf.noServices')} />}
+                    emptyComponent={<EmptyState icon={<ShieldCheck size={32} color={palette.success.text} />} title={t('pages.whatIf.noServices')} />}
                     onRowClick={row => navigate(`/ci/${labelToRoute(row.type)}/${row.id}`)}
                   />
                   <Pagination currentPage={svcPage + 1} totalPages={totalPages} onPrev={() => setSvcPage(p => Math.max(0, p - 1))} onNext={() => setSvcPage(p => Math.min(totalPages - 1, p + 1))} />

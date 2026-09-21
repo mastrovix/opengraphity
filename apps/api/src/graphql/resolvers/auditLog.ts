@@ -1,8 +1,8 @@
-import { GraphQLError } from 'graphql'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
 import { logger } from '../../lib/logger.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { requirePermission } from '../../lib/permissions.js'
 
 interface AuditEntry {
   id:         string
@@ -41,9 +41,7 @@ export async function auditLog(
   },
   ctx: GraphQLContext,
 ): Promise<{ items: AuditEntry[]; total: number }> {
-  if (ctx.role !== 'admin') {
-    throw new GraphQLError('Forbidden: admin role required', { extensions: { code: 'FORBIDDEN' } })
-  }
+  requirePermission(ctx, 'admin.audit')
 
   const page     = Math.max(1, args.page     ?? 1)
   const pageSize = Math.min(100, Math.max(1, args.pageSize ?? 50))
@@ -68,6 +66,7 @@ export async function auditLog(
   try {
     const dataRes = await session.executeRead((tx) =>
       tx.run(`
+        // tenant-ok: il WHERE interpolato parte da a.tenant_id = $tenantId (conditions, riga 52)
         MATCH (a:AuditEntry)
         WHERE ${where}
         RETURN a.id         AS id,
@@ -88,6 +87,7 @@ export async function auditLog(
 
     const countRes = await session.executeRead((tx) =>
       tx.run(`
+        // tenant-ok: stesso $where della query di pagina, tenant per primo (conditions, riga 52)
         MATCH (a:AuditEntry)
         WHERE ${where}
         RETURN count(a) AS total
@@ -103,6 +103,75 @@ export async function auditLog(
       items: dataRes.records.map(mapAuditEntry),
       total,
     }
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * Le azioni **realmente presenti** nel registro del tenant, con quante voci
+ * ciascuna. Serve alla pagina dell'audit per offrirle in tendina invece di
+ * chiedere all'amministratore di indovinarle a testo libero.
+ *
+ * È il rimedio al taglio di vocabolario dell'ondata 4 (D-22): le transizioni
+ * di workflow ora si registrano sotto un'azione stabile
+ * (`incident.step_entered`), prima sotto il nome del passo
+ * (`incident.assigned`, `incident.in_progress`). Le voci storiche NON sono
+ * state riscritte — è un registro di conformità — quindi le due metà della
+ * storia convivono, e questa tendina le mostra entrambe: chi cerca
+ * `incident.assigned` lo trova ancora, e vede che dopo una certa data le
+ * transizioni stanno sotto l'azione stabile.
+ */
+/**
+ * I TIPI DI ENTITÀ presenti nel registro, con il numero di voci (revisione
+ * totale · G-20).
+ *
+ * La tendina del filtro era una lista di sette valori scritta a mano, con
+ * etichette letterali («User», «Team», «Trigger», «Business Rule») e senza
+ * ServiceRequest, CI, vocabolari, workflow, mappe di servizio: quelle voci del
+ * registro esistevano e non si potevano isolare. Come per le azioni, l'elenco
+ * lo dice il registro stesso.
+ */
+export async function auditEntityTypes(
+  _: unknown,
+  __: unknown,
+  ctx: GraphQLContext,
+): Promise<Array<{ entityType: string; count: number }>> {
+  requirePermission(ctx, 'admin.audit')
+  const session = getSession(undefined, 'READ')
+  try {
+    const res = await session.executeRead((tx) => tx.run(`
+      MATCH (a:AuditEntry {tenant_id: $tenantId})
+      WHERE a.entity_type IS NOT NULL AND a.entity_type <> ''
+      RETURN a.entity_type AS entityType, count(*) AS n
+      ORDER BY entityType
+    `, { tenantId: ctx.tenantId }))
+    return res.records.map((r) => ({
+      entityType: r.get('entityType') as string,
+      count:      Number(r.get('n')),
+    }))
+  } finally {
+    await session.close()
+  }
+}
+
+export async function auditActions(
+  _: unknown,
+  __: unknown,
+  ctx: GraphQLContext,
+): Promise<Array<{ action: string; count: number }>> {
+  requirePermission(ctx, 'admin.audit')
+  const session = getSession(undefined, 'READ')
+  try {
+    const res = await session.executeRead((tx) => tx.run(`
+      MATCH (a:AuditEntry {tenant_id: $tenantId})
+      RETURN a.action AS action, count(*) AS n
+      ORDER BY action
+    `, { tenantId: ctx.tenantId }))
+    return res.records.map((r) => ({
+      action: r.get('action') as string,
+      count:  Number(r.get('n')),
+    }))
   } finally {
     await session.close()
   }
