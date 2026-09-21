@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "pnpm --parallel --filter './apps/*' dev",
     "build": "pnpm --recursive build",
-    "test": "pnpm --recursive --if-present test",
+    "test": "pnpm --recursive --if-present --filter '!opengraphity' test",
     "lint": "eslint 'apps/*/src/**/*.{ts,tsx}' 'packages/*/src/**/*.ts'",
     "typecheck": "pnpm --recursive exec tsc --noEmit",
     "vocabolario:log": "node scripts/genera-vocabolario-log.mjs",

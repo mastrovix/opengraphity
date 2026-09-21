@@ -74,8 +74,15 @@ jobs:
 
       # Every package/app with a `test` script except the API, which runs
       # below with coverage. All suites are mocked (no Neo4j/Redis needed).
+      # La RADICE va esclusa insieme all'api, e il motivo non è ovvio (21 set
+      # 2026): `pnpm --recursive` include anche il pacchetto di radice, il cui
+      # script `test` è a sua volta un `pnpm --recursive test` — senza filtro.
+      # Quindi `--filter "!@opengraphity/api"` veniva scavalcato: i test
+      # dell'api giravano lo stesso, qui dove Neo4j non c'è, e fallivano con
+      # «No routing servers available». Restava nascosto dietro altri rossi,
+      # e si è visto solo quando tutto il resto è tornato verde.
       - name: Test packages, web, portal
-        run: pnpm --recursive --if-present --filter "!@opengraphity/api" test
+        run: pnpm --recursive --if-present --filter "!@opengraphity/api" --filter "!opengraphity" test
 
       # apps/api/vitest.config.ts enforces the coverage floors on src/lib and
       # src/services: a regression fails this step
