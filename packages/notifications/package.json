@@ -18,7 +18,7 @@
     "@opengraphity/events": "workspace:*",
     "@opengraphity/neo4j": "workspace:*",
     "@opengraphity/types": "workspace:*",
-    "@slack/web-api": "^7.14.1",
+    "@slack/web-api": "^8.1.1",
     "ioredis": "catalog:",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
