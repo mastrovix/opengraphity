@@ -26,3 +26,25 @@ catalog:
 #   SI TOGLIE quando `@types/d3-transition` pubblica una versione che regge la
 #   3.0.12. Per provarlo: togliere l'override, `pnpm install`,
 #   `pnpm --filter @opengraphity/web exec tsc --noEmit`.
+
+# TYPESCRIPT 7 SOPRA, TYPESCRIPT 6 PER IL LINT: DUE COPIE, DI PROPOSITO
+# (21 set 2026).
+#
+# Ogni app e ogni pacchetto dichiarano `typescript: ^7.0.2` — e' la 7 che
+# compila il prodotto (`pnpm typecheck`, `pnpm build`), perche' `pnpm exec`
+# prende il `tsc` della cartella in cui gira. La RADICE resta a `^6.0.3`, e
+# quella copia la usa solo eslint.
+#
+# Non e' un'esitazione: `typescript-eslint` dichiara `typescript >=4.8.4
+# <6.1.0` e con la 7 si SPEGNE — «typescript-eslint does not support TS 7.0»,
+# e il lint smette di guardare qualunque cosa. Finche' non esce la versione
+# che regge la 7, le due copie convivono; pnpm le tiene separate da sole, non
+# serve nessun alias.
+#
+# SI RIALLINEA quando `typescript-eslint` supporta la 7: portare anche la
+# radice a `^7`, `pnpm install`, `pnpm lint` (deve restare 0 errori e 0
+# warning). Se il lint stampa «does not support», la versione non c'e' ancora.
+#
+# Passando alla 7 e' sparita l'opzione `baseUrl`: i tre tsconfig del browser
+# (web, portal, console) ora hanno solo `paths`, che si risolvono rispetto
+# alla cartella del file. Il commento sta dentro ognuno dei tre.

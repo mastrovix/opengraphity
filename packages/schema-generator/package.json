@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.11.1",
-    "typescript": "^5.0.0",
+    "typescript": "^7.0.2",
     "vitest": "catalog:"
   }
 }
