@@ -4683,6 +4683,10 @@
       "analysisAlreadyRunning": "An analysis is already running for this organization. Try again in a moment.",
       "acknowledgeHasAction": "This proposal carries an action: accept it to run it.",
       "notProblemMaterial": "A Problem cannot be opened from this proposal: a Problem is the cause of faults, and this is not one."
+    },
+    "rest": {
+      "repeatedRouteParam": "Route parameter “{{name}}” arrived as a list: this route declares a repeated parameter, which its callers do not expect.",
+      "missingRouteParam": "Route parameter “{{name}}” is missing."
     }
   },
   "errorBoundary": {

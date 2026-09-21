@@ -26,6 +26,7 @@ import { executeChangeTransition } from '../../graphql/resolvers/change/changeMu
 import { asyncHandler } from '../errorHandler.js'
 import { apiCtx, apiKeyOf, optionalString, parsePagination, requiredString } from '../apiContext.js'
 import { customFieldDefs, parseRestCustomFields, restCustomFieldValues, type CustomFieldDef } from '../../lib/ticketCustomFields.js'
+import { parametro } from '../parametroDiRotta.js'
 
 const router: ExpressRouter = Router()
 
@@ -173,7 +174,7 @@ router.get('/', requirePermission('changes:read'), asyncHandler(async (req: Requ
 // ── GET /api/v1/changes/:id ───────────────────────────────────────────────────
 
 router.get('/:id', requirePermission('changes:read'), asyncHandler(async (req: Request, res: Response) => {
-  const id = req.params['id']!
+  const id = parametro(req, 'id')
   const tenantId = apiKeyOf(req).tenantId
   await withSession(async (session) => {
     const row = await loadChangeRow(session, id, tenantId)
@@ -226,7 +227,7 @@ const TASK_SOURCES = [
 ] as const
 
 router.get('/:id/tasks', requirePermission('changes:read'), asyncHandler(async (req: Request, res: Response) => {
-  const id = req.params['id']!
+  const id = parametro(req, 'id')
   const tenantId = apiKeyOf(req).tenantId
   await withSession(async (session) => {
     const exists = await runQueryOne<{ id: string }>(session,
@@ -309,7 +310,7 @@ router.post('/:id/transition', requirePermission('changes:write'), asyncHandler(
   const toStep = requiredString(body, 'toStep').trim()
   const notes  = typeof body['notes'] === 'string' ? body['notes'] : undefined
   const ctx = apiCtx(req)
-  const changeId = req.params['id']!
+  const changeId = parametro(req, 'id')
 
   // Reuse the GraphQL resolver: workflow guards, step side-effects
   // (task creation on step entry), audit trail and auto-transitions
@@ -328,7 +329,7 @@ router.post('/:id/transition', requirePermission('changes:write'), asyncHandler(
 // ── GET /api/v1/changes/:id/status ────────────────────────────────────────────
 
 router.get('/:id/status', requirePermission('changes:read'), asyncHandler(async (req: Request, res: Response) => {
-  const id = req.params['id']!
+  const id = parametro(req, 'id')
   const tenantId = apiKeyOf(req).tenantId
   await withSession(async (session) => {
     const row = await runQueryOne<{ code: string | null; approvalStatus: string | null; phase: string | null }>(session, `

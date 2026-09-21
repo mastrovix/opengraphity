@@ -10,6 +10,23 @@ import express from 'express'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { perms } from '../../lib/__tests__/testPermissions.js'
+/*
+ * LA FORMA DELL'ARRAY È CAMBIATA CON EXPRESS 5 (21 set 2026).
+ *
+ * Express 5 usa `simple` come parser della query string, non piu' `qs`
+ * (`extended`). Quindi `?page[]=1` NON produce piu' un array: diventa una
+ * chiave letterale `page[]`, che nessuna rotta conosce e che viene ignorata.
+ *
+ * L'array pero' esiste ancora, nella forma che il parser semplice produce:
+ * `?page=1&page=2` → `{ page: ['1','2'] }`. È quella che questi test
+ * provano adesso, perche' l'INTENTO non e' cambiato: un array non deve
+ * diventare un `NaN` che arriva fino a Cypher.
+ *
+ * Non si e' rimesso `extended` per far ripassare i test com'erano: quel
+ * parser fa passare le query string dentro `qs`, ed e' proprio da li' che
+ * venivano i tre avvisi (GHSA-q8mj, GHSA-x5fp, GHSA-4mjr) che questa
+ * migrazione ha chiuso.
+ */
 
 vi.mock('../../lib/ticketCustomFields.js', async (importOriginal) => ({ ...(await importOriginal<object>()), customFieldDefs: vi.fn(async () => []) }))
 vi.mock('../../lib/logger.js', () => ({
@@ -98,7 +115,7 @@ describe('GET /api/v1/changes', () => {
     expect(vi.mocked(runQueryOne).mock.calls[0]![2]).toMatchObject({ phase: null, offset: 0, limit: 20 })
   })
 
-  it.each(['?limit=0', '?limit=101', '?page=abc', '?page[]=1', '?phase[]=x'])('%s → 400, no query', async (qs) => {
+  it.each(['?limit=0', '?limit=101', '?page=abc', '?page=1&page=2', '?phase=x&phase=y'])('%s → 400, no query', async (qs) => {
     const res = await fetch(`${base}${qs}`)
     expect(res.status).toBe(400)
     expect((await err(res)).code).toBe('VALIDATION_ERROR')

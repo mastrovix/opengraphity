@@ -11,6 +11,7 @@ import { NotFoundError } from '../../lib/errors.js'
 import { asyncHandler } from '../errorHandler.js'
 import { apiCtx, apiKeyOf, optionalBodyString, parsePagination, requiredString } from '../apiContext.js'
 import { customFieldDefs, parseRestCustomFields, restCustomFieldValues } from '../../lib/ticketCustomFields.js'
+import { parametro } from '../parametroDiRotta.js'
 
 const router: ExpressRouter = Router()
 
@@ -40,7 +41,7 @@ router.get('/', requirePermission('problems:read'), asyncHandler(async (req: Req
 }))
 
 router.get('/:id', requirePermission('problems:read'), asyncHandler(async (req: Request, res: Response) => {
-  const id = req.params['id']!
+  const id = parametro(req, 'id')
   const tenantId = apiKeyOf(req).tenantId
   const { row, defs } = await withSession(async (session) => ({
     row: await runQueryOne<{ props: Props }>(session, `
