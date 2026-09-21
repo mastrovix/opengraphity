@@ -79,7 +79,7 @@ services:
   # untouched; docs/DEPLOY.md explains how to drop it by hand if wanted.
 
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0.5@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
+    image: quay.io/keycloak/keycloak:26.7.4@sha256:82a77884f3af238beab1e7afd63b5f530e1b5c0590bd7aa60b40a40463e29b2c
     container_name: opengrafo-keycloak
     # Dev mode + H2 file DB: fine for the single-host stack, NOT for production
     # (no clustering, file DB not backup-friendly). The migration to `start` +
