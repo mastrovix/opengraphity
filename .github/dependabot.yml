@@ -27,10 +27,11 @@ updates:
         applies-to: security-updates
         update-types: ["minor", "patch"]
     ignore:
-      # Node 20 is the runtime of the images (node:20-slim) and of CI —
-      # isolated-vm does not compile against Node 22's V8
-      - dependency-name: "@types/node"
-        update-types: ["version-update:semver-major"]
+      # @types/node NON e' piu' escluso (21 set 2026): l'esclusione esisteva
+      # perche' il runtime era fermo a Node 20, e quel vincolo e' caduto con
+      # isolated-vm 7 (che Node >= 24 lo PRETENDE). Ora i tipi seguono il
+      # runtime come devono. Se un giorno il runtime si rifermasse, e'
+      # l'esclusione a tornare, non i tipi a restare indietro in silenzio.
 
   # ── Docker base images (FROM lines) ────────────────────────────────────────
   - package-ecosystem: "docker"
@@ -43,7 +44,9 @@ updates:
     commit-message:
       prefix: "chore(docker)"
     ignore:
-      # node:20-slim on purpose (see apps/api/Dockerfile)
+      # node:24 di proposito, e il perche' e' scritto in apps/api/Dockerfile:
+      # isolated-vm 7 vuole Node >= 24, e una major di Node va salita insieme
+      # a isolated-vm, non da sola.
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
 

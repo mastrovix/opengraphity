@@ -33,11 +33,12 @@ jobs:
       # Reads the pnpm version from the packageManager field in package.json
       - uses: pnpm/action-setup@v6
 
-      # Node 20 to match the production images (node:20-slim) — and
-      # isolated-vm (native addon) does not compile against Node 22's V8
+      # Node 24 per combaciare con le immagini di produzione
+      # (node:24.11.1-bookworm-slim). Il vincolo su isolated-vm si e' invertito:
+      # la 7 PRETENDE Node >= 24 — vedi apps/api/Dockerfile.
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -114,7 +115,7 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       # The audit reads the lockfile and the registry only: no native builds

@@ -16,10 +16,10 @@
   },
   "dependencies": {
     "@opengraphity/types": "workspace:*",
-    "isolated-vm": "^4.7.2"
+    "isolated-vm": "^7.0.1"
   },
   "devDependencies": {
-    "@types/node": "^20.19.43",
+    "@types/node": "^24.11.1",
     "typescript": "^5.4.0",
     "vitest": "catalog:"
   }
