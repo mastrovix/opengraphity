@@ -1,5 +1,7 @@
 import { Lock, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { btnSecondary, btnDanger } from './designerStyles'
+import { colors } from '../../../lib/tokens'
 
 export interface FieldRowData {
   id:           string
@@ -18,27 +20,40 @@ interface DesignerFieldRowProps {
   onDelete:         () => void
   editLabel?:       string
   systemFieldLabel?: string
+  /**
+   * Al posto dei valori del vocabolario: da dove vengono DAVVERO i valori del
+   * campo. Giro UI del 15 set 2026 · U-13: lo «Status» delle richieste elencava
+   * il vocabolario `status_service_request`, mentre lo stato di un ticket è il
+   * passo del suo workflow.
+   */
+  valuesNote?:      string
 }
 
 export function DesignerFieldRow({
   field,
   onEdit,
   onDelete,
-  editLabel = 'Edit',
-  systemFieldLabel = 'System field',
+  editLabel,
+  systemFieldLabel,
+  valuesNote,
 }: DesignerFieldRowProps) {
+  // Secondo giro UI del 15 set 2026 · V-6: «required», «Edit», «System field» e
+  // «Delete <campo>» erano scritti in inglese qui, e in italiano restavano così.
+  const { t } = useTranslation()
+  const editText = editLabel ?? t('common.edit')
+  const systemText = systemFieldLabel ?? t('itilDesigner.systemField')
   return (
     <div
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 14px', background: '#fff', border: '1px solid var(--border)',
+        padding: '10px 14px', background: colors.white, border: '1px solid var(--border)',
         borderRadius: 6, marginBottom: 4,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
         {field.isSystem ? (
-          <span title={systemFieldLabel}>
-            <Lock size={12} color="#94a3b8" style={{ flexShrink: 0 }} />
+          <span title={systemText}>
+            <Lock size={12} color={colors.slateLight} style={{ flexShrink: 0 }} />
           </span>
         ) : (
           <div style={{ width: 12 }} />
@@ -53,18 +68,25 @@ export function DesignerFieldRow({
           <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 1 }}>
             {field.fieldType}
             {field.required && (
-              <span style={{ marginLeft: 6, color: 'var(--color-danger)' }}>required</span>
+              <span style={{ marginLeft: 6, color: 'var(--color-danger)' }}>{t('designerFieldRow.required')}</span>
             )}
-            {field.fieldType === 'enum' && field.enumValues && field.enumValues.length > 0 && (
+            {valuesNote !== undefined && (
+              <span style={{ marginLeft: 6 }} data-testid="field-values-note">{valuesNote}</span>
+            )}
+            {valuesNote === undefined && field.fieldType === 'enum' && field.enumValues && field.enumValues.length > 0 && (
               <span style={{ marginLeft: 6 }}>[{field.enumValues.join(', ')}]</span>
             )}
           </div>
         </div>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        <button type="button" style={btnSecondary} onClick={onEdit}>{editLabel}</button>
+        {/* Nessun pulsante VUOTO (revisione totale · G-14): i campi ereditati e
+            i tipi spediti passavano `editLabel=""`, e la riga mostrava un
+            bottoncino senza testo, senza nome accessibile e senza effetto. Se
+            non c'è un'etichetta, non c'è il pulsante. */}
+        {editText !== '' && <button type="button" style={btnSecondary} onClick={onEdit}>{editText}</button>}
         {!field.isSystem && (
-          <button type="button" style={btnDanger} onClick={onDelete} aria-label={`Delete ${field.name}`}>
+          <button type="button" style={btnDanger} onClick={onDelete} aria-label={t('designerFieldRow.deleteField', { name: field.name })}>
             <Trash2 size={12} />
           </button>
         )}

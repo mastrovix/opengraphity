@@ -4,9 +4,10 @@ import { gql } from '@apollo/client'
 import i18n from '@/i18n/i18n'
 import { CIDetailPage } from './CIDetailPage'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
-import { GET_CI_TYPES, GET_BLAST_RADIUS, GET_CI_INCIDENTS, GET_CI_CHANGES, GET_WORKFLOW_DEFINITION } from '@/graphql/queries'
+import { GET_CI_TYPES, GET_BLAST_RADIUS, GET_CI_INCIDENTS, GET_CI_PROBLEMS, GET_CI_CHANGES, GET_WORKFLOW_DEFINITION, GET_CI_HEALTH, GET_CI_ALIASES, GET_EVENTS, GET_SERVICES_IMPACTED_BY_CI } from '@/graphql/queries'
+import { SET_CI_HEALTH_OVERRIDE } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
-import { teamsMock } from '@/test/mocks/gql'
+import { teamsMock, meMock } from '@/test/mocks/gql'
 
 // Etichette dalla stessa sorgente i18n della pagina (non stringhe copiate a mano).
 const T = (key: string, opts?: Record<string, unknown>) => i18n.t(key, opts) as string
@@ -33,8 +34,13 @@ const GET_ATTACHMENTS = gql`
   }
 `
 
-const field = (name: string, fieldType: string, order: number, enumValues: string[] = []) => ({
-  __typename: 'CIField', id: `f-${name}`, name, label: name, fieldType, required: false, enumValues, order, isSystem: true,
+// A-5: `isSystem` qui era `true` su OGNI campo, `ip_address` compreso — ma
+// `generateSDL` esclude i campi di sistema dallo SDL, quindi un campo così non
+// è interrogabile e la pagina non deve chiederlo. Sul dato vero i campi
+// specifici dei tipi spediti hanno `is_system` falso; di sistema sono i 9 campi
+// di `__base__` (id, name, status, …), che la pagina esclude comunque per nome.
+const field = (name: string, fieldType: string, order: number, enumValues: string[] = [], isSystem = false) => ({
+  __typename: 'CIField', id: `f-${name}`, name, label: name, fieldType, required: false, enumValues, order, isSystem,
   validationScript: null, visibilityScript: null, defaultScript: null,
 })
 
@@ -43,7 +49,15 @@ const ciTypesMock: GqlMock = {
   result: { data: { ciTypes: [{
     __typename: 'CIType', id: 'ct-server', name: 'server', label: 'Server', icon: 'server', color: '#0284c7', active: true,
     validationScript: null, chainFamilies: [],
-    fields: [field('name', 'string', 1), field('status', 'enum', 2, ['active', 'inactive']), field('environment', 'enum', 3, ['production', 'staging']), field('ip_address', 'string', 4)],
+    fields: [
+      field('name', 'string', 1, [], true), field('status', 'enum', 2, ['active', 'inactive'], true),
+      field('environment', 'enum', 3, ['production', 'staging'], true), field('ip_address', 'string', 4),
+      // Campo di sistema aggiunto al `__base__` condiviso: NON è nello SDL,
+      // quindi la query dinamica non deve chiederlo (se lo chiedesse, la
+      // pagina di dettaglio di ogni CI di ogni cliente risponderebbe
+      // `Cannot query field "costo_annuo" on type "Server"`).
+      field('costo_annuo', 'string', 5, [], true),
+    ],
     relations: [], systemRelations: [],
   }] } },
   maxUsageCount: Number.POSITIVE_INFINITY,
@@ -67,13 +81,26 @@ const detailMock: GqlMock = {
 const any = (query: GqlMock['request']['query'], data: Record<string, unknown>): GqlMock =>
   ({ request: { query, variables: () => true }, result: { data }, maxUsageCount: Number.POSITIVE_INFINITY })
 
-const mocks = () => [
-  ciTypesMock, detailMock, teamsMock(),
+// Sezione "Salute" (Event Management): ciHealth + alias + ultimi eventi del CI.
+const healthMock = (health: string | null, healthSource: string | null = health ? 'monitoring' : null): GqlMock => ({
+  request: { query: GET_CI_HEALTH, variables: { ciId: 'srv-1' } },
+  result: { data: { ciHealth: { __typename: 'CIHealthInfo', ciId: 'srv-1', health, healthSource, lastEventAt: health ? '2026-09-09T10:00:00Z' : null, firingEvents: health === 'down' ? 2 : 0 } } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+})
+
+const mocks = (health: string | null = null, role = 'operator') => [
+  ciTypesMock, detailMock, teamsMock(), meMock(role, { maxUsageCount: Number.POSITIVE_INFINITY }),
   any(GET_BLAST_RADIUS, { blastRadius: [] }),
   any(GET_CI_INCIDENTS, { ciIncidents: [] }),
+  any(GET_CI_PROBLEMS, { ciProblems: [] }),
   any(GET_CI_CHANGES, { ciChanges: [] }),
   any(GET_WORKFLOW_DEFINITION, { workflowDefinition: null }),
   any(GET_ATTACHMENTS, { attachments: [] }),
+  healthMock(health),
+  any(GET_CI_ALIASES, { ciAliases: [{ __typename: 'CIAlias', id: 'al-1', kind: 'hostname', value: 'web-01.acme.local', source: 'manual', createdAt: '2026-09-01T00:00:00Z', ci: { __typename: 'ConfigurationItemRef', id: 'srv-1', name: 'web-01', type: 'server', status: 'active', health } }] }),
+  any(GET_EVENTS, { events: { __typename: 'EventPage', total: 0, items: [] } }),
+  // Servizi monitorati che includono il CI: nessuno → la sezione non compare.
+  any(GET_SERVICES_IMPACTED_BY_CI, { servicesImpactedByCI: [] }),
 ]
 
 function renderPage(opts: { mocks?: GqlMock[]; route?: string; showWarnings?: boolean } = {}) {
@@ -174,5 +201,68 @@ describe('CIDetailPage', () => {
     expect(within(panel).getByText(T('pages.ci.dependents'))).toBeInTheDocument()
     expect(within(panel).getByRole('button', { name: /DEPENDS ON \(1\)/ })).toBeInTheDocument()
     expect(within(panel).getByRole('button', { name: /HOSTED ON \(1\)/ })).toBeInTheDocument()
+  })
+  /** Giro UI del 15 set 2026 · U-27: un gruppo obbligatorio non offre «— not assigned —» (l'API lo rifiuterebbe, CM-6). */
+  it('U-27: gruppo obbligatorio → niente «not assigned»; se manca lo dice e chiede di sceglierne uno', async () => {
+    const types = structuredClone(ciTypesMock.result) as { data: { ciTypes: Array<Record<string, unknown>> } }
+    types.data.ciTypes[0]!['systemRelations'] = [
+      { __typename: 'CISystemRelation', id: 'sr-own', name: 'ownerGroup', label: 'Owner Group', relationshipType: 'OWNED_BY', targetEntity: 'Team', required: true, order: 1 },
+      { __typename: 'CISystemRelation', id: 'sr-sup', name: 'supportGroup', label: 'Support Group', relationshipType: 'SUPPORTED_BY', targetEntity: 'Team', required: false, order: 2 },
+    ]
+    const list = mocks().map((m) => (m === ciTypesMock ? { ...ciTypesMock, result: types } : m))
+      .map((m) => (m.request.query === teamsMock().request.query ? teamsMock([{ id: 'tm-1', name: 'Sistemi e Server' }]) : m))
+    renderPage({ mocks: list })
+    const owner = await screen.findByRole('combobox', { name: T('pages.cmdb.ownerGroup') })
+    expect(within(owner).queryByRole('option', { name: T('pages.ci.notAssignedOption') })).toBeNull()
+    expect(within(owner).getByRole('option', { name: T('pages.ci.requiredGroupOption') })).toBeDisabled()
+    expect(owner).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByTestId('ci-required-group-missing')).toBeInTheDocument()
+    const support = screen.getByRole('combobox', { name: T('pages.ci.supportGroup') })
+    expect(within(support).getByRole('option', { name: T('pages.ci.notAssignedOption') })).toBeInTheDocument()
+  })
+})
+
+describe('CIDetailPage — sezione Salute (monitoraggio)', () => {
+  const healthCard = () => screen.getByRole('button', { name: /^Health/ })
+
+  it('salute sconosciuta: scheda chiusa, messaggio esplicito, alias elencati', async () => {
+    const { user } = renderPage({ mocks: mocks(null) })
+    await screen.findByRole('heading', { level: 1, name: 'web-01' })
+    await waitFor(() => expect(healthCard()).toHaveAttribute('aria-expanded', 'false'))
+    await user.click(healthCard())
+    expect(await screen.findByText('No alarm has concerned this CI yet: health is unknown.')).toBeInTheDocument()
+    expect(screen.getByText('web-01.acme.local')).toBeInTheDocument()
+    expect(screen.getByText('No alarms for this CI.')).toBeInTheDocument()
+  })
+
+  it('CI giù: scheda aperta con badge, allarmi attivi con link alla console filtrata, forzatura per operator', async () => {
+    const seen: unknown[] = []
+    const overrideMock: GqlMock = {
+      request: { query: SET_CI_HEALTH_OVERRIDE, variables: (v) => { seen.push(v); return true } },
+      result: { data: { setCIHealthOverride: { __typename: 'CIHealthInfo', ciId: 'srv-1', health: 'degraded', healthSource: 'manual', lastEventAt: null, firingEvents: 2 } } },
+    }
+    const { user } = renderPage({ mocks: [...mocks('down'), overrideMock] })
+    await screen.findByRole('heading', { level: 1, name: 'web-01' })
+    await waitFor(() => expect(healthCard()).toHaveAttribute('aria-expanded', 'true'))
+    expect(screen.getAllByText('Health: Down').length).toBeGreaterThan(0)
+    expect(screen.getByText('Monitoring')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /View in the console/ })).toHaveAttribute('href', '/events?ciId=srv-1')
+
+    // la forzatura parte con "Applica", non al cambio del select (D·1.12)
+    await user.selectOptions(screen.getByLabelText('Force health'), 'degraded')
+    expect(seen).toEqual([])
+    await user.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(seen).toEqual([{ ciId: 'srv-1', health: 'degraded' }]))
+  })
+
+  it('viewer: nessun controllo di forzatura né gestione alias', async () => {
+    const { user } = renderPage({ mocks: mocks('operational', 'viewer') })
+    await screen.findByRole('heading', { level: 1, name: 'web-01' })
+    await waitFor(() => expect(healthCard()).toHaveAttribute('aria-expanded', 'true'))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(screen.queryByLabelText('Force health')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add' })).not.toBeInTheDocument()
+    await user.click(healthCard())
+    expect(healthCard()).toHaveAttribute('aria-expanded', 'false')
   })
 })

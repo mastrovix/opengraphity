@@ -12,7 +12,7 @@ describe('lookupOrError', () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(lookupOrError({ a: 1 }, 'zzz', 'MY_MAP', -1)).toBe(-1)
     expect(err).toHaveBeenCalledTimes(1)
-    expect(err.mock.calls[0]![0]).toBe('[MY_MAP] valore sconosciuto: "zzz"')
+    expect(err.mock.calls[0]![0]).toBe('[MY_MAP] unknown value: "zzz"')
   })
 
   it('un valore mappato "falsy" (0, "", false) è un hit, non un fallback', () => {
@@ -27,7 +27,7 @@ describe('lookupOrError', () => {
 describe('lookupStyle', () => {
   it('chiave sconosciuta → stile "rotto" rosso/bianco', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(lookupStyle({ ok: { bg: '#fff', color: '#000' } }, 'nope', 'STYLE')).toEqual({ bg: 'var(--color-danger)', color: '#fff' })
+    expect(lookupStyle({ ok: { bg: '#fff', color: '#000' } }, 'nope', 'STYLE')).toEqual({ bg: 'var(--color-danger)', color: 'var(--color-white)' })
   })
   it('chiave nota → lo stile mappato', () => {
     expect(lookupStyle({ ok: { bg: '#fff', color: '#000' } }, 'ok', 'STYLE')).toEqual({ bg: '#fff', color: '#000' })

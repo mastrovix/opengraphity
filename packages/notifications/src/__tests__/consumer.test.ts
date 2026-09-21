@@ -13,6 +13,7 @@ let changeRows: Array<Record<string, unknown>> = []
 const sessionClose = vi.fn(async () => {})
 let sessionsOpened = 0
 
+vi.mock('../locale.js', () => ({ loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })), invalidateNotificationLocale: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => {
     sessionsOpened++
@@ -43,6 +44,14 @@ vi.mock('@opengraphity/events', () => ({
   loggableUrl: (u: string) => { try { return new URL(u).host } catch { return '<invalid-url>' } },
 }))
 vi.mock('../email.js', () => ({ sendEmail: vi.fn(async () => {}) }))
+// Ondata 8: il token del bot è quello del workspace dell'organizzazione (SlackInstallation cifrata).
+const slackToken = vi.hoisted(() => ({ value: null as string | null }))
+vi.mock('../slackInstallation.js', () => ({
+  slackBotToken: vi.fn(async (tenantId: string) => {
+    if (!slackToken.value) throw new Error(`Slack is not connected for organization ${tenantId}: connect the workspace in Admin → Integrations`)
+    return slackToken.value
+  }),
+}))
 
 type FetchInit = { method: string; headers: Record<string, string>; body: string }
 const fetchMock = vi.fn<(url: string, init: FetchInit) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>>(
@@ -78,7 +87,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  delete process.env['SLACK_BOT_TOKEN']
+  slackToken.value = null
   vi.restoreAllMocks()
 })
 
@@ -157,20 +166,20 @@ describe('dispatchIncidentNotification — Slack blocks / Teams adaptive card pe
     expect(enrich).toBeDefined()
     expect(enrich!.params).toEqual({ id: 'inc-1', tenantId: 't1' })
     const text = JSON.stringify(bodyOf(0))
-    expect(text).toContain('*CI Affected:* db-01')
-    expect(text).toContain('*Assegnato a:* Mario Rossi')
+    expect(text).toContain('*Affected CI:* db-01')
+    expect(text).toContain('*Assigned to:* Mario Rossi')
   })
 
   it('falls back to the team name when no user is assigned; "—" when neither', async () => {
     channelRows = [slackChannel('s1', ['assigned'])]
     incidentRows = [{ ciNames: [], assignedTo: null, teamName: 'DBA' }]
     await dispatchIncidentNotification('t1', 'assigned', incident)
-    expect(JSON.stringify(bodyOf(0))).toContain('*Assegnato a:* DBA')
+    expect(JSON.stringify(bodyOf(0))).toContain('*Assigned to:* DBA')
 
     fetchMock.mockClear()
     incidentRows = []
     await dispatchIncidentNotification('t1', 'assigned', incident)
-    expect(JSON.stringify(bodyOf(0))).toContain('*Assegnato a:* —')
+    expect(JSON.stringify(bodyOf(0))).toContain('*Assigned to:* —')
   })
 
   it('platforms restriction: only the listed platforms are contacted', async () => {
@@ -203,14 +212,14 @@ describe('dispatchIncidentNotification — Slack blocks / Teams adaptive card pe
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('slack channel by channel_id needs SLACK_BOT_TOKEN: missing → throws before any fetch', async () => {
+  it('slack channel by channel_id needs the organization\'s Slack workspace: not connected → throws before any fetch', async () => {
     channelRows = [slackChannel('s-api', ['assigned'], { webhook_url: null, channel_id: 'C123' })]
-    await expect(dispatchIncidentNotification('t1', 'assigned', incident)).rejects.toThrow('SLACK_BOT_TOKEN non configurato')
+    await expect(dispatchIncidentNotification('t1', 'assigned', incident)).rejects.toThrow('Slack is not connected for organization t1')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('slack channel by channel_id with token → chat.postMessage with Bearer auth; Slack ok:false → throws', async () => {
-    process.env['SLACK_BOT_TOKEN'] = 'xoxb-test'
+  it('slack channel by channel_id with the organization\'s token → chat.postMessage with Bearer auth; Slack ok:false → throws', async () => {
+    slackToken.value = 'xoxb-test'
     channelRows = [slackChannel('s-api', ['assigned'], { webhook_url: null, channel_id: 'C123' })]
     await dispatchIncidentNotification('t1', 'assigned', incident)
     const [url, init] = fetchMock.mock.calls[0]!
@@ -237,8 +246,13 @@ describe('dispatchIncidentNotification — Slack blocks / Teams adaptive card pe
 
 // ── dispatchChangeNotification / dispatchChangeTaskNotification ─────────────
 
-describe('dispatchChangeNotification — Slack only, channels subscribed to change_approved', () => {
-  it('posts the change blocks to slack channels; teams channels are ignored (pinned: no Teams change card)', async () => {
+/**
+ * CONTRATTO RINEGOZIATO (revisione totale · E-18): un canale Teams abbonato a
+ * «Change approvata» veniva scartato in silenzio, benché la pagina Canali
+ * offra quell'evento anche a Teams. Ora riceve la sua card.
+ */
+describe('dispatchChangeNotification — canali abbonati a change_approved, Slack E Teams', () => {
+  it('manda i blocchi su Slack e la card su Teams (E-18)', async () => {
     channelRows = [slackChannel('s1', ['change_approved']), teamsChannel('t1', ['change_approved']), slackChannel('s2', ['assigned'])]
     changeRows = [{ ciNames: ['app-01'], assignedTo: null, teamName: 'Release' }]
     await dispatchChangeNotification('t1', { id: 'chg-1', title: 'Upgrade DB', type: 'normal', status: 'approved', tenantId: 't1' })
@@ -247,25 +261,30 @@ describe('dispatchChangeNotification — Slack only, channels subscribed to chan
     expect(enrich!.cypher).toContain('coalesce(c.deleted, false) = false')
     expect(enrich!.params).toEqual({ id: 'chg-1', tenantId: 't1' })
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock.mock.calls[0]![0]).toBe('https://hooks.slack.example/s1')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['https://hooks.slack.example/s1', 'https://teams.example/t1'])
     const text = JSON.stringify(bodyOf(0))
     expect(text).toContain('Upgrade DB')
-    expect(text).toContain('*CI Affected:* app-01')
-    expect(text).toContain('*Assegnato a:* Release')
+    expect(text).toContain('*Affected CI:* app-01')
+    expect(text).toContain('*Assigned to:* Release')
     expect(text).toContain('/changes/chg-1')
+    const card = JSON.stringify(bodyOf(1))
+    expect(card).toContain('AdaptiveCard')
+    expect(card).toContain('Upgrade DB')
+    expect(card).toContain('app-01')
   })
 })
 
-describe('dispatchChangeTaskNotification — Slack only, channels subscribed to change_task_assigned', () => {
-  it('posts to the subscribed slack channels only', async () => {
+describe('dispatchChangeTaskNotification — canali abbonati a change_task_assigned, Slack E Teams', () => {
+  it('manda ai canali abbonati di entrambe le piattaforme (E-18)', async () => {
     channelRows = [slackChannel('s1', ['change_task_assigned']), slackChannel('s2', ['change_approved']), teamsChannel('t1', ['change_task_assigned'])]
     await dispatchChangeTaskNotification('t1', {
       changeId: 'chg-1', changeTitle: 'Upgrade DB', taskId: 'task-1', ciName: 'db-01', teamName: 'DBA', assignedTo: 'Mario',
     })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock.mock.calls[0]![0]).toBe('https://hooks.slack.example/s1')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual(['https://hooks.slack.example/s1', 'https://teams.example/t1'])
     expect(JSON.stringify(bodyOf(0))).toContain('Upgrade DB')
+    expect(JSON.stringify(bodyOf(1))).toContain('AdaptiveCard')
   })
 
   it('no subscribed channel → nothing sent, no error', async () => {

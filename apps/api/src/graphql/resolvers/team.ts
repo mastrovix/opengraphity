@@ -1,28 +1,45 @@
 import { GraphQLError } from 'graphql'
-import { NotFoundError } from '../../lib/errors.js'
+import { NotFoundError, ValidationError } from '../../lib/errors.js'
+import { assertDomainValue } from '../../lib/domainMatrix.js'
+import { TEAM_TYPE_VOCABULARY } from '../../lib/teamVocabularies.js'
+import { assertTeamSourcing } from '../../lib/teamSourcing.js'
 import { v4 as uuidv4 } from 'uuid'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
 import { mapCI, ciTypeFromLabels, withSession } from './ci-utils.js'
-import { ciLabelPredicate } from '../../lib/ciLabels.js'
+import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import type { GraphQLContext } from '../../context.js'
-import { mapTeam } from '../../lib/mappers.js'
+import { mapTeam, mapUser } from '../../lib/mappers.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
+import { orderByOrThrow } from '../../lib/sortField.js'
 import { audit } from '../../lib/audit.js'
+import { cache } from '../../lib/cache.js'
+import { loadMetamodel } from '@opengraphity/schema-generator'
+import { ENUM_SCOPE } from '../../lib/enumScope.js'
+import { assertGroupRemovable } from '../../lib/ciGroups.js'
 
 type Props = Record<string, unknown>
 
 
 // ── Query resolvers ──────────────────────────────────────────────────────────
 
-const TEAM_ALLOWED_FIELDS = new Set(['name', 'createdAt'])
+// `type` c'era nel filtro della pagina ma NON qui: il filtro si applicava e
+// non filtrava niente. E' un valore del vocabolario `team_type`.
+const TEAM_ALLOWED_FIELDS = new Set(['name', 'type', 'sourcing', 'createdAt'])
+
+/** Le colonne su cui l'elenco dei team ordina (guardiano: sortWhitelists.test.ts). */
+export const TEAM_SORT_WHITELIST: Record<string, string> = {
+  name:      't.name',
+  type:      't.type',
+  sourcing:  't.sourcing',
+  createdAt: 't.created_at',
+}
 
 async function teams(_: unknown, args: { filters?: string; sortField?: string; sortDirection?: string }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     const params: Record<string, unknown> = { tenantId: ctx.tenantId }
     const advWhere = args.filters ? buildAdvancedWhere(args.filters, params, TEAM_ALLOWED_FIELDS, 't') : ''
-    const sortMap: Record<string, string> = { name: 't.name', type: 't.type', createdAt: 't.created_at' }
-    const orderBy = sortMap[args.sortField ?? ''] ?? 't.name'
-    const orderDir = args.sortDirection === 'desc' ? 'DESC' : 'ASC'
+    // A-22: nessun ordine diverso in silenzio.
+    const orderBy = orderByOrThrow(TEAM_SORT_WHITELIST, args.sortField, args.sortDirection, 't.name ASC', 'teams(sortField)')
     // Prefetch members / owned+supported CIs / manager with pattern
     // comprehensions: one query, no per-team N+1 and no cartesian blow-up
     // (each comprehension returns an independent list).
@@ -31,13 +48,13 @@ async function teams(_: unknown, args: { filters?: string; sortField?: string; s
       ${advWhere ? `WHERE ${advWhere}` : ''}
       RETURN properties(t) as props,
         [ (t)<-[:MEMBER_OF]-(m:User) | properties(m) ] as members,
-        [ (t)<-[:OWNED_BY]-(oci) WHERE oci.tenant_id = $tenantId | { props: properties(oci), label: labels(oci)[0] } ] as ownedCIs,
-        [ (t)<-[:SUPPORTED_BY]-(sci) WHERE sci.tenant_id = $tenantId | { props: properties(sci), label: labels(sci)[0] } ] as supportedCIs,
+        [ (t)<-[:OWNED_BY]-(oci) WHERE oci.tenant_id = $tenantId | { props: properties(oci), label: head([l IN labels(oci) WHERE l <> 'ConfigurationItem']) } ] as ownedCIs,
+        [ (t)<-[:SUPPORTED_BY]-(sci) WHERE sci.tenant_id = $tenantId | { props: properties(sci), label: head([l IN labels(sci) WHERE l <> 'ConfigurationItem']) } ] as supportedCIs,
         [ (t)-[:MANAGED_BY]->(mgr:User) | properties(mgr) ] as managers
-      ORDER BY ${orderBy} ${orderDir}
+      ORDER BY ${orderBy}
     `
     const rows = await runQuery<{ props: Props; members: Props[]; ownedCIs: { props: Props; label: string }[]; supportedCIs: { props: Props; label: string }[]; managers: Props[] }>(session, cypher, params)
-    const mapCIRow = (c: { props: Props; label: string }) => { c.props['type'] = ciTypeFromLabels([c.label]); return mapCI(c.props) }
+    const mapCIRow = (c: { props: Props; label: string }) => { c.props['type'] = ciTypeFromLabels(ctx.tenantId, [c.label]); return mapCI(c.props) }
     return rows.map((r) => ({
       ...mapTeam(r.props),
       _members:       r.members,
@@ -63,12 +80,20 @@ async function team(_: unknown, args: { id: string }, ctx: GraphQLContext) {
 
 async function createTeam(
   _: unknown,
-  args: { input: { name: string; description?: string } },
+  args: { input: { name: string; description?: string; type?: string | null; sourcing: string } },
   ctx: GraphQLContext,
 ) {
   const { input } = args
   const id  = uuidv4()
   const now = new Date().toISOString()
+  // Ogni team dice se e interno o esterno: senza, e un rifiuto, non un default.
+  const sourcing = assertTeamSourcing(input.sourcing)
+  // Il tipo e OBBLIGATORIO in creazione (scelta del proprietario) ed e un
+  // valore del vocabolario `team_type`, non una parola qualunque: un team con
+  // `type: "ownr"` non sarebbe nel filtro ne nella pastiglia. Assente o vuoto
+  // e un rifiuto — `assertDomainValue` non accetta un valore mancante, e dice
+  // quali sono ammessi.
+  const type = await assertDomainValue(ctx.tenantId, TEAM_TYPE_VOCABULARY, input.type)
 
   return withSession(async (session) => {
     const cypher = `
@@ -78,17 +103,74 @@ async function createTeam(
         name:        $name,
         description: $description,
         type:        $type,
+        sourcing:    $sourcing,
         created_at:  $now,
         updated_at:  $now
       })
       RETURN properties(t) as props
     `
     const rows = await runQuery<{ props: Props }>(session, cypher, {
-      id, tenantId: ctx.tenantId, name: input.name, description: input.description ?? null, type: null, now,
+      id, tenantId: ctx.tenantId, name: input.name, description: input.description ?? null, type, sourcing, now,
     })
     const row = rows[0]
     if (!row) throw new GraphQLError('Failed to create Team', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
     void audit(ctx, 'team.created', 'Team', id)
+    return mapTeam(row.props)
+  }, true)
+}
+
+/**
+ * Cambia nome, descrizione o TIPO di un team che esiste.
+ *
+ * Serviva perche il tipo si poteva solo *guardare*: la colonna c'era, il
+ * filtro c'era, e non esisteva nessuna scrittura — i team seminati avevano un
+ * tipo, quelli creati dall'interfaccia no, per sempre.
+ *
+ * Un campo assente non si tocca (`undefined` != `null`): cosi la stessa
+ * mutation serve sia «rinomina» sia «dai un tipo» senza azzerare il resto.
+ * Per TOGLIERE il tipo si manda la stringa vuota, che e una scelta esplicita.
+ */
+async function updateTeam(
+  _: unknown,
+  args: { id: string; input: { name?: string | null; description?: string | null; type?: string | null; sourcing?: string | null } },
+  ctx: GraphQLContext,
+) {
+  const { input } = args
+  const sets: string[] = ['t.updated_at = $now']
+  const params: Record<string, unknown> = { id: args.id, tenantId: ctx.tenantId, now: new Date().toISOString() }
+
+  if (input.name != null) {
+    const name = input.name.trim()
+    if (name === '') {
+      throw new ValidationError('The team name cannot be empty', { key: 'errors.team.nameEmpty' })
+    }
+    sets.push('t.name = $name'); params['name'] = name
+  }
+  if (input.description !== undefined) {
+    sets.push('t.description = $description')
+    params['description'] = input.description === null || input.description.trim() === '' ? null : input.description.trim()
+  }
+  // Interno/esterno si CAMBIA ma non si toglie: un team deve dirlo sempre, e
+  // `null` o la stringa vuota qui sono un rifiuto, non «non tocco».
+  if (input.sourcing !== undefined) {
+    sets.push('t.sourcing = $sourcing')
+    params['sourcing'] = assertTeamSourcing(input.sourcing)
+  }
+  // Come Sourcing: si CAMBIA ma non si toglie. Un tipo obbligatorio in
+  // creazione che poi si potesse svuotare non sarebbe obbligatorio.
+  if (input.type !== undefined) {
+    sets.push('t.type = $type')
+    params['type'] = await assertDomainValue(ctx.tenantId, TEAM_TYPE_VOCABULARY, input.type)
+  }
+
+  return withSession(async (session) => {
+    const row = await runQueryOne<{ props: Props }>(session, `
+      MATCH (t:Team {id: $id, tenant_id: $tenantId})
+      SET ${sets.join(', ')}
+      RETURN properties(t) AS props
+    `, params)
+    if (!row) throw new NotFoundError('Team', args.id)
+    void audit(ctx, 'team.updated', 'Team', args.id)
     return mapTeam(row.props)
   }, true)
 }
@@ -103,33 +185,54 @@ async function setCITeamRelation(
   ctx: GraphQLContext,
 ) {
   return withSession(async (session) => {
+    // Etichette dal metamodello del tenant: con la lista fissa, assegnare un
+    // team a un CI di un tipo del cliente non trovava il nodo e rispondeva
+    // «ConfigurationItem or Team» (A-9).
+    const ciPredicate = await ciLabelPredicateForTenant('ci', ctx.tenantId)
+    if (args.teamId == null) {
+      // CM-6 (revisione del 15 set 2026): togliere un gruppo che il tipo del
+      // CI dichiara obbligatorio lasciava il CI senza owner, e le change su di
+      // lui fallivano dopo, lontano da chi l'aveva tolto.
+      const found = await runQueryOne<{ label: string | null }>(session, `
+        MATCH (ci {id: $ciId, tenant_id: $tenantId}) WHERE ${ciPredicate}
+        RETURN head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
+      `, { ciId: args.ciId, tenantId: ctx.tenantId })
+      if (!found) throw new NotFoundError('ConfigurationItem', args.ciId)
+      const ciType = (await loadMetamodel(ctx.tenantId, ENUM_SCOPE)).find((t) => t.neo4jLabel === found.label)
+      if (ciType) assertGroupRemovable(ciType, relType === 'OWNED_BY' ? 'ownerGroup' : 'supportGroup')
+    }
     // The relation is single-valued: drop any existing edge before setting the
     // new one, otherwise re-assigning would leave the CI with multiple owners
     // (breaks change creation, which assumes exactly one owner team).
     const cypher = args.teamId == null
       ? `
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
-      WHERE ${ciLabelPredicate('ci')}
+      WHERE ${ciPredicate}
       OPTIONAL MATCH (ci)-[old:${relType}]->(:Team)
       DELETE old
-      RETURN properties(ci) as props, labels(ci)[0] AS label
+      RETURN properties(ci) as props, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
     `
       : `
       MATCH (ci {id: $ciId, tenant_id: $tenantId})
-      WHERE ${ciLabelPredicate('ci')}
+      WHERE ${ciPredicate}
       MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
       WITH ci, t
       OPTIONAL MATCH (ci)-[old:${relType}]->(:Team)
       DELETE old
       MERGE (ci)-[:${relType}]->(t)
-      RETURN properties(ci) as props, labels(ci)[0] AS label
+      RETURN properties(ci) as props, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
     `
     const rows = await runQuery<{ props: Props; label: string }>(session, cypher, {
       ciId: args.ciId, teamId: args.teamId ?? null, tenantId: ctx.tenantId,
     })
     const row = rows[0]
     if (!row) throw new NotFoundError('ConfigurationItem or Team')
-    row.props['type'] = ciTypeFromLabels([row.label])
+    // CM-6: le liste dei CI mostrano il gruppo (cache di 30 s) e la topologia
+    // pure; e un cambio di owner è una modifica del CI come le altre.
+    cache.invalidate(`ci:${ctx.tenantId}:${row.label}:`)
+    cache.invalidate(`topology:${ctx.tenantId}:`)
+    void audit(ctx, 'ci.updated', 'ConfigurationItem', args.ciId, { [relType === 'OWNED_BY' ? 'ownerGroupId' : 'supportGroupId']: args.teamId })
+    row.props['type'] = ciTypeFromLabels(ctx.tenantId, [row.label])
     return mapCI(row.props)
   }, true)
 }
@@ -163,7 +266,11 @@ async function teamMembers(parent: { id: string; _members?: Props[] }, _: unknow
       ORDER BY u.name
     `
     const rows = await runQuery<{ props: Props }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
-    return rows.map((r) => r.props)
+    // `mapUser`, non le proprietà grezze (revisione totale · B-22): il tipo
+    // `User` ha `tenantId` e `createdAt` non nullabili e le proprietà del nodo
+    // sono snake_case, quindi chi chiedeva `members { tenantId createdAt }`
+    // riceveva un errore non-null.
+    return rows.map((r) => mapUser(r.props))
   })
 }
 
@@ -173,12 +280,12 @@ async function teamOwnedCIs(parent: { id: string; _ownedCIs?: unknown[] }, _: un
     const cypher = `
       MATCH (t:Team {id: $id, tenant_id: $tenantId})<-[:OWNED_BY]-(n)
       WHERE n.tenant_id = $tenantId
-      RETURN properties(n) as props, labels(n)[0] AS label
+      RETURN properties(n) as props, head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label
       ORDER BY n.name
     `
     const rows = await runQuery<{ props: Props; label: string }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => {
-      r.props['type'] = ciTypeFromLabels([r.label])
+      r.props['type'] = ciTypeFromLabels(ctx.tenantId, [r.label])
       return mapCI(r.props)
     })
   })
@@ -190,12 +297,12 @@ async function teamSupportedCIs(parent: { id: string; _supportedCIs?: unknown[] 
     const cypher = `
       MATCH (t:Team {id: $id, tenant_id: $tenantId})<-[:SUPPORTED_BY]-(n)
       WHERE n.tenant_id = $tenantId
-      RETURN properties(n) as props, labels(n)[0] AS label
+      RETURN properties(n) as props, head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label
       ORDER BY n.name
     `
     const rows = await runQuery<{ props: Props; label: string }>(session, cypher, { id: parent.id, tenantId: ctx.tenantId })
     return rows.map((r) => {
-      r.props['type'] = ciTypeFromLabels([r.label])
+      r.props['type'] = ciTypeFromLabels(ctx.tenantId, [r.label])
       return mapCI(r.props)
     })
   })
@@ -208,7 +315,8 @@ async function teamManager(parent: { id: string; _manager?: Props | null }, _: u
       MATCH (t:Team {id: $id, tenant_id: $tenantId})-[:MANAGED_BY]->(u:User)
       RETURN properties(u) AS props
     `, { id: parent.id, tenantId: ctx.tenantId })
-    return row ? row.props : null
+    // B-22: come per i membri, il mapper del tipo `User`.
+    return row ? mapUser(row.props) : null
   })
 }
 
@@ -246,6 +354,31 @@ async function removeTeamManager(_: unknown, args: { teamId: string }, ctx: Grap
   }, true)
 }
 
+/**
+ * Aggiunge o toglie UN membro, dal team. Giro nel browser del 14 set 2026
+ * (#48): l'unico modo era `updateUserTeams` dal dettaglio utente, che riscrive
+ * tutti i team dell'utente. Qui si tocca un arco solo, in una statement sola.
+ */
+async function setTeamMember(_: unknown, args: { teamId: string; userId: string; member: boolean }, ctx: GraphQLContext) {
+  return withSession(async (session) => {
+    const row = await runQueryOne<{ props: Props }>(session, args.member ? `
+      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      MERGE (u)-[:MEMBER_OF]->(t)
+      RETURN properties(t) AS props
+    ` : `
+      MATCH (t:Team {id: $teamId, tenant_id: $tenantId})
+      MATCH (u:User {id: $userId, tenant_id: $tenantId})
+      OPTIONAL MATCH (u)-[m:MEMBER_OF]->(t)
+      DELETE m
+      RETURN properties(t) AS props
+    `, { teamId: args.teamId, userId: args.userId, tenantId: ctx.tenantId })
+    if (!row) throw new NotFoundError('Team or User')
+    void audit(ctx, args.member ? 'team.member_added' : 'team.member_removed', 'Team', args.teamId)
+    return mapTeam(row.props)
+  }, true)
+}
+
 async function setChangeManagerTeam(_: unknown, args: { teamId: string; value: boolean }, ctx: GraphQLContext) {
   return withSession(async (session) => {
     // Uno solo per tenant: azzera gli altri quando si designa.
@@ -275,7 +408,7 @@ async function setChangeManagerTeam(_: unknown, args: { teamId: string; value: b
 
 export const teamResolvers = {
   Query:    { teams, team },
-  Mutation: { createTeam, assignCIOwner, assignCISupportGroup, setTeamManager, removeTeamManager, setChangeManagerTeam },
+  Mutation: { createTeam, updateTeam, assignCIOwner, assignCISupportGroup, setTeamManager, removeTeamManager, setTeamMember, setChangeManagerTeam },
   Team: {
     manager:      teamManager,
     members:      teamMembers,

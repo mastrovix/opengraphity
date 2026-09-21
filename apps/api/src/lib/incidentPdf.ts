@@ -4,15 +4,18 @@
  * attachment metadata. Pure pdfkit (no external assets), returns a Buffer.
  * Shared loading/rendering lives in ./pdf/ticketDossier.ts.
  */
+import type { ValueColor } from '@opengraphity/types'
+import { pdfText } from './pdf/texts.js'
+import { loadVocabularyEntries } from './vocabularyEntries.js'
 import { runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import {
-  DASH, fmtDate, orDash, PAGE_MARGIN, COLOR, type Doc, type PdfMeta,
+  DASH, fmtDate, orDash, PAGE_MARGIN, COLOR, valueColorInk, type Doc, type PdfMeta, type PdfLocale,
   contentWidth, sectionHeading, keyValue, badge, createPdfBuffer,
 } from './pdf/common.js'
 import {
   loadTicketDossier, renderTicketDossier,
   affectedCIsSection, workflowHistorySection, commentsSection, attachmentsSection,
-  type Props, type UserRef, type AffectedCI, type WorkflowHistoryEntry, type AttachmentEntry,
+  type Props, type UserRef, type AffectedCI, type WorkflowHistoryEntry, type AttachmentEntry, type CustomFieldLine, customFieldsSection,
 } from './pdf/ticketDossier.js'
 
 export type { PdfMeta }
@@ -26,6 +29,8 @@ export interface IncidentDossier {
     title:       string
     description: string | null
     severity:    string
+    /** Il colore che il Dizionario del cliente dà alla severità, o null se non ne ha. */
+    severityColor: ValueColor | null
     status:      string
     category:    string | null
     createdAt:   string | null
@@ -47,6 +52,7 @@ export interface IncidentDossier {
   workflowHistory: WorkflowHistoryEntry[]
   comments:        Array<{ author: string | null; createdAt: string | null; text: string }>
   attachments:     AttachmentEntry[]
+  customFields:    CustomFieldLine[]
 }
 
 // ── Data loading (tenant-scoped Cypher) ───────────────────────────────────────
@@ -85,6 +91,12 @@ export async function loadIncidentDossier(
       title:       (p['title']  ?? '') as string,
       description: (p['description'] ?? null) as string | null,
       severity:    (p['severity'] ?? '') as string,
+      // `Incident.severity` porta un valore del vocabolario `priority` (lo
+      // dice `enumValueUsage.ts`, e il badge dell'interfaccia usa quello):
+      // qui si leggeva `severity`, quindi un colore scelto dal cliente non
+      // arrivava nel dossier e un valore nuovo usciva grigio (revisione
+      // totale · C-19).
+      severityColor: p['severity'] ? ((await loadVocabularyEntries(tenantId, 'priority')).colors[p['severity'] as string] ?? null) : null,
       status:      (p['status']   ?? '') as string,
       category:    (p['category'] ?? null) as string | null,
       createdAt:   (p['created_at']  ?? null) as string | null,
@@ -108,12 +120,10 @@ export async function loadIncidentDossier(
     workflowHistory: common.workflowHistory,
     comments:        common.comments.map((c) => ({ author: c.author, createdAt: c.createdAt, text: c.text })),
     attachments:     common.attachments,
+    customFields:    common.customFields,
   }
 }
 
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: '#dc2626', high: '#ea580c', medium: '#d97706', low: '#16a34a',
-}
 
 // ── Builder ───────────────────────────────────────────────────────────────────
 
@@ -121,64 +131,68 @@ export async function buildIncidentPdf(data: IncidentDossier, meta: PdfMeta): Pr
   return createPdfBuffer(
     `Incident Audit Report ${data.incident.number || data.incident.id}`,
     meta,
-    (doc) => renderDossier(doc, data),
+    (doc) => renderDossier(doc, data, meta.locale),
   )
 }
 
-function renderDossier(doc: Doc, data: IncidentDossier): void {
+function renderDossier(doc: Doc, data: IncidentDossier, locale: PdfLocale): void {
   const inc = data.incident
 
   renderTicketDossier(doc, {
-    reportTitle: 'Incident Audit Report',
+    reportTitle: pdfText(locale, 'reportIncident'),
     entityTitle: `${inc.number || inc.id} ${DASH} ${inc.title}`,
     badges: (doc, x, y) => {
       let bx = x
-      bx += badge(doc, bx, y, `SEVERITY: ${(inc.severity || 'n/d').toUpperCase()}`,
-        SEVERITY_COLORS[inc.severity?.toLowerCase() ?? ''] ?? COLOR.muted) + 6
-      bx += badge(doc, bx, y, `STATUS: ${(inc.status || 'n/d').toUpperCase()}`, COLOR.brand) + 6
+      // C-18: etichette dei badge tradotte.
+      bx += badge(doc, bx, y, `${pdfText(locale, 'badgeSeverity')}: ${(inc.severity || pdfText(locale, 'notAvailable')).toUpperCase()}`,
+        valueColorInk(inc.severityColor)) + 6
+      bx += badge(doc, bx, y, `${pdfText(locale, 'badgeStatus')}: ${(inc.status || pdfText(locale, 'notAvailable')).toUpperCase()}`, COLOR.brand) + 6
       if (data.slaStatus) {
-        badge(doc, bx, y, data.slaStatus.breached ? 'SLA: BREACHED' : 'SLA: OK',
+        badge(doc, bx, y, `${pdfText(locale, 'badgeSla')}: ${data.slaStatus.breached ? pdfText(locale, 'slaBreached') : pdfText(locale, 'slaOk')}`,
           data.slaStatus.breached ? '#dc2626' : '#16a34a')
       }
     },
     sections: [
-      slaLine(data),
-      detailsSection(data),
-      affectedCIsSection(data.affectedCIs),
-      workflowHistorySection(data.workflowHistory),
-      commentsSection(data.comments.map((c) => ({ ...c, type: null }))),
-      attachmentsSection(data.attachments),
+      slaLine(data, locale),
+      detailsSection(data, locale),
+      customFieldsSection(data.customFields, locale),
+      affectedCIsSection(data.affectedCIs, locale),
+      workflowHistorySection(data.workflowHistory, locale),
+      commentsSection(data.comments.map((c) => ({ ...c, type: null })), locale),
+      attachmentsSection(data.attachments, locale),
     ],
   })
 }
 
-function slaLine(data: IncidentDossier) {
+function slaLine(data: IncidentDossier, locale: PdfLocale) {
   return (doc: Doc): void => {
     const sla = data.slaStatus
     if (!sla) return
     doc.fontSize(8.5).font('Helvetica').fillColor(COLOR.muted).text(
-      `SLA ${DASH} risposta entro: ${fmtDate(sla.responseDeadline)} (${sla.responseMet ? 'rispettata' : 'non rispettata'})` +
-      `  |  risoluzione entro: ${fmtDate(sla.resolveDeadline)} (${sla.resolveMet ? 'rispettata' : 'non rispettata'})`,
+      pdfText(locale, 'slaLine', {
+        response: fmtDate(sla.responseDeadline, locale), responseMet: pdfText(locale, sla.responseMet ? 'met' : 'notMet'),
+        resolve: fmtDate(sla.resolveDeadline, locale), resolveMet: pdfText(locale, sla.resolveMet ? 'met' : 'notMet'),
+      }),
       PAGE_MARGIN.left, doc.y, { width: contentWidth(doc) },
     )
   }
 }
 
-function detailsSection(data: IncidentDossier) {
+function detailsSection(data: IncidentDossier, locale: PdfLocale) {
   const inc = data.incident
   return (doc: Doc): void => {
-    sectionHeading(doc, 'Dettagli')
-    keyValue(doc, 'Descrizione', orDash(inc.description))
-    keyValue(doc, 'Categoria', orDash(inc.category))
-    keyValue(doc, 'Creato il', fmtDate(inc.createdAt))
-    keyValue(doc, 'Aggiornato il', fmtDate(inc.updatedAt))
-    keyValue(doc, 'Risolto il', fmtDate(inc.resolvedAt))
-    keyValue(doc, 'Root cause', orDash(inc.rootCause))
-    keyValue(doc, 'Assegnatario', data.assignee
+    sectionHeading(doc, pdfText(locale, 'details'))
+    keyValue(doc, pdfText(locale, 'description'), orDash(inc.description))
+    keyValue(doc, pdfText(locale, 'category'), orDash(inc.category))
+    keyValue(doc, pdfText(locale, 'createdAt'), fmtDate(inc.createdAt, locale))
+    keyValue(doc, pdfText(locale, 'updatedAt'), fmtDate(inc.updatedAt, locale))
+    keyValue(doc, pdfText(locale, 'resolvedAt'), fmtDate(inc.resolvedAt, locale))
+    keyValue(doc, pdfText(locale, 'rootCause'), orDash(inc.rootCause))
+    keyValue(doc, pdfText(locale, 'assignee'), data.assignee
       ? `${data.assignee.name} <${data.assignee.email}>`
       : DASH)
-    keyValue(doc, 'Team', data.team ? data.team.name : DASH)
-    keyValue(doc, 'Watcher', data.watchers.length
+    keyValue(doc, pdfText(locale, 'team'), data.team ? data.team.name : DASH)
+    keyValue(doc, pdfText(locale, 'watchers'), data.watchers.length
       ? data.watchers.map((w) => w.name || w.email).join(', ')
       : DASH)
   }

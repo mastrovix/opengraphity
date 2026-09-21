@@ -9,10 +9,26 @@ vi.mock('../reportWhitelist.js', () => ({
   getReportWhitelist: vi.fn().mockResolvedValue({
     labels: new Set(['Incident', 'Team']),
     relationshipTypes: new Set(['ASSIGNED_TO_TEAM']),
+    temporalFields: new Map(),
   }),
 }))
 
-const { mapSectionRecords, executeReportSection } = await import('../reportExecutor.js')
+// Le etichette dei valori hanno il loro test (reportValueLabels.test.ts): qui
+// basta sapere che l'esecutore chiede le sorgenti giuste e usa la risposta.
+const labeler = vi.fn((_source: unknown, value: unknown) => value)
+const loadReportValueLabeler = vi.fn(async () => labeler)
+/**
+ * Le etichette delle intestazioni (ondata 6, punto 3): qui si finge la mappa
+ * vuota, così questi test restano su quello che verificano — l'esecuzione — e
+ * le intestazioni ripiegano sul nome interno, come prima.
+ */
+vi.mock('../reportFieldLabels.js', () => ({ reportFieldLabels: vi.fn(async () => new Map<string, string>()) }))
+vi.mock('../reportValueLabels.js', () => ({
+  identityLabeler: (_s: unknown, v: unknown) => v,
+  loadReportValueLabeler: (...args: unknown[]) => loadReportValueLabeler(...(args as [])),
+}))
+
+const { mapSectionRecords, executeReportSection, etichettaTemporale } = await import('../reportExecutor.js')
 const { CHART_TYPES } = await import('../reportQueryBuilder.js')
 const { getSession } = await import('@opengraphity/neo4j')
 import type { ChartType, ReportSectionDef } from '../reportQueryBuilder.js'
@@ -104,7 +120,19 @@ describe('executeReportSection', () => {
     sec.nodes[0]!.selectedFields = ['title']
     const res = await executeReportSection(sec, 't1')
     expect(res.error).toBeNull()
-    expect(JSON.parse(res.data)).toEqual({ columns: ['Incident_title'], rows: [['DB down']] })
+    // Intestazione col nome interno: la mappa delle etichette qui è vuota di
+    // proposito (ondata 6, punto 3), e senza etichetta il ripiego è il nome.
+    expect(JSON.parse(res.data)).toEqual({ columns: ['title'], rows: [['DB down']] })
+  })
+
+  it('i valori passano dalle etichette: raggruppamento e colonne con la loro sorgente', async () => {
+    sessionReturning([{ label: 'critical', value: int(2) }])
+    labeler.mockImplementation((source, value) => (source && value === 'critical' ? 'Critica' : value))
+    const res = await executeReportSection(section({ chartType: 'bar', groupByField: 'severity' }), 't1')
+    expect(res.error).toBeNull()
+    expect(JSON.parse(res.data)).toEqual([{ name: 'Critica', value: 2 }])
+    expect(loadReportValueLabeler).toHaveBeenCalledWith(expect.anything(), 't1', [{ neo4jLabel: 'Incident', field: 'severity' }], undefined)
+    labeler.mockImplementation((_s, v) => v)
   })
 
   it('unsupported chartType surfaces as the section error', async () => {
@@ -112,5 +140,36 @@ describe('executeReportSection', () => {
     const res = await executeReportSection(section({ chartType: 'gauge' }), 't1')
     expect(res.error).toContain('unsupported chartType "gauge"')
     expect(s.run).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * L'ASSE DI UNA SERIE NON DICE «[object Object]» (19 set 2026).
+ *
+ * Una data di Neo4j arriva come oggetto temporale; dopo la serializzazione
+ * JSON perde il prototipo, e `String(...)` dava «[object Object]». È quello
+ * che il proprietario ha visto sull'asse chiedendo gli incident degli ultimi
+ * sei mesi — ed era così su OGNI serie, da sempre.
+ */
+describe('etichettaTemporale', () => {
+  it('un testo resta il testo', () => {
+    expect(etichettaTemporale('2026-04-01')).toBe('2026-04-01')
+  })
+
+  it('una data che ha perso il prototipo si scrive come data', () => {
+    expect(etichettaTemporale({ year: 2026, month: 4, day: 1 })).toBe('2026-04-01')
+  })
+
+  it('i numeri «lossless» del driver si leggono', () => {
+    expect(etichettaTemporale({ year: { low: 2026, high: 0 }, month: { low: 12, high: 0 }, day: { low: 31, high: 0 } }))
+      .toBe('2026-12-31')
+  })
+
+  it('un oggetto che non è una data non diventa MAI «[object Object]»', () => {
+    expect(etichettaTemporale({ qualcosa: 1 })).toBe('{"qualcosa":1}')
+  })
+
+  it('niente resta vuoto', () => {
+    expect(etichettaTemporale(null)).toBe('')
   })
 })

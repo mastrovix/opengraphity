@@ -13,7 +13,11 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parse, validate, buildSchema, specifiedRules, type DocumentNode } from 'graphql'
+import {
+  parse, validate, buildSchema, specifiedRules, isInputObjectType,
+  type DocumentNode, type OperationDefinitionNode, type TypeNode,
+} from 'graphql'
+import { metamodelSDL } from '@opengraphity/schema-generator'
 import { buildBaseSDL } from '../schema-base.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -22,27 +26,56 @@ const webGraphql = join(here, '../../../../web/src/graphql')
 // File ITSM del frontend (query + mutation) + i file per dominio in cui è
 // stato spezzato l'ex catch-all `admin.ts` (E-17; `admin.ts` è ora un barrel
 // di soli re-export, senza documenti). I documenti CMDB usano tipi generati
-// dinamicamente e restano fuori. `mutations/ci.ts` resta fuori perché
-// CREATE_CI_TYPE/ADD_CI_FIELD/ADD_CI_RELATION… vivono nello schema del metamodello.
+// dinamicamente e restano fuori. `mutations/ci.ts` è DENTRO (B0-1): la parte
+// statica dello schema del metamodello (createCIType/addCIField/… e i loro
+// input) è esportata da @opengraphity/schema-generator come `metamodelSDL()` e
+// concatenata allo schema base qui sotto, quindi non c'è più motivo di
+// escluderlo — l'esclusione a mano è ciò che ha lasciato passare per mesi il
+// `chainFamilies` che `UpdateCITypeInput` non dichiarava.
 // `fragments.ts` non è nell'elenco: un documento di soli fragment non valida
 // da solo (NoUnusedFragments); i fragment vengono validati inlined nei
 // documenti che li interpolano (vedi resolveInterpolations).
-const FILES = [
-  'queries/incident.ts', 'queries/problem.ts', 'queries/change.ts',
-  'queries/ci.ts', 'queries/workflow.ts',
-  'mutations/incident.ts', 'mutations/problem.ts', 'mutations/change.ts',
-  'mutations/workflow.ts',
-  // ex queries/admin.ts
-  'queries/users.ts', 'queries/teams.ts', 'queries/reports.ts', 'queries/dashboard.ts',
-  'queries/anomaly.ts', 'queries/enum.ts', 'queries/notifications.ts', 'queries/queue.ts',
-  'queries/rules.ts', 'queries/automation.ts', 'queries/sla.ts', 'queries/collaboration.ts',
-  'queries/whatIf.ts', 'queries/catalog.ts',
-  // ex mutations/admin.ts
-  'mutations/serviceRequest.ts', 'mutations/teams.ts', 'mutations/reports.ts', 'mutations/dashboard.ts',
-  'mutations/notifications.ts', 'mutations/itil.ts', 'mutations/enum.ts', 'mutations/queue.ts',
-  'mutations/rules.ts', 'mutations/automation.ts', 'mutations/sla.ts', 'mutations/collaboration.ts',
-  'mutations/catalog.ts',
-]
+/**
+ * I FILE si contano dalla cartella, non a mano (revisione totale · F-41).
+ *
+ * Questo elenco era scritto a mano, e quattro file per dominio
+ * (`domainMatrix`, `organization`, `roles`, `slack`, `customFields`) non ci
+ * erano mai entrati: i loro documenti non erano coperti da nessun controllo.
+ * Un elenco a mano si dimentica; una cartella no. Le esclusioni restano, ma
+ * ognuna dichiara il suo perche.
+ */
+const ESCLUSI_PER_FILE: Readonly<Record<string, string>> = {
+  // Un documento di soli fragment non valida da solo (NoUnusedFragments): i
+  // fragment sono validati inlined nei documenti che li interpolano.
+  'fragments.ts': 'solo fragment',
+  // Barrel di re-export: nessun documento proprio.
+  'queries/index.ts':   're-export',
+  'mutations/index.ts': 're-export',
+  'queries.ts':         're-export',
+  'mutations.ts':       're-export',
+  'queries/admin.ts':   're-export (ex catch-all, spezzato per dominio)',
+  'mutations/admin.ts': 're-export (ex catch-all, spezzato per dominio)',
+}
+
+/** Tutti i .ts di graphql/ (ricorsivo), con il percorso relativo a quella cartella. */
+function documentFiles(): string[] {
+  const out: string[] = []
+  const visita = (dir: string, prefix: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.isDirectory()) {
+        if (entry.name === '__tests__') continue
+        visita(join(dir, entry.name), rel)
+      } else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts') && !ESCLUSI_PER_FILE[rel]) {
+        out.push(rel)
+      }
+    }
+  }
+  visita(webGraphql, '')
+  return out
+}
+
+const FILES = documentFiles()
 
 // Documenti admin esclusi ESPLICITAMENTE, con motivo. Ogni nuova esclusione
 // deve dichiarare il perché — mai un'allowlist "a prescindere".
@@ -93,10 +126,12 @@ function extractDocuments(source: string): Array<{ name: string; doc: DocumentNo
   return out
 }
 
-// Solo lo schema base: i tipi CI concreti sono generati dal metamodello, ma i
-// documenti ITSM selezionano campi dell'interfaccia CIBase (che è nel base SDL)
-// e un'interfaccia senza implementazioni è uno schema valido per validate().
-const schema = buildSchema(buildBaseSDL())
+// Schema base + parte STATICA del metamodello: i tipi CI concreti sono
+// generati per tenant, ma i documenti ITSM selezionano campi dell'interfaccia
+// CIBase (che è nel base SDL) e un'interfaccia senza implementazioni è uno
+// schema valido per validate(). `metamodelSDL()` aggiunge le mutation del
+// disegnatore dei tipi CI e i loro input (B0-1).
+const schema = buildSchema(buildBaseSDL() + metamodelSDL())
 
 // Regola "variabile non usata": graphql-js la include già (NoUnusedVariablesRule).
 const rules = specifiedRules
@@ -129,5 +164,305 @@ describe('documenti GraphQL del web ITSM ↔ schema API', () => {
   it('ogni documento in EXCLUDED_DOCUMENTS esiste davvero (niente esclusioni fantasma)', () => {
     const all = new Set(FILES.flatMap((rel) => extractDocuments(readFileSync(join(webGraphql, rel), 'utf8')).map((d) => d.name)))
     for (const name of Object.keys(EXCLUDED_DOCUMENTS)) expect(all.has(name), name).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Parte 2 (B0-1): le VARIABILI passate dal web ↔ gli input dello schema.
+//
+// Il buco che ha fatto passare A-7: il documento `UPDATE_CI_TYPE` era valido
+// (`$input: UpdateCITypeInput!` esiste), ma la pagina metteva dentro l'oggetto
+// una chiave — `chainFamilies` — che quell'input non dichiarava. Nessun
+// controllo statico la vedeva e Apollo rifiutava OGNI salvataggio a runtime.
+// Qui i siti di chiamata del web vengono letti dal sorgente: le chiavi
+// letterali dell'oggetto `variables` devono essere variabili dichiarate dal
+// documento, e le chiavi letterali di un oggetto passato a una variabile di
+// tipo input devono essere campi di quell'input.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const webSrc = join(here, '../../../../web/src')
+
+/** Tutti i .ts/.tsx sotto una cartella. */
+function walk(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name)
+    if (entry.isDirectory()) walk(p, out)
+    else if (/\.tsx?$/.test(entry.name)) out.push(p)
+  }
+  return out
+}
+
+/** Indice nome documento → documento GraphQL, su TUTTI i file di graphql/. */
+function indexAllDocuments(): Map<string, DocumentNode> {
+  const index = new Map<string, DocumentNode>()
+  for (const file of walk(webGraphql)) {
+    const source = readFileSync(file, 'utf8')
+    const local = collectTemplates(source)
+    const re = /export const (\w+) = gql`([\s\S]*?)`/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(source)) !== null) {
+      const name = m[1]!
+      // Un documento di soli fragment non è un'operazione: lo salta.
+      const doc = parse(resolveInterpolations(m[2]!, local, name))
+      if (doc.definitions.some((d) => d.kind === 'OperationDefinition')) index.set(name, doc)
+    }
+  }
+  return index
+}
+
+/** Indice dell'ultima `}` che chiude la `{` all'indice `open`. */
+function matchBrace(src: string, open: number): number {
+  let depth = 0
+  let quote: string | null = null
+  for (let i = open; i < src.length; i++) {
+    const c = src[i]!
+    if (quote) {
+      if (c === '\\') { i++; continue }
+      if (c === quote) quote = null
+      continue
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; continue }
+    if (c === '{' || c === '[' || c === '(') depth++
+    else if (c === '}' || c === ']' || c === ')') { depth--; if (depth === 0) return i }
+  }
+  return -1
+}
+
+interface Entry { key: string | null; value: string }
+
+/**
+ * Voci di primo livello di un oggetto letterale (`body` senza le graffe
+ * esterne). `key: null` = spread o chiave calcolata: non verificabile
+ * staticamente, e viene saltata invece di essere indovinata.
+ */
+function objectEntries(body: string): Entry[] {
+  const out: Entry[] = []
+  let depth = 0
+  let quote: string | null = null
+  let start = 0
+  const push = (chunk: string) => {
+    const s = chunk.trim()
+    if (!s) return
+    if (s.startsWith('...')) { out.push({ key: null, value: s }); return }
+    const m = /^(?:(['"])([\w$]+)\1|([A-Za-z_$][\w$]*))\s*:([\s\S]*)$/.exec(s)
+    if (!m) { out.push({ key: null, value: s }); return }   // shorthand / computed
+    out.push({ key: m[2] ?? m[3]!, value: (m[4] ?? '').trim() })
+  }
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i]!
+    if (quote) {
+      if (c === '\\') { i++; continue }
+      if (c === quote) quote = null
+      continue
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; continue }
+    if (c === '{' || c === '[' || c === '(') depth++
+    else if (c === '}' || c === ']' || c === ')') depth--
+    else if (c === ',' && depth === 0) { push(body.slice(start, i)); start = i + 1 }
+  }
+  push(body.slice(start))
+  return out
+}
+
+/** Nome del tipo nudo di una variabile GraphQL (`[String!]!` → `String`). */
+function namedType(t: TypeNode): string {
+  return t.kind === 'NamedType' ? t.name.value : namedType(t.type)
+}
+
+/** Corpo di un oggetto letterale senza le graffe esterne. */
+function objectBody(literal: string): string {
+  return literal.slice(1, -1)
+}
+
+interface CallSite { file: string; hook: string; docName: string; variables: string }
+
+/**
+ * Siti di chiamata `NOME({ variables: { … } })` dove NOME è legato a un
+ * documento via useMutation/useQuery/useLazyQuery, più le `useQuery(DOC, {
+ * variables: … })` inline.
+ */
+function collectCallSites(): CallSite[] {
+  const sites: CallSite[] = []
+  for (const file of walk(webSrc)) {
+    if (file.includes('/graphql/')) continue
+    const src = readFileSync(file, 'utf8')
+
+    // 1. useQuery/useMutation(DOC, { variables: {…} }) — variabili inline
+    const inline = /use(?:Lazy)?(?:Query|Mutation|Subscription)\s*(?:<[\s\S]*?>)?\s*\(\s*([A-Z][A-Z0-9_]*)\s*,/g
+    let m: RegExpExecArray | null
+    while ((m = inline.exec(src)) !== null) {
+      const open = src.indexOf('{', m.index + m[0].length - 1)
+      if (open === -1) continue
+      const close = matchBrace(src, open)
+      if (close === -1) continue
+      const options = src.slice(open + 1, close)
+      const varsEntry = objectEntries(options).find((e) => e.key === 'variables')
+      if (varsEntry && varsEntry.value.startsWith('{')) {
+        sites.push({ file, hook: m[1]!, docName: m[1]!, variables: objectBody(varsEntry.value) })
+      }
+    }
+
+    // 2. const [fn] = useMutation(DOC …) → fn({ variables: {…} })
+    const bound = /const\s*\[\s*([A-Za-z_$][\w$]*)[^\]]*\]\s*=\s*use(?:Lazy)?(?:Query|Mutation)\s*(?:<[\s\S]*?>)?\s*\(\s*([A-Z][A-Z0-9_]*)/g
+    const bindings = new Map<string, string>()
+    while ((m = bound.exec(src)) !== null) bindings.set(m[1]!, m[2]!)
+    for (const [fn, docName] of bindings) {
+      const callRe = new RegExp(`\\b${fn}\\s*\\(\\s*\\{`, 'g')
+      while ((m = callRe.exec(src)) !== null) {
+        const open = src.indexOf('{', m.index + m[0].length - 1)
+        const close = matchBrace(src, open)
+        if (close === -1) continue
+        const varsEntry = objectEntries(src.slice(open + 1, close)).find((e) => e.key === 'variables')
+        if (varsEntry && varsEntry.value.startsWith('{')) {
+          sites.push({ file, hook: fn, docName, variables: objectBody(varsEntry.value) })
+        }
+      }
+    }
+  }
+  return sites
+}
+
+describe('variabili delle chiamate del web ↔ input dello schema API', () => {
+  const documents = indexAllDocuments()
+  const sites = collectCallSites()
+
+  it('trova documenti e siti di chiamata (se questo scende a zero, il controllo non controlla più nulla)', () => {
+    expect(documents.size).toBeGreaterThan(100)
+    expect(sites.length).toBeGreaterThan(30)
+  })
+
+  it('ogni chiave letterale passata in `variables` è una variabile dichiarata dal documento', () => {
+    const problems: string[] = []
+    for (const site of sites) {
+      const doc = documents.get(site.docName)
+      if (!doc) continue   // documento non nel web/graphql (import esterno): niente da confrontare
+      const op = doc.definitions.find((d): d is OperationDefinitionNode => d.kind === 'OperationDefinition')!
+      const declared = new Set((op.variableDefinitions ?? []).map((v) => v.variable.name.value))
+      for (const entry of objectEntries(site.variables)) {
+        if (entry.key === null) continue
+        if (!declared.has(entry.key)) {
+          problems.push(`${site.file.replace(webSrc, 'web/src')}: ${site.hook} → ${site.docName} passa "${entry.key}", non dichiarata (dichiarate: ${[...declared].join(', ') || 'nessuna'})`)
+        }
+      }
+    }
+    expect(problems).toEqual([])
+  })
+
+  it('ogni chiave letterale di un oggetto passato a una variabile di tipo input è un campo di quell\'input', () => {
+    const problems: string[] = []
+    for (const site of sites) {
+      const doc = documents.get(site.docName)
+      if (!doc) continue
+      const op = doc.definitions.find((d): d is OperationDefinitionNode => d.kind === 'OperationDefinition')!
+      const byName = new Map((op.variableDefinitions ?? []).map((v) => [v.variable.name.value, namedType(v.type)]))
+      for (const entry of objectEntries(site.variables)) {
+        if (entry.key === null || !entry.value.startsWith('{')) continue
+        const typeName = byName.get(entry.key)
+        if (!typeName) continue   // già segnalato dal test precedente
+        const type = schema.getType(typeName)
+        // I tipi input generati per tenant dal metamodello (Create<Tipo>Input)
+        // non stanno nello schema statico: fuori perimetro, non un errore.
+        if (!type || !isInputObjectType(type)) continue
+        const fields = type.getFields()
+        for (const field of objectEntries(objectBody(entry.value))) {
+          if (field.key === null) continue
+          if (!(field.key in fields)) {
+            problems.push(`${site.file.replace(webSrc, 'web/src')}: ${site.hook} → ${site.docName}, $${entry.key} (${typeName}) non ha il campo "${field.key}"`)
+          }
+        }
+      }
+    }
+    expect(problems).toEqual([])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Parte 3 (revisione totale · F-41): i documenti gql INLINE, fuori da
+// `graphql/`.
+//
+// Ottantotto documenti vivono dentro le pagine e i componenti — `useSyncPage`,
+// `ApprovalsPage`, `GlobalSearch`, `NotificationPanel`, `LogsPage`, … — e
+// nessun controllo li guardava: validavano tutti, ma per caso, e il prossimo
+// campo sbagliato si sarebbe visto solo a runtime, dal cliente. Qui passano
+// dalla stessa validazione dei documenti di `graphql/`.
+//
+// Perimetro dichiarato: si valida quello che lo schema STATICO può giudicare.
+// Un documento che nomina un tipo generato per tenant (i tipi CI del
+// metamodello del cliente) non è un errore di contratto — è fuori da questo
+// schema — e viene contato a parte, non ignorato in silenzio.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('documenti gql inline del web ↔ schema API (F-41)', () => {
+  /** Documenti COSTRUITI a runtime dal metamodello del cliente: fuori perimetro, ma contati. */
+  const composti: string[] = []
+
+  /** Ogni `gql` dentro apps/web/src fuori da graphql/, con il suo nome. */
+  function inlineDocuments(): Array<{ file: string; name: string; doc: DocumentNode }> {
+    const out: Array<{ file: string; name: string; doc: DocumentNode }> = []
+    for (const file of walk(webSrc)) {
+      if (file.startsWith(webGraphql)) continue
+      if (/\.test\.tsx?$/.test(file)) continue
+      const source = readFileSync(file, 'utf8')
+      if (!source.includes('gql`')) continue
+      const local = collectTemplates(source)
+      // `const NOME = gql`…`` anche NON esportato: un documento inline non si esporta.
+      const re = /(?:const|let)\s+(\w+)\s*=\s*gql`([\s\S]*?)`/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(source)) !== null) {
+        const name = m[1]!
+        let doc: DocumentNode
+        try {
+          doc = parse(resolveInterpolations(m[2]!, local, name))
+        } catch (e) {
+          /**
+           * Un documento COMPOSTO a runtime (le pagine della CMDB mettono nel
+           * testo il nome PascalCase del tipo CI del cliente:
+           * `query { ${pascal}s { … } }`) non esiste finché non si conosce il
+           * tenant, e non si può validare qui. Non è un errore: si conta.
+           * Un documento che non si parsa per ALTRI motivi sì.
+           */
+          const msg = e instanceof Error ? e.message : String(e)
+          if (/interpolazione .* non risolvibile/.test(msg)) {
+            composti.push(`${file.replace(webSrc, 'web/src')} › ${name}`)
+            continue
+          }
+          throw new Error(`${file.replace(webSrc, 'web/src')} › ${name}: ${msg}`)
+        }
+        if (doc.definitions.some((d) => d.kind === 'OperationDefinition')) out.push({ file, name, doc })
+      }
+    }
+    return out
+  }
+
+  const inline = inlineDocuments()
+
+  it('ce ne sono, e il controllo li vede (se questo numero crolla, la regex è rotta)', () => {
+    expect(inline.length).toBeGreaterThan(40)
+  })
+
+  /**
+   * I documenti composti col metamodello del cliente restano pochi e
+   * dichiarati: se diventano molti, il contratto si sta spostando fuori da
+   * qualunque controllo.
+   */
+  it('i documenti composti a runtime sono pochi e nominati', () => {
+    expect(composti.length).toBeLessThan(10)
+  })
+
+  it('ogni documento inline valida contro lo schema statico', () => {
+    const problems: string[] = []
+    for (const { file, name, doc } of inline) {
+      const errors = validate(schema, doc, rules)
+      if (errors.length === 0) continue
+      /**
+       * Un tipo o un campo che lo schema statico non conosce perché è
+       * GENERATO per tenant (i tipi CI del cliente): fuori perimetro. Si
+       * riconosce dal messaggio di graphql-js, e si CONTA — non si nasconde.
+       */
+      const dinamici = errors.every((e) => /Unknown type|Cannot query field/.test(e.message) && /CI|Ci[A-Z]/.test(e.message))
+      if (dinamici) continue
+      problems.push(`${file.replace(webSrc, 'web/src')} › ${name}: ${errors.map((e) => e.message).join('; ')}`)
+    }
+    expect(problems).toEqual([])
   })
 })

@@ -1,10 +1,11 @@
 import { useId, useState, useEffect } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { toast } from 'sonner'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
+import i18n from '@/i18n/i18n'
 import { useMutationWithToast } from '@/hooks/useMutationWithToast'
 import { useConfirm } from '@/hooks/useConfirm'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, colors, palette } from '@/lib/tokens'
 import { HelpCircle, Plus, Trash2, X, ChevronUp, ChevronDown } from 'lucide-react'
 import { PageContainer } from '@/components/PageContainer'
 import { PageTitle } from '@/components/PageTitle'
@@ -70,18 +71,28 @@ const labelStyle: React.CSSProperties = {
 }
 
 const CATEGORY_COLORS: Record<string, { bg: string; color: string }> = {
-  functional: { bg: '#dbeafe', color: '#2563eb' },
-  technical:  { bg: '#dcfce7', color: 'var(--color-success)' },
+  functional: { bg: palette.info.tint, color: colors.brand },
+  technical:  { bg: palette.success.tint, color: 'var(--color-success)' },
 }
 
 function CategoryBadge({ category }: { category: string }) {
   // Unknown category → visible red pill + console error, not a benign grey.
-  const s = lookupOrError(CATEGORY_COLORS, category, 'CATEGORY_COLORS', { bg: 'var(--color-danger)', color: '#fff' })
+  const s = lookupOrError(CATEGORY_COLORS, category, 'CATEGORY_COLORS', { bg: 'var(--color-danger)', color: colors.white })
   return (
     <Pill bg={s.bg} color={s.color} style={{ fontSize: 'var(--font-size-label)', textTransform: 'uppercase' }}>
-      {category}
+      {categoriaTradotta(category)}
     </Pill>
   )
+}
+
+/**
+ * La categoria di una domanda nella lingua di chi guarda (20 set 2026, dal
+ * giro nel browser): la pastiglia diceva «FUNCTIONAL» sopra i filtri che
+ * dicono «Funzionale» — lo stesso valore, due lingue, nella stessa schermata.
+ * Le parole ci sono già (`changeTasks.*`, le usa il dettaglio della change).
+ */
+function categoriaTradotta(category: string): string {
+  return i18n.exists(`changeTasks.${category}`) ? i18n.t(`changeTasks.${category}`) : category
 }
 
 /**
@@ -162,7 +173,7 @@ export function QuestionAdminPage() {
 
   // Errors → toast with the server message (useMutationWithToast).
   const [createQuestion] = useMutationWithToast<{ createAssessmentQuestion: { id: string } }>(CREATE_QUESTION, {
-    successMessage: 'Domanda creata',
+    successMessage: t('admin.questions.created'),
     onSuccess: (data) => {
       void refetchQuestions().then(() => {
         if (data?.createAssessmentQuestion?.id) setSelectedId(data.createAssessmentQuestion.id)
@@ -171,10 +182,10 @@ export function QuestionAdminPage() {
     },
   })
   const [updateQuestion] = useMutationWithToast(UPDATE_QUESTION, {
-    successMessage: 'Domanda aggiornata', refetch: refetchQuestions,
+    successMessage: t('admin.questions.updated'), refetch: refetchQuestions,
   })
   const [deleteQuestion] = useMutationWithToast(DELETE_QUESTION, {
-    successMessage: 'Domanda eliminata', onSuccess: () => setSelectedId(null), refetch: refetchQuestions,
+    successMessage: t('admin.questions.deleted'), onSuccess: () => setSelectedId(null), refetch: refetchQuestions,
   })
   const [assignToCIType, { loading: assigning }] = useMutationWithToast(ASSIGN_QUESTION_TO_CITYPE, {
     refetch: refetchAssignments,
@@ -203,7 +214,8 @@ export function QuestionAdminPage() {
   const handleSave = () => {
     if (!text.trim()) { toast.error(t('toast.question.textRequired')); return }
     if (options.length === 0) { toast.error(t('toast.question.optionRequired')); return }
-    const optInput = options.map(o => ({ label: o.label, score: o.score, sortOrder: o.sortOrder }))
+    // L'id delle opzioni che esistono già viaggia con la modifica: le risposte date restano (revisione totale · B-2).
+    const optInput = options.map(o => ({ ...(o.id ? { id: o.id } : {}), label: o.label, score: o.score, sortOrder: o.sortOrder }))
     if (isNew) {
       void createQuestion({ variables: { input: { text: text.trim(), category, isCore, options: optInput } } })
     } else if (selectedId) {
@@ -241,32 +253,34 @@ export function QuestionAdminPage() {
 
   return (
     <PageContainer>
-      <PageTitle icon={<HelpCircle size={22} color="var(--color-brand)" />}>
-        Assessment Questions
+      <PageTitle icon={<HelpCircle size={22} color="var(--color-icon-accent)" />}>
+        {t('sidebar.assessmentQuestions')}
       </PageTitle>
       <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: '4px 0 20px' }}>
-        Gestisci le domande usate nell'assessment dei change RFC e la loro assegnazione ai tipi di CI.
+        {t('pages.questions.subtitle')}
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 20, alignItems: 'start' }}>
 
         {/* Left: question list */}
-        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+        <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', color: 'var(--color-slate-dark)' }}>
-              Domande ({questions.length}{filterCat && questions.length !== allQuestions.length ? ` / ${allQuestions.length}` : ''})
+              {filterCat && questions.length !== allQuestions.length
+                ? t('admin.questions.headerFiltered', { shown: questions.length, total: allQuestions.length })
+                : t('admin.questions.header', { count: questions.length })}
             </h3>
             <button
               type="button"
               onClick={handleNew}
               style={{
                 padding: '6px 12px', borderRadius: 6, border: 'none',
-                background: 'var(--color-brand)', color: '#fff',
+                background: 'var(--color-brand)', color: colors.white,
                 fontSize: 'var(--font-size-body)', fontWeight: 600, cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 4,
               }}
             >
-              <Plus size={14} /> Nuova
+              <Plus size={14} /> {t('pages.questions.new')}
             </button>
           </div>
 
@@ -275,9 +289,9 @@ export function QuestionAdminPage() {
             onChange={e => setFilterCat(e.target.value)}
             style={{ ...inputStyle, marginBottom: 12 }}
           >
-            <option value="">Tutte le categorie</option>
-            <option value="functional">Functional</option>
-            <option value="technical">Technical</option>
+            <option value="">{t('pages.questions.allCategories')}</option>
+            <option value="functional">{t('changeTasks.functional')}</option>
+            <option value="technical">{t('changeTasks.technical')}</option>
           </select>
 
           <div style={{ maxHeight: 600, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -295,7 +309,7 @@ export function QuestionAdminPage() {
                     borderRadius: 8,
                     border: active ? '1.5px solid var(--color-brand)' : '1px solid var(--border)',
                     cursor: 'pointer',
-                    background: active ? 'var(--color-brand-light)' : '#fff',
+                    background: active ? 'var(--color-brand-light)' : colors.white,
                   }}
                 >
                   <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', marginBottom: 6, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
@@ -304,32 +318,32 @@ export function QuestionAdminPage() {
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     <CategoryBadge category={q.category} />
                     {q.isCore && (
-                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#f1f5f9', color: 'var(--color-slate)' }}>CORE</span>
+                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: colors.slateBg, color: 'var(--color-slate)' }}>{t('pages.questionAdmin.coreBadge')}</span>
                     )}
                     {!q.isActive && (
-                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: '#fee2e2', color: '#b91c1c' }}>INATTIVA</span>
+                      <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: palette.danger.tint, color: palette.danger.text }}>{t('pages.questionAdmin.inactiveBadge')}</span>
                     )}
                   </div>
                 </button>
               )
             })}
             {questions.length === 0 && (
-              <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>Nessuna domanda</p>
+              <p style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('pages.questions.empty')}</p>
             )}
           </div>
         </div>
 
         {/* Right: editor panel */}
-        <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
+        <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
           {!selectedId && !isNew && (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-slate-light)' }}>
-              Seleziona una domanda o creane una nuova
+              {t('pages.questions.pickOne')}
             </div>
           )}
           {(selectedId || isNew) && (
             <>
               <div style={{ marginBottom: 16 }}>
-                <label htmlFor={ids.text} style={labelStyle}>Testo</label>
+                <label htmlFor={ids.text} style={labelStyle}>{t('pages.questions.text')}</label>
                 <textarea
                   id={ids.text}
                   value={text}
@@ -339,26 +353,26 @@ export function QuestionAdminPage() {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div className="og-pair" style={{ marginBottom: 16 }}>
                 <div>
-                  <label htmlFor={ids.category} style={labelStyle}>Categoria</label>
-                  <select id={ids.category} value={category} onChange={e => setCategory(e.target.value as QuestionCategoryKey)} style={inputStyle} title="Categoria della domanda">
+                  <label htmlFor={ids.category} style={labelStyle}>{t('pages.serviceCatalogAdmin.category')}</label>
+                  <select id={ids.category} value={category} onChange={e => setCategory(e.target.value as QuestionCategoryKey)} style={inputStyle} title={t('pages.questions.categoryTitle')}>
                     {Object.values(QUESTION_CATEGORY).map((v) => (
-                      <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>
+                      <option key={v} value={v}>{categoriaTradotta(v)}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <div style={labelStyle}>Flags</div>
+                  <div style={labelStyle}>{t('pages.questions.flags')}</div>
                   <div style={{ display: 'flex', gap: 16, paddingTop: 8 }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
                       <input type="checkbox" checked={isCore} onChange={e => handleToggleCore(e.target.checked)} />
-                      Core
+                      {t('pages.questions.core')}
                     </label>
                     {!isNew && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
                         <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} />
-                        Attiva
+                        {t('pages.serviceCatalogAdmin.active')}
                       </label>
                     )}
                   </div>
@@ -368,17 +382,17 @@ export function QuestionAdminPage() {
               {/* CIType assignments — visibile direttamente quando Core è OFF */}
               {!isCore && (
                 <div style={{ marginBottom: 16 }}>
-                  <div style={labelStyle}>Assegnazioni CI Type</div>
+                  <div style={labelStyle}>{t('pages.questions.ciTypeAssignments')}</div>
                   {isNew ? (
                     <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: 0, padding: '8px 0' }}>
-                      Salva la domanda per poterla assegnare a CI Type specifici.
+                      {t('pages.questions.saveFirst')}
                     </p>
                   ) : (
                     ciTypes.map(ct => {
                       const assign = assignments.find(a => a.ciTypeId === ct.id)
                       const assigned = !!assign
                       return (
-                        <div key={ct.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
+                        <div key={ct.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
                           <input
                             type="checkbox"
                             checked={assigned}
@@ -399,14 +413,14 @@ export function QuestionAdminPage() {
                                 min={1}
                                 disabled={assignmentBusy}
                                 onCommit={w => void assignToCIType({ variables: { questionId: selectedId, ciTypeId: ct.id, weight: w, sortOrder: assign.sortOrder } })}
-                                title="Weight"
+                                title={t('pages.questions.weight')}
                               />
                               <CommitNumberInput
                                 value={assign.sortOrder}
                                 min={0}
                                 disabled={assignmentBusy}
                                 onCommit={s => void assignToCIType({ variables: { questionId: selectedId, ciTypeId: ct.id, weight: assign.weight, sortOrder: s } })}
-                                title="Sort order"
+                                title={t('pages.questions.sortOrder')}
                               />
                             </>
                           )}
@@ -418,16 +432,16 @@ export function QuestionAdminPage() {
               )}
 
               {isCore && !isNew && (
-                <div style={{ marginBottom: 16, padding: 10, background: '#f1f5f9', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-                  Questa domanda è <strong>core</strong>: assegnata automaticamente a tutti i CI Type attivi.
+                <div style={{ marginBottom: 16, padding: 10, background: colors.slateBg, borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
+                  <Trans i18nKey="pages.questions.coreNote" components={{ b: <strong /> }} />
                 </div>
               )}
 
               <div style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ ...labelStyle, marginBottom: 0 }}>Opzioni</div>
+                  <div style={{ ...labelStyle, marginBottom: 0 }}>{t('pages.questions.options')}</div>
                   <button type="button" onClick={addOption} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-brand)', fontSize: 'var(--font-size-body)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <Plus size={12} /> Aggiungi
+                    <Plus size={12} /> {t('pages.questions.add')}
                   </button>
                 </div>
                 {options.map((opt, i) => (
@@ -436,47 +450,71 @@ export function QuestionAdminPage() {
                       type="text"
                       value={opt.label}
                       onChange={e => updateOption(i, { label: e.target.value })}
-                      placeholder="Label"
+                      placeholder={t('pages.questions.optionLabel')}
+                      aria-label={t('pages.questions.optionLabelFor', { n: i + 1 })}
                       style={{ ...inputStyle, flex: 2 }}
                     />
+                    {/*
+                      `min={1}`: nessuna risposta puo valere 0 (terza revisione).
+                      Il server lo rifiuta in `assertQuestionUsable`, e il campo
+                      non deve nemmeno offrirlo. `|| 1` e non `|| 0` perche un
+                      campo svuotato deve tornare al minimo valido, non a un
+                      valore che il salvataggio poi rifiuta.
+                    */}
                     <input
                       type="number"
+                      min={1}
+                      step={1}
                       value={opt.score}
-                      onChange={e => updateOption(i, { score: parseInt(e.target.value, 10) || 0 })}
-                      placeholder="Score"
+                      onChange={e => updateOption(i, { score: parseInt(e.target.value, 10) || 1 })}
+                      placeholder={t('pages.questions.optionScore')}
+                      aria-label={t('pages.questions.optionScoreFor', { n: i + 1 })}
                       style={{ ...inputStyle, width: 90 }}
                     />
-                    <button type="button" onClick={() => moveOption(i, -1)} disabled={i === 0} style={{ background: 'none', border: '1px solid var(--border)', cursor: i === 0 ? 'not-allowed' : 'pointer', padding: 6, borderRadius: 4 }}>
-                      <ChevronUp size={12} />
+                    {/*
+                      I tre comandi avevano SOLO l'icona: nessun `aria-label`,
+                      nessun `title`. Un lettore di schermo non annunciava
+                      niente — e nemmeno io, guidando il browser, capivo cosa
+                      facessero. Nel Dizionario gli stessi comandi hanno le
+                      etichette; qui mancavano.
+                    */}
+                    <button type="button" onClick={() => moveOption(i, -1)} disabled={i === 0}
+                      aria-label={t('pages.questions.moveOptionUp', { n: i + 1 })}
+                      style={{ background: 'none', border: '1px solid var(--border)', cursor: i === 0 ? 'not-allowed' : 'pointer', padding: 6, borderRadius: 4 }}>
+                      <ChevronUp size={12} aria-hidden="true" />
                     </button>
-                    <button type="button" onClick={() => moveOption(i, 1)} disabled={i === options.length - 1} style={{ background: 'none', border: '1px solid var(--border)', cursor: i === options.length - 1 ? 'not-allowed' : 'pointer', padding: 6, borderRadius: 4 }}>
-                      <ChevronDown size={12} />
+                    <button type="button" onClick={() => moveOption(i, 1)} disabled={i === options.length - 1}
+                      aria-label={t('pages.questions.moveOptionDown', { n: i + 1 })}
+                      style={{ background: 'none', border: '1px solid var(--border)', cursor: i === options.length - 1 ? 'not-allowed' : 'pointer', padding: 6, borderRadius: 4 }}>
+                      <ChevronDown size={12} aria-hidden="true" />
                     </button>
-                    <button type="button" onClick={() => removeOption(i)} style={{ background: 'none', border: '1px solid #fecaca', color: 'var(--color-danger)', cursor: 'pointer', padding: 6, borderRadius: 4 }}>
-                      <X size={12} />
+                    <button type="button" onClick={() => removeOption(i)}
+                      aria-label={t('pages.questions.removeOption', { n: i + 1 })}
+                      style={{ background: 'none', border: `1px solid ${palette.danger.border}`, color: 'var(--color-danger)', cursor: 'pointer', padding: 6, borderRadius: 4 }}>
+                      <X size={12} aria-hidden="true" />
                     </button>
                   </div>
                 ))}
               </div>
 
               {/* Actions */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f3f4f6', paddingTop: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${palette.neutral.borderLight}`, paddingTop: 16 }}>
                 {!isNew && selectedId && (
                   <button
                     type="button"
                     onClick={handleDelete}
-                    style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid var(--color-danger)', background: '#fff', color: 'var(--color-danger)', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                    style={{ padding: '8px 16px', borderRadius: 8, border: '1.5px solid var(--color-danger)', background: colors.white, color: 'var(--color-danger)', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
                   >
-                    <Trash2 size={14} /> Elimina
+                    <Trash2 size={14} /> {t('common.delete')}
                   </button>
                 )}
                 <div style={{ marginLeft: 'auto' }}>
                   <button
                     type="button"
                     onClick={handleSave}
-                    style={{ padding: '8px 24px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: '#fff', fontWeight: 600, cursor: 'pointer' }}
+                    style={{ padding: '8px 24px', borderRadius: 8, border: 'none', background: 'var(--color-brand)', color: colors.white, fontWeight: 600, cursor: 'pointer' }}
                   >
-                    Salva
+                    {t('common.save')}
                   </button>
                 </div>
               </div>

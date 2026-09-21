@@ -16,6 +16,7 @@ import { CreateProblemPage } from '@/pages/problems/CreateProblemPage'
 import { ChangeListPage } from '@/pages/changes/ChangeListPage'
 import { CreateChangePage } from '@/pages/changes/CreateChangePage'
 import { ChangeDetailPage } from '@/pages/changes/ChangeDetailPage'
+import { ChangeCalendarPage } from '@/pages/changes/ChangeCalendarPage'
 import { TaskViewPage } from '@/pages/tasks/TaskViewPage'
 import { MyTasksPage } from '@/pages/MyTasksPage'
 import { QuestionAdminPage } from '@/pages/admin/QuestionAdminPage'
@@ -30,8 +31,22 @@ function CIDetailRedirect({ typeName }: { typeName: string }) {
   const { id } = useParams<{ id: string }>()
   return <Navigate to={`/ci/${typeName}/${id}`} replace />
 }
+// /cis/:id (link delle notifiche senza il tipo) → /ci/:typeName/:id.
+import { CIByIdRedirect } from '@/pages/ci/CIByIdRedirect'
 const WhatIfPage = lazy(() => import('@/pages/analysis/WhatIfPage').then(m => ({ default: m.WhatIfPage })))
 import { AnomalyPage } from '@/pages/anomaly/AnomalyPage'
+const ProposalsPage = lazy(() => import('@/pages/proposals/ProposalsPage').then(m => ({ default: m.ProposalsPage })))
+const DailyWorkPage = lazy(() => import('@/pages/proposals/DailyWorkPage').then(m => ({ default: m.DailyWorkPage })))
+import { AnomalyRulesPage } from '@/pages/anomaly/AnomalyRulesPage'
+import { EventsPage } from '@/pages/events/EventsPage'
+import { EventDetailPage } from '@/pages/events/EventDetailPage'
+import { EventPolicyPage } from '@/pages/settings/EventPolicyPage'
+import { MonitoringSourcesPage } from '@/pages/monitoring/MonitoringSourcesPage'
+import { CIHealthPage } from '@/pages/monitoring/CIHealthPage'
+import { ServicesPage } from '@/pages/monitoring/ServicesPage'
+import { ServiceDetailPage } from '@/pages/monitoring/ServiceDetailPage'
+import { NewSourceWizard } from '@/pages/monitoring/NewSourceWizard'
+import { EditSourcePage } from '@/pages/monitoring/EditSourcePage'
 const TopologyPage = lazy(() => import('@/pages/topology/TopologyPage').then(m => ({ default: m.TopologyPage })))
 import { WorkflowListPage }     from '@/pages/workflow/WorkflowListPage'
 const WorkflowDesignerPage = lazy(() => import('@/pages/workflow/WorkflowDesignerPage').then(m => ({ default: m.WorkflowDesignerPage })))
@@ -39,7 +54,11 @@ import NotificationsPage from '@/pages/settings/NotificationsPage'
 import NotificationRulesPage from '@/pages/settings/NotificationRulesPage'
 import { CITypeDesignerPage } from '@/pages/settings/CITypeDesignerPage'
 import { ITILTypeDesignerPage } from '@/pages/settings/ITILTypeDesignerPage'
+import { CatalogFormsPage } from '@/pages/settings/CatalogFormsPage'
 import { EnumDesignerPage }     from '@/pages/settings/EnumDesignerPage.js'
+import { ConfigurationDiagnosticsPage } from '@/pages/settings/ConfigurationDiagnosticsPage'
+import { OrganizationPage }     from '@/pages/settings/OrganizationPage'
+import { DomainMatricesPage }   from '@/pages/settings/DomainMatricesPage'
 import { SyncPage }             from '@/pages/settings/SyncPage'
 const ReportsPage = lazy(() => import('@/pages/reports/ReportsPage'))
 const CustomReportsPage = lazy(() => import('@/pages/reports/CustomReportsPage').then(m => ({ default: m.CustomReportsPage })))
@@ -55,24 +74,32 @@ import { ApprovalsPage } from '@/pages/approvals/ApprovalsPage'
 import { KnowledgeBasePage } from '@/pages/knowledge-base/KnowledgeBasePage'
 import { AssistantPage } from '@/pages/assistant/AssistantPage'
 import { KBArticlePage } from '@/pages/knowledge-base/KBArticlePage'
+import { KBArticleByIdRedirect } from '@/pages/knowledge-base/KBArticleByIdRedirect'
 import { KBAdminPage } from '@/pages/admin/KBAdminPage'
 import { AutoTriggersPage } from '@/pages/admin/AutoTriggersPage'
 import { BusinessRulesPage } from '@/pages/admin/BusinessRulesPage'
 import { SLAPoliciesPage } from '@/pages/admin/SLAPoliciesPage'
+import { OLAContractsPage } from '@/pages/admin/OLAContractsPage'
 import { ServiceCatalogAdminPage } from '@/pages/admin/ServiceCatalogAdminPage'
 const SLAReportPage = lazy(() => import('@/pages/reports/SLAReportPage').then(m => ({ default: m.SLAReportPage })))
+const OLAReportPage = lazy(() => import('@/pages/reports/OLAReportPage').then(m => ({ default: m.OLAReportPage })))
 import { IntegrationsPage } from '@/pages/admin/IntegrationsPage'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { PageLoader } from '@/components/PageLoader'
-import { RequireRole } from '@/components/RequireRole'
-import type { UserRole } from '@/hooks/useMe'
+import { LoginSecurityPage } from '@/pages/security/LoginSecurityPage'
+import { RolesPage } from '@/pages/roles/RolesPage'
+import { RoleEditorPage } from '@/pages/roles/RoleEditorPage'
+import { RequirePermission } from '@/components/RequirePermission'
+import { routePermissions } from '@/lib/routePermissions'
 import { MetamodelProvider } from '@/contexts/MetamodelContext'
+import { DomainVocabularyProvider } from '@/contexts/DomainVocabularyContext'
+import { RiskBandProvider } from '@/contexts/RiskBandContext'
 import { NotificationProvider } from '@/contexts/NotificationContext'
 import { initKeycloak, keycloak } from '@/lib/keycloak'
 import { startTokenRefreshLoop } from '@/lib/tokenRefresh'
 import '@/index.css'
 import '@xyflow/react/dist/style.css'
-import '@/i18n/i18n'
+import i18n from '@/i18n/i18n'
 
 function RouteError() {
   const error = useRouteError() as { status?: number; statusText?: string }
@@ -110,12 +137,12 @@ function Keyed({ Page }: { Page: React.ComponentType }) {
   return <Page key={JSON.stringify(params)} />
 }
 
-// Guard di ruolo (E-01): il ruolo viene da `me.role` (DB) tramite useMe(),
-// la stessa fonte usata dalla Sidebar e dalle pagine.
-const ADMIN_ONLY:     readonly UserRole[] = ['admin']
-const ADMIN_OPERATOR: readonly UserRole[] = ['admin', 'operator']
-const admin    = (el: React.ReactElement) => <RequireRole roles={ADMIN_ONLY}>{el}</RequireRole>
-const approver = (el: React.ReactElement) => <RequireRole roles={ADMIN_OPERATOR}>{el}</RequireRole>
+// Guardia di ogni pagina (ondata 7 di «Nulla cablato»): i PERMESSI del ruolo
+// di `me` (DB), letti dalla tabella unica `lib/routePermissions`, la stessa
+// che usa la barra laterale. Prima erano liste di nomi di ruolo (E-01).
+function guarded(path: string, element: React.ReactElement) {
+  return { path, element: <RequirePermission anyOf={routePermissions(path)}>{element}</RequirePermission>, errorElement: <RouteError /> }
+}
 
 const router = createBrowserRouter([
   {
@@ -123,26 +150,28 @@ const router = createBrowserRouter([
     element:      <AppLayout />,
     errorElement: <RouteError />,
     children: [
-      { index: true,               element: <DashboardPage />,           errorElement: <RouteError /> },
-      { path: 'dashboard',         element: <DashboardPage />,           errorElement: <RouteError /> },
-      { path: 'incidents',         element: <IncidentListPage />,        errorElement: <RouteError /> },
-      { path: 'incidents/new',     element: <CreateIncidentPage />,      errorElement: <RouteError /> },
-      { path: 'incidents/:id',     element: <Keyed Page={IncidentDetailPage} />,      errorElement: <RouteError /> },
-      { path: 'problems',          element: <ProblemListPage />,         errorElement: <RouteError /> },
-      { path: 'problems/new',      element: <CreateProblemPage />,       errorElement: <RouteError /> },
-      { path: 'problems/:id',      element: <Keyed Page={ProblemDetailPage} />,       errorElement: <RouteError /> },
-      { path: 'changes',           element: <ChangeListPage />,          errorElement: <RouteError /> },
-      { path: 'changes/new',       element: <CreateChangePage />,        errorElement: <RouteError /> },
-      { path: 'changes/:id',       element: <Keyed Page={ChangeDetailPage} />,        errorElement: <RouteError /> },
-      { path: 'tasks/:taskId',     element: <Keyed Page={TaskViewPage} />,            errorElement: <RouteError /> },
-      { path: 'my-tasks',          element: <MyTasksPage />,             errorElement: <RouteError /> },
-      { path: 'requests',          element: <RequestListPage />,         errorElement: <RouteError /> },
-      { path: 'requests/new',      element: <CreateServiceRequestPage />,errorElement: <RouteError /> },
-      { path: 'requests/:id',      element: <Keyed Page={ServiceRequestDetailPage} />,errorElement: <RouteError /> },
-      { path: 'cmdb',                          element: <CMDBPage />,                    errorElement: <RouteError /> },
+      { index: true, element: <RequirePermission anyOf={routePermissions('')}><DashboardPage /></RequirePermission>, errorElement: <RouteError /> },
+      guarded('dashboard', <DashboardPage />),
+      guarded('incidents', <IncidentListPage />),
+      guarded('incidents/new', <CreateIncidentPage />),
+      guarded('incidents/:id', <Keyed Page={IncidentDetailPage} />),
+      guarded('problems', <ProblemListPage />),
+      guarded('problems/new', <CreateProblemPage />),
+      guarded('problems/:id', <Keyed Page={ProblemDetailPage} />),
+      guarded('changes', <ChangeListPage />),
+      guarded('changes/new', <CreateChangePage />),
+      guarded('changes/calendar', <ChangeCalendarPage />),
+      guarded('changes/:id', <Keyed Page={ChangeDetailPage} />),
+      guarded('tasks/:taskId', <Keyed Page={TaskViewPage} />),
+      guarded('my-tasks', <MyTasksPage />),
+      guarded('requests', <RequestListPage />),
+      guarded('requests/new', <CreateServiceRequestPage />),
+      guarded('requests/:id', <Keyed Page={ServiceRequestDetailPage} />),
+      guarded('cmdb', <CMDBPage />),
       // Dynamic CI routes
-      { path: 'ci/:typeName',                  element: <CIListPage />,                  errorElement: <RouteError /> },
-      { path: 'ci/:typeName/:id',              element: <Keyed Page={CIDetailPage} />,   errorElement: <RouteError /> },
+      guarded('ci/:typeName', <CIListPage />),
+      guarded('ci/:typeName/:id', <Keyed Page={CIDetailPage} />),
+      guarded('cis/:id', <Keyed Page={CIByIdRedirect} />),
       // Backward-compat redirects
       { path: 'applications',                  element: <Navigate to="/ci/application" replace /> },
       { path: 'applications/:id',              element: <CIDetailRedirect typeName="application" /> },
@@ -154,47 +183,84 @@ const router = createBrowserRouter([
       { path: 'servers/:id',                   element: <CIDetailRedirect typeName="server" /> },
       { path: 'certificates',                  element: <Navigate to="/ci/certificate" replace /> },
       { path: 'certificates/:id',              element: <CIDetailRedirect typeName="certificate" /> },
-      { path: 'analysis/what-if',               element: <Suspense fallback={<PageLoader />}><WhatIfPage /></Suspense>,                  errorElement: <RouteError /> },
-      { path: 'anomalies',                     element: <AnomalyPage />,                 errorElement: <RouteError /> },
-      { path: 'topology',                      element: <Suspense fallback={<PageLoader />}><TopologyPage /></Suspense>,                errorElement: <RouteError /> },
-      // Workflow designer (list + editor): admin only
-      { path: 'workflow',                      element: admin(<WorkflowListPage />),     errorElement: <RouteError /> },
-      { path: 'workflow/:id',                  element: admin(<Suspense fallback={<PageLoader />}><Keyed Page={WorkflowDesignerPage} /></Suspense>), errorElement: <RouteError /> },
-      // Tenant-wide settings (channels, rules, metamodel designers, sync): admin only.
-      // The personal page (`profile`: language + Slack) stays open to every role;
+      guarded('analysis/what-if', <Suspense fallback={<PageLoader />}><WhatIfPage /></Suspense>),
+      guarded('anomalies', <AnomalyPage />),
+      guarded('proposals', <Suspense fallback={<PageLoader />}><ProposalsPage /></Suspense>),
+      guarded('analysis/daily-work', <Suspense fallback={<PageLoader />}><DailyWorkPage /></Suspense>),
+      // Event Management (console allarmi): le azioni si vedono con event.work.
+      guarded('events', <EventsPage />),
+      guarded('events/:id', <Keyed Page={EventDetailPage} />),
+      // Salute dei CI: il CTA "Aggiungi sorgente" si vede con config.monitoring.
+      guarded('monitoring/health', <CIHealthPage />),
+      // Servizi monitorati: le azioni (crea, pausa, elimina) si vedono con config.services, la rivalutazione con service.reevaluate.
+      guarded('monitoring/services', <ServicesPage />),
+      guarded('monitoring/services/:id', <Keyed Page={ServiceDetailPage} />),
+      // Sorgenti di monitoraggio (webhook in ingresso con entityType = event).
+      guarded('monitoring/sources', <MonitoringSourcesPage />),
+      guarded('monitoring/sources/new', <NewSourceWizard />),
+      guarded('monitoring/sources/:id', <Keyed Page={EditSourcePage} />),
+      guarded('topology', <Suspense fallback={<PageLoader />}><TopologyPage /></Suspense>),
+      // Workflow designer (list + editor)
+      guarded('workflow', <WorkflowListPage />),
+      guarded('workflow/:id', <Suspense fallback={<PageLoader />}><Keyed Page={WorkflowDesignerPage} /></Suspense>),
+      // Tenant-wide settings (channels, rules, metamodel designers, sync).
+      // The personal page (`profile`: language + Slack) stays open to the whole workspace;
       // the old `settings/profile` URL redirects there (E-13).
-      { path: 'settings/notifications',      element: admin(<NotificationsPage />),     errorElement: <RouteError /> },
-      { path: 'settings/notification-rules', element: admin(<NotificationRulesPage />), errorElement: <RouteError /> },
+      guarded('settings/notifications', <NotificationsPage />),
+      guarded('settings/notification-rules', <NotificationRulesPage />),
       { path: 'settings/profile',          element: <Navigate to="/profile" replace /> },
-      { path: 'profile',                   element: <UserProfilePage />,         errorElement: <RouteError /> },
-      { path: 'settings/ci-types',         element: admin(<CITypeDesignerPage />),   errorElement: <RouteError /> },
-      { path: 'settings/itil-designer',   element: admin(<ITILTypeDesignerPage />), errorElement: <RouteError /> },
-      { path: 'settings/enum-designer',  element: admin(<EnumDesignerPage />),     errorElement: <RouteError /> },
-      { path: 'settings/sync',            element: admin(<SyncPage />),             errorElement: <RouteError /> },
-      { path: 'reports',                   element: <Suspense fallback={<PageLoader />}><ReportsPage /></Suspense>,             errorElement: <RouteError /> },
-      { path: 'custom-reports',            element: <Suspense fallback={<PageLoader />}><CustomReportsPage /></Suspense>,       errorElement: <RouteError /> },
-      // Teams & users: both pages carry admin-only mutations (createTeam,
-      // setTeamManager, createUser, updateUserTeams) → whole page admin only.
-      { path: 'teams',                     element: admin(<TeamsPage />),                   errorElement: <RouteError /> },
-      { path: 'teams/:id',                 element: admin(<Keyed Page={TeamDetailPage} />), errorElement: <RouteError /> },
-      { path: 'users',                     element: admin(<UsersPage />),                   errorElement: <RouteError /> },
-      { path: 'users/:id',                 element: admin(<Keyed Page={UserDetailPage} />), errorElement: <RouteError /> },
-      { path: 'logs',                      element: admin(<LogsPage />),                    errorElement: <RouteError /> },
-      { path: 'admin/queues',              element: admin(<QueueStatsPage />),              errorElement: <RouteError /> },
-      { path: 'admin/audit',              element: admin(<AuditLogPage />),                errorElement: <RouteError /> },
-      { path: 'admin/monitoring',         element: admin(<Suspense fallback={<PageLoader />}><MonitoringPage /></Suspense>), errorElement: <RouteError /> },
-      { path: 'admin/knowledge-base',     element: admin(<KBAdminPage />),                 errorElement: <RouteError /> },
-      { path: 'admin/triggers',            element: admin(<AutoTriggersPage />),            errorElement: <RouteError /> },
-      { path: 'admin/business-rules',      element: admin(<BusinessRulesPage />),           errorElement: <RouteError /> },
-      { path: 'admin/sla-policies',        element: admin(<SLAPoliciesPage />),             errorElement: <RouteError /> },
-      { path: 'admin/service-catalog',     element: admin(<ServiceCatalogAdminPage />),     errorElement: <RouteError /> },
-      { path: 'reports/sla',               element: <Suspense fallback={<PageLoader />}><SLAReportPage /></Suspense>, errorElement: <RouteError /> },
-      { path: 'admin/integrations',        element: admin(<IntegrationsPage />),            errorElement: <RouteError /> },
-      { path: 'admin/assessment-questions', element: admin(<QuestionAdminPage />),          errorElement: <RouteError /> },
-      { path: 'approvals',                element: approver(<ApprovalsPage />),            errorElement: <RouteError /> },
-      { path: 'knowledge-base',           element: <KnowledgeBasePage />,       errorElement: <RouteError /> },
-      { path: 'assistant',                element: <AssistantPage />,           errorElement: <RouteError /> },
-      { path: 'knowledge-base/:slug',     element: <Keyed Page={KBArticlePage} />, errorElement: <RouteError /> },
+      guarded('profile', <UserProfilePage />),
+      // Organizzazione: le scelte che valgono per tutti (la lingua predefinita
+      // dell'azienda, che era una costante nel codice). La lingua di una
+      // PERSONA sta nel Profilo, aperto a ogni ruolo.
+      // Diagnostica: l'elenco dei rilievi che prima era un banner su ogni pagina.
+      guarded('settings/diagnostics', <ConfigurationDiagnosticsPage />),
+      guarded('settings/organization', <OrganizationPage />),
+      guarded('settings/ci-types', <CITypeDesignerPage />),
+      guarded('settings/itil-designer', <ITILTypeDesignerPage />),
+      // Moduli del catalogo servizi (ondata 1): modulo per voce + libreria dei campi.
+      guarded('settings/catalog-forms', <CatalogFormsPage />),
+      guarded('settings/enum-designer', <EnumDesignerPage />),
+      guarded('settings/domain-matrices', <DomainMatricesPage />),
+      guarded('settings/anomaly-rules', <AnomalyRulesPage />),
+      guarded('settings/sync', <SyncPage />),
+      guarded('settings/event-policy', <EventPolicyPage />),
+      guarded('reports', <Suspense fallback={<PageLoader />}><ReportsPage /></Suspense>),
+      guarded('custom-reports', <Suspense fallback={<PageLoader />}><CustomReportsPage /></Suspense>),
+      // Teams & users: both pages carry admin.users mutations (createTeam,
+      // setTeamManager, createUser, updateUserTeams) → whole page admin.users.
+      guarded('teams', <TeamsPage />),
+      guarded('teams/:id', <Keyed Page={TeamDetailPage} />),
+      guarded('users', <UsersPage />),
+      guarded('users/:id', <Keyed Page={UserDetailPage} />),
+      // Ruoli e permessi (ondata 7 di «Nulla cablato»)
+      guarded('roles', <RolesPage />),
+      guarded('roles/new', <RoleEditorPage />),
+      guarded('roles/:key', <Keyed Page={RoleEditorPage} />),
+      // Accesso e password dell'organizzazione (ondata 8)
+      guarded('security/login', <LoginSecurityPage />),
+      guarded('logs', <LogsPage />),
+      guarded('admin/queues', <QueueStatsPage />),
+      guarded('admin/audit', <AuditLogPage />),
+      guarded('admin/monitoring', <Suspense fallback={<PageLoader />}><MonitoringPage /></Suspense>),
+      // kb.write, come l'API (createKBArticle/updateKBArticle): la guardia della
+      // pagina era più stretta e gli operatori non potevano scrivere articoli (#45).
+      guarded('admin/knowledge-base', <KBAdminPage />),
+      guarded('admin/triggers', <AutoTriggersPage />),
+      guarded('admin/business-rules', <BusinessRulesPage />),
+      guarded('admin/sla-policies', <SLAPoliciesPage />),
+      guarded('admin/ola-uc', <OLAContractsPage />),
+      guarded('admin/service-catalog', <ServiceCatalogAdminPage />),
+      guarded('reports/sla', <Suspense fallback={<PageLoader />}><SLAReportPage /></Suspense>),
+      guarded('reports/ola-uc', <Suspense fallback={<PageLoader />}><OLAReportPage /></Suspense>),
+      guarded('admin/integrations', <IntegrationsPage />),
+      guarded('admin/assessment-questions', <QuestionAdminPage />),
+      guarded('approvals', <ApprovalsPage />),
+      guarded('knowledge-base', <KnowledgeBasePage />),
+      guarded('assistant', <AssistantPage />),
+      guarded('knowledge-base/:slug', <Keyed Page={KBArticlePage} />),
+      // B-21: le notifiche di un articolo portano l'id, la pagina vuole lo slug.
+      guarded('kb-articles/:id', <Keyed Page={KBArticleByIdRedirect} />),
     ],
   },
 ])
@@ -217,10 +283,16 @@ initKeycloak().then((authenticated) => {
       <ErrorBoundary>
         <ApolloProvider client={apolloClient}>
           <MetamodelProvider>
-            <NotificationProvider>
-              <RouterProvider router={router} />
-              <Toaster richColors position="top-right" />
-            </NotificationProvider>
+            {/* Ondata 7 · D-15: i vocabolari del cliente, UNA query, per le palette per valore. */}
+            <DomainVocabularyProvider>
+              {/* Le fasce di rischio del cliente (soglie da Matrici di dominio), UNA query, per i badge del rischio. */}
+              <RiskBandProvider>
+                <NotificationProvider>
+                  <RouterProvider router={router} />
+                  <Toaster richColors position="top-right" />
+                </NotificationProvider>
+              </RiskBandProvider>
+            </DomainVocabularyProvider>
           </MetamodelProvider>
         </ApolloProvider>
       </ErrorBoundary>
@@ -229,8 +301,20 @@ initKeycloak().then((authenticated) => {
 }).catch((err: Error) => {
   // initKeycloak throws for: no tenant in subdomain, missing VITE_KEYCLOAK_URL,
   // unknown realm, Keycloak unreachable. Without this the user sees a blank page.
-  root.innerHTML = `<div style="display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui">
-    <div style="font-size:20px;font-weight:600;color:#EF4444">Errore di autenticazione</div>
-    <div style="color:#64748B;font-size:14px">${err.message}</div>
-  </div>`
+  /**
+   * Il messaggio si scrive come TESTO, non come HTML (revisione totale ·
+   * F-19): arriva dalla rete o dalla configurazione (una risposta di Keycloak,
+   * un proxy), e con `innerHTML` un `<` lo mangiava e un intermediario che
+   * controllasse quel testo poteva iniettare markup nella pagina d'errore.
+   */
+  const box = document.createElement('div')
+  box.setAttribute('style', 'display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-family:system-ui')
+  const title = document.createElement('div')
+  title.setAttribute('style', 'font-size:20px;font-weight:600;color:var(--color-danger)')
+  title.textContent = i18n.t('auth.error')
+  const detail = document.createElement('div')
+  detail.setAttribute('style', 'color:var(--color-slate);font-size:14px')
+  detail.textContent = err.message
+  box.append(title, detail)
+  root.replaceChildren(box)
 })

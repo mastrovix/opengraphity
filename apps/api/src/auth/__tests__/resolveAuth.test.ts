@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import { resetConfigCache } from '../../lib/config.js'
 import type express from 'express'
+import { perms } from '../../lib/__tests__/testPermissions.js'
 
 // ── Mocks (declared before the dynamic import below) ─────────────────────────
 
@@ -12,6 +13,12 @@ const executeRead = vi.fn()
 const close       = vi.fn().mockResolvedValue(undefined)
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(() => ({ executeRead, close })),
+}))
+
+vi.mock('../../lib/roles.js', () => ({
+  rolePermissions: vi.fn(async (_t: string, role: string) => perms(role)),
+  // I ruoli dell'organizzazione: qui i quattro di fabbrica.
+  tenantRoles: vi.fn(async () => new Map(['admin', 'operator', 'viewer', 'end_user'].map((key) => [key, { key, name: null, permissions: perms(key), isFactory: true }]))),
 }))
 
 vi.mock('../../lib/logger.js', () => ({
@@ -77,8 +84,41 @@ describe('resolveAuth (Keycloak)', () => {
 
     const ctx = await resolveAuth('tok', makeReq({ host: 'tenant-a.localhost' }))
 
-    expect(ctx).toEqual({ tenantId: 'tenant-a', userId: 'u-1', userEmail: 'alice@acme.io', role: 'operator' })
+    expect(ctx).toEqual({ tenantId: 'tenant-a', userId: 'u-1', userEmail: 'alice@acme.io', role: 'operator', permissions: perms('operator') })
     expect(close).toHaveBeenCalled()
+  })
+
+  /**
+   * L'HOST DELLA CONSOLE DI PIATTAFORMA NON È UN TENANT (17 set 2026).
+   *
+   * `opengrafo-admin.localhost` ha la forma di un tenant: senza il rifiuto,
+   * `extractTenantFromHost` ne dedurrebbe uno chiamato «opengrafo-admin» e un
+   * token di tenant presentato là verrebbe accettato — il confine fra i tenant
+   * e la console passerebbe solo da nginx. La console ha il suo cammino
+   * (`auth/platformAuth.ts`), che pretende il realm di piattaforma.
+   */
+  it('un token di TENANT sull\'host della console si rifiuta', async () => {
+    process.env['PLATFORM_CONSOLE_HOST'] = 'opengrafo-admin.localhost'
+    resetConfigCache()
+    verifyKeycloakToken.mockResolvedValue(kcToken({ iss: 'http://localhost:8080/realms/opengrafo-admin' }))
+    dbReturns([record({ id: 'u-1', role: 'admin' })])
+    try {
+      await rejectsWithCode(
+        resolveAuth('tok', makeReq({ host: 'opengrafo-admin.localhost' })),
+        'UNAUTHORIZED', /platform console host/)
+    } finally {
+      delete process.env['PLATFORM_CONSOLE_HOST']
+      resetConfigCache()
+    }
+  })
+
+  it('senza host della console configurato nulla cambia per i tenant', async () => {
+    delete process.env['PLATFORM_CONSOLE_HOST']
+    resetConfigCache()
+    verifyKeycloakToken.mockResolvedValue(kcToken())
+    dbReturns([record({ id: 'u-1', role: 'operator' })])
+    const ctx = await resolveAuth('tok', makeReq({ host: 'tenant-a.localhost' }))
+    expect(ctx.tenantId).toBe('tenant-a')
   })
 
   it('cerca l\'utente con tenant_id = realm (mai LIMIT 1 senza tenant)', async () => {
@@ -182,7 +222,7 @@ describe('resolveAuth (legacy JWT)', () => {
     const jwt = (await import('jsonwebtoken')).default
     const token = jwt.sign({ tenant_id: 't', user_id: 'u', email: 'e@x', role: 'admin' }, 'test-secret')
 
-    await expect(resolveAuth(token, makeReq())).resolves.toEqual({ tenantId: 't', userId: 'u', userEmail: 'e@x', role: 'admin' })
+    await expect(resolveAuth(token, makeReq())).resolves.toEqual({ tenantId: 't', userId: 'u', userEmail: 'e@x', role: 'admin', permissions: perms('admin') })
   })
 
   it('con ALLOW_LEGACY_JWT=true un JWT con firma errata è rifiutato', async () => {
@@ -234,5 +274,61 @@ describe('extractTenantFromHost', () => {
     '[::1]', '[::1]:4000', '[fe80::1%25en0]:4000', '[2001:db8::1]',
   ])('%s → null', (host) => {
     expect(extractTenantFromHost(host)).toBeNull()
+  })
+})
+
+/**
+ * IL TENANT SOSPESO, e il suo CODICE (17 set 2026).
+ *
+ * Non è una sessione scaduta, e il codice è l'unica cosa che lo dice al
+ * client. Con `UNAUTHORIZED` l'app rinfrescava il token, riprovava, tornava al
+ * login, Keycloak diceva sì — e si ricominciava: un ciclo che gonfiava l'URL
+ * fino a un 414 di nginx. `TENANT_SUSPENDED` è definitivo per costruzione:
+ * non c'è niente da riprovare, e chi guarda merita una frase.
+ */
+describe('un tenant sospeso', () => {
+  /** Il DB risponde per QUERY: la sospensione e la ricerca dell'utente sono due letture diverse. */
+  function dbPerQuery(risposte: { sospesoAl: string | null; utente?: Record<string, unknown> | null }) {
+    executeRead.mockImplementation(async (work: (tx: { run: (q: string, p: unknown) => unknown }) => unknown) =>
+      work({
+        run: (q: string) => {
+          if (q.includes('suspended_at')) return { records: [record({ suspendedAt: risposte.sospesoAl })] }
+          const u = risposte.utente
+          return { records: u === null || u === undefined ? [] : [record(u)] }
+        },
+      }),
+    )
+  }
+
+  beforeEach(() => {
+    verifyKeycloakToken.mockResolvedValue(kcToken())
+  })
+
+  it('si rifiuta con `TENANT_SUSPENDED`, non con `UNAUTHORIZED`', async () => {
+    dbPerQuery({ sospesoAl: '2026-09-17T10:00:00.000Z', utente: { id: 'u1', role: 'operator', active: true } })
+    await rejectsWithCode(
+      resolveAuth('tok', makeReq({ host: 'tenant-a.localhost' })),
+      'TENANT_SUSPENDED',
+      /suspended/,
+    )
+  })
+
+  it('vale anche per chi è admin: un tenant sospeso è sospeso', async () => {
+    verifyKeycloakToken.mockResolvedValue(kcToken())
+    dbPerQuery({ sospesoAl: '2026-09-17T10:00:00.000Z', utente: { id: 'u1', role: 'admin', active: true } })
+    await rejectsWithCode(resolveAuth('tok', makeReq({ host: 'tenant-a.localhost' })), 'TENANT_SUSPENDED')
+  })
+
+  it('non sospeso: si entra normalmente', async () => {
+    dbPerQuery({ sospesoAl: null, utente: { id: 'u1', role: 'operator', active: true } })
+    const ctx = await resolveAuth('tok', makeReq({ host: 'tenant-a.localhost' }))
+    expect(ctx).toMatchObject({ tenantId: 'tenant-a', userId: 'u1' })
+  })
+
+  it('un tenant che non esiste NON è «sospeso»: lo fermano i controlli sull\'utente', async () => {
+    // Uno zero mal letto qui direbbe «sospeso» per un tenant inesistente, e la
+    // frase a schermo manderebbe a riattivare qualcosa che non c'è.
+    dbPerQuery({ sospesoAl: null, utente: null })
+    await rejectsWithCode(resolveAuth('tok', makeReq({ host: 'tenant-a.localhost' })), 'UNAUTHORIZED', /user not found/)
   })
 })

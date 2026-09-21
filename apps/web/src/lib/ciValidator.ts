@@ -1,4 +1,5 @@
 import { getQuickJS } from 'quickjs-emscripten'
+import i18n from '@/i18n/i18n'
 
 export interface ValidationResult {
   valid: boolean
@@ -32,7 +33,7 @@ export async function validateCI(
 
       // Required check
       if (field.required && (val === null || val === undefined || val === '')) {
-        errors[field.name] = `${field.label} è obbligatorio`
+        errors[field.name] = i18n.t('forms.requiredField', { field: field.label })
         continue
       }
 
@@ -100,7 +101,7 @@ export async function isFieldVisible(
       const err = vm.dump(result.error)
       result.error.dispose()
       throw new Error(
-        `visibility_script del campo "${fieldName}" ha fallito: ${typeof err === 'string' ? err : JSON.stringify(err)}`,
+        `visibility_script of field "${fieldName}" failed: ${typeof err === 'string' ? err : JSON.stringify(err)}`,
       )
     }
     const val = vm.dump(result.value)
@@ -131,7 +132,7 @@ export async function getFieldDefault(
       const err = vm.dump(result.error)
       result.error.dispose()
       throw new Error(
-        `default_script del campo "${fieldName}" ha fallito: ${typeof err === 'string' ? err : JSON.stringify(err)}`,
+        `default_script of field "${fieldName}" failed: ${typeof err === 'string' ? err : JSON.stringify(err)}`,
       )
     }
     const val = vm.dump(result.value)

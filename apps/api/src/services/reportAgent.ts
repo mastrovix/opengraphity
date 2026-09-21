@@ -10,22 +10,26 @@
  * optional `stream` callback.
  */
 import Anthropic from '@anthropic-ai/sdk'
-import { getSession } from '@opengraphity/neo4j'
+import { getAnthropic, registraRisposta } from '../lib/aiClient.js'
+import { getSession, toNumber } from '@opengraphity/neo4j'
+import { config } from '../lib/config.js'
 import { logger } from '../lib/logger.js'
-import { assertSafeReadOnlyCypher, UnsafeCypherError } from '../lib/cypherGuard.js'
+import { assertSafeReadOnlyCypher, redactSensitiveValue, UnsafeCypherError } from '../lib/cypherGuard.js'
 
 // ── Model ─────────────────────────────────────────────────────────────────
 
 /**
- * Default model for the report agent — the same constant the other AI
- * services (assistant, triage, post-incident) already use. Override with the
- * `REPORT_AI_MODEL` environment variable (no other place picks the model).
+ * Modello dell'agente dei report: quello di tutti i servizi AI
+ * (`config.anthropicModel`, variabile `ANTHROPIC_MODEL`), con `REPORT_AI_MODEL`
+ * come scavalco del solo agente. Nessun id di modello scritto qui: il
+ * commento di prima diceva «la stessa costante degli altri» e non era vero,
+ * gli altri lo avevano copiato a mano.
  */
-export const DEFAULT_REPORT_AI_MODEL = 'claude-opus-4-8'
+export const DEFAULT_REPORT_AI_MODEL = config.anthropicModel
 
 export function resolveReportAIModel(): string {
   const fromEnv = process.env['REPORT_AI_MODEL']?.trim()
-  return fromEnv || DEFAULT_REPORT_AI_MODEL
+  return fromEnv || config.anthropicModel
 }
 
 /** Per-turn output cap (the cumulative cap is REPORT_AI_LIMITS.maxOutputTokens). */
@@ -35,28 +39,44 @@ const MAX_TOKENS_PER_TURN = 4096
 
 const schemaCache = new Map<string, { schema: string; expiresAt: number }>()
 
+/**
+ * Quanti nodi e quante relazioni si guardano per ricavare FORMA del grafo
+ * (revisione totale · D-23).
+ *
+ * Le due letture che elencano proprietà e relazioni erano `MATCH (n)` e
+ * `MATCH (a)-[r]->(b)` senza etichetta: una scansione di tutti i nodi e di
+ * tutte le relazioni del database, alla prima domanda di ogni cinque minuti.
+ * Per sapere «quali proprietà ha un Incident» non serve leggerli tutti: un
+ * campione basta, e i CONTEGGI (che devono essere esatti, perché finiscono
+ * nella risposta) restano un'aggregazione a parte.
+ */
+const SCHEMA_NODE_SAMPLE = 20_000
+const SCHEMA_REL_SAMPLE  = 20_000
+
 async function buildSchemaContext(session: ReturnType<typeof getSession>, tenantId: string): Promise<string> {
   const nodesResult = await session.executeRead((tx) => tx.run(`
     MATCH (n)
     WHERE n.tenant_id = $tenantId
-    WITH labels(n)[0] AS label, keys(n) AS props
+    WITH n LIMIT toInteger($nodeSample)
+    WITH head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label, keys(n) AS props
     WITH label, [p IN props WHERE p <> 'tenant_id'] AS props
     RETURN DISTINCT label, props
     ORDER BY label
-  `, { tenantId }))
+  `, { tenantId, nodeSample: SCHEMA_NODE_SAMPLE }))
   const relsResult = await session.executeRead((tx) => tx.run(`
     MATCH (a)-[r]->(b)
     WHERE a.tenant_id = $tenantId
+    WITH a, r, b LIMIT toInteger($relSample)
     RETURN DISTINCT
-      labels(a)[0] AS from,
+      head([l IN labels(a) WHERE l <> 'ConfigurationItem']) AS from,
       type(r) AS rel,
-      labels(b)[0] AS to
+      head([l IN labels(b) WHERE l <> 'ConfigurationItem']) AS to
     ORDER BY from, rel
-  `, { tenantId }))
+  `, { tenantId, relSample: SCHEMA_REL_SAMPLE }))
   const countsResult = await session.executeRead((tx) => tx.run(`
     MATCH (n)
     WHERE n.tenant_id = $tenantId
-    RETURN labels(n)[0] AS label, count(n) AS count
+    RETURN head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label, count(n) AS count
     ORDER BY count DESC
   `, { tenantId }))
 
@@ -67,7 +87,9 @@ async function buildSchemaContext(session: ReturnType<typeof getSession>, tenant
     const label = r.get('label') as string
     const props = r.get('props') as string[]
     const countRec = countsResult.records.find((c) => c.get('label') === label)
-    const count = (countRec?.get('count') as { toNumber(): number } | null)?.toNumber() ?? 0
+    // `toNumber` del pacchetto: il driver dà un `number` JS per i conteggi, e
+    // `.toNumber()` alla cieca rompeva l'analisi AI (giro nel browser del 14 set 2026).
+    const count = countRec ? toNumber(countRec.get('count')) : 0
     schema += `- **${label}** (${count} nodi): ${props.join(', ')}\n`
   }
 
@@ -107,7 +129,7 @@ export const CYPHER_TOOL: Anthropic.Tool = {
     properties: {
       query: {
         type: 'string',
-        description: 'Query Cypher valida di sola lettura. Usa $tenantId come unico parametro, es. MATCH (i:Incident {tenant_id: $tenantId}) … Non usare LIMIT > 100.',
+        description: 'Query Cypher valida di sola lettura. Usa $tenantId come unico parametro e scrivi l\'etichetta di ogni nodo, es. MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c:ConfigurationItem) … Non usare LIMIT > 100.',
       },
       description: {
         type: 'string',
@@ -128,7 +150,8 @@ REGOLE:
 - DEVI SEMPRE usare run_cypher_query per rispondere a qualsiasi domanda sui dati. NON inventare mai dati, conteggi o nomi che non hai recuperato dal database.
 - Se non riesci a trovare i dati con una query, dillo esplicitamente e proponi una query alternativa.
 - Non rispondere MAI con dati numerici o elenchi senza averli prima recuperati con run_cypher_query.
-- Vincolo tenant OBBLIGATORIO: ogni pattern MATCH deve partire da un nodo con {tenant_id: $tenantId}, es. MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c). Le query senza questo vincolo vengono rifiutate.
+- Vincolo tenant OBBLIGATORIO: ogni pattern MATCH deve partire da un nodo con {tenant_id: $tenantId}, es. MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTS]->(c:ConfigurationItem). Le query senza questo vincolo vengono rifiutate.
+- OGNI nodo del pattern deve avere l'etichetta scritta: (c:ConfigurationItem), mai (c) al primo uso. Non sono leggibili le etichette delle integrazioni (OutboundWebhook, InboundWebhook, ApiKey, NotificationChannel, SlackInstallation, SyncSource) né le proprietà che contengono segreti (secret, headers, token, credentials, webhook_url, key_hash, transform_script).
 - Solo letture: niente CREATE/MERGE/SET/DELETE, niente CALL di procedure, nessun parametro oltre $tenantId.
 - Non includere mai UUID nelle tabelle — usa titoli e nomi leggibili
 - Nelle tabelle usa solo colonne significative: Titolo, Tipo, Stato, Severity, CI, Team, Data
@@ -139,7 +162,7 @@ REGOLE:
   RETURN s.name. Poi usa questi nomi per cercare StepExecution entered_at.
 - Le date sono in formato ISO string
 - Puoi eseguire più query per rispondere
-- Rispondi in italiano
+- Rispondi nella lingua della domanda, anche nelle frasi che scrivi prima di eseguire una query
 - Usa tabelle markdown quando i dati sono tabulari
 - Sii conciso e diretto, senza introduzioni verbose
 - Mostra sempre i dati concreti, non generalizzare`
@@ -169,24 +192,24 @@ export class ToolLoopBudget {
   beforeModelCall(): void {
     const elapsed = Date.now() - this.startedAt
     if (elapsed > this.limits.maxDurationMs) {
-      throw new Error(`[reportAI] budget di tempo esaurito (${Math.round(elapsed / 1000)}s > ${this.limits.maxDurationMs / 1000}s)`)
+      throw new Error(`[reportAI] time budget exhausted (${Math.round(elapsed / 1000)}s > ${this.limits.maxDurationMs / 1000}s)`)
     }
     if (this.outputTokens > this.limits.maxOutputTokens) {
-      throw new Error(`[reportAI] budget token esaurito (${this.outputTokens} > ${this.limits.maxOutputTokens} token di output)`)
+      throw new Error(`[reportAI] token budget exhausted (${this.outputTokens} > ${this.limits.maxOutputTokens} output tokens)`)
     }
   }
 
   beforeToolCall(): void {
     this.iterations++
     if (this.iterations > this.limits.maxIterations) {
-      throw new Error(`[reportAI] superato il limite di ${this.limits.maxIterations} query per domanda`)
+      throw new Error(`[reportAI] limit of ${this.limits.maxIterations} queries per question exceeded`)
     }
   }
 
   recordRejection(reason: string): void {
     this.rejections++
     if (this.rejections > this.limits.maxRejections) {
-      throw new Error(`[reportAI] la query generata dal modello è stata rifiutata ${this.rejections} volte dal guard di sicurezza — ultimo motivo: ${reason}`)
+      throw new Error(`[reportAI] the query generated by the model was refused ${this.rejections} times by the safety guard — last reason: ${reason}`)
     }
   }
 
@@ -213,7 +236,7 @@ export async function runGuardedCypherTool(
     if (!(err instanceof UnsafeCypherError)) throw err
     logger.warn({ reason: err.message, query: query.slice(0, 500) }, `${logLabel}: Cypher rejected by guard`)
     budget.recordRejection(err.message)
-    return `${err.message}\nRiscrivi la query: sola lettura, ogni pattern MATCH deve includere {tenant_id: $tenantId}, unico parametro $tenantId.`
+    return `${err.message}\nRewrite the query: read-only, every MATCH pattern must include {tenant_id: $tenantId}, every node must name its label, the only parameter is $tenantId.`
   }
 
   const querySession = getSession(undefined, 'READ')
@@ -226,7 +249,7 @@ export async function runGuardedCypherTool(
         const val = r.get(key)
         obj[key] = val !== null && typeof val === 'object' && 'toNumber' in val
           ? (val as { toNumber(): number }).toNumber()
-          : val
+          : redactSensitiveValue(val)
       })
       return obj
     })
@@ -234,7 +257,7 @@ export async function runGuardedCypherTool(
     if (toolResult.length > 8000) toolResult = toolResult.slice(0, 8000) + '\n... (truncated)'
     return toolResult
   } catch (err: unknown) {
-    const toolResult = `Errore query: ${err instanceof Error ? err.message : String(err)}`
+    const toolResult = `Query error: ${err instanceof Error ? err.message : String(err)}`
     logger.warn({ toolResult }, `${logLabel} Cypher error`)
     return toolResult
   } finally {
@@ -254,7 +277,7 @@ export interface RunReportAgentOptions {
   messages: Anthropic.MessageParam[]
   /** When given, text deltas and tool calls are emitted as they happen. */
   stream?: (event: ReportAgentEvent) => void
-  /** Test seam; defaults to `new Anthropic()` (credentials from the environment). */
+  /** Test seam; defaults to the shared client of `lib/aiClient.ts`. */
   client?: Anthropic
 }
 
@@ -269,7 +292,7 @@ export async function runReportAgent(opts: RunReportAgentOptions): Promise<strin
   if (!process.env['ANTHROPIC_API_KEY']) throw new Error('ANTHROPIC_API_KEY not set')
   if (!opts.messages.length) throw new Error(`${LOG_LABEL} no messages to send`)
 
-  const client = opts.client ?? new Anthropic()
+  const client = opts.client ?? getAnthropic()
   const system = buildSystemPrompt(await getCachedSchema(opts.tenantId))
   const budget = new ToolLoopBudget()
   const messages: Anthropic.MessageParam[] = [...opts.messages]
@@ -291,7 +314,14 @@ export async function runReportAgent(opts: RunReportAgentOptions): Promise<strin
     if (opts.stream) {
       const emit = opts.stream
       const s = client.messages.stream({ ...base, messages })
-      s.on('text', (delta) => emit({ type: 'text', text: delta }))
+      // Giro del 14 set 2026 (#52): il testo di un turno nuovo si incollava a
+      // quello del turno prima («I'll query…Totale:»). Paragrafo nuovo.
+      let firstDelta = true
+      s.on('text', (delta) => {
+        if (firstDelta && fullText !== '' && !fullText.endsWith('\n')) emit({ type: 'text', text: '\n\n' })
+        firstDelta = false
+        emit({ type: 'text', text: delta })
+      })
       return s.finalMessage()
     }
     return client.messages.create({ ...base, messages })
@@ -301,14 +331,18 @@ export async function runReportAgent(opts: RunReportAgentOptions): Promise<strin
   while (true) {
     budget.beforeModelCall()
     const message = await runTurn()
+    // Ogni turno dell'anello è una chiamata pagata: si conta, come le altre.
+    registraRisposta('reportAnalysis', message.stop_reason === 'refusal' ? 'refused' : 'ok', message)
     budget.recordUsage(message.usage.output_tokens)
 
     for (const block of message.content) {
-      if (block.type === 'text') fullText += block.text
+      if (block.type !== 'text') continue
+      if (fullText !== '' && !fullText.endsWith('\n')) fullText += '\n\n'
+      fullText += block.text
     }
 
     if (message.stop_reason === 'refusal') {
-      throw new Error(`${LOG_LABEL} il modello ha rifiutato la richiesta`)
+      throw new Error(`${LOG_LABEL} the model refused the request`)
     }
     if (message.stop_reason !== 'tool_use') {
       if (message.stop_reason === 'max_tokens') {

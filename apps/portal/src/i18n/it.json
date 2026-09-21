@@ -1,7 +1,18 @@
 {
   "portal": {
     "title": "Portale IT",
-    "poweredBy": "Powered by OpenGrafo"
+    "poweredBy": "Powered by OpenGrafo",
+    "documentTitle": "Portale IT — OpenGrafo",
+    "noAccessTitle": "Il portale non è disponibile per il tuo ruolo",
+    "noAccessBody": "Il tuo ruolo non comprende l'accesso al portale self-service. Chiedi a un amministratore se ti serve.",
+    "noSubmit": "Il tuo ruolo non può aprire ticket o richieste dal portale.",
+    "language": "Lingua",
+    "languageOrganization": "Lingua dell'organizzazione",
+    "languageName": {
+      "en": "English",
+      "it": "Italiano"
+    },
+    "languageSaveFailed": "Non è stato possibile salvare la lingua: {{error}}"
   },
   "nav": {
     "home": "Home",
@@ -15,13 +26,14 @@
     "newTicket": "Apri un nuovo ticket",
     "newTicketDesc": "Segnala un problema o fai una richiesta",
     "searchKB": "Cerca nella Knowledge Base",
-    "searchKBDesc": "Trova soluzioni agli problemi più comuni",
+    "searchKBDesc": "Trova soluzioni ai problemi più comuni",
     "recentTickets": "I tuoi ticket recenti",
     "noTickets": "Non hai ticket aperti.",
     "needHelp": "Hai bisogno di assistenza?",
     "open": "Aperti",
     "inProgress": "In corso",
-    "total": "Totale"
+    "total": "Totale",
+    "seeAll": "Tutti →"
   },
   "ticket": {
     "new": "Nuovo ticket",
@@ -35,24 +47,12 @@
       "resolved": "Risolto",
       "closed": "Chiuso"
     },
-    "priority": {
-      "low": "Bassa",
-      "medium": "Media",
-      "high": "Alta"
-    },
-    "category": {
-      "hardware": "Hardware",
-      "software": "Software",
-      "access": "Accesso",
-      "network": "Rete",
-      "other": "Altro"
-    },
     "fields": {
       "title": "Descrivi il problema in una frase",
       "description": "Fornisci tutti i dettagli utili: cosa stavi facendo, quale errore hai visto, da quando si verifica...",
-      "priority": "Priorità",
       "category": "Categoria",
-      "attachments": "Allegati"
+      "attachments": "Allegati",
+      "severity": "Severità"
     },
     "filters": {
       "all": "Tutti",
@@ -61,6 +61,7 @@
       "resolved": "Risolti",
       "closed": "Chiusi"
     },
+    "filterError": "Non riesco a elencare i ticket di questa scheda",
     "submit": "Invia ticket",
     "created": "Ticket creato! Il team IT è stato notificato.",
     "resolved": "Questo ticket è stato risolto",
@@ -90,9 +91,23 @@
     "openedOn": "Aperto {{date}}",
     "updatedOn": "Aggiornato {{date}}",
     "noMessages": "Nessun messaggio ancora.",
+    "formAnswers": "Quello che hai dichiarato",
+    "formAnswerEmpty": "senza risposta",
     "loadError": "Impossibile caricare il ticket: {{message}}",
     "notFound": "Ticket non trovato o non accessibile.",
-    "rulesError": "Impossibile validare i campi obbligatori: {{message}}"
+    "rulesError": "Impossibile validare i campi obbligatori: {{message}}",
+    "itAgent": "Agente IT",
+    "editReply": "Modifica la tua risposta",
+    "deleteReply": "Cancella la tua risposta",
+    "deleteReplyConfirm": "Cancellare questa risposta? Resta nel ticket come «cancellata».",
+    "replyEdited": "Modificata da {{name}} · {{date}}",
+    "replyDeleted": "Risposta cancellata da {{name}} · {{date}}",
+    "cancel": "Annulla",
+    "save": "Salva",
+    "kind": {
+      "incident": "Incident",
+      "service_request": "Richiesta"
+    }
   },
   "kb": {
     "title": "Knowledge Base",
@@ -111,7 +126,15 @@
     "views": "visualizzazioni",
     "breadcrumb": "Knowledge Base",
     "notFound": "Articolo non trovato",
-    "searchButton": "Cerca"
+    "searchButton": "Cerca",
+    "thanksFeedback": "Grazie per il tuo feedback!",
+    "articleCount_one": "{{count}} articolo",
+    "articleCount_other": "{{count}} articoli",
+    "searchResults_one": "{{count}} risultato per",
+    "searchResults_other": "{{count}} risultati per",
+    "clearSearch": "Cancella",
+    "categoryResults": "{{count}} articoli in {{category}}",
+    "clearCategory": "Tutte le categorie"
   },
   "common": {
     "loading": "Caricamento...",
@@ -121,7 +144,10 @@
     "cancel": "Annulla",
     "save": "Salva",
     "back": "← Indietro",
-    "required": "Campo obbligatorio"
+    "required": "Campo obbligatorio",
+    "yes": "Sì",
+    "no": "No",
+    "select": "Scegli"
   },
   "catalog": {
     "title": "Catalogo servizi",
@@ -134,7 +160,15 @@
     "details": "Dettagli (opzionale)",
     "detailsPlaceholder": "Aggiungi dettagli utili per l'evasione…",
     "submit": "Invia richiesta",
-    "submitting": "Invio…"
+    "submitting": "Invio…",
+    "addFile": "Aggiungi un file",
+    "removeFile": "Togli",
+    "computed": "calcolato",
+    "addRow": "Aggiungi una riga",
+    "removeRow": "Togli questa riga",
+    "searchReference": "Cerca…",
+    "noResults": "Nessun risultato",
+    "clearReference": "Togli la scelta"
   },
   "notFound": {
     "title": "Pagina non trovata",
@@ -145,6 +179,156 @@
     "network": "Errore di connessione al server",
     "sessionExpired": "Sessione scaduta — nuovo accesso necessario",
     "authRestored": "Connessione al server di autenticazione ripristinata",
-    "authUnreachable": "Server di autenticazione non raggiungibile — nuovo tentativo tra {{seconds}}s"
+    "authUnreachable": "Server di autenticazione non raggiungibile — nuovo tentativo tra {{seconds}}s",
+    "portal": {
+      "severityNotConfigured": "Le severità offerte nel portale non sono configurate, quindi non si può aprire un ticket. Un amministratore le sceglie da Impostazioni → Organizzazione.",
+      "severityStale": "Il portale offre {{values}}, che il vocabolario delle severità non ha più ({{allowed}}). Un amministratore corregge la scelta da Impostazioni → Organizzazione.",
+      "severityNotOffered": "Questa severità non è offerta nel portale. Scegli fra: {{allowed}}.",
+      "unclassifiedStates": "{{count}} stati dei ticket non appartengono a nessuna classe del workflow incident attivo ({{states}}): i contatori del portale non li conterebbero. Sistema i passi (iniziale / finale / categoria) nel disegnatore.",
+      "categoryRequired": "Scegli una categoria per la richiesta.",
+      "priorityRequired": "Scegli una priorità per la richiesta.",
+      "noCategories": "Il vocabolario delle categorie dei ticket non ha valori: aggiungili in Impostazioni → Dizionario.",
+      "severityAtLeastOne": "Scegli almeno una severità per il portale: senza, nessuno può aprire un ticket.",
+      "severityUnknown": "«{{value}}» non è un valore del vocabolario delle severità ({{allowed}}).",
+      "severityDuplicate": "«{{value}}» compare due volte.",
+      "severityLanguage": "Lingua sconosciuta «{{language}}».",
+      "severityLabelTooLong": "L'etichetta di «{{value}}» supera i {{max}} caratteri."
+    },
+    "serviceRequest": {
+      "catalogItemWithoutPriority": "La voce del catalogo «{{item}}» non ha una priorità, quindi non si può aprire una richiesta. Un amministratore la imposta da Admin → Catalogo servizi.",
+      "catalogItemInactive": "Questo servizio non è più disponibile: l'IT lo ha disattivato. Scegli un'altra voce del catalogo, o apri un ticket descrivendo cosa ti serve."
+    },
+    "comment": {
+      "ticketClosed": "Il ticket è chiuso: la conversazione non si può più modificare. Apri un nuovo ticket."
+    },
+    "list": {
+      "page": "Il numero di pagina deve essere un intero maggiore o uguale a 1 (ricevuto {{got}})."
+    },
+    "formField": {
+      "type": "«{{fieldType}}» non è un tipo di campo. Scegli fra: {{allowed}}.",
+      "labelRequired": "Un campo ha bisogno di un'etichetta.",
+      "labelLanguage": "Una traduzione ha bisogno di una lingua.",
+      "nameTakenInLibrary": "Un campo chiamato «{{name}}» è già nella libreria.",
+      "vocabularyRequired": "Un campo {{fieldType}} ha bisogno di un vocabolario del Dizionario: senza, non offrirebbe nessuna scelta.",
+      "vocabularyNotAllowed": "Un campo {{fieldType}} non prende un vocabolario: solo la scelta singola e multipla pescano dal Dizionario.",
+      "inUse": "Il campo «{{field}}» è usato dal modulo di: {{forms}}. Togli prima il campo da quei moduli.",
+      "required": "Il campo «{{field}}» è obbligatorio.",
+      "notNumber": "Il campo «{{field}}» è un numero, «{{value}}» no.",
+      "notBoolean": "Il campo «{{field}}» è sì/no: usa true o false.",
+      "notDate": "Il campo «{{field}}» è una data, «{{value}}» no.",
+      "notInVocabulary": "«{{value}}» non è un valore di «{{field}}». Ammessi: {{allowed}}.",
+      "vocabularyEmpty": "Il campo «{{field}}» non ha ancora nessuna scelta disponibile: segnalalo all'IT.",
+      "script": "Il campo «{{field}}» è stato rifiutato: {{message}}",
+      "oneReference": "Il campo «{{field}}» prende un riferimento, ne sono arrivati {{count}}.",
+      "fileRequired": "Il campo «{{field}}» ha bisogno di almeno un file.",
+      "referenceNotFound": "Il campo «{{field}}» punta a qualcosa che qui non esiste.",
+      "notAColumn": "Un campo {{fieldType}} non può essere una colonna: lo possono solo i campi che diventano una proprietà del ticket.",
+      "libraryFull": "La libreria dei campi è piena: il tetto è {{max}} campi e ce ne sono già {{existing}}. Alza il tetto nella pagina dei moduli, oppure cancella un campo che non usa nessuno.",
+      "notComputable": "Un campo {{fieldType}} non può essere calcolato: la formula la possono avere solo i campi a valore singolo che diventano una proprietà del ticket.",
+      "formulaFailed": "La formula del campo «{{field}}» è fallita: {{message}}. Correggila nella libreria dei campi.",
+      "notInLibrary": "«{{field}}» non è un campo della libreria dei moduli.",
+      "ticketWithoutForm": "Questa richiesta non nasce da un modulo del catalogo: «{{field}}» non è mai stato chiesto, quindi non c'è una risposta da scrivere.",
+      "revisionMissing": "La revisione {{revision}} del modulo di questa richiesta non si può leggere: manca la sua copia congelata.",
+      "notAskedHere": "Il campo «{{field}}» non è chiesto dal modulo con cui questa richiesta è stata compilata (revisione {{revision}}), o una condizione lo nasconde: a una domanda che non è stata fatta non c'è risposta da scrivere.",
+      "computedNotSettable": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, non si scrive a mano.",
+      "notSettableType": "«{{field}}» non si scrive così: un campo {{fieldType}} non è un valore singolo.",
+      "requiredNotClearable": "Il campo «{{field}}» è obbligatorio: non si può svuotare."
+    },
+    "formTable": {
+      "noColumns": "La tabella «{{field}}» non ha colonne: aggiungine almeno una nella libreria dei campi.",
+      "duplicateColumn": "La tabella «{{field}}» ha due volte la colonna «{{column}}».",
+      "columnWithoutVocabulary": "La colonna «{{column}}» di «{{field}}» è una scelta ma non ha un vocabolario: non offrirebbe niente.",
+      "columnVocabularyNotAllowed": "La colonna «{{column}}» di «{{field}}» è di tipo {{fieldType}} e non vuole un vocabolario.",
+      "tooManyRows": "La tabella «{{field}}» accetta al massimo {{max}} righe, ne sono arrivate {{count}}. Alza il tetto nella pagina dei moduli.",
+      "unknownColumn": "La tabella «{{field}}» non ha la colonna «{{column}}».",
+      "cellRequired": "Riga {{row}} di «{{field}}»: la colonna «{{column}}» è obbligatoria.",
+      "cellNotNumber": "Riga {{row}} di «{{field}}»: «{{value}}» non è un numero per «{{column}}».",
+      "cellNotBoolean": "Riga {{row}} di «{{field}}»: «{{column}}» vuole sì o no, è arrivato «{{value}}».",
+      "cellNotDate": "Riga {{row}} di «{{field}}»: «{{value}}» non è una data per «{{column}}».",
+      "cellNotInVocabulary": "Riga {{row}} di «{{field}}»: «{{value}}» non è un valore di «{{column}}» (ammessi: {{allowed}}).",
+      "cellVocabularyEmpty": "Riga {{row}} di «{{field}}»: la colonna «{{column}}» non ha ancora nessuna scelta. Segnalalo all'IT.",
+      "rowRequired": "La tabella «{{field}}» vuole almeno una riga.",
+      "notATable": "Un campo {{fieldType}} non vuole colonne: le ha solo un campo tabella."
+    },
+    "catalogForm": {
+      "shape": "La definizione del modulo ha una forma sbagliata in {{where}}.",
+      "empty": "La definizione del modulo è vuota.",
+      "sectionId": "{{where}}: l'identificativo della sezione va scritto in minuscole, cifre e trattino basso.",
+      "sectionDuplicate": "Due sezioni hanno l'identificativo «{{id}}»: identifica una sezione, non può ripetersi.",
+      "itemField": "{{where}}: non è il nome di un campo.",
+      "itemWidth": "{{where}}: la larghezza è intera o a metà.",
+      "fieldDuplicate": "Il campo «{{field}}» compare due volte in questo modulo: un campo si usa una volta.",
+      "fieldUnknown": "Il campo «{{field}}» non è nella libreria dei campi: aggiungilo lì prima, o togline il riferimento dal modulo.",
+      "fieldNoVocabulary": "Il campo «{{field}}» è a scelta ma non ha un vocabolario: non offrirebbe niente da scegliere.",
+      "noteRequired": "Il campo «{{field}}» è una nota: non porta una risposta, quindi non può essere obbligatorio.",
+      "conditionMatch": "{{where}}: una condizione vale per tutte le regole oppure per almeno una.",
+      "conditionEmpty": "{{where}}: una condizione ha bisogno di almeno una regola. Togli la condizione per mostrare sempre il campo.",
+      "conditionField": "{{where}}: la regola non nomina un campo.",
+      "conditionOp": "{{where}}: «{{op}}» non è un operatore di condizione.",
+      "conditionValue": "{{where}}: l'operatore «{{op}}» ha bisogno di un valore.",
+      "conditionFieldMissing": "Una condizione guarda il campo «{{field}}», che questo modulo non contiene: non potrebbe mai diventare vera.",
+      "answerUnknown": "«{{field}}» non è un campo di questo modulo.",
+      "answerHidden": "Il campo «{{field}}» non viene chiesto con queste risposte: è nascosto da una condizione, oppure non è offerto qui.",
+      "answerNote": "Il campo «{{field}}» è una nota: non porta una risposta.",
+      "answersWithoutItem": "Sono arrivate risposte a un modulo senza voce di catalogo: un modulo appartiene a una voce.",
+      "noForm": "La voce di catalogo «{{item}}» non ha un modulo: non c'è niente da rispondere.",
+      "conditionFieldType": "Una condizione guarda il campo «{{field}}», che è di tipo {{fieldType}}: solo i campi salvati come proprietà possono essere il soggetto di una condizione.",
+      "referenceEndUser": "Il campo «{{field}}» è un riferimento ({{fieldType}}): non si può offrire nel portale, perché scegliere vuol dire cercare nella CMDB o nell'elenco del personale. Togli la spunta «Offrilo nel portale».",
+      "requiredNotForEndUser": "Questo modulo non è configurato bene: un campo obbligatorio non viene chiesto qui. Segnalalo all'IT.",
+      "tooManyFields": "Questo modulo ha {{count}} campi: il tetto è {{max}}. Alza il tetto nella pagina dei moduli, oppure dividi la richiesta in due voci di catalogo.",
+      "limitOutOfRange": "Un tetto è un numero intero fra {{min}} e {{max}}.",
+      "answerComputed": "Il campo «{{field}}» è calcolato: il valore viene dalla sua formula, non si può mandare.",
+      "answerNotAList": "Il campo «{{field}}» tiene un valore solo: è arrivato come elenco. Riprova; se succede ancora, segnalalo all'IT.",
+      "answerNotASingleValue": "Il campo «{{field}}» tiene più valori: è arrivato come valore solo. Riprova; se succede ancora, segnalalo all'IT.",
+      "answerNotAReference": "Il campo «{{field}}» non è un riferimento. Riprova; se succede ancora, segnalalo all'IT.",
+      "answerNotATable": "Il campo «{{field}}» non è una tabella. Riprova; se succede ancora, segnalalo all'IT.",
+      "revisionChanged": "Il modulo di «{{item}}» è cambiato mentre lo compilavi (era la revisione {{filled}}, ora è la {{current}}): queste risposte sono di un altro modulo. Rifai la richiesta."
+    },
+    "scripting": {
+      "scriptsSwitchedOff": "{{what}}: gli script sono spenti per questa organizzazione. Accendili in Configurazione > Organizzazione, oppure togli lo script dalla configurazione.",
+      "what": {
+        "field": "Lo script del campo «{{field}}»",
+        "webhook": "Lo script di trasformazione del webhook {{hook}}",
+        "action": "L'azione «esegui script» di «{{source}}»",
+        "formula": "La formula del campo «{{field}}»"
+      }
+    },
+    "authz": {
+      "permissionRequired": "Il tuo ruolo non può farlo: serve uno di questi permessi: {{required}}.",
+      "roleNotAllowed": "Il ruolo «{{role}}» non può eseguire {{operation}} (serve uno di questi permessi: {{required}})."
+    },
+    "customField": {
+      "unknown": "«{{field}}» non è un campo di questo tipo di ticket: forse è stato tolto. Ricarica la pagina.",
+      "notForEndUser": "Il campo «{{field}}» non è offerto nel portale.",
+      "duplicate": "Il campo «{{field}}» è stato mandato due volte.",
+      "required": "Questi campi sono obbligatori: {{fields}}.",
+      "script": "«{{field}}»: {{error}}",
+      "entityType": "«{{entityType}}» non ha campi aggiuntivi.",
+      "restShape": "customFields deve essere un oggetto {nomeCampo: valore} con valori di testo, numero, sì/no o null.",
+      "nameFormat": "Il nome del campo «{{name}}» deve usare lettere minuscole, cifre e trattino basso, da 2 a 40 caratteri, iniziando con una lettera.",
+      "nameTaken": "«{{name}}» è già un campo di questo tipo di ticket nel prodotto: scegli un altro nome.",
+      "nameInData": "Alcuni ticket portano già un valore chiamato «{{name}}»: scegli un altro nome, così il tuo campo non mostra dati vecchi.",
+      "nameTypeFixed": "Il nome e il tipo del campo «{{name}}» non si possono cambiare, perché i ticket hanno già valori salvati con quel nome. Togli il campo e aggiungine uno nuovo.",
+      "stepRulesShape": "{{where}}: le regole di fase del campo non sono valide.",
+      "unknownSteps": "Campo «{{field}}»: il workflow non ha la fase {{steps}} (fasi: {{known}}).",
+      "notEditableInStep": "Il campo «{{field}}» non si modifica nella fase «{{step}}».",
+      "notInStep": "Il campo «{{field}}» non fa parte della fase «{{step}}».",
+      "stepRulesJson": "Le regole per fase salvate su {{where}} non sono JSON valido: riapri il campo nel disegnatore e reimpostale."
+    },
+    "attachmentPolicy": {
+      "size": "La dimensione massima di un allegato deve essere un numero intero di MB fra 1 e {{max}} (il limite della piattaforma).",
+      "noExtensions": "Scegli almeno un tipo di file ammesso.",
+      "extension": "«.{{extension}}» non è un tipo di file che la piattaforma accetta."
+    }
+  },
+  "auth": {
+    "bootstrapError": "Errore di autenticazione",
+    "tenantSuspended": {
+      "title": "Questo service desk è sospeso",
+      "detail": "L’accesso è stato sospeso da chi amministra la piattaforma. Le tue richieste sono intatte: non è stato cancellato niente. Rivolgiti al reparto IT per farlo riattivare."
+    }
+  },
+  "customFields": {
+    "choose": "— Scegli —"
   }
 }

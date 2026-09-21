@@ -1,4 +1,15 @@
+/**
+ * Integrazioni (admin): webhook in ingresso, webhook in uscita, API key.
+ * Le sorgenti di monitoraggio (entityType = event) compaiono nell'elenco dei
+ * webhook in ingresso ma si gestiscono da Monitoraggio → Sorgenti: qui hanno
+ * solo il link "Gestisci in Monitoraggio", senza URL copiabile (D·1.4).
+ * L'endpoint mostrato è quello reale (`sourceEndpointUrl`, rotta
+ * `/api/webhooks/inbound/:id`); etichette e messaggi in i18n (D·6.4).
+ */
 import { useId, useState } from 'react'
+import { formatDateTime } from '@/lib/datetime'
+import { InvalidFilterNotice } from '@/components/InvalidFilterNotice'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
 import { useTranslation } from 'react-i18next'
@@ -14,28 +25,35 @@ import { toast } from 'sonner'
 import { inputS, selectS, labelS, textareaS as sharedTextareaS } from '@/components/ui/styles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
+import { GET_WORKFLOW_EVENT_TYPES } from '@/graphql/queries'
 import { Toggle } from '@/components/ui/Toggle'
+import { API_KEY_PERMISSIONS, INBOUND_TICKET_FIELDS } from '@opengraphity/types'
+import { SlackSection } from './SlackSection'
 import { Tabs, type TabItem } from '@/components/ui/Tabs'
+import { useSearchParams } from 'react-router-dom'
 import { useMutationWithToast, errorMessage } from '@/hooks/useMutationWithToast'
 import { useListQueryState } from '@/hooks/useListQueryState'
 import { useConfirm } from '@/hooks/useConfirm'
+import { sourceEndpointUrl } from '@/pages/monitoring/configSnippets'
+import { palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────
 // Every operation is named: `operationName` shows up in the errorLink logs and
-// the API logs instead of `undefined` (E-06).
+// the API logs instead of `undefined` (E-06). Exported for the page test.
 
-const GET_INBOUND_WEBHOOKS = gql`query InboundWebhooks($filters: String, $sortField: String, $sortDirection: String) { inboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name entityType fieldMapping defaultValues transformScript enabled lastReceivedAt receiveCount createdAt } }`
-const GET_OUTBOUND_WEBHOOKS = gql`query OutboundWebhooks($filters: String, $sortField: String, $sortDirection: String) { outboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name url method headers events payloadTemplate enabled lastSentAt lastStatusCode sendCount errorCount lastError retryOnFailure } }`
-const GET_API_KEYS = gql`query ApiKeys($filters: String, $sortField: String, $sortDirection: String) { apiKeys(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name keyPrefix permissions rateLimit enabled lastUsedAt requestCount createdBy expiresAt createdAt } }`
+export const GET_INBOUND_WEBHOOKS = gql`query InboundWebhooks($filters: String, $sortField: String, $sortDirection: String) { inboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name entityType connectorKind fieldMapping defaultValues transformScript enabled lastReceivedAt receiveCount createdAt } }`
+export const GET_OUTBOUND_WEBHOOKS = gql`query OutboundWebhooks($filters: String, $sortField: String, $sortDirection: String) { outboundWebhooks(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name url method headers events payloadTemplate enabled lastSentAt lastStatusCode sendCount errorCount lastError retryOnFailure } }`
+export const GET_API_KEYS = gql`query ApiKeys($filters: String, $sortField: String, $sortDirection: String) { apiKeys(filters: $filters, sortField: $sortField, sortDirection: $sortDirection) { id name keyPrefix permissions rateLimit enabled lastUsedAt requestCount createdBy expiresAt createdAt } }`
 
 // ── Row types (mirror of the GraphQL selections above) ─────────────────────
-interface InboundWebhook  { id: string; name: string; entityType: string; fieldMapping: string; defaultValues: string; transformScript: string | null; enabled: boolean; lastReceivedAt: string | null; receiveCount: number; createdAt: string }
+interface InboundWebhook  { id: string; name: string; entityType: string; connectorKind: string | null; fieldMapping: string; defaultValues: string; transformScript: string | null; enabled: boolean; lastReceivedAt: string | null; receiveCount: number; createdAt: string }
 interface OutboundWebhook { id: string; name: string; url: string; method: string; headers: string; events: string[] | string; payloadTemplate: string | null; enabled: boolean; lastSentAt: string | null; lastStatusCode: number | null; sendCount: number; errorCount: number; lastError: string | null; retryOnFailure: boolean }
 interface ApiKeyRow       { id: string; name: string; keyPrefix: string; permissions: string[] | string; rateLimit: number; enabled: boolean; lastUsedAt: string | null; requestCount: number; createdBy: string | null; expiresAt: string | null; createdAt: string }
 
 const CREATE_INBOUND = gql`mutation CreateInboundWebhook($input: CreateInboundWebhookInput!) { createInboundWebhook(input: $input) { id token } }`
 const UPDATE_INBOUND = gql`mutation UpdateInboundWebhook($id: ID!, $input: UpdateInboundWebhookInput!) { updateInboundWebhook(id: $id, input: $input) { id } }`
-const DELETE_INBOUND = gql`mutation DeleteInboundWebhook($id: ID!) { deleteInboundWebhook(id: $id) }`
+const DELETE_INBOUND = gql`mutation DeleteInboundWebhook($id: ID!) { deleteInboundWebhook(id: $id) { deleted resolvedEvents affectedCIs } }`
 const REGEN_WEBHOOK_TOKEN = gql`mutation RegenerateWebhookToken($id: ID!) { regenerateWebhookToken(id: $id) { token } }`
 
 const CREATE_OUTBOUND = gql`mutation CreateOutboundWebhook($input: CreateOutboundWebhookInput!) { createOutboundWebhook(input: $input) { id } }`
@@ -50,28 +68,64 @@ const REGEN_API_KEY = gql`mutation RegenerateApiKey($id: ID!) { regenerateApiKey
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-type TabKey = 'inbound' | 'outbound' | 'apikeys'
-const ENTITY_TYPES = ['incident', 'problem', 'change', 'service_request', 'ci'] as const
+type TabKey = 'inbound' | 'outbound' | 'apikeys' | 'slack'
+const TAB_KEYS: readonly TabKey[] = ['inbound', 'outbound', 'apikeys', 'slack']
+type ModalKey = 'inbound' | 'outbound' | 'apikey' | 'secret'
+// `event` NON è tra le opzioni: le sorgenti di monitoraggio si creano dalla
+// procedura guidata di Monitoraggio → Sorgenti (senza JSON); qui restano
+// visibili in elenco con il link "gestisci in Monitoraggio".
+/**
+ * D-25: la tendina offriva anche `change`, `service_request` e `ci`, che la
+ * consegna rifiuta con 400 «Unsupported entity_type» — tre tipi che non
+ * possono funzionare. I tipi veri sono quelli per cui il server sa creare
+ * un'entità, e sono la stessa sorgente che valida i bersagli della mappa
+ * (`INBOUND_TICKET_FIELDS`, @opengraphity/types). Le sorgenti di monitoraggio
+ * (`entityType = event`) nascono nella pagina Sorgenti, non qui.
+ */
+const ENTITY_TYPES = Object.keys(INBOUND_TICKET_FIELDS) as Array<keyof typeof INBOUND_TICKET_FIELDS>
 const HTTP_METHODS = ['POST', 'PUT', 'PATCH'] as const
-const OUTBOUND_EVENTS = ['incident.created', 'incident.resolved', 'change.approved', 'change.completed', 'problem.created', 'sla.breached'] as const
-const PERMISSIONS = ['incidents:read', 'incidents:write', 'changes:read', 'changes:write', 'problems:read', 'problems:write', 'ci:read', 'ci:write', 'kb:read'] as const
+/**
+ * I tipi di evento «di prodotto» a cui un webhook si può abbonare. Erano gli
+ * unici sei offerti, e nessuno di loro è un passo intermedio: abbonare un
+ * webhook al proprio passo — o a un passo rinominato — era **impossibile**
+ * (D-22). Ora a questi si aggiungono i tipi veri dei workflow del tenant,
+ * letti da `workflowEventTypes`.
+ */
+const PRODUCT_OUTBOUND_EVENTS = ['incident.created', 'incident.resolved', 'change.approved', 'change.completed', 'problem.created', 'sla.breached'] as const
+/**
+ * D-26: la lista scritta qui a mano mentiva in due direzioni — offriva
+ * `ci:write` (nessuna rotta lo richiede) e non offriva `kb:write` (richiesto da
+ * POST /api/v1/import/kb-articles, quindi la chiave creata da qui prendeva 403).
+ * La sorgente unica è `API_KEY_PERMISSIONS`: la stessa che `createApiKey`
+ * applica e che un lint statico confronta con i `requirePermission` delle rotte.
+ */
+const PERMISSIONS = API_KEY_PERMISSIONS
 
 const textareaS: React.CSSProperties = { ...sharedTextareaS, minHeight: 70 }
+/** Suggerimento sotto un campo: la stessa scala della label, un tono più tenue. */
+const hintS: React.CSSProperties = { fontSize: 'var(--font-size-caption)', color: 'var(--color-slate)', margin: '-6px 0 0' }
 // Pill overrides: these badges are regular-weight with a small right gap.
 const PILL_S: React.CSSProperties = { fontWeight: 400, marginRight: 4 }
 const ROW_ACTIONS: React.CSSProperties = { display: 'flex', gap: 6 }
 
-function fmtDate(d: string | null) { return d ? new Date(d).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—' }
+/**
+ * G-26: `formatDateTime` come in tutto il resto dell'app. Qui c'era un formato
+ * proprio, con l'anno a due cifre: le date di Integrazioni si leggevano
+ * «25/09/26» mentre ogni altra pagina scriveva «25 set 2026».
+ */
+const fmtDate = formatDateTime
 function copyText(text: string) { void navigator.clipboard.writeText(text); toast.success(i18n.t('toast.integration.copied')) }
 
-const MODAL_TITLES: Record<string, string> = {
-  inbound: 'Nuovo Webhook In', outbound: 'Nuovo Webhook Out', apikey: 'Nuova API Key', secret: 'Credenziale generata',
+/** Chiave i18n del titolo di ogni modale. */
+const MODAL_TITLE_KEYS: Record<ModalKey, string> = {
+  inbound: 'admin.integrations.newInbound', outbound: 'admin.integrations.newOutbound', apikey: 'admin.integrations.newApiKey', secret: 'admin.integrations.secretTitle',
 }
 
 // Defined outside the page component so it is not remounted on every re-render.
-function ModalPortal({ modalType, children, onClose }: { modalType: string; children: React.ReactNode; onClose: () => void }) {
+function ModalPortal({ modalType, children, onClose }: { modalType: ModalKey; children: React.ReactNode; onClose: () => void }) {
+  const { t } = useTranslation()
   return (
-    <Modal open onClose={onClose} title={MODAL_TITLES[modalType] ?? ''} width={520} closeOnOverlay={false}>
+    <Modal open onClose={onClose} title={t(MODAL_TITLE_KEYS[modalType])} width={520} closeOnOverlay={false}>
       {children}
     </Modal>
   )
@@ -79,11 +133,32 @@ function ModalPortal({ modalType, children, onClose }: { modalType: string; chil
 
 // ── Component ───────────────────────────────────────────────────────────────
 
+/** Le entità che un webhook in ingresso può creare. */
+const ENTITA_WEBHOOK = ['incident', 'change', 'problem', 'event'] as const
+
 export function IntegrationsPage() {
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const [tab, setTab] = useState<TabKey>('inbound')
-  const [modal, setModal] = useState<'inbound' | 'outbound' | 'apikey' | 'secret' | null>(null)
+  /*
+   * Il nome dell'entità (20 set 2026, dal giro nel browser): la colonna
+   * mostrava il nome interno — «event» — mentre il filtro sopra, sulla stessa
+   * pagina, diceva «Evento di monitoraggio». Una sola funzione per tutti e
+   * due, e l'elenco delle entità in un posto solo.
+   */
+  const etichettaEntita = (v: string) => {
+    const chiavi: Record<string, string> = {
+      incident: 'admin.integrations.entityIncident', change: 'admin.integrations.entityChange',
+      problem:  'admin.integrations.entityProblem',  event:  'admin.integrations.entityEvent',
+    }
+    const chiave = chiavi[v]
+    return chiave ? t(chiave) : v
+  }
+  // La scheda è nell'indirizzo (?tab=slack): il ritorno da Slack deve riaprire quella.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const tab: TabKey = (TAB_KEYS as readonly string[]).includes(tabParam ?? '') ? tabParam as TabKey : 'inbound'
+  const setTab = (next: TabKey) => { const p = new URLSearchParams(searchParams); p.set('tab', next); setSearchParams(p, { replace: true }) }
+  const [modal, setModal] = useState<ModalKey | null>(null)
   const [secret, setSecret] = useState('')
   // Each tab owns its own sort/filter: an `entityType` filter set on "Webhook In"
   // must not silently narrow "API Keys" (E-06 d).
@@ -97,28 +172,37 @@ export function IntegrationsPage() {
     { key: 'inbound',  label: t('admin.integrations.webhookIn') },
     { key: 'outbound', label: t('admin.integrations.webhookOut') },
     { key: 'apikeys',  label: t('admin.integrations.apiKeys') },
+    { key: 'slack',    label: t('admin.integrations.slack.tab') },
   ]
 
+  const yesNo = [{ value: 'true', label: t('common.yes') }, { value: 'false', label: t('common.no') }]
   const INBOUND_FILTERS: FieldConfig[] = [
-    { key: 'entityType', label: 'Tipo entità', type: 'enum', options: [
-      { value: 'incident', label: 'Incident' }, { value: 'change', label: 'Change' }, { value: 'problem', label: 'Problem' },
-    ]},
-    { key: 'enabled', label: 'Abilitato', type: 'enum', options: [{ value: 'true', label: 'Sì' }, { value: 'false', label: 'No' }] },
-    { key: 'name', label: 'Nome', type: 'text' },
+    { key: 'entityType', label: t('admin.integrations.filters.entityType'), type: 'enum', options: ENTITA_WEBHOOK.map((v) => ({ value: v, label: etichettaEntita(v) })) },
+    { key: 'enabled', label: t('admin.integrations.filters.enabled'), type: 'enum', options: yesNo },
+    { key: 'name', label: t('admin.integrations.filters.name'), type: 'text' },
   ]
   const OUTBOUND_FILTERS: FieldConfig[] = [
-    { key: 'enabled', label: 'Abilitato', type: 'enum', options: [{ value: 'true', label: 'Sì' }, { value: 'false', label: 'No' }] },
-    { key: 'name', label: 'Nome', type: 'text' },
+    { key: 'enabled', label: t('admin.integrations.filters.enabled'), type: 'enum', options: yesNo },
+    { key: 'name', label: t('admin.integrations.filters.name'), type: 'text' },
   ]
   const APIKEY_FILTERS: FieldConfig[] = [
-    { key: 'enabled', label: 'Abilitato', type: 'enum', options: [{ value: 'true', label: 'Sì' }, { value: 'false', label: 'No' }] },
-    { key: 'name', label: 'Nome', type: 'text' },
+    { key: 'enabled', label: t('admin.integrations.filters.enabled'), type: 'enum', options: yesNo },
+    { key: 'name', label: t('admin.integrations.filters.name'), type: 'text' },
   ]
 
   // Queries — the active tab's sort/filters are the query variables
   const inQ = useQuery<{ inboundWebhooks: InboundWebhook[] }>(GET_INBOUND_WEBHOOKS, { variables: inList.variables })
   const outQ = useQuery<{ outboundWebhooks: OutboundWebhook[] }>(GET_OUTBOUND_WEBHOOKS, { variables: outList.variables })
   const keyQ = useQuery<{ apiKeys: ApiKeyRow[] }>(GET_API_KEYS, { variables: keyList.variables })
+  // I tipi di evento dei workflow del tenant (D-22): il tipo stabile
+  // <entità>.step_entered e un alias per ogni passo, etichetta compresa.
+  const evQ = useQuery<{ workflowEventTypes: Array<{ eventType: string; stepLabel: string | null; stable: boolean }> }>(GET_WORKFLOW_EVENT_TYPES)
+  const outboundEventOptions: Array<{ eventType: string; label: string | null }> = [
+    ...PRODUCT_OUTBOUND_EVENTS.map((e) => ({ eventType: e, label: null })),
+    ...(evQ.data?.workflowEventTypes ?? [])
+      .filter((e) => !(PRODUCT_OUTBOUND_EVENTS as readonly string[]).includes(e.eventType))
+      .map((e) => ({ eventType: e.eventType, label: e.stepLabel })),
+  ]
 
   // Writes refresh the ACTIVE list query via its `refetch()` (keeps the live
   // sort/filter variables; `refetchQueries: [{ query }]` without variables
@@ -150,10 +234,13 @@ export function IntegrationsPage() {
   // ── Form state ──────────────────────────────────────────────────────────────
 
   const [inForm, setInForm] = useState({ name: '', entityType: 'incident', fieldMapping: '{}', defaultValues: '{}', transformScript: '' })
+  // D-25: i bersagli ammessi dipendono dal tipo di entità scelto.
+  const allowedTargets: readonly string[] = INBOUND_TICKET_FIELDS[inForm.entityType as keyof typeof INBOUND_TICKET_FIELDS] ?? []
   const [outForm, setOutForm] = useState({ name: '', url: '', method: 'POST', headers: '{}', events: [] as string[], payloadTemplate: '', secret: '', retryOnFailure: true })
   const [keyForm, setKeyForm] = useState({ name: '', permissions: [] as string[], rateLimit: 1000, expiresAt: '' })
 
   const resetInForm = () => setInForm({ name: '', entityType: 'incident', fieldMapping: '{}', defaultValues: '{}', transformScript: '' })
+  const inFormValid = Boolean(inForm.name)
   const resetOutForm = () => setOutForm({ name: '', url: '', method: 'POST', headers: '{}', events: [], payloadTemplate: '', secret: '', retryOnFailure: true })
   const resetKeyForm = () => setKeyForm({ name: '', permissions: [], rateLimit: 1000, expiresAt: '' })
 
@@ -164,26 +251,27 @@ export function IntegrationsPage() {
       const res = await createIn({ variables: { input: { ...inForm } } })
       setModal(null); resetInForm()
       const token = (res.data as { createInboundWebhook?: { token: string } } | undefined)?.createInboundWebhook?.token
-      if (!token) throw new Error('Webhook creato ma token mancante nella risposta')
+      if (!token) throw new Error(t('admin.integrations.errors.tokenMissing'))
       setSecret(token); setModal('secret')
-    } catch (e) { toast.error(t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
   }
 
   async function handleCreateOutbound() {
     try {
       await createOut({ variables: { input: { ...outForm } } })
       setModal(null); resetOutForm(); toast.success(t('toast.integration.outboundCreated'))
-    } catch (e) { toast.error(t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
   }
 
   async function handleCreateApiKey() {
     try {
-      const res = await createKey({ variables: { input: { ...keyForm, rateLimit: Number(keyForm.rateLimit) } } })
+      // «Scade il» vuoto = nessuna scadenza: si manda null, mai la stringa vuota (G-1).
+      const res = await createKey({ variables: { input: { ...keyForm, rateLimit: Number(keyForm.rateLimit), expiresAt: keyForm.expiresAt || null } } })
       setModal(null); resetKeyForm()
       const key = (res.data as { createApiKey?: { key: string } } | undefined)?.createApiKey?.key
-      if (!key) throw new Error('API key creata ma chiave mancante nella risposta')
+      if (!key) throw new Error(t('admin.integrations.errors.keyMissing'))
       setSecret(key); setModal('secret')
-    } catch (e) { toast.error(t('toast.integration.apiKeyCreateFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.apiKeyCreateFailed', { error: errorMessage(e) })) }
   }
 
   // Toggles: errors are toasted by useMutationWithToast with the server message.
@@ -211,28 +299,28 @@ export function IntegrationsPage() {
     try {
       const res = await testOut({ variables: { id } })
       const r = (res.data as { testOutboundWebhook?: { success: boolean; statusCode: number | null; error: string | null } } | undefined)?.testOutboundWebhook
-      if (!r) throw new Error('risposta vuota')
+      if (!r) throw new Error(t('admin.integrations.errors.emptyResponse'))
       if (r.success) toast.success(t('toast.integration.testOk', { status: r.statusCode }))
       else toast.error(t('toast.integration.testFailed', { error: r.error }))
-    } catch (e) { toast.error(t('toast.integration.testError', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.testError', { error: errorMessage(e) })) }
   }
 
   async function handleRegenToken(id: string) {
     try {
       const res = await regenToken({ variables: { id } })
       const token = (res.data as { regenerateWebhookToken?: { token: string } } | undefined)?.regenerateWebhookToken?.token
-      if (!token) throw new Error('token mancante nella risposta')
+      if (!token) throw new Error(t('monitoring.errors.tokenMissing', { operation: 'regenerateWebhookToken' }))
       setSecret(token); setModal('secret')
-    } catch (e) { toast.error(t('toast.integration.tokenRegenFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.tokenRegenFailed', { error: errorMessage(e) })) }
   }
 
   async function handleRegenApiKey(id: string) {
     try {
       const res = await regenKey({ variables: { id } })
       const key = (res.data as { regenerateApiKey?: { key: string } } | undefined)?.regenerateApiKey?.key
-      if (!key) throw new Error('chiave mancante nella risposta')
+      if (!key) throw new Error(t('admin.integrations.errors.keyMissing'))
       setSecret(key); setModal('secret')
-    } catch (e) { toast.error(t('toast.integration.keyRegenFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.keyRegenFailed', { error: errorMessage(e) })) }
   }
 
   // ── Render helpers ──────────────────────────────────────────────────────────
@@ -244,64 +332,75 @@ export function IntegrationsPage() {
   // ── Column definitions ─────────────────────────────────────────────────────
 
   const inboundColumns: ColumnDef<InboundWebhook>[] = [
-    { key: 'name', label: 'Nome', sortable: true },
-    { key: 'entityType', label: 'Entity Type', sortable: true, render: (v) => <Pill bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{String(v)}</Pill> },
-    { key: 'id', label: 'Endpoint URL', sortable: true, render: (v) => (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace' }}>/api/webhooks/in/{String(v)}</span>
-        <Button variant="ghost" size="xs" aria-label={t('admin.integrations.copyEndpoint')} title={t('admin.integrations.copyEndpoint')} onClick={() => copyText(`/api/webhooks/in/${String(v)}`)} style={{ padding: 2, color: 'var(--color-slate)' }}>
-          <Copy size={12} aria-hidden="true" />
-        </Button>
-      </span>
-    ) },
-    { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle checked={row.enabled} onChange={() => handleToggleInbound(row.id, row.enabled)} label={t('admin.integrations.toggleLabel', { name: row.name })} /> },
-    { key: 'receiveCount', label: 'Ricevuti', sortable: true, render: (v) => String(v ?? 0) },
-    { key: 'lastReceivedAt', label: 'Ultimo', sortable: true, render: (v) => fmtDate(v as string | null) },
-    { key: 'createdAt', label: '', render: (_v, row) => (
+    { key: 'name', label: t('admin.integrations.columns.name'), sortable: true },
+    // Il nome dell'entità come nel filtro qui sopra, non `event` (20 set 2026).
+    { key: 'entityType', label: t('admin.integrations.columns.entityType'), sortable: true, render: (v) => <Pill bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{etichettaEntita(String(v))}</Pill> },
+    { key: 'connectorKind', label: t('admin.integrations.connectorKind'), sortable: true, render: (v) => v ? <Pill bg={palette.purple.bg} color={palette.purple.dark} radius={12} style={PILL_S}>{String(v)}</Pill> : '—' },
+    // Endpoint reale (rotta /api/webhooks/inbound/:id). Per le sorgenti evento
+    // l'URL si copia da Monitoraggio → Sorgenti, insieme al token: qui solo il link.
+    { key: 'id', label: t('admin.integrations.columns.endpoint'), sortable: true, render: (v, row) => {
+      const url = sourceEndpointUrl(String(v))
+      return row.entityType === 'event' ? (
+        <Link to={`/monitoring/sources/${row.id}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', fontWeight: 500, whiteSpace: 'nowrap' }}>
+          {t('admin.integrations.manageInMonitoring')} →
+        </Link>
+      ) : (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>{url}</span>
+          <Button variant="ghost" size="xs" aria-label={t('admin.integrations.copyEndpoint')} title={t('admin.integrations.copyEndpoint')} onClick={() => copyText(url)} style={{ padding: 2, color: 'var(--color-slate)' }}>
+            <Copy size={12} aria-hidden="true" />
+          </Button>
+        </span>
+      )
+    } },
+    { key: 'enabled', label: t('admin.integrations.columns.enabled'), sortable: true, render: (_v, row) => <Toggle checked={row.enabled} onChange={() => handleToggleInbound(row.id, row.enabled)} label={t('admin.integrations.toggleLabel', { name: row.name })} /> },
+    { key: 'receiveCount', label: t('admin.integrations.columns.received'), sortable: true, render: (v) => String(v ?? 0) },
+    { key: 'lastReceivedAt', label: t('admin.integrations.columns.lastReceived'), sortable: true, render: (v) => fmtDate(v as string | null) },
+    { key: 'createdAt', label: '', render: (_v, row) => row.entityType === 'event' ? null : (
       <div style={ROW_ACTIONS}>
-        <Button variant="icon" size="xs" title={t('admin.integrations.regenToken')} onClick={() => void handleRegenToken(row.id)}><RefreshCw size={13} aria-hidden="true" /></Button>
+        <Button variant="icon" size="xs" title={t('admin.integrations.regenToken')} aria-label={t('admin.integrations.regenToken')} onClick={() => void handleRegenToken(row.id)}><RefreshCw size={13} aria-hidden="true" /></Button>
         <Button variant="danger" size="xs" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => void handleDeleteInbound(row)}><Trash2 size={13} aria-hidden="true" /></Button>
       </div>
     ) },
   ]
 
   const outboundColumns: ColumnDef<OutboundWebhook>[] = [
-    { key: 'name', label: 'Nome', sortable: true },
-    { key: 'url', label: 'URL', sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
-    { key: 'events', label: 'Events', sortable: true, render: (v) => {
+    { key: 'name', label: t('admin.integrations.columns.name'), sortable: true },
+    { key: 'url', label: t('admin.integrations.columns.url'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'var(--font-mono)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
+    { key: 'events', label: t('admin.integrations.columns.events'), sortable: true, render: (v) => {
       const events: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
-      return <>{events.map(e => <Pill key={e} bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{e}</Pill>)}</>
+      return <>{events.map(e => <Pill key={e} bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{e}</Pill>)}</>
     } },
-    { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle checked={row.enabled} onChange={() => handleToggleOutbound(row.id, row.enabled)} label={t('admin.integrations.toggleLabel', { name: row.name })} /> },
-    { key: 'sendCount', label: 'Invii', sortable: true, render: (v) => String(v ?? 0) },
-    { key: 'lastStatusCode', label: 'Ultimo Status', sortable: true, render: (v) => {
+    { key: 'enabled', label: t('admin.integrations.columns.enabled'), sortable: true, render: (_v, row) => <Toggle checked={row.enabled} onChange={() => handleToggleOutbound(row.id, row.enabled)} label={t('admin.integrations.toggleLabel', { name: row.name })} /> },
+    { key: 'sendCount', label: t('admin.integrations.columns.sent'), sortable: true, render: (v) => String(v ?? 0) },
+    { key: 'lastStatusCode', label: t('admin.integrations.columns.lastStatus'), sortable: true, render: (v) => {
       if (!v) return '—'
       const ok = Number(v) >= 200 && Number(v) < 300
-      return <Pill bg={ok ? '#dcfce7' : '#fee2e2'} color={ok ? 'var(--color-success)' : 'var(--color-trigger-sla-breach)'} radius={12} style={PILL_S}>{String(v)}</Pill>
+      return <Pill bg={ok ? palette.success.tint : palette.danger.tint} color={ok ? 'var(--color-success)' : 'var(--color-trigger-sla-breach)'} radius={12} style={PILL_S}>{String(v)}</Pill>
     } },
-    { key: 'lastError', label: 'Ultimo Errore', sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-danger)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{v ? String(v) : '—'}</span> },
+    { key: 'lastError', label: t('admin.integrations.columns.lastError'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-danger)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{v ? String(v) : '—'}</span> },
     { key: 'retryOnFailure', label: '', render: (_v, row) => (
       <div style={ROW_ACTIONS}>
-        <Button variant="icon" size="xs" title={t('admin.integrations.test')} onClick={() => void handleTestOutbound(row.id)}><Play size={13} aria-hidden="true" /></Button>
+        <Button variant="icon" size="xs" title={t('admin.integrations.test')} aria-label={t('admin.integrations.test')} onClick={() => void handleTestOutbound(row.id)}><Play size={13} aria-hidden="true" /></Button>
         <Button variant="danger" size="xs" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => void handleDeleteOutbound(row)}><Trash2 size={13} aria-hidden="true" /></Button>
       </div>
     ) },
   ]
 
   const apiKeyColumns: ColumnDef<ApiKeyRow>[] = [
-    { key: 'name', label: 'Nome', sortable: true },
-    { key: 'keyPrefix', label: 'Prefisso', sortable: true, render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
-    { key: 'permissions', label: 'Permessi', sortable: true, render: (v) => {
+    { key: 'name', label: t('admin.integrations.columns.name'), sortable: true },
+    { key: 'keyPrefix', label: t('admin.integrations.columns.keyPrefix'), sortable: true, render: (v) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
+    { key: 'permissions', label: t('admin.integrations.columns.permissions'), sortable: true, render: (v) => {
       const perms: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
-      return <>{perms.map(p => <Pill key={p} bg="#f0f4ff" color="var(--color-brand)" radius={12} style={PILL_S}>{p}</Pill>)}</>
+      return <>{perms.map(p => <Pill key={p} bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{p}</Pill>)}</>
     } },
-    { key: 'rateLimit', label: 'Rate Limit', sortable: true, render: (v) => `${String(v)}/min` },
-    { key: 'enabled', label: 'Attivo', sortable: true, render: (_v, row) => <Toggle checked={row.enabled} onChange={() => handleToggleKey(row.id, row.enabled)} label={t('admin.integrations.toggleLabel', { name: row.name })} /> },
-    { key: 'lastUsedAt', label: 'Ultimo uso', sortable: true, render: (v) => fmtDate(v as string | null) },
-    { key: 'requestCount', label: 'Richieste', sortable: true, render: (v) => String(v ?? 0) },
+    { key: 'rateLimit', label: t('admin.integrations.columns.rateLimit'), sortable: true, render: (v) => `${String(v)}/min` },
+    { key: 'enabled', label: t('admin.integrations.columns.enabled'), sortable: true, render: (_v, row) => <Toggle checked={row.enabled} onChange={() => handleToggleKey(row.id, row.enabled)} label={t('admin.integrations.toggleLabel', { name: row.name })} /> },
+    { key: 'lastUsedAt', label: t('admin.integrations.columns.lastUsed'), sortable: true, render: (v) => fmtDate(v as string | null) },
+    { key: 'requestCount', label: t('admin.integrations.columns.requests'), sortable: true, render: (v) => String(v ?? 0) },
     { key: 'createdAt', label: '', render: (_v, row) => (
       <div style={ROW_ACTIONS}>
-        <Button variant="icon" size="xs" title={t('admin.integrations.regenKey')} onClick={() => void handleRegenApiKey(row.id)}><RefreshCw size={13} aria-hidden="true" /></Button>
+        <Button variant="icon" size="xs" title={t('admin.integrations.regenKey')} aria-label={t('admin.integrations.regenKey')} onClick={() => void handleRegenApiKey(row.id)}><RefreshCw size={13} aria-hidden="true" /></Button>
         <Button variant="danger" size="xs" aria-label={t('common.delete')} title={t('common.delete')} onClick={() => void handleDeleteKey(row)}><Trash2 size={13} aria-hidden="true" /></Button>
       </div>
     ) },
@@ -313,44 +412,57 @@ export function IntegrationsPage() {
 
   return (
     <PageContainer>
+      {/* F-17: un filtro dell'URL illeggibile si dice, non si ignora. */}
+      <InvalidFilterNotice show={inList.filtersInvalid || outList.filtersInvalid || keyList.filtersInvalid} />
       <div style={{ marginBottom: 24 }}>
-        <PageTitle icon={<Plug size={22} color="var(--color-icon-accent)" />}>Integrazioni</PageTitle>
+        <PageTitle icon={<Plug size={22} color="var(--color-icon-accent)" />}>{t('admin.integrations.title')}</PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-          Webhook, API Keys e connessioni esterne
+          {t('admin.integrations.subtitle')}
         </p>
       </div>
 
       <Tabs items={TABS} value={tab} onChange={setTab} ariaLabel={t('admin.integrations.tabsLabel')} />
 
+      {/* ── TAB: Slack (ondata 8) ───────────────────────────────────────────── */}
+      {tab === 'slack' && <SlackSection />}
+
       {/* ── TAB: Webhook In ─────────────────────────────────────────────────── */}
       {tab === 'inbound' && <>
+        <p style={{ margin: '0 0 12px', padding: '8px 12px', background: 'var(--color-brand-light)', borderRadius: 8, fontSize: 'var(--font-size-body)', color: palette.info.text }}>
+          {t('admin.integrations.eventsNote')}{' '}
+          <Link to="/monitoring/sources" style={{ color: 'var(--color-brand)', fontWeight: 600 }}>{t('admin.integrations.eventsNoteLink')}</Link>.
+        </p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-          <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => { resetInForm(); setModal('inbound') }}>Nuovo Webhook In</Button>
+          <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => { resetInForm(); setModal('inbound') }}>{t('admin.integrations.newInbound')}</Button>
         </div>
         <FilterBuilder fields={INBOUND_FILTERS} onApply={inList.setFilterGroup} />
         <SortableFilterTable<InboundWebhook> onSort={inList.handleSort} sortField={inList.sortField} sortDir={inList.sortDir}
           columns={inboundColumns}
           data={inbounds}
           loading={inQ.loading}
-          emptyMessage="Nessun webhook inbound configurato"
-          label="Webhook Inbound"
+          emptyMessage={t('admin.integrations.emptyInbound')}
+          label={t('admin.integrations.tableInbound')}
         />
 
         {modal === 'inbound' && (
           <ModalPortal modalType="inbound" onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label htmlFor={fid('in-name')} style={labelS}>Nome</label><Input id={fid('in-name')} style={inputS} value={inForm.name} onChange={e => setInForm({ ...inForm, name: e.target.value })} /></div>
-              <div><label htmlFor={fid('in-entity-type')} style={labelS}>Entity Type</label>
+              <div><label htmlFor={fid('in-name')} style={labelS}>{t('admin.integrations.form.name')}</label><Input id={fid('in-name')} style={inputS} value={inForm.name} onChange={e => setInForm({ ...inForm, name: e.target.value })} /></div>
+              <div><label htmlFor={fid('in-entity-type')} style={labelS}>{t('admin.integrations.form.entityType')}</label>
                 <Select id={fid('in-entity-type')} style={selectS} value={inForm.entityType} onChange={e => setInForm({ ...inForm, entityType: e.target.value })}>
                   {ENTITY_TYPES.map(et => <option key={et} value={et}>{et}</option>)}
                 </Select>
               </div>
-              <div><label htmlFor={fid('in-field-mapping')} style={labelS}>Field Mapping (JSON)</label><textarea id={fid('in-field-mapping')} style={textareaS} value={inForm.fieldMapping} onChange={e => setInForm({ ...inForm, fieldMapping: e.target.value })} /></div>
-              <div><label htmlFor={fid('in-default-values')} style={labelS}>Default Values (JSON)</label><textarea id={fid('in-default-values')} style={textareaS} value={inForm.defaultValues} onChange={e => setInForm({ ...inForm, defaultValues: e.target.value })} /></div>
-              <div><label htmlFor={fid('in-transform-script')} style={labelS}>Transform Script</label><textarea id={fid('in-transform-script')} style={textareaS} value={inForm.transformScript} onChange={e => setInForm({ ...inForm, transformScript: e.target.value })} /></div>
+              <div><label htmlFor={fid('in-field-mapping')} style={labelS}>{t('admin.integrations.form.fieldMapping')}</label><textarea id={fid('in-field-mapping')} style={textareaS} value={inForm.fieldMapping} onChange={e => setInForm({ ...inForm, fieldMapping: e.target.value })} aria-describedby={fid('in-targets')} /></div>
+              {/* D-25: i bersagli che il server scrive davvero. Fuori da questo
+                  elenco il salvataggio rifiuta, invece di accettare la voce e
+                  poi scartarla alla consegna con un 201 Created. */}
+              <p id={fid('in-targets')} style={hintS}>{t('admin.integrations.form.allowedTargets', { fields: allowedTargets.join(', ') })}</p>
+              <div><label htmlFor={fid('in-default-values')} style={labelS}>{t('admin.integrations.form.defaultValues')}</label><textarea id={fid('in-default-values')} style={textareaS} value={inForm.defaultValues} onChange={e => setInForm({ ...inForm, defaultValues: e.target.value })} aria-describedby={fid('in-targets')} /></div>
+              <div><label htmlFor={fid('in-transform-script')} style={labelS}>{t('admin.integrations.form.transformScript')}</label><textarea id={fid('in-transform-script')} style={textareaS} value={inForm.transformScript} onChange={e => setInForm({ ...inForm, transformScript: e.target.value })} /></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
-                <Button onClick={() => void handleCreateInbound()} disabled={!inForm.name}>{t('common.create')}</Button>
+                <Button onClick={() => void handleCreateInbound()} disabled={!inFormValid}>{t('common.create')}</Button>
               </div>
             </div>
           </ModalPortal>
@@ -360,44 +472,44 @@ export function IntegrationsPage() {
       {/* ── TAB: Webhook Out ────────────────────────────────────────────────── */}
       {tab === 'outbound' && <>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-          <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => { resetOutForm(); setModal('outbound') }}>Nuovo Webhook Out</Button>
+          <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => { resetOutForm(); setModal('outbound') }}>{t('admin.integrations.newOutbound')}</Button>
         </div>
         <FilterBuilder fields={OUTBOUND_FILTERS} onApply={outList.setFilterGroup} />
         <SortableFilterTable<OutboundWebhook> onSort={outList.handleSort} sortField={outList.sortField} sortDir={outList.sortDir}
           columns={outboundColumns}
           data={outbounds}
           loading={outQ.loading}
-          emptyMessage="Nessun webhook outbound configurato"
-          label="Webhook Outbound"
+          emptyMessage={t('admin.integrations.emptyOutbound')}
+          label={t('admin.integrations.tableOutbound')}
         />
 
         {modal === 'outbound' && (
           <ModalPortal modalType="outbound" onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label htmlFor={fid('out-name')} style={labelS}>Nome</label><Input id={fid('out-name')} style={inputS} value={outForm.name} onChange={e => setOutForm({ ...outForm, name: e.target.value })} /></div>
-              <div><label htmlFor={fid('out-url')} style={labelS}>URL</label><Input id={fid('out-url')} style={inputS} value={outForm.url} onChange={e => setOutForm({ ...outForm, url: e.target.value })} placeholder="https://..." /></div>
-              <div><label htmlFor={fid('out-method')} style={labelS}>Method</label>
+              <div><label htmlFor={fid('out-name')} style={labelS}>{t('admin.integrations.form.name')}</label><Input id={fid('out-name')} style={inputS} value={outForm.name} onChange={e => setOutForm({ ...outForm, name: e.target.value })} /></div>
+              <div><label htmlFor={fid('out-url')} style={labelS}>{t('admin.integrations.form.url')}</label><Input id={fid('out-url')} style={inputS} value={outForm.url} onChange={e => setOutForm({ ...outForm, url: e.target.value })} placeholder="https://..." /></div>
+              <div><label htmlFor={fid('out-method')} style={labelS}>{t('admin.integrations.form.method')}</label>
                 <Select id={fid('out-method')} style={selectS} value={outForm.method} onChange={e => setOutForm({ ...outForm, method: e.target.value })}>
                   {HTTP_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                 </Select>
               </div>
-              <div><label htmlFor={fid('out-headers')} style={labelS}>Headers (JSON)</label><textarea id={fid('out-headers')} style={textareaS} value={outForm.headers} onChange={e => setOutForm({ ...outForm, headers: e.target.value })} /></div>
+              <div><label htmlFor={fid('out-headers')} style={labelS}>{t('admin.integrations.form.headers')}</label><textarea id={fid('out-headers')} style={textareaS} value={outForm.headers} onChange={e => setOutForm({ ...outForm, headers: e.target.value })} /></div>
               <div>
-                <div style={labelS}>Events</div>
+                <div style={labelS}>{t('admin.integrations.form.events')}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {OUTBOUND_EVENTS.map(ev => (
+                  {outboundEventOptions.map(({ eventType: ev, label }) => (
                     <label key={ev} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                       <input type="checkbox" checked={outForm.events.includes(ev)} onChange={() => setOutForm({ ...outForm, events: toggleList(outForm.events, ev) })} />
-                      {ev}
+                      {label ? `${ev} — ${label}` : ev}
                     </label>
                   ))}
                 </div>
               </div>
-              <div><label htmlFor={fid('out-payload-template')} style={labelS}>Payload Template</label><textarea id={fid('out-payload-template')} style={textareaS} value={outForm.payloadTemplate} onChange={e => setOutForm({ ...outForm, payloadTemplate: e.target.value })} /></div>
-              <div><label htmlFor={fid('out-secret')} style={labelS}>Secret</label><Input id={fid('out-secret')} style={inputS} value={outForm.secret} onChange={e => setOutForm({ ...outForm, secret: e.target.value })} /></div>
+              <div><label htmlFor={fid('out-payload-template')} style={labelS}>{t('admin.integrations.form.payloadTemplate')}</label><textarea id={fid('out-payload-template')} style={textareaS} value={outForm.payloadTemplate} onChange={e => setOutForm({ ...outForm, payloadTemplate: e.target.value })} /></div>
+              <div><label htmlFor={fid('out-secret')} style={labelS}>{t('admin.integrations.form.secret')}</label><Input id={fid('out-secret')} style={inputS} value={outForm.secret} onChange={e => setOutForm({ ...outForm, secret: e.target.value })} /></div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                 <input type="checkbox" checked={outForm.retryOnFailure} onChange={e => setOutForm({ ...outForm, retryOnFailure: e.target.checked })} />
-                Riprova in caso di errore
+                {t('admin.integrations.retryOnFailure')}
               </label>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
@@ -411,23 +523,23 @@ export function IntegrationsPage() {
       {/* ── TAB: API Keys ───────────────────────────────────────────────────── */}
       {tab === 'apikeys' && <>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-          <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => { resetKeyForm(); setModal('apikey') }}>Nuova API Key</Button>
+          <Button icon={<Plus size={14} aria-hidden="true" />} onClick={() => { resetKeyForm(); setModal('apikey') }}>{t('admin.integrations.newApiKey')}</Button>
         </div>
         <FilterBuilder fields={APIKEY_FILTERS} onApply={keyList.setFilterGroup} />
         <SortableFilterTable<ApiKeyRow> onSort={keyList.handleSort} sortField={keyList.sortField} sortDir={keyList.sortDir}
           columns={apiKeyColumns}
           data={apiKeys}
           loading={keyQ.loading}
-          emptyMessage="Nessuna API key configurata"
-          label="API Keys"
+          emptyMessage={t('admin.integrations.emptyApiKeys')}
+          label={t('admin.integrations.tableApiKeys')}
         />
 
         {modal === 'apikey' && (
           <ModalPortal modalType="apikey" onClose={() => setModal(null)}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label htmlFor={fid('key-name')} style={labelS}>Nome</label><Input id={fid('key-name')} style={inputS} value={keyForm.name} onChange={e => setKeyForm({ ...keyForm, name: e.target.value })} /></div>
+              <div><label htmlFor={fid('key-name')} style={labelS}>{t('admin.integrations.form.name')}</label><Input id={fid('key-name')} style={inputS} value={keyForm.name} onChange={e => setKeyForm({ ...keyForm, name: e.target.value })} /></div>
               <div>
-                <div style={labelS}>Permessi</div>
+                <div style={labelS}>{t('admin.integrations.form.permissions')}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
                   {PERMISSIONS.map(p => (
                     <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
@@ -437,11 +549,11 @@ export function IntegrationsPage() {
                   ))}
                 </div>
               </div>
-              <div><label htmlFor={fid('key-rate-limit')} style={labelS}>Rate Limit (req/min)</label><Input id={fid('key-rate-limit')} style={inputS} type="number" value={keyForm.rateLimit} onChange={e => setKeyForm({ ...keyForm, rateLimit: Number(e.target.value) })} /></div>
-              <div><label htmlFor={fid('key-expires-at')} style={labelS}>Scadenza</label><Input id={fid('key-expires-at')} style={inputS} type="date" value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /></div>
+              <div><label htmlFor={fid('key-rate-limit')} style={labelS}>{t('admin.integrations.form.rateLimit')}</label><Input id={fid('key-rate-limit')} style={inputS} type="number" value={keyForm.rateLimit} onChange={e => setKeyForm({ ...keyForm, rateLimit: Number(e.target.value) })} /></div>
+              <div><label htmlFor={fid('key-expires-at')} style={labelS}>{t('admin.integrations.form.expiresAt')}</label><Input id={fid('key-expires-at')} style={inputS} type="date" aria-describedby={fid('key-expires-at-hint')} value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /><div id={fid('key-expires-at-hint')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('admin.integrations.form.expiresAtHint')}</div></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
-                <Button onClick={() => void handleCreateApiKey()} disabled={!keyForm.name || !keyForm.permissions.length}>{t('common.create')}</Button>
+                <Button onClick={() => void handleCreateApiKey()} disabled={!keyForm.name.trim() || !keyForm.permissions.length || !Number.isInteger(keyForm.rateLimit) || keyForm.rateLimit < 1}>{t('common.create')}</Button>
               </div>
             </div>
           </ModalPortal>
@@ -451,8 +563,8 @@ export function IntegrationsPage() {
       {/* Secret reveal modal */}
       {modal === 'secret' && (
         <ModalPortal modalType="secret" onClose={() => { setModal(null); setSecret('') }}>
-          <div style={{ background: 'var(--color-warning-bg)', border: '1px solid #fbbf24', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 'var(--font-size-body)', color: '#92400e' }}>
-            Questo token non sarà più visibile. Copialo ora!
+          <div role="alert" style={{ background: 'var(--color-warning-bg)', border: `1px solid ${palette.warning.border}`, borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 'var(--font-size-body)', color: palette.warning.strong }}>
+            {t('admin.integrations.secretWarning')}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <code style={{ flex: 1, padding: '8px 12px', background: 'var(--color-slate-bg)', borderRadius: 6, fontSize: 'var(--font-size-body)', wordBreak: 'break-all', border: '1px solid var(--border)' }}>{secret}</code>

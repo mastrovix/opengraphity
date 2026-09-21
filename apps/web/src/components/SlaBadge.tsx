@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Timer, CheckCircle2, AlertTriangle, PauseCircle } from 'lucide-react'
+import { colors, palette } from '@/lib/tokens'
+import { formatDateTime } from '@/lib/datetime'
+import i18n from '@/i18n/i18n'
 
 export interface SlaStatusInfo {
   startedAt:        string
@@ -10,32 +13,41 @@ export interface SlaStatusInfo {
   resolveMet:       boolean
   breached:         boolean
   pausedAt?:        string | null
+  /** Minuti di preavviso della policy (gli stessi dell'avviso inviato dallo scheduler). */
+  warningMinutes:   number
 }
 
+/**
+ * Durata compatta del badge: «45 min», «3 h 20 min», «1 d 23 h». Giro nel
+ * browser del 14 set 2026 (#25): i giorni erano «g» anche con l'interfaccia
+ * inglese; le unità vengono dalla lingua attiva.
+ */
 function formatDuration(ms: number): string {
   const abs  = Math.abs(ms)
   const mins = Math.floor(abs / 60_000)
-  if (mins < 60) return `${mins}m`
+  if (mins < 60) return i18n.t('time.short.minutes', { m: mins })
   const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ${mins % 60}m`
-  return `${Math.floor(hrs / 24)}g ${hrs % 24}h`
+  if (hrs < 24) return i18n.t('time.short.hoursMinutes', { h: hrs, m: mins % 60 })
+  return i18n.t('time.short.daysHours', { d: Math.floor(hrs / 24), h: hrs % 24 })
 }
 
 type SlaState = 'met' | 'breached' | 'overdue' | 'warning' | 'ontrack' | 'paused'
 
 const STATE_STYLE: Record<SlaState, { bg: string; fg: string }> = {
-  met:      { bg: '#dcfce7', fg: '#15803d' },
-  breached: { bg: '#fee2e2', fg: '#b91c1c' },
-  overdue:  { bg: '#fee2e2', fg: '#b91c1c' },
-  warning:  { bg: '#fef3c7', fg: '#b45309' },
-  ontrack:  { bg: '#f1f5f9', fg: '#475569' },
-  paused:   { bg: '#e0e7ff', fg: '#4338ca' },
+  met:      { bg: palette.success.tint, fg: palette.success.text },
+  breached: { bg: palette.danger.tint, fg: palette.danger.text },
+  overdue:  { bg: palette.danger.tint, fg: palette.danger.text },
+  warning:  { bg: palette.warning.tint, fg: palette.warning.text },
+  ontrack:  { bg: colors.slateBg, fg: palette.neutral.textStrong },
+  paused:   { bg: palette.info.tint, fg: palette.purple.dark },
 }
 
 /**
  * SLA pill for lists and detail pages. States:
  * met (resolve met) · breached (marked by scheduler) · overdue (deadline past)
- * · warning (<25% of window or <30min left) · ontrack.
+ * · warning (meno dei minuti di preavviso della POLICY: gli stessi dell'avviso
+ *   inviato — prima era una soglia del badge, 25% della finestra o 30 minuti,
+ *   che non concordava con la notifica) · ontrack.
  * Re-renders every 30s so the countdown stays live.
  */
 export function SlaBadge({ sla, compact = false }: { sla: SlaStatusInfo | null | undefined; compact?: boolean }) {
@@ -68,14 +80,12 @@ export function SlaBadge({ sla, compact = false }: { sla: SlaStatusInfo | null |
   } else {
     // Next deadline: response first, then resolve
     const deadline  = sla.responseMet ? Date.parse(sla.resolveDeadline) : Date.parse(sla.responseDeadline)
-    const started   = Date.parse(sla.startedAt)
     const remaining = deadline - now
     if (remaining < 0) {
       state = 'overdue'
       label = t('sla.overdueBy', { time: formatDuration(remaining) })
     } else {
-      const window = deadline - started
-      state = remaining < Math.max(window * 0.25, 0) || remaining < 30 * 60_000 ? 'warning' : 'ontrack'
+      state = remaining <= sla.warningMinutes * 60_000 ? 'warning' : 'ontrack'
       label = t('sla.remaining', { time: formatDuration(remaining) })
     }
   }
@@ -88,7 +98,7 @@ export function SlaBadge({ sla, compact = false }: { sla: SlaStatusInfo | null |
 
   return (
     <span
-      title={`${t('sla.response')}: ${new Date(sla.responseDeadline).toLocaleString()} · ${t('sla.resolve')}: ${new Date(sla.resolveDeadline).toLocaleString()}`}
+      title={`${t('sla.response')}: ${formatDateTime(sla.responseDeadline)} · ${t('sla.resolve')}: ${formatDateTime(sla.resolveDeadline)}`}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: compact ? '2px 8px' : '4px 10px', borderRadius: 12, fontSize: compact ? 'var(--font-size-table)' : 'var(--font-size-body)', fontWeight: 600, background: bg, color: fg, whiteSpace: 'nowrap' }}
     >
       <Icon size={compact ? 11 : 13} />

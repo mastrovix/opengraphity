@@ -12,8 +12,8 @@ const recent = new Map<string, number>()
 type Kind = 'error' | 'info'
 
 const STYLES: Record<Kind, string> = {
-  error: 'background:#fef2f2;border:1px solid #fecaca;color:#991b1b;',
-  info:  'background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;',
+  error: 'background:var(--color-danger-bg);border:1px solid var(--color-danger-border);color:var(--color-danger-strong);',
+  info:  'background:var(--color-info-bg);border:1px solid var(--color-info-border);color:var(--color-info-text);',
 }
 
 function show(kind: Kind, message: string): void {
@@ -38,7 +38,7 @@ function show(kind: Kind, message: string): void {
   banner.setAttribute('role', kind === 'error' ? 'alert' : 'status')
   banner.style.cssText =
     STYLES[kind] +
-    'padding:10px 14px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.08);cursor:pointer;line-height:1.4'
+    'padding:10px 14px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px var(--color-black-a08);cursor:pointer;line-height:1.4'
   banner.textContent = message
   banner.onclick = () => banner.remove()
   host.appendChild(banner)

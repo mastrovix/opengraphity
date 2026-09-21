@@ -20,30 +20,45 @@ import {
   UPDATE_REPORT_SCHEDULE,
 } from '@/graphql/mutations'
 import { toast } from 'sonner'
+import { downloadFile } from '@/lib/downloadPdf'
 import type { ReportSectionInput } from '@/components/ReportSectionBuilder'
+import { colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface ReportNode { id: string; entityType: string; neo4jLabel: string; label: string; isResult: boolean; isRoot: boolean; positionX: number; positionY: number; filters: string | null; selectedFields: string[] }
 export interface ReportEdge { id: string; sourceNodeId: string; targetNodeId: string; relationshipType: string; direction: string; label: string }
-export interface ReportSection { id: string; order: number; title: string; chartType: string; groupByNodeId: string | null; groupByField: string | null; metric: string; metricField: string | null; limit: number | null; sortDir: string | null; nodes: ReportNode[]; edges: ReportEdge[] }
+export interface ReportSection { id: string; order: number; title: string; chartType: string; groupByNodeId: string | null; groupByField: string | null; groupByGranularity: string | null; metric: string; metricField: string | null; limit: number | null; sortDir: string | null; nodes: ReportNode[]; edges: ReportEdge[] }
 export interface ReportTemplate { id: string; name: string; description: string | null; icon: string | null; visibility: string; scheduleEnabled: boolean; scheduleCron: string | null; scheduleChannelId?: string | null; scheduleRecipients: string[]; scheduleFormat: string | null; lastScheduledRun: string | null; createdAt: string; updatedAt?: string; createdBy: { id: string; name: string } | null; sharedWith: { id: string; name: string }[]; sections: ReportSection[] }
 export interface Channel { id: string; name: string; platform: string }
-export interface SectionResult { sectionId: string; title: string; chartType: string; data: string; total: number | null; error: string | null }
+// `errorKey` c'era nella query e NON nel tipo: la pagina non poteva
+// passarla al renderer nemmeno volendo, e ogni errore di sezione si leggeva
+// in inglese (20 set 2026).
+export interface SectionResult { sectionId: string; title: string; chartType: string; data: string; total: number | null; error: string | null; errorKey: string | null }
 
 export type View = 'list' | 'detail' | 'add-section' | 'edit-section' | 'settings'
 
+/*
+  CHIAVI, non etichette. Erano frasi italiane in un file `.ts`, che nessun
+  guardiano dell'i18n vede — non c'e JSX — e finivano a schermo cosi come
+  sono: in un'interfaccia inglese si leggeva «Ogni lunedi alle 9:00».
+*/
 export const SCHEDULE_PRESETS = [
-  { label: 'Ogni giorno alle 9:00',      value: '0 9 * * *' },
-  { label: 'Ogni lunedì alle 9:00',      value: '0 9 * * 1' },
-  { label: 'Ogni primo del mese alle 9', value: '0 9 1 * *' },
-  { label: 'Personalizzata',             value: '__custom__' },
+  { labelKey: 'pages.reportSchedule.preset.dailyAt9',   value: '0 9 * * *' },
+  { labelKey: 'pages.reportSchedule.preset.mondayAt9',  value: '0 9 * * 1' },
+  { labelKey: 'pages.reportSchedule.preset.monthlyAt9', value: '0 9 1 * *' },
+  { labelKey: 'pages.reportSchedule.preset.custom',     value: '__custom__' },
 ]
 
-export const VIS_LABELS: Record<string, string> = { private: 'Privato', groups: 'Gruppi', all: 'Tutti' }
+export const VIS_LABEL_KEYS: Record<string, string> = {
+  private: 'pages.reports.visibility.private',
+  groups:  'pages.reports.visibility.groups',
+  all:     'pages.reports.visibility.all',
+}
 export const VIS_COLORS: Record<string, { bg: string; fg: string }> = {
-  all:     { bg: '#dcfce7', fg: '#15803d' },
-  groups:  { bg: '#fef3c7', fg: '#92400e' },
+  all:     { bg: palette.success.tint, fg: palette.success.text },
+  groups:  { bg: palette.warning.tint, fg: palette.warning.strong },
   private: { bg: 'var(--color-border-light)', fg: 'var(--color-slate)' },
 }
 
@@ -52,15 +67,19 @@ const GET_TEAMS_SLIM    = gql`query GetTeamsSlim { teams { id name } }`
 
 // ── Styles (shared) ────────────────────────────────────────────────────────────
 
-export const inputStyle: React.CSSProperties = { width: '100%', padding: '6px 10px', borderRadius: 5, border: '1px solid #d1d5db', fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }
+export const inputStyle: React.CSSProperties = { width: '100%', padding: '6px 10px', borderRadius: 5, border: '1px solid var(--color-border-strong)', fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }
 export const labelStyle: React.CSSProperties = { fontSize: 'var(--font-size-body)', fontWeight: 600 as const, color: 'var(--color-slate)', textTransform: 'uppercase' as const, marginBottom: 4, display: 'block' as const }
-export const btnPrimary: React.CSSProperties = { padding: '8px 18px', borderRadius: 7, border: 'none', background: 'var(--color-brand)', color: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }
-export const btnGhost: React.CSSProperties  = { padding: '8px 14px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }
+export const btnPrimary: React.CSSProperties = { padding: '8px 18px', borderRadius: 7, border: 'none', background: 'var(--color-brand)', color: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-card-title)', fontWeight: 600 }
+export const btnGhost: React.CSSProperties  = { padding: '8px 14px', borderRadius: 7, border: '1px solid var(--color-border)', background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }
 
 // ── Hook ───────────────────────────────────────────────────────────────────────
 
 export function useCustomReports() {
-  const { t: tr } = useTranslation()
+  // `t` NON si rinomina: con l'alias le sue chiavi erano invisibili a
+  // `scripts/check-i18n.mjs`, che ora segnala l'alias come errore.
+  const { t, i18n } = useTranslation()
+  // V-20: le etichette dei valori seguono la lingua di chi legge il report
+  const language = i18n.resolvedLanguage ?? i18n.language
   const confirm = useConfirm()
   const [view,           setView]           = useState<View>('list')
   const [selectedId,     setSelectedId]     = useState<string | null>(null)
@@ -118,83 +137,100 @@ export function useCustomReports() {
   }, [executeData])
 
   useEffect(() => {
-    if (execError) toast.error(execError.message)
+    if (execError) showError(execError)
   }, [execError])
 
   const templates: ReportTemplate[]           = data?.reportTemplates ?? []
   const channels: Channel[]                   = channelsData?.notificationChannels?.filter((c: Channel) => c.platform === 'slack') ?? []
   const teams: { id: string; name: string }[] = teamsData?.teams ?? []
-  const selected: ReportTemplate | null       = templates.find((t: ReportTemplate) => t.id === selectedId) ?? null
+  const selected: ReportTemplate | null       = templates.find((tpl: ReportTemplate) => tpl.id === selectedId) ?? null
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const [createTemplate, { loading: creating }] = useMutation(CREATE_REPORT_TEMPLATE, {
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
+  /**
+   * La vista si chiude quando il salvataggio è COMPLETO, non a metà (revisione
+   * totale · G-23): `onCompleted` faceva `setView('detail')` subito, e il
+   * salvataggio delle impostazioni è DUE mutation in fila — se la seconda
+   * (pianificazione, destinatari, formato) falliva, la scheda era già chiusa
+   * con nome e visibilità salvati e il resto no, con un toast d'errore su una
+   * pagina che non mostrava più il form. Ora chiude `handleSaveSettings`,
+   * dopo entrambe.
+   */
   const [updateTemplate, { loading: updating }] = useMutation(UPDATE_REPORT_TEMPLATE, {
-    onCompleted: () => { refetch(); setView('detail') },
+    onCompleted: () => { refetch() },
+    onError: (e) => showError(e),
   })
 
   const [deleteTemplate] = useMutation(DELETE_REPORT_TEMPLATE, {
     onCompleted: () => { refetch(); setSelectedId(null); setView('list') },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const [duplicateTemplateMutation] = useMutation<{ duplicateReportTemplate: { id: string; name: string; sections: { id: string }[] } }>(DUPLICATE_REPORT_TEMPLATE, {
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
-  const [addSection]    = useMutation(ADD_REPORT_SECTION,    { onCompleted: () => { refetch(); setView('detail') }, onError: (e) => toast.error(e.message) })
-  const [updateSection] = useMutation(UPDATE_REPORT_SECTION, { onCompleted: () => { refetch(); setView('detail'); setEditSection(null) }, onError: (e) => toast.error(e.message) })
-  const [removeSection] = useMutation(REMOVE_REPORT_SECTION, { onCompleted: () => refetch(), onError: (e) => toast.error(e.message) })
+  const [addSection]    = useMutation(ADD_REPORT_SECTION,    { onCompleted: () => { refetch(); setView('detail') }, onError: (e) => showError(e) })
+  const [updateSection] = useMutation(UPDATE_REPORT_SECTION, { onCompleted: () => { refetch(); setView('detail'); setEditSection(null) }, onError: (e) => showError(e) })
+  const [removeSection] = useMutation(REMOVE_REPORT_SECTION, { onCompleted: () => refetch(), onError: (e) => showError(e) })
 
   const [exportPDF,   { loading: exportingPDF }]   = useMutation<{ exportReportPDF: string }>(EXPORT_REPORT_PDF, {
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
   const [exportExcel, { loading: exportingExcel }] = useMutation<{ exportReportExcel: string }>(EXPORT_REPORT_EXCEL, {
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
   const [updateReportSchedule] = useMutation(UPDATE_REPORT_SCHEDULE)
 
-  function triggerDownload(url: string) {
-    const a = document.createElement('a')
-    a.href = url
-    a.click()
+  /**
+   * La mutation genera il file e restituisce il suo percorso `/api/reports/…`:
+   * si scarica con il token. Un link nudo non lo porta, e la scheda finiva su
+   * `{"error":"Unauthorized"}` (giro nel browser del 14 set 2026).
+   */
+  async function triggerDownload(path: string, fallbackFilename: string) {
+    try {
+      await downloadFile(path, fallbackFilename)
+    } catch (err) {
+      showError(err, t('toast.report.downloadFailed', { error: err instanceof Error ? err.message : String(err) }))
+    }
   }
 
   async function handleExportPDF() {
     if (!selectedId) return
     const res = await exportPDF({ variables: { templateId: selectedId } })
-    if (res.data?.exportReportPDF) triggerDownload(res.data.exportReportPDF)
+    if (res.data?.exportReportPDF) await triggerDownload(res.data.exportReportPDF, 'report.pdf')
   }
 
   async function handleExportExcel() {
     if (!selectedId) return
     const res = await exportExcel({ variables: { templateId: selectedId } })
-    if (res.data?.exportReportExcel) triggerDownload(res.data.exportReportExcel)
+    if (res.data?.exportReportExcel) await triggerDownload(res.data.exportReportExcel, 'report.xlsx')
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   function resetNew() { setNewName(''); setNewDesc(''); setNewVis('private'); setNewTeamIds([]) }
 
-  function openSettings(t: ReportTemplate) {
-    setSettingsName(t.name)
-    setSettingsDesc(t.description ?? '')
-    setSettingsVis(t.visibility)
-    setSettingsTeamIds(t.sharedWith.map(x => x.id))
-    setSettingsSched(t.scheduleEnabled)
-    setSettingsSchedCron(t.scheduleCron ?? '0 9 * * *')
-    setSettingsChanId(t.scheduleChannelId ?? '')
-    setSettingsRecipients(t.scheduleRecipients ?? [])
-    setSettingsFormat((t.scheduleFormat as 'pdf' | 'excel') ?? 'pdf')
+  function openSettings(tpl: ReportTemplate) {
+    setSettingsName(tpl.name)
+    setSettingsDesc(tpl.description ?? '')
+    setSettingsVis(tpl.visibility)
+    setSettingsTeamIds(tpl.sharedWith.map(x => x.id))
+    setSettingsSched(tpl.scheduleEnabled)
+    setSettingsSchedCron(tpl.scheduleCron ?? '0 9 * * *')
+    setSettingsChanId(tpl.scheduleChannelId ?? '')
+    setSettingsRecipients(tpl.scheduleRecipients ?? [])
+    setSettingsFormat((tpl.scheduleFormat as 'pdf' | 'excel') ?? 'pdf')
     setRecipientInput('')
     setMenuOpenId(null)
     setView('settings')
   }
 
-  function goToDetail(t: ReportTemplate) {
-    setSelectedId(t.id)
+  function goToDetail(tpl: ReportTemplate) {
+    setSelectedId(tpl.id)
     setSectionResults({})
     setView('detail')
     setMenuOpenId(null)
@@ -204,19 +240,19 @@ export function useCustomReports() {
    * F-07: server-side clone (template + sections + nodes + edges, one
    * transaction). The old client-side version created an EMPTY template.
    */
-  async function duplicateTemplate(t: ReportTemplate) {
+  async function duplicateTemplate(tpl: ReportTemplate) {
     setMenuOpenId(null)
-    const res = await duplicateTemplateMutation({ variables: { id: t.id } }).catch(() => null)
+    const res = await duplicateTemplateMutation({ variables: { id: tpl.id } }).catch(() => null)
     const copy = res?.data?.duplicateReportTemplate
     if (!copy) return  // errore già notificato da onError
-    toast.success(tr('toast.report.duplicated', { name: copy.name, count: copy.sections.length }))
+    toast.success(t('toast.report.duplicated', { name: copy.name, count: copy.sections.length }))
     await refetch()
   }
 
   function sectionToInput(s: ReportSection): ReportSectionInput {
     return {
       title: s.title, chartType: s.chartType,
-      groupByNodeId: s.groupByNodeId, groupByField: s.groupByField,
+      groupByNodeId: s.groupByNodeId, groupByField: s.groupByField, groupByGranularity: s.groupByGranularity,
       metric: s.metric, metricField: s.metricField,
       limit: s.limit, sortDir: s.sortDir,
       nodes: s.nodes.map(n => ({
@@ -270,8 +306,10 @@ export function useCustomReports() {
           format:     settingsFormat,
         },
       })
+      // G-23: solo qui, quando ENTRAMBE sono passate.
+      setView('detail')
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : tr('toast.report.saveFailed'))
+      showError(err, err instanceof Error ? err.message : t('toast.report.saveFailed'))
     }
   }
 
@@ -290,24 +328,24 @@ export function useCustomReports() {
 
   function handleDeleteTemplate(id: string) {
     setMenuOpenId(null)
-    void confirm({ title: 'Eliminare il report?', danger: true }).then((ok) => { if (ok) void deleteTemplate({ variables: { id } }) })
+    void confirm({ title: t('pages.reports.deleteReportTitle'), danger: true }).then((ok) => { if (ok) void deleteTemplate({ variables: { id } }) })
   }
 
   function handleRemoveSection(templateId: string, sectionId: string) {
-    void confirm({ title: 'Rimuovere la sezione?', danger: true }).then((ok) => { if (ok) void removeSection({ variables: { templateId, sectionId } }) })
+    void confirm({ title: t('pages.reports.removeSectionTitle'), danger: true }).then((ok) => { if (ok) void removeSection({ variables: { templateId, sectionId } }) })
   }
 
-  function handleExecuteAndGoToDetail(t: ReportTemplate) {
-    setSelectedId(t.id)
+  function handleExecuteAndGoToDetail(tpl: ReportTemplate) {
+    setSelectedId(tpl.id)
     setSectionResults({})
-    runExecute({ variables: { templateId: t.id } })
-    goToDetail(t)
+    runExecute({ variables: { templateId: tpl.id, language } })
+    goToDetail(tpl)
   }
 
   function handleExecuteSelected() {
     if (!selected) return
     setSectionResults({})
-    runExecute({ variables: { templateId: selected.id } })
+    runExecute({ variables: { templateId: selected.id, language } })
   }
 
   function startEditSection(sec: ReportSection) {
@@ -321,7 +359,7 @@ export function useCustomReports() {
   }
 
   return {
-    tr,
+    t,
     // View state
     view, setView,
     selected, selectedId, setSelectedId,

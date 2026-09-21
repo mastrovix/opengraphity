@@ -4,6 +4,7 @@
  * or services. The workflow engine (WorkflowDefinition/WorkflowStep nodes)
  * is the single source of truth.
  */
+import { parseLocalizedLabels, type LocalizedLabel } from '@opengraphity/types'
 
 import type { Session } from 'neo4j-driver'
 
@@ -15,12 +16,40 @@ import type { Session } from 'neo4j-driver'
 
 const stepsCache = new Map<string, Promise<StepRow[]>>()
 
+/**
+ * I passi del workflow del tenant, **in ordine** (revisione delle otto ondate ·
+ * B·N-4).
+ *
+ * L'ordine non è estetica: mezza dozzina di chiamanti scelgono un passo con
+ * `steps.find(s => s.category === '…')`, e la query non aveva `ORDER BY` —
+ * quindi la scelta era quella che Neo4j restituiva per prima. Dal vivo: aggiunto
+ * dal disegnatore un secondo passo terminale di categoria `closed` («Annullato»,
+ * «Respinto» — l'esempio stesso della documentazione), la chiusura automatica
+ * cadeva su quello, 5 letture su 5. Gli incident si auto-chiudevano come
+ * annullati.
+ *
+ * `step_order` crescente (assenti in fondo), poi il nome: è lo stesso ordine di
+ * `lib/workflowTargets.ts`, che i bersagli delle transizioni automatiche usano
+ * già. Con l'ordine, un `find` sceglie il passo che il cliente ha messo prima —
+ * cioè quello del prodotto, perché i passi aggiunti dopo hanno `step_order` più
+ * alto.
+ */
 export interface StepRow {
   name:       string
+  /** Etichetta scelta dal cliente nel disegnatore; `null` se non l'ha messa. */
+  label:      string | null
+  /** Traduzioni dell'etichetta spedita (giro del 14 set 2026, #22); vuota se il cliente l'ha scritta lui. */
+  labels:     LocalizedLabel[]
   isInitial:  boolean
   isTerminal: boolean
   isOpen:     boolean
   category:   string | null
+  /**
+   * Lo SCOPO del passo (`WORKFLOW_STEP_PURPOSES`): che ruolo ha nel processo.
+   * `null` = il cliente non l'ha dichiarato. Chi decide in base allo scopo
+   * deve dire cosa fa in quel caso, mai indovinare dal nome (B-4).
+   */
+  purpose:    string | null
   stepOrder:  number | null
 }
 
@@ -37,31 +66,64 @@ async function loadSteps(session: Session, tenantId: string, entityType: string)
       MATCH (wd:WorkflowDefinition {tenant_id: $tenantId, entity_type: $entityType, active: true})
       MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
       RETURN s.name       AS name,
+             s.label      AS label,
+             s.labels     AS labels,
              coalesce(s.is_initial,  s.type = 'start') AS isInitial,
              coalesce(s.is_terminal, s.type = 'end')   AS isTerminal,
              coalesce(s.is_open,     s.type <> 'end')  AS isOpen,
              s.category    AS category,
+             s.purpose     AS purpose,
              s.step_order  AS stepOrder
+      ORDER BY coalesce(s.step_order, 999), s.name
     `, { tenantId, entityType })
     return res.records.map((r) => ({
       name:       r.get('name')       as string,
+      label:      (r.get('label') ?? null) as string | null,
+      labels:     parseLocalizedLabels(r.get('labels'), `step ${String(r.get('name'))} (${entityType})`),
       isInitial:  Boolean(r.get('isInitial')),
       isTerminal: Boolean(r.get('isTerminal')),
       isOpen:     Boolean(r.get('isOpen')),
       category:   (r.get('category') ?? null) as string | null,
+      purpose:    (r.get('purpose')  ?? null) as string | null,
       stepOrder:  r.get('stepOrder') != null ? Number(r.get('stepOrder')) : null,
     }))
   })
   stepsCache.set(key, promise)
+  /**
+   * Una lettura FALLITA non resta in cache (revisione totale · C-15): la cache
+   * memorizza la promessa, quindi un solo timeout del database veniva
+   * rigiocato a ogni chiamante — liste, transizioni, notifiche — per i
+   * trenta secondi successivi, su tutto il tenant. Ora l'errore si propaga a
+   * chi ha chiesto, e il tentativo dopo riparte pulito.
+   */
+  promise.catch(() => { if (stepsCache.get(key) === promise) stepsCache.delete(key) })
   // Auto-expire after 30s to keep long-lived processes in sync with designer edits.
   setTimeout(() => { stepsCache.delete(key) }, 30_000).unref?.()
   return promise
 }
 
-/** Invalidate cached step metadata for a tenant+entity (call after designer saves). */
+/**
+ * Svuota la cache dei metadata dei passi. La chiamano TUTTE le mutation che
+ * cambiano una definizione o i suoi passi (B-24): senza, dopo un salvataggio
+ * dal disegnatore il processo continuava fino a 30 s con i flag vecchi —
+ * un passo appena marcato terminale che per le liste era ancora aperto.
+ *
+ * - `(tenant, entityType)` → solo quella chiave;
+ * - `(tenant)` → tutte le entità di quel tenant (gli altri tenant non si
+ *   toccano: prima cadeva l'intera cache, e con essa quella degli altri);
+ * - nessun argomento → tutto.
+ *
+ * Resta fuori portata il multi-replica: worker ed `events-worker` sono processi
+ * separati, con la loro copia della cache, e non se ne accorgono (vedi rapporto).
+ */
 export function invalidateWorkflowCache(tenantId?: string, entityType?: string) {
-  if (tenantId && entityType) stepsCache.delete(cacheKey(tenantId, entityType))
-  else stepsCache.clear()
+  if (tenantId && entityType) { stepsCache.delete(cacheKey(tenantId, entityType)); return }
+  if (tenantId) {
+    const prefix = `${tenantId}::`
+    for (const key of [...stepsCache.keys()]) if (key.startsWith(prefix)) stepsCache.delete(key)
+    return
+  }
+  stepsCache.clear()
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -102,9 +164,37 @@ export async function isEntityInTerminalStep(session: Session, entityId: string,
   return Boolean(res.records[0].get('terminal'))
 }
 
+/**
+ * Il ticket è in un passo di categoria `closed`: la stessa nozione con cui il
+ * portale nasconde la risposta (revisione totale · H-39). Senza istanza: no.
+ */
+export async function isEntityClosed(session: Session, entityId: string, tenantId: string): Promise<boolean> {
+  const res = await session.executeRead((tx) => tx.run(`
+    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
+    RETURN s.category = 'closed' AS closed
+  `, { entityId, tenantId }))
+  return res.records[0]?.get('closed') === true
+}
+
 export async function isEntityOpen(session: Session, entityId: string, tenantId: string): Promise<boolean> {
   const terminal = await isEntityInTerminalStep(session, entityId, tenantId)
   return !terminal
+}
+
+/**
+ * Il ticket è CONCLUSO: il suo passo ha categoria `resolved` o `closed`,
+ * oppure è terminale (revisione totale · C-26). È la nozione che serve a chi
+ * dice «non risolto dopo N minuti»: il flag «terminale» da solo non basta,
+ * perché un cliente può togliere «terminale» al suo passo Risolto — e
+ * l'escalation di notifica avvisava «non risolto» su incident risolti da ore.
+ * Senza istanza di workflow: non concluso.
+ */
+export async function isEntityConcluded(session: Session, entityId: string, tenantId: string): Promise<boolean> {
+  const res = await session.executeRead((tx) => tx.run(`
+    MATCH (e {id: $entityId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
+    RETURN s.category IN ['resolved', 'closed'] OR coalesce(s.is_terminal, false) AS concluded
+  `, { entityId, tenantId }))
+  return res.records[0]?.get('concluded') === true
 }
 
 export async function getStepCategory(session: Session, tenantId: string, entityType: string, stepName: string): Promise<string | null> {
@@ -115,4 +205,126 @@ export async function getStepCategory(session: Session, tenantId: string, entity
 /** All step rows for an entity type — useful for bulk operations (filters, UI). */
 export async function getWorkflowSteps(session: Session, tenantId: string, entityType: string): Promise<StepRow[]> {
   return loadSteps(session, tenantId, entityType)
+}
+
+// ── Classi di stato (B0-3) ────────────────────────────────────────────────────
+
+/**
+ * Le quattro classi di stato con cui il portale filtra e conta i ticket.
+ * Sono classi, NON nomi di passo: il portale filtrava per il nome `'open'`,
+ * che nessun workflow definisce (di fabbrica il passo iniziale si chiama
+ * `new`), quindi la scheda «Aperti» era vuota per costruzione e non coincideva
+ * col contatore della home, che invece ragionava sui metadata.
+ */
+export const TICKET_STATUS_CLASSES = ['open', 'in_progress', 'resolved', 'closed'] as const
+export type TicketStatusClass = (typeof TICKET_STATUS_CLASSES)[number]
+
+/**
+ * Classi a cui appartiene un passo, dedotte SOLO dal dato (`is_open`,
+ * `is_initial`, `is_terminal`, `category`), mai dal nome: un cliente che
+ * rinomina «assigned» in «preso in carico» non cambia nulla qui.
+ *
+ * - `resolved`: la categoria del passo è `resolved`
+ * - `closed`:   il passo è terminale e non è la categoria `resolved`
+ * - `open`:     il passo è aperto (`is_open`) e non è la categoria `resolved`
+ * - `in_progress`: sottoinsieme di `open` che non è il passo iniziale
+ *
+ * `open` e `in_progress` si SOVRAPPONGONO di proposito: «Aperti» è tutto ciò
+ * che è ancora in gioco (ed è il numero della home), «In lavorazione» è la
+ * parte che qualcuno ha già preso in mano.
+ */
+export function stepStatusClasses(step: StepRow): TicketStatusClass[] {
+  const out: TicketStatusClass[] = []
+  const isResolved = step.category === 'resolved'
+  if (isResolved) out.push('resolved')
+  if (step.isTerminal && !isResolved) out.push('closed')
+  if (step.isOpen && !isResolved) {
+    out.push('open')
+    if (!step.isInitial) out.push('in_progress')
+  }
+  return out
+}
+
+/**
+ * Nomi dei passi del workflow del tenant per ogni classe. Un tenant con due
+ * definizioni attive per la stessa entità (c-one ne ha due per gli incident)
+ * contribuisce con l'unione dei nomi: un nome appartiene a una classe se
+ * almeno una definizione attiva lo mette lì.
+ */
+export async function getStepNamesByClass(
+  session: Session, tenantId: string, entityType: string,
+): Promise<Record<TicketStatusClass, string[]>> {
+  const steps = await loadSteps(session, tenantId, entityType)
+  const out = { open: new Set<string>(), in_progress: new Set<string>(), resolved: new Set<string>(), closed: new Set<string>() }
+  for (const step of steps) for (const cls of stepStatusClasses(step)) out[cls].add(step.name)
+  return {
+    open:        [...out.open],
+    in_progress: [...out.in_progress],
+    resolved:    [...out.resolved],
+    closed:      [...out.closed],
+  }
+}
+
+// ── Scopo del passo (ondata 4, B-4 / C-9 / D-22) ──────────────────────────────
+
+/**
+ * I nomi dei passi che hanno uno di questi SCOPI, nel workflow del tenant.
+ *
+ * È il sostituto dei letterali: dove il codice scriveva
+ * `wi.current_step IN ['scheduled','deployment']` ora chiede «quali passi
+ * hanno scopo `scheduled` o `implementation`», e il cliente può chiamarli
+ * «CAB approvato» e «Rilascio» senza spegnere niente.
+ *
+ * Ritorna una lista, non un nome: un cliente può avere due passi con lo stesso
+ * scopo (due finestre di rilascio, due livelli di approvazione), e più
+ * definizioni attive per la stessa entità contribuiscono con l'unione.
+ */
+export async function getStepNamesByPurpose(
+  session: Session, tenantId: string, entityType: string, purposes: readonly string[],
+): Promise<string[]> {
+  const steps = await loadSteps(session, tenantId, entityType)
+  const wanted = new Set(purposes)
+  return [...new Set(steps.filter((s) => s.purpose != null && wanted.has(s.purpose)).map((s) => s.name))]
+}
+
+/**
+ * Lo scopo di un passo preciso, `null` se non dichiarato. Serve a chi ha in
+ * mano il nome corrente di un'istanza e deve capire dove si trova.
+ */
+/** La riga del passo (scopo, categoria, terminale) dal workflow del tenant; null se non c'è. */
+export async function getStepRow(
+  session: Session, tenantId: string, entityType: string, stepName: string,
+): Promise<StepRow | null> {
+  const steps = await loadSteps(session, tenantId, entityType)
+  return steps.find((s) => s.name === stepName) ?? null
+}
+
+export async function getStepPurpose(
+  session: Session, tenantId: string, entityType: string, stepName: string,
+): Promise<string | null> {
+  const steps = await loadSteps(session, tenantId, entityType)
+  return steps.find((s) => s.name === stepName)?.purpose ?? null
+}
+
+/**
+ * Come `getStepNamesByPurpose`, ma **fail-loud**: se nel workflow del tenant
+ * nessun passo dichiara nessuno degli scopi richiesti, l'operazione si ferma e
+ * lo dice, invece di procedere con una lista vuota che spegnerebbe in silenzio
+ * una regola di dominio (soppressione degli allarmi, varco delle approvazioni,
+ * sincronizzazione fra change e problem).
+ *
+ * `what` descrive l'operazione, e finisce nel messaggio.
+ */
+export async function requireStepNamesByPurpose(
+  session: Session, tenantId: string, entityType: string, purposes: readonly string[], what: string,
+): Promise<string[]> {
+  const names = await getStepNamesByPurpose(session, tenantId, entityType, purposes)
+  if (names.length === 0) {
+    throw new Error(
+      `${what}: in the "${entityType}" workflow of tenant ${tenantId} no step declares the purpose ` +
+      `[${purposes.join(', ')}]. Give the purpose to the steps in the designer: without it this rule has ` +
+      `no step to apply to.`,
+    )
+  }
+  return names
 }

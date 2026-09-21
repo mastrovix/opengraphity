@@ -12,6 +12,10 @@ WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.json ./
 COPY apps/portal/package.json       apps/portal/
 COPY packages/web-core/package.json packages/web-core/
+# @opengraphity/types: il contratto dei moduli del catalogo (tipi + valutatore
+# delle condizioni) che web-core importa. Senza il suo manifesto qui, pnpm non
+# installa la dipendenza e il build di web-core non trova il modulo.
+COPY packages/types/package.json    packages/types/
 
 # Lean install (G-05): just the portal + web-core dependency graph, and no
 # lifecycle scripts — the previous full-workspace install compiled isolated-vm
@@ -19,10 +23,14 @@ COPY packages/web-core/package.json packages/web-core/
 # esbuild/rollup ship prebuilt binaries as optional deps: no postinstall needed.
 RUN pnpm install --frozen-lockfile --ignore-scripts \
       --filter @opengraphity/portal... \
-      --filter @opengraphity/web-core...
+      --filter @opengraphity/web-core... \
+      --filter @opengraphity/types...
 
 # @opengraphity/web-core (auth/tenant/apollo shared with apps/web) is consumed
 # from its dist/, which .dockerignore excludes: build it in the container.
+# I tipi si costruiscono PRIMA di web-core: web-core li legge dal suo dist.
+COPY packages/types/ packages/types/
+RUN pnpm --filter @opengraphity/types build
 COPY packages/web-core/ packages/web-core/
 RUN pnpm --filter @opengraphity/web-core build
 
@@ -53,7 +61,11 @@ COPY --from=builder /app/apps/portal/dist /usr/share/nginx/html
 
 # Inline nginx config: SPA fallback + reverse-proxy to API. Only reachable from
 # the front-door nginx and 127.0.0.1:5174; X-Forwarded-Host is still forced to
-# $host so the API never sees a client-chosen tenant header.
+# $host so the API never sees a client-chosen tenant header. Body sizes and
+# timeouts as in apps/web/Dockerfile (revisione totale · H-11, H-20, H-21).
+# index.html is served no-cache like the web's (H-15): with heuristic caching a
+# browser kept an old index.html pointing at an asset hash that no longer
+# exists, and the portal came up blank until a hard refresh.
 RUN printf 'server {\n\
     listen 80;\n\
     root /usr/share/nginx/html;\n\
@@ -65,6 +77,7 @@ RUN printf 'server {\n\
     proxy_busy_buffers_size     256k;\n\
 \n\
     location /graphql {\n\
+        client_max_body_size 2m;\n\
         proxy_pass http://api:4000;\n\
         proxy_http_version 1.1;\n\
         proxy_set_header Host $host;\n\
@@ -88,7 +101,9 @@ RUN printf 'server {\n\
     }\n\
 \n\
     location /api {\n\
-        client_max_body_size 11m;\n\
+        client_max_body_size 101m;\n\
+        proxy_read_timeout 600s;\n\
+        proxy_send_timeout 600s;\n\
         proxy_pass http://api:4000;\n\
         proxy_http_version 1.1;\n\
         proxy_set_header Host $host;\n\
@@ -104,6 +119,11 @@ RUN printf 'server {\n\
 \n\
     location / {\n\
         try_files $uri $uri/ /index.html;\n\
+        add_header Cache-Control "no-cache, no-store, must-revalidate";\n\
+        add_header Pragma "no-cache";\n\
+        add_header Expires 0;\n\
+        etag off;\n\
+        if_modified_since off;\n\
     }\n\
 }\n' > /etc/nginx/conf.d/default.conf
 

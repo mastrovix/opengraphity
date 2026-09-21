@@ -10,15 +10,47 @@ import { Button } from '@/components/Button'
 import { Input, Select, FieldLabel } from '@/components/ui/FormControls'
 import { apiUrl } from '@/lib/apiBase'
 import { useConfirm } from '@/hooks/useConfirm'
+import { colors, palette } from '@/lib/tokens'
+import { useTicketCustomFieldDefs } from '@/components/ticket/customFields/customFields'
+import { showError } from '@/lib/showError'
 
 // ── Types (REST contract /api/v1/import/*) ────────────────────────────────────
 
-type EntityType = 'incidents' | 'kb-articles'
+type EntityType = 'incidents' | 'problems' | 'changes' | 'service-requests' | 'kb-articles'
+
+/**
+ * Le rotte di import e le colonne di ciascuna. Ondata 5 di «Nulla cablato»:
+ * prima si importavano solo incident e articoli; ora anche problem, change e
+ * richieste storiche, e per i ticket il pannello elenca anche le colonne dei
+ * campi del cliente (una per campo, col nome del campo).
+ */
+export const IMPORT_ENTITIES: ReadonlyArray<{ value: EntityType; labelKey: string; columnsKey: string; ticketType: 'incident' | 'problem' | 'change' | 'service_request' | null }> = [
+  { value: 'incidents',        labelKey: 'pages.import.entityIncidents', columnsKey: 'pages.import.columnsIncidents', ticketType: 'incident' },
+  { value: 'problems',         labelKey: 'pages.import.entityProblems',  columnsKey: 'pages.import.columnsProblems',  ticketType: 'problem' },
+  { value: 'changes',          labelKey: 'pages.import.entityChanges',   columnsKey: 'pages.import.columnsChanges',   ticketType: 'change' },
+  { value: 'service-requests', labelKey: 'pages.import.entityRequests',  columnsKey: 'pages.import.columnsRequests',  ticketType: 'service_request' },
+  { value: 'kb-articles',      labelKey: 'pages.import.entityKb',        columnsKey: 'pages.import.columnsKb',        ticketType: null },
+]
+
+function CustomFieldColumns({ ticketType }: { ticketType: 'incident' | 'problem' | 'change' | 'service_request' }) {
+  const { t } = useTranslation()
+  const { defs } = useTicketCustomFieldDefs(ticketType)
+  if (defs.length === 0) return null
+  return (
+    <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '4px 0 0', lineHeight: 1.5 }}>
+      {t('pages.import.customColumns')}{' '}
+      <code style={{ fontSize: 'var(--font-size-table)' }}>{defs.map((d) => d.name).join(', ')}</code>
+    </p>
+  )
+}
 
 interface ImportIssue {
   row:        number
   externalId: string | null
   message:    string
+  /** Chiave (sotto `pages.import.issue.`) e dati del messaggio, nella lingua di chi importa. */
+  messageKey?:    string
+  messageParams?: Record<string, string>
 }
 
 interface ImportReport {
@@ -108,7 +140,7 @@ export function ImportTab() {
         toast.success(t('pages.import.importDone', { created: data.created, updated: data.updated }))
       }
     } catch (err) {
-      toast.error(t('toast.import.requestFailed', { error: (err as Error).message }))
+      showError(err, t('toast.import.requestFailed', { error: (err as Error).message }))
     } finally {
       setRunning(null)
     }
@@ -123,6 +155,7 @@ export function ImportTab() {
     void runImport(false)
   }
 
+  const entity = IMPORT_ENTITIES.find((e) => e.value === entityType)!
   const canDryRun  = Boolean(file && apiKey) && !running
   // Import unlocks only after a dry-run on the current inputs (report cleared on change).
   const canImport  = Boolean(file && apiKey) && !running && reportKind === 'dry' && report !== null
@@ -130,7 +163,9 @@ export function ImportTab() {
   const issueColumns: SimpleColumn<IssueRow>[] = [
     { key: 'row',        label: t('pages.import.colRow'),        width: '80px' },
     { key: 'externalId', label: t('pages.import.colExternalId'), width: '200px', render: v => (v as string | null) ?? '—' },
-    { key: 'message',    label: t('pages.import.colMessage') },
+    { key: 'message',    label: t('pages.import.colMessage'), render: (_v, row) => row.messageKey
+      ? t(`pages.import.issue.${row.messageKey}`, { ...row.messageParams, defaultValue: row.message })
+      : row.message },
   ]
 
   const spinner = <RefreshCw size={14} style={{ animation: 'og-import-spin 1s linear infinite' }} />
@@ -171,8 +206,7 @@ export function ImportTab() {
             onChange={e => { setEntityType(e.target.value as EntityType); resetReport() }}
             style={{ maxWidth: 420 }}
           >
-            <option value="incidents">{t('pages.import.entityIncidents')}</option>
-            <option value="kb-articles">{t('pages.import.entityKb')}</option>
+            {IMPORT_ENTITIES.map((e) => <option key={e.value} value={e.value}>{t(e.labelKey)}</option>)}
           </Select>
         </div>
 
@@ -193,7 +227,7 @@ export function ImportTab() {
             {file ? (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>
                 {file.name}
-                <Pill bg="#f1f5f9" color="var(--color-slate)">{formatSize(file.size)}</Pill>
+                <Pill bg={colors.slateBg} color="var(--color-slate)">{formatSize(file.size)}</Pill>
                 <Button
                   variant="ghost"
                   icon={<X size={14} color="var(--color-slate)" />}
@@ -210,10 +244,11 @@ export function ImportTab() {
           <p style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', margin: '6px 0 0', lineHeight: 1.5 }}>
             {t('pages.import.columnsTitle')}{' '}
             <code style={{ fontSize: 'var(--font-size-table)' }}>
-              {entityType === 'incidents' ? t('pages.import.columnsIncidents') : t('pages.import.columnsKb')}
+              {t(entity.columnsKey)}
             </code>
             {' — '}{t('pages.import.requiredNote')}
           </p>
+          {entity.ticketType && <CustomFieldColumns ticketType={entity.ticketType} />}
         </div>
 
         {/* Actions */}
@@ -249,17 +284,17 @@ export function ImportTab() {
           collapsible={false}
         >
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Pill bg="#f1f5f9" color="var(--color-slate)">{t('pages.import.statTotal')}: {report.totalRows}</Pill>
-            <Pill bg="#dcfce7" color="var(--color-success)">{t('pages.import.statCreated')}: {report.created}</Pill>
-            <Pill bg="#f0f4ff" color="var(--color-brand)">{t('pages.import.statUpdated')}: {report.updated}</Pill>
-            <Pill bg="#fee2e2" color="var(--color-trigger-sla-breach)">{t('pages.import.statErrors')}: {report.errors.length}</Pill>
+            <Pill bg={colors.slateBg} color="var(--color-slate)">{t('pages.import.statTotal')}: {report.totalRows}</Pill>
+            <Pill bg={palette.success.tint} color="var(--color-success)">{t('pages.import.statCreated')}: {report.created}</Pill>
+            <Pill bg={palette.info.bg} color="var(--color-brand)">{t('pages.import.statUpdated')}: {report.updated}</Pill>
+            <Pill bg={palette.danger.tint} color="var(--color-trigger-sla-breach)">{t('pages.import.statErrors')}: {report.errors.length}</Pill>
           </div>
 
           {report.errors.length > 0 && (
             <div>
               <FieldLabel>
                 {t('pages.import.errors')}{' '}
-                <Pill bg="#fee2e2" color="var(--color-trigger-sla-breach)">{report.errors.length}</Pill>
+                <Pill bg={palette.danger.tint} color="var(--color-trigger-sla-breach)">{report.errors.length}</Pill>
               </FieldLabel>
               <SimpleTable<IssueRow> columns={issueColumns} rows={toIssueRows(report.errors)} />
             </div>
@@ -269,7 +304,7 @@ export function ImportTab() {
             <div>
               <FieldLabel>
                 {t('pages.import.warnings')}{' '}
-                <Pill bg="#fef3c7" color="#92400e">{report.warnings.length}</Pill>
+                <Pill bg={palette.warning.tint} color={palette.warning.strong}>{report.warnings.length}</Pill>
               </FieldLabel>
               <SimpleTable<IssueRow> columns={issueColumns} rows={toIssueRows(report.warnings)} />
             </div>

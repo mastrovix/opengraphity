@@ -26,18 +26,25 @@ import { ciPath } from '@/lib/ciPath'
 import { formatDate } from '@/lib/datetime'
 import { keyActivate } from '@/lib/a11y'
 import { GroupCriteriaBuilder } from './GroupCriteriaBuilder'
+import { CIHealthSection } from './CIHealthSection'
+import { CIServicesSection } from './CIServicesSection'
 import { GET_BLAST_RADIUS, GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
 import { ADD_CI_RELATIONSHIP, REMOVE_CI_RELATIONSHIP, UPDATE_CI, ASSIGN_CI_OWNER, ASSIGN_CI_SUPPORT_GROUP } from '@/graphql/mutations'
 import { X, Plus, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
+import { colors, palette, alpha } from '@/lib/tokens'
+// I campi che l'SDL NON ri-dichiara sui tipi generati perché stanno già su
+// CIBase. Non più uno «specchio» da tenere allineato a mano (mancavano `chain`,
+// `health`, `healthSource` e `lastEventAt`): è la STESSA lista che usa il
+// generatore.
+import { BASE_TYPE_FIELDS } from '@opengraphity/schema-generator/names'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-const BASE_TYPE_FIELDS = new Set([
-  'id', 'name', 'type', 'status', 'environment',
-  'description', 'createdAt', 'updatedAt', 'notes',
-  'ownerGroup', 'supportGroup', 'dependencies', 'dependents',
-])
 
 interface CIRef {
   id: string; name: string; type: string
@@ -72,6 +79,7 @@ function RelationList({
   /** When set, rows do not navigate (the page is in edit mode) and show this as tooltip. */
   navigationLockedReason?: string
 }) {
+  const ciLabels = useCILabels()
   const { t } = useTranslation()
   const locked = navigationLockedReason !== undefined
   const grouped = relations.reduce<Record<string, CIRelation[]>>((acc, rel) => {
@@ -91,7 +99,7 @@ function RelationList({
               key={rel.ci.id}
               role="button"
               tabIndex={0}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #f9fafb', cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.6 : 1 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${palette.neutral.borderLight}`, cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? 0.6 : 1 }}
               title={navigationLockedReason}
               aria-disabled={locked || undefined}
               onClick={open}
@@ -102,7 +110,7 @@ function RelationList({
                   {rel.ci.name}
                 </div>
                 <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', textTransform: 'capitalize' }}>
-                  {rel.ci.type.replace(/_/g, ' ')}{rel.ci.environment ? ` · ${rel.ci.environment}` : ''}
+                  {ciLabels.subtitle(rel.ci)}
                 </div>
               </div>
               {rel.ci.status && <StatusBadge value={rel.ci.status} />}
@@ -114,7 +122,7 @@ function RelationList({
                   title={t('common.delete')}
                   aria-label={t('common.delete')}
                 >
-                  <X size={14} color="#ef4444" />
+                  <X size={14} color={colors.danger} />
                 </button>
               )}
             </div>
@@ -165,6 +173,8 @@ const toGraphCI = (c: { id: string; name: string; type: string; status: string |
   ({ id: c.id, name: c.name, type: c.type, status: c.status ?? 'unknown', environment: c.environment ?? undefined })
 
 function CIGroupMembersCard({ groupId }: { groupId: string }) {
+  // F-23: l'etichetta del tipo dal metamodello del cliente.
+  const ciLabels = useCILabels()
   const navigate = useNavigate()
   const { t } = useTranslation()
   const [membersPage, setMembersPage] = useState(0)
@@ -182,7 +192,7 @@ function CIGroupMembersCard({ groupId }: { groupId: string }) {
   return (
     <SectionCard title={`${t('pages.ci.members')} (${countLabel})`} defaultOpen={true}>
       {truncated && (
-        <p style={{ fontSize: 'var(--font-size-table)', color: '#854d0e', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 10px', margin: '0 0 8px' }}>
+        <p style={{ fontSize: 'var(--font-size-table)', color: palette.yellow.text, background: palette.yellow.bg, border: `1px solid ${palette.warning.border}`, borderRadius: 6, padding: '6px 10px', margin: '0 0 8px' }}>
           {t('pages.ci.membersTruncated', { shown: members.length, total })}
         </p>
       )}
@@ -192,8 +202,9 @@ function CIGroupMembersCard({ groupId }: { groupId: string }) {
         <SimpleTable<GroupMember>
           columns={[
             { key: 'name',        label: t('pages.ci.memberName') },
+            // F-23: l'etichetta del tipo, non il nome «umanizzato».
             { key: 'type',        label: t('pages.ci.memberType'),
-              render: v => <span style={{ textTransform: 'capitalize' }}>{String(v ?? '').replace(/_/g, ' ')}</span> },
+              render: v => <span>{v ? ciLabels.typeLabel(String(v)) : '—'}</span> },
             { key: 'environment', label: t('pages.ci.memberEnvironment') },
             { key: 'status',      label: t('pages.ci.memberStatus'),
               render: v => v ? <StatusBadge value={String(v)} /> : '—' },
@@ -212,21 +223,57 @@ function CIGroupMembersCard({ groupId }: { groupId: string }) {
 
 // ── EditField ─────────────────────────────────────────────────────────────
 
-function EditField({ label, value, onChange, enumValues, multiline }: {
+/**
+ * La tendina di un gruppo del CI (owner, supporto). Giro UI del 15 set 2026 ·
+ * U-27: per un gruppo che il tipo dichiara obbligatorio offriva
+ * «— not assigned —», e l'API poi lo rifiutava (CM-6). Ora quella voce non
+ * c'è; se il CI ne è già senza, la tendina lo dice e chiede di sceglierne uno.
+ */
+function CIGroupSelect({ label, required, value, teams, onChange }: {
+  label: string; required: boolean; value: string; teams: Team[]; onChange: (teamId: string | null) => void
+}) {
+  const { t } = useTranslation()
+  const missing = required && value === ''
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <Select
+        aria-label={label}
+        aria-invalid={missing || undefined}
+        value={value}
+        onChange={(e) => onChange(e.target.value || null)}
+        style={{ fontSize: 'var(--font-size-body)', padding: '4px 8px', maxWidth: 220, ...(missing ? { borderColor: palette.warning.border } : {}) }}
+      >
+        {!required && <option value="">{t('pages.ci.notAssignedOption')}</option>}
+        {missing && <option value="" disabled>{t('pages.ci.requiredGroupOption')}</option>}
+        {teams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
+      </Select>
+      {missing && (
+        <span role="status" data-testid="ci-required-group-missing" style={{ fontSize: 'var(--font-size-table)', color: palette.warning.text }}>
+          {t('pages.ci.requiredGroupMissing', { group: label })}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function EditField({ label, value, onChange, enumValues, enumTypeName, multiline }: {
   label: string
   value: string
   onChange: (v: string) => void
   enumValues?: string[]
+  /** Vocabolario dei valori: le opzioni mostrano la sua etichetta, non il valore interno. */
+  enumTypeName?: string | null
   multiline?: boolean
 }) {
   const id = useId()
+  const { labelOf } = useDomainVocabularies()
   return (
     <div>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       {enumValues && enumValues.length > 0 ? (
         <Select id={id} value={value} onChange={e => onChange(e.target.value)}>
           <option value="">—</option>
-          {enumValues.map(v => <option key={v} value={v}>{v}</option>)}
+          {enumValues.map(v => <option key={v} value={v}>{(enumTypeName && labelOf(enumTypeName, v)) || v}</option>)}
         </Select>
       ) : multiline ? (
         <Textarea id={id} value={value} onChange={e => onChange(e.target.value)} rows={3} />
@@ -239,13 +286,20 @@ function EditField({ label, value, onChange, enumValues, multiline }: {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+/** Form «aggiungi relazione» vuoto: nessun tipo cablato (F-31). */
+const EMPTY_REL_FORM = { relationType: '', direction: 'outgoing' as const, search: '', targetCI: null }
+
 export function CIDetailPage() {
   const { typeName, id } = useParams<{ typeName: string; id: string }>()
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { getCIType, loading: metamodelLoading, error: metamodelError } = useMetamodel()
+  const { labelOf } = useDomainVocabularies()
 
   const ciType = typeName ? getCIType(typeName) : undefined
+  const ciLabels = useCILabels()
+  /** Il tipo dichiara obbligatorio questo gruppo (`systemRelations[].required`, lo stesso che l'API controlla). */
+  const groupRequired = (name: 'ownerGroup' | 'supportGroup') => (ciType?.systemRelations ?? []).some((r) => r.name === name && r.required)
 
   // id per le coppie label/controllo (a11y)
   const baseId = useId()
@@ -260,9 +314,15 @@ export function CIDetailPage() {
 
   // ── Relation management state ────────────────────────────────────────────
   const [showAddRel, setShowAddRel] = useState(false)
+  // Il tipo di relazione NON è cablato (revisione totale · F-31): la chiusura
+  // del modale riportava il form a `DEPENDS_ON`, che un'organizzazione può
+  // aver tolto dal metamodello — la tendina tornava su un valore che non era
+  // tra le sue opzioni. Vuoto significa «il primo del metamodello», che è poi
+  // quello che `chosenRelation` sceglie.
+
   const [addRelForm, setAddRelForm] = useState<{
     relationType: string; direction: 'outgoing' | 'incoming'; search: string; targetCI: CIRef | null
-  }>({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null })
+  }>(EMPTY_REL_FORM)
   const [deleteRel, setDeleteRel] = useState<{
     sourceId: string; targetId: string; relationType: string; name: string
   } | null>(null)
@@ -284,17 +344,44 @@ export function CIDetailPage() {
     }
   }, [searchCIs])
 
+  // A-5: la query dinamica chiede allo schema SOLO i campi che lo schema ha.
+  // `generateSDL` esclude i campi `is_system` (oltre a quelli già su CIBase),
+  // quindi filtrare per NOME non bastava: un campo di sistema con un nome non
+  // in elenco (`chain`, o un campo che qualcuno avesse aggiunto al `__base__`
+  // condiviso) entrava nella query e la pagina di dettaglio di OGNI CI
+  // rispondeva `Cannot query field "<campo>" on type "<Tipo>"`. Il filtro è
+  // lo stesso dell'SDL: nome noto O campo di sistema.
   const specificFields = useMemo(
-    () => ciType?.fields.filter(f => !BASE_TYPE_FIELDS.has(f.name)).sort((a, b) => a.order - b.order) ?? [],
+    () => ciType?.fields
+      .filter(f => !BASE_TYPE_FIELDS.has(f.name) && !f.isSystem)
+      .sort((a, b) => a.order - b.order) ?? [],
     [ciType],
   )
 
   // Relation types offered when adding a relation — driven by this CI type's
   // metamodel relations (e.g. HAS_MEMBER for groups), not a fixed list.
+  //
+  // Giro nel browser del 14 set 2026 (#56): una relazione del metamodello può
+  // dichiarare più tipi (`DEPENDS_ON|HOSTED_ON|INSTALLED_ON` sul server). Il
+  // modulo li offriva come UNA opzione, lo stato restava `DEPENDS_ON` e la
+  // relazione nasceva di quel tipo, nella direzione scelta a mano — spesso
+  // rovesciata. Ora ogni tipo è un'opzione e la direzione viene dalla
+  // relazione del metamodello, non da un pulsante.
   const relationTypeOptions = useMemo(() => {
-    const fromMeta = [...new Set((ciType?.relations ?? []).map(r => r.relationshipType))]
-    return fromMeta.length > 0 ? fromMeta : ['DEPENDS_ON', 'HOSTED_ON', 'USES_CERTIFICATE']
+    const seen = new Set<string>()
+    const options: { value: string; relationType: string; direction: 'outgoing' | 'incoming'; relationLabel: string }[] = []
+    for (const r of [...(ciType?.relations ?? [])].sort((a, b) => a.order - b.order)) {
+      const direction = r.direction === 'incoming' ? 'incoming' : 'outgoing'
+      for (const relationType of r.relationshipType.split('|').map(x => x.trim()).filter(Boolean)) {
+        const value = `${direction}:${relationType}`
+        if (seen.has(value)) continue
+        seen.add(value)
+        options.push({ value, relationType, direction, relationLabel: r.label })
+      }
+    }
+    return options
   }, [ciType])
+  const chosenRelation = relationTypeOptions.find(o => o.relationType === addRelForm.relationType && o.direction === addRelForm.direction) ?? relationTypeOptions[0] ?? null
 
   const detailQuery = useMemo(() => {
     if (!typeName || !ciType) return null
@@ -320,16 +407,16 @@ export function CIDetailPage() {
     { variables: { id }, skip: !detailQuery || !id },
   )
 
-  const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: 'cache-first' })
+  const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
   const allTeams = teamsData?.teams ?? []
   // teamId null → l'API rimuove la relazione ("— non assegnato —" è un'azione reale)
   const [assignOwner] = useMutation<unknown, { ciId: string; teamId: string | null }>(ASSIGN_CI_OWNER, {
     onCompleted: (_d, opts) => { toast.success(t(opts?.variables?.teamId ? 'toast.ci.ownerGroupUpdated' : 'toast.ci.ownerGroupRemoved')); void refetch() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
   const [assignSupport] = useMutation<unknown, { ciId: string; teamId: string | null }>(ASSIGN_CI_SUPPORT_GROUP, {
     onCompleted: (_d, opts) => { toast.success(t(opts?.variables?.teamId ? 'toast.ci.supportGroupUpdated' : 'toast.ci.supportGroupRemoved')); void refetch() },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => showError(e),
   })
 
   const { data: brData } = useQuery<{
@@ -345,7 +432,7 @@ export function CIDetailPage() {
   const isGroup = typeName === 'dynamic_ci_group'
   const { data: groupMembersData, refetch: refetchGroupMembers } = useQuery<GroupMembersResult>(
     CI_GROUP_MEMBERS,
-    { variables: { groupId: id }, skip: !id || !isGroup, fetchPolicy: 'cache-and-network' },
+    { variables: { groupId: id }, skip: !id || !isGroup, fetchPolicy: METAMODEL_FETCH_POLICY },
   )
   const groupMembers = useMemo(() => groupMembersData?.ciGroupMembers.items ?? [], [groupMembersData])
   const [graphCap, setGraphCap] = useState(DEFAULT_GRAPH_MEMBER_CAP)
@@ -424,23 +511,23 @@ export function CIDetailPage() {
       setEditMode(false)
       refetch()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     }
   }
 
   // ── Relation handlers ──────────────────────────────────────────────────
   async function handleAddRelation() {
-    if (!addRelForm.targetCI || !ci) return
-    const sourceId = addRelForm.direction === 'outgoing' ? ci.id : addRelForm.targetCI.id
-    const targetId = addRelForm.direction === 'outgoing' ? addRelForm.targetCI.id : ci.id
+    if (!addRelForm.targetCI || !ci || !chosenRelation) return
+    const sourceId = chosenRelation.direction === 'outgoing' ? ci.id : addRelForm.targetCI.id
+    const targetId = chosenRelation.direction === 'outgoing' ? addRelForm.targetCI.id : ci.id
     try {
-      await addRelMutation({ variables: { sourceId, targetId, relationType: addRelForm.relationType } })
+      await addRelMutation({ variables: { sourceId, targetId, relationType: chosenRelation.relationType } })
       toast.success(t('pages.ci.relationAdded'))
       setShowAddRel(false)
-      setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null })
+      setAddRelForm({ relationType: '', direction: 'outgoing', search: '', targetCI: null })
       refetch()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     }
   }
 
@@ -452,7 +539,7 @@ export function CIDetailPage() {
       setDeleteRel(null)
       refetch()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     }
   }
 
@@ -522,7 +609,7 @@ export function CIDetailPage() {
           >
             {editMode ? (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="og-pair">
                   {/* Read-only fields */}
                   <DetailField label="ID" value={ci.id} mono />
                   <DetailField label={t('pages.cmdb.type')} value={ciType.label} />
@@ -533,9 +620,11 @@ export function CIDetailPage() {
                   <EditField label={t('pages.cmdb.name')} value={editDraft['name'] ?? ''} onChange={v => setEditDraft(d => ({ ...d, name: v }))} />
                   <EditField label={t('pages.cmdb.status')} value={editDraft['status'] ?? ''}
                     enumValues={ciType.fields.find(f => f.name === 'status')?.enumValues}
+                    enumTypeName={ciType.fields.find(f => f.name === 'status')?.enumTypeName}
                     onChange={v => setEditDraft(d => ({ ...d, status: v }))} />
                   <EditField label={t('pages.cmdb.environment')} value={editDraft['environment'] ?? ''}
                     enumValues={ciType.fields.find(f => f.name === 'environment')?.enumValues}
+                    enumTypeName={ciType.fields.find(f => f.name === 'environment')?.enumTypeName}
                     onChange={v => setEditDraft(d => ({ ...d, environment: v }))} />
 
                   {/* Editable specific fields */}
@@ -545,64 +634,65 @@ export function CIDetailPage() {
                       label={f.label}
                       value={editDraft[f.name] ?? ''}
                       enumValues={f.enumValues.length > 0 ? f.enumValues : undefined}
+                      enumTypeName={f.enumTypeName}
                       onChange={v => setEditDraft(d => ({ ...d, [f.name]: v }))}
                     />
                   ))}
                 </div>
 
                 {/* Editable description & notes */}
-                <div style={{ borderTop: '1px solid #f3f4f6', margin: '12px 0' }} />
+                <div style={{ borderTop: `1px solid ${palette.neutral.borderLight}`, margin: '12px 0' }} />
                 <EditField label={t('common.description')} value={editDraft['description'] ?? ''} multiline onChange={v => setEditDraft(d => ({ ...d, description: v }))} />
                 <div style={{ marginTop: 12 }} />
                 <EditField label={t('pages.ci.notes')} value={editDraft['notes'] ?? ''} multiline onChange={v => setEditDraft(d => ({ ...d, notes: v }))} />
 
                 {/* Save / Cancel */}
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                  <button type="button" onClick={handleSaveAll} style={{ padding: '6px 18px', borderRadius: 6, border: 'none', background: 'var(--color-brand)', color: '#fff', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+                  <button type="button" onClick={handleSaveAll} style={{ padding: '6px 18px', borderRadius: 6, border: 'none', background: 'var(--color-brand)', color: colors.white, fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                     {t('common.save')}
                   </button>
-                  <button type="button" onClick={() => setEditMode(false)} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', color: 'var(--color-slate)', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
+                  <button type="button" onClick={() => setEditMode(false)} style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, color: 'var(--color-slate)', fontWeight: 600, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
                     {t('common.cancel')}
                   </button>
                 </div>
               </>
             ) : (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="og-pair">
                   <DetailField label="ID" value={ci.id} mono />
                   <DetailField label={t('pages.cmdb.name')} value={ci.name} />
                   <DetailField label={t('pages.cmdb.type')} value={ciType.label} />
                   <DetailField label={t('pages.cmdb.status')} value={ci.status ? <StatusBadge value={ci.status} /> : null} />
-                  <DetailField label={t('pages.cmdb.environment')} value={ci.environment ?? null} />
+                  <DetailField label={t('pages.cmdb.environment')} value={ci.environment ? (labelOf('environment', ci.environment) ?? ci.environment) : null} />
                   <DetailField label={t('pages.cmdb.createdAt')} value={formatDate(ci.createdAt)} />
                   <DetailField label={t('detail.updatedAt')} value={ci.updatedAt ? formatDate(ci.updatedAt) : null} />
                   <DetailField label={t('pages.cmdb.ownerGroup')} value={
-                    <Select
-                      aria-label={t('pages.cmdb.ownerGroup')}
+                    <CIGroupSelect
+                      label={t('pages.cmdb.ownerGroup')}
+                      required={groupRequired('ownerGroup')}
                       value={(ci.ownerGroup as Team | null)?.id ?? ''}
-                      onChange={(e) => void assignOwner({ variables: { ciId: ci.id, teamId: e.target.value || null } })}
-                      style={{ fontSize: 'var(--font-size-body)', padding: '4px 8px', maxWidth: 220 }}
-                    >
-                      <option value="">{t('pages.ci.notAssignedOption')}</option>
-                      {allTeams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
-                    </Select>
+                      teams={allTeams}
+                      onChange={(teamId) => void assignOwner({ variables: { ciId: ci.id, teamId } })}
+                    />
                   } />
                   <DetailField label={t('pages.ci.supportGroup')} value={
-                    <Select
-                      aria-label={t('pages.ci.supportGroup')}
+                    <CIGroupSelect
+                      label={t('pages.ci.supportGroup')}
+                      required={groupRequired('supportGroup')}
                       value={(ci.supportGroup as Team | null)?.id ?? ''}
-                      onChange={(e) => void assignSupport({ variables: { ciId: ci.id, teamId: e.target.value || null } })}
-                      style={{ fontSize: 'var(--font-size-body)', padding: '4px 8px', maxWidth: 220 }}
-                    >
-                      <option value="">{t('pages.ci.notAssignedOption')}</option>
-                      {allTeams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
-                    </Select>
+                      teams={allTeams}
+                      onChange={(teamId) => void assignSupport({ variables: { ciId: ci.id, teamId } })}
+                    />
                   } />
                   {specificFields.map(f => (
                     <DetailField
                       key={f.name}
                       label={f.label}
-                      value={ci[f.name] !== null && ci[f.name] !== undefined ? String(ci[f.name]) : null}
+                      // Un valore di vocabolario si legge con la sua etichetta
+                      // («Business critical»), non col nome interno (business_critical).
+                      value={ci[f.name] !== null && ci[f.name] !== undefined
+                        ? ((f.enumTypeName && labelOf(f.enumTypeName, String(ci[f.name]))) || String(ci[f.name]))
+                        : null}
                     />
                   ))}
                 </div>
@@ -611,6 +701,11 @@ export function CIDetailPage() {
               </>
             )}
           </SectionCard>
+
+          {/* Salute dal monitoraggio (Event Management): aperta se la salute è nota */}
+          {!isGroup && <CIHealthSection ciId={ci.id} ciName={ci.name} />}
+          {/* Servizi monitorati la cui mappa include questo CI: compare solo se ce n'è almeno uno */}
+          {!isGroup && <CIServicesSection ciId={ci.id} />}
 
           {ci.type === 'dynamic_ci_group' && String(ci['membershipType'] ?? '') === 'dynamic' && (
             <GroupCriteriaBuilder
@@ -691,7 +786,7 @@ export function CIDetailPage() {
                 )}
 
                 {(ci.dependencies as CIRelation[]).length > 0 && (ci.dependents as CIRelation[]).length > 0 && (
-                  <div style={{ borderTop: '1px solid #f3f4f6', margin: '8px 0 16px 0' }} />
+                  <div style={{ borderTop: `1px solid ${palette.neutral.borderLight}`, margin: '8px 0 16px 0' }} />
                 )}
 
                 {(ci.dependents as CIRelation[]).length > 0 && (
@@ -712,22 +807,22 @@ export function CIDetailPage() {
 
             {/* Delete confirmation */}
             {deleteRel && (
-              <div style={{ padding: '12px 16px', background: 'var(--color-danger-bg)', border: '1px solid #fecaca', borderRadius: 8, marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 'var(--font-size-body)', color: '#991b1b' }}>
+              <div style={{ padding: '12px 16px', background: 'var(--color-danger-bg)', border: `1px solid ${palette.danger.border}`, borderRadius: 8, marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 'var(--font-size-body)', color: palette.danger.strong }}>
                   {t('pages.ci.removeRelation', { relationType: deleteRel.relationType, name: deleteRel.name })}
                 </span>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     type="button"
                     onClick={() => setDeleteRel(null)}
-                    style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', color: 'var(--color-slate-dark)' }}
+                    style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', color: 'var(--color-slate-dark)' }}
                   >
                     {t('common.cancel')}
                   </button>
                   <button
                     type="button"
                     onClick={handleRemoveRelation}
-                    style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: '#fff', cursor: 'pointer' }}
+                    style={{ padding: '4px 12px', fontSize: 'var(--font-size-body)', borderRadius: 6, border: 'none', background: 'var(--color-danger)', color: colors.white, cursor: 'pointer' }}
                   >
                     {t('common.delete')}
                   </button>
@@ -743,7 +838,7 @@ export function CIDetailPage() {
           {showAddRel && ci && createPortal(
               <Modal
                 open
-                onClose={() => { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) }}
+                onClose={() => { setShowAddRel(false); setAddRelForm(EMPTY_REL_FORM) }}
                 title={`${t('pages.ci.addRelation')} — ${ci.name}`}
                 width={480}
                 zIndex={9999}
@@ -751,15 +846,15 @@ export function CIDetailPage() {
                   <>
                     <Button
                       variant="secondary"
-                      onClick={() => { setShowAddRel(false); setAddRelForm({ relationType: 'DEPENDS_ON', direction: 'outgoing', search: '', targetCI: null }) }}
+                      onClick={() => { setShowAddRel(false); setAddRelForm(EMPTY_REL_FORM) }}
                       style={{ color: 'var(--color-slate-dark)' }}
                     >
                       {t('common.cancel')}
                     </Button>
                     <Button
                       onClick={() => void handleAddRelation()}
-                      disabled={!addRelForm.targetCI}
-                      style={{ fontSize: 'var(--font-size-body)', ...(addRelForm.targetCI ? {} : { backgroundColor: '#d1d5db' }) }}
+                      disabled={!addRelForm.targetCI || !chosenRelation}
+                      style={{ fontSize: 'var(--font-size-body)', ...(addRelForm.targetCI ? {} : { backgroundColor: palette.neutral.borderStrong }) }}
                     >
                       {t('pages.ci.addRelation')}
                     </Button>
@@ -772,30 +867,26 @@ export function CIDetailPage() {
                       <label htmlFor={relTypeId} style={{ display: 'block', fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 4 }}>
                         {t('pages.ci.relationType')}
                       </label>
-                      <Select
-                        id={relTypeId}
-                        value={addRelForm.relationType}
-                        onChange={e => setAddRelForm(prev => ({ ...prev, relationType: e.target.value, targetCI: null, search: '' }))}
-                        style={{ padding: '8px 10px', outline: undefined }}
-                      >
-                        {relationTypeOptions.map(rt => <option key={rt} value={rt}>{rt.replace(/_/g, ' ')}</option>)}
-                      </Select>
+                      {relationTypeOptions.length === 0 ? (
+                        <p style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('pages.ci.noRelationTypes')}</p>
+                      ) : (
+                        <Select
+                          id={relTypeId}
+                          value={chosenRelation?.value ?? ''}
+                          onChange={e => {
+                            const option = relationTypeOptions.find(o => o.value === e.target.value)
+                            if (option) setAddRelForm(prev => ({ ...prev, relationType: option.relationType, direction: option.direction, targetCI: null, search: '' }))
+                          }}
+                          style={{ padding: '8px 10px', outline: undefined }}
+                        >
+                          {relationTypeOptions.map(o => (
+                            <option key={o.value} value={o.value}>
+                              {t('pages.ci.relationOption', { relation: o.relationLabel, type: o.relationType.replace(/_/g, ' '), direction: t(o.direction === 'outgoing' ? 'pages.ci.dirOutgoing' : 'pages.ci.dirIncoming') })}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
                     </div>
-
-                    {/* Direction */}
-                    <fieldset style={{ border: 'none', padding: 0, margin: 0, minWidth: 0 }}>
-                      <legend style={{ display: 'block', padding: 0, fontSize: 'var(--font-size-body)', fontWeight: 600, color: 'var(--color-slate)', marginBottom: 6 }}>
-                        {t('pages.ci.direction')}
-                      </legend>
-                      <div style={{ display: 'flex', gap: 12 }}>
-                        {(['outgoing', 'incoming'] as const).map(dir => (
-                          <label key={dir} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer', color: addRelForm.direction === dir ? 'var(--color-brand)' : 'var(--color-slate)' }}>
-                            <input type="radio" name="rel-dir" checked={addRelForm.direction === dir} onChange={() => setAddRelForm(prev => ({ ...prev, direction: dir }))} />
-                            {dir === 'outgoing' ? t('pages.ci.dirOutgoing') : t('pages.ci.dirIncoming')}
-                          </label>
-                        ))}
-                      </div>
-                    </fieldset>
 
                     {/* CI search */}
                     <div style={{ position: 'relative' }}>
@@ -810,23 +901,23 @@ export function CIDetailPage() {
                         style={{ padding: '8px 10px', outline: undefined }}
                       />
                       {addRelForm.targetCI && (
-                        <div style={{ marginTop: 6, padding: '6px 10px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 6, fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ marginTop: 6, padding: '6px 10px', background: palette.info.light, border: `1px solid ${palette.info.border}`, borderRadius: 6, fontSize: 'var(--font-size-body)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           <span><strong>{addRelForm.targetCI.name}</strong> <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>({addRelForm.targetCI.type})</span></span>
-                          <button type="button" aria-label={t('common.delete')} onClick={() => setAddRelForm(prev => ({ ...prev, targetCI: null, search: '' }))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}><X size={14} color="#94a3b8" /></button>
+                          <button type="button" aria-label={t('common.delete')} onClick={() => setAddRelForm(prev => ({ ...prev, targetCI: null, search: '' }))} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}><X size={14} color={colors.slateLight} /></button>
                         </div>
                       )}
                       {ciSearchResults.length > 0 && !addRelForm.targetCI && (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, maxHeight: 180, overflowY: 'auto', zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,.08)', marginTop: 2 }}>
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: colors.white, border: `1px solid ${colors.border}`, borderRadius: 6, maxHeight: 180, overflowY: 'auto', zIndex: 10, boxShadow: `0 4px 12px ${alpha.black08}`, marginTop: 2 }}>
                           {ciSearchResults.map(c => (
                             <button
                               type="button"
                               key={c.id}
                               onClick={() => setAddRelForm(prev => ({ ...prev, targetCI: c, search: c.name }))}
                               className="hover-bg"
-                              style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', font: 'inherit', color: 'inherit', padding: '8px 12px', fontSize: 'var(--font-size-body)', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', ['--hover-bg' as string]: '#f1f5f9' }}
+                              style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', font: 'inherit', color: 'inherit', padding: '8px 12px', fontSize: 'var(--font-size-body)', cursor: 'pointer', borderBottom: `1px solid ${palette.neutral.borderLight}`, ['--hover-bg' as string]: colors.slateBg }}
                             >
                               <span style={{ fontWeight: 500 }}>{c.name}</span>{' '}
-                              <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>({c.type.replace(/_/g, ' ')})</span>
+                              <span style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>({ciLabels.typeLabel(c.type)})</span>
                             </button>
                           ))}
                         </div>
@@ -844,6 +935,8 @@ export function CIDetailPage() {
             )}
 
           <CIIncidentsCard ciId={ci.id} />
+          <CIIncidentsCard ciId={ci.id} kind="problem" />
+          <CIIncidentsCard ciId={ci.id} kind="service_request" />
           <CIChangeList ciId={ci.id} />
 
           <AttachmentsSection entityType="ci" entityId={ci.id} />

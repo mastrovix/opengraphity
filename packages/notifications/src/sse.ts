@@ -1,15 +1,53 @@
 import { randomUUID } from 'crypto'
+import type { NotificationSeverity } from '@opengraphity/types'
 
 export interface InAppNotification {
   id: string
   type: string
+  /** Chiave i18n del titolo (è quella che la regola di notifica configura). */
   title: string
+  /**
+   * Testo da mostrare quando `title` non è una chiave tradotta: per le
+   * notifiche di passo è l'ETICHETTA del passo (B-16). Senza, il pannello
+   * mostrava la chiave grezza — `notification.custom.step.title` — a chi
+   * aveva aggiunto un passo suo.
+   */
+  title_fallback?: string
   message: string
-  severity?: 'info' | 'warning' | 'error' | 'success'
+  /**
+   * Chiave i18n del messaggio e i suoi dati (revisione del 14 set 2026 · CO-2 /
+   * F10): il pannello compone la frase nella lingua di chi legge. `message`
+   * resta il testo per chi non ha la chiave (e-mail, integrazioni, client vecchi).
+   */
+  message_key?: string
+  message_params?: Record<string, string>
+  severity?: NotificationSeverity
   entity_id?: string
   entity_type?: string
   timestamp: string
   read: boolean
+}
+
+/**
+ * UNA CONSEGNA IN-APP (revisione del 14 set 2026 · F10): a una persona
+ * (`userId`) o a tutto il tenant (`userId: null`).
+ */
+export interface InAppDelivery {
+  tenantId: string
+  userId: string | null
+  notification: InAppNotification
+}
+
+/**
+ * Come una consegna sopravvive al processo e raggiunge le altre repliche: la si
+ * salva (`persist`, così il pannello la ritrova al caricamento) e la si
+ * pubblica su un canale condiviso (`publish`), da cui ogni processo che ha
+ * client collegati la scrive con `writeLocal`. Lo registra il processo all'avvio
+ * (apps/api/src/lib/inAppBus.ts); senza, la consegna resta locale.
+ */
+export interface InAppTransport {
+  persist(delivery: InAppDelivery): Promise<void>
+  publish(delivery: InAppDelivery): Promise<void>
 }
 
 export interface SseClient {
@@ -54,30 +92,79 @@ class SseManager {
     }
   }
 
+  private transport: InAppTransport | null = null
+
+  /** Registra (o toglie, con `null`) il trasporto delle consegne. */
+  useTransport(transport: InAppTransport | null): void {
+    this.transport = transport
+  }
+
+  /**
+   * Consegna una notifica a una persona, senza attendere. Per i cammini in cui
+   * il fallimento della scrittura non deve fare fallire l'operazione
+   * principale (una mutation che ha già avuto effetto): l'errore va nel log.
+   */
   sendToUser(tenantId: string, userId: string, event: InAppNotification): void {
-    const payload = `data: ${JSON.stringify(event)}\n\n`
-    let sent = 0
-    for (const client of this.clients.values()) {
-      if (client.tenantId === tenantId && client.userId === userId) {
-        if (!this.safeWrite(client, payload)) continue
-        sent++
-      }
-    }
-    if (sent > 0) {
-      console.log(`[sse] Sent to user ${userId} (${sent} connection/s): ${event.type}`)
+    void this.deliver({ tenantId, userId, notification: event }).catch((err: unknown) => {
+      console.error(`[sse] in-app notification ${event.id} not delivered (tenant ${tenantId}): ${err instanceof Error ? err.message : String(err)}`)
+    })
+  }
+
+  /** Come sopra, a tutto il tenant. */
+  sendToTenant(tenantId: string, event: InAppNotification): void {
+    void this.deliver({ tenantId, userId: null, notification: event }).catch((err: unknown) => {
+      console.error(`[sse] in-app notification ${event.id} not delivered (tenant ${tenantId}): ${err instanceof Error ? err.message : String(err)}`)
+    })
+  }
+
+  /**
+   * Consegna ATTESA: se la notifica non viene salvata, l'errore arriva a chi
+   * chiama (revisione totale · E-19). Il dispatcher la usa perché un in-app
+   * non salvato deve far fallire il job e farlo ritentare: prima la scrittura
+   * fallita lasciava solo una riga di log, il job risultava riuscito, la
+   * deduplica veniva impostata e la notifica spariva al ricaricamento della
+   * pagina.
+   */
+  deliverToUser(tenantId: string, userId: string, event: InAppNotification): Promise<void> {
+    return this.deliver({ tenantId, userId, notification: event })
+  }
+
+  /** Come sopra, a tutto il tenant. */
+  deliverToTenant(tenantId: string, event: InAppNotification): Promise<void> {
+    return this.deliver({ tenantId, userId: null, notification: event })
+  }
+
+  /**
+   * Salva e pubblica. La scrittura è la parte che non si può perdere: un suo
+   * errore si propaga. La pubblicazione sul canale fra processi no: se manca,
+   * i client di QUESTO processo ricevono comunque (writeLocal) e gli altri al
+   * prossimo ricaricamento, perché la notifica è salvata.
+   */
+  private async deliver(delivery: InAppDelivery): Promise<void> {
+    const transport = this.transport
+    if (!transport) { this.writeLocal(delivery); return }
+    await transport.persist(delivery)
+    try {
+      await transport.publish(delivery)
+    } catch (err) {
+      console.error(`[sse] in-app notification ${delivery.notification.id} not published (tenant ${delivery.tenantId}): only the clients of THIS process receive it now, the others at the next reload — ${err instanceof Error ? err.message : String(err)}`)
+      this.writeLocal(delivery)
     }
   }
 
-  sendToTenant(tenantId: string, event: InAppNotification): void {
-    const payload = `data: ${JSON.stringify(event)}\n\n`
+  /** Scrive la consegna ai client collegati a QUESTO processo. */
+  writeLocal(delivery: InAppDelivery): void {
+    const payload = `data: ${JSON.stringify(delivery.notification)}\n\n`
     let sent = 0
     for (const client of this.clients.values()) {
-      if (client.tenantId === tenantId) {
-        if (!this.safeWrite(client, payload)) continue
-        sent++
-      }
+      if (client.tenantId !== delivery.tenantId) continue
+      if (delivery.userId !== null && client.userId !== delivery.userId) continue
+      if (!this.safeWrite(client, payload)) continue
+      sent++
     }
-    console.log(`[sse] Broadcast to tenant ${tenantId} (${sent} connection/s): ${event.type}`)
+    if (sent > 0 || delivery.userId === null) {
+      console.log(`[sse] ${delivery.userId === null ? `Broadcast to tenant ${delivery.tenantId}` : `Sent to user ${delivery.userId}`} (${sent} connection/s): ${delivery.notification.type}`)
+    }
   }
 
   getConnectedCount(tenantId?: string): number {

@@ -1,22 +1,23 @@
 import { useEffect, useRef } from 'react'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, alpha, colors, palette } from '@/lib/tokens'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, GitPullRequest, Shield, Clock, Bell, CheckCheck } from 'lucide-react'
+import { notificationEntityPath } from '@opengraphity/types'
 import { useNotificationContext } from '@/contexts/NotificationContext'
 import type { InAppNotification } from '@/hooks/useNotifications'
 import { timeAgo } from '@/lib/datetime'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Dove porta la notifica: la tabella `entity_type → percorso` è quella
+ * condivisa con il link delle email (`@opengraphity/types`), così incident,
+ * change, problem, richieste, CI, allarmi, servizi e sorgenti aprono la loro
+ * pagina; un tipo senza pagina (sync, portal) resta non cliccabile.
+ */
 function entityPath(notif: InAppNotification): string | null {
-  if (!notif.entity_id || !notif.entity_type) return null
-  switch (notif.entity_type) {
-    case 'incident': return `/incidents/${notif.entity_id}`
-    case 'change':   return `/changes/${notif.entity_id}`
-    case 'problem':  return `/problems/${notif.entity_id}`
-    default:         return null
-  }
+  return notificationEntityPath(notif.entity_type, notif.entity_id)
 }
 
 // ── Severity icon ─────────────────────────────────────────────────────────────
@@ -24,12 +25,12 @@ function entityPath(notif: InAppNotification): string | null {
 const SEVERITY_ICON: Record<string, { icon: React.FC<{ size: number; color: string }>; color: string }> = {
   error:   { icon: AlertTriangle, color: 'var(--color-danger)' },
   warning: { icon: Clock,         color: 'var(--color-warning)' },
-  success: { icon: Shield,        color: '#22c55e' },
+  success: { icon: Shield,        color: colors.success },
   info:    { icon: Bell,          color: 'var(--color-trigger-manual)' },
 }
 
 function entityIcon(notif: InAppNotification) {
-  if (notif.entity_type === 'change') return { icon: GitPullRequest, color: '#7c3aed' }
+  if (notif.entity_type === 'change') return { icon: GitPullRequest, color: palette.purple.base }
   return lookupOrError(SEVERITY_ICON, notif.severity ?? 'info', 'SEVERITY_ICON', SEVERITY_ICON['error']!)
 }
 
@@ -53,18 +54,25 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
       role="button"
       tabIndex={0}
       onClick={handleClick}
-      onKeyDown={(e) => e.key === 'Enter' && handleClick()}
+      // F-36: anche la barra spaziatrice, come vuole il ruolo «button»
+      // (`role="button"` + `tabIndex` senza Space non è raggiungibile da
+      // tastiera come un pulsante vero).
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return
+        e.preventDefault()
+        handleClick()
+      }}
       style={{
         display:         'flex',
         gap:             12,
         padding:         '12px 16px',
         cursor:          entityPath(notif) ? 'pointer' : 'default',
-        backgroundColor: notif.read ? '#ffffff' : '#f0f9ff',
-        borderBottom:    '1px solid #f1f5f9',
+        backgroundColor: notif.read ? colors.white : palette.info.light,
+        borderBottom:    `1px solid ${palette.neutral.borderLight}`,
         transition:      'background 0.15s',
       }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--color-slate-bg)' }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = notif.read ? '#ffffff' : '#f0f9ff' }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = notif.read ? colors.white : palette.info.light }}
     >
       {/* Icon */}
       <div style={{ flexShrink: 0, marginTop: 2 }}>
@@ -82,7 +90,11 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
           overflow:    'hidden',
           textOverflow:'ellipsis',
         }}>
-          {t(notif.title)}
+          {/* Il titolo è una CHIAVE i18n scelta nella regola di notifica. Se la
+              chiave non esiste (una regola su un passo aggiunto dal cliente ha
+              una chiave che il web non conosce), si mostra il ripiego che
+              l'evento porta — l'etichetta del passo — e mai la chiave grezza. */}
+          {t(notif.title, { defaultValue: notif.title_fallback ?? notif.title })}
         </div>
         <div style={{
           fontSize:    12,
@@ -91,7 +103,8 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
           overflow:    'hidden',
           textOverflow:'ellipsis',
         }}>
-          {notif.message}
+          {/* CO-2: la frase si compone nella lingua di chi legge quando la notifica porta la chiave. */}
+          {notif.message_key ? t(notif.message_key, { ...notif.message_params, defaultValue: notif.message }) : notif.message}
         </div>
       </div>
 
@@ -144,10 +157,10 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
         right:           0,
         width:           360,
         maxHeight:       420,
-        backgroundColor: '#ffffff',
+        backgroundColor: colors.white,
         border:          '1px solid var(--border)',
         borderRadius:    10,
-        boxShadow:       '0 8px 24px rgba(0,0,0,0.12)',
+        boxShadow:       `0 8px 24px ${alpha.black12}`,
         zIndex:          50,
         display:         'flex',
         flexDirection:   'column',
@@ -160,7 +173,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
         alignItems:     'center',
         justifyContent: 'space-between',
         padding:        '12px 16px',
-        borderBottom:   '1px solid #f1f5f9',
+        borderBottom:   `1px solid ${palette.neutral.borderLight}`,
         flexShrink:     0,
       }}>
         <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
@@ -200,7 +213,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
             gap:            8,
             color:          'var(--color-slate-light)',
           }}>
-            <Bell size={24} color="#cbd5e1" />
+            <Bell size={24} color={colors.slateLight} />
             <span style={{ fontSize: 'var(--font-size-body)' }}>{t('notifications.empty')}</span>
           </div>
         ) : (
