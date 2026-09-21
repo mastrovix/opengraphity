@@ -65,7 +65,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event.label.name == 'autoanalisi'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     # I permessi stanno sul JOB e non sul workflow: valgono per questo solo
     # lavoro. Niente `actions: write` (non deve poter cambiare i workflow) e
     # niente accesso ad altri segreti oltre alla chiave del modello.
@@ -103,6 +103,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      # ── L'AMBIENTE, che al quinto giro non c'era ──────────────────────────
+      # Il prompt chiede all'agente di far girare `pnpm lint`, `pnpm typecheck`
+      # e i test prima di aprire la PR, ma senza queste tre cose quei comandi
+      # non esistono nemmeno: il quinto giro (21 set 2026) non avrebbe potuto
+      # obbedire. Stessi passi di `ci.yml`, per lo stesso motivo — Node 20
+      # perché isolated-vm non compila contro il V8 di Node 22, e i pacchetti
+      # condivisi costruiti prima perché le app risolvono `@opengraphity/*`
+      # contro il loro `dist/`.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Installa le dipendenze
+        run: pnpm install --frozen-lockfile
+      - name: Costruisci i pacchetti condivisi
+        run: pnpm --filter "./packages/*" build
+
       - uses: anthropics/claude-code-action@v1
         # `gh` è già installato sul runner: con questo token funziona, ed è
         # la cintura di sicurezza se gli strumenti GitHub non fossero
@@ -130,7 +148,9 @@ jobs:
           # un'indagine che finisce in venti turni costa venti turni. Ma è
           # denaro vero, e per questo il workflow parte solo quando una
           # persona mette l'etichetta.
-          claude_args: "--max-turns 120"
+          claude_args: |
+            --max-turns 120
+            --allowedTools "Edit,Write,Bash(pnpm:*),Bash(node:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(gh issue comment:*),Bash(gh pr create:*)"
           prompt: |
             Sei nel repository di OpenGrafo. La issue #${{ github.event.issue.number || inputs.issue }}
             contiene un FASCICOLO D'INDAGINE prodotto dall'Autoanalisi della
