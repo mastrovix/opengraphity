@@ -61,7 +61,7 @@ beforeEach(() => {
   apriIssue.mockReset().mockResolvedValue(25)
   dispatch.mockReset().mockResolvedValue(undefined)
   stato.mockReset()
-  segnaRisoltoMock.mockReset().mockResolvedValue({ avviata: true, passo: 'resolved', motivo: 'avviata' })
+  segnaRisoltoMock.mockReset().mockResolvedValue({ fatto: true, passo: 'resolved', percorsi: ['known_error', 'resolved'], motivo: 'fatto' })
 })
 
 describe('porta-il-fascicolo', () => {
@@ -95,21 +95,21 @@ describe('controlla', () => {
 
   it('una PR UNITA chiude il giro', async () => {
     inAttesa = [problemi[0]!]
-    stato.mockResolvedValue({ issueChiusa: true, pr: 26, prUnita: true })
+    stato.mockResolvedValue({ pr: 26, prUnita: true })
     await _perITest.controlla()
     expect(segnaRisoltoMock).toHaveBeenCalledWith('opengrafo', 'prb-1', 'PRB00000003', ATTORE)
   })
 
   it('una PR chiusa SENZA essere unita non risolve niente', async () => {
     inAttesa = [problemi[0]!]
-    stato.mockResolvedValue({ issueChiusa: true, pr: 26, prUnita: false })
+    stato.mockResolvedValue({ pr: 26, prUnita: false })
     await _perITest.controlla()
     expect(segnaRisoltoMock).not.toHaveBeenCalled()
   })
 
   it('«non c\'è niente da cambiare»: nessuna PR, il Problem resta aperto e in analisi', async () => {
     inAttesa = [problemi[0]!]
-    stato.mockResolvedValue({ issueChiusa: true, pr: null, prUnita: null })
+    stato.mockResolvedValue({ pr: null, prUnita: null })
     await _perITest.controlla()
     expect(segnaRisoltoMock).not.toHaveBeenCalled()
   })
@@ -117,7 +117,7 @@ describe('controlla', () => {
   it('un Problem che va storto non ferma quelli dopo', async () => {
     inAttesa = [...problemi]
     stato.mockRejectedValueOnce(new Error('issue cancellata a mano'))
-    stato.mockResolvedValueOnce({ issueChiusa: true, pr: 31, prUnita: true })
+    stato.mockResolvedValueOnce({ pr: 31, prUnita: true })
     await _perITest.controlla()
     expect(segnaRisoltoMock).toHaveBeenCalledTimes(1)
     expect(segnaRisoltoMock).toHaveBeenCalledWith('opengrafo', 'prb-2', 'PRB00000004', ATTORE)
