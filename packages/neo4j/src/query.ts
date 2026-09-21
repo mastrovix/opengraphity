@@ -1,6 +1,6 @@
 import {
   Session, ManagedTransaction, Integer, isInt, isDate, isDateTime, isLocalDateTime, isLocalTime, isTime, isDuration,
-  Neo4jError, isRetriableError,
+  Neo4jError,
 } from 'neo4j-driver'
 
 /**
@@ -58,7 +58,21 @@ export class QueryError extends Error {
     this.cause     = cause
     this.cypher    = cypher
     this.code      = cause instanceof Neo4jError ? cause.code : undefined
-    this.retryable = cause instanceof Error ? isRetriableError(cause) : false
+    /*
+     * SI LEGGE LA PROPRIETA', NON SI CHIAMA L'AIUTANTE (21 set 2026).
+     *
+     * `isRetriableError()` del driver 6.2.0 ESPLODE su qualunque errore le si
+     * passi — anche su un suo `Neo4jError` — con «Cannot read properties of
+     * undefined (reading 'isRetryable')». Provato: tre test del pacchetto
+     * cadevano cosi', e il messaggio non diceva affatto che il colpevole era
+     * la libreria.
+     *
+     * L'informazione pero' c'e' gia': `Neo4jError` calcola `retryable` dal
+     * codice nel proprio costruttore. Leggerla direttamente e' anche piu'
+     * onesto — non si chiede a una funzione di dedurre quello che l'oggetto
+     * sa gia' di se'.
+     */
+    this.retryable = cause instanceof Neo4jError ? cause.retryable === true : false
   }
 
   /** True when the failure is a uniqueness/existence constraint violation. */

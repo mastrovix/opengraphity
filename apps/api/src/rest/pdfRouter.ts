@@ -15,6 +15,7 @@ import type { PdfMeta } from '../lib/pdf/common.js'
 import { languageFor } from '../lib/tenantLanguage.js'
 import { tenantTimezone } from '../lib/tenantTimezone.js'
 import type { GraphQLContext } from '../context.js'
+import { parametro } from './parametroDiRotta.js'
 
 export interface PdfRouteSpec<D> {
   /** Express path, e.g. `/incidents/:id/pdf`. */
@@ -42,7 +43,7 @@ export function makePdfRouter<D>(spec: PdfRouteSpec<D>): ExpressRouter {
   router.get(spec.path, authMiddleware, (req, res) => {
     void (async () => {
       const { tenantId, userId, email, role } = req.user!
-      const { id } = req.params
+      const id = parametro(req, 'id')
 
       const session = getSession(undefined, 'READ')
       try {

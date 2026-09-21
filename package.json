@@ -18,7 +18,9 @@
   "pnpm": {
     "overrides": {
       "sharp": "^0.35.4",
-      "@types/d3-selection": "3.0.11"
+      "@types/d3-selection": "3.0.11",
+      "@types/express": "^5.0.6",
+      "ip-address": "^10.7.2"
     },
     "onlyBuiltDependencies": [
       "esbuild",
@@ -30,14 +32,18 @@
     ]
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "eslint": "^8.57.0",
-    "eslint-plugin-react-hooks": "^4.6.2",
+    "@typescript-eslint/eslint-plugin": "^8.70.0",
+    "@typescript-eslint/parser": "^8.70.0",
+    "eslint": "^10.11.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
     "prettier": "^3.9.8",
     "tsx": "^4.23.13",
-    "typescript": "^5.4.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0",
     "vitest": "catalog:"
   }
 }

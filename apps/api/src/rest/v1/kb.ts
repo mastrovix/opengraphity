@@ -9,6 +9,7 @@ import { withSession } from '../../graphql/resolvers/ci-utils.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { asyncHandler } from '../errorHandler.js'
 import { apiKeyOf, parsePagination } from '../apiContext.js'
+import { parametro } from '../parametroDiRotta.js'
 
 const router: ExpressRouter = Router()
 
@@ -38,7 +39,7 @@ router.get('/', requirePermission('kb:read'), asyncHandler(async (req: Request, 
 }))
 
 router.get('/:slug', requirePermission('kb:read'), asyncHandler(async (req: Request, res: Response) => {
-  const slug = req.params['slug']!
+  const slug = parametro(req, 'slug')
   const row = await withSession((session) => runQueryOne<{ props: Props }>(session, `
     MATCH (a:KBArticle {slug: $slug, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(:WorkflowInstance)-[:CURRENT_STEP]->(s:WorkflowStep)
     WHERE s.category = 'published'

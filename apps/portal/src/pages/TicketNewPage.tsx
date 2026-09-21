@@ -290,12 +290,28 @@ export function TicketNewPage() {
         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
           {t('ticket.fields.attachments')}
         </label>
-        <div
+        {/*
+          * UN BOTTONE, NON UN DIV (21 set 2026).
+          *
+          * Questa zona apriva il selettore dei file con un `onClick` su un
+          * `<div>`: col mouse funzionava, col tasto Tab non ci si arrivava
+          * nemmeno, e allegare un file era impossibile senza puntatore.
+          * Trascinare resta comunque cosa da mouse — per questo l'apertura
+          * del selettore doveva essere raggiungibile in altro modo.
+          *
+          * Il campo `<input type="file">` esce dal bottone: un controllo di
+          * modulo dentro un bottone non e' HTML valido.
+          */}
+        <button
+          type="button"
           onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
           style={{
+            display:         'block',
+            width:           '100%',
+            font:            'inherit',
             border:          `2px dashed ${isDragging ? colors.brand : palette.neutral.borderStrong}`,
             borderRadius:    8,
             padding:         24,
@@ -307,8 +323,8 @@ export function TicketNewPage() {
         >
           <Paperclip size={20} style={{ color: colors.slateLight, marginBottom: 6 }} />
           <div style={{ fontSize: 12, color: colors.slate }}>{t('ticket.dropFiles')}</div>
-          <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleFileInput} />
-        </div>
+        </button>
+        <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleFileInput} />
         {files.length > 0 && (
           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {files.map((f, i) => (
