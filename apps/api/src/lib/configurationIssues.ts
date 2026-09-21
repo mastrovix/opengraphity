@@ -37,6 +37,8 @@
  * che la lingua la conosce (`configurationIssue.<kind>`).
  */
 import { slackChannelsWithoutWorkspace } from './slackChannelsWithoutWorkspace.js'
+import { configurazioneAutoanalisi } from './autoanalisiGitHub.js'
+import { TENANT_DI_PIATTAFORMA } from './serverLogEvents.js'
 import { serviceMapsWithIncidentProblem } from './serviceIncidentProblems.js'
 import type { Session } from 'neo4j-driver'
 import { getSession } from '@opengraphity/neo4j'
@@ -128,6 +130,7 @@ export type ConfigurationIssueKind =
   | 'tasks_without_team'
   | 'tasks_waiting_forever'
   | 'changes_stuck'
+  | 'autoanalisi_github_missing'
 
 export interface ConfigurationIssue {
   /** La CHIAVE del problema: il client la risolve nella sua lingua. */
@@ -179,7 +182,7 @@ async function computeConfigurationIssues(tenantId: string): Promise<Configurati
   const out: ConfigurationIssue[] = []
   const session = getSession()
   try {
-    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkRedundantVocabularyCopies, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms, checkStuckChanges, checkTaskIntegrity]) {
+    for (const check of [checkSchema, checkProvisioning, checkMatrices, checkLifecyclePolicy, checkValueLabels, checkMigrations, checkLanguage, checkTimezone, checkServiceCalendar, checkPortalSeverities, checkCatalogItemPriorities, checkCatalogItemCategories, checkInAppRetention, checkTeamSourcing, checkTicketsWithoutSla, checkWorkflowStepRoles, checkVocabulariesBehindShipped, checkRedundantVocabularyCopies, checkSlaWarnings, checkStepDeadlines, checkSlackChannels, checkServiceIncidentProblems, checkCustomFieldSteps, checkOLAContracts, checkFormulasScripting, checkDuplicateFields, checkCatalogForms, checkStuckChanges, checkTaskIntegrity, checkAutoanalisiGitHub]) {
       try {
         out.push(...await check(tenantId, session))
       } catch (err) {
@@ -641,6 +644,29 @@ async function checkCatalogItemCategories(tenantId: string, session: Session): P
  * (`channel_id`, non un webhook) usa il token del workspace dell'organizzazione.
  * Senza workspace collegato ogni notifica verso quel canale fallisce.
  */
+/**
+ * L'AUTOANALISI SA APRIRE UN PROBLEM MA NON SA DOVE PORTARLO (21 set 2026).
+ *
+ * Aprendo un Problem da una proposta il prodotto porta il fascicolo
+ * d'indagine su GitHub e chiede l'analisi. Senza `AUTOANALISI_GITHUB_REPO` e
+ * `AUTOANALISI_GITHUB_TOKEN` quel pezzo non parte: il Problem resta un
+ * Problem come un altro, col suo fascicolo da leggere a mano.
+ *
+ * È uno stato legittimo — un'installazione può non avere un repository
+ * collegato — ma non deve essere una sorpresa: chi clicca «Apri un Problem»
+ * si aspetta il giro intero. Warning e non error, perché niente è rotto:
+ * manca un collegamento.
+ *
+ * Solo sul tenant di PIATTAFORMA: è l'unico dove le proposte da cui nasce
+ * questo giro esistono, e dirlo agli altri sarebbe rumore su una cosa che
+ * non li riguarda.
+ */
+function checkAutoanalisiGitHub(tenantId: string): ConfigurationIssue[] {
+  if (tenantId !== TENANT_DI_PIATTAFORMA) return []
+  if (configurazioneAutoanalisi() !== null) return []
+  return [{ kind: 'autoanalisi_github_missing', severity: 'warning', where: '/proposals', params: {} }]
+}
+
 async function checkSlackChannels(tenantId: string, session: Session): Promise<ConfigurationIssue[]> {
   const names = await slackChannelsWithoutWorkspace(session, tenantId)
   if (names.length === 0) return []

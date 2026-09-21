@@ -47,6 +47,7 @@ import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
 import { startProposalScanner } from './jobs/proposalScanner.js'
 import { startWorkflowJobWorker, startNotificationJobWorker, scheduleStepDeadlineSweep, scheduleOLASweep } from './jobs/workflowJobWorker.js'
 import { startWebhookDeliveryWorker } from './jobs/webhookDeliveryWorker.js'
+import { startAutoanalisiWorker } from './jobs/autoanalisiWorker.js'
 import { startEventIngestWorker } from './jobs/eventIngestWorker.js'
 import { startEventCorrelateWorker, startEventMaintenanceWorker } from './jobs/eventCorrelateWorker.js'
 import { startServiceImpactWorker } from './jobs/serviceImpactWorker.js'
@@ -103,6 +104,12 @@ async function main() {
 
   // Le proposte di miglioramento: un giro a notte, un job per cliente.
   const proposalWorker = await startProposalScanner()
+
+  // Il giro dell'Autoanalisi che si chiude: porta il fascicolo su GitHub quando
+  // nasce un Problem da una proposta, e ogni quarto d'ora chiede com'è finita.
+  // Sta nell'API e non nel processo `events-worker`: è di PIATTAFORMA, uno per
+  // installazione, e il lavoro che fa è una richiesta HTTP ogni tanto.
+  const autoanalisiWorker = await startAutoanalisiWorker()
 
   // Start workflow job worker (BullMQ: step deadlines, webhook retries, timed triggers)
   const workflowWorker = startWorkflowJobWorker()
@@ -177,7 +184,7 @@ async function main() {
   // redelivered at-least-once on the next boot (idempotency in BaseConsumer and
   // the SLAStatus MERGE keep that safe, but draining cleanly avoids the churn).
   const bullWorkers: Worker[] = [
-    anomalyWorker, proposalWorker, workflowWorker, syncWorker, maintenanceWorker,
+    anomalyWorker, proposalWorker, autoanalisiWorker, workflowWorker, syncWorker, maintenanceWorker,
     notificationWorker, webhookDeliveryWorker, ...eventWorkers,
     emailDigestWorker, reportScheduler,
     ...(embeddingWorker ? [embeddingWorker] : []),

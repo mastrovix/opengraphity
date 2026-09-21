@@ -484,7 +484,8 @@
         "discovery-sync": "Importa i CI dalle sorgenti di discovery e li riconcilia con la CMDB.",
         "embeddings": "Calcola gli embedding di incident e articoli KB, che alimentano gli incident simili e gli articoli suggeriti.",
         "maintenance": "Manutenzione notturna: backup del database, pulizia degli eventi risolti e retention delle notifiche in-app.",
-        "proposal-scanner": "Proposte di miglioramento"
+        "proposal-scanner": "Proposte di miglioramento",
+        "autoanalisi": "Autoanalisi: fascicolo su GitHub e stato dell'analisi"
       },
       "queueNoDescription": "Questa coda non ha una descrizione",
       "consumerNote": "Le code dei consumer di dominio (notifiche, SLA, escalation, impatto sui servizi) non si rigiocano dall'interfaccia: un evento esaurito va riprodotto dal suo produttore.",
@@ -6484,6 +6485,7 @@
       "metamodel_duplicate_field_other": "{{count}} gruppi di campi del metamodello sono definiti più di una volta nello stesso tipo ({{fields}}): le tendine li mostrano doppi, e una regola di visibilità scritta su una definizione non vale per l'altra. **Esegui le migrazioni** (la 20261005_1010 toglie i doppioni); se ricompaiono, aprine una segnalazione.",
       "catalog_form_to_fix_one": "Un modulo del catalogo non si può compilare come è configurato ({{forms}}): chi apre la richiesta riceve un rifiuto che non può risolvere. **Aprilo in Configurazione → Moduli del catalogo**: `fieldsMissing` = cita un campo che non è più in libreria, `requiredNotForEndUser` = pretende un campo che il portale non chiede.",
       "catalog_form_to_fix_other": "{{count}} moduli del catalogo non si possono compilare come sono configurati ({{forms}}): chi apre quelle richieste riceve un rifiuto che non può risolvere. **Aprili in Configurazione → Moduli del catalogo**: `fieldsMissing` = citano un campo che non è più in libreria, `requiredNotForEndUser` = pretendono un campo che il portale non chiede.",
+      "autoanalisi_github_missing": "L'Autoanalisi sa aprire un Problem, ma non sa dove portarlo: manca il repository del codice. Aprendo un Problem da una proposta il prodotto porta il fascicolo d'indagine su GitHub e chiede l'analisi — senza `AUTOANALISI_GITHUB_REPO` e `AUTOANALISI_GITHUB_TOKEN` quel pezzo non parte e il fascicolo resta qui, da leggere a mano. **Configurale nel file `.env` dell'installazione** e riavvia l'API.",
       "changes_stuck": "{{count}} change sono ferme pur avendo la strada aperta ({{changes}}): la loro transizione automatica aspetta una condizione che è già soddisfatta. Le transizioni automatiche si valutano solo quando qualcuno lavora la change, quindi una che si è persa l'occasione non riparte da sé. **Apri quelle change e fai avanzare il passo**: il lavoro è già finito, manca solo il movimento.",
       "vocabulary_copy_without_changes_one": "Hai una copia di un vocabolario identica a quella di fabbrica: {{names}}. Non aggiunge niente e ti costa un prezzo — una copia non viene mai sovrascritta, quindi non riceverà i valori che il prodotto aggiungerà. **Cancellala dal Dizionario**: si torna a usare quella di fabbrica.",
       "vocabulary_copy_without_changes_other": "Hai {{count}} copie di vocabolario identiche a quelle di fabbrica: {{names}}. Non aggiungono niente e costano un prezzo — una copia non viene mai sovrascritta, quindi non riceverà i valori che il prodotto aggiungerà. **Cancellale dal Dizionario**: si torna a usare quelle di fabbrica.",

@@ -70,16 +70,26 @@ export function configurazioneAutoanalisi(): ConfigurazioneAutoanalisi | null {
   return { repo, token }
 }
 
-/** Una risposta di GitHub che non è andata bene: si legge il corpo, perché è lì che dice perché. */
-async function assertRispostaBuona(res: Response, cosa: string): Promise<void> {
+/**
+ * Una risposta di GitHub che non è andata bene: si legge il corpo, perché è lì
+ * che dice perché.
+ *
+ * I nomi qui dentro sono in inglese, e non per distrazione: il guardiano della
+ * lingua (`userFacingItalian.test.ts`) legge il TESTO dei messaggi d'errore,
+ * e in un template literal ci finiscono dentro anche i nomi interpolati. Un
+ * `${corpo}` in mezzo a una frase lo fa sembrare — giustamente — un messaggio
+ * in italiano rivolto a una persona.
+ */
+async function assertRispostaBuona(res: Response, what: string): Promise<void> {
   if (res.ok) return
   /*
    * Il corpo si legge e si mette nel messaggio: un 403 di GitHub senza corpo
    * dice «Forbidden» e basta, col corpo dice QUALE permesso manca — che è
    * l'unica cosa che serve a chi deve sistemare il token.
    */
-  const corpo = await res.text().catch(() => '')
-  throw new Error(`${cosa}: GitHub answered ${res.status} ${res.statusText}${corpo ? ` — ${corpo.slice(0, 500)}` : ''}`)
+  const body = await res.text().catch(() => '')
+  const why = body ? ` — ${body.slice(0, 500)}` : ''
+  throw new Error(`${what}: GitHub answered ${res.status} ${res.statusText}${why}`)
 }
 
 function intestazioni(token: string): Record<string, string> {

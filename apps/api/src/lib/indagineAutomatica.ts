@@ -1,5 +1,9 @@
 /**
- * UN PROBLEM NATO DA UNA PROPOSTA È GIÀ IN ANALISI (21 set 2026).
+ * UN PROBLEM NATO DA UNA PROPOSTA CAMMINA DA SOLO (21 set 2026).
+ *
+ * Due movimenti, la stessa regola: si parte in analisi quando il Problem
+ * nasce, e si arriva a «risolto» quando la modifica proposta dall'agente è
+ * stata UNITA. In mezzo non c'è nessun clic che aggiunga informazione.
  *
  * ## Da dove nasce
  * Richiesta del proprietario: «quando apro il problem da una proposal, il
@@ -36,6 +40,16 @@ import { logger } from './logger.js'
 /** Lo scopo del passo in cui un Problem è «in analisi». */
 export const SCOPO_INDAGINE = 'investigation'
 
+/**
+ * La CATEGORIA del passo in cui un Problem è risolto.
+ *
+ * Categoria e non scopo, e non è un'incoerenza: il passo `resolved` del
+ * workflow di fabbrica non dichiara un `purpose` — il suo ruolo È lo stato
+ * visibile, e per quello il metamodello usa `category`, come già fanno gli
+ * incident. Lo scopo serve dove il ruolo non si legge dallo stato.
+ */
+export const CATEGORIA_RISOLTO = 'resolved'
+
 /** Com'è andata. `avviata` falso non è un errore della mutazione: è un fatto da leggere. */
 export interface EsitoIndagine {
   avviata: boolean
@@ -55,6 +69,20 @@ const PASSO_DI_ANALISI_CYPHER = `
   MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
   MATCH (wi)-[:CURRENT_STEP]->(cur:WorkflowStep)
   OPTIONAL MATCH (cur)-[:TRANSITIONS_TO]->(target:WorkflowStep {purpose: $scopo})
+  WITH wi, cur, target ORDER BY target.step_order ASC
+  RETURN wi.id AS instanceId, cur.name AS passoAttuale, target.name AS passoDiAnalisi
+  LIMIT 1
+`
+
+/*
+ * Il passo RISOLTO raggiungibile dal passo attuale. Stessa forma della query
+ * qui sopra, criterio diverso: `category` invece di `purpose` — vedi
+ * `CATEGORIA_RISOLTO` per il perché.
+ */
+const PASSO_RISOLTO_CYPHER = `
+  MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
+  MATCH (wi)-[:CURRENT_STEP]->(cur:WorkflowStep)
+  OPTIONAL MATCH (cur)-[:TRANSITIONS_TO]->(target:WorkflowStep {category: $categoria})
   WITH wi, cur, target ORDER BY target.step_order ASC
   RETURN wi.id AS instanceId, cur.name AS passoAttuale, target.name AS passoDiAnalisi
   LIMIT 1
@@ -91,25 +119,43 @@ export async function avviaIndagine(
   }
 }
 
-async function avviaIndagineODiciPerche(
-  tenantId: string, problemId: string, problemNumber: string, userId: string,
+/*
+ * IL CORPO CONDIVISO DAI DUE MOVIMENTI.
+ *
+ * Avvio e chiusura fanno la stessa cosa — trova il passo raggiungibile che
+ * soddisfa un criterio, transita, e se non si può dillo — e cambiano solo per
+ * il criterio e per le frasi. Tenerli separati avrebbe voluto dire due copie
+ * della stessa gestione degli errori, che è il posto dove le copie divergono.
+ */
+interface Movimento {
+  cypher: string
+  /** I parametri del criterio: `{ scopo }` oppure `{ categoria }`. */
+  criterio: Record<string, string>
+  /** Per i log: che cosa si stava tentando. */
+  senzaPasso: string
+  rifiutata:  string
+  riuscita:   string
+}
+
+async function muovi(
+  tenantId: string, problemId: string, problemNumber: string, userId: string, m: Movimento,
 ): Promise<EsitoIndagine> {
   const session = getSession(undefined, 'WRITE')
   try {
     const row = await runQueryOne<{ instanceId: string; passoAttuale: string; passoDiAnalisi: string | null }>(
-      session, PASSO_DI_ANALISI_CYPHER, { tenantId, problemId, scopo: SCOPO_INDAGINE },
+      session, m.cypher, { tenantId, problemId, ...m.criterio },
     )
     if (!row) {
       logger.error(
         { module: 'proposals', tenantId, problem: problemNumber },
-        'proposals: the problem has no workflow instance, the investigation did not start',
+        'proposals: the problem has no workflow instance, it cannot be moved',
       )
       return { avviata: false, passo: null, motivo: 'nessun_passo_di_analisi' }
     }
     if (!row.passoDiAnalisi) {
       logger.error(
-        { module: 'proposals', tenantId, problem: problemNumber, step: row.passoAttuale, purpose: SCOPO_INDAGINE },
-        'proposals: no step with the investigation purpose is reachable from the current one, the problem stays where it is',
+        { module: 'proposals', tenantId, problem: problemNumber, step: row.passoAttuale, ...m.criterio },
+        m.senzaPasso,
       )
       return { avviata: false, passo: row.passoAttuale, motivo: 'nessun_passo_di_analisi' }
     }
@@ -129,17 +175,64 @@ async function avviaIndagineODiciPerche(
       const dettaglio = esito.error ?? 'unknown reason'
       logger.error(
         { module: 'proposals', tenantId, problem: problemNumber, from: row.passoAttuale, to: row.passoDiAnalisi, reason: dettaglio },
-        'proposals: the transition to the investigation step was refused, the problem stays where it is',
+        m.rifiutata,
       )
       return { avviata: false, passo: row.passoAttuale, motivo: 'transizione_rifiutata', dettaglio }
     }
 
     logger.info(
       { module: 'proposals', tenantId, problem: problemNumber, step: row.passoDiAnalisi },
-      'proposals: the problem opened from a proposal went straight into investigation',
+      m.riuscita,
     )
     return { avviata: true, passo: row.passoDiAnalisi, motivo: 'avviata' }
   } finally {
     await session.close()
+  }
+}
+
+async function avviaIndagineODiciPerche(
+  tenantId: string, problemId: string, problemNumber: string, userId: string,
+): Promise<EsitoIndagine> {
+  return muovi(tenantId, problemId, problemNumber, userId, {
+    cypher:     PASSO_DI_ANALISI_CYPHER,
+    criterio:   { scopo: SCOPO_INDAGINE },
+    senzaPasso: 'proposals: no step with the investigation purpose is reachable from the current one, the problem stays where it is',
+    rifiutata:  'proposals: the transition to the investigation step was refused, the problem stays where it is',
+    riuscita:   'proposals: the problem opened from a proposal went straight into investigation',
+  })
+}
+
+/**
+ * Porta un Problem nel suo passo RISOLTO, perché la modifica proposta
+ * dall'agente è stata unita.
+ *
+ * Non chiude il Problem: lo segna risolto, che è un passo diverso. La verifica
+ * della soluzione e la chiusura restano di chi gestisce il processo — il
+ * workflow di fabbrica ha apposta «Verifica soluzione e chiudi», ed è un
+ * giudizio, non un fatto che GitHub possa comunicare.
+ *
+ * Come l'avvio, da qui non esce mai un'eccezione: chi chiama è una ricorrenza
+ * che guarda molti Problem, e uno che va storto non deve fermare gli altri.
+ */
+export async function segnaRisolto(
+  tenantId: string, problemId: string, problemNumber: string, userId: string,
+): Promise<EsitoIndagine> {
+  try {
+    return await muovi(tenantId, problemId, problemNumber, userId, {
+      cypher:     PASSO_RISOLTO_CYPHER,
+      criterio:   { categoria: CATEGORIA_RISOLTO },
+      senzaPasso: 'proposals: no step in the resolved category is reachable from the current one, the problem stays where it is',
+      rifiutata:  'proposals: the transition to the resolved step was refused, the problem stays where it is',
+      riuscita:   'proposals: the merged change closed the loop, the problem is resolved',
+    })
+  } catch (err) {
+    logger.error(
+      { err, module: 'proposals', tenantId, problem: problemNumber },
+      'proposals: marking the problem as resolved failed, it stays where it is',
+    )
+    return {
+      avviata: false, passo: null, motivo: 'errore',
+      dettaglio: err instanceof Error ? err.message : String(err),
+    }
   }
 }

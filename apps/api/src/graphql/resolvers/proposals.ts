@@ -40,6 +40,7 @@ import {
 import { createProblem } from '../../services/problemService.js'
 import { legaAllaProposta, fascicoloDelProblem } from '../../lib/problemDossier.js'
 import { avviaIndagine } from '../../lib/indagineAutomatica.js'
+import { enqueuePortaIlFascicolo } from '../../jobs/autoanalisiWorker.js'
 import { analizzaCliente, conIlLucchetto } from '../../jobs/proposalScanner.js'
 import { PERMESSO_LETTURA } from './ticketTasks.js'
 import { getSession } from '@opengraphity/neo4j'
@@ -434,6 +435,33 @@ async function openProblemFromProposal(
   const indagine = await avviaIndagine(
     ctx.tenantId, problem.id as string, problem.number as string, ctx.userId,
   )
+
+  /*
+   * E il fascicolo parte verso GitHub, IN CODA (21 set 2026).
+   *
+   * In coda perché GitHub sta dall'altra parte di internet: chi ha cliccato
+   * deve riavere il suo Problem subito, non quando risponde una rete che non
+   * controlliamo. Quello che la coda aggiunge — la issue e la richiesta
+   * d'analisi — può arrivare un istante dopo; il Problem c'è già ed è già in
+   * analisi.
+   *
+   * Mettere in coda può fallire (Redis giù): si scrive e si va avanti. Il
+   * Problem resta valido e il suo fascicolo si legge dal prodotto, che è
+   * esattamente com'era prima che questo pezzo esistesse.
+   */
+  try {
+    await enqueuePortaIlFascicolo({
+      tenantId:      ctx.tenantId,
+      problemId:     problem.id as string,
+      problemNumber: problem.number as string,
+      titolo:        titoloDelProblem(row.params),
+    })
+  } catch (err) {
+    logger.error(
+      { err, module: 'proposals', tenantId: ctx.tenantId, problem: problem.number },
+      'proposals: the dossier was not queued for GitHub, the problem stays in the product only',
+    )
+  }
 
   const aggiornata = await segnaDecisa(ctx.tenantId, row.id, {
     status: 'accepted', decidedBy: ctx.userId,
