@@ -1,3 +1,5 @@
+import { palette } from '@/lib/tokens'
+
 interface CountBadgeProps {
   count: number
 }
@@ -12,7 +14,7 @@ export function CountBadge({ count }: CountBadgeProps) {
       fontWeight:      600,
       padding:         '1px 7px',
       borderRadius:    100,
-      backgroundColor: '#f1f3f8',
+      backgroundColor: palette.neutral.surface2,
       color:           'var(--color-slate-light)',
       marginLeft:      6,
       verticalAlign:   'middle',

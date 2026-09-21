@@ -7,11 +7,12 @@ export function filenameFromDisposition(header: string | null): string | null {
 }
 
 /**
- * Fetches a PDF from an authenticated REST endpoint and triggers a browser
- * download. The filename comes from Content-Disposition, falling back to
- * `fallbackFilename`. Throws on non-2xx responses.
+ * Fetches a file (PDF, Excel…) from an authenticated REST endpoint and triggers
+ * a browser download. The filename comes from Content-Disposition, falling back
+ * to `fallbackFilename`. Throws on non-2xx responses. Never open an `/api/…`
+ * path with a plain link: it carries no token (src/__tests__/restDownloads.test.ts).
  */
-export async function downloadPdf(path: string, fallbackFilename: string): Promise<void> {
+export async function downloadFile(path: string, fallbackFilename: string): Promise<void> {
   const res = await fetch(apiUrl(path), { headers: authHeader() })
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
   const blob     = await res.blob()
@@ -24,3 +25,6 @@ export async function downloadPdf(path: string, fallbackFilename: string): Promi
   link.click()
   URL.revokeObjectURL(objectUrl)
 }
+
+/** Same as `downloadFile`; kept for the ticket PDF call sites. */
+export const downloadPdf = downloadFile

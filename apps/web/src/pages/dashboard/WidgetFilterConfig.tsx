@@ -1,14 +1,20 @@
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { FieldMeta } from './useWidgetConfig'
+import type { FieldMeta, WidgetCatalogEntity } from './useWidgetConfig'
 import {
-  ENTITY_TYPES, METRICS, TIME_RANGES, SIZE_OPTIONS, PRESET_COLORS,
+  METRICS, TIME_RANGES, SIZE_OPTIONS, presetColors, widgetTint,
   FIELD_TYPE_LABEL_KEYS,
 } from './useWidgetConfig'
+import { colors, palette } from '@/lib/tokens'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { useCILabels } from '@/hooks/useCILabels'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface WidgetFilterConfigProps {
+  /** false: nasconde entità/metrica/filtro/periodo (widget con sorgente dati fissa); restano dimensione e colore. */
+  dataConfigurable?: boolean
   entityType:      string
   onEntityChange:  (v: string) => void
   metric:          string
@@ -25,7 +31,10 @@ interface WidgetFilterConfigProps {
   onSizeChange:    (v: string) => void
   color:           string
   onColorChange:   (v: string) => void
-  fields:          string[]
+  /** Il catalogo del cliente (`widgetCatalog`). */
+  entities:        WidgetCatalogEntity[]
+  groupByFields:   FieldMeta[]
+  filterFields:    FieldMeta[]
   needsGroupBy:    boolean
   fieldMetaMap:    Record<string, FieldMeta>
   selectedFilterMeta: FieldMeta | null
@@ -34,6 +43,7 @@ interface WidgetFilterConfigProps {
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function WidgetFilterConfig({
+  dataConfigurable = true,
   entityType, onEntityChange,
   metric, onMetricChange,
   groupByField, onGroupByChange,
@@ -42,10 +52,21 @@ export function WidgetFilterConfig({
   timeRange, onTimeRangeChange,
   size, onSizeChange,
   color, onColorChange,
-  fields, needsGroupBy,
+  entities, groupByFields, filterFields, needsGroupBy,
   fieldMetaMap, selectedFilterMeta,
 }: WidgetFilterConfigProps) {
+  // Le entità sono quelle del catalogo del cliente (ondata 5 di «Nulla
+  // cablato»): i suoi tipi di ticket e di CI, anche quelli creati da lui.
   const { t } = useTranslation()
+  const { labelOf: itilLabel } = useItilTypeLabels()
+  // Il nome di un tipo CI: una funzione sola per tutta l'app (20 set 2026).
+  const { typeLabel } = useCILabels()
+  const entityLabel = (e: WidgetCatalogEntity) => {
+    if (e.group === 'itsm') return itilLabel(e.entityType)
+    return typeLabel(e.entityType)
+  }
+  const itsm = entities.filter((e) => e.group === 'itsm')
+  const cmdb = entities.filter((e) => e.group !== 'itsm')
   const id = useId()
   const ids = {
     entity:  id + '-entity',
@@ -68,11 +89,22 @@ export function WidgetFilterConfig({
 
   return (
     <>
+      {dataConfigurable && <>
       {/* Entity */}
       <div>
         <label htmlFor={ids.entity} style={labelStyle}>{t('pages.dashboard.entityLabel')}</label>
         <select id={ids.entity} value={entityType} onChange={(e) => onEntityChange(e.target.value)} style={selectStyle}>
-          {ENTITY_TYPES.map((e) => <option key={e.value} value={e.value}>{t(e.labelKey)}</option>)}
+          {entities.length === 0 && <option value={entityType}>{entityType}</option>}
+          {itsm.length > 0 && (
+            <optgroup label={t('pages.dashboard.entityGroupItsm')}>
+              {itsm.map((e) => <option key={e.entityType} value={e.entityType}>{entityLabel(e)}</option>)}
+            </optgroup>
+          )}
+          {cmdb.length > 0 && (
+            <optgroup label={t('pages.dashboard.entityGroupCmdb')}>
+              {cmdb.map((e) => <option key={e.entityType} value={e.entityType}>{entityLabel(e)}</option>)}
+            </optgroup>
+          )}
         </select>
       </div>
 
@@ -90,18 +122,23 @@ export function WidgetFilterConfig({
           <label htmlFor={ids.groupBy} style={labelStyle}>{t('pages.dashboard.groupByField')}</label>
           <select id={ids.groupBy} value={groupByField} onChange={(e) => onGroupByChange(e.target.value)} style={selectStyle}>
             <option value="">{t('pages.dashboard.selectField')}</option>
-            {fields.map((f) => <option key={f} value={f}>{fieldOptionLabel(f)}</option>)}
+            {groupByFields.map((f) => <option key={f.name} value={f.name}>{fieldOptionLabel(f.name)}</option>)}
           </select>
+          {groupByFields.length === 0 && (
+            <p role="note" style={{ margin: '6px 0 0', fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)' }}>
+              {t(metric === 'count_by_field' ? 'pages.dashboard.noGroupableField' : 'pages.dashboard.noNumericField')}
+            </p>
+          )}
         </div>
       )}
 
       {/* Filter */}
       <div>
         <label htmlFor={ids.filter} style={labelStyle}>{t('pages.dashboard.filterOptional')}</label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div className="og-pair">
           <select id={ids.filter} value={filterField} onChange={(e) => onFilterFieldChange(e.target.value)} style={selectStyle}>
             <option value="">{t('pages.dashboard.noFilter')}</option>
-            {fields.map((f) => <option key={f} value={f}>{fieldOptionLabel(f)}</option>)}
+            {filterFields.map((f) => <option key={f.name} value={f.name}>{fieldOptionLabel(f.name)}</option>)}
           </select>
           <FilterValueInput
             meta={selectedFilterMeta}
@@ -125,8 +162,8 @@ export function WidgetFilterConfig({
               aria-pressed={timeRange === value}
               style={{
                 padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 500,
-                border: timeRange === value ? `1.5px solid ${color}` : '1.5px solid #e5e7eb',
-                background: timeRange === value ? `${color}14` : '#fff',
+                border: timeRange === value ? `1.5px solid ${color}` : '1.5px solid var(--color-border)',
+                background: timeRange === value ? widgetTint(color) : colors.white,
                 color: timeRange === value ? color : 'var(--color-slate)',
               }}
             >
@@ -135,6 +172,7 @@ export function WidgetFilterConfig({
           ))}
         </div>
       </div>
+      </>}
 
       {/* Size — 3 buttons */}
       <div>
@@ -148,8 +186,8 @@ export function WidgetFilterConfig({
               aria-pressed={size === value}
               style={{
                 flex: 1, padding: '8px 6px', borderRadius: 8, cursor: 'pointer', textAlign: 'center',
-                border: size === value ? `2px solid ${color}` : '1.5px solid #e5e7eb',
-                background: size === value ? `${color}14` : '#fafafa',
+                border: size === value ? `2px solid ${color}` : '1.5px solid var(--color-border)',
+                background: size === value ? widgetTint(color) : palette.neutral.surface1,
                 color: size === value ? color : 'var(--color-slate)',
               }}
             >
@@ -164,7 +202,7 @@ export function WidgetFilterConfig({
       <div>
         <div id={ids.color} style={labelStyle}>{t('pages.dashboard.colorLabel')}</div>
         <div role="group" aria-labelledby={ids.color} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          {PRESET_COLORS.map(({ value: c, nameKey }) => (
+          {presetColors().map(({ value: c, nameKey }) => (
             <button
               type="button"
               key={c}
@@ -174,7 +212,7 @@ export function WidgetFilterConfig({
               title={t(nameKey)}
               style={{
                 width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer',
-                border: color === c ? '3px solid #1e293b' : '2.5px solid transparent',
+                border: color === c ? '3px solid var(--color-slate-dark)' : '2.5px solid transparent',
                 outline: color === c ? `2.5px solid ${c}` : 'none',
                 outlineOffset: 1,
                 transition: 'transform 0.1s',
@@ -188,7 +226,7 @@ export function WidgetFilterConfig({
             onChange={(e) => onColorChange(e.target.value)}
             title={t('pages.dashboard.customColor')}
             aria-label={t('pages.dashboard.customColor')}
-            style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #d1d5db', cursor: 'pointer', padding: 2 }}
+            style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid var(--color-border-strong)', cursor: 'pointer', padding: 2 }}
           />
         </div>
       </div>
@@ -202,6 +240,7 @@ function FilterValueInput({ meta, value, onChange, disabled, color }: {
   meta: FieldMeta | null; value: string; onChange: (v: string) => void; disabled: boolean; color: string
 }) {
   const { t } = useTranslation()
+  const { labelOf } = useDomainVocabularies()
   const opacityStyle = { opacity: disabled ? 0.45 : 1 }
   const valueLabel = t('pages.dashboard.filterValue')
 
@@ -215,7 +254,7 @@ function FilterValueInput({ meta, value, onChange, disabled, color }: {
     return (
       <select aria-label={valueLabel} value={value} onChange={(e) => onChange(e.target.value)} style={selectStyle}>
         <option value="">{t('pages.dashboard.allValues')}</option>
-        {meta.enumValues.map((v) => <option key={v} value={v}>{v}</option>)}
+        {meta.enumValues.map((v) => <option key={v} value={v}>{(meta.enumTypeName && labelOf(meta.enumTypeName, v)) || v}</option>)}
       </select>
     )
   }
@@ -232,8 +271,8 @@ function FilterValueInput({ meta, value, onChange, disabled, color }: {
             aria-pressed={value === v}
             style={{
               flex: 1, padding: '7px 0', borderRadius: 7, cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600, textAlign: 'center',
-              border: value === v ? `1.5px solid ${color}` : '1.5px solid #e5e7eb',
-              background: value === v ? `${color}14` : '#fff',
+              border: value === v ? `1.5px solid ${color}` : '1.5px solid var(--color-border)',
+              background: value === v ? widgetTint(color) : colors.white,
               color: value === v ? color : 'var(--color-slate)',
             }}
           >
@@ -268,13 +307,13 @@ const labelStyle: React.CSSProperties = {
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 7,
-  border: '1.5px solid #e2e8f0', fontSize: 'var(--font-size-body)',
+  border: '1.5px solid var(--color-border)', fontSize: 'var(--font-size-body)',
   boxSizing: 'border-box', color: 'var(--color-slate-dark)',
   outline: 'none',
 }
 
 const selectStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 7,
-  border: '1.5px solid #e2e8f0', fontSize: 'var(--font-size-body)',
-  background: '#fff', color: 'var(--color-slate-dark)',
+  border: '1.5px solid var(--color-border)', fontSize: 'var(--font-size-body)',
+  background: colors.white, color: 'var(--color-slate-dark)',
 }

@@ -32,42 +32,58 @@ describe('emailTemplates', () => {
     expect(html).toContain('&lt;script&gt;')
   }
 
-  it('incidentCreated escapa titolo, categoria, descrizione e tenant', () => {
-    const { html } = t.incidentCreated({ id: 'i1', title: XSS, severity: 'high', category: XSS, description: XSS }, XSS)
-    noRawScript(html)
-    expect(html).toContain('/incidents/i1')
+  // Ondata 6: chi manda è l'organizzazione con il suo marchio; l'oggetto porta il suo nome.
+  const T = { tenantId: 'c-acme', brand: { displayName: 'T', senderName: 'T', replyTo: null, logo: null } }
+  const ACME = { tenantId: 'c-acme', brand: { displayName: 'ACME', senderName: 'ACME IT', replyTo: null, logo: null } }
+  const EN = { language: 'en' as const, timeZone: 'UTC' }
+  const IT = { language: 'it' as const, timeZone: 'UTC' }
+
+  it('mentionNotification escapa excerpt e autore', () => {
+    noRawScript(t.mentionNotification({ entityType: 'change', entityTitle: XSS, entityId: 'x', mentionerName: XSS, excerpt: XSS }, T, EN).html)
   })
 
-  it('incidentAssigned / incidentResolved / incidentEscalated / changeApprovalRequested', () => {
-    noRawScript(t.incidentAssigned({ id: 'i', title: XSS, severity: XSS, assignedBy: XSS }, 'T').html)
-    noRawScript(t.incidentResolved({ id: 'i', title: XSS, resolvedBy: XSS, rootCause: XSS }, 'T').html)
-    noRawScript(t.incidentEscalated({ id: 'i', title: XSS, severity: 'critical' }, 'T').html)
-    noRawScript(t.changeApprovalRequested({ id: 'c', title: XSS, type: XSS, description: XSS }, 'T').html)
-  })
-
-  it('commentAdded / mentionNotification escapano excerpt e autore', () => {
-    noRawScript(t.commentAdded({ entityType: 'incident', entityTitle: XSS, entityId: 'x', authorName: XSS, excerpt: XSS }, 'T').html)
-    noRawScript(t.mentionNotification({ entityType: 'change', entityTitle: XSS, entityId: 'x', mentionerName: XSS, excerpt: XSS }, 'T').html)
-  })
-
-  it('slaBreach / watcherNotification escapano tipo SLA ed event', () => {
-    noRawScript(t.slaBreach({ entityType: 'problem', entityTitle: XSS, entityId: 'p', slaType: XSS }, 'T').html)
-    noRawScript(t.watcherNotification({ entityType: 'incident', entityTitle: XSS, entityId: 'i', event: XSS }, 'T').html)
+  it('watcherNotification escapa l\'evento', () => {
+    noRawScript(t.watcherNotification({ entityType: 'incident', entityTitle: XSS, entityId: 'i', event: XSS }, T, EN).html)
   })
 
   it('digestDaily escapa gli eventi recenti', () => {
-    const { html } = t.digestDaily({ openIncidents: 1, resolvedToday: 2, ongoingChanges: 3, slaBreaches: 4, recentEvents: [XSS] }, 'T')
+    const { html } = t.digestDaily({ openIncidents: 1, resolvedToday: 2, ongoingChanges: 3, slaBreaches: 4, recentEvents: [XSS] }, T, EN)
     noRawScript(html)
   })
 
   it('gli id finiscono URL-encoded nei link', () => {
-    const { html } = t.incidentCreated({ id: 'a b/../c', title: 't', severity: 'low' }, 'T')
+    const { html } = t.watcherNotification({ entityType: 'incident', entityTitle: 't', entityId: 'a b/../c', event: 'e' }, T, EN)
     expect(html).toContain('/incidents/a%20b%2F..%2Fc')
   })
 
-  it('snapshot di incidentCreated (layout stabile)', () => {
-    const { html, subject } = t.incidentCreated({ id: 'inc-1', title: 'Disk <full>', severity: 'high', description: 'a & b' }, 'ACME')
-    expect(subject).toBe('[ACME] Nuovo incident: Disk <full>')
-    expect(html).toMatchSnapshot()
+  /**
+   * Revisione del 14 set 2026 · CO-2: le e-mail di menzione, di osservazione e
+   * il digest erano in italiano fisso per ogni cliente. Ora nella sua lingua.
+   */
+  it('le e-mail parlano la lingua del cliente', () => {
+    const p = { entityType: 'incident', entityTitle: 'DB down', entityId: 'i1', mentionerName: 'Bob', excerpt: 'x' }
+    expect(t.mentionNotification(p, ACME, EN).subject).toBe('[ACME] Bob mentioned you in incident DB down')
+    expect(t.mentionNotification(p, ACME, IT).subject).toBe('[ACME] Bob ti ha menzionato in incident DB down')
+    expect(t.mentionNotification(p, ACME, EN).html).toContain('Go to the comment')
+    expect(t.digestDaily({ openIncidents: 0, resolvedToday: 0, ongoingChanges: 0, slaBreaches: 0, recentEvents: [] }, ACME, EN).html).toContain('No recent events')
+    expect(t.digestDaily({ openIncidents: 0, resolvedToday: 0, ongoingChanges: 0, slaBreaches: 0, recentEvents: [] }, ACME, EN).subject).toBe('[ACME] Daily IT digest')
+    const w = t.watcherNotification({ entityType: 'problem', entityTitle: 'P', entityId: 'p1', event: 'e' }, ACME, IT)
+    expect(w.subject).toBe('[ACME] Aggiornamento su problem P')
+    expect(w.html).toContain('/problems/p1')
+  })
+
+  it('marchio del cliente in testa, «Powered by OpenGrafo» in fondo, logo con indirizzo pubblico', () => {
+    const withLogo = { tenantId: 'c-acme', brand: { ...ACME.brand, logo: { mimeType: 'image/png', path: '/x/logo.png', updatedAt: '2026-09-15T10:00:00Z' } } }
+    const html = t.watcherNotification({ entityType: 'incident', entityTitle: 't', entityId: 'i', event: 'e' }, withLogo, EN).html
+    expect(html).toContain('https://app.example.test/api/brand/c-acme/logo?v=2026-09-15T10%3A00%3A00Z')
+    expect(html).toContain('ACME')
+    expect(html).toContain('Powered by OpenGrafo')
+    expect(t.watcherNotification({ entityType: 'incident', entityTitle: 't', entityId: 'i', event: 'e' }, ACME, EN).html).not.toContain('<img')
+  })
+
+  it('il testo tradotto non ha italiano cablato nel modulo', async () => {
+    const { readFileSync } = await import('node:fs')
+    const src = readFileSync(new URL('../emailTemplates.ts', import.meta.url), 'utf8')
+    for (const it of ['ti ha menzionato', 'Aggiornamento', 'Riepilogo giornaliero', 'Vai al', 'Nessun evento']) expect(src).not.toContain(it)
   })
 })

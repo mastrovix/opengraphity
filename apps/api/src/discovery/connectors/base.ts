@@ -93,7 +93,7 @@ export function resourceTypeSet(connector: string, raw: unknown, all: readonly s
   const unknown = requested.filter(t => !all.includes(t))
   if (unknown.length) {
     throw new ConnectorError(connector, 'config',
-      new Error(`resource_types sconosciuti: ${unknown.join(', ')} (ammessi: ${all.join(', ')})`))
+      new Error(`unknown resource_types: ${unknown.join(', ')} (allowed: ${all.join(', ')})`))
   }
   return new Set(requested)
 }
@@ -106,7 +106,7 @@ export function requireCreds(
 ): Record<string, string> {
   const missing = required.filter(k => !creds[k] || creds[k]!.trim() === '')
   if (missing.length) {
-    throw new ConnectorError(connector, 'credentials', new Error(`credenziali mancanti: ${missing.join(', ')}`))
+    throw new ConnectorError(connector, 'credentials', new Error(`missing credentials: ${missing.join(', ')}`))
   }
   return creds
 }
@@ -115,7 +115,7 @@ export function requireCreds(
 export function requireConfigString(connector: string, cfg: Record<string, unknown>, key: string): string {
   const v = cfg[key]
   if (typeof v !== 'string' || v.trim() === '') {
-    throw new ConnectorError(connector, 'config', new Error(`campo di configurazione obbligatorio mancante: ${key}`))
+    throw new ConnectorError(connector, 'config', new Error(`required configuration field missing: ${key}`))
   }
   return v.trim()
 }
@@ -177,7 +177,7 @@ export async function* paginate<P>(
     yield page
     const next = nextToken(page) ?? undefined
     if (next !== undefined && next !== '') {
-      if (seen.has(next)) throw new Error(`paginate: token ripetuto (${next.slice(0, 20)}…) — loop di paginazione`)
+      if (seen.has(next)) throw new Error(`paginate: repeated token (${next.slice(0, 20)}…) — pagination loop`)
       seen.add(next)
       token = next
     } else {

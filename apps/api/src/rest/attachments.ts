@@ -1,7 +1,8 @@
+import { attachmentAccess, attachmentAccessCondition } from '../lib/attachmentAccess.js'
 import fs from 'fs'
 import { createWriteStream, existsSync, mkdirSync } from 'fs'
 import type { Readable } from 'stream'
-import { Router, type Response, type Router as ExpressRouter } from 'express'
+import { Router, type Request, type Response, type Router as ExpressRouter } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 import Busboy from 'busboy'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
@@ -9,12 +10,16 @@ import { authMiddleware } from '../middleware/auth.js'
 import { logger } from '../lib/logger.js'
 import { config } from '../lib/config.js'
 import { ValidationError } from '../lib/errors.js'
+import { attachmentPolicy, extensionAllowed, fileExtension, type AttachmentPolicy } from '../lib/attachmentPolicy.js'
 import {
-  UPLOAD_ROLES,
+  UPLOAD_PERMISSIONS,
+  ATTACHMENT_ENTITY_LABELS,
   entityExistsCypher,
   resolveAttachmentPath,
   safeStoredFilename,
   validateAttachmentTarget,
+  validateAttachmentFieldName,
+  FORM_DRAFT_ENTITY_TYPE,
   type AttachmentTarget,
 } from '../lib/attachmentValidation.js'
 
@@ -22,28 +27,15 @@ const router: ExpressRouter = Router()
 
 const ATTACHMENT_DIR = config.attachmentDir
 
-const ALLOWED_MIME_TYPES = new Set([
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'text/plain',
-  'text/csv',
-  'application/zip',
-  'application/x-zip-compressed',
-])
-
-const MAX_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
+// Tipi e dimensione ammessi sono dell'organizzazione (lib/attachmentPolicy.ts,
+// verifica «Cosa resta cablato», ondata 6): prima un elenco MIME e 10 MB fissi.
 
 /** Does the (whitelisted-label) entity exist in this tenant? */
-async function entityExists(target: AttachmentTarget, tenantId: string): Promise<boolean> {
+/** L'entità esiste nel tenant E il chiamante ci arriva con quell'accesso (lib/attachmentAccess.ts). */
+async function entityReachable(target: AttachmentTarget, tenantId: string, userId: string, condition: string): Promise<boolean> {
   const session = getSession(undefined, 'READ')
   try {
-    const row = await runQueryOne<{ id: string }>(session, entityExistsCypher(target.labels), { entityId: target.entityId, tenantId })
+    const row = await runQueryOne<{ id: string }>(session, entityExistsCypher(target.labels, condition), { entityId: target.entityId, tenantId, userId })
     return row !== null
   } finally {
     await session.close()
@@ -56,23 +48,38 @@ async function entityExists(target: AttachmentTarget, tenantId: string): Promise
 // stream is only opened once the target has been validated and found.
 
 router.post('/attachments', authMiddleware, (req, res) => {
+  void handleUpload(req, res)
+})
+
+async function handleUpload(req: Request, res: Response): Promise<void> {
   const contentType = req.headers['content-type'] ?? ''
   if (!contentType.includes('multipart/form-data')) {
     res.status(400).json({ error: 'Expected multipart/form-data' })
     return
   }
 
-  const { tenantId, userId, role } = req.user!
-  if (!UPLOAD_ROLES.has(role)) {
-    res.status(403).json({ error: `Role '${role}' cannot upload attachments` })
+  const { tenantId, userId, role, permissions } = req.user!
+  if (!UPLOAD_PERMISSIONS.some((p) => permissions.has(p))) {
+    res.status(403).json({ error: `Role '${role}' cannot upload attachments (requires one of: ${UPLOAD_PERMISSIONS.join(', ')})` })
     return
   }
 
-  const busboy = Busboy({ headers: req.headers, limits: { fileSize: MAX_SIZE_BYTES, files: 1, fields: 10 } })
+  let policy: AttachmentPolicy
+  try {
+    policy = await attachmentPolicy(tenantId)
+  } catch (err) {
+    logger.error({ err, tenantId }, '[attachment] attachment policy not readable')
+    res.status(500).json({ error: 'The attachment policy of this organization cannot be read' })
+    return
+  }
+  const maxSizeBytes = policy.maxSizeMb * 1024 * 1024
+  const busboy = Busboy({ headers: req.headers, limits: { fileSize: maxSizeBytes, files: 1, fields: 10 } })
 
   let entityType    = ''
   let entityId      = ''
   let description   = ''
+  /** Il campo del modulo a cui il file risponde (solo per le bozze, ondata 2). */
+  let fieldName     = ''
   let target: AttachmentTarget | null = null
   let fileReceived  = false
   let fileId        = ''
@@ -81,6 +88,8 @@ router.post('/attachments', authMiddleware, (req, res) => {
   let mimeType      = ''
   let sizeBytes     = 0
   let sizeLimitHit  = false
+  /** Assegnato dentro il callback del file, letto alla scrittura del nodo. */
+  let fieldNameOfUpload: string | null = null
   let rejected      = false
   let writeDone: Promise<void> = Promise.resolve()
 
@@ -98,6 +107,7 @@ router.post('/attachments', authMiddleware, (req, res) => {
     if (name === 'entityType')  entityType  = val
     if (name === 'entityId')    entityId    = val
     if (name === 'description') description = val
+    if (name === 'fieldName')   fieldName   = val
   })
 
   busboy.on('file', (fieldname: string, fileStream: Readable, info: { filename: string; mimeType: string }) => {
@@ -107,16 +117,35 @@ router.post('/attachments', authMiddleware, (req, res) => {
     mimeType     = info.mimeType
 
     // 1. Validate target and MIME synchronously, before touching the disk.
+    let campoDelModulo: string | null = null
     try {
       target = validateAttachmentTarget(entityType, entityId)
+      campoDelModulo = validateAttachmentFieldName(target.entityType, fieldName || undefined)
     } catch (err) {
       fileStream.resume()
       reject(400, err instanceof ValidationError ? err.message : 'Invalid entityType/entityId (send them before the file part)')
       return
     }
-    if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+    fieldNameOfUpload = campoDelModulo
+    /**
+     * Revisione totale · H-3: il portale allega solo ai propri ticket, lo staff
+     * secondo i permessi del tipo.
+     *
+     * La BOZZA di un modulo (ondata 2) è l'eccezione, e la ragione è che non
+     * c'è ancora niente di cui essere proprietari: basta il permesso di
+     * caricare (già verificato sopra). La proprietà si verifica al momento di
+     * reclamare i file, dove si pretende `uploaded_by` = chi crea la richiesta.
+     */
+    const bozza = target.entityType === FORM_DRAFT_ENTITY_TYPE
+    const condition = bozza ? 'true' : attachmentAccessCondition(attachmentAccess(permissions, target.entityType, 'write'))
+    if (condition === null) {
       fileStream.resume()
-      reject(400, `File type '${mimeType}' is not allowed`)
+      reject(403, `Role '${role}' cannot attach files to a ${target.entityType}`)
+      return
+    }
+    if (!extensionAllowed(policy, originalName)) {
+      fileStream.resume()
+      reject(400, `File type '.${fileExtension(originalName) || '?'}' is not allowed. Allowed: ${policy.extensions.map((x) => '.' + x).join(', ')}`)
       return
     }
 
@@ -136,7 +165,8 @@ router.post('/attachments', authMiddleware, (req, res) => {
     const t = target
     const { dir, file } = resolved
     writeDone = (async () => {
-      const exists = await entityExists(t, tenantId)
+      // Una bozza non ha un nodo da raggiungere: il controllo si salta.
+      const exists = t.entityType === FORM_DRAFT_ENTITY_TYPE || await entityReachable(t, tenantId, userId, condition)
       if (!exists) {
         fileStream.resume()
         reject(404, `${t.entityType} ${t.entityId} not found`)
@@ -177,7 +207,7 @@ router.post('/attachments', authMiddleware, (req, res) => {
 
       if (sizeLimitHit) {
         cleanup()
-        reject(400, `File exceeds maximum size of ${MAX_SIZE_BYTES / 1024 / 1024}MB`)
+        reject(400, `File exceeds maximum size of ${String(policy.maxSizeMb)}MB`)
         return
       }
 
@@ -202,7 +232,8 @@ router.post('/attachments', authMiddleware, (req, res) => {
             storage_path: $storagePath,
             uploaded_by:  $uploadedBy,
             uploaded_at:  $uploadedAt,
-            description:  $description
+            description:  $description,
+            field_name:   $fieldName
           })
         `, {
           id:          fileId,
@@ -216,6 +247,7 @@ router.post('/attachments', authMiddleware, (req, res) => {
           uploadedBy:  userId,
           uploadedAt:  now,
           description: description || null,
+          fieldName:   fieldNameOfUpload,
         }))
 
         logger.info({ fileId, tenantId, entityType: tgt.entityType, entityId: tgt.entityId, filename: originalName, sizeBytes }, '[attachment] uploaded')
@@ -231,23 +263,34 @@ router.post('/attachments', authMiddleware, (req, res) => {
   })
 
   req.pipe(busboy)
-})
+}
 
 // ── GET /api/attachments/:id ──────────────────────────────────────────────────
 
 router.get('/attachments/:id', authMiddleware, (req, res: Response) => {
   void (async () => {
-    const { tenantId } = req.user!
+    const { tenantId, userId, permissions } = req.user!
     const { id }       = req.params
 
     const session = getSession(undefined, 'READ')
     try {
       const result = await session.executeRead((tx) => tx.run(`
         MATCH (a:Attachment {id: $id, tenant_id: $tenantId})
-        RETURN a.storage_path AS storagePath, a.filename AS filename, a.mime_type AS mimeType
+        RETURN a.storage_path AS storagePath, a.filename AS filename, a.mime_type AS mimeType,
+               a.entity_type AS entityType, a.entity_id AS entityId
       `, { id, tenantId }))
 
       if (!result.records.length) {
+        res.status(404).json({ error: 'Attachment not found' })
+        return
+      }
+
+      // Revisione totale · H-14: si scarica solo l'allegato di un'entità che il chiamante può vedere.
+      // Un rifiuto risponde come «non trovato»: l'esistenza di un file altrui non si rivela.
+      const entityType = String(result.records[0].get('entityType') ?? '')
+      const condition = attachmentAccessCondition(attachmentAccess(permissions, entityType, 'read'))
+      const labels = ATTACHMENT_ENTITY_LABELS[entityType]
+      if (condition === null || !labels || !(await entityReachable({ entityType, entityId: String(result.records[0].get('entityId')), labels }, tenantId, userId, condition))) {
         res.status(404).json({ error: 'Attachment not found' })
         return
       }

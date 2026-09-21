@@ -44,7 +44,7 @@ describe('runGuardedCypherTool (C-02)', () => {
 
     expect(session.run).not.toHaveBeenCalled()
     expect(getSession).not.toHaveBeenCalled()
-    expect(out).toContain('Query rifiutata')
+    expect(out).toContain('Query rejected')
     expect(out).toContain('tenant_id: $tenantId')
     expect(budget.rejections).toBe(1)
   })
@@ -62,9 +62,9 @@ describe('runGuardedCypherTool (C-02)', () => {
     const budget = new ToolLoopBudget()
     const bad = 'MATCH (u:User) RETURN u.email'
     for (let i = 0; i < REPORT_AI_LIMITS.maxRejections; i++) {
-      await expect(runGuardedCypherTool(bad, 't1', budget, 'test')).resolves.toContain('Query rifiutata')
+      await expect(runGuardedCypherTool(bad, 't1', budget, 'test')).resolves.toContain('Query rejected')
     }
-    await expect(runGuardedCypherTool(bad, 't1', budget, 'test')).rejects.toThrow(/rifiutata 3 volte/)
+    await expect(runGuardedCypherTool(bad, 't1', budget, 'test')).rejects.toThrow(/refused 3 times/)
   })
 
   it('Neo4j errors are returned to the model (not thrown) and do not count as rejections', async () => {
@@ -73,7 +73,7 @@ describe('runGuardedCypherTool (C-02)', () => {
     vi.mocked(getSession).mockReturnValue(session as never)
     const budget = new ToolLoopBudget()
     const out = await runGuardedCypherTool('MATCH (i:Incident {tenant_id: $tenantId}) RETURN i.nope', 't1', budget, 'test')
-    expect(out).toContain('Errore query: Invalid input')
+    expect(out).toContain('Query error: Invalid input')
     expect(budget.rejections).toBe(0)
     expect(session.close).toHaveBeenCalled()
   })
@@ -83,13 +83,13 @@ describe('ToolLoopBudget (C-08)', () => {
   it('caps tool iterations', () => {
     const b = new ToolLoopBudget()
     for (let i = 0; i < REPORT_AI_LIMITS.maxIterations; i++) b.beforeToolCall()
-    expect(() => b.beforeToolCall()).toThrow(/limite di 8 query/)
+    expect(() => b.beforeToolCall()).toThrow(/limit of 8 queries/)
   })
 
   it('caps cumulative output tokens', () => {
     const b = new ToolLoopBudget()
     b.recordUsage(REPORT_AI_LIMITS.maxOutputTokens + 1)
-    expect(() => b.beforeModelCall()).toThrow(/budget token/)
+    expect(() => b.beforeModelCall()).toThrow(/token budget/)
   })
 
   it('ignores non-numeric usage and passes when within budget', () => {
@@ -103,6 +103,6 @@ describe('ToolLoopBudget (C-08)', () => {
 
   it('caps wall-clock time', () => {
     const b = new ToolLoopBudget({ ...REPORT_AI_LIMITS, maxDurationMs: -1 })
-    expect(() => b.beforeModelCall()).toThrow(/budget di tempo/)
+    expect(() => b.beforeModelCall()).toThrow(/time budget/)
   })
 })

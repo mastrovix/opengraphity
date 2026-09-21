@@ -5,6 +5,7 @@
 import { runQuery } from '@opengraphity/neo4j'
 import { withSession } from '../graphql/resolvers/ci-utils.js'
 import { createAutomationCache, evaluateRules } from './automationEngine.js'
+import { invalidateSchema } from './schemaInvalidator.js'
 
 type RuleEventType = 'on_create' | 'on_update' | 'on_transition'
 
@@ -69,7 +70,7 @@ export async function evaluateBusinessRules(
   eventType:  RuleEventType,
   entity:     Record<string, unknown>,
   userId:     string,
-  _previousEntity?: Record<string, unknown>,
+  opts?: { changedFields?: readonly string[] },
 ): Promise<RuleResult[]> {
   const rules = await loadRules(tenantId, entityType, eventType)
   if (rules.length === 0) return []
@@ -77,6 +78,7 @@ export async function evaluateBusinessRules(
   const outcomes = await evaluateRules({
     kind: 'rule',
     tenantId, entityType, entity, userId,
+    changedFields: opts?.changedFields,
     records: rules.map((r) => ({
       id: r.id, name: r.name, conditions: r.conditions, actions: r.actions,
       conditionLogic: r.condition_logic, stopOnMatch: r.stop_on_match,
@@ -94,6 +96,7 @@ export async function evaluateBusinessRules(
 }
 
 /** Invalidate the rules cache for a tenant. */
+/** Vedi `invalidateTriggerCache`: l'invalidazione passa dal canale fra processi (C-23). */
 export function invalidateRulesCache(tenantId: string): void {
-  cache.invalidate(tenantId)
+  invalidateSchema(tenantId)
 }

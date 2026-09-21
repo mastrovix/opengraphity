@@ -3,29 +3,58 @@
  * problem). Pure layout/formatting helpers — no domain knowledge here.
  */
 import PDFDocument from 'pdfkit'
+import type { ValueColor } from '@opengraphity/types'
+import { pdfText } from './texts.js'
+
+/**
+ * Lingua e fuso del cliente in cui si scrivono le date del dossier. Il fuso era
+ * `Europe/Rome` per ogni cliente (revisione del 14 set 2026 · F7).
+ */
+export interface PdfLocale {
+  language: string
+  timeZone: string
+}
 
 export interface PdfMeta {
   generatedAt: string   // ISO
   generatedBy: string   // user email
   tenantId:    string
+  locale:      PdfLocale
+  /** Il marchio dell'organizzazione in testa al documento (ondata 6 di «Nulla cablato»). */
+  brand:       PdfBrand
 }
+
+/**
+ * Nome e logo dell'organizzazione. Il logo entra nel PDF solo se è PNG: pdfkit
+ * non disegna SVG, e con un logo SVG il documento porta il nome (la pagina
+ * Organizzazione lo dice accanto al logo).
+ */
+export interface PdfBrand {
+  displayName: string
+  logoPng:     Buffer | null
+}
+
+/** Il marchio del documento in costruzione: lo legge `docHeader` senza cambiare la firma dei costruttori. */
+const docBrands = new WeakMap<object, PdfBrand>()
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
 export const DASH = '—' // —
 
-export function fmtDate(v: string | null | undefined): string {
+export function fmtDate(v: string | null | undefined, locale: PdfLocale): string {
   if (!v) return DASH
   const d = new Date(v)
   if (isNaN(d.getTime())) return String(v)
-  return d.toLocaleString('it-IT', {
+  return d.toLocaleString(locale.language === 'en' ? 'en-GB' : locale.language === 'it' ? 'it-IT' : locale.language, {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
-    timeZone: 'Europe/Rome',
+    hourCycle: 'h23',
+    timeZone: locale.timeZone,
   })
 }
 
-export function fmtDuration(ms: number | null | undefined): string {
+/** Una durata compatta; `dayUnit` è l'abbreviazione dei giorni nella lingua del dossier. */
+export function fmtDuration(ms: number | null | undefined, dayUnit = 'd'): string {
   if (ms == null) return DASH
   const totalSec = Math.round(ms / 1000)
   if (totalSec < 60) return `${totalSec}s`
@@ -34,7 +63,7 @@ export function fmtDuration(ms: number | null | undefined): string {
   const h = Math.floor(min / 60)
   if (h < 24) return `${h}h ${min % 60}m`
   const d = Math.floor(h / 24)
-  return `${d}g ${h % 24}h`
+  return `${d}${dayUnit} ${h % 24}h`
 }
 
 export function fmtBytes(bytes: number): string {
@@ -57,6 +86,28 @@ export const COLOR = {
   muted:  '#94a3b8',
   border: '#e2e8f0',
   headBg: '#f1f5f9',
+}
+
+/**
+ * I colori del Dizionario (`ValueColor`) resi nel PDF. Le pastiglie per valore
+ * (severità, priorità) prendevano un esadecimale da una tabella per valore di
+ * fabbrica in ogni PDF: un valore del cliente usciva grigio, e un colore scelto
+ * nel Dizionario non contava (verifica «Cosa resta cablato», ondata 1). Questa è
+ * la sola traduzione colore → inchiostro dei PDF.
+ */
+export const VALUE_COLOR_INK: Readonly<Record<ValueColor, string>> = {
+  neutral: COLOR.muted,
+  success: '#16a34a',
+  info:    '#2563eb',
+  purple:  '#7c3aed',
+  warning: '#d97706',
+  orange:  '#ea580c',
+  danger:  '#dc2626',
+}
+
+/** L'inchiostro del colore di un valore; un valore senza colore nel Dizionario è neutro, come nel web. */
+export function valueColorInk(color: ValueColor | null): string {
+  return VALUE_COLOR_INK[color ?? 'neutral']
 }
 
 export type Doc = InstanceType<typeof PDFDocument>
@@ -161,8 +212,14 @@ export function badge(doc: Doc, x: number, y: number, label: string, color: stri
  * large entity title. Leaves the cursor below the title, ready for badges.
  */
 export function docHeader(doc: Doc, reportTitle: string, entityTitle: string): void {
-  doc.fontSize(16).font('Helvetica-Bold').fillColor(COLOR.brand)
-    .text('OpenGrafo', PAGE_MARGIN.left, PAGE_MARGIN.top, { lineBreak: false })
+  const brand = docBrands.get(doc)
+  if (!brand) throw new Error('[pdf] docHeader outside createPdfBuffer: the brand of the document is unknown')
+  if (brand.logoPng) {
+    doc.image(brand.logoPng, PAGE_MARGIN.left, PAGE_MARGIN.top - 4, { fit: [140, 24] })
+  } else {
+    doc.fontSize(16).font('Helvetica-Bold').fillColor(COLOR.brand)
+      .text(brand.displayName, PAGE_MARGIN.left, PAGE_MARGIN.top, { lineBreak: false, width: contentWidth(doc) / 2 })
+  }
   doc.fontSize(9).font('Helvetica').fillColor(COLOR.muted)
     .text(reportTitle, PAGE_MARGIN.left, PAGE_MARGIN.top + 2,
       { width: contentWidth(doc), align: 'right' })
@@ -193,12 +250,12 @@ export function renderFooters(doc: Doc, meta: PdfMeta): void {
       .lineWidth(0.5).strokeColor(COLOR.border).stroke()
     doc.fontSize(7.5).font('Helvetica').fillColor(COLOR.muted)
     doc.text(
-      `Generato il ${meta.generatedAt} da ${meta.generatedBy} ${DASH} tenant ${meta.tenantId}`,
+      pdfText(meta.locale, 'footerGenerated', { at: fmtDate(meta.generatedAt, meta.locale), by: meta.generatedBy, tenant: meta.tenantId }),
       PAGE_MARGIN.left, y,
       { width: contentWidth(doc) - 80, lineBreak: false },
     )
     doc.text(
-      `Pagina ${i - range.start + 1}/${range.count}`,
+      pdfText(meta.locale, 'footerPage', { page: i - range.start + 1, pages: range.count }),
       PAGE_MARGIN.left, y,
       { width: contentWidth(doc), align: 'right', lineBreak: false },
     )
@@ -220,8 +277,9 @@ export function createPdfBuffer(
       size: 'A4',
       margins: PAGE_MARGIN,
       bufferPages: true,
-      info: { Title: title, Author: 'OpenGrafo', Creator: 'OpenGrafo' },
+      info: { Title: title, Author: meta.brand.displayName, Creator: 'OpenGrafo' },
     })
+    docBrands.set(doc, meta.brand)
     const chunks: Buffer[] = []
     doc.on('data', (c: Buffer) => chunks.push(c))
     doc.on('end', () => resolve(Buffer.concat(chunks)))

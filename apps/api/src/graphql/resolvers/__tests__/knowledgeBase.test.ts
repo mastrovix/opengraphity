@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: vi.fn(),
@@ -14,7 +15,12 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 vi.mock('@opengraphity/workflow', () => ({ workflowEngine: { createInstance: vi.fn() } }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
-vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
+vi.mock('../../../lib/logger.js', () => {
+  const l = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
+  return { logger: { ...l, child: () => l } }
+})
+// F5: la categoria si valida contro `kb_category`; questi test provano altro.
+vi.mock('../../../lib/domainMatrix.js', () => ({ assertDomainValue: vi.fn(async (_t: string, _v: string, value: unknown) => value) }))
 vi.mock('../../../jobs/embeddingWorker.js', () => ({ enqueueEmbedding: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../services/embeddings.js', () => ({
   normalizeKbTags: (raw: unknown) => (raw == null || raw === '' ? [] : Array.isArray(raw) ? raw.map(String) : (JSON.parse(raw as string) as unknown[]).map(String)),
@@ -25,7 +31,7 @@ const { getSession } = await import('@opengraphity/neo4j')
 const { enqueueEmbedding } = await import('../../../jobs/embeddingWorker.js')
 const { audit } = await import('../../../lib/audit.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator', permissions: perms('operator') }
 const rec = (map: Record<string, unknown>) => ({ get: (k: string) => (k in map ? map[k] : null) })
 
 const ARTICLE = {

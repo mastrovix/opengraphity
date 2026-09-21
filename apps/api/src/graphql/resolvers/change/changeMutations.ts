@@ -3,21 +3,34 @@
  *   createChange, addCIToChange, removeCIFromChange,
  *   executeChangeTransition, sendTaskReminder.
  */
+import { firstTeamCypher } from '../../../lib/ticketTeamHistory.js'
+import { ciTypeFromLabels } from '../../../lib/ciTypeFromLabels.js'
 import { GraphQLError } from 'graphql'
+import type { CustomFieldInput } from '../../../lib/ticketCustomFields.js'
+import { systemText } from '../../../lib/systemText.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import type { ActionContext } from '@opengraphity/workflow'
 import { TASK_STATUS, ASSESSMENT_ROLE } from '../../../lib/taskStatus.js'
 import { withSession, runQuery, runQueryOne, getSession, type Props } from '../ci-utils.js'
 import type { GraphQLContext } from '../../../context.js'
 import { logger } from '../../../lib/logger.js'
-import { requireRole } from '../../../lib/requireRole.js'
+import { requirePermission } from '../../../lib/permissions.js'
+import { validateRequiredFields, propsToFieldValues } from '../../../lib/validateRequiredFields.js'
+import { stepNamesByPurposeOrdered } from '../../../lib/workflowTargets.js'
 import { createChangeRFC } from '../../../services/changeCreationService.js'
 import { change as getChange } from './queries.js'
 import { evaluateAutoTransitions, revertProblemAfterChangeDetached } from './autoTransitions.js'
-import { assertAllApprovalsSatisfied } from './approvalCreation.js'
+import { assertChangeWindowGate } from './windowGate.js'
+import { transitionFailed } from '../../../lib/transitionError.js'
+import { TASK_KINDS } from './taskKinds.js'
+import { NotFoundError } from '../../../lib/errors.js'
+import { publishEvent } from '../../../lib/publishEvent.js'
+import { audit } from '../../../lib/audit.js'
+import { assertCIsLinkable } from '../../../lib/ticketCIExclusions.js'
 import {
   writeAudit,
   getNextTaskCodes,
+  chiaviDaCreare,
   assertCIHasOwnerAndSupport,
   assertInitialStep,
   getCIName,
@@ -29,7 +42,7 @@ import {
 
 export async function createChange(
   _: unknown,
-  args: { input: { title: string; why: string; what: string; changeOwner?: string | null; affectedCIIds: string[]; changeType?: string | null; problemId?: string | null; incidentId?: string | null } },
+  args: { input: { title: string; why: string; what: string; changeOwner?: string | null; affectedCIIds: string[]; changeType?: string | null; problemId?: string | null; incidentId?: string | null; customFields?: CustomFieldInput[] | null } },
   ctx: GraphQLContext,
 ) {
   // Thin wrapper: the whole RFC bootstrap (validation, CHG code, tasks,
@@ -55,7 +68,7 @@ export async function createChange(
 export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   // Solo admin: eliminare una change (anche logicamente) rimuove dai flussi
   // approvazioni, task e collegamenti di tutto il tenant.
-  requireRole(ctx, 'admin')
+  requirePermission(ctx, 'change.delete')
   const now = new Date().toISOString()
   await withSession(async (session) => {
     // Unica transazione: marca la change, chiude l'istanza di workflow (così
@@ -70,14 +83,14 @@ export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQ
       WITH c
       CREATE (c)-[:HAS_AUDIT]->(e:ChangeAuditEntry {
         id: randomUUID(), tenant_id: $tenantId, timestamp: $now,
-        action: 'change_deleted', detail: 'Eliminazione logica'
+        action: 'change_deleted', detail: 'Soft deletion', detail_key: 'softDeleted', detail_params: '{}'
       })
       WITH c, e
       OPTIONAL MATCH (u:User {id: $userId, tenant_id: $tenantId})
       FOREACH (_ IN CASE WHEN u IS NULL THEN [] ELSE [1] END | CREATE (e)-[:BY]->(u))
       RETURN c.id AS id
     `, { id: args.id, tenantId: ctx.tenantId, now, userId: ctx.userId ?? null }))
-    if (r.records.length === 0) throw new GraphQLError('Change non trovata o già eliminata', { extensions: { code: 'NOT_FOUND' } })
+    if (r.records.length === 0) throw new GraphQLError('Change not found, or already deleted', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.change.notFoundOrDeleted' } } })
   }, true)
   // I timer di breach OLA/UC schedulati alla creazione non devono più
   // notificare per una change eliminata. Cleanup post-commit: un errore qui
@@ -90,6 +103,32 @@ export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQ
     if (contracts.length > 0) await cancelOLABreaches(args.id, contracts.map((c) => c.id))
   } catch (err) {
     logger.error({ err, changeId: args.id }, '[deleteChange] cancellazione job OLA non riuscita')
+  }
+  // Gli eventi di monitoraggio silenziati dalla finestra di questa change
+  // (Event.suppressed_by_change_id) vanno rivalutati (T-2): la change non
+  // esiste più, `Event.suppressedBy` tornerebbe null lasciando l'evento
+  // `suppressed` senza dire da chi.
+  // Revisione 2 · B2-05: la rivalutazione ACCODA il job `reevaluate-change-window`
+  // (come le transizioni in autoTransitions.ts) invece di girare in linea: ogni
+  // evento costa una pipeline intera (lock di gruppo compreso) e una change con
+  // 300 allarmi silenziati teneva la mutation per minuti — il client andava in
+  // timeout e la ripeteva. L'accodamento NON è protetto da try/catch: è locale
+  // a Redis e se fallisce deve propagare come ogni altro errore (fail-loud, come
+  // documentato nel worker); l'esecuzione, lunga e ritentabile, sta nel job e la
+  // passata periodica reevaluateClosedWindows resta la rete di sicurezza.
+  // `stepEpoch` = istante dell'eliminazione: un job per eliminazione.
+  {
+    const { enqueueChangeWindowReevaluation } = await import('../../../jobs/eventCorrelateWorker.js')
+    await enqueueChangeWindowReevaluation(ctx.tenantId, args.id, Date.now())
+  }
+  // Servizi monitorati (revisione 2 · D6.1): la finestra di questa change
+  // sparisce con lei, quindi i componenti che «pesavano zero» tornano a pesare.
+  // Post-commit e senza mai lanciare: la passata periodica è la rete di
+  // sicurezza. Le AFFECTS_CI restano (la cancellazione è logica): si leggono
+  // ancora.
+  {
+    const { notifyChangeWindowChanged } = await import('../../../services/serviceImpact/sync.js')
+    await notifyChangeWindowChanged(ctx.tenantId, args.id, 'change.deleted')
   }
   // I problem che dipendevano da questa change tornano in analisi.
   const problemIds = await withSession((session) => runQuery<{ id: string }>(session, `
@@ -110,7 +149,7 @@ export async function deleteChange(_: unknown, args: { id: string }, ctx: GraphQ
 /** Collega/scollega un ticket (incident|problem) alla change (RESOLVED_BY). */
 export async function linkResolvedTicket(_: unknown, args: { changeId: string; entityType: string; entityId: string }, ctx: GraphQLContext) {
   const label = args.entityType === 'incident' ? 'Incident' : args.entityType === 'problem' ? 'Problem' : null
-  if (!label) throw new GraphQLError(`Tipo ticket non valido: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT' } })
+  if (!label) throw new GraphQLError(`Invalid ticket type: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.change.badTicketType', params: { entityType: args.entityType } } } })
   await withSession(async (session) => {
     const r = await session.executeWrite((tx) => tx.run(`
       MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})
@@ -120,22 +159,22 @@ export async function linkResolvedTicket(_: unknown, args: { changeId: string; e
       SET e.updated_at = $now
       RETURN c.id AS id
     `, { changeId: args.changeId, entityId: args.entityId, tenantId: ctx.tenantId, now: new Date().toISOString() }))
-    if (r.records.length === 0) throw new GraphQLError('Change o ticket non trovato', { extensions: { code: 'NOT_FOUND' } })
+    if (r.records.length === 0) throw new GraphQLError('Change or ticket not found', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.change.changeOrTicketNotFound' } } })
   }, true)
   return getChange(null, { id: args.changeId }, ctx)
 }
 
 export async function unlinkResolvedTicket(_: unknown, args: { changeId: string; entityType: string; entityId: string }, ctx: GraphQLContext) {
   const label = args.entityType === 'incident' ? 'Incident' : args.entityType === 'problem' ? 'Problem' : null
-  if (!label) throw new GraphQLError(`Tipo ticket non valido: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT' } })
+  if (!label) throw new GraphQLError(`Invalid ticket type: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.change.badTicketType', params: { entityType: args.entityType } } } })
   await withSession(async (session) => {
     const r = await session.executeWrite((tx) => tx.run(`
       MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})-[r:RESOLVED_BY]->(c:Change {id: $changeId, tenant_id: $tenantId})
       RETURN coalesce(r.auto, false) AS auto
     `, { changeId: args.changeId, entityId: args.entityId, tenantId: ctx.tenantId }))
-    if (r.records.length === 0) throw new GraphQLError('Change o ticket non trovato', { extensions: { code: 'NOT_FOUND' } })
+    if (r.records.length === 0) throw new GraphQLError('Change or ticket not found', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.change.changeOrTicketNotFound' } } })
     if (r.records[0].get('auto') === true) {
-      throw new GraphQLError('Questo collegamento è stato creato automaticamente e non può essere rimosso. Elimina la change per rimuoverlo.', { extensions: { code: 'FORBIDDEN' } })
+      throw new GraphQLError('This link was created automatically and cannot be removed. Delete the change to remove it.', { extensions: { code: 'FORBIDDEN', i18n: { key: 'errors.change.automaticLink' } } })
     }
     await session.executeWrite((tx) => tx.run(`
       MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})-[r:RESOLVED_BY]->(c:Change {id: $changeId, tenant_id: $tenantId})
@@ -171,7 +210,7 @@ async function linkChangeToRequestingIncident(
       `, { incidentId, changeId, tenantId: ctx.tenantId, now: new Date().toISOString() }),
     )
     if (linked.records.length === 0) {
-      throw new GraphQLError('Incident non trovato per il collegamento della change', { extensions: { code: 'NOT_FOUND' } })
+      throw new GraphQLError('Incident not found for the change link', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.change.linkIncidentNotFound' } } })
     }
   }, true)
 }
@@ -197,24 +236,34 @@ async function linkChangeToRequestingProblem(
       `, { problemId, changeId, tenantId: ctx.tenantId, now }),
     )
     if (linked.records.length === 0) {
-      throw new GraphQLError('Problem non trovato per il collegamento della change', { extensions: { code: 'NOT_FOUND' } })
+      throw new GraphQLError('Problem not found for the change link', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.change.linkProblemNotFound' } } })
     }
-    // 2. Avanza il problem a change_requested, se la transizione è disponibile
-    // dallo step corrente (lo è da under_investigation e known_error).
+    // 2. Avanza il problem al passo di SCOPO `change_requested` (ondata 4 ·
+    // A4-2: lo scopo, non il nome), se la transizione è disponibile dallo step
+    // corrente (di fabbrica lo è da under_investigation e known_error).
     const wi = await session.executeRead((tx) =>
       tx.run(`MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(w:WorkflowInstance) RETURN w.id AS id`, { problemId, tenantId: ctx.tenantId }),
     )
     const instanceId = wi.records[0]?.get('id') as string | undefined
     if (!instanceId) return
     const avail = await workflowEngine.getAvailableTransitions(session, instanceId)
-    if (!avail.some((t) => t.toStep === 'change_requested')) return
+    const candidates = await stepNamesByPurposeOrdered(session, ctx.tenantId, 'problem', ['change_requested'])
+    const toStep = candidates.find((n) => avail.some((t) => t.toStep === n))
+    if (!toStep) {
+      // Non è un errore (il problem può essere in un passo da cui quella
+      // transizione non parte), ma non è più muto: prima un `return` secco
+      // nascondeva anche il caso «nessun passo dichiara lo scopo».
+      logger.warn({ problemId, changeId, candidates, available: avail.map((t) => t.toStep) },
+        '[createChange] problem collegato ma nessun passo di scopo change_requested è raggiungibile: il problem resta dov\'è')
+      return
+    }
     const res = await workflowEngine.transition(
       session,
-      { instanceId, toStepName: 'change_requested', triggeredBy: ctx.userId, triggerType: 'manual', notes: `RFC ${changeCode} creata` },
+      { instanceId, toStepName: toStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: await systemText(ctx.tenantId, 'change.rfcCreated', { code: changeCode }), tenantId: ctx.tenantId },
       { userId: ctx.userId, entityData: {} } as ActionContext,
     )
     if (!res.success) {
-      logger.warn({ problemId, changeId, error: res.error }, '[createChange] problem collegato ma transizione a change_requested non riuscita')
+      logger.warn({ problemId, changeId, toStep, error: res.error }, '[createChange] problem collegato ma transizione al passo di scopo change_requested non riuscita')
     }
   }, true)
 }
@@ -226,10 +275,31 @@ async function linkChangeToRequestingProblem(
 // Le validazioni (step iniziale, owner/support del CI) e le letture (task codes,
 // nome CI) restano PRIMA della transazione.
 export async function addCIToChange(_: unknown, args: { changeId: string; ciId: string }, ctx: GraphQLContext) {
+  // CM-8: i tipi di CI esclusi per le change non si collegano.
+  await assertCIsLinkable(ctx.tenantId, 'change', [args.ciId])
   return withSession(async (session) => {
     await assertInitialStep(session, args.changeId, ctx.tenantId)
     await assertCIHasOwnerAndSupport(session, ctx.tenantId, [args.ciId])
-    const [ownerCode, supportCode, planCode] = await getNextTaskCodes(session, ctx.tenantId, 3)
+    /**
+     * I CODICI SOLO PER I TASK CHE NASCERANNO DAVVERO (rimedio, 20 set 2026).
+     *
+     * Le MERGE qui sotto sono sulla chiave naturale, quindi rimettere lo
+     * stesso CI non crea niente di nuovo — ma i tre codici si prendevano
+     * comunque, e la numerazione usciva coi buchi. Ora si contano prima.
+     */
+    const chiaveOwner   = `${args.changeId}-${args.ciId}-owner`
+    const chiaveSupport = `${args.changeId}-${args.ciId}-support`
+    const chiavePiano   = `${args.changeId}-${args.ciId}`
+    const daCreare = new Set([
+      ...await chiaviDaCreare(session, 'AssessmentTask', [chiaveOwner, chiaveSupport]),
+      ...await chiaviDaCreare(session, 'DeployPlanTask', [chiavePiano]),
+    ])
+    const codici = await getNextTaskCodes(session, ctx.tenantId, daCreare.size)
+    let prossimo = 0
+    const codicePer = (chiave: string) => (daCreare.has(chiave) ? codici[prossimo++]! : null)
+    const ownerCode   = codicePer(chiaveOwner)
+    const supportCode = codicePer(chiaveSupport)
+    const planCode    = codicePer(chiavePiano)
     const ciName = await getCIName(session, args.ciId, ctx.tenantId)
     const now = new Date().toISOString()
     await session.executeWrite(async (tx) => {
@@ -245,33 +315,33 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
           ownerT.ci_id = $ciId, ownerT.responder_role = '${ASSESSMENT_ROLE.OWNER}',
           ownerT.status = '${TASK_STATUS.PENDING}', ownerT.score = null, ownerT.created_at = $now
       MERGE (c)-[:HAS_ASSESSMENT]->(ownerT)
-      MERGE (ownerT)-[:ASSIGNED_TO_TEAM]->(ownerTeam)
+      ${firstTeamCypher('ownerT', 'ownerTeam', '$now')}
       MERGE (supportT:AssessmentTask {change_key: $changeId + '-' + $ciId + '-support'})
         ON CREATE SET supportT.id = randomUUID(), supportT.code = $supportCode, supportT.tenant_id = $tenantId,
           supportT.ci_id = $ciId, supportT.responder_role = '${ASSESSMENT_ROLE.SUPPORT}',
           supportT.status = '${TASK_STATUS.PENDING}', supportT.score = null, supportT.created_at = $now
       MERGE (c)-[:HAS_ASSESSMENT]->(supportT)
-      MERGE (supportT)-[:ASSIGNED_TO_TEAM]->(supportTeam)
+      ${firstTeamCypher('supportT', 'supportTeam', '$now')}
       MERGE (dp:DeployPlanTask {change_key: $changeId + '-' + $ciId + '-deployplan'})
         ON CREATE SET dp.id = randomUUID(), dp.code = $planCode, dp.tenant_id = $tenantId,
           dp.ci_id = $ciId, dp.status = '${TASK_STATUS.PENDING}',
           dp.steps = '[]',
           dp.created_at = $now
       MERGE (c)-[:HAS_DEPLOY_PLAN]->(dp)
-      MERGE (dp)-[:ASSIGNED_TO_TEAM]->(supportTeam)
+      ${firstTeamCypher('dp', 'supportTeam', '$now')}
       SET c.updated_at = $now
       `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now,
            ownerCode, supportCode, planCode })
 
-      await writeAudit(tx, args.changeId, ctx.tenantId, 'ci_added', ctx.userId, `CI ${ciName} aggiunto`)
+      await writeAudit(tx, args.changeId, ctx.tenantId, 'ci_added', ctx.userId, `CI ${ciName} added`, { key: 'ciAdded', params: { ci: ciName } })
     })
 
     const row = await runQueryOne<{ ciProps: Props; ciLabel: string }>(session, `
       MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[r:AFFECTS_CI]->(ci {id: $ciId})
-      RETURN properties(ci) AS ciProps, labels(ci)[0] AS ciLabel
+      RETURN properties(ci) AS ciProps, head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS ciLabel
     `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId })
-    if (!row) throw new GraphQLError('CI non trovato dopo aggiunta', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
-    row.ciProps['type'] = row.ciProps['type'] as string | undefined ?? row.ciLabel.toLowerCase()
+    if (!row) throw new GraphQLError('CI not found after being added', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
+    row.ciProps['type'] = row.ciProps['type'] as string | undefined ?? ciTypeFromLabels(ctx.tenantId, [row.ciLabel])
     const { mapCI } = await import('../ci-utils.js')
     return {
       ci: mapCI(row.ciProps),
@@ -306,7 +376,7 @@ export async function removeCIFromChange(_: unknown, args: { changeId: string; c
         SET c.updated_at = $now
       `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now: new Date().toISOString() })
 
-      await writeAudit(tx, args.changeId, ctx.tenantId, 'ci_removed', ctx.userId, `CI ${ciName} rimosso`)
+      await writeAudit(tx, args.changeId, ctx.tenantId, 'ci_removed', ctx.userId, `CI ${ciName} removed`, { key: 'ciRemoved', params: { ci: ciName } })
     })
     return true
   }, true)
@@ -326,21 +396,37 @@ export async function executeChangeTransition(
     const changeType = (entityProps['change_type'] as string) ?? 'normal'
 
     // ── Gate di approvazione ──────────────────────────────────────────────────
-    // Uscire da `approval` verso avanti significa approvare la change: oltre
-    // al ruolo admin, TUTTI i requisiti multi-parte (Change Manager + owner
-    // group) devono essere 'approved' — lo stesso gate dell'auto-advance.
-    // Il rigetto (approval → assessment) deve passare da rejectChangeApproval,
-    // che riapre i task: una transizione "nuda" lascerebbe gli assessment
-    // completi e la change rimbalzerebbe subito in approval.
-    if (currentStep === 'approval' && args.toStep !== 'approval') {
-      if (args.toStep === 'assessment') {
-        throw new GraphQLError('Per rigettare usa "Rigetta" nella sezione Approvazione (rejectChangeApproval), che riapre gli assessment', { extensions: { code: 'CONFLICT' } })
-      }
-      if (changeType !== 'standard') {
-        requireRole(ctx, 'admin')
-        await assertAllApprovalsSatisfied(session, args.changeId, ctx.tenantId)
-      }
+    // Il varco della finestra di rilascio vive in `windowGate.ts`, non qui.
+    // Terza revisione * C1: stava scritto qui dentro, e il suo commento
+    // affermava di valere «da qualunque passo arrivi e qualunque scopo abbia
+    // quel passo» — mentre valeva per questo cammino e non per i due
+    // automatici (`evaluateAutoTransitions`, job `timer_wait`), dove le cinque
+    // guardie avevano ZERO occorrenze. Ora la regola di dominio sta in un
+    // posto solo e i tre cammini la chiamano; il lint
+    // `__tests__/changeWindowGate.test.ts` pretende che resti cosi.
+    await assertChangeWindowGate(session, ctx, {
+      tenantId: ctx.tenantId, changeId: args.changeId, changeType,
+      currentStep, toStep: args.toStep,
+    })
+
+    // Campi obbligatori del passo di ARRIVO (ondata 8 · B-21). Le regole
+    // `FieldRequirementRule` con `workflow_step` erano valutate solo da
+    // `executeWorkflowTransition` (la mutation generica, che le change non
+    // usano): una regola «la data di rilascio è obbligatoria entrando in
+    // programmata» valeva per un bottone e non per quello delle change, e chi
+    // l'aveva configurata non poteva accorgersene. Le note della transizione
+    // contano come valore, come nella mutation generica.
+    const requirementValues: Record<string, unknown> = { ...propsToFieldValues(entityProps) }
+    if (args.notes) {
+      requirementValues['resolution_notes'] = args.notes
+      requirementValues['root_cause']       = args.notes
     }
+    await validateRequiredFields(session, {
+      entityType:  'change',
+      fieldValues: requirementValues,
+      tenantId:    ctx.tenantId,
+      toStep:      args.toStep,
+    })
 
     // Il rollback non è più un campo del change: è valutato (con punteggio)
     // nell'assessment tecnico ("Is a tested rollback plan available?"), che si
@@ -359,15 +445,24 @@ export async function executeChangeTransition(
       notes:       args.notes,
       tenantId:    ctx.tenantId,
     }, actionCtx)
-    if (!result.success) throw new GraphQLError(result.error ?? 'Transizione fallita', { extensions: { code: 'CONFLICT' } })
+    if (!result.success) throw transitionFailed(result, 'Transition failed')
     if (result.actionErrors?.length) {
       logger.error({ changeId: args.changeId, actionErrors: result.actionErrors },
         '[change] transition persisted but step actions failed')
     }
 
     await afterEnterStep(session, args.changeId, ctx.tenantId, args.toStep)
+    // Azione STABILE, passo nei dettagli (D-22, applicato a incident e problem
+    // e non alle change: `change_transition_<passo>` metteva il nome del passo
+    // nell'identità dell'azione, e una rinomina spezzava in due la storia dei
+    // filtri della timeline — revisione totale · B-19). Le voci storiche NON
+    // si riscrivono: il web sa ancora leggere il vecchio prefisso.
     await writeAudit(session, args.changeId, ctx.tenantId,
-      `change_transition_${args.toStep}`, ctx.userId, args.notes ?? null)
+      'change_step_entered', ctx.userId,
+      args.notes?.trim() ? `${args.toStep}: ${args.notes.trim()}` : args.toStep,
+      // `notes` porta già i due punti quando c'è: è punteggiatura, non lingua,
+      // e la frase resta una sola chiave per entrambi i casi.
+      { key: 'stepEntered', params: { step: args.toStep, notes: args.notes?.trim() ? `: ${args.notes.trim()}` : '' } })
 
     await evaluateAutoTransitions(session, args.changeId, ctx, afterEnterStep)
 
@@ -380,20 +475,30 @@ export async function executeChangeTransition(
 
 // ── Task Reminders ────────────────────────────────────────────────────────────
 
+/**
+ * «Invia promemoria» a chi deve completare un task della change — revisione
+ * del 14 set 2026 · CH-13.
+ *
+ * Prima scriveva un nodo `:Notification` che nessuna query leggeva e nessun
+ * pannello mostrava: il pulsante confermava un invio che non avveniva. Ora il
+ * task e il destinatario si verificano nel tenant, e il promemoria arriva come
+ * notifica in-app all'utente (evento `change.task_reminder`, consegnato dal
+ * dispatcher delle notifiche).
+ */
 export async function sendTaskReminder(_: unknown, args: { taskId: string; userId: string }, ctx: GraphQLContext) {
-  return withSession(async (session) => {
-    const now = new Date().toISOString()
-    await session.executeWrite((tx) => tx.run(`
-      MATCH (u:User {id: $userId, tenant_id: $tenantId})
-      CREATE (n:Notification {
-        id: randomUUID(), tenant_id: $tenantId,
-        type: 'task_reminder', task_id: $taskId,
-        message: 'Hai un task in attesa di completamento',
-        read: false, created_at: $now
-      })
-      CREATE (n)-[:FOR_USER]->(u)
-    `, { userId: args.userId, taskId: args.taskId, tenantId: ctx.tenantId, now }))
-    logger.info({ taskId: args.taskId, targetUser: args.userId, sender: ctx.userId }, '[sendTaskReminder] notification sent')
-    return true
-  }, true)
+  const labels = Object.values(TASK_KINDS).map((k) => k.label)
+  const row = await withSession((session) => runQueryOne<{ changeId: string; code: string | null; title: string | null; userName: string | null }>(session, `
+    MATCH (c:Change {tenant_id: $tenantId})-[]->(t {id: $taskId, tenant_id: $tenantId})
+    WHERE coalesce(c.deleted, false) = false AND any(l IN labels(t) WHERE l IN $labels)
+    MATCH (u:User {id: $userId, tenant_id: $tenantId})
+    RETURN c.id AS changeId, c.code AS code, c.title AS title, u.name AS userName
+    LIMIT 1
+  `, { taskId: args.taskId, userId: args.userId, tenantId: ctx.tenantId, labels }))
+  if (!row) throw new NotFoundError('Task or user', `${args.taskId} / ${args.userId}`)
+  await publishEvent('change.task_reminder', ctx.tenantId, ctx.userId, {
+    id: row.changeId, entity_type: 'change', entity_id: row.changeId, task_id: args.taskId,
+    recipient_user_id: args.userId, code: row.code, title: row.title,
+  })
+  void audit(ctx, 'change.task_reminder_sent', 'Change', row.changeId, { taskId: args.taskId, recipient: args.userId })
+  return true
 }

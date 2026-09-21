@@ -3,17 +3,19 @@
  * approval-route preview, requester/owner, per-CI status dots table, and
  * (once both assessments are done) the computed scores for the current CI.
  */
+import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { PhaseBadge, RiskBadge } from '@/components/ui/badges'
-import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT, ROLE_LABEL } from '@/lib/taskStatus'
+import { PhaseBadge, RiskBadge, StatusLabel } from '@/components/ui/badges'
+import { TASK_STATUS, VALIDATION_RESULT, REVIEW_RESULT, ASSESSMENT_ROLE } from '@/lib/taskStatus'
 import type { AffectedCI, AssessmentTaskData, ChangeData, DeployPlanTaskData } from '@/types/change'
+import { colors } from '@/lib/tokens'
 
 type DotState = 'not_started' | 'in_progress' | 'completed' | 'failed'
 const DOT_COLOR: Record<DotState, string> = {
   not_started: 'var(--color-slate-light)',
-  in_progress: '#eab308',
-  completed:   '#22c55e',
+  in_progress: colors.warning,
+  completed:   colors.success,
   failed:      'var(--color-danger)',
 }
 
@@ -39,9 +41,11 @@ function simpleDotState(t: { status: string; result?: string | null } | null): D
 }
 
 // Ordine dei 6 pallini di stato per CI (deve combaciare con CIDots).
-const CI_PHASE_LABELS = ['Functional', 'Technical', 'Piano', 'Validation', 'Deploy', 'Review'] as const
+/** Chiavi delle sei fasi, nell'ordine dei pallini. */
+const CI_PHASE_KEYS = ['changeTasks.phaseName.functional', 'changeTasks.phaseName.technical', 'changeTasks.phaseName.plan', 'changeTasks.phaseName.validation', 'changeTasks.phaseName.deploy', 'changeTasks.phaseName.review'] as const
 
 function CIDots({ a }: { a: AffectedCI }) {
+  const { t } = useTranslation()
   const states: DotState[] = [
     assessDotState(a.assessmentOwner),
     assessDotState(a.assessmentSupport),
@@ -53,7 +57,7 @@ function CIDots({ a }: { a: AffectedCI }) {
   return (
     <div style={{ display: 'flex', gap: 3 }}>
       {states.map((state, i) => (
-        <span key={i} title={CI_PHASE_LABELS[i]} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: DOT_COLOR[state], display: 'inline-block' }} />
+        <span key={i} title={t(CI_PHASE_KEYS[i]!)} style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: DOT_COLOR[state], display: 'inline-block' }} />
       ))}
     </div>
   )
@@ -62,16 +66,17 @@ function CIDots({ a }: { a: AffectedCI }) {
 // Legenda dei pallini: ordine delle fasi + significato dei colori.
 // Utile su touch (iPad) dove il tooltip degli 8px non è raggiungibile.
 function CIDotsLegend() {
+  const { t } = useTranslation()
   const colorItems: Array<{ state: DotState; label: string }> = [
-    { state: 'not_started', label: 'non iniziato' },
-    { state: 'in_progress', label: 'in corso' },
-    { state: 'completed',   label: 'completato' },
-    { state: 'failed',      label: 'fallito' },
+    { state: 'not_started', label: t('changeTasks.dot.notStarted') },
+    { state: 'in_progress', label: t('changeTasks.dot.inProgress') },
+    { state: 'completed',   label: t('changeTasks.dot.completed') },
+    { state: 'failed',      label: t('changeTasks.dot.failed') },
   ]
   return (
     <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12, lineHeight: 1.6 }}>
       <div style={{ marginBottom: 4 }}>
-        Pallini (in ordine): {CI_PHASE_LABELS.map((l, i) => `${i + 1} ${l}`).join(' · ')}
+        {t('changeTasks.dotsLegend', { phases: CI_PHASE_KEYS.map((k, i) => `${i + 1} ${t(k)}`).join(' · ') })}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', alignItems: 'center' }}>
         {colorItems.map((c) => (
@@ -99,9 +104,10 @@ export function ChangeOverviewSidebar({
   stepCategory: string | null
   onRowClick: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <div style={{ position: 'sticky', top: 16 }}>
-      <SectionCard title="Overview Change" collapsible={false}>
+      <SectionCard title={t('pages.taskView.changeOverview')} collapsible={false}>
         {change && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -115,16 +121,16 @@ export function ChangeOverviewSidebar({
             <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', margin: '0 0 8px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{change.title}</p>
             {(change.why || change.what) && (
               <p style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', margin: '0 0 8px', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                {[change.why && `Perché: ${change.why}`, change.what && `Cosa: ${change.what}`].filter(Boolean).join(' · ')}
+                {[change.why && t('changeTasks.whyLine', { why: change.why }), change.what && t('changeTasks.whatLine', { what: change.what })].filter(Boolean).join(' · ')}
               </p>
             )}
             <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12 }}>
-              {change.requester && <span>Requester: <strong style={{ color: 'var(--color-slate)' }}>{change.requester.name}</strong></span>}
-              {change.changeOwner && <span style={{ marginLeft: 8 }}>Owner: <strong style={{ color: 'var(--color-slate)' }}>{change.changeOwner.name}</strong></span>}
+              {change.requester && <span>{t('changeTasks.requester')}: <strong style={{ color: 'var(--color-slate)' }}>{change.requester.name}</strong></span>}
+              {change.changeOwner && <span style={{ marginLeft: 8 }}>{t('changeTasks.changeOwner')}: <strong style={{ color: 'var(--color-slate)' }}>{change.changeOwner.name}</strong></span>}
             </div>
 
             <div style={{ fontSize: 'var(--font-size-label)', marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', marginBottom: 6 }}>CI Affected</div>
+              <div style={{ fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', marginBottom: 6 }}>{t('components.affectedCI.title')}</div>
               {allAffected.map((a) => {
                 const isCurrent = a.ci.id === currentCIId
                 return (
@@ -151,28 +157,28 @@ export function ChangeOverviewSidebar({
             {ciAffected && ciAffected.assessmentOwner?.status === TASK_STATUS.COMPLETED && ciAffected.assessmentSupport?.status === TASK_STATUS.COMPLETED && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ fontWeight: 700, color: 'var(--color-slate)', textTransform: 'uppercase', marginBottom: 6, fontSize: 'var(--font-size-label)' }}>
-                  Risposte Assessment · {currentCIName}
+                  {t('changeTasks.assessmentAnswers', { ci: currentCIName })}
                 </div>
                 {[ciAffected.assessmentOwner, ciAffected.assessmentSupport].map((at, i) => (
                   <div key={i} style={{ marginBottom: 6 }}>
                     <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 2 }}>
-                      {ROLE_LABEL[at.responderRole] ?? at.responderRole} · Score: {at.score ?? '—'}
+                      {at.responderRole === ASSESSMENT_ROLE.OWNER ? t('changeTasks.functional') : at.responderRole === ASSESSMENT_ROLE.SUPPORT ? t('changeTasks.technical') : at.responderRole} · {t('changeTasks.score')}: {at.score ?? '—'}
                     </div>
                   </div>
                 ))}
                 <div style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>
-                  Risk CI: {ciAffected.riskScore != null && <RiskBadge compact score={ciAffected.riskScore} />}
+                  {t('changeTasks.riskCI')}: {ciAffected.riskScore != null && <RiskBadge compact score={ciAffected.riskScore} />}
                 </div>
               </div>
             )}
             {ciAffected && !(ciAffected.assessmentOwner?.status === TASK_STATUS.COMPLETED && ciAffected.assessmentSupport?.status === TASK_STATUS.COMPLETED) && (
               <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', marginBottom: 12 }}>
-                Functional: {ciAffected.assessmentOwner?.status ?? '—'} · Technical: {ciAffected.assessmentSupport?.status ?? '—'}
+                {t('changeTasks.functional')}: <StatusLabel status={ciAffected.assessmentOwner?.status} /> · {t('changeTasks.technical')}: <StatusLabel status={ciAffected.assessmentSupport?.status} />
               </div>
             )}
 
             <Link to={`/changes/${changeId}`} style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-brand)', textDecoration: 'none', fontWeight: 500 }}>
-              Vedi change completo →
+              {t('changeTasks.viewFullChange')}
             </Link>
           </>
         )}

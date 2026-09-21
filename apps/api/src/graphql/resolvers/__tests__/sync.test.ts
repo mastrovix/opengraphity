@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
@@ -22,7 +23,11 @@ vi.mock('@opengraphity/discovery', () => ({
   getAllConnectors:   vi.fn().mockReturnValue([]),
   getConnector:       vi.fn(),
 }))
-vi.mock('../../../discovery/syncWorker.js', () => ({ syncQueue: { add: vi.fn().mockResolvedValue({ id: 'job-1' }) } }))
+// `scheduleSourceSync`: il cron in Redis segue la sorgente (revisione totale · D-6).
+vi.mock('../../../discovery/syncWorker.js', () => ({
+  syncQueue: { add: vi.fn().mockResolvedValue({ id: 'job-1' }) },
+  scheduleSourceSync: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 
 const { syncResolvers } = await import('../sync.js')
@@ -30,7 +35,7 @@ const { runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { encryptCredentials } = await import('@opengraphity/discovery')
 const { syncQueue } = await import('../../../discovery/syncWorker.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
 
 const SOURCE_PROPS = {
   id: 's-1', tenant_id: 'tenant-1', name: 'AWS prod', connector_type: 'aws', config: '{"region":"eu-west-1"}',

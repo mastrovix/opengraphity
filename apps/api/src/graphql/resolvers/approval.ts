@@ -8,6 +8,9 @@ import type { GraphQLContext } from '../../context.js'
 import { buildAdvancedWhere } from '../../lib/filterBuilder.js'
 import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
+import { pendingTicketApprovals } from './pendingTicketApprovals.js'
+import { systemText } from '../../lib/systemText.js'
+import { hasPermission } from '../../lib/permissions.js'
 
 interface ApprovalRequest {
   id:             string
@@ -26,6 +29,31 @@ interface ApprovalRequest {
   dueDate:        string | null
   resolvedAt:     string | null
   resolutionNote: string | null
+}
+
+/**
+ * L'ESITO della transizione conta (revisione totale · M-15).
+ *
+ * Approvazione e rifiuto di un articolo chiamavano `workflowEngine.transition`
+ * e buttavano via il risultato: se una guardia del workflow del cliente
+ * rifiutava il passaggio, l'approvazione risultava comunque concessa, la
+ * notifica diceva «pubblicato» e l'articolo restava in revisione. Il motore
+ * non lancia, RESTITUISCE l'esito — chi lo ignora sta dicendo una cosa falsa.
+ */
+function assertTransitionApplied(
+  result: { success: boolean; error?: string; errorI18n?: { key: string; params?: Record<string, string> } },
+  what: string,
+): void {
+  if (result.success) return
+  throw new GraphQLError(
+    `${what}: the knowledge base workflow refused the transition — ${result.error ?? 'no reason given'}`,
+    {
+      extensions: {
+        code: 'CONFLICT',
+        ...(result.errorI18n ? { i18n: result.errorI18n } : { i18n: { key: 'errors.approval.transitionRefused' } }),
+      },
+    },
+  )
 }
 
 function mapApproval(r: { get: (k: string) => unknown }): ApprovalRequest {
@@ -86,6 +114,7 @@ export async function approvalRequests(
   const session = getSession(undefined, 'READ')
   try {
     const dataRes = await session.executeRead((tx) => tx.run(`
+      // tenant-ok: il WHERE interpolato parte da a.tenant_id = $tenantId (conditions, riga 71)
       MATCH (a:ApprovalRequest)
       WHERE ${where}
       RETURN a.id             AS id,
@@ -109,6 +138,7 @@ export async function approvalRequests(
     `, params))
 
     const countRes = await session.executeRead((tx) => tx.run(`
+      // tenant-ok: stesso $where della query di pagina, tenant per primo (conditions, riga 71)
       MATCH (a:ApprovalRequest)
       WHERE ${where}
       RETURN count(a) AS total
@@ -155,7 +185,14 @@ export async function myPendingApprovals(
              a.resolution_note AS resolutionNote
       ORDER BY a.requested_at DESC
     `, { tenantId: ctx.tenantId, userId: ctx.userId }))
-    return res.records.map(mapApproval)
+    /**
+     * Il `CONTAINS` della query è solo un PREFILTRO (revisione totale · B-29):
+     * `approvers` è una stringa JSON, quindi il confronto per sottostringa
+     * faceva vedere a un utente le approvazioni di un altro il cui id
+     * contenesse il suo (id non-UUID da import o script). L'appartenenza si
+     * decide sull'elenco vero, elemento per elemento.
+     */
+    return res.records.map(mapApproval).filter((a) => a.approvers.includes(ctx.userId))
   } finally {
     await session.close()
   }
@@ -239,7 +276,9 @@ export async function createApprovalRequest(
       sseManager.sendToUser(ctx.tenantId, approverId, {
         id:          uuidv4(),
         type:        'approval.requested',
-        title:       'Approvazione richiesta',
+        // Il titolo è una chiave del web; il ripiego nella lingua del cliente.
+        title:          'notification.approval.requested.title',
+        title_fallback: await systemText(ctx.tenantId, 'approval.requested'),
         message:     args.title,
         severity:    'info',
         entity_id:   id,
@@ -360,25 +399,43 @@ export async function approveRequest(
         if (wiRes.records.length > 0) {
           const instanceId = wiRes.records[0].get('instanceId') as string
           const actionCtx: ActionContext = { userId: ctx.userId, entityData: { id: entityId } }
-          // Pick the first manual transition whose target is NOT the initial
-          // step — that's the forward path (draft → ... → active-state).
-          const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
-          const initial = await getInitialStepName(session, ctx.tenantId, 'kb_article')
+          /**
+           * L'articolo approvato va nel passo PUBBLICATO, riconosciuto dalla
+           * sua categoria (revisione totale · B-30). Prima si prendeva «la
+           * prima transizione manuale che non torna all'iniziale»: in un
+           * workflow del cliente con un arco «revisione → archiviato» davanti
+           * a «→ pubblicato», l'approvazione ARCHIVIAVA l'articolo. Se nessun
+           * passo raggiungibile è di categoria «published» non si inventa una
+           * strada: si dice che il workflow non ne ha una.
+           */
+          const { getWorkflowSteps } = await import('../../lib/workflowHelpers.js')
+          const steps = await getWorkflowSteps(session, ctx.tenantId, 'kb_article')
+          const publishedSteps = new Set(steps.filter((st) => st.category === 'published').map((st) => st.name))
           const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
-          const forward = transitions.find((t) => t.toStep !== initial)
-          if (forward) {
-            await workflowEngine.transition(
-              session,
-              { instanceId, toStepName: forward.toStep, triggeredBy: ctx.userId, triggerType: 'manual' },
-              actionCtx,
+          const forward = transitions.find((t) => publishedSteps.has(t.toStep))
+          if (!forward) {
+            throw new GraphQLError(
+              'The knowledge base workflow has no transition to a published step from here: the approval cannot publish the article',
+              { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.approval.noPublishedStep' } } },
             )
           }
+          const applied = await workflowEngine.transition(
+            session,
+            { instanceId, toStepName: forward.toStep, triggeredBy: ctx.userId, triggerType: 'manual', tenantId: ctx.tenantId },
+            actionCtx,
+          )
+          // M-15: se il workflow rifiuta, l'articolo NON è pubblicato — e non
+          // si manda la notifica «pubblicato» né si lascia l'approvazione
+          // concessa: la mutation fallisce e la transazione dell'approvazione
+          // resta indietro, che è la cosa vera.
+          assertTransitionApplied(applied, 'The article was approved but could not be published')
         }
         sseManager.sendToUser(ctx.tenantId, requestedBy, {
           id:          uuidv4(),
           type:        'kb.published',
-          title:       'Articolo pubblicato',
-          message:     'Il tuo articolo è stato approvato e pubblicato',
+          title:          'notification.kb.published.title',
+          title_fallback: await systemText(ctx.tenantId, 'approval.kbPublished'),
+          message:     await systemText(ctx.tenantId, 'approval.kbPublishedMessage'),
           severity:    'success',
           entity_id:   entityId,
           entity_type: 'KBArticle',
@@ -389,8 +446,9 @@ export async function approveRequest(
         sseManager.sendToUser(ctx.tenantId, requestedBy, {
           id:          uuidv4(),
           type:        'approval.approved',
-          title:       'Richiesta approvata',
-          message:     `La richiesta è stata approvata`,
+          title:          'notification.approval.approved.title',
+          title_fallback: await systemText(ctx.tenantId, 'approval.approved'),
+          message:     await systemText(ctx.tenantId, 'approval.approvedMessage'),
           severity:    'success',
           entity_id:   args.id,
           entity_type: 'ApprovalRequest',
@@ -479,11 +537,13 @@ export async function rejectRequest(
         const actionCtx: ActionContext = { userId: ctx.userId, entityData: { id: entityId } }
         const { getInitialStepName } = await import('../../lib/workflowHelpers.js')
         const initialStep = await getInitialStepName(session, ctx.tenantId, 'kb_article')
-        await workflowEngine.transition(
+        const applied = await workflowEngine.transition(
           session,
-          { instanceId, toStepName: initialStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: args.note },
+          { instanceId, toStepName: initialStep, triggeredBy: ctx.userId, triggerType: 'manual', notes: args.note, tenantId: ctx.tenantId },
           actionCtx,
         )
+        // M-15: lo stesso sul rifiuto — «rimandato in bozza» deve essere vero.
+        assertTransitionApplied(applied, 'The publication was rejected but the article could not go back to draft')
       }
       void audit(ctx, 'kb_article.publication_rejected', 'KBArticle', entityId)
     }
@@ -491,7 +551,8 @@ export async function rejectRequest(
     sseManager.sendToUser(ctx.tenantId, requestedBy, {
       id:          uuidv4(),
       type:        entityType === 'kb_article' ? 'kb.publication_rejected' : 'approval.rejected',
-      title:       entityType === 'kb_article' ? 'Pubblicazione rifiutata' : 'Richiesta rifiutata',
+      title:          entityType === 'kb_article' ? 'notification.kb.publication_rejected.title' : 'notification.approval.rejected.title',
+      title_fallback: await systemText(ctx.tenantId, entityType === 'kb_article' ? 'approval.publicationRejected' : 'approval.requestRejected'),
       message:     args.note,
       severity:    'error',
       entity_id:   entityType === 'kb_article' ? entityId : args.id,
@@ -528,8 +589,8 @@ export async function cancelApprovalRequest(
     if (status !== 'pending') {
       throw new GraphQLError(`Cannot cancel a request with status '${status}'`, { extensions: { code: 'BAD_REQUEST' } })
     }
-    if (requestedBy !== ctx.userId && ctx.role !== 'admin') {
-      throw new GraphQLError('Only the requester or an admin can cancel', { extensions: { code: 'FORBIDDEN' } })
+    if (requestedBy !== ctx.userId && !hasPermission(ctx, 'approval.override')) {
+      throw new GraphQLError('Only the requester, or someone who can decide for any team, can cancel', { extensions: { code: 'FORBIDDEN' } })
     }
 
     const updateRes = await session.executeWrite((tx) => tx.run(`
@@ -567,6 +628,7 @@ export const approvalResolvers = {
   Query: {
     approvalRequests,
     myPendingApprovals,
+    pendingTicketApprovals,
   },
   Mutation: {
     createApprovalRequest,

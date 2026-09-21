@@ -4,15 +4,18 @@
  */
 import { getSession } from '@opengraphity/neo4j'
 import { v4 as uuidv4 } from 'uuid'
+import { resolveTenantArg } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 
-const tenantId = (() => {
-  const idx = process.argv.indexOf('--tenant-id')
-  if (idx < 0 || !process.argv[idx + 1]) {
-    process.stderr.write('Usage: seed-dashboards.ts --tenant-id <id>\n')
-    process.exit(1)
-  }
-  return process.argv[idx + 1]
-})()
+/**
+ * Il tenant si legge DENTRO `main` (H-45, corretto dopo il test di fumo).
+ *
+ * Messo a livello di modulo, un argomento mancante lanciava PRIMA che
+ * `runScript` potesse prenderlo: lo script moriva con uno stack trace grezzo
+ * invece della riga «Tenant mancante: passare --tenant=<slug>». Un solo modo
+ * di leggere il tenant (accetta --tenant, --tenant-id e --slug), ma dentro il
+ * runner, che è quello che trasforma l'errore in un messaggio.
+ */
 
 interface WidgetSpec {
   title:        string
@@ -36,6 +39,17 @@ interface DashboardSpec {
   widgets:     WidgetSpec[]
 }
 
+/**
+ * I FILTRI dei widget di fabbrica nominano passi che esistono
+ * (revisione totale · H-42).
+ *
+ * «Change in Corso» filtrava `status = 'deploying'`, che nessun workflow
+ * change ha (il passo si chiama `deployment`): il widget mostrava 0 per
+ * sempre. E i due «Incident Aperti» filtravano `status = 'new'`, cioe il solo
+ * passo iniziale: il titolo diceva «aperti» e il numero erano i nuovi. Il
+ * filtro di un widget e `campo = valore` e non sa dire «aperti», quindi qui si
+ * e aggiustato il TITOLO a quello che il numero conta davvero.
+ */
 const DASHBOARDS: DashboardSpec[] = [
   {
     name:        'IT Manager Overview',
@@ -44,8 +58,8 @@ const DASHBOARDS: DashboardSpec[] = [
     isDefault:   true,
     isShared:    true,
     widgets: [
-      { title: 'Incident Aperti',       widgetType: 'counter',    entityType: 'incident', metric: 'count',          groupByField: null,       filterField: 'status', filterValue: 'new',      timeRange: null,  size: 'small',  color: '#ef4444' },
-      { title: 'Change in Corso',        widgetType: 'counter',    entityType: 'change',   metric: 'count',          groupByField: null,       filterField: 'status', filterValue: 'deploying',timeRange: null,  size: 'small',  color: '#f59e0b' },
+      { title: 'Incident nuovi',         widgetType: 'counter',    entityType: 'incident', metric: 'count',          groupByField: null,       filterField: 'status', filterValue: 'new',       timeRange: null,  size: 'small',  color: '#ef4444' },
+      { title: 'Change in rilascio',     widgetType: 'counter',    entityType: 'change',   metric: 'count',          groupByField: null,       filterField: 'status', filterValue: 'deployment',timeRange: null,  size: 'small',  color: '#f59e0b' },
       { title: 'Incident per Priority',  widgetType: 'chart_pie',  entityType: 'incident', metric: 'count_by_field', groupByField: 'priority', filterField: null,     filterValue: null,       timeRange: '30d', size: 'medium', color: '#8b5cf6' },
       { title: 'Trend Incident (30gg)',  widgetType: 'counter',    entityType: 'incident', metric: 'count',          groupByField: null,       filterField: null,     filterValue: null,       timeRange: '30d', size: 'medium', color: '#0EA5E9' },
       { title: 'Incident per Severity',  widgetType: 'chart_bar',  entityType: 'incident', metric: 'count_by_field', groupByField: 'severity', filterField: null,     filterValue: null,       timeRange: '7d',  size: 'medium', color: '#0EA5E9' },
@@ -58,8 +72,8 @@ const DASHBOARDS: DashboardSpec[] = [
     isDefault:   true,
     isShared:    true,
     widgets: [
-      { title: 'Incident Aperti',        widgetType: 'counter',   entityType: 'incident', metric: 'count',          groupByField: null,     filterField: 'status', filterValue: 'new',  timeRange: null, size: 'small',  color: '#ef4444' },
-      { title: 'Incident Non Assegnati', widgetType: 'counter',   entityType: 'incident', metric: 'count',          groupByField: null,     filterField: 'status', filterValue: 'new',  timeRange: '24h', size: 'small', color: '#f59e0b' },
+      { title: 'Incident nuovi',         widgetType: 'counter',   entityType: 'incident', metric: 'count',          groupByField: null,     filterField: 'status', filterValue: 'new',  timeRange: null, size: 'small',  color: '#ef4444' },
+      { title: 'Incident nuovi (24h)',   widgetType: 'counter',   entityType: 'incident', metric: 'count',          groupByField: null,     filterField: 'status', filterValue: 'new',  timeRange: '24h', size: 'small', color: '#f59e0b' },
       { title: 'Incident per Status',    widgetType: 'chart_bar', entityType: 'incident', metric: 'count_by_field', groupByField: 'status', filterField: null,     filterValue: null,   timeRange: '7d',  size: 'large',  color: '#10b981' },
     ],
   },
@@ -78,6 +92,7 @@ const DASHBOARDS: DashboardSpec[] = [
 ]
 
 async function main() {
+  const tenantId = resolveTenantArg()
   const session = getSession()
   const now     = new Date().toISOString()
   let created = 0
@@ -177,11 +192,6 @@ async function main() {
   }
 }
 
-// Exit 0 SOLO in caso di successo: un errore deve produrre exit ≠ 0 e stack
-// (prima process.exit(0) nel finally mascherava qualsiasi fallimento del seed).
-main()
-  .then(() => process.exit(0))
-  .catch((err: unknown) => {
-    process.stderr.write((err instanceof Error ? (err.stack ?? err.message) : String(err)) + '\n')
-    process.exit(1)
-  })
+// H-45: `runScript` stampa l'errore intero, mette exit code 1 e chiude il
+// driver Neo4j — senza `process.exit`, che troncava i log asincroni.
+runScript('seed-dashboards', main)

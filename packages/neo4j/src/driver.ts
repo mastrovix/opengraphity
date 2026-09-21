@@ -57,6 +57,24 @@ const NEO4J_URI      = envOrThrowInProd('NEO4J_URI',      'neo4j://localhost:768
 const NEO4J_USER     = envOrThrowInProd('NEO4J_USER',     'neo4j')
 const NEO4J_PASSWORD = envOrThrowInProd('NEO4J_PASSWORD', 'opengraphity_local')
 
+/** Default of `maxConnectionPoolSize` (the driver's own default is 100; 50 was the platform's value before it became configurable). */
+export const NEO4J_DEFAULT_MAX_POOL_SIZE = 50
+
+/**
+ * `NEO4J_MAX_POOL_SIZE`: connections the driver may hold open to Neo4j, per
+ * process (revisione 2 · D1.1). Each process is sized in the compose file for
+ * the work it hosts (HTTP resolvers vs. job slots × sessions per job). A value
+ * that is not a positive integer is a configuration error, never NaN.
+ */
+export function parseMaxPoolSize(raw: string | undefined): number {
+  if (raw === undefined || raw === '') return NEO4J_DEFAULT_MAX_POOL_SIZE
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < 1) throw new Error(`[neo4j] NEO4J_MAX_POOL_SIZE must be a positive integer (got "${raw}")`)
+  return n
+}
+
+const NEO4J_MAX_POOL_SIZE = parseMaxPoolSize(process.env['NEO4J_MAX_POOL_SIZE'])
+
 let _driver: Driver | null = null
 
 // ── Session tracker (optional instrumentation hook) ───────────────────────────
@@ -106,6 +124,22 @@ function wrapSession(session: Session): Session {
         }
       }
 
+      /**
+       * session.beginTransaction() — la transazione ESPLICITA
+       * (revisione totale · M-22).
+       *
+       * Era l'unico modo di ottenere una transazione non avvolta: le sue
+       * `tx.run` non passavano da `convertResult`, quindi il chiamante
+       * riceveva `neo4j.Integer` invece di numeri, e le sue query non
+       * finivano nel tracciamento. Un chiamante c'e (`backup-neo4j.ts`, che
+       * esporta tutto in una sola transazione di lettura) e leggeva i
+       * conteggi da li.
+       */
+      if (prop === 'beginTransaction') {
+        return (...args: unknown[]) =>
+          wrapManagedTransaction((target['beginTransaction'] as (...a: unknown[]) => unknown)(...args))
+      }
+
       // session.executeRead/executeWrite — used by the majority of resolvers.
       // Proxy the ManagedTransaction passed to the callback so tx.run() is tracked.
       if (prop === 'executeRead' || prop === 'executeWrite') {
@@ -125,7 +159,7 @@ function createDriver(): Driver {
     NEO4J_URI,
     neo4j.auth.basic(NEO4J_USER, NEO4J_PASSWORD),
     {
-      maxConnectionPoolSize:       50,
+      maxConnectionPoolSize:       NEO4J_MAX_POOL_SIZE,
       connectionAcquisitionTimeout: 30_000,
       maxTransactionRetryTime:      30_000,
     },
@@ -139,7 +173,7 @@ function createDriver(): Driver {
   // is logged and each query fails loudly on its own instead.
   const underTest = process.env['VITEST'] !== undefined || process.env['NODE_ENV'] === 'test'
   d.verifyConnectivity()
-    .then(() => console.log(`[neo4j] Connected to ${NEO4J_URI}`))
+    .then(() => console.log(`[neo4j] Connected to ${NEO4J_URI} (max pool size ${NEO4J_MAX_POOL_SIZE})`))
     .catch((err: unknown) => {
       console.error(`[neo4j] FATAL: connection to ${NEO4J_URI} failed:`, err)
       if (!underTest) process.exit(1)

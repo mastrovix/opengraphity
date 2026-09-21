@@ -4,7 +4,8 @@
  *  - expiry/disable are enforced by the lookup query itself (`enabled: true`,
  *    `expires_at > $now`) — pinned on the query text + params;
  *  - usage stats are a fire-and-forget WRITE that never blocks or fails the request;
- *  - the per-key in-memory limiter answers 429 with `retry_after`;
+ *  - the per-key limiter is shared on Redis (fixed minute window) and answers 429 with `retry_after` + header;
+ *  - a key without a valid rate_limit is refused (no invented default);
  *  - requirePermission is an exact-match check (no wildcard).
  */
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
@@ -24,18 +25,30 @@ vi.mock('@opengraphity/neo4j', () => ({
   runQueryOne: (...args: unknown[]) => runQueryOne(...args),
 }))
 
+// Redis condiviso: un contatore per chiave-minuto, come lo script Lua (INCR + EXPIRE).
+const redisCounters = new Map<string, number>()
+let redisFailure: Error | null = null
+vi.mock('../../lib/bullmq.js', () => ({
+  getSharedRedis: () => ({
+    eval: vi.fn(async (_lua: string, _n: number, key: string) => {
+      if (redisFailure) throw redisFailure
+      const c = (redisCounters.get(key) ?? 0) + 1
+      redisCounters.set(key, c)
+      return c
+    }),
+  }),
+}))
+
 const logError = vi.fn()
 vi.mock('../../lib/logger.js', () => ({
   logger: { error: logError, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))
 
-// Fake timers BEFORE the import: the module registers a module-level
-// setInterval (bucket pruning) that must not outlive the test worker.
-vi.useFakeTimers()
+vi.useFakeTimers({ toFake: ['Date'] })
 const T0 = new Date('2026-09-08T10:00:00.000Z')
 vi.setSystemTime(T0)
 
-const { apiKeyAuth, apiRateLimiter, requirePermission } = await import('../apiKeyAuth.js')
+const { apiKeyAuth, apiRateLimiter, apiKeyRateKey, requirePermission } = await import('../apiKeyAuth.js')
 
 afterAll(() => { vi.useRealTimers() })
 
@@ -111,7 +124,7 @@ describe('apiKeyAuth — chiave valida', () => {
     await apiKeyAuth(req, asRes(res), next as NextFunction)
 
     expect(next).toHaveBeenCalledOnce()
-    expect(req.apiKey).toEqual({ keyId: 'key-1', tenantId: 'tenant-1', permissions: ['incidents:read'], rateLimit: 5 })
+    expect(req.apiKey).toEqual({ keyId: 'key-1', tenantId: 'tenant-1', permissions: ['incidents:read'], rateLimit: 5, name: expect.any(String) })
     expect(res.statusCode).toBe(0)
   })
 
@@ -157,11 +170,21 @@ describe('apiKeyAuth — chiave valida', () => {
     expect((runQueryOne.mock.calls[0]![2] as { now: string }).now).toBe('2027-01-01T00:00:00.000Z')
   })
 
-  it('permissions serializzate come JSON string → parsate; rate_limit assente → 60', async () => {
-    runQueryOne.mockResolvedValueOnce(keyRow({ permissions: '["ci:read","kb:read"]', rate_limit: undefined })).mockResolvedValueOnce(null)
+  it('permissions serializzate come JSON string → parsate', async () => {
+    runQueryOne.mockResolvedValueOnce(keyRow({ permissions: '["ci:read","kb:read"]' })).mockResolvedValueOnce(null)
     const req = makeReq({ 'x-api-key': 'k' })
     await apiKeyAuth(req, asRes(makeRes()), vi.fn() as NextFunction)
-    expect(req.apiKey).toEqual({ keyId: 'key-1', tenantId: 'tenant-1', permissions: ['ci:read', 'kb:read'], rateLimit: 60 })
+    expect(req.apiKey).toEqual({ keyId: 'key-1', tenantId: 'tenant-1', permissions: ['ci:read', 'kb:read'], rateLimit: 5, name: expect.any(String) })
+  })
+
+  it.each([undefined, null, 0, -1, 2.5, 'dieci'])('rate_limit non valido (%s) → 500 API_KEY_MISCONFIGURED, nessun limite inventato', async (rate) => {
+    runQueryOne.mockResolvedValueOnce(keyRow({ rate_limit: rate }))
+    const req = makeReq({ 'x-api-key': 'k' }); const res = makeRes(); const next = vi.fn()
+    await apiKeyAuth(req, asRes(res), next as NextFunction)
+    expect(res.statusCode).toBe(500)
+    expect(errBody(res).error.code).toBe('API_KEY_MISCONFIGURED')
+    expect(next).not.toHaveBeenCalled()
+    expect(req.apiKey).toBeUndefined()
   })
 
   it('errore DB nella lookup → 500 INTERNAL_ERROR, loggato, sessione chiusa', async () => {
@@ -221,76 +244,63 @@ describe('apiKeyAuth — aggiornamento last_used_at (fire-and-forget)', () => {
 
 // ── apiRateLimiter ───────────────────────────────────────────────────────────
 
-describe('apiRateLimiter', () => {
+describe('apiRateLimiter (Redis, finestra fissa al minuto)', () => {
   const reqFor = (keyId: string, rateLimit: number): Request =>
     ({ headers: {}, apiKey: { keyId, tenantId: 't', permissions: [], rateLimit } } as unknown as Request)
+  /** Esegue il limiter e aspetta la promessa di Redis. */
+  const run = async (req: Request) => {
+    const res = makeRes(); const next = vi.fn()
+    apiRateLimiter(req, asRes(res), next as NextFunction)
+    await flush()
+    return { res, next }
+  }
 
-  it('senza req.apiKey passa oltre (il limiter non è un gate di autenticazione)', () => {
-    const next = vi.fn()
-    apiRateLimiter(makeReq(), asRes(makeRes()), next as NextFunction)
+  beforeEach(() => { redisCounters.clear(); redisFailure = null })
+
+  it('senza req.apiKey passa oltre (il limiter non è un gate di autenticazione)', async () => {
+    const { next } = await run(makeReq())
     expect(next).toHaveBeenCalledOnce()
   })
 
-  it('la N+1-esima richiesta nella finestra → 429 RATE_LIMITED con retry_after in secondi', () => {
-    const results: FakeRes[] = []
-    for (let i = 0; i < 3; i++) {
-      const res = makeRes()
-      apiRateLimiter(reqFor('rl-key-a', 2), asRes(res), vi.fn() as NextFunction)
-      results.push(res)
-    }
-    expect(results[0]!.statusCode).toBe(0)
-    expect(results[1]!.statusCode).toBe(0)
-    expect(results[2]!.statusCode).toBe(429)
-    expect(errBody(results[2]!).error).toEqual({ code: 'RATE_LIMITED', message: 'Rate limit exceeded (2/min)', retry_after: 60 })
+  it('la N+1-esima richiesta nel minuto → 429 RATE_LIMITED con retry_after e header Retry-After', async () => {
+    const a = await run(reqFor('rl-key-a', 2))
+    const b = await run(reqFor('rl-key-a', 2))
+    const c = await run(reqFor('rl-key-a', 2))
+    expect(a.next).toHaveBeenCalledOnce()
+    expect(b.next).toHaveBeenCalledOnce()
+    expect(c.res.statusCode).toBe(429)
+    expect(c.next).not.toHaveBeenCalled()
+    expect(errBody(c.res).error).toEqual({ code: 'RATE_LIMITED', message: 'Rate limit exceeded (2/min)', retry_after: 60 })
+    expect(c.res.headers['retry-after']).toBe('60')
   })
 
-  it('retry_after decresce con il tempo trascorso nella finestra', () => {
-    apiRateLimiter(reqFor('rl-key-b', 1), asRes(makeRes()), vi.fn() as NextFunction)
-    vi.advanceTimersByTime(45_000)
-    const res = makeRes()
-    apiRateLimiter(reqFor('rl-key-b', 1), asRes(res), vi.fn() as NextFunction)
+  it('retry_after = secondi alla fine del minuto corrente', async () => {
+    vi.setSystemTime(new Date('2026-09-08T10:00:45.000Z'))
+    await run(reqFor('rl-key-b', 1))
+    const { res } = await run(reqFor('rl-key-b', 1))
     expect(res.statusCode).toBe(429)
     expect(errBody(res).error.retry_after).toBe(15)
   })
 
-  it('la 429 dovrebbe portare anche l\'header HTTP Retry-After — BUG: apiKeyAuth.ts:113 imposta solo body.retry_after, nessun header (i client REST standard leggono Retry-After)', () => {
-    apiRateLimiter(reqFor('rl-key-hdr', 1), asRes(makeRes()), vi.fn() as NextFunction)
-    const res = makeRes()
-    apiRateLimiter(reqFor('rl-key-hdr', 1), asRes(res), vi.fn() as NextFunction)
-    expect(res.statusCode).toBe(429)
-    expect(res.headers['retry-after']).toBe('60')
+  it('il minuto successivo è una finestra nuova', async () => {
+    await run(reqFor('rl-key-c', 1))
+    expect((await run(reqFor('rl-key-c', 1))).res.statusCode).toBe(429)
+    vi.setSystemTime(new Date('2026-09-08T10:01:00.000Z'))
+    expect((await run(reqFor('rl-key-c', 1))).next).toHaveBeenCalledOnce()
   })
 
-  it('dopo 60s la finestra si azzera e la chiave passa di nuovo', () => {
-    apiRateLimiter(reqFor('rl-key-c', 1), asRes(makeRes()), vi.fn() as NextFunction)
-    const blocked = makeRes()
-    apiRateLimiter(reqFor('rl-key-c', 1), asRes(blocked), vi.fn() as NextFunction)
-    expect(blocked.statusCode).toBe(429)
+  it('i contatori sono per chiave (e per tenant): un\'altra chiave non è influenzata', async () => {
+    await run(reqFor('rl-key-d', 1))
+    expect((await run(reqFor('rl-key-d', 1))).res.statusCode).toBe(429)
+    expect((await run(reqFor('rl-key-e', 1))).next).toHaveBeenCalledOnce()
+    expect(apiKeyRateKey('t', 'k', T0.getTime())).toBe(`og:apikey:rate:t:k:${Math.floor(T0.getTime() / 60_000)}`)
+  })
 
-    vi.advanceTimersByTime(60_000)
-    const next = vi.fn(); const res = makeRes()
-    apiRateLimiter(reqFor('rl-key-c', 1), asRes(res), next as NextFunction)
-    expect(next).toHaveBeenCalledOnce()
+  it('Redis irraggiungibile → next(err) (500), mai «limite disattivato»', async () => {
+    redisFailure = new Error('redis down')
+    const { next, res } = await run(reqFor('rl-key-f', 1))
+    expect(next).toHaveBeenCalledWith(redisFailure)
     expect(res.statusCode).toBe(0)
-  })
-
-  it('i bucket sono per chiave: un\'altra chiave non è influenzata', () => {
-    apiRateLimiter(reqFor('rl-key-d', 1), asRes(makeRes()), vi.fn() as NextFunction)
-    const blocked = makeRes()
-    apiRateLimiter(reqFor('rl-key-d', 1), asRes(blocked), vi.fn() as NextFunction)
-    expect(blocked.statusCode).toBe(429)
-
-    const next = vi.fn()
-    apiRateLimiter(reqFor('rl-key-e', 1), asRes(makeRes()), next as NextFunction)
-    expect(next).toHaveBeenCalledOnce()
-  })
-
-  it('il prune periodico (60s) rimuove i bucket scaduti senza rompere le richieste successive', () => {
-    apiRateLimiter(reqFor('rl-key-f', 1), asRes(makeRes()), vi.fn() as NextFunction)
-    vi.advanceTimersByTime(120_000)      // scatta almeno un giro di setInterval con resetAt <= now
-    const next = vi.fn()
-    apiRateLimiter(reqFor('rl-key-f', 1), asRes(makeRes()), next as NextFunction)
-    expect(next).toHaveBeenCalledOnce()
   })
 })
 

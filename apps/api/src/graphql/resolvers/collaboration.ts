@@ -10,38 +10,62 @@ import { audit } from '../../lib/audit.js'
 import { logger } from '../../lib/logger.js'
 import { sseManager } from '@opengraphity/notifications'
 import { GraphQLError } from 'graphql'
+import { COMMENTABLE_LABELS } from '../../lib/ticketComments.js'
+import { hasPermission, requirePermission } from '../../lib/permissions.js'
+import { roleHasPermission } from '../../lib/roles.js'
+import { TICKET_WORKER_PERMISSION } from '@opengraphity/types'
 
 type Props = Record<string, unknown>
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Filters out demo/seed email addresses */
-function isRealEmail(email: string): boolean {
-  if (!email) return false
-  if (email.includes('@demo.')) return false
-  if (email.includes('@opengrafo.com')) return false
-  if (/^usr-\d+@/.test(email)) return false
-  return true
+/**
+ * L'indirizzo a cui mandare una e-mail di collaborazione, o `null`.
+ *
+ * Revisione del 14 set 2026 · CO-1: prima si scartavano gli indirizzi `@demo.`,
+ * `@opengrafo.com` e `usr-N@`, una scelta da seed che faceva sparire senza
+ * traccia le e-mail di un cliente con quei domini. Ora decide la persona, dal
+ * Profilo (`notifications_enabled`, assente = attivo), come per il digest e il
+ * dispatcher delle notifiche.
+ */
+async function emailRecipient(tenantId: string, userId: string): Promise<string | null> {
+  const row = await withSession(async (s) =>
+    runQueryOne<{ email: string | null; enabled: boolean }>(s, `
+      MATCH (u:User {id: $id, tenant_id: $t})
+      RETURN u.email AS email, coalesce(u.notifications_enabled, true) AS enabled
+    `, { id: userId, t: tenantId }),
+  )
+  return row?.email && row.enabled ? row.email : null
 }
 
-function requireAgent(ctx: GraphQLContext): void {
-  const r = ctx.role?.toLowerCase() ?? ''
-  if (r !== 'admin' && r !== 'tenant_admin' && r !== 'operator') {
-    throw new GraphQLError('Access denied: agents/admin only', { extensions: { code: 'FORBIDDEN' } })
-  }
+/** La chat interna dei ticket: il permesso `ticket.internalChat` (ondata 7). */
+function requireInternalChat(ctx: GraphQLContext): void {
+  requirePermission(ctx, 'ticket.internalChat')
 }
 
+/**
+ * Menzioni e osservatori parlano la lingua di chi legge (revisione del 14 set
+ * 2026 · CO-2). La notifica porta la chiave del messaggio e i suoi dati, e il
+ * pannello compone la frase; `message` è la stessa frase nella lingua del
+ * cliente, per chi non ha la chiave. Prima erano letterali italiani
+ * («Menzione», «ti ha menzionato», «Aggiornamento») per ogni cliente.
+ */
 async function notifyMentions(
   tenantId: string, authorName: string, entityType: string, entityId: string,
   entityTitle: string, mentions: string[], source: 'comment' | 'internal_chat',
   excerpt?: string,
 ): Promise<void> {
-  const label = source === 'internal_chat' ? 'nella chat interna di' : 'in'
+  const { loadNotificationLocale, notificationText } = await import('@opengraphity/notifications')
+  const locale = await loadNotificationLocale(tenantId)
+  const params = { author: authorName, entity: entityType, title: entityTitle }
+  const textKey = source === 'internal_chat' ? 'mentionChatMessage' : 'mentionMessage'
   for (const userId of mentions) {
     sseManager.sendToUser(tenantId, userId, {
       id: uuidv4(), type: 'mention',
-      title: 'Menzione',
-      message: `${authorName} ti ha menzionato ${label} ${entityType} "${entityTitle}"`,
+      title: 'notification.mention.title',
+      message: notificationText(locale, textKey, params),
+      message_key: source === 'internal_chat' ? 'inApp.mention.chatMessage' : 'inApp.mention.message',
+      message_params: params,
       severity: 'info',
       entity_id: entityId, entity_type: entityType,
       timestamp: new Date().toISOString(), read: false,
@@ -49,14 +73,12 @@ async function notifyMentions(
 
     // Send email notification for mention
     try {
-      const { sendEmail } = await import('@opengraphity/notifications')
+      const { sendTenantEmail, loadTenantBrand } = await import('@opengraphity/notifications')
       const { mentionNotification } = await import('../../lib/emailTemplates.js')
-      const userRow = await withSession(async (s) =>
-        runQueryOne<{ email: string }>(s, `MATCH (u:User {id: $id, tenant_id: $t}) RETURN u.email AS email`, { id: userId, t: tenantId }),
-      )
-      if (userRow?.email && isRealEmail(userRow.email)) {
-        const tpl = mentionNotification({ entityType, entityTitle, entityId, mentionerName: authorName, excerpt: excerpt ?? '' }, tenantId)
-        await sendEmail({ to: userRow.email, ...tpl })
+      const to = await emailRecipient(tenantId, userId)
+      if (to) {
+        const tpl = mentionNotification({ entityType, entityTitle, entityId, mentionerName: authorName, excerpt: excerpt ?? '' }, { tenantId, brand: await loadTenantBrand(tenantId) }, locale)
+        await sendTenantEmail(tenantId, { to, ...tpl })
       }
     } catch (err) {
       // Non-fatal for the mutation, but a systematically broken mailer must be
@@ -66,24 +88,62 @@ async function notifyMentions(
   }
 }
 
+/**
+ * Cosa è successo, per gli osservatori: una frase del prodotto (chiave e dati)
+ * o un testo scritto da una persona (il commento dal portale), che non si
+ * traduce.
+ */
+export type WatcherEvent =
+  | { kind: 'comment' | 'internal_chat'; author: string }
+  | { kind: 'text'; text: string }
+
+const WATCHER_KEYS = {
+  comment:       { text: 'watcherComment',      web: 'inApp.watcher.comment' },
+  internal_chat: { text: 'watcherInternalChat', web: 'inApp.watcher.internalChat' },
+} as const
+
+/**
+ * `internal` = il contenuto è visibile SOLO a chi lavora i ticket (una nota
+ * interna, la chat interna). Chi apre un ticket dal portale diventa
+ * osservatore alla creazione, e riceveva l'avviso — in-app e per e-mail — di
+ * una nota che non può leggere, con il testo nel corpo dell'e-mail (revisione
+ * totale · M-16). Gli osservatori senza il permesso di lavorare i ticket non
+ * vengono avvisati del contenuto interno.
+ */
 async function notifyWatchers(
   tenantId: string, entityType: string, entityId: string,
-  eventDescription: string, excludeUserId?: string,
+  event: WatcherEvent, excludeUserId?: string, internal = false,
 ): Promise<void> {
   const watchers = await withSession(async (s) => {
-    const rows = await runQuery<{ userId: string }>(s, `
+    const rows = await runQuery<{ userId: string; role: string | null }>(s, `
       MATCH (u:User)-[:WATCHES]->(e {id: $entityId, tenant_id: $tenantId})
-      RETURN u.id AS userId
+      RETURN u.id AS userId, u.role AS role
     `, { entityId, tenantId })
-    return rows.map(r => r.userId)
+    if (!internal) return rows.map(r => r.userId)
+    const allowed: string[] = []
+    for (const r of rows) {
+      const role = r.role ?? ''
+      if (role && await roleHasPermission(tenantId, role, TICKET_WORKER_PERMISSION)) allowed.push(r.userId)
+      else logger.debug({ entityId, userId: r.userId, role }, '[collaboration] osservatore senza accesso al contenuto interno: non avvisato')
+    }
+    return allowed
   })
+  const { loadNotificationLocale, notificationText } = await import('@opengraphity/notifications')
+  const locale = await loadNotificationLocale(tenantId)
+  const described = event.kind === 'text'
+    ? { message: event.text }
+    : {
+        message: notificationText(locale, WATCHER_KEYS[event.kind].text, { author: event.author }),
+        message_key: WATCHER_KEYS[event.kind].web,
+        message_params: { author: event.author },
+      }
 
   for (const userId of watchers) {
     if (userId === excludeUserId) continue
     sseManager.sendToUser(tenantId, userId, {
       id: uuidv4(), type: 'watcher',
-      title: 'Aggiornamento',
-      message: eventDescription,
+      title: 'notification.watcher.title',
+      ...described,
       severity: 'info',
       entity_id: entityId, entity_type: entityType,
       timestamp: new Date().toISOString(), read: false,
@@ -91,15 +151,13 @@ async function notifyWatchers(
 
     // Send email notification for watcher
     try {
-      const { sendEmail } = await import('@opengraphity/notifications')
+      const { sendTenantEmail, loadTenantBrand } = await import('@opengraphity/notifications')
       const { watcherNotification } = await import('../../lib/emailTemplates.js')
       const title = await getEntityTitle(tenantId, entityId)
-      const userRow = await withSession(async (s) =>
-        runQueryOne<{ email: string }>(s, `MATCH (u:User {id: $id, tenant_id: $t}) RETURN u.email AS email`, { id: userId, t: tenantId }),
-      )
-      if (userRow?.email && isRealEmail(userRow.email)) {
-        const tpl = watcherNotification({ entityType, entityTitle: title, entityId, event: eventDescription }, tenantId)
-        await sendEmail({ to: userRow.email, ...tpl })
+      const to = await emailRecipient(tenantId, userId)
+      if (to) {
+        const tpl = watcherNotification({ entityType, entityTitle: title, entityId, event: described.message }, { tenantId, brand: await loadTenantBrand(tenantId) }, locale)
+        await sendTenantEmail(tenantId, { to, ...tpl })
       }
     } catch (err) {
       // Per-watcher batch: keep notifying the others, but log the failure loud.
@@ -132,7 +190,8 @@ async function searchUsers(_: unknown, args: { search: string; limit?: number },
   return withSession(async (s) => {
     const rows = await runQuery<{ id: string; name: string; email: string }>(s, `
       MATCH (u:User {tenant_id: $tenantId})
-      WHERE toLower(u.name) CONTAINS toLower($search) OR toLower(u.email) CONTAINS toLower($search)
+      WHERE (toLower(u.name) CONTAINS toLower($search) OR toLower(u.email) CONTAINS toLower($search))
+        AND coalesce(u.active, true) = true
       RETURN u.id AS id, u.name AS name, u.email AS email
       ORDER BY u.name LIMIT toInteger($limit)
     `, { tenantId: ctx.tenantId, search: args.search, limit })
@@ -203,14 +262,16 @@ async function internalMessages(
   args: { entityType: string; entityId: string; limit?: number; before?: string },
   ctx: GraphQLContext,
 ) {
-  requireAgent(ctx)
+  requireInternalChat(ctx)
   const limit = Math.min(args.limit ?? 50, 100)
   return withSession(async (s) => {
     const beforeFilter = args.before ? 'AND m.created_at < $before' : ''
     const rows = await runQuery<{ props: Props }>(s, `
       MATCH (m:InternalMessage {entity_id: $entityId, tenant_id: $tenantId})
       WHERE m.entity_type = $entityType ${beforeFilter}
-      RETURN properties(m) AS props
+      // Il nome della persona, non l'e-mail salvata (giro del 14 set 2026, #19):
+      // i commenti mostravano il nome, la chat l'indirizzo.
+      RETURN m {.*, author_name: coalesce(COLLECT { MATCH (u:User {id: m.author_id, tenant_id: $tenantId}) RETURN u.name }[0], m.author_name)} AS props
       ORDER BY m.created_at DESC LIMIT toInteger($limit)
     `, { entityId: args.entityId, tenantId: ctx.tenantId, entityType: args.entityType, limit, before: args.before ?? null })
     return rows.map(r => mapMessage(r.props)).reverse()
@@ -238,16 +299,23 @@ async function sendInternalMessage(
   args: { entityType: string; entityId: string; body: string },
   ctx: GraphQLContext,
 ) {
-  requireAgent(ctx)
+  requireInternalChat(ctx)
   const id  = uuidv4()
   const now = new Date().toISOString()
   const mentions = parseMentions(args.body)
+  // CO-3 (revisione del 14 set 2026): il messaggio si appende solo a un ticket
+  // che esiste in questo tenant. Prima un entityId qualunque creava un messaggio
+  // orfano che l'autore credeva inviato.
+  const label = COMMENTABLE_LABELS[args.entityType]
+  if (!label) throw new GraphQLError(`Entity type cannot have an internal chat: ${args.entityType}`, { extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.comment.entityType', params: { entityType: args.entityType } } } })
 
   const msg = await withSession(async (s) => {
     const rows = await runQuery<{ props: Props }>(s, `
+      MATCH (e:${label} {id: $entityId, tenant_id: $tenantId})
+      OPTIONAL MATCH (author:User {id: $authorId, tenant_id: $tenantId})
       CREATE (m:InternalMessage {
         id: $id, tenant_id: $tenantId, entity_type: $entityType, entity_id: $entityId,
-        author_id: $authorId, author_name: $authorName, body: $body,
+        author_id: $authorId, author_name: coalesce(author.name, $authorName), body: $body,
         mentions: $mentions, created_at: $now, edited_at: null
       })
       RETURN properties(m) AS props
@@ -256,7 +324,8 @@ async function sendInternalMessage(
       authorId: ctx.userId, authorName: ctx.userEmail, body: args.body,
       mentions, now,
     })
-    return mapMessage(rows[0]!.props)
+    if (!rows[0]) throw new GraphQLError(`${label} not found`, { extensions: { code: 'NOT_FOUND' } })
+    return mapMessage(rows[0].props)
   }, true)
 
   // Auto-watch on message
@@ -264,29 +333,24 @@ async function sendInternalMessage(
 
   // Notify watchers
   const title = await getEntityTitle(ctx.tenantId, args.entityId)
-  void notifyWatchers(ctx.tenantId, args.entityType, args.entityId,
-    `${ctx.userEmail} ha scritto nella chat interna di ${args.entityType} "${title}"`, ctx.userId)
+  void notifyWatchers(ctx.tenantId, args.entityType, args.entityId, { kind: 'internal_chat', author: ctx.userEmail }, ctx.userId, true)
 
   // Notify mentions
   if (mentions.length > 0) {
     void notifyMentions(ctx.tenantId, ctx.userEmail, args.entityType, args.entityId, title, mentions, 'internal_chat')
   }
 
-  // SSE event for real-time chat update
-  sseManager.sendToTenant(ctx.tenantId, {
-    id: uuidv4(), type: 'internal_message.new',
-    title: 'Nuovo messaggio interno',
-    message: args.body.slice(0, 100),
-    entity_id: args.entityId, entity_type: args.entityType,
-    timestamp: now, read: false,
-  })
+  // Revisione del 14 set 2026 · CO-2/F10: qui partiva «nuovo messaggio
+  // interno» a TUTTO il tenant. Nessuna pagina lo ascoltava, e con le notifiche
+  // salvate sarebbe finito nel pannello di ogni persona: lo ricevono gli
+  // osservatori e i menzionati, sopra.
 
   void audit(ctx, 'internal_message.sent', args.entityType, args.entityId)
   return msg
 }
 
 async function editInternalMessage(_: unknown, args: { messageId: string; body: string }, ctx: GraphQLContext) {
-  requireAgent(ctx)
+  requireInternalChat(ctx)
   const now = new Date().toISOString()
   const mentions = parseMentions(args.body)
 
@@ -303,17 +367,20 @@ async function editInternalMessage(_: unknown, args: { messageId: string; body: 
 }
 
 async function deleteInternalMessage(_: unknown, args: { messageId: string }, ctx: GraphQLContext) {
-  requireAgent(ctx)
+  requireInternalChat(ctx)
   await withSession(async (s) => {
-    // Admin can delete any, author can delete own
-    const r = ctx.role?.toLowerCase() ?? ''
-    const isAdmin = r === 'admin' || r === 'tenant_admin'
-    const authorFilter = isAdmin ? '' : 'AND m.author_id = $authorId'
-    await runQuery(s, `
+    // Chi modera i commenti cancella qualunque messaggio, gli altri solo i propri
+    const authorFilter = hasPermission(ctx, 'ticket.moderateComments') ? '' : 'AND m.author_id = $authorId'
+    const rows = await runQuery<{ n: unknown }>(s, `
       MATCH (m:InternalMessage {id: $id, tenant_id: $tenantId})
       WHERE true ${authorFilter}
+      WITH m, count(m) AS n
       DETACH DELETE m
+      RETURN n
     `, { id: args.messageId, tenantId: ctx.tenantId, authorId: ctx.userId })
+    // CO-3: prima rispondeva `true` anche quando non aveva cancellato niente
+    // (messaggio inesistente o di un altro autore).
+    if (rows.length === 0) throw new GraphQLError('Message not found, or not yours', { extensions: { code: 'NOT_FOUND', i18n: { key: 'errors.internalChat.notFoundOrNotYours' } } })
   }, true)
   return true
 }
@@ -339,4 +406,4 @@ export const collaborationResolvers = {
 }
 
 // Re-export helpers for use in other resolvers (comment creation, entity creation)
-export { notifyMentions, notifyWatchers, autoWatch }
+export { notifyMentions, notifyWatchers, autoWatch, getEntityTitle }

@@ -10,6 +10,7 @@ import * as problemService from '../../services/problemService.js'
 import { NotFoundError } from '../../lib/errors.js'
 import { asyncHandler } from '../errorHandler.js'
 import { apiCtx, apiKeyOf, optionalBodyString, parsePagination, requiredString } from '../apiContext.js'
+import { customFieldDefs, parseRestCustomFields, restCustomFieldValues } from '../../lib/ticketCustomFields.js'
 
 const router: ExpressRouter = Router()
 
@@ -27,24 +28,28 @@ function mapProblem(p: Props) {
 router.get('/', requirePermission('problems:read'), asyncHandler(async (req: Request, res: Response) => {
   const { page, limit, offset } = parsePagination(req.query)
   const tenantId = apiKeyOf(req).tenantId
-  const { rows, total } = await withSession(async (session) => {
+  const { rows, total, defs } = await withSession(async (session) => {
     const countRow = await runQueryOne<{ total: unknown }>(session,
       `MATCH (p:Problem {tenant_id: $tenantId}) RETURN count(p) AS total`, { tenantId })
     const rows = await runQuery<{ props: Props }>(session, `
       MATCH (p:Problem {tenant_id: $tenantId}) RETURN properties(p) AS props ORDER BY p.created_at DESC SKIP toInteger($offset) LIMIT toInteger($limit)
     `, { tenantId, offset, limit })
-    return { rows, total: Number(countRow?.total ?? 0) }
+    return { rows, total: Number(countRow?.total ?? 0), defs: await customFieldDefs(session, tenantId, 'problem') }
   })
-  res.json({ data: rows.map(r => mapProblem(r.props)), meta: { page, limit, total } })
+  res.json({ data: rows.map(r => ({ ...mapProblem(r.props), customFields: restCustomFieldValues(defs, r.props) })), meta: { page, limit, total } })
 }))
 
 router.get('/:id', requirePermission('problems:read'), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params['id']!
-  const row = await withSession((session) => runQueryOne<{ props: Props }>(session, `
-    MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) AS props
-  `, { id, tenantId: apiKeyOf(req).tenantId }))
+  const tenantId = apiKeyOf(req).tenantId
+  const { row, defs } = await withSession(async (session) => ({
+    row: await runQueryOne<{ props: Props }>(session, `
+      MATCH (p:Problem {id: $id, tenant_id: $tenantId}) RETURN properties(p) AS props
+    `, { id, tenantId }),
+    defs: await customFieldDefs(session, tenantId, 'problem'),
+  }))
   if (!row) throw new NotFoundError('Problem', id)
-  res.json({ data: mapProblem(row.props) })
+  res.json({ data: { ...mapProblem(row.props), customFields: restCustomFieldValues(defs, row.props) } })
 }))
 
 router.post('/', requirePermission('problems:write'), asyncHandler(async (req: Request, res: Response) => {
@@ -56,7 +61,7 @@ router.post('/', requirePermission('problems:write'), asyncHandler(async (req: R
   const workaround  = optionalBodyString(body, 'workaround')
   const ctx = apiCtx(req)
   const result = await problemService.createProblem(
-    { title, description, priority, category, workaround },
+    { title, description, priority, category, workaround, customFields: parseRestCustomFields(body) },
     { tenantId: ctx.tenantId, userId: ctx.userId },
   )
   res.status(201).json({ data: result })

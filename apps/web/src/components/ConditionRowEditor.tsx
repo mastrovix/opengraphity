@@ -6,13 +6,16 @@
  */
 import { useQuery } from '@apollo/client/react'
 import { GET_TEAMS, GET_USERS } from '@/graphql/queries'
-import { useEntityFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
-import { fieldTypeLabel, operatorsForFieldType, NO_VALUE_OPERATORS } from '@/lib/automationOperators'
+import { useEntityFieldMetas, useFormFieldMetas, type FieldMeta } from '@/hooks/useEntityFields'
+import { fieldTypeKey, operatorsForFieldType, NO_VALUE_OPERATORS, CHANGED_OPERATOR } from '@/lib/automationOperators'
 import { inputS, selectS } from '@/pages/settings/shared/designerStyles'
 import { Input, Select } from '@/components/ui/FormControls'
 import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n/i18n'
+import { colors } from '@/lib/tokens'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +32,8 @@ interface Props {
   onRemove:  () => void
   /** `stack`: controlli in colonna, per pannelli stretti (designer workflow). */
   layout?:    'row' | 'stack'
+  /** Offre «è cambiato» (V-19): solo per regole e trigger che scattano sugli aggiornamenti. */
+  allowChanged?: boolean
 }
 
 const removeBtn: React.CSSProperties = {
@@ -38,15 +43,21 @@ const removeBtn: React.CSSProperties = {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function ConditionRowEditor({ condition, entityType, onChange, onRemove, layout = 'row' }: Props) {
+export function ConditionRowEditor({ condition, entityType, onChange, onRemove, layout = 'row', allowChanged = false }: Props) {
   const { t } = useTranslation()
-  const { fields: allFields, error: fieldsError } = useEntityFieldMetas(entityType)
-  const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: 'cache-first' })
-  const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: 'cache-first' })
+  const { fields: metamodelFields, error: fieldsError } = useEntityFieldMetas(entityType)
+  // I campi dei moduli del catalogo (ondata 5): il motore li leggeva già
+  // (`properties(nodo)`), ma non c'era modo di scrivere la condizione. Un nome
+  // che il metamodello ha già vince: è quello che il ticket scrive davvero.
+  const formFields = useFormFieldMetas(entityType)
+  const allFields = [...metamodelFields, ...formFields.filter((f) => !metamodelFields.some((m) => m.name === f.name))]
+  const { data: teamsData } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  const { data: usersData } = useQuery<{ users: { id: string; name: string; email: string }[] }>(GET_USERS, { fetchPolicy: METAMODEL_FETCH_POLICY })
+  const { labelOf } = useDomainVocabularies()
 
   const selectedField = allFields.find(f => f.name === condition.field)
   const fieldType     = selectedField?.fieldType ?? 'string'
-  const operators     = operatorsForFieldType(fieldType)
+  const operators: { value: string; labelKey: string }[] = allowChanged ? [...operatorsForFieldType(fieldType), CHANGED_OPERATOR] : operatorsForFieldType(fieldType)
   const hideValue     = NO_VALUE_OPERATORS.has(condition.operator)
   const stack         = layout === 'stack'
 
@@ -66,7 +77,7 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
       <option value="">{t('conditionEditor.fieldPlaceholder')}</option>
       {unknownField && <option value={condition.field}>?{condition.field} ({t('conditionEditor.notInMetamodel')})</option>}
       {allFields.map(f => (
-        <option key={f.name} value={f.name}>{f.label} ({fieldTypeLabel(f.fieldType)})</option>
+        <option key={f.name} value={f.name}>{f.label} ({t(fieldTypeKey(f.fieldType))})</option>
       ))}
     </Select>
   )
@@ -79,12 +90,12 @@ export function ConditionRowEditor({ condition, entityType, onChange, onRemove, 
       title={unknownOperator ? t('conditionEditor.unknownOperator', { operator: condition.operator }) : undefined}
     >
       {unknownOperator && <option value={condition.operator}>?{condition.operator} ({t('conditionEditor.unsupported')})</option>}
-      {operators.map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
+      {operators.map(op => <option key={op.value} value={op.value}>{t(op.labelKey)}</option>)}
     </Select>
   )
 
-  const valueInput = !hideValue && renderValueInput(condition, selectedField, onChange, usersData?.users ?? [], teamsData?.teams ?? [])
-  const removeButton = <button type="button" style={removeBtn} onClick={onRemove} title={t('conditionEditor.remove')} aria-label={t('conditionEditor.remove')}><X size={14} color="#ef4444" /></button>
+  const valueInput = !hideValue && renderValueInput(condition, selectedField, onChange, usersData?.users ?? [], teamsData?.teams ?? [], labelOf)
+  const removeButton = <button type="button" style={removeBtn} onClick={onRemove} title={t('conditionEditor.remove')} aria-label={t('conditionEditor.remove')}><X size={14} color={colors.danger} /></button>
 
   const errorLine = fieldsError && (
     <div style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-danger)', marginBottom: 4 }}>
@@ -122,6 +133,8 @@ function renderValueInput(
   onChange: (patch: Partial<Condition>) => void,
   users: { id: string; name: string; email: string }[],
   teams: { id: string; name: string }[],
+  /** L'etichetta di un valore di vocabolario, `null` quando non la conosciamo. */
+  labelOf: (vocabolario: string, valore: string) => string | null,
 ) {
   if (!field) {
     return <Input style={{ ...inputS, flex: 1, minWidth: 80 }} placeholder={i18n.t('conditionEditor.value')} value={condition.value} onChange={e => onChange({ value: e.target.value })} />
@@ -147,12 +160,23 @@ function renderValueInput(
     )
   }
 
-  // Enum → dropdown
-  if (field.fieldType === 'enum' && field.enumValues.length > 0) {
+  /**
+   * Enum → tendina. Anche la SCELTA MULTIPLA (moduli del catalogo, ondata 5):
+   * la condizione confronta UNA scelta per volta («contiene produzione»),
+   * quindi il valore è un valore del vocabolario come per l'enum. Scritto a
+   * mano sarebbe una trappola: un `produzione` invece di `production` dà una
+   * regola che non scatta mai, e nessuno se ne accorge.
+   */
+  if ((field.fieldType === 'enum' || field.fieldType === 'multi_enum') && field.enumValues.length > 0) {
     return (
       <Select style={{ ...selectS, flex: 1 }} value={condition.value} onChange={e => onChange({ value: e.target.value })}>
         <option value="">{i18n.t('conditionEditor.valuePlaceholder')}</option>
-        {field.enumValues.map(v => <option key={v} value={v}>{v}</option>)}
+        {/* L'etichetta del valore, col valore nel title: è il valore che finisce nella condizione. */}
+        {field.enumValues.map(v => (
+          <option key={v} value={v} title={v}>
+            {(field.enumTypeName ? labelOf(field.enumTypeName, v) : null) ?? v}
+          </option>
+        ))}
       </Select>
     )
   }

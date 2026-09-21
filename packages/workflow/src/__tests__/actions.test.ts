@@ -165,11 +165,15 @@ describe('call_webhook — public URL', () => {
     expect(q.add).toHaveBeenCalledTimes(1)
     const [name, data, opts] = q.add.mock.calls[0]! as [string, Record<string, unknown>, Record<string, unknown>]
     expect(name).toBe('webhook_retry')
+    // Revisione totale · E-11: gli header (un token del cliente) NON stanno nel
+    // job — il worker li rilegge dal passo (stepId/actionIndex) — e i job falliti
+    // non restano in Redis per sempre.
     expect(data).toEqual({
-      type: 'webhook_retry', url: PUBLIC_URL, method: 'POST', headers: { 'X-Token': 'abc' },
+      type: 'webhook_retry', url: PUBLIC_URL, method: 'POST',
       payload: RESOLVED, attempt: 1, tenantId: 't1', entityId: 'inc-1',
     })
-    expect(opts).toEqual({ attempts: 3, backoff: { type: 'exponential', delay: 30_000 }, removeOnComplete: true, removeOnFail: false })
+    expect(JSON.stringify(data)).not.toContain('X-Token')
+    expect(opts).toEqual({ attempts: 3, backoff: { type: 'exponential', delay: 30_000 }, removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } })
     expect(q.close).toHaveBeenCalledTimes(1)
   })
 
@@ -291,39 +295,17 @@ describe('notify / publish_event / sla_*', () => {
   })
 })
 
-// ── Scheduled jobs ───────────────────────────────────────────────────────────
+// ── Azioni ritirate ──────────────────────────────────────────────────────────
 
-describe('schedule_job / cancel_job', () => {
-  it('schedule_job → workflow-jobs queue, deterministic jobId <job>_<entityId>, delay_hours → ms, queue closed', async () => {
-    await runAction(action('schedule_job', { job: 'auto_close', delay_hours: '48' }), instance, ctx())
-    const q = fake.queues[0]!
-    expect(q.name).toBe('workflow-jobs')
-    expect(q.opts).toEqual({ connection: { host: 'redis.test', port: 6379 } })
-    expect(q.add).toHaveBeenCalledWith(
-      'auto_close',
-      { instanceId: 'wi-1', entityId: 'inc-1', tenantId: 't1', job: 'auto_close' },
-      { delay: 48 * 60 * 60 * 1000, jobId: 'auto_close_inc-1', removeOnComplete: true },
-    )
-    expect(q.close).toHaveBeenCalledTimes(1)
-  })
-
-  it('schedule_job without delay → delay 0; missing job → error', async () => {
-    await runAction(action('schedule_job', { job: 'ping' }), instance, ctx())
-    expect((fake.queues[0]!.add.mock.calls[0]![2] as { delay: number }).delay).toBe(0)
-    await expect(runAction(action('schedule_job'), instance, ctx())).rejects.toThrow('schedule_job: missing required param "job"')
-  })
-
-  it('cancel_job removes the job with that id when present, no-op when absent; missing job → error', async () => {
-    const remove = vi.fn(async () => {})
-    fake.state.existingJob = { remove }
-    await runAction(action('cancel_job', { job: 'auto_close' }), instance, ctx())
-    expect(fake.queues[0]!.getJob).toHaveBeenCalledWith('auto_close_inc-1')
-    expect(remove).toHaveBeenCalledTimes(1)
-    expect(fake.queues[0]!.close).toHaveBeenCalledTimes(1)
-
-    fake.state.existingJob = null
-    await expect(runAction(action('cancel_job', { job: 'auto_close' }), instance, ctx())).resolves.toBeUndefined()
-    await expect(runAction(action('cancel_job'), instance, ctx())).rejects.toThrow('cancel_job: missing required param "job"')
+// Verifica «Cosa resta cablato», ondata 3: la chiusura automatica è la scadenza
+// del passo, e `schedule_job`/`cancel_job` non esistono più. Un dato che le
+// porta ancora è configurazione corrotta, e il motore la nomina.
+describe('schedule_job / cancel_job ritirate', () => {
+  it('non sono più azioni del motore', async () => {
+    for (const type of ['schedule_job', 'cancel_job']) {
+      await expect(runAction(action(type as never, { job: 'auto_close' }), instance, ctx())).rejects.toThrow(`Unknown workflow action type: ${type}`)
+    }
+    expect(fake.queues).toEqual([])
   })
 })
 
@@ -343,14 +325,15 @@ describe('create_entity', () => {
     expect(createEntity).not.toHaveBeenCalled()
   })
 
-  it('creates with resolved title, parent link, copied fields; then publishes <type>.created through the ctx hook', async () => {
+  // WA-2: l'evento di creazione lo pubblica il servizio che crea il ticket, non l'azione (era duplicato).
+  it('creates with resolved title, parent link, copied fields; the creation event is left to the creator', async () => {
     const createEntity = vi.fn(async () => 'prb-9')
     const publishEvent = vi.fn(async () => {})
     await runAction(action('create_entity', params), instance, ctx({ createEntity, publishEvent }))
     expect(createEntity).toHaveBeenCalledWith('problem', {
       title: 'Problem from DB down', tenant_id: 't1', parent_id: 'inc-1', parent_type: 'incident', severity: 'critical', category: 'database',
     })
-    expect(publishEvent).toHaveBeenCalledWith('problem.created', { id: 'prb-9', tenant_id: 't1', created_by: 'user-1' })
+    expect(publishEvent).not.toHaveBeenCalled()
   })
 
   it('link_to_current=false → no parent fields; publishEvent optional', async () => {
@@ -381,12 +364,35 @@ describe('assign_to', () => {
 })
 
 describe('update_field', () => {
-  it('without callback → error; field outside the allowlist → error naming the list', async () => {
+  it('without callback → error; a reserved field → error with the reason, the callback is not called', async () => {
     await expect(runAction(action('update_field', { field: 'severity', value: 'low' }), instance, ctx())).rejects.toThrow('update_field: updateField callback not provided')
     const updateField = vi.fn(async () => {})
     await expect(runAction(action('update_field', { field: 'tenant_id', value: 'evil' }), instance, ctx({ updateField })))
-      .rejects.toThrow('update_field: field "tenant_id" is not in the allowed list (severity, priority, status, description, category)')
+      .rejects.toThrow('The field "tenant_id" identifies or traces the ticket and cannot be set by a step.')
     expect(updateField).not.toHaveBeenCalled()
+  })
+
+  // Ondata 8 · B-9: `status` era scrivibile, e il pannello del disegnatore
+  // offriva `update_field` con tutti i campi dell'entità. Scriverlo da qui
+  // scavalca il motore: `entity.status` e `WorkflowInstance.current_step`
+  // divergono, il ticket si mostra chiuso mentre il processo è aperto.
+  it('status (e gli altri campi del motore) non sono scrivibili: il rifiuto indica la transizione', async () => {
+    const updateField = vi.fn(async () => {})
+    for (const field of ['status', 'workflow_step', 'workflow_instance_id', 'resolved_at']) {
+      const err = await runAction(action('update_field', { field, value: 'closed' }), instance, ctx({ updateField }))
+        .then(() => null, (e: unknown) => e as Error)
+      expect(err?.message, field).toContain(`The field "${field}" is written by the workflow engine`)
+      expect(err?.message, field).toContain('use a transition')
+    }
+    expect(updateField).not.toHaveBeenCalled()
+  })
+
+  // Ondata 3: «ogni campo non riservato». Un campo del cliente arriva al callback,
+  // che è chi conosce il metamodello e il vocabolario.
+  it('a customer field passes to the callback', async () => {
+    const updateField = vi.fn(async () => {})
+    await runAction(action('update_field', { field: 'outcome', value: 'successful' }), instance, ctx({ updateField }))
+    expect(updateField).toHaveBeenCalledWith('inc-1', 'outcome', 'successful')
   })
 
   it('string values are templates, non-strings pass through; publishes <entityType>.updated', async () => {
@@ -415,7 +421,37 @@ describe('create_approval_request', () => {
     )
     expect(createApprovalRequest).toHaveBeenCalledWith({
       entityId: 'inc-1', entityType: 'incident', title: 'Approve DB down', approverRole: 'APPROVER', approvalType: 'all',
+      // Moduli del catalogo, ondata 3: senza persone né squadre indicate sono
+      // liste vuote, e vale il ruolo — come prima.
+      approverUserIds: [], approverTeamIds: [],
     })
+  })
+
+  it('persone e squadre indicate arrivano al chiamante, in entrambe le forme (lista o stringa)', async () => {
+    const createApprovalRequest = vi.fn(async () => 'apr-1')
+    // Il disegnatore scrive una STRINGA separata da virgola: il suo editor tiene
+    // i parametri come testo e non può produrre un array.
+    await runAction(
+      action('create_approval_request', {
+        title_template: 'X', approver_user_ids: 'u-1, u-2', approver_team_ids: 'team-9',
+      }),
+      instance, ctx({ createApprovalRequest }),
+    )
+    expect(createApprovalRequest).toHaveBeenCalledWith(expect.objectContaining({
+      approverUserIds: ['u-1', 'u-2'], approverTeamIds: ['team-9'],
+    }))
+
+    // L'API scrive una LISTA: stesso risultato.
+    createApprovalRequest.mockClear()
+    await runAction(
+      action('create_approval_request', {
+        title_template: 'X', approver_user_ids: ['u-3'], approver_team_ids: [],
+      }),
+      instance, ctx({ createApprovalRequest }),
+    )
+    expect(createApprovalRequest).toHaveBeenCalledWith(expect.objectContaining({
+      approverUserIds: ['u-3'], approverTeamIds: [],
+    }))
   })
 })
 

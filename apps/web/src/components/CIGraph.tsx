@@ -8,6 +8,7 @@ import { buildTypeIconMap, iconKeyForType } from '@/lib/ciIconPaths'
 import {
   appendArrowMarker, appendIcon, attachZoom, fitTransform, linkEndpoints, nodeDrag, styleText, truncate,
 } from '@/lib/d3/graphPrimitives'
+import { alpha, colors, palette } from '@/lib/tokens'
 
 interface CINode {
   id:          string
@@ -53,10 +54,10 @@ interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
 }
 
 const COLORS: Record<NodeRole, { fill: string; stroke: string; r: number }> = {
-  center:     { fill: 'var(--color-brand)', stroke: '#ffffff', r: 28 },
-  dependency: { fill: '#ffffff', stroke: 'var(--color-brand)', r: 22 },
-  dependent:  { fill: '#ffffff', stroke: 'var(--color-trigger-automatic)', r: 22 },
-  blast:      { fill: '#ffffff', stroke: 'var(--color-trigger-timer)', r: 18 },
+  center:     { fill: 'var(--color-brand)', stroke: colors.white, r: 28 },
+  dependency: { fill: colors.white, stroke: 'var(--color-brand)', r: 22 },
+  dependent:  { fill: colors.white, stroke: 'var(--color-trigger-automatic)', r: 22 },
+  blast:      { fill: colors.white, stroke: 'var(--color-trigger-timer)', r: 18 },
 }
 
 const LINK_STYLE: Record<GraphLink['role'], { stroke: string; opacity: number; dash?: string }> = {
@@ -210,12 +211,12 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
       .attr('stroke',       (d) => COLORS[d.role].stroke)
       .attr('stroke-width', (d) => d.role === 'center' ? 3 : 2)
       .attr('opacity',      (d) => d.role === 'blast' ? 0.7 : 1)
-      .attr('filter',       (d) => d.role === 'center' ? 'drop-shadow(0 4px 12px rgba(79,70,229,0.4))' : null)
+      .attr('filter',       (d) => d.role === 'center' ? `drop-shadow(0 4px 12px ${alpha.brand53})` : null)
 
     // Icona lucide dal metamodello (bianca sul centro, colore del ruolo altrove)
     nodeEl.each(function (d) {
       const sel = d3.select(this)
-      const color = d.role === 'center' ? '#ffffff' : COLORS[d.role].stroke
+      const color = d.role === 'center' ? colors.white : COLORS[d.role].stroke
       appendIcon(sel, iconKeyForType(typeIconMap, d.type), color, d.role === 'center' ? 22 : 18)
     })
 
@@ -276,7 +277,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderBottom: '1px solid #f3f4f6' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
         <input
           type="checkbox"
           id={ids.blast}
@@ -294,7 +295,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
               id={ids.depth}
               value={maxDepth}
               onChange={e => setMaxDepth(Number(e.target.value))}
-              style={{ fontSize: 'var(--font-size-body)', padding: '2px 4px', borderRadius: 4, border: '1px solid #d1d5db', cursor: 'pointer' }}
+              style={{ fontSize: 'var(--font-size-body)', padding: '2px 4px', borderRadius: 4, border: `1px solid ${palette.neutral.borderStrong}`, cursor: 'pointer' }}
             >
               {[1, 2, 3, 4, 5].map(d => (
                 <option key={d} value={d}>{d}</option>
@@ -316,7 +317,7 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
           />
         </div>
       </div>
-      <svg key={`graph-${showBlastRadius}-${maxDepth}`} ref={svgRef} style={{ width: '100%', height: 600, display: 'block', backgroundColor: '#fafbfc', borderRadius: 8 }} />
+      <svg key={`graph-${showBlastRadius}-${maxDepth}`} ref={svgRef} style={{ width: '100%', height: 600, display: 'block', backgroundColor: palette.neutral.surface1, borderRadius: 8 }} />
 
       {/* Tooltip */}
       {tooltip && (
@@ -324,11 +325,11 @@ export function CIGraph({ centerCI, dependencies, dependents, blastRadius }: Pro
           position:     'absolute',
           left:         tooltip.x,
           top:          tooltip.y,
-          background:   '#ffffff',
-          border:       '1px solid #e2e6f0',
+          background:   colors.white,
+          border:       `1px solid ${colors.border}`,
           borderRadius: 6,
           padding:      '8px 12px',
-          boxShadow:    '0 4px 16px rgba(0,0,0,0.10)',
+          boxShadow:    `0 4px 16px ${alpha.black10}`,
           fontSize:     12,
           zIndex:       100,
           pointerEvents: 'none',
