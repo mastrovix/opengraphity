@@ -15,7 +15,8 @@ vi.mock('../../../lib/bullmq.js', () => ({
     if (!q) {
       q = {
         name,
-        getJobCounts: vi.fn().mockResolvedValue({ waiting: 1, active: 0, completed: 5, failed: 2, delayed: 0, paused: 0 }),
+        getJobCounts: vi.fn().mockResolvedValue({ waiting: 1, active: 0, completed: 5, failed: 2, delayed: 0 }),
+        isPaused: vi.fn().mockResolvedValue(false),
         getJobs: vi.fn().mockResolvedValue([]),
         getJob: vi.fn().mockResolvedValue(null),
       }
@@ -38,7 +39,8 @@ describe('queueStats', () => {
     const stats = await queueStatsResolvers.Query.queueStats(null, {}, admin)
     expect(stats.map((s) => s.name)).toEqual(QUEUE_REGISTRY.map((e) => e.name))
     const ingest = stats.find((s) => s.name === 'events-ingest')!
-    expect(ingest).toEqual({ name: 'events-ingest', group: 'events', retryable: true, counts: { waiting: 1, active: 0, completed: 5, failed: 2, delayed: 0, paused: 0 } })
+    // `paused` non e' piu' un conteggio ma uno stato DELLA CODA (BullMQ 6).
+    expect(ingest).toEqual({ name: 'events-ingest', group: 'events', retryable: true, paused: false, counts: { waiting: 1, active: 0, completed: 5, failed: 2, delayed: 0 } })
     for (const name of CONSUMER_QUEUES) {
       expect(stats.find((s) => s.name === name)).toMatchObject({ retryable: false })
     }

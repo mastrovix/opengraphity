@@ -494,7 +494,7 @@
       "delayed": "ritardati",
       "failed": "falliti",
       "completed": "completati",
-      "paused": "in pausa",
+      "paused": "In pausa",
       "keptHelp": {
         "completed": "I job completati che la coda conserva. I più vecchi vengono rimossi quando ne arrivano di nuovi, quindi questo numero a un certo punto non cresce più: un job appena riuscito può non farlo salire.",
         "failed": "I job falliti che la coda conserva per la diagnosi. Dopo un po' vengono rimossi, e un job rigiocato esce da questo conto appena riesce."
@@ -516,7 +516,8 @@
       "stackTrace_other": "Stack trace ({{count}} righe)",
       "returnValue": "Esito: {{value}}",
       "retry": "Rigioca",
-      "retrying": "Rigioco…"
+      "retrying": "Rigioco…",
+      "pausedHelp": "La coda è in pausa: i job restano in attesa e non vengono presi in carico finché non riparte."
     },
     "profile": {
       "title": "Profilo",

@@ -27,7 +27,6 @@ export function adminSDL(): string {
     completed: Int!
     failed:    Int!
     delayed:   Int!
-    paused:    Int!
   }
 
   """
@@ -50,6 +49,12 @@ export function adminSDL(): string {
     esaurito non si rigioca dalla console, si ripubblica dall'azione di origine.
     """
     retryable: Boolean!
+    """
+    Se la coda è in PAUSA. Da BullMQ 6 non è più un conteggio di job: una coda
+    è in pausa o non lo è, e i suoi job restano «waiting» in entrambi i casi.
+    Non «quanti», ma «se».
+    """
+    paused:    Boolean!
     counts: QueueJobCounts!
   }
 

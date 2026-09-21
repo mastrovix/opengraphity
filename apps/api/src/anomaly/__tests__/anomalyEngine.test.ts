@@ -3,12 +3,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
 const queueAdd = vi.fn().mockResolvedValue(undefined)
+/*
+ * `upsertJobScheduler` nel finto (21 set 2026, BullMQ 6): le ricorrenze non
+ * passano piu' da `add({ repeat })` — quella API non esiste piu' — ma da un
+ * Job Scheduler con identita' esplicita. Il finto deve esporre quello che il
+ * codice chiama davvero, se no il test prova un cammino che non esiste.
+ */
+const upsertScheduler = vi.fn().mockResolvedValue(undefined)
+const removeScheduler = vi.fn().mockResolvedValue(true)
 const workerOn = vi.fn()
 
 // vitest 4: a mock is constructible (`new Queue(...)`) only when its
 // implementation is a `function`/class, not an arrow function.
 vi.mock('bullmq', () => ({
-  Queue:  vi.fn(function () { return { add: queueAdd, on: vi.fn(), close: vi.fn().mockResolvedValue(undefined), name: 'anomaly-scanner' } }),
+  Queue:  vi.fn(function () { return { add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler, on: vi.fn(), close: vi.fn().mockResolvedValue(undefined), name: 'anomaly-scanner' } }),
   Worker: vi.fn(function () { return { on: workerOn, close: vi.fn().mockResolvedValue(undefined) } }),
 }))
 
@@ -91,10 +99,10 @@ describe('startAnomalyScanner', () => {
 
   it('registra il job ripetibile scan (tutti i tenant) e lo attende', async () => {
     await startAnomalyScanner()
-    expect(queueAdd).toHaveBeenCalledWith(
-      'scan',
-      {},
-      expect.objectContaining({ repeat: expect.any(Object), jobId: 'anomaly-scanner-scan' }),
+    expect(upsertScheduler).toHaveBeenCalledWith(
+      'anomaly-scanner-scan',
+      expect.objectContaining({ every: expect.any(Number) }),
+      expect.objectContaining({ name: 'scan' }),
     )
   })
 

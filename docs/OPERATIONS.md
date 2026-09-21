@@ -1781,3 +1781,39 @@ degradato, matrici di dominio incomplete o con residui di una rinomina, liste
 della policy degli allarmi che citano stati fuori vocabolario, e stati del ciclo
 di vita che nessuna lista cita — per il prodotto quei CI sono **in servizio**,
 e sul dato vivo erano 68.
+
+
+## Passaggio a BullMQ 6: le ricorrenze vecchie restano in Redis
+
+Con BullMQ 6 i job ripetibili sono diventati **Job Scheduler**, e il prodotto
+li registra con un nome esplicito (`report-scheduler-check`,
+`workflow-ola-sweep`, …) invece che con una chiave composta.
+
+Le voci scritte da BullMQ 5 **non scompaiono da sole**: restano in Redis come
+chiavi di 32 caratteri esadecimali, non scattano piu' (nessun worker le
+conosce) e compaiono in `getJobSchedulers()` accanto a quelle vere. Non fanno
+danno, ma sporcano l'elenco.
+
+Si tolgono una volta sola, dopo il primo avvio della versione nuova:
+
+```sh
+docker exec infra-api-1 node -e "
+import('bullmq').then(async ({ Queue }) => {
+  const { getRedisConnection } = await import('@opengraphity/events');
+  const code = ['anomaly-scanner','report-scheduler','email-digest','maintenance',
+                'workflow-jobs','services-impact','events-maintenance',
+                'proposal-scanner','discovery-sync','events-correlate'];
+  for (const n of code) {
+    const q = new Queue(n, { connection: getRedisConnection() });
+    for (const s of await q.getJobSchedulers()) {
+      const id = s.key || s.id;
+      if (/^[0-9a-f]{32}$/.test(id)) await q.removeJobScheduler(id);
+    }
+    await q.close();
+  }
+  process.exit(0);
+})"
+```
+
+Il filtro sulle 32 cifre esadecimali e' quello che distingue una voce vecchia
+da uno scheduler nostro: i nostri hanno un nome che si legge.

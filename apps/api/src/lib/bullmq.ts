@@ -46,11 +46,19 @@ export function getQueue<D = unknown>(name: string, opts?: Omit<QueueOptions, 'c
     })
     /*
      * `Queue` non emette `ready` (emette solo `error` e `ioredis:close`), ma
-     * espone la connessione sottostante: è da lì che si sa che è rientrata.
-     * Senza questo il prodotto direbbe quando cade e mai quando torna, che è
-     * l'informazione che serve davvero durante un guasto.
+     * si arriva alla connessione sottostante: è da lì che si sa che è
+     * rientrata. Senza questo il prodotto direbbe quando cade e mai quando
+     * torna, che è l'informazione che serve davvero durante un guasto.
+     *
+     * DA BULLMQ 6 la strada è `getBackend().client` e non più `queue.client`:
+     * «High-level classes no longer expose Redis internals … Access the raw
+     * Redis client through the RedisQueueBackend returned by getBackend()».
+     * È un miglioramento: prima la coda prometteva un client qualunque fosse
+     * il motore sotto, ora lo chiede a chi quel motore lo è davvero — e in
+     * BullMQ 6 il motore può anche essere PostgreSQL.
      */
-    const connessione: unknown = q.client
+    const backend: unknown = (q as unknown as { getBackend?: () => unknown }).getBackend?.()
+    const connessione: unknown = (backend as { client?: unknown } | undefined)?.client
     if (connessione instanceof Promise) {
       void connessione.then((c: { on: (e: string, f: () => void) => void }) => {
         c.on('ready', () => { ripresaDi(log, `bullmq:queue:${name}`, { queue: name }) })

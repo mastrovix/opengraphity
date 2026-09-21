@@ -18,7 +18,6 @@ interface QueueJobCounts {
   completed: number
   failed: number
   delayed: number
-  paused: number
 }
 
 /**
@@ -31,6 +30,8 @@ interface QueueStat {
   name: string
   group: string
   retryable: boolean
+  /** Se la coda e' in pausa: da BullMQ 6 e' uno stato della CODA, non un conteggio di job. */
+  paused: boolean
   counts: QueueJobCounts
 }
 
@@ -56,10 +57,21 @@ const COUNTER_STYLE: Record<string, { color: string; bg: string }> = {
   delayed:   { color: palette.purple.light, bg: palette.purple.bg },
   failed:    { color: 'var(--color-danger)', bg: alpha.danger08  },
   completed: { color: palette.success.base, bg: alpha.success10  },
-  paused:    { color: 'var(--color-slate-light)', bg: colors.slateBg},
 }
 
-const COUNTER_ORDER = ['active', 'waiting', 'delayed', 'failed', 'completed', 'paused'] as const
+/*
+ * «paused» NON e' piu' un contatore (21 set 2026, BullMQ 6).
+ *
+ * Non e' un rinomino: e' il modello che e' cambiato. Prima «in pausa» era uno
+ * STATO del job; ora una coda e' in pausa o non lo e', e i suoi job restano
+ * `waiting` in entrambi i casi. Il contatore sarebbe rimasto a schermo sempre
+ * a zero — e uno zero, accanto agli altri numeri veri, si legge come «non ce
+ * n'e' nessuno», non come «questa misura non esiste piu'».
+ *
+ * Al suo posto la pastiglia «In pausa» sulla riga della coda, accesa dal
+ * booleano che l'API manda adesso: non «quanti», ma «se».
+ */
+const COUNTER_ORDER = ['active', 'waiting', 'delayed', 'failed', 'completed'] as const
 const JOB_STATUSES  = ['failed', 'waiting', 'active', 'completed', 'delayed'] as const
 
 /** Ordine di presentazione dei sottosistemi; un gruppo nuovo dichiarato dal server finisce in coda, col suo nome. */
@@ -280,6 +292,11 @@ function QueueRow({ queue, onQueueRefetch }: { queue: QueueStat; onQueueRefetch:
             <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)', fontFamily: 'var(--font-mono)' }}>
               {queue.name}
             </span>
+            {queue.paused && (
+              <span title={t('pages.queueStats.pausedHelp')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate)', padding: '1px 6px', background: colors.slateBg, borderRadius: 4, whiteSpace: 'nowrap', fontWeight: 600 }}>
+                {t('pages.queueStats.paused')}
+              </span>
+            )}
             {!queue.retryable && (
               <span title={t('pages.queueStats.notRetryable')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', padding: '1px 6px', background: colors.slateBg, borderRadius: 4, whiteSpace: 'nowrap' }}>
                 {t('pages.queueStats.notRetryable')}

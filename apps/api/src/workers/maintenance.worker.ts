@@ -230,18 +230,31 @@ async function processMaintenanceJob(job: Job): Promise<void> {
 
 async function scheduleRepeatableJobs(): Promise<void> {
   const maintenanceQueue = getQueue(MAINTENANCE_QUEUE)
-  const names = new Set(REPEATABLE_JOBS.map((j) => j.name))
-
-  // Remove any stale repeatable jobs first, then re-add
-  const repeatableJobs = await maintenanceQueue.getRepeatableJobs()
-  for (const job of repeatableJobs) {
-    if (names.has(job.name)) {
-      await maintenanceQueue.removeRepeatableByKey(job.key)
-    }
+  /*
+   * Si toglie e si rimette, cosi' un pattern cambiato non lascia in piedi il
+   * vecchio. Con BullMQ 6 l'identita' dello scheduler e' il NOME del job, non
+   * una chiave composta da riconoscere: `upsertJobScheduler` piu' sotto
+   * basterebbe da solo, ma togliere prima rende esplicito che il vecchio non
+   * sopravvive.
+   */
+  for (const job of REPEATABLE_JOBS) {
+    await maintenanceQueue.removeJobScheduler(job.name)
   }
 
   for (const job of REPEATABLE_JOBS) {
-    await maintenanceQueue.add(job.name, {}, { repeat: { pattern: job.pattern } })
+  /*
+   * JOB SCHEDULER, non piu' «repeat» (21 set 2026, BullMQ 6).
+   *
+   * BullMQ 6 ha RIMOSSO i job ripetibili: `repeat` su `add()`, la classe
+   * `Repeat`, `getRepeatableJobs()` e `removeRepeatable*()` non esistono piu'.
+   * Al loro posto i Job Scheduler, che hanno un'identita' esplicita — il primo
+   * argomento — invece di essere dedotta da (nome, opzioni di ripetizione).
+   *
+   * La ricorrenza si registra a ogni avvio del worker, come prima: non c'e'
+   * stato da migrare, e `upsert` significa che riavviare non ne crea una
+   * seconda.
+   */
+    await maintenanceQueue.upsertJobScheduler(job.name, { pattern: job.pattern }, { name: job.name, data: {} })
     maintenanceLogger.info({ job: job.name, pattern: job.pattern }, `${job.name} job scheduled (${job.description})`)
   }
 }

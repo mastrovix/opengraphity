@@ -16,16 +16,21 @@ vi.mock('sonner', () => ({
   Toaster: () => null,
 }))
 
-const counts = (over: Partial<Record<'waiting' | 'active' | 'completed' | 'failed' | 'delayed' | 'paused', number>> = {}) => ({
-  __typename: 'QueueJobCounts', waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0, paused: 0, ...over,
+/*
+ * NIENTE «paused» fra i conteggi (21 set 2026, BullMQ 6): non e' piu' uno
+ * stato dei job. Una coda e' in pausa o non lo e', e i suoi job restano
+ * `waiting` in entrambi i casi — quindi e' un booleano SULLA CODA.
+ */
+const counts = (over: Partial<Record<'waiting' | 'active' | 'completed' | 'failed' | 'delayed', number>> = {}) => ({
+  __typename: 'QueueJobCounts', waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0, ...over,
 })
 
 const QUEUES = [
-  { __typename: 'QueueStat', name: 'workflow-jobs',            group: 'itsm',     retryable: true,  counts: counts({ failed: 1 }) },
-  { __typename: 'QueueStat', name: 'events-ingest',            group: 'events',   retryable: true,  counts: counts({ failed: 2 }) },
-  { __typename: 'QueueStat', name: 'service-impact-consumer',  group: 'services', retryable: false, counts: counts({ failed: 1 }) },
-  { __typename: 'QueueStat', name: 'notification-service',     group: 'platform', retryable: false, counts: counts() },
-  { __typename: 'QueueStat', name: 'events-correlate',         group: 'events',   retryable: true,  counts: counts() },
+  { __typename: 'QueueStat', name: 'workflow-jobs',            group: 'itsm',     retryable: true, paused: false,  counts: counts({ failed: 1 }) },
+  { __typename: 'QueueStat', name: 'events-ingest',            group: 'events',   retryable: true, paused: false,  counts: counts({ failed: 2 }) },
+  { __typename: 'QueueStat', name: 'service-impact-consumer',  group: 'services', retryable: false, paused: false, counts: counts({ failed: 1 }) },
+  { __typename: 'QueueStat', name: 'notification-service',     group: 'platform', retryable: false, paused: false, counts: counts() },
+  { __typename: 'QueueStat', name: 'events-correlate',         group: 'events',   retryable: true, paused: false,  counts: counts() },
 ]
 
 const statsMock: GqlMock = {
@@ -48,7 +53,7 @@ function jobsMock(queueName: string): GqlMock {
 
 describe('groupQueues', () => {
   it('ordina i gruppi allarmi → servizi → ITSM → piattaforma, un gruppo nuovo dichiarato dal server va in coda col suo nome', () => {
-    const groups = groupQueues([...QUEUES, { name: 'x', group: 'zeta', retryable: false, counts: counts() }, { name: 'y', group: 'alpha', retryable: false, counts: counts() }])
+    const groups = groupQueues([...QUEUES, { name: 'x', group: 'zeta', retryable: false, paused: false, counts: counts() }, { name: 'y', group: 'alpha', retryable: false, paused: false, counts: counts() }])
     expect(groups.map((g) => g.group)).toEqual(['events', 'services', 'itsm', 'platform', 'alpha', 'zeta'])
     expect(groups[0]!.queues.map((q) => q.name)).toEqual(['events-ingest', 'events-correlate'])
   })

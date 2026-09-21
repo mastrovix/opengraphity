@@ -48,9 +48,16 @@ export const EVENT_MAINTENANCE_JOB = 'events-maintenance'
 export const EVENT_MAINTENANCE_EVERY_MS = 5 * 60 * 1000
 /** Una passata può superare i 30 s predefiniti di BullMQ (fino a 20 pagine × 200 eventi × 4 passate): oltre il lock il job sarebbe considerato bloccato e rieseguito. */
 export const EVENT_MAINTENANCE_LOCK_MS = 10 * 60 * 1000
-/** Nome del job ripetuto che viveva sulla coda events-correlate prima della revisione: rimosso all'avvio. */
+/**
+ * Nome del job ripetuto che viveva sulla coda events-correlate prima della
+ * revisione: rimosso all'avvio.
+ *
+ * L'intervallo non serve piu' (21 set 2026): con BullMQ 6 uno scheduler si
+ * toglie per NOME, mentre il vecchio `removeRepeatable` pretendeva anche la
+ * ripetizione esatta con cui era stato creato — cioe' bisognava ricordarsi un
+ * numero per cancellare una cosa.
+ */
 export const LEGACY_REEVALUATE_WINDOWS_JOB = 'reevaluate-windows'
-const LEGACY_REEVALUATE_WINDOWS_EVERY_MS = EVENT_MAINTENANCE_EVERY_MS
 
 export interface CorrelateJobData {
   tenantId: string
@@ -218,7 +225,9 @@ export async function startEventCorrelateWorker(): Promise<Worker<CorrelateQueue
   const queue = getQueue<CorrelateQueueData>(EVENT_CORRELATE_QUEUE)
   // Prima della revisione il job periodico era un repeat job su questa coda:
   // BullMQ lo conserva in Redis, e questo processore non lo conosce più.
-  const removed = await queue.removeRepeatable(LEGACY_REEVALUATE_WINDOWS_JOB, { every: LEGACY_REEVALUATE_WINDOWS_EVERY_MS }, LEGACY_REEVALUATE_WINDOWS_JOB)
+  // BullMQ 6 non ha piu' `removeRepeatable`: l'erede e' `removeJobScheduler`,
+  // e l'identita' e' il nome del job invece della terna (nome, ripetizione, id).
+  const removed = await queue.removeJobScheduler(LEGACY_REEVALUATE_WINDOWS_JOB)
   if (removed) log.info({ job: LEGACY_REEVALUATE_WINDOWS_JOB }, `Legacy repeat job removed from ${EVENT_CORRELATE_QUEUE} (now on ${EVENT_MAINTENANCE_QUEUE})`)
   return createWorker<CorrelateQueueData>(EVENT_CORRELATE_QUEUE, processCorrelateJob, {
     concurrency: 2,
@@ -232,12 +241,23 @@ export async function startEventCorrelateWorker(): Promise<Worker<CorrelateQueue
 export async function startEventMaintenanceWorker(): Promise<Worker<Record<string, never>>> {
   const queue = getQueue<Record<string, never>>(EVENT_MAINTENANCE_QUEUE)
   // Repeat job: BullMQ deduplica per (name, repeat) — riavviare l'API non ne crea un secondo.
-  await queue.add(EVENT_MAINTENANCE_JOB, {}, {
-    repeat: { every: EVENT_MAINTENANCE_EVERY_MS },
-    jobId: EVENT_MAINTENANCE_JOB,
-    removeOnComplete: { count: 20 },
-    removeOnFail:     { age: 7 * 24 * 3600 },
-  })
+  /*
+   * JOB SCHEDULER, non piu' «repeat» (21 set 2026, BullMQ 6).
+   *
+   * BullMQ 6 ha RIMOSSO i job ripetibili: `repeat` su `add()`, la classe
+   * `Repeat`, `getRepeatableJobs()` e `removeRepeatable*()` non esistono piu'.
+   * Al loro posto i Job Scheduler, che hanno un'identita' esplicita — il primo
+   * argomento — invece di essere dedotta da (nome, opzioni di ripetizione).
+   *
+   * La ricorrenza si registra a ogni avvio del worker, come prima: non c'e'
+   * stato da migrare, e `upsert` significa che riavviare non ne crea una
+   * seconda.
+   */
+  await queue.upsertJobScheduler(
+    EVENT_MAINTENANCE_JOB,
+    { every: EVENT_MAINTENANCE_EVERY_MS },
+    { name: EVENT_MAINTENANCE_JOB, data: {}, opts: { removeOnComplete: { count: 20 }, removeOnFail: { age: 7 * 24 * 3600 } } },
+  )
   return createWorker<Record<string, never>>(EVENT_MAINTENANCE_QUEUE, processMaintenanceJob, {
     concurrency: 1,
     lockDuration: EVENT_MAINTENANCE_LOCK_MS,

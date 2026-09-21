@@ -12,13 +12,15 @@ import type { Job } from 'bullmq'
 type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
 const queueAdd = vi.fn().mockResolvedValue(undefined)
+const upsertScheduler = vi.fn().mockResolvedValue(undefined)
+const removeScheduler = vi.fn().mockResolvedValue(true)
 
 vi.mock('../../lib/bullmq.js', () => ({
   createWorker: vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => {
     processors.set(name, processor)
     return { name, opts, on: vi.fn(), close: vi.fn() }
   }),
-  getQueue: vi.fn(() => ({ add: queueAdd })),
+  getQueue: vi.fn(() => ({ add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler })),
 }))
 
 interface Rec { get(k: string): unknown }
@@ -138,7 +140,7 @@ describe('workflow-jobs: scadenze dei passi', () => {
 
   it('la passata si registra ripetuta ogni minuto, con un id fisso', async () => {
     await scheduleStepDeadlineSweep()
-    expect(queueAdd).toHaveBeenCalledWith(STEP_DEADLINES_JOB, expect.anything(), expect.objectContaining({ repeat: { every: 60_000 }, jobId: 'workflow-step-deadlines' }))
+    expect(upsertScheduler).toHaveBeenCalledWith('workflow-step-deadlines', { every: 60_000 }, expect.objectContaining({ name: STEP_DEADLINES_JOB }))
   })
 
   it('un auto_close di prima dell\'ondata 3 non transisce e non chiude niente', async () => {

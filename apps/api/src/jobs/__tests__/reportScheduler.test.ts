@@ -12,9 +12,11 @@ import type { Job } from 'bullmq'
 type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
 const queueAdd = vi.fn().mockResolvedValue(undefined)
+const upsertScheduler = vi.fn().mockResolvedValue(undefined)
+const removeScheduler = vi.fn().mockResolvedValue(true)
 vi.mock('../../lib/bullmq.js', () => ({
   createWorker: vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => { processors.set(name, processor); return { name, opts } }),
-  getQueue: vi.fn(() => ({ add: queueAdd })),
+  getQueue: vi.fn(() => ({ add: queueAdd, upsertJobScheduler: upsertScheduler, removeJobScheduler: removeScheduler })),
 }))
 
 interface Rec { get(k: string): unknown }
@@ -91,7 +93,7 @@ const { startReportScheduler, REPORT_SCHEDULER_QUEUE } = await import('../report
 await startReportScheduler()
 const processor = processors.get(REPORT_SCHEDULER_QUEUE)!
 // captured now: beforeEach clears every mock's calls
-const repeatRegistration = queueAdd.mock.calls[0]
+const repeatRegistration = upsertScheduler.mock.calls[0]
 const tick = () => processor({ name: 'check', data: {} } as unknown as Job)
 
 const DUE_AT = '2026-09-08T10:00:00.000Z'
@@ -327,6 +329,6 @@ describe('report-scheduler — consegna Slack', () => {
 
 describe('startReportScheduler', () => {
   it('registra il check ogni 60s con jobId fisso', () => {
-    expect(repeatRegistration).toEqual(['check', {}, { repeat: { every: 60_000 }, jobId: 'report-scheduler-check', removeOnComplete: true }])
+    expect(repeatRegistration).toEqual(['report-scheduler-check', { every: 60_000 }, { name: 'check', data: {}, opts: { removeOnComplete: true } }])
   })
 })
