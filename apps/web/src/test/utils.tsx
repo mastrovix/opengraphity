@@ -75,14 +75,23 @@ export function LocationSpy() {
  * è ancora avvenuta non si accorge di niente (difetto vero, `NewSourceWizard`
  * riga 359).
  *
- * ## L'attesa è di 4 secondi, non uno
+ * ## L'attesa è di 15 secondi, non uno
  * Il secondo giro di rimedio è tornato rosso proprio qui: l'attesa di
  * `waitFor` è un secondo, e una ricerca ha 300 ms di debounce PRIMA che
  * l'URL cambi. Su un runner che fa girare tutti i pacchetti insieme quel
- * margine non c'è. Quattro secondi non rallentano niente quando la
- * condizione arriva subito — `waitFor` esce appena è vera — e tolgono di
- * mezzo l'unica cosa che questi test non devono misurare: la velocità della
- * macchina. Chi ne vuole meno lo passa in `opzioni`.
+ * margine non c'è.
+ *
+ * Quattro secondi non sono bastati: rilanciando la CI su venti PR di
+ * Dependabot — che toccano solo Docker e le Actions, quindi non c'entrano
+ * niente con il codice — QUATTRO sono cadute su questo stesso punto. Un
+ * test che sbaglia una volta su cinque non e fragile, e rotto: dice rosso a
+ * chi non ha colpa, e la volta che il rosso sara vero nessuno gli credera.
+ *
+ * Quindici secondi non rallentano niente quando la condizione arriva subito
+ * — `waitFor` esce appena e vera — e tolgono di mezzo l'unica cosa che
+ * questi test non devono misurare: la velocita della macchina. Costano solo
+ * quando l'asserzione e davvero sbagliata, e li e giusto pagarli.
+ * Chi ne vuole meno lo passa in `opzioni`.
  */
 export async function attendiURL(
   percorso: string,
@@ -103,7 +112,7 @@ export async function attendiURL(
     const [via, query = ''] = grezzo.split('?')
     expect({ url: grezzo, percorso: via, parametri: [...new URLSearchParams(query).entries()].sort() })
       .toEqual({ url: grezzo, percorso, parametri: atteso })
-  }, { timeout: 4_000, ...opzioni })
+  }, { timeout: 15_000, ...opzioni })
 }
 
 /**
