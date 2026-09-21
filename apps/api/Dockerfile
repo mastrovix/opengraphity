@@ -16,7 +16,7 @@
 # l'API che il sandbox usa funziona identica — contesto, `Reference` per i log,
 # `ExternalCopy`, il TIMEOUT che interrompe un ciclo infinito, `dispose`.
 # Pinned tag + digest (G-16): `docker buildx imagetools inspect node:24.11.1-bookworm-slim`
-FROM node:24.11.1-bookworm-slim@sha256:48abc13a19400ca3985071e287bd405a1d99306770eb81d61202fb6b65cf0b57 AS builder
+FROM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS builder
 
 # Native modules (isolated-vm, msgpackr-extract, esbuild)
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
@@ -63,7 +63,7 @@ RUN pnpm --filter @opengraphity/api deploy --prod --legacy /out
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
 # Keep slim: the compiled isolated-vm .node binary needs glibc at runtime
-FROM node:24.11.1-bookworm-slim@sha256:48abc13a19400ca3985071e287bd405a1d99306770eb81d61202fb6b65cf0b57 AS runtime
+FROM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS runtime
 
 WORKDIR /app
 
