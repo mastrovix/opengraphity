@@ -122,7 +122,6 @@ export function TopologyPage() {
     () => (data?.topology.nodes ?? []).filter((n) =>
       !filters.onlyIncident || n.incidentCount > 0,
     ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [data?.topology.nodes, filters.onlyIncident],
   )
   const edges = useMemo(

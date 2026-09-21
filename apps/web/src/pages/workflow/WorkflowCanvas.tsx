@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { memo, useState } from 'react'
+import { createContext, memo, useCallback, useContext, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -140,25 +140,35 @@ const ACCENT_COLOR = colors.brand
 const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: NodeProps) {
   const { t } = useTranslation()
   const { step, accentColor } = data as StepNodeData
-  const [hovered, setHovered] = useState(false)
   const bg = lookupOrError(STEP_BG, step.type, 'STEP_BG', 'var(--color-danger)')
 
+  /*
+   * IL RISALTO STA NEL CSS, NON IN UNO STATO REACT (21 set 2026).
+   *
+   * Qui c'era `onMouseEnter`/`onMouseLeave` che accendevano `hovered`, e da
+   * `hovered` dipendevano il colore del bordo e la matita in alto a destra.
+   * Chi arriva su questo riquadro col tasto Tab non ha un puntatore: quel
+   * risalto non lo vedeva mai. Ora `.og-wf-node` in `index.css` risponde sia
+   * a `:hover` sia al fuoco del nodo di React Flow, e il colore d'accento
+   * passa come variabile perche' lo decide il nodo, non il foglio di stile.
+   */
   return (
     <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className={selected ? 'og-wf-node is-selected' : 'og-wf-node'}
       style={{
         width:           160,
         minHeight:       80,
         padding:         12,
         borderRadius:    10,
-        border:          `2px solid ${selected || hovered ? accentColor : 'var(--color-brand-a53)'}`,
+        borderWidth:     2,
+        borderStyle:     'solid',
         backgroundColor: bg,
         boxShadow:       selected ? '0 0 0 3px var(--color-brand-a20)' : '0 2px 8px var(--color-black-a08)',
         position:        'relative',
         transition:      'box-shadow 0.15s, border-color 0.15s',
         cursor:          'default',
-      }}
+        ['--og-wf-accent' as string]: accentColor,
+      } as React.CSSProperties}
     >
       <Handle type="target" position={Position.Top}    id="tgt-top"    style={{ background: accentColor, width: 8, height: 8 }} isConnectable={true} />
       <Handle type="target" position={Position.Bottom} id="tgt-bottom" style={{ background: accentColor, width: 8, height: 8 }} isConnectable={true} />
@@ -200,11 +210,9 @@ const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: Node
         {step.name}
       </div>
 
-      {(hovered || selected) && (
-        <div style={{ position: 'absolute', top: 6, right: 6, color: accentColor, opacity: 0.7 }}>
-          <Pencil size={12} />
-        </div>
-      )}
+      <div className="og-wf-edit-hint" style={{ position: 'absolute', top: 6, right: 6, color: accentColor, opacity: 0.7 }}>
+        <Pencil size={12} />
+      </div>
 
       <Handle type="source" position={Position.Top}    id="src-top"    style={{ background: accentColor, width: 8, height: 8 }} isConnectable={true} />
       <Handle type="source" position={Position.Bottom} id="src-bottom" style={{ background: accentColor, width: 8, height: 8 }} isConnectable={true} />
@@ -214,6 +222,21 @@ const WorkflowStepNode = memo(function WorkflowStepNode({ data, selected }: Node
   )
 })
 
+/*
+ * COME L'ETICHETTA DI UNA TRANSIZIONE APRE LA TRANSIZIONE (21 set 2026).
+ *
+ * `WorkflowEdge` sta fuori dal componente (e deve starci: `edgeTypes` va
+ * definito una volta sola, se no React Flow ridisegna tutto a ogni render),
+ * quindi non puo' chiudere sulla `onEdgeClick` che arriva come prop. Il
+ * contesto e' il modo di passargliela senza rimetterla dentro.
+ *
+ * Serve perche' l'etichetta e' disegnata da `EdgeLabelRenderer`, che la
+ * porta FUORI dall'SVG: un clic li' sopra non arriva mai all'arco, e quindi
+ * `onEdgeClick` non scattava. Il `cursor: pointer` e l'ingranaggio
+ * promettevano un'azione che non c'era.
+ */
+const ApriTransizione = createContext<((id: string, e: React.MouseEvent) => void) | null>(null)
+
 // ── Custom Edge ───────────────────────────────────────────────────────────────
 
 const WorkflowEdge = memo(function WorkflowEdge({
@@ -221,8 +244,10 @@ const WorkflowEdge = memo(function WorkflowEdge({
   sourcePosition, targetPosition,
   data, selected, animated, markerEnd,
 }: EdgeProps) {
+  const { t } = useTranslation()
   const { transition, color } = (data ?? {}) as EdgeNodeData
   const [hovered, setHovered] = useState(false)
+  const apriTransizione = useContext(ApriTransizione)
 
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX, sourceY, sourcePosition,
@@ -248,32 +273,32 @@ const WorkflowEdge = memo(function WorkflowEdge({
       />
 
       <EdgeLabelRenderer>
-        <div
+        {/*
+          * Un BOTTONE, non un div: si raggiunge col Tab, si attiva con Invio e
+          * lo stesso risalto che dava il mouse lo da' adesso anche il fuoco
+          * (`onFocus`/`onBlur` accanto a `onMouseEnter`/`onMouseLeave`, perche'
+          * da qui dipende anche lo spessore dell'arco, che sta in un altro
+          * pezzo di DOM e il CSS non lo raggiunge).
+          */}
+        <button
+          type="button"
+          className={selected ? 'og-wf-edge-label is-selected' : 'og-wf-edge-label'}
+          aria-label={t('pages.workflow.openTransition', { name: transition?.label ?? '' })}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
+          onFocus={() => setHovered(true)}
+          onBlur={() => setHovered(false)}
+          onClick={(e) => apriTransizione?.(id, e)}
           style={{
-            position:        'absolute',
-            transform:       `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            pointerEvents:   'all',
-            display:         'flex',
-            alignItems:      'center',
-            gap:             4,
-            backgroundColor: colors.white,
-            border:          `1px solid ${strokeColor}`,
-            borderRadius:    4,
-            padding:         '2px 6px',
-            fontSize:        10,
-            fontWeight:      500,
-            color:           strokeColor,
-            whiteSpace:      'nowrap',
-            cursor:          'pointer',
-            boxShadow:       '0 1px 4px var(--color-black-a10)',
-            opacity:         selected || hovered ? 1 : 0.85,
-          }}
+            position:      'absolute',
+            transform:     `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            pointerEvents: 'all',
+            ['--og-wf-edge-color' as string]: strokeColor,
+          } as React.CSSProperties}
         >
           {transition?.label ?? ''}
           {(hovered || selected) && <Settings2 size={10} />}
-        </div>
+        </button>
       </EdgeLabelRenderer>
     </>
   )
@@ -318,7 +343,15 @@ export function WorkflowCanvas({
   const { t } = useTranslation()
   const accentColor = ACCENT_COLOR
 
+  // L'etichetta di un arco e' fuori dall'SVG (vedi `ApriTransizione`): il suo
+  // clic va rimandato a mano alla stessa `onEdgeClick` dell'arco.
+  const apriTransizione = useCallback((id: string, e: React.MouseEvent) => {
+    const arco = edges.find((x) => x.id === id)
+    if (arco) onEdgeClick(e, arco)
+  }, [edges, onEdgeClick])
+
   return (
+    <ApriTransizione.Provider value={apriTransizione}>
     <div style={{ flex: 1, position: 'relative', overflow: 'hidden', width: '100%', height: 'calc(var(--vh-app) - 120px)' }}>
       {loading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>
@@ -400,5 +433,6 @@ export function WorkflowCanvas({
         </div>
       )}
     </div>
+    </ApriTransizione.Provider>
   )
 }

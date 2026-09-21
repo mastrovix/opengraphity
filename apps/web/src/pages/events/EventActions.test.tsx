@@ -46,7 +46,6 @@ const ciSearchMock = (): GqlMock => ({
 function renderInRow(mocks: GqlMock[], onRow = vi.fn(), onChanged = vi.fn()) {
   const utils = renderWithProviders(
     <table><tbody>
-      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- simula la riga cliccabile della console */}
       <tr onClick={onRow}><td><EventActions event={EVENT} onChanged={onChanged} compact /></td></tr>
     </tbody></table>,
     { mocks },
