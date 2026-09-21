@@ -108,7 +108,7 @@ export class CITypeResolver {
   resolve(ciType: string): CITypeResolution {
     const raw = ciType.trim()
     if (raw === '') {
-      return { ok: false, reason: `il campo "ci_type" è vuoto: il connettore non ha detto di che tipo è questo elemento` }
+      return { ok: false, reason: `the "ci_type" field is empty: the connector did not say which type this item is` }
     }
     const key = raw.toLowerCase()
 
@@ -119,8 +119,8 @@ export class CITypeResolver {
       return {
         ok: false,
         reason:
-          `l'alias "${raw}" punta al tipo "${aliasTarget}", che in questo cliente non esiste o non è attivo. ` +
-          `Correggi l'alias nelle regole di mappatura della sorgente, oppure crea il tipo "${aliasTarget}".`,
+          `the alias "${raw}" points to type "${aliasTarget}", which does not exist or is not active for this tenant. ` +
+          `Fix the alias in the mapping rules of the source, or create the type "${aliasTarget}".`,
       }
     }
 

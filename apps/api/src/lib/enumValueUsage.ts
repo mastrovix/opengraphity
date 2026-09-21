@@ -102,6 +102,10 @@ export const DOMAIN_VALUE_BINDINGS: Readonly<Record<string, readonly { label: st
   service_criticality: [
     { label: 'BusinessApplication', property: 'criticality' },
   ],
+  /** L'ambiente dei CI: ingresso della matrice `environment_risk` (revisione del 14 set 2026 · CH-3). */
+  environment: [
+    { label: 'ConfigurationItem', property: 'environment' },
+  ],
   event_severity: [
     { label: 'Event',             property: 'severity' },
     { label: 'Anomaly',           property: 'severity' },
@@ -122,6 +126,19 @@ export const DOMAIN_VALUE_BINDINGS: Readonly<Record<string, readonly { label: st
   risk_band: [],
   /** Nessun record: è il vocabolario del file di import, non del prodotto. */
   import_severity: [],
+  /**
+   * Revisione del 15 set 2026 · CM-7: le categorie della Knowledge Base e il
+   * tipo dei team sono validati contro il Dizionario (`assertDomainValue`) ma
+   * nessun campo del metamodello li aggancia. Senza queste due righe togliere
+   * `network` dalle categorie KB passava contando zero usi con un articolo che
+   * lo portava, e una rinomina non riscriveva gli articoli.
+   */
+  kb_category: [
+    { label: 'KBArticle', property: 'category' },
+  ],
+  team_type: [
+    { label: 'Team', property: 'type' },
+  ],
 }
 
 /**
@@ -139,7 +156,11 @@ export const DOMAIN_VALUE_BINDINGS: Readonly<Record<string, readonly { label: st
  * la regola «Incident security critico → SecOps» non scattava mai piu perche
  * `evaluateConditions` restituiva `false`. Nessun errore, nessun log.
  */
-export type ConfigSiteShape = 'scalar' | 'conditions' | 'risk_bands'
+/**
+ * `object_list`: una lista JSON di oggetti dove il campo `listKey` porta il
+ * valore (`risk_band_thresholds` → `band`, `portal_severity_options` → `value`).
+ */
+export type ConfigSiteShape = 'scalar' | 'conditions' | 'object_list' | 'string_list' | 'actions' | 'deadline'
 
 export interface ConfigValueSite {
   label:    string
@@ -149,24 +170,49 @@ export interface ConfigValueSite {
   vocabulary?: string
   /** Oppure la proprieta che NOMINA il campo, e quindi il vocabolario (FieldVisibilityRule). */
   vocabularyFromField?: string
+  /** Per `object_list`: il campo di ogni oggetto che porta il valore. */
+  listKey?: string
   /** Come si chiama nel messaggio all'amministratore. */
   where: string
 }
 
 export const CONFIG_VALUE_SITES: readonly ConfigValueSite[] = [
-  { label: 'BusinessRule',  property: 'conditions', shape: 'conditions', where: 'le condizioni di una Business Rule' },
-  { label: 'AutoTrigger',   property: 'conditions', shape: 'conditions', where: 'le condizioni di un Trigger Automatico' },
-  { label: 'SLAPolicyNode', property: 'category',   shape: 'scalar', vocabulary: 'category',    where: 'la categoria di una Policy SLA' },
-  { label: 'DynamicCIGroup', property: 'criteria_environment', shape: 'scalar', vocabulary: 'environment', where: "l'ambiente di un gruppo CI dinamico" },
-  { label: 'StandardChangeCatalogEntry', property: 'default_priority', shape: 'scalar', vocabulary: 'priority', where: 'la priorita di una change standard di catalogo' },
-  { label: 'FieldVisibilityRule', property: 'trigger_value', shape: 'scalar', vocabularyFromField: 'trigger_field', where: 'la condizione di visibilita di un campo' },
+  { label: 'BusinessRule',  property: 'conditions', shape: 'conditions', where: 'the conditions of a Business Rule' },
+  { label: 'AutoTrigger',   property: 'conditions', shape: 'conditions', where: 'the conditions of an Auto Trigger' },
+  // Revisione totale · C-5: il perimetro copriva le sole CONDIZIONI. I valori
+  // che le AZIONI scrivono (`set_priority`, `set_field`, `update_field`) e
+  // quelli che una scadenza del passo imposta restavano sul nome vecchio: il
+  // conteggio diceva «0 usi», la rinomina non riscriveva, e la regola
+  // «Incident security → set_priority critical» falliva a ogni esecuzione con
+  // un messaggio solo nel log.
+  { label: 'BusinessRule',  property: 'actions',       shape: 'actions', where: 'the actions of a Business Rule' },
+  { label: 'AutoTrigger',   property: 'actions',       shape: 'actions', where: 'the actions of an Auto Trigger' },
+  { label: 'WorkflowStep',  property: 'enter_actions', shape: 'actions', where: 'the entry actions of a workflow step' },
+  { label: 'WorkflowStep',  property: 'exit_actions',  shape: 'actions', where: 'the exit actions of a workflow step' },
+  { label: 'WorkflowStep',  property: 'deadline',      shape: 'deadline', where: 'the fields set by a step deadline' },
+  { label: 'SLAPolicyNode', property: 'category',   shape: 'scalar', vocabulary: 'category',    where: 'the category of an SLA Policy' },
+  { label: 'DynamicCIGroup', property: 'criteria_environment', shape: 'scalar', vocabulary: 'environment', where: 'the environment of a dynamic CI group' },
+  { label: 'StandardChangeCatalogEntry', property: 'default_priority', shape: 'scalar', vocabulary: 'priority', where: 'the priority of a standard change catalog entry' },
+  { label: 'FieldVisibilityRule', property: 'trigger_value', shape: 'scalar', vocabularyFromField: 'trigger_field', where: 'the visibility condition of a field' },
   // Il CRITICO della terza revisione (A · C1): le soglie delle fasce di
   // rischio vivono sul Tenant come `[{band, upTo}]`, dove `band` e un valore
   // del vocabolario `risk_band`. La tabella dichiarava `risk_band: []` con la
   // motivazione «i suoi valori vivono solo nelle chiavi della matrice», che
   // era falsa dal commit che ha introdotto le soglie. Dopo una rinomina,
   // `parseThresholds` lancia e NESSUNA change si crea piu.
-  { label: 'Tenant', property: 'risk_band_thresholds', shape: 'risk_bands', vocabulary: 'risk_band', where: 'le soglie delle fasce di rischio' },
+  { label: 'Tenant', property: 'risk_band_thresholds', shape: 'object_list', listKey: 'band', vocabulary: 'risk_band', where: 'the risk band thresholds' },
+  // Verifica «Cosa resta cablato», ondate 1 e 2: le scelte dell'amministratore
+  // che nominano valori del Dizionario. Senza queste righe, rinominare una
+  // severità o una priorità avrebbe lasciato il portale con un valore che il
+  // servizio rifiuta, o una voce del catalogo da cui non nasce più nessuna richiesta.
+  { label: 'Tenant', property: 'portal_severity_options', shape: 'object_list', listKey: 'value', vocabulary: 'severity', where: 'the severities offered in the self-service portal' },
+  { label: 'ServiceCatalogItem', property: 'priority', shape: 'scalar', vocabulary: 'priority', where: 'the priority of a service catalog item' },
+  { label: 'ServiceCatalogItem', property: 'category', shape: 'scalar', vocabulary: 'category', where: 'the category of a service catalog item' },
+  // CM-7 (revisione del 15 set 2026): i tipi di change pre-approvati sono una
+  // lista di valori di `change_type`. Rinominare `standard` lasciava la lista
+  // sul nome vecchio, e quelle change tornavano a chiedere l'approvazione
+  // completa — il difetto che l'ondata 8 aveva chiuso.
+  { label: 'Tenant', property: 'pre_approved_change_types', shape: 'string_list', vocabulary: 'change_type', where: 'the pre-approved change types' },
 ]
 
 /**
@@ -251,8 +297,8 @@ export async function enumValueBindings(
   // i numeri.
   const seen = new Set(out.map((b) => `${b.label}.${b.property}`))
   for (const b of DOMAIN_VALUE_BINDINGS[vocabularyName] ?? []) {
-    const label    = assertLabel(b.label, `vocabolario "${vocabularyName}": etichetta dichiarata`)
-    const property = assertFieldName(b.property, `vocabolario "${vocabularyName}": proprietà dichiarata`)
+    const label    = assertLabel(b.label, `vocabulary "${vocabularyName}": declared label`)
+    const property = assertFieldName(b.property, `vocabulary "${vocabularyName}": declared property`)
     if (seen.has(`${label}.${property}`)) continue
     seen.add(`${label}.${property}`)
     out.push({ label, property, fieldName: property, typeName: label })
@@ -298,11 +344,11 @@ async function matrixReferences(
       for (const [i, vocabulary] of spec.inputs.entries()) {
         if (vocabulary !== vocabularyName) continue
         const hit = out.get(parts[i] ?? '')
-        if (hit && !hit.includes(`${kind} (chiave "${key}")`)) hit.push(`${kind} (chiave "${key}")`)
+        if (hit && !hit.includes(`${kind} (key "${key}")`)) hit.push(`${kind} (key "${key}")`)
       }
       if (spec.output === vocabularyName) {
         const hit = out.get(String(value))
-        if (hit && !hit.includes(`${kind} (cella "${key}")`)) hit.push(`${kind} (cella "${key}")`)
+        if (hit && !hit.includes(`${kind} (cell "${key}")`)) hit.push(`${kind} (cell "${key}")`)
       }
     }
   }
@@ -385,16 +431,16 @@ export function enumValueUsageMessage(vocabularyName: string, usages: readonly E
   const parts = usages.map((u) => {
     const where = [
       ...u.records.map((r) => `${String(r.count)} ${r.typeName}.${r.fieldName}`),
-      ...u.policyLists.map((l) => `la policy degli allarmi (${l})`),
-      ...u.matrices.map((m) => `la matrice ${m}`),
+      ...u.policyLists.map((l) => `the alarm policy (${l})`),
+      ...u.matrices.map((m) => `the ${m} matrix`),
       ...u.configSites,
     ]
-    return `"${u.value}" è ancora usato da ${where.join(', ')}`
+    return `"${u.value}" is still used by ${where.join(', ')}`
   })
   return (
-    `Il vocabolario "${vocabularyName}" non può perdere questi valori: ${parts.join('; ')}. ` +
-    `Cambia prima quei record, oppure indica un valore di sostituzione ` +
-    `(replacements: [{from: "…", to: "…"}]) e verranno riscritti insieme al vocabolario.`
+    `The dictionary "${vocabularyName}" cannot lose these values: ${parts.join('; ')}. ` +
+    `Change those records first, or give a replacement value ` +
+    `(replacements: [{from: "…", to: "…"}]) and they are rewritten together with the dictionary.`
   )
 }
 
@@ -557,9 +603,14 @@ async function configReferences(
   const wanted = new Set(values)
 
   for (const site of CONFIG_VALUE_SITES) {
-    // Il Tenant non porta `tenant_id`: si identifica per slug.
+    // Il Tenant non porta `tenant_id`: si identifica per `id`, come in TUTTO
+    // il resto del codice (revisione totale · C-25). Qui era `slug`, che è
+    // scritto solo ON CREATE: un tenant nato prima di quella proprietà non
+    // veniva trovato, quindi la rinomina di una fascia di rischio o di un
+    // tipo di change non riscriveva le soglie e la creazione delle change si
+    // fermava — il critico della terza revisione, di nuovo.
     const match = site.label === 'Tenant'
-      ? 'MATCH (n:Tenant {slug: $tenantId})'
+      ? 'MATCH (n:Tenant {id: $tenantId})'
       : `MATCH (n:${site.label} {tenant_id: $tenantId})`
 
     if (site.shape === 'scalar') {
@@ -596,12 +647,37 @@ async function configReferences(
       continue
     }
 
-    // `risk_bands`: [{band, upTo}] sul Tenant.
+    if (site.shape === 'actions' || site.shape === 'deadline') {
+      const rows = await run(q, `
+        ${match}
+        WHERE n.${site.property} IS NOT NULL
+        RETURN n.${site.property} AS raw, n.entity_type AS entityType, n.name AS name, n.definition_id AS definitionId
+      `, { tenantId })
+      for (const row of rows) {
+        const writes = site.shape === 'actions' ? parseActionWrites(row['raw']) : parseDeadlineWrites(row['raw'])
+        for (const w of writes) {
+          if (fieldVocabulary(w.field) !== vocabularyName) continue
+          if (!wanted.has(w.value)) continue
+          add(w.value, `${site.where}${row['name'] != null ? ` «${String(row['name'])}»` : ''}`)
+        }
+      }
+      continue
+    }
+
     if (site.vocabulary !== vocabularyName) continue
+    if (site.shape === 'string_list') {
+      const rows = await run(q, `${match} RETURN n.${site.property} AS raw`, { tenantId })
+      for (const row of rows) {
+        for (const value of parseStringList(row['raw'])) if (wanted.has(value)) add(value, site.where)
+      }
+      continue
+    }
+    // `object_list`: [{<listKey>: valore, …}] (le soglie delle fasce, le severità del portale).
     const rows = await run(q, `${match} RETURN n.${site.property} AS raw`, { tenantId })
     for (const row of rows) {
-      for (const band of parseRiskBandNames(row['raw'])) {
-        if (wanted.has(band)) add(band, site.where)
+      for (const item of parseObjectList(row['raw'], site.listKey!)) {
+        const value = item[site.listKey!] as string
+        if (wanted.has(value)) add(value, site.where)
       }
     }
   }
@@ -613,8 +689,9 @@ async function replaceInConfig(
   tx: ManagedTransaction, tenantId: string, vocabularyName: string, from: string, to: string,
 ): Promise<void> {
   for (const site of CONFIG_VALUE_SITES) {
+    // C-25: `id`, non `slug` (vedi `configReferences`).
     const match = site.label === 'Tenant'
-      ? 'MATCH (n:Tenant {slug: $tenantId})'
+      ? 'MATCH (n:Tenant {id: $tenantId})'
       : `MATCH (n:${site.label} {tenant_id: $tenantId})`
 
     if (site.shape === 'scalar') {
@@ -665,12 +742,50 @@ async function replaceInConfig(
       continue
     }
 
+    if (site.shape === 'actions' || site.shape === 'deadline') {
+      // JSON: si rilegge, si riscrive, si risalva. I nodi `WorkflowStep` non
+      // hanno `tenant_id` sulla stessa forma degli altri? Ce l'hanno, e si
+      // riscrivono per id come le condizioni (C-5).
+      const rows = await runWrite(tx, `
+        ${match}
+        WHERE n.${site.property} IS NOT NULL
+        RETURN n.id AS id, n.${site.property} AS raw
+      `, { tenantId })
+      for (const row of rows) {
+        const next = site.shape === 'actions'
+          ? rewriteActionWrites(row['raw'], vocabularyName, from, to)
+          : rewriteDeadlineWrites(row['raw'], vocabularyName, from, to)
+        if (next == null) continue
+        await runWrite(tx, `
+          MATCH (n:${site.label} {id: $id, tenant_id: $tenantId})
+          SET n.${site.property} = $raw
+          RETURN count(*) AS n
+        `, { tenantId, id: row['id'], raw: next })
+      }
+      continue
+    }
+
     if (site.vocabulary !== vocabularyName) continue
+    if (site.shape === 'string_list') {
+      const rows = await runWrite(tx, `${match} RETURN n.${site.property} AS raw`, { tenantId })
+      for (const row of rows) {
+        const list = parseStringList(row['raw'])
+        if (!list.includes(from)) continue
+        const next = [...new Set(list.map((v) => (v === from ? to : v)))]
+        await runWrite(tx, `
+          ${match}
+          SET n.${site.property} = $list
+          RETURN count(*) AS n
+        `, { tenantId, list: next })
+      }
+      continue
+    }
     const rows = await runWrite(tx, `${match} RETURN n.${site.property} AS raw`, { tenantId })
     for (const row of rows) {
-      const parsed = parseRiskBandList(row['raw'])
-      if (!parsed.some((b) => b.band === from)) continue
-      const next = parsed.map((b) => (b.band === from ? { ...b, band: to } : b))
+      const key = site.listKey!
+      const parsed = parseObjectList(row['raw'], key)
+      if (!parsed.some((b) => b[key] === from)) continue
+      const next = parsed.map((b) => (b[key] === from ? { ...b, [key]: to } : b))
       await runWrite(tx, `
         ${match}
         SET n.${site.property} = $raw
@@ -683,6 +798,125 @@ async function replaceInConfig(
 interface ParsedCondition { field: string; value: string; raw: Record<string, unknown> }
 
 /** Le condizioni di una regola, saltando quelle che non hanno la forma attesa. */
+/**
+ * I VALORI DI VOCABOLARIO CHE UN'AZIONE SCRIVE (revisione totale · C-5).
+ *
+ * `set_priority` scrive la priorità, `set_field`/`update_field` scrivono il
+ * campo che nominano. Un valore con un segnaposto (`{category}`) si risolve a
+ * runtime e non è un valore di vocabolario: si salta.
+ */
+interface FieldWrite { field: string; value: string }
+
+function parseActionWrites(raw: unknown): FieldWrite[] {
+  if (raw == null) return []
+  let parsed: unknown
+  try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return [] }
+  if (!Array.isArray(parsed)) return []
+  const out: FieldWrite[] = []
+  for (const item of parsed) {
+    const w = actionWriteOf(item)
+    if (w) out.push(w)
+  }
+  return out
+}
+
+/** Il campo e il valore scritti da una singola azione, se ne scrive uno. */
+function actionWriteOf(item: unknown): FieldWrite | null {
+  if (item == null || typeof item !== 'object') return null
+  const o = item as Record<string, unknown>
+  const params = o['params']
+  if (params == null || typeof params !== 'object') return null
+  const p = params as Record<string, unknown>
+  if (o['type'] === 'set_priority') {
+    const value = p['priority'] ?? p['value']
+    return typeof value === 'string' && value && !isPlaceholder(value) ? { field: 'priority', value } : null
+  }
+  if (o['type'] === 'set_field' || o['type'] === 'update_field') {
+    const field = p['field']
+    const value = p['value']
+    if (typeof field !== 'string' || !field) return null
+    return typeof value === 'string' && value && !isPlaceholder(value) ? { field, value } : null
+  }
+  return null
+}
+
+/** I campi impostati da una scadenza del passo: `{after, unit, to_step, set_fields: [{field, value}]}`. */
+function parseDeadlineWrites(raw: unknown): FieldWrite[] {
+  if (raw == null) return []
+  let parsed: unknown
+  try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return [] }
+  if (parsed == null || typeof parsed !== 'object') return []
+  const fields = (parsed as Record<string, unknown>)['set_fields']
+  if (!Array.isArray(fields)) return []
+  const out: FieldWrite[] = []
+  for (const f of fields) {
+    if (f == null || typeof f !== 'object') continue
+    const o = f as Record<string, unknown>
+    if (typeof o['field'] === 'string' && typeof o['value'] === 'string' && o['value'] && !isPlaceholder(o['value'])) {
+      out.push({ field: o['field'], value: o['value'] })
+    }
+  }
+  return out
+}
+
+function isPlaceholder(value: string): boolean {
+  return /\{[A-Za-z_][\w.]*\}/.test(value)
+}
+
+/**
+ * Il vocabolario che governa un campo scritto da un'azione. `status` non entra:
+ * i nomi dei passi non sono valori di vocabolario (li valida
+ * `assertStepTargets`).
+ */
+function fieldVocabulary(field: string): string | null {
+  if (field === 'status') return null
+  if (field === 'severity') return 'severity'
+  return CONDITION_FIELD_VOCABULARY[field] ?? null
+}
+
+/** La lista di azioni riscritta, o null se non c'era niente da cambiare. */
+function rewriteActionWrites(raw: unknown, vocabularyName: string, from: string, to: string): string | null {
+  let parsed: unknown
+  try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return null }
+  if (!Array.isArray(parsed)) return null
+  let changed = false
+  const next = parsed.map((item) => {
+    const w = actionWriteOf(item)
+    if (!w || w.value !== from || fieldVocabulary(w.field) !== vocabularyName) return item
+    changed = true
+    const o = item as Record<string, unknown>
+    const p = { ...(o['params'] as Record<string, unknown>) }
+    if (o['type'] === 'set_priority') {
+      if (typeof p['priority'] === 'string') p['priority'] = to
+      if (typeof p['value'] === 'string') p['value'] = to
+    } else {
+      p['value'] = to
+    }
+    return { ...o, params: p }
+  })
+  return changed ? JSON.stringify(next) : null
+}
+
+/** La scadenza riscritta, o null se non c'era niente da cambiare. */
+function rewriteDeadlineWrites(raw: unknown, vocabularyName: string, from: string, to: string): string | null {
+  let parsed: unknown
+  try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return null }
+  if (parsed == null || typeof parsed !== 'object') return null
+  const o = { ...(parsed as Record<string, unknown>) }
+  const fields = o['set_fields']
+  if (!Array.isArray(fields)) return null
+  let changed = false
+  o['set_fields'] = fields.map((f) => {
+    if (f == null || typeof f !== 'object') return f
+    const ff = f as Record<string, unknown>
+    if (typeof ff['field'] !== 'string' || ff['value'] !== from) return f
+    if (fieldVocabulary(ff['field']) !== vocabularyName) return f
+    changed = true
+    return { ...ff, value: to }
+  })
+  return changed ? JSON.stringify(o) : null
+}
+
 function parseConditionList(raw: unknown): ParsedCondition[] {
   if (raw == null) return []
   let parsed: unknown
@@ -702,17 +936,19 @@ function parseConditionList(raw: unknown): ParsedCondition[] {
   return out
 }
 
-function parseRiskBandList(raw: unknown): { band: string; [k: string]: unknown }[] {
+/** Una lista di stringhe (proprietà lista di Neo4j), saltando ciò che non è una stringa. */
+function parseStringList(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : []
+}
+
+/** Una lista JSON di oggetti con il valore in `key`, saltando le voci che non hanno la forma attesa. */
+function parseObjectList(raw: unknown, key: string): Record<string, unknown>[] {
   if (raw == null) return []
   let parsed: unknown
   try { parsed = typeof raw === 'string' ? JSON.parse(raw) : raw } catch { return [] }
   if (!Array.isArray(parsed)) return []
-  return parsed.filter((b): b is { band: string } =>
-    b != null && typeof b === 'object' && typeof (b as Record<string, unknown>)['band'] === 'string')
-}
-
-function parseRiskBandNames(raw: unknown): string[] {
-  return parseRiskBandList(raw).map((b) => b.band)
+  return parsed.filter((b): b is Record<string, unknown> =>
+    b != null && typeof b === 'object' && typeof (b as Record<string, unknown>)[key] === 'string')
 }
 
 async function run(q: Session | ManagedTransaction, cypher: string, params: Record<string, unknown>): Promise<Row[]> {

@@ -3,7 +3,7 @@
  *  - the tick sends only to tenants whose LOCAL hour is 08:00 (tenant timezone);
  *  - idempotency marker `digest:<tenant>:<localDate>` claimed with SET NX on the
  *    shared Redis (in-memory Map here): a second tick on the same local day is skipped;
- *  - recipients: admin/operator with coalesce(notifications_enabled, true) = true;
+ *  - recipients: people who work tickets (ticket.assignable on their role) with coalesce(notifications_enabled, true) = true;
  *  - a Redis/tenant failure is aggregated and the tick REJECTS (no silent skip).
  * Pure helpers (localHourAndDate, digestMarkerKey, resolveTenantTimezone) are
  * covered in schedulerHelpers.test.ts and not repeated.
@@ -22,6 +22,12 @@ class FakeRedis {
     this.store.set(key, value)
     return 'OK'
   })
+  /**
+   * Revisione totale · C-9: un invio fallito TOGLIE il marcatore, altrimenti
+   * il digest di quel giorno è perso e i tick successivi lo saltano come «già
+   * inviato».
+   */
+  del = vi.fn(async (key: string): Promise<number> => (this.store.delete(key) ? 1 : 0))
 }
 const redis = new FakeRedis()
 
@@ -36,7 +42,7 @@ vi.mock('../../lib/bullmq.js', () => ({
 
 // ── Neo4j: runQuery dispatches on the Cypher text ───────────────────────────
 
-interface TenantRow { id: string; timezone: string | null }
+interface TenantRow { id: string; timezone: string | null; digestTime?: string | null; target?: string | null; recipients?: string[] | null }
 let tenants: TenantRow[] = []
 let recipients: Record<string, Array<{ email: string }>> = {}
 const queries: Array<{ q: string; p: Record<string, unknown> }> = []
@@ -44,7 +50,7 @@ const close = vi.fn().mockResolvedValue(undefined)
 
 const runQuery = vi.fn(async (_s: unknown, q: string, p: Record<string, unknown>) => {
   queries.push({ q, p })
-  if (q.includes('MATCH (t:Tenant)')) return tenants
+  if (q.includes('MATCH (t:Tenant)')) return tenants.map((t) => ({ digestTime: '08:00', target: 'all', recipients: null, ...t }))
   if (q.includes('slaBreaches'))       return [{ openInc: 3, resolvedToday: 1, ongoingChanges: 2, slaBreaches: 0 }]
   if (q.includes('ORDER BY i.created_at')) return [{ title: 'Disk full', status: 'new', created: 'x' }]
   if (q.includes('MATCH (u:User'))     return recipients[p['t'] as string] ?? []
@@ -56,7 +62,11 @@ vi.mock('@opengraphity/neo4j', () => ({
 }))
 
 const sendEmail = vi.fn()
-vi.mock('@opengraphity/notifications', () => ({ sendEmail: (...a: unknown[]) => sendEmail(...a) }))
+vi.mock('@opengraphity/notifications', () => ({
+  sendTenantEmail: (_tenantId: string, ...a: unknown[]) => sendEmail(...a),
+  loadTenantBrand: async () => ({ displayName: 'ACME', senderName: 'ACME IT', replyTo: null, logo: null }),
+  loadNotificationLocale: async () => ({ language: 'en', timeZone: 'UTC' }),
+}))
 
 vi.mock('../../lib/workflowHelpers.js', () => ({
   getOpenStepNames: vi.fn(async (_s: unknown, _t: string, entityType: string) => entityType === 'incident' ? ['new', 'in_progress'] : ['planning']),
@@ -97,17 +107,23 @@ describe('processDigestTick — fuso del tenant', () => {
     expect(sendEmail).toHaveBeenCalledWith({ to: 'a@rome.io', subject: 'Digest giornaliero', html: '<p>x</p>', text: 'x' })
   })
 
-  it('alle 12:00Z tocca a New_York (08:00 EDT): Roma (14:00) è saltata', async () => {
+  it('alle 12:00Z tocca a New_York (08:00 EDT); Roma (14:00), se non l\'aveva ancora ricevuto, lo riceve ora', async () => {
     const result = await processDigestTick(new Date('2026-09-08T12:00:00.000Z'))
-    expect(result).toEqual({ sent: ['ny'], skipped: ['rome'] })
+    expect(result).toEqual({ sent: ['rome', 'ny'], skipped: [] })
     expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'c@ny.io' }))
   })
 
-  it('tenant senza timezone → UTC (08:00Z)', async () => {
-    tenants = [{ id: 'utc-tenant', timezone: null }]
+  it('tenant senza timezone → il suo digest FALLISCE, non parte a un\'ora inventata (C-10)', async () => {
+    /**
+     * CONTRATTO RINEGOZIATO (revisione totale · C-10): il ripiego su UTC
+     * mandava il digest all'ora sbagliata con un solo avviso per processo, e
+     * il cliente non aveva modo di accorgersene. Ora quel tenant fallisce (e
+     * il tick rigetta, come per un fuso non valido): gli altri sono serviti.
+     */
+    tenants = [{ id: 'utc-tenant', timezone: null }, { id: 'rome', timezone: 'Europe/Rome' }]
     recipients = { 'utc-tenant': [{ email: 'u@x.io' }] }
-    await expect(processDigestTick(new Date('2026-09-08T08:30:00.000Z'))).resolves.toEqual({ sent: ['utc-tenant'], skipped: [] })
-    await expect(processDigestTick(new Date('2026-09-09T06:30:00.000Z'))).resolves.toEqual({ sent: [], skipped: ['utc-tenant'] })
+    await expect(processDigestTick(AT_ROME_8)).rejects.toThrow('[email-digest] digest failed for 1 tenant(s) — see log')
+    expect(sendEmail).not.toHaveBeenCalledWith(expect.objectContaining({ to: 'u@x.io' }))
   })
 
   it('timezone non valida su un tenant → quel tenant fallisce, gli altri vengono serviti, poi il tick rigetta', async () => {
@@ -157,14 +173,15 @@ describe('processDigestTick — marker di idempotenza (SET NX)', () => {
 })
 
 describe('processDigestTick — destinatari', () => {
-  it('la Cypher filtra admin/operator con coalesce(notifications_enabled, true) = true, scopata per tenant', async () => {
+  it('la Cypher filtra chi lavora i ticket (permesso del ruolo) con coalesce(notifications_enabled, true) = true, scopata per tenant', async () => {
     await processDigestTick(AT_ROME_8)
 
     const users = queries.filter((x) => x.q.includes('MATCH (u:User'))
     expect(users).toHaveLength(1)
-    expect(users[0]!.p).toEqual({ t: 'rome' })
+    expect(users[0]!.p).toEqual({ t: 'rome', role: null, permission: 'ticket.assignable' })
     expect(users[0]!.q).toContain('MATCH (u:User {tenant_id: $t})')
-    expect(users[0]!.q).toMatch(/u\.role IN \['admin', 'operator', 'TENANT_ADMIN', 'OPERATOR'\]/)
+    expect(users[0]!.q).toContain('MATCH (r:Role {tenant_id: $t, key: u.role})')
+    expect(users[0]!.q).toContain('$permission IN r.permissions')
     expect(users[0]!.q).toContain('coalesce(u.notifications_enabled, true) = true')
     expect(users[0]!.q).toMatch(/u\.email IS NOT NULL AND u\.email <> ''/)
   })
@@ -188,7 +205,8 @@ describe('processDigestTick — destinatari', () => {
     await processDigestTick(AT_ROME_8)
     expect(digestDaily).toHaveBeenCalledWith(
       { openIncidents: 3, resolvedToday: 1, ongoingChanges: 2, slaBreaches: 0, recentEvents: ['Disk full (new)'] },
-      'rome',
+      { tenantId: 'rome', brand: expect.objectContaining({ displayName: 'ACME' }) },
+      { language: 'en', timeZone: 'UTC' },
     )
   })
 
@@ -211,10 +229,10 @@ describe('processDigestTick — destinatari', () => {
 })
 
 describe('startEmailDigestWorker', () => {
-  it('registra il tick orario (UTC) con jobId fisso e un worker a concorrenza 1', async () => {
+  it('registra il tick ogni 5 minuti (UTC) con jobId fisso e un worker a concorrenza 1', async () => {
     await startEmailDigestWorker()
     expect(queueAdd).toHaveBeenCalledWith('digest-tick', {}, {
-      repeat: { pattern: '0 * * * *', tz: 'UTC' }, jobId: 'email-digest-tick', removeOnComplete: true,
+      repeat: { pattern: '*/5 * * * *', tz: 'UTC' }, jobId: 'email-digest-tick', removeOnComplete: true,
     })
     expect(processors.has(EMAIL_DIGEST_QUEUE)).toBe(true)
   })
@@ -235,5 +253,53 @@ describe('startEmailDigestWorker', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+/** NT-8 (revisione del 14 set 2026): il digest è la regola digest.daily del tenant. */
+describe('processDigestTick — la regola decide', () => {
+  it('l\'ora è quella della regola, nel fuso del tenant', async () => {
+    tenants = [{ id: 'rome', timezone: 'Europe/Rome', digestTime: '18:30' }]
+    await expect(processDigestTick(AT_ROME_8)).resolves.toEqual({ sent: [], skipped: ['rome'] })
+    await expect(processDigestTick(new Date('2026-09-08T16:30:00.000Z'))).resolves.toEqual({ sent: ['rome'], skipped: [] })
+  })
+
+  it('bersaglio per ruolo → solo quel ruolo; indirizzi espliciti → quelli', async () => {
+    tenants = [{ id: 'rome', timezone: 'Europe/Rome', target: 'role:admin' }]
+    await processDigestTick(AT_ROME_8)
+    expect(queries.find((x) => x.q.includes('MATCH (u:User'))!.p).toEqual({ t: 'rome', role: 'admin', permission: 'ticket.assignable' })
+
+    vi.clearAllMocks(); redis.store.clear(); queries.length = 0
+    tenants = [{ id: 'rome', timezone: 'Europe/Rome', recipients: ['boss@rome.io'] }]
+    await processDigestTick(AT_ROME_8)
+    expect(queries.some((x) => x.q.includes('MATCH (u:User'))).toBe(false)
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'boss@rome.io' }))
+  })
+})
+
+/**
+ * Revisione totale · C-9: il marcatore di idempotenza veniva preso PRIMA
+ * dell'invio e restava anche quando l'invio falliva. Con Resend che non
+ * risponde alle 08:00, quel cliente non riceveva nessun digest fino al giorno
+ * dopo, nonostante i tick ogni cinque minuti.
+ */
+describe('marcatore di idempotenza e invii falliti (C-9)', () => {
+  it('invio riuscito: il marcatore resta e il tick successivo salta', async () => {
+    await processDigestTick(AT_ROME_8)
+    redis.set.mockClear()
+    const out = await processDigestTick(AT_ROME_8)
+    expect(out.skipped).toContain('rome')
+    expect(redis.del).not.toHaveBeenCalled()
+  })
+
+  it('invio fallito: il marcatore viene rimosso, il tick successivo riprova', async () => {
+    sendEmail.mockRejectedValue(new Error('smtp giù'))
+    await processDigestTick(AT_ROME_8).catch(() => undefined)
+    expect(redis.del).toHaveBeenCalled()
+
+    sendEmail.mockReset()
+    sendEmail.mockResolvedValue(undefined)
+    const out = await processDigestTick(AT_ROME_8)
+    expect(out.sent).toContain('rome')
   })
 })

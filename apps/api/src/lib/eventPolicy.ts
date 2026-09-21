@@ -44,6 +44,13 @@ export const EVENT_POLICY_V5_MIGRATION = '20260911_1130_shared_domain_rules'
  */
 export const EVENT_POLICY_V6_KEYS = ['retired_statuses', 'maintenance_statuses'] as const
 export const EVENT_POLICY_V6_MIGRATION = '20260917_1810_ci_lifecycle_semantics'
+/**
+ * Chiave introdotta dalla revisione totale · G-MON-7: da quanti CI dipendenti
+ * un guasto «si propaga» (migrazione 1050). Era il numero 5 scritto nel web,
+ * lo stesso per una CMDB da 50 CI e per una da 50.000.
+ */
+export const EVENT_POLICY_V7_KEYS = ['high_impact_dependents'] as const
+export const EVENT_POLICY_V7_MIGRATION = '20261002_1050_event_policy_high_impact'
 
 /** Vocabolari: la definizione è in eventVocabularies.ts (fonte unica anche per gli enum SDL); ri-esportati per i chiamanti storici. */
 export { OPEN_INCIDENT_FROM, EVENT_SEVERITIES }
@@ -74,6 +81,7 @@ export const EVENT_POLICY_MAX = {
   storm_threshold_per_minute: 100_000,
   storm_cooldown_minutes: 1_440,
   retention_days:         3_650,    // 10 anni
+  high_impact_dependents: 100_000,
 } as const
 
 /** Forma persistita (snake_case, come le proprietà Neo4j). */
@@ -137,6 +145,13 @@ export interface EventPolicy {
    * straordinaria»), con `['maintenance']` come valore iniziale.
    */
   maintenance_statuses:   string[]
+  /**
+   * Da quanti CI dipendenti in su un guasto su questo CI «si propaga»: e la
+   * soglia del chip «Impatto» nella console della salute dei CI
+   * (revisione totale · G-MON-7). 0 = nessuna evidenza, ogni CI e mostrato con
+   * il solo conteggio.
+   */
+  high_impact_dependents: number
   severity_map:           SeverityMap
 }
 
@@ -162,6 +177,8 @@ export const DEFAULT_EVENT_POLICY: EventPolicy = {
   // servizio — il posto giusto e qui.
   retired_statuses:       [CI_LIFECYCLE_INACTIVE, CI_LIFECYCLE_DECOMMISSIONED, CI_LIFECYCLE_EXPIRED, CI_LIFECYCLE_REVOKED],
   maintenance_statuses:   [CI_LIFECYCLE_MAINTENANCE],
+  // G-MON-7: il valore che il web aveva cablato, ora modificabile.
+  high_impact_dependents: 5,
   severity_map: {
     critical: { impact: 'high',   urgency: 'high' },
     warning:  { impact: 'medium', urgency: 'medium' },
@@ -334,6 +351,7 @@ export function assertEventPolicy(value: unknown, what = 'event_policy'): EventP
     ignore_lifecycle_statuses: assertLifecycleStatuses(value['ignore_lifecycle_statuses'], `${what}.ignore_lifecycle_statuses`),
     retired_statuses:       assertLifecycleStatuses(value['retired_statuses'], `${what}.retired_statuses`),
     maintenance_statuses:   assertLifecycleStatuses(value['maintenance_statuses'], `${what}.maintenance_statuses`),
+    high_impact_dependents: assertIntUpTo(value['high_impact_dependents'], EVENT_POLICY_MAX.high_impact_dependents, `${what}.high_impact_dependents`),
     severity_map:           assertSeverityMap(value['severity_map'], `${what}.severity_map`),
   }
   if (policy.flap_threshold > 0 && policy.flap_window_minutes === 0) {
@@ -375,11 +393,13 @@ export function parseEventPolicy(raw: unknown, tenantId: string): EventPolicy {
       const missingV4 = EVENT_POLICY_V4_KEYS.filter((k) => parsed[k] === undefined)
       const missingV5 = EVENT_POLICY_V5_KEYS.filter((k) => parsed[k] === undefined)
       const missingV6 = EVENT_POLICY_V6_KEYS.filter((k) => parsed[k] === undefined)
+      const missingV7 = EVENT_POLICY_V7_KEYS.filter((k) => parsed[k] === undefined)
       if (missingV2.length) hints.push(` — missing ${missingV2.join(', ')}: run the ${EVENT_POLICY_V2_MIGRATION} migration`)
       else if (missingV3.length) hints.push(` — missing ${missingV3.join(', ')}: run the ${EVENT_POLICY_V3_MIGRATION} migration`)
       else if (missingV4.length) hints.push(` — missing ${missingV4.join(', ')}: run the ${EVENT_POLICY_V4_MIGRATION} migration`)
       else if (missingV5.length) hints.push(` — missing ${missingV5.join(', ')}: run the ${EVENT_POLICY_V5_MIGRATION} migration`)
       else if (missingV6.length) hints.push(` — missing ${missingV6.join(', ')}: run the ${EVENT_POLICY_V6_MIGRATION} migration`)
+      else if (missingV7.length) hints.push(` — missing ${missingV7.join(', ')}: run the ${EVENT_POLICY_V7_MIGRATION} migration`)
     }
     throw new Error(`Tenant ${tenantId} event_policy is invalid: ${e instanceof Error ? e.message : String(e)}${hints.join('')}`)
   }
@@ -458,7 +478,7 @@ export function invalidateEventPolicyCache(tenantId?: string): void {
  * apriva incident su macchine spente di proposito. E il difetto C-4
  * dell'ondata 7, in una finestra di mezzo minuto.
  */
-registerMetamodelCacheClearer('event_policy', (tenantId?: string) => { invalidateEventPolicyCache(tenantId) })
+registerMetamodelCacheClearer('event_policy', (tenantId?: string) => { invalidateEventPolicyCache(tenantId) }, () => { invalidateEventPolicyCache() })
 
 // ── GraphQL ↔ persistita ─────────────────────────────────────────────────────
 
@@ -481,6 +501,7 @@ export interface EventPolicyGQL {
   ignoreLifecycleStatuses: string[]
   retiredStatuses:      string[]
   maintenanceStatuses:  string[]
+  highImpactDependents: number
   severityMap:          string
 }
 
@@ -503,6 +524,7 @@ export function toEventPolicyGQL(p: EventPolicy): EventPolicyGQL {
     ignoreLifecycleStatuses: [...p.ignore_lifecycle_statuses],
     retiredStatuses:      [...p.retired_statuses],
     maintenanceStatuses:  [...p.maintenance_statuses],
+    highImpactDependents: p.high_impact_dependents,
     severityMap:          JSON.stringify(p.severity_map),
   }
 }
@@ -529,6 +551,8 @@ export interface EventPolicyInputGQL {
   retiredStatuses?:      string[] | null
   /** Ondata 7: gli stati che contano come «in manutenzione» (lista completa, come sopra). */
   maintenanceStatuses?:  string[] | null
+  /** G-MON-7: da quanti dipendenti un guasto si propaga (0 = nessuna evidenza). */
+  highImpactDependents?: number | null
   severityMap?:          string | null
 }
 
@@ -569,6 +593,7 @@ export async function applyEventPolicyInput(
     ignoreLifecycleStatuses: 'ignore_lifecycle_statuses',
     retiredStatuses:      'retired_statuses',
     maintenanceStatuses:  'maintenance_statuses',
+    highImpactDependents: 'high_impact_dependents',
     severityMap:          'severity_map',
   }
   const LIFECYCLE_INPUTS: readonly string[] = ['ignoreLifecycleStatuses', 'retiredStatuses', 'maintenanceStatuses']

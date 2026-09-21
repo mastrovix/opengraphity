@@ -63,10 +63,22 @@ beforeEach(() => {
 })
 
 describe('getApprovalGateState', () => {
-  it('normalizza i contatori Neo4j e il tipo assente → normal', async () => {
-    mockedOne.mockResolvedValueOnce({ changeType: null, total: 3, pending: 1, cm: 1 })
+  it('normalizza i contatori Neo4j', async () => {
+    mockedOne.mockResolvedValueOnce({ changeType: 'normal', total: 3, pending: 1, cm: 1 })
     const s = await getApprovalGateState(session, 'chg', 't1')
     expect(s).toEqual({ changeType: 'normal', total: 3, pending: 1, hasChangeManager: true })
+  })
+
+  /**
+   * CONTRATTO RINEGOZIATO (revisione totale · B-25): una change SENZA tipo non
+   * viene più trattata come «normal». Il tipo decide i requisiti di
+   * approvazione e i tipi pre-approvati: un ripiego su un valore di fabbrica
+   * faceva valutare un tipo che il cliente può avere rinominato o non avere
+   * affatto. Un dato incompleto si dice.
+   */
+  it('change senza tipo → CONFLICT che lo nomina, nessun requisito deciso (B-25)', async () => {
+    mockedOne.mockResolvedValueOnce({ changeType: null, total: 3, pending: 1, cm: 1 })
+    await expectCode(getApprovalGateState(session, 'chg', 't1'), 'CONFLICT')
   })
   it('NOT_FOUND se la change non esiste', async () => {
     mockedOne.mockResolvedValueOnce(null)
@@ -109,7 +121,7 @@ describe('assertAllApprovalsSatisfied (gate condiviso da approve + executeChange
   })
   it('CONFLICT con requisiti pendenti (conteggio nel messaggio)', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ total: 3, pending: 2 }))
-    await expectCode(assertAllApprovalsSatisfied(session, 'chg', 't1'), 'CONFLICT', '2 requisiti')
+    await expectCode(assertAllApprovalsSatisfied(session, 'chg', 't1'), 'CONFLICT', '2 requirement(s) still pending')
   })
   it('passa quando tutti approvati e CM presente', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ total: 3, pending: 0, cm: 1 }))
@@ -129,10 +141,13 @@ describe('areAllApprovalsSatisfied (auto-advance)', () => {
 })
 
 describe('createChangeApprovals', () => {
-  it('standard: nessuna scrittura', async () => {
+  it('standard: nessun requisito, solo l\'esito «approved» (giro nel browser del 14 set 2026)', async () => {
     mockedOne.mockResolvedValueOnce({ changeType: 'standard' })
     await createChangeApprovals(session, 'chg', 't1')
-    expect(mockedMany).not.toHaveBeenCalled()
+    expect(mockedMany).toHaveBeenCalledTimes(1)
+    const cypher = String(mockedMany.mock.calls[0]![1])
+    expect(cypher).toContain("c.approval_status = 'approved'")
+    expect(cypher).not.toContain('ChangeApproval')
   })
   it('senza team Change Manager → CONFLICT e nessuna scrittura (niente gate parziale)', async () => {
     mockedOne

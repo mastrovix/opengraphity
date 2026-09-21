@@ -11,6 +11,7 @@ import { Pill } from '@/components/ui/Pill'
 import { Button } from '@/components/Button'
 import { lookupOrError, colors, palette, vendorColors } from '@/lib/tokens'
 import type { ConnectorKind } from '@/types/events'
+import { showError } from '@/lib/showError'
 
 interface ToolMeta {
   icon:  ComponentType<{ size?: number; color?: string; 'aria-hidden'?: boolean | 'true' }>
@@ -60,7 +61,7 @@ export async function copyToClipboard(text: string, successMessage: string): Pro
     toast.success(successMessage)
     return true
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e))
+    showError(e)
     return false
   }
 }
@@ -79,7 +80,7 @@ export function CopyButton({ text, label, size = 'xs', onCopied }: { text: strin
 }
 
 const monoBox: CSSProperties = {
-  fontFamily: 'monospace', fontSize: 'var(--font-size-body)', color: colors.slateDark,
+  fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-body)', color: colors.slateDark,
   background: 'var(--color-slate-bg)', border: `1px solid ${colors.border}`, borderRadius: 6,
   padding: '8px 10px', wordBreak: 'break-all', flex: 1, minWidth: 0, margin: 0,
 }

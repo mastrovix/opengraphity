@@ -97,6 +97,19 @@ export function WorkflowTransitionPanel({ transition, onClose, onSaved, onSaveLo
         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.4 }}>
           {t('workflow.conditionHint')}
         </span>
+        {/*
+          UNA GUARDIA SU UN ARCO DI SISTEMA non si comporta come su uno
+          manuale: nessuno la vede fallire. Il prodotto ora non perde più
+          niente — l'escalation rifiutata lascia una nota sul ticket e
+          l'attesa un rilievo in Diagnostica — ma resta il fatto che il
+          ticket NON si muove finché qualcuno non chiude quello che manca.
+          Chi disegna deve saperlo mentre lo sceglie, non dopo.
+        */}
+        {condition !== '' && (trigger === 'sla_breach' || trigger === 'timer') && (
+          <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-warning-text)', lineHeight: 1.4 }}>
+            {t('workflow.conditionOnSystemTrigger')}
+          </span>
+        )}
       </PanelField>
 
       {trigger === 'timer' && (

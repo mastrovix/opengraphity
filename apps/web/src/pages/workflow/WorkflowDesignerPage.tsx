@@ -11,8 +11,9 @@ import { WorkflowCanvas } from './WorkflowCanvas'
 import { WorkflowToolbar } from './WorkflowToolbar'
 import { WorkflowStepPanel } from './WorkflowStepPanel'
 import { WorkflowTransitionPanel } from './WorkflowTransitionPanel'
-import { useWorkflowDesigner, defToWorkflowKey } from './useWorkflowDesigner'
+import { useWorkflowDesigner } from './useWorkflowDesigner'
 import { palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 export function WorkflowDesignerPage() {
   const { t } = useTranslation()
@@ -24,7 +25,6 @@ export function WorkflowDesignerPage() {
   )
 
   const def              = data?.workflowDefinitionById ?? null
-  const selectedWorkflow = defToWorkflowKey(def)
 
   const {
     nodes,
@@ -53,8 +53,8 @@ export function WorkflowDesignerPage() {
   // utente → non sovrascrivere, invitare a ricaricare) dagli altri errori.
   const [saveWorkflowChanges] = useMutation<{ saveWorkflowChanges: { id: string; name: string; version: number } }>(SAVE_WORKFLOW_CHANGES)
 
-  const [addTransition] = useMutation(ADD_WORKFLOW_TRANSITION, { onError: (e) => toast.error(e.message) })
-  const [removeTransition] = useMutation(REMOVE_WORKFLOW_TRANSITION, { onError: (e) => toast.error(e.message) })
+  const [addTransition] = useMutation(ADD_WORKFLOW_TRANSITION, { onError: (e) => showError(e) })
+  const [removeTransition] = useMutation(REMOVE_WORKFLOW_TRANSITION, { onError: (e) => showError(e) })
 
   // React Flow node ids are step ids; the create mutation takes step names.
   const idToName = useMemo(() => {
@@ -91,7 +91,7 @@ export function WorkflowDesignerPage() {
     } catch { /* onError handles toast */ }
   }, [def, removeTransition, refetch, setSelectedEdgeId, t])
 
-  const [removeStep] = useMutation(REMOVE_WORKFLOW_STEP, { onError: (e) => toast.error(e.message) })
+  const [removeStep] = useMutation(REMOVE_WORKFLOW_STEP, { onError: (e) => showError(e) })
   const handleDeleteStep = useCallback(async (stepName: string) => {
     if (!def) return
     try {
@@ -121,13 +121,18 @@ export function WorkflowDesignerPage() {
         },
       })
     } catch (e) {
-      const code = CombinedGraphQLErrors.is(e) ? e.errors[0]?.extensions?.['code'] : undefined
-      if (code === 'CONFLICT') {
-        // Le modifiche locali restano in coda: sta all'utente ricaricare (perdendole)
-        // o confrontarle; non sovrascriviamo mai il lavoro dell'altro utente.
-        toast.error(t('toast.workflow.saveConflict'), { duration: 10_000 })
-      } else {
-        toast.error(e instanceof Error ? e.message : String(e))
+      // Giro UI del 15 set · U-19: solo il conflitto di VERSIONE è «modificato
+      // da un altro utente». Anche le guardie del workflow rispondono CONFLICT
+      // (scopo di approvazione, finestra di rilascio): quelle le mostra già il
+      // link di Apollo, e aggiungere questo avviso le accompagnava con una bugia.
+      // Secondo giro UI · V-4: anche il conflitto di VERSIONE lo dice già il
+      // link di Apollo, con la frase dell'API (versioni comprese e «le tue
+      // modifiche non sono state applicate»): il toast in più ripeteva la stessa
+      // cosa. Le modifiche locali restano in coda, non si sovrascrive nessuno.
+      if (!CombinedGraphQLErrors.is(e)) {
+        // Un errore GraphQL lo mostra già il link di Apollo (lib/apollo.ts),
+        // nella lingua di chi guarda: ripeterlo qui dava due avvisi identici.
+        showError(e)
       }
       return
     }
@@ -145,7 +150,6 @@ export function WorkflowDesignerPage() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <WorkflowToolbar
         def={def}
-        selectedWorkflow={selectedWorkflow}
         hasChanges={hasChanges}
         pendingCount={pendingChanges.length + pendingStepChanges.length}
         onSave={handleSave}

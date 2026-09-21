@@ -217,7 +217,16 @@ export async function ingestEvent(input: IngestInput): Promise<IngestResult> {
   // «Apre un ciclo»: evento nuovo, oppure allarme rientrato che torna acceso
   // (`resolved → firing`: il MERGE ha riscritto `first_seen_at` con l'istante
   // di questo payload). Una ripetizione dello stesso allarme ancora acceso no.
-  const opensCycle = created || props['first_seen_at'] === now
+  /**
+   * Un allarme che arriva già RIENTRATO non apre nessun ciclo (revisione
+   * totale · D-4): `created || first_seen_at === now` lo contava come
+   * apertura, perché per quel caso (B5) `first_seen_at` è l'istante del
+   * payload — quindi collegare una sorgente nuova che manda una raffica di
+   * `resolved` arretrati faceva salire il contatore di tempesta e poteva
+   * far scattare una tempesta che non è mai esistita. Lo dice già il ramo
+   * qui sopra: `resolvedUnknown`.
+   */
+  const opensCycle = !resolvedUnknown && (created || props['first_seen_at'] === now)
   // Pipeline (services/events/pipeline.ts): soppressione in finestra di change
   // → salute del CI → correlazione in incident / chiusura automatica. La
   // soppressione blocca anche la salute, per questo il ricalcolo vive lì.

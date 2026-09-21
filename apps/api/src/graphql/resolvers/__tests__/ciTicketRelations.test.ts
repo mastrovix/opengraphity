@@ -34,6 +34,15 @@ vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), 
 vi.mock('../ci-utils.js', () => ({ withSession: vi.fn() }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
 vi.mock('../../../lib/cache.js', () => ({ cache: { get: vi.fn(), set: vi.fn() } }))
+vi.mock('../../../lib/ciLifecycle.js', () => ({
+  resolveCILifecycleSemantics: vi.fn(async () => ({ retired: new Set(), maintenance: new Set(['maintenance']), ignored: new Set() })),
+  isMaintenanceLifecycle: (status: string | null | undefined, s: { maintenance: Set<string> }) => status != null && s.maintenance.has(status),
+}))
+// CM-3: le relazioni delle traversate vengono dal tenant.
+vi.mock('../../../lib/ciMetamodelForTenant.js', () => ({
+  serviceRelPatternForTenant: vi.fn(async () => 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|PROTEGGE'),
+  impactRelPatternForTenant:  vi.fn(async () => 'DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|PROTEGGE|REALIZES|ENABLED_BY'),
+}))
 vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
 vi.mock('../../../lib/workflowHelpers.js', () => ({ getTerminalStepNames: vi.fn() }))
 

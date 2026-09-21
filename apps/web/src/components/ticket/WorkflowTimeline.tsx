@@ -13,6 +13,7 @@ import { timeAgo, formatDuration } from '@/lib/datetime'
 import { alpha, colors } from '@/lib/tokens'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { STEP_DEADLINE_ACTOR } from '@opengraphity/types'
 
 export interface WorkflowStepExecution {
   id:          string
@@ -62,6 +63,14 @@ export function WorkflowTimeline({ historyDesc, timelineOpen, onToggle, entityTy
                     <span>{timeAgo(exec.enteredAt)}</span>
                     {exec.durationMs != null && <span>({formatDuration(exec.durationMs)})</span>}
                   </div>
+                  {/* Spostato dalla scadenza del passo precedente (ondata 3): lo si dice, non lo si lascia indovinare. */}
+                  {exec.triggeredBy === STEP_DEADLINE_ACTOR && (
+                    <div style={{ marginTop: 3 }}>
+                      <span style={{ display: 'inline-block', fontSize: 'var(--font-size-label)', color: 'var(--color-brand)', background: 'var(--color-brand-light)', borderRadius: 4, padding: '1px 6px' }}>
+                        {t('components.workflowTimeline.movedByDeadline')}
+                      </span>
+                    </div>
+                  )}
                   {exec.notes && <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', marginTop: 2, fontStyle: 'italic' }}>{exec.notes}</div>}
                 </div>
               </div>

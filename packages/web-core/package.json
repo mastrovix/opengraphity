@@ -21,11 +21,15 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "dependencies": {
+    "quickjs-emscripten": "^0.32.0"
+  },
   "peerDependencies": {
     "@apollo/client": "^4.1.6",
     "graphql": "^16.13.1",
     "keycloak-js": "^26.2.3",
-    "react": "^19.2.4"
+    "react": "^19.2.4",
+    "@opengraphity/types": "workspace:*"
   },
   "devDependencies": {
     "@apollo/client": "^4.1.6",
@@ -34,6 +38,7 @@
     "keycloak-js": "^26.2.3",
     "react": "^19.2.4",
     "typescript": "~5.9.3",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "@opengraphity/types": "workspace:*"
   }
 }

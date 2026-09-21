@@ -6,8 +6,8 @@
  * tipo `service_health` (WIDGET_TYPES in useWidgetConfig): entità e metrica
  * non si configurano, la sorgente dei dati è sempre la pagina Servizi.
  *
- * Come «Allarmi attivi»: la pagina Servizi è riservata allo staff (rotte
- * `staff(...)` in main.tsx, stesso predicato `isStaff`), quindi a un end user
+ * Come «Allarmi attivi»: la pagina Servizi si apre col permesso `service.read`
+ * (lib/routePermissions, ondata 7), quindi a chi non ce l'ha
  * il widget lo dice invece di linkare una pagina «accesso negato»; polling in
  * pausa a scheda nascosta; un errore resta visibile, mai contatori finti.
  */
@@ -17,7 +17,6 @@ import { useTranslation } from 'react-i18next'
 import { Boxes } from 'lucide-react'
 import { GET_SERVICE_HEALTH_COUNTS } from '@/graphql/queries'
 import { useMe } from '@/hooks/useMe'
-import { isStaff } from '@/lib/roles'
 import { colors } from '@/lib/tokens'
 import { pausedWhenHidden } from '@/lib/polling'
 import { SERVICE_HEALTH_ACCENT } from '@/pages/monitoring/servicesShared'
@@ -32,16 +31,16 @@ const TILES: readonly ServiceHealth[] = ['down', 'degraded', 'maintenance', 'ope
 
 export function ServiceHealthWidget({ color, large = false }: { color: string; large?: boolean }) {
   const { t } = useTranslation()
-  const { role, loading: meLoading } = useMe()
-  const staff = isStaff(role)
+  const { me, can, loading: meLoading } = useMe()
+  const staff = can('service.read')
   const { data, loading, error } = useQuery<{ serviceMaps: { counts: ServiceMapCounts } }>(GET_SERVICE_HEALTH_COUNTS, {
     ...pausedWhenHidden(POLL_MS), fetchPolicy: 'cache-and-network', skip: !staff,
   })
   const counts = data?.serviceMaps.counts
 
   if (!staff) {
-    // Finché `me` non risponde non si sa il ruolo: nessun messaggio prematuro.
-    if (meLoading || role === null) return null
+    // Finché `me` non risponde non si sanno i permessi: nessun messaggio prematuro.
+    if (meLoading || me === null) return null
     return <p style={{ padding: 16, margin: 0, fontSize: 'var(--font-size-body)', color: colors.slate }}>{t('pages.dashboard.serviceHealthStaffOnly')}</p>
   }
 
@@ -51,7 +50,8 @@ export function ServiceHealthWidget({ color, large = false }: { color: string; l
 
   return (
     <div style={{ padding: large ? '20px 20px 16px' : '14px 14px 12px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+      {/* Tessere che vanno a capo: in un widget stretto le etichette uscivano dal riquadro (giro del 14 set 2026, #4). */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8 }}>
         {TILES.map((health) => (
           <Link
             key={health}
@@ -62,7 +62,7 @@ export function ServiceHealthWidget({ color, large = false }: { color: string; l
             <div style={{ fontSize: large ? 32 : 26, fontWeight: 700, color: SERVICE_HEALTH_ACCENT[health], lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
               {counts ? counts[health] : loading ? '…' : '—'}
             </div>
-            <div style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 4 }}>
+            <div style={{ fontSize: 'var(--font-size-label)', color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: 4, overflowWrap: 'anywhere' }}>
               {t(`monitoring.services.tiles.${health}`)}
             </div>
           </Link>

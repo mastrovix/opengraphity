@@ -77,6 +77,9 @@ async function processDelivery(job: Job<DeliveryJobData>): Promise<void> {
       body: method !== 'GET' ? body : undefined,
       signal: controller.signal,
     })
+    // C-29: il corpo della risposta si scarta subito, altrimenti la
+    // connessione resta aperta finché non passa il garbage collector.
+    await res.body?.cancel().catch(() => undefined)
 
     const duration = Date.now() - t0
     const session = getSession(undefined, 'WRITE')

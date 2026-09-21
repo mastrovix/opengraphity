@@ -6,11 +6,12 @@ import { toPascalCase, pluralize } from '@opengraphity/schema-generator'
 import type { CITypeWithDefinitions } from '@opengraphity/schema-generator'
 import type { GraphQLContext } from '../../context.js'
 import { cache } from '../../lib/cache.js'
-import { ALLOWED_BASE_FIELDS, ALL_CIS_ALLOWED_FIELDS, ciOrderBy, buildBaseWhere, buildAdvancedWhere } from './buildCIQuery.js'
+import { ALLOWED_BASE_FIELDS, ALL_CIS_ALLOWED_FIELDS, ciOrderBy, allCIsOrderBy, CI_TYPE_ORDER_EXPR, buildBaseWhere, buildAdvancedWhere } from './buildCIQuery.js'
 import { buildFieldResolvers, mapTeamProps } from './ciFieldResolvers.js'
 import { buildCreateMutation, buildUpdateMutation, buildDeleteMutation } from './ciMutations.js'
-import { mapITILField, fetchITILTypeById, buildITILTypesResolver, buildITILTypeFieldsResolver, buildITILMutations } from './itilTypeResolvers.js'
-import { requireAdmin, buildCITypesResolver, buildBaseCITypeResolver, buildMetamodelMutations } from './ciTypeMetamodel.js'
+import { mapITILField, fetchITILTypeById, buildITILTypesResolver, buildITILTypeFieldsResolver, buildITILFieldValueCountResolver, buildITILMutations } from './itilTypeResolvers.js'
+import { requireMetamodelPermission, buildCITypesResolver, buildBaseCITypeResolver, buildMetamodelMutations, ciTypeDeletionImpact, ciFieldValueCount } from './ciTypeMetamodel.js'
+import { impactRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
 
 type Props = Record<string, unknown>
 
@@ -49,14 +50,45 @@ function mapCI(props: Props, ciType: CITypeWithDefinitions): Record<string, unkn
 
 // ── Query generiche ───────────────────────────────────────────────────────────
 
+/**
+ * I tipi nominati in un filtro, per nome (`business_application`) o per
+ * etichetta (`BusinessApplication`, anche in minuscolo). Un nome che non è un
+ * tipo di questo cliente è un errore che lo dice: un filtro che non riconosce
+ * un tipo e lo ignora mostrerebbe proprio i CI che si voleva togliere.
+ */
+function matchTypes(types: CITypeWithDefinitions[], names: (string | null)[] | null | undefined, what: string): Set<CITypeWithDefinitions> | null {
+  if (!names || names.length === 0) return null
+  const out = new Set<CITypeWithDefinitions>()
+  for (const raw of names) {
+    if (!raw) continue
+    const key = raw.trim().toLowerCase()
+    const hit = types.find(t => t.name.toLowerCase() === key || t.neo4jLabel.toLowerCase() === key)
+    if (!hit) {
+      throw new GraphQLError(`allCIs(${what}): "${raw}" is not a CI type of this tenant.`, {
+        extensions: { code: 'BAD_USER_INPUT', i18n: { key: 'errors.ciType.unknown', params: { type: raw, allowed: types.map(t => t.name).sort().join(', ') } } },
+      })
+    }
+    out.add(hit)
+  }
+  return out
+}
+
 function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
   return async (
     _: unknown,
-    args: { limit?: number; offset?: number; type?: string; status?: string; environment?: string; search?: string; filters?: string },
+    args: { limit?: number; offset?: number; type?: string; status?: string; environment?: string; search?: string; filters?: string; ciTypes?: (string | null)[] | null; excludeCiTypes?: (string | null)[] | null; sortField?: string | null; sortDirection?: string | null },
     ctx: GraphQLContext,
   ) => {
     const { limit = 50, offset = 0, type, status, environment, search, filters } = args
-    const filteredTypes = type ? types.filter(t => t.name === type) : types
+    // `ciTypes` era dichiarato nello schema e ignorato qui: la ricerca dei CI
+    // da collegare a un ticket «filtrava» per tipo senza filtrare niente.
+    // `excludeCiTypes` (CM-8) toglie i tipi esclusi per il tipo di ticket.
+    const only    = matchTypes(types, args.ciTypes, 'ciTypes')
+    const without = matchTypes(types, args.excludeCiTypes, 'excludeCiTypes')
+    const filteredTypes = types
+      .filter(t => !type || t.name === type)
+      .filter(t => !only || only.has(t))
+      .filter(t => !without || !without.has(t))
     if (!filteredTypes.length) return { items: [], total: 0 }
 
     const labelFilter = filteredTypes.map(t => `n:${t.neo4jLabel}`).join(' OR ')
@@ -68,7 +100,23 @@ function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
       limit,
       offset,
     }
-    const advWhere = filters ? buildAdvancedWhere(filters, params, ALL_CIS_ALLOWED_FIELDS, 'n') : ''
+    /*
+     * I CAMPI FILTRABILI DIPENDONO DAI TIPI CERCATI (19 set 2026).
+     *
+     * `ALL_CIS_ALLOWED_FIELDS` sono i cinque comuni a tutti i CI (nome, stato,
+     * ambiente, salute, data). Cercando dentro tipi PRECISI — ed è quello che
+     * fa un campo del modulo che punta alla CMDB con i suoi `refTypes` — si
+     * possono filtrare anche le loro proprietà: «costruttore = Dell» su un
+     * tipo che ha il costruttore. Fuori da quei tipi il campo non esiste, e
+     * infatti l'elenco si costruisce sui tipi DAVVERO cercati.
+     */
+    const allowedFields = new Set([
+      ...ALL_CIS_ALLOWED_FIELDS,
+      ...filteredTypes.flatMap((t) => t.fields.filter((f) => !f.isSystem).map((f) => f.name)),
+    ])
+    const advWhere = filters ? buildAdvancedWhere(filters, params, allowedFields, 'n') : ''
+    // B-9: l'ordinamento chiesto dalla CMDB veniva ignorato.
+    const orderBy = allCIsOrderBy(args.sortField, args.sortDirection)
     const baseFilter = `(${labelFilter}) AND n.tenant_id = $tenantId
            AND ($status IS NULL OR n.status = $status)
            AND ($environment IS NULL OR n.environment = $environment)
@@ -81,8 +129,8 @@ function buildAllCIsResolver(types: CITypeWithDefinitions[]) {
       const [itemsResult, countResult] = await Promise.all([
         s1.executeRead(tx => tx.run(
           `MATCH (n) WHERE ${baseFilter}
-           RETURN properties(n) AS props, head([l IN labels(n) WHERE l <> 'ConfigurationItem']) AS label
-           ORDER BY n.name ASC SKIP toInteger($offset) LIMIT toInteger($limit)`,
+           RETURN properties(n) AS props, ${CI_TYPE_ORDER_EXPR} AS label
+           ORDER BY ${orderBy} SKIP toInteger($offset) LIMIT toInteger($limit)`,
           params,
         )),
         s2.executeRead(tx => tx.run(
@@ -131,10 +179,13 @@ function buildCIByIdResolver(types: CITypeWithDefinitions[]) {
 function buildBlastRadiusResolver(types: CITypeWithDefinitions[]) {
   return async (_: unknown, args: { id: string }, ctx: GraphQLContext) =>
     withSession(async session => {
+      // CM-3: le relazioni dell'impatto del tenant (le stesse di impact.ts),
+      // non una lista scritta qui che ignorava quelle del cliente.
+      const relPattern = await impactRelPatternForTenant(ctx.tenantId)
       const r = await session.executeRead(tx =>
         tx.run(
           `MATCH (root {id: $id, tenant_id: $tenantId})
-           MATCH path = (root)<-[:DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE|REALIZES|ENABLED_BY*1..5]-(impacted)
+           MATCH path = (root)<-[:${relPattern}*1..5]-(impacted)
            WHERE impacted.tenant_id = $tenantId
            WITH impacted, min(length(path)) AS distance, collect(path) AS paths
            WITH impacted, distance, [p IN paths WHERE length(p) = distance | p][0] AS shortestPath
@@ -157,6 +208,23 @@ function buildBlastRadiusResolver(types: CITypeWithDefinitions[]) {
 }
 
 // ── Factory principale ────────────────────────────────────────────────────────
+
+/**
+ * I campi root generati per ogni tipo di CI: i loro nomi li sceglie il cliente,
+ * quindi la policy non li può elencare e li apre con `cmdb.read` / `cmdb.write`
+ * (lib/operationPermissions.ts). Stessi nomi di `buildDynamicCIResolvers`.
+ */
+export function dynamicCIRootFields(types: CITypeWithDefinitions[]): ReadonlySet<string> {
+  const out = new Set<string>()
+  for (const ciType of types) {
+    const typeName = toPascalCase(ciType.name)
+    const pluralName = pluralize(typeName)
+    out.add(`Query.${pluralName.charAt(0).toLowerCase() + pluralName.slice(1)}`)
+    out.add(`Query.${ciType.name}`)
+    for (const verb of ['create', 'update', 'delete']) out.add(`Mutation.${verb}${typeName}`)
+  }
+  return out
+}
 
 export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<string, unknown> {
   const Query: Record<string, unknown> = {}
@@ -267,16 +335,19 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
   Query['ciById']        = buildCIByIdResolver(types)
   Query['blastRadius']   = buildBlastRadiusResolver(types)
   Query['ciTypes']       = buildCITypesResolver()
+  Query['ciTypeDeletionImpact'] = ciTypeDeletionImpact
+  Query['ciFieldValueCount'] = ciFieldValueCount
   Query['baseCIType']    = buildBaseCITypeResolver()
   Query['itilTypes']     = buildITILTypesResolver()
   Query['itilTypeFields'] = buildITILTypeFieldsResolver()
+  Query['itilFieldValueCount'] = buildITILFieldValueCountResolver()
 
   // Metamodel mutations
   const metamodelMutations = buildMetamodelMutations()
   Object.assign(Mutation, metamodelMutations)
 
   // ITIL Designer mutations
-  const itilMutations = buildITILMutations(requireAdmin)
+  const itilMutations = buildITILMutations(requireMetamodelPermission)
   Object.assign(Mutation, itilMutations)
 
   return {
@@ -311,4 +382,4 @@ export function buildDynamicCIResolvers(types: CITypeWithDefinitions[]): Record<
 
 // Re-export for external use
 export { mapITILField, fetchITILTypeById }
-export { requireAdmin } from './ciTypeMetamodel.js'
+export { requireMetamodelPermission } from './ciTypeMetamodel.js'

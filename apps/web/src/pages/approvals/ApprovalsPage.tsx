@@ -4,6 +4,7 @@ import { useQuery, useMutation, useLazyQuery } from '@apollo/client/react'
 import { Link } from 'react-router-dom'
 import { PageContainer } from '@/components/PageContainer'
 import { useTranslation } from 'react-i18next'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import i18n from '@/i18n/i18n'
 import { CheckSquare, Clock, CheckCircle, XCircle, ChevronDown, ChevronRight, ExternalLink, BookOpen, GitPullRequest, AlertCircle } from 'lucide-react'
 import { ListPageHeader } from '@/components/ListPageHeader'
@@ -18,6 +19,7 @@ import { useConfirm } from '@/hooks/useConfirm'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { formatDate, formatDateTime } from '@/lib/datetime'
+import { showError } from '@/lib/showError'
 
 const MY_PENDING = gql`
   query MyPendingApprovals {
@@ -27,6 +29,15 @@ const MY_PENDING = gql`
     }
   }
 `
+
+/** Approvazioni che si decidono nella pagina del ticket (requisiti delle change, richieste in approvazione). */
+const PENDING_TICKET_APPROVALS = gql`
+  query PendingTicketApprovals {
+    pendingTicketApprovals { kind entityId number title detail approvalKind requestedAt }
+  }
+`
+
+interface PendingTicketApproval { kind: string; entityId: string; number: string | null; title: string; detail: string | null; approvalKind: string | null; requestedAt: string | null }
 
 const ALL_APPROVALS = gql`
   query AllApprovals($page: Int, $pageSize: Int, $filters: String, $sortField: String, $sortDirection: String) {
@@ -107,33 +118,82 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
+/** Il percorso della pagina di un ticket, per tipo. */
+const ENTITY_PATHS: Record<string, string> = {
+  change: '/changes', incident: '/incidents', problem: '/problems', service_request: '/requests',
+}
+
 /** Link to the entity's detail page, based on entityType. */
 function EntityLink({ entityType, entityId }: { entityType: string; entityId: string }) {
-  if (entityType === 'change') {
-    return (
-      <Link
-        to={`/changes/${entityId}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)', textDecoration: 'none' }}
-      >
-        <GitPullRequest size={11} /> Vai al change <ExternalLink size={10} />
-      </Link>
-    )
-  }
-  if (entityType === 'incident') {
-    return (
-      <Link
-        to={`/incidents/${entityId}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)', textDecoration: 'none' }}
-      >
-        <AlertCircle size={11} /> Vai all'incident <ExternalLink size={10} />
-      </Link>
-    )
-  }
-  return null
+  const { t } = useTranslation()
+  const base = ENTITY_PATHS[entityType]
+  if (!base) return null
+  const Icon = entityType === 'change' ? GitPullRequest : AlertCircle
+  return (
+    <Link
+      to={`${base}/${entityId}`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 'var(--font-size-table)', color: 'var(--color-brand)', textDecoration: 'none' }}
+    >
+      <Icon size={11} /> {t('pages.approvals.openTicket')} <ExternalLink size={10} />
+    </Link>
+  )
+}
+
+/**
+ * Il tipo del ticket come lo legge chi usa il prodotto, non il nome interno.
+ * Per i tipi ITIL è l'etichetta del metamodello del cliente (revisione del 14
+ * set 2026 · F16): prima erano quattro traduzioni fisse, e un tipo rinominato
+ * nel designer restava col nome di fabbrica. Gli articoli KB non sono tipi ITIL.
+ */
+function useEntityTypeLabel(): (entityType: string) => string {
+  const { t } = useTranslation()
+  const { labelOf } = useItilTypeLabels()
+  return (entityType) => entityType === 'kb_article' ? t('pages.approvals.entity.kb_article') : labelOf(entityType)
+}
+
+/**
+ * Un'approvazione che si decide nella pagina del ticket: il requisito di un
+ * team su una change, o una richiesta ferma in approvazione. Qui solo il link.
+ */
+function TicketApprovalCard({ item }: { item: PendingTicketApproval }) {
+  const { t } = useTranslation()
+  const entityTypeLabel = useEntityTypeLabel()
+  return (
+    <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16, background: colors.white, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <StatusBadge status="pending" />
+        <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', background: colors.slateBg, padding: '2px 6px', borderRadius: 4 }}>
+          {entityTypeLabel(item.kind)}
+        </span>
+        {item.detail && (
+          <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+            {t(item.kind === 'change' ? 'pages.approvals.forTeam' : 'pages.approvals.inStep', { value: item.detail })}
+          </span>
+        )}
+        {/*
+          * QUALE PARTE si sta approvando (20 set 2026, dal giro nel browser).
+          * Una change ne pretende due, dello STESSO team: senza questa
+          * pastiglia la pagina mostrava due righe identiche — stesso ticket,
+          * stessa ora — e chi approva non sapeva né cosa né perché due volte.
+          */}
+        {item.approvalKind && (
+          <span style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-brand)', background: palette.info.light, padding: '2px 6px', borderRadius: 4 }}>
+            {t(`changeTasks.approvalKind.${item.approvalKind}`, { defaultValue: item.approvalKind })}
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 4px' }}>
+        <h3 style={{ margin: 0, fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: colors.slateDark }}>
+          {item.number ? `${item.number} · ` : ''}{item.title}
+        </h3>
+        <EntityLink entityType={item.kind} entityId={item.entityId} />
+      </div>
+      <div style={{ display: 'flex', gap: 16, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>
+        {item.requestedAt && <span><Clock size={11} style={{ verticalAlign: 'middle' }} /> {formatDateTime(item.requestedAt)}</span>}
+        <span>{t('pages.approvals.decideInTicket')}</span>
+      </div>
+    </div>
+  )
 }
 
 /** Expandable KB article preview panel. Fetches content lazily on first open. */
@@ -248,6 +308,7 @@ function ApprovalCard({
   showActions: boolean
 }) {
   const { t } = useTranslation()
+  const entityTypeLabel = useEntityTypeLabel()
   const confirm = useConfirm()
   const [noteOpen, setNoteOpen] = useState<'approve' | 'reject' | null>(null)
   const [note, setNote]         = useState('')
@@ -264,7 +325,7 @@ function ApprovalCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <StatusBadge status={req.status} />
             <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', background: colors.slateBg, padding: '2px 6px', borderRadius: 4 }}>
-              {req.entityType}
+              {entityTypeLabel(req.entityType)}
             </span>
             <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
               {t(req.approvalType === 'any' ? 'pages.approvals.anyApprover'
@@ -361,8 +422,16 @@ function ApprovalCard({
   )
 }
 
+/**
+ * I tipi di entità per cui il prodotto crea approvazioni (F-40): change, KB e
+ * i ticket (l'azione `create_approval_request` delle regole può chiederne una
+ * su un incident, un problem o una richiesta).
+ */
+const APPROVAL_ENTITY_TYPES = ['change', 'kb_article', 'incident', 'problem', 'service_request'] as const
+
 export function ApprovalsPage() {
   const { t } = useTranslation()
+  const entityTypeLabel = useEntityTypeLabel()
   const [tab, setTab] = useState<'mine' | 'all'>('mine')
   const [page, setPage] = useState(0)
   const [filterGroup, setFilterGroup] = useState<FilterGroup | null>(null)
@@ -374,15 +443,25 @@ export function ApprovalsPage() {
       { value: 'approved', label: t('pages.approvals.statusApproved') },
       { value: 'rejected', label: t('pages.approvals.statusRejected') },
     ]},
-    { key: 'entityType', label: t('pages.audit.colEntityType'), type: 'enum', options: [
-      { value: 'change', label: 'Change' }, { value: 'kb_article', label: 'KB Article' },
-    ]},
+    /**
+     * Tutti i tipi che una richiesta di approvazione può avere (revisione
+     * totale · F-40): la tendina offriva solo change e articoli KB, mentre
+     * `approvalRequests` restituisce anche i ticket — quelle approvazioni si
+     * vedevano in «tutti» e non si potevano isolare.
+     */
+    { key: 'entityType', label: t('pages.audit.colEntityType'), type: 'enum',
+      options: APPROVAL_ENTITY_TYPES.map((v) => ({ value: v, label: entityTypeLabel(v) })) },
     { key: 'title', label: t('common.title'), type: 'text' },
     { key: 'requestedAt', label: t('pages.approvals.requestedAt'), type: 'date' },
   ]
 
   const { data: myData, loading: myLoading, error: myError, refetch: refetchMine } = useQuery<{ myPendingApprovals: ApprovalRequest[] }>(
     MY_PENDING,
+    { fetchPolicy: 'cache-and-network', skip: tab !== 'mine' },
+  )
+
+  const { data: ticketData, error: ticketError, refetch: refetchTickets } = useQuery<{ pendingTicketApprovals: PendingTicketApproval[] }>(
+    PENDING_TICKET_APPROVALS,
     { fetchPolicy: 'cache-and-network', skip: tab !== 'mine' },
   )
 
@@ -397,15 +476,15 @@ export function ApprovalsPage() {
 
   const [approve] = useMutation(APPROVE, {
     onCompleted: () => { toast.success(t('toast.approval.approved')); void refetchMine(); void refetchAll() },
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
   const [reject] = useMutation(REJECT, {
     onCompleted: () => { toast.success(t('toast.approval.rejected')); void refetchMine(); void refetchAll() },
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
   const [cancel] = useMutation(CANCEL, {
     onCompleted: () => { toast.success(t('toast.approval.cancelled')); void refetchMine(); void refetchAll() },
-    onError: (e: { message: string }) => toast.error(e.message),
+    onError: (e: { message: string }) => showError(e),
   })
 
   const handleApprove = (id: string, note: string) => void approve({ variables: { id, note: note || undefined } })
@@ -413,6 +492,8 @@ export function ApprovalsPage() {
   const handleCancel  = (id: string) => void cancel({ variables: { id } })
 
   const myItems  = myData?.myPendingApprovals ?? []
+  const ticketItems = ticketData?.pendingTicketApprovals ?? []
+  const mineCount = myItems.length + ticketItems.length
   const allItems = allData?.approvalRequests?.items ?? []
   const allTotal = allData?.approvalRequests?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(allTotal / PAGE_SIZE))
@@ -439,9 +520,9 @@ export function ApprovalsPage() {
       <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: colors.slateBg, padding: 4, borderRadius: 8, width: 'fit-content' }}>
         <button type="button" style={tabStyle(tab === 'mine')} onClick={() => setTab('mine')}>
           {t('pages.approvals.tabMine')}
-          {myItems.length > 0 && (
+          {mineCount > 0 && (
             <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 10, background: 'var(--color-danger)', color: colors.white, fontSize: 'var(--font-size-table)' }}>
-              {myItems.length}
+              {mineCount}
             </span>
           )}
         </button>
@@ -456,19 +537,24 @@ export function ApprovalsPage() {
 
       {/* Content */}
       {tab === 'mine' ? (
-        myError && !myData ? (
-          <QueryError message={myError.message} onRetry={() => void refetchMine()} />
-        ) : myLoading ? (
+        (myError && !myData) || (ticketError && !ticketData) ? (
+          <QueryError message={(myError ?? ticketError)!.message} onRetry={() => { void refetchMine(); void refetchTickets() }} />
+        ) : myLoading && !myData ? (
           <div style={{ color: 'var(--color-slate-light)', fontSize: 'var(--font-size-body)' }}>{t('common.loading')}</div>
-        ) : myItems.length === 0 ? (
+        ) : mineCount === 0 ? (
           <EmptyState
             icon={<CheckSquare size={32} color="var(--color-slate-light)" />}
             title={t('pages.approvals.noPending')}
           />
         ) : (
-          myItems.map((req) => (
-            <ApprovalCard key={req.id} req={req} onApprove={handleApprove} onReject={handleReject} showActions />
-          ))
+          <>
+            {myItems.map((req) => (
+              <ApprovalCard key={req.id} req={req} onApprove={handleApprove} onReject={handleReject} showActions />
+            ))}
+            {ticketItems.map((item) => (
+              <TicketApprovalCard key={`${item.kind}-${item.entityId}-${item.detail ?? ''}-${item.approvalKind ?? ''}`} item={item} />
+            ))}
+          </>
         )
       ) : allError && !allData ? (
         <QueryError message={allError.message} onRetry={() => void refetchAll()} />

@@ -15,6 +15,6 @@
 export * from './events/normalize.js'
 export * from './events/transitions.js'
 export { getEventPolicy, setEventPolicy } from './events/policy.js'
-export { CI_HEALTH_RULES, FLAPPING_HEALTH, deriveCIHealth, ciHealthCaseCypher, recomputeCIHealth } from './events/ciHealth.js'
+export { CI_HEALTH_SCALE, FLAPPING_HEALTH, deriveCIHealth, ciHealthCaseCypher, recomputeCIHealth } from './events/ciHealth.js'
 export { mapEventPayload } from './events/shared.js'
 export { matchCI, ingestEvent, QUIET_OUTCOMES, type IngestInput, type IngestResult } from './events/ingest.js'

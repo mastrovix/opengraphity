@@ -1,5 +1,5 @@
 /**
- * A-08 — `/og incident apri` creates the incident through
+ * A-08 — `/og incident open` creates the incident through
  * incidentService.createIncident (number, workflow instance, SLA, events),
  * never a bare CREATE (:Incident); the impacted CI is mandatory.
  */
@@ -20,8 +20,16 @@ import { createHmac } from 'node:crypto'
 import type { Request, Response } from 'express'
 
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn() }))
+// Ondata 8: il workspace T1 è collegato a tenant-1 con l'app dell'organizzazione.
+vi.mock('@opengraphity/notifications', () => ({
+  loadSlackInstallationByTeam: vi.fn(async (teamId: string) => (teamId === 'T1'
+    ? { tenantId: 'tenant-1', teamId: 'T1', teamName: 'Acme', mode: 'token', signingSecret: 'test-signing-secret', botToken: 'xoxb-1', botUserId: null, installedAt: '2026-09-15T00:00:00Z', installedByName: null }
+    : null)),
+}))
 vi.mock('../../services/incidentService.js', () => ({ createIncident: vi.fn() }))
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
+// Verifica «Cosa resta cablato», ondata 1: le severità sono il vocabolario del cliente (qui con `blocker`, un valore suo).
+vi.mock('../../lib/domainMatrix.js', () => ({ domainVocabulary: vi.fn(async () => ['blocker', 'critical', 'high', 'medium', 'low']) }))
 
 const { getSession } = await import('@opengraphity/neo4j')
 const { createIncident } = await import('../../services/incidentService.js')
@@ -31,7 +39,7 @@ const SECRET = 'test-signing-secret'
 process.env['SLACK_SIGNING_SECRET'] = SECRET
 
 function slackRequest(text: string, userId = 'U123'): Request {
-  const body = new URLSearchParams({ text, user_id: userId }).toString()
+  const body = new URLSearchParams({ team_id: 'T1', text, user_id: userId }).toString()
   const ts   = String(Math.floor(Date.now() / 1000))
   const sig  = 'v0=' + createHmac('sha256', SECRET).update(`v0:${ts}:${body}`).digest('hex')
   return { body: Buffer.from(body), headers: { 'x-slack-request-timestamp': ts, 'x-slack-signature': sig } } as unknown as Request
@@ -69,7 +77,7 @@ function sessionWith(rows: unknown[][]) {
   }
 }
 
-describe('/og incident apri', () => {
+describe('/og incident open', () => {
   beforeEach(() => { vi.clearAllMocks(); reads.length = 0 })
 
   it('creates via incidentService with the resolved CI, then marks created_by', async () => {
@@ -78,7 +86,7 @@ describe('/og incident apri', () => {
     vi.mocked(createIncident).mockResolvedValueOnce({ id: 'inc-1', number: 'INC00000042' } as never)
 
     const res = fakeRes()
-    await handleSlackCommands(slackRequest('incident apri Sito giù ci=web-01 high'), res as unknown as Response)
+    await handleSlackCommands(slackRequest('incident open Sito giù ci=web-01 high'), res as unknown as Response)
 
     expect(createIncident).toHaveBeenCalledWith(
       { title: 'Sito giù', severity: 'high', affectedCIIds: ['ci-web'] },
@@ -98,26 +106,45 @@ describe('/og incident apri', () => {
 
   it('missing ci= → usage, nothing created', async () => {
     const res = fakeRes()
-    await handleSlackCommands(slackRequest('incident apri Sito giù high'), res as unknown as Response)
+    await handleSlackCommands(slackRequest('incident open Sito giù high'), res as unknown as Response)
     expect(createIncident).not.toHaveBeenCalled()
     expect(getSession).not.toHaveBeenCalled()
-    expect((res.body as { text: string }).text).toMatch(/CI impattato mancante/)
+    expect((res.body as { text: string }).text).toMatch(/Impacted CI missing/)
   })
 
-  it('invalid severity → usage, nothing created', async () => {
+  it('invalid severity → usage with THE TENANT\'S severities, nothing created', async () => {
+    const { session } = sessionWith([[userRow]])
+    vi.mocked(getSession).mockReturnValue(session as never)
     const res = fakeRes()
-    await handleSlackCommands(slackRequest('incident apri Sito giù ci=web-01 urgent'), res as unknown as Response)
+    await handleSlackCommands(slackRequest('incident open Sito giù ci=web-01 urgent'), res as unknown as Response)
     expect(createIncident).not.toHaveBeenCalled()
-    expect((res.body as { text: string }).text).toMatch(/Severity mancante o non valida/)
+    expect((res.body as { text: string }).text).toMatch(/Severity missing or not valid/)
+    expect((res.body as { text: string }).text).toContain('<blocker|critical|high|medium|low>')
+  })
+
+  it('a severity the customer added to the vocabulary is accepted', async () => {
+    const { session } = sessionWith([[userRow], [rec({ id: 'ci-web' })]])
+    vi.mocked(getSession).mockReturnValue(session as never)
+    vi.mocked(createIncident).mockResolvedValueOnce({ id: 'inc-2', number: 'INC00000043' } as never)
+    const res = fakeRes()
+    await handleSlackCommands(slackRequest('incident open Sito giù ci=web-01 blocker'), res as unknown as Response)
+    expect(createIncident).toHaveBeenCalledWith(expect.objectContaining({ severity: 'blocker' }), expect.anything())
+  })
+
+  it('the Italian keyword is gone: «apri» is not a command', async () => {
+    const res = fakeRes()
+    await handleSlackCommands(slackRequest('incident apri Sito giù ci=web-01 high'), res as unknown as Response)
+    expect(createIncident).not.toHaveBeenCalled()
+    expect((res.body as { text: string }).text).toMatch(/Command not recognised.*incident open/)
   })
 
   it('unknown CI → ephemeral error, nothing created', async () => {
     const { session } = sessionWith([[userRow], []])
     vi.mocked(getSession).mockReturnValue(session as never)
     const res = fakeRes()
-    await handleSlackCommands(slackRequest('incident apri Sito giù ci=ghost high'), res as unknown as Response)
+    await handleSlackCommands(slackRequest('incident open Sito giù ci=ghost high'), res as unknown as Response)
     expect(createIncident).not.toHaveBeenCalled()
-    expect((res.body as { text: string }).text).toMatch(/"ghost" non trovato/)
+    expect((res.body as { text: string }).text).toMatch(/"ghost" not found/)
   })
 
   it('service ValidationError → ephemeral message with the service reason', async () => {
@@ -126,13 +153,13 @@ describe('/og incident apri', () => {
     const { ValidationError } = await import('../../lib/errors.js')
     vi.mocked(createIncident).mockRejectedValueOnce(new ValidationError('Fornire impact+urgency oppure severity'))
     const res = fakeRes()
-    await handleSlackCommands(slackRequest('incident apri Sito giù ci=web-01 high'), res as unknown as Response)
+    await handleSlackCommands(slackRequest('incident open Sito giù ci=web-01 high'), res as unknown as Response)
     expect((res.body as { response_type: string; text: string })).toMatchObject({ response_type: 'ephemeral' })
     expect((res.body as { text: string }).text).toMatch(/Fornire impact\+urgency/)
   })
 
   it('bad signature → 401', async () => {
-    const req = slackRequest('incident apri x ci=y high')
+    const req = slackRequest('incident open x ci=y high')
     ;(req.headers as Record<string, string>)['x-slack-signature'] = 'v0=deadbeef'
     const res = fakeRes()
     await handleSlackCommands(req, res as unknown as Response)

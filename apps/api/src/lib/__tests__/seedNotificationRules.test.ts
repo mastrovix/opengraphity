@@ -36,10 +36,11 @@ describe('DEFAULT_NOTIFICATION_RULES ↔ canali instradabili', () => {
     }
   })
 
-  it('ogni regola ha almeno un canale, tutti noti, e in_app è sempre presente (la campanella è il minimo garantito)', () => {
+  it('ogni regola ha almeno un canale, tutti noti, e in_app è presente dove il tipo lo consegna (la campanella è il minimo garantito)', () => {
     for (const r of DEFAULT_NOTIFICATION_RULES) {
       expect(r.channels.length, r.event_type).toBeGreaterThan(0)
-      expect(r.channels, r.event_type).toContain('in_app')
+      // Il digest giornaliero è un'e-mail per costruzione (NT-8): in_app non è instradabile.
+      if ((routableChannels(r.event_type) as readonly string[]).includes('in_app')) expect(r.channels, r.event_type).toContain('in_app')
       for (const c of r.channels) expect(isNotificationChannel(c), `${r.event_type}: ${c}`).toBe(true)
     }
   })

@@ -13,17 +13,28 @@ import {
 } from '../routing.js'
 
 describe('canali instradabili per tipo di evento', () => {
-  it('Slack/Teams solo dove esiste un formatter: incident (4 tipi) e sla.breached su entrambi, change.approved/task_assigned solo Slack', () => {
+  /**
+   * Revisione totale · E-18: le change hanno anche la card Teams
+   * (`formatTeamsChange`/`formatTeamsChangeTask`), perché la pagina Canali
+   * offriva quegli eventi a un canale Teams che non riceveva mai niente.
+   * G-8: le notifiche dei PASSI hanno la loro riga esplicita, che la
+   * validazione al salvataggio legge.
+   */
+  it('Slack/Teams dove esiste un formatter: incident (4 tipi), sla.breached, change e attività di change', () => {
     expect(Object.keys(ROUTABLE_CHANNELS_BY_EVENT).sort()).toEqual([
       'change.approved', 'change.task_assigned',
+      'digest.daily',
       'incident.assigned', 'incident.created', 'incident.escalated', 'incident.resolved',
       'sla.breached',
+      'workflow.step.entered',
     ])
-    for (const t of ['incident.created', 'incident.assigned', 'incident.escalated', 'incident.resolved', 'sla.breached']) {
+    for (const t of ['incident.created', 'incident.assigned', 'incident.escalated', 'incident.resolved', 'sla.breached', 'change.approved', 'change.task_assigned']) {
       expect(routableChannels(t)).toEqual(['in_app', 'email', 'slack', 'teams'])
     }
-    expect(routableChannels('change.approved')).toEqual(['in_app', 'email', 'slack'])
-    expect(routableChannels('change.task_assigned')).toEqual(['in_app', 'email', 'slack'])
+    // NT-8: il digest è un'e-mail riassuntiva, nessun altro canale.
+    expect(routableChannels('digest.daily')).toEqual(['email'])
+    // G-8: un passo notifica in-app o per e-mail, non su Slack/Teams.
+    expect(routableChannels('workflow.step.entered')).toEqual(['in_app', 'email'])
   })
 
   it('ogni altro tipo (allarmi, salute del CI, servizi, sync, problem, custom) → solo in_app ed email', () => {
@@ -35,7 +46,8 @@ describe('canali instradabili per tipo di evento', () => {
 
   it('ogni riga dedicata contiene i canali generici e solo canali noti; la tabella è congelata', () => {
     for (const [type, channels] of Object.entries(ROUTABLE_CHANNELS_BY_EVENT)) {
-      expect(channels, type).toEqual(expect.arrayContaining([...DEFAULT_ROUTABLE_CHANNELS]))
+      // Unica riga più stretta dei generici, dichiarata: il digest (NT-8).
+      if (type !== 'digest.daily') expect(channels, type).toEqual(expect.arrayContaining([...DEFAULT_ROUTABLE_CHANNELS]))
       for (const c of channels) expect(NOTIFICATION_CHANNELS, `${type}: ${c}`).toContain(c)
     }
     expect(Object.isFrozen(ROUTABLE_CHANNELS_BY_EVENT)).toBe(true)
@@ -45,7 +57,10 @@ describe('canali instradabili per tipo di evento', () => {
 
   it('unroutableChannels: i canali non instradabili (anche sconosciuti), nell\'ordine dato, senza doppioni', () => {
     expect(unroutableChannels('event.storm_started', ['in_app', 'slack'])).toEqual(['slack'])
-    expect(unroutableChannels('change.approved', ['teams', 'slack', 'teams', 'sms'])).toEqual(['teams', 'sms'])
+    // E-18: `teams` su una change ora è instradabile; resta fuori solo ciò che
+    // il dispatcher non sa consegnare.
+    expect(unroutableChannels('change.approved', ['teams', 'slack', 'teams', 'sms'])).toEqual(['sms'])
+    expect(unroutableChannels('workflow.step.entered', ['in_app', 'slack', 'teams'])).toEqual(['slack', 'teams'])
     expect(unroutableChannels('incident.created', ['in_app', 'email', 'slack', 'teams'])).toEqual([])
     expect(unroutableChannels('incident.created', [])).toEqual([])
   })
@@ -69,7 +84,11 @@ describe('entity_type → percorso (condiviso con il pannello in-app del web)', 
       event:           '/events/:id',
       service:         '/monitoring/services/:id',
       inbound_webhook: '/monitoring/sources/:id',
+      // B-21: l'articolo si apre per slug, ma notifiche e approvazioni portano
+      // l'id: la rotta `/kb-articles/:id` del web lo risolve e reindirizza.
+      kb_article:      '/kb-articles/:id',
     })
+    expect(notificationEntityPath('kb_article', 'kb-1')).toBe('/kb-articles/kb-1')
     expect(notificationEntityPath('service', 'map-1')).toBe('/monitoring/services/map-1')
     expect(notificationEntityPath('inbound_webhook', 'src-1')).toBe('/monitoring/sources/src-1')
     expect(notificationEntityPath('event', 'ev-1')).toBe('/events/ev-1')

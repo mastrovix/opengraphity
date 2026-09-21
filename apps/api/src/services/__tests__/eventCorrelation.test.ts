@@ -30,6 +30,11 @@ import { GraphQLError } from 'graphql'
 // Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
 // dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
 // fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+// I testi che il prodotto scrive nei ticket si risolvono nella lingua del cliente (lib/systemText.ts).
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
+// L'etichetta del passo nel commento di una transizione del monitoraggio: qui il nome stesso.
+vi.mock('../../lib/stepEvent.js', async (orig) => ({ ...(await orig<typeof import('../../lib/stepEvent.js')>()), loadStepFacts: vi.fn(async (_s: unknown, _t: string, _e: string, step: string) => ({ step_id: step, step_name: step, step_label: step, step_purpose: null, step_category: null })) }))
+vi.mock('@opengraphity/sla', () => ({ getTenantTimezone: vi.fn(async () => 'Europe/Rome') }))
 vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
 
 vi.mock('@opengraphity/neo4j', () => ({
@@ -177,7 +182,8 @@ const Q = {
 type DefTr = { fromStep: string; toStep: string; toLabel: string | null; trigger: string; condition: string | null }
 const SEED_TRANSITIONS: DefTr[] = INCIDENT_WORKFLOW_BASE.transitions.map((t) => ({
   fromStep: t.fromStepName, toStep: t.toStepName, trigger: t.trigger, condition: t.condition,
-  toLabel: INCIDENT_WORKFLOW_BASE.steps.find((s) => s.name === t.toStepName)?.label ?? null,
+  // Le etichette arrivano già nella lingua del commento (qui il cliente è italiano).
+  toLabel: (() => { const st = INCIDENT_WORKFLOW_BASE.steps.find((s) => s.name === t.toStepName); return st ? (st.labels?.['it'] ?? st.label) : null })(),
 }))
 const tr = (fromStep: string, toStep: string, over: Partial<DefTr> = {}): DefTr => ({ fromStep, toStep, toLabel: null, trigger: 'manual', condition: null, ...over })
 
@@ -681,7 +687,10 @@ describe('raggruppamento per CI', () => {
       { userId: 'monitoring', notes: 'Allarme tornato: DiskFull (db-01)', entityData: {} },
     )
     expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-1', MON, 'Workflow: in_progress — Allarme tornato: DiskFull (db-01)')
-    expect(incidentService.publishIncidentTransition).toHaveBeenCalledWith('inc-1', 'in_progress', MON)
+    // Revisione totale · C-1: l'evento di dominio dell'ingresso nel passo lo
+    // pubblica l'hook `onStepEntered` del motore (che vede TUTTI i cammini),
+    // non più questo servizio: pubblicarlo anche qui lo darebbe due volte.
+    expect(incidentService.publishIncidentTransition).not.toHaveBeenCalled()
     expect(callMatching(Q.attach)!.params['incidentId']).toBe('inc-1')
     expect(callMatching(Q.setCorr)!.params['correlation']).toBe('reopened')
     expect(incidentService.createIncident).not.toHaveBeenCalled()
@@ -858,8 +867,8 @@ describe('chiusura automatica', () => {
     expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
 
     // singolare, senza codice della change (change eliminata): frase al singolare senza "da …"
-    expect(suppressedSummary(1, [])).toBe('1 allarme di monitoraggio silenziato resta in finestra di change: non tengono aperto l\'incident; a fine finestra vengono rivalutati e, se ancora accesi, lo riaprono')
-    expect(suppressedSummary(0, ['CHG-1'])).toBeNull()
+    expect(suppressedSummary('en', 1, [])).toBe('1 monitoring alarm silenced is still in the change window: it does not keep the incident open; at the end of the window it is re-evaluated and, if still firing, reopens it')
+    expect(suppressedSummary('en', 0, ['CHG-1'])).toBeNull()
     expect(STILL_FIRING_STATUSES).toEqual(['firing', 'flapping'])
   })
 
@@ -949,7 +958,8 @@ describe('chiusura automatica', () => {
     expect(workflowEngine.transition).toHaveBeenNthCalledWith(2, session,
       expect.objectContaining({ toStepName: 'in_progress', triggerType: 'manual', notes: 'Chiusura automatica dal monitoraggio: passaggio a In Lavorazione' }),
       expect.objectContaining({ userId: 'monitoring' }))
-    expect(vi.mocked(incidentService.publishIncidentTransition).mock.calls).toEqual([['inc-1', 'assigned', MON], ['inc-1', 'in_progress', MON]])
+    // C-1: gli eventi dei due passi li pubblica l'hook del motore.
+    expect(incidentService.publishIncidentTransition).not.toHaveBeenCalled()
     expect(incidentService.resolveIncident).toHaveBeenCalledWith('inc-1', MON, 'Allarme di monitoraggio rientrato: DiskFull')
     expect(publishEvent).toHaveBeenCalledWith('event.correlated', 't1', 'monitoring', expect.objectContaining({ outcome: 'auto_resolved', incident_id: 'inc-1' }), NOW)
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ userId: 'monitoring' }), 'event.auto_resolved', 'Event', 'ev-1', expect.objectContaining({ incidentStep: 'new', path: ['assigned', 'in_progress'] }))
@@ -993,11 +1003,11 @@ describe('chiusura automatica', () => {
     onCypher([...baseRules({ status: 'resolved' }), [Q.linked, linkedRow({ step: 'new' })], [Q.defTr, SEED_TRANSITIONS]])
     vi.mocked(workflowEngine.transition)
       .mockResolvedValueOnce({ success: true } as never)
-      .mockResolvedValueOnce({ success: false, error: 'Transizione concorrente' } as never)
-    await expect(runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).rejects.toThrow(/Incident inc-1: auto-resolve transition to "in_progress" failed: Transizione concorrente/)
+      .mockResolvedValueOnce({ success: false, error: 'Concurrent transition' } as never)
+    await expect(runEventPipeline({ tenantId: 't1', eventId: 'ev-1', now: NOW })).rejects.toThrow(/Incident inc-1: auto-resolve transition to "in_progress" failed: Concurrent transition/)
     expect(workflowEngine.transition).toHaveBeenCalledTimes(2)
     // il primo passo (assigned) è persistito e ha i suoi side effect; il secondo no; nessun commento (arriva solo con la risoluzione)
-    expect(vi.mocked(incidentService.publishIncidentTransition).mock.calls).toEqual([['inc-1', 'assigned', MON]])
+    expect(incidentService.publishIncidentTransition).not.toHaveBeenCalled()   // C-1: lo fa l'hook del motore
     expect(incidentService.addIncidentComment).not.toHaveBeenCalled()
     expect(incidentService.resolveIncident).not.toHaveBeenCalled()
     expect(publishEvent).not.toHaveBeenCalled()

@@ -35,15 +35,16 @@ import { GraphQLError } from 'graphql'
 import { CHANGE_WINDOW_PURPOSES } from '@opengraphity/types'
 import type { Session } from 'neo4j-driver'
 import { logger } from '../../../lib/logger.js'
-import { requireRole } from '../../../lib/requireRole.js'
+import { requirePermission } from '../../../lib/permissions.js'
 import { isPreApprovedChangeType } from '../../../lib/changePolicy.js'
-import { getStepPurpose, getStepNamesByPurpose } from '../../../lib/workflowHelpers.js'
+import { getStepPurpose, getStepRow, getStepNamesByPurpose } from '../../../lib/workflowHelpers.js'
 import { assertAllApprovalsSatisfied, areAllApprovalsSatisfied } from './approvalCreation.js'
+import { areAllAssessmentsComplete } from '../../../lib/changeAssessments.js'
 import { changeWindowGateBlockedTotal } from '../../../middleware/metrics.js'
 import type { GraphQLContext } from '../../../context.js'
 
 /** Chi sta attraversando il varco: serve solo per l'etichetta del contatore e del log. */
-export type GatePath = 'auto_transition' | 'timer_job' | 'rule_action' | 'sla_breach'
+export type GatePath = 'auto_transition' | 'timer_job' | 'rule_action' | 'sla_breach' | 'step_deadline'
 
 export interface ChangeGateInput {
   tenantId:   string
@@ -65,9 +66,17 @@ export interface ChangeGateInput {
  *  - `needs_approvals`     → il varco è in gioco: servono i requisiti soddisfatti.
  *  - `no_approval_step`    → il varco è in gioco e il cliente non ha NESSUN passo
  *                            di scopo `approval`: non esiste un posto dove approvare.
+ *  - `needs_assessments`   → si esce dall'analisi con valutazioni o piano di
+ *                            deploy ancora aperti. Vale per OGNI tipo, anche
+ *                            pre-approvato: dopo l'analisi il piano non si
+ *                            modifica più, e una change uscita senza piano
+ *                            restava ferma per sempre (giro del 14 set 2026:
+ *                            CHG00000003, standard, da un arco
+ *                            `assessment → scheduled` automatico e senza condizione).
  */
 export type ChangeGateOutcome =
   | { kind: 'open' }
+  | { kind: 'needs_assessments' }
   | { kind: 'use_reject_mutation' }
   | { kind: 'needs_approvals' }
   | { kind: 'no_approval_step' }
@@ -79,10 +88,32 @@ export type ChangeGateOutcome =
  * aggiungere una lettura a ogni transizione di ogni workflow.
  */
 export async function changeGateOutcome(session: Session, input: ChangeGateInput): Promise<ChangeGateOutcome> {
-  const [currentPurpose, targetPurpose] = await Promise.all([
+  const [currentPurpose, target] = await Promise.all([
     getStepPurpose(session, input.tenantId, 'change', input.currentStep),
-    getStepPurpose(session, input.tenantId, 'change', input.toStep),
+    getStepRow(session, input.tenantId, 'change', input.toStep),
   ])
+  const targetPurpose = target?.purpose ?? null
+
+  /**
+   * ABBANDONARE la change non è entrare nella finestra di rilascio (revisione
+   * totale · B-11). Il varco esiste per impedire che una change non approvata
+   * vada in produzione; un passo TERMINALE che non è un passo della finestra
+   * («Annullata», «Ritirata», aggiunti dal cliente — il workflow di fabbrica
+   * non ne ha) è un'uscita, e pretendere prima tutte le approvazioni o tutte
+   * le valutazioni significava che una change da buttare non si poteva
+   * buttare. La transizione deve comunque esistere nel workflow: qui si
+   * percorre un arco che il cliente ha disegnato.
+   */
+  const abandons = target?.isTerminal === true
+    && (targetPurpose == null || !(CHANGE_WINDOW_PURPOSES as readonly string[]).includes(targetPurpose))
+  if (abandons) return { kind: 'open' }
+
+  // Uscire dall'analisi (verso qualunque passo, per qualunque tipo) chiede
+  // valutazioni e piano completi. Il ritorno all'analisi resta libero.
+  if (currentPurpose === 'assessment' && targetPurpose !== 'assessment'
+      && !(await areAllAssessmentsComplete(session, input.changeId, input.tenantId))) {
+    return { kind: 'needs_assessments' }
+  }
 
   const entersWindow = targetPurpose != null && (CHANGE_WINDOW_PURPOSES as readonly string[]).includes(targetPurpose)
   const leavesApproval = currentPurpose === 'approval' && targetPurpose !== 'approval'
@@ -111,10 +142,16 @@ export async function assertChangeWindowGate(
   switch (outcome.kind) {
     case 'open':
       return
+    case 'needs_assessments':
+      throw new GraphQLError(
+        'The change cannot leave the assessment: complete every assessment task and the deploy plan first '
+        + '(after the assessment the plan can no longer be edited).',
+        { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.assessmentsIncomplete' } } },
+      )
     case 'use_reject_mutation':
       throw new GraphQLError(
-        'Per rigettare usa "Rigetta" nella sezione Approvazione (rejectChangeApproval), che riapre gli assessment',
-        { extensions: { code: 'CONFLICT' } },
+        'To reject, use "Reject" in the Approval section (rejectChangeApproval), which reopens the assessments',
+        { extensions: { code: 'CONFLICT', i18n: { key: 'errors.change.rejectViaApproval' } } },
       )
     case 'no_approval_step':
       throw new GraphQLError(
@@ -126,7 +163,7 @@ export async function assertChangeWindowGate(
         { extensions: { code: 'CONFLICT', i18n: { key: 'errors.window.noApprovalStep', params: { type: input.changeType } } } },
       )
     case 'needs_approvals':
-      requireRole(ctx, 'admin')
+      requirePermission(ctx, 'approval.override')
       await assertAllApprovalsSatisfied(session, input.changeId, input.tenantId)
       return
   }
@@ -139,11 +176,29 @@ export async function assertChangeWindowGate(
  * e i requisiti non sono soddisfatti: chi chiama NON deve transire, e il
  * rifiuto è già stato scritto a `warn` e contato qui.
  */
-export async function automaticTransitionAllowed(
-  session: Session, input: ChangeGateInput, path: GatePath,
-): Promise<boolean> {
+/**
+ * LA DECISIONE, SENZA CONSEGUENZE: percorribile o no, e perché.
+ *
+ * Estratta da `automaticTransitionAllowed` (18 set 2026) perché serve anche a
+ * chi vuole solo SAPERE, senza dichiarare un rifiuto: la diagnostica delle
+ * «change ferme pur avendo la strada aperta». Quella diagnostica valutava la
+ * sola CONDIZIONE dell'arco e ignorava il varco, quindi elencava change che
+ * non si muoveranno mai — consigliando di aprirle e spingere il passo, che non
+ * fa niente. Un rilievo che manda a premere un bottone inutile è peggio di
+ * nessun rilievo.
+ *
+ * Non si poteva riusare `automaticTransitionAllowed`: quella INCREMENTA la
+ * metrica dei rifiuti e scrive un `warn`, e una diagnostica che gira ogni
+ * minuto per ogni tenant avrebbe riempito le due cose di rifiuti immaginari —
+ * cioè avrebbe reso illeggibile la traccia dei rifiuti veri. E non si poteva
+ * riscrivere la decisione lì: sono due copie della stessa regola di dominio,
+ * ed è esattamente il difetto da cui nasce questo file.
+ */
+export async function automaticTransitionOutcome(
+  session: Session, input: ChangeGateInput,
+): Promise<{ allowed: boolean; reason: ChangeGateOutcome['kind'] }> {
   const outcome = await changeGateOutcome(session, input)
-  if (outcome.kind === 'open') return true
+  if (outcome.kind === 'open') return { allowed: true, reason: 'open' }
 
   // `areAllApprovalsSatisfied` è la stessa regola di `assertAllApprovalsSatisfied`
   // in forma booleana: è il pezzo che l'auto-advance legittimo usa già quando
@@ -154,10 +209,11 @@ export async function automaticTransitionAllowed(
   // lanciare, e la direzione sicura e rifiutare: trovato eseguendo la verifica
   // dal vivo, dove un changeId inesistente faceva uscire un NOT_FOUND da una
   // funzione che dichiara di rispondere si o no.
-  let satisfied = false
   if (outcome.kind === 'needs_approvals') {
     try {
-      satisfied = await areAllApprovalsSatisfied(session, input.changeId, input.tenantId)
+      if (await areAllApprovalsSatisfied(session, input.changeId, input.tenantId)) {
+        return { allowed: true, reason: 'open' }
+      }
     } catch (e) {
       logger.warn(
         { changeId: input.changeId, tenantId: input.tenantId, err: e },
@@ -165,7 +221,15 @@ export async function automaticTransitionAllowed(
       )
     }
   }
-  if (satisfied) return true
+  return { allowed: false, reason: outcome.kind }
+}
+
+export async function automaticTransitionAllowed(
+  session: Session, input: ChangeGateInput, path: GatePath,
+): Promise<boolean> {
+  const { allowed, reason } = await automaticTransitionOutcome(session, input)
+  if (allowed) return true
+  const outcome = { kind: reason } as ChangeGateOutcome
 
   changeWindowGateBlockedTotal.inc({ path, reason: outcome.kind })
   logger.warn(
@@ -173,7 +237,9 @@ export async function automaticTransitionAllowed(
       changeId: input.changeId, changeType: input.changeType,
       from: input.currentStep, to: input.toStep, reason: outcome.kind, path,
     },
-    '[change-gate] transizione automatica rifiutata: la change entrerebbe nella finestra di rilascio senza approvazioni',
+    outcome.kind === 'needs_assessments'
+      ? '[change-gate] transizione automatica rifiutata: la change uscirebbe dall\'analisi con valutazioni o piano di deploy aperti'
+      : '[change-gate] transizione automatica rifiutata: la change entrerebbe nella finestra di rilascio senza approvazioni',
   )
   return false
 }
@@ -192,6 +258,14 @@ export async function assertAutomaticTransitionAllowed(
   session: Session, input: ChangeGateInput, path: GatePath,
 ): Promise<void> {
   if (await automaticTransitionAllowed(session, input, path)) return
+  const outcome = await changeGateOutcome(session, input)
+  if (outcome.kind === 'needs_assessments') {
+    throw new Error(
+      `Change "${input.changeId}" (type "${input.changeType}") cannot move from "${input.currentStep}" to `
+      + `"${input.toStep}": its assessment tasks or deploy plan are not complete yet. Remove this action from the `
+      + `rule, or let it run only after the assessment.`,
+    )
+  }
   throw new Error(
     `Change "${input.changeId}" (type "${input.changeType}") cannot move from "${input.currentStep}" to `
     + `"${input.toStep}": it would enter the release window without its approvals being satisfied. `

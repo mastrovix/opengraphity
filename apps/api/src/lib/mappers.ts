@@ -1,3 +1,4 @@
+import { withTicketProps } from './ticketProps.js'
 export type Props = Record<string, unknown>
 
 /**
@@ -44,7 +45,7 @@ export function mapUser(props: Props) {
 }
 
 export function mapIncident(props: Props) {
-  return {
+  return withTicketProps({
     id:           props['id']          as string,
     number:       (props['number'] ?? '') as string,
     tenantId:     props['tenant_id']   as string,
@@ -66,7 +67,7 @@ export function mapIncident(props: Props) {
     affectedCIs:     [],
     causedByProblem: null,
     comments:        [],
-  }
+  }, props)
 }
 
 export function mapTeam(props: Props) {

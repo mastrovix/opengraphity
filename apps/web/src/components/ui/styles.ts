@@ -19,10 +19,27 @@ export const inputS: CSSProperties = {
   outline: 'none', backgroundColor: colors.white, boxSizing: 'border-box',
 }
 
+/**
+ * CAMPO IN SOLA LETTURA: il valore si legge, lo sfondo dice che è bloccato.
+ *
+ * Sta qui e non nella pagina perché il difetto che chiude è di quelli che si
+ * ripetono: il Dizionario dipingeva i campi di un vocabolario spedito col
+ * colore dei PLACEHOLDER (`slateLight`, che tokens.ts dichiara «tertiary
+ * text, placeholders»), e «status_change / Change Status / ITIL» si leggevano
+ * come suggerimenti in tre caselle vuote — dal vivo si è concluso che il
+ * vocabolario fosse vuoto (17 set 2026).
+ *
+ * Scolorire il contenuto non comunica «in sola lettura»: comunica «assente».
+ * Lo dicono lo sfondo e il cursore che non lampeggia.
+ */
+export const readOnlyInputS: CSSProperties = {
+  backgroundColor: colors.slateBg, color: colors.slateDark, cursor: 'default',
+}
+
 export const selectS: CSSProperties = {
   ...inputS,
   appearance: 'none',
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238892a4' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+  backgroundImage: 'var(--select-arrow)',
   backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: 30, cursor: 'pointer',
 }
 

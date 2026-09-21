@@ -13,9 +13,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Pill } from '@/components/ui/Pill'
 import { Pagination } from '@/components/ui/Pagination'
 import { Input } from '@/components/ui/FormControls'
-import { RiskBadge, riskLevel, SEVERITY_STYLE } from '@/components/ui/badges'
+import { RiskBadge, useRiskScoreStyle } from '@/components/ui/badges'
 import { GET_ALL_CIS, GET_CI_TYPES, WHAT_IF_ANALYSIS } from '@/graphql/queries'
-import { lookupOrError, lookupStyle, colors, palette } from '@/lib/tokens'
+import { lookupStyle, colors, palette } from '@/lib/tokens'
+import { NEUTRAL_VALUE_STYLE } from '@/lib/domainStyle'
 import { buildTypeIconMap } from '@/lib/ciIconPaths'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -29,7 +30,7 @@ interface WhatIfResult {
   targetCI: WhatIfCI; action: string; impactedCIs: WhatIfCI[]
   impactedServices: WhatIfCI[]; impactedTeams: WhatIfTeam[]
   totalImpacted: number; riskScore: number; hasRedundancy: boolean
-  openIncidents: number; summary: string
+  openIncidents: number
 }
 interface CIOption { id: string; name: string; type: string }
 
@@ -42,19 +43,24 @@ const ACTIONS: { key: Action; icon: typeof Zap; labelKey: string; bg: string; fg
   { key: 'remove', icon: Trash2, labelKey: 'pages.whatIf.remove',  bg: palette.info.tint, fg: 'var(--color-trigger-manual)' },
 ]
 
-// Livello di impatto (critical/high/medium/low): stessa palette della severità
-// (ui/badges.tsx) — prima WhatIf aveva un quarto set di colori proprio.
-function impactBadge(level: string, label: string) {
-  const s = lookupStyle(SEVERITY_STYLE, level, 'SEVERITY_STYLE')
-  return badge(s.bg, s.color, label)
+/**
+ * Livello di impatto di un CI nello scenario: lo calcola il What-if dalla
+ * DISTANZA dal CI colpito (`impactLevel` in resolvers/whatif.ts), non è un
+ * valore di un vocabolario del cliente — quindi la palette resta qui. Prima
+ * passava da `RISK_STYLE`, che non aveva `critical` né `target`: i CI più
+ * vicini uscivano con la pastiglia rossa d'errore.
+ */
+const IMPACT_DISTANCE_STYLE: Record<string, { bg: string; color: string }> = {
+  target:   { bg: palette.info.tint,    color: palette.info.text },
+  critical: { bg: palette.danger.tint,  color: palette.danger.text },
+  high:     { bg: palette.orange.tint,  color: palette.orange.text },
+  medium:   { bg: palette.warning.tint, color: palette.warning.text },
+  low:      { bg: palette.success.tint, color: palette.success.text },
 }
 
-// Colore del cerchio del risk score: stesso livello di RiskBadge (soglie di
-// riskLevel(), le stesse del backend) — prima WhatIf usava 4 soglie proprie.
-const RISK_LEVEL_COLOR: Record<ReturnType<typeof riskLevel>, string> = {
-  low:    'var(--color-success)',
-  medium: 'var(--color-warning)',
-  high:   'var(--color-danger)',
+function impactBadge(level: string, label: string) {
+  const s = lookupStyle(IMPACT_DISTANCE_STYLE, level, 'IMPACT_DISTANCE_STYLE')
+  return badge(s.bg, s.color, label)
 }
 
 function badge(bg: string, fg: string, text: string) {
@@ -191,7 +197,8 @@ export function WhatIfPage() {
     )},
   ]
 
-  const scoreColor = (s: number) => lookupOrError(RISK_LEVEL_COLOR, riskLevel(s), 'RISK_LEVEL_COLOR', 'var(--color-danger)')
+  // Il cerchio del punteggio prende lo stile della FASCIA del cliente, come il badge accanto.
+  const riskScoreStyle = useRiskScoreStyle()
 
   return (
     <PageContainer>
@@ -212,6 +219,7 @@ export function WhatIfPage() {
           <Input
             style={{ padding: '8px 12px', border: '1px solid var(--color-border)' }}
             placeholder={t('pages.whatIf.searchCI')}
+            aria-label={t('pages.whatIf.searchCI')}
             value={selectedCI ? selectedCI.name : ciSearch}
             onChange={e => { setCiSearch(e.target.value); setSelectedCI(null); setDropdownOpen(true) }}
             onFocus={() => { if (ciSearch.length >= 1) setDropdownOpen(true) }}
@@ -266,6 +274,7 @@ export function WhatIfPage() {
 
         {/* Depth */}
         <select
+          aria-label={t('pages.whatIf.depth')}
           value={depth}
           onChange={e => setDepth(Number(e.target.value))}
           style={{ width: 'auto', padding: '7px 12px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', cursor: 'pointer' }}
@@ -322,10 +331,10 @@ export function WhatIfPage() {
             <div style={{
               width: 80, height: 80, borderRadius: '50%', flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: `4px solid ${scoreColor(result.riskScore)}`,
-              background: `${scoreColor(result.riskScore)}10`,
+              border: `4px solid ${(riskScoreStyle(result.riskScore) ?? NEUTRAL_VALUE_STYLE).accent}`,
+              background: (riskScoreStyle(result.riskScore) ?? NEUTRAL_VALUE_STYLE).bg,
             }}>
-              <span style={{ fontSize: 28, fontWeight: 800, color: scoreColor(result.riskScore) }}>
+              <span style={{ fontSize: 28, fontWeight: 800, color: (riskScoreStyle(result.riskScore) ?? NEUTRAL_VALUE_STYLE).color }}>
                 {result.riskScore}
               </span>
             </div>
@@ -337,7 +346,11 @@ export function WhatIfPage() {
                 <RiskBadge score={result.riskScore} />
               </div>
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', margin: 0, lineHeight: 1.5 }}>
-                {result.summary}
+                {/* Giro del 14 set 2026 (#59): la frase era italiana, composta dall'API. */}
+                {t(result.action === 'remove' ? 'pages.whatIf.summaryRemove' : 'pages.whatIf.summaryImpact', {
+                  target: result.targetCI.name, cis: result.totalImpacted, services: result.impactedServices.length,
+                  teams: result.impactedTeams.length, risk: result.riskScore,
+                })}
               </p>
             </div>
 

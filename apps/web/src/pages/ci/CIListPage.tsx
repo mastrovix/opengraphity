@@ -24,9 +24,11 @@ import { apolloClient } from '@/lib/apollo'
 
 import { toPascalCase, pluralize } from '@/lib/stringUtils'
 import { formatDate } from '@/lib/datetime'
-import { ciTypeLabelKey, toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
+import { toEnumOptions, useCIBaseEnums } from '@/lib/ciEnums'
+import { useCILabels } from '@/hooks/useCILabels'
 import { palette } from '@/lib/tokens'
 import { Plus } from 'lucide-react'
+import { showError } from '@/lib/showError'
 
 const PAGE_SIZE = 50
 
@@ -41,7 +43,7 @@ interface CIItem {
 }
 
 export function CIListPage() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { typeName } = useParams<{ typeName: string }>()
   const navigate = useNavigate()
   const { getCIType, loading: metamodelLoading, error: metamodelError } = useMetamodel()
@@ -55,13 +57,21 @@ export function CIListPage() {
     setSortField(field); setSortDir(dir); setPage(0)
   }
 
+  const { typeLabel } = useCILabels()
   const ciType = typeName ? getCIType(typeName) : undefined
-  const labelKey = ciTypeLabelKey(typeName)
-  const ciTypeLabel = labelKey ? t(labelKey) : (ciType?.label ?? '')
+  // F-22 (l'etichetta del disegnatore vince sulla chiave i18n) vive in
+  // `useCILabels`, che la applica anche alle anomalie e alla mappa dei
+  // servizi: qui era una terza copia della stessa regola.
+  const ciTypeLabel = typeName ? typeLabel(typeName) : ''
   const baseEnums = useCIBaseEnums()
-  const newLabel = i18n.language.startsWith('it') && ciTypeLabel.match(/[aA]$/)
-    ? t('pages.cmdb.newFeminine', { type: ciTypeLabel })
-    : t('pages.cmdb.new', { type: ciTypeLabel })
+  /**
+   * NESSUNA euristica di genere (revisione totale · F-44): «finisce per A
+   * quindi è femminile» sbaglia su qualunque tipo del cliente — «Stampante»
+   * diventava «Nuovo Stampante», «Sonda» ci prendeva per caso. Il testo ora
+   * non concorda: «Aggiungi: <tipo>» vale per ogni nome, in ogni lingua, e
+   * non inventa una grammatica sui nomi che il cliente sceglie.
+   */
+  const newLabel = t('pages.cmdb.addOfType', { type: ciTypeLabel })
 
   const { queryKey, listQuery, createMutation } = useMemo(() => {
     if (!typeName) return { queryKey: '', listQuery: null, createMutation: null }
@@ -110,12 +120,13 @@ export function CIListPage() {
       onCompleted: (res) => {
         const key = `create${toPascalCase(typeName ?? '')}`
         const newId = res[key]?.id
-        toast.success(t('pages.cmdb.ciCreated', { type: ciTypeLabel || 'CI' }))
+        // «Business Application creato»: il genere del tipo non si sa, quello di «CI» sì.
+        toast.success(t('pages.cmdb.ciCreated', { name: res[key]?.name ?? '', type: ciTypeLabel || typeName }))
         setShowCreate(false)
         void refetch()
         if (newId) navigate(`/ci/${typeName}/${newId}`)
       },
-      onError: (err) => toast.error(err.message),
+      onError: (err) => showError(err),
     },
   )
 
@@ -191,7 +202,7 @@ export function CIListPage() {
         title={ciTypeLabel}
         subtitle={
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${total} ${ciTypeLabel.toLowerCase()}`}
+            {loading ? '—' : t('pages.ci.count', { count: total })}
           </p>
         }
         actions={

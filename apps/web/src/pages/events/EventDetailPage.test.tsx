@@ -3,6 +3,7 @@ import { screen, within, waitFor } from '@testing-library/react'
 import { EventDetailPage } from './EventDetailPage'
 import { GET_EVENT, GET_CI_ALIASES, GET_EVENT_POLICY } from '@/graphql/queries'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { withVocabularyLabels } from '@/test/vocabularies'
 import { meMock } from '@/test/mocks/gql'
 
 const CI = { __typename: 'ConfigurationItemRef', id: 'ci1', name: 'web-01', type: 'server', status: 'active', health: 'degraded' }
@@ -58,7 +59,7 @@ const policyMock = (): GqlMock => ({
 })
 
 function renderPage(role: string, over: Record<string, unknown> = {}) {
-  return renderWithProviders(<EventDetailPage />, { route: '/events/e1', path: '/events/:id', mocks: [meMock(role), eventMock(over), aliasesMock(), policyMock()] })
+  return renderWithProviders(withVocabularyLabels(<EventDetailPage />), { route: '/events/e1', path: '/events/:id', mocks: [meMock(role), eventMock(over), aliasesMock(), policyMock()] })
 }
 
 const sentence = () => screen.getByTestId('correlation-sentence')
@@ -82,7 +83,7 @@ describe('EventDetailPage', () => {
     // contesto: tipo e stato del CI con le etichette dell'app, salute dal monitoraggio, strumento come badge
     expect(screen.getByRole('link', { name: 'web-01' })).toHaveAttribute('href', '/ci/server/ci1')
     expect(screen.getByText('Server')).toBeInTheDocument()            // tipo (sidebar.server)
-    expect(screen.getByText('Active')).toBeInTheDocument()            // ciclo di vita (enumLabel)
+    expect(screen.getByText('Active')).toBeInTheDocument()            // ciclo di vita (etichetta del Dizionario)
     expect(screen.getByText('Health: Degraded')).toBeInTheDocument()  // salute dal monitoraggio
     expect(screen.getAllByText('Prometheus').length).toBeGreaterThan(0)   // anche come origine di un alias
     expect(screen.getByText('Prometheus Alertmanager')).toBeInTheDocument()   // ToolBadge, non "(alertmanager)"
@@ -125,7 +126,7 @@ describe('EventDetailPage', () => {
 
   it('evento inesistente → stato "non trovato" con ritorno alla lista', async () => {
     const missing: GqlMock = { request: { query: GET_EVENT, variables: { id: 'e1' } }, result: { data: { event: null } } }
-    renderWithProviders(<EventDetailPage />, { route: '/events/e1', path: '/events/:id', mocks: [meMock('admin'), missing] })
+    renderWithProviders(withVocabularyLabels(<EventDetailPage />), { route: '/events/e1', path: '/events/:id', mocks: [meMock('admin'), missing] })
     expect(await screen.findByText('Alarm not found')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Back to alarms' })).toBeInTheDocument()
   })

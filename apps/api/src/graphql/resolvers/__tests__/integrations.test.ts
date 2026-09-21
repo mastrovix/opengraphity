@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import { createHash } from 'node:crypto'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 const mockSession = { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn().mockResolvedValue(undefined) }
 
@@ -42,8 +43,8 @@ const { getEventPolicy } = await import('../../../services/events/policy.js')
 const { deleteSourceAndResolveEvents } = await import('../../../services/events/cascade.js')
 const { invalidateSourceCache } = await import('../../../services/events/sourceCache.js')
 
-const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin' }
-const operator: GraphQLContext = { tenantId: 'tenant-1', userId: 'op-1',    userEmail: 'op@test.io',  role: 'operator' }
+const admin:    GraphQLContext = { tenantId: 'tenant-1', userId: 'admin-1', userEmail: 'adm@test.io', role: 'admin', permissions: perms('admin') }
+const operator: GraphQLContext = { tenantId: 'tenant-1', userId: 'op-1',    userEmail: 'op@test.io',  role: 'operator', permissions: perms('operator') }
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex')
 
@@ -151,13 +152,13 @@ describe('createApiKey — solo l\'hash è persistito', () => {
   })
 
   it('due creazioni → chiavi diverse', async () => {
-    const a = await integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'a', permissions: [] } }, admin)
-    const b = await integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'b', permissions: [] } }, admin)
+    const a = await integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'a', permissions: [], rateLimit: 60 } }, admin)
+    const b = await integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'b', permissions: [], rateLimit: 60 } }, admin)
     expect(a.key).not.toBe(b.key)
   })
 
-  it('operator → ForbiddenError (requireRole locale), nessuna query', async () => {
-    await expectCode(integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'x', permissions: [] } }, operator), 'FORBIDDEN')
+  it('operator → ForbiddenError (requirePermission locale), nessuna query', async () => {
+    await expectCode(integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'x', permissions: [], rateLimit: 60 } }, operator), 'FORBIDDEN')
     expect(runQuery).not.toHaveBeenCalled()
   })
 
@@ -441,13 +442,13 @@ describe('permessi di una chiave API: solo quelli che una rotta applica (D-26)',
     [['incident:read'], /"incident:read".*Allowed: /s],        // refuso al singolare
     ['non-una-lista', /permissions must be a list of strings/],
   ])('permesso non applicato %j → rifiutato in scrittura, nessuna CREATE', async (permissions, pattern) => {
-    await expect(integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'x', permissions } }, admin))
+    await expect(integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'x', permissions, rateLimit: 60 } }, admin))
       .rejects.toThrow(pattern)
     expect(runQuery).not.toHaveBeenCalled()
   })
 
   it('kb:write è ammesso (lo richiede POST /api/v1/import/kb-articles) e arriva ai parametri', async () => {
-    await integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'importer', permissions: ['kb:read', 'kb:write'] } }, admin)
+    await integrationsResolvers.Mutation.createApiKey(null, { input: { name: 'importer', permissions: ['kb:read', 'kb:write'], rateLimit: 60 } }, admin)
     expect(lastQuery().params['permissions']).toEqual(['kb:read', 'kb:write'])
   })
 

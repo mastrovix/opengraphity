@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../../context.js'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -19,10 +20,14 @@ vi.mock('../queries.js', () => ({
 }))
 
 vi.mock('@opengraphity/workflow', () => ({
+  // `conditions.js` registra anche chi scrive i compiti (20 set 2026): senza
+  // questa, importarlo fa fallire tutta la suite prima del primo test.
+  registerTaskCreator: vi.fn(),
   workflowEngine: {
     createInstance: vi.fn().mockResolvedValue({ id: 'wi-1' }),
     transition:     vi.fn().mockResolvedValue({ success: true }),
     registerCondition: vi.fn(),
+    onStepEntered:     vi.fn(),
   },
 }))
 
@@ -53,7 +58,7 @@ const { change: getChange } = await import('../queries.js')
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'op@test.io', role: 'operator', permissions: perms('operator') }
 
 describe('createChange (resolver wrapper)', () => {
   beforeEach(() => {

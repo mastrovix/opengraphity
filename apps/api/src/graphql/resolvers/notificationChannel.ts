@@ -117,16 +117,39 @@ async function testNotificationChannel(_: unknown, { id }: { id: string }, ctx: 
     // first surfaces a proper ValidationError to the caller.
     if (ch.webhookUrl) await assertSafeOutboundUrl(ch.webhookUrl)
     const { sendTestMessage } = await import('@opengraphity/notifications')
-    return sendTestMessage(ch)
+    return sendTestMessage(ch, ctx.tenantId)
   })
 }
 
-async function linkSlackAccount(_: unknown, { slackId }: { slackId: string }, ctx: GraphQLContext) {
+/**
+ * Collega o scollega l'account Slack di chi chiama. `slackId` null = scollega
+ * (revisione totale · F-20): il web mandava `slackId: ""`, cioè «collega alla
+ * stringa vuota», e il nodo restava con un id vuoto — due persone
+ * «scollegate» avrebbero avuto lo stesso `slack_id`, e le azioni dai messaggi
+ * Slack (`rest/slack.ts` cerca `User {slack_id}`) avrebbero potuto agire come
+ * la persona sbagliata. Un id già usato da un'altra persona del cliente viene
+ * rifiutato per la stessa ragione.
+ */
+async function linkSlackAccount(_: unknown, { slackId }: { slackId?: string | null }, ctx: GraphQLContext) {
+  const trimmed = slackId == null ? null : slackId.trim()
+  if (trimmed !== null && trimmed === '') {
+    throw new ValidationError('slackId cannot be empty: pass null to unlink the Slack account')
+  }
   return withSession(async (session) => {
+    if (trimmed !== null) {
+      const taken = await session.executeRead((tx) => tx.run(
+        'MATCH (o:User {slack_id: $slackId, tenant_id: $tenantId}) WHERE o.id <> $userId RETURN o.name AS name LIMIT 1',
+        { slackId: trimmed, tenantId: ctx.tenantId, userId: ctx.userId },
+      ))
+      const other = taken.records[0]?.get('name') as string | undefined
+      if (other !== undefined) {
+        throw new ValidationError(`Slack account ${trimmed} is already linked to ${other}`, { key: 'errors.slack.idTaken', params: { user: other } })
+      }
+    }
     const result = await session.executeWrite((tx) =>
       tx.run(
         'MATCH (u:User {id: $userId, tenant_id: $tenantId}) SET u.slack_id = $slackId RETURN u',
-        { userId: ctx.userId, tenantId: ctx.tenantId, slackId },
+        { userId: ctx.userId, tenantId: ctx.tenantId, slackId: trimmed },
       ),
     )
     if (!result.records.length) throw new NotFoundError('User')

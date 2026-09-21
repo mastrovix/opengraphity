@@ -18,6 +18,7 @@ import './workflow/conditions.js'
 import { createNotificationDispatcher } from '@opengraphity/notifications'
 import { createSLAEngine, closeScheduler } from '@opengraphity/sla'
 import { EscalationConsumer } from './consumers/escalationConsumer.js'
+import { AutomationConsumer } from './consumers/automationConsumer.js'
 import { ServiceImpactConsumer } from './consumers/serviceImpactConsumer.js'
 import { closeConnection } from '@opengraphity/events'
 import { closeDriver, registerSessionTracker } from '@opengraphity/neo4j'
@@ -26,10 +27,15 @@ import { getAllQueues, getQueue, closeAllQueues } from './lib/bullmq.js'
 import { QUEUE_REGISTRY } from './lib/queueRegistry.js'
 import { wireDomainEventFailureMetric } from './lib/domainEventFailures.js'
 import { runGracefulShutdown, type Closable } from './lib/shutdown.js'
+import { accendiSinkDeiLog, spegniSinkDeiLog } from './lib/serverLogSink.js'
 // Canale del metamodello (A-16): l'import registra i clearer dei moduli che
 // tengono cache derivate dal metamodello; `startMetamodelBus()` apre la
 // sottoscrizione Redis e registra il publisher usato da invalidateSchema.
 import { startMetamodelBus, stopMetamodelBus } from './lib/metamodelBus.js'
+// Import a effetto: registra sul canale il clearer delle cache del
+// dispatcher delle notifiche (regole, lingua e fuso) — revisione totale ·
+// E-20/A-15: erano invalidate solo nel processo che serviva la mutation.
+import './lib/notificationRuleCache.js'
 
 // Instrument every Neo4j session.run() — covers all 400+ call sites
 registerSessionTracker((durationMs, query) => {
@@ -38,7 +44,8 @@ registerSessionTracker((durationMs, query) => {
 })
 import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
-import { startWorkflowJobWorker, startNotificationJobWorker } from './jobs/workflowJobWorker.js'
+import { startProposalScanner } from './jobs/proposalScanner.js'
+import { startWorkflowJobWorker, startNotificationJobWorker, scheduleStepDeadlineSweep, scheduleOLASweep } from './jobs/workflowJobWorker.js'
 import { startWebhookDeliveryWorker } from './jobs/webhookDeliveryWorker.js'
 import { startEventIngestWorker } from './jobs/eventIngestWorker.js'
 import { startEventCorrelateWorker, startEventMaintenanceWorker } from './jobs/eventCorrelateWorker.js'
@@ -49,13 +56,26 @@ import { registerAllConnectors } from './discovery/registerConnectors.js'
 import { startSyncWorker, loadScheduledSyncs } from './discovery/syncWorker.js'
 import { startMaintenanceWorker } from './workers/maintenance.worker.js'
 import { logger } from './lib/logger.js'
+import { assertMigrationsAppliedAtBoot } from './lib/migrationState.js'
+import { startInAppBus, stopInAppBus } from './lib/inAppBus.js'
+import { assertEmailConfigured } from '@opengraphity/notifications'
 import type { Worker } from 'bullmq'
 
 async function main() {
+  // Revisione del 14 set 2026 · F8: migrazioni pendenti dette all'avvio (e,
+  // con REQUIRE_APPLIED_MIGRATIONS=true, avvio fermato).
+  await assertMigrationsAppliedAtBoot({ require: config.requireAppliedMigrations, log: logger })
+  // L'API invia e-mail (menzioni, osservatori, riepilogo): senza chiave in
+  // produzione non parte. Il pacchetto non lancia più all'import, perché i
+  // worker, che non inviano, lo importano anche loro.
+  assertEmailConfigured()
+
   // Prima del server: una mutation sul metamodello servita subito dopo l'avvio
   // deve già trovare il canale aperto, altrimenti le altre repliche non
   // vengono avvisate e nessuno se ne accorge.
   startMetamodelBus()
+  // F10: consegne in-app salvate e condivise fra i processi.
+  startInAppBus()
 
   const httpServer = await startServer()
 
@@ -71,14 +91,23 @@ async function main() {
   const escalationConsumer = new EscalationConsumer()
   await escalationConsumer.start()
 
+  // Trigger e Business Rule su ogni evento che le pagine offrono (AU-1).
+  const automationConsumer = new AutomationConsumer()
+  await automationConsumer.start()
+
   // Start report scheduler (BullMQ, every 60s)
   const reportScheduler = await startReportScheduler()
 
   // Start anomaly scanner (BullMQ, every 1h)
   const anomalyWorker = await startAnomalyScanner()
 
-  // Start workflow job worker (BullMQ, processes auto_close and other scheduled jobs)
+  // Le proposte di miglioramento: un giro a notte, un job per cliente.
+  const proposalWorker = await startProposalScanner()
+
+  // Start workflow job worker (BullMQ: step deadlines, webhook retries, timed triggers)
   const workflowWorker = startWorkflowJobWorker()
+  await scheduleStepDeadlineSweep()
+  await scheduleOLASweep()
 
   // Start notification job worker (escalation_check, digest, timer_wait)
   const notificationWorker = startNotificationJobWorker()
@@ -123,6 +152,16 @@ async function main() {
   // Start maintenance worker (backup scheduler)
   const maintenanceWorker = await startMaintenanceWorker()
 
+  /*
+   * IL SINK DEI LOG DEL SERVER (20 set 2026, ondata 3). Da qui in poi ogni
+   * riga `error`/`fatal` di QUESTO processo finisce nel grafo come template
+   * scrubbato. Si accende dopo il driver, perché la prima cosa che fa è
+   * aprire una sessione; le righe di avvio precedenti restano solo su stdout,
+   * ed è un limite dichiarato — un errore che impedisce l'avvio non si legge
+   * in un database a cui il processo non è ancora arrivato.
+   */
+  await accendiSinkDeiLog()
+
   // BullMQ queue-depth gauges for /metrics and the admin "System metrics" page
   // (A-14). Every queue of the registry is opened here as a producer handle so
   // the gauge covers ALL of them — the consumer queues of packages/events and
@@ -138,7 +177,7 @@ async function main() {
   // redelivered at-least-once on the next boot (idempotency in BaseConsumer and
   // the SLAStatus MERGE keep that safe, but draining cleanly avoids the churn).
   const bullWorkers: Worker[] = [
-    anomalyWorker, workflowWorker, syncWorker, maintenanceWorker,
+    anomalyWorker, proposalWorker, workflowWorker, syncWorker, maintenanceWorker,
     notificationWorker, webhookDeliveryWorker, ...eventWorkers,
     emailDigestWorker, reportScheduler,
     ...(embeddingWorker ? [embeddingWorker] : []),
@@ -148,6 +187,7 @@ async function main() {
     { name: 'notification-service', close: () => notificationDispatcher.stop() },
     { name: 'sla-engine',           close: () => slaEngine.stop() },
     { name: 'escalation-consumer',  close: () => escalationConsumer.stop() },
+    { name: 'automation-consumer',  close: () => automationConsumer.stop() },
     ...eventConsumers,
   ]
 
@@ -165,7 +205,11 @@ async function main() {
       workers: closables,
       // Code singleton (lib/bullmq), poi SLA scheduler, poi publisher (D-24, A-13), poi il driver
       resources: [
+        // Per primo: scrive le righe in attesa, e ha bisogno del driver che
+        // viene chiuso in fondo a questa stessa lista.
+        { name: 'server-log-sink',  close: () => spegniSinkDeiLog() },
         { name: 'metamodel-bus',    close: () => stopMetamodelBus() },
+        { name: 'inapp-bus',        close: () => stopInAppBus() },
         { name: 'bullmq-queues',    close: () => closeAllQueues() },
         { name: 'sla-scheduler',    close: () => closeScheduler() },
         { name: 'event-connection', close: () => closeConnection() },

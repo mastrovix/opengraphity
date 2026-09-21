@@ -81,7 +81,7 @@ describe('AuditLogPage', () => {
     const group = JSON.parse(last.filters!) as { rules: { field: string; operator: string; value: string; logic: string }[] }
     expect(group.rules).toHaveLength(1)
     expect(group.rules[0]).toMatchObject({ field: 'action', operator: 'contains', value: 'login', logic: 'AND' })
-    expect(screen.getByText('1 entries')).toBeInTheDocument()
+    expect(screen.getByText('1 entry')).toBeInTheDocument()
   })
 
   it('Reset rimuove i filtri dalla query', async () => {

@@ -20,7 +20,7 @@ nessuna logica di prodotto può riconoscerli dal nome. Decidono i metadati
 | **Campi aggiunti a un tipo ITIL** | il cliente (`tenant_id` del cliente) | sì | Nascono suoi anche su un tipo condiviso. `(tipo, nome)` è unico: un omonimo è rifiutato |
 | **Tipi CI creati dal cliente** | il cliente (`scope = 'tenant'`) | sì | `(tenant_id, nome)` è unico (vincolo nel database). Il nome è `camelCase` senza trattino basso: `costCenter`, non `cost_center` — altrimenti due nomi finirebbero sulla stessa proprietà Neo4j |
 | **Relazioni di un tipo del cliente** | il cliente | sì | `(tipo, nome)` unico; `relationship_type` deve essere un identificatore Neo4j valido |
-| **Vocabolari spediti** (`severity`, `urgency`, `risk_band`, …) | prodotto, **un nodo per tutti** (`tenant_id = 'system'`, `is_system = true`) | no direttamente | Si personalizzano con `customizeEnumType`, che ne fa una **copia del cliente**: la copia omonima vince in lettura. L'originale resta intatto per gli altri |
+| **Vocabolari spediti** (`severity`, `urgency`, `risk_band`, …) | prodotto, **un nodo per tutti** (`tenant_id = 'system'`, `is_system = true`) | no direttamente | Si personalizzano con `customizeEnumType`, che ne fa una **copia del cliente**: la copia omonima vince in lettura. L'originale resta intatto per gli altri. La copia non si sovrascrive mai: i valori che il prodotto spedisce **dopo** la copia sono segnalati (diagnostica `vocabulary_behind_shipped` e avviso nel Dizionario) e l'amministratore li aggiunge (`adoptShippedValues`) o li tiene fuori (`acknowledgeShippedValues`) |
 | **Vocabolari del cliente** | il cliente | sì | `(tenant_id, nome)` unico (vincolo nel database) |
 | **Matrici di dominio** (priorità = impatto × urgenza, criticità → impatto, severità dell'allarme, tipo × rischio della change, severità dell'import) | il cliente | — | Nascono col seme del prodotto e si modificano in Impostazioni → Matrici di dominio |
 | **Definizioni di workflow, passi, transizioni** | il cliente | sì | Il seed non riallinea una definizione esistente. Ciò che conta sono `purpose`/`category`/`is_terminal`, non il nome |
@@ -52,6 +52,17 @@ Si può, ed è previsto. Ciò che il prodotto guarda **non** è il nome:
 | stato aperto / risolto / chiuso, schede e contatori del portale | `category` + `is_terminal` + `is_open` |
 | transizioni automatiche, approvazioni, soppressione in finestra di change | `purpose` del passo |
 | tipo dell'evento di dominio e azione di audit | il `purpose`, non il nome |
+
+Quali categorie e quali scopi il prodotto pretende, per tipo di ticket, sta in
+un posto solo: `apps/api/src/lib/workflowStepRoles.ts` (un test legge il codice e
+fallisce se un uso nuovo non è in tabella). La diagnostica confronta ogni
+workflow attivo con quella tabella: un ruolo **obbligatorio** che manca è un
+errore (`workflow_step_categories_missing`, `workflow_step_purposes_missing`:
+un'operazione si fermerebbe), uno **facoltativo** è un avviso (un comportamento,
+come la soppressione degli allarmi durante il rilascio, si spegnerebbe senza
+dirlo). Non ci sono più ripieghi sul nome: il passo «risolto» degli incident
+aperti dagli allarmi e il passo di rilascio dello stato REST di una change si
+riconoscono solo da categoria e scopo.
 
 Restano due punti in cui il **nome** conta ancora, e sono dichiarati:
 
@@ -105,5 +116,7 @@ passo, di un valore o di un tipo.** Se un dato manca, si dichiara dove nasce.
 | Un tipo CI creato dal cliente non compare nella ricerca globale / nei widget / nella REST | le cuciture che elencano i tipi: `lib/ciLabelsForTenant.ts` è la sorgente giusta, gli elenchi statici sono vietati dal lint `ciLabelSources` |
 | Un valore aggiunto a un vocabolario non compare in un form | il campo punta al vocabolario del cliente? `customizeEnumType` fa la copia |
 | Una regola sui campi «c'è ma non scatta» | il passo è stato rinominato dopo (§3) |
+| Un'operazione del workflow si ferma con «no step declares the purpose» o «no step with category» | la diagnostica elenca, per workflow, le categorie e gli scopi che mancano (§3) |
+| Un valore che il prodotto ha aggiunto a un vocabolario non compare | il cliente ha una copia personalizzata: l'avviso nel Dizionario offre «Aggiungili» o «Tieni la mia lista» (§1) |
 | Un tenant esiste e non può aprire ticket | `migrate --status` elenca i tenant incompleti; li completa la migrazione `20260918_1910` |
 | Una voce della mappa di un webhook «non arriva» | §4: il salvataggio ora la rifiuta; una configurazione vecchia la fa finire in `last_error` sulla sorgente |

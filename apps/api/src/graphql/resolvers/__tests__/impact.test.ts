@@ -26,6 +26,21 @@ vi.mock('../../../lib/ciMetamodelForTenant.js', () => ({
   impactRelPatternForTenant: vi.fn(async () => 'DEPENDS_ON|HOSTED_ON|BILANCIA|REALIZES|ENABLED_BY'),
 }))
 
+// Ondata 5 di «Nulla cablato»: pesi del cliente, livello = fascia del cliente,
+// «produzione» = ambiente col punteggio più alto della matrice environment_risk.
+vi.mock('../../../lib/impactWeights.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../lib/impactWeights.js')>()
+  return { ...actual, impactAnalysisWeights: vi.fn(async () => ({ ...actual.FACTORY_IMPACT_WEIGHTS, isDefault: false })) }
+})
+vi.mock('../../../lib/riskBands.js', () => ({
+  MAX_RISK_SCORE: 100,
+  riskBandOf: vi.fn(async (_t: string, score: number) => (score <= 30 ? 'basso' : score <= 60 ? 'medio' : 'alto')),
+}))
+vi.mock('../../../lib/environmentRisk.js', () => ({
+  ENV_RISK_SCALE: ['0', '1', '2', '3'],
+  environmentRiskScore: vi.fn(async (_t: string, env: string) => ({ prod: 3, collaudo: 1 } as Record<string, number>)[env] ?? 0),
+}))
+
 vi.mock('../ci-utils.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../ci-utils.js')>()
   return { ...actual, ciTypeFromLabels: vi.fn(() => 'load_balancer') }
@@ -34,15 +49,21 @@ vi.mock('../ci-utils.js', async (importOriginal) => {
 const { computeImpactAnalysis } = await import('../impact.js')
 
 const queries: string[] = []
+/** Righe restituite dalle query che contengono la chiave. */
+let rowsFor: Array<[string, Array<Record<string, unknown>>]> = []
 
 const session = {
   executeRead: vi.fn(async (fn: (tx: unknown) => unknown) =>
-    fn({ run: (cypher: string) => { queries.push(cypher); return Promise.resolve({ records: [] }) } })),
+    fn({ run: (cypher: string) => {
+      queries.push(cypher)
+      const rows = rowsFor.find(([k]) => cypher.includes(k))?.[1] ?? []
+      return Promise.resolve({ records: rows.map((r) => ({ get: (f: string) => r[f] })) })
+    } })),
   executeWrite: vi.fn(),
   close: vi.fn(),
 }
 
-beforeEach(() => { queries.length = 0; vi.clearAllMocks() })
+beforeEach(() => { queries.length = 0; rowsFor = []; vi.clearAllMocks() })
 
 describe('computeImpactAnalysis', () => {
   it('origine E impattati usano il predicato del tenant (tipo del cliente compreso)', async () => {
@@ -65,5 +86,14 @@ describe('computeImpactAnalysis', () => {
     for (const q of queries) {
       expect(q).not.toMatch(/ci:DatabaseInstance OR ci:SslCertificate/)
     }
+  })
+
+  it('«produzione» viene dalla matrice del cliente e il livello è la sua fascia', async () => {
+    rowsFor = [['RETURN ci.environment AS env', [{ env: 'prod' }, { env: 'collaudo' }, { env: 'production' }]]]
+    const out = await computeImpactAnalysis(session as never, 'tenant-1', ['ci-1', 'ci-2', 'ci-3'])
+    // solo `prod` vale 3 in questa matrice: il letterale `production` non conta più
+    expect(out.breakdown.productionCIs).toBe(1)
+    expect(out.riskScore).toBe(20)
+    expect(out.riskLevel).toBe('basso')
   })
 })

@@ -84,7 +84,10 @@ export function incidentRelatedChanges(parent: { id: string }, _: unknown, ctx: 
   return query(`
     MATCH (i:Incident {id: $id, tenant_id: $t})-[rel:RESOLVED_BY]->(c:Change {tenant_id: $t})
     WHERE coalesce(c.deleted, false) = false
-    RETURN c.id AS id, c.code AS number, c.title AS title, coalesce(c.approval_status,'') AS status, (NOT coalesce(rel.auto, false)) AS removable
+    // Lo stato di una change è il suo passo di workflow, non l'esito delle
+    // approvazioni (che era sempre vuoto: giro nel browser del 14 set 2026).
+    OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $t})
+    RETURN c.id AS id, coalesce(c.number, c.code) AS number, c.title AS title, coalesce(wi.current_step, '') AS status, (NOT coalesce(rel.auto, false)) AS removable
     ORDER BY c.created_at DESC
   `, { id: parent.id, t: ctx.tenantId })
 }
@@ -109,7 +112,10 @@ export function problemLinkedChanges(parent: { id: string }, _: unknown, ctx: Gr
   return query(`
     MATCH (p:Problem {id: $id, tenant_id: $t})-[rel:RESOLVED_BY]->(c:Change {tenant_id: $t})
     WHERE coalesce(c.deleted, false) = false
-    RETURN c.id AS id, c.code AS number, c.title AS title, coalesce(c.approval_status,'') AS status, (NOT coalesce(rel.auto, false)) AS removable
+    // Lo stato di una change è il suo passo di workflow, non l'esito delle
+    // approvazioni (che era sempre vuoto: giro nel browser del 14 set 2026).
+    OPTIONAL MATCH (c)-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $t})
+    RETURN c.id AS id, coalesce(c.number, c.code) AS number, c.title AS title, coalesce(wi.current_step, '') AS status, (NOT coalesce(rel.auto, false)) AS removable
     ORDER BY c.created_at DESC
   `, { id: parent.id, t: ctx.tenantId })
 }

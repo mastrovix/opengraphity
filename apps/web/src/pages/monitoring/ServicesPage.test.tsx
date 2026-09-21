@@ -8,9 +8,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
 import { ServicesPage } from './ServicesPage'
-import { GET_SERVICE_MAPS, GET_SERVICE_MAP_CANDIDATES, GET_BUSINESS_CAPABILITIES_HEALTH, GET_SERVICE_RELATIONSHIP_TYPES } from '@/graphql/queries'
+import { GET_SERVICE_MAPS, GET_SERVICE_MAP_CANDIDATES, GET_SERVICE_MAP_CREATION_PREVIEW, GET_BUSINESS_CAPABILITIES_HEALTH, GET_SERVICE_RELATIONSHIP_TYPES } from '@/graphql/queries'
 import { CREATE_SERVICE_MAP } from '@/graphql/mutations'
-import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { renderWithProviders, type GqlMock, attendiURL } from '@/test/utils'
+import { withVocabularyLabels } from '@/test/vocabularies'
+
+/** Le etichette del Dizionario per la criticità (il web non umanizza più il valore). */
+const CRITICALITY_LABELS = { service_criticality: { business_critical: 'Business Critical', mission_critical: 'Mission Critical', high: 'High' } }
 import { meMock } from '@/test/mocks/gql'
 import { mapRow, mapDetail, capability, SERVICE, ciRef, pathRef } from '@/test/mocks/services'
 
@@ -45,7 +49,7 @@ const capabilitiesMock = (items: Record<string, unknown>[] = [capability()]): Gq
 })
 
 function renderPage(role: string, opts: { page?: GqlMock; seen?: Vars[]; route?: string; extra?: GqlMock[] } = {}) {
-  return renderWithProviders(<ServicesPage />, {
+  return renderWithProviders(withVocabularyLabels(<ServicesPage />, CRITICALITY_LABELS), {
     route: opts.route ?? '/monitoring/services',
     mocks: [meMock(role, { maxUsageCount: Number.POSITIVE_INFINITY }), opts.page ?? pageMock({}, opts.seen), capabilitiesMock(), ...(opts.extra ?? [])],
   })
@@ -83,7 +87,7 @@ describe('ServicesPage', () => {
     expect(within(rows[0]!).getByText('db-01 down via api-03')).toBeInTheDocument()   // prima causa, con il «via»
     expect(within(rows[0]!).getByText('4 components')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('Billing Ops')).toBeInTheDocument()
-    expect(within(rows[0]!).getByText('Business Critical')).toBeInTheDocument()   // criticità con enumLabel
+    expect(within(rows[0]!).getByText('Business Critical')).toBeInTheDocument()   // criticità con l'etichetta del Dizionario
 
     // in pausa + componente mancante nella CMDB: pill di stato e icona con testo accessibile; causa senza «via»
     expect(within(rows[1]!).getByText('Paused')).toBeInTheDocument()
@@ -130,13 +134,13 @@ describe('ServicesPage', () => {
 
     await user.click(tile('Down'))
     expect(tile('Down')).toHaveAttribute('aria-pressed', 'true')
-    expect(location()).toBe('/monitoring/services?health=down')
+    await attendiURL('/monitoring/services', { health: 'down' })
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ health: ['down'] }))
     expect(seen.at(-1)).toMatchObject({ limit: 50, offset: 0 })
 
     await user.click(tile('Down'))
     expect(tile('Down')).toHaveAttribute('aria-pressed', 'false')
-    expect(location()).toBe('/monitoring/services')
+    await attendiURL('/monitoring/services')
     await waitFor(() => expect(seen.at(-1)!.filter).toBeNull())
   })
 
@@ -148,7 +152,7 @@ describe('ServicesPage', () => {
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ status: 'paused' }))
     await user.type(screen.getByRole('textbox', { name: 'Search a service by name' }), 'bill')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ status: 'paused', search: 'bill' }))
-    await waitFor(() => expect(location()).toBe('/monitoring/services?status=paused&q=bill'))
+    await attendiURL('/monitoring/services', { status: 'paused', q: 'bill' })
 
     const seen2: Vars[] = []
     renderPage('operator', { seen: seen2, route: '/monitoring/services?health=degraded&status=paused&q=bill&page=2', page: pageMock({ total: 60 }, seen2) })
@@ -167,11 +171,11 @@ describe('ServicesPage', () => {
 
     await user.click(tile('Unknown'))
     expect(tile('Unknown')).toHaveAttribute('aria-pressed', 'true')
-    expect(location()).toBe('/monitoring/services?health=unknown')
+    await attendiURL('/monitoring/services', { health: 'unknown' })
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ health: ['unknown'] }))
 
     await user.click(tile('Unknown'))
-    expect(location()).toBe('/monitoring/services')
+    await attendiURL('/monitoring/services')
     await waitFor(() => expect(seen.at(-1)!.filter).toBeNull())
 
     const seen2: Vars[] = []
@@ -189,7 +193,7 @@ describe('ServicesPage', () => {
     const chip = screen.getByTestId('services-ci-filter')
     expect(chip).toHaveTextContent('Only this CI')
     await user.click(chip)
-    expect(location()).toBe('/monitoring/services')
+    await attendiURL('/monitoring/services')
     await waitFor(() => expect(seen.at(-1)!.filter).toBeNull())
     expect(screen.queryByTestId('services-ci-filter')).not.toBeInTheDocument()
   })
@@ -274,6 +278,29 @@ describe('ServicesPage', () => {
     await waitFor(() => expect(seen).toEqual([{ serviceId: 'ba-9', maxDepth: 6, relationshipTypes: ['DEPENDS_ON'], status: 'active' }]))
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Map of "CRM" created'))
     await waitFor(() => expect(location()).toBe('/monitoring/services/map-9'))
+  })
+
+  /** Secondo giro UI del 15 set 2026: i componenti si vedevano solo dopo aver creato la mappa. */
+  it('dialogo: scelto il servizio, l\'anteprima dice quanti e quali componenti avrebbe la mappa, senza creare niente', async () => {
+    const candidates: GqlMock = {
+      request: { query: GET_SERVICE_MAP_CANDIDATES, variables: { search: null, limit: 50 } },
+      result: { data: { serviceMapCandidates: [{ __typename: 'ServiceRef', id: 'ba-9', name: 'CRM', criticality: null, ownerGroup: null }] } },
+      maxUsageCount: Number.POSITIVE_INFINITY,
+    }
+    const preview: GqlMock = {
+      request: { query: GET_SERVICE_MAP_CREATION_PREVIEW, variables: { serviceId: 'ba-9', maxDepth: 4, relationshipTypes: ['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE'] } },
+      result: { data: { serviceMapCreationPreview: { __typename: 'ServiceMapCreationPreview', serviceName: 'CRM', nodes: [
+        { __typename: 'ServiceMapProposalNode', ci: { __typename: 'ConfigurationItemRef', id: 'app-1', name: 'CRM app', type: 'application' }, level: 1, role: 'entry' },
+        { __typename: 'ServiceMapProposalNode', ci: { __typename: 'ConfigurationItemRef', id: 'srv-1', name: 'crm-db-01', type: 'server' }, level: 2, role: 'infrastructure' },
+      ] } } },
+    }
+    const { user } = renderPage('admin', { page: pageMock(EMPTY), extra: [candidates, preview, relTypes(['DEPENDS_ON', 'HOSTED_ON', 'INSTALLED_ON', 'USES_CERTIFICATE'])] })
+    await screen.findByText('No monitored service yet')
+    await user.click(screen.getByRole('button', { name: 'Create a map' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Create a map' })
+    await user.selectOptions(await within(dialog).findByRole('combobox', { name: 'Business application' }), 'ba-9')
+    expect(await within(dialog).findByText('The map would have 2 components:')).toBeInTheDocument()
+    expect(within(dialog).getByText(/crm-db-01 · .* · level 2/)).toBeInTheDocument()
   })
 
   it('dialogo: la lista dei candidati che fallisce è un errore visibile; la mutation che fallisce è un toast con il messaggio del server', async () => {

@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { EventsPage } from './EventsPage'
 import { GET_EVENTS, GET_EVENT_STATS, GET_ENTITY_FILTER_FIELDS, GET_MONITORING_SOURCE_REFS, GET_EVENT_POLICY } from '@/graphql/queries'
-import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { renderWithProviders, type GqlMock, attendiURL } from '@/test/utils'
+import { withVocabularyLabels } from '@/test/vocabularies'
 import { meMock } from '@/test/mocks/gql'
 import { serviceMapsMock, criticalCriticalitiesMock, mapRow } from '@/test/mocks/services'
 import { formatDateTime } from '@/lib/datetime'
@@ -45,7 +46,9 @@ const policyMock = (): GqlMock => ({
     __typename: 'EventPolicy', version: 1, updatedAt: null, openIncidentFrom: 'critical', groupBy: 'ci', openDelaySeconds: 120, autoResolve: true,
     suppressUpstreamHops: 1, flapThreshold: 5, flapWindowMinutes: 10, flapStableMinutes: 15,
     stormThresholdPerMinute: 50, stormCooldownMinutes: 5, retentionDays: 30, severityMap: '{}',
-    ignoreLifecycleStatuses: ['decommissioned'],
+    ignoreLifecycleStatuses: ['decommissioned'], matchShortHostname: false,
+    // G-MON-7: la soglia dell'evidenza «si propaga» sta nella policy.
+    highImpactDependents: 5,
   } } },
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
@@ -95,7 +98,7 @@ const sourcesMock = (names: string[] = ['Prometheus', 'Zabbix']): GqlMock => ({
 })
 
 function renderPage(role: string, seen?: Vars[], opts: { route?: string; sources?: string[]; events?: EventRow[]; storms?: StormSource[]; eventsMocks?: GqlMock[]; downServices?: Record<string, unknown>[] } = {}) {
-  return renderWithProviders(<EventsPage />, { route: opts.route ?? '/events', mocks: [meMock(role), statsMock(opts.storms), ...(opts.eventsMocks ?? [eventsMock(opts.events ?? EVENTS, seen)]), fieldsMock(), sourcesMock(opts.sources), policyMock(), serviceMapsMock(opts.downServices), criticalCriticalitiesMock()] })
+  return renderWithProviders(withVocabularyLabels(<EventsPage />), { route: opts.route ?? '/events', mocks: [meMock(role), statsMock(opts.storms), ...(opts.eventsMocks ?? [eventsMock(opts.events ?? EVENTS, seen)]), fieldsMock(), sourcesMock(opts.sources), policyMock(), serviceMapsMock(opts.downServices), criticalCriticalitiesMock()] })
 }
 
 const bodyRows = () => within(screen.getAllByRole('rowgroup')[1]!).getAllByRole('row')
@@ -205,7 +208,7 @@ describe('EventsPage — correlazione automatica (ondata 3)', () => {
     eventFixture({ id: 'c5', title: 'Below threshold', severity: 'warning', correlation: 'skipped_severity', correlationAt: '2026-09-09T08:00:00Z' }),
   ]
 
-  it('colonna Incident: link con icona "automatico", chip silenziato/in attesa/collega un CI, trattino sotto soglia', async () => {
+  it('colonna Incident: link con icona "automatico", chip silenziato/in attesa/collega un CI/sotto soglia', async () => {
     renderPage('operator', undefined, { events: CORRELATED })
     expect(await screen.findByText('Opened by policy')).toBeInTheDocument()
     const rows = bodyRows()
@@ -224,8 +227,11 @@ describe('EventsPage — correlazione automatica (ondata 3)', () => {
     // orfano: chip ambra "Collega un CI"
     expect(within(rows[3]!).getByText('Link a CI')).toBeInTheDocument()
 
-    // sotto soglia: nessun incident, nessun chip
-    expect(within(rows[4]!).getByText('—')).toBeInTheDocument()
+    // CONTRATTO RINEGOZIATO (revisione totale · G-EVT-12): sotto soglia era un
+    // trattino muto, indistinguibile da «non ancora valutato». Ora e un chip
+    // con la frase che dice perche non c'e un incident.
+    expect(within(rows[4]!).getAllByText('Below threshold').length).toBeGreaterThan(0)
+    expect(within(rows[4]!).getByTitle(/below the policy threshold/i)).toBeInTheDocument()
   })
 
   it('"Rivaluta ora" solo per silenziati / in attesa / orfani; un evento silenziato non offre "Apri incident"', async () => {
@@ -379,7 +385,7 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
 
     await user.click(chip)
     expect(screen.queryByRole('button', { name: 'Only this CI' })).not.toBeInTheDocument()
-    expect(location()).toBe('/events?status=firing')
+    await attendiURL('/events', { status: 'firing' })
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['firing'] }))
   })
 
@@ -388,23 +394,61 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
     const { user } = renderPage('viewer', seen)
     await screen.findByText('CPU high on web-01')
     await user.click(screen.getByRole('button', { name: 'Resolved' }))
-    expect(location()).toBe('/events?status=resolved')
+    await attendiURL('/events', { status: 'resolved' })
+    /*
+     * DUE ASSERZIONI E NON UNA (21 set 2026), e il motivo è diagnostico.
+     *
+     * Su CI questo punto falliva con l'URL fermo a `?status=resolved`, senza
+     * la ricerca — e non si capiva se fosse la CASELLA a non ricevere il
+     * testo o il DEBOUNCE a non scriverlo nell'URL. Le due cose si rompono
+     * per ragioni diverse e si correggono in due posti diversi, quindi il
+     * test dice quale delle due è.
+     *
+     * Riprodotto in locale non riesce: cinque giri di fila verdi, e verdi
+     * anche forzando 400 ms fra un tasto e l'altro — più del debounce.
+     */
     await user.type(screen.getByLabelText('Search'), 'cpu')
-    await waitFor(() => expect(location()).toBe('/events?status=resolved&q=cpu'))
+    await waitFor(() => expect(screen.getByLabelText('Search')).toHaveValue('cpu'))
+    /*
+     * QUINDICI SECONDI, e sono una domanda (21 set 2026).
+     *
+     * La riga qui sopra ha già risposto alla prima metà: sulla CI il testo
+     * ARRIVA nella casella. Quello che non arriva è l'URL — il debounce di
+     * 300 ms non scrive `q=cpu` entro quattro secondi. Intermittente: un
+     * giro di CI su due passa, e in locale non cade mai (cinque giri di
+     * fila, e nemmeno forzando 400 ms fra un tasto e l'altro).
+     *
+     * Se con quindici secondi passa, è lentezza del runner e qui finisce.
+     * Se NON passa nemmeno così, allora quel timer su una macchina carica
+     * non scatta affatto — e non è un test da aggiustare, è un difetto del
+     * prodotto: chi cerca da una macchina lenta non otterrebbe niente. In
+     * quel caso si guarda `EventsPage.tsx:346`, l'effetto del debounce, e
+     * le sue dipendenze (`updateFilter` → `filter` → `[searchParams,
+     * clock]`).
+     */
+    await attendiURL('/events', { status: 'resolved', q: 'cpu' }, { timeout: 15_000 })
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['resolved'], search: 'cpu' }))
 
     await user.click(screen.getByRole('button', { name: /Critical\s*2/ }))
-    expect(location()).toBe('/events?q=cpu&stat=critical')
+    await attendiURL('/events', { q: 'cpu', stat: 'critical' })
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['firing'], severity: ['critical'], search: 'cpu' }))
-  })
+  // Tre interazioni con 300 ms di debounce in mezzo: il tempo si dichiara,
+  // invece di lasciarlo dipendere da quanto è carico il runner.
+  }, 30_000)
 
-  it('?stat=resolved24h: since = adesso − 24 h', async () => {
+  it('CONTRATTO RINEGOZIATO (G-EVT-3): ?stat=resolved24h filtra su resolvedSince, come conta il riquadro', async () => {
+    /**
+     * Revisione totale · G-EVT-3: il riquadro conta `resolved_at >= 24h` e il
+     * suo filtro usava `since`, cioè `last_seen_at` — un allarme visto tre
+     * giorni fa e risolto un'ora prima era nel numero e non nell'elenco.
+     */
     const seen: Vars[] = []
     renderPage('viewer', seen, { route: '/events?stat=resolved24h' })
     await screen.findByText('CPU high on web-01')
-    const f = seen[0]?.filter as { status: string[]; since: string }
+    const f = seen[0]?.filter as { status: string[]; resolvedSince: string; since?: string }
     expect(f.status).toEqual(['resolved'])
-    const ageMs = Date.now() - Date.parse(f.since)
+    expect(f.since).toBeUndefined()
+    const ageMs = Date.now() - Date.parse(f.resolvedSince)
     expect(ageMs).toBeGreaterThan(24 * 3_600_000 - 5_000)
     expect(ageMs).toBeLessThan(24 * 3_600_000 + 5_000)
     expect(screen.getByRole('button', { name: /Resolved 24h\s*7/ })).toHaveAttribute('aria-pressed', 'true')
@@ -487,7 +531,7 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
 
   it('errore della query delle sorgenti → messaggio accanto al filtro', async () => {
     const failing: GqlMock = { request: { query: GET_MONITORING_SOURCE_REFS }, error: new Error('sources down'), maxUsageCount: Number.POSITIVE_INFINITY }
-    renderWithProviders(<EventsPage />, { route: '/events', mocks: [meMock('viewer'), statsMock(), eventsMock(), fieldsMock(), failing, policyMock(), serviceMapsMock(), criticalCriticalitiesMock()] })
+    renderWithProviders(withVocabularyLabels(<EventsPage />), { route: '/events', mocks: [meMock('viewer'), statsMock(), eventsMock(), fieldsMock(), failing, policyMock(), serviceMapsMock(), criticalCriticalitiesMock()] })
     await screen.findByText('CPU high on web-01')
     expect(await screen.findByRole('alert')).toHaveTextContent('Sources not loaded: sources down')
   })

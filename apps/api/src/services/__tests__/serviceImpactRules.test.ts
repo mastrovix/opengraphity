@@ -37,6 +37,12 @@ function billing(h: { api?: ImpactNodeInput['health']; db?: ImpactNodeInput['hea
   ]
 }
 
+/**
+ * CONTRATTO RINEGOZIATO (revisione totale · G-MON-6): il risultato porta anche
+ * `unhealthyCount`, quanti componenti che contano sono non operativi in TUTTO.
+ * `causes` e tagliato a 20, quindi chi lo contava per spiegare la salute
+ * diceva un numero falso appena le cause passavano venti.
+ */
 describe('evaluateImpact — tabella del contratto', () => {
   it('Billing: db-01 giù + cache-02 degradato → degraded 41 (peso 16, giù 6,5), cause db-01 (via api-03) poi cache-02', () => {
     const r = evaluateImpact(billing({ db: 'down', cache: 'degraded' }), RULES)
@@ -56,8 +62,8 @@ describe('evaluateImpact — tabella del contratto', () => {
   })
 
   it('Billing tutto operativo → operational 0, nessuna causa; il certificato (never) non pesa nemmeno se giù', () => {
-    expect(evaluateImpact(billing(), RULES)).toEqual({ health: 'operational', impactScore: 0, causes: [], healthIfActive: null })
-    expect(evaluateImpact(billing({ cert: 'down' }), RULES)).toEqual({ health: 'operational', impactScore: 0, causes: [], healthIfActive: null })
+    expect(evaluateImpact(billing(), RULES)).toEqual({ health: 'operational', impactScore: 0, causes: [], healthIfActive: null, unhealthyCount: 0 })
+    expect(evaluateImpact(billing({ cert: 'down' }), RULES)).toEqual({ health: 'operational', impactScore: 0, causes: [], healthIfActive: null, unhealthyCount: 0 })
   })
 
   it('quota giù ≥ down_share_pct senza critici → down (db-01 e cache-02 giù: 8/16 = 50 %)', () => {
@@ -70,8 +76,8 @@ describe('evaluateImpact — tabella del contratto', () => {
 
   it('nessun nodo con salute nota → unknown 0, con ENTRAMBE le modalità (un servizio non monitorato non è «operativo»)', () => {
     const nodes = billing({ api: null, db: null, cache: null, cert: null })
-    expect(evaluateImpact(nodes, { ...RULES, unknown_nodes: 'ignore' })).toEqual({ health: 'unknown', impactScore: 0, causes: [], healthIfActive: null })
-    expect(evaluateImpact(nodes, { ...RULES, unknown_nodes: 'operational' })).toEqual({ health: 'unknown', impactScore: 0, causes: [], healthIfActive: null })
+    expect(evaluateImpact(nodes, { ...RULES, unknown_nodes: 'ignore' })).toEqual({ health: 'unknown', impactScore: 0, causes: [], healthIfActive: null, unhealthyCount: 0 })
+    expect(evaluateImpact(nodes, { ...RULES, unknown_nodes: 'operational' })).toEqual({ health: 'unknown', impactScore: 0, causes: [], healthIfActive: null, unhealthyCount: 0 })
     // basta un nodo con salute nota (operativo) perché il servizio sia operativo
     expect(evaluateImpact(billing({ api: 'operational', db: null, cache: null, cert: null }), RULES).health).toBe('operational')
   })
@@ -88,7 +94,7 @@ describe('evaluateImpact — tabella del contratto', () => {
 
   it('tutti i nodi con propagate = never → unknown', () => {
     const nodes = billing({ db: 'down' }).map((n) => ({ ...n, propagate: 'never' as const }))
-    expect(evaluateImpact(nodes, RULES)).toEqual({ health: 'unknown', impactScore: 0, causes: [], healthIfActive: null })
+    expect(evaluateImpact(nodes, RULES)).toEqual({ health: 'unknown', impactScore: 0, causes: [], healthIfActive: null, unhealthyCount: 0 })
   })
 
   it('nodo critico in finestra di change → maintenance con healthIfActive; il nodo in finestra non pesa e non è causa', () => {
@@ -122,7 +128,7 @@ describe('evaluateImpact — tabella del contratto', () => {
 
   it('nodo NON critico in finestra → non pesa e non è causa, il servizio segue il resto (nessuna manutenzione)', () => {
     const r = evaluateImpact(billing({ db: 'down' }, { db: { inChangeWindow: true } }), RULES)
-    expect(r).toEqual({ health: 'operational', impactScore: 0, causes: [], healthIfActive: null })
+    expect(r).toEqual({ health: 'operational', impactScore: 0, causes: [], healthIfActive: null, unhealthyCount: 0 })
   })
 
   // ── R1: ciclo di vita ≠ finestra di change ────────────────────────────────
@@ -292,23 +298,23 @@ describe('D6.3: componenti dismessi', () => {
 
 describe('serviceHealthNote (D6.2 + D6.4)', () => {
   it('niente da spiegare → null', () => {
-    expect(serviceHealthNote({ held: false, stormSources: [], upstreamWindows: [] })).toBeNull()
+    expect(serviceHealthNote('it', { held: false, stormSources: [], upstreamWindows: [] })).toBeNull()
     // sorgente in tempesta ma regola `evaluate`: la valutazione non è sospesa, niente nota
-    expect(serviceHealthNote({ held: false, stormSources: ['Zabbix prod'], upstreamWindows: [] })).toBeNull()
+    expect(serviceHealthNote('it', { held: false, stormSources: ['Zabbix prod'], upstreamWindows: [] })).toBeNull()
   })
 
   it('tempesta: nomina la sorgente e dice che la valutazione è sospesa', () => {
-    expect(serviceHealthNote({ held: true, stormSources: ['Zabbix prod'], upstreamWindows: [] }))
+    expect(serviceHealthNote('it', { held: true, stormSources: ['Zabbix prod'], upstreamWindows: [] }))
       .toBe('Sorgente in tempesta: Zabbix prod. Valutazione sospesa: la salute resta quella dell\'ultima valutazione.')
-    const many = serviceHealthNote({ held: true, stormSources: ['a', 'b', 'c', 'd', 'e'], upstreamWindows: [] })!
+    const many = serviceHealthNote('it', { held: true, stormSources: ['a', 'b', 'c', 'd', 'e'], upstreamWindows: [] })!
     expect(many).toContain('Sorgenti in tempesta: a, b, c, e altri 2')
     expect(HEALTH_NOTE_MAX_ITEMS).toBe(3)
   })
 
   it('change a monte: l\'operatore legge «CHG-… su <CI a monte>»', () => {
-    expect(serviceHealthNote({ held: false, stormSources: [], upstreamWindows: [{ name: 'VM-01', changeCode: 'CHG-0042', viaName: 'SRV-01' }] }))
+    expect(serviceHealthNote('it', { held: false, stormSources: [], upstreamWindows: [{ name: 'VM-01', changeCode: 'CHG-0042', viaName: 'SRV-01' }] }))
       .toBe('Componente in finestra di change a monte: VM-01 (CHG-0042 su SRV-01).')
-    const both = serviceHealthNote({ held: true, stormSources: ['Zabbix'], upstreamWindows: [{ name: 'VM-01', changeCode: 'CHG-1', viaName: 'SRV-01' }, { name: 'VM-02', changeCode: 'CHG-1', viaName: 'SRV-01' }] })!
+    const both = serviceHealthNote('it', { held: true, stormSources: ['Zabbix'], upstreamWindows: [{ name: 'VM-01', changeCode: 'CHG-1', viaName: 'SRV-01' }, { name: 'VM-02', changeCode: 'CHG-1', viaName: 'SRV-01' }] })!
     expect(both).toContain('Sorgente in tempesta: Zabbix')
     expect(both).toContain('Componenti in finestra di change a monte: VM-01 (CHG-1 su SRV-01), VM-02 (CHG-1 su SRV-01).')
   })

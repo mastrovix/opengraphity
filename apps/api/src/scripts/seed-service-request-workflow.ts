@@ -17,6 +17,7 @@
  */
 import { seedWorkflowDefinition } from '@opengraphity/workflow'
 import { resolveTenantArg, resolveSeedOverwriteOpts } from './lib/scriptArgs.js'
+import { runScript } from './lib/runScript.js'
 import { SERVICE_REQUEST_WORKFLOW } from './lib/workflowDefinitions.js'
 
 export { SERVICE_REQUEST_WORKFLOW }
@@ -27,6 +28,4 @@ async function main() {
   console.log(`[seed-service-request-workflow] "${SERVICE_REQUEST_WORKFLOW.name}" tenant=${tenantId} defId=${res.definitionId} ${res.created ? 'creata' : res.skipped ? 'saltata (già presente)' : 'riscritta dal seed'}`)
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((e) => { console.error(e instanceof Error ? e.stack ?? e.message : e); process.exit(1) })
+runScript('seed-service-request-workflow', main)

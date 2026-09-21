@@ -4,15 +4,18 @@
  * and changes, workflow history, comments and attachment metadata.
  * Pure pdfkit, returns a Buffer. Shared parts live in ./pdf/ticketDossier.ts.
  */
+import type { ValueColor } from '@opengraphity/types'
+import { pdfText } from './pdf/texts.js'
+import { loadVocabularyEntries } from './vocabularyEntries.js'
 import { runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import {
-  DASH, fmtDate, orDash, COLOR, type Doc, type PdfMeta,
+  DASH, fmtDate, orDash, COLOR, valueColorInk, type Doc, type PdfMeta, type PdfLocale,
   sectionHeading, emptyLine, drawTable, keyValue, badge, createPdfBuffer,
 } from './pdf/common.js'
 import {
   loadTicketDossier, renderTicketDossier, userRef,
   affectedCIsSection, workflowHistorySection, commentsSection, attachmentsSection,
-  type Props, type UserRef, type AffectedCI, type WorkflowHistoryEntry, type AttachmentEntry,
+  type Props, type UserRef, type AffectedCI, type WorkflowHistoryEntry, type AttachmentEntry, type CustomFieldLine, customFieldsSection,
 } from './pdf/ticketDossier.js'
 
 export type { PdfMeta }
@@ -26,6 +29,8 @@ export interface ProblemDossier {
     title:         string
     description:   string | null
     priority:      string
+    /** Il colore che il Dizionario del cliente dà alla priorità, o null se non ne ha. */
+    priorityColor: ValueColor | null
     status:        string
     rootCause:     string | null
     workaround:    string | null
@@ -44,6 +49,7 @@ export interface ProblemDossier {
   workflowHistory:  WorkflowHistoryEntry[]
   comments:         Array<{ author: string | null; type: string; createdAt: string | null; text: string }>
   attachments:      AttachmentEntry[]
+  customFields:    CustomFieldLine[]
 }
 
 // ── Data loading (tenant-scoped Cypher) ───────────────────────────────────────
@@ -57,7 +63,7 @@ export async function loadProblemDossier(
     label:      'Problem',
     entityType: 'problem',
     ciRelation: 'AFFECTS',
-    comments:   { label: 'ProblemComment', authorProp: 'created_by' },
+    comments:   { label: 'Comment', authorProp: 'author_id' },
   }, id, tenantId)
   const p = common.props
 
@@ -89,6 +95,7 @@ export async function loadProblemDossier(
       title:         (p['title']  ?? '') as string,
       description:   (p['description'] ?? null) as string | null,
       priority:      (p['priority'] ?? '') as string,
+      priorityColor: p['priority'] ? ((await loadVocabularyEntries(tenantId, 'priority')).colors[p['priority'] as string] ?? null) : null,
       status:        (p['status']   ?? '') as string,
       rootCause:     (p['root_cause'] ?? null) as string | null,
       workaround:    (p['workaround'] ?? null) as string | null,
@@ -115,77 +122,77 @@ export async function loadProblemDossier(
     workflowHistory: common.workflowHistory,
     comments:        common.comments.map((c) => ({ ...c, type: c.type ?? 'manual' })),
     attachments:     common.attachments,
+    customFields:    common.customFields,
   }
 }
 
 // ── Builder ───────────────────────────────────────────────────────────────────
 
-const PRIORITY_COLORS: Record<string, string> = {
-  critical: '#dc2626', high: '#ea580c', medium: '#d97706', low: '#16a34a',
-}
 
 export async function buildProblemPdf(data: ProblemDossier, meta: PdfMeta): Promise<Buffer> {
   return createPdfBuffer(
     `Problem Audit Report ${data.problem.number || data.problem.id}`,
     meta,
-    (doc) => renderDossier(doc, data),
+    (doc) => renderDossier(doc, data, meta.locale),
   )
 }
 
-function renderDossier(doc: Doc, data: ProblemDossier): void {
+function renderDossier(doc: Doc, data: ProblemDossier, locale: PdfLocale): void {
   const pr = data.problem
 
   renderTicketDossier(doc, {
-    reportTitle: 'Problem Audit Report',
+    reportTitle: pdfText(locale, 'reportProblem'),
     entityTitle: `${pr.number || pr.id} ${DASH} ${pr.title}`,
     badges: (doc, x, y) => {
       let bx = x
-      bx += badge(doc, bx, y, `PRIORITY: ${(pr.priority || 'n/d').toUpperCase()}`,
-        PRIORITY_COLORS[pr.priority?.toLowerCase() ?? ''] ?? COLOR.muted) + 6
-      badge(doc, bx, y, `STATUS: ${(pr.status || 'n/d').toUpperCase().replace(/_/g, ' ')}`, COLOR.brand)
+      // C-18: etichette dei badge tradotte.
+      bx += badge(doc, bx, y, `${pdfText(locale, 'badgePriority')}: ${(pr.priority || pdfText(locale, 'notAvailable')).toUpperCase()}`,
+        valueColorInk(pr.priorityColor)) + 6
+      badge(doc, bx, y, `${pdfText(locale, 'badgeStatus')}: ${(pr.status || pdfText(locale, 'notAvailable')).toUpperCase().replace(/_/g, ' ')}`, COLOR.brand)
     },
     sections: [
-      detailsSection(data),
-      affectedCIsSection(data.affectedCIs),
-      relatedIncidentsSection(data.relatedIncidents),
-      relatedChangesSection(data.relatedChanges),
-      workflowHistorySection(data.workflowHistory),
-      commentsSection(data.comments),
-      attachmentsSection(data.attachments),
+      detailsSection(data, locale),
+      customFieldsSection(data.customFields, locale),
+      affectedCIsSection(data.affectedCIs, locale),
+      relatedIncidentsSection(data.relatedIncidents, locale),
+      relatedChangesSection(data.relatedChanges, locale),
+      workflowHistorySection(data.workflowHistory, locale),
+      commentsSection(data.comments, locale),
+      attachmentsSection(data.attachments, locale),
     ],
   })
 }
 
-function detailsSection(data: ProblemDossier) {
+function detailsSection(data: ProblemDossier, locale: PdfLocale) {
   const pr = data.problem
   return (doc: Doc): void => {
-    sectionHeading(doc, 'Dettagli')
-    keyValue(doc, 'Descrizione', orDash(pr.description))
-    keyValue(doc, 'Root cause', orDash(pr.rootCause))
-    keyValue(doc, 'Workaround', orDash(pr.workaround))
-    keyValue(doc, 'Utenti impattati', pr.affectedUsers != null ? String(pr.affectedUsers) : DASH)
-    keyValue(doc, 'Creato da', data.createdBy
+    sectionHeading(doc, pdfText(locale, 'details'))
+    keyValue(doc, pdfText(locale, 'description'), orDash(pr.description))
+    keyValue(doc, pdfText(locale, 'rootCause'), orDash(pr.rootCause))
+    keyValue(doc, pdfText(locale, 'workaround'), orDash(pr.workaround))
+    keyValue(doc, pdfText(locale, 'affectedUsers'), pr.affectedUsers != null ? String(pr.affectedUsers) : DASH)
+    keyValue(doc, pdfText(locale, 'createdBy'), data.createdBy
       ? `${data.createdBy.name} <${data.createdBy.email}>`
       : DASH)
-    keyValue(doc, 'Assegnatario', data.assignee
+    keyValue(doc, pdfText(locale, 'assignee'), data.assignee
       ? `${data.assignee.name} <${data.assignee.email}>`
       : DASH)
-    keyValue(doc, 'Team', data.team ? data.team.name : DASH)
-    keyValue(doc, 'Creato il', fmtDate(pr.createdAt))
-    keyValue(doc, 'Aggiornato il', fmtDate(pr.updatedAt))
-    keyValue(doc, 'Risolto il', fmtDate(pr.resolvedAt))
-    keyValue(doc, 'Chiuso il', fmtDate(pr.closedAt))
+    keyValue(doc, pdfText(locale, 'team'), data.team ? data.team.name : DASH)
+    keyValue(doc, pdfText(locale, 'createdAt'), fmtDate(pr.createdAt, locale))
+    keyValue(doc, pdfText(locale, 'updatedAt'), fmtDate(pr.updatedAt, locale))
+    keyValue(doc, pdfText(locale, 'resolvedAt'), fmtDate(pr.resolvedAt, locale))
+    keyValue(doc, pdfText(locale, 'closedAt'), fmtDate(pr.closedAt, locale))
   }
 }
 
-function relatedIncidentsSection(items: ProblemDossier['relatedIncidents']) {
+function relatedIncidentsSection(items: ProblemDossier['relatedIncidents'], locale: PdfLocale) {
   return (doc: Doc): void => {
-    sectionHeading(doc, `Incident correlati (${items.length})`)
-    if (!items.length) { emptyLine(doc, 'Nessun incident correlato.'); return }
+    sectionHeading(doc, pdfText(locale, 'relatedIncidents', { count: items.length }))
+    if (!items.length) { emptyLine(doc, pdfText(locale, 'noRelatedIncidents')); return }
     drawTable(doc,
       [
-        { header: 'Numero', width: 100 },
-        { header: 'Titolo', width: 295 },
+        { header: pdfText(locale, 'colNumber'), width: 100 },
+        { header: pdfText(locale, 'colTitle'),  width: 295 },
         { header: 'Status', width: 100 },
       ],
       items.map((i) => [orDash(i.number), i.title, orDash(i.status)]),
@@ -193,14 +200,14 @@ function relatedIncidentsSection(items: ProblemDossier['relatedIncidents']) {
   }
 }
 
-function relatedChangesSection(items: ProblemDossier['relatedChanges']) {
+function relatedChangesSection(items: ProblemDossier['relatedChanges'], locale: PdfLocale) {
   return (doc: Doc): void => {
-    sectionHeading(doc, `Change correlate (${items.length})`)
-    if (!items.length) { emptyLine(doc, 'Nessuna change correlata.'); return }
+    sectionHeading(doc, pdfText(locale, 'relatedChanges', { count: items.length }))
+    if (!items.length) { emptyLine(doc, pdfText(locale, 'noRelatedChanges')); return }
     drawTable(doc,
       [
-        { header: 'Codice', width: 100 },
-        { header: 'Titolo', width: 295 },
+        { header: pdfText(locale, 'colCode'),  width: 100 },
+        { header: pdfText(locale, 'colTitle'), width: 295 },
         { header: 'Status', width: 100 },
       ],
       items.map((c) => [orDash(c.code), c.title, orDash(c.status)]),

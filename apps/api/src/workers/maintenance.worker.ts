@@ -9,6 +9,10 @@ import { config }                 from '../lib/config.js'
 import { createWorker, getQueue } from '../lib/bullmq.js'
 import { backupRunsTotal, backupLastSuccessTimestamp } from '../middleware/metrics.js'
 import { purgeResolvedEvents } from '../services/eventRetention.js'
+import { pruneInbox } from '@opengraphity/notifications'
+import { inAppRetentionByTenant } from '../lib/tenantInAppRetention.js'
+import { purgaIRegistriDeiLog, leggiGiorniDiRetention } from '../services/serverLogRetention.js'
+import { immettiEventiDaiLog } from '../lib/serverLogEvents.js'
 
 const maintenanceLogger = logger.child({ module: 'maintenance' })
 
@@ -43,7 +47,40 @@ export const REPEATABLE_JOBS: ReadonlyArray<{ name: string; pattern: string; des
   { name: 'backup_database', pattern: '0 0 * * *',  description: 'daily at midnight' },
   // Event Management (ondata 4): eventi risolti oltre retention_days della policy del tenant.
   { name: 'purge_events',    pattern: '30 3 * * *', description: 'daily at 03:30' },
+  // Revisione del 14 set 2026 · F10: le notifiche in-app salvate si puliscono per età.
+  { name: 'purge_inapp_notifications', pattern: '45 3 * * *', description: 'daily at 03:45' },
+  /**
+   * Moduli del catalogo, ondata 2: le BOZZE mai reclamate. Un campo allegato
+   * si compila prima che la richiesta esista, quindi i file si caricano su una
+   * bozza; se chi compilava cambia idea e chiude la pagina, quei file restano.
+   * Senza questa passata crescerebbero per sempre — su disco e nel grafo.
+   */
+  { name: 'purge_form_drafts', pattern: '15 4 * * *', description: 'daily at 04:15' },
+  /**
+   * I DUE REGISTRI DEI LOG (20 set 2026, ondata 3). `:ServerLogEntry` è
+   * l'archivio nuovo su cui il prodotto guarda sé stesso; `:LogEntry` sono i
+   * log del browser, che esistono da sempre e non sono MAI stati purgati —
+   * 270.000 nodi, nessun lettore, nessun indice. Un registro che cresce senza
+   * che nessuno abbia deciso per quanto è un difetto, non un archivio.
+   */
+  { name: 'purge_server_logs', pattern: '0 5 * * *', description: 'daily at 05:00' },
+  /**
+   * DA ERRORE A EVENTO (ondata 3). Ogni quarto d'ora, non di notte: un guasto
+   * in corso non aspetta le cinque del mattino. Un quarto d'ora è il
+   * compromesso fra «te ne accorgi presto» e «non apri un incident per un
+   * errore isolato» — la soglia acuta (20 occorrenze in un giorno) fa il
+   * resto del filtro, e la pipeline degli eventi ha già la sua deduplica.
+   */
+  { name: 'server_logs_to_events', pattern: '*/15 * * * *', description: 'every 15 minutes' },
 ]
+
+/**
+ * Quanto si aspetta prima di cancellare una bozza mai reclamata. Un giorno: il
+ * tempo di compilare un modulo con calma, riaprire la pagina, finire domani
+ * mattina. Non è configurabile perché non è una scelta del cliente: è la
+ * durata di una sessione di compilazione.
+ */
+export const FORM_DRAFT_MAX_AGE_HOURS = 24
 
 // ── Retention: keep last N archives ──────────────────────────────────────────
 // `.partial` (unpublished) and `.invalid` (failed verification) archives are
@@ -141,6 +178,49 @@ async function processMaintenanceJob(job: Job): Promise<void> {
       break
     }
 
+    case 'purge_form_drafts': {
+      const prima = new Date(Date.now() - FORM_DRAFT_MAX_AGE_HOURS * 3_600_000).toISOString()
+      const { purgeFormDrafts } = await import('../lib/formDraftPurge.js')
+      const r = await purgeFormDrafts(prima)
+      if (r.nodes > 0 || r.filesFailed > 0) {
+        maintenanceLogger.info({ ...r, olderThan: prima }, 'Unclaimed form draft attachments purged')
+      }
+      if (r.filesFailed > 0) {
+        // Il nodo è andato ma il file no: lo si dice, perché lo spazio non
+        // torna e nessun altro passerà da lì.
+        maintenanceLogger.warn({ filesFailed: r.filesFailed }, 'Some form draft files could not be deleted from disk')
+      }
+      break
+    }
+
+    case 'purge_inapp_notifications': {
+      // La durata è di ogni organizzazione (verifica «Cosa resta cablato»,
+      // ondata 2). Chi non l'ha scelta viene saltato e lo si dice: cancellare
+      // con una durata che nessuno ha deciso non è un ripiego accettabile.
+      for (const { tenantId, days } of await inAppRetentionByTenant()) {
+        if (days === null) {
+          maintenanceLogger.warn({ tenantId }, 'In-app notifications NOT pruned: the organization has not chosen how long to keep them (Settings → Organization)')
+          continue
+        }
+        const before = new Date(Date.now() - days * 86_400_000).toISOString()
+        const deleted = await pruneInbox(tenantId, before)
+        maintenanceLogger.info({ tenantId, deleted, retentionDays: days, before }, 'In-app notifications pruned')
+      }
+      break
+    }
+
+    case 'server_logs_to_events': {
+      const { immessi, esaminate } = await immettiEventiDaiLog()
+      if (immessi > 0) maintenanceLogger.info({ immessi, esaminate }, 'Server log signatures turned into monitoring events')
+      break
+    }
+
+    case 'purge_server_logs': {
+      const { server, browser, giorni } = await purgaIRegistriDeiLog()
+      maintenanceLogger.info({ server, browser, retentionDays: giorni }, 'Server and browser log registries pruned')
+      break
+    }
+
     default:
       throw new Error(`Unknown maintenance job "${job.name}"`)
   }
@@ -173,6 +253,9 @@ export async function startMaintenanceWorker(): Promise<Worker> {
   // Fail at boot on a malformed value, not at midnight.
   const retention = readBackupRetention()
   readSkipKeycloak()
+  // Stessa regola per la durata dei log: se è scritta male lo si scopre ora,
+  // non alle cinque del mattino con il job che fallisce in silenzio.
+  leggiGiorniDiRetention()
   await scheduleRepeatableJobs()
 
   const worker = createWorker(MAINTENANCE_QUEUE, processMaintenanceJob, { concurrency: 1 })

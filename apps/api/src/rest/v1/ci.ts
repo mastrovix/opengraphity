@@ -60,8 +60,13 @@ router.get('/:id', requirePermission('ci:read'), asyncHandler(async (req: Reques
   const id = req.params['id']!
   const tenantId = apiKeyOf(req).tenantId
   const ciPredicate = await ciLabelPredicateForTenant('ci', tenantId)
+  // `:ConfigurationItem` davanti (revisione totale · D-29): un MATCH senza
+  // etichetta non ha un indice da usare, quindi il dettaglio di un CI era una
+  // scansione di TUTTI i nodi del database — secondi su una CMDB vera. Ogni
+  // CI porta questa etichetta (migrazione 20260908_1010); il predicato dei
+  // tipi del cliente resta, per non far passare un nodo che non è un CI.
   const row = await withSession((session) => runQueryOne<{ props: Props }>(session, `
-    MATCH (ci {id: $id, tenant_id: $tenantId})
+    MATCH (ci:ConfigurationItem {id: $id, tenant_id: $tenantId})
     WHERE ${ciPredicate}
     RETURN properties(ci) AS props
   `, { id, tenantId }))

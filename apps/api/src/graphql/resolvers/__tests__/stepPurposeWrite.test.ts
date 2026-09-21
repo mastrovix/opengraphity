@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 import { WORKFLOW_STEP_PURPOSES } from '@opengraphity/types'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 interface Call { cypher: string; params: Record<string, unknown>; mode: 'read' | 'write' }
 const calls: Call[] = []
@@ -31,6 +32,11 @@ const mockSession = {
   close: vi.fn().mockResolvedValue(undefined),
 }
 
+// Le fotografie per l'Audit Log leggono il grafo: qui non consumano le risposte in coda delle query sotto prova.
+vi.mock('../../../lib/workflowAuditDetails.js', () => ({
+  workflowSnapshot: vi.fn().mockResolvedValue({ steps: {}, transitions: {} }),
+  workflowChangeDetails: vi.fn(() => ({})),
+}))
 vi.mock('@opengraphity/events', () => ({ publish: vi.fn().mockResolvedValue(undefined), getRedisOptions: vi.fn(() => ({})) }))
 const ACTIONS = ['publish_event', 'notify_rule'] as const
 vi.mock('@opengraphity/workflow', () => ({
@@ -58,11 +64,14 @@ vi.mock('../../../lib/logger.js', () => ({
 }))
 vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('../../../lib/validateRequiredFields.js', () => ({ validateRequiredFields: vi.fn().mockResolvedValue(undefined) }))
+// Le scadenze dei passi (ondata 3) hanno i loro test (stepDeadlines.test.ts): qui la
+// lettura del loro controllo sposterebbe i risultati in coda di questo doppio.
+vi.mock('../../../lib/stepDeadlineWrite.js', async (importOriginal) => ({ ...(await importOriginal<object>()), assertDefinitionDeadlines: vi.fn(async () => {}) }))
 vi.mock('../../../lib/workflowHelpers.js', () => ({ invalidateWorkflowCache: vi.fn() }))
 
 const { normalizeStepPurpose, updateWorkflowStep, saveWorkflowChanges } = await import('../workflowMutations.js')
 
-const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'user-1', userEmail: 'u@test.io', role: 'admin' }
+const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'user-1', userEmail: 'u@test.io', role: 'admin', permissions: perms('admin') }
 const paramsOf = (needle: string) => calls.find((c) => c.cypher.includes(needle))?.params
 const cypherOf = (needle: string) => calls.find((c) => c.cypher.includes(needle))?.cypher ?? ''
 

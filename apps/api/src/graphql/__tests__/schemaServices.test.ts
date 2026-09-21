@@ -58,6 +58,8 @@ describe('tipi del contratto', () => {
     expect(fieldsOf('ServiceMap')).toEqual({
       id: 'ID!', service: 'ServiceRef!', name: 'String!', status: 'ServiceMapStatus!', version: 'Int!', updatedAt: 'String',
       maxDepth: 'Int!', relationshipTypes: '[String!]!', builtFrom: 'String!', stale: 'Boolean!', staleReason: 'ServiceStaleReason',
+      // G-MON-6: quanti componenti sono non operativi in tutto (le cause sono tagliate a 20).
+      unhealthyCount: 'Int',
       autoSync: 'Boolean!', syncedAt: 'String',
       rules: 'ServiceImpactRules!',
       health: 'ServiceHealth!', healthIfActive: 'ServiceHealth', healthNote: 'String', healthSince: 'String', impactScore: 'Int!', evaluatedAt: 'String',
@@ -67,7 +69,10 @@ describe('tipi del contratto', () => {
       history: '[ServiceHealthEntry!]!', historyCount: 'Int!',
       excluded: '[ConfigurationItemRef!]!',
       openIncident: 'Incident',
+      incidentProblem: 'ServiceIncidentProblem',
     })
+    // SV-4: il motivo è un dato (chiave + parametri), la frase la compone il client
+    expect(fieldsOf('ServiceIncidentProblem')).toEqual({ key: 'String', params: '[ServiceIncidentProblemParam!]!', message: 'String!', since: 'String!' })
     const history = (schema.getType('ServiceMap') as GraphQLObjectType).getFields()['history']!
     expect(history.args.map((a) => [a.name, a.type.toString(), a.defaultValue])).toEqual([['limit', 'Int', 100]])
   })
@@ -110,6 +115,7 @@ describe('tipi del contratto', () => {
     // ondata 5 (mappa viva): l'interruttore ha il controllo di concorrenza, «sincronizza ora» no (è un'azione idempotente)
     expect(sig(m['setServiceMapAutoSync']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['autoSync', 'Boolean!', null]], type: 'ServiceMap!' })
     expect(sig(m['syncServiceMap']!)).toEqual({ args: [['id', 'ID!', null]], type: 'ServiceMapSyncResult!' })
+    expect(sig(m['updateServiceMapScope']!)).toEqual({ args: [['id', 'ID!', null], ['expectedVersion', 'Int!', null], ['relationshipTypes', '[String!]!', null], ['maxDepth', 'Int!', null]], type: 'ServiceMap!' })
     expect(fieldsOf('ServiceMapSyncResult')).toEqual({ map: 'ServiceMap!', added: 'Int!', removed: 'Int!', moved: 'Int!', skipped: 'Boolean!', reason: 'String' })
   })
 

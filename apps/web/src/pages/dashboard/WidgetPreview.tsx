@@ -4,6 +4,7 @@ import type { PreviewData } from './useWidgetConfig'
 import { TIME_RANGES, DATA_FREE_WIDGET_TYPES, widgetTint } from './useWidgetConfig'
 import { DataFreeWidgetBody } from './DataFreeWidgetBody'
 import { colors, palette } from '@/lib/tokens'
+import { useFieldValueLabel } from '@/hooks/useFieldValueLabel'
 
 // Stesso corpo della card reale (anteprima ≡ widget); lazy per non portare
 // ECharts nel bundle del modal di configurazione finché non serve.
@@ -18,12 +19,17 @@ interface WidgetPreviewProps {
   previewData:    PreviewData | null
   previewLoading: boolean
   timeRange:      string
+  /** Per le etichette dei valori raggruppati (Dizionario, passi del workflow). */
+  entityType?:    string
+  groupByField?:  string | null
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export function WidgetPreview({ widgetType, color, title, previewData, previewLoading, timeRange }: WidgetPreviewProps) {
+export function WidgetPreview({ widgetType, color, title, previewData: rawPreview, previewLoading, timeRange, entityType, groupByField }: WidgetPreviewProps) {
   const { t, i18n } = useTranslation()
+  const valueLabel = useFieldValueLabel(entityType, groupByField)
+  const previewData = rawPreview && { ...rawPreview, series: rawPreview.series.map((s) => ({ ...s, label: valueLabel(s.label) })) }
   const timeRangeKey = TIME_RANGES.find((r) => r.value === timeRange)?.labelKey
   const dataFree = DATA_FREE_WIDGET_TYPES.includes(widgetType)
 

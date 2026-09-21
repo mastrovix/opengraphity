@@ -118,9 +118,28 @@ async function processMaintenanceJob(job: Job<Record<string, never>>): Promise<v
 export const PERIODIC_PASSES = ['closed_windows', 'pending', 'flapping', 'storms', 'gauges'] as const
 export type PeriodicPass = (typeof PERIODIC_PASSES)[number]
 
+/**
+ * Un guasto d'infrastruttura (Neo4j o Redis irraggiungibili) fa fallire tutte e
+ * cinque le passate con lo STESSO messaggio, e il testo del driver Neo4j è
+ * lungo 200 caratteri: ripetuto cinque volte rendeva illeggibile il motivo
+ * dell'errore nella pagina delle code. Le passate che condividono la causa
+ * vengono elencate insieme, nell'ordine in cui sono state eseguite; cause
+ * diverse restano separate (una passata fallita per i suoi dati non viene
+ * confusa con il database giù).
+ */
+export function motiviDelFallimento(failures: readonly { pass: string; message: string }[]): string {
+  const perMessaggio = new Map<string, string[]>()
+  for (const f of failures) {
+    const passate = perMessaggio.get(f.message)
+    if (passate) passate.push(f.pass)
+    else perMessaggio.set(f.message, [f.pass])
+  }
+  return [...perMessaggio].map(([message, passate]) => `${passate.join(', ')}: ${message}`).join('; ')
+}
+
 /** Le cinque passate del job periodico, ciascuna eseguita e misurata anche se le altre falliscono. */
 export async function runPeriodicPasses(now: string = new Date().toISOString()): Promise<void> {
-  const failures: string[] = []
+  const failures: { pass: PeriodicPass; message: string }[] = []
   const pass = async <R extends object>(label: PeriodicPass, run: () => Promise<R>, what: string, worthLogging: (r: R) => boolean) => {
     const startedAt = performance.now()
     let result: 'ok' | 'failed' = 'ok'
@@ -129,7 +148,7 @@ export async function runPeriodicPasses(now: string = new Date().toISOString()):
       if (worthLogging(r)) log.info({ pass: label, ...(r as Record<string, unknown>) }, what)
     } catch (err) {
       result = 'failed'
-      failures.push(`${label}: ${err instanceof Error ? err.message : String(err)}`)
+      failures.push({ pass: label, message: err instanceof Error ? err.message : String(err) })
     } finally {
       eventPassTotal.inc({ pass: label, result })
       eventPassDurationSeconds.observe({ pass: label }, (performance.now() - startedAt) / 1000)
@@ -141,7 +160,7 @@ export async function runPeriodicPasses(now: string = new Date().toISOString()):
   await pass('flapping', () => reevaluateFlappingEvents(now), 'Flapping events evaluated for stabilisation (periodic)', evaluatedSome)
   await pass('storms', () => endCooledStorms(now), 'Alert storms checked for cooldown (periodic)', (r) => r.active > 0 || r.ended > 0)
   await pass('gauges', () => refreshEventGauges(now), 'Event health gauges refreshed (periodic)', (r) => r.overdueDelayed > 0 || r.firingUncorrelated > 0)
-  if (failures.length) throw new Error(`[${EVENT_MAINTENANCE_QUEUE}] ${EVENT_MAINTENANCE_JOB}: ${failures.join('; ')}`)
+  if (failures.length) throw new Error(`[${EVENT_MAINTENANCE_QUEUE}] ${EVENT_MAINTENANCE_JOB}: ${motiviDelFallimento(failures)}`)
 }
 
 /**

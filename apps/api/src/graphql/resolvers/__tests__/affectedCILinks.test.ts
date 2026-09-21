@@ -15,6 +15,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 vi.mock('../../../lib/ciLabelsForTenant.js', () => ({
   ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
@@ -33,11 +34,10 @@ vi.mock('@opengraphity/schema-generator', () => ({
   ]),
 }))
 
-const allowedTypes: string[] = []
-vi.mock('../itilRelations.js', () => ({
-  getAllowedCILabels: vi.fn(async () => allowedTypes),
-  itilRelationsResolvers: {},
-}))
+// CM-8: le vecchie regole «tipi ammessi» sono diventate esclusioni per tipo di ticket.
+const exclusionError = { value: null as Error | null }
+const assertCIsLinkable = vi.fn(async () => { if (exclusionError.value) throw exclusionError.value })
+vi.mock('../../../lib/ticketCIExclusions.js', () => ({ assertCIsLinkable: (...a: unknown[]) => (assertCIsLinkable as (...x: unknown[]) => Promise<void>)(...a) }))
 
 let linked = 1
 const writes: { cypher: string; params: Record<string, unknown> }[] = []
@@ -72,28 +72,23 @@ vi.mock('../../../lib/audit.js', () => ({ audit: vi.fn() }))
 const { incidentResolvers } = await import('../incident.js')
 const { problemResolvers } = await import('../problem.js')
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'u1', userEmail: 'u@x', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'u1', userEmail: 'u@x', role: 'operator', permissions: perms('operator') }
 
-beforeEach(() => { writes.length = 0; linked = 1; allowedTypes.length = 0; vi.clearAllMocks() })
+beforeEach(() => { writes.length = 0; linked = 1; exclusionError.value = null; vi.clearAllMocks() })
 
 describe('addAffectedCI (incident)', () => {
-  it('senza regole ITIL il predicato viene dal metamodello del tenant', async () => {
+  it('il predicato viene dal metamodello del tenant, righe contate', async () => {
     await incidentResolvers.Mutation.addAffectedCI(null, { incidentId: 'inc-1', ciId: 'ci-1' }, ctx)
     expect(writes[0]!.cypher).toContain('(ci:Application OR ci:LoadBalancer OR ci:Server)')
     expect(writes[0]!.cypher).toContain('RETURN count(r) AS linked')
+    // CM-8: il tipo di relazione delle vecchie regole non si scrive più
+    expect(writes[0]!.cypher).not.toContain('relation_type')
   })
 
-  it('con regole ITIL le etichette vengono dal metamodello, non da una PascalCase a mano', async () => {
-    allowedTypes.push('load_balancer')
-    await incidentResolvers.Mutation.addAffectedCI(null, { incidentId: 'inc-1', ciId: 'ci-1' }, ctx)
-    expect(writes[0]!.cypher).toContain('ANY(label IN labels(ci) WHERE label IN $allowedLabels)')
-    expect(writes[0]!.params['allowedLabels']).toEqual(['LoadBalancer'])
-  })
-
-  it('una regola ITIL su un tipo che il cliente non ha si ferma dicendolo', async () => {
-    allowedTypes.push('bilanciatore')
-    await expect(incidentResolvers.Mutation.addAffectedCI(null, { incidentId: 'inc-1', ciId: 'ci-1' }, ctx))
-      .rejects.toThrow(/"bilanciatore" is not a CI type of this tenant/)
+  it('CM-8: le esclusioni per gli incident si controllano PRIMA di scrivere', async () => {
+    exclusionError.value = new Error('These CIs cannot be linked to a incident')
+    await expect(incidentResolvers.Mutation.addAffectedCI(null, { incidentId: 'inc-1', ciId: 'ci-1' }, ctx)).rejects.toThrow(/cannot be linked/)
+    expect(assertCIsLinkable).toHaveBeenCalledWith('tenant-1', 'incident', ['ci-1'])
     expect(writes).toHaveLength(0)
   })
 
@@ -105,8 +100,9 @@ describe('addAffectedCI (incident)', () => {
 })
 
 describe('addCIToProblem (problem)', () => {
-  it('predicato dal tenant, righe contate', async () => {
+  it('predicato dal tenant, righe contate, esclusioni dei problem controllate', async () => {
     await problemResolvers.Mutation.addCIToProblem(null, { problemId: 'prb-1', ciId: 'ci-1' }, ctx)
+    expect(assertCIsLinkable).toHaveBeenCalledWith('tenant-1', 'problem', ['ci-1'])
     expect(writes[0]!.cypher).toContain('(ci:Application OR ci:LoadBalancer OR ci:Server)')
     expect(writes[0]!.cypher).toContain('RETURN count(r) AS linked')
   })

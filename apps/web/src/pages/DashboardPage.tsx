@@ -23,6 +23,7 @@ import type { DashboardConfig, Team } from './dashboard/useDashboard'
 import type { ReportTemplate, ReportSection } from './dashboard/useDashboard'
 import type { CustomWidgetData } from './dashboard/CustomWidgetCard'
 import { colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 
@@ -86,7 +87,7 @@ function CreateDashboardDialog({ teams, onClose, onCreated }: CreateDashboardDia
       toast.success(t('toast.dashboard.created'))
       onCreated(created.id)
     } catch (err: unknown) {
-      toast.error(t('toast.dashboard.createFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.dashboard.createFailed', { error: errorMessage(err) }))
     } finally {
       setCreating(false)
     }
@@ -188,7 +189,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
       onUpdated()
       onClose()
     } catch (err: unknown) {
-      toast.error(t('toast.dashboard.updateFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.dashboard.updateFailed', { error: errorMessage(err) }))
     } finally {
       setSaving(false)
     }
@@ -200,7 +201,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
       toast.success(t('toast.dashboard.setDefault'))
       onUpdated()
     } catch (err: unknown) {
-      toast.error(t('toast.dashboard.updateFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.dashboard.updateFailed', { error: errorMessage(err) }))
     }
   }
 
@@ -212,7 +213,7 @@ function SettingsDialog({ dashboard, teams, canDelete, onClose, onDeleted, onUpd
       onDeleted()
       onClose()
     } catch (err: unknown) {
-      toast.error(t('toast.dashboard.deleteFailed', { error: errorMessage(err) }))
+      showError(err, t('toast.dashboard.deleteFailed', { error: errorMessage(err) }))
     } finally {
       setDeleting(false)
     }
@@ -511,7 +512,7 @@ export function DashboardPage() {
               dashboardId={activeDashboardId}
               widget={editingWidget}
               onClose={() => setShowWidgetConfig(false)}
-              onSaved={handleWidgetSaved}
+              onSaved={(saved) => { handleWidgetSaved(saved); setShowWidgetConfig(false) }}
             />
           </Suspense>
         )}
@@ -556,7 +557,7 @@ export function DashboardPage() {
             dashboardId={activeDashboardId}
             widget={editingWidget}
             onClose={() => setShowWidgetConfig(false)}
-            onSaved={handleWidgetSaved}
+            onSaved={(saved) => { handleWidgetSaved(saved); setShowWidgetConfig(false) }}
           />
         </Suspense>
       )}

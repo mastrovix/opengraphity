@@ -1,4 +1,5 @@
 import { mapCI } from '../ci-utils.js'
+import { withTicketProps } from '../../../lib/ticketProps.js'
 import { mapUser, mapTeam } from '../../../lib/mappers.js'
 import { toNumber } from '@opengraphity/neo4j'
 import { parseDeploySteps } from '../../../lib/deployWindows.js'
@@ -9,11 +10,15 @@ export { mapCI, mapUser, mapTeam }
 
 export function mapChange(props: Props) {
   const aggregateRiskScore = props['aggregate_risk_score'] != null ? toNumber(props['aggregate_risk_score']) : null
-  const changeType = (props['change_type'] ?? 'normal') as string
-  return {
+  // B-25: una change senza tipo si mostra senza tipo (il campo SDL è
+  // nullabile e il web rende «—»), non come se fosse «normal»: il cliente che
+  // ha rinominato i suoi tipi vedeva un tipo che non esiste.
+  const changeType = (props['change_type'] ?? null) as string | null
+  return withTicketProps({
     id:                 props['id']                  as string,
     tenantId:           props['tenant_id']           as string,
     code:               props['code']                as string,
+    number:             props['number']              as string,
     title:              props['title']               as string,
     why:                (props['why']                  ?? null) as string | null,
     what:               (props['what']                 ?? null) as string | null,
@@ -38,7 +43,7 @@ export function mapChange(props: Props) {
     requester:   null,
     changeOwner: null,
     approvalBy:  null,
-  }
+  }, props)
 }
 
 export function mapAssessmentTask(props: Props) {
@@ -131,6 +136,8 @@ export function mapAuditEntry(props: Props) {
     timestamp: props['timestamp'] as string,
     action:    props['action']    as string,
     detail:    (props['detail']     ?? null) as string | null,
+    detailKey:    (props['detail_key']    ?? null) as string | null,
+    detailParams: (props['detail_params'] ?? null) as string | null,
     actor:     null,
   }
 }

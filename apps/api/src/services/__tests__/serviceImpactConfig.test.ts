@@ -10,6 +10,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 
+// Le note si compongono nella lingua del cliente: qui italiano, come le attese.
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
+// SV-6: una mappa viva si sincronizza subito col nuovo ambito (import dinamico in config.ts)
+vi.mock('../serviceImpact/sync.js', () => ({ syncServiceMap: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn(), toNumber: (v: unknown) => (v == null ? 0 : Number(v)) }))
 vi.mock('../../lib/publishEvent.js', () => ({ publishEvent: vi.fn().mockResolvedValue(undefined) }))
 // Revisione 2 · D6.2: la lettura della mappa prende `suppress_upstream_hops`
@@ -59,12 +63,14 @@ vi.mock('../../lib/workflowHelpers.js', () => ({
 }))
 
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
+const { syncServiceMap } = await import('../serviceImpact/sync.js')
+const { languageFor } = await import('../../lib/tenantLanguage.js')
 const { evaluateServiceMap } = await import('../serviceImpact/engine.js')
 const {
   applyServiceMapProposal, assertExpectedVersion, assertServiceImpactRulesInput, assertServiceMapNodeInputs,
   previewServiceImpact, removeServiceMapExclusion, serviceMapProposal, serviceNodesChangeNote, serviceRulesChangeNote,
-  setServiceMapAutoSync, updateServiceImpactRules, updateServiceMapNodes,
-  APPLY_PROPOSAL_CYPHER, REMOVE_EXCLUSION_CYPHER, SERVICE_MAP_EXCLUSIONS_CYPHER, SET_AUTO_SYNC_CYPHER, UPDATE_NODES_CYPHER, UPDATE_RULES_CYPHER,
+  setServiceMapAutoSync, updateServiceImpactRules, updateServiceMapNodes, updateServiceMapScope, serviceScopeChangeNote,
+  UPDATE_SCOPE_CYPHER, APPLY_PROPOSAL_CYPHER, REMOVE_EXCLUSION_CYPHER, SERVICE_MAP_EXCLUSIONS_CYPHER, SET_AUTO_SYNC_CYPHER, UPDATE_NODES_CYPHER, UPDATE_RULES_CYPHER,
 } = await import('../serviceImpact/config.js')
 const { DEFAULT_SERVICE_IMPACT_RULES, DEFAULT_SERVICE_IMPACT_RULES_JSON, SERVICE_EXCLUSION_REASON_MANUAL } = await import('../../lib/serviceVocabularies.js')
 
@@ -181,11 +187,11 @@ describe('validazione degli input', () => {
   })
 
   it('note leggibili: campi cambiati con etichette italiane; nessun cambiamento → BAD_USER_INPUT (una scrittura a vuoto alzerebbe la versione)', () => {
-    expect(serviceRulesChangeNote(DEFAULT_SERVICE_IMPACT_RULES, { ...DEFAULT_SERVICE_IMPACT_RULES, down_share_pct: 70, min_nodes: 2, unknown_nodes: 'ignore', open_incident_from: 'never' }))
+    expect(serviceRulesChangeNote('it', DEFAULT_SERVICE_IMPACT_RULES, { ...DEFAULT_SERVICE_IMPACT_RULES, down_share_pct: 70, min_nodes: 2, unknown_nodes: 'ignore', open_incident_from: 'never' }))
       .toBe('Regole aggiornate: soglia giù 50 → 70, minimo componenti 1 → 2, componenti senza salute operativi → ignorati, apri incident da giù → mai')
-    expect(() => serviceRulesChangeNote(DEFAULT_SERVICE_IMPACT_RULES, { ...DEFAULT_SERVICE_IMPACT_RULES })).toThrow(/rules are identical to the current ones/)
-    expect(serviceNodesChangeNote(['DB-01'])).toBe('1 componente aggiornato: DB-01')
-    expect(serviceNodesChangeNote(['A', 'B', 'C', 'D', 'E'])).toBe('5 componenti aggiornati: A, B, C, e altri 2')
+    expect(() => serviceRulesChangeNote('it', DEFAULT_SERVICE_IMPACT_RULES, { ...DEFAULT_SERVICE_IMPACT_RULES })).toThrow(/rules are identical to the current ones/)
+    expect(serviceNodesChangeNote('it', ['DB-01'])).toBe('1 componente aggiornato: DB-01')
+    expect(serviceNodesChangeNote('it', ['A', 'B', 'C', 'D', 'E'])).toBe('5 componenti aggiornati: A, B, C, e altri 2')
   })
 })
 
@@ -510,5 +516,61 @@ describe('setServiceMapAutoSync', () => {
     onCypher([[LOAD_RE, stateRow({ props: { auto_sync: undefined } })]])
     await expect(setServiceMapAutoSync({ tenantId: 't1', mapId: 'map-1', expectedVersion: 2, autoSync: false, actorId: 'u-1', now: NOW }))
       .rejects.toThrow(/has no auto_sync \(got undefined\) — run the 20260910_1110_service_map_auto_sync migration/)
+  })
+})
+
+// ── Revisione del 15 set 2026 · SV-6 / SV-7 ──────────────────────────────────
+
+const SCOPE_RE = /SET m\.relationship_types = \$relationshipTypes, m\.max_depth = toInteger\(\$maxDepth\)/
+
+describe('updateServiceMapScope (SV-6)', () => {
+  const base = { tenantId: 't1', mapId: 'map-1', expectedVersion: 2, actorId: 'u-1', now: NOW }
+
+  it('mappa viva: scrive tipi e profondità con la guardia di versione e la voce map_changed, poi si sincronizza col nuovo ambito', async () => {
+    vi.mocked(syncServiceMap).mockResolvedValueOnce({ mapId: 'map-1', version: 4, status: 'active', evaluation: { health: 'down' } } as never)
+    onCypher([[LOAD_RE, stateRow()], [SCOPE_RE, { version: 3, status: 'active', autoSync: true }]])
+    const r = await updateServiceMapScope({ ...base, relationshipTypes: ['USES_CERTIFICATE', 'DEPENDS_ON'], maxDepth: 6 })
+    const w = callMatching(SCOPE_RE)!
+    expect(w.cypher).toBe(UPDATE_SCOPE_CYPHER)
+    expect(w.cypher).toContain('WHERE version = toInteger($expectedVersion) + 1')
+    // ordine canonico del cliente, non quello dell'input
+    expect(w.params).toMatchObject({ relationshipTypes: ['DEPENDS_ON', 'USES_CERTIFICATE'], maxDepth: 6, hTrigger: 'map_changed' })
+    expect(w.params['hNote']).toBe('Ambito aggiornato: relazioni DEPENDS_ON, HOSTED_ON → DEPENDS_ON, USES_CERTIFICATE, profondità 4 → 6')
+    expect(syncServiceMap).toHaveBeenCalledWith('t1', 'map-1', 'manual', 'u-1', NOW)
+    expect(r).toMatchObject({ version: 4, status: 'active', evaluation: { health: 'down' } })
+  })
+
+  it('mappa congelata o in pausa: niente sincronizzazione (la differenza la mostra la proposta)', async () => {
+    onCypher([[LOAD_RE, stateRow({ props: { auto_sync: false } })], [SCOPE_RE, { version: 3, status: 'active', autoSync: false }]])
+    expect(await updateServiceMapScope({ ...base, relationshipTypes: ['DEPENDS_ON'], maxDepth: 4 })).toMatchObject({ version: 3, evaluation: null })
+    onCypher([[LOAD_RE, stateRow({ props: { status: 'paused' } })], [SCOPE_RE, { version: 3, status: 'paused', autoSync: true }]])
+    expect(await updateServiceMapScope({ ...base, relationshipTypes: ['DEPENDS_ON'], maxDepth: 4 })).toMatchObject({ status: 'paused', evaluation: null })
+    expect(syncServiceMap).not.toHaveBeenCalled()
+  })
+
+  it('validazione prima di scrivere: tipo non percorribile dal cliente, profondità fuori scala, nulla da cambiare, versione diversa', async () => {
+    onCypher([[LOAD_RE, stateRow()]])
+    await expectCode(updateServiceMapScope({ ...base, relationshipTypes: ['PROTECTS'], maxDepth: 4 }), 'BAD_USER_INPUT', /"PROTECTS" is not one of/)
+    await expectCode(updateServiceMapScope({ ...base, relationshipTypes: [], maxDepth: 4 }), 'BAD_USER_INPUT', /must include at least one/)
+    await expectCode(updateServiceMapScope({ ...base, relationshipTypes: ['DEPENDS_ON'], maxDepth: 99 }), 'BAD_USER_INPUT', /maxDepth must be an integer between 1 and/)
+    await expectCode(updateServiceMapScope({ ...base, relationshipTypes: ['HOSTED_ON', 'DEPENDS_ON'], maxDepth: 4 }), 'BAD_USER_INPUT', /identical to the current ones: nothing to save/)
+    await expectCode(updateServiceMapScope({ ...base, expectedVersion: 7, relationshipTypes: ['DEPENDS_ON'], maxDepth: 4 }), 'BAD_USER_INPUT', /expected version 7, current is 2/)
+    expect(callMatching(SCOPE_RE)).toBeUndefined()
+  })
+
+  it('la nota elenca solo ciò che cambia', () => {
+    expect(serviceScopeChangeNote('en', { relationshipTypes: ['DEPENDS_ON'], maxDepth: 4 }, { relationshipTypes: ['DEPENDS_ON'], maxDepth: 2 })).toBe('Scope updated: depth 4 → 2')
+  })
+})
+
+describe('SV-7: le note della cronologia nella lingua del cliente', () => {
+  it('interruttore e riammissione su un cliente inglese: in inglese (erano scritte in italiano per tutti)', async () => {
+    vi.mocked(languageFor).mockResolvedValue('en')
+    try {
+      onCypher([[LOAD_RE, stateRow()], [AUTOSYNC_RE, { version: 3, status: 'active' }]])
+      expect((await setServiceMapAutoSync({ tenantId: 't1', mapId: 'map-1', expectedVersion: 2, autoSync: false, actorId: 'u-1', now: NOW })).note).toBe('Automatic update disabled')
+      onCypher([[LOAD_RE, stateRow()], [EXCL_RE, EXCLUSION_ROWS], [UNEXCL_RE, { version: 3, status: 'active', removed: 1 }]])
+      expect((await removeServiceMapExclusion({ tenantId: 't1', mapId: 'map-1', expectedVersion: 2, ciId: 'cert-x', actorId: 'u-1', now: NOW })).note).toBe('Exclusion removed: CERT-X')
+    } finally { vi.mocked(languageFor).mockResolvedValue('it') }
   })
 })

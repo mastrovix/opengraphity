@@ -62,6 +62,9 @@ export function mapSection(p: Props, nodes: ReportNodeDef[] = [], edges: ReportE
     chartType:     p['chart_type']       as string,
     groupByNodeId: (p['group_by_node_id'] ?? null) as string | null,
     groupByField:  (p['group_by_field']   ?? null) as string | null,
+    // Assente = `day`, cioè il comportamento di prima: nessuna sezione
+    // salvata cambia aspetto quando la granularità è arrivata (19 set 2026).
+    groupByGranularity: (p['group_by_granularity'] ?? null) as string | null,
     metric:        (p['metric'] ?? 'count') as string,
     metricField:   (p['metric_field']     ?? null) as string | null,
     limit:         optInt(p['limit_val']),

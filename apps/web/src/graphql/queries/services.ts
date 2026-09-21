@@ -83,7 +83,9 @@ export const GET_SERVICE_MAP_PROPOSAL = gql`
     serviceMapProposal(id: $id) {
       mapId version maxDepth relationshipTypes totalProposed
       added    { ci { id name type } level role propagate weight critical via }
-      removed  { ci { id name type } level role }
+      # G-MON-10: addedBy = gone means the CI is gone from the CMDB, so its
+      # level and role are not read values: the dialog says so.
+      removed  { ci { id name type } level role addedBy }
       moved    { ci { id name type } level proposedLevel via proposedVia }
       excluded { id name type }
     }
@@ -149,5 +151,15 @@ export const GET_SERVICE_MAP_CANDIDATES = gql`
 export const GET_SERVICE_RELATIONSHIP_TYPES = gql`
   query GetServiceRelationshipTypes {
     serviceRelationshipTypes
+  }
+`
+
+/** L'anteprima di «Crea una mappa»: i componenti con queste impostazioni, senza scrivere. */
+export const GET_SERVICE_MAP_CREATION_PREVIEW = gql`
+  query GetServiceMapCreationPreview($serviceId: ID!, $maxDepth: Int!, $relationshipTypes: [String!]!) {
+    serviceMapCreationPreview(serviceId: $serviceId, maxDepth: $maxDepth, relationshipTypes: $relationshipTypes) {
+      serviceName
+      nodes { ci { id name type } level role }
+    }
   }
 `

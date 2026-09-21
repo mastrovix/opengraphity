@@ -4,7 +4,9 @@ import { useQuery, useMutation } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronRight, Paperclip } from 'lucide-react'
 import { GET_MY_TICKET, GET_ME } from '@/graphql/queries'
-import { ADD_TICKET_COMMENT, REOPEN_TICKET } from '@/graphql/mutations'
+import { usePortalAccess } from '@/hooks/usePortalAccess'
+import { useTicketCategories } from '@/hooks/useTicketCategories'
+import { ADD_TICKET_COMMENT, REOPEN_TICKET, UPDATE_COMMENT, DELETE_COMMENT } from '@/graphql/mutations'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { CommentBubble } from '@/components/CommentBubble'
 import { downloadAttachment } from '@/lib/attachments'
@@ -16,18 +18,87 @@ import { colors, palette } from '@/lib/tokens'
 interface EntityComment {
   id: string; body: string; isInternal: boolean
   authorId: string; authorName: string; authorEmail: string; createdAt: string
+  editedAt: string | null; editedByName: string | null; deletedAt: string | null; deletedByName: string | null
 }
 interface Attachment { id: string; filename: string; mimeType: string; sizeBytes: number; downloadUrl: string }
-interface HistoryEntry { fromStep: string; toStep: string; label: string | null; triggeredAt: string; triggeredBy: string }
+interface HistoryEntry { fromStep: string | null; toStep: string; fromLabel: string | null; toLabel: string | null; label: string | null; triggeredAt: string; triggeredBy: string }
 interface Ticket {
-  id: string; title: string; description: string | null; status: string
+  id: string; number: string; title: string; description: string | null; status: string
   /** Categoria ed etichetta del passo nel workflow del cliente (ondata 7 · D-15). */
   statusCategory: string | null; statusLabel: string | null
-  priority: string; category: string; createdAt: string; updatedAt: string
+  type: string
+  priority: string; category: string | null; createdAt: string; updatedAt: string
   assignedTeam: string | null
   comments:    EntityComment[]
   attachments: Attachment[]
   history:     HistoryEntry[]
+  /** I campi del cliente offerti nel portale (ondata 4). */
+  customFields: { name: string; label: string; fieldType: string; value: string | null; valueLabel: string | null }[]
+  /** Le risposte al modulo del catalogo, con le domande di allora (17 set 2026). */
+  formAnswers: RispostaModulo[]
+}
+
+/** Una risposta al modulo come la manda l'API: il dato e come si legge. */
+interface RispostaModulo {
+  name: string; label: string; fieldType: string
+  value: string | null; values: string[]
+  displayValue: string | null; displayValues: string[]
+  references: { id: string; label: string }[]
+  files: { id: string; filename: string; sizeBytes: number }[]
+  tableColumns: { name: string; label: string; fieldType: string }[]
+  rows: { cells: { column: string; value: string | null; displayValue: string | null }[] }[]
+}
+
+/**
+ * Una risposta come si legge. Le regole sono le stesse della scheda dello
+ * staff (`FormAnswersCard`): una tabella si legge come una tabella con le
+ * colonne di ALLORA, un riferimento e un allegato per nome, un sì/no a parole,
+ * e `displayValue` — deciso dall'API — invece del valore grezzo.
+ */
+function RispostaLetta({ risposta, emptyLabel, yesLabel, noLabel }: {
+  risposta: RispostaModulo
+  emptyLabel: string
+  yesLabel: string
+  noLabel: string
+}) {
+  const a = risposta
+  if (a.tableColumns.length > 0) {
+    return (
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+          <thead>
+            <tr>
+              {a.tableColumns.map((c) => (
+                <th key={c.name} style={{ textAlign: 'left', padding: '2px 8px 2px 0', whiteSpace: 'nowrap' }}>{c.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {a.rows.map((riga, i) => (
+              <tr key={i}>
+                {riga.cells.map((cella) => (
+                  <td key={cella.column} style={{ padding: '2px 8px 2px 0', verticalAlign: 'top' }}>
+                    {cella.displayValue ?? cella.value ?? <span style={{ color: colors.slateLight }}>—</span>}
+                  </td>
+                ))}
+              </tr>
+            ))}
+            {a.rows.length === 0 && (
+              <tr><td colSpan={a.tableColumns.length} style={{ color: colors.slateLight, padding: '2px 0' }}>{emptyLabel}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+  if (a.references.length > 0) return <>{a.references.map((r) => r.label).join(', ')}</>
+  if (a.files.length > 0)      return <>{a.files.map((f) => f.filename).join(', ')}</>
+  if (a.displayValues.length > 0) return <>{a.displayValues.join(', ')}</>
+  if (a.displayValue != null && a.displayValue !== '') {
+    if (a.fieldType === 'boolean') return <>{a.displayValue === 'true' ? yesLabel : noLabel}</>
+    return <>{a.displayValue}</>
+  }
+  return <span style={{ color: colors.slateLight }}>{emptyLabel}</span>
 }
 
 function formatBytes(b: number): string {
@@ -38,7 +109,7 @@ function formatBytes(b: number): string {
 
 export function TicketDetailPage() {
   const { id }               = useParams<{ id: string }>()
-  const { t }                = useTranslation()
+  const { t, i18n }          = useTranslation()
   const location             = useLocation()
   const [reply, setReply]    = useState('')
   const [attachOpen, setAttachOpen] = useState(false)
@@ -46,10 +117,12 @@ export function TicketDetailPage() {
   const showCreatedMsg       = !!(location.state as { created?: boolean } | null)?.created
 
   const { data: meData }     = useQuery<{ me: { id: string } | null }>(GET_ME)
+  const { canSubmit }        = usePortalAccess()
+  const { labelOf: categoryLabel } = useTicketCategories()
   // Detail page polls (comments/status from the IT team); nothing else does.
   const { data, loading, error, refetch } = useQuery<{ myTicket: Ticket }>(
     GET_MY_TICKET,
-    { variables: { id }, skip: !id, pollInterval: TICKET_POLL_INTERVAL_MS },
+    { variables: { id, language: i18n.resolvedLanguage ?? i18n.language }, skip: !id, pollInterval: TICKET_POLL_INTERVAL_MS },
   )
 
   const ticket   = data?.myTicket
@@ -61,6 +134,14 @@ export function TicketDetailPage() {
     if (ticketLoaded) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [ticketLoaded, commentCount])
 
+  const [updateComment] = useMutation(UPDATE_COMMENT, {
+    onCompleted: () => void refetch(),
+    onError: (e: { message: string }) => notifyError(e.message),
+  })
+  const [deleteComment] = useMutation(DELETE_COMMENT, {
+    onCompleted: () => void refetch(),
+    onError: (e: { message: string }) => notifyError(e.message),
+  })
   const [addComment, { loading: commenting }] = useMutation(ADD_TICKET_COMMENT, {
     onCompleted: () => { setReply(''); void refetch() },
     onError: (e: { message: string }) => notifyError(e.message),
@@ -100,7 +181,8 @@ export function TicketDetailPage() {
   // il riquadro «risolto» su uno risolto.
   const isClosed   = ticket.statusCategory === 'closed'
   const isResolved = ticket.statusCategory === 'resolved'
-  const canReply   = !isClosed
+  // Rispondere e riaprire: il permesso `portal.submit` del ruolo (ondata 7).
+  const canReply   = !isClosed && canSubmit
 
   // Build timeline: merge comments + history entries, sorted by date
   type TimelineItem =
@@ -148,9 +230,13 @@ export function TicketDetailPage() {
         </div>
 
         {/* Info bar */}
-        <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 10, color: colors.slateLight, flexWrap: 'wrap' }}>
-          <span>{t(`ticket.category.${ticket.category}`, { defaultValue: ticket.category })}</span>
+        <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 12, color: colors.slateLight, flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 600 }}>{ticket.number}</span>
           <span>·</span>
+          {ticket.category && <>
+            <span>{categoryLabel(ticket.category)}</span>
+            <span>·</span>
+          </>}
           <span>{t('ticket.createdAt')}: {fmtDateTimeLong(ticket.createdAt)}</span>
           <span>·</span>
           <span>{t('ticket.updatedAt')}: {fmtRelative(ticket.updatedAt)}</span>
@@ -164,7 +250,7 @@ export function TicketDetailPage() {
       </div>
 
       {/* Resolved banner */}
-      {isResolved && (
+      {isResolved && canSubmit && (
         <div style={{
           display:         'flex',
           alignItems:      'center',
@@ -176,7 +262,7 @@ export function TicketDetailPage() {
           flexWrap:        'wrap',
           gap:             12,
         }}>
-          <span style={{ color: palette.success.text, fontWeight: 500, fontSize: 10 }}>
+          <span style={{ color: palette.success.text, fontWeight: 500, fontSize: 12 }}>
             ✓ {t('ticket.resolved')}
           </span>
           <button
@@ -213,10 +299,51 @@ export function TicketDetailPage() {
         </div>
       )}
 
+      {/* Campi del cliente (ondata 4): quelli che l'amministratore offre nel portale */}
+      {(ticket.customFields ?? []).length > 0 && (
+        <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '12px 20px', margin: 0, padding: 16, border: `1px solid ${colors.border}`, borderRadius: 8 }}>
+          {ticket.customFields.map((f) => (
+            <div key={f.name} style={{ minWidth: 0 }}>
+              <dt style={{ fontSize: 12, fontWeight: 600, color: colors.slateLight, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>{f.label}</dt>
+              <dd style={{ margin: 0, fontSize: 13, color: f.value ? colors.slateDark : colors.slateLight, overflowWrap: 'anywhere' }}>
+                {f.value == null ? '—' : f.fieldType === 'boolean' ? t(f.value === 'true' ? 'common.yes' : 'common.no') : (f.valueLabel ?? f.value)}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {/*
+        LE RISPOSTE AL MODULO (revisione del 17 set 2026).
+
+        Chi ha compilato dodici campi non li rivedeva mai: né per controllare
+        cosa aveva dichiarato, né per citarli al telefono. Sola lettura, con le
+        domande della revisione con cui la richiesta è stata compilata — e solo
+        le voci che il modulo offre agli utenti finali, perché le altre a lui
+        non sono state chieste.
+      */}
+      {(ticket.formAnswers ?? []).length > 0 && (
+        <section style={{ padding: 16, border: `1px solid ${colors.border}`, borderRadius: 8 }}>
+          <h2 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: colors.slateDark }}>
+            {t('ticket.formAnswers')}
+          </h2>
+          <dl style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 32%) 1fr', gap: '8px 16px', margin: 0 }}>
+            {ticket.formAnswers.map((a) => (
+              <div key={a.name} style={{ display: 'contents' }}>
+                <dt style={{ fontSize: 13, color: colors.slateLight }}>{a.label}</dt>
+                <dd style={{ margin: 0, fontSize: 13, color: colors.slateDark, overflowWrap: 'anywhere' }}>
+                  <RispostaLetta risposta={a} emptyLabel={t('ticket.formAnswerEmpty')} yesLabel={t('common.yes')} noLabel={t('common.no')} />
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
+
       {/* Timeline */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 80 }}>
         {timeline.length === 0 && (
-          <p style={{ color: colors.slateLight, fontSize: 10, textAlign: 'center', padding: '24px 0' }}>
+          <p style={{ color: colors.slateLight, fontSize: 12, textAlign: 'center', padding: '24px 0' }}>
             {t('ticket.noMessages')}
           </p>
         )}
@@ -225,14 +352,20 @@ export function TicketDetailPage() {
           if (item.type === 'comment') {
             const c    = item.data
             const isOwn = c.authorId === myUserId
-            return <CommentBubble key={c.id} body={c.body} authorName={c.authorName} authorEmail={c.authorEmail} createdAt={c.createdAt} isOwn={isOwn} />
+            return (
+              <CommentBubble key={c.id} body={c.body} authorName={c.authorName} authorEmail={c.authorEmail} createdAt={c.createdAt} isOwn={isOwn}
+                editedAt={c.editedAt} editedByName={c.editedByName} deletedAt={c.deletedAt} deletedByName={c.deletedByName}
+                onEdit={(body) => updateComment({ variables: { id: c.id, body } })}
+                onDelete={() => void deleteComment({ variables: { id: c.id } })} />
+            )
           }
           const h = item.data
           return (
-            <div key={i} style={{ textAlign: 'center', padding: '6px 0', fontSize: 10, color: colors.slateLight }}>
+            <div key={i} style={{ textAlign: 'center', padding: '6px 0', fontSize: 12, color: colors.slateLight }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <ChevronRight size={12} />
-                {h.fromStep} → {h.toStep}
+                {/* H-49: la prima voce ha `fromStep: null`, non il nome «start». */}
+                {h.fromStep !== null ? `${h.fromLabel ?? h.fromStep} → ${h.toLabel ?? h.toStep}` : (h.toLabel ?? h.toStep)}
                 {' · '}
                 {fmtRelative(h.triggeredAt)}
               </span>
@@ -289,7 +422,7 @@ export function TicketDetailPage() {
                   }}
                 >
                   <span>{a.filename}</span>
-                  <span style={{ color: colors.slateLight, fontSize: 10 }}>{formatBytes(a.sizeBytes)}</span>
+                  <span style={{ color: colors.slateLight, fontSize: 12 }}>{formatBytes(a.sizeBytes)}</span>
                 </button>
               ))}
             </div>

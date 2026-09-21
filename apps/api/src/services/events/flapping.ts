@@ -25,6 +25,7 @@ import { historyParams, historyWriteCypher } from './history.js'
 import { recomputeCIHealth } from './ciHealth.js'
 import { findLinkedOpenIncident, incidentStepInfo } from './incidentWorkflow.js'
 import type { EventRecord, PipelineResult } from './types.js'
+import { systemText } from '../../lib/systemText.js'
 
 const log = logger.child({ module: 'event-correlation' })
 
@@ -65,14 +66,14 @@ export async function enterFlapping(session: Session, tenantId: string, ev: Even
         e.correlation = 'flapping', e.correlation_at = $now, e.correlation_due_at = null, e.updated_at = $now
     ${historyWriteCypher()}
     RETURN e.id AS id
-  `, { eventId, tenantId, now, ...historyParams({ kind: 'flapping', note: `${transitions} passaggi in ${policy.flap_window_minutes} min` }, now) })
+  `, { eventId, tenantId, now, ...historyParams({ kind: 'flapping', note: await systemText(tenantId, 'event.history.flapping', { transitions, minutes: policy.flap_window_minutes }) }, now) })
   if (!row) throw new Error(`Event ${eventId} vanished while entering flapping (tenant ${tenantId})`)
   const incidentId = await findLinkedOpenIncident(session, tenantId, eventId, await incidentStepInfo(session, tenantId))
 
   if (ev.ciId) await recomputeCIHealth(tenantId, ev.ciId, actorId)
   if (incidentId) {
     await (await incidents()).addIncidentComment(incidentId, { tenantId, userId: MONITORING_ACTOR },
-      `Allarme instabile: ${transitions} passaggi in ${policy.flap_window_minutes} minuti, correlazione sospesa`)
+      await systemText(tenantId, 'event.flapping', { transitions, minutes: policy.flap_window_minutes }))
   }
   eventsFlappingTotal.inc({})
   const payload: EventFlappingPayload = { ...mapEventPayload({ ...ev.props, status: 'flapping' }, ev.ciId), transitions, window_minutes: policy.flap_window_minutes, flapping_since: now, incident_id: incidentId }

@@ -32,10 +32,18 @@ export interface TokenRefreshMessages {
   authServerUnreachable: (retryInSeconds: number) => string
 }
 
+/**
+ * I messaggi di RIPIEGO, in inglese come tutti i testi del prodotto che non
+ * passano da i18n (revisione totale · E-14): erano in italiano, e l'app web
+ * non passava i suoi — quindi un tenant in inglese leggeva tre frasi italiane
+ * alla scadenza della sessione. Il guardiano i18n non vede i letterali dei
+ * pacchetti, per questo ci era rimasto. Chi ha i18n (web e portale) passa i
+ * propri: questi valgono solo per chi non lo fa.
+ */
 export const DEFAULT_TOKEN_REFRESH_MESSAGES: TokenRefreshMessages = {
-  sessionExpired:        () => 'Sessione scaduta — nuovo accesso necessario',
-  authServerRestored:    () => 'Connessione al server di autenticazione ripristinata',
-  authServerUnreachable: (s) => `Server di autenticazione non raggiungibile — nuovo tentativo tra ${s}s`,
+  sessionExpired:        () => 'Session expired — please sign in again',
+  authServerRestored:    () => 'Connection to the authentication server restored',
+  authServerUnreachable: (s) => `Authentication server unreachable — retrying in ${s}s`,
 }
 
 export const DEFAULT_BACKOFF_MS: readonly number[] = [5_000, 10_000, 20_000, 40_000, 60_000]
@@ -83,7 +91,7 @@ export function createTokenRefresh(opts: CreateTokenRefreshOptions): TokenRefres
   const messages: TokenRefreshMessages = { ...DEFAULT_TOKEN_REFRESH_MESSAGES, ...opts.messages }
   const backoff = opts.backoffMs ?? DEFAULT_BACKOFF_MS
   const intervalMs = opts.intervalMs ?? 30_000
-  if (backoff.length === 0) throw new Error('createTokenRefresh: backoffMs non può essere vuoto')
+  if (backoff.length === 0) throw new Error('createTokenRefresh: backoffMs cannot be empty')
 
   let inFlight: Promise<boolean> | null = null
 
@@ -114,7 +122,7 @@ export function createTokenRefresh(opts: CreateTokenRefreshOptions): TokenRefres
     // The redirect is on its way: no further refresh attempts make sense.
     stopLoop()
     notify.error(messages.sessionExpired())
-    logger.warn('Sessione non valida: redirect al login')
+    logger.warn('Session not valid: redirecting to login')
     void keycloak.login()
   }
 
@@ -133,14 +141,14 @@ export function createTokenRefresh(opts: CreateTokenRefreshOptions): TokenRefres
       const delay = backoff[Math.min(attempt, backoff.length - 1)]!
       attempt++
       const message = err instanceof Error ? err.message : String(err)
-      logger.warn('Refresh token fallito (rete), nuovo tentativo', { attempt, delayMs: delay, message })
+      logger.warn('Token refresh failed (network), retrying', { attempt, delayMs: delay, message })
       notify.error(messages.authServerUnreachable(delay / 1000), { id: RETRY_TOAST_ID, duration: delay })
       retryHandle = setTimeout(() => void refreshOrRecover(-1), delay)
     }
   }
 
   function startTokenRefreshLoop(): () => void {
-    if (intervalHandle !== null) throw new Error('startTokenRefreshLoop già avviato')
+    if (intervalHandle !== null) throw new Error('startTokenRefreshLoop already running')
     keycloak.onTokenExpired = () => { void refreshOrRecover(-1) }
     intervalHandle = setInterval(() => {
       if (retryHandle === null) void refreshOrRecover(60)

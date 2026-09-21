@@ -1,11 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// Revisione totale · E-3: la consegna è deduplicata per canale su Redis. Nei
+// test gli eventi riusano lo stesso id, quindi la deduplica va azzerata a
+// ogni caso: il contratto della deduplica è pinnato in deliveryDedup.test.ts.
+vi.mock('../deliveryDedup.js', () => ({
+  deliverOnce: async (_id: string | undefined, _ch: string, deliver: () => Promise<void> | void) => { await deliver(); return true },
+  alreadyDelivered: async () => false,
+  markDelivered: async () => {},
+  resetDeliveryDedup: () => {},
+}))
+
 // ── Mocks: no Neo4j, no Redis, no outbound HTTP ──────────────────────────────
 
 const runQueries: Array<{ cypher: string; params: Record<string, unknown> }> = []
 let userRows: Array<Record<string, unknown>> = []
 let channelRows: Array<Record<string, unknown>> = []
 
+// Il marchio dell'organizzazione nelle e-mail (ondata 6): qui quello di fabbrica, senza leggere il Tenant.
+vi.mock('../brand.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../brand.js')>()
+  const { FACTORY_TENANT_BRAND } = await import('@opengraphity/types')
+  return { ...real, loadTenantBrand: vi.fn(async () => ({ ...FACTORY_TENANT_BRAND, isDefault: true })) }
+})
+vi.mock('../locale.js', () => ({ loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })), invalidateNotificationLocale: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({
     executeRead: async (fn: (tx: { run: (c: string, p: Record<string, unknown>) => Promise<unknown> }) => Promise<unknown>) =>
@@ -38,6 +55,7 @@ const fetchMock = vi.fn(async () => ({ ok: true, status: 200, json: async () => 
 vi.stubGlobal('fetch', fetchMock)
 
 const { renderNotificationEmail, NotificationDispatcher } = await import('../dispatcher.js')
+const EN_UTC = { language: 'en' as const, timeZone: 'UTC' }
 
 beforeEach(() => {
   runQueries.length = 0
@@ -56,7 +74,7 @@ describe('renderNotificationEmail — user content is escaped (D-11)', () => {
       message: `<img src=x onerror="alert(1)"> DB down & <a href="http://evil">click</a>`,
       severity: 'error', entity_id: 'inc-1', entity_type: 'incident',
       timestamp: '2026-05-01T10:00:00.000Z', read: false,
-    })
+    }, EN_UTC)
     expect(html).not.toContain('<img')
     expect(html).not.toContain('<a href="http://evil"')
     expect(html).toContain('&lt;img src=x onerror=&quot;alert(1)&quot;&gt; DB down &amp;')
@@ -67,7 +85,7 @@ describe('renderNotificationEmail — user content is escaped (D-11)', () => {
     const html = renderNotificationEmail({
       id: 'n1', type: 'x', title: 't', message: 'm', severity: 'info',
       timestamp: '2026-05-01T10:00:00.000Z', read: false,
-    })
+    }, EN_UTC)
     expect(html).not.toContain('<a ')
   })
 })
@@ -107,14 +125,14 @@ describe('Teams routing goes to the tenant NotificationChannel, never a global e
     // Private but the seam that matters; call through the class prototype.
     await (d as unknown as { dispatchToChannels: (e: unknown, c: string[]) => Promise<void> }).dispatchToChannels({
       id: 'e2', type: 'sla.breached', tenant_id: 't1', timestamp: '2026-05-01T10:00:00.000Z', correlation_id: 'c', actor_id: 'sla',
-      payload: { entity_id: 'prb-1', entity_type: 'problem', breached_at: '2026-05-01T10:00:00.000Z' },
+      payload: { entity_id: 'prb-1', entity_type: 'problem', breached_at: '2026-05-01T10:00:00.000Z', number: 'PRB00000001', title: 'Rete giù' },
     }, ['in_app', 'teams'])
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }]
     expect(url).toBe('https://tenant.example/hook')
     const body = JSON.parse(init.body) as { attachments: Array<{ content: { body: Array<{ text?: string }> } }> }
-    expect(body.attachments[0]!.content.body[0]!.text).toContain('SLA Violato')
+    expect(body.attachments[0]!.content.body[0]!.text).toContain('SLA breached')
     delete process.env['TEAMS_WEBHOOK_URL']
   })
 
@@ -125,8 +143,9 @@ describe('Teams routing goes to the tenant NotificationChannel, never a global e
     const d = new NotificationDispatcher()
     await (d as unknown as { dispatchToChannels: (e: unknown, c: string[]) => Promise<void> }).dispatchToChannels({
       id: 'e3', type: 'sla.breached', tenant_id: 't1', timestamp: '2026-05-01T10:00:00.000Z', correlation_id: 'c', actor_id: 'sla',
-      payload: { entity_id: 'inc-1', entity_type: 'incident', breached_at: '2026-05-01T10:00:00.000Z' },
+      payload: { entity_id: 'inc-1', entity_type: 'incident', breached_at: '2026-05-01T10:00:00.000Z', number: 'INC00000001', title: 'Rete giù' },
     }, ['teams'])
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
+

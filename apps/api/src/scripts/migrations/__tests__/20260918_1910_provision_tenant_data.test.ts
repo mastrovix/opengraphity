@@ -17,7 +17,7 @@ vi.mock('../../../lib/provisionTenantData.js', () => ({
   provisionTenantData: vi.fn(async (_s: unknown, tenantId: string) => {
     provisionCalls.push(tenantId)
     gaps.set(tenantId, [])
-    return { dashboardCreated: true, notificationRulesCreated: 35, matricesCreated: [], workflows: [{ name: 'X', created: true }] }
+    return { rolesCreated: [], dashboardCreated: true, notificationRulesCreated: 35, matricesCreated: [], workflows: [{ name: 'X', created: true }] }
   }),
   tenantProvisioningGaps: vi.fn(async (_s: unknown, tenantId: string) => gaps.get(tenantId) ?? []),
 }))

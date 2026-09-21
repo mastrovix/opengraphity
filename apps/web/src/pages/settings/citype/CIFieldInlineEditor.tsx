@@ -6,7 +6,7 @@ import {
   btnPrimary, btnSecondary,
   FIELD_TYPES, enumOptionLabel,
 } from '../shared/designerStyles'
-import { Input, Select } from '@/components/ui/FormControls'
+import { Input, LabelledField, Select } from '@/components/ui/FormControls'
 import { Pill } from '@/components/ui/Pill'
 import type { EnumTypeRef } from '../shared/designerStyles'
 import type { FieldForm } from './CIFieldEditor'
@@ -25,12 +25,9 @@ interface EnumTypeOption extends EnumTypeRef { name: string }
  */
 export function FormField({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      {htmlFor
-        ? <label htmlFor={htmlFor} style={labelS}>{label}</label>
-        : <div style={labelS}>{label}</div>}
-      {children}
-    </div>
+    htmlFor
+      ? <div style={{ marginBottom: 14 }}><label htmlFor={htmlFor} style={labelS}>{label}</label>{children}</div>
+      : <LabelledField label={label} labelStyle={labelS} style={{ marginBottom: 14 }}>{children}</LabelledField>
   )
 }
 

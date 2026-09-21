@@ -18,19 +18,26 @@ const getEntityScope = vi.fn(async () => ({ category: null as string | null, tea
 vi.mock('@opengraphity/events', () => ({
   BaseConsumer: class { constructor(public queueName: string) {} async start() {} async stop() {} },
 }))
+const getEntityPriority = vi.fn(async () => 'high' as unknown)
+const resumeSLA = vi.fn()
+const reopenSLA = vi.fn()
+const repolicySLA = vi.fn()
+const pauseSLA = vi.fn()
 vi.mock('../status.js', () => ({
-  markResponseMet, markResolveMet, getSLAStatus, createSLAStatus, getEntityCreatedAt, getEntityScope,
-  pauseSLA: vi.fn(), resumeSLA: vi.fn(),
+  markResponseMet, markResolveMet, getSLAStatus, createSLAStatus, getEntityCreatedAt, getEntityScope, getEntityPriority,
+  pauseSLA, resumeSLA, reopenSLA, repolicySLA,
 }))
-const scheduleOLABreaches = vi.fn(async (_p: unknown) => {})
 const getActiveOLAContractsFor = vi.fn(async (_t: string, _e: string) => [] as unknown[])
 const getTenantTimezone = vi.fn(async (_t: string) => 'Europe/Rome')
 vi.mock('../scheduler.js', () => ({
   initScheduler: vi.fn(), cancelSLAJobs, scheduleWarning, scheduleBreachCheck, scheduleResponseCheck,
-  scheduleOLABreaches,
 }))
 vi.mock('../selector.js', () => ({ selectSLAForEntity }))
+// Ondata 2 della verifica «Cosa resta cablato»: ogni policy e ogni contratto conta col SUO calendario.
+const CALENDARIO = { days: [1, 2, 3, 4, 5, 6], start: '09:00', end: '13:00', holidays: ['2026-12-25'] }
+const calendarFor = vi.fn(async (_t: string, owner: { businessHours: boolean; calendarId: string | null }) => (owner.businessHours ? CALENDARIO : null) as unknown)
 vi.mock('../olaBreach.js', () => ({ getActiveOLAContractsFor, getTenantTimezone }))
+vi.mock('../calendar.js', () => ({ calendarFor }))
 
 const { SLAEngine } = await import('../engine.js')
 
@@ -199,7 +206,7 @@ describe('SLAEngine — l\'ambito della policy (categoria e team) arriva al sele
     getEntityCreatedAt.mockResolvedValue(new Date('2026-05-01T09:00:00.000Z'))
     selectSLAForEntity.mockResolvedValue({
       id: 'pol-1', name: 'Incident di rete', timezone: 'Europe/Rome',
-      response_minutes: 7, resolve_minutes: 30, business_hours: true,
+      response_minutes: 7, resolve_minutes: 30, business_hours: true, calendar_id: 'cal-rete',
     })
     const engine = new SLAEngine()
     await engine.process(event('incident.created', { id: 'inc-11', title: 'x', severity: 'medium', affected_ci_ids: [] }))
@@ -208,6 +215,9 @@ describe('SLAEngine — l\'ambito della policy (categoria e team) arriva al sele
     expect(params.policy.tiers[0]!.response_minutes).toBe(7)
     expect(params.policy.tiers[0]!.resolve_minutes).toBe(30)
     expect(params.policy.tiers[0]!.severity).toBe('medium')
+    // L'orario di servizio è il calendario scelto dalla policy (ondata 2).
+    expect((params.policy as unknown as { calendar: unknown }).calendar).toEqual(CALENDARIO)
+    expect(calendarFor).toHaveBeenCalledWith('t1', { name: 'Incident di rete', businessHours: true, calendarId: 'cal-rete' })
   })
 })
 
@@ -232,18 +242,192 @@ describe('SLAEngine — senza una policy del tenant, nessuno SLA', () => {
     expect(avvisi.join(' ')).toMatch(/No SLA policy matches incident inc-20/)
   })
 
-  it('i controlli OLA/UC si armano anche senza SLA, col fuso del tenant', async () => {
+  it('i controlli OLA/UC non si armano più alla creazione: li fa la passata dell\'API sul tempo del team', async () => {
     selectSLAForEntity.mockResolvedValue(null)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const contratto = { id: 'ola-1', name: 'Rete', type: 'ola', resolve_minutes: 240, business_hours: true }
-    getActiveOLAContractsFor.mockResolvedValue([contratto])
-    getTenantTimezone.mockResolvedValue('America/New_York')
-    const engine = new SLAEngine()
-    await engine.process(event('incident.created', { id: 'inc-21', title: 'x', severity: 'medium', affected_ci_ids: [] }))
+    getActiveOLAContractsFor.mockResolvedValue([{ id: 'ola-1', name: 'Rete', type: 'ola', resolve_minutes: 240, business_hours: false }])
+    await new SLAEngine().process(event('incident.created', { id: 'inc-21', title: 'x', severity: 'medium', affected_ci_ids: [] }))
+    expect(getActiveOLAContractsFor).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Presa in carico e conclusione da QUALUNQUE cammino del workflow.
+ * Giro del 14 set 2026: PRB00000004 risolto dalla sua change e REQ00000002
+ * chiusa dal workflow restavano con lo SLA aperto per sempre.
+ */
+describe('SLAEngine — workflow.step_entered', () => {
+  const step = (over: Record<string, unknown>) => event('workflow.step_entered', {
+    entity_type: 'problem', entity_id: 'prb-1', from_step: 'new', from_initial: false,
+    step_name: 'under_investigation', step_category: 'active', step_terminal: false,
+    entered_at: '2026-05-01T11:00:00.000Z', trigger_type: 'automatic', ...over,
+  })
+
+  it('lasciare il passo iniziale segna la risposta e spegne solo il timer di risposta', async () => {
+    getSLAStatus.mockResolvedValue({ ...baseStatus, entity_id: 'prb-1', response_met: false })
+    await new SLAEngine().process(step({ from_initial: true }))
+    expect(markResponseMet).toHaveBeenCalledWith('t1', 'prb-1')
+    expect(cancelSLAJobs).toHaveBeenCalledWith('prb-1', 'response')
+    expect(markResolveMet).not.toHaveBeenCalled()
+  })
+
+  it('un problem che entra in un passo «resolved» (anche da una change) chiude lo SLA all\'istante dell\'ingresso', async () => {
+    getSLAStatus.mockResolvedValue({ ...baseStatus, entity_id: 'prb-1', response_met: true })
+    await new SLAEngine().process(step({ step_name: 'resolved', step_category: 'resolved', step_terminal: true }))
+    expect(markResolveMet).toHaveBeenCalledWith('t1', 'prb-1', new Date('2026-05-01T11:00:00.000Z'))
+    expect(cancelSLAJobs).toHaveBeenCalledWith('prb-1')
+  })
+
+  it('una richiesta che entra in un passo terminale di categoria «closed» chiude lo SLA', async () => {
+    getSLAStatus.mockResolvedValue({ ...baseStatus, entity_id: 'req-1', entity_type: 'service_request', response_met: true })
+    await new SLAEngine().process(step({ entity_type: 'service_request', entity_id: 'req-1', step_name: 'closed', step_category: 'closed', step_terminal: true }))
+    expect(markResolveMet).toHaveBeenCalledWith('t1', 'req-1', new Date('2026-05-01T11:00:00.000Z'))
+  })
+
+  it('idempotente: uno SLA già concluso non si riscrive (un «chiuso» dopo il «risolto»)', async () => {
+    getSLAStatus.mockResolvedValue({ ...baseStatus, entity_id: 'prb-1', response_met: true, resolved_at: '2026-05-01T10:30:00.000Z' })
+    await new SLAEngine().process(step({ from_initial: true, step_name: 'closed', step_category: 'closed', step_terminal: true }))
+    expect(markResponseMet).not.toHaveBeenCalled()
+    expect(markResolveMet).not.toHaveBeenCalled()
+  })
+
+  it('anche incident.resolved, se lo SLA è già concluso, non sposta data ed esito', async () => {
+    getSLAStatus.mockResolvedValue({ ...baseStatus, resolved_at: '2026-05-01T10:30:00.000Z' })
+    await new SLAEngine().process(event('incident.resolved', { entity_id: 'inc-1', resolved_at: '2026-05-02T10:00:00.000Z' }))
+    expect(markResolveMet).not.toHaveBeenCalled()
+  })
+
+  it('ticket senza SLA o di un tipo senza SLA: niente', async () => {
+    getSLAStatus.mockResolvedValue(null)
+    await new SLAEngine().process(step({ from_initial: true, step_category: 'resolved' }))
+    await new SLAEngine().process(step({ entity_type: 'change', from_initial: true, step_category: 'closed', step_terminal: true }))
+    expect(markResponseMet).not.toHaveBeenCalled()
+    expect(markResolveMet).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * WA-1 (revisione del 14 set 2026): «avvia SLA» e «ferma SLA» delle azioni di
+ * passo pubblicavano eventi che il motore non conosceva.
+ */
+describe('SLAEngine — azioni di passo sla_start / sla_stop', () => {
+  it('sla.resolve.start senza SLA → sceglie la policy adesso e l\'orologio parte dall\'evento', async () => {
+    getSLAStatus.mockResolvedValueOnce(null)
+    await new SLAEngine().process(event('sla.resolve.start', { entity_id: 'inc-1', entity_type: 'incident', sla_type: 'resolve' }, '2026-05-02T08:00:00.000Z'))
+    expect(getEntityPriority).toHaveBeenCalledWith('t1', 'incident', 'inc-1')
+    expect(createSLAStatus).toHaveBeenCalledWith(expect.objectContaining({ entityId: 'inc-1', severity: 'high', startedAt: new Date('2026-05-02T08:00:00.000Z') }))
+    expect(scheduleBreachCheck).toHaveBeenCalled()
+  })
+
+  it('sla.response.start con uno SLA in pausa → riprende', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, paused_at: '2026-05-01T11:00:00.000Z', paused_type: 'response' })
+    resumeSLA.mockResolvedValueOnce({ ...baseStatus, paused_type: 'response' })
+    await new SLAEngine().process(event('sla.response.start', { entity_id: 'inc-1', entity_type: 'incident', sla_type: 'response' }))
+    expect(resumeSLA).toHaveBeenCalledWith('t1', 'inc-1', expect.any(Date))
     expect(createSLAStatus).not.toHaveBeenCalled()
-    expect(getTenantTimezone).toHaveBeenCalledWith('t1')
-    expect(scheduleOLABreaches).toHaveBeenCalledWith(expect.objectContaining({
-      entityId: 'inc-21', tenantId: 't1', timezone: 'America/New_York', contracts: [contratto],
-    }))
+  })
+
+  /**
+   * Revisione totale · E-12: alla ripresa di una pausa l'orologio della
+   * risposta veniva riprogrammato ogni volta che `response_met` era falso,
+   * senza sapere se l'avviso era già uscito — e `scheduleResponseCheck` con
+   * una scadenza passata usa `Math.max(delay, 0)`, quindi scattava subito: un
+   * secondo «tempo di presa in carico scaduto» identico.
+   */
+  it('ripresa dopo che l\'avviso della presa in carico è già uscito → nessun secondo avviso (E-12)', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, paused_at: '2026-05-01T11:00:00.000Z', paused_type: 'both' })
+    resumeSLA.mockResolvedValueOnce({ ...baseStatus, paused_type: 'both', response_breach_notified_at: '2026-05-01T10:00:00.000Z' })
+    await new SLAEngine().process(event('sla.response.start', { entity_id: 'inc-1', entity_type: 'incident', sla_type: 'response' }))
+    expect(scheduleResponseCheck).not.toHaveBeenCalled()
+    // l'orologio della risoluzione riparte comunque
+    expect(scheduleBreachCheck).toHaveBeenCalled()
+  })
+
+  it('ripresa senza avviso già uscito → l\'orologio della risposta riparte', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, paused_at: '2026-05-01T11:00:00.000Z', paused_type: 'both' })
+    resumeSLA.mockResolvedValueOnce({ ...baseStatus, paused_type: 'both' })
+    await new SLAEngine().process(event('sla.response.start', { entity_id: 'inc-1', entity_type: 'incident', sla_type: 'response' }))
+    expect(scheduleResponseCheck).toHaveBeenCalled()
+  })
+
+  it('sla.response.start con uno SLA che corre → nulla', async () => {
+    await new SLAEngine().process(event('sla.response.start', { entity_id: 'inc-1', entity_type: 'incident', sla_type: 'response' }))
+    expect(createSLAStatus).not.toHaveBeenCalled()
+    expect(resumeSLA).not.toHaveBeenCalled()
+  })
+
+  it('sla.response.stop → obiettivo di risposta raggiunto', async () => {
+    await new SLAEngine().process(event('sla.response.stop', { entity_id: 'inc-1', sla_type: 'response' }))
+    expect(markResponseMet).toHaveBeenCalledWith('t1', 'inc-1')
+    expect(cancelSLAJobs).toHaveBeenCalledWith('inc-1', 'response')
+  })
+})
+
+/** SL-3 (revisione del 14 set 2026): un ticket riaperto riapre lo SLA. */
+describe('SLAEngine — riapertura', () => {
+  const stepEntered = (over: Record<string, unknown>) => event('workflow.step_entered', {
+    entity_type: 'incident', entity_id: 'inc-1', from_step: 'resolved', from_initial: false, step_name: 'in_progress',
+    step_category: 'active', step_terminal: false, entered_at: '2026-05-02T09:00:00.000Z', trigger_type: 'manual', ...over,
+  })
+
+  it('da risolto a un passo aperto → reopenSLA e i controlli ripartono', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, resolved_at: '2026-05-01T12:00:00.000Z', resolve_met: true })
+    reopenSLA.mockResolvedValueOnce({ ...baseStatus, resolve_deadline: '2026-05-02T14:00:00.000Z' })
+    await new SLAEngine().process(stepEntered({}))
+    expect(reopenSLA).toHaveBeenCalledWith('t1', 'inc-1', new Date('2026-05-02T09:00:00.000Z'))
+    expect(scheduleWarning).toHaveBeenCalled()
+    expect(scheduleBreachCheck).toHaveBeenCalled()
+    expect(markResolveMet).not.toHaveBeenCalled()
+  })
+
+  it('SLA già violato: si riapre ma la violazione non si riprogramma', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, resolved_at: '2026-05-01T20:00:00.000Z', breached: true })
+    reopenSLA.mockResolvedValueOnce({ ...baseStatus, breached: true })
+    await new SLAEngine().process(stepEntered({}))
+    expect(reopenSLA).toHaveBeenCalled()
+    expect(scheduleBreachCheck).not.toHaveBeenCalled()
+  })
+
+  it('SLA aperto che entra in un passo aperto → nessuna riapertura', async () => {
+    await new SLAEngine().process(stepEntered({ from_step: 'assigned' }))
+    expect(reopenSLA).not.toHaveBeenCalled()
+  })
+})
+
+/** Revisione del 14 set 2026 · F4, SL-1, SL-8, SL-10. */
+describe('SLAEngine — coerenza fra i ticket', () => {
+  const stepEntered = (over: Record<string, unknown>) => event('workflow.step_entered', {
+    entity_type: 'problem', entity_id: 'inc-1', from_step: 'under_investigation', from_initial: false, step_name: 'waiting_vendor',
+    step_category: 'waiting', step_terminal: false, entered_at: '2026-05-02T09:00:00.000Z', trigger_type: 'manual', ...over,
+  })
+
+  it('F4: entrare in un passo di categoria waiting mette in pausa, all\'istante del passo', async () => {
+    pauseSLA.mockResolvedValueOnce({ ...baseStatus, paused_at: '2026-05-02T09:00:00.000Z' })
+    await new SLAEngine().process(stepEntered({}))
+    expect(pauseSLA).toHaveBeenCalledWith('t1', 'inc-1', 'both', new Date('2026-05-02T09:00:00.000Z'))
+    expect(cancelSLAJobs).toHaveBeenCalledWith('inc-1', 'both')
+  })
+
+  it('F4 + SL-8: uscire dall\'attesa riprende con l\'istante del passo, non con l\'ora del consumatore', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, paused_at: '2026-05-02T09:00:00.000Z', paused_type: 'both' })
+    resumeSLA.mockResolvedValueOnce({ ...baseStatus, paused_type: 'both' })
+    await new SLAEngine().process(stepEntered({ step_name: 'under_investigation', step_category: 'active', entered_at: '2026-05-02T11:00:00.000Z' }))
+    expect(resumeSLA).toHaveBeenCalledWith('t1', 'inc-1', new Date('2026-05-02T11:00:00.000Z'))
+    expect(pauseSLA).not.toHaveBeenCalled()
+  })
+
+  it('SL-10: un gruppo assegnato che rende più specifica la policy la sostituisce', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, policy_id: 'pol-all' })
+    selectSLAForEntity.mockResolvedValueOnce({ ...POLICY_GENERICA, id: 'pol-team', name: 'DBA' })
+    repolicySLA.mockResolvedValueOnce({ ...baseStatus, policy_id: 'pol-team' })
+    await new SLAEngine().process(event('ticket.team_assigned', { entity_type: 'incident', entity_id: 'inc-1', team_id: 'dba' }))
+    expect(repolicySLA).toHaveBeenCalledWith('t1', 'inc-1', expect.objectContaining({ id: 'pol-team' }), 'high')
+    expect(scheduleBreachCheck).toHaveBeenCalled()
+  })
+
+  it('SL-10: stessa policy → nulla', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, policy_id: 'pol-all' })
+    await new SLAEngine().process(event('ticket.team_assigned', { entity_type: 'incident', entity_id: 'inc-1', team_id: 'x' }))
+    expect(repolicySLA).not.toHaveBeenCalled()
   })
 })

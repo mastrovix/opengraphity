@@ -12,23 +12,30 @@
  * non la lista delle chiamate.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { perms } from '../../../../lib/__tests__/testPermissions.js'
 
 const getStepPurpose        = vi.fn<(s: unknown, t: string, e: string, step: string) => Promise<string | null>>()
+// Revisione totale · B-11: il varco guarda anche se il passo di arrivo è
+// TERMINALE (un passo di annullamento aggiunto dal cliente è un'uscita, non
+// un ingresso nella finestra di rilascio).
+const getStepRow            = vi.fn<(s: unknown, t: string, e: string, step: string) => Promise<unknown>>()
 const getStepNamesByPurpose = vi.fn<() => Promise<string[]>>()
 const isPreApprovedChangeType = vi.fn<() => Promise<boolean>>()
 const assertAllApprovalsSatisfied = vi.fn<() => Promise<void>>()
 const areAllApprovalsSatisfied    = vi.fn<() => Promise<boolean>>()
 const inc = vi.fn()
+const areAllAssessmentsComplete = vi.fn<() => Promise<boolean>>()
 
-vi.mock('../../../../lib/workflowHelpers.js', () => ({ getStepPurpose, getStepNamesByPurpose }))
+vi.mock('../../../../lib/workflowHelpers.js', () => ({ getStepPurpose, getStepRow, getStepNamesByPurpose }))
 vi.mock('../../../../lib/changePolicy.js',    () => ({ isPreApprovedChangeType }))
 vi.mock('../approvalCreation.js',             () => ({ assertAllApprovalsSatisfied, areAllApprovalsSatisfied }))
 vi.mock('../../../../middleware/metrics.js',  () => ({ changeWindowGateBlockedTotal: { inc } }))
+vi.mock('../../../../lib/changeAssessments.js', () => ({ areAllAssessmentsComplete }))
 vi.mock('../../../../lib/logger.js', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn(), child: () => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }) },
 }))
 
-const { changeGateOutcome, assertChangeWindowGate, automaticTransitionAllowed } = await import('../windowGate.js')
+const { changeGateOutcome, assertChangeWindowGate, automaticTransitionAllowed, automaticTransitionOutcome } = await import('../windowGate.js')
 
 const session = {} as never
 const input = (currentStep: string, toStep: string, changeType = 'normal') => ({
@@ -39,14 +46,20 @@ const PURPOSES: Record<string, string | null> = {
   assessment: 'assessment', approval: 'approval', scheduled: 'scheduled',
   deployment: 'implementation', review: 'review', senzaScopo: null,
 }
+/** I passi TERMINALI: la chiusura di fabbrica e un «Annullata» del cliente. */
+const TERMINALI = new Set(['closed', 'annullata'])
 
 beforeEach(() => {
   vi.clearAllMocks()
   getStepPurpose.mockImplementation((_s, _t, _e, step) => Promise.resolve(PURPOSES[step] ?? null))
+  getStepRow.mockImplementation((_s, _t, _e, step) => Promise.resolve({
+    name: step, purpose: PURPOSES[step] ?? null, isTerminal: TERMINALI.has(step), category: TERMINALI.has(step) ? 'closed' : 'active',
+  }))
   getStepNamesByPurpose.mockResolvedValue(['approval'])
   isPreApprovedChangeType.mockResolvedValue(false)
   areAllApprovalsSatisfied.mockResolvedValue(false)
   assertAllApprovalsSatisfied.mockResolvedValue(undefined)
+  areAllAssessmentsComplete.mockResolvedValue(true)
 })
 
 describe('changeGateOutcome — la regola di dominio, senza attori', () => {
@@ -93,9 +106,9 @@ describe('changeGateOutcome — la regola di dominio, senza attori', () => {
 })
 
 describe('il cammino MANUALE: lancia, e il ruolo è quello vero', () => {
-  const ctx = (role: string) => ({ tenantId: 'c-two', userId: 'u1', role }) as never
+  const ctx = (role: string) => ({ tenantId: 'c-two', userId: 'u1', role, permissions: perms(role) }) as never
 
-  it('un operator non entra nella finestra: ForbiddenError da requireRole VERO', async () => {
+  it('un operator non entra nella finestra: ForbiddenError da requirePermission VERO', async () => {
     await expect(assertChangeWindowGate(session, ctx('operator'), input('assessment', 'scheduled')))
       .rejects.toThrow(/not authorized/i)
     // E si è fermato PRIMA di guardare le approvazioni: il ruolo è la prima porta.
@@ -108,9 +121,9 @@ describe('il cammino MANUALE: lancia, e il ruolo è quello vero', () => {
   })
 
   it('e se i requisiti non sono soddisfatti, l\'errore del controllo arriva a chi ha premuto', async () => {
-    assertAllApprovalsSatisfied.mockRejectedValue(new Error('Approvazione incompleta: 2 requisiti ancora in attesa'))
+    assertAllApprovalsSatisfied.mockRejectedValue(new Error('Approval incomplete: 2 requirement(s) still pending'))
     await expect(assertChangeWindowGate(session, ctx('admin'), input('assessment', 'scheduled')))
-      .rejects.toThrow(/Approvazione incompleta/)
+      .rejects.toThrow(/Approval incomplete/)
   })
 
   it('senza nessun passo di approvazione il messaggio nomina LE DUE uscite', async () => {
@@ -189,5 +202,92 @@ describe('i cammini AUTOMATICI: rifiutano, non lanciano', () => {
     expect(err).not.toBeNull()
     expect(err!.message).toMatch(/would enter the release window/)
     expect(err!.message).toMatch(/remove this action from the rule/)
+  })
+})
+
+/**
+ * Giro del 14 set 2026: CHG00000003 (standard) è uscita dall'analisi con il
+ * piano di deploy vuoto, da un arco `assessment → scheduled` automatico senza
+ * condizione. Dopo l'analisi il piano non si modifica più: la change restava
+ * ferma per sempre.
+ */
+describe('uscire dall\'analisi chiede valutazioni e piano completi, per ogni tipo', () => {
+  it.each([['normal', false], ['standard', true]])('tipo %s (pre-approvato: %s) con piano aperto → needs_assessments', async (tipo, preApprovato) => {
+    isPreApprovedChangeType.mockResolvedValue(preApprovato)
+    areAllAssessmentsComplete.mockResolvedValue(false)
+    await expect(changeGateOutcome(session, input('assessment', 'scheduled', tipo))).resolves.toEqual({ kind: 'needs_assessments' })
+    await expect(changeGateOutcome(session, input('assessment', 'approval', tipo))).resolves.toEqual({ kind: 'needs_assessments' })
+  })
+
+  it('il cammino automatico rifiuta, quello manuale lancia con la sua chiave', async () => {
+    isPreApprovedChangeType.mockResolvedValue(true)
+    areAllAssessmentsComplete.mockResolvedValue(false)
+    await expect(automaticTransitionAllowed(session, input('assessment', 'scheduled', 'standard'), 'auto_transition')).resolves.toBe(false)
+    await expect(assertChangeWindowGate(session, { role: 'admin' } as never, input('assessment', 'scheduled', 'standard')))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.change.assessmentsIncomplete' } } })
+  })
+
+  it('con tutto completato la pre-approvata esce libera', async () => {
+    isPreApprovedChangeType.mockResolvedValue(true)
+    await expect(changeGateOutcome(session, input('assessment', 'scheduled', 'standard'))).resolves.toEqual({ kind: 'open' })
+  })
+})
+
+/**
+ * Revisione totale · B-11: uscire dall'analisi o dall'approvazione verso
+ * QUALUNQUE passo non-analisi chiedeva tutte le valutazioni o tutte le
+ * approvazioni. Il workflow di fabbrica non ha un passo di annullamento, ma il
+ * cliente lo aggiunge: con l'arco «approvazione → Annullata» l'operatore non
+ * poteva ritirare una change senza prima farla approvare, e con «analisi →
+ * Annullata» doveva completare tutte le valutazioni di una change da buttare.
+ */
+describe('abbandonare la change non è entrare nella finestra (B-11)', () => {
+  it('approvazione → passo terminale del cliente: varco aperto', async () => {
+    await expect(changeGateOutcome(session, input('approval', 'annullata'))).resolves.toEqual({ kind: 'open' })
+    expect(assertAllApprovalsSatisfied).not.toHaveBeenCalled()
+  })
+
+  it('analisi → passo terminale del cliente: aperto anche con valutazioni incomplete', async () => {
+    areAllAssessmentsComplete.mockResolvedValue(false)
+    await expect(changeGateOutcome(session, input('assessment', 'annullata'))).resolves.toEqual({ kind: 'open' })
+  })
+
+  it('un passo della FINESTRA resta protetto anche se il cliente lo dichiara terminale', async () => {
+    getStepRow.mockImplementation((_s, _t, _e, step) => Promise.resolve({
+      name: step, purpose: PURPOSES[step] ?? null, isTerminal: true, category: 'closed',
+    }))
+    await expect(changeGateOutcome(session, input('approval', 'scheduled'))).resolves.toEqual({ kind: 'needs_approvals' })
+  })
+})
+
+/**
+ * LA DECISIONE SENZA CONSEGUENZE (18 set 2026).
+ *
+ * Esiste perché la diagnostica delle «change ferme pur avendo la strada
+ * aperta» deve poter CHIEDERE al varco senza dichiarare un rifiuto: gira ogni
+ * minuto per ogni tenant, e con `automaticTransitionAllowed` avrebbe contato
+ * un rifiuto immaginario a ogni giro — sepellendo i rifiuti veri sotto il
+ * rumore, che è il modo più sicuro di rendere inutile una metrica.
+ *
+ * Stessa risposta, zero effetti: è questo che si pinna.
+ */
+describe('automaticTransitionOutcome — chiedere senza far rumore', () => {
+  it('dà la stessa risposta di `automaticTransitionAllowed`, col motivo', async () => {
+    const esito = await automaticTransitionOutcome(session, input('assessment', 'scheduled'))
+    expect(esito).toEqual({ allowed: false, reason: 'needs_approvals' })
+    expect(await automaticTransitionAllowed(session, input('assessment', 'scheduled'), 'auto_transition')).toBe(false)
+  })
+
+  it('NON incrementa la metrica dei rifiuti', async () => {
+    inc.mockClear()
+    await automaticTransitionOutcome(session, input('assessment', 'scheduled'))
+    expect(inc).not.toHaveBeenCalled()
+  })
+
+  it('quando il varco è aperto risponde `open`', async () => {
+    // Un passo che non entra nella finestra: nessun varco in gioco.
+    const esito = await automaticTransitionOutcome(session, input('draft', 'assessment'))
+    expect(esito.allowed).toBe(true)
+    expect(esito.reason).toBe('open')
   })
 })
