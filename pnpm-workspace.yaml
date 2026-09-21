@@ -7,10 +7,10 @@ packages:
 # two majors of vitest meant different behaviour between suites and duplicated
 # dependencies in the image.
 catalog:
-  '@vitest/coverage-v8': ^4.1.0
+  '@vitest/coverage-v8': ^5.0.1
   bullmq: ^6.0.4
   ioredis: ^6.0.0
-  vitest: ^4.1.0
+  vitest: ^5.0.1
 
 # VERSIONI BLOCCATE: non stanno qui, stanno in `package.json` → `pnpm.overrides`.
 # Provato a metterle qui (21 set 2026) e pnpm 10.30 NON le legge da questo file:

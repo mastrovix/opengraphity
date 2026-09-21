@@ -1,5 +1,28 @@
 import { describe, it, expect, vi } from 'vitest'
 import { WorkflowEngine } from '../engine.js'
+/*
+ * QUESTO `vi.mock` STA IN CIMA, E NON PER STILE (21 set 2026, vitest 5).
+ *
+ * Era dentro il `describe` qui sotto, e SEMBRAVA valere solo per quei test —
+ * ma `vi.mock` viene issato ed eseguito prima di tutto il file, quindi valeva
+ * per l'intero modulo. Vitest 5 ha smesso di spostarlo in silenzio e ora lo
+ * rifiuta: «it will be hoisted and executed before anything in this file. Move
+ * it to the top level to reflect its actual execution».
+ *
+ * Averlo scoperto e' un guadagno: chi leggeva quel file credeva che i test
+ * fuori dal `describe` usassero le azioni VERE, e non era cosi'.
+ */
+vi.mock('../actions.js', async (importOriginal) => {
+  const vero = await importOriginal<typeof import('../actions.js')>()
+  return {
+    ...vero,
+    runAction: vi.fn(async (action: { type: string }, _i: unknown, ctx: { actionIndex?: number; actionPhase?: string; actionPosition?: number }) => {
+      const g = globalThis as { __azioni?: unknown[] }
+      g.__azioni ??= []
+      g.__azioni.push({ tipo: action.type, actionIndex: ctx.actionIndex, phase: ctx.actionPhase, position: ctx.actionPosition })
+    }),
+  }
+})
 
 function mockRecord(data: Record<string, unknown>) {
   return { get: (key: string) => data[key] }
@@ -478,17 +501,6 @@ describe('WorkflowEngine — ingresso nel passo', () => {
 describe('fase e posizione delle azioni', () => {
   const eseguite: { tipo: string; actionIndex?: number; phase?: string; position?: number }[] = []
 
-  vi.mock('../actions.js', async (importOriginal) => {
-    const vero = await importOriginal<typeof import('../actions.js')>()
-    return {
-      ...vero,
-      runAction: vi.fn(async (action: { type: string }, _i: unknown, ctx: { actionIndex?: number; actionPhase?: string; actionPosition?: number }) => {
-        const g = globalThis as { __azioni?: unknown[] }
-        g.__azioni ??= []
-        g.__azioni.push({ tipo: action.type, actionIndex: ctx.actionIndex, phase: ctx.actionPhase, position: ctx.actionPosition })
-      }),
-    }
-  })
 
   const azioniEseguite = () => ((globalThis as { __azioni?: typeof eseguite }).__azioni ?? [])
 

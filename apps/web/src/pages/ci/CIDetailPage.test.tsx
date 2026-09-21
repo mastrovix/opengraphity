@@ -8,6 +8,12 @@ import { GET_CI_TYPES, GET_BLAST_RADIUS, GET_CI_INCIDENTS, GET_CI_PROBLEMS, GET_
 import { SET_CI_HEALTH_OVERRIDE } from '@/graphql/mutations'
 import { renderWithProviders, type GqlMock } from '@/test/utils'
 import { teamsMock, meMock } from '@/test/mocks/gql'
+/*
+ * Lo spazio prima della parentesi non c'e' piu' (21 set 2026): jsdom 30 non
+ * inserisce uno spazio fra elementi IN LINEA quando calcola il nome
+ * accessibile, e «DEPENDS ON (1)» e' diventato «DEPENDS ON(1)». Il DOM reso
+ * dal prodotto non e' cambiato.
+ */
 
 // Etichette dalla stessa sorgente i18n della pagina (non stringhe copiate a mano).
 const T = (key: string, opts?: Record<string, unknown>) => i18n.t(key, opts) as string
@@ -199,8 +205,8 @@ describe('CIDetailPage', () => {
     const panel = document.getElementById(card.getAttribute('aria-controls')!)!
     expect(within(panel).getByText(T('pages.ci.dependencies'))).toBeInTheDocument()
     expect(within(panel).getByText(T('pages.ci.dependents'))).toBeInTheDocument()
-    expect(within(panel).getByRole('button', { name: /DEPENDS ON \(1\)/ })).toBeInTheDocument()
-    expect(within(panel).getByRole('button', { name: /HOSTED ON \(1\)/ })).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: /DEPENDS ON\(1\)/ })).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: /HOSTED ON\(1\)/ })).toBeInTheDocument()
   })
   /** Giro UI del 15 set 2026 · U-27: un gruppo obbligatorio non offre «— not assigned —» (l'API lo rifiuterebbe, CM-6). */
   it('U-27: gruppo obbligatorio → niente «not assigned»; se manca lo dice e chiede di sceglierne uno', async () => {
