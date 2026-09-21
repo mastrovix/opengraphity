@@ -409,7 +409,24 @@ describe('EventsPage — filtri nell\'URL (ondata 5)', () => {
      */
     await user.type(screen.getByLabelText('Search'), 'cpu')
     await waitFor(() => expect(screen.getByLabelText('Search')).toHaveValue('cpu'))
-    await attendiURL('/events', { status: 'resolved', q: 'cpu' })
+    /*
+     * QUINDICI SECONDI, e sono una domanda (21 set 2026).
+     *
+     * La riga qui sopra ha già risposto alla prima metà: sulla CI il testo
+     * ARRIVA nella casella. Quello che non arriva è l'URL — il debounce di
+     * 300 ms non scrive `q=cpu` entro quattro secondi. Intermittente: un
+     * giro di CI su due passa, e in locale non cade mai (cinque giri di
+     * fila, e nemmeno forzando 400 ms fra un tasto e l'altro).
+     *
+     * Se con quindici secondi passa, è lentezza del runner e qui finisce.
+     * Se NON passa nemmeno così, allora quel timer su una macchina carica
+     * non scatta affatto — e non è un test da aggiustare, è un difetto del
+     * prodotto: chi cerca da una macchina lenta non otterrebbe niente. In
+     * quel caso si guarda `EventsPage.tsx:346`, l'effetto del debounce, e
+     * le sue dipendenze (`updateFilter` → `filter` → `[searchParams,
+     * clock]`).
+     */
+    await attendiURL('/events', { status: 'resolved', q: 'cpu' }, { timeout: 15_000 })
     await waitFor(() => expect(seen.at(-1)?.filter).toEqual({ status: ['resolved'], search: 'cpu' }))
 
     await user.click(screen.getByRole('button', { name: /Critical\s*2/ }))
