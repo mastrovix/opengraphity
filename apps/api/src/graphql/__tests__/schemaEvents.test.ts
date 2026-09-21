@@ -9,6 +9,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { buildSchema, isEnumType, isNonNullType, isListType, type GraphQLObjectType, type GraphQLInputObjectType, type GraphQLType } from 'graphql'
+import { defaultDichiarato } from './defaultDichiarato.js'
 import { buildBaseSDL } from '../schema-base.js'
 import { eventsSDL } from '../schema-events.js'
 import { EVENT_SDL_ENUMS, CI_HEALTHS } from '../../lib/eventVocabularies.js'
@@ -109,7 +110,7 @@ describe('contratto (A-2, C-2, C-4)', () => {
   it('cronologia dell\'allarme: Event.history(limit: Int = 100): [EventHistoryEntry!]!, Event.historyCount: Int!, voce con id/at/kind/actorId non-null e actor/incident/change/ci come riferimenti', () => {
     const history = (schema.getType('Event') as GraphQLObjectType).getFields()['history']!
     expect(history.type.toString()).toBe('[EventHistoryEntry!]!')
-    expect(history.args.map((a) => [a.name, a.type.toString(), a.defaultValue])).toEqual([['limit', 'Int', 100]])
+    expect(history.args.map((a) => [a.name, a.type.toString(), defaultDichiarato(a)])).toEqual([['limit', 'Int', 100]])
     expect(fieldType('Event', 'historyCount').toString()).toBe('Int!')
     const entry = schema.getType('EventHistoryEntry') as GraphQLObjectType
     expect(Object.fromEntries(Object.entries(entry.getFields()).map(([k, f]) => [k, f.type.toString()]))).toEqual({
