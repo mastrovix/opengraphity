@@ -22,7 +22,7 @@
     "@opengraphity/neo4j": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^20.19.43",
+    "@types/node": "^24.11.1",
     "typescript": "^5.0.0",
     "vitest": "catalog:"
   }

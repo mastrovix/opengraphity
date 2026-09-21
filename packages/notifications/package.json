@@ -25,7 +25,7 @@
     "resend": "^3.2.0"
   },
   "devDependencies": {
-    "@types/node": "^20.19.43",
+    "@types/node": "^24.11.1",
     "typescript": "^5.4.0",
     "vitest": "catalog:"
   }
