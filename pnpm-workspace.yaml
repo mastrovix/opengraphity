@@ -67,3 +67,29 @@ catalog:
 # Passando alla 7 e' sparita l'opzione `baseUrl`: i tre tsconfig del browser
 # (web, portal, console) ora hanno solo `paths`, che si risolvono rispetto
 # alla cartella del file. Il commento sta dentro ognuno dei tre.
+
+# GRAPHQL 17 CON APOLLO SERVER 5 CHE DICHIARA ^16: PROVATO, NON DEDOTTO
+# (21 set 2026).
+#
+# `@apollo/server` 5.5.1 — l'ultima che esiste — dichiara `graphql ^16.11.0`,
+# e nessuna sua versione dichiara ancora la 17. La regola
+# `pnpm.peerDependencyRules.allowedVersions` in `package.json` zittisce
+# quell'avviso, e zittire un avviso di compatibilita' si fa solo dopo aver
+# guardato.
+#
+# Guardato come: avviato un ApolloServer vero sulla 17 ed eseguite tre
+# operazioni — i default degli argomenti applicati (`ciao` senza argomenti
+# torna «ciao mondo x7»), una variabile passata, e un campo inesistente
+# rifiutato con l'errore di validazione giusto. Piu' gli 8039 test dell'api e
+# il job in container.
+#
+# SI TOGLIE quando `@apollo/server` dichiarera' la 17 fra le sue peer: allora
+# la regola non serve piu' e l'avviso non c'e' piu' da zittire.
+#
+# Cosa e' cambiato passando alla 17, ed e' l'unica cosa che abbiamo dovuto
+# toccare: su uno schema costruito da SDL il default di un argomento non e'
+# piu' coercizzato in `arg.defaultValue` (che resta `undefined`) ma
+# conservato come letterale in `arg.default.literal`. Il comportamento a
+# runtime e' identico. I due test del contratto ora lo leggono dall'AST, che
+# e' la sorgente di entrambe le forme: vedi
+# `apps/api/src/graphql/__tests__/defaultDichiarato.ts`.

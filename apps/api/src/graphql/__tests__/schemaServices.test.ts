@@ -6,7 +6,8 @@
  * quelli dell'Event Management; Team è il tipo esistente.
  */
 import { describe, it, expect } from 'vitest'
-import { buildSchema, isEnumType, isNonNullType, isListType, type GraphQLObjectType, type GraphQLInputObjectType, type GraphQLType, type GraphQLEnumType } from 'graphql'
+import { buildSchema, isEnumType, isNonNullType, isListType, type GraphQLObjectType, type GraphQLInputObjectType, type GraphQLType, type GraphQLEnumType, type GraphQLArgument } from 'graphql'
+import { defaultDichiarato } from './defaultDichiarato.js'
 import { buildBaseSDL } from '../schema-base.js'
 import { servicesSDL } from '../schema-services.js'
 import { SERVICE_SDL_ENUMS, SERVICE_HEALTHS, SERVICE_HEALTH_SEVERITY_ORDER } from '../../lib/serviceVocabularies.js'
@@ -74,7 +75,7 @@ describe('tipi del contratto', () => {
     // SV-4: il motivo è un dato (chiave + parametri), la frase la compone il client
     expect(fieldsOf('ServiceIncidentProblem')).toEqual({ key: 'String', params: '[ServiceIncidentProblemParam!]!', message: 'String!', since: 'String!' })
     const history = (schema.getType('ServiceMap') as GraphQLObjectType).getFields()['history']!
-    expect(history.args.map((a) => [a.name, a.type.toString(), a.defaultValue])).toEqual([['limit', 'Int', 100]])
+    expect(history.args.map((a) => [a.name, a.type.toString(), defaultDichiarato(a)])).toEqual([['limit', 'Int', 100]])
   })
 
   it('ServiceMapNode, ImpactCause, ServiceMapEdge, ServiceHealthEntry, ServiceImpactRules, ServiceRef, ServiceMapCounts, ServiceMapPage, ServiceMapFilter', () => {
@@ -96,7 +97,7 @@ describe('tipi del contratto', () => {
   it('campi root con argomenti e default del contratto', () => {
     const q = (schema.getType('Query') as GraphQLObjectType).getFields()
     const m = (schema.getType('Mutation') as GraphQLObjectType).getFields()
-    const sig = (f: { args: readonly { name: string; type: GraphQLType; defaultValue?: unknown }[]; type: GraphQLType }) => ({ args: f.args.map((a) => [a.name, a.type.toString(), a.defaultValue ?? null]), type: f.type.toString() })
+    const sig = (f: { args: readonly GraphQLArgument[]; type: GraphQLType }) => ({ args: f.args.map((a) => [a.name, a.type.toString(), defaultDichiarato(a) ?? null]), type: f.type.toString() })
     expect(sig(q['serviceMaps']!)).toEqual({ args: [['filter', 'ServiceMapFilter', null], ['limit', 'Int', 50], ['offset', 'Int', 0]], type: 'ServiceMapPage!' })
     expect(sig(q['serviceMap']!)).toEqual({ args: [['id', 'ID!', null]], type: 'ServiceMap' })
     expect(sig(q['servicesImpactedByCI']!)).toEqual({ args: [['ciId', 'ID!', null]], type: '[ServiceMap!]!' })

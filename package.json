@@ -29,7 +29,12 @@
       "sharp",
       "onnxruntime-node",
       "protobufjs"
-    ]
+    ],
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "graphql": "17"
+      }
+    }
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
