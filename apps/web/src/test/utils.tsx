@@ -90,11 +90,19 @@ export async function attendiURL(
   opzioni?: { timeout?: number },
 ): Promise<void> {
   const atteso = [...Object.entries(parametri)].sort()
+  /*
+   * Si confronta un oggetto SOLO, e non percorso e parametri separatamente,
+   * perché quando scade l'attesa il messaggio deve dire che cosa c'era
+   * davvero nell'URL (21 set 2026: un fallimento sulla CI diceva solo
+   * «expected [['status','resolved']] to deeply equal [...]», e da lì non si
+   * capiva se il percorso fosse quello giusto né quale fosse l'URL intero —
+   * si è andati avanti a ipotesi per due giri).
+   */
   await waitFor(() => {
     const grezzo = screen.getByTestId('location').textContent ?? ''
     const [via, query = ''] = grezzo.split('?')
-    expect(via).toBe(percorso)
-    expect([...new URLSearchParams(query).entries()].sort()).toEqual(atteso)
+    expect({ url: grezzo, percorso: via, parametri: [...new URLSearchParams(query).entries()].sort() })
+      .toEqual({ url: grezzo, percorso, parametri: atteso })
   }, { timeout: 4_000, ...opzioni })
 }
 
