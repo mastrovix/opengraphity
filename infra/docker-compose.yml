@@ -14,7 +14,7 @@ services:
   # ── Infrastructure ─────────────────────────────────────────────────────────
 
   neo4j:
-    image: neo4j:5.26.21-community@sha256:409728716bc239f9fa046368ac6ce6ef280f9e5f0bcb7cdd75031a4465cc192d
+    image: neo4j:5.26.29-community@sha256:89d577f2e49606de76441eca8cf7a0fe88e594cbaac4d2a3d86c6e59676e2b1e
     ports:
       - "127.0.0.1:7474:7474"
       - "127.0.0.1:7687:7687"
