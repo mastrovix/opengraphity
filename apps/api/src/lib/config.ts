@@ -270,6 +270,25 @@ const readers = {
     grafo, cifrato (SlackInstallation). Senza queste tre il collegamento con un
     clic non si offre; resta quello con il token dell'app dell'organizzazione.
   */
+  /*
+    DAL PROBLEM ALLA PROPOSTA DI CODICE, SENZA PASSARE DA UNA PERSONA
+    (21 set 2026).
+
+    Quando si apre un Problem da una proposta dell'Autoanalisi, il prodotto
+    porta il fascicolo d'indagine su GitHub come issue e chiede l'analisi.
+    Serve il repository dove vive il codice e un token che possa scriverci.
+
+    Sono di PIATTAFORMA, non di un cliente: l'Autoanalisi gira solo sul tenant
+    `opengrafo`, e il repository e' uno solo per tutta l'installazione. Per
+    questo stanno qui e non nelle impostazioni di un'organizzazione.
+
+    Vuote = il giro si ferma al Problem, che resta un Problem come un altro.
+    Non in silenzio: la diagnostica lo dichiara
+    (`configurationIssue.autoanalisiGithubMissing`).
+  */
+  autoanalisiGithubRepo:  (): string | undefined => optionalEnv('AUTOANALISI_GITHUB_REPO'),
+  autoanalisiGithubToken: (): string | undefined => optionalEnv('AUTOANALISI_GITHUB_TOKEN'),
+
   slackClientId:      (): string | undefined => optionalEnv('SLACK_CLIENT_ID'),
   slackClientSecret:  (): string | undefined => optionalEnv('SLACK_CLIENT_SECRET'),
   slackSigningSecret: (): string | undefined => optionalEnv('SLACK_SIGNING_SECRET'),
