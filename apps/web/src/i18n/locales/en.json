@@ -971,6 +971,7 @@
       "provisionPartial": "Configuration created, but this is still missing: {{gaps}}",
       "loading": "Loading workflow…",
       "noneForTenant": "No workflow found for this tenant.",
+      "openTransition": "Open transition {{name}}",
       "stepsFixedHint": "The steps of this workflow are fixed. You can customise labels, actions and conditions.",
       "defaultBadge": "Default",
       "deleteTransition": "Delete transition",

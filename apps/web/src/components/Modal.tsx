@@ -153,14 +153,18 @@ export function Modal({
   // genitore React (il portal sposta il DOM, non l'albero degli eventi React).
   const dialogProps = {
     role: 'dialog', 'aria-modal': true, 'aria-labelledby': titleId,
-    onClick: (e: React.MouseEvent) => e.stopPropagation(),
   } as const
 
   const overlay = (
     // Il click sull'overlay (fuori dal pannello) chiude il dialogo: è una
     // scorciatoia solo-mouse, l'equivalente da tastiera è Escape (gestito nel
-    // keydown globale sopra) e il bottone "Chiudi" nell'header. Anche
-    // l'overlay ferma la propagazione (stesso motivo del pannello).
+    // keydown globale sopra) e il bottone "Chiudi" nell'header.
+    //
+    // La chiusura guarda `e.target === e.currentTarget`, cioè scatta solo se
+    // il click è arrivato PROPRIO sullo sfondo: per questo il pannello non ha
+    // più bisogno di fermare la propagazione con uno `stopPropagation` suo —
+    // un gestore di click su un elemento con `role="dialog"` è esattamente
+    // ciò che un lettore di schermo non sa come annunciare (21 set 2026).
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- overlay: chiusura via mouse, Escape/bottone per la tastiera
     <div
       style={{
@@ -175,7 +179,6 @@ export function Modal({
       onClick={(e) => { e.stopPropagation(); if (overlayClosesDialog && e.target === e.currentTarget) onClose() }}
     >
       {as === 'form' ? (
-        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- solo stopPropagation, nessuna azione
         <form
           {...dialogProps}
           ref={(el) => { panelRef.current = el }}
@@ -185,7 +188,6 @@ export function Modal({
           {content}
         </form>
       ) : (
-        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- solo stopPropagation, nessuna azione
         <div
           {...dialogProps}
           ref={(el) => { panelRef.current = el }}
