@@ -666,9 +666,25 @@ vedeva solo nei log; dall'ondata 8 ci sono le metriche e tre regole d'allarme
 | `metamodel_published_total{result}` | counter | `delivered` (almeno un ascoltatore), `no_receivers` (nessuno: le altre repliche e i worker restano vecchi), `error` (PUBLISH fallito, Redis giù). Allarme `MetamodelChangesNotDelivered` |
 | `metamodel_received_total{result}` | counter | `applied`, `stale` (versione già applicata o fuori ordine: normale), `malformed` |
 | `metamodel_cache_clear_failures_total{cache}` | counter | un clearer ha lanciato: quel processo resta con dati vecchi per quel tenant. Allarme `MetamodelCacheClearFailures` |
+| `metamodel_resubscribe_flush_total` | counter | quante volte questo processo si è ri-sottoscritto **dopo** aver perso l'ascolto, e ha quindi svuotato tutte le sue cache del metamodello. Ogni incremento è una finestra di messaggi perduti (vedi sotto). Nessun allarme: è la RIPRESA, non il guasto — il guasto lo dicono `metamodel_bus_subscribed` e i log di ioredis |
 
 Sintomo tipico di un canale muto: una relazione appena definita nel disegnatore
 viene rifiutata da un'altra replica con «Invalid relation type».
+
+**Quando l'ascolto cade (PRB00000003).** Il pub/sub di Redis **non ha
+arretrato**: i messaggi pubblicati mentre un processo è staccato vengono
+consegnati a chi ascolta in quel momento e buttati per gli altri, e nessuno li
+riconsegnerà. Un processo che si ri-sottoscrive non sa quindi quali tenant
+siano cambiati nella finestra di buio — sa solo di aver perso qualcosa. Perciò
+una ri-sottoscrizione **dopo una perdita** (non la prima, all'avvio) svuota
+**tutte** le cache del metamodello, di tutti i tenant, e lo scrive in un `warn`
+di `metamodel-bus` («ri-sottoscritto dopo una perdita di ascolto»). Il campo
+`withoutClearAll` di quella riga elenca le cache registrate che **non** sanno
+svuotarsi per intero: quelle restano vecchie fino al loro TTL, e la riga lo
+dice invece di lasciar credere a uno svuotamento totale. Cosa aspettarsi dopo
+una caduta di Redis: un picco breve di query al metamodello mentre le cache si
+ricostruiscono. È il prezzo previsto — l'alternativa è servire un metamodello
+vecchio fino a 5 minuti.
 
 **Chi tira la leva.** `invalidateSchema(tenantId)` è il punto unico: svuota le
 cache di questo processo **e** pubblica. La chiamano le mutation del metamodello

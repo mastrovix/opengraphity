@@ -12,7 +12,7 @@
  * processo riceve: chi consegna svuota la SUA copia. Il modulo è importato
  * all'avvio dell'API e dei worker (`registerCaches`).
  */
-import { invalidateRuleCache, invalidateNotificationLocale } from '@opengraphity/notifications'
+import { invalidateRuleCache, clearRuleCache, invalidateNotificationLocale } from '@opengraphity/notifications'
 import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
 
 registerMetamodelCacheClearer('notification-rules', (tenantId: string) => {
@@ -20,4 +20,7 @@ registerMetamodelCacheClearer('notification-rules', (tenantId: string) => {
   // La lingua e il fuso con cui i messaggi vengono composti: stessa copia per
   // processo, stessa invalidazione (A-15).
   invalidateNotificationLocale(tenantId)
+}, () => {
+  clearRuleCache()
+  invalidateNotificationLocale()
 })

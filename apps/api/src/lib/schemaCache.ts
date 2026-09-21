@@ -125,6 +125,19 @@ registerSchemaInvalidator((tenantId: string) => {
   graphqlSchemaCacheEntries.set({}, cache.size)
   if (had) logger.info({ tenantId }, 'Schema invalidato: verrà rigenerato alla prossima richiesta')
   else     logger.debug({ tenantId }, 'Schema invalidato: non era in cache in questo processo, niente da togliere')
+}, () => {
+  // Lo schema di OGNI tenant (PRB00000003): è la cache col TTL più lungo (5
+  // minuti), quindi quella che pagherebbe di più un'invalidazione perduta.
+  // La generazione si incrementa per ognuno, altrimenti una costruzione già
+  // partita rimetterebbe in cache lo schema appena buttato.
+  for (const tenantId of new Set([...cache.keys(), ...inFlight.keys(), ...generation.keys()])) {
+    generation.set(tenantId, generationOf(tenantId) + 1)
+  }
+  const svuotati = cache.size
+  cache.clear()
+  inFlight.clear()
+  graphqlSchemaCacheEntries.set({}, cache.size)
+  logger.info({ svuotati }, 'Schemi invalidati per tutti i tenant: verranno rigenerati alla prossima richiesta')
 })
 
 /** La voce di cache del tenant (schema + stato), costruendola se serve. */

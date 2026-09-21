@@ -518,6 +518,10 @@ export const metamodelPublishedTotal = createCounter('metamodel_published_total'
 export const metamodelReceivedTotal = createCounter('metamodel_received_total', 'Metamodel channel messages received by THIS process, by outcome: applied = caches cleared, stale = version already applied or out of order, malformed = message dropped', ['result'])
 export const metamodelCacheClearFailuresTotal = createCounter('metamodel_cache_clear_failures_total', 'Metamodel caches that did NOT clear (the clearer threw): that process keeps stale data for that tenant until the TTL expires', ['cache'])
 export const metamodelBusSubscribed = createGauge('metamodel_bus_subscribed', 'This process is subscribed to the metamodel channel (1) or not (0): at 0 it is not told about changes made elsewhere', [])
+// Ogni incremento è una finestra in cui questo processo NON è stato avvisato:
+// Redis pub/sub non ha arretrato, quindi quei messaggi sono perduti e le cache
+// vengono svuotate per intero (PRB00000003).
+export const metamodelResubscribeFlushTotal = createCounter('metamodel_resubscribe_flush_total', 'Times this process re-subscribed to the metamodel channel AFTER losing its subscription and therefore dropped all its metamodel caches: each one is a window of invalidation messages lost for good (Redis pub/sub has no backlog)', [])
 
 /** Metriche del canale del metamodello, nell'ordine di esposizione. */
 /**
@@ -538,6 +542,7 @@ export const AI_METRICS = [aiCallsTotal, aiTokensTotal, aiDiscardsTotal, aiCallD
 
 export const METAMODEL_BUS_METRICS = [
   metamodelPublishedTotal, metamodelReceivedTotal, metamodelCacheClearFailuresTotal, metamodelBusSubscribed,
+  metamodelResubscribeFlushTotal,
 ] as const
 
 export const METRICS_CONTENT_TYPE = 'text/plain; version=0.0.4; charset=utf-8'

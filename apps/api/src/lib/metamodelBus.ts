@@ -41,12 +41,27 @@
  *  - disconnessione, riconnessione e ri-sottoscrizione sono loggate;
  *  - `metamodelBusStatus()` dice in ogni momento se il processo è sottoscritto.
  *
+ * ## La ripresa dopo una caduta (PRB00000003)
+ * La caduta della connessione di ascolto è un guasto di trasporto: ioredis
+ * riconnette, la sottoscrizione si rimette, e fin qui non c'è niente da
+ * riparare nel codice. Quello che mancava è la REAZIONE. Il pub/sub di Redis
+ * non ha arretrato: i messaggi pubblicati mentre questo processo era staccato
+ * sono perduti per sempre, e con loro l'elenco dei tenant cambiati. Rimettere
+ * `metamodel_bus_subscribed = 1` e scrivere «in ascolto sul canale» faceva
+ * sembrare la ripresa un avvio pulito mentre il processo teneva cache che
+ * nessuno gli avrebbe più detto di svuotare, fino al TTL (5 minuti lo schema).
+ * Perciò una ri-sottoscrizione DOPO una perdita svuota tutte le cache
+ * (`clearAllMetamodelCaches()`), lo dice in un `warn` e lo conta in
+ * `metamodel_resubscribe_flush_total`. La prima sottoscrizione no: lì non c'è
+ * niente da recuperare.
+ *
  * ## Le metriche (ondata 8)
  * I log dicono tutto questo a chi li legge; Prometheus lo sorveglia da sé:
  * `metamodel_published_total{result}` (delivered | no_receivers | error),
  * `metamodel_received_total{result}` (applied | stale | malformed),
- * `metamodel_cache_clear_failures_total{cache}` e
- * `metamodel_bus_subscribed` (0 = questo processo non verrà avvisato).
+ * `metamodel_cache_clear_failures_total{cache}`,
+ * `metamodel_bus_subscribed` (0 = questo processo non verrà avvisato) e
+ * `metamodel_resubscribe_flush_total` (quante finestre di messaggi perduti).
  * Le regole d'allarme stanno in `infra/prometheus/`, e cosa guardare in
  * `docs/OPERATIONS.md`.
  */
@@ -57,8 +72,10 @@ import { getSharedRedis } from './bullmq.js'
 import { logger } from './logger.js'
 import {
   metamodelPublishedTotal, metamodelReceivedTotal, metamodelCacheClearFailuresTotal, metamodelBusSubscribed,
+  metamodelResubscribeFlushTotal,
 } from '../middleware/metrics.js'
 import {
+  clearAllMetamodelCaches,
   clearLocalMetamodelCaches,
   registerMetamodelPublisher,
   registeredMetamodelCacheClearers,
@@ -140,6 +157,13 @@ async function doPublish(tenantId: string, local?: LocalInvalidation): Promise<v
 
 let subscriber: Redis | null = null
 let subscribed = false
+/**
+ * Vero da quando questo processo è stato sottoscritto almeno una volta
+ * (PRB00000003). Distingue la PRIMA sottoscrizione — niente da recuperare,
+ * le cache sono vuote — da una RI-sottoscrizione, che arriva sempre dopo una
+ * finestra di messaggi perduti.
+ */
+let everSubscribed = false
 let retryTimer: NodeJS.Timeout | null = null
 /** Ultima versione applicata per tenant: scarta i doppioni e i fuori ordine. */
 const lastAppliedVersion = new Map<string, number>()
@@ -206,11 +230,17 @@ async function subscribeNow(): Promise<void> {
   if (!s) return
   try {
     await s.subscribe(METAMODEL_CHANNEL)
+    // Sottoscritti ora, ma già sottoscritti prima: in mezzo c'è stata una
+    // finestra senza ascolto, e quello che è passato in quella finestra non
+    // tornerà (PRB00000003). Si legge PRIMA di rimettere `subscribed` a vero.
+    const dopoUnaPerdita = everSubscribed && !subscribed
     subscribed = true
+    everSubscribed = true
     metamodelBusSubscribed.set({}, 1)
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null }
     log.info({ channel: METAMODEL_CHANNEL, origin: BUS_ORIGIN, clearers: registeredMetamodelCacheClearers() },
       '[metamodel] in ascolto sul canale: le cache di questo processo verranno svuotate quando il metamodello cambia altrove (`clearers` = quelle registrate finora; i moduli caricati più tardi si aggiungono da sé)')
+    if (dopoUnaPerdita) recuperaInvalidazioniPerdute()
   } catch (err) {
     subscribed = false
     metamodelBusSubscribed.set({}, 0)
@@ -218,6 +248,34 @@ async function subscribeNow(): Promise<void> {
       '[metamodel] sottoscrizione FALLITA: questo processo non verrà avvisato dei cambiamenti del metamodello — riprovo')
     scheduleRetry()
   }
+}
+
+/**
+ * La ripresa dopo una sottoscrizione persa (PRB00000003).
+ *
+ * Il pub/sub di Redis non ha arretrato: i messaggi pubblicati mentre questo
+ * processo era staccato sono stati consegnati a chi ascoltava in quel momento
+ * e buttati per gli altri. Nessuno li riconsegnerà, e non c'è modo di sapere
+ * quali tenant fossero cambiati — la sottoscrizione rimessa a posto sembrava
+ * quindi un avvio pulito mentre il processo teneva cache che nessuno gli
+ * avrebbe più detto di svuotare, fino alla scadenza del TTL (5 minuti lo
+ * schema): esattamente il difetto per cui questo canale esiste.
+ *
+ * Quindi si butta tutto. Ricaricare cache ancora buone costa qualche query
+ * subito dopo una riconnessione; servire un metamodello vecchio costa un
+ * «Invalid relation type» a un utente che ha appena definito quella relazione.
+ */
+function recuperaInvalidazioniPerdute(): void {
+  const all = clearAllMetamodelCaches()
+  metamodelResubscribeFlushTotal.inc({})
+  for (const f of all.failed) metamodelCacheClearFailuresTotal.inc({ cache: f.name })
+  log.warn({
+    channel: METAMODEL_CHANNEL,
+    cleared: all.cleared,
+    failed: all.failed,
+    withoutClearAll: all.withoutClearAll,
+  },
+  '[metamodel] ri-sottoscritto dopo una perdita di ascolto: i messaggi passati in quella finestra sono perduti (il pub/sub di Redis non ha arretrato) e non si sa quali tenant siano cambiati, quindi le cache di questo processo sono state svuotate per intero — `withoutClearAll` elenca quelle che non sanno svuotarsi del tutto e restano vecchie fino al loro TTL')
 }
 
 function scheduleRetry(): void {
@@ -288,6 +346,9 @@ export async function stopMetamodelBus(): Promise<void> {
   const s = subscriber
   subscriber = null
   subscribed = false
+  // Spegnimento ordinato, non una perdita: chi riavvia il canale riparte da
+  // cache che verranno ricostruite comunque, e non deve svuotare niente.
+  everSubscribed = false
   metamodelBusSubscribed.set({}, 0)
   lastAppliedVersion.clear()
   if (!s) return

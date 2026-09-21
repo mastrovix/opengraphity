@@ -157,6 +157,16 @@ export function invalidateRuleCache(tenantId: string, eventType?: string): void 
   }
 }
 
+/**
+ * Le regole di OGNI tenant (PRB00000003). Serve quando il canale del
+ * metamodello riprende dopo una caduta: i messaggi persi non dicono più quali
+ * tenant siano cambiati, e questa cache sta nel processo che CONSEGNA le
+ * notifiche — una regola spenta e ancora in memoria continua a notificare.
+ */
+export function clearRuleCache(): void {
+  ruleCache.clear()
+}
+
 // ── Payload helpers ───────────────────────────────────────────────────────────
 
 function extractEntityId(payload: unknown): string | undefined {
