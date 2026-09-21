@@ -1,6 +1,6 @@
 # ── Stage 1: builder ─────────────────────────────────────────────────────────
 # Pinned tag + digest (G-16): `docker buildx imagetools inspect node:24.11.1-bookworm-slim`
-FROM node:24.11.1-bookworm-slim@sha256:48abc13a19400ca3985071e287bd405a1d99306770eb81d61202fb6b65cf0b57 AS builder
+FROM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS builder
 
 # pnpm 11+ requires Node 22 (node:sqlite) — pin to the 10.x line used locally
 RUN corepack enable && corepack prepare pnpm@10.30.3 --activate
