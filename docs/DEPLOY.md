@@ -29,10 +29,15 @@ Indice
 browser ──► nginx :80 (front door, template envsubst)
               ├─ {tenant}.localhost        → web (nginx, SPA agenti)      → /graphql, /api → api
               ├─ portal.{tenant}.localhost → portal (nginx, self-service) → /graphql, /api → api
-              └─ $TAILSCALE_HOST (HTTPS via tailscale serve) → web + keycloak same-origin
+              ├─ $TAILSCALE_HOST (HTTPS via tailscale serve) → web + keycloak same-origin,
+              │                                                  portale sotto /portal/ (H-33)
+              └─ qualunque altro Host                          → 404 (default_server, H-32)
 api :4000 (Express + Apollo, USER node) ── neo4j :7687 ── redis :6379 ── keycloak :8080
-worker (stessa immagine dell'api, `dist/worker.js`: embedding ONNX off event-loop)
-prometheus ← api:/metrics      promtail (docker socket) → loki ← grafana      jaeger (OTLP)
+worker        (stessa immagine dell'api, `dist/worker.js`: embedding ONNX off event-loop)
+events-worker (H-51 — stessa immagine, WORKER_PROFILE=events: ingest allarmi, correlazione,
+               manutenzione eventi, valutazione delle mappe di servizio)
+prometheus ← api:/metrics, worker:/metrics, events-worker:/metrics
+promtail (docker socket) → loki ← grafana      jaeger (OTLP)
 ```
 
 Tutte le immagini di terze parti sono pinnate **tag + digest** (digest della
@@ -123,7 +128,14 @@ Con default sicuri, da cambiare consapevolmente:
   (locale + Tailscale): il token è accettato solo se il suo `iss` è tra quelle.
 - `TAILSCALE_TENANT_HOST` (default `c-one.localhost`): tenant che il front-door
   Tailscale inoltra come `X-Forwarded-Host` (l'hostname Tailscale non porta lo
-  slug).
+  slug). Vale anche per il portale, che da remoto sta sotto `/portal/` dello
+  stesso host (revisione totale · H-33).
+- `NGINX_API_MAX_BODY` (default `101m`): corpo massimo che il front-door
+  accetta su `/api/`. Va tenuto **sopra** `ATTACHMENT_MAX_MB_CAP` (default
+  100 MB), altrimenti nginx rifiuta l'allegato con un 413 in HTML prima che
+  l'API veda la richiesta e l'impostazione dell'organizzazione sembra non
+  valere (revisione totale · H-11). Gli nginx dentro i container `web` e
+  `portal` hanno lo stesso tetto scritto nei rispettivi Dockerfile.
 - `GRAPHQL_INTROSPECTION` (default `false`): `true` abilita l'Apollo Sandbox
   sulla stack locale. Mai `true` su un deploy raggiungibile da terzi.
 - `METRICS_TOKEN` (vuoto): se valorizzato, `GET /metrics` richiede
@@ -132,6 +144,11 @@ Con default sicuri, da cambiare consapevolmente:
   (la rete Docker lo è), quindi Prometheus funziona anche senza token.
 - `CORS_ORIGIN`, `APP_URL`, `RESEND_API_KEY`, `ANTHROPIC_API_KEY`, ecc.: vedi
   i commenti in `.env.example`.
+- `ANTHROPIC_MODEL`: il modello Claude di TUTTI i servizi AI (triage,
+  assistente, post-incident, agente dei report). Default `claude-opus-5`, un
+  solo posto da cambiare — `REPORT_AI_MODEL` scavalca il solo agente dei
+  report. Un id di modello scritto altrove nel codice fa fallire
+  `aiModel.test.ts`.
 
 Le variabili "solo compose" (`GRAFANA_ADMIN_PASSWORD`, `TAILSCALE_HOST`,
 `KEYCLOAK_PUBLIC_ORIGIN`, `TAILSCALE_TENANT_HOST`) sono nell'allowlist
@@ -144,13 +161,45 @@ nell'ambiente del build **locale** (le `args` del compose valgono solo per il
 portal). `apps/web/.env.local`, se presente, ha la precedenza.
 
 ```bash
+./apps/web/build-local.sh      # legge le VITE_* da infra/.env e VERIFICA il bundle
+```
+
+Forma manuale equivalente (ma senza la verifica finale):
+
+```bash
 set -a; . infra/.env; set +a
 pnpm install --frozen-lockfile
 pnpm --filter "./packages/*" build
 pnpm --filter @opengraphity/web build
 # se punti a un Keycloak remoto (Tailscale) il bundle non deve citare localhost:8080:
 grep -o 'localhost:8080' apps/web/dist/assets/index-*.js | wc -l   # atteso 0
+# e DEVE contenere lo slug del tenant, altrimenti il realm di Keycloak viene
+# dedotto dal nome host e l'accesso finisce in un ciclo di redirect (414):
+grep -c "$VITE_TENANT_SLUG" apps/web/dist/assets/index-*.js        # atteso ≥ 1
 ```
+
+> **Il client di Keycloak si verifica, non si indovina.** Nello stesso pomeriggio,
+> subito dopo il difetto sotto, il bundle è stato costruito con
+> `VITE_KEYCLOAK_CLIENT_ID=opengraphity-web` mentre il client del realm si chiama
+> **`opengrafo-web`**: Keycloak risponde «We are sorry… Client not found» a login
+> già avviato. Il controllo, senza credenziali:
+>
+> ```bash
+> curl -s -o /dev/null -w '%{http_code}\n' \
+>   "$VITE_KEYCLOAK_URL/realms/$VITE_TENANT_SLUG/protocol/openid-connect/auth?client_id=<nome>&response_type=code&scope=openid&redirect_uri=$VITE_KEYCLOAK_URL/"
+> ```
+>
+> `200` = il client esiste; `400` (con «Client not found» nel corpo) = no.
+> `build-local.sh` non ha più un valore predefinito per quella variabile: se
+> manca in `infra/.env`, la build si ferma.
+
+> **Non scrivere a mano l'elenco delle `VITE_*`.** Il 18 set 2026 un bundle
+> costruito con un elenco battuto a mano ha omesso `VITE_TENANT_SLUG` (e citava
+> `VITE_KEYCLOAK_REALM`, che il codice non legge): da un host Tailscale il
+> realm di Keycloak veniva dedotto dal nome host, non esisteva, e il login
+> rimbalzava su sé stesso annidando il `redirect_uri` finché nginx rispondeva
+> **414 Request-URI Too Large** — applicazione irraggiungibile. Lo script sopra
+> esiste per questo, e la verifica finale fa fallire la build invece del login.
 
 `pnpm deploy:web` (root `package.json`) concatena build + `compose up -d --build web`.
 
@@ -176,8 +225,11 @@ KEYCLOAK_URL=http://localhost:8080 NEO4J_URI=bolt://localhost:7687 \
   --slug c-one --admin-email admin@example.com \
   --admin-first-name Nome --admin-last-name Cognome --name "C-One"
 
-# 3. (Tailscale) redirect URI / web origins del client opengrafo-web
-bash infra/scripts/update-keycloak-redirects.sh
+# 3. (Tailscale) redirect URI / web origins dei client web E portale
+#    dell'organizzazione indicata; il secondo argomento e l'host pubblico
+#    (H-30: prima realm, client e host erano cablati su c-one e il portale
+#    non veniva toccato affatto).
+bash infra/scripts/update-keycloak-redirects.sh c-one "$TAILSCALE_HOST"
 ```
 
 Apri `http://c-one.localhost` (agenti) e `http://portal.c-one.localhost`
@@ -189,7 +241,7 @@ Apri `http://c-one.localhost` (agenti) e `http://portal.c-one.localhost`
 | Porta host | Servizio | Bind | Note |
 |---|---|---|---|
 | 80 | nginx | `0.0.0.0` | unico ingresso pubblico (LAN/Tailscale) |
-| 4000 | api | `127.0.0.1` | `/health`, `/graphql`, `/metrics` — senza header nginx |
+| 4000 | api | `127.0.0.1` | `/health` (completa: 503 con migrazioni pendenti), `/health/live` (sonda del container: processo + Neo4j + Redis, H-48), `/graphql`, `/metrics` — senza header nginx |
 | 5173 / 5174 | web / portal | `127.0.0.1` | accesso diretto alle SPA |
 | 7474 / 7687 | neo4j | `127.0.0.1` | browser + bolt |
 | 6379 | redis | `127.0.0.1` | con `requirepass` |
@@ -211,7 +263,11 @@ Per esporre la stack oltre `localhost` passare **solo** da nginx (o da
   `level` (pino: 30 info, 40 warn, 50 error). Esempio in Grafana → Explore:
   `{job="api", level="50"}`. Il vecchio scrape del file su `/tmp` (che l'API
   non scriveva) è stato rimosso.
-- **Metriche → Prometheus**: scrape di `api:4000/metrics` ogni 15 s, retention
+- **Metriche → Prometheus**: scrape di **tre** target ogni 15 s —
+  `api:4000`, `worker:4000` e `events-worker:4000`
+  (`infra/prometheus/prometheus.yml`): le metriche della pipeline degli allarmi
+  vivono dove gira la pipeline (revisione totale · H-51: §7 dichiarava un solo
+  target). Retention
   15 giorni (`prometheus_data`). Metriche disponibili
   (`apps/api/src/middleware/metrics.ts`): `http_requests_total`,
   `http_request_duration_seconds`, `graphql_resolver_duration_seconds`,
@@ -227,8 +283,25 @@ Per esporre la stack oltre `localhost` passare **solo** da nginx (o da
   persistite: si edita il JSON nel repo. **Gap noto**: gli errori per resolver
   non sono esportati verso Prometheus (esistono solo nel pannello admin
   GraphQL); il pannello "errori" usa gli HTTP 5xx.
-- **Tracce → Jaeger**: `OTEL_ENABLED=true` in `.env`; endpoint interno
-  `http://jaeger:4318/v1/traces`.
+- **Tracce → Jaeger**: `OTEL_ENABLED=true` in `infra/.env`, poi
+  `docker compose -f infra/docker-compose.yml up -d api`; endpoint interno
+  `http://jaeger:4318/v1/traces`, interfaccia di Jaeger su
+  `http://localhost:16686`. Jaeger è già nello stack: non c'è niente da
+  avviare a parte. Il riquadro «OpenTelemetry Tracing» del pannello admin dice
+  soltanto che la variabile è a false e mostra l'endpoint configurato — la
+  ricetta sta qui e non lì, perché chi ha `admin.system` è l'amministratore del
+  cliente e il suo OpenGrafo non gira necessariamente con questo compose.
+  **Prima di accenderlo**, sappi cosa cambia: con i valori predefiniti la
+  strumentazione GraphQL crea un'operazione per OGNI elemento di lista
+  (`incidents.items.0.slaStatus`, `items.1...`) e in pochi minuti Jaeger ne
+  raccoglie centinaia; per questo `telemetry.ts` passa `mergeItems` e
+  `ignoreTrivialResolveSpans` (misurato: da 398 operazioni con 303 indici a
+  135 senza nessun indice). L'SDK va avviato **prima** dell'app, con il
+  preload `NODE_OPTIONS=--import=/app/dist/telemetry-register.js` (il compose lo
+  imposta già): l'auto-strumentazione patcha solo i moduli caricati dopo
+  l'avvio, quindi senza preload in Jaeger si vedono soltanto gli span
+  `GraphQL <Operazione>` e mancano quelli di HTTP, Neo4j e Redis. Se il preload
+  non c'è, l'avvio dell'API lo scrive nei log.
 - **Healthcheck**: tutti i servizi ne hanno uno. Il `worker` non espone HTTP:
   il probe (`worker-healthcheck.mjs`, generato nell'immagine) chiede a Redis se
   un worker BullMQ della coda `embeddings` è connesso (`CLIENT LIST` via
@@ -295,7 +368,7 @@ backup (§10).
 git checkout <tag-o-sha-precedente>
 docker tag opengrafo-api:prev opengrafo-api:local
 docker tag infra-web:prev infra-web:latest && docker tag infra-portal:prev infra-portal:latest
-docker compose -f infra/docker-compose.yml up -d --no-build api worker web portal
+docker compose -f infra/docker-compose.yml up -d --no-build api worker events-worker web portal
 ```
 
 Senza immagini `:prev`, ricostruire dal commit precedente (`build` + `up -d`,
@@ -309,12 +382,19 @@ esattamente le immagini precedenti.
 dal maintenance worker dell'API ogni giorno a mezzanotte, retention degli
 ultimi N archivi): export via Cypher di **tutti i nodi e le relazioni** in
 JSONL, compresso in `backup_<stamp>.tar.gz` sotto `BACKUP_DIR`
-(`/data/backups` → volume `api_backups`). Non è un `neo4j-admin dump`: non è
-transazionalmente consistente e non contiene indici/constraint (che
-`neo4j:init` ricrea). **Non include**: allegati (`api_data:/data/attachments`),
-Keycloak (`keycloak_data`, realm e utenti), Redis (code BullMQ — ricostruibili),
-Grafana/Prometheus/Loki. Un altro intervento sta estendendo lo script agli
-allegati e a Keycloak: fino ad allora vanno salvati a parte (sotto).
+(`/data/backups` → volume `api_backups`). Non è un `neo4j-admin dump`, ma
+**una sola transazione di lettura**, quindi l'export è coerente; il manifest
+registra anche `SHOW CONSTRAINTS` e `SHOW INDEXES`, che `migrate --init-schema`
+ricrea. **Include** gli allegati (`attachments.tar`) e i realm Keycloak
+(`keycloak/<realm>.json`, senza gli utenti). **Non include**: gli utenti
+Keycloak, Redis (code BullMQ — ricostruibili), Grafana/Prometheus/Loki.
+
+> Revisione totale · H-26: questo paragrafo diceva l'esatto contrario — «non è
+> transazionalmente consistente», «non contiene indici/constraint», «non
+> include allegati e Keycloak», «un altro intervento sta estendendo lo script»
+> — mentre lo script fa tutte quelle cose da tempo e OPERATIONS §1 lo
+> descriveva correttamente. Chi seguiva DEPLOY salvava gli allegati due volte
+> e credeva di non avere i realm.
 
 Backup manuale e copia **off-host** (obbligatoria: un volume Docker non è un
 backup):
@@ -429,6 +509,13 @@ docker compose -f infra/docker-compose.yml config --quiet
 node scripts/check-env-example.mjs
 bash -n infra/start.sh
 
+# OGNI QUERY CYPHER SCRITTA PER INTERO E VALIDA (serve Neo4j in piedi).
+# Manda `EXPLAIN` a Neo4j, che analizza e pianifica senza eseguire: una query
+# che non si parsa non e mai stata eseguita, e nessun test la copre. Nato da un
+# `OR` penzolante che ha fermato il motore SLA per un giorno intero senza che
+# TypeScript, 7960 test o un giro nel browser se ne accorgessero.
+node scripts/check-cypher.mjs
+
 # nginx: config renderizzata dal template (server_name Tailscale, CSP)
 docker compose -f infra/docker-compose.yml exec nginx sh -c 'nginx -t && grep -n "server_name\|connect-src" /etc/nginx/conf.d/default.conf'
 
@@ -463,3 +550,20 @@ Problemi ricorrenti:
   `docker compose exec grafana grafana cli admin reset-admin-password '<nuova>'`.
 - Prometheus target `DOWN` con 401: `METRICS_TOKEN` diverso tra `.env` e il
   container (ricreare `prometheus` con `up -d --force-recreate prometheus`).
+
+## Trappole di compilazione che costano tempo
+
+**`TS1005: ',' expected` a metà di una query Cypher.**
+La Cypher di questo repo vive nei template literal, e i commenti Cypher (`//`)
+finiscono dentro la stringa. Un nome scritto fra backtick in quel commento
+**chiude il template literal**, e TypeScript fallisce con un errore di sintassi
+che non nomina la causa, a righe che sembrano corrette.
+
+Nella terza revisione mi è capitato quattro volte in una sessione
+(`workflowJobWorker.ts`, `escalationConsumer.ts`, `questionAdmin.ts`,
+`assessmentMutations.ts`): ogni volta ho perso un giro a diagnosticarlo. Nei
+commenti dentro una query si scrive `scope='base'`, non `` `scope: 'base'` ``.
+
+Ho provato a scriverne un lint e l'ho cancellato: `tsc` lo prende già, quindi il
+lint non aggiungeva nulla — e la sua rilevazione non funzionava con i generici
+su più righe. Il valore stava nella diagnosi, non nel rilevamento: è questa nota.

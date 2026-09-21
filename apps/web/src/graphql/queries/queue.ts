@@ -2,10 +2,15 @@ import { gql } from '@apollo/client'
 
 // ── Queues & monitoring ──────────────────────────────────────────────────────
 
+// `group` (events | services | itsm | platform) e `retryable` vengono dal
+// registro unico delle code dell'API (lib/queueRegistry.ts): la pagina
+// raggruppa e mostra il rigioco senza conoscere i nomi delle code.
 export const GET_QUEUE_STATS = gql`
   query GetQueueStats {
     queueStats {
       name
+      group
+      retryable
       counts {
         waiting active completed failed delayed paused
       }

@@ -1,13 +1,21 @@
 import { useState, useEffect, useId } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQuery } from '@apollo/client/react'
 import type { CITypeDef, CIFieldDef } from '@/contexts/MetamodelContext'
 import { validateCI, isFieldVisible, getFieldDefault } from '@/lib/ciValidator'
 import { useCIBaseEnums } from '@/lib/ciEnums'
+import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
+import { GET_TEAMS } from '@/graphql/queries'
+import { colors, palette } from '@/lib/tokens'
 
 // Base (__base__) fields every CI shares — the Create input requires `name`
-// and accepts status/environment/description. They aren't in a type's own
+// and accepts status/environment/description, plus the two groups
+// (`ownerGroupId`, `supportGroupId`) for the system relations of the type. They aren't in a type's own
 // field list, so the form renders them explicitly; i valori di status e
 // environment vengono dal tipo base del metamodello (useCIBaseEnums).
+
+/** Le relazioni di sistema che l'input di creazione accetta come `<nome>Id`. */
+const GROUP_INPUT_RELATIONS: ReadonlySet<string> = new Set(['ownerGroup', 'supportGroup'])
 
 /** Attesa dopo l'ultima modifica prima di rieseguire i default_script (F-13). */
 const DEFAULTS_DEBOUNCE_MS = 300
@@ -17,12 +25,12 @@ const DEFAULTS_DEBOUNCE_MS = 300
 const inputBase: React.CSSProperties = {
   width:           '100%',
   padding:         '10px 14px',
-  border:          '1px solid #e5e7eb',
+  border:          `1px solid ${colors.border}`,
   borderRadius:    6,
   fontSize:        14,
   color:           'var(--color-slate-dark)',
   outline:         'none',
-  backgroundColor: '#ffffff',
+  backgroundColor: colors.white,
   boxSizing:       'border-box',
   transition:      'border-color 150ms, box-shadow 150ms',
 }
@@ -30,7 +38,7 @@ const inputBase: React.CSSProperties = {
 const selectBase: React.CSSProperties = {
   ...inputBase,
   appearance:         'none',
-  backgroundImage:    `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238892a4' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
+  backgroundImage:    'var(--select-arrow)',
   backgroundRepeat:   'no-repeat',
   backgroundPosition: 'right 12px center',
   paddingRight:       36,
@@ -41,10 +49,10 @@ function focusHandlers(hasError: boolean) {
   return {
     onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
       e.currentTarget.style.borderColor = 'var(--color-brand)'
-      e.currentTarget.style.boxShadow   = '0 0 0 3px #ecfeff'
+      e.currentTarget.style.boxShadow   = `0 0 0 3px ${colors.brandLight}`
     },
     onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
-      e.currentTarget.style.borderColor = hasError ? 'var(--color-trigger-sla-breach)' : '#e5e7eb'
+      e.currentTarget.style.borderColor = hasError ? 'var(--color-trigger-sla-breach)' : colors.border
       e.currentTarget.style.boxShadow   = 'none'
     },
   }
@@ -77,8 +85,12 @@ function FieldRenderer({
   onChange: (val: unknown) => void
 }) {
   const { t } = useTranslation()
+  const { labelOf } = useDomainVocabularies()
   const hasError = Boolean(error)
-  const borderColor = hasError ? 'var(--color-trigger-sla-breach)' : '#e5e7eb'
+  const borderColor = hasError ? 'var(--color-trigger-sla-breach)' : colors.border
+  // L'errore si lega al controllo: un lettore di schermo lo annuncia col campo
+  // (secondo giro UI del 15 set 2026: il bordo rosso era l'unico segnale).
+  const invalid = hasError ? { 'aria-invalid': true as const, 'aria-describedby': `${id}-error` } : {}
 
   switch (field.fieldType) {
     case 'boolean':
@@ -102,6 +114,7 @@ function FieldRenderer({
         <input
           type="number"
           id={id}
+          {...invalid}
           value={value !== null && value !== undefined ? String(value) : ''}
           onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))}
           placeholder={field.label}
@@ -115,6 +128,7 @@ function FieldRenderer({
         <input
           type="date"
           id={id}
+          {...invalid}
           value={value !== null && value !== undefined ? String(value) : ''}
           onChange={e => onChange(e.target.value || null)}
           style={{ ...inputBase, borderColor }}
@@ -122,27 +136,44 @@ function FieldRenderer({
         />
       )
 
-    case 'enum':
+    case 'enum': {
+      // Ondata 7 · A-13: un valore già sul CI che il vocabolario non ha più
+      // (dal vivo su c-one: 68 CI con `expired`/`revoked`) NON deve
+      // scomparire. Prima non c'era la sua `<option>`, quindi la tendina
+      // appariva **vuota** e un salvataggio distratto azzerava il campo.
+      // Adesso c'è, disabilitata e marcata «non più nel vocabolario»: il
+      // valore si vede, si capisce perché è fuori posto, e lo si cambia di
+      // proposito.
+      const current = value !== null && value !== undefined ? String(value) : ''
+      const orphan = current !== '' && !field.enumValues.includes(current)
       return (
         <select
           id={id}
-          value={value !== null && value !== undefined ? String(value) : ''}
+          {...invalid}
+          value={current}
           onChange={e => onChange(e.target.value || null)}
           style={{ ...selectBase, borderColor }}
           {...focusHandlers(hasError)}
         >
           <option value="">{t('components.ciDynamicForm.selectOption')}</option>
+          {orphan && (
+            <option value={current} disabled>
+              {t('components.ciDynamicForm.valueOutsideVocabulary', { value: current })}
+            </option>
+          )}
           {field.enumValues.map(opt => (
-            <option key={opt} value={opt}>{opt}</option>
+            <option key={opt} value={opt}>{(field.enumTypeName && labelOf(field.enumTypeName, opt)) || opt}</option>
           ))}
         </select>
       )
+    }
 
     default: // string
       return (
         <input
           type="text"
           id={id}
+          {...invalid}
           value={value !== null && value !== undefined ? String(value) : ''}
           onChange={e => onChange(e.target.value || null)}
           placeholder={field.label}
@@ -176,6 +207,22 @@ export function CIDynamicForm({
   const [visibilityMap, setVisibilityMap] = useState<Record<string, boolean>>({})
   const [submitting, setSubmitting] = useState(false)
   const baseEnums = useCIBaseEnums()
+  const { labelOf } = useDomainVocabularies()
+  // Giro nel browser del 14 set 2026 (#55): le tendine mostravano i valori
+  // interni («active», «production») mentre la modifica mostra le etichette
+  // del Dizionario; e i gruppi non si sceglievano, benché `ownerGroup` sia
+  // obbligatorio nel metamodello — il CI nasceva senza owner.
+  const baseVocabulary = (name: string) => ciType.fields.find(f => f.name === name)?.enumTypeName ?? null
+  const optionLabel = (fieldName: string, value: string) => {
+    const vocabulary = baseVocabulary(fieldName)
+    return (vocabulary && labelOf(vocabulary, value)) || value
+  }
+  // Solo le relazioni verso i team che l'input di creazione conosce
+  // (`<nome>Id`: `ownerGroupId`, `supportGroupId`, dal generatore dello schema).
+  const groupRelations = (ciType.systemRelations ?? [])
+    .filter(sr => sr.targetEntity === 'Team' && GROUP_INPUT_RELATIONS.has(sr.name))
+    .sort((a, b) => a.order - b.order)
+  const { data: teamsData, error: teamsError } = useQuery<{ teams: { id: string; name: string }[] }>(GET_TEAMS, { skip: groupRelations.length === 0 })
 
   // Default script: rieseguiti a ogni modifica dei valori (con debounce), non
   // solo al mount — un default che dipende da un altro campo (es. porta in
@@ -257,6 +304,16 @@ export function CIDynamicForm({
       return
     }
 
+    const missingGroups = groupRelations.filter(sr => sr.required && !formValues[`${sr.name}Id`])
+    if (missingGroups.length > 0) {
+      setValidationErrors(prev => ({
+        ...prev,
+        ...Object.fromEntries(missingGroups.map(sr => [`${sr.name}Id`, t('components.ciDynamicForm.fieldRequired', { field: sr.label })])),
+      }))
+      setSubmitting(false)
+      return
+    }
+
     let result
     try {
       result = await validateCI(formValues, ciType)
@@ -294,7 +351,7 @@ export function CIDynamicForm({
         <div style={{
           padding:      '10px 14px',
           background:   'var(--color-danger-bg)',
-          border:       '1px solid #fecaca',
+          border:       `1px solid ${palette.danger.border}`,
           borderRadius: 6,
           color:        'var(--color-trigger-sla-breach)',
           fontSize:     14,
@@ -307,7 +364,7 @@ export function CIDynamicForm({
         <div style={{
           padding:      '10px 14px',
           background:   'var(--color-danger-bg)',
-          border:       '1px solid #fecaca',
+          border:       `1px solid ${palette.danger.border}`,
           borderRadius: 6,
           color:        'var(--color-trigger-sla-breach)',
           fontSize:     14,
@@ -326,37 +383,68 @@ export function CIDynamicForm({
         <input
           type="text"
           id={fieldId('name')}
+          aria-invalid={validationErrors['name'] ? true : undefined}
+          aria-describedby={validationErrors['name'] ? `${fieldId('name')}-error` : undefined}
           value={String(formValues['name'] ?? '')}
           onChange={e => handleChange('name', e.target.value)}
           style={inputBase}
         />
         {validationErrors['name'] && (
-          <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
+          <p id={`${fieldId('name')}-error`} style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
             {validationErrors['name']}
           </p>
         )}
       </div>
       {baseEnums.error && (
-        <div style={{ padding: '8px 14px', background: 'var(--color-danger-bg)', border: '1px solid #fecaca', borderRadius: 6, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
+        <div style={{ padding: '8px 14px', background: 'var(--color-danger-bg)', border: `1px solid ${palette.danger.border}`, borderRadius: 6, color: 'var(--color-trigger-sla-breach)', fontSize: 'var(--font-size-body)' }}>
           <strong>{t('components.ciDynamicForm.metamodelError')}</strong> {baseEnums.error}
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="og-pair">
         <div>
           <label htmlFor={fieldId('status')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('pages.cmdb.status')}</label>
           <select id={fieldId('status')} value={String(formValues['status'] ?? '')} onChange={e => handleChange('status', e.target.value)} style={inputBase}>
             <option value="">—</option>
-            {baseEnums.statuses.map(s => <option key={s} value={s}>{s}</option>)}
+            {baseEnums.statuses.map(s => <option key={s} value={s}>{optionLabel('status', s)}</option>)}
           </select>
         </div>
         <div>
           <label htmlFor={fieldId('environment')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('pages.cmdb.environment')}</label>
           <select id={fieldId('environment')} value={String(formValues['environment'] ?? '')} onChange={e => handleChange('environment', e.target.value)} style={inputBase}>
             <option value="">—</option>
-            {baseEnums.environments.map(v => <option key={v} value={v}>{v}</option>)}
+            {baseEnums.environments.map(v => <option key={v} value={v}>{optionLabel('environment', v)}</option>)}
           </select>
         </div>
       </div>
+      {groupRelations.length > 0 && (
+        <div className="og-pair">
+          {groupRelations.map(sr => {
+            const key = `${sr.name}Id`
+            return (
+              <div key={sr.id}>
+                <label htmlFor={fieldId(key)} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>
+                  {sr.label}
+                  {sr.required && <span style={{ color: 'var(--color-trigger-sla-breach)', marginLeft: 2 }}>*</span>}
+                </label>
+                <select id={fieldId(key)} aria-invalid={validationErrors[key] ? true : undefined} aria-describedby={validationErrors[key] ? `${fieldId(key)}-error` : undefined} value={String(formValues[key] ?? '')} onChange={e => handleChange(key, e.target.value || null)} style={inputBase}>
+                  <option value="">{t('components.ciDynamicForm.selectOption')}</option>
+                  {(teamsData?.teams ?? []).map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+                </select>
+                {validationErrors[key] && (
+                  <p id={`${fieldId(key)}-error`} style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
+                    {validationErrors[key]}
+                  </p>
+                )}
+              </div>
+            )
+          })}
+          {teamsError && (
+            <p role="alert" style={{ margin: 0, fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
+              {t('components.ciDynamicForm.teamsError', { error: teamsError.message })}
+            </p>
+          )}
+        </div>
+      )}
       <div>
         <label htmlFor={fieldId('description')} style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-slate)', marginBottom: 6 }}>{t('common.description')}</label>
         <textarea id={fieldId('description')} value={String(formValues['description'] ?? '')} onChange={e => handleChange('description', e.target.value)} rows={2} style={{ ...inputBase, resize: 'vertical' }} />
@@ -396,7 +484,7 @@ export function CIDynamicForm({
             />
 
             {error && (
-              <p style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
+              <p id={`${fieldId(field.name)}-error`} style={{ margin: '4px 0 0', fontSize: 'var(--font-size-body)', color: 'var(--color-trigger-sla-breach)' }}>
                 {error}
               </p>
             )}
@@ -411,9 +499,9 @@ export function CIDynamicForm({
           disabled={submitting || loading}
           style={{
             padding:      '9px 20px',
-            border:       '1px solid #e5e7eb',
+            border:       `1px solid ${colors.border}`,
             borderRadius: 6,
-            background:   '#ffffff',
+            background:   colors.white,
             fontSize:     14,
             cursor:       'pointer',
             color:        'var(--color-slate)',
@@ -428,8 +516,8 @@ export function CIDynamicForm({
             padding:      '9px 20px',
             border:       'none',
             borderRadius: 6,
-            background:   submitting || loading || scriptError ? '#67e8f9' : 'var(--color-brand)',
-            color:        '#ffffff',
+            background:   submitting || loading || scriptError ? palette.teal.border : 'var(--color-brand)',
+            color:        colors.white,
             fontSize:     14,
             fontWeight:   500,
             cursor:       submitting || loading || scriptError ? 'not-allowed' : 'pointer',

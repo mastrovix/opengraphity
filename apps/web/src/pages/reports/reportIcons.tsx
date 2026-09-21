@@ -1,4 +1,4 @@
-import { Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp, Table as TableIcon } from 'lucide-react'
+import { Hash, PieChart, CircleDot, BarChart2, BarChart, LineChart, TrendingUp, Table as TableIcon , ListOrdered } from 'lucide-react'
 import { lookupOrError } from '@/lib/tokens'
 import type { ReportTemplate } from './useCustomReports'
 
@@ -7,6 +7,9 @@ export const CHART_ICON_MAP: Record<string, React.ComponentType<{ size?: number;
   kpi: Hash, pie: PieChart, donut: CircleDot,
   bar: BarChart2, bar_horizontal: BarChart,
   line: LineChart, area: TrendingUp, table: TableIcon,
+  // La classifica (19 set 2026): senza questa riga `lookupOrError` scriveva
+  // un errore in console a ogni render della lista dei report.
+  top_n: ListOrdered,
 }
 
 export function getReportIcon(template: ReportTemplate, size = 20) {

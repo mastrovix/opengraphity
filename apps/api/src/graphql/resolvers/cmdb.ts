@@ -1,5 +1,7 @@
+import { GraphQLError } from 'graphql'
 /**
- * CMDB resolvers wired in resolvers/index.ts: only `updateCIFields`.
+ * CMDB resolvers wired in resolvers/index.ts: only `updateCIFields`, which
+ * writes through `updateCIRecord` (ciMutations.ts), like `update<Type>`.
  *
  * The former `configurationItems/configurationItem/blastRadius/ciTypes`
  * queries, `createConfigurationItem/updateConfigurationItem/addCIDependency`
@@ -8,22 +10,25 @@
  * tenant/label scoping that diverged from the live dynamic CI resolvers.
  */
 import { NotFoundError, ValidationError } from '../../lib/errors.js'
-import { assertWritablePropertyKey } from '../../lib/cypherIdentifiers.js'
+import { assertWritablePropertyKey, assertWritableCIPropertyKey } from '../../lib/cypherIdentifiers.js'
 import { runQuery, toNumber } from '@opengraphity/neo4j'
+import { loadMetamodel, type CITypeWithDefinitions, type CIFieldDefinition } from '@opengraphity/schema-generator'
+import { ENUM_SCOPE } from '../../lib/enumScope.js'
+import { updateCIRecord } from './ciMutations.js'
 import type { GraphQLContext } from '../../context.js'
 import { ciTypeFromLabels } from '../../lib/ciTypeFromLabels.js'
-import { ciLabelPredicate } from '../../lib/ciLabels.js'
+import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
 import { toSnakeCase } from '../../lib/mappers.js'
 import { withSession } from './ci-utils.js'
 
 type Props = Record<string, unknown>
 
-function mapCI(props: Props, label?: string) {
+function mapCI(tenantId: string, props: Props, label?: string) {
   return {
     id:          props['id']          as string,
     tenantId:    props['tenant_id']   as string,
     name:        props['name']        as string,
-    type:        label ? ciTypeFromLabels([label]) : (props['type'] as string ?? 'unknown'),
+    type:        label ? ciTypeFromLabels(tenantId, [label]) : (props['type'] as string ?? 'unknown'),
     status:      props['status']      as string,
     environment: props['environment'] as string,
     createdAt:   props['created_at']  as string,
@@ -45,36 +50,83 @@ function mapCI(props: Props, label?: string) {
 }
 
 /**
- * Builds the parameter map for `SET ci += $updates` from base fields plus the
- * customFields JSON. Every custom key is validated as a snake_case identifier
- * and must not be a system-managed property (tenant_id, id, created_at, …).
- * Exported for tests.
+ * La forma di una chiave di `customFields`: le DUE guardie di sempre, prima di
+ * guardare il metamodello. La prima valida la FORMA del nome (è lei che ferma
+ * l'injection in una chiave: `x = 1 SET ci.tenant_id`, backtick, spazi) e
+ * rifiuta le chiavi di sistema di qualunque nodo; la seconda aggiunge le
+ * riservate DEI CI (`name_key`, la salute, `chain`, `type`, i `discovery_*`).
+ * Sono ortogonali e servono entrambe.
  */
-export function buildCIFieldUpdates(
-  input: { name?: string; status?: string; environment?: string; description?: string; notes?: string; customFields?: string },
-  now: string,
-): Record<string, unknown> {
-  const updates: Record<string, unknown> = { updated_at: now }
-  const baseFields = ['name', 'status', 'environment', 'description', 'notes'] as const
-  for (const f of baseFields) {
-    if (input[f] !== undefined && input[f] !== null) updates[f] = input[f]
-  }
-  if (input.customFields) {
-    let custom: unknown
-    try { custom = JSON.parse(input.customFields) }
-    catch (e) {
-      throw new ValidationError(`customFields is not valid JSON: ${e instanceof Error ? e.message : String(e)}`)
-    }
-    if (!custom || typeof custom !== 'object' || Array.isArray(custom)) {
-      throw new ValidationError('customFields must be a JSON object')
-    }
-    for (const [key, val] of Object.entries(custom as Record<string, unknown>)) {
-      updates[assertWritablePropertyKey(toSnakeCase(key), 'customFields')] = val
-    }
-  }
-  return updates
+function assertCustomKey(key: string): void {
+  const named = assertWritablePropertyKey(toSnakeCase(key), 'customFields')
+  assertWritableCIPropertyKey(named, `customFields.${key}`)
 }
 
+/** Un valore arrivato come testo dal modulo, nel tipo che il campo dichiara. */
+function coerceFieldValue(field: CIFieldDefinition, raw: unknown): unknown {
+  if (raw === null || raw === undefined || raw === '') return null
+  if (typeof raw !== 'string') return raw
+  const what = field.label || field.name
+  if (field.fieldType === 'number') {
+    const n = Number(raw.trim())
+    if (raw.trim() === '' || !Number.isFinite(n)) {
+      throw new ValidationError(`${what}: "${raw}" is not a number.`, { key: 'errors.ci.notANumber', params: { field: what, value: raw } })
+    }
+    return n
+  }
+  if (field.fieldType === 'boolean') {
+    if (raw === 'true') return true
+    if (raw === 'false') return false
+    throw new ValidationError(`${what}: "${raw}" is not true or false.`, { key: 'errors.ci.notABoolean', params: { field: what, value: raw } })
+  }
+  return raw
+}
+
+/**
+ * L'input di `updateCIFields` nella forma degli input del tipo (camelCase), con
+ * le chiavi di `customFields` controllate contro il METAMODELLO del tipo
+ * (revisione del 15 set 2026 · CM-2): prima si scriveva qualunque chiave di
+ * forma valida, e dal vivo è finita sul CI una `campo_inventato` che nessun
+ * tipo dichiara. I valori arrivano come testo dal modulo e prendono il tipo
+ * del campo (un numero resta un numero). Exported for tests.
+ */
+export function ciInputFromFields(
+  input: { name?: string; status?: string; environment?: string; description?: string; notes?: string; customFields?: string },
+  ciType: CITypeWithDefinitions,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const f of ['name', 'status', 'environment', 'description', 'notes'] as const) {
+    if (input[f] !== undefined && input[f] !== null) out[f] = input[f]
+  }
+  if (!input.customFields) return out
+  let custom: unknown
+  try { custom = JSON.parse(input.customFields) }
+  catch (e) {
+    throw new ValidationError(`customFields is not valid JSON: ${e instanceof Error ? e.message : String(e)}`, { key: 'errors.ci.customFieldsNotJson' })
+  }
+  if (!custom || typeof custom !== 'object' || Array.isArray(custom)) {
+    throw new ValidationError('customFields must be a JSON object', { key: 'errors.ci.customFieldsNotObject' })
+  }
+  for (const [key, val] of Object.entries(custom as Record<string, unknown>)) {
+    assertCustomKey(key)
+    const field = ciType.fields.find((f) => f.name === key && !f.isSystem)
+    if (!field) {
+      throw new ValidationError(
+        `customFields: "${key}" is not a field of type "${ciType.label || ciType.name}".`,
+        { key: 'errors.ci.unknownField', params: { field: key, type: ciType.label || ciType.name } },
+      )
+    }
+    out[key] = coerceFieldValue(field, val)
+  }
+  return out
+}
+
+/**
+ * La modifica di un CI dal dettaglio (e dai criteri dei gruppi dinamici).
+ * Non scrive più da sé: trova il tipo del CI e passa da `updateCIRecord`, la
+ * stessa strada di `update<Tipo>` — vocabolario, obbligatori, script,
+ * `name_key`, gancio della manutenzione, audit (CM-2).
+ */
 async function updateCIFields(
   _: unknown,
   args: {
@@ -87,22 +139,33 @@ async function updateCIFields(
   ctx: GraphQLContext,
 ) {
   const { id, input } = args
-  const now = new Date().toISOString()
-
-  const updates = buildCIFieldUpdates(input, now)
-
   return withSession(async (session) => {
-    // Keys never reach the query text: validated names, then `SET ci += $updates`.
-    const cypher = `
+    // Le etichette sono quelle del metamodello del tenant: con la lista fissa
+    // un CI di un tipo del cliente non veniva trovato (A-9).
+    const rows = await runQuery<{ label: string | null }>(session, `
       MATCH (ci {id: $id, tenant_id: $tenantId})
-      WHERE ${ciLabelPredicate('ci')}
-      SET ci += $updates
-      RETURN properties(ci) as props
-    `
-    const rows = await runQuery<{ props: Props }>(session, cypher, { id, tenantId: ctx.tenantId, updates })
+      WHERE ${await ciLabelPredicateForTenant('ci', ctx.tenantId)}
+      RETURN head([l IN labels(ci) WHERE l <> 'ConfigurationItem']) AS label
+    `, { id, tenantId: ctx.tenantId })
     const row = rows[0]
     if (!row) throw new NotFoundError('ConfigurationItem')
-    return mapCI(row.props)
+    // L'ETICHETTA, non `props.type`: i nodi CI non portano `type` (dal vivo 0
+    // su 2049), e senza di essa il tipo non si può dire.
+    if (!row.label) {
+      throw new GraphQLError(
+        `ConfigurationItem ${id} has no type label besides ConfigurationItem: incomplete data, its type cannot be told.`,
+        { extensions: { code: 'CONFLICT', i18n: { key: 'errors.ci.noTypeLabel', params: { id } } } },
+      )
+    }
+    const ciType = (await loadMetamodel(ctx.tenantId, ENUM_SCOPE)).find((t) => t.neo4jLabel === row.label)
+    if (!ciType) {
+      throw new GraphQLError(
+        `CI ${id}: no active CI type of this tenant declares label ${row.label}.`,
+        { extensions: { code: 'CONFLICT', i18n: { key: 'errors.ci.unknownTypeOnRecord', params: { type: JSON.stringify(row.label) } } } },
+      )
+    }
+    const props = await updateCIRecord(session, ctx, ciType, row.label, id, ciInputFromFields(input, ciType))
+    return mapCI(ctx.tenantId, props, row.label)
   }, true)
 }
 

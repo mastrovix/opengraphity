@@ -16,8 +16,21 @@ vi.mock('../../ci-utils.js', () => ({
   runQuery:    vi.fn(),
   runQueryOne: vi.fn(),
 }))
+/**
+ * I tipi pre-approvati sono dato del cliente (ondata 8): questo test misura il
+ * GATE, non la policy, quindi la policy è un doppio pilotabile. Il suo
+ * comportamento vero è in `lib/__tests__/changePolicy.test.ts`.
+ */
+let preApproved: string[] = ['standard']
+vi.mock('../../../../lib/changePolicy.js', () => ({
+  isPreApprovedChangeType: (_t: string, type: unknown) => Promise.resolve(typeof type === 'string' && preApproved.includes(type)),
+  preApprovedChangeTypes:  () => Promise.resolve(preApproved),
+}))
+
 vi.mock('../../../../lib/logger.js', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  // `child` serve ai moduli che si prendono un logger di modulo (domainMatrix,
+  // changePolicy): senza, l'import del gate fallisce prima dei test.
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }))
 
 import { runQuery, runQueryOne } from '../../ci-utils.js'
@@ -50,10 +63,22 @@ beforeEach(() => {
 })
 
 describe('getApprovalGateState', () => {
-  it('normalizza i contatori Neo4j e il tipo assente → normal', async () => {
-    mockedOne.mockResolvedValueOnce({ changeType: null, total: 3, pending: 1, cm: 1 })
+  it('normalizza i contatori Neo4j', async () => {
+    mockedOne.mockResolvedValueOnce({ changeType: 'normal', total: 3, pending: 1, cm: 1 })
     const s = await getApprovalGateState(session, 'chg', 't1')
     expect(s).toEqual({ changeType: 'normal', total: 3, pending: 1, hasChangeManager: true })
+  })
+
+  /**
+   * CONTRATTO RINEGOZIATO (revisione totale · B-25): una change SENZA tipo non
+   * viene più trattata come «normal». Il tipo decide i requisiti di
+   * approvazione e i tipi pre-approvati: un ripiego su un valore di fabbrica
+   * faceva valutare un tipo che il cliente può avere rinominato o non avere
+   * affatto. Un dato incompleto si dice.
+   */
+  it('change senza tipo → CONFLICT che lo nomina, nessun requisito deciso (B-25)', async () => {
+    mockedOne.mockResolvedValueOnce({ changeType: null, total: 3, pending: 1, cm: 1 })
+    await expectCode(getApprovalGateState(session, 'chg', 't1'), 'CONFLICT')
   })
   it('NOT_FOUND se la change non esiste', async () => {
     mockedOne.mockResolvedValueOnce(null)
@@ -62,13 +87,33 @@ describe('getApprovalGateState', () => {
 })
 
 describe('assertAllApprovalsSatisfied (gate condiviso da approve + executeChangeTransition)', () => {
+  it('il tipo pre-approvato viene dalla LISTA del cliente, non dal letterale «standard»', async () => {
+    // Ondata 8: un cliente che rinomina `standard` in `preautorizzata` deve
+    // continuare ad avere quelle change pre-approvate. Prima il codice
+    // confrontava il nome, e la pre-approvazione si spegneva in silenzio.
+    preApproved = ['preautorizzata']
+    mockedOne.mockResolvedValueOnce(gateRow({ changeType: 'preautorizzata', total: 0, pending: 0, cm: 0 }))
+    await expect(assertAllApprovalsSatisfied(session, 'chg', 't1')).resolves.toBeUndefined()
+    // e il letterale, che ora NON è nella lista, non passa più
+    mockedOne.mockResolvedValueOnce(gateRow({ changeType: 'standard', total: 0, pending: 0, cm: 0 }))
+    // Terza revisione · G4: il messaggio non diceva cosa fare. Lo stato in cui
+    // compare piu spesso e una change nata pre-approvata il cui tipo e stato
+    // togliuto dai pre-approvati: si pinnano le DUE uscite, non la frase.
+    const err = await assertAllApprovalsSatisfied(session, 'chg', 't1').then(() => null, (e: Error) => e)
+    expect(err).not.toBeNull()
+    expect(err!.message).toMatch(/it has no approval requirement/)
+    expect(err!.message).toMatch(/pre-approved types/)
+    expect(err!.message).toMatch(/bring it back to the approval/)
+    preApproved = ['standard']
+  })
+
   it('standard: passa sempre, anche senza record', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ changeType: 'standard', total: 0, cm: 0 }))
     await expect(assertAllApprovalsSatisfied(session, 'chg', 't1')).resolves.toBeUndefined()
   })
   it('CONFLICT se non esistono requisiti', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ total: 0, pending: 0, cm: 0 }))
-    await expectCode(assertAllApprovalsSatisfied(session, 'chg', 't1'), 'CONFLICT', 'non ancora creati')
+    await expectCode(assertAllApprovalsSatisfied(session, 'chg', 't1'), 'CONFLICT', 'it has no approval requirement')
   })
   it('CONFLICT se manca il requisito del Change Manager anche con gli owner group approvati', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ total: 2, pending: 0, cm: 0 }))
@@ -76,7 +121,7 @@ describe('assertAllApprovalsSatisfied (gate condiviso da approve + executeChange
   })
   it('CONFLICT con requisiti pendenti (conteggio nel messaggio)', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ total: 3, pending: 2 }))
-    await expectCode(assertAllApprovalsSatisfied(session, 'chg', 't1'), 'CONFLICT', '2 requisiti')
+    await expectCode(assertAllApprovalsSatisfied(session, 'chg', 't1'), 'CONFLICT', '2 requirement(s) still pending')
   })
   it('passa quando tutti approvati e CM presente', async () => {
     mockedOne.mockResolvedValueOnce(gateRow({ total: 3, pending: 0, cm: 1 }))
@@ -96,10 +141,13 @@ describe('areAllApprovalsSatisfied (auto-advance)', () => {
 })
 
 describe('createChangeApprovals', () => {
-  it('standard: nessuna scrittura', async () => {
+  it('standard: nessun requisito, solo l\'esito «approved» (giro nel browser del 14 set 2026)', async () => {
     mockedOne.mockResolvedValueOnce({ changeType: 'standard' })
     await createChangeApprovals(session, 'chg', 't1')
-    expect(mockedMany).not.toHaveBeenCalled()
+    expect(mockedMany).toHaveBeenCalledTimes(1)
+    const cypher = String(mockedMany.mock.calls[0]![1])
+    expect(cypher).toContain("c.approval_status = 'approved'")
+    expect(cypher).not.toContain('ChangeApproval')
   })
   it('senza team Change Manager → CONFLICT e nessuna scrittura (niente gate parziale)', async () => {
     mockedOne

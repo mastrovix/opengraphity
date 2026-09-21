@@ -1,10 +1,13 @@
 /**
  * REST v1 — historical data importer.
  *
- *   POST /api/v1/import/incidents?dryRun=true|false     (permission: incidents:write)
- *   POST /api/v1/import/kb-articles?dryRun=true|false   (permission: kb:write)
+ *   POST /api/v1/import/incidents?dryRun=true|false         (permission: incidents:write)
+ *   POST /api/v1/import/problems?dryRun=true|false          (permission: problems:write)
+ *   POST /api/v1/import/changes?dryRun=true|false           (permission: changes:write)
+ *   POST /api/v1/import/service-requests?dryRun=true|false  (permission: requests:write)
+ *   POST /api/v1/import/kb-articles?dryRun=true|false       (permission: kb:write)
  *
- * Both accept multipart/form-data with a `file` field containing the CSV
+ * All accept multipart/form-data with a `file` field containing the CSV
  * (max 20MB). The response is the ImportResult JSON at the top level:
  *   { totalRows, created, updated, errors: [{row, externalId, message}], warnings: [...] }
  *
@@ -20,6 +23,9 @@ import { apiKeyOf } from '../apiContext.js'
 import {
   parseCsv,
   importIncidents,
+  importProblems,
+  importChanges,
+  importServiceRequests,
   importKBArticles,
   type CsvRow,
   type ImportResult,
@@ -105,10 +111,10 @@ function makeImportHandler(importer: Importer) {
     try {
       rows = parseCsv(upload.content)
     } catch (err) {
-      throw new ValidationError(`CSV non valido: ${err instanceof Error ? err.message : 'parse error'}`)
+      throw new ValidationError(`invalid CSV: ${err instanceof Error ? err.message : 'parse error'}`, { key: 'errors.import.invalidCsv', params: { reason: err instanceof Error ? err.message : 'parse error' } })
     }
     if (rows.length === 0) {
-      throw new ValidationError('Il CSV non contiene righe dati (serve una riga di intestazione + almeno una riga)')
+      throw new ValidationError('The CSV has no data rows (a header row plus at least one row is needed)', { key: 'errors.import.noRows' })
     }
 
     const dryRun = String(req.query['dryRun'] ?? '').toLowerCase() === 'true'
@@ -123,6 +129,11 @@ function makeImportHandler(importer: Importer) {
 
 // POST /api/v1/import/incidents
 router.post('/incidents', requirePermission('incidents:write'), makeImportHandler(importIncidents))
+
+// POST /api/v1/import/problems | changes | service-requests (verifica «Cosa resta cablato», ondata 5)
+router.post('/problems', requirePermission('problems:write'), makeImportHandler(importProblems))
+router.post('/changes', requirePermission('changes:write'), makeImportHandler(importChanges))
+router.post('/service-requests', requirePermission('requests:write'), makeImportHandler(importServiceRequests))
 
 // POST /api/v1/import/kb-articles
 router.post('/kb-articles', requirePermission('kb:write'), makeImportHandler(importKBArticles))

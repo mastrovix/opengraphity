@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import { calculateDeadline, zonedTimeToUtc } from '../policy.js'
+import { FACTORY_SERVICE_CALENDAR } from '../calendar.js'
 
-// Business hours: Mon–Fri 08:00–18:00 local time in the policy timezone.
+// Business hours: il calendario di servizio di fabbrica (Mon–Fri 08:00–18:00) nel fuso della policy.
 // DST 2026 (Europe/Rome): spring forward Sun 29 Mar 02:00→03:00 (CET→CEST),
 // fall back Sun 25 Oct 03:00→02:00 (CEST→CET).
 
 describe('calculateDeadline — 24x7 (non business hours)', () => {
   it('adds absolute minutes regardless of timezone', () => {
     const start = new Date('2026-03-28T23:30:00Z')
-    expect(calculateDeadline(start, 120, false, 'Europe/Rome').toISOString()).toBe('2026-03-29T01:30:00.000Z')
+    expect(calculateDeadline(start, 120, false, 'Europe/Rome', null).toISOString()).toBe('2026-03-29T01:30:00.000Z')
   })
 })
 
@@ -91,14 +92,14 @@ describe('calculateDeadline — business hours across DST (D-09)', () => {
 
   for (const c of cases) {
     it(c.name, () => {
-      const out = calculateDeadline(new Date(c.start), c.minutes, true, c.tz)
+      const out = calculateDeadline(new Date(c.start), c.minutes, true, c.tz, FACTORY_SERVICE_CALENDAR)
       expect(out.toISOString()).toBe(c.expected)
     })
   }
 
   it('zero minutes returns the (advanced) business start unchanged', () => {
     // Sat 28/3/2026 10:00 CET → Mon 30/3 08:00 CEST (06:00Z)
-    const out = calculateDeadline(new Date('2026-03-28T09:00:00Z'), 0, true, 'Europe/Rome')
+    const out = calculateDeadline(new Date('2026-03-28T09:00:00Z'), 0, true, 'Europe/Rome', FACTORY_SERVICE_CALENDAR)
     expect(out.toISOString()).toBe('2026-03-30T06:00:00.000Z')
   })
 })

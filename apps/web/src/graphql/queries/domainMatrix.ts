@@ -1,0 +1,122 @@
+import { gql } from '@apollo/client'
+import { DOMAIN_MATRIX_FIELDS } from '../fragments'
+
+// ── Matrici di dominio (ondata 7) ────────────────────────────────────────────
+// Le regole che traducono un valore di vocabolario in un altro (priorità =
+// impatto × urgenza, criticità del servizio → impatto, …). `cells` arriva già
+// completa di tutte le combinazioni che i vocabolari del cliente rendono
+// possibili: `value: null` è una cella da compilare, non un dato mancante da
+// nascondere.
+
+export const GET_DOMAIN_MATRICES = gql`
+  query GetDomainMatrices {
+    domainMatrices { ...DomainMatrixFields }
+  }
+  ${DOMAIN_MATRIX_FIELDS}
+`
+
+/**
+ * Le criticità che valgono «servizio critico» secondo la matrice del cliente
+ * (le celle che portano all'impatto più alto). Il banner della console
+ * allarmi le chiede al server invece di tenerne una copia: la copia nel web
+ * era il difetto C-7 — una criticità aggiunta dall'admin non compariva mai nel
+ * banner, in silenzio.
+ */
+export const GET_CRITICAL_SERVICE_CRITICALITIES = gql`
+  query GetCriticalServiceCriticalities {
+    criticalServiceCriticalities
+  }
+`
+
+/**
+ * I tipi di change PRE-APPROVATI (ondata 8). Non è una matrice — «essere
+ * pre-approvato» è un concetto del codice, non un valore rinominabile — ma per
+ * l'amministratore è la stessa cosa: una regola di dominio che decide lui, e
+ * vive nella stessa pagina.
+ */
+export const GET_PRE_APPROVED_CHANGE_TYPES = gql`
+  query GetPreApprovedChangeTypes {
+    preApprovedChangeTypes { types vocabulary }
+  }
+`
+
+/**
+ * Le **soglie** delle fasce di rischio (rimedio 3 · revisione C·N-2): quale
+ * punteggio cade in quale fascia. Erano 30 e 60 scritte nel codice, con le
+ * fasce lette per POSIZIONE nel vocabolario — quindi riordinarlo invertiva le
+ * fasce in silenzio, e una quarta fascia era irraggiungibile pur comparendo
+ * nella matrice `change_priority`.
+ */
+export const GET_RISK_BAND_THRESHOLDS = gql`
+  query GetRiskBandThresholds {
+    riskBandThresholds {
+      thresholds { band upTo }
+      vocabulary
+      isDefault
+    }
+  }
+`
+
+/** Il peso dell'ambiente nel punteggio dell'assessment della change (era 5 nel codice). */
+export const GET_IMPACT_ANALYSIS_WEIGHTS = gql`
+  query GetImpactAnalysisWeights {
+    impactAnalysisWeights { productionCI blastRadiusCI blastRadiusCap openIncident failedChange ongoingChange recentChangesDays recentIncidentsDays isDefault }
+  }
+`
+
+export const GET_CHANGE_ENVIRONMENT_WEIGHT = gql`
+  query GetChangeEnvironmentWeight {
+    changeEnvironmentWeight { weight isDefault }
+  }
+`
+
+/**
+ * Cosa c'è da sistemare nella configurazione di questo cliente. Il prodotto lo
+ * sapeva già e lo diceva a tutti tranne che a chi può rimediare: intestazione
+ * HTTP, metrica, log e `migrate --status` non arrivano all'amministratore del
+ * tenant, che vede solo pagine che non funzionano.
+ */
+export const GET_CONFIGURATION_ISSUES = gql`
+  query GetConfigurationIssues {
+    configurationIssues { kind severity params { name value } gaps { kind params { name value } } where }
+  }
+`
+
+/**
+ * In che lingua si legge questo cliente. La chiede l'app all'avvio: la lingua
+ * predefinita e configurazione del cliente e sta nel grafo, non nel bundle.
+ */
+export const GET_TENANT_LANGUAGE_SETTINGS = gql`
+  query GetTenantLanguageSettings {
+    tenantLanguageSettings { available defaultLanguage fallback }
+  }
+`
+
+/** Il fuso orario del cliente e le zone disponibili (revisione del 14 set 2026 · F7). */
+export const GET_TENANT_TIMEZONE_SETTINGS = gql`
+  query GetTenantTimezoneSettings {
+    tenantTimezoneSettings { timezone available }
+  }
+`
+
+
+/** Cosa manca a questo cliente per essere usabile (lista vuota = completo). */
+export const GET_TENANT_PROVISIONING_GAPS = gql`
+  query GetTenantProvisioningGaps {
+    tenantProvisioningGaps { kind params { name value } }
+  }
+`
+
+/** Le severità offerte nel portale self-service, come le ha salvate l'amministratore (null = non dichiarate). */
+export const GET_PORTAL_SEVERITY_OPTIONS = gql`
+  query GetPortalSeverityOptions {
+    portalSeverityOptions { value labels { language label } }
+  }
+`
+
+/** Per quanti giorni si conservano le notifiche della campanella (null = non scelto). */
+export const GET_TENANT_INAPP_RETENTION = gql`
+  query GetTenantInAppRetention {
+    tenantInAppRetentionDays
+  }
+`

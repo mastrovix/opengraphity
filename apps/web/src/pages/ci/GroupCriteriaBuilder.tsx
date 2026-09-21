@@ -11,6 +11,9 @@ import { useMetamodel } from '@/contexts/MetamodelContext'
 import { toPascalCase } from '@/lib/stringUtils'
 import { UPDATE_CI } from '@/graphql/mutations'
 import { useCIBaseEnums } from '@/lib/ciEnums'
+import { colors, palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
 
 const PREVIEW_COUNT = gql`
   query GroupCriteriaPreview($ciTypes: [String], $environment: String, $status: String, $search: String) {
@@ -34,6 +37,7 @@ interface Props {
  */
 export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const { ciTypes } = useMetamodel()
   // Status/environment dal tipo base del metamodello (stessa sorgente del backend)
   const baseEnums = useCIBaseEnums()
@@ -88,21 +92,30 @@ export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
   const save = async () => {
     setSaving(true)
     try {
+      // I criteri NON sono campi di `UpdateCIFieldsInput`: passano dal varco
+      // dichiarato per le proprietà non di base, `customFields` (l'API le
+      // converte in snake_case: criteria_ci_types, …, che è quello che legge
+      // `ciGroupMembers`). Mandarli come chiavi di primo livello — come si
+      // faceva — faceva rifiutare da Apollo l'intera richiesta: «Salva
+      // criteri» non ha mai salvato nulla. Ora il contratto è pinnato dal test
+      // API ↔ web sulle variabili (webDocuments.test.ts).
       await updateCIFields({
         variables: {
           id: groupId,
           input: {
-            criteriaCiTypes:      [...selectedTypes].join(','),
-            criteriaEnvironment:  environment,
-            criteriaStatus:       status,
-            criteriaNameContains: nameContains.trim(),
+            customFields: JSON.stringify({
+              criteriaCiTypes:      [...selectedTypes].join(','),
+              criteriaEnvironment:  environment,
+              criteriaStatus:       status,
+              criteriaNameContains: nameContains.trim(),
+            }),
           },
         },
       })
       toast.success(t('pages.ci.criteriaSaved'))
       onSaved()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     } finally {
       setSaving(false)
     }
@@ -125,8 +138,8 @@ export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
                   style={{
                     padding: '4px 12px', borderRadius: 100, fontSize: 'var(--font-size-body)', fontWeight: 500,
                     cursor: 'pointer', transition: 'all 120ms',
-                    border: active ? '1.5px solid var(--color-brand)' : '1.5px solid #e5e7eb',
-                    background: active ? 'var(--color-brand-light)' : '#fff',
+                    border: active ? '1.5px solid var(--color-brand)' : `1.5px solid ${colors.border}`,
+                    background: active ? 'var(--color-brand-light)' : colors.white,
                     color: active ? 'var(--color-brand)' : 'var(--color-slate)',
                   }}
                 >
@@ -151,14 +164,14 @@ export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
             <FieldLabel htmlFor={ids.environment}>{t('pages.cmdb.environment')}</FieldLabel>
             <Select id={ids.environment} value={environment} onChange={(e) => setEnvironment(e.target.value)}>
               <option value="">—</option>
-              {baseEnums.environments.map((v) => <option key={v} value={v}>{v}</option>)}
+              {baseEnums.environments.map((v) => <option key={v} value={v}>{ciLabels.environmentLabel(v)}</option>)}
             </Select>
           </div>
           <div>
             <FieldLabel htmlFor={ids.status}>{t('pages.cmdb.status')}</FieldLabel>
             <Select id={ids.status} value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">—</option>
-              {baseEnums.statuses.map((v) => <option key={v} value={v}>{v}</option>)}
+              {baseEnums.statuses.map((v) => <option key={v} value={v}>{ciLabels.statusLabel(v)}</option>)}
             </Select>
           </div>
           <div>
@@ -168,7 +181,7 @@ export function GroupCriteriaBuilder({ groupId, criteria, onSaved }: Props) {
         </div>
 
         {/* Live preview + save */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px solid #f3f4f6' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4, borderTop: `1px solid ${palette.neutral.borderLight}` }}>
           <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--text-secondary)' }}>
             {previewLoading
               ? <Loader2 size={12} className="animate-spin" />

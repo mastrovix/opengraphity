@@ -150,7 +150,7 @@ export function buildTypeIconMap(ciTypes: ReadonlyArray<{ name: string; icon?: s
 export function iconKeyForType(typeIconMap: ReadonlyMap<string, string>, ciType: string): string {
   const key = typeIconMap.get(normalizeTypeName(ciType))
   if (key === undefined) {
-    console.error(`[CI_ICON] tipo CI senza icona nel metamodello: "${ciType}"`)
+    console.error(`[CI_ICON] CI type with no icon in the metamodel: "${ciType}"`)
     return BROKEN_ICON_KEY
   }
   return key

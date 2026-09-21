@@ -7,6 +7,7 @@
  * No-fallback: any failure (model load, provider HTTP, Neo4j) throws so the
  * job fails visibly and BullMQ retries.
  */
+import { aiFeatureEnabled } from '../lib/aiSettings.js'
 import type { Worker, Job } from 'bullmq'
 import { getSession, runQueryOne } from '@opengraphity/neo4j'
 import { logger } from '../lib/logger.js'
@@ -42,7 +43,7 @@ export function embeddingJobId(data: EmbeddingJobData, now: number = Date.now())
   if (Number.isNaN(epoch)) {
     throw new Error(`[embeddings] invalid updatedAt "${data.updatedAt}" for ${data.entityType} ${data.entityId}`)
   }
-  return `embed:${data.entityType}:${data.entityId}:${epoch}`
+  return `embed-${data.entityType}-${data.entityId}-${epoch}`
 }
 
 /** Enqueue (or re-enqueue) the embedding of an entity, deduped per entity version. */
@@ -85,6 +86,11 @@ export async function ensureVectorIndexes(): Promise<void> {
 
 async function processEmbedding(job: Job<EmbeddingJobData>): Promise<void> {
   const { entityType, entityId, tenantId } = job.data
+  // Embedding spenti dall'organizzazione (ondata 6): il testo non va al provider.
+  if (!(await aiFeatureEnabled(tenantId, 'embeddings'))) {
+    log.info({ entityType, entityId, tenantId }, '[embeddings] turned off for this organization — skipped')
+    return
+  }
   const embedder = getEmbedder()
   const label = entityType === 'incident' ? 'Incident' : 'KBArticle'
 

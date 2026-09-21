@@ -1,10 +1,21 @@
 import { assertSafeOutboundUrl } from '@opengraphity/events'
+import { loadNotificationLocale } from './locale.js'
+import { notificationText } from './texts.js'
+import { slackBotToken } from './slackInstallation.js'
 
 export * from './sse.js'
+export * from './inbox.js'
 export * from './email.js'
 export * from './webhook.js'
 export * from './dispatcher.js'
 export * from './escapeHtml.js'
+export * from './routing.js'
+export * from './recipients.js'
+export * from './texts.js'
+export * from './locale.js'
+export * from './brand.js'
+export * from './secretBox.js'
+export * from './slackInstallation.js'
 export { loadChannels, dispatchIncidentNotification, dispatchChangeNotification, dispatchChangeTaskNotification } from './consumer.js'
 
 export interface NotificationChannelData {
@@ -50,6 +61,7 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
  * `false` nobody reads.
  */
 export async function sendSlackMessage(
+  tenantId: string,
   webhookUrl: string | null,
   channelId: string | null,
   blocks: SlackBlock[],
@@ -66,8 +78,8 @@ export async function sendSlackMessage(
     return true
   }
   if (channelId) {
-    const token = process.env['SLACK_BOT_TOKEN']
-    if (!token) throw new Error('SLACK_BOT_TOKEN non configurato')
+    // Il bot del workspace dell'ORGANIZZAZIONE (ondata 8): prima un token unico della piattaforma.
+    const token = await slackBotToken(tenantId)
     const res = await fetchWithTimeout('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -104,20 +116,22 @@ export async function sendTeamsAdaptiveMessage(
   return true
 }
 
-export async function sendTestMessage(channel: NotificationChannelData): Promise<boolean> {
+/** Il messaggio di prova di un canale, nella lingua del cliente che lo prova. */
+export async function sendTestMessage(channel: NotificationChannelData, tenantId: string): Promise<boolean> {
+  const locale = await loadNotificationLocale(tenantId)
   if (channel.platform === 'slack') {
     const blocks: SlackBlock[] = [
-      { type: 'section', text: { type: 'mrkdwn', text: `✅ *Test notifica* — canale *${channel.name}* configurato correttamente su OpenGraphity.` } },
+      { type: 'section', text: { type: 'mrkdwn', text: notificationText(locale, 'testMessageSlack', { channel: channel.name }) } },
     ]
-    return sendSlackMessage(channel.webhookUrl, channel.channelId, blocks)
+    return sendSlackMessage(tenantId, channel.webhookUrl, channel.channelId, blocks)
   }
   if (channel.platform === 'teams') {
     const card: TeamsAdaptiveCard = {
       type: 'AdaptiveCard',
       version: '1.4',
       body: [
-        { type: 'TextBlock', text: `✅ Test notifica — ${channel.name}`, weight: 'Bolder', size: 'Medium' },
-        { type: 'TextBlock', text: 'Canale configurato correttamente su OpenGraphity.', wrap: true },
+        { type: 'TextBlock', text: notificationText(locale, 'testMessageTitle', { channel: channel.name }), weight: 'Bolder', size: 'Medium' },
+        { type: 'TextBlock', text: notificationText(locale, 'testMessageBody'), wrap: true },
       ],
     }
     return sendTeamsAdaptiveMessage(channel.webhookUrl!, card)

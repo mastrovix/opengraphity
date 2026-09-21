@@ -1,4 +1,3 @@
-import { GraphQLError } from 'graphql'
 import { envOrThrowInProd } from '../../lib/env.js'
 import { getSession } from '@opengraphity/neo4j'
 import type { GraphQLContext } from '../../context.js'
@@ -10,6 +9,7 @@ import {
   getQueueMetricsSnapshot,
 } from '../../middleware/metrics.js'
 import { otelEnabled, otelEndpoint, recentTraces } from '../../telemetry.js'
+import { requirePermission } from '../../lib/permissions.js'
 
 // ── Health check helpers ──────────────────────────────────────────────────────
 
@@ -62,18 +62,14 @@ async function checkKeycloak(): Promise<{ status: string; latencyMs: number | nu
 
 // ── Resolvers ─────────────────────────────────────────────────────────────────
 
-function requireAdmin(ctx: GraphQLContext): void {
-  if (ctx.role !== 'admin') {
-    throw new GraphQLError('Forbidden — admin role required', {
-      extensions: { code: 'FORBIDDEN' },
-    })
-  }
+function requireSystemPermission(ctx: GraphQLContext): void {
+  requirePermission(ctx, 'admin.system')
 }
 
 export const monitoringResolvers = {
   Query: {
     systemHealth: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
-      requireAdmin(ctx)
+      requireSystemPermission(ctx)
 
       const [neo4j, redis, keycloak] = await Promise.all([
         checkNeo4j(),
@@ -91,7 +87,7 @@ export const monitoringResolvers = {
     },
 
     systemMetrics: (_: unknown, __: unknown, ctx: GraphQLContext) => {
-      requireAdmin(ctx)
+      requireSystemPermission(ctx)
 
       const requests = getRequestMetrics()
       const graphql  = getGraphQLMetrics()
@@ -103,7 +99,7 @@ export const monitoringResolvers = {
     },
 
     traceInfo: (_: unknown, __: unknown, ctx: GraphQLContext) => {
-      requireAdmin(ctx)
+      requireSystemPermission(ctx)
 
       return {
         enabled:      otelEnabled,

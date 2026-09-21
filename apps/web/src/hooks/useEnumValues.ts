@@ -9,6 +9,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@apollo/client/react'
 import { GET_ITIL_TYPES, GET_CI_TYPES } from '@/graphql/queries'
 import { isITILEntity } from '@/lib/automationOperators'
+import { METAMODEL_FETCH_POLICY } from '@/lib/fetchPolicy'
 
 interface TypeDef {
   name:   string
@@ -20,11 +21,11 @@ export function useEnumValues(entityType: string, fieldName: string): { values: 
 
   const { data: itilData, loading: itilLoading, error: itilError } = useQuery(GET_ITIL_TYPES, {
     skip: !isITIL,
-    fetchPolicy: 'cache-first',
+    fetchPolicy: METAMODEL_FETCH_POLICY,
   })
   const { data: ciData, loading: ciLoading, error: ciError } = useQuery(GET_CI_TYPES, {
     skip: isITIL,
-    fetchPolicy: 'cache-first',
+    fetchPolicy: METAMODEL_FETCH_POLICY,
   })
 
   const loading = isITIL ? itilLoading : ciLoading

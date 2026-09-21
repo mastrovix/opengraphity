@@ -71,7 +71,7 @@ describe('initSchema — clean database', () => {
     await expect(initSchema({ log: m => log.push(m) })).resolves.toBeUndefined()
 
     const prechecks = calls().filter(c => isPrecheck(c.cypher))
-    expect(prechecks).toHaveLength(6)
+    expect(prechecks).toHaveLength(8)
     expect(prechecks.every(c => c.mode === 'READ')).toBe(true)
     // every precheck precedes the first schema statement
     const firstCreate = calls().findIndex(c => c.cypher.startsWith('CREATE '))
@@ -99,12 +99,53 @@ describe('initSchema — clean database', () => {
       'CREATE CONSTRAINT workflow_definition_id_unique IF NOT EXISTS FOR (n:WorkflowDefinition) REQUIRE n.id IS UNIQUE',
       'CREATE CONSTRAINT migration_id_unique IF NOT EXISTS FOR (n:Migration) REQUIRE n.id IS UNIQUE',
       'CREATE CONSTRAINT migration_lock_id_unique IF NOT EXISTS FOR (n:MigrationLock) REQUIRE n.id IS UNIQUE',
+      'CREATE CONSTRAINT event_id_unique IF NOT EXISTS FOR (n:Event) REQUIRE n.id IS UNIQUE',
+      'CREATE CONSTRAINT event_tenant_fingerprint_unique IF NOT EXISTS FOR (n:Event) REQUIRE (n.tenant_id, n.fingerprint) IS UNIQUE',
+      'CREATE CONSTRAINT ci_alias_id_unique IF NOT EXISTS FOR (n:CIAlias) REQUIRE n.id IS UNIQUE',
+      'CREATE CONSTRAINT ci_alias_tenant_kind_value_unique IF NOT EXISTS FOR (n:CIAlias) REQUIRE (n.tenant_id, n.kind, n.value) IS UNIQUE',
+      // Cronologia dell'allarme (services/events/history.ts): unicità della voce e lettura per evento ordinata per istante
+      'CREATE CONSTRAINT event_history_entry_id_unique IF NOT EXISTS FOR (n:EventHistoryEntry) REQUIRE n.id IS UNIQUE',
+      'CREATE INDEX event_history_tenant_event IF NOT EXISTS FOR (n:EventHistoryEntry) ON (n.tenant_id, n.event_id, n.at)',
+      // Servizi monitorati (apps/api/src/services/serviceImpact/): mappa unica per id, cronologia unica per id, lookup per servizio/stato, cronologia per mappa ordinata per istante
+      'CREATE CONSTRAINT service_map_id_unique IF NOT EXISTS FOR (n:ServiceMap) REQUIRE n.id IS UNIQUE',
+      'CREATE CONSTRAINT service_health_entry_id_unique IF NOT EXISTS FOR (n:ServiceHealthEntry) REQUIRE n.id IS UNIQUE',
+      'CREATE INDEX service_map_tenant_service IF NOT EXISTS FOR (n:ServiceMap) ON (n.tenant_id, n.service_id)',
+      'CREATE INDEX service_map_tenant_status IF NOT EXISTS FOR (n:ServiceMap) ON (n.tenant_id, n.status)',
+      'CREATE INDEX service_health_tenant_map IF NOT EXISTS FOR (n:ServiceHealthEntry) ON (n.tenant_id, n.map_id, n.at)',
       'CREATE INDEX incident_tenant_id IF NOT EXISTS FOR (n:Incident) ON (n.tenant_id)',
+      'CREATE INDEX event_tenant_status_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.status, n.last_seen_at)',
+      // Event Management (revisione, ondata 1): tempeste per sorgente, rivalutazioni per correlazione, CI per nome
+      'CREATE INDEX event_tenant_source IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.source_id)',
+      'CREATE INDEX event_tenant_correlation IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.correlation)',
+      'CREATE INDEX ci_tenant_name_key IF NOT EXISTS FOR (n:ConfigurationItem) ON (n.tenant_id, n.name_key)',
+      // Event Management (revisione, ondata 3 — prestazioni): vista "tutti gli stati", conservazione/resolved24h, ricerca full-text della console
+      'CREATE INDEX event_tenant_last_seen IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.last_seen_at)',
+      'CREATE INDEX event_tenant_resolved IF NOT EXISTS FOR (n:Event) ON (n.tenant_id, n.resolved_at)',
+      'CREATE FULLTEXT INDEX event_search IF NOT EXISTS FOR (n:Event) ON EACH [n.title, n.resource]',
+      // Event Management (revisione 2 · D4.2): passate periodiche e gauge su tutti i tenant, per stato con cursore su id / per stato e correlazione
+      'CREATE INDEX event_status_id IF NOT EXISTS FOR (n:Event) ON (n.status, n.id)',
+      'CREATE INDEX event_status_correlation IF NOT EXISTS FOR (n:Event) ON (n.status, n.correlation)',
       'CREATE INDEX notification_rule_tenant_event IF NOT EXISTS FOR (n:NotificationRule) ON (n.tenant_id, n.event_type)',
+      // Metamodello (D-17, ondata 8): le chiavi naturali dei tipi e dei vocabolari
+      // diventano vincoli; i campi e le relazioni hanno la chiave (tipo, nome), che un
+      // vincolo di nodo non esprime — lì l'unicità la applica la mutation.
+      'CREATE CONSTRAINT ci_type_definition_tenant_name_unique IF NOT EXISTS FOR (n:CITypeDefinition) REQUIRE (n.tenant_id, n.name) IS UNIQUE',
+      'CREATE CONSTRAINT enum_type_definition_tenant_name_unique IF NOT EXISTS FOR (n:EnumTypeDefinition) REQUIRE (n.tenant_id, n.name) IS UNIQUE',
+      'CREATE CONSTRAINT ci_field_definition_id_unique IF NOT EXISTS FOR (n:CIFieldDefinition) REQUIRE n.id IS UNIQUE',
+      'CREATE CONSTRAINT ci_relation_definition_id_unique IF NOT EXISTS FOR (n:CIRelationDefinition) REQUIRE n.id IS UNIQUE',
+      'CREATE CONSTRAINT ci_system_relation_definition_id_unique IF NOT EXISTS FOR (n:CISystemRelationDefinition) REQUIRE n.id IS UNIQUE',
     ]) {
       expect(writes).toContain(expected)
     }
-    expect(writes.some(c => c.startsWith('CREATE FULLTEXT INDEX global_search IF NOT EXISTS'))).toBe(true)
+    // A6-2: `global_search` copre i CI per :ConfigurationItem, non per tipo —
+    // un indice fulltext non si estende a runtime, quindi con le etichette dei
+    // tipi un tipo creato dal cliente non sarebbe mai cercabile. Su un
+    // database già avviato la ridefinizione la fa la migrazione
+    // 20260916_1700 (`IF NOT EXISTS` non ridefinisce un indice esistente).
+    expect(writes).toContain('CREATE FULLTEXT INDEX global_search IF NOT EXISTS FOR (n:Incident|Change|Problem|ServiceRequest|KBArticle|ConfigurationItem) ON EACH [n.title, n.number, n.code, n.name]')
+    // ogni indice è dichiarato una volta sola (init.ts è la sorgente unica: niente doppioni fra ondate)
+    const names = writes.filter(c => c.startsWith('CREATE INDEX') || c.startsWith('CREATE FULLTEXT INDEX')).map(c => c.split(' IF NOT EXISTS')[0])
+    expect(new Set(names).size).toBe(names.length)
     // every schema statement is idempotent
     expect(writes.filter(c => c.startsWith('CREATE ')).every(c => c.includes('IF NOT EXISTS'))).toBe(true)
     expect(writes.filter(c => c.startsWith('DROP INDEX')).every(c => c.includes('IF EXISTS'))).toBe(true)
@@ -114,6 +155,13 @@ describe('initSchema — clean database', () => {
       .toBeLessThan(writes.findIndex(c => c.includes('user_tenant_email_unique')))
     expect(writes.indexOf('DROP INDEX ci_discovery_key IF EXISTS'))
       .toBeLessThan(writes.findIndex(c => c.includes('ci_discovery_key_unique')))
+    expect(writes.indexOf('DROP INDEX ci_type_definition_tenant_name IF EXISTS'))
+      .toBeLessThan(writes.findIndex(c => c.includes('ci_type_definition_tenant_name_unique')))
+    expect(writes.indexOf('DROP INDEX enum_type_definition_tenant_name IF EXISTS'))
+      .toBeLessThan(writes.findIndex(c => c.includes('enum_type_definition_tenant_name_unique')))
+    // e l'indice di range che il vincolo sostituisce non viene ricreato dopo
+    expect(writes.some(c => c.startsWith('CREATE INDEX ci_type_definition_tenant_name '))).toBe(false)
+    expect(writes.some(c => c.startsWith('CREATE INDEX enum_type_definition_tenant_name '))).toBe(false)
 
     // order: all constraints → all indexes → counter seeds
     const firstIndex   = writes.findIndex(c => c.startsWith('CREATE INDEX') || c.startsWith('CREATE FULLTEXT'))
@@ -127,9 +175,17 @@ describe('initSchema — clean database', () => {
       expect(writes.some(c => c.includes(`kind: '${kind}'`))).toBe(true)
     }
 
-    // sessions: 1 READ (prechecks) + 3 WRITE (constraints/indexes/seeds), all closed
-    expect(fake.state.opened).toBe(4)
-    expect(fake.state.closed).toBe(4)
+    /**
+     * CONTRATTO RINEGOZIATO (revisione totale · E-26): i contatori si
+     * seminano una volta sola. La semina è cinque `max()` su tutti i ticket,
+     * cioè cinque scansioni complete, e girava a ogni esecuzione; ora un
+     * marcatore nel grafo la ricorda. Quindi due sessioni in più: la lettura
+     * del marcatore e la sua scrittura.
+     * Sessioni: 1 READ prechecks + 1 READ marcatore + 3 WRITE
+     * (vincoli/indici/semina) + 1 WRITE marcatore.
+     */
+    expect(fake.state.opened).toBe(6)
+    expect(fake.state.closed).toBe(6)
     expect(log[0]).toContain('Starting schema initialisation')
     expect(log.some(m => m.includes('Schema initialisation complete'))).toBe(true)
     expect(log.some(m => m.includes('No migrations passed'))).toBe(true)
@@ -242,16 +298,16 @@ describe('initSchema — migrations', () => {
     // schema finished before the migrations started
     expect(log.indexOf('[neo4j:init] Schema initialisation complete.')).toBeLessThan(log.findIndex(m => m.includes('Migrations: 1 applied')))
     expect(log.some(m => m.includes('No migrations passed'))).toBe(false)
-    // READ + 3 WRITE + 1 migration session, all closed
-    expect(fake.state.opened).toBe(5)
-    expect(fake.state.closed).toBe(5)
+    // E-26: READ prechecks + READ marcatore + 3 WRITE + WRITE marcatore + 1 migrazione
+    expect(fake.state.opened).toBe(7)
+    expect(fake.state.closed).toBe(7)
   })
 
   it('a migration failure propagates and the migration session is still closed', async () => {
     runMigrationsMock.mockRejectedValueOnce(new Error('migration 20260901_1000_seed failed'))
     await expect(initSchema({ migrations, log: () => {} })).rejects.toThrow('migration 20260901_1000_seed failed')
-    expect(fake.state.opened).toBe(5)
-    expect(fake.state.closed).toBe(5)
+    expect(fake.state.opened).toBe(7)
+    expect(fake.state.closed).toBe(7)
   })
 
   it('migrations are not run when a precheck fails', async () => {

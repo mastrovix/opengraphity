@@ -109,13 +109,13 @@ describe('BaseConsumer — idempotent processing (at-least-once delivery)', () =
     await c.stop()
   })
 
-  it('worker wiring: queue name, concurrency 10, custom backoff 5s / 30s / 5min (capped)', async () => {
+  it('worker wiring: queue name, concurrency 3 (revisione 2 · D1.1), custom backoff 5s / 30s / 5min (capped)', async () => {
     const c = new TestConsumer()
     await c.start()
     const w = fake.state.worker!
     expect(w.name).toBe('notification-service')
     const opts = w.opts as { concurrency: number; settings: { backoffStrategy: (attemptsMade: number) => number } }
-    expect(opts.concurrency).toBe(10)
+    expect(opts.concurrency).toBe(3)
     expect([1, 2, 3, 4, 9].map(a => opts.settings.backoffStrategy(a))).toEqual([5_000, 30_000, 300_000, 300_000, 300_000])
     await c.stop()
   })

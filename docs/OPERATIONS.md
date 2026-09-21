@@ -1,8 +1,9 @@
 # Operazioni — OpenGraphity
 
 Guida operativa: backup e restore, migrazioni dei dati, script, rotazione dei
-segreti, checklist per gli incidenti operativi. Il deploy è in `DEPLOY.md`;
-il catalogo degli script in `apps/api/src/scripts/README.md`.
+segreti, checklist per gli incidenti operativi, Event Management (§7),
+processi e profili (§8), procedure di ripristino (§9). Il deploy è in
+`DEPLOY.md`; il catalogo degli script in `apps/api/src/scripts/README.md`.
 
 Convenzione per i comandi: tutti gli script dell'API si lanciano da
 `apps/api` con `pnpm exec tsx --env-file=.env src/scripts/<file>.ts …` (in
@@ -137,7 +138,12 @@ Procedura consigliata per un ripristino completo:
 8. Keycloak: importare `keycloak/<realm>.json` da console admin
    (Realm settings → Action → Partial import) o via Admin API
    (`POST /admin/realms/{realm}/partialImport`). Gli **utenti non sono nel
-   backup**: Keycloak va salvato a parte (dump del suo database Postgres).
+   backup**: Keycloak va salvato a parte. In questo stack Keycloak gira con
+   `KC_DB: dev-file` (`infra/docker-compose.yml`), quindi il suo stato sta nel
+   volume `keycloak_data`, **non** in un Postgres: si salva copiando quel
+   volume a container fermo. Revisione totale · H-27: qui c'era scritto «dump
+   del suo database Postgres», e durante un restore l'operatore cercava un
+   database che non c'è.
 9. Riavviare l'API; il worker embedding ricrea l'indice vettoriale e ricalcola
    gli embedding mancanti (`backfill-embeddings` se serve).
 
@@ -184,6 +190,18 @@ Come funziona:
 - `checksum` = sha256 del sorgente normalizzato di `up`. `--status` segnala
   il *drift* (codice cambiato dopo l'applicazione): informativo, non rieseguito.
 
+> **I tre drift che ci sono già** (revisione totale · H-16).
+> `20260908_1000_workflow_step_metadata`,
+> `20260908_1010_ci_configuration_item_label` e
+> `20260917_1810_ci_lifecycle_semantics` sono state modificate dopo essere
+> state applicate: `--status` le segnala e **non** vanno riapplicate. La 1010
+> è quella con una conseguenza sui dati: la sua prima versione metteva
+> `:ConfigurationItem` anche sui nodi dei tipi ITIL (che hanno una
+> `neo4j_label`), quindi su un database migrato l'8 settembre i ticket
+> risultavano anche CI — ricerca globale con doppioni e stati degli incident
+> raccolti nel vocabolario `ci_status`. La toglie la migrazione
+> `20261002_1070_remove_ci_label_from_tickets`.
+
 **Aggiungere una migrazione**
 
 1. Creare `migrations/YYYYMMDD_HHMM_nome.ts` che esporta un `Migration`
@@ -197,20 +215,58 @@ Come funziona:
 4. In deploy: `migrate.ts` (o `--init-schema`) **prima** di avviare la nuova
    versione dell'API. L'avvio dell'API non migra da solo.
 
+**Migrazioni pendenti** (revisione del 14 set 2026 · F8). L'API e i worker non
+migrano, ma **se ne accorgono**: all'avvio loggano `All migrations applied`
+oppure `N migrations pending` (livello `error`, con gli id), `GET /health`
+risponde **503** con `pendingMigrations` finché ne resta una, e la diagnostica
+dell'amministratore mostra `migrations_pending`. Con
+`REQUIRE_APPLIED_MIGRATIONS=true` l'avvio si **ferma** invece di servire con
+uno schema che non corrisponde al codice (default `false`: il deploy in due
+tempi descritto in §8 resta possibile). Lo stato è letto con una cache di 60 s.
+
+L'**healthcheck del container** interroga `GET /health/live`, non `/health`
+(revisione totale · H-48): `/health/live` dice solo se il processo è vivo e se
+Neo4j e Redis rispondono, e ignora le migrazioni. Prima il container usava
+`/health`, quindi nel mezzo del deploy in due tempi `docker compose ps`
+mostrava l'API `unhealthy` come se fosse caduta. Per l'operatore la sonda
+resta `/health`: è lei che dice `pendingMigrations`.
+
 **Rollback** = nuova migrazione che inverte la precedente (mai modificare
 una migrazione applicata: verrebbe ignorata e segnalata come drift).
 
 Migrazioni presenti:
 
+> Questa tabella NON è l'elenco delle migrazioni: ne commenta una ventina,
+> quelle con un seguito operativo. L'elenco vero — oggi 94 — è
+> `apps/api/src/scripts/migrations/index.ts`, e quello applicato lo dice
+> `migrate --status`. Revisione totale · H-27: la tabella si leggeva come
+> completa.
+
 | id | Cosa fa |
 |---|---|
 | `20260908_1000_workflow_step_metadata` | `is_initial/is_terminal/is_open/category/step_order` sugli `WorkflowStep` (ex `migrate-workflow-metadata`) |
 | `20260908_1010_ci_configuration_item_label` | aggiunge `:ConfigurationItem` ai nodi con una label registrata in `CITypeDefinition.neo4j_label` (B-08; batch da 5000, autocommit) |
+| `20260909_1000` … `20260909_1040` | Event Management: vedi §7 (policy per tenant, regole di notifica, `Event.correlation`, chiavi dell'ondata 4) |
+| `20260910_1080_service_maps_bootstrap` | Servizi monitorati: vedi §7 (*Servizi monitorati*) — completa `rules`, `node_ids` e i campi dell'ondata 1 sulle `ServiceMap` esistenti; no-op senza mappe |
+| `20260910_1090_service_notification_rules` | Servizi monitorati: regole di notifica `service.health_changed` e `service.incident_opened` su ogni tenant |
+| `20260910_1100_service_map_plan_limit` | Servizi monitorati: `Tenant.max_service_maps` dal piano (starter 5, pro 50, enterprise 200) dove manca |
+| `20260910_1110_service_map_auto_sync` | Servizi monitorati: `ServiceMap.auto_sync = true` (mappa viva, il default dell'ondata 5) dove manca, `synced_at` lasciato a null |
+| `20260911_1130_shared_domain_rules` | Revisione 2 (ondata 3): aggiunge `ignore_lifecycle_statuses` (default `["decommissioned"]`) alla `event_policy` di ogni tenant e `during_storm` (default `hold`) alle `rules` di ogni `ServiceMap`, **solo** dove mancano (insieme a ogni altra chiave assente, come la 1040 e la 1080); una policy o delle regole con JSON corrotto **fermano** la migrazione con il tenant (o la mappa) nel messaggio. Non tocca `ServiceMap.version`. Senza questa migrazione la lettura della policy fallisce con «missing ignore_lifecycle_statuses: run the 20260911_1130_shared_domain_rules migration» e quella delle regole con «during_storm must be one of…»: nessun default inventato a runtime |
+| `20260910_1120_service_map_review2` | Servizi monitorati (revisione 2): recupera `ServiceMap.stale_reason` sulle mappe già `stale` (`missing_ci` se un id di `node_ids` non ha più la sua `INCLUDES`, altrimenti `over_limit`) |
 
 Wrapper per singola migrazione: `migrate:workflow-metadata -- [--force]`,
 `migrate-ci-labels.ts [--force]` (`--force` riapplica una migrazione già
 marcata; entrambe sono idempotenti). `migrate-enum-references.ts` **non** è
 una migrazione versionata (è per tenant, richiede `--tenant`): resta manuale.
+
+`migrate:workflow-metadata` completa solo i metadati **mancanti** dei passi
+(`coalesce`): `category` / `is_terminal` / `is_initial` / `is_open` /
+`step_order` già valorizzati non vengono mai riscritti, nemmeno con `--force`
+(personalizzazioni ondata 2, B-15 — prima `--force` riportava tutto ai valori
+derivati dai nomi di fabbrica, cancellando in silenzio le scelte
+dell'amministratore). Il ripristino di fabbrica vero è un'altra operazione,
+esplicita: `migrate:workflow-metadata -- --reset-from-factory` stampa il diff e
+scrive solo con `--yes-reset` (`--dry-run` per vedere il diff senza scrivere).
 
 ---
 
@@ -224,14 +280,23 @@ invocazioni: `apps/api/src/scripts/README.md`.
 *opt-out*: il dispatcher delle notifiche e il digest email trattano il flag
 **assente come `true`** (`coalesce(u.notifications_enabled, true)`). Gli utenti
 demo dei seed (`seed:users`, `seed:users-bulk`, email fittizie `USR-nnn@…`)
-non hanno il flag, quindi in un ambiente con `RESEND_API_KEY`/`SLACK_BOT_TOKEN`
-reali riceverebbero email e digest. Prima di collegare un provider reale a un
+non hanno il flag, quindi in un ambiente con `RESEND_API_KEY` o un workspace Slack
+collegato reali riceverebbero email e digest. Prima di collegare un provider reale a un
 ambiente con dati demo:
 
 ```cypher
-MATCH (u:User {tenant_id: $tenant}) WHERE u.email ENDS WITH '@example.com' OR u.id STARTS WITH 'USR-'
+MATCH (u:User {tenant_id: $tenant})
+WHERE u.email ENDS WITH '@demo.opengrafo.io' OR u.email ENDS WITH '@demo.opengraphity.io' OR u.email ENDS WITH '@example.com'
 SET u.notifications_enabled = false
 ```
+
+> Revisione totale · H-18: la query di prima cercava `@example.com` o
+> `u.id STARTS WITH 'USR-'` e **non prendeva nessun utente dei seed**. Le
+> e-mail finiscono in `@demo.opengrafo.io` (`seed-users-bulk`, 700 utenti) o
+> `@demo.opengraphity.io` (`seed-users`, 10 utenti); `USR-nnn` e il **nome**,
+> non l'id (gli id sono UUID o `user-00n`). Chi la eseguiva e poi collegava
+> Resend spediva il digest a 710 indirizzi inventati.
+
 
 e verificare chi resta abilitato:
 `MATCH (u:User) WHERE coalesce(u.notifications_enabled, true) RETURN u.tenant_id, u.email`.
@@ -244,11 +309,35 @@ KEYCLOAK_ADMIN_PASSWORD=… pnpm --filter @opengraphity/api onboard-tenant -- \
 ```
 
 Crea realm Keycloak (= slug = `Tenant.id`), client, ruoli, utente admin, nodo
-`Tenant`, dashboard, enum, regole di notifica e tutti i workflow. Poi:
-`seed:metamodel` (una volta per stack), `seed:field-rules`, `seed:automation`
-se servono, e aggiungere `https://<host-del-tenant>` a `KEYCLOAK_PUBLIC_URL`/`CORS_ORIGIN`
-se il tenant ha un hostname proprio. Dal secondo giorno il tenant è nel backup
-notturno (realm compreso).
+`Tenant`, e poi chiama `provisionTenantData` — la funzione che porta il tenant
+allo stato usabile: dashboard predefinita, regole di notifica, matrici di
+dominio e le definizioni di workflow di **ogni** tipo di ticket. È la **stessa**
+funzione che chiama la migrazione `20260918_1910`, perché un tenant nasce in un
+modo solo (D-14): prima ce n'erano due, e un tenant creato da una migrazione
+(webhook, chiave API, import, o un onboarding interrotto) restava senza
+workflow — il sintomo arrivava al primo ticket, con
+`No active workflow definition for "incident"`.
+
+**Idempotenza, per davvero**: un secondo giro non riscrive niente. Le
+definizioni di workflow, le matrici e le regole già presenti vengono **saltate**,
+non riallineate al seme — potrebbero essere personalizzazioni del cliente. I
+vocabolari spediti col prodotto non vengono più copiati per tenant: sono un
+nodo su `tenant_id = 'system'` (vedi `docs/CUSTOMIZATION.md`).
+
+Poi: `seed:metamodel` (una volta per stack, non per tenant: i tipi CI base e
+ITIL sono **condivisi**), e `seed:automation` se serve. Aggiungere
+`https://<host-del-tenant>` a `KEYCLOAK_PUBLIC_URL`/`CORS_ORIGIN` se il tenant ha
+un hostname proprio. Dal secondo giorno il tenant è nel backup notturno (realm
+compreso).
+
+`seed:field-rules` **non** fa parte dell'onboarding: scrive due regole di
+obbligatorietà (assegnatario entrando in `in_progress`, note di risoluzione
+entrando in `resolved`) e si ferma a voce alta se quel cliente ha rinominato i
+passi o non ha i campi (D-11). Eseguilo solo se quelle due regole ti servono.
+
+**Tenant incompleti**: `migrate --status` elenca, dopo lo stato delle
+migrazioni, i tenant che esistono e non possono funzionare (senza dashboard,
+regole, matrici o workflow) e dice quale migrazione li completa.
 
 ---
 
@@ -257,11 +346,11 @@ notturno (realm compreso).
 | Segreto | Chi lo usa | Cosa succede ruotandolo |
 |---|---|---|
 | `JWT_SECRET` | solo i token HS256 di sviluppo (`ALLOW_LEGACY_JWT=true`, `gen-token`) | I token legacy emessi con il vecchio segreto diventano 401. In produzione `ALLOW_LEGACY_JWT` è off: la rotazione non ha effetti. Basta riavviare l'API. |
-| `REDIS_PASSWORD` | API e worker (BullMQ, cache, SSE) | Cambiarla su Redis **e** in tutti i container nello stesso deploy; fino al riavvio i worker loggano `worker error` e continuano a ritentare (nessun job perso: sono in Redis). Ordine: aggiornare `.env` → `docker compose up -d redis api worker`. |
+| `REDIS_PASSWORD` | API e worker (BullMQ, cache, SSE) | Cambiarla su Redis **e** in tutti i container nello stesso deploy; fino al riavvio i worker loggano `worker error` e continuano a ritentare (nessun job perso: sono in Redis). Ordine: aggiornare `.env` → `docker compose up -d redis api worker events-worker`. |
 | `KEYCLOAK_ADMIN_PASSWORD` | `onboard-tenant`, `add-user`, `createUser` GraphQL, export realm nel backup | Cambiarla in Keycloak (utente admin del realm `master`) e nell'env dell'API. Fino ad allora: creazione utenti 500 e **backup notturno fallito** (Keycloak auth fallita) — voluto. Le sessioni degli utenti finali non sono toccate. |
 | `DISCOVERY_ENCRYPTION_KEY` (64 hex = 32 byte) | credenziali dei connettori discovery cifrate at rest (`packages/discovery/src/encryption.ts`) | **Non ruotabile a caldo**: le credenziali salvate con la vecchia chiave non sono più decifrabili (sync in errore `Decryption failed: invalid key or corrupted data`). Procedura: annotare le credenziali di ogni `SyncSource` (dalle console dei provider, non sono esportabili in chiaro), cambiare chiave, reinserirle dall'UI. Non perderla: il backup contiene solo il cifrato. |
 | `NEO4J_PASSWORD` | tutto | `ALTER CURRENT USER SET PASSWORD` in Neo4j, poi env di API/worker e riavvio. Con la password vecchia l'API non parte (fail-fast del driver). |
-| `KEYCLOAK_CLIENT_SECRET` (portal) | portale self-service | Rigenerare in Keycloak → client `opengrafo-portal` e aggiornare l'env del portale. |
+| ~~`KEYCLOAK_CLIENT_SECRET` (portal)~~ | — | **Non esiste** (revisione totale · H-27): il client `opengrafo-portal` è un client **pubblico** (`publicClient: true`, `onboard-tenant.ts`), come quello del web: un'applicazione che gira nel browser non può tenere un segreto. Non c'è niente da ruotare; chi lo cercava durante una rotazione cercava una cosa che il prodotto non ha. |
 | `METRICS_TOKEN` | `GET /metrics` da Prometheus | Aggiornare lo scrape config; senza token l'endpoint resta accessibile solo da reti private. |
 
 Regola generale: i segreti si cambiano in un solo deploy (env + servizio),
@@ -280,12 +369,15 @@ dice quale dipendenza è giù.
 - API: le query GraphQL funzionano (la cache è solo un acceleratore); le
   mutazioni che pubblicano eventi di dominio (`publish` → `queue.add`)
   falliscono o restano in attesa fino al timeout della connessione; `/health` 503.
-- Worker BullMQ (SLA, notifiche, webhook, discovery, backup): loggano
-  `[bullmq] worker error … worker keeps running` e riprendono da soli quando
-  Redis torna; i job già accodati sono in Redis (persistiti se AOF/RDB attivi).
-  Un backup schedulato mancato **non** viene recuperato: lanciarlo a mano.
-- Da fare: `docker compose up -d redis`, poi controllare `/metrics`
-  (`bullmq_queue_depth`) e i log per code bloccate.
+- Worker BullMQ (SLA, notifiche, webhook, discovery, backup, allarmi,
+  servizi): loggano `[bullmq] worker error … worker keeps running` e
+  riprendono da soli quando Redis torna; i job già accodati sono in Redis, che
+  dal compose della revisione 2 scrive l'**AOF** (`--appendonly yes
+  --appendfsync everysec`): un crash perde al più un secondo di scritture, un
+  arresto pulito nulla. Un backup schedulato mancato **non** viene recuperato:
+  lanciarlo a mano.
+- Da fare: `docker compose up -d redis`, poi la procedura «Redis è ripartito»
+  in §9 (*Procedure di ripristino*).
 
 **Neo4j giù**
 - API e worker si fermano (fail-fast del driver all'avvio; a runtime ogni
@@ -319,3 +411,1373 @@ dice quale dipendenza è giù.
 - Un altro processo sta migrando, oppure è morto meno di 10 minuti fa.
   Aspettare la scadenza o, se si è certi che non gira nulla:
   `MATCH (l:MigrationLock {id:'global'}) SET l.locked_at = null, l.owner = null`.
+
+---
+
+### Audit Log: ogni mutation riuscita lascia una voce
+
+Le mutation scrivono la loro voce con un nome di dominio (`incident.resolved`,
+`service_map.synced`…). Quelle che non la scrivono sono coperte dal plugin
+`graphql/auditMutationsPlugin.ts`: a fine richiesta, per ogni mutation riuscita
+che non ha chiamato `audit()`, scrive `mutation.<nome>` con gli argomenti
+(chiavi con segreti oscurate — `secret`, `token`, `password`, `apiKey`,
+`webhookUrl`, `privateKey`… — stringhe oltre 500 caratteri e liste oltre 50
+elementi troncate) e `source: audit-registry`. Il conteggio è per richiesta
+(`lib/auditScope.ts`, AsyncLocalStorage aperto in `server.ts`). Sono escluse
+solo le mutation personali o di sola lettura elencate in
+`AUDIT_REGISTRY_SKIPPED`. Se nel log compare
+`Audit registry: the request has no audit scope`, la richiesta non è passata
+da `runInAuditScope`: è un difetto di cablaggio, non un caso normale.
+Il test `auditMutationsPlugin.test.ts` tiene il meccanismo.
+
+## 7. Event Management
+
+Gli allarmi dei sistemi di monitoraggio (Alertmanager, Grafana, Zabbix,
+Datadog, Dynatrace, o un JSON qualunque con il connettore `generic`) entrano
+dal webhook in ingresso (`POST /api/webhooks/inbound/:hookId`, vedi
+`API.md`), diventano nodi `Event` deduplicati per impronta, aggiornano la
+**salute** dei CI (`ci.health`: operational/degraded/down — separata dal ciclo
+di vita `ci.status`) e vengono correlati in incident. Codice:
+`apps/api/src/services/events/` per responsabilità — `normalize.ts`
+(payload dei connettori), `transitions.ts` (stato dell'evento e MERGE
+dell'ingest), `ingest.ts` (orchestratore), `pipeline.ts` (solo l'ordine dei
+passi), `suppression.ts`, `flapping.ts`, `grouping.ts`, `autoResolve.ts`,
+`storm.ts` (tempeste), `passes.ts` (fine finestra e passate periodiche),
+`gauges.ts`, `ciHealth.ts`, `policy.ts`, `sourceCache.ts` — con le facciate
+storiche `services/eventService.ts`, `eventCorrelation.ts`, `eventStorm.ts`
+che ri-esportano tutto; `eventRetention.ts` (conservazione), resolver
+`graphql/resolvers/events.ts`. Per evento l'ingest fa **uno** statement
+Neo4j (MERGE con transizione di stato, collegamento alla sorgente,
+riconoscimento e aggancio del CI) più la pipeline, che legge la policy e la
+sorgente dalle cache in memoria (vedi *Cache in memoria*).
+
+### Code BullMQ
+
+| Coda | Job | Cosa fa |
+|---|---|---|
+| `events-ingest` (concurrency 4) | `ingest` | uno per allarme normalizzato; job id `ev-<tenant>-<impronta>-<ms>` (il **retry BullMQ** dello stesso job non raddoppia i conteggi — stessa `receivedAt`; una **ri-consegna del mittente** è una nuova richiesta con una `receivedAt` nuova e conta come ripetizione legittima dell'allarme); **5 tentativi** con attese 10 s → 20 s → 40 s → **10 minuti** (revisione 2 · D1.2: un riavvio di Neo4j di qualche minuto non brucia l'allarme; prima l'ultima attesa era 80 s). Un job fallito all'ultimo tentativo scrive `last_error` sulla sorgente e resta nella coda 7 giorni, **rigiocabile** da *Amministrazione → Code*. Esegue `ingestEvent`: MERGE per impronta, aggancio al CI (alias → nome), pipeline di correlazione, eventi di dominio. Misura `event_ingest_lag_seconds` (ricezione → inizio ingest) |
+| `events-correlate` (concurrency 2) | `correlate` | ritardato: con `open_delay_seconds > 0` l'apertura dell'incident aspetta la scadenza; se nel frattempo l'allarme è rientrato non apre nulla. Misura il proprio ritardo dalla scadenza (`event_correlate_job_lag_seconds`) |
+| | `reevaluate-change-window` | accodato dalle mutation della change quando esce dai passi di finestra con allarmi silenziati (e da `deleteChange`): rivaluta quegli eventi fuori dalla mutation |
+| `events-maintenance` (concurrency 1, lock 10 min) | `events-maintenance` | ripetuto ogni 5 minuti, cinque passate paginate e indipendenti: (1) `closed_windows` — eventi `suppressed` la cui finestra di change è chiusa → tornano firing e vengono correlati; (2) `pending` — eventi firing che nessuno sta più curando → ripresi: scadenza passata, **oppure** correlazione `pending`/`none` ferma da più di 15 minuti anche SENZA scadenza (revisione 2 · B2-01: è così che nasce e riparte ogni evento, e prima nessuna passata li vedeva), **oppure** ritardo di apertura scaduto da più di 5 minuti (B2-02); il predicato è lo stesso del gauge `events_firing_uncorrelated` (`services/events/stuck.ts`), così metrica e riparazione non possono divergere; (3) `flapping` — eventi senza passaggi da `flap_stable_minutes` → stabilizzati; (4) `storms` — sorgenti in tempesta raffreddate che non ricevono più nulla → tempesta chiusa; (5) `gauges` — riallinea `events_overdue_delayed` e `events_firing_uncorrelated`. Una passata fallita non ferma le altre; il job fallisce alla fine con tutti i motivi; ogni passata è contata e misurata (`event_pass_total{pass,result}`, `event_pass_duration_seconds{pass}`) |
+| `maintenance` | `purge_events` | ogni giorno alle 03:30: conservazione (vedi sotto) |
+
+Il webhook risponde **202** appena i job sono accodati: se Redis è giù risponde
+500 e lo strumento ritenta (nessun allarme accettato e perso).
+
+### Accettazione parziale, traduzione dei valori, risorsa predefinita
+
+(revisione, ondata 4 — A1/A3/M2–M5/M9/M10/B5/B6; codice in
+`services/events/normalize.ts`, contratto in `API.md` → *Inbound webhooks*)
+
+- **Per elemento, non per batch**: un allarme difettoso in un batch
+  Alertmanager/Grafana viene scartato da solo; gli altri vengono accodati. Il
+  202 porta `rejected: [{ index, error }]`, la sorgente mostra `last_error` =
+  *"N di M scartati: <primo motivo>"* con `error_count += N`, la metrica
+  `events_rejected_total{connector}` cresce. Solo se nessun elemento passa
+  → 400. Un difetto della busta (non è un oggetto, manca `alerts`, oltre 500)
+  resta un 400.
+- **`value_mapping` per ogni connettore** (*Sorgenti → Modifica → Regole*, o
+  nel passo "Nome e regole" della procedura guidata): traduce severità e stato
+  che lo strumento manda con parole sue (`page`, `P1`, `Average`, `Muted`) PRIMA
+  della tabella incorporata; un valore non tradotto e fuori vocabolario è uno
+  scarto con il motivo che cita `value_mapping.severity|status`.
+- **Risorsa predefinita** (`default_values.resource` + `resourceKind`, stessa
+  pagina): l'oggetto a cui attribuire un allarme senza host (Watchdog, alert su
+  metriche aggregate, monitor Datadog su log/APM). Senza, l'allarme è scartato
+  con *"… is missing or empty and default_values.resource is not set"*. Per
+  Datadog la spunta *usa alert_scope* (`default_values.resourceFrom =
+  alert_scope`) vale prima della risorsa predefinita. Le chiavi ammesse per i
+  preset sono solo `severity`, `resource`, `resourceKind`, `resourceFrom`: una
+  configurazione con altre chiavi è rifiutata in scrittura.
+- **Datadog**: l'identità dell'allarme è `$ALERT_CYCLE_KEY` (un ciclo
+  trigger→resolve), non `$ALERT_ID` (l'id del monitor, uguale per tutti gli
+  host di un monitor multi-alert): senza cycle key vale `alert_id@risorsa`. Il
+  payload personalizzato proposto dalla procedura guidata include
+  `alert_cycle_key` e `alert_scope`: le sorgenti create prima vanno aggiornate
+  nello strumento, altrimenti gli host dello stesso monitor restano separati per
+  risorsa ma senza la chiave di ciclo.
+- **Zabbix**: `{EVENT.DATE} {EVENT.TIME}` è ora locale del server Zabbix: viene
+  convertita in ISO con `Tenant.timezone` (letto nel lookup del webhook). Tenant
+  senza fuso o testo non parsabile → `starts_at` vuoto e il grezzo in
+  `labels.event_time` (log `Tenant has no timezone`): mai un istante inventato.
+  `{HOST.ID}` è l'id della risorsa (`resource_external_id`).
+- **Dynatrace**: `ImpactedEntities[0].type` HOST → hostname, altro → nome;
+  `entity` (HOST-…, SERVICE-…) è `resource_external_id`. `ImpactedEntity` senza
+  lista perde il prefisso di tipo solo se riconosciuto (*Host*, *Service*,
+  *Application*, *Process group*, …); *"3 impacted entities"* è uno scarto.
+- **Severità** (`Event.severity`) = ultimo payload (la salute del CI segue la
+  sorgente, anche in discesa); `Event.max_severity` conserva la più alta del
+  ciclo (`maxSeverity` in GraphQL; null sugli eventi scritti prima).
+- **Residui**: al `resolved` si azzerano `suppressed_by_change_id`,
+  `correlation_due_at`, `flapping_since`; al nuovo ciclo (resolved → firing)
+  `correlation` torna `none` con `correlation_at`/`correlation_due_at` a null e
+  la pipeline riscrive l'esito (un allarme tornato notifica di nuovo la sua
+  correlazione).
+- **`resolved` di un allarme mai visto** (tipico appena collegata una sorgente):
+  l'Event nasce già risolto con `first_seen_at` = `starts_at` della sorgente,
+  senza `event.resolved`/`event.orphan`; conta in
+  `events_resolved_unknown_total{connector}`.
+
+### Riconoscimento del CI
+
+(revisione, ondata 4 — A2/M2; `services/events/transitions.ts#ciMatchCypher`,
+dentro lo stesso statement del MERGE dell'ingest, tutto su indici)
+
+Ordine di precedenza, il primo che trova qualcosa vince; l'esito è scritto su
+`Event.match_reason` (`Event.matchReason` in GraphQL, enum `EventMatchReason`)
+a ogni ingest in cui il riconoscimento gira (evento senza CI, payload non
+stantio):
+
+| `match_reason` | Regola |
+|---|---|
+| `alias_external_id` | alias `external_id` del CI = **id della risorsa** presso la sorgente (`Event.resource_external_id`: `entity` di Dynatrace, `host_id` di Zabbix, `resourceExternalId` del generic). Mai l'id dell'allarme (`external_id`, fingerprint/event_id) |
+| `alias` | alias del tipo della risorsa (`hostname`/`ip`/`fqdn`, confronto in minuscolo; `external_id` come `resourceKind` confronta l'alias `external_id` con la risorsa stessa). Un alias è univoco per costruzione (vincolo `tenant + kind + value`) |
+| `name` | `ConfigurationItem.name_key` (nome minuscolo, indice `ci_tenant_name_key`) = risorsa minuscola, porta tolta |
+| `name_short` | solo con la policy `match_short_hostname = true` e solo se il nome esatto non ha trovato nulla: risorsa con un punto → `name_key` = prima etichetta (`db-01.example.local` → `db-01`); risorsa senza punto → `name_key` che inizia con `risorsa.` (`db-01` → `db-01.example.local`). Non si applica a `ip`/`external_id` né a un indirizzo IPv4/IPv6 con `resourceKind = hostname` |
+| `ambiguous` | il confronto per nome (esatto o corto) trova **più di un CI**: l'evento **non** viene agganciato (prima veniva scelto in silenzio il più vecchio) e resta orfano; `event.orphan` porta `match_reason` e `candidates` (id e nome, al massimo 5); log `warn` "more than one CI matches the resource name" con i candidati; metrica `events_ambiguous_total` (oltre a `events_orphan_total`), contata a ogni payload finché l'ambiguità persiste |
+| `none` | nessun CI: orfano |
+| `manual` | **non** è un esito del riconoscimento: lo scrive `linkEventToCI` quando un operatore collega l'evento a un CI dalla console. L'ingest non lo produce mai; resta finché il CI è agganciato (il riconoscimento non gira su un evento con CI) |
+
+`match_reason` è null sugli eventi scritti prima del campo e resta invariato
+quando il CI è già agganciato: descrive l'ultimo riconoscimento automatico,
+oppure `manual` se il CI lo ha scelto un operatore. Un evento
+orfano viene riconosciuto di nuovo a ogni ripetizione: creato il CI (o
+l'alias), la ripetizione successiva lo aggancia da sola. La policy arriva
+dalla cache in memoria (30 s): una modifica a `match_short_hostname` fatta
+direttamente nel grafo si vede dopo il TTL, quella da `updateEventPolicy`
+subito.
+
+### Protezioni del webhook in ingresso
+
+- **Limite per sorgente** (`rate_limit_per_minute` sull'`InboundWebhook`,
+  1..10000, modificabile in *Monitoraggio → Sorgenti → Modifica* e nel passo
+  "Nome e regole" della procedura guidata; **100** per i webhook creati prima
+  del campo, l'unico default): contatore a finestra fissa di un minuto su
+  Redis, chiave `og:webhook:rate:<tenant>:<hookId>:<minuto>` (INCR+EXPIRE
+  atomici, TTL 120 s), quindi **condiviso fra le repliche** dell'API. Oltre il
+  limite: 429 con header `Retry-After` (secondi alla fine del minuto) che
+  Alertmanager/Grafana rispettano, metrica `webhook_rate_limited_total{connector}`.
+  Se cresce durante una tempesta: alzare il limite della sorgente o raggruppare
+  di più nello strumento (`group_by`/`group_interval`), non è un guasto. Redis
+  irraggiungibile → 500 (lo strumento ritenta), mai "limite disattivato".
+- **Transform script**: al massimo **4 isolate V8 per replica** insieme
+  (`TRANSFORM_SCRIPT_MAX_CONCURRENCY` in `rest/webhooks-inbound.ts`); le
+  richieste in più aspettano in coda fino a 10 s, poi 503 con `Retry-After: 5`
+  e codice `SERVICE_UNAVAILABLE`. Nessun allarme è scartato in silenzio: lo
+  strumento ritenta. Un 503 ricorrente significa script troppo lenti (5 s di
+  timeout ciascuno) o troppe sorgenti con script sulla stessa replica.
+- **Corpo**: JSON fino a 2 MB (batch Alertmanager da 500 allarmi); JSON
+  malformato → 400, oltre il limite → 413, sempre in JSON
+  `{ error: { code, message } }`.
+- **Cancellazione di un CI**: è fisica e porta via anche i suoi alias
+  (`CIAlias`); gli `Event` che lo riguardavano restano, senza CI (`orfani`),
+  e possono essere riagganciati a mano (`linkEventToCI`) o rivalutati.
+
+### Migrazioni
+
+| id | Cosa fa |
+|---|---|
+| `20260909_1000_event_management_bootstrap` | ondata 1: `status_source = 'manual'` sui CI che avevano già uno stato, prima scrittura di `event_policy` (difettosa sui tenant senza nodo `:Tenant`, corretta dalla 1010). Revisione totale · H-27: qui c'era scritto «constraint/indici su `Event`/`CIAlias`», che questa migrazione non crea — constraint e indici stanno in `packages/neo4j/src/init.ts` (`migrate --init-schema`), che è la loro sorgente unica |
+| `20260909_1010_event_management_fixup` | rimuove `status_source` dai CI (la salute vive in `ci.health`), crea i nodi `:Tenant` mancanti dai `tenant_id` degli utenti, scrive la policy predefinita dove manca |
+| `20260909_1020_event_management_notification_rules` | regole di notifica `event.received/resolved/orphan`, `ci.health_changed` su ogni tenant; `max_users/max_ci` interi |
+| `20260909_1030_event_management_correlation_rules` | regole `event.suppressed/correlated`; `Event.correlation = 'none'` dove assente |
+| `20260909_1040_event_management_policy_v2` | ondata 4: aggiunge alla policy di ogni tenant le chiavi mancanti (`flap_stable_minutes`, `storm_threshold_per_minute`, `storm_cooldown_minutes`) senza toccare i valori esistenti; `Event.transitions = []` dove assente; regole `event.flapping/stable/storm_started/storm_ended`. Una policy con JSON corrotto **ferma** la migrazione con il tenant nel messaggio |
+| `20260910_1070_event_management_tenants` | revisione A-M8/A-2: crea i nodi `:Tenant` mancanti unendo i `tenant_id` di `User`, `InboundWebhook`, `ApiKey` e `ConfigurationItem` (la 1010 guardava solo gli utenti: un tenant "solo integrazione" restava senza policy e ogni ingest falliva), con i campi predefiniti della 1010; aggiunge `match_short_hostname` (false) e ogni altra chiave mancante alla policy di ogni tenant, crea la policy intera (versionata) dove manca. Stesse regole della 1040 sul JSON corrotto |
+| `20260910_1080_service_maps_bootstrap` | Servizi monitorati (ondata 1): sulle `ServiceMap` esistenti completa `rules` con le chiavi mancanti (o la crea intera dai default), ricostruisce `node_ids` dalle `INCLUDES` e scrive i campi obbligatori dell'ondata 1 dove mancano (`stale`, `version`, `built_from`, `status`, `health`, `impact_score`, `explanation`, `relationship_types`, `max_depth`); JSON corrotto ferma la migrazione con la mappa nel messaggio. Senza mappe non fa nulla. Vincoli e indici (`ServiceMap`, `ServiceHealthEntry`) sono in `init.ts` (`migrate --init-schema`) |
+
+| `20260910_1090_service_notification_rules` | Servizi monitorati (ondata 3): semina su ogni `:Tenant` le regole di notifica `service.health_changed` (warning, in_app) e `service.incident_opened` (error, in_app + slack) con lo stesso seed dell'onboarding — MERGE per (tenant_id, event_type), le regole già presenti non si toccano |
+| `20260910_1100_service_map_plan_limit` | Servizi monitorati (ondata 4): scrive `Tenant.max_service_maps` (starter 5, pro 50, enterprise 200 — `lib/tenantPlans.ts`) **solo** sui tenant che non ce l'hanno, dal loro `plan`; un limite già presente (anche cambiato a mano) non viene toccato. Un `plan` fuori vocabolario ferma la migrazione con il tenant nel messaggio. Senza questa migrazione `createServiceMap` fallisce con «run the 20260910_1100_service_map_plan_limit migration»: il limite non viene inventato a runtime |
+| `20260910_1110_service_map_auto_sync` | Servizi monitorati (ondata 5): scrive `ServiceMap.auto_sync = true` — la mappa viva è il nuovo default — **solo** sulle mappe che non ce l'hanno, lasciando `synced_at` a null (nessuno l'ha ancora sincronizzata: ci pensa la prima scrittura CMDB o la passata di sicurezza). Un interruttore già spento a mano non viene riacceso. Senza questa migrazione la lettura di una mappa fallisce con «has no auto_sync — run the 20260910_1110_service_map_auto_sync migration»: la modalità non viene inventata a runtime |
+| `20260910_1120_service_map_review2` | Servizi monitorati (revisione 2, ondata 1): sulle mappe già marcate `stale` **senza** motivo scrive `stale_reason` guardando il grafo — `missing_ci` se almeno un id di `node_ids` non ha più la sua `INCLUDES` (componente cancellato dalla CMDB), altrimenti `over_limit` (sincronizzazione rifiutata dal tetto dei 500). Non tocca `stale`, `health` né `version`. `health_if_active` **non** viene ricalcolata (servirebbe rifare il motore): la scrive la prima valutazione, entro 10 minuti; la migrazione si limita a contare le mappe `maintenance` che la aspettano. Idempotente |
+
+Senza la 1070 un tenant senza nodo `:Tenant` non può nemmeno creare un webhook
+di Event Management: `createInboundWebhook` con `entityType = event` verifica
+la policy del tenant **alla configurazione** e risponde
+`Cannot create an event webhook: tenant <id> has no usable event policy (…). Run the 20260910_1070_event_management_tenants migration`
+invece di lasciare che il webhook risponda 202 e il worker fallisca ogni job.
+
+Senza la 1040 ogni ingest fallisce con
+`Tenant <id> event_policy is invalid: … missing flap_stable_minutes, … run the 20260909_1040_event_management_policy_v2 migration`
+(voluto: mai un valore inventato). Come per tutte le migrazioni: `migrate.ts`
+**prima** di avviare la nuova versione dell'API.
+
+### Regole di notifica
+
+Seminate per tenant (`lib/seedNotificationRules.ts`, MERGE per
+`tenant_id + event_type`: l'amministratore può disabilitarle o cambiare
+canali senza che una migrazione le riscriva):
+
+| Evento di dominio | Quando | Predefinito |
+|---|---|---|
+| `event.received` | allarme **nuovo** o **nuovo ciclo** (resolved → firing); mai una ripetizione (Alertmanager `repeat_interval`, Zabbix); non durante soppressione, sfarfallio o tempesta | in_app, warning — **disattivata** nei tenant creati dopo la revisione (attivabile da *Notifiche → Regole*); nei tenant esistenti resta com'era |
+| `event.resolved` | allarme rientrato: solo il payload che chiude il ciclo, non le ripetizioni di `resolved` | in_app, success |
+| `event.orphan` | allarme senza CI riconosciuto, con la stessa regola di `event.received`/`resolved` (una volta per ciclo) | in_app, warning |
+| `ci.health_changed` | la salute derivata di un CI cambia | in_app, warning |
+| `event.suppressed` | allarme silenziato da una change in finestra (una volta per finestra) | in_app, info |
+| `event.correlated` | incident aperto / agganciato / riaperto / risolto automaticamente | in_app, warning |
+| `event.flapping` | l'allarme entra in sfarfallio (una volta per episodio) | in_app, warning |
+| `event.stable` | l'allarme si è stabilizzato | in_app, info |
+| `event.storm_started` | una sorgente entra in tempesta (una volta per tempesta) | in_app + slack, error |
+| `event.storm_ended` | la tempesta è finita | in_app, success |
+
+Durante una tempesta **non** vengono pubblicati `event.received`/`event.orphan`
+per i singoli allarmi (sarebbero centinaia al minuto): l'avviso è
+`event.storm_started`. Anche gli outbound webhook seguono gli stessi tipi.
+
+Dieta di rumore (revisione, 3.3): una ripetizione di un allarme già agganciato
+allo stesso incident non produce `event.correlated`, audit né commento in
+timeline; la chiusura automatica lascia **un** commento (con il cammino
+percorso, es. *passando per Assegnato, In lavorazione*) e i passi intermedi
+restano nella storia del workflow. Il seed di `event.received` è `enabled:
+false` solo ON CREATE (MERGE per `tenant_id + event_type`): la migrazione
+1020 sui tenant esistenti non tocca nulla, i tenant nuovi (onboarding) nascono
+con la regola spenta. Per gli eventi di dominio innescati da una change
+eliminata a mano (`deleteChange` → rivalutazione degli allarmi silenziati)
+l'`actor_id` è l'utente che ha eliminato la change, mentre incident, commenti
+e audit restano di `monitoring` (è la correlazione automatica ad agire).
+
+### Cache in memoria
+
+Per processo, senza Redis (come le altre cache dell'API): con più repliche
+ogni replica ha la sua, e vale il TTL.
+
+| Cosa | TTL | Invalidata da | Cosa può essere stantio |
+|---|---|---|---|
+| `Tenant.event_policy` (`lib/eventPolicy.ts`) | 30 s | `updateEventPolicy` (stesso processo) | un ingest su un'altra replica usa la policy precedente per al più 30 s |
+| `InboundWebhook` (`services/events/sourceCache.ts`) | 10 s | ogni scrittura sulla sorgente fatta dai servizi (inizio/fine tempesta, marcatore del minuto, incident di tempesta, `last_error` dal worker) e dalle mutation `updateInboundWebhook`/`deleteInboundWebhook`/`regenerateWebhookToken` | solo lo stato di tempesta letto **fuori** dal lock: le decisioni (avvio, apertura/sostituzione dell'incident) rileggono sempre dal grafo sotto lock, e la fine per raffreddamento è una SET condizionale (`storm_since = $since`): al più un ritardo di 10 s, mai una doppia chiusura o un secondo `event.storm_ended` |
+
+`last_error`, `secret`, `enabled` **non** passano dalla cache: il webhook in
+ingresso legge la sorgente dal grafo a ogni richiesta, l'ingest la legge nel
+MERGE.
+
+#### Canale del metamodello (fra i processi)
+
+Le cache che dipendono dal **metamodello del cliente** — schema GraphQL per
+tenant, vocabolari, matrici di dominio, whitelist dei report, tipi di relazione
+ammessi, mappa etichetta → tipo — non aspettano il TTL: `lib/metamodelBus.ts`
+pubblica «il metamodello di questo tenant è cambiato» sul canale Redis
+`og:metamodel.changed`, e ogni processo in ascolto svuota le sue. Prima si
+vedeva solo nei log; dall'ondata 8 ci sono le metriche e tre regole d'allarme
+(`infra/prometheus/alerts.yml`, gruppo `metamodel-bus`):
+
+| Metrica | Tipo | Cosa dice |
+|---|---|---|
+| `metamodel_bus_subscribed` | gauge | 1 = questo processo è in ascolto; **0 = non verrà avvisato** e servirà dati vecchi fino al TTL della singola cache (tabella sotto). Allarme `MetamodelBusNotSubscribed` dopo 5 minuti |
+| `metamodel_published_total{result}` | counter | `delivered` (almeno un ascoltatore), `no_receivers` (nessuno: le altre repliche e i worker restano vecchi), `error` (PUBLISH fallito, Redis giù). Allarme `MetamodelChangesNotDelivered` |
+| `metamodel_received_total{result}` | counter | `applied`, `stale` (versione già applicata o fuori ordine: normale), `malformed` |
+| `metamodel_cache_clear_failures_total{cache}` | counter | un clearer ha lanciato: quel processo resta con dati vecchi per quel tenant. Allarme `MetamodelCacheClearFailures` |
+| `metamodel_resubscribe_flush_total` | counter | quante volte questo processo si è ri-sottoscritto **dopo** aver perso l'ascolto, e ha quindi svuotato tutte le sue cache del metamodello. Ogni incremento è una finestra di messaggi perduti (vedi sotto). Nessun allarme: è la RIPRESA, non il guasto — il guasto lo dicono `metamodel_bus_subscribed` e i log di ioredis |
+
+Sintomo tipico di un canale muto: una relazione appena definita nel disegnatore
+viene rifiutata da un'altra replica con «Invalid relation type».
+
+**Quando l'ascolto cade (PRB00000003).** Il pub/sub di Redis **non ha
+arretrato**: i messaggi pubblicati mentre un processo è staccato vengono
+consegnati a chi ascolta in quel momento e buttati per gli altri, e nessuno li
+riconsegnerà. Un processo che si ri-sottoscrive non sa quindi quali tenant
+siano cambiati nella finestra di buio — sa solo di aver perso qualcosa. Perciò
+una ri-sottoscrizione **dopo una perdita** (non la prima, all'avvio) svuota
+**tutte** le cache del metamodello, di tutti i tenant, e lo scrive in un `warn`
+di `metamodel-bus` («ri-sottoscritto dopo una perdita di ascolto»). Il campo
+`withoutClearAll` di quella riga elenca le cache registrate che **non** sanno
+svuotarsi per intero: quelle restano vecchie fino al loro TTL, e la riga lo
+dice invece di lasciar credere a uno svuotamento totale. Cosa aspettarsi dopo
+una caduta di Redis: un picco breve di query al metamodello mentre le cache si
+ricostruiscono. È il prezzo previsto — l'alternativa è servire un metamodello
+vecchio fino a 5 minuti.
+
+**Chi tira la leva.** `invalidateSchema(tenantId)` è il punto unico: svuota le
+cache di questo processo **e** pubblica. La chiamano le mutation del metamodello
+dei CI, quelle dei tipi ITIL, quelle dei **vocabolari** (`resolvers/enumType.ts`),
+delle **matrici di dominio** e dei **tipi di change pre-approvati**. Il test
+`graphql/__tests__/metamodelInvalidation.test.ts` lo verifica staticamente: una
+mutation nuova che scriva metamodello e non tiri la leva fa cadere quel test.
+
+**E il TTL è la rete, non la via normale.** Ogni cache del metamodello scade da
+sé, perché il canale può tacere (Redis giù, processo iscritto dopo, messaggio
+perso) e una cache senza scadenza resterebbe sbagliata **fino al riavvio del
+processo**:
+
+| Cache (nome del clearer) | TTL |
+|---|---|
+| `schema` (`lib/schemaCache.ts`) | 5 min |
+| `domain-vocabulary`, `domain-matrix`, `pre-approved-change-types`, `ci-labels-for-tenant`, `ci-type-name-to-label`, `ci-metamodel-for-tenant` (`lib/metamodelCache.ts`) | 60 s |
+| `report-whitelist` (`lib/reportWhitelist.ts`) | 60 s |
+| `memory-cache` (`lib/cache.ts`) | per chiave (30 s la policy del ciclo di vita) |
+| `ci-type-labels` (`lib/ciTypeFromLabels.ts`) | nessuno **per costruzione**: non è una cache a domanda ma la proiezione dello schema, riscritta da `registerCITypes` a ogni rigenerazione — quindi la sua staleness è quella dello schema (5 min) |
+
+**APERTO — la cache delle regole di notifica non è su questo canale.**
+`packages/notifications/src/dispatcher.ts` tiene le regole per
+(tenant, tipo di evento) con TTL di 60 s, e le mutation
+(`createNotificationRule`, `updateNotificationRule`) svuotano **solo la cache
+del processo che le ha servite**. Una regola cambiata dall'interfaccia continua
+quindi a valere nella versione precedente nei processi worker per al più 60
+secondi. Non è stata agganciata al canale del metamodello perché quel canale
+dice una cosa diversa — «il metamodello è cambiato» — e usarlo per le regole
+significherebbe far pubblicare a `createNotificationRule` un messaggio che non
+corrisponde al fatto (e far svuotare le regole a ogni modifica di un tipo CI).
+La strada giusta è un canale con una **famiglia di cache** nel messaggio: costo
+M, e finché non c'è la finestra di 60 secondi è questa.
+
+### Policy per tenant
+
+`Tenant.event_policy` (JSON), visibile e modificabile da *Amministrazione →
+Event Management → Policy* (`eventPolicy` / `updateEventPolicy`, solo admin).
+La policy è sempre completa: un campo mancante o fuori dai valori ammessi è un
+errore, mai un default silenzioso.
+
+| Chiave | Iniziale | Significato |
+|---|---|---|
+| `open_incident_from` | `critical` | severità minima (`info`/`warning`/`critical`) da cui un allarme apre un incident; `never` = mai automaticamente |
+| `group_by` | `ci` | raggruppamento: `ci` (un incident per CI) o `fingerprint` (uno per allarme) |
+| `open_delay_seconds` | `0` | attesa prima di aprire (job `correlate`); un allarme che rientra nell'attesa non apre nulla |
+| `auto_resolve` | `true` | risolve l'incident quando nessun allarme correlato è più **acceso** (`firing` o `flapping`): i `suppressed` (silenziati da una change in finestra) non lo tengono aperto — se ne restano, l'incident riceve un commento "N allarmi silenziati da CHG-…" insieme a quello di chiusura, una volta per risoluzione; a fine finestra vengono rivalutati e, se ancora accesi, lo riaprono. Vengono valutati **tutti** gli incident non chiusi collegati all'allarme (tempesta + per CI, manuale + automatico), non solo il più recente |
+| `suppress_upstream_hops` | `1` | salti a monte entro cui una change in finestra silenzia gli allarmi, lungo le relazioni tecniche `DEPENDS_ON`/`HOSTED_ON`/`INSTALLED_ON`/`USES_CERTIFICATE` (le stesse che percorrono i Servizi monitorati: vedi *Una sola definizione*) |
+| `flap_threshold` | `4` | passaggi firing↔resolved in `flap_window_minutes` oltre i quali l'allarme è `flapping` (`0` = spento) |
+| `flap_window_minutes` | `10` | finestra dello sfarfallio |
+| `flap_stable_minutes` | `15` | minuti senza passaggi dopo i quali un allarme `flapping` torna allo stato dell'ultimo payload |
+| `storm_threshold_per_minute` | `50` | allarmi **nuovi** al minuto dalla stessa sorgente oltre i quali la sorgente è in tempesta (`0` = spento) |
+| `storm_cooldown_minutes` | `5` | minuti consecutivi sotto soglia dopo i quali la tempesta finisce |
+| `retention_days` | `90` | giorni dopo `resolved_at` oltre i quali gli eventi risolti vengono eliminati (`0` = mai) |
+| `ignore_lifecycle_statuses` | `["decommissioned"]` | stati del ciclo di vita del CI (`ci.status`) per cui un allarme non apre incident e non cambia la salute: esito `skipped_lifecycle` (vedi *Una sola definizione*). Lista vuota = nessuno stato ignorato |
+| `match_short_hostname` | `false` | riconoscimento del CI per nome: se la risorsa dell'allarme è un FQDN (`db-01.example.local`) prova anche il nome corto (`db-01`), e viceversa. Spento per default perché nomi corti uguali in ambienti diversi renderebbero il match ambiguo (regola di policy; il confronto vive nel riconoscimento del CI dell'ingest) |
+| `severity_map` | critical→high/high, warning→medium/medium, info→low/low | severità dell'allarme → impatto/urgenza dell'incident aperto |
+
+### Una sola definizione (finestra di change, ciclo di vita, tempesta)
+
+Allarmi e Servizi monitorati guardano le stesse tre cose. Dalla revisione 2
+(ondata 3) la definizione è **una sola**, condivisa dal codice dei due
+sottosistemi: prima ciascuno aveva la sua e durante un rilascio i due
+raccontavano storie diverse.
+
+**1. CI in finestra di change** — `services/events/suppression.ts`
+(`changeWindowSubqueryCypher` + `pickChangeWindow`, usati dalla pipeline degli
+allarmi per un CI e innestati dai servizi nella query che carica la mappa: una
+query sola per valutazione). Un CI è «in finestra» quando una change non
+eliminata lo tocca (`AFFECTS_CI`) ed è in `deployment`, oppure in `scheduled`
+con una finestra del piano di rilascio che contiene l'istante. Tre regole
+uguali per entrambi:
+
+- **a monte**: la copertura arriva anche dai CI da cui il CI dipende, fino a
+  `suppress_upstream_hops` salti (policy del tenant, massimo 10), lungo
+  `DEPENDS_ON|HOSTED_ON|INSTALLED_ON|USES_CERTIFICATE`. Il caso tipico — change
+  sul server, allarmi sulle VM `HOSTED_ON` — prima non veniva silenziato.
+- **piani per CI**: la finestra del piano vale per il CI di quel piano
+  (`DeployPlanTask.ci_id`). Una change con due CI e due finestre sfalsate non
+  silenzia più il CI sbagliato.
+- **effetto sui servizi**: un componente coperto da una change (anche a monte)
+  non pesa nel calcolo; se è **critico** il servizio è `maintenance` e
+  `healthIfActive` dice quale sarebbe la salute senza quella finestra. Quando la
+  copertura viene da monte, il componente porta `excludedReason =
+  upstream_change_window` e la mappa lo spiega in `healthNote` («Componente in
+  finestra di change a monte: VM-01 (CHG-0042 su SRV-01)»).
+
+**2. Ciclo di vita del CI** — `ci.status` (`active`, `inactive`, `maintenance`,
+`decommissioned`), che il monitoraggio non scrive mai.
+
+- **allarmi**: un allarme il cui CI ha uno stato in
+  `ignore_lifecycle_statuses` (default `decommissioned`) esce dalla pipeline con
+  esito `skipped_lifecycle` — nessun incident, nessun ricalcolo della salute,
+  nessun contatore di tempesta — e resta visibile in console con il suo motivo.
+  Nota operativa: un incident aperto **prima** che il CI fosse dismesso resta
+  aperto (nessun allarme lo chiuderà più) e va chiuso a mano.
+- **servizi**: un componente `decommissioned` o `inactive` non conta
+  (`excludedReason = lifecycle_decommissioned`) e non porta il servizio in
+  manutenzione — nessuno «chiude» quello stato. La costruzione automatica lo
+  propone con `propagate: never`, il diff (`serviceMapProposal`) lo elenca fra i
+  componenti **da togliere**, ma la sincronizzazione automatica **non** lo
+  toglie: si limita a contarlo nella nota («N componenti dismessi esclusi dal
+  calcolo»), perché togliere una `INCLUDES` butterebbe via peso e criticità
+  decisi da una persona. Lo toglie chi applica il diff.
+  `ci.status = maintenance` resta un'altra cosa: il componente non conta ma il
+  servizio non va in manutenzione (`lifecycle_maintenance`).
+
+**3. Tempesta della sorgente** — `InboundWebhook.storm_since`.
+
+- **allarmi**: un solo incident di tempesta per sorgente (vedi *Tempeste di
+  allarmi*).
+- **servizi**: con la regola della mappa `during_storm = hold` (default), se i
+  componenti hanno allarmi accesi da una sorgente in tempesta la valutazione è
+  **sospesa** — salute, punteggio e spiegazione restano quelli di prima, nessun
+  incident di servizio aperto o chiuso — e `healthNote` dice quale sorgente
+  («Sorgente in tempesta: Zabbix prod. Valutazione sospesa…»); la metrica conta
+  `service_evaluations_total{result="hold"}`. Alla fine della tempesta
+  (`event.storm_ended`) le mappe che includono CI con allarmi di quella sorgente
+  vengono rivalutate subito (consumer, trigger `maintenance`). Con
+  `during_storm = evaluate` il comportamento resta quello di prima: 60 allarmi
+  da una sorgente impazzita possono aprire un incident per mappa.
+
+### Sfarfallio (flapping)
+
+Un allarme che va e viene (firing → resolved → firing …) non deve aprire e
+chiudere un incident a ogni oscillazione. Ogni passaggio viene registrato in
+`Event.transitions` (ultimi 50 istanti) insieme a `last_payload_status`.
+
+- **Come si riconosce**: status `flapping` nella console eventi (filtro
+  `status = flapping`, contatore *Sfarfallio* in `eventStats.flapping`), campo
+  `flappingSince`, `transitions24h` (passaggi nelle ultime 24 h),
+  `correlation = flapping`; notifica `event.flapping`; sull'incident già
+  correlato un commento *"Allarme instabile: N passaggi in M minuti,
+  correlazione sospesa"*. Il CI vale **degraded** finché sfarfalla (instabilità,
+  non guasto pieno): con un altro allarme `critical` firing resta `down`.
+- **Cosa succede**: nessun incident viene aperto, agganciato, riaperto o
+  risolto da quell'allarme; i payload successivi aggiornano `last_seen_at`,
+  `last_payload_status` e la lista senza cambiare stato. Dopo
+  `flap_stable_minutes` senza passaggi il job periodico lo riporta allo stato
+  dell'ultimo payload (`event.stable`) e lo ripassa dalla pipeline: se è
+  firing viene correlato, se è resolved si valuta la chiusura automatica.
+- **Cosa fare**: è il sintomo di una soglia di monitoraggio troppo vicina al
+  valore normale o di un servizio che oscilla. Guardare `transitions24h` nel
+  dettaglio evento; sistemare la soglia nello strumento di monitoraggio (o
+  isteresi/`for:` in Prometheus). Per un tenant con molti allarmi legittimamente
+  oscillanti alzare `flap_threshold` o ridurre `flap_window_minutes`;
+  `flap_threshold = 0` spegne il rilevamento.
+
+### Tempeste di allarmi
+
+Un guasto di rete o un problema nello strumento di monitoraggio può generare
+centinaia di allarmi al minuto: aprire un incident per ogni CI seppellirebbe
+gli operatori.
+
+- **Come si riconosce**: `eventStats.stormSources` (console eventi, riquadro
+  *Tempeste in corso*: sorgente, allarmi al minuto, da quando, incident);
+  `InboundWebhook.storm_since`/`storm_incident_id`; metrica
+  `event_storms_active` (pannello Grafana, rosso ≥ 1); notifica
+  `event.storm_started` (in_app + Slack); un incident **critical** dal titolo
+  *"Tempesta di allarmi da <sorgente>: N allarmi al minuto"* con i primi CI
+  coinvolti nella descrizione; gli eventi hanno `correlation = storm`.
+- **Cosa succede**: il contatore al minuto per (tenant, sorgente) vive su
+  Redis (`og:events:storm:<tenant>:<sorgente>:<minuto>`, TTL 120 s) e conta
+  gli allarmi che **aprono un ciclo** — nuovi, oppure rientrati e tornati
+  accesi (revisione 2 · B2-03: contare i soli Event nuovi rendeva impossibile
+  la tempesta al SECONDO guasto identico, quando gli Event esistono già) — non
+  le ripetizioni né il retry dello stesso payload. Alla soglia la sorgente entra
+  in tempesta; gli allarmi vengono ingeriti e deduplicati normalmente e la
+  salute dei CI si aggiorna, ma la correlazione **non** apre né aggancia
+  incident per CI: tutti si agganciano all'unico incident di tempesta della
+  sorgente. L'incident richiede un CI: lo apre il primo allarme con un CI
+  riconosciuto (fino ad allora `correlation = storm_no_ci`). La soppressione
+  per finestra di change vince sulla tempesta. La tempesta finisce quando per
+  `storm_cooldown_minutes` consecutivi nessun minuto ha raggiunto la soglia
+  (verificato a ogni ingest e dal job periodico): `event.storm_ended`,
+  commento *"Tempesta terminata: N eventi in T minuti"* sull'incident; gli
+  allarmi ancora attivi **restano** agganciati all'incident di tempesta (non
+  vengono redistribuiti). Un allarme rientrato durante la tempesta aggiorna
+  solo la salute; finita la tempesta la chiusura automatica torna a valere.
+- **Cosa fare**: aprire l'incident di tempesta e verificare la causa comune
+  (rete, DNS, lo strumento stesso, una regola di alerting errata). Se la
+  sorgente continua a inviare spazzatura disabilitare il webhook
+  (*Amministrazione → Integrazioni*: risponde 404, lo strumento ritenta o
+  scarta) finché non è sistemata. Alla fine risolvere l'incident di tempesta a
+  mano se non si risolve da solo (lo fa quando l'ultimo allarme agganciato
+  rientra, se `auto_resolve` è attivo). Se le tempeste sono false (sorgente
+  legittimamente prolifica) alzare `storm_threshold_per_minute` per quel
+  tenant; `0` spegne il rilevamento. Redis giù durante una tempesta → l'ingest
+  fallisce e ritenta (nessun fallback), `/health` 503.
+
+### Conservazione
+
+Il job `purge_events` (coda `maintenance`, ogni giorno alle 03:30) elimina, per
+ogni tenant, gli `Event` in stato **`resolved`** con `resolved_at` più vecchio
+di `retention_days` della policy del tenant, con le loro relazioni
+(`RAISED_ON`, `FROM_SOURCE`, `CORRELATED_INTO`, `SUPPRESSED_BY`; ma vedi sotto
+per gli incident/change non chiusi), in batch da
+1000 (`CALL { … } IN TRANSACTIONS`, sessione auto-commit: `runQuery` usa
+`session.run`, pinnato dal test `eventRetentionAutocommit.test.ts`); il
+numero riportato è il `count(*)` della **stessa** query che cancella. Gli
+eventi `firing`, `suppressed` e `flapping` non vengono **mai** eliminati,
+qualunque sia la loro età. `retention_days = 0` = nessuna eliminazione. Log per tenant
+(`Resolved events purged` con `retentionDays`, `cutoff`, `purged`), metrica
+`events_purged_total`. Un tenant senza policy fa fallire il job **dopo** aver
+purgato gli altri. Per lanciarla a mano: `purgeResolvedEvents()` in
+`apps/api/src/services/eventRetention.ts` (non c'è ancora una voce CLI; in un
+REPL `tsx` con `--env-file=.env`).
+
+La conservazione **rispetta la storia** (revisione 2.2): un evento correlato
+(`CORRELATED_INTO`) a un incident **non chiuso** — passo non terminale, oppure
+`resolved`, che il monitoraggio riapre se l'allarme torna — o silenziato
+(`SUPPRESSED_BY`) da una change **non chiusa** non viene mai eliminato,
+qualunque sia la sua età. Quando incident/change sono chiusi e l'evento è oltre
+la retention, l'evento viene eliminato ma il padre conserva il conteggio
+(`Incident.correlated_events_purged`, `Change.suppressed_events_purged`, +1 per
+evento, scritto nello **stesso** batch della cancellazione), esposto in GraphQL
+come `Incident.correlatedEventsPurged` / `Change.suppressedEventsPurged` per
+mostrare "N allarmi eliminati per conservazione" al posto di una sezione vuota.
+I passi "chiusi" vengono letti dalla definizione del workflow del tenant a ogni
+passata (per l'incident: i terminali diversi da `resolved`); un workflow senza
+passo terminale fa fallire il purge di quel tenant.
+
+**Fusi orari delle finestre** (revisione 1.17): ogni data di
+`releaseWindow`/`validationWindow` del piano di rilascio deve avere l'offset
+esplicito (`Z` o `±hh:mm`): `lib/deployWindows.ts` rifiuta con
+`… must carry an explicit UTC offset` un piano scritto come `2026-09-09T22:00`,
+che altrimenti verrebbe letto nel fuso del server API e non in quello del
+tenant. Il web salva sempre in UTC con `Z`.
+
+Le **voci di cronologia** dell'evento (`HAS_HISTORY` → `EventHistoryEntry`,
+vedi sotto) vengono cancellate nello stesso batch dell'evento: il `DETACH
+DELETE` dell'evento da solo le lascerebbe orfane.
+
+### Cronologia dell'allarme
+
+Ogni `Event` porta una cronologia (`(:Event)-[:HAS_HISTORY]->(:EventHistoryEntry)`,
+`apps/api/src/services/events/history.ts`; in GraphQL `Event.history(limit)`
+e `Event.historyCount`, tipo `EventHistoryEntry`, enum `EventHistoryKind`
+generato da `lib/eventVocabularies.ts`): **una voce per ogni cambiamento di
+stato o esito**, mai per le ripetizioni di un payload con lo stesso stato
+(`count`/`last_seen_at` bastano) e mai per i cambi di salute del CI (sono del
+CI). Nodo in snake_case: `id`, `tenant_id`, `event_id`, `at`, `kind`,
+`outcome` (solo `correlated`), `actor_id` (`monitoring` o l'id dell'utente),
+`incident_id`, `change_id`, `ci_id`, `note`, `severity`. Vincolo di unicità
+su `id` e indice `event_history_tenant_event` su `(tenant_id, event_id, at)`
+in `packages/neo4j/src/init.ts` (`migrate --init-schema`): nessuna migrazione
+versionata, la cronologia parte dal deploy.
+
+| `kind` | Quando | Campi |
+|---|---|---|
+| `first_seen` | creazione dell'Event (anche già `resolved`, B5: `at` = `first_seen_at`) | `severity` |
+| `cycle_firing` / `cycle_resolved` | il payload cambia stato rispetto all'ultimo applicato (stessa regola di `Event.transitions`) | `severity` |
+| `severity_changed` | stesso ciclo, payload `firing` con severità diversa | `severity`, `note` = severità precedente |
+| `correlated` | l'esito di correlazione **cambia** (`setCorrelation`), o la relazione con l'incident è nuova; una ripetizione già agganciata non scrive nulla | `outcome`, `incident_id` se c'è |
+| `suppressed` / `unsuppressed` | inizio/fine del silenzio in finestra di change | `change_id` |
+| `flapping` / `stable` | inizio/fine dello sfarfallio | `note` = "N passaggi in M min" / "nessun passaggio in M min" |
+| `storm` | aggancio **nuovo** all'incident di tempesta | `incident_id` |
+| `auto_resolved` / `auto_resolve_skipped` | chiusura automatica dell'incident (o motivo per cui non è possibile) | `incident_id`, `note` = cammino percorso / motivo |
+| `acknowledged`, `resolved_manually`, `linked_ci`, `incident_opened_manually`, `reevaluated` | mutation dell'operatore | `actor_id` = utente; `note` (risoluzione), `ci_id` (+ `note` = `alias`), `incident_id` |
+
+**Scrittura nello stesso statement dello stato, mai fire-and-forget.**
+`historyWriteCypher` è un frammento accodato al MERGE dell'ingest
+(`ingestMergeCypher`: il `kind` è un CASE sui valori pre-scrittura,
+`INGEST_HISTORY_KIND_CYPHER`), a `setCorrelation`, ai SET di soppressione,
+sfarfallio, stabilizzazione e delle mutation: se la voce non si scrive,
+fallisce l'operazione (il job ritenta). Solo la chiusura automatica e la
+richiesta di rivalutazione usano `appendEventHistory` (statement a sé nella
+stessa sessione, con lo stesso comportamento in caso di errore).
+
+**Cap per evento**: al massimo `EVENT_HISTORY_MAX = 200` voci. Lo stesso
+frammento che scrive la voce cancella le più vecchie oltre il limite (unit
+subquery `CALL { … }` ordinata per `at`), **mai la `first_seen`**.
+
+**Allarmi precedenti al deploy**: nessun backfill. Il resolver **sintetizza**
+la voce `first_seen` da `first_seen_at` quando nessuna voce salvata di quel
+tipo esiste (id `<eventId>:first_seen`, attore `monitoring`, senza severità:
+quella di allora non è nota), inserita nell'ordine della lista e sempre
+presente anche oltre `limit`; `historyCount` la conta. Lettura: `history`
+restituisce le ultime `limit` voci (default 100, massimo 200) dalla più
+recente, in una query sull'indice (a parità di istante — ingest e pipeline
+scrivono con lo stesso `now` — la voce dell'ingest è la più vecchia e l'esito
+della pipeline il più recente); `actor`, `incident`, `change`, `ci` sono
+field resolver (null se l'entità non esiste più; la change segue la query
+`change`, quindi null se eliminata). Stessi ruoli di `event(id)`.
+
+### Metriche e pannelli
+
+`GET /metrics` (`middleware/metrics.ts`, riga *Event Management* del
+cruscotto Grafana `infra/grafana/dashboards/opengraphity-api.json`):
+
+| Metrica | Tipo | Incrementata da |
+|---|---|---|
+| `events_received_total{connector}` | counter | ogni ingest (nuovo o ripetuto), etichetta = connettore della sorgente |
+| `events_deduplicated_total` | counter | ingest che ha trovato l'impronta (ripetizione) |
+| `events_orphan_total` | counter | ingest senza CI riconosciuto |
+| `events_ambiguous_total` | counter | ingest lasciato orfano perché più CI hanno lo stesso nome (`match_reason = ambiguous`; conta anche in `events_orphan_total`) — un valore che cresce = nomi duplicati nella CMDB da disambiguare con alias o rinomina |
+| `events_suppressed_total` | counter | prima soppressione per finestra di change (non le ripetizioni) |
+| `workflow_step_purpose_missing_total{rule}` | counter | una regola di dominio ha cercato i passi con uno SCOPO (`WORKFLOW_STEP_PURPOSES`) e il workflow del tenant **ha** dei passi ma nessuno lo dichiara: configurazione incompleta. Con `rule="change_window"` l'elaborazione **si ferma dicendolo** (il lavoro resta nella coda dei falliti, rigiocabile dalla pagina Code) invece di lasciare i rilasci senza soppressione e aprire incident falsi in silenzio: finché lo scopo non è assegnato ai passi nel disegnatore, gli allarmi di quel tenant non vengono elaborati. Un tenant **senza** workflow delle change non conta qui (non c'è niente da sopprimere). L'allarme `WorkflowStepPurposeMissing` lo segnala |
+| `events_flapping_total` | counter | ingresso in sfarfallio |
+| `incidents_auto_opened_total` | counter | incident aperti dalla correlazione e incident di tempesta (non `createIncidentFromEvent`) |
+| `incidents_auto_resolved_total` | counter | chiusure automatiche |
+| `incidents_reopened_total` | counter | riaperture per allarme tornato |
+| `events_purged_total` | counter | eventi eliminati dalla conservazione |
+| `events_rejected_total{connector}` | counter | elementi di un payload scartati dalla normalizzazione (accettazione parziale del batch, o intero payload rifiutato con 400); il motivo è in `last_error` della sorgente |
+| `events_resolved_unknown_total{connector}` | counter | payload `resolved` di allarmi mai visti: Event creato già risolto, nessun avviso |
+| `event_storms_active` | gauge | sorgenti in tempesta (riallineato a ogni inizio/fine e dal job periodico) |
+| `events_correlated_total{outcome}` | counter | ogni passata della pipeline con l'esito finale: `opened`, `attached`, `reopened`, `skipped_severity`, `skipped_orphan`, `delayed`, `none`, `suppressed`, `flapping`, `storm`, `storm_no_ci`, `auto_resolved`, `auto_resolve_skipped`, `error` (la pipeline ha lanciato: il job ritenta) |
+| `event_pipeline_duration_seconds{mode}` | histogram | durata della pipeline per evento (`ingest`, `reevaluate`, `resume`) |
+| `event_pass_total{pass,result}` | counter | passate del job `events-maintenance` (`closed_windows`, `pending`, `flapping`, `storms`, `gauges`) per esito (`ok`, `failed`) |
+| `event_pass_duration_seconds{pass}` | histogram | durata di ogni passata (una passata oltre i minuti = 2.1: troppi eventi in stato di attesa) |
+| `events_overdue_delayed` | gauge | eventi `delayed` con `correlation_due_at` scaduta da più di 5 minuti: il job `correlate` non è arrivato (coda ferma o job id già usato) — riallineato dal job periodico |
+| `events_firing_uncorrelated` | gauge | eventi firing con correlazione `none`/`pending` da più di 15 minuti: pipeline fallita a ogni tentativo e mai ripresa — riallineato dal job periodico. Dalla revisione 2 la passata `pending` usa lo STESSO predicato e li riprende: se il gauge resta > 0 per due giri, è la passata a fallire (vedi `event_pass_total{pass="pending",result="failed"}`) |
+| `events_out_of_order_total{connector}` | counter | payload più vecchio dell'ultimo applicato alla stessa impronta ma con uno stato DIVERSO: **applicato** lo stesso e loggato a `warn` con i due istanti (revisione 2 · B2-06). Uno più vecchio con lo stesso stato è innocuo e conta come `duplicate`. Se cresce: orologi delle repliche API non sincronizzati (NTP) o riordino della coda |
+| `event_correlate_job_lag_seconds` | histogram | ritardo del job `correlate` rispetto alla scadenza del ritardo (processedAt − dueAt) |
+| `event_ingest_lag_seconds` | histogram | ritardo fra la ricezione dell'allarme dal webhook (`receivedAt` del job) e l'inizio del suo ingest (revisione 2 · D7.2): l'unica metrica che dice «gli allarmi arrivano in ritardo» — coda `events-ingest` in affanno, `events-worker` fermo, arretrato dopo un riavvio di Redis |
+| `events_ingest_failed_total{connector}` | counter | job `events-ingest` fallito all'ultimo tentativo: l'allarme non è stato ingerito, la sorgente porta `last_error` e il job è nella coda (rigiocabile da *Amministrazione → Code*) |
+| `events_failed_total{queue,type}` | counter | eventi di dominio che hanno esaurito i 4 tentativi di un consumer (`notification-service`, `sla-engine`, `escalation-consumer`, `service-impact-consumer`), per coda e tipo di evento: una notifica non inviata, uno SLA non avviato, una mappa non rivalutata. **Non** rigiocabili dalla console (vedi §9) |
+| `redis_lock_timeouts_total{lock}` | counter | attese di un lock Redis abbandonate dopo il timeout (il job ritenta con backoff), per famiglia: `events:group`, `events:storm-open`, `services:incident` |
+| `redis_lock_hold_seconds{lock}` | histogram | durata della sezione critica sotto il lock; oltre il TTL (30 s) il processo logga `Critical section outlived the lock TTL` — la gara che il lock evita torna possibile |
+| `bullmq_queue_depth{queue,status}` | gauge | profondità di **ogni** coda del registro (`lib/queueRegistry.ts`, revisione 2 · D2.2): anche `events-*`, `services-impact` e le quattro code dei consumer di dominio, che prima non erano campionate. Campionata dal solo processo API ogni 30 s |
+
+**Dove vivono le metriche** (revisione 2 · D1.1): con `WORKER_PROFILE=api`
+la pipeline gira nel processo `events-worker`, che serve lo stesso
+`GET /metrics` dell'API sulla porta 4000: i contatori della pipeline
+(`events_received_total`, `events_correlated_total`, …) e i gauge riallineati
+dalle passate (`event_storms_active`, `events_overdue_delayed`,
+`services_health`, …) sono **suoi**. Prometheus raschia tutti i processi
+(`infra/prometheus/prometheus.yml`: `api`, `events-worker`, `worker`, etichetta
+`service`) e regole e pannelli aggregano con `sum()`/`max()` — una query con
+il nome nudo della metrica vede più serie.
+
+Pannelli: riga *Event Management* — *Eventi/s per esito* (ricevuti,
+deduplicati, soppressi, sfarfallio), *Incident automatici al minuto*
+(aperti/risolti/riaperti), *Tempeste di allarmi attive*; riga *Salute
+dell'Event Management* (revisione 2 · D7.1) — *Orfani e ambigui al minuto*,
+*Quota di allarmi orfani*, *Allarmi persi* (ingest falliti + eventi di dominio
+persi), *Allarmi senza incident* (`events_overdue_delayed`,
+`events_firing_uncorrelated`), *Passate periodiche fallite ed errori di
+correlazione*, *Ritardi in coda p95* (ingest, correlate, valutazione servizi),
+*Sincronizzazioni delle mappe per esito*, *Lock Redis*, *Job falliti per coda*.
+
+**Allarmi**: sono regole vere in `infra/prometheus/alerts.yml` (`rule_files`
+di `prometheus.yml`; stato in `http://127.0.0.1:9090/alerts` e
+`/api/v1/rules`), non più prosa. Gruppo `opengraphity-event-management`:
+`EventStormActive` (≥ 1 per 10 min), `EventOrphanRatioHigh` (> 20% per 15
+min), `EventsOverdueDelayed` e `EventsFiringUncorrelated` (> 0 per 15 min:
+allarmi attivi senza incident — guardare `event_pass_total{pass="pending",result="failed"}`
+e il log `re-evaluation failed`), `EventCorrelationErrors`,
+`EventIngestFailed` (critico), `EventIngestLagHigh` e `EventCorrelateLagHigh`
+(p95 > 60 s), `EventMaintenancePassFailing`; gruppo `opengraphity-services`:
+`ServiceEvaluationErrors`, `ServiceEvaluationLagHigh`, `ServiceMapsStale` (> 0
+per un giorno); gruppo `opengraphity-platform`: `DomainEventsLost` (critico),
+`BullMQFailedJobs` (per coda, 15 min), `RedisLockTimeouts`, `BackupStale`,
+`BackupFailed`, `ProcessDown`. Ogni regola porta `runbook` con la sezione da
+leggere. Un Alertmanager non fa parte dello stack: aggiungere `alerting:` a
+`prometheus.yml` quando c'è (le regole non cambiano). I log della pipeline
+portano `fingerprint` (ritrova l'allarme sullo strumento) e `jobId` (ritrova
+il job in coda) oltre a tenant, evento, incident, change e sorgente.
+
+### Provare una sorgente
+
+1. *Amministrazione → Integrazioni → Webhook in ingresso*: crearne uno con
+   *Tipo entità = Evento* e il connettore dello strumento; copiare URL e token
+   (il token si vede solo alla creazione).
+2. Dal dettaglio della sorgente, **Invia evento di prova** (`sendSampleEvent`):
+   il payload di esempio del connettore passa dalla pipeline reale e compare
+   nella console eventi entro pochi secondi (job `events-ingest`); la sorgente
+   mostra `last_received_at` e `receive_count`. L'evento di prova ha risorsa
+   `db-01.example.local` (o simile): sarà **orfano** a meno che non esista un
+   CI o un alias con quel nome — è atteso, serve a verificare la catena
+   webhook → coda → console.
+3. Per il connettore `generic`: *Anteprima* (`previewInboundEvents`) incollando
+   un payload reale mostra cosa diventerebbe senza ingerirlo; il mappatore
+   propone le chiavi del payload (`payloadKeys`).
+4. Dallo strumento: `curl -X POST <url> -H "Authorization: Bearer <token>" -H
+   "Content-Type: application/json" -d @payload.json` → `202 {"accepted": N}`.
+
+### Risoluzione dei problemi
+
+**Evento orfano** (`event.orphan`, contatore *Orfani*): guardare
+`Event.matchReason` (vedi *Riconoscimento del CI*). `none` = nessun CI con
+quel nome né alias `hostname/ip/fqdn` con quel valore né alias `external_id`
+uguale a `resourceExternalId` (confronto in minuscolo, porta tolta da
+`host:porta`); tipico FQDN dell'allarme contro nome corto in CMDB (o viceversa):
+accendere `match_short_hostname` nella policy, oppure creare l'alias.
+`ambiguous` = più CI con lo stesso nome (i candidati sono nel payload di
+`event.orphan` e nel log `more than one CI matches the resource name`):
+l'evento non viene agganciato finché non lo si collega a mano o non si
+disambiguano i CI (alias `hostname`/`external_id` sul CI giusto, rinomina);
+`events_ambiguous_total` cresce a ogni payload. Dal dettaglio evento
+**Collega a un CI** con *crea alias*: da quel momento la sorgente viene
+riconosciuta da sola e l'evento viene rivalutato (salute, correlazione). Molti
+orfani dalla stessa sorgente → allineare il campo risorsa del connettore (es.
+`labels.host` invece di `instance`) o creare gli alias in blocco
+(`createCIAlias`).
+
+**Sorgente con errori** (`last_error`, `error_count` sul webhook, log
+`webhook-inbound`): il payload è stato rifiutato con 400 e il motivo indica il
+campo (`alerts[0].labels.severity must be one of: …`, `event_value must be
+"1" (problem) or "0" (recovery)`, `resourceKind is missing: set
+default_values.resourceKind`). Sistemare `value_mapping`/`default_values` o la
+regola nello strumento; `last_error` resta finché un nuovo payload scartato non
+lo sostituisce (un job riuscito azzera solo gli errori `ingest:` del worker). 401 =
+token sbagliato (solo header `Authorization: Bearer`), 404 = webhook
+disabilitato o id errato, 429 = più richieste/min del limite della sorgente
+(`rate_limit_per_minute`, 100 se mai impostato; header `Retry-After` — alzare
+il limite o mandare batch più grandi, fino a 500 allarmi), 503 = tutti gli
+isolate del transform script occupati (`Retry-After: 5`, lo strumento
+ritenta), 500 = Redis giù (lo strumento ritenta).
+
+**Policy mancante o di versione precedente** (ingest che falliscono con
+`Tenant <id> has no event_policy` o `… missing flap_stable_minutes …`): eseguire
+`migrate.ts` (1010 crea la policy, 1040 la completa). Un tenant creato con
+`onboard-tenant` la riceve già completa. Policy corrotta (`is corrupt JSON`):
+`MATCH (t:Tenant {id: $id}) RETURN t.event_policy` e correggerla, oppure
+`SET t.event_policy = null` e rieseguire `migrate.ts --force --to 20260909_1040_event_management_policy_v2`.
+
+**Incident non aperto** anche se l'allarme è `critical`: controllare
+`Event.correlation` — `skipped_severity` (soglia `open_incident_from`),
+`skipped_orphan` (nessun CI), `delayed` (attesa `open_delay_seconds`),
+`suppressed` (change in finestra: `suppressedBy`), `flapping`, `storm`
+(agganciato all'incident di tempesta). `reevaluateEvent` rilancia la pipeline
+per un evento soppresso, in attesa o orfano appena collegato.
+
+**Evento resta `suppressed` a finestra chiusa**: la passata `closed_windows`
+del job `events-maintenance` gira ogni 5 minuti; se la change è uscita dal
+passo `deployment`/`scheduled` da più tempo, guardare i job falliti delle code
+`events-correlate`/`events-maintenance` (`bullmq_queue_depth{status="failed"}`,
+`event_pass_total{result="failed"}`) e il log `Suppressed event
+re-evaluation failed`; `reevaluateEvent` dal dettaglio lo sblocca subito.
+
+**Salute del CI che non cambia**: `health_source = manual` (forzatura
+manuale: togliere l'override dal dettaglio CI) o `ci.status = maintenance`
+(ciclo di vita: il monitoraggio non tocca un CI in manutenzione). All'USCITA
+dalla manutenzione la salute viene ricalcolata dalla mutation stessa
+(revisione 2 · B2-14) e solo dopo i servizi vengono avvisati: prima restava
+quella di prima della finestra finché lo strumento non rimandava un payload.
+
+**Sorgente eliminata**: `deleteInboundWebhook` chiude i suoi allarmi ancora
+accesi nella stessa transazione (voce di cronologia `resolved_manually` con il
+motivo), poi ricalcola la salute dei CI toccati e li fa ripassare dalla
+pipeline, così gli incident si chiudono per la via normale (revisione 2 ·
+D4.1). La mutation risponde con `resolvedEvents`/`affectedCIs`. Se la
+riconciliazione fallisce dopo il commit l'errore è esplicito (la sorgente resta
+eliminata): rimediare con `reevaluateEvent` sugli allarmi elencati nel log.
+
+### Servizi monitorati (mappa del servizio e albero d'impatto)
+
+Progetto: artifact "Servizi monitorati" (10 set 2026), ondate 1–4. Un
+**servizio monitorato** è una `BusinessApplication` con una `ServiceMap`
+(`(:BusinessApplication)-[:HAS_SERVICE_MAP]->(:ServiceMap)`, una per
+servizio): i componenti che la reggono sono `INCLUDES {level, role, propagate,
+weight, critical, via, added_by, added_at}` verso i CI (livello 1 = le
+applicazioni raggiunte con `REALIZES`, 2.. = i fornitori seguendo IN USCITA
+`DEPENDS_ON`/`HOSTED_ON`/`INSTALLED_ON`/`USES_CERTIFICATE` fino a `max_depth`,
+default 4, massimo 8, tetto 500 nodi: oltre è un `BAD_USER_INPUT` con il
+conteggio, mai un taglio silenzioso); la mappa è **viva** per default
+(`auto_sync = true`, ondata 5: si aggiorna da sola appena cambia la CMDB, vedi
+*Mappa viva o congelata* più sotto) e conserva `node_ids` per accorgersi
+di un CI cancellato. Codice: `apps/api/src/services/serviceImpact/`
+(`rules.ts` funzione pura, `build.ts` costruzione con
+`apoc.path.expandConfig` BFS/`NODE_GLOBAL`, `engine.ts` valutazione,
+`history.ts` cronologia, `config.ts` configurazione da interfaccia,
+`sync.ts` sincronizzazione con la CMDB), `jobs/serviceImpactWorker.ts`,
+`consumers/serviceImpactConsumer.ts`, resolver `graphql/resolvers/services.ts`,
+vocabolari `lib/serviceVocabularies.ts`.
+
+**Salute e punteggio** (`ServiceMap.health`, `impact_score` 0–100,
+`explanation` JSON con le cause e il percorso `via` fino al livello 1), dalle
+regole per mappa (`rules` JSON, default `down_share_pct 50`,
+`degraded_share_pct 1`, `min_nodes 1`, `unknown_nodes operational`,
+`open_incident_from down`): contano i nodi con `propagate ≠ never`, non in
+finestra di change e non in manutenzione di ciclo di vita; i nodi senza salute contano come operativi nel denominatore (`unknown_nodes = operational`, default: una copertura parziale non gonfia l'impatto) o sono esclusi (`ignore`); nessun nodo con salute nota → `unknown`;
+`impact_score = round(100 · (Σ peso giù + 0,5 · Σ peso degradati) / Σ peso)`;
+`down` se un critico che conta è giù o la quota ponderata dei giù ≥
+`down_share_pct`, poi `maintenance` se un nodo critico è in **finestra di
+change** (stessa regola della soppressione degli allarmi, `deployment` sempre /
+`scheduled` dentro una finestra del piano, hops 0), `degraded` se il punteggio ≥
+`degraded_share_pct` e i non operativi ≥ `min_nodes`, `unknown` se nessun
+nodo conta, altrimenti `operational`.
+
+**Le due manutenzioni sono cose diverse** (revisione 2 · R1) e vanno tenute
+distinte quando si legge una mappa:
+
+| Condizione | Il nodo conta? | Il servizio va in `maintenance`? | Dove si vede |
+|---|---|---|---|
+| `ci.status = 'maintenance'` (ciclo di vita del CI) | **no** (come `propagate: never`: fuori dal denominatore, mai fra le cause) | **no** — è uno stato che nessuno «chiude» | `ServiceMapNode.ci.status`, `excludedReason = lifecycle_maintenance` |
+| change in finestra sul CI | **no** | **sì, se il nodo è critico** | `ServiceMapNode.inMaintenance`, `excludedReason = change_window` |
+
+**`down` vince su `maintenance`**: un critico che conta e sta giù è un guasto
+vero e va detto anche mentre un altro componente è in finestra. Quando la salute
+è `maintenance`, `ServiceMap.healthIfActive` porta la salute che il servizio
+avrebbe **senza** quella finestra («in manutenzione, sarebbe: giù»); è `null` in
+tutti gli altri casi. Fino alla revisione 2 un solo CI critico messo in
+manutenzione di ciclo di vita spegneva il servizio per sempre, nascondendo ogni
+guasto e impedendo qualunque incident. `always` e `weighted` pesano allo stesso
+modo in ondata 1. Pesi proposti: 8 al livello 1 (critico), 3 ai certificati
+(`propagate never`), 5 al resto.
+
+| Coda / consumer | Job | Cosa fa |
+|---|---|---|
+| `service-impact-consumer` (BaseConsumer, fan-out di `packages/events`) | `ci.health_changed` | trova le mappe del tenant che includono il CI (`status ≠ paused`) e accoda un job per mappa |
+| `services-impact` (concurrency 2, lock 10 min) | `evaluate` | dedup a **finestra** (revisione 2 · Q1): `deduplication: {id: svc-<tenant>-<mapId>, ttl: 2 s}` con `jobId` libero, e ritardo di 2 s — 40 CI dello stesso servizio in raffica = **una** valutazione, ma un cambio che arriva MENTRE il job gira ne accoda una nuova (con il vecchio `jobId` fisso quel cambio si perdeva fino alla passata periodica, ~15 min); 5 tentativi con backoff 5 s; rimosso a completamento **e** a fallimento definitivo (il fallimento resta nel log e in `service_evaluations_total{result="error"}`). Innescato da `ci.health_changed`, dalle mutation e dai **segnali di manutenzione** (`notifyCIMaintenanceChanged`, trigger `maintenance`) |
+| | `services-periodic` | ogni 5 minuti: mappe attive con `evaluated_at` più vecchio di 10 minuti (o mai valutate) o `stale`, paginate (`runPagedPass`), rivalutate con trigger `periodic`; riallinea il gauge `services_health{health}` |
+| | `sync` | sincronizzazione di UNA mappa viva con la CMDB (ondata 5): stessa dedup a finestra con id `svcsync-<tenant>-<mapId>` (diverso da quello della valutazione: le due code di lavoro non si deduplicano a vicenda), stesso ritardo di 2 s e stessi tentativi — un import che tocca 500 relazioni produce **una** sincronizzazione per mappa, non 500. Accodato da `notifyCIGraphChanged` (che trova le mappe anche quando il CI è appena stato **cancellato**, via `node_ids`) e dalla mutation `syncServiceMap` |
+| | `services-sync-periodic` | ogni **30 minuti**: rete di sicurezza della sincronizzazione — mappe con `auto_sync = true`, `status ≠ paused` e `synced_at` più vecchio di 30 minuti (o mai sincronizzate), paginate. Rada di proposito: l'immediatezza la dà `notifyCIGraphChanged`, questa passata recupera solo ciò che è stato scritto fuori dalle mutation (script, migrazioni, Cypher a mano, coda giù) |
+
+**Una valutazione** = una query (mappa + `INCLUDES` con `ci.health` + change
+in finestra per ogni CI) + le regole + **uno statement** di scrittura, con la
+**guardia di versione** `WHERE m.version = toInteger($version)` (revisione 2 ·
+E1: se una sincronizzazione ha cambiato la composizione nel frattempo, non si
+scrive nulla — si rilegge e si ricalcola UNA volta, alla seconda è un errore).
+La decisione «salute cambiata» è nel Cypher (`previous IS NULL OR previous <>
+$health`), così due valutazioni concorrenti non scrivono due voci; a salute
+cambiata `health_since`, voce `ServiceHealthEntry` (`HAS_HEALTH_HISTORY`,
+trigger `created | ci_health | manual | periodic | …`, cap **500** voci mai la
+`created`), evento di dominio `service.health_changed` (`{map_id, service_id,
+name, previous_health, new_health, impact_score}`, nessuna regola di notifica
+in ondata 1) e audit; a salute invariata solo `evaluated_at` (punteggio e
+spiegazione vengono comunque aggiornati). Un CI incluso che **non esiste più**
+(`DETACH DELETE` porta via la `INCLUDES`) marca la mappa `stale`, scrive una
+voce `map_changed` con gli id mancanti (una volta) e viene loggato con
+`warn`; la valutazione prosegue sui nodi rimasti e la passata periodica la
+riprende finché resta stale.
+
+**GraphQL** (`schema-services.ts`; ruoli in `lib/authorization.ts`, tabella in
+`authorization.test.ts`): letture `serviceMaps` (contatori + pagina per
+gravità), `serviceMap`, `servicesImpactedByCI` per lo staff;
+`serviceMapCandidates`, `serviceMapProposal`, `serviceImpactPreview` e le
+mutation `createServiceMap` (costruzione automatica + valutazione immediata,
+status `active` o `draft`), `reevaluateServiceMap`, `setServiceMapStatus` (con
+`expectedVersion`: rimettere in servizio una mappa — da `paused` o da `draft` —
+la rivaluta subito),
+`updateServiceImpactRules`, `updateServiceMapNodes`,
+`applyServiceMapProposal`, `removeServiceMapExclusion` (su una mappa viva
+sincronizza anche subito: un CI riammesso non aspetta la passata periodica;
+se la sincronizzazione fallisce la riammissione resta e il log dice
+`Exclusion removed, but the live map could NOT be synchronized right away`),
+`setServiceMapAutoSync` (interruttore mappa viva/congelata, con
+`expectedVersion`), `syncServiceMap` (sincronizza ora: restituisce
+`ServiceMapSyncResult` — mappa aggiornata, `added`/`removed`/`moved`,
+`skipped` + `reason` quando il tetto dei 500 ha rifiutato tutto), `deleteServiceMap`
+(mappa e cronologia; il servizio e i CI restano) solo admin.
+
+**Cronologia: voci di configurazione.** Esclusione, riammissione,
+sincronizzazione, regole e ambito scrivono una voce `rules_changed` o
+`map_changed` con `previous_health` null e salute e punteggio della mappa
+**prima** della rivalutazione; la rivalutazione che segue scrive la sua voce
+solo se la salute cambia. La pagina le presenta come «Mappa modificata. Salute
+in quel momento … (punteggio N, prima della rivalutazione)», non come un cambio
+di salute.
+
+**Cosa fa il motore quando…** (una riga per caso; il dettaglio è nelle
+sottosezioni che seguono):
+
+| Caso | Valutazione | Cronologia / evento | Incident del servizio |
+|---|---|---|---|
+| la **salute cambia** | scrive salute, punteggio, spiegazione, `health_since`, `evaluated_at` | voce `ServiceHealthEntry` con il trigger + evento `service.health_changed` + audit | riconciliato: apre, riapre, aggiorna o chiude secondo `open_incident_from` |
+| la salute **non cambia** ma cambiano le **cause** | scrive punteggio e spiegazione (un punteggio stantio sarebbe un dato falso) | nessuna voce, nessun evento | riconciliato: se un incident è aperto riceve **un** commento «Causa aggiornata» |
+| la salute **non cambia** e le cause **nemmeno** | solo `evaluated_at`, punteggio e spiegazione | nulla | riconciliato lo stesso, dallo stato (revisione del 15 set 2026 · SV-1/SV-2): prende il lock e legge l'incident collegato, e scrive solo ciò che manca — così una riconciliazione fallita, una bozza attivata a servizio già giù o una soglia abbassata aprono l'incident alla valutazione dopo |
+| la **riconciliazione fallisce** (tipo di CI escluso dagli incident, matrice incompleta, lock occupato…) | il motivo resta sulla mappa (`incident_problem`, `incident_problem_at`) e si vede nel riquadro «Incident aperto» e nella diagnostica (`service_incident_problem`) | l'errore propaga: il job fallisce, visibile, e ritenta | ritentato a ogni valutazione; la prima riuscita toglie il motivo |
+| il servizio va in **manutenzione** (change in finestra su un componente **critico**) | salute `maintenance`, più `health_if_active` = la salute che avrebbe senza quella finestra | voce + evento se la salute cambia | né apertura né chiusura; un incident aperto riceve **una** nota (`maintenance_noted_at`), rimossa all'uscita dalla manutenzione |
+| un componente ha `ci.status = maintenance` (ciclo di vita) | il nodo **non conta** (fuori dal denominatore, mai fra le cause): la salute segue gli altri componenti, `maintenance` **no** | come sempre | come sempre: se il servizio è giù l'incident si apre |
+| una change **entra** o **esce** dai passi di finestra (`deployment`/`scheduled`), viene eliminata, oppure un CI entra/esce dal ciclo di vita «in manutenzione» o «dismesso» (SV-5) | le mappe che includono quei CI si rivalutano entro pochi secondi (`notifyCIMaintenanceChanged`, trigger `maintenance`) | voce + evento se la salute cambia | riconciliato dalla rivalutazione |
+| il servizio non raggiunge più la soglia ma **non è operativo** (degradato sotto soglia, `unknown`, regola passata a `never`) | salute scritta normalmente | come sempre | l'incident **resta aperto** con UN commento onesto (`kept_open_noted_at`, azzerato quando si torna sopra soglia): mai chiuso con «tornato operativo» |
+| la mappa è in **pausa** (`paused`) | nessuna valutazione automatica: il consumer la salta, la passata periodica prende solo le `active` e le scritture di configurazione non la rivalutano — la salute mostrata resta l'ultima nota. `reevaluateServiceMap` la valuta comunque a mano; rimetterla in servizio (da `paused` o da `draft`) la rivaluta subito | nulla, finché non viene valutata | nessuna apertura né riapertura; un incident già aperto può comunque essere **chiuso** |
+| la mappa è una **bozza** (`draft`) | valutata dal consumer e dalle scritture di configurazione come le attive, **non** dalla passata periodica (che filtra `status: 'active'`) | voce + evento come le attive | nessuna apertura né riapertura; chiusura sì |
+| `open_incident_from = never` | valutata normalmente | voce + evento come sempre | nessun incident nuovo; quello aperto prima del cambio di regola viene comunque **chiuso** al rientro |
+| un componente **non esiste più** nella CMDB | mappa `stale = true` con `stale_reason = 'missing_ci'`, valutazione sui nodi rimasti | voce `map_changed` con gli id mancanti, **una** volta, + `warn` | nessun effetto diretto (cambiano le cause: vedi sopra) |
+| la **CMDB cambia** (relazione fra CI creata o cancellata, CI cancellato) | le mappe **vive** che toccano quei CI si sincronizzano entro pochi secondi (`notifyCIGraphChanged` → job `sync`), poi si rivalutano se la composizione è cambiata | voce `map_changed` «Sincronizzazione automatica: +N, −M, ~K spostati» solo se qualcosa è cambiato | riconciliato dalla rivalutazione che segue |
+| la composizione **non cambia** dopo una sincronizzazione | solo `synced_at` | nulla: nessuna versione nuova, nessuna voce | non riconciliato (nessuna rivalutazione) |
+| la mappa è **congelata** (`auto_sync = false`) | la CMDB non la tocca: il diff resta da applicare a mano (`serviceMapProposal` + `applyServiceMapProposal`) | nulla finché non si applica | invariato |
+| la proposta supera i **500 componenti** | **niente** viene applicato, la mappa è marcata `stale` con `stale_reason = 'over_limit'` (che la valutazione non spegne: solo una sincronizzazione riuscita lo fa) | voce `map_changed` con il motivo, **una** volta, + `warn` + `service_map_syncs_total{result="skipped_limit"}` | invariato |
+
+**Metriche** (`middleware/metrics.ts`, esposte dal registro custom su
+`GET /metrics`):
+
+| Metrica | Tipo | Dove si incrementa |
+|---|---|---|
+| `service_evaluations_total{result}` | contatore (`changed \| unchanged \| hold \| error`) | `serviceImpact/engine.ts#evaluateServiceMap`, alla fine (una riconciliazione fallita conta solo come `error`; `hold` = valutazione sospesa da una sorgente in tempesta, revisione 2 · D6.4) |
+| `service_evaluation_duration_seconds` | istogramma | idem, lettura + regole + scrittura + riconciliazione |
+| `service_evaluation_lag_seconds` | istogramma | `jobs/serviceImpactWorker.ts`: secondi fra l'istante in cui il job `evaluate` era atteso (accodamento + 2 s di dedup) e l'inizio della valutazione — cresce quando la coda `services-impact` è in affanno, non quando la valutazione è lenta |
+| `service_incidents_opened_total` | contatore | `serviceImpact/incident.ts`: apertura **e riapertura** (un servizio che ricade è di nuovo fuori servizio). Attenzione: `opened − resolved` è il saldo delle transizioni, non il numero di incident aperti |
+| `service_incidents_resolved_total` | contatore | `serviceImpact/incident.ts`: solo la chiusura automatica riuscita; un `resolve_skipped` (nessun cammino verso «risolto» dal passo corrente) **non** conta |
+| `services_health{health}` | gauge | passata periodica `services-periodic` (`engine.ts#refreshServiceGauges`), mappe per salute su tutti i tenant |
+| `service_maps_stale` | gauge | stessa passata e stessa lettura: mappe con `stale = true` |
+| `service_map_syncs_total{result}` | contatore (`changed \| unchanged \| skipped_limit \| error`) | `serviceImpact/sync.ts#syncServiceMap`: `changed` = composizione cambiata (versione, cronologia, rivalutazione), `unchanged` = solo `synced_at`, `skipped_limit` = proposta oltre i 500 componenti (nulla applicato, mappa `stale`), `error` = il job ritenta |
+
+Cruscotto Grafana: riga «Servizi monitorati» in
+`infra/grafana/dashboards/opengraphity-api.json` (mappe per salute,
+valutazioni per esito, durata e ritardo p95, incident aperti/risolti, mappe da
+rivedere). Allarmi consigliati:
+`rate(service_evaluations_total{result="error"}[15m]) > 0`;
+`bullmq_queue_depth{queue="services-impact",status="failed"} > 0`;
+`histogram_quantile(0.95, rate(service_evaluation_lag_seconds_bucket[5m])) > 60`
+(coda in affanno); `service_maps_stale > 0` da più di un giorno (mappe da
+sistemare a mano).
+
+**Seed demo**: `seed:service-maps -- --tenant=<slug>` (`dist/scripts/seed-service-maps.js`
+nel container, con `NODE_ENV` diverso da `production` come ogni seed;
+opzioni `--max-depth`, `--relationships`) crea una mappa per ogni
+`BusinessApplication` senza mappa; idempotente.
+
+**Risoluzione dei problemi**: *servizio `unknown`* = nessun componente con
+salute (mai toccato da un allarme) o mappa vuota (`BusinessApplication` senza
+`REALIZES`: warning `has no REALIZES` alla creazione); *salute che non cambia
+dopo un allarme* = mappa in `paused` (il consumer la salta), CI non incluso
+nella mappa (`servicesImpactedByCI`), oppure job fallito (log `Service impact
+job failed`, `service_evaluations_total{result="error"}`) — `reevaluateServiceMap`
+dal dettaglio la rivaluta subito, la passata periodica entro 10 minuti;
+*`stale`* = la mappa è da rivedere, e `staleReason` dice perché:
+`missing_ci` (un componente è stato cancellato dalla CMDB: aprire «Aggiorna
+mappa» e togliere gli id spariti — `serviceMapProposal` +
+`applyServiceMapProposal` — oppure ricreare la mappa con `deleteServiceMap` +
+`createServiceMap`) oppure `over_limit` (la mappa supera il tetto dei 500
+componenti: ridurre `max_depth` o escludere dei componenti — sincronizzare non
+serve, viene rifiutata di nuovo). Una mappa marcata prima della migrazione
+`20260910_1120_service_map_review2` può avere `staleReason` a null: la
+migrazione lo recupera;
+*servizio «in manutenzione» che non torna a posto* = fino alla revisione 2
+bastava un CI critico con `ci.status = 'maintenance'`; ora solo una change in
+finestra lo fa, e `healthIfActive` dice quale sarebbe la salute vera. Se resta
+`maintenance` senza change, controllare `ServiceMapNode.inMaintenance` e
+`excludedReason` nel dettaglio;
+*incident di servizio che resta aperto con il commento «l'incident resta
+aperto»* = il servizio non è tornato **operativo**, è solo sceso sotto la soglia
+(o la regola è passata a `never`, o la salute è `unknown`): il monitoraggio non
+lo chiude più con una causa falsa, va chiuso a mano quando è giusto; *`has no node_ids`/`has no rules`* = eseguire la migrazione
+`20260910_1080_service_maps_bootstrap`; *`has no auto_sync`* = eseguire la
+`20260910_1110_service_map_auto_sync`; *un componente nuovo non compare nella
+mappa* = mappa congelata (interruttore «Aggiorna automaticamente i componenti»
+spento) o in pausa, CI escluso (`ServiceMap.excluded`), relazione scritta da un
+percorso non strumentato (arriva con la passata delle 30 minuti — «Sincronizza
+ora» non fa aspettare), oppure sincronizzazione saltata per il tetto dei 500
+(`service_map_syncs_total{result="skipped_limit"}`, log «would exceed the node
+cap»: ridurre `max_depth` o escludere).
+
+#### Configurazione (ondata 2: tutto da interfaccia)
+
+Codice: `apps/api/src/services/serviceImpact/config.ts` (validazione,
+transazione, cronologia, rivalutazione); i resolver mettono solo ruolo, audit
+e rilettura della mappa.
+
+**Cosa può cambiare l'amministratore** (nessuna di queste cose richiede un
+deploy): le **regole** della mappa (`updateServiceImpactRules` — soglia giù,
+soglia degradato, minimo di componenti, come contano i componenti senza salute,
+da che salute aprire un incident); le **impostazioni dei componenti**
+(`updateServiceMapNodes` — solo `propagate`, `weight` 1..10 e `critical`:
+livello, ruolo e `via` restano della mappa, li decide la costruzione); la
+**composizione** (`applyServiceMapProposal`: aggiunge i CI nuovi con le
+impostazioni proposte e `added_by = 'manual'`, esclude, toglie) e le
+**esclusioni** (`removeServiceMapExclusion`). `serviceImpactPreview` calcola
+«con queste impostazioni adesso» senza scrivere nulla.
+
+**Limiti di coerenza** (`BAD_USER_INPUT`, mai un valore corretto in silenzio):
+`degraded_share_pct ≤ down_share_pct` (altrimenti «degradato» non si raggiunge
+mai prima di «giù»); `min_nodes ≤` numero di componenti della mappa (almeno 1);
+peso intero 1..10; regole identiche a quelle salvate o elenco di componenti
+vuoto → errore (una scrittura a vuoto alzerebbe la versione e lascerebbe una
+voce di cronologia senza contenuto); un `ciId` che non è nella mappa (o un id
+che non appartiene alla proposta) → errore con l'id.
+
+**Versione e conflitti**: `ServiceMap.version` parte da 1 e cresce di 1 a ogni
+scrittura riuscita (stato compreso). Ogni mutation di configurazione vuole
+`expectedVersion` = la `version` letta dal client; se non combacia →
+`BAD_USER_INPUT` «was modified by someone else (expected version N, current is
+M…)» e **niente** viene scritto (la guardia è nel Cypher,
+`WHERE version = toInteger($expectedVersion)`, dentro la stessa transazione
+della lettura di controllo). La UI in quel caso invita a ricaricare. Ogni
+scrittura riuscita aggiorna `updated_at`/`updated_by`, scrive **una** voce di
+cronologia con nota leggibile (`rules_changed` per il calcolo — «Regole
+aggiornate: soglia giù 50 → 70» —, `map_changed` per la composizione —
+«Mappa aggiornata: +2, −1, esclusi 3») nello stesso statement, un audit
+(`service_map.rules_changed`, `.nodes_changed`, `.proposal_applied`,
+`.exclusion_removed`) e **rivaluta subito** la mappa con lo stesso trigger.
+Le mappe `paused` non vengono rivalutate: la salute mostrata resta l'ultima
+nota (`reevaluated: false` nell'audit).
+
+**Diff con il grafo** (`serviceMapProposal`): ricostruisce la proposta con
+`buildServiceMap` usando `max_depth` e `relationship_types` **della mappa** e
+la confronta con le `INCLUDES` di adesso — `added` (nel grafo, non nella mappa,
+non esclusi), `removed` (nella mappa e non più raggiungibili; un CI cancellato
+dalla CMDB compare con livello 0, ruolo `component` e `addedBy = 'gone'`
+perché della mappa resta solo l'id in `node_ids`), `moved` (livello o `via`
+cambiati), `excluded`, `totalProposed` (per il tetto di 500). Applicando il
+diff, `node_ids` viene ricalcolato dalle `INCLUDES` rimaste **più** gli id
+spariti che non sono stati tolti: togliere gli ultimi id spariti spegne
+`stale` senza dover ricreare la mappa.
+
+**Esclusioni**: `(:ServiceMap)-[:EXCLUDES {reason: 'escluso a mano',
+excluded_by, at}]->(ci)`. Un CI escluso non viene più riproposto dal diff
+(e, se era incluso, viene tolto dalla mappa nello stesso apply);
+`ServiceMap.excluded` li elenca nel dettaglio e `removeServiceMapExclusion` lo
+riammette (tornerà nella prossima proposta). Le esclusioni non hanno effetto
+sulla salute finché la proposta non viene applicata.
+
+#### Mappa viva o congelata (ondata 5)
+
+Codice: `apps/api/src/services/serviceImpact/sync.ts`. La mappa nasce **viva**
+(`ServiceMap.auto_sync = true`): i componenti seguono la CMDB da soli.
+L'interruttore per mappa (`setServiceMapAutoSync`, «Aggiorna automaticamente i
+componenti» nel dettaglio del servizio) la **congela**, riportandola al
+comportamento delle ondate 1–4.
+
+| | Mappa **viva** (`auto_sync = true`, default) | Mappa **congelata** (`auto_sync = false`) |
+|---|---|---|
+| componente nuovo nel grafo | aggiunto da solo, con le impostazioni proposte e `added_by = 'auto'` | proposto nel diff, aggiunto quando l'amministratore applica |
+| componente non più raggiungibile | tolto **solo** se `added_by = 'auto'` | proposto fra le rimozioni |
+| componente spostato (livello o `via`) | `level` e `via` aggiornati | proposto fra gli spostamenti |
+| componente aggiunto a mano (`added_by = 'manual'`) | **mai** tolto: lo toglie una persona | mai tolto |
+| esclusioni (`EXCLUDES`) | **mai** riproposte | mai riproposte |
+| `propagate`, `weight`, `critical` | **mai** toccati: sono decisioni dell'amministratore | mai toccati |
+| pulsante nel dettaglio | «Sincronizza ora» (`syncServiceMap`) | «Aggiorna mappa» (dialogo del diff) |
+
+**Quando succede.** Subito, non ogni tot minuti: **ogni scrittura che crea o
+cancella una relazione fra CI, o cancella un CI, chiama
+`notifyCIGraphChanged(tenantId, ciIds, motivo)`** dopo il commit. L'helper
+trova le mappe vive (`auto_sync = true`, `status ≠ paused`) che includono uno
+di quei CI **o** il cui servizio è uno di essi (una `REALIZES` nuova sulla
+`BusinessApplication` non tocca nessun componente incluso) e accoda **un** job
+`sync` per mappa. Punti strumentati: `addCIRelationship` e
+`removeCIRelationship` (`resolvers/ciRelationships.ts`), la cancellazione di un
+CI (`resolvers/ciMutations.ts`), la riconciliazione della discovery (una
+chiamata per **lotto** con tutti gli id toccati, `discovery/reconciliationEngine.ts`)
+e `resolveConflict` con esito `linked` (`resolvers/sync.ts`). La notifica **non
+lancia mai**: la scrittura CMDB è già committata e non si annulla perché la
+coda non risponde — l'errore è loggato con `error` («could NOT be enqueued») e
+la passata `services-sync-periodic` recupera entro 30 minuti. Quella passata è
+la **rete di sicurezza**, non il meccanismo: serve alle scritture fatte da
+script, migrazioni o Cypher a mano.
+
+**Cosa scrive una sincronizzazione.** Ricostruisce la proposta con
+`buildServiceMap` (stessi `max_depth` e `relationship_types` della mappa),
+calcola il diff con `computeServiceMapDiff` (che già toglie gli `EXCLUDES`) e
+applica tutto in **una** transazione, con la stessa guardia di versione delle
+altre scritture di configurazione. Se qualcosa è cambiato: `version + 1`,
+`updated_by = 'monitoring'` (o l'utente, per la sincronizzazione manuale),
+`synced_at`, voce di cronologia `map_changed` («Sincronizzazione automatica:
++2, −1, ~3 spostati» / «Sincronizzazione richiesta da …»), audit
+`service_map.synced` e **rivalutazione** immediata (trigger `map_changed`), che
+può aprire o chiudere l'incident del servizio come sempre. Se **non** è
+cambiato nulla: solo `synced_at` — nessuna versione nuova (i client che hanno
+già letto la mappa non si ritrovano in conflitto), nessuna voce, nessun evento,
+nessuna rivalutazione. Gli id di CI spariti dalla CMDB escono da `node_ids`
+(la loro `INCLUDES` se n'era già andata con il `DETACH DELETE`, quindi non c'è
+più nessun `added_by` da rispettare) e la mappa smette di essere `stale`.
+
+**Tetto dei 500 componenti**: se la proposta lo supera, la sincronizzazione
+**non tronca e non applica nulla** — marca la mappa `stale`, scrive **una**
+voce di cronologia con il motivo (solo la prima volta: una mappa troppo grande
+non deve riempire la cronologia di una voce ogni mezz'ora), logga `warn` e
+conta `service_map_syncs_total{result="skipped_limit"}`. L'amministratore deve
+ridurre `max_depth` o escludere dei componenti.
+
+**Mappe in pausa**: mai sincronizzate, nemmeno a mano — `syncServiceMap` su una
+mappa `paused` è un `BAD_USER_INPUT` che invita a riattivarla. È la stessa
+regola della valutazione: una mappa che l'amministratore ha fermato resta
+ferma. Le mappe **congelate**, invece, si sincronizzano a mano senza problemi:
+è un'azione esplicita.
+
+#### Incident del servizio (ondata 3) e incident tecnici (ondata 4)
+
+Codice: `apps/api/src/services/serviceImpact/incident.ts`. Dopo ogni
+valutazione **rilevante** (salute cambiata, oppure insieme delle cause
+cambiato) il motore chiama `reconcileServiceIncident`, tutto sotto il lock
+Redis `og:services:incident:<tenant>:<mapId>` (TTL 30 s, attesa 5 s: il worker
+ha concurrency 2 e la stessa mappa può essere valutata da un job e da una
+mutation nello stesso istante). **Un solo** incident non chiuso per mappa,
+collegato con `(:Incident)-[:IMPACTS_SERVICE {opened_by, at, cause_ids,
+maintenance_noted_at}]->(:ServiceMap)`; un incident in `resolved` non è chiuso:
+si **riapre**, non si affianca. Ogni scrittura passa da `incidentService` /
+`workflowEngine` con l'attore `monitoring` (mai Cypher diretto sull'incident).
+
+Priorità dell'incident = **impatto × urgenza**: impatto dalla criticità del
+servizio (`BusinessApplication.criticality`: `mission_critical` e
+`business_critical` → alto, gli altri → medio; criticità assente o ignota →
+medio **con un warning**), urgenza dalla salute (giù → alta, degradato →
+media). CI impattati = i CI delle cause (al più `SERVICE_MAX_CAUSES`). Alla
+chiusura il monitoraggio percorre i passi intermedi trovati nella definizione
+(`findAutoResolvePath`, la stessa degli allarmi rientrati) e chiude con causa
+«Servizio tornato operativo»; se da quel passo non c'è cammino verso «risolto»
+scrive **solo** un commento: mai una transizione forzata.
+
+**Due incident, nessuna soppressione** (ondata 4, decisione presa): un allarme
+critico su un CI incluso in una mappa apre l'incident del CI (Event Management)
+**e** quello del servizio, e continua a farlo — sono due ticket con due
+proprietari diversi. All'apertura dell'incident di servizio, però, la
+descrizione elenca gli **incident tecnici già aperti** sui CI delle cause
+(numero e titolo, al più 10, riga introduttiva «Incident tecnici già aperti sui
+componenti:»; se non ce ne sono, nessuna riga). È **una** query in più, solo
+all'apertura, scopata per tenant: sono gli incident non terminali che hanno fra
+i CI impattati un componente delle cause, esclusi gli incident di servizio
+(`IMPACTS_SERVICE`). I numeri finiscono anche nell'audit
+`service.incident_opened` (`technicalIncidents`).
+
+Dal dettaglio: `ServiceMap.openIncident` (l'incident aperto del servizio) e
+`Incident.impactedServices` (i servizi che hanno aperto quell'incident).
+
+#### Limiti di piano, pulizia e conservazione (ondata 4)
+
+**Limite di piano**: `TenantSettings.max_service_maps` (`packages/types`,
+appiattito su `:Tenant`) — **starter 5, pro 50, enterprise 200**
+(`lib/tenantPlans.ts`, unica sorgente per l'onboarding e per la migrazione).
+`createServiceMap` conta le mappe del tenant **prima** di espandere il grafo e
+rifiuta con `BAD_USER_INPUT` «piano starter: massimo 5 mappe di servizio, ne
+esistono già 5». Un tenant senza nodo `:Tenant` o senza `max_service_maps` è un
+**errore** che nomina la migrazione da eseguire (`20260910_1100_service_map_plan_limit`
+/ `20260910_1070_event_management_tenants`): il limite non viene mai inventato
+a runtime. Alzare il limite di un singolo tenant è un `SET t.max_service_maps`
+a mano (la migrazione non lo riscrive). Due creazioni simultanee sull'ultimo
+posto possono superare il limite di una (Neo4j non blocca un conteggio): la
+successiva viene comunque rifiutata.
+
+**Cancellazione di una `BusinessApplication`** (`graphql/resolvers/ciMutations.ts`,
+stessa scrittura che porta via i `CIAlias`): vanno via anche la sua
+`ServiceMap`, la cronologia (`ServiceHealthEntry`) e — con il `DETACH DELETE`
+della mappa — le relazioni `INCLUDES`, `EXCLUDES` e `IMPACTS_SERVICE`.
+L'incident del servizio eventualmente aperto **non** si cancella: è storia del
+ticket e resta senza servizio collegato — ma dalla revisione 2 (D4.3) riceve
+**un commento** PRIMA che la mappa sparisca («il servizio non è più
+monitorato: la mappa è stata eliminata»), perché senza mappa nessuno potrà più
+chiuderlo automaticamente e per l'operatore sarebbe un incident critico senza
+motivo. Lo stesso vale per `deleteServiceMap`. Un commento che fallisce viene
+loggato e non ferma la cancellazione. Un job `evaluate` già in coda
+per quella mappa fallisce con `NOT_FOUND` (5 tentativi, log `Service impact job
+failed`, `service_evaluations_total{result="error"}`) e poi sparisce
+(`removeOnFail`): rumore atteso, non un guasto — a differenza di
+`deleteServiceMap`, che il job in coda lo toglie subito.
+
+**Cancellazione di un CI con allarmi o incident** (revisione 2 · D4.3): gli
+Event `RAISED_ON` restano come orfani coerenti (il CI di un Event vive solo
+nella relazione), ma l'incident non terminale il cui **unico** CI impattato era
+quello cancellato riceve un commento («Il CI X è stato eliminato dalla CMDB»):
+resta aperto, e chi lo legge sa perché il rientro degli allarmi non lo chiuderà
+più (senza CI diventano `skipped_orphan`).
+
+**Cancellazione di un CI incluso in una mappa**: la mappa **resta**. Perde la
+`INCLUDES` (cade con il CI) e alla prima valutazione diventa `stale`, con una
+voce `map_changed` che elenca gli id mancanti; la valutazione prosegue sui nodi
+rimasti. Si sistema da «Aggiorna mappa» (vedi *Risoluzione dei problemi*).
+
+**Conservazione della cronologia**: `ServiceHealthEntry` ha **solo** il cap di
+`SERVICE_HISTORY_MAX` = 500 voci per mappa, applicato dallo stesso statement
+che scrive la voce (la prima voce `created` non viene mai cancellata). **Non**
+c'è retention temporale e nessun job di purge: una mappa che cambia salute due
+volte al giorno conserva quasi un anno di storia, una che sfarfalla ne conserva
+molto meno. Se serve conservare di più, la voce va portata fuori (export /
+report), non allungando il cap.
+
+---
+
+## 8. Processi e profili (`WORKER_PROFILE`)
+
+Revisione 2 · D1.1. Fino a qui tutti i worker BullMQ e i consumer di dominio
+giravano **nel processo HTTP**: ~70 slot di job sopra un pool Neo4j da 50
+condiviso con i resolver GraphQL — in una tempesta di allarmi (60+/min) o in
+una passata di manutenzione da 20 pagine × 200 eventi, latenza delle richieste
+in salita e `Connection acquisition timed out` sia sui job sia sugli utenti,
+senza modo di scalare l'ingest separatamente dall'API. Ora ogni processo
+dichiara un **profilo** e c'è **una sola tabella** «profilo → cosa parte»
+(`apps/api/src/lib/workerProfiles.ts`, pinnata da `workerProfiles.test.ts`),
+letta da `index.ts` (API) e `worker.ts` (worker):
+
+| `WORKER_PROFILE` | processo API (`dist/index.js`) | processo worker (`dist/worker.js`) |
+|---|---|---|
+| `all` (default fuori dal compose) | ITSM **+ allarmi/servizi** — il comportamento precedente | embedding (servizio compose `worker`) |
+| `api` | solo ITSM: workflow, notifiche, SLA, webhook in uscita, report, discovery, backup, email digest | *non ammesso* |
+| `events` | *non ammesso* | **allarmi/servizi**: `events-ingest`, `events-correlate`, `events-maintenance`, `services-impact` e il consumer `service-impact-consumer` (servizio compose `events-worker`) |
+
+Un profilo non ammesso per il processo ferma l'avvio con l'elenco dei validi
+(`WORKER_PROFILE=api is not valid for the worker process (allowed: all, events)`):
+nessun default. L'embedding nel processo API resta governato da
+`EMBEDDING_WORKER_EXTERNAL` come prima; nel worker gira solo con `all`: il
+servizio `events-worker` **non** calcola embedding (due container che caricano
+il modello sono memoria buttata), serve il servizio `worker`.
+
+Cosa cambia con il profilo `events` nel container dedicato:
+
+- il **webhook** continua ad accodare dall'API (risponde 202 come prima); a
+  correlare è `infra-events-worker-1` — `docker compose logs events-worker`
+  mostra `Event ingested`, `Delayed correlation evaluated`, `Service map
+  evaluated`. Le mutation di allarmi e servizi (`reevaluateEvent`,
+  `reevaluateServiceMap`, configurazione delle mappe) restano nell'API e
+  accodano su Redis: il processo che le esegue è il worker;
+- la **liveness** del container è il probe Redis del Dockerfile con
+  `HEALTHCHECK_QUEUE=events-ingest` (un worker di quella coda connesso). Vale
+  per coda, non per container: con due repliche di `events-worker` una ferma
+  resta «healthy» finché l'altra è viva;
+- le **metriche** della pipeline vivono nel worker: serve `GET /metrics` sulla
+  porta 4000 (`PORT`, `METRICS_TOKEN` come l'API) e Prometheus lo raschia come
+  target `events-worker:4000` (vedi §7 *Dove vivono le metriche*);
+- il **pool Neo4j** è per processo: `NEO4J_MAX_POOL_SIZE` (default 50; il
+  compose dà 50 all'API e 40 a `events-worker` = 12 slot × fino a 3 sessioni
+  per evento). Un valore non intero positivo ferma l'avvio. I consumer di
+  dominio girano a **3** job in parallelo ciascuno (erano 10: in quattro
+  prendevano 40 slot);
+- lo **spegnimento** (`lib/shutdown.ts`, D1.2): l'HTTP viene atteso davvero
+  (connessioni inattive subito, keep-alive/SSE dopo 5 s), poi worker e
+  consumer entro 30 s; se non si fermano, code, Redis e driver **non** vengono
+  chiusi sotto i job in volo e il processo esce con codice **2** (log `Workers
+  did not stop within the timeout`): il container viene ricreato e i job
+  interrotti ripartono come stalled, idempotenti per costruzione. Codice 1 =
+  una risorsa non si è chiusa. Prima si usciva sempre con 0 chiudendo tutto
+  sotto i job: rilasci dei lock falliti e scritture Neo4j spezzate nei log.
+
+**Deploy** (ricetta completa in `DEPLOY.md` §8; qui l'elenco dei servizi da
+ricreare quando cambia l'immagine dell'API — il web va **costruito in locale**
+con le `VITE_*` nell'ambiente perché la sua immagine copia `dist/`):
+
+```bash
+set -a; . infra/.env; set +a
+pnpm install --frozen-lockfile && pnpm --filter "./packages/*" build && pnpm --filter @opengraphity/web build
+docker compose -f infra/docker-compose.yml build api web
+docker exec infra-api-1 node --no-node-snapshot /app/dist/scripts/migrate.js --init-schema   # schema + migrazioni, PRIMA dell'immagine nuova (con l'API vecchia ancora su)
+docker compose -f infra/docker-compose.yml up -d api worker events-worker web
+docker compose -f infra/docker-compose.yml ps        # api, worker, events-worker tutti healthy
+```
+
+Se `migrate --init-schema` deve girare con l'immagine **nuova** (indici o
+migrazioni introdotti da questa versione): `up -d api` prima, poi il comando,
+poi `up -d worker events-worker web`. Gli indici di questa ondata
+(`event_status_id`, `event_status_correlation` in `packages/neo4j/src/init.ts`)
+sono `IF NOT EXISTS`: il comando è idempotente.
+
+### Chiavi di configurazione controllate all'avvio
+
+`APP_URL` e `RESEND_API_KEY` sono obbligatorie in produzione **per chi le usa**:
+l'API, che costruisce i link e invia le e-mail, non parte senza
+(`validateConfig('api')` per `APP_URL`, `assertEmailConfigured()` per la chiave
+e-mail). I container `worker` e `events-worker` **non** le ricevono e non ne
+hanno bisogno: prima il pacchetto `@opengraphity/notifications` lanciava già
+all'import e, da quando i worker lo importano (elenco delle migrazioni, canale
+delle notifiche in-app), li mandava in un ciclo di riavvii. Ora il controllo è
+all'avvio dell'API e al momento dell'invio.
+
+### Notifiche in-app: archivio e canale fra i processi
+
+Le notifiche del pannello (campanella) sono **salvate** come
+`(:InAppNotification)` — lette e rimosse per persona con
+`READ_NOTIFICATION`/`DISMISSED_NOTIFICATION` — e pubblicate sul canale Redis
+`og:inapp.delivered`: ogni processo (API e worker) ascolta e le scrive ai
+propri client SSE, quindi con più repliche dell'API arrivano a tutti. Log
+all'avvio: `[inapp] listening`. Se Redis non risponde la notifica resta
+salvata e il processo la consegna ai propri client; gli altri la vedono alla
+prossima apertura del pannello. Il job di manutenzione
+`purge_inapp_notifications` (ogni notte alle 03:45) elimina, organizzazione per
+organizzazione, quelle più vecchie dei giorni scelti nella pagina Organizzazione
+(`Tenant.inapp_notification_retention_days`). Un'organizzazione che non li ha
+scelti viene saltata con un avviso nel log e segnalata dalla diagnostica. La
+vecchia variabile `INAPP_NOTIFICATION_RETENTION_DAYS` non è più letta: la
+migrazione `20260925_1100` ne ha copiato il valore su ogni organizzazione. Gli indici `InAppNotification(tenant_id, created_at)` e
+`(created_at)` arrivano con `migrate --init-schema`.
+
+### Lingua dei log e dei messaggi
+
+Tutto ciò che **arriva al cliente** — errori GraphQL e REST, voci di audit,
+notifiche, PDF, esiti dell'import, diagnostica — è in inglese nel codice e porta
+una chiave i18n che il client traduce nella lingua di chi legge; il guardiano
+`apps/api/src/lib/__tests__/userFacingItalian.test.ts` fallisce se una stringa
+italiana torna in quei punti. I **log** (`logger.info/warn/error`) sono per chi
+gestisce l'installazione, non per il cliente: molti sono ancora in italiano, per
+scelta dichiarata (revisione del 14 set 2026 · F21). Chi li cerca con
+un'espressione regolare cerchi i campi strutturati (`module`, `tenantId`,
+`err`), che sono stabili, non il testo del messaggio.
+
+---
+
+## 9. Procedure di ripristino
+
+Cosa fare **dopo** che una dipendenza è tornata. Il principio: gli allarmi e
+i servizi si ripristinano da soli dove il codice lo prevede (passate
+periodiche, rete di sicurezza delle mappe), ma tre cose non si recuperano da
+sole e vanno controllate a mano — i job ripetuti, i job falliti
+definitivamente e gli allarmi accettati con 202 e mai ingeriti.
+
+### Redis è ripartito
+
+Redis persiste l'AOF ogni secondo (`--appendonly yes --appendfsync everysec`
+nel compose, revisione 2 · D7.4): un arresto pulito (`docker restart`,
+`compose up -d`) non perde nulla, un crash (OOM, `kill -9`) perde al più un
+secondo di scritture. Fino alla revisione 2 c'era solo lo snapshot RDB
+(ogni 60 s/10k chiavi … 15 min/1 chiave): un crash perdeva fino a 15 minuti di
+code — allarmi accodati e non ancora ingeriti, correlazioni ritardate,
+valutazioni in attesa, marcatori di idempotenza.
+
+1. **Riavviare l'API e l'events-worker** (`docker compose restart api
+   events-worker`) se c'è il dubbio che i job **ripetuti** siano spariti
+   (crash di Redis prima della revisione 2, o volume perso): `events-maintenance`
+   ogni 5 min, `services-periodic` ogni 5, `services-sync-periodic` ogni 30,
+   `purge_events` alle 03:30, backup a mezzanotte, digest email, report,
+   anomaly scanner sono registrati **all'avvio** del processo che li possiede
+   (BullMQ deduplica per nome e intervallo: un riavvio in più non ne crea due).
+   Con l'AOF e un arresto pulito il riavvio non serve; con un crash è la
+   scelta prudente e costa un minuto.
+2. **Guardare i due gauge** dopo il primo giro della passata (≤ 5 min):
+   `events_overdue_delayed` (correlazioni ritardate il cui job `correlate` è
+   sparito: la passata `pending` le riprende da sola dopo 5 minuti dalla
+   scadenza) ed `events_firing_uncorrelated` (allarmi accesi senza esito da 15
+   min). Devono tornare a 0 entro due giri; se restano su, la passata sta
+   fallendo: `event_pass_total{pass="pending",result="failed"}` e il log
+   `re-evaluation failed`. `reevaluateEvent` dal dettaglio dell'allarme la
+   anticipa per un evento.
+3. **Guardare `bullmq_queue_depth`** (pannello *Code BullMQ* e *Job falliti per
+   coda*, oppure *Amministrazione → Code*): `waiting` che scende, `failed` a 0.
+   Le mappe dei servizi si rivalutano da sole (`services-periodic` prende
+   quelle con `evaluated_at` più vecchio di 10 minuti; `services-sync-periodic`
+   quelle con `synced_at` più vecchio di 30). Il ritardo accumulato si legge
+   in `event_ingest_lag_seconds` (p95 nel pannello *Ritardi in coda*).
+4. I **marcatori di idempotenza** (`evt:processed:*`, 24 h) persi dopo un crash
+   possono far ripetere una notifica in-app già consegnata per un evento
+   ancora in coda: innocuo, atteso.
+
+### Neo4j è ripartito
+
+- L'API e i worker **si riavviano da soli** (fail-fast del driver all'avvio,
+  `restart: unless-stopped`); a runtime i job falliti ritentano con backoff.
+- `events-ingest` aspetta fino a **10 minuti** all'ultimo tentativo: un
+  riavvio di qualche minuto non perde allarmi. Oltre, i job finiscono in
+  `failed` (7 giorni), la sorgente mostra `last_error = ingest: …`,
+  `events_ingest_failed_total` cresce e scatta `EventIngestFailed`: **rigiocarli**
+  (sotto). `recordIngestFailure` scrive `last_error` su Neo4j: se Neo4j era giù
+  anche in quel momento resta la sola riga di log e il job fallito.
+- Dopo un restore (§2) o un `--force-recreate` del container: `migrate
+  --init-schema` è idempotente e sicuro.
+
+### Job falliti: cosa si rigioca e cosa no
+
+*Amministrazione → Code* elenca **tutte** le code del registro
+(`lib/queueRegistry.ts`) raggruppate per sottosistema — allarmi, servizi,
+ITSM, piattaforma — con i job falliti e il pulsante di rigioco dove la coda è
+`retryable` (`retryQueueJob`, solo admin). Rigiocabili: `events-ingest`
+(l'allarme viene ingerito ora; il MERGE per impronta rende innocuo un
+doppione), `events-correlate`, `events-maintenance`, `services-impact`,
+`workflow-jobs`, `notification-jobs`, `sla-jobs`, `email-digest`,
+`webhook-delivery`, `report-scheduler`, `anomaly-scanner`, `discovery-sync`,
+`embeddings`, `maintenance`.
+
+**Non** rigiocabili dalla console le quattro code dei **consumer di dominio**
+(`notification-service`, `sla-engine`, `escalation-consumer`,
+`service-impact-consumer`): un evento esaurito ha già avuto 4 tentativi con i
+canali riusciti a metà (l'in-app è già partito, D2.3) e rimetterlo in coda
+ripeterebbe gli effetti collaterali riusciti. Il guasto è visibile in
+`events_failed_total{queue,type}` (allarme `DomainEventsLost`, pannello
+*Allarmi persi*) e nel log `EXHAUSTED — event lost`; il rimedio dipende dal
+tipo: per `ci.health_changed` basta `reevaluateServiceMap` sulle mappe del CI
+(o aspettare `services-periodic`), per `incident.created`/`sla.*` rifare
+l'azione o intervenire sul ticket, per una notifica riscriverla.
+
+### Allarmi accettati con 202 e mai ingeriti
+
+Il webhook risponde 202 **appena i job sono in coda**: da quel momento
+l'allarme vive solo in Redis finché `events-ingest` non lo scrive su Neo4j.
+Con l'AOF questa finestra sopravvive a un riavvio; un crash di Redis con
+perdita del volume, o un job che esaurisce i 5 tentativi **e** viene eliminato
+dalla coda (7 giorni), lo perde davvero — e **non è rigiocabile**: la
+piattaforma non conserva una copia del payload accettato (l'`EventInbox`
+proposto dalla revisione è un progetto a sé, non fatto). Cosa chiedere al
+mittente:
+
+- **Alertmanager / Grafana**: gli allarmi ancora accesi vengono **rimandati da
+  soli** al prossimo `repeat_interval` (Alertmanager, default 4 h; abbassarlo
+  temporaneamente a pochi minuti forza il rinvio) — un `firing` perso torna,
+  un `resolved` perso no: l'allarme resta acceso finché non arriva il
+  prossimo ciclo o non viene risolto a mano (`resolveEvent`);
+- **Zabbix**: *Reports → Action log* mostra le azioni fallite/riuscite; un
+  problema ancora attivo si rimanda con «Re-execute» sull'azione o con un
+  update del problema;
+- **Datadog / Dynatrace**: i monitor ancora in allarme rinotificano secondo la
+  loro `renotify_interval`/frequenza; per i chiusi non c'è rinvio: risolverli a
+  mano in console.
+
+Regola pratica: dopo un incidente di Redis, confrontare lo strumento (allarmi
+accesi) con la console eventi del tenant (filtro `status = firing`) e chiudere
+a mano ciò che lo strumento non ha più.
+
+### Clienti con la configurazione incompleta
+
+`tenant_provisioning_gaps{tenant}` = quante cose mancano a quel cliente per
+essere usabile (0 = completo): nessuna dashboard, nessuna regola di notifica,
+nessuna matrice di dominio, nessun workflow attivo per una delle cinque entità.
+Si ricalcola al massimo ogni cinque minuti, quando qualcuno interroga `/health`
+— che riporta anche `incompleteTenants` con **quanti** clienti sono incompleti. I NOMI no: `/health` sta prima dell'autenticazione (giusto, una sonda non ha un token) e non deve elencare gli identificativi dei clienti a chiunque lo interroghi. Per sapere QUALI, `tenant_provisioning_gaps{tenant}` su `/metrics`, che il token protegge.
+
+Il prodotto lo sapeva già (`tenantProvisioningGaps`, ondata 8) ma lo diceva solo
+a chi lanciava `migrate --status`: `c-two` è stato incompleto per giorni e
+nessuno lo sapeva, perché il sintomo arriva al primo `createIncident`. Adesso lo
+dice anche a chi può rimediare: l'amministratore del tenant vede il banner
+«C'è qualcosa da sistemare nella configurazione» e, nella pagina Workflow, il
+pulsante **Completa la configurazione** (mutation `provisionTenantData`:
+idempotente, non sovrascrive le definizioni che ci sono già).
+
+La stessa diagnostica (`configurationIssues`) copre anche: schema GraphQL
+degradato, matrici di dominio incomplete o con residui di una rinomina, liste
+della policy degli allarmi che citano stati fuori vocabolario, e stati del ciclo
+di vita che nessuna lista cita — per il prodotto quei CI sono **in servizio**,
+e sul dato vivo erano 68.

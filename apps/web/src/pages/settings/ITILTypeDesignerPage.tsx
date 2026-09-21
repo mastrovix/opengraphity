@@ -7,10 +7,10 @@ import { useITILTypeDesigner } from './useITILTypeDesigner'
 import type { Tab } from './useITILTypeDesigner'
 import { ITILTypeSettings } from './ITILTypeSettings'
 import { ITILTypeFields } from './ITILTypeFields'
-import { ITILTypeCIRelations } from './ITILTypeCIRelations'
+import { ITILTypeCIExclusions } from './ITILTypeCIExclusions'
 import { ITILTypeRules } from './ITILTypeRules'
 import { ITILTypePreview } from './ITILTypePreview'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, colors, palette } from '@/lib/tokens'
 
 const ITIL_TYPE_ICONS: Record<string, LucideIcon> = {
   incident:        AlertCircle,
@@ -29,7 +29,7 @@ export function ITILTypeDesignerPage() {
         <PageTitle icon={<Settings2 size={22} color="var(--color-icon-accent)" />}>
           {t('itilDesigner.title')}
         </PageTitle>
-        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', marginTop: 4, marginBottom: 0 }}>
+        <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
           {t('itilDesigner.subtitle')}
         </p>
       </div>
@@ -43,9 +43,9 @@ export function ITILTypeDesignerPage() {
       {!loading && (
         <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20, alignItems: 'start' }}>
           {/* Left: Type list */}
-          <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ padding: '5px 16px 4px', fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-slate-light)', background: 'var(--color-slate-bg)', borderBottom: '1px solid #f3f4f6' }}>
-              ITIL Types
+          <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+            <div style={{ padding: '5px 16px 4px', fontSize: 'var(--font-size-label)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-slate-light)', background: 'var(--color-slate-bg)', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
+              {t('itilDesigner.itilTypes')}
             </div>
             <div>
               {itilTypes.map((itilType) => {
@@ -53,14 +53,14 @@ export function ITILTypeDesignerPage() {
                 const FallbackIcon = lookupOrError(ITIL_TYPE_ICONS, itilType.name, 'ITIL_TYPE_ICONS', Settings2)
                 return (
                   <button type="button" key={itilType.id} onClick={() => h.handleSelectType(itilType)}
-                    style={{ width: '100%', textAlign: 'left', padding: '10px 16px', background: isSelected ? '#f0f9ff' : 'transparent', borderLeft: `3px solid ${isSelected ? 'var(--color-brand)' : 'transparent'}`, borderTop: 'none', borderRight: 'none', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    style={{ width: '100%', textAlign: 'left', padding: '10px 16px', background: isSelected ? palette.info.light : 'transparent', borderLeft: `3px solid ${isSelected ? 'var(--color-brand)' : 'transparent'}`, borderTop: 'none', borderRight: 'none', borderBottom: `1px solid ${palette.neutral.borderLight}`, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
                     {itilType.icon
                       ? <CIIcon icon={itilType.icon} size={15} color={isSelected ? 'var(--color-brand)' : 'var(--color-slate)'} />
                       : <FallbackIcon size={15} color={isSelected ? 'var(--color-brand)' : 'var(--color-slate)'} style={{ flexShrink: 0 }} />}
                     <span style={{ flex: 1, minWidth: 0, fontSize: 'var(--font-size-body)', fontWeight: isSelected ? 600 : 400, color: isSelected ? 'var(--color-brand)' : 'var(--color-slate-dark)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {itilType.label}
                     </span>
-                    <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', flexShrink: 0 }}>{itilType.fields.length} campi</span>
+                    <span style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate-light)', flexShrink: 0 }}>{t('citypeDesigner.fieldCount', { count: itilType.fields.length })}</span>
                   </button>
                 )
               })}
@@ -71,7 +71,7 @@ export function ITILTypeDesignerPage() {
           {selectedType && settingsForm && (() => {
             const FallbackIcon = lookupOrError(ITIL_TYPE_ICONS, selectedType.name, 'ITIL_TYPE_ICONS', Settings2)
             return (
-              <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ background: colors.white, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
                 {/* Card header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -80,24 +80,24 @@ export function ITILTypeDesignerPage() {
                       <div style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{selectedType.label}</div>
                       <div style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{selectedType.name}</div>
                     </div>
-                    <button type="button" style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 100, fontSize: 'var(--font-size-body)', cursor: 'default', background: '#dcfce7', color: 'var(--color-success)', fontWeight: 500 }}>● active</button>
+                    <span style={{ marginLeft: 8, padding: '3px 10px', border: '1px solid var(--border)', borderRadius: 100, fontSize: 'var(--font-size-body)', background: palette.success.tint, color: 'var(--color-success)', fontWeight: 500 }}>● {t('common.active')}</span>
                   </div>
                 </div>
                 {/* Tabs */}
                 <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 20px' }}>
-                  {(['settings', 'fields', 'relations', 'rules', 'preview'] as Tab[]).map((tab) => (
+                  {(['settings', 'fields', 'ciExclusions', 'rules', 'preview'] as Tab[]).map((tab) => (
                     <button type="button" key={tab} onClick={() => h.handleTabChange(tab)}
                       style={{ padding: '10px 14px', border: 'none', borderBottom: h.activeTab === tab ? '2px solid var(--color-brand)' : '2px solid transparent', marginBottom: -1, background: 'none', fontSize: 'var(--font-size-body)', cursor: 'pointer', color: h.activeTab === tab ? 'var(--color-brand)' : 'var(--color-slate)', fontWeight: h.activeTab === tab ? 600 : 400 }}>
-                      {tab === 'settings' ? 'Impostazioni' : tab === 'fields' ? 'Campi' : tab === 'relations' ? 'Relazioni CI' : tab === 'rules' ? 'Regole' : 'Preview'}
+                      {tab === 'ciExclusions' ? t('itilDesigner.ciExclusions.tab') : t(`citypeDesigner.tab.${tab}`)}
                     </button>
                   ))}
                 </div>
                 {/* Tab content */}
                 <div style={{ padding: '20px 24px' }}>
                   {h.activeTab === 'settings' && <ITILTypeSettings settingsForm={settingsForm} setSettingsForm={h.setSettingsForm} settingsSaving={h.settingsSaving} onSaveSettings={h.handleSaveSettings} FallbackIcon={FallbackIcon} />}
-                  {h.activeTab === 'fields' && <ITILTypeFields typeId={selectedType.id} fields={selectedType.fields} editingFieldId={h.editingFieldId} setEditingFieldId={h.setEditingFieldId} addingField={h.addingField} setAddingField={h.setAddingField} onSaveField={h.handleSaveField} onDeleteField={h.handleDeleteField} enumTypesData={h.enumTypesData} />}
-                  {h.activeTab === 'relations' && <ITILTypeCIRelations typeName={selectedType.name} rules={h.ciRulesData?.itilCIRelationRules ?? []} ciTypes={h.ciTypesData?.ciTypes ?? []} showRelForm={h.showRelForm} setShowRelForm={h.setShowRelForm} relForm={h.relForm} setRelForm={h.setRelForm} onCreateRule={h.handleCreateRule} onDeleteRule={h.handleDeleteRule} />}
-                  {h.activeTab === 'rules' && <ITILTypeRules entityType={selectedType.name} fields={selectedType.fields.map((f) => ({ name: f.name, label: f.label, fieldType: f.fieldType, enumValues: f.enumValues }))} workflowSteps={h.ITIL_WORKFLOW_STEPS[selectedType.name] ?? []} />}
+                  {h.activeTab === 'fields' && <ITILTypeFields typeId={selectedType.id} typeName={selectedType.name} fields={selectedType.fields} editingFieldId={h.editingFieldId} setEditingFieldId={h.setEditingFieldId} addingField={h.addingField} setAddingField={h.setAddingField} onSaveField={h.handleSaveField} onDeleteField={h.handleDeleteField} enumTypesData={h.enumTypesData} />}
+                  {h.activeTab === 'ciExclusions' && <ITILTypeCIExclusions ticketType={selectedType.name} ciTypes={h.ciTypesData?.ciTypes ?? []} />}
+                  {h.activeTab === 'rules' && <ITILTypeRules entityType={selectedType.name} fields={selectedType.fields.map((f) => ({ name: f.name, label: f.label, fieldType: f.fieldType, enumValues: f.enumValues, enumTypeName: f.enumTypeName }))} />}
                   {h.activeTab === 'preview' && <ITILTypePreview selectedType={selectedType} setActiveTab={h.handleTabChange} />}
                 </div>
               </div>

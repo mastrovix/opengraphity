@@ -27,11 +27,11 @@ export const DELETE_DASHBOARD = gql`
 `
 
 export const ADD_DASHBOARD_WIDGET = gql`
-  mutation AddDashboardWidget($input: AddDashboardWidgetInput!) {
+  mutation AddDashboardWidget($input: AddDashboardWidgetInput!, $language: String) {
     addDashboardWidget(input: $input) {
       id name widgets {
         id order colSpan reportTemplateId reportSectionId
-        data error
+        data(language: $language) error(language: $language)
         reportSection { id title chartType }
         reportTemplate { id name }
       }
@@ -64,13 +64,13 @@ export const REORDER_DASHBOARD_WIDGETS = gql`
 `
 
 export const SAVE_DASHBOARD_LAYOUT = gql`
-  mutation SaveDashboardLayout($dashboardId: ID!, $widgets: [DashboardLayoutWidgetInput!]!) {
+  mutation SaveDashboardLayout($dashboardId: ID!, $widgets: [DashboardLayoutWidgetInput!]!, $language: String) {
     saveDashboardLayout(dashboardId: $dashboardId, widgets: $widgets) {
       id name
       widgets {
         id order colSpan
         reportTemplateId reportSectionId
-        data error
+        data(language: $language) error(language: $language)
         reportSection { id title chartType }
         reportTemplate { id name }
       }

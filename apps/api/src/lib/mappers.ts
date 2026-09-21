@@ -1,9 +1,17 @@
+import { withTicketProps } from './ticketProps.js'
 export type Props = Record<string, unknown>
 
-/** camelCase → snake_case (`ipAddress` → `ip_address`), the Neo4j property convention. */
-export function toSnakeCase(s: string): string {
-  return s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
-}
+/**
+ * camelCase → snake_case (`ipAddress` → `ip_address`), the Neo4j property
+ * convention.
+ *
+ * Definizione unica in `@opengraphity/schema-generator` (`stringUtils.ts`):
+ * la validazione dei nomi del metamodello (A-12) deve sapere su quale
+ * proprietà finirebbe un campo prima di accettarlo, e quel pacchetto non può
+ * importare `apps/api`. Due copie della stessa trasformazione vorrebbero dire
+ * un campo accettato dalla porta e scritto altrove.
+ */
+export { toSnakeCase } from '@opengraphity/schema-generator'
 
 // Neo4j DateTime/Date objects come back as structured objects instead of strings.
 // This helper normalises them to ISO 8601 strings.
@@ -37,7 +45,7 @@ export function mapUser(props: Props) {
 }
 
 export function mapIncident(props: Props) {
-  return {
+  return withTicketProps({
     id:           props['id']          as string,
     number:       (props['number'] ?? '') as string,
     tenantId:     props['tenant_id']   as string,
@@ -59,7 +67,7 @@ export function mapIncident(props: Props) {
     affectedCIs:     [],
     causedByProblem: null,
     comments:        [],
-  }
+  }, props)
 }
 
 export function mapTeam(props: Props) {
@@ -69,6 +77,8 @@ export function mapTeam(props: Props) {
     name:        props['name']       as string,
     description: (props['description'] ?? null) as string | null,
     type:        (props['type']        ?? null) as string | null,
+    // 'internal' | 'external', o null per un team di prima del campo (vedi lib/teamSourcing.ts).
+    sourcing:    (props['sourcing']    ?? null) as string | null,
     isChangeManager: (props['is_change_manager'] ?? false) as boolean,
     createdAt:   neo4jDateToISO(props['created_at']),
   }

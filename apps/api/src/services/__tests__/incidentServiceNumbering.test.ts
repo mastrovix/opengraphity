@@ -8,10 +8,36 @@
  *    title fuori range → ValidationError, prima di ogni scrittura.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// ── Ondata 6 (A-9): le etichette dei CI vengono dal metamodello del tenant ────
+// `LoadBalancer` è un tipo creato dal cliente: deve comparire nei predicati.
+// Prima questi punti usavano la lista fissa di `lib/ciLabels.ts` e i CI di quel
+// tipo non contavano, in silenzio.
+// Ondata 7: la traduzione fra valori di dominio è una lettura (la matrice è
+// dato del cliente). Qui si misura altro: il doppio risponde con la matrice di
+// fabbrica e i vocabolari spediti, senza grafo (lib/__tests__/domainMatrixFake.ts).
+// Ondata 6 di «Nulla cablato»: il formato dei numeri è del cliente; qui quello di fabbrica.
+vi.mock('../../lib/ticketCIExclusions.js', () => import('../../lib/__tests__/ticketCIExclusionsFake.js'))
+vi.mock('../../lib/ticketNumbering.js', () => import('../../lib/__tests__/ticketNumberingFake.js'))
+vi.mock('../../lib/domainMatrix.js', () => import('../../lib/__tests__/domainMatrixFake.js'))
+
+vi.mock('../../lib/ciLabelsForTenant.js', () => ({
+  ciLabelsForTenant:         vi.fn(async () => ['Application', 'LoadBalancer', 'Server']),
+  ciLabelPredicateForTenant: vi.fn(async (alias: string) => `(${alias}:Application OR ${alias}:LoadBalancer OR ${alias}:Server)`),
+  apocLabelFilterForTenant:  vi.fn(async () => '+Application|+LoadBalancer|+Server'),
+  ciTypeNameForLabel:        vi.fn(async (_t: string, label: string) => (label === 'LoadBalancer' ? 'load_balancer' : null)),
+  clearCILabelCache:         vi.fn(),
+}))
 import { GraphQLError } from 'graphql'
 
 const h = vi.hoisted(() => ({
-  session: { executeRead: vi.fn(), executeWrite: vi.fn(), close: vi.fn() },
+  // B-7: `incident.created` rilegge il payload dal grafo (prima ciName e
+  // assignedTo erano «—» scritti a mano): la sessione deve rispondere.
+  session: {
+    executeRead: vi.fn(async () => ({ records: [{ get: (k: string) => (({ id: 'inc-1', title: 'T', severity: 'high', status: 'open', ciName: 'srv-1', assignedTo: '—' }) as Record<string, string>)[k] }] })),
+    executeWrite: vi.fn(),
+    close: vi.fn(),
+  },
 }))
 
 vi.mock('@opengraphity/neo4j', () => ({
@@ -45,7 +71,7 @@ vi.mock('../../lib/logger.js', () => ({
 const { createIncident } = await import('../incidentService.js')
 const { runQuery } = await import('@opengraphity/neo4j')
 const { publishEvent } = await import('../../lib/publishEvent.js')
-const { derivePriority, impactUrgencyFromPriority } = await import('../../lib/priority.js')
+const { derivePriority, invertPriority } = await import('../../lib/priority.js')
 
 const ctx = { tenantId: 'tenant-1', userId: 'user-1' }
 
@@ -69,7 +95,11 @@ beforeEach(() => {
     cypher.includes('CREATE (i:Incident')
       ? [{ props: { id: params?.['id'], number: params?.['number'], title: params?.['title'], severity: params?.['severity'],
           impact: params?.['impact'], urgency: params?.['urgency'], status: params?.['status'], tenant_id: params?.['tenantId'] } }]
-      : [])
+      // Ondata 6 (C-2): il MERGE verso i CI impattati ritorna il conteggio e
+      // `createIncident` lo legge (zero righe = incident annullato).
+      : cypher.includes('MERGE (i)-[r:AFFECTED_BY]->(ci)')
+        ? [{ linked: 1 }]
+        : [])
 })
 
 describe('createIncident — numero progressivo', () => {
@@ -102,20 +132,26 @@ describe('createIncident — priorità Impatto×Urgenza', () => {
   ] as const)('impact=%s urgency=%s → severity %s (una severity esplicita incoerente è ignorata)', async (impact, urgency, expected) => {
     await createIncident({ title: 'T', impact, urgency, severity: 'low', affectedCIIds: ['ci-1'] }, ctx)
     expect(createParams()).toMatchObject({ severity: expected, impact, urgency })
-    expect(expected).toBe(derivePriority(impact, urgency))
+    expect(expected).toBe(await derivePriority(ctx.tenantId, impact, urgency))
   })
 
   it.each(['critical', 'high', 'medium', 'low'] as const)('solo severity=%s → impact/urgency retro-derivati coerenti', async (severity) => {
     await createIncident({ title: 'T', severity, affectedCIIds: ['ci-1'] }, ctx)
-    const iu = impactUrgencyFromPriority(severity)
+    // Ondata 7: l'inverso viene DALLA matrice (`invertPriority`), non da una
+    // tabella parallela con un `default → medium`.
+    const iu = await invertPriority(ctx.tenantId, severity)
     expect(createParams()).toMatchObject({ severity, impact: iu.impact, urgency: iu.urgency })
-    expect(derivePriority(iu.impact, iu.urgency)).toBe(severity)
+    expect(await derivePriority(ctx.tenantId, iu.impact, iu.urgency)).toBe(severity)
   })
 
-  it('l\'evento incident.created porta la priorità derivata, non la severity dell\'input', async () => {
+  it('l\'evento incident.created porta la priorità derivata e il CI vero (B-7)', async () => {
+    // Il payload si rilegge dal grafo: la gravità è quella scritta
+    // sull'incident (la priorità derivata), il CI e l'assegnatario sono quelli
+    // veri — prima erano «—» scritti a mano nel payload.
+    h.session.executeRead.mockResolvedValue({ records: [{ get: (k: string) => (({ id: 'inc-1', title: 'T', severity: 'critical', status: 'open', ciName: 'srv-1', assignedTo: 'Mario' }) as Record<string, string>)[k] }] })
     await createIncident({ title: 'T', impact: 'high', urgency: 'high', severity: 'low', affectedCIIds: ['ci-1'] }, ctx)
     expect(publishEvent).toHaveBeenCalledWith('incident.created', 'tenant-1', 'user-1',
-      expect.objectContaining({ severity: 'critical', affected_ci_ids: ['ci-1'] }), expect.any(String))
+      expect.objectContaining({ severity: 'critical', ciName: 'srv-1', assignedTo: 'Mario', affected_ci_ids: ['ci-1'] }), expect.any(String))
   })
 })
 
@@ -145,6 +181,6 @@ describe('createIncident — errori tipizzati (ValidationError / BAD_USER_INPUT)
 
   it('il CI mancante è un ValidationError (codice BAD_USER_INPUT), non un Error generico', async () => {
     const err = await validationFailure(createIncident({ title: 'T', severity: 'high' }, ctx))
-    expect(err.message).toBe('Un incident deve avere almeno un CI impattato')
+    expect(err.message).toBe('An incident must have at least one impacted CI')
   })
 })

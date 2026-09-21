@@ -20,7 +20,7 @@ describe('useConfirm + ConfirmModal', () => {
   it('fuori da ConfirmProvider lancia (nessun no-op silenzioso)', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(() => render(<Harness options={{ title: 'x' }} onResult={() => {}} />))
-      .toThrow('useConfirm() richiede un <ConfirmProvider> a monte')
+      .toThrow('useConfirm() needs a <ConfirmProvider> above it')
   })
 
   it('apre un dialog con titolo e corpo di default, il focus iniziale è su Annulla', async () => {

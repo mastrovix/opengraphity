@@ -2,10 +2,8 @@ import { randomUUID } from 'crypto'
 import { Queue, Worker, Job } from 'bullmq'
 import { publish, getRedisConnection } from '@opengraphity/events'
 import type { DomainEvent, SLAWarningPayload, SLABreachedPayload } from '@opengraphity/types'
-import { markBreached, getSLAStatus } from './status.js'
+import { markBreached, markResponseBreachNotified, getSLAStatus, ticketReference } from './status.js'
 import type { SLAStatus } from './status.js'
-import { calculateDeadline } from './policy.js'
-import { isEntityResolved, type OLAContractLite } from './olaBreach.js'
 
 // Redis options come from the shared parser in @opengraphity/events (D-14):
 // same REDIS_URL / REDIS_PASSWORD rules as the event queues, so the SLA timers
@@ -93,15 +91,23 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
 
   switch (job.name) {
     case 'sla.warning': {
-      if (!(await statusIfStillRelevant(job, 'resolve'))) break
+      const status = await statusIfStillRelevant(job, 'resolve')
+      if (!status) break
+      const ref = await ticketReference(tenantId, entityId)
+      if (!ref) { console.log(`[sla:scheduler] sla.warning for ${entityType} ${entityId} skipped: ticket gone`); break }
       const minutesRemaining = Math.round(
         (new Date(resolveDeadline).getTime() - Date.now()) / 60_000,
       )
+      // Id DETERMINISTICO per questo SLAStatus e questo preavviso (revisione
+      // totale · E-7): con `randomUUID()` un fallimento del fan-out (una sola
+      // `add` su cinque) faceva ritentare il job, che ripubblicava un evento
+      // NUOVO — e i consumatori, che deduplicano per id, mandavano due volte
+      // «SLA in scadenza».
       const event: DomainEvent<SLAWarningPayload> = {
         ...baseEvent,
-        id:      randomUUID(),
+        id:      `warning-${status.id}`,
         type:    'sla.warning',
-        payload: { entity_id: entityId, entity_type: entityType, minutes_remaining: minutesRemaining },
+        payload: { entity_id: entityId, entity_type: entityType, minutes_remaining: minutesRemaining, target: 'resolve', ...ref },
       }
       await publish(event)
       console.log(`[sla:scheduler] Warning fired for ${entityType} ${entityId} (${minutesRemaining}min remaining)`)
@@ -117,11 +123,13 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
       // the consumers' per-id dedup drops the duplicate instead of escalating
       // twice (D-10).
       await markBreached(tenantId, entityId)
+      const ref = await ticketReference(tenantId, entityId)
+      if (!ref) { console.log(`[sla:scheduler] sla.breach for ${entityType} ${entityId}: ticket gone, state marked, no notification`); break }
       const event: DomainEvent<SLABreachedPayload> = {
         ...baseEvent,
         id:      `breach-${status.id}`,
         type:    'sla.breached',
-        payload: { entity_id: entityId, entity_type: entityType, breached_at: new Date().toISOString() },
+        payload: { entity_id: entityId, entity_type: entityType, breached_at: new Date().toISOString(), ...ref },
       }
       await publish(event)
       console.log(`[sla:scheduler] Breach fired for ${entityType} ${entityId}`)
@@ -131,40 +139,27 @@ export async function processSLAJob(job: Job<SLAJobData>): Promise<void> {
     case 'sla.response_breach': {
       const status = await statusIfStillRelevant(job, 'response')
       if (!status) break
+      const ref = await ticketReference(tenantId, entityId)
+      if (!ref) { console.log(`[sla:scheduler] sla.response_breach for ${entityType} ${entityId} skipped: ticket gone`); break }
       const event: DomainEvent<SLAWarningPayload> = {
         ...baseEvent,
         id:      `response-breach-${status.id}`,
         type:    'sla.warning',
-        payload: { entity_id: entityId, entity_type: entityType, minutes_remaining: 0 },
+        payload: { entity_id: entityId, entity_type: entityType, minutes_remaining: 0, target: 'response', ...ref },
       }
       await publish(event)
+      // L'avviso è uscito: alla ripresa di una pausa non se ne manda un
+      // secondo identico (revisione totale · E-12).
+      await markResponseBreachNotified(tenantId, entityId, event.timestamp)
       console.log(`[sla:scheduler] Response breach fired for ${entityType} ${entityId}`)
       break
     }
 
     case 'ola.breach': {
-      // OLA/UC target elapsed. Alert only if the entity is still open — a
-      // resolved entity met (or already reported) its outcome; no false alarm.
-      const stillOpen = !(await isEntityResolved(job.data.tenantId, entityType, entityId))
-      if (!stillOpen) {
-        console.log(`[sla:scheduler] OLA "${job.data.contractName}" check skipped for ${entityType} ${entityId} — already resolved`)
-        break
-      }
-      const event: DomainEvent<Record<string, unknown>> = {
-        ...baseEvent,
-        id:      randomUUID(),
-        type:    'ola.breached',
-        payload: {
-          entity_id:     entityId,
-          entity_type:   entityType,
-          contract_id:   job.data.contractId ?? null,
-          contract_name: job.data.contractName ?? null,
-          contract_type: job.data.contractType ?? null,
-          breached_at:   new Date().toISOString(),
-        },
-      }
-      await publish(event)
-      console.log(`[sla:scheduler] OLA/UC breach fired: "${job.data.contractName}" on ${entityType} ${entityId}`)
+      // Job per ticket armati prima della passata OLA dell'API (secondo giro UI
+      // del 15 set 2026): si scaricano senza avvisare. Gli avvisi li dà
+      // `apps/api/src/lib/olaSweep.ts`, sul tempo in cui il ticket è del team.
+      console.log(`[sla:scheduler] OLA job for ${entityType} ${entityId} superseded by the OLA sweep — dropped`)
       break
     }
 
@@ -225,20 +220,41 @@ async function scheduleJob(
 
   const queue = getQueue()
 
-  // Remove stale job with the same ID (idempotency)
+  /**
+   * Il job vecchio con lo stesso id si toglie per idempotenza, ma un job
+   * ATTIVO non si può rimuovere (revisione totale · E-22): BullMQ rifiuta
+   * `remove()` su un job che un worker ha in mano, quindi la ripianificazione
+   * lanciava e l'evento che l'aveva chiesta (una ripresa dalla pausa, un
+   * cambio di policy) finiva nei falliti. Se il job sta girando non c'è
+   * niente da togliere: sta già facendo il suo, e quello nuovo lo si accoda
+   * con un id distinto per non perderlo.
+   */
   const existing = await queue.getJob(jobId)
+  let scheduledId = jobId
   if (existing) {
-    await existing.remove()
+    try {
+      await existing.remove()
+    } catch (err) {
+      const state = await existing.getState().catch(() => 'unknown')
+      if (state !== 'active') throw err
+      scheduledId = `${jobId}:re${String(Date.now())}`
+      console.warn(`[sla:scheduler] ${jobName} (${jobId}) is running: the new one is queued as ${scheduledId}`)
+    }
   }
 
-  await queue.add(jobName, data, { jobId, delay: delayMs })
-  console.log(`[sla:scheduler] Scheduled ${jobName} (${jobId}) in ${Math.round(delayMs / 1000)}s`)
+  await queue.add(jobName, data, { jobId: scheduledId, delay: delayMs })
+  console.log(`[sla:scheduler] Scheduled ${jobName} (${scheduledId}) in ${Math.round(delayMs / 1000)}s`)
 }
 
 export async function scheduleWarning(status: SLAStatus): Promise<void> {
-  const warningMs = new Date(status.resolve_deadline).getTime() - 30 * 60_000 - Date.now()
-  // Clamp like breach/response checks: an SLA shorter than the 30-minute
-  // warning window fires the warning immediately instead of silently never.
+  // Il preavviso è della policy (NT-8/F6): era 30 minuti fissi per tutti.
+  const lead = Number(status.tier.warning_minutes)
+  if (!Number.isInteger(lead) || lead <= 0) {
+    throw new Error(`[sla:scheduler] SLAStatus ${status.id} has no valid warning lead (tier_warning_minutes=${String(status.tier.warning_minutes)})`)
+  }
+  const warningMs = new Date(status.resolve_deadline).getTime() - lead * 60_000 - Date.now()
+  // Clamp like breach/response checks: an SLA shorter than the warning lead
+  // fires the warning immediately instead of silently never.
   await scheduleJob('sla.warning', `warning-${status.entity_id}`, {
     entityId:       status.entity_id,
     entityType:     status.entity_type,
@@ -268,34 +284,9 @@ export async function scheduleResponseCheck(status: SLAStatus): Promise<void> {
 }
 
 /**
- * Schedules one breach-check timer per OLA/UC contract covering the entity.
- * Each fires at created_at + the contract's resolve target; the processor
- * alerts only if the entity is still open at that point. Fire-time is the
- * guard — no cancellation on resolve is needed.
- */
-export async function scheduleOLABreaches(
-  params: { entityId: string; entityType: string; tenantId: string; timezone: string; contracts: OLAContractLite[] },
-): Promise<void> {
-  const { entityId, entityType, tenantId, timezone, contracts } = params
-  const now = new Date()
-  for (const c of contracts) {
-    const deadline = calculateDeadline(now, c.resolve_minutes, c.business_hours, timezone)
-    const delayMs = deadline.getTime() - now.getTime()
-    await scheduleJob('ola.breach', `ola-${c.id}-${entityId}`, {
-      entityId,
-      entityType,
-      tenantId,
-      resolveDeadline: deadline.toISOString(),
-      contractId:      c.id,
-      contractName:    c.name,
-      contractType:    c.type,
-    }, Math.max(delayMs, 0))
-  }
-}
-
-/**
  * Rimuove i timer di breach OLA/UC di un'entità (es. change eliminata): gli
- * id sono quelli generati da scheduleOLABreaches (`ola-<contractId>-<entityId>`).
+ * id erano quelli dei vecchi controlli per ticket (`ola-<contractId>-<entityId>`):
+ * sostituiti dalla passata OLA dell'API, restano da togliere quelli già in coda.
  */
 export async function cancelOLABreaches(entityId: string, contractIds: string[]): Promise<void> {
   const queue = getQueue()

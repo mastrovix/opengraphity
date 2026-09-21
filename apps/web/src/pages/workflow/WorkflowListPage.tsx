@@ -1,14 +1,20 @@
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@apollo/client/react'
+import { useQuery, useMutation } from '@apollo/client/react'
+import { toast } from 'sonner'
+import { Button } from '@/components/Button'
 import { useTranslation } from 'react-i18next'
+import { useItilTypeLabels } from '@/hooks/useItilTypeLabels'
 import { PageContainer } from '@/components/PageContainer'
 import { AlertCircle, GitPullRequest, Route, BookOpen, Search, Inbox } from 'lucide-react'
 import { PageTitle } from '@/components/PageTitle'
 import { EmptyState } from '@/components/EmptyState'
 import { Skeleton } from '@/components/ui/skeleton'
-import { GET_WORKFLOW_LIST } from '@/graphql/queries'
-import { lookupOrError } from '@/lib/tokens'
+import { GET_WORKFLOW_LIST, GET_TENANT_PROVISIONING_GAPS } from '@/graphql/queries'
+import { PROVISION_TENANT_DATA } from '@/graphql/mutations'
+import { lookupOrError, colors, palette } from '@/lib/tokens'
 import { Pill } from '@/components/ui/Pill'
+import { gapText, type GapData } from '@/lib/configurationIssueText'
+import { showError } from '@/lib/showError'
 
 interface WorkflowDef {
   id:             string
@@ -17,29 +23,58 @@ interface WorkflowDef {
   category:       string | null
   active:         boolean
   version:        number
-  changeSubtype:  string | null
 }
 
-const SUBTYPE_COLORS: Record<string, { bg: string; fg: string }> = {
-  standard:  { bg: '#dcfce7', fg: '#166534' },
-  normal:    { bg: '#dbeafe', fg: '#1e40af' },
-  emergency: { bg: '#fee2e2', fg: '#991b1b' },
-}
-
-const ENTITY_META: Record<string, { label: string; Icon: typeof AlertCircle; color: string }> = {
-  incident:        { label: 'Incident',        Icon: AlertCircle,    color: 'var(--color-danger)' },
-  change:          { label: 'Change',          Icon: GitPullRequest, color: '#8b5cf6' },
-  problem:         { label: 'Problem',         Icon: Search,         color: 'var(--color-warning)' },
-  service_request: { label: 'Service Request', Icon: Inbox,          color: 'var(--color-brand)' },
-  kb_article:      { label: 'Knowledge Base',  Icon: BookOpen,       color: '#10b981' },
+/**
+ * Icona e colore per tipo. L'ETICHETTA non sta qui: per i tipi ITIL è quella
+ * del metamodello del cliente (`useItilTypeLabels`, revisione del 14 set 2026 ·
+ * F16), per gli articoli KB è una traduzione.
+ */
+const ENTITY_META: Record<string, { Icon: typeof AlertCircle; color: string }> = {
+  incident:        { Icon: AlertCircle,    color: 'var(--color-danger)' },
+  change:          { Icon: GitPullRequest, color: palette.purple.light },
+  problem:         { Icon: Search,         color: 'var(--color-warning)' },
+  service_request: { Icon: Inbox,          color: 'var(--color-brand)' },
+  kb_article:      { Icon: BookOpen,       color: palette.success.base },
 }
 
 const ENTITY_ORDER = ['incident', 'change', 'problem', 'service_request', 'kb_article']
 
 export function WorkflowListPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const { labelOf: typeLabel } = useItilTypeLabels()
   const navigate = useNavigate()
   const { data, loading } = useQuery<{ workflowDefinitions: WorkflowDef[] }>(GET_WORKFLOW_LIST)
+
+  /**
+   * L'uscita da un cliente senza workflow (revisione delle otto ondate · D·D4).
+   *
+   * Nello SDL non esisteva nessuna mutation che creasse una definizione: un
+   * tenant senza workflow non ne usciva dall'interfaccia — ogni apertura di
+   * ticket si fermava, e il rimedio era una migrazione da riga di comando.
+   * `provisionTenantData` è idempotente e non sovrascrive le definizioni che
+   * già ci sono.
+   */
+  const { data: gapsData, refetch: refetchGaps } = useQuery<{ tenantProvisioningGaps: GapData[] }>(
+    GET_TENANT_PROVISIONING_GAPS, { fetchPolicy: 'cache-and-network' },
+  )
+  /*
+    I buchi arrivano come CHIAVI, non come frasi: l'API non sa in che lingua
+    guarda chi legge. Qui si risolvono, e la stessa funzione la usa il banner in
+    cima alla pagina — una sorgente sola per la stessa frase.
+  */
+  const gaps = gapsData?.tenantProvisioningGaps ?? []
+  const gapLine = (g: GapData) => gapText(t, (k, p) => i18n.exists(k, p), g)
+  const [provision, { loading: provisioning }] = useMutation(PROVISION_TENANT_DATA, {
+    refetchQueries: [GET_WORKFLOW_LIST],
+    onCompleted: (d: unknown) => {
+      const r = (d as { provisionTenantData: { remainingGaps: GapData[] } }).provisionTenantData
+      void refetchGaps()
+      if (r.remainingGaps.length === 0) toast.success(t('pages.workflow.provisionDone'))
+      else toast.warning(t('pages.workflow.provisionPartial', { gaps: r.remainingGaps.map(gapLine).join('; ') }))
+    },
+    onError: (e) => showError(e),
+  })
 
   const defs = data?.workflowDefinitions ?? []
 
@@ -72,10 +107,26 @@ export function WorkflowListPage() {
             {t('pages.workflow.title', 'Workflow')}
           </PageTitle>
           <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
-            {loading ? '—' : `${defs.length} workflow`}
+            {loading ? '—' : t('pages.workflow.count', { count: defs.length })}
           </p>
         </div>
       </div>
+
+      {gaps.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px', marginBottom: 20,
+          background: 'var(--color-danger-bg)', borderRadius: 8, border: '1px solid var(--color-border)',
+        }}>
+          <AlertCircle size={16} aria-hidden="true" style={{ marginTop: 2, color: 'var(--color-danger-text)' }} />
+          <div style={{ flex: 1, fontSize: 'var(--font-size-body)' }}>
+            <strong>{t('pages.workflow.incompleteTitle')}</strong>
+            <div style={{ color: 'var(--color-slate-dark)', marginTop: 2 }}>{gaps.map(gapLine).join('; ')}</div>
+          </div>
+          <Button onClick={() => void provision()} disabled={provisioning}>
+            {t('pages.workflow.provisionButton')}
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 24 }}>
@@ -90,20 +141,21 @@ export function WorkflowListPage() {
       ) : defs.length === 0 ? (
         <EmptyState
           icon={<Route size={32} color="var(--color-slate-light)" />}
-          title={t('pages.workflow.noResults', 'Nessun workflow trovato')}
+          title={t('pages.workflow.noResults')}
         />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(columnKeys.length, 4)}, 1fr)`, gap: 24 }}>
           {columnKeys.map((entityType) => {
-            const meta = lookupOrError(ENTITY_META, entityType, 'ENTITY_META', { label: entityType, Icon: Route, color: 'var(--color-danger)' })
+            const meta = lookupOrError(ENTITY_META, entityType, 'ENTITY_META', { Icon: Route, color: 'var(--color-danger)' })
+            const columnLabel = entityType === 'kb_article' ? t('pages.approvals.entity.kb_article') : typeLabel(entityType)
             const items = grouped.get(entityType)!
 
             return (
               <div key={entityType}>
                 {/* Column header */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: '2px solid #e5e7eb' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, paddingBottom: 10, borderBottom: '2px solid var(--color-border)' }}>
                   <meta.Icon size={18} color={meta.color} />
-                  <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{meta.label}</span>
+                  <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 600, color: 'var(--color-slate-dark)' }}>{columnLabel}</span>
                   <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginLeft: 'auto' }}>{items.length}</span>
                 </div>
 
@@ -115,8 +167,8 @@ export function WorkflowListPage() {
                       key={def.id}
                       onClick={() => navigate(`/workflow/${def.id}`)}
                       style={{
-                        background:    '#fff',
-                        border:        '1px solid #e5e7eb',
+                        background:    colors.white,
+                        border:        '1px solid var(--color-border)',
                         borderRadius:  10,
                         padding:       16,
                         cursor:        'pointer',
@@ -130,12 +182,12 @@ export function WorkflowListPage() {
                         color:         'inherit',
                       }}
                       onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'
+                        (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px var(--color-black-a08)'
                         ;(e.currentTarget as HTMLElement).style.borderColor = meta.color
                       }}
                       onMouseLeave={(e) => {
                         (e.currentTarget as HTMLElement).style.boxShadow = 'none'
-                        ;(e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb'
+                        ;(e.currentTarget as HTMLElement).style.borderColor = colors.border
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
@@ -143,29 +195,21 @@ export function WorkflowListPage() {
                           {def.name}
                         </span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          {def.changeSubtype && (() => {
-                            const sc = lookupOrError(SUBTYPE_COLORS, def.changeSubtype, 'SUBTYPE_COLORS', { bg: 'var(--color-danger)', fg: '#fff' })
-                            return (
-                              <Pill bg={sc.bg} color={sc.fg} radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
-                                {def.changeSubtype === 'standard' ? 'Standard' : def.changeSubtype === 'normal' ? 'Normal' : 'Emergency'}
-                              </Pill>
-                            )
-                          })()}
                           {def.category ? (
-                            <Pill bg="#fef3c7" color="#92400e" radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
+                            <Pill bg={palette.warning.tint} color={palette.warning.strong} radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
                               {def.category}
                             </Pill>
                           ) : (
-                            <Pill bg="#dcfce7" color="#166534" radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
-                              Default
+                            <Pill bg={palette.success.tint} color={palette.success.strong} radius={4} style={{ fontSize: 'var(--font-size-label)' }}>
+                              {t('pages.workflow.defaultBadge')}
                             </Pill>
                           )}
                         </div>
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <Pill bg={def.active ? 'var(--color-brand-light)' : 'var(--color-slate-bg)'} color={def.active ? 'var(--color-brand)' : 'var(--color-slate-light)'} radius={100} style={{ fontSize: 11, border: def.active ? '1px solid #a5f3fc' : '1px solid #e5e7eb' }}>
-                          {def.active ? 'Attivo' : 'Inattivo'}
+                        <Pill bg={def.active ? 'var(--color-brand-light)' : 'var(--color-slate-bg)'} color={def.active ? 'var(--color-brand)' : 'var(--color-slate-light)'} radius={100} style={{ fontSize: 11, border: def.active ? '1px solid var(--color-teal-border)' : '1px solid var(--color-border)' }}>
+                          {t(def.active ? 'common.active' : 'common.inactive')}
                         </Pill>
                         <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>v{def.version}</span>
                       </div>

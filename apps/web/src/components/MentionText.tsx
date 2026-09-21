@@ -1,4 +1,5 @@
 import React from 'react'
+import { palette } from '@/lib/tokens'
 
 interface Props {
   text: string
@@ -7,8 +8,8 @@ interface Props {
 const mentionRegex = /@\[([^\]]+)\]\(([^)]+)\)/g
 
 const badgeStyle: React.CSSProperties = {
-  background: '#e0f2fe',
-  color: '#0369a1',
+  background: palette.info.tint,
+  color: palette.info.text,
   padding: '1px 4px',
   borderRadius: 4,
   fontWeight: 600,

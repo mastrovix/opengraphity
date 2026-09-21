@@ -1,9 +1,12 @@
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
-import { Hash, BarChart2, PieChart, TrendingUp, Table, Gauge, Activity, X } from 'lucide-react'
+import { Hash, BarChart2, PieChart, TrendingUp, Table, Gauge, Activity, X, Radar, Boxes } from 'lucide-react'
 import { GET_WIDGET_DATA } from '@/graphql/queries'
-import { lookupOrError } from '@/lib/tokens'
+import { lookupOrError, colors } from '@/lib/tokens'
 import { WidgetBody, type WidgetSeriesData } from '@/components/WidgetBody'
+import { DataFreeWidgetBody } from './DataFreeWidgetBody'
+import { DATA_FREE_WIDGET_TYPES } from './useWidgetConfig'
+import { useFieldValueLabel } from '@/hooks/useFieldValueLabel'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,6 +52,7 @@ const TIME_LABEL_KEY: Record<string, string> = {
 const TYPE_ICON: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
   counter: Hash, chart_bar: BarChart2, chart_line: TrendingUp, chart_pie: PieChart,
   chart_donut: PieChart, table: Table, gauge: Gauge, heatmap: Activity,
+  active_alarms: Radar, service_health: Boxes,
 }
 
 function TypeIcon({ type, color }: { type: string; color: string }) {
@@ -60,28 +64,34 @@ function TypeIcon({ type, color }: { type: string; color: string }) {
 
 export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) {
   const { t } = useTranslation()
+  // I widget a sorgente fissa ("Allarmi attivi", "Salute dei servizi") leggono
+  // la loro query, non widgetData: la query del widget si salta del tutto.
+  const dataFree = DATA_FREE_WIDGET_TYPES.includes(widget.widgetType)
   const { data, loading, error } = useQuery<{ widgetData: WidgetSeriesData }>(GET_WIDGET_DATA, {
     variables: { widgetId: widget.id },
     fetchPolicy: 'cache-and-network',
+    skip: dataFree,
   })
 
   const colSpan = lookupOrError(SIZE_COLSPAN, widget.size, 'SIZE_COLSPAN', 6)
-  const wData   = data?.widgetData
+  const valueLabel = useFieldValueLabel(widget.entityType, widget.groupByField)
+  const rawData = data?.widgetData
+  const wData   = rawData && { ...rawData, series: rawData.series.map((s) => ({ ...s, label: valueLabel(s.label) })) }
 
   const cardStyle: React.CSSProperties = {
     gridColumn:    `span ${colSpan}`,
-    background:    '#fff',
-    border:        editMode ? `2px dashed ${widget.color}` : '1px solid #e5e7eb',
+    background:    colors.white,
+    border:        editMode ? `2px dashed ${widget.color}` : '1px solid var(--color-border)',
     borderRadius:  10,
     overflow:      'hidden',
     position:      'relative',
-    boxShadow:     '0 1px 4px rgba(0,0,0,0.06)',
+    boxShadow:     '0 1px 4px var(--color-black-a06)',
     transition:    'border 0.15s',
   }
 
   const headerStyle: React.CSSProperties = {
     padding:      '10px 14px',
-    borderBottom: '1px solid #f3f4f6',
+    borderBottom: '1px solid var(--color-border-light)',
     display:      'flex',
     alignItems:   'center',
     gap:          7,
@@ -98,7 +108,7 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
         {widget.title}
       </span>
       {widget.timeRange && widget.timeRange !== 'all' && (
-        <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 5px', borderRadius: 4, background: '#f1f5f9', color: 'var(--color-slate-light)' }}>
+        <span style={{ fontSize: 'var(--font-size-label)', padding: '1px 5px', borderRadius: 4, background: colors.slateBg, color: 'var(--color-slate-light)' }}>
           {timeLabelKey ? t(timeLabelKey) : widget.timeRange}
         </span>
       )}
@@ -107,14 +117,14 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
           <button
             type="button"
             onClick={onEdit}
-            style={{ width: 20, height: 20, border: '1px solid #d1d5db', background: '#fff', borderRadius: 4, cursor: 'pointer', fontSize: 'var(--font-size-table)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ width: 20, height: 20, border: '1px solid var(--color-border-strong)', background: colors.white, borderRadius: 4, cursor: 'pointer', fontSize: 'var(--font-size-table)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             title={t('pages.dashboard.editWidget')}
             aria-label={t('pages.dashboard.editWidget')}
           >✏</button>
           <button
             type="button"
             onClick={onRemove}
-            style={{ width: 20, height: 20, border: '1px solid #fca5a5', background: 'var(--color-danger-bg)', borderRadius: 4, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ width: 20, height: 20, border: '1px solid var(--color-danger-border-strong)', background: 'var(--color-danger-bg)', borderRadius: 4, cursor: 'pointer', fontSize: 'var(--font-size-body)', color: 'var(--color-danger)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             title={t('pages.dashboard.removeWidget')}
             aria-label={t('pages.dashboard.removeWidget')}
           ><X size={12} aria-hidden="true" /></button>
@@ -126,7 +136,9 @@ export function CustomWidgetCard({ widget, editMode, onEdit, onRemove }: Props) 
   // ── Body ─────────────────────────────────────────────────────────────────────
 
   let body: React.ReactNode
-  if (loading && !wData) {
+  if (dataFree) {
+    body = <DataFreeWidgetBody widgetType={widget.widgetType} color={widget.color} />
+  } else if (loading && !wData) {
     body = (
       <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ width: 24, height: 24, border: `3px solid ${widget.color}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />

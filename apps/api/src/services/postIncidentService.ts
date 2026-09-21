@@ -8,23 +8,25 @@
  * suggerimenti/bozze da rivedere — mai auto-azioni. No-fallback: chiave
  * mancante, errori provider e violazioni di schema propagano.
  */
-import Anthropic from '@anthropic-ai/sdk'
 import { config } from '../lib/config.js'
 import { GraphQLError } from 'graphql'
+import { NotFoundError } from '../lib/errors.js'
 import { getSession, runQuery } from '@opengraphity/neo4j'
 import { vectorIndexName } from './embeddings.js'
+import { vectorSearchForTenant } from '../lib/vectorSearch.js'
 import { logger } from '../lib/logger.js'
+// I passi conclusivi (risolti/terminali) vengono dal workflow di QUESTO cliente
+// e non da `['closed']`/`['resolved','closed']` (ondata 8 · B-22).
+import { statusNamesForClasses, concludedStatusNames } from '../lib/statusStepNames.js'
+import { modelLanguageFor } from '../lib/systemText.js'
+import { domainVocabulary } from '../lib/domainMatrix.js'
+import { aiSettings, assertAIFeature } from '../lib/aiSettings.js'
+import { getAnthropic, leggiJSONDalModello, leggiTestoDalModello, registraDurata } from '../lib/aiClient.js'
+
+/** Le stesse due chiavi per tutte e tre le chiamate di questo servizio. */
+const CHIAVI_AI = { troncata: 'errors.ai.truncated', illeggibile: 'errors.ai.badAnswer' } as const
 
 const log = logger.child({ module: 'post-incident' })
-
-function getClient(): Anthropic {
-  if (!config.anthropicApiKey) {
-    throw new GraphQLError('AI non configurata: ANTHROPIC_API_KEY mancante', {
-      extensions: { code: 'FAILED_PRECONDITION' },
-    })
-  }
-  return new Anthropic()
-}
 
 async function readQuery<T>(cypher: string, params: Record<string, unknown>): Promise<T[]> {
   const session = getSession(undefined, 'READ')
@@ -59,7 +61,7 @@ async function loadIncidentContext(tenantId: string, incidentId: string): Promis
     OPTIONAL MATCH (i)-[:AFFECTED_BY]->(ci)
     RETURN properties(i) AS props, comments, steps, collect(DISTINCT ci.name) AS cis
   `, { tenantId, incidentId })
-  if (!rows.length) throw new GraphQLError('Incident non trovato', { extensions: { code: 'NOT_FOUND' } })
+  if (!rows.length) throw new NotFoundError('Incident')
   const r = rows[0]
   return {
     props: r.props,
@@ -72,18 +74,20 @@ async function loadIncidentContext(tenantId: string, incidentId: string): Promis
 // ── 1. Bozza resolution notes ────────────────────────────────────────────────
 
 export async function draftResolutionNotes(tenantId: string, incidentId: string): Promise<string> {
+  await assertAIFeature(tenantId, 'postIncident')
   const ctx = await loadIncidentContext(tenantId, incidentId)
-  const client = getClient()
+  const client = getAnthropic()
+  const language = await modelLanguageFor(tenantId)
   const t0 = Date.now()
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-8',
+    model: config.anthropicModel,
     max_tokens: 1500,
     thinking: { type: 'adaptive' },
     output_config: { effort: 'low' },
     system: [{
       type: 'text',
-      text: `Scrivi note di risoluzione per incident ITSM, in italiano. Ricevi i dati reali dell'incident (titolo, descrizione, commenti degli operatori, passaggi di workflow, CI coinvolti). Produci SOLO il testo delle note: 3-6 frasi concrete che descrivono causa, intervento effettuato e verifica — basate esclusivamente sull'evidenza fornita. Se l'evidenza non chiarisce la causa o l'intervento, scrivilo esplicitamente ("causa non documentata nei commenti") invece di inventare. Niente preamboli, niente markdown.`,
+      text: `Scrivi note di risoluzione per incident ITSM. Scrivi il testo in ${language}. Ricevi i dati reali dell'incident (titolo, descrizione, commenti degli operatori, passaggi di workflow, CI coinvolti). Produci SOLO il testo delle note: 3-6 frasi concrete che descrivono causa, intervento effettuato e verifica — basate esclusivamente sull'evidenza fornita. Se l'evidenza non chiarisce la causa o l'intervento, scrivilo esplicitamente ("causa non documentata nei commenti") invece di inventare. Niente preamboli, niente markdown.`,
       cache_control: { type: 'ephemeral' },
     }],
     messages: [{ role: 'user', content: JSON.stringify({
@@ -93,13 +97,10 @@ export async function draftResolutionNotes(tenantId: string, incidentId: string)
     }, null, 1) }],
   })
 
-  if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('Il modello ha rifiutato la richiesta', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
-  }
-  const text = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text
-  if (!text?.trim()) throw new Error('[post-incident] bozza vuota dal modello')
+  registraDurata('postIncident', Date.now() - t0)
+  const text = leggiTestoDalModello(response, 'postIncident', CHIAVI_AI)
   log.info({ incidentId, ms: Date.now() - t0 }, '[post-incident] resolution draft generated')
-  return text.trim()
+  return text
 }
 
 // ── 2. Candidati Problem ─────────────────────────────────────────────────────
@@ -110,17 +111,43 @@ export interface ProblemCandidate {
   incidents: Array<{ id: string; number: string | null; title: string; status: string; severity: string }>
 }
 
-const CLUSTER_THRESHOLD = 0.72
-const CLUSTER_MIN_SIZE = 3
+/**
+ * Quanti incident aperti entrano nella ricerca dei cluster (D-22): oltre
+ * questo numero la ricerca costerebbe più di quanto vale, perché è una query
+ * vettoriale per incident dentro una richiesta dell'interfaccia.
+ */
+const CLUSTER_MAX_INCIDENTS = 300
 
 export async function problemCandidates(tenantId: string): Promise<ProblemCandidate[]> {
-  // Non-closed incidents with an embedding
+  // Il raggruppamento usa gli embedding e il modello: servono entrambe le funzioni.
+  await assertAIFeature(tenantId, 'postIncident')
+  await assertAIFeature(tenantId, 'embeddings')
+  // Le soglie sono dell'organizzazione (ondata 6): prima 0,72 e 3 nel codice.
+  const { clusterMinSimilarity, clusterMinSize } = await aiSettings(tenantId)
+  // Incident non CHIUSI (un incident risolto ma non chiuso è ancora un
+  // candidato: il cluster serve a capire se il problema si ripete). «Chiuso» è
+  // la classe di stato del workflow del cliente, non il nome `closed`.
+  const closedSteps = await statusNamesForClasses(tenantId, 'incident', ['closed'])
+  /**
+   * Un TETTO agli incident esaminati (revisione totale · D-22): la ricerca dei
+   * cluster fa una query vettoriale PER incident, dentro una richiesta
+   * GraphQL. Su un cliente con migliaia di incident aperti erano migliaia di
+   * query e la pagina andava in timeout. Si guardano i più RECENTI, che sono
+   * quelli su cui un problem ha senso, e quando il tetto è pieno lo si dice —
+   * l'analisi non finge di aver guardato tutto.
+   */
   const incidents = await readQuery<{ id: string; number: string | null; title: string; status: string; severity: string; embedding: number[] }>(`
     MATCH (i:Incident {tenant_id: $tenantId})
-    WHERE NOT i.status IN ['closed'] AND i.embedding IS NOT NULL
+    WHERE NOT i.status IN $closedSteps AND i.embedding IS NOT NULL
     RETURN i.id AS id, i.number AS number, i.title AS title,
            i.status AS status, i.severity AS severity, i.embedding AS embedding
-  `, { tenantId })
+    ORDER BY i.created_at DESC
+    LIMIT toInteger($maxIncidents)
+  `, { tenantId, closedSteps, maxIncidents: CLUSTER_MAX_INCIDENTS })
+  if (incidents.length === CLUSTER_MAX_INCIDENTS) {
+    log.warn({ tenantId, maxIncidents: CLUSTER_MAX_INCIDENTS },
+      'Cluster dei problem candidati: raggiunto il tetto degli incident esaminati, l-analisi guarda i più recenti')
+  }
 
   // Cluster: for each incident query its similar peers above threshold, then union-find
   const parent = new Map<string, string>()
@@ -132,15 +159,27 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
   const union = (a: string, b: string) => { parent.set(find(a), find(b)) }
   for (const i of incidents) parent.set(i.id, i.id)
 
+  // Quanti vicini per incident guarda la ricerca dei cluster.
+  const CLUSTER_PEERS_LIMIT = 15
   const index = vectorIndexName('Incident')
   for (const i of incidents) {
-    const peers = await readQuery<{ id: string; score: number }>(`
-      CALL db.index.vector.queryNodes($index, 15, $embedding)
-      YIELD node, score
-      WHERE node.tenant_id = $tenantId AND node.id <> $selfId
-        AND NOT node.status IN ['closed'] AND score >= ${CLUSTER_THRESHOLD}
-      RETURN node.id AS id, score
-    `, { index, embedding: i.embedding, tenantId, selfId: i.id })
+    // K cresce finché i vicini DEL TENANT bastano: l'indice è cross-tenant e
+    // i 15 globali di un'installazione con clienti grandi non contengono
+    // nessun incident di questo cliente (revisione totale · B-12).
+    const session = getSession(undefined, 'READ')
+    let peers: { id: string; score: number }[]
+    try {
+      peers = await vectorSearchForTenant<{ id: string; score: number }>(session, {
+        index,
+        embedding: i.embedding,
+        tenantId,
+        limit: CLUSTER_PEERS_LIMIT,
+        where: 'node.id <> $selfId AND NOT node.status IN $closedSteps AND score >= $minSimilarity',
+        returns: 'node.id AS id, score',
+        params: { selfId: i.id, closedSteps, minSimilarity: clusterMinSimilarity },
+        what: 'postIncident.problemCandidates',
+      })
+    } finally { await session.close() }
     for (const p of peers) if (parent.has(p.id)) union(i.id, p.id)
   }
 
@@ -151,14 +190,15 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
     groups.get(root)!.push(i)
   }
   const clusters = [...groups.values()]
-    .filter(g => g.length >= CLUSTER_MIN_SIZE)
+    .filter(g => g.length >= clusterMinSize)
     .sort((a, b) => b.length - a.length)
     .slice(0, 3)
 
   if (clusters.length === 0) return []
 
   // Claude names each cluster and motivates the Problem candidate
-  const client = getClient()
+  const client = getAnthropic()
+  const language = await modelLanguageFor(tenantId)
   const schema = {
     type: 'object',
     properties: {
@@ -178,16 +218,16 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
     },
     required: ['candidates'],
     additionalProperties: false,
-  } as const
+  }
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-8',
+    model: config.anthropicModel,
     max_tokens: 2000,
     thinking: { type: 'adaptive' },
     output_config: { effort: 'low', format: { type: 'json_schema', schema } },
     system: [{
       type: 'text',
-      text: `Analista ITSM. Ricevi cluster di incident semanticamente simili (non chiusi). Per ogni cluster proponi un candidato Problem: un titolo sintetico della probabile causa radice comune e una motivazione (2-3 frasi, in italiano) fondata SOLO sui titoli/dati forniti. Se un cluster sembra composto da ticket di test o senza pattern reale, dillo apertamente nella motivazione.`,
+      text: `Analista ITSM. Ricevi cluster di incident semanticamente simili (non chiusi). Per ogni cluster proponi un candidato Problem: un titolo sintetico della probabile causa radice comune e una motivazione (2-3 frasi, scritta in ${language}) fondata SOLO sui titoli/dati forniti. Se un cluster sembra composto da ticket di test o senza pattern reale, dillo apertamente nella motivazione.`,
       cache_control: { type: 'ephemeral' },
     }],
     messages: [{ role: 'user', content: JSON.stringify(
@@ -196,12 +236,7 @@ export async function problemCandidates(tenantId: string): Promise<ProblemCandid
     ) }],
   })
 
-  if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('Il modello ha rifiutato la richiesta', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
-  }
-  const text = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text
-  if (!text) throw new Error('[post-incident] risposta senza testo')
-  const parsed = JSON.parse(text) as { candidates: Array<{ cluster_index: number; title: string; motivation: string }> }
+  const parsed = leggiJSONDalModello(response, 'postIncident', CHIAVI_AI) as { candidates: Array<{ cluster_index: number; title: string; motivation: string }> }
 
   return parsed.candidates
     .filter(c => clusters[c.cluster_index])
@@ -222,19 +257,40 @@ export interface KbDraftContent {
 }
 
 export async function draftKbContent(tenantId: string, incidentId: string): Promise<KbDraftContent> {
+  await assertAIFeature(tenantId, 'kbArticles')
   const ctx = await loadIncidentContext(tenantId, incidentId)
   const status = String(ctx.props['status'] ?? '')
-  if (status !== 'resolved' && status !== 'closed') {
-    throw new GraphQLError('La bozza KB si genera solo da incident risolti o chiusi', { extensions: { code: 'BAD_USER_INPUT' } })
+  // Risolto o chiuso secondo i METADATA del passo di questo cliente: con un
+  // passo di risoluzione rinominato la bozza KB era irraggiungibile (il web non
+  // mostrava il bottone e il server l'avrebbe rifiutata comunque).
+  const concluded = await concludedStatusNames(tenantId, 'incident')
+  if (!concluded.includes(status)) {
+    throw new GraphQLError(
+      `The KB draft is generated only from resolved or closed incidents: this one is in step "${status}". `
+      + `Concluding steps of the incident workflow: ${concluded.length > 0 ? concluded.join(', ') : '(none declared — mark a step as terminal, or of category "resolved", in the designer)'}.`,
+      {
+        extensions: {
+          code: 'BAD_USER_INPUT',
+          i18n: concluded.length > 0
+            ? { key: 'errors.kb.onlyFromConcluded', params: { step: status, concluded: concluded.join(', ') } }
+            : { key: 'errors.kb.onlyFromConcludedNone', params: { step: status } },
+        },
+      },
+    )
   }
 
-  const client = getClient()
+  const client = getAnthropic()
+  const language = await modelLanguageFor(tenantId)
+  // F5: il modello sceglie fra le categorie KB del cliente. Prima scriveva
+  // «una parola», e l'articolo nasceva con una categoria che la pagina e il
+  // portale non conoscevano.
+  const kbCategories = [...await domainVocabulary(tenantId, 'kb_category')]
   const schema = {
     type: 'object',
     properties: {
       title: { type: 'string' },
       body: { type: 'string' },
-      category: { type: 'string' },
+      category: { type: 'string', enum: kbCategories },
       tags: { type: 'array', items: { type: 'string' } },
     },
     required: ['title', 'body', 'category', 'tags'],
@@ -242,13 +298,13 @@ export async function draftKbContent(tenantId: string, incidentId: string): Prom
   } as const
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-8',
+    model: config.anthropicModel,
     max_tokens: 3000,
     thinking: { type: 'adaptive' },
     output_config: { effort: 'low', format: { type: 'json_schema', schema } },
     system: [{
       type: 'text',
-      text: `Redattore Knowledge Base ITSM. Da un incident risolto produci un articolo KB in italiano, struttura: Sintomo, Causa, Soluzione, Verifica. Usa SOLO l'evidenza fornita (descrizione, commenti, workflow); dove l'evidenza manca scrivi "da completare" invece di inventare. body in markdown semplice. category: una parola (es. database, network, hardware, software). tags: 2-5 parole chiave.`,
+      text: `Redattore Knowledge Base ITSM. Da un incident risolto produci un articolo KB scritto interamente in ${language} (titolo, corpo e titoli delle sezioni), struttura: Sintomo, Causa, Soluzione, Verifica — con i titoli delle sezioni tradotti in ${language}. Usa SOLO l'evidenza fornita (descrizione, commenti, workflow); dove l'evidenza manca scrivi "da completare" (tradotto in ${language}) invece di inventare. body in markdown semplice. category: la categoria KB più adatta fra quelle ammesse dallo schema. tags: 2-5 parole chiave.`,
       cache_control: { type: 'ephemeral' },
     }],
     messages: [{ role: 'user', content: JSON.stringify({
@@ -258,10 +314,5 @@ export async function draftKbContent(tenantId: string, incidentId: string): Prom
     }, null, 1) }],
   })
 
-  if (response.stop_reason === 'refusal') {
-    throw new GraphQLError('Il modello ha rifiutato la richiesta', { extensions: { code: 'INTERNAL_SERVER_ERROR' } })
-  }
-  const text = response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text
-  if (!text) throw new Error('[post-incident] risposta senza testo')
-  return JSON.parse(text) as KbDraftContent
+  return leggiJSONDalModello(response, 'kbArticles', CHIAVI_AI) as KbDraftContent
 }

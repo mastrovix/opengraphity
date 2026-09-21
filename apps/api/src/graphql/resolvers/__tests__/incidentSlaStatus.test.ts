@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GraphQLContext } from '../../../context.js'
+import { perms } from '../../../lib/__tests__/testPermissions.js'
 
 // ── Session mock usato da withSession ─────────────────────────────────────────
 
@@ -15,6 +16,7 @@ vi.mock('@opengraphity/neo4j', () => ({
   getSession:  vi.fn(),
   runQuery:    vi.fn(),
   runQueryOne: vi.fn(),
+  toNumber:    (v: unknown) => Number(v),
 }))
 
 vi.mock('../ci-utils.js', () => ({
@@ -49,7 +51,7 @@ const slaStatus = incidentResolvers.Incident.slaStatus
 
 // ── Test context ──────────────────────────────────────────────────────────────
 
-const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'operator' }
+const ctx: GraphQLContext = { tenantId: 'tenant-1', userId: 'user-1', userEmail: 'user@test.io', role: 'operator', permissions: perms('operator') }
 
 const parent = { id: 'inc-1', tenantId: 'tenant-1' }
 
@@ -77,6 +79,7 @@ describe('Incident.slaStatus', () => {
             started_at:        '2026-07-01T10:00:00Z',
             response_deadline: '2026-07-01T11:00:00Z',
             resolve_deadline:  '2026-07-01T18:00:00Z',
+            tier_warning_minutes: 45,
             response_met:      true,
             resolve_met:       false,
             breached:          false,
@@ -95,7 +98,16 @@ describe('Incident.slaStatus', () => {
       resolveMet:       false,
       breached:         false,
       pausedAt:         null,
+      warningMinutes:   45,
     })
+  })
+
+  // Verifica «Cosa resta cablato», ondata 1: il badge usa il preavviso della policy, che deve esserci.
+  it('preavviso mancante sullo stato → errore che lo nomina, non un preavviso inventato', async () => {
+    mockSession.executeRead.mockResolvedValueOnce({
+      records: [{ get: () => ({ properties: { id: 'sla-1', started_at: 'x', response_deadline: 'x', resolve_deadline: 'x' } }) }],
+    })
+    await expect(slaStatus(parent, {}, ctx)).rejects.toThrow(/no valid warning lead/)
   })
 
   it('flag null/undefined → coercion booleana a false', async () => {
@@ -106,6 +118,7 @@ describe('Incident.slaStatus', () => {
             started_at:        '2026-07-01T10:00:00Z',
             response_deadline: '2026-07-01T11:00:00Z',
             resolve_deadline:  '2026-07-01T18:00:00Z',
+            tier_warning_minutes: 45,
             response_met:      null,
             // resolve_met assente
             breached:          null,

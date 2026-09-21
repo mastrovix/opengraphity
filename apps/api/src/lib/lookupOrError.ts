@@ -9,7 +9,7 @@
 export function lookupOrError<T>(map: Record<string, T>, key: string, mapName: string): T {
   const val = map[key]
   if (val === undefined) {
-    throw new Error(`[${mapName}] valore sconosciuto: "${key}" (validi: ${Object.keys(map).join(', ')})`)
+    throw new Error(`[${mapName}] unknown value: "${key}" (valid: ${Object.keys(map).join(', ')})`)
   }
   return val
 }

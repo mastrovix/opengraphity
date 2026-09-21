@@ -9,9 +9,10 @@
  * rules, execution counters for triggers).
  */
 import { logger as appLogger } from './logger.js'
-import { evaluateConditions, parseConditions } from './conditionEvaluator.js'
+import { CHANGED_FIELDS_KEY, evaluateConditions, parseConditions } from './conditionEvaluator.js'
 import { executeActions, parseActions, type ActionExecutionContext, type ActionResult } from './actionExecutor.js'
 import { audit } from './audit.js'
+import { registerMetamodelCacheClearer } from './schemaInvalidator.js'
 
 const log = appLogger.child({ module: 'automation-engine' })
 
@@ -62,6 +63,8 @@ export interface EvaluateRulesOptions {
   userId:     string
   /** Already filtered (enabled, tenant, entity/event type) and ordered. */
   records:    AutomationRecord[]
+  /** I campi cambiati dall'aggiornamento: li legge solo l'operatore «è cambiato» (V-19), le azioni no. */
+  changedFields?: readonly string[]
   /** Runs after a record's actions (e.g. bump execution counters); an error here is reported on the record. */
   afterExecute?: (record: AutomationRecord, results: ActionResult[]) => Promise<void>
 }
@@ -82,7 +85,8 @@ export async function evaluateRules(opts: EvaluateRulesOptions): Promise<Automat
     // otherwise yield [] = "always matches"). Skip it, report it, log loud.
     let matched: boolean
     try {
-      matched = evaluateConditions(parseConditions(record.conditions), opts.entity, record.conditionLogic)
+      const conditionEntity = opts.changedFields ? { ...opts.entity, [CHANGED_FIELDS_KEY]: opts.changedFields } : opts.entity
+      matched = evaluateConditions(parseConditions(record.conditions), conditionEntity, record.conditionLogic)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       log.error({ err, kind: opts.kind, id: record.id, name: record.name, tenantId: opts.tenantId },
@@ -110,15 +114,28 @@ export async function evaluateRules(opts: EvaluateRulesOptions): Promise<Automat
       // parseActions throws on corrupt JSON — handled below like any action failure
       const actions = parseActions(record.actions)
       const actionResults = await executeActions(actions, execCtx)
-      await opts.afterExecute?.(record, actionResults)
+      const actionsRun = actionResults.filter((r) => r.success).length
+      /**
+       * Il contatore del trigger NON fa risultare la regola non eseguita
+       * (revisione totale · C-22): `afterExecute` stava dentro il try, quindi
+       * un suo errore — un blip sul contatore — portava l'esecuzione nel ramo
+       * `catch`, che riportava «matched: true, actionsRun: 0» su una regola che
+       * aveva appena riassegnato il ticket. E l'audit contava le azioni
+       * TENTATE, non quelle riuscite.
+       */
+      try {
+        await opts.afterExecute?.(record, actionResults)
+      } catch (err) {
+        log.error({ kind: opts.kind, id: record.id, name: record.name, entityId, err },
+          `${spec.label}: azioni eseguite, contatore non aggiornato`)
+      }
 
       void audit(
         { tenantId: opts.tenantId, userId: opts.userId, userEmail: 'system', role: 'system' } as never,
         spec.auditAction, spec.auditEntity, record.id,
-        { [spec.nameKey]: record.name, entityId, actionsRun: actionResults.length },
+        { [spec.nameKey]: record.name, entityId, actionsRun, actionsAttempted: actionResults.length },
       )
 
-      const actionsRun = actionResults.filter((r) => r.success).length
       const failed = actionResults.find((r) => !r.success)
       const stopped = record.stopOnMatch
       if (failed) {
@@ -153,6 +170,17 @@ export interface AutomationCache<T> {
 export function createAutomationCache<T>(prefix: string, ttlMs = 60_000): AutomationCache<T> {
   const cache = new Map<string, { items: T[]; loadedAt: number }>()
   const key = (tenantId: string, entityType: string, eventType: string) => `${prefix}:${tenantId}:${entityType}:${eventType}`
+  const clear = (tenantId: string) => {
+    for (const k of cache.keys()) {
+      if (k.startsWith(`${prefix}:${tenantId}:`)) cache.delete(k)
+    }
+  }
+  // L'invalidazione passa dal canale fra processi (revisione totale · C-23):
+  // `invalidateTriggerCache`/`invalidateRulesCache` svuotavano solo il
+  // processo che aveva servito la mutation, e il worker che esegue le
+  // automazioni teneva la regola vecchia fino a 60 s — compreso il caso in cui
+  // l'admin la spegne perché sta facendo danni.
+  registerMetamodelCacheClearer(`automation:${prefix}`, clear, () => { cache.clear() })
   return {
     async get(tenantId, entityType, eventType, loader) {
       const k = key(tenantId, entityType, eventType)
@@ -162,10 +190,6 @@ export function createAutomationCache<T>(prefix: string, ttlMs = 60_000): Automa
       cache.set(k, { items, loadedAt: Date.now() })
       return items
     },
-    invalidate(tenantId) {
-      for (const k of cache.keys()) {
-        if (k.startsWith(`${prefix}:${tenantId}:`)) cache.delete(k)
-      }
-    },
+    invalidate: clear,
   }
 }

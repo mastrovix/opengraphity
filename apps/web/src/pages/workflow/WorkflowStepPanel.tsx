@@ -2,8 +2,8 @@ import { useState, useMemo } from 'react'
 import { useConfirm } from '@/hooks/useConfirm'
 import { useQuery } from '@apollo/client/react'
 import { X } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
-import { colors } from '@/lib/tokens'
+import { Trans, useTranslation } from 'react-i18next'
+import { colors, palette } from '@/lib/tokens'
 import { GET_WORKFLOW_DEFINITION_BY_ID } from '@/graphql/queries'
 import { ConditionRowEditor, type Condition } from '@/components/ConditionRowEditor'
 import { ActionParamsEditor } from '@/components/ActionParamsEditor'
@@ -21,14 +21,33 @@ import {
   actionLabel,
   paramsToRaw,
   buildActionParams,
+  titoliCompitiOffribili,
 } from './workflow-panel-helpers'
 import { Input, Select } from '@/components/ui/FormControls'
+import { useTargetOptions, withCurrent } from '@/pages/settings/NotificationRuleList'
+import { WORKFLOW_STEP_PURPOSES, WORKFLOW_STEP_CATEGORIES, TICKET_ENTITY_TYPES } from '@opengraphity/types'
+import { StepDeadlineEditor, deadlineFromDraft, draftFromDeadline, draftProblem, type DeadlineTarget } from './StepDeadlineEditor'
 
 const ACCENT_COLOR = colors.brand
 
-const NR_CHANNELS   = ['in_app', 'slack', 'teams', 'email'] as const
+/**
+ * I canali che una notifica di PASSO può davvero prendere: il dispatcher per
+ * `workflow.step.entered` consegna in-app ed e-mail e rifiuta gli altri
+ * (packages/notifications/src/routing.ts). Il pannello offriva anche Slack e
+ * Teams: il passo si salvava e ogni ingresso nel passo generava un job
+ * fallito, senza nessuna notifica (revisione totale · G-8).
+ */
+const NR_CHANNELS   = ['in_app', 'email'] as const
 const NR_SEVERITIES = ['info', 'success', 'warning', 'error'] as const
-const NR_TARGETS    = ['all', 'assignee', 'team_owner', 'role:admin', 'role:manager'] as const
+
+/**
+ * I destinatari dell'azione `notify_rule` sono QUELLI del vocabolario
+ * condiviso, le stesse opzioni delle regole di notifica: qui c'era una seconda
+ * lista scritta a mano con `role:manager`, un ruolo che l'autenticazione non
+ * conosce (D-13). Da quando il dispatcher risolve davvero il bersaglio (A0-1)
+ * un valore così non viene più ignorato: fa fallire il job di notifica a ogni
+ * ingresso nel passo. Il server lo rifiuta in scrittura (`assertStepActions`).
+ */
 
 // ── inputStyle alias ─────────────────────────────────────────────────────────
 
@@ -79,6 +98,7 @@ function ConditionsSection({ entityType, conditions, logic, onConditions, onLogi
   onConditions: (c: Condition[]) => void
   onLogic:      (l: 'AND' | 'OR') => void
 }) {
+  const { t } = useTranslation()
   const updateRow = (i: number, patch: Partial<Condition>) =>
     onConditions(conditions.map((c, idx) => idx === i ? { ...c, ...patch } : c))
   const addRow    = () => onConditions([...conditions, { field: '', operator: 'equals', value: '' }])
@@ -87,7 +107,7 @@ function ConditionsSection({ entityType, conditions, logic, onConditions, onLogi
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={sectionLabelStyle}>Condizioni</span>
+      <span style={sectionLabelStyle}>{t('pages.businessRules.conditions')}</span>
 
       {conditions.length >= 2 && (
         <div style={{ display: 'flex', gap: 8 }}>
@@ -101,7 +121,7 @@ function ConditionsSection({ entityType, conditions, logic, onConditions, onLogi
       )}
 
       {conditions.map((cond, i) => (
-        <div key={i} style={{ padding: '8px 10px', background: 'var(--color-slate-bg)', border: '1px solid #e2e6f0', borderRadius: 6 }}>
+        <div key={i} style={{ padding: '8px 10px', background: 'var(--color-slate-bg)', border: '1px solid var(--color-border)', borderRadius: 6 }}>
           <ConditionRowEditor
             layout="stack"
             entityType={entityType}
@@ -121,9 +141,9 @@ function ConditionsSection({ entityType, conditions, logic, onConditions, onLogi
       <button
         type="button"
         onClick={addRow}
-        style={{ padding: '4px 8px', backgroundColor: 'transparent', border: '1px dashed #94a3b8', borderRadius: 5, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', cursor: 'pointer', textAlign: 'left' }}
+        style={{ padding: '4px 8px', backgroundColor: 'transparent', border: '1px dashed var(--color-slate-light)', borderRadius: 5, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', cursor: 'pointer', textAlign: 'left' }}
       >
-        + Aggiungi condizione
+        + {t('pages.businessRules.addCondition')}
       </button>
     </div>
   )
@@ -146,6 +166,9 @@ interface StepPanelProps {
     isTerminal?:  boolean
     isOpen?:      boolean
     category?:    string | null
+    purpose?:     string | null
+    /** La scadenza del passo (JSON), `''` = nessuna. */
+    deadline?:    string | null
   }) => void
 }
 
@@ -174,26 +197,50 @@ function draftToAction(d: ActionDraft): AnyAction {
 
 export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSaveLocally, onDelete }: StepPanelProps) {
   const { t } = useTranslation()
+  const targetOptions = useTargetOptions()
   const confirm = useConfirm()
 
   // Tipo entità del workflow (incident/problem/change/…): serve agli editor
   // condivisi per leggere i campi dal metamodello. La definizione è già in
   // cache (il designer la carica con la stessa query) → nessuna richiesta extra.
-  const { data: defData, error: defError } = useQuery<{ workflowDefinitionById: { id: string; entityType: string } | null }>(
+  const { data: defData, error: defError } = useQuery<{ workflowDefinitionById: {
+    id: string; entityType: string
+    steps?: { name: string; label: string; purpose: string | null }[]
+    transitions?: { fromStepName: string; toStepName: string }[]
+  } | null }>(
     GET_WORKFLOW_DEFINITION_BY_ID,
+    // cache-first, non cache-and-network (secondo giro UI · V-4): rileggere dalla
+    // rete la STESSA query del disegnatore aggiornava in cache la versione della
+    // definizione sotto il disegnatore, che poi mandava come `expectedVersion`
+    // quella nuova su un grafo vecchio — e il conflitto con un'altra scheda
+    // passava inosservato. Il disegnatore ha già caricato la definizione.
     { variables: { id: definitionId }, fetchPolicy: 'cache-first' },
   )
   const entityType = defData?.workflowDefinitionById?.entityType ?? ''
   const entityTypeError = defError
     ? defError.message
-    : (defData && !defData.workflowDefinitionById ? `definizione workflow "${definitionId}" non trovata` : null)
+    : (defData && !defData.workflowDefinitionById ? `workflow definition "${definitionId}" not found` : null)
 
-  const [activeTab, setActiveTab] = useState<'props' | 'notify' | 'metadata'>('props')
+  const [activeTab, setActiveTab] = useState<'props' | 'notify' | 'metadata' | 'deadline'>('props')
+
+  // La SCADENZA del passo (ondata 3). I passi di arrivo possibili sono quelli
+  // raggiungibili con un arco da qui: una scadenza segue un arco.
+  const initialDeadline = useMemo(() => draftFromDeadline(step.deadline), [step.deadline])
+  const [deadlineDraft, setDeadlineDraft] = useState(initialDeadline.draft)
+  const deadlineTargets: DeadlineTarget[] = useMemo(() => {
+    const def = defData?.workflowDefinitionById
+    const byName = new Map((def?.steps ?? []).map((st) => [st.name, st]))
+    const names = [...new Set((def?.transitions ?? []).filter((tr) => tr.fromStepName === step.name).map((tr) => tr.toStepName))]
+    return names.filter((n) => n !== step.name).map((n) => ({ name: n, label: byName.get(n)?.label || n, purpose: byName.get(n)?.purpose ?? null }))
+  }, [defData, step.name])
   const [label, setLabel]         = useState(step.label)
   const [isInitial,  setIsInitial]  = useState(Boolean(step.isInitial))
   const [isTerminal, setIsTerminal] = useState(Boolean(step.isTerminal))
   const [isOpen,     setIsOpen]     = useState(step.isOpen ?? !step.isTerminal)
   const [category,   setCategory]   = useState(step.category ?? '')
+  // Scopo del passo: '' = nessuno scopo (legittimo). Il server riceve '' come
+  // «togli» e qualunque altro valore come uno scopo del vocabolario chiuso.
+  const [purpose,    setPurpose]    = useState(step.purpose ?? '')
 
   // Parse initial actions (computed once from props — stable until save).
   // Un JSON corrotto su enter/exit_actions NON deve far cadere l'intera pagina
@@ -204,7 +251,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       if (!raw) return []
       try {
         const parsed: unknown = JSON.parse(raw)
-        if (!Array.isArray(parsed)) return `${field}: atteso un array JSON, trovato ${typeof parsed}`
+        if (!Array.isArray(parsed)) return t('workflow.panel.expectedArray', { field, found: typeof parsed })
         return parsed as AnyAction[]
       } catch (e) {
         return `${field}: ${e instanceof Error ? e.message : String(e)}`
@@ -218,7 +265,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       initExitActions:   Array.isArray(exit)  ? exit  : [],
       actionsParseError: errors.length > 0 ? errors.join(' · ') : null,
     }
-  }, [step.enterActions, step.exitActions])
+  }, [step.enterActions, step.exitActions, t])
   const existingNR = allEnterActions.find((a) => a.type === 'notify_rule') as NotifyRuleAction | undefined
   const initEnterActions = allEnterActions.filter((a) => a.type !== 'notify_rule')
 
@@ -265,25 +312,58 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
     || isTerminal !== Boolean(step.isTerminal)
     || isOpen     !== (step.isOpen ?? !step.isTerminal)
     || category   !== (step.category ?? '')
-  const propsUnchanged      = label === step.label && !enterActionsChanged && !exitActionsChanged && !metadataChanged
+    || purpose    !== (step.purpose  ?? '')
+  const deadlineProblem     = draftProblem(deadlineDraft, deadlineTargets, entityType, purpose || null)
+  const deadlineValue       = deadlineProblem ? null : deadlineFromDraft(deadlineDraft)
+  const deadlineChanged     = initialDeadline.error === null
+    && JSON.stringify(deadlineDraft) !== JSON.stringify(initialDeadline.draft)
+  const propsUnchanged      = label === step.label && !enterActionsChanged && !exitActionsChanged && !metadataChanged && !deadlineChanged
   const notifyUnchanged     = notifyEnabled === !!existingNR
     && notifyTitleKey === (existingNR?.params.title_key  ?? '')
     && notifySeverity === (existingNR?.params.severity   ?? 'info')
     && JSON.stringify(notifyChannels) === JSON.stringify(existingNR?.params.channels ?? ['in_app'])
     && notifyTarget   === (existingNR?.params.target     ?? 'all')
-  const saveDisabled = actionsParseError !== null || (propsUnchanged && notifyUnchanged)
+  // Iniziale + terminale insieme = ogni nuovo ticket nasce già chiuso: il
+  // server lo rifiuta (saveWorkflowChanges), qui si dice prima di provarci.
+  const initialOnTerminal = isInitial && isTerminal
+  // Una scadenza illeggibile nel grafo blocca il Salva come le azioni corrotte:
+  // riscriverla la perderebbe. Una bozza incompleta lo blocca finché non è completa.
+  const saveDisabled = actionsParseError !== null || initialOnTerminal || initialDeadline.error !== null
+    || (deadlineChanged && deadlineProblem !== null) || (propsUnchanged && notifyUnchanged)
+
+  // Perché «Elimina step» non si può offrire. Si guarda il DATO salvato, non le
+  // spunte del pannello: togliere la spunta «Step iniziale» senza salvare non
+  // rende lo step eliminabile.
+  const stepIsInitial   = step.isInitial ?? step.type === 'start'
+  const liveInstances   = step.currentInstances ?? 0
+  const deleteBlockedReason =
+      // start/end sono protetti dal server per `type`, indipendentemente da
+      // `is_initial`: senza questa riga il pannello offrirebbe un bottone che
+      // il server rifiuta (dicendo perché, ma dopo il clic).
+      step.type === 'start' || step.type === 'end' ? t('workflow.deleteBlockedFactory')
+    : stepIsInitial      ? t('workflow.deleteBlockedInitial')
+    : liveInstances > 0  ? t('workflow.deleteBlockedInstances', { count: liveInstances })
+    : null
 
   const handleSave = () => {
     const enterActions = buildEnterActions()
     const exitActions  = buildExitActions()
     const categoryValue = category.trim() ? category.trim() : null
+    // Lo scopo viaggia come stringa: '' dice al server «togli lo scopo»
+    // (null vorrebbe dire «non l'ho mandato» e lo lascerebbe com'è).
+    const purposeValue = purpose.trim()
+    // La scadenza viaggia solo se è cambiata: assente = il server la lascia com'è.
+    const deadline = deadlineChanged ? (deadlineValue ?? '') : undefined
     onSaveLocally?.({
       stepName: step.name, label, enterActions, exitActions,
-      isInitial, isTerminal, isOpen, category: categoryValue,
+      isInitial, isTerminal, isOpen, category: categoryValue, purpose: purposeValue,
+      ...(deadline !== undefined ? { deadline } : {}),
     })
     onSaved({
       label, enterActions, exitActions,
       isInitial, isTerminal, isOpen, category: categoryValue,
+      purpose: purposeValue === '' ? null : purposeValue,
+      ...(deadline !== undefined ? { deadline: deadline === '' ? null : deadline } : {}),
     })
   }
 
@@ -302,7 +382,8 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
   }
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
-    padding:           '6px 14px',
+    padding:           '6px 8px',
+    whiteSpace:        'nowrap' as const,
     fontSize:          12,
     fontWeight:        active ? 700 : 400,
     color:             active ? ACCENT_COLOR : 'var(--color-slate-light)',
@@ -316,12 +397,27 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
   })
 
   const cancelBtnStyle: React.CSSProperties = {
-    flex: 1, padding: '6px 0', backgroundColor: '#f1f5f9', border: '1px solid #e2e6f0',
+    flex: 1, padding: '6px 0', backgroundColor: colors.slateBg, border: '1px solid var(--color-border)',
     borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer', color: 'var(--color-slate)',
   }
 
   // ── Editor di una bozza (tipo + parametri + condizioni), condiviso tra add/edit ──
-  const renderDraftEditor = (draft: ActionDraft, setDraft: (updater: (d: ActionDraft) => ActionDraft) => void) => (
+  /**
+   * I titoli degli altri `create_task` dello stesso passo: servono alla
+   * tendina «parte quando è chiuso». Si escludono i vuoti e il compito
+   * stesso, perché un compito che aspetta sé stesso non parte mai.
+   */
+  const titoliDeiCompiti = (draft: ActionDraft): string[] => {
+    const compiti = [...editableEnterActions, ...editableExitActions]
+      .filter((a) => a.type === 'create_task')
+      .map((a) => {
+        const p = a.params as Record<string, unknown> | undefined
+        return { titolo: String(p?.['title_template'] ?? '').trim(), dopo: String(p?.['after'] ?? '').trim() }
+      })
+    return titoliCompitiOffribili(compiti, (draft.params['title_template'] ?? '').trim())
+  }
+
+  const renderDraftEditor = (draft: ActionDraft, setDraft: (updater: (d: ActionDraft) => ActionDraft) => void, fase: 'enter' | 'exit' = 'enter') => (
     <>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={sectionLabelStyle}>{t('workflow.actionType')}</span>
@@ -330,7 +426,22 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
           onChange={(e) => setDraft((d) => ({ ...d, type: e.target.value, params: {} }))}
           style={inputStyle}
         >
-          {WORKFLOW_STEP_ACTION_TYPES.map((ty) => <option key={ty} value={ty}>{ty}</option>)}
+          {/*
+            «Crea un compito» solo fra le azioni d'INGRESSO: il motore esegue
+            quelle di uscita con l'istanza già sul passo nuovo, quindi un
+            compito creato uscendo nascerebbe col nome del passo sbagliato.
+            L'API lo rifiuta comunque; qui non si offre nemmeno.
+          */}
+          {WORKFLOW_STEP_ACTION_TYPES
+            /*
+              «Crea un compito» solo sui TICKET: su un articolo della
+              knowledge base il compito nascerebbe legale e irraggiungibile —
+              nessuna pagina lo mostra, «I miei compiti» non sa dove portare,
+              e con la guardia l'articolo resterebbe bloccato senza rimedio.
+              L'API lo rifiuta comunque; qui non si offre nemmeno.
+            */
+            .filter((ty) => ty !== 'create_task' || (fase === 'enter' && (TICKET_ENTITY_TYPES as readonly string[]).includes(entityType)))
+            .map((ty) => <option key={ty} value={ty}>{ty}</option>)}
         </Select>
       </div>
       <ActionParamsEditor
@@ -338,6 +449,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
         actionType={draft.type}
         params={draft.params}
         entityType={entityType}
+        compitiFratelli={titoliDeiCompiti(draft)}
         onChange={(key, value) => setDraft((d) => ({ ...d, params: { ...d.params, [key]: value } }))}
       />
       <ConditionsSection
@@ -382,7 +494,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                 }}
                 style={{
                   background:   'none',
-                  border:       isEditing ? '1px solid #06b6d4' : '1px solid transparent',
+                  border:       isEditing ? '1px solid var(--color-teal-light)' : '1px solid transparent',
                   borderRadius: 5,
                   padding:      1,
                   cursor:       'pointer',
@@ -406,11 +518,11 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
             {isEditing && editingAction && (() => {
               const blocked = conditionsError(editingAction.conditions) !== null
               return (
-                <div style={{ border: '1px solid #06b6d4', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: '#ecfeff' }}>
-                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: '#0891b2' }}>
+                <div style={{ border: '1px solid var(--color-teal-light)', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: colors.brandLight }}>
+                  <div style={{ fontSize: 'var(--font-size-body)', fontWeight: 600, color: palette.teal.base }}>
                     {actionLabel(t, a.type, a.params)}
                   </div>
-                  {renderDraftEditor(editingAction, (updater) => setEditingAction((prev) => prev ? { ...prev, ...updater(prev) } : null))}
+                  {renderDraftEditor(editingAction, (updater) => setEditingAction((prev) => prev ? { ...prev, ...updater(prev) } : null), forKey)}
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
                       type="button"
@@ -423,7 +535,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                       }}
                       style={{ ...saveButtonStyle(blocked), flex: 1, padding: '6px 0' }}
                     >
-                      Aggiorna
+                      {t('pages.workflowStep.update')}
                     </button>
                     <button type="button" onClick={() => setEditingAction(null)} style={cancelBtnStyle}>
                       {t('common.cancel')}
@@ -439,8 +551,8 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
       {addingFor === forKey ? (() => {
         const blocked = conditionsError(newAction.conditions) !== null
         return (
-          <div style={{ border: '1px solid #e2e6f0', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: 'var(--color-slate-bg)' }}>
-            {renderDraftEditor(newAction, (updater) => setNewAction((d) => updater(d)))}
+          <div style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, backgroundColor: 'var(--color-slate-bg)' }}>
+            {renderDraftEditor(newAction, (updater) => setNewAction((d) => updater(d)), forKey)}
             <div style={{ display: 'flex', gap: 6 }}>
               <button type="button" disabled={blocked} onClick={() => handleConfirmAdd(forKey)} style={{ ...saveButtonStyle(blocked), flex: 1, padding: '6px 0' }}>
                 {t('common.confirm')}
@@ -465,7 +577,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
 
   return (
     <div style={panelStyle}>
-      <PanelHeader title="Modifica Step" onClose={onClose} />
+      <PanelHeader title={t('pages.workflowStep.editStep')} onClose={onClose} />
 
       {actionsParseError && (
         <div
@@ -476,34 +588,64 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
             color: 'var(--color-danger)', fontSize: 'var(--font-size-body)', lineHeight: 1.4,
           }}
         >
-          <strong>Azioni dello step corrotte</strong> — {actionsParseError}. Correggi il dato salvato
-          (enter/exit_actions dello step <code>{step.name}</code>) prima di modificarlo: il salvataggio è disabilitato
-          per non perdere le azioni illeggibili.
+          <Trans
+            i18nKey="pages.workflowStep.corruptedActions"
+            values={{ error: actionsParseError, step: step.name }}
+            components={{ b: <strong />, code: <code /> }}
+          />
         </div>
       )}
 
       {entityTypeError && (
         <div role="alert" style={{ padding: '6px 10px', marginBottom: 8, borderRadius: 6, background: 'var(--color-danger-bg)', color: 'var(--color-danger)', fontSize: 'var(--font-size-label)' }}>
-          Tipo entità del workflow non disponibile ({entityTypeError}): campi e valori delle condizioni non caricabili.
+          {t('workflow.panel.entityTypeUnavailable', { error: entityTypeError })}
         </div>
       )}
 
       {/* Tabs */}
-      <div role="tablist" style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: 4 }}>
-        <button type="button" role="tab" aria-selected={activeTab === 'props'}    style={tabStyle(activeTab === 'props')}    onClick={() => setActiveTab('props')}>Proprietà</button>
-        <button type="button" role="tab" aria-selected={activeTab === 'metadata'} style={tabStyle(activeTab === 'metadata')} onClick={() => setActiveTab('metadata')}>Metadati</button>
-        <button type="button" role="tab" aria-selected={activeTab === 'notify'}   style={tabStyle(activeTab === 'notify')}   onClick={() => setActiveTab('notify')}>Notifiche</button>
+      <div role="tablist" style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 4, overflowX: 'auto' }}>
+        <button type="button" role="tab" aria-selected={activeTab === 'props'}    style={tabStyle(activeTab === 'props')}    onClick={() => setActiveTab('props')}>{t('pages.workflowStep.tabProps')}</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'metadata'} style={tabStyle(activeTab === 'metadata')} onClick={() => setActiveTab('metadata')}>{t('pages.workflowStep.tabMetadata')}</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'notify'}   style={tabStyle(activeTab === 'notify')}   onClick={() => setActiveTab('notify')}>{t('pages.workflowStep.tabNotify')}</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'deadline'} style={tabStyle(activeTab === 'deadline')} onClick={() => setActiveTab('deadline')}>{t('pages.workflowStep.tabDeadline')}</button>
       </div>
+
+      {activeTab === 'deadline' && (initialDeadline.error ? (
+        <div role="alert" style={{ padding: '8px 10px', borderRadius: 6, background: 'var(--color-danger-bg)', border: '1px solid var(--color-danger)', color: 'var(--color-danger)', fontSize: 'var(--font-size-label)', lineHeight: 1.4 }}>
+          {t('workflow.deadline.corrupted', { error: initialDeadline.error })}
+        </div>
+      ) : (
+        <StepDeadlineEditor
+          stepLabel={label || step.name}
+          entityType={entityType}
+          sourcePurpose={purpose || null}
+          targets={deadlineTargets}
+          draft={deadlineDraft}
+          onChange={setDeadlineDraft}
+        />
+      ))}
 
       {activeTab === 'metadata' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '8px 0' }}>
-          <PanelField label="Step iniziale">
+          <PanelField label={t('workflow.panel.step_iniziale')}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
               <input type="checkbox" checked={isInitial} onChange={(e) => setIsInitial(e.target.checked)} style={{ accentColor: ACCENT_COLOR }} />
-              <span>Il processo parte da questo step</span>
+              <span>{t('pages.workflowStep.isInitial')}</span>
             </label>
           </PanelField>
-          <PanelField label="Step terminale">
+          {initialOnTerminal && (
+            <div
+              role="alert"
+              style={{
+                padding: '6px 10px', borderRadius: 6,
+                background: 'var(--color-danger-bg)', border: '1px solid var(--color-danger)',
+                color: 'var(--color-danger)', fontSize: 'var(--font-size-label)', lineHeight: 1.4,
+              }}
+            >
+              {t('workflow.initialOnTerminal')}
+            </div>
+          )}
+          <PanelField label={t('workflow.panel.step_terminale')}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer' }}>
               <input
                 type="checkbox"
@@ -511,51 +653,74 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                 onChange={(e) => { setIsTerminal(e.target.checked); setIsOpen(!e.target.checked) }}
                 style={{ accentColor: ACCENT_COLOR }}
               />
-              <span>Il processo è chiuso quando arriva qui</span>
+              <span>{t('pages.workflowStep.isTerminal')}</span>
             </label>
           </PanelField>
-          <PanelField label="Step aperto">
+          <PanelField label={t('workflow.panel.step_aperto')}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--font-size-body)', cursor: 'pointer', opacity: isTerminal ? 0.5 : 1 }}>
               <input type="checkbox" checked={isOpen} disabled={isTerminal} onChange={(e) => setIsOpen(e.target.checked)} style={{ accentColor: ACCENT_COLOR }} />
-              <span>L'entità è considerata "aperta" in questo step</span>
+              <span>{t('workflow.panel.isOpenStep')}</span>
             </label>
           </PanelField>
-          <PanelField label="Categoria">
-            <Input
-              list="wf-step-categories"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              placeholder="es. active, waiting, resolved, closed, failed, draft"
-              style={inputStyle}
-            />
-            <datalist id="wf-step-categories">
-              <option value="active" />
-              <option value="waiting" />
-              <option value="escalated" />
-              <option value="resolved" />
-              <option value="closed" />
-              <option value="failed" />
-              <option value="draft" />
-            </datalist>
+          {/* Revisione delle otto ondate · B·N-3. Era un campo di testo con una
+              `datalist` di SUGGERIMENTI, mentre da questa categoria dipendono
+              «risolto» (che valorizza data di risoluzione e causa radice), la
+              chiusura automatica, l'escalation e le classi di stato. Un'interfaccia
+              in italiano che invita a scrivere una parola inglese è la trappola
+              perfetta: dal vivo, `category = 'risolto'` veniva accettata e il
+              ticket restava senza `resolved_at`. Adesso il vocabolario è chiuso e
+              arriva da @opengraphity/types, come per lo scopo: la stessa lista che
+              il server valida in scrittura. */}
+          <PanelField label={t('workflow.category')}>
+            <Select value={category} onChange={(e) => setCategory(e.target.value)} style={inputStyle}>
+              <option value="">{t('workflow.categoryNone')}</option>
+              {WORKFLOW_STEP_CATEGORIES.map((c) => (
+                <option key={c} value={c}>{t(`workflow.categoryOption.${c}`)}</option>
+              ))}
+            </Select>
+            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.4 }}>
+              {t('workflow.categoryHint')}
+            </span>
+          </PanelField>
+          {/* Scopo del passo (ondata 4, B4-3). Il vocabolario è chiuso e arriva
+              da @opengraphity/types: la stessa lista che il server valida in
+              scrittura. «Nessuno» è una scelta legittima — nessuno scopo viene
+              indovinato dal nome del passo. */}
+          <PanelField label={t('workflow.purpose')}>
+            <Select value={purpose} onChange={(e) => setPurpose(e.target.value)} style={inputStyle}>
+              <option value="">{t('workflow.purposeNone')}</option>
+              {WORKFLOW_STEP_PURPOSES.map((p) => (
+                <option key={p} value={p}>{t(`workflow.purposeOption.${p}`)}</option>
+              ))}
+            </Select>
+            <span style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.4 }}>
+              {t('workflow.purposeHint')}
+            </span>
           </PanelField>
         </div>
       )}
 
       {activeTab === 'props' && (
         <>
-          <PanelField label="Label">
-            <Input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} />
+          <PanelField label={t('workflow.panel.label')}>
+            <Input value={label} onChange={(e) => setLabel(e.target.value)} style={inputStyle} aria-label={t('workflow.panel.label')} />
+            {/* V-5: cambiare l'etichetta mette da parte le traduzioni spedite; rimettendola com'era tornano. */}
+            {label !== step.label && (step.labels ?? []).length > 0 && (
+              <span data-testid="step-label-translations-hint" style={{ fontSize: 'var(--font-size-label)', color: 'var(--color-slate)', lineHeight: 1.4 }}>
+                {t('workflow.panel.labelTranslationsHint', { translations: (step.labels ?? []).map((l) => `${l.language}: «${l.label}»`).join(', '), original: step.label })}
+              </span>
+            )}
           </PanelField>
 
-          <PanelField label="Name">
+          <PanelField label={t('workflow.panel.name')}>
             <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{step.name}</code>
           </PanelField>
 
-          <PanelField label="Type">
+          <PanelField label={t('workflow.panel.type')}>
             <code style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{step.type}</code>
           </PanelField>
 
-          <PanelField label="Enter Actions">
+          <PanelField label={t('workflow.panel.enter_actions')}>
             {renderActionList(
               editableEnterActions,
               (i) => setEditableEnterActions((prev) => prev.filter((_, idx) => idx !== i)),
@@ -563,7 +728,7 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
             )}
           </PanelField>
 
-          <PanelField label="Exit Actions">
+          <PanelField label={t('workflow.panel.exit_actions')}>
             {renderActionList(
               editableExitActions,
               (i) => setEditableExitActions((prev) => prev.filter((_, idx) => idx !== i)),
@@ -575,51 +740,51 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
 
       {activeTab === 'notify' && (
         <>
-          <PanelField label="Notifica all'ingresso">
+          <PanelField label={t('workflow.panel.notifica_all_ingresso')}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button
                 type="button"
                 role="switch"
                 aria-checked={notifyEnabled}
-                aria-label="Notifica all'ingresso"
+                aria-label={t('pages.workflowStep.notifyOnEnter')}
                 onClick={() => setNotifyEnabled((p) => !p)}
                 style={{
                   width: 36, height: 20, borderRadius: 10, cursor: 'pointer',
                   border: 'none', padding: 0,
-                  backgroundColor: notifyEnabled ? ACCENT_COLOR : '#cbd5e1',
+                  backgroundColor: notifyEnabled ? ACCENT_COLOR : palette.neutral.borderStrong,
                   position: 'relative', transition: 'background 200ms', flexShrink: 0,
                 }}
               >
                 <span style={{
                   position: 'absolute', top: 2, left: notifyEnabled ? 18 : 2,
-                  width: 16, height: 16, borderRadius: '50%', background: '#fff',
-                  transition: 'left 200ms', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  width: 16, height: 16, borderRadius: '50%', background: colors.white,
+                  transition: 'left 200ms', boxShadow: '0 1px 3px var(--color-black-a20)',
                 }} />
               </button>
               <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>
-                {notifyEnabled ? 'Attiva' : 'Disattiva'}
+                {t(notifyEnabled ? 'common.enabled' : 'common.disabled')}
               </span>
             </div>
           </PanelField>
 
           {notifyEnabled && (
             <>
-              <PanelField label="Chiave titolo (i18n)">
+              <PanelField label={t('workflow.panel.titleKey')}>
                 <Input
                   value={notifyTitleKey}
                   onChange={(e) => setNotifyTitleKey(e.target.value)}
-                  placeholder="es. notification.custom.step.title"
+                  placeholder={t('workflow.panel.titleKeyPlaceholder')}
                   style={inputStyle}
                 />
               </PanelField>
 
-              <PanelField label="Severità">
+              <PanelField label={t('workflow.panel.severit')}>
                 <Select value={notifySeverity} onChange={(e) => setNotifySeverity(e.target.value)} style={inputStyle}>
                   {NR_SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </Select>
               </PanelField>
 
-              <PanelField label="Canali">
+              <PanelField label={t('workflow.panel.canali')}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                   {NR_CHANNELS.map((ch) => (
                     <label key={ch} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}>
@@ -635,9 +800,11 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
                 </div>
               </PanelField>
 
-              <PanelField label="Destinatari">
+              <PanelField label={t('workflow.panel.destinatari')}>
                 <Select value={notifyTarget} onChange={(e) => setNotifyTarget(e.target.value)} style={inputStyle}>
-                  {NR_TARGETS.map((tgt) => <option key={tgt} value={tgt}>{tgt}</option>)}
+                  {withCurrent(targetOptions, notifyTarget).map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
                 </Select>
               </PanelField>
             </>
@@ -651,25 +818,46 @@ export function WorkflowStepPanel({ step, definitionId, onClose, onSaved, onSave
         disabled={saveDisabled}
         style={saveButtonStyle(saveDisabled)}
       >
-        Salva
+        {t('common.save')}
       </button>
 
-      {onDelete && !isInitial && (
-        <button
-          type="button"
-          onClick={() => {
-            void confirm({ title: `Eliminare lo step "${step.label || step.name}"?`, body: 'Verranno rimosse anche le transizioni collegate.', danger: true }).then((ok) => {
-              if (ok) onDelete(step.name)
-            })
-          }}
-          style={{
-            marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 6,
-            border: '1px solid var(--color-danger)', background: '#fff',
-            color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
-          }}
-        >
-          Elimina step
-        </button>
+      {/*
+        L'eliminazione di uno step con dei ticket sopra li lascia senza step
+        corrente: non transizionano più, e nessuno se ne accorge finché qualcuno
+        non ci prova. Qui il motivo si vede PRIMA, con il numero; il server
+        rifiuta comunque (è lui l'autorità), ma non si offre un bottone che
+        romperà i ticket.
+      */}
+      {onDelete && (deleteBlockedReason
+        ? (
+          <div
+            role="note"
+            style={{
+              marginTop: 8, padding: '8px 10px', borderRadius: 6,
+              border: '1px solid var(--color-border)', background: 'var(--color-slate-bg)',
+              color: 'var(--color-slate)', fontSize: 'var(--font-size-label)', lineHeight: 1.4,
+            }}
+          >
+            {deleteBlockedReason}
+          </div>
+        )
+        : (
+          <button
+            type="button"
+            onClick={() => {
+              void confirm({ title: t('workflow.panel.deleteStepTitle', { step: step.label || step.name }), body: t('workflow.panel.deleteStepBody'), danger: true }).then((ok) => {
+                if (ok) onDelete(step.name)
+              })
+            }}
+            style={{
+              marginTop: 8, width: '100%', padding: '8px 12px', borderRadius: 6,
+              border: '1px solid var(--color-danger)', background: colors.white,
+              color: 'var(--color-danger)', cursor: 'pointer', fontSize: 'var(--font-size-body)', fontWeight: 600,
+            }}
+          >
+            {t('pages.workflowStep.deleteStep')}
+          </button>
+        )
       )}
     </div>
   )

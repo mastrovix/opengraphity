@@ -103,3 +103,70 @@ describe('metricsAccessAllowed (A-15)', () => {
     expect(m.metricsAccessAllowed(req('203.0.113.7', 'Bearer wrong'), 's3cret')).toBe(false)
   })
 })
+
+// ── Operatività, revisione 2 ondata 4 (D2.2 / D7.2) ─────────────────────────
+
+describe('metriche di operatività (revisione 2)', () => {
+  it('event_ingest_lag_seconds, events_failed_total{queue,type}, redis_lock_timeouts_total{lock}, redis_lock_hold_seconds{lock} esistono, sono esposte da renderMetrics e hanno il tipo dichiarato', () => {
+    m.eventIngestLagSeconds.observe({}, 3)
+    m.eventsFailedTotal.inc({ queue: 'sla-engine', type: 'incident.created' })
+    m.redisLockTimeoutsTotal.inc({ lock: 'events:group' })
+    m.redisLockHoldSeconds.observe({ lock: 'events:group' }, 0.2)
+    const exposed = m.renderMetrics()
+    for (const [name, type] of [
+      ['event_ingest_lag_seconds', 'histogram'],
+      ['events_failed_total', 'counter'],
+      ['redis_lock_timeouts_total', 'counter'],
+      ['redis_lock_hold_seconds', 'histogram'],
+    ] as const) {
+      expect(exposed).toContain(`# TYPE ${name} ${type}`)
+    }
+    expect(exposed).toContain('events_failed_total{queue="sla-engine",type="incident.created"} 1')
+    expect(exposed).toContain('redis_lock_timeouts_total{lock="events:group"} 1')
+    expect(exposed).toContain('event_ingest_lag_seconds_bucket{le="5"} 1')
+    // stessi bucket dei ritardi di correlazione e di valutazione (code a confronto)
+    expect(m.eventIngestLagSeconds.buckets).toEqual(m.eventCorrelateJobLagSeconds.buckets)
+    // renderMetrics è la stessa esposizione dell'API (bullmq_queue_depth compreso): il worker la serve così
+    expect(exposed).toContain('# TYPE bullmq_queue_depth gauge')
+    expect(m.METRICS_CONTENT_TYPE).toBe('text/plain; version=0.0.4; charset=utf-8')
+  })
+})
+
+// ── Servizi monitorati, ondata 4 ─────────────────────────────────────────────
+
+describe('metriche dei servizi monitorati (ondata 4)', () => {
+  it('le quattro metriche nuove esistono, sono esposte dal registro custom e hanno il tipo dichiarato', () => {
+    const exposed = m.EVENT_MANAGEMENT_METRICS.map((x) => x.collect()).join('\n')
+    for (const [name, type] of [
+      ['service_incidents_opened_total', 'counter'],
+      ['service_incidents_resolved_total', 'counter'],
+      ['service_evaluation_lag_seconds', 'histogram'],
+      ['service_maps_stale', 'gauge'],
+    ] as const) {
+      expect(exposed).toContain(`# TYPE ${name} ${type}`)
+    }
+    // accanto a quelle delle ondate 1-3
+    expect(exposed).toContain('# TYPE service_evaluations_total counter')
+    expect(exposed).toContain('# TYPE services_health gauge')
+  })
+
+  it('nessuna etichetta dichiarata: contatori e gauge escono senza label, l\'istogramma con i soli bucket', () => {
+    m.serviceIncidentsOpenedTotal.inc({})
+    m.serviceIncidentsOpenedTotal.inc({})
+    m.serviceIncidentsResolvedTotal.inc({})
+    m.serviceMapsStale.set({}, 3)
+    m.serviceEvaluationLagSeconds.observe({}, 7)
+
+    expect(m.serviceIncidentsOpenedTotal.snapshot()).toEqual([{ labels: {}, value: 2 }])
+    expect(m.serviceIncidentsResolvedTotal.snapshot()).toEqual([{ labels: {}, value: 1 }])
+    expect(m.serviceMapsStale.snapshot()).toEqual([{ labels: {}, value: 3 }])
+    expect(m.serviceIncidentsOpenedTotal.collect()).toContain('\nservice_incidents_opened_total 2 ')
+    expect(m.serviceMapsStale.collect()).toContain('\nservice_maps_stale 3 ')
+
+    const lag = m.serviceEvaluationLagSeconds.snapshot()[0]!
+    expect(lag).toMatchObject({ labels: {}, count: 1, sum: 7, max: 7 })
+    // stessi bucket di event_correlate_job_lag_seconds (code a confronto)
+    expect(m.serviceEvaluationLagSeconds.buckets).toEqual(m.eventCorrelateJobLagSeconds.buckets)
+    expect(m.serviceEvaluationLagSeconds.collect()).toContain('service_evaluation_lag_seconds_bucket{le="10"} 1')
+  })
+})
