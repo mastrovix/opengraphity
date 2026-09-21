@@ -12,7 +12,18 @@ import { ApolloServer } from '@apollo/server'
 import type { GraphQLSchema } from 'graphql'
 import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin/landingPage/default'
 import { ApolloServerPluginLandingPageDisabled } from '@apollo/server/plugin/disabled'
-import { expressMiddleware } from '@apollo/server/express4'
+/*
+ * APOLLO SERVER 5 (21 set 2026).
+ *
+ * In Apollo 5 l'adattatore per express non sta piu' dentro il pacchetto
+ * (`@apollo/server/express4` non esiste): e' un pacchetto a se'. Restando su
+ * express 4 e' `@as-integrations/express4` — Apollo 5 NON obbliga a express 5,
+ * e le due migrazioni sono indipendenti.
+ *
+ * Chiude `GHSA-9q82-xgwf-vj6h` (Apollo Server: bypass della prevenzione
+ * XS-Search), che era in `audit-allowlist.json` proprio in attesa di questo.
+ */
+import { expressMiddleware } from '@as-integrations/express4'
 import type { GraphQLRequestContextDidEncounterErrors } from '@apollo/server'
 import { buildContext, type GraphQLContext } from './context.js'
 import { getSchemaForTenant, getSchemaState } from './lib/schemaCache.js'
@@ -305,7 +316,7 @@ function buildApolloServer(schema: GraphQLSchema): ApolloServer<GraphQLContext> 
       {
         // ── GraphQL tracing plugin ─────────────────────────────────────────────
         // Creates an explicit OTEL root span per GraphQL operation. This is
-        // necessary because Apollo Server 4 + expressMiddleware processes POST
+        // necessary because Apollo Server + expressMiddleware processes POST
         // bodies in its own pipeline, breaking out of the HTTP auto-instrumentation
         // context — so POST spans never appear in Jaeger without manual creation.
         async requestDidStart(reqCtx) {

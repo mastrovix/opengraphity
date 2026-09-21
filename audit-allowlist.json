@@ -2,13 +2,6 @@
   "$comment": "Accepted advisories for scripts/audit-check.mjs (pnpm audit --prod, gate >= high). Every entry needs the GHSA id, the package, the reason it is acceptable and an expiry date: after that date CI goes red again until the entry is renewed with a fresh justification or the dependency is fixed. Entries below the gate are listed for documentation only.",
   "entries": [
     {
-      "id": "GHSA-9q82-xgwf-vj6h",
-      "package": "@apollo/server",
-      "severity": "moderate",
-      "reason": "Fix requires @apollo/server 5 (express 5 / @as-integrations/express adapter migration). CSRF prevention and a CORS allowlist are already enforced in apps/api/src/server.ts.",
-      "expires": "2026-12-31"
-    },
-    {
       "id": "GHSA-q8mj-m7cp-5q26",
       "package": "qs",
       "severity": "moderate",
