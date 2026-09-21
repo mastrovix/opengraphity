@@ -8,8 +8,8 @@ packages:
 # dependencies in the image.
 catalog:
   '@vitest/coverage-v8': ^4.1.0
-  bullmq: ^5.71.0
-  ioredis: ^5.10.0
+  bullmq: ^6.0.4
+  ioredis: ^6.0.0
   vitest: ^4.1.0
 
 # VERSIONI BLOCCATE: non stanno qui, stanno in `package.json` → `pnpm.overrides`.

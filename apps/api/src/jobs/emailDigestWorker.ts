@@ -263,11 +263,23 @@ export function digestRole(target: string | null): string | null {
  * error, not a lost `.then()`.
  */
 export async function startEmailDigestWorker(): Promise<Worker> {
-  await getQueue(EMAIL_DIGEST_QUEUE).add('digest-tick', {}, {
-    repeat:           { pattern: '*/5 * * * *', tz: 'UTC' },
-    jobId:            'email-digest-tick',
-    removeOnComplete: true,
-  })
+  /*
+   * JOB SCHEDULER, non piu' «repeat» (21 set 2026, BullMQ 6).
+   *
+   * BullMQ 6 ha RIMOSSO i job ripetibili: `repeat` su `add()`, la classe
+   * `Repeat`, `getRepeatableJobs()` e `removeRepeatable*()` non esistono piu'.
+   * Al loro posto i Job Scheduler, che hanno un'identita' esplicita — il primo
+   * argomento — invece di essere dedotta da (nome, opzioni di ripetizione).
+   *
+   * La ricorrenza si registra a ogni avvio del worker, come prima: non c'e'
+   * stato da migrare, e `upsert` significa che riavviare non ne crea una
+   * seconda.
+   */
+  await getQueue(EMAIL_DIGEST_QUEUE).upsertJobScheduler(
+    'email-digest-tick',
+    { pattern: '*/5 * * * *', tz: 'UTC' },
+    { name: 'digest-tick', data: {}, opts: { removeOnComplete: true } },
+  )
   log.info('Email digest tick scheduled (every 5 minutes; sends at the time of each tenant\'s digest.daily rule)')
 
   return createWorker(EMAIL_DIGEST_QUEUE, async (_job: Job) => {

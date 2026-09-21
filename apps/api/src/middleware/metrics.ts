@@ -896,14 +896,22 @@ export function startBullMQMetricsCollector(queues: Queue[] | (() => Queue[]), i
   async function collect(): Promise<void> {
     for (const queue of list()) {
       try {
-        const counts = await queue.getJobCounts('active', 'waiting', 'delayed', 'failed', 'completed', 'paused')
+        /*
+         * NIENTE 'paused' (21 set 2026, BullMQ 6): non e' piu' uno stato dei
+         * job. Una coda e' in pausa o non lo e', e i suoi job restano
+         * `waiting` in entrambi i casi — quindi la serie `status="paused"`
+         * sarebbe stata sempre zero, e un grafico piatto a zero si legge come
+         * «va tutto bene» invece che come «questa misura non esiste piu'».
+         * Se servira' sapere se una coda e' in pausa, e' una metrica sua
+         * (gauge 0/1 da `queue.isPaused()`), non una profondita' di coda.
+         */
+        const counts = await queue.getJobCounts('active', 'waiting', 'delayed', 'failed', 'completed')
         const name   = queue.name
         bullmqQueueDepth.set({ queue: name, status: 'active' },    counts['active']    ?? 0)
         bullmqQueueDepth.set({ queue: name, status: 'waiting' },   counts['waiting']   ?? 0)
         bullmqQueueDepth.set({ queue: name, status: 'delayed' },   counts['delayed']   ?? 0)
         bullmqQueueDepth.set({ queue: name, status: 'failed' },    counts['failed']    ?? 0)
         bullmqQueueDepth.set({ queue: name, status: 'completed' }, counts['completed'] ?? 0)
-        bullmqQueueDepth.set({ queue: name, status: 'paused' },    counts['paused']    ?? 0)
       } catch (err) {
         metricsLogger.warn({ err, queue: queue.name }, 'Failed to collect BullMQ metrics')
       }

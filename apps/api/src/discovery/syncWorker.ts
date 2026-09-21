@@ -326,20 +326,38 @@ export function scheduledSyncJobId(sourceId: string): string {
  */
 export async function scheduleSourceSync(source: { id: string; tenantId: string; cron: string | null; enabled: boolean }): Promise<void> {
   const jobId = scheduledSyncJobId(source.id)
-  // Il repeatable si toglie sempre: così un cron cambiato non lascia in piedi il vecchio.
-  for (const job of await syncQueue.getRepeatableJobs()) {
-    if (job.name === 'sync' && (job.id === jobId || job.key.includes(jobId))) {
-      await syncQueue.removeRepeatableByKey(job.key)
-    }
-  }
+  /*
+   * Lo scheduler si toglie sempre: cosi' un cron cambiato non lascia in piedi
+   * il vecchio. Con BullMQ 6 e' una riga sola invece di un giro sull'elenco,
+   * perche' lo scheduler HA un'identita' esplicita (`jobId`) mentre il vecchio
+   * repeatable la nascondeva dentro una chiave composta che si doveva
+   * riconoscere con un `includes()`.
+   */
+  await syncQueue.removeJobScheduler(jobId)
   if (!source.enabled || !source.cron) {
     logger.info({ sourceId: source.id }, '[sync] scheduled sync removed (source disabled or without cron)')
     return
   }
-  await syncQueue.add(
-    'sync',
-    { runId: `scheduled-${source.id}`, sourceId: source.id, tenantId: source.tenantId, syncType: 'scheduled' },
-    { repeat: { pattern: source.cron }, jobId, removeOnComplete: 50, removeOnFail: 20 },
+  /*
+   * JOB SCHEDULER, non piu' «repeat» (21 set 2026, BullMQ 6).
+   *
+   * BullMQ 6 ha RIMOSSO i job ripetibili: `repeat` su `add()`, la classe
+   * `Repeat`, `getRepeatableJobs()` e `removeRepeatable*()` non esistono piu'.
+   * Al loro posto i Job Scheduler, che hanno un'identita' esplicita — il primo
+   * argomento — invece di essere dedotta da (nome, opzioni di ripetizione).
+   *
+   * La ricorrenza si registra a ogni avvio del worker, come prima: non c'e'
+   * stato da migrare, e `upsert` significa che riavviare non ne crea una
+   * seconda.
+   */
+  await syncQueue.upsertJobScheduler(
+    jobId,
+    { pattern: source.cron },
+    {
+      name: 'sync',
+      data: { runId: `scheduled-${source.id}`, sourceId: source.id, tenantId: source.tenantId, syncType: 'scheduled' },
+      opts: { removeOnComplete: 50, removeOnFail: 20 },
+    },
   )
   logger.info({ sourceId: source.id, cron: source.cron }, '[sync] scheduled sync registered')
 }

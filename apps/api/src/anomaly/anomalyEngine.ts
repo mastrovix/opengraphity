@@ -386,10 +386,22 @@ export async function startAnomalyScanner(): Promise<Worker<AnomalyScanJobData>>
   const worker = createWorker<AnomalyScanJobData>(ANOMALY_SCANNER_QUEUE, anomalyScannerProcessor)
 
   // Repeating job: every hour, all tenants
-  await getAnomalyScannerQueue().add(
-    'scan',
-    {},
-    { repeat: { every: 60 * 60_000 }, jobId: 'anomaly-scanner-scan', removeOnComplete: true },
+  /*
+   * JOB SCHEDULER, non piu' «repeat» (21 set 2026, BullMQ 6).
+   *
+   * BullMQ 6 ha RIMOSSO i job ripetibili: `repeat` su `add()`, la classe
+   * `Repeat`, `getRepeatableJobs()` e `removeRepeatable*()` non esistono piu'.
+   * Al loro posto i Job Scheduler, che hanno un'identita' esplicita — il primo
+   * argomento — invece di essere dedotta da (nome, opzioni di ripetizione).
+   *
+   * La ricorrenza si registra a ogni avvio del worker, come prima: non c'e'
+   * stato da migrare, e `upsert` significa che riavviare non ne crea una
+   * seconda.
+   */
+  await getAnomalyScannerQueue().upsertJobScheduler(
+    'anomaly-scanner-scan',
+    { every: 60 * 60_000 },
+    { name: 'scan', data: {}, opts: { removeOnComplete: true } },
   )
 
   logger.info('anomaly-scanner started (interval: 1h)')

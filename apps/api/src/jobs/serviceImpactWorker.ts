@@ -214,20 +214,30 @@ async function processServiceJob(job: Job<ServiceQueueData>): Promise<void> {
 export async function startServiceImpactWorker(): Promise<Worker<ServiceQueueData>> {
   const queue = getQueue<ServiceQueueData>(SERVICE_IMPACT_QUEUE)
   // Repeat job: BullMQ deduplica per (name, repeat) — riavviare l'API non ne crea un secondo.
-  await queue.add(SERVICE_PERIODIC_JOB, {}, {
-    repeat: { every: SERVICE_PERIODIC_EVERY_MS },
-    jobId: SERVICE_PERIODIC_JOB,
-    removeOnComplete: { count: 20 },
-    removeOnFail:     { age: 7 * 24 * 3600 },
-  })
+  /*
+   * JOB SCHEDULER, non piu' «repeat» (21 set 2026, BullMQ 6).
+   *
+   * BullMQ 6 ha RIMOSSO i job ripetibili: `repeat` su `add()`, la classe
+   * `Repeat`, `getRepeatableJobs()` e `removeRepeatable*()` non esistono piu'.
+   * Al loro posto i Job Scheduler, che hanno un'identita' esplicita — il primo
+   * argomento — invece di essere dedotta da (nome, opzioni di ripetizione).
+   *
+   * La ricorrenza si registra a ogni avvio del worker, come prima: non c'e'
+   * stato da migrare, e `upsert` significa che riavviare non ne crea una
+   * seconda.
+   */
+  await queue.upsertJobScheduler(
+    SERVICE_PERIODIC_JOB,
+    { every: SERVICE_PERIODIC_EVERY_MS },
+    { name: SERVICE_PERIODIC_JOB, data: {}, opts: { removeOnComplete: { count: 20 }, removeOnFail: { age: 7 * 24 * 3600 } } },
+  )
   // Rete di sicurezza della mappa viva (ondata 5): rada di proposito, il
   // meccanismo principale è `notifyCIGraphChanged` (immediato).
-  await queue.add(SERVICE_SYNC_PERIODIC_JOB, {}, {
-    repeat: { every: SERVICE_MAP_SYNC_EVERY_MS },
-    jobId: SERVICE_SYNC_PERIODIC_JOB,
-    removeOnComplete: { count: 20 },
-    removeOnFail:     { age: 7 * 24 * 3600 },
-  })
+  await queue.upsertJobScheduler(
+    SERVICE_SYNC_PERIODIC_JOB,
+    { every: SERVICE_MAP_SYNC_EVERY_MS },
+    { name: SERVICE_SYNC_PERIODIC_JOB, data: {}, opts: { removeOnComplete: { count: 20 }, removeOnFail: { age: 7 * 24 * 3600 } } },
+  )
   return createWorker<ServiceQueueData>(SERVICE_IMPACT_QUEUE, processServiceJob, {
     concurrency: 2,
     lockDuration: SERVICE_IMPACT_LOCK_MS,
