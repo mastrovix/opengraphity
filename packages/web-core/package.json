@@ -37,7 +37,7 @@
     "graphql": "^16.13.1",
     "keycloak-js": "^26.2.4",
     "react": "^19.3.0",
-    "typescript": "~5.9.3",
+    "typescript": "~7.0.2",
     "vitest": "catalog:",
     "@opengraphity/types": "workspace:*"
   }
