@@ -22,6 +22,7 @@ catalogs:
 overrides:
   sharp: ^0.35.4
   '@types/d3-selection': 3.0.11
+  ip-address: ^10.7.2
 
 importers:
 
@@ -5017,10 +5018,6 @@ packages:
   ioredis@6.0.0:
     resolution: {integrity: sha512-f+Dtubxfpf6KYFq7WVXJoOLn0bk4TJrMrN9SzeE+jrWrCWj7XX3fA6vkryafhADX+GMymRxgDJDOI33COkJc0w==}
     engines: {node: '>=20.0.0'}
-
-  ip-address@10.1.0:
-    resolution: {integrity: sha512-XXADHxXmvT9+CRxhXg56LJovE+bmWnEWB78LB83VZTprKTmaC5QfruXocxzTZ2Kl0DNwKuBdlIhjL8LeY8Sf8Q==}
-    engines: {node: '>= 12'}
 
   ip-address@10.7.2:
     resolution: {integrity: sha512-7H/2gFSIitxc0hG3nOI1glS8QLo/EHBFFLk8vEUjXY/xu0AdL8jZ9U1IzO2PUm0d2D/ofQcAifb0g6OBkt8U7w==}
@@ -11970,12 +11967,12 @@ snapshots:
   express-rate-limit@8.3.2(express@4.22.1):
     dependencies:
       express: 4.22.1
-      ip-address: 10.1.0
+      ip-address: 10.7.2
 
   express-rate-limit@8.3.2(express@5.2.1):
     dependencies:
       express: 5.2.1
-      ip-address: 10.1.0
+      ip-address: 10.7.2
 
   express@4.22.1:
     dependencies:
@@ -12587,8 +12584,6 @@ snapshots:
       standard-as-callback: 2.1.0
     transitivePeerDependencies:
       - supports-color
-
-  ip-address@10.1.0: {}
 
   ip-address@10.7.2: {}
 

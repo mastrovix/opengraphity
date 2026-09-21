@@ -26,3 +26,13 @@ catalog:
 #   SI TOGLIE quando `@types/d3-transition` pubblica una versione che regge la
 #   3.0.12. Per provarlo: togliere l'override, `pnpm install`,
 #   `pnpm --filter @opengraphity/web exec tsc --noEmit`.
+#
+# Blocco attivo: `ip-address` alzata a ^10.7.2.
+#   `express-rate-limit` 8 la FISSA alla 10.1.0 esatta, e quella versione ha
+#   GHSA-mwp4-54f8-5fhr (grave): `Address4` legge un ottetto con lo zero
+#   iniziale come DECIMALE mentre i resolver lo leggono come OTTALE, e da li'
+#   si passa per un indirizzo che non e' quello che sembra (SSRF).
+#   Corretta dalla 10.3.1. La 7 di express-rate-limit non aveva questa
+#   dipendenza affatto: l'avviso e' entrato con l'aggiornamento, ed e' stato
+#   `audit-check` a dirlo prima che uscisse di qui.
+#   SI TOGLIE quando `express-rate-limit` fissera' una versione >= 10.3.1.
