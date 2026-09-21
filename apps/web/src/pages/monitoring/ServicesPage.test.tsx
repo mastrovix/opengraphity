@@ -151,12 +151,24 @@ describe('ServicesPage', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Map status' }), 'paused')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ status: 'paused' }))
     await user.type(screen.getByRole('textbox', { name: 'Search a service by name' }), 'bill')
-    await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ status: 'paused', search: 'bill' }))
+    /*
+     * IL TEMPO SI DICHIARA ANCHE QUI (21 set 2026).
+     *
+     * La ricerca ha 300 ms di debounce, e il `waitFor` di testing-library
+     * aspetta 1000 ms di suo: su un runner carico i due numeri si toccano, e
+     * questo `expect` cadeva nella CI vedendo ancora `{ status: 'paused' }`
+     * senza `search`. Il test non era sbagliato, era l'attesa a essere corta.
+     * Il `30_000` in fondo vale per il test intero, non per il singolo
+     * `waitFor`.
+     */
+    await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ status: 'paused', search: 'bill' }), { timeout: 15_000 })
     await attendiURL('/monitoring/services', { status: 'paused', q: 'bill' })
 
     const seen2: Vars[] = []
     renderPage('operator', { seen: seen2, route: '/monitoring/services?health=degraded&status=paused&q=bill&page=2', page: pageMock({ total: 60 }, seen2) })
-    await waitFor(() => expect(seen2.at(-1)).toEqual({ filter: { health: ['degraded'], status: 'paused', search: 'bill' }, limit: 50, offset: 50 }))
+    // Stessa ragione: la seconda pagina nasce dall'URL, ma la query parte dopo
+    // il debounce della ricerca che l'URL porta con se'.
+    await waitFor(() => expect(seen2.at(-1)).toEqual({ filter: { health: ['degraded'], status: 'paused', search: 'bill' }, limit: 50, offset: 50 }), { timeout: 15_000 })
     const pressed = screen.getAllByRole('button', { name: /\bDegraded\b/ }).find((b) => b.getAttribute('aria-pressed') === 'true')
     expect(pressed).toBeDefined()
     expect(screen.getAllByText('page 2 of 2').length).toBeGreaterThan(0)
