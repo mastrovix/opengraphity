@@ -79,15 +79,45 @@ services:
   # untouched; docs/DEPLOY.md explains how to drop it by hand if wanted.
 
   keycloak:
-    image: quay.io/keycloak/keycloak:24.0.5@sha256:f8ade94c1d0ad2f2fa7734a455fee5392764f402c43ca35e9af6bf63a2541dc9
+    image: quay.io/keycloak/keycloak:26.7.4@sha256:82a77884f3af238beab1e7afd63b5f530e1b5c0590bd7aa60b40a40463e29b2c
     container_name: opengrafo-keycloak
     # Dev mode + H2 file DB: fine for the single-host stack, NOT for production
     # (no clustering, file DB not backup-friendly). The migration to `start` +
     # Postgres, with the export/import procedure, is in docs/DEPLOY.md.
+    #
+    # AGGIORNARE KEYCLOAK NON E' CAMBIARE QUESTA RIGA (21 set 2026, 24 → 26).
+    # Il file H2 scritto da una major NON si apre con la successiva: alzando
+    # l'immagine da 24.0.5 a 26.7.4 il server e' ripartito in ciclo con
+    #   ERROR: Failed to obtain JDBC connection
+    #   org.h2.jdbc.JdbcSQLInvalidAuthorizationSpecException: Wrong user name
+    #   or password [28000-240]
+    # che non dice affatto «il database e' di una versione precedente», e fa
+    # cercare la password sbagliata per mezz'ora.
+    #
+    # La procedura, con il server FERMO (l'H2 e' bloccato da chi lo usa):
+    #   docker compose stop keycloak
+    #   docker run --rm -v infra_keycloak_data:/opt/keycloak/data \
+    #     -v "$PWD/kc-export":/export quay.io/keycloak/keycloak:<VECCHIA> \
+    #     export --dir /export --users realm_file
+    #   docker run --rm -v infra_keycloak_data:/dati alpine \
+    #     rm -rf /dati/h2 /dati/transaction-logs
+    #   docker run --rm -v infra_keycloak_data:/opt/keycloak/data \
+    #     -v "$PWD/kc-export":/export quay.io/keycloak/keycloak:<NUOVA> \
+    #     import --dir /export
+    #   docker compose up -d keycloak
+    # `--users realm_file` non e' un dettaglio: senza, gli utenti non escono
+    # e ci si accorge del buco al primo login.
+    # Su Postgres (produzione) niente di tutto questo: lo schema lo migra
+    # Keycloak da solo all'avvio.
     command: start-dev
     environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD mancante in infra/.env}"
+      # KEYCLOAK_ADMIN/_PASSWORD sono DEPRECATE da Keycloak 26 — il server lo
+      # dice all'avvio: «KC-SERVICES0110: Environment variable 'KEYCLOAK_ADMIN'
+      # is deprecated, use 'KC_BOOTSTRAP_ADMIN_USERNAME' instead». Il nome a
+      # sinistra e' quello che vuole il container; quello in `infra/.env`
+      # resta KEYCLOAK_ADMIN_PASSWORD e non cambia per chi gestisce.
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD mancante in infra/.env}"
       KC_DB: dev-file
       KC_HTTP_PORT: 8080
       KC_HEALTH_ENABLED: "true"
@@ -99,8 +129,13 @@ services:
     networks:
       - opengrafo-network
     healthcheck:
-      # The Keycloak image has no curl/wget — probe /health/ready via bash /dev/tcp
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\": \"UP\"' <&3"]
+      # The Keycloak image has no curl/wget — probe /health/ready via bash /dev/tcp.
+      # PORTA 9000, non 8080: da Keycloak 25 health e metrics stanno su una
+      # «management interface» separata. Verificato sulla 26.7.4 prima di
+      # aggiornare: 9000/health/ready → 200, 8080/health/ready → 404. Con la
+      # porta vecchia il container sarebbe risultato unhealthy per sempre,
+      # e `depends_on: service_healthy` avrebbe bloccato tutto lo stack.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\": \"UP\"' <&3"]
       interval: 15s
       timeout: 5s
       retries: 10
