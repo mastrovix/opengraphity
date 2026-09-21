@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
-import { nextSequenceValue } from '../lib/sequence.js'
+import { customFieldDefs, resolveCustomFieldWrites, type CustomFieldInput } from '../lib/ticketCustomFields.js'
+import { creationStepContext } from '../lib/customFieldSteps.js'
+import { nextTicketNumber } from '../lib/ticketNumbering.js'
 import { resolveNewTicketPriority } from '../lib/priority.js'
 import { workflowEngine } from '@opengraphity/workflow'
 import { runQuery, runQueryOne } from '@opengraphity/neo4j'
@@ -8,16 +10,18 @@ import { withSession, getSession } from '../graphql/resolvers/ci-utils.js'
 import { mapIncident } from '../lib/mappers.js'
 import { NotFoundError, ValidationError } from '../lib/errors.js'
 import { validateStringLength } from '../lib/validation.js'
-import { evaluateTriggers, scheduleTimerTriggers } from '../lib/triggerEngine.js'
 import { enqueueEmbedding } from '../jobs/embeddingWorker.js'
-import { evaluateBusinessRules } from '../lib/rulesEngine.js'
 import { publishEvent } from '../lib/publishEvent.js'
+import { publishStepEnteredForEntity } from '../lib/stepEnteredPublisher.js'
 import { getInitialStepName, getWorkflowSteps } from '../lib/workflowHelpers.js'
 import { targetStepByCategory } from '../lib/workflowTargets.js'
-import { loadStepFacts } from '../lib/stepEvent.js'
-import { stepEnteredEventType, legacyStepEventType } from '@opengraphity/types'
+import { TICKET_TEAM_ASSIGNED_EVENT, type TicketTeamAssignedPayload } from '@opengraphity/types'
 import { ciLabelPredicateForTenant } from '../lib/ciLabelsForTenant.js'
 import { assertUserInAssignedTeam, setTicketTeam, setTicketUser } from './ticketAssignment.js'
+import { systemText } from '../lib/systemText.js'
+import { assertDomainValue } from '../lib/domainMatrix.js'
+import { assertCIsLinkable } from '../lib/ticketCIExclusions.js'
+import { transitionFailed } from '../lib/transitionError.js'
 
 export interface IncidentEventPayload {
   id: string; title: string; severity: string; status: string
@@ -28,6 +32,13 @@ export interface IncidentEventPayload {
 export interface ServiceCtx {
   tenantId: string
   userId: string
+  /**
+   * Chi agisce quando non è una persona: il nome della regola o del trigger
+   * (lib/actionExecutor.ts). Finisce in `author_label` dei commenti scritti
+   * dal servizio — giro UI del 15 set 2026 · U-8: la nota «Riassegnato al team»
+   * di una regola compariva come «Automation:» senza nome e con l'avatar «?».
+   */
+  actorLabel?: string
 }
 
 type Session = ReturnType<typeof getSession>
@@ -69,6 +80,7 @@ async function createTransitionComment(
   tenantId: string,
   userId: string,
   text: string,
+  authorLabel: string | null = null,
 ) {
   const now = new Date().toISOString()
   await session.executeWrite((tx) => tx.run(`
@@ -77,12 +89,15 @@ async function createTransitionComment(
       id:         randomUUID(),
       tenant_id:  $tenantId,
       text:       $text,
+      // Testo del sistema: nota interna (lib/ticketComments.ts).
+      is_internal: true,
       author_id:  $userId,
+      author_label: $authorLabel,
       created_at: $now,
       updated_at: $now
     })
     CREATE (i)-[:HAS_COMMENT]->(c)
-  `, { incidentId, tenantId, text, userId, now }))
+  `, { incidentId, tenantId, text, userId, authorLabel, now }))
 }
 
 /**
@@ -96,8 +111,29 @@ export async function addIncidentComment(id: string, ctx: ServiceCtx, text: stri
       MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN i.id AS id
     `, { id, tenantId: ctx.tenantId })
     if (!row) throw new NotFoundError('Incident', id)
-    await createTransitionComment(session, id, ctx.tenantId, ctx.userId, text)
+    await createTransitionComment(session, id, ctx.tenantId, ctx.userId, text, ctx.actorLabel ?? null)
   }, true)
+}
+
+/**
+ * Cambia il titolo di un incident da un canale automatico (giro UI del 15 set
+ * 2026 · U-6: l'incident di un servizio riaperto per «degradato» restava
+ * intitolato «non disponibile»). Aggiorna anche la similarità, che legge il
+ * titolo. Un incident che non esiste è un errore.
+ */
+export async function setIncidentTitle(id: string, ctx: ServiceCtx, title: string): Promise<void> {
+  if (typeof title !== 'string' || title.trim() === '') throw new ValidationError('Incident title must not be empty')
+  await withSession(async (session) => {
+    const row = await runQueryOne<{ id: string }>(session, `
+      MATCH (i:Incident {id: $id, tenant_id: $tenantId})
+      SET i.title = $title, i.updated_at = $now
+      RETURN i.id AS id
+    `, { id, tenantId: ctx.tenantId, title, now: new Date().toISOString() })
+    if (!row) throw new NotFoundError('Incident', id)
+  }, true)
+  enqueueEmbedding({ entityType: 'incident', entityId: id, tenantId: ctx.tenantId }).catch((err: unknown) => {
+    logger.error({ err, incidentId: id }, '[embeddings] enqueue failed — similarity will lag until backfill')
+  })
 }
 
 // buildEvent removed — using shared publishEvent from lib/publishEvent.ts
@@ -112,17 +148,41 @@ function requirePayload(payload: IncidentEventPayload | null, id: string): Incid
 
 // ── Public service operations ─────────────────────────────────────────────────
 
+/**
+ * Da dove arriva l'incident. `portal`: l'ha aperto l'utente finale dal portale.
+ *
+ * Revisione del 14 set 2026 · IT-4: il portale scriveva l'incident con una
+ * Cypher sua — niente numero, niente `incident.created` (quindi niente SLA,
+ * regole di notifica, automazioni, embedding, osservatore), priorità copiata
+ * senza matrice. Ora passa di qui come ogni altro canale. L'unica differenza è
+ * dichiarata: l'utente finale non conosce i CI, quindi dal portale l'incident
+ * può nascere senza CI impattato, e il Service Desk lo collega nella presa in
+ * carico. Categoria e priorità sono validate contro il Dizionario del cliente
+ * (anche quando il cliente non ne ha una copia: IT-7).
+ */
+export type IncidentChannel = 'agent' | 'portal'
+
 export async function createIncident(
-  input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null },
+  input: { title: string; description?: string; severity?: string; impact?: string; urgency?: string; category?: string; affectedCIIds?: string[]; acknowledgeNoSla?: boolean | null; customFields?: CustomFieldInput[] | null },
   ctx: ServiceCtx,
+  channel: IncidentChannel = 'agent',
 ) {
   validateStringLength(input.title, 'title', 1, 500)
   validateStringLength(input.description, 'description', 0, 10000)
 
   // ITIL: an incident must record the impacted CI(s) — required, not optional.
-  if (!input.affectedCIIds || input.affectedCIIds.length === 0) {
+  // L'eccezione dichiarata è il portale (vedi `IncidentChannel`).
+  if (channel !== 'portal' && (!input.affectedCIIds || input.affectedCIIds.length === 0)) {
     throw new ValidationError('An incident must have at least one impacted CI', { key: 'errors.incident.needsCI' })
   }
+  if (channel === 'portal') {
+    if (!input.category) throw new ValidationError('category is required', { key: 'errors.portal.categoryRequired' })
+    await assertDomainValue(ctx.tenantId, 'category', input.category)
+  }
+  // CM-8 (revisione del 15 set 2026): i tipi di CI esclusi per gli incident, PRIMA
+  // di scrivere. Vale per ogni canale, compresi monitoraggio e servizi monitorati
+  // (scelta del proprietario): l'errore nomina i CI e dove togliere l'esclusione.
+  await assertCIsLinkable(ctx.tenantId, 'incident', input.affectedCIIds ?? [])
 
   // ITIL: Priority = f(Impact, Urgency). La priorità derivata si salva nel
   // campo `severity` (SLA/pastiglie/filtri leggono quello). Impatto+urgenza
@@ -138,12 +198,20 @@ export async function createIncident(
   const impact   = resolved.impact
   const urgency  = resolved.urgency
 
+  // Campi personalizzati (ondata 4). Solo i canali che li conoscono li mandano
+  // (pagine, portale, REST, import): lì valgono tipo, vocabolario, obbligo e
+  // script. Monitoraggio, servizi e Slack non conoscono i campi del cliente e
+  // non mandano la chiave — un campo obbligatorio non deve fermare un allarme,
+  // come già non lo fermano le regole di obbligatorietà.
+  const customProps = input.customFields == null ? {} : await withSession(async (session) =>
+    resolveCustomFieldWrites(ctx.tenantId, 'incident', await customFieldDefs(session, ctx.tenantId, 'incident'), input.customFields, { current: null, endUser: channel === 'portal', stepContext: await creationStepContext(session, ctx.tenantId, 'incident', input.category ?? null) }))
+
   const id  = uuidv4()
   const now = new Date().toISOString()
 
   const created = await withSession(async (session) => {
-    const seq = await nextSequenceValue(session, ctx.tenantId, 'incident')
-    const number = 'INC' + String(seq).padStart(8, '0')
+    // Formato del cliente (verifica «Cosa resta cablato», ondata 6), contatore del prodotto.
+    const number = await nextTicketNumber(session, ctx.tenantId, 'incident')
 
     const initialStatus = await getInitialStepName(session, ctx.tenantId, 'incident')
     const rows = await runQuery<{ props: Props }>(session, `
@@ -160,11 +228,16 @@ export async function createIncident(
         status:       $status,
         created_at:   $now,
         updated_at:   $now,
+        // Chi l'ha aperto e da dove: il portale elenca i ticket dell'utente
+        // per created_by, quindi un incident del portale deve portarlo.
+        created_by:   $userId,
+        channel:      $channel,
         // Chi l'ha creato ha visto l'avviso «nessuna policy SLA lo copre» e
         // l'ha accettato: la diagnostica non lo conta fra i ticket senza SLA.
         sla_absence_acknowledged_at: $ackAt,
         sla_absence_acknowledged_by: $ackBy
       })
+      SET i += $customProps
       RETURN properties(i) as props
     `, {
       id, tenantId: ctx.tenantId, number,
@@ -172,8 +245,10 @@ export async function createIncident(
       severity, impact, urgency,
       category: input.category ?? null,
       status: initialStatus, now,
+      userId: ctx.userId, channel,
       ackAt: input.acknowledgeNoSla === true ? now : null,
       ackBy: input.acknowledgeNoSla === true ? ctx.userId : null,
+      customProps,
     })
     if (!rows[0]) throw new ValidationError('Failed to create incident')
     return mapIncident(rows[0].props)
@@ -189,7 +264,7 @@ export async function createIncident(
   // incident tecnici proprio via `AFFECTED_BY`). Contare le righe scritte è la
   // pratica già usata due volte nello stesso sottosistema
   // (serviceImpact/build.ts:241-243, config.ts:612-614).
-  {
+  if (input.affectedCIIds && input.affectedCIIds.length > 0) {
     const affectedCIIds = input.affectedCIIds
     const ciPredicate = await ciLabelPredicateForTenant('ci', ctx.tenantId)
     const missing: string[] = []
@@ -224,9 +299,30 @@ export async function createIncident(
     }
   }
 
-  await withSession(async (session) => {
-    await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident', undefined, input.category ?? null)
-  }, true)
+  /**
+   * Un incident SENZA workflow non deve restare nel grafo (revisione totale ·
+   * B-6): la creazione passa da più transazioni, e se `createInstance`
+   * falliva — un workflow di categoria senza passo iniziale, due passi
+   * marcati iniziali, un errore transiente — l'incident era già committato,
+   * numerato e collegato ai CI, ma senza istanza: non si poteva transizionare
+   * né chiudere, e l'unico rimedio era il database. Si annulla come per i CI
+   * mancanti, e si dice perché.
+   */
+  try {
+    await withSession(async (session) => {
+      await workflowEngine.createInstance(session, ctx.tenantId, id, 'incident', undefined, input.category ?? null)
+    }, true)
+  } catch (err) {
+    await withSession(async (session) => {
+      await runQuery(session, 'MATCH (i:Incident {id: $id, tenant_id: $tenantId}) DETACH DELETE i', { id, tenantId: ctx.tenantId })
+    }, true)
+    logger.error({ err, incidentId: id, tenantId: ctx.tenantId, number: created.number, category: input.category ?? null },
+      '[incidentService] istanza di workflow non creata: incident annullato (resterebbe senza workflow)')
+    throw new ValidationError(
+      `Incident not created: its workflow instance could not be started (${err instanceof Error ? err.message : String(err)})`,
+      { key: 'errors.incident.workflowInstance', params: { reason: err instanceof Error ? err.message : String(err) } },
+    )
+  }
 
   // Auto-watch: creator becomes watcher
   await withSession(async (session) => {
@@ -237,25 +333,18 @@ export async function createIncident(
     `, { userId: ctx.userId, tenantId: ctx.tenantId, entityId: id, now }))
   }, true)
 
+  // Il CI e l'assegnatario VERI nel payload (revisione totale · B-7): erano
+  // scritti a mano come «—», e una regola di notifica che mette il CI nel
+  // testo mostrava «—» anche su un incident con tre CI. Il payload si rilegge
+  // dal grafo, come fa `assignIncidentToUser`.
+  const createdPayload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))
   await publishEvent('incident.created', ctx.tenantId, ctx.userId, {
-    id, title: input.title, severity: created.severity, status: created.status,
-    ciName: '—', assignedTo: '—', affected_ci_ids: input.affectedCIIds ?? [],
+    ...requirePayload(createdPayload, id),
+    affected_ci_ids: input.affectedCIIds ?? [],
   } satisfies IncidentEventPayload, now)
 
-  // Evaluate auto triggers, then business rules
-  const entityData = { id, title: input.title, severity: created.severity, status: created.status, category: input.category ?? null, description: input.description ?? null }
-  void evaluateTriggers(ctx.tenantId, 'incident', 'on_create', entityData, ctx.userId)
-    .then(() => evaluateBusinessRules(ctx.tenantId, 'incident', 'on_create', entityData, ctx.userId))
-    .catch((err: unknown) => {
-      // Fire-and-forget by design, but a load failure (Redis/Neo4j) must be an
-      // ERROR in the logs, not an unhandled rejection that silently drops all
-      // automations for this incident.
-      logger.error({ err, incidentId: id, tenantId: ctx.tenantId },
-        '[incidentService] trigger/business-rule evaluation failed — automations NOT executed')
-    })
-  scheduleTimerTriggers(ctx.tenantId, 'incident', id).catch((err: unknown) => {
-    logger.error({ err: err instanceof Error ? err.message : err }, 'scheduleTimerTriggers failed')
-  })
+  // Trigger, Business Rule e trigger a tempo: li mette in moto `incident.created`
+  // (consumers/automationConsumer.ts), come per ogni altro ticket e evento.
   enqueueEmbedding({ entityType: 'incident', entityId: id, tenantId: ctx.tenantId }).catch((err: unknown) => {
     logger.error({ err, incidentId: id }, '[embeddings] enqueue failed — similarity will lag until backfill')
   })
@@ -287,12 +376,18 @@ export async function resolveIncident(
       steps.find((s) => s.isTerminal)
     if (!resolvedStep) throw new ValidationError('No resolved/terminal step in incident workflow')
 
-    await workflowEngine.transition(
+    const result = await workflowEngine.transition(
       session,
       { instanceId: instanceRow.instanceId, toStepName: resolvedStep.name,
-        triggeredBy: ctx.userId, triggerType: 'manual', notes: notes ?? undefined },
+        triggeredBy: ctx.userId, triggerType: 'manual', notes: notes ?? undefined, tenantId: ctx.tenantId },
       { userId: ctx.userId, notes, entityData: {} },
     )
+    // Revisione del 14 set 2026 · IT-2: l'esito era ignorato. Un rifiuto del
+    // motore (condizione, arco mancante, transizione concorrente) lasciava
+    // l'incident nel passo di prima ma con `resolved_at` scritto e
+    // `incident.resolved` pubblicato: risolto per SLA e notifiche, aperto per
+    // chi ci lavora.
+    if (!result.success) throw transitionFailed(result, `Incident ${id}: the workflow refused the transition to "${resolvedStep.name}"`)
 
     // Fields the engine doesn't touch.
     const rows = await runQuery<{ props: Props }>(session, `
@@ -323,9 +418,30 @@ export async function assignIncidentToTeam(
   if (!teamId?.trim()) throw new ValidationError('teamId is required', { key: 'errors.assignment.teamRequired' })
   const now = new Date().toISOString()
 
-  return withSession(async (session) => {
-    const { teamName } = await setTicketTeam(session, 'Incident', id, teamId, ctx.tenantId)
-    const transitionNotes = `Riassegnato al team ${teamName}`
+  // IT-2: l'avanzamento automatico dal passo iniziale poteva essere rifiutato
+  // dal motore senza che nessuno lo sapesse. L'assegnazione resta (è ciò che
+  // la persona ha chiesto, ed è già scritta), l'evento parte, e poi l'errore
+  // dice che il ticket non è avanzato e perché.
+  let advanceRefused: { result: Awaited<ReturnType<typeof workflowEngine.transition>>; toStep: string } | null = null
+  /*
+   * I nomi escono dal servizio perché il REGISTRO li vuole (20 set 2026,
+   * ondata 2): `incident.assigned` non diceva né a chi né da chi, e le due
+   * mutation — a squadra e a persona — scrivevano la stessa identica riga.
+   */
+  let nomi: { teamName: string; previousTeamName: string | null; unassignedUserName: string | null } =
+    { teamName: '', previousTeamName: null, unassignedUserName: null }
+  const assigned = await withSession(async (session) => {
+    const { teamName, previousTeamName, unassignedUserName } = await setTicketTeam(session, 'Incident', id, teamId, ctx.tenantId)
+    nomi = { teamName, previousTeamName, unassignedUserName }
+    const transitionNotes = await systemText(ctx.tenantId, 'incident.reassignedTeam', { team: teamName })
+    // M-10: l'assegnatario che non è nel gruppo nuovo è stato staccato. Non è
+    // un dettaglio tecnico: chi guarda il ticket deve sapere che non ha più un
+    // assegnatario, e perché.
+    if (unassignedUserName) {
+      await createTransitionComment(session, id, ctx.tenantId, ctx.userId,
+        await systemText(ctx.tenantId, 'incident.unassignedOnTeamChange', { user: unassignedUserName, team: teamName }),
+        ctx.actorLabel ?? null)
+    }
 
     const wiResult = await session.executeRead((tx) => tx.run(`
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
@@ -341,14 +457,14 @@ export async function assignIncidentToTeam(
         // Assigning a team from the initial step auto-advances the workflow.
         // Take the first manual transition available — the workflow defines
         // the post-assignment step, not this service.
-        const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
-        const next = transitions[0]
+        const next = await assignmentAdvanceTarget(session, ctx.tenantId, instanceId)
         if (next) {
-          await workflowEngine.transition(
+          const result = await workflowEngine.transition(
             session,
-            { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes },
+            { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: transitionNotes, tenantId: ctx.tenantId },
             { userId: ctx.userId, entityData: {} },
           )
+          if (!result.success) advanceRefused = { result, toStep: next.toStep }
         }
       } else {
         // Reassignment while already past the initial step: just log a
@@ -369,7 +485,7 @@ export async function assignIncidentToTeam(
           })
         `, { incidentId: id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: transitionNotes }))
       }
-      await createTransitionComment(session, id, ctx.tenantId, ctx.userId, transitionNotes)
+      await createTransitionComment(session, id, ctx.tenantId, ctx.userId, transitionNotes, ctx.actorLabel ?? null)
     }
 
     const r = await session.executeRead((tx) => tx.run(
@@ -378,16 +494,55 @@ export async function assignIncidentToTeam(
     ))
     if (!r.records[0]) throw new NotFoundError('Incident', id)
     const assigned = mapIncident(r.records[0].get('props') as Props)
+    // B-7: il CI era «—» su «assegnato al team» e corretto su «assegnato a
+    // persona». Ora il payload è lo stesso, letto dal grafo; l'assegnatario è
+    // il gruppo, che è quello che è appena stato scelto.
+    const assignedPayload = await loadIncidentPayload(session, id, ctx.tenantId)
     await publishEvent('incident.assigned', ctx.tenantId, ctx.userId, {
-      id:         assigned.id,
-      title:      assigned.title,
-      severity:   assigned.severity,
-      status:     assigned.status,
-      ciName:     '—',
+      ...requirePayload(assignedPayload, id),
       assignedTo: teamName,
     } satisfies IncidentEventPayload, now)
+    // SL-10: la policy SLA può dipendere dal gruppo appena assegnato.
+    await publishEvent(TICKET_TEAM_ASSIGNED_EVENT, ctx.tenantId, ctx.userId, { entity_type: 'incident', entity_id: id, team_id: teamId } satisfies TicketTeamAssignedPayload, now)
     return assigned
   }, true)
+  if (advanceRefused) throw assignedButNotAdvanced(id, advanceRefused)
+  return { incident: assigned, ...nomi }
+}
+
+/**
+ * Dove va l'incident quando lo si assegna dal passo iniziale — revisione del
+ * 14 set 2026 · IT-3.
+ *
+ * Prima: la PRIMA transizione restituita dal motore, cioè l'ordine in cui il
+ * grafo restituiva gli archi. Con due archi in uscita dal passo iniziale (il
+ * workflow «Security» di c-test ne ha due) la destinazione cambiava fra un
+ * caricamento e l'altro. Adesso la regola è dichiarata e la decide il cliente
+ * nel disegnatore: fra le transizioni manuali disponibili, verso passi aperti e
+ * non terminali, quella verso il passo con l'ordine (`step_order`) più basso; a
+ * pari ordine, il nome.
+ */
+async function assignmentAdvanceTarget(session: Session, tenantId: string, instanceId: string): Promise<{ toStep: string } | null> {
+  const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
+  if (transitions.length === 0) return null
+  const steps = new Map((await getWorkflowSteps(session, tenantId, 'incident')).map((s) => [s.name, s]))
+  const candidates = transitions
+    .map((t) => ({ t, step: steps.get(t.toStep) }))
+    .filter((c) => c.step && c.step.isOpen && !c.step.isTerminal)
+    .sort((a, b) => ((a.step!.stepOrder ?? Number.MAX_SAFE_INTEGER) - (b.step!.stepOrder ?? Number.MAX_SAFE_INTEGER)) || a.t.toStep.localeCompare(b.t.toStep))
+  return candidates[0]?.t ?? null
+}
+
+/** L'assegnazione è avvenuta, l'avanzamento automatico no: l'errore lo dice. */
+function assignedButNotAdvanced(
+  id: string,
+  refused: { result: Awaited<ReturnType<typeof workflowEngine.transition>>; toStep: string },
+) {
+  const reason = transitionFailed(refused.result, 'the workflow refused the transition')
+  return new ValidationError(
+    `Incident ${id}: the assignment was saved, but the incident did not move to "${refused.toStep}": ${reason.message}`,
+    { key: 'errors.incident.assignedButNotAdvanced', params: { step: refused.toStep, reason: reason.message } },
+  )
 }
 
 export async function assignIncidentToUser(
@@ -396,10 +551,15 @@ export async function assignIncidentToUser(
   ctx: ServiceCtx,
 ) {
   const now = new Date().toISOString()
+  let advanceRefused: { result: Awaited<ReturnType<typeof workflowEngine.transition>>; toStep: string } | null = null
+  // I nomi escono dal servizio perché il registro li vuole: vedi
+  // `assignIncidentToTeam`.
+  let nomi: { userName: string | null; previousUserName: string | null } = { userName: null, previousUserName: null }
 
-  return withSession(async (session) => {
+  const assigned = await withSession(async (session) => {
     if (!userId) {
-      await setTicketUser(session, 'Incident', id, null, ctx.tenantId)
+      const { previousUserName } = await setTicketUser(session, 'Incident', id, null, ctx.tenantId)
+      nomi = { userName: null, previousUserName }
       const r = await session.executeRead((tx) => tx.run(
         `MATCH (i:Incident {id: $id, tenant_id: $tenantId}) RETURN properties(i) AS props`,
         { id, tenantId: ctx.tenantId },
@@ -411,8 +571,9 @@ export async function assignIncidentToUser(
     // Regola ITSM condivisa con il problem (services/ticketAssignment.ts):
     // prima il gruppo, poi un utente di quel gruppo.
     await assertUserInAssignedTeam(session, 'Incident', id, userId, ctx.tenantId)
-    const { userName: assignedName } = await setTicketUser(session, 'Incident', id, userId, ctx.tenantId)
+    const { userName: assignedName, previousUserName } = await setTicketUser(session, 'Incident', id, userId, ctx.tenantId)
     const userName = assignedName ?? userId
+    nomi = { userName: assignedName, previousUserName }
 
     const wiResult = await session.executeRead((tx) => tx.run(`
       MATCH (i:Incident {id: $id, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
@@ -428,16 +589,16 @@ export async function assignIncidentToUser(
       // una persona a un incident già avviato non deve far scattare una
       // transizione arbitraria (transitions[0] potrebbe essere "resolved").
       // Da qualunque altro step si registra soltanto l'assegnazione (sotto).
-      const transitions = currentStep === initialStep
-        ? await workflowEngine.getAvailableTransitions(session, instanceId)
-        : []
-      const next = transitions[0]
+      const reassignedNote = await systemText(ctx.tenantId, 'incident.reassignedUser', { user: userName })
+      const assignedNote = await systemText(ctx.tenantId, 'incident.assignedUser', { user: userName })
+      const next = currentStep === initialStep ? await assignmentAdvanceTarget(session, ctx.tenantId, instanceId) : null
       if (currentStep === initialStep && next) {
-        await workflowEngine.transition(
+        const result = await workflowEngine.transition(
           session,
-          { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: `Assegnato a ${userName}` },
+          { instanceId, toStepName: next.toStep, triggeredBy: ctx.userId, triggerType: 'automatic', notes: assignedNote, tenantId: ctx.tenantId },
           { userId: ctx.userId, entityData: {} },
         )
+        if (!result.success) advanceRefused = { result, toStep: next.toStep }
       } else {
         await session.executeWrite((tx) => tx.run(`
           MATCH (i:Incident {id: $incidentId, tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance)
@@ -453,9 +614,9 @@ export async function assignIncidentToUser(
             trigger_type: 'manual',
             notes:        $notes
           })
-        `, { incidentId: id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: `Riassegnato a ${userName}` }))
+        `, { incidentId: id, tenantId: ctx.tenantId, now, userId: ctx.userId, notes: reassignedNote }))
       }
-      await createTransitionComment(session, id, ctx.tenantId, ctx.userId, `Assegnato a ${userName}`)
+      await createTransitionComment(session, id, ctx.tenantId, ctx.userId, assignedNote, ctx.actorLabel ?? null)
     }
 
     const r = await session.executeRead((tx) => tx.run(
@@ -471,6 +632,8 @@ export async function assignIncidentToUser(
     )
     return assigned
   }, true)
+  if (advanceRefused) throw assignedButNotAdvanced(id, advanceRefused)
+  return { incident: assigned, ...nomi }
 }
 
 export async function inProgressIncident(
@@ -503,21 +666,24 @@ export async function inProgressIncident(
  * Il dispatcher non consegna due volte: sull'evento stabile salta se esiste
  * già una regola per l'alias di quel passo (vedi packages/notifications).
  */
+/**
+ * Gli eventi di dominio della transizione di un incident si pubblicano
+ * dall'hook `onStepEntered` del motore, che vede TUTTI i cammini —
+ * manuali e automatici (revisione totale · C-1, `lib/stepEnteredPublisher.ts`).
+ * Questa funzione resta come punto di ingresso per chi deve pubblicarli
+ * SENZA passare dal motore (nessun chiamante oggi): pubblicare qui dopo una
+ * transizione del motore darebbe eventi doppi.
+ */
 export async function publishIncidentTransition(
   id: string,
   stepName: string,
   ctx: ServiceCtx,
 ) {
   const now = new Date().toISOString()
-  const { payload, facts } = await withSession(async (s) => ({
-    payload: await loadIncidentPayload(s, id, ctx.tenantId),
-    // Fail-loud: un passo che non esiste nel workflow attivo ferma l'evento
-    // (il job resta nella coda dei falliti) invece di inventare i suoi fatti.
-    facts:   await loadStepFacts(s, ctx.tenantId, 'incident', stepName),
-  }))
-  const body = { ...requirePayload(payload, id), ...facts }
-  await publishEvent(stepEnteredEventType('incident'), ctx.tenantId, ctx.userId, body, now)
-  await publishEvent(legacyStepEventType('incident', stepName), ctx.tenantId, ctx.userId, body, now)
+  await publishStepEnteredForEntity({
+    tenantId: ctx.tenantId, actorId: ctx.userId,
+    entityType: 'incident', entityId: id, stepName, enteredAt: now,
+  })
 }
 
 export async function closeIncident(
@@ -547,13 +713,16 @@ export async function escalateIncident(
     // categoria `escalated` e la scelta era quella che il database dava per
     // prima). `targetStepByCategory` ordina per `step_order` e dice cosa manca.
     const target = await targetStepByCategory(session, ctx.tenantId, 'incident', ['escalated'],
-      `Escalation dell'incident ${id}`)
-    await workflowEngine.transition(
+      `escalation of incident ${id}`)
+    const result = await workflowEngine.transition(
       session,
       { instanceId: instanceRow.instanceId, toStepName: target,
-        triggeredBy: ctx.userId, triggerType: 'manual' },
+        triggeredBy: ctx.userId, triggerType: 'manual', tenantId: ctx.tenantId },
       { userId: ctx.userId, entityData: {} },
     )
+    // IT-2: senza questo controllo `incident.escalated` partiva anche quando
+    // il motore aveva rifiutato l'escalation.
+    if (!result.success) throw transitionFailed(result, `Incident ${id}: the workflow refused the escalation to "${target}"`)
   }, true)
 
   const payload = await withSession((s) => loadIncidentPayload(s, id, ctx.tenantId))

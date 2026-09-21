@@ -91,13 +91,13 @@ export function titleCase(value: string): string {
  */
 export function parseValueLabels(raw: unknown): { labels: EnumValueLabels; error: string | null } {
   if (raw == null || raw === '') return { labels: {}, error: null }
-  if (typeof raw !== 'string') return { labels: {}, error: `value_labels non e una stringa (${typeof raw})` }
+  if (typeof raw !== 'string') return { labels: {}, error: `value_labels is not a string (${typeof raw})` }
   let parsed: unknown
   try { parsed = JSON.parse(raw) } catch (e) {
-    return { labels: {}, error: `value_labels non e JSON valido: ${e instanceof Error ? e.message : String(e)}` }
+    return { labels: {}, error: `value_labels is not valid JSON: ${e instanceof Error ? e.message : String(e)}` }
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { labels: {}, error: 'value_labels non e un oggetto valore → etichette' }
+    return { labels: {}, error: 'value_labels is not a value → label object' }
   }
   const out: Record<string, Partial<Record<Lingua, string>>> = {}
   for (const [valore, v] of Object.entries(parsed as Record<string, unknown>)) {
@@ -192,12 +192,36 @@ export function serializeValueLabels(labels: EnumValueLabels): string | null {
  * segnala i valori senza etichetta: due copie divergerebbero, e la seconda
  * comincerebbe a lamentarsi di cio che la prima salta di proposito.
  */
-export const VOCABULARIES_WITHOUT_LABELS: Readonly<Record<string, string>> = {
-  status_incident:        'i valori sono i nomi dei passi del workflow: l\'italiano lo scrive l\'admin sul passo (WorkflowStep.label)',
-  status_change:          'i valori sono i nomi dei passi del workflow: l\'italiano lo scrive l\'admin sul passo (WorkflowStep.label)',
-  status_problem:         'i valori sono i nomi dei passi del workflow: l\'italiano lo scrive l\'admin sul passo (WorkflowStep.label)',
-  status_service_request: 'i valori sono i nomi dei passi del workflow: l\'italiano lo scrive l\'admin sul passo (WorkflowStep.label)',
-  import_severity:        'i 28 valori sono chiavi di riconoscimento dei dati in arrivo dagli altri sistemi (p1, sev1, crit, blocker…), non voci di menu',
+export interface SenzaEtichette {
+  /** Il perche, per chi legge il codice: migrazione e diagnostica lo citano nei log. */
+  why: string
+  /**
+   * La chiave con cui lo dice l'INTERFACCIA (17 set 2026).
+   *
+   * Mancava, e il buco si vedeva: il Dizionario mostrava «not written» accanto
+   * a tutti e tredici i valori di `status_change`, in entrambe le lingue, e
+   * nessuno poteva sapere che è di proposito — anzi, la lettura naturale è
+   * «qui manca qualcosa, e forse per questo il prodotto è mezzo in inglese».
+   * Un motivo che sta solo nei commenti del server non è un motivo: è un
+   * segreto.
+   */
+  i18nKey: string
+}
+
+export const VOCABULARIES_WITHOUT_LABELS: Readonly<Record<string, SenzaEtichette>> = {
+  status_incident:        { why: 'i valori sono i nomi dei passi del workflow: l\'italiano lo scrive l\'admin sul passo (WorkflowStep.label)', i18nKey: 'pages.dictionary.noValueLabels.workflowStep' },
+  status_change:          { why: 'i valori sono i nomi dei passi del workflow: l\'italiano lo scrive l\'admin sul passo (WorkflowStep.label)', i18nKey: 'pages.dictionary.noValueLabels.workflowStep' },
+  status_problem:         { why: 'i valori sono i nomi dei passi del workflow: l\'italiano lo scrive l\'admin sul passo (WorkflowStep.label)', i18nKey: 'pages.dictionary.noValueLabels.workflowStep' },
+  status_service_request: { why: 'i valori sono i nomi dei passi del workflow: l\'italiano lo scrive l\'admin sul passo (WorkflowStep.label)', i18nKey: 'pages.dictionary.noValueLabels.workflowStep' },
+  import_severity:        { why: 'i 28 valori sono chiavi di riconoscimento dei dati in arrivo dagli altri sistemi (p1, sev1, crit, blocker…), non voci di menu', i18nKey: 'pages.dictionary.noValueLabels.importKeys' },
+}
+
+/**
+ * La chiave della frase da mostrare quando un vocabolario non porta etichette,
+ * `null` quando invece le porta (e quindi un'etichetta vuota è vuota davvero).
+ */
+export function valueLabelsReasonKey(name: string): string | null {
+  return VOCABULARIES_WITHOUT_LABELS[name]?.i18nKey ?? null
 }
 
 /** Vero quando il vocabolario, di proposito, non porta etichette per valore. */

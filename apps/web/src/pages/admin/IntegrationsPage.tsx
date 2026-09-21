@@ -7,6 +7,8 @@
  * `/api/webhooks/inbound/:id`); etichette e messaggi in i18n (D·6.4).
  */
 import { useId, useState } from 'react'
+import { formatDateTime } from '@/lib/datetime'
+import { InvalidFilterNotice } from '@/components/InvalidFilterNotice'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@apollo/client/react'
 import { gql } from '@apollo/client'
@@ -26,12 +28,15 @@ import { Pill } from '@/components/ui/Pill'
 import { GET_WORKFLOW_EVENT_TYPES } from '@/graphql/queries'
 import { Toggle } from '@/components/ui/Toggle'
 import { API_KEY_PERMISSIONS, INBOUND_TICKET_FIELDS } from '@opengraphity/types'
+import { SlackSection } from './SlackSection'
 import { Tabs, type TabItem } from '@/components/ui/Tabs'
+import { useSearchParams } from 'react-router-dom'
 import { useMutationWithToast, errorMessage } from '@/hooks/useMutationWithToast'
 import { useListQueryState } from '@/hooks/useListQueryState'
 import { useConfirm } from '@/hooks/useConfirm'
 import { sourceEndpointUrl } from '@/pages/monitoring/configSnippets'
 import { palette } from '@/lib/tokens'
+import { showError } from '@/lib/showError'
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────
 // Every operation is named: `operationName` shows up in the errorLink logs and
@@ -63,7 +68,8 @@ const REGEN_API_KEY = gql`mutation RegenerateApiKey($id: ID!) { regenerateApiKey
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-type TabKey = 'inbound' | 'outbound' | 'apikeys'
+type TabKey = 'inbound' | 'outbound' | 'apikeys' | 'slack'
+const TAB_KEYS: readonly TabKey[] = ['inbound', 'outbound', 'apikeys', 'slack']
 type ModalKey = 'inbound' | 'outbound' | 'apikey' | 'secret'
 // `event` NON è tra le opzioni: le sorgenti di monitoraggio si creano dalla
 // procedura guidata di Monitoraggio → Sorgenti (senza JSON); qui restano
@@ -102,7 +108,12 @@ const hintS: React.CSSProperties = { fontSize: 'var(--font-size-caption)', color
 const PILL_S: React.CSSProperties = { fontWeight: 400, marginRight: 4 }
 const ROW_ACTIONS: React.CSSProperties = { display: 'flex', gap: 6 }
 
-function fmtDate(d: string | null) { return d ? new Date(d).toLocaleString(i18n.language, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—' }
+/**
+ * G-26: `formatDateTime` come in tutto il resto dell'app. Qui c'era un formato
+ * proprio, con l'anno a due cifre: le date di Integrazioni si leggevano
+ * «25/09/26» mentre ogni altra pagina scriveva «25 set 2026».
+ */
+const fmtDate = formatDateTime
 function copyText(text: string) { void navigator.clipboard.writeText(text); toast.success(i18n.t('toast.integration.copied')) }
 
 /** Chiave i18n del titolo di ogni modale. */
@@ -122,10 +133,31 @@ function ModalPortal({ modalType, children, onClose }: { modalType: ModalKey; ch
 
 // ── Component ───────────────────────────────────────────────────────────────
 
+/** Le entità che un webhook in ingresso può creare. */
+const ENTITA_WEBHOOK = ['incident', 'change', 'problem', 'event'] as const
+
 export function IntegrationsPage() {
   const { t } = useTranslation()
   const confirm = useConfirm()
-  const [tab, setTab] = useState<TabKey>('inbound')
+  /*
+   * Il nome dell'entità (20 set 2026, dal giro nel browser): la colonna
+   * mostrava il nome interno — «event» — mentre il filtro sopra, sulla stessa
+   * pagina, diceva «Evento di monitoraggio». Una sola funzione per tutti e
+   * due, e l'elenco delle entità in un posto solo.
+   */
+  const etichettaEntita = (v: string) => {
+    const chiavi: Record<string, string> = {
+      incident: 'admin.integrations.entityIncident', change: 'admin.integrations.entityChange',
+      problem:  'admin.integrations.entityProblem',  event:  'admin.integrations.entityEvent',
+    }
+    const chiave = chiavi[v]
+    return chiave ? t(chiave) : v
+  }
+  // La scheda è nell'indirizzo (?tab=slack): il ritorno da Slack deve riaprire quella.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const tab: TabKey = (TAB_KEYS as readonly string[]).includes(tabParam ?? '') ? tabParam as TabKey : 'inbound'
+  const setTab = (next: TabKey) => { const p = new URLSearchParams(searchParams); p.set('tab', next); setSearchParams(p, { replace: true }) }
   const [modal, setModal] = useState<ModalKey | null>(null)
   const [secret, setSecret] = useState('')
   // Each tab owns its own sort/filter: an `entityType` filter set on "Webhook In"
@@ -140,14 +172,12 @@ export function IntegrationsPage() {
     { key: 'inbound',  label: t('admin.integrations.webhookIn') },
     { key: 'outbound', label: t('admin.integrations.webhookOut') },
     { key: 'apikeys',  label: t('admin.integrations.apiKeys') },
+    { key: 'slack',    label: t('admin.integrations.slack.tab') },
   ]
 
   const yesNo = [{ value: 'true', label: t('common.yes') }, { value: 'false', label: t('common.no') }]
   const INBOUND_FILTERS: FieldConfig[] = [
-    { key: 'entityType', label: t('admin.integrations.filters.entityType'), type: 'enum', options: [
-      { value: 'incident', label: t('admin.integrations.entityIncident') }, { value: 'change', label: t('admin.integrations.entityChange') }, { value: 'problem', label: t('admin.integrations.entityProblem') },
-      { value: 'event', label: t('admin.integrations.entityEvent') },
-    ]},
+    { key: 'entityType', label: t('admin.integrations.filters.entityType'), type: 'enum', options: ENTITA_WEBHOOK.map((v) => ({ value: v, label: etichettaEntita(v) })) },
     { key: 'enabled', label: t('admin.integrations.filters.enabled'), type: 'enum', options: yesNo },
     { key: 'name', label: t('admin.integrations.filters.name'), type: 'text' },
   ]
@@ -223,24 +253,25 @@ export function IntegrationsPage() {
       const token = (res.data as { createInboundWebhook?: { token: string } } | undefined)?.createInboundWebhook?.token
       if (!token) throw new Error(t('admin.integrations.errors.tokenMissing'))
       setSecret(token); setModal('secret')
-    } catch (e) { toast.error(t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
   }
 
   async function handleCreateOutbound() {
     try {
       await createOut({ variables: { input: { ...outForm } } })
       setModal(null); resetOutForm(); toast.success(t('toast.integration.outboundCreated'))
-    } catch (e) { toast.error(t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.webhookCreateFailed', { error: errorMessage(e) })) }
   }
 
   async function handleCreateApiKey() {
     try {
-      const res = await createKey({ variables: { input: { ...keyForm, rateLimit: Number(keyForm.rateLimit) } } })
+      // «Scade il» vuoto = nessuna scadenza: si manda null, mai la stringa vuota (G-1).
+      const res = await createKey({ variables: { input: { ...keyForm, rateLimit: Number(keyForm.rateLimit), expiresAt: keyForm.expiresAt || null } } })
       setModal(null); resetKeyForm()
       const key = (res.data as { createApiKey?: { key: string } } | undefined)?.createApiKey?.key
       if (!key) throw new Error(t('admin.integrations.errors.keyMissing'))
       setSecret(key); setModal('secret')
-    } catch (e) { toast.error(t('toast.integration.apiKeyCreateFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.apiKeyCreateFailed', { error: errorMessage(e) })) }
   }
 
   // Toggles: errors are toasted by useMutationWithToast with the server message.
@@ -271,7 +302,7 @@ export function IntegrationsPage() {
       if (!r) throw new Error(t('admin.integrations.errors.emptyResponse'))
       if (r.success) toast.success(t('toast.integration.testOk', { status: r.statusCode }))
       else toast.error(t('toast.integration.testFailed', { error: r.error }))
-    } catch (e) { toast.error(t('toast.integration.testError', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.testError', { error: errorMessage(e) })) }
   }
 
   async function handleRegenToken(id: string) {
@@ -280,7 +311,7 @@ export function IntegrationsPage() {
       const token = (res.data as { regenerateWebhookToken?: { token: string } } | undefined)?.regenerateWebhookToken?.token
       if (!token) throw new Error(t('monitoring.errors.tokenMissing', { operation: 'regenerateWebhookToken' }))
       setSecret(token); setModal('secret')
-    } catch (e) { toast.error(t('toast.integration.tokenRegenFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.tokenRegenFailed', { error: errorMessage(e) })) }
   }
 
   async function handleRegenApiKey(id: string) {
@@ -289,7 +320,7 @@ export function IntegrationsPage() {
       const key = (res.data as { regenerateApiKey?: { key: string } } | undefined)?.regenerateApiKey?.key
       if (!key) throw new Error(t('admin.integrations.errors.keyMissing'))
       setSecret(key); setModal('secret')
-    } catch (e) { toast.error(t('toast.integration.keyRegenFailed', { error: errorMessage(e) })) }
+    } catch (e) { showError(e, t('toast.integration.keyRegenFailed', { error: errorMessage(e) })) }
   }
 
   // ── Render helpers ──────────────────────────────────────────────────────────
@@ -302,7 +333,8 @@ export function IntegrationsPage() {
 
   const inboundColumns: ColumnDef<InboundWebhook>[] = [
     { key: 'name', label: t('admin.integrations.columns.name'), sortable: true },
-    { key: 'entityType', label: t('admin.integrations.columns.entityType'), sortable: true, render: (v) => <Pill bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{String(v)}</Pill> },
+    // Il nome dell'entità come nel filtro qui sopra, non `event` (20 set 2026).
+    { key: 'entityType', label: t('admin.integrations.columns.entityType'), sortable: true, render: (v) => <Pill bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{etichettaEntita(String(v))}</Pill> },
     { key: 'connectorKind', label: t('admin.integrations.connectorKind'), sortable: true, render: (v) => v ? <Pill bg={palette.purple.bg} color={palette.purple.dark} radius={12} style={PILL_S}>{String(v)}</Pill> : '—' },
     // Endpoint reale (rotta /api/webhooks/inbound/:id). Per le sorgenti evento
     // l'URL si copia da Monitoraggio → Sorgenti, insieme al token: qui solo il link.
@@ -314,7 +346,7 @@ export function IntegrationsPage() {
         </Link>
       ) : (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{url}</span>
+          <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>{url}</span>
           <Button variant="ghost" size="xs" aria-label={t('admin.integrations.copyEndpoint')} title={t('admin.integrations.copyEndpoint')} onClick={() => copyText(url)} style={{ padding: 2, color: 'var(--color-slate)' }}>
             <Copy size={12} aria-hidden="true" />
           </Button>
@@ -334,7 +366,7 @@ export function IntegrationsPage() {
 
   const outboundColumns: ColumnDef<OutboundWebhook>[] = [
     { key: 'name', label: t('admin.integrations.columns.name'), sortable: true },
-    { key: 'url', label: t('admin.integrations.columns.url'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
+    { key: 'url', label: t('admin.integrations.columns.url'), sortable: true, render: (v) => <span style={{ fontSize: 'var(--font-size-body)', fontFamily: 'var(--font-mono)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>{String(v)}</span> },
     { key: 'events', label: t('admin.integrations.columns.events'), sortable: true, render: (v) => {
       const events: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
       return <>{events.map(e => <Pill key={e} bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{e}</Pill>)}</>
@@ -357,7 +389,7 @@ export function IntegrationsPage() {
 
   const apiKeyColumns: ColumnDef<ApiKeyRow>[] = [
     { key: 'name', label: t('admin.integrations.columns.name'), sortable: true },
-    { key: 'keyPrefix', label: t('admin.integrations.columns.keyPrefix'), sortable: true, render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
+    { key: 'keyPrefix', label: t('admin.integrations.columns.keyPrefix'), sortable: true, render: (v) => <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-body)' }}>{String(v)}...</span> },
     { key: 'permissions', label: t('admin.integrations.columns.permissions'), sortable: true, render: (v) => {
       const perms: string[] = typeof v === 'string' ? JSON.parse(v) : (v as string[] ?? [])
       return <>{perms.map(p => <Pill key={p} bg={palette.info.bg} color="var(--color-brand)" radius={12} style={PILL_S}>{p}</Pill>)}</>
@@ -380,6 +412,8 @@ export function IntegrationsPage() {
 
   return (
     <PageContainer>
+      {/* F-17: un filtro dell'URL illeggibile si dice, non si ignora. */}
+      <InvalidFilterNotice show={inList.filtersInvalid || outList.filtersInvalid || keyList.filtersInvalid} />
       <div style={{ marginBottom: 24 }}>
         <PageTitle icon={<Plug size={22} color="var(--color-icon-accent)" />}>{t('admin.integrations.title')}</PageTitle>
         <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', marginTop: 4, marginBottom: 0 }}>
@@ -388,6 +422,9 @@ export function IntegrationsPage() {
       </div>
 
       <Tabs items={TABS} value={tab} onChange={setTab} ariaLabel={t('admin.integrations.tabsLabel')} />
+
+      {/* ── TAB: Slack (ondata 8) ───────────────────────────────────────────── */}
+      {tab === 'slack' && <SlackSection />}
 
       {/* ── TAB: Webhook In ─────────────────────────────────────────────────── */}
       {tab === 'inbound' && <>
@@ -513,10 +550,10 @@ export function IntegrationsPage() {
                 </div>
               </div>
               <div><label htmlFor={fid('key-rate-limit')} style={labelS}>{t('admin.integrations.form.rateLimit')}</label><Input id={fid('key-rate-limit')} style={inputS} type="number" value={keyForm.rateLimit} onChange={e => setKeyForm({ ...keyForm, rateLimit: Number(e.target.value) })} /></div>
-              <div><label htmlFor={fid('key-expires-at')} style={labelS}>{t('admin.integrations.form.expiresAt')}</label><Input id={fid('key-expires-at')} style={inputS} type="date" value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /></div>
+              <div><label htmlFor={fid('key-expires-at')} style={labelS}>{t('admin.integrations.form.expiresAt')}</label><Input id={fid('key-expires-at')} style={inputS} type="date" aria-describedby={fid('key-expires-at-hint')} value={keyForm.expiresAt} onChange={e => setKeyForm({ ...keyForm, expiresAt: e.target.value })} /><div id={fid('key-expires-at-hint')} style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', marginTop: 4 }}>{t('admin.integrations.form.expiresAtHint')}</div></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
                 <Button variant="secondary" onClick={() => setModal(null)}>{t('common.cancel')}</Button>
-                <Button onClick={() => void handleCreateApiKey()} disabled={!keyForm.name || !keyForm.permissions.length}>{t('common.create')}</Button>
+                <Button onClick={() => void handleCreateApiKey()} disabled={!keyForm.name.trim() || !keyForm.permissions.length || !Number.isInteger(keyForm.rateLimit) || keyForm.rateLimit < 1}>{t('common.create')}</Button>
               </div>
             </div>
           </ModalPortal>

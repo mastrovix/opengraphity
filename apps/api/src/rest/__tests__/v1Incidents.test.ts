@@ -10,9 +10,13 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import express from 'express'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { perms } from '../../lib/__tests__/testPermissions.js'
 
+vi.mock('../../lib/ticketCustomFields.js', async (importOriginal) => ({ ...(await importOriginal<object>()), customFieldDefs: vi.fn(async () => []) }))
+const setTicketCustomFields = vi.fn(async () => [])
+vi.mock('../../graphql/resolvers/ticketCustomFields.js', () => ({ ticketCustomFieldResolvers: { Mutation: { setTicketCustomFields: (...a: unknown[]) => setTicketCustomFields(...a) } } }))
 vi.mock('../../lib/logger.js', () => ({
-  logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn(), child: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() }) },
 }))
 vi.mock('../../middleware/apiKeyAuth.js', () => ({
   requirePermission: () => (req: express.Request, _res: express.Response, next: express.NextFunction) => {
@@ -85,8 +89,19 @@ describe('PATCH /api/v1/incidents/:id', () => {
     expect(incidentResolvers.Mutation.updateIncident).toHaveBeenCalledWith(
       null,
       { id: 'inc-1', input: { title: 'nuovo', severity: 'high' } },
-      expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator' }),
+      expect.objectContaining({ tenantId: 'tenant-1', userId: 'key-1', role: 'operator', permissions: perms('operator') }),
     )
+  })
+
+  // Ondata 4: i campi del cliente passano dalla stessa mutation del dettaglio.
+  it('customFields → setTicketCustomFields con l\'oggetto trasformato in elenco; un valore non scalare → 400', async () => {
+    vi.mocked(runQueryOne).mockResolvedValueOnce({ props: { id: 'inc-1', title: 't', status: 'new', severity: 'low', created_at: 'x', updated_at: 'x', esito: 'ok' } })
+    const res = await patch('inc-1', { customFields: { esito: 'ok', centro: null } })
+    expect(res.status).toBe(200)
+    expect(setTicketCustomFields).toHaveBeenCalledWith(null, { entityType: 'incident', id: 'inc-1', values: [{ name: 'esito', value: 'ok' }, { name: 'centro', value: null }] }, expect.objectContaining({ tenantId: 'tenant-1' }))
+    expect(incidentResolvers.Mutation.updateIncident).not.toHaveBeenCalled()
+    const bad = await patch('inc-1', { customFields: { esito: { nested: true } } })
+    expect(bad.status).toBe(400)
   })
 
   it('NotFoundError from the resolver → 404', async () => {

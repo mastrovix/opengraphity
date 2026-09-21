@@ -1,4 +1,4 @@
-import { forwardRef } from 'react'
+import { createContext, forwardRef, useContext, useId } from 'react'
 import type { CSSProperties, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
 import { colors, palette } from '@/lib/tokens'
 
@@ -22,18 +22,55 @@ export const controlStyle: CSSProperties = {
  * `autoFocus` per la regola eslint `jsx-a11y/no-autofocus` invece di gestire
  * il fuoco. Chi usa la tastiera attivava «Rinomina» e non raggiungeva il campo.
  */
+/**
+ * L'id del campo che contiene il controllo (secondo giro UI del 15 set 2026,
+ * accessibilità). I pannelli dei disegnatori mettevano l'etichetta in un
+ * `<span>` sopra il controllo: a schermo si leggeva «Label», per un lettore di
+ * schermo il campo non aveva nome. `LabelledField` crea l'id, lo lega alla sua
+ * `<label>` e lo passa qui: un `Input`/`Select`/`Textarea` senza `id` né
+ * `aria-label` lo prende. Chi passa il proprio id o nome resta com'è.
+ */
+const FieldIdContext = createContext<string | null>(null)
+
+type Naming = { id?: string; 'aria-label'?: string; 'aria-labelledby'?: string }
+function useFieldId(props: Naming): string | undefined {
+  const fromField = useContext(FieldIdContext)
+  if (props.id || props['aria-label'] || props['aria-labelledby']) return props.id
+  return fromField ?? undefined
+}
+
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function Input({ style, ...rest }, ref) {
-    return <input ref={ref} {...rest} style={{ ...controlStyle, ...style }} />
+    const id = useFieldId(rest)
+    return <input ref={ref} {...rest} id={id} style={{ ...controlStyle, ...style }} />
   },
 )
 
 export function Select({ style, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...rest} style={{ ...controlStyle, ...style }}>{children}</select>
+  const id = useFieldId(rest)
+  return <select {...rest} id={id} style={{ ...controlStyle, ...style }}>{children}</select>
 }
 
 export function Textarea({ style, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...rest} style={{ ...controlStyle, resize: 'vertical', lineHeight: 1.6, ...style }} />
+  const id = useFieldId(rest)
+  return <textarea {...rest} id={id} style={{ ...controlStyle, resize: 'vertical', lineHeight: 1.6, ...style }} />
+}
+
+/**
+ * Un'etichetta legata al controllo che contiene. `labelStyle` e l'aspetto
+ * dell'etichetta; il controllo va scritto con `Input`/`Select`/`Textarea`.
+ */
+export function LabelledField({ label, labelStyle, style, children, after }: {
+  label: React.ReactNode; labelStyle?: CSSProperties; style?: CSSProperties; children: React.ReactNode; after?: React.ReactNode
+}) {
+  const id = useId()
+  return (
+    <div style={style}>
+      <label htmlFor={id} style={{ display: 'block', ...labelStyle }}>{label}</label>
+      <FieldIdContext.Provider value={id}>{children}</FieldIdContext.Provider>
+      {after}
+    </div>
+  )
 }
 
 const fieldLabelStyle: CSSProperties = {

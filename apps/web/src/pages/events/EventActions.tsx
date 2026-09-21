@@ -20,6 +20,7 @@
  * dentro una riga cliccabile non navigano al dettaglio.
  */
 import { useState, useId, type MouseEvent, type ReactNode } from 'react'
+import { CI_ALIAS_KINDS, type CIAliasKind } from '@/types/events'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation } from '@apollo/client/react'
@@ -33,9 +34,11 @@ import { useDebounced } from '@/hooks/useDebounced'
 import { errorMessage } from '@/hooks/useMutationWithToast'
 import { GET_ALL_CIS } from '@/graphql/queries'
 import { ACKNOWLEDGE_EVENT, RESOLVE_EVENT, LINK_EVENT_TO_CI, CREATE_INCIDENT_FROM_EVENT, REEVALUATE_EVENT } from '@/graphql/mutations'
-import { isActiveEvent, resourceKindLabel } from './eventShared'
+import { canAcknowledgeEvent, canResolveEvent, canOpenIncidentFromEvent, resourceKindLabel } from './eventShared'
 import { canReevaluate, isSuppressed } from './eventCorrelation'
 import type { EventRow, MonitoringEvent } from '@/types/events'
+import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
 
 interface CISearchRow { id: string; name: string; type: string; status: string; environment: string }
 
@@ -71,11 +74,13 @@ export function EventActions({ event, onChanged, size = 'xs', only, exclude, com
 
   const shown = (kind: EventActionKind) => (!only || only.includes(kind)) && !exclude?.includes(kind)
 
-  const active = isActiveEvent(event)
-  const canAck        = shown('acknowledge')  && active && !event.acknowledgedAt
-  const canResolve    = shown('resolve')      && active
+  // Le condizioni ricalcano quelle dei resolver (eventShared): un'azione
+  // mostrata e poi rifiutata dall'API, o nascosta benché accettata, era il
+  // difetto G-EVT-1/G-EVT-10 della revisione totale.
+  const canAck        = shown('acknowledge')  && canAcknowledgeEvent(event) && !event.acknowledgedAt
+  const canResolve    = shown('resolve')      && canResolveEvent(event)
   // Un evento silenziato da una change non apre incident nemmeno a mano: prima si rivaluta.
-  const canOpen       = shown('openIncident') && !event.incident && !isSuppressed(event)
+  const canOpen       = shown('openIncident') && canOpenIncidentFromEvent(event) && !event.incident && !isSuppressed(event)
   const canLink       = shown('linkCI')       && !event.ci
   const canReeval     = shown('reevaluate')   && canReevaluate(event)
 
@@ -88,7 +93,7 @@ export function EventActions({ event, onChanged, size = 'xs', only, exclude, com
       await acknowledge({ variables: { id: event.id } })
       toast.success(t('toast.events.acknowledged'))
       onChanged?.()
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
 
   async function handleReevaluate(e: MouseEvent<HTMLButtonElement>) {
@@ -99,7 +104,7 @@ export function EventActions({ event, onChanged, size = 'xs', only, exclude, com
       if (!outcome) throw new Error(t('events.actions.emptyResponse'))
       toast.success(t('toast.events.reevaluated', { outcome: t(`events.correlation.short.${outcome}`) }))
       onChanged?.()
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
 
   async function handleOpenIncident(e: MouseEvent<HTMLButtonElement>) {
@@ -113,7 +118,7 @@ export function EventActions({ event, onChanged, size = 'xs', only, exclude, com
       toast.success(t('toast.events.incidentCreated', { number: inc.number }))
       onChanged?.()
       navigate(`/incidents/${inc.id}`)
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
 
   if (!canAck && !canResolve && !canOpen && !canLink && !canReeval) return null
@@ -155,7 +160,7 @@ function ResolveDialog({ event, onClose, onDone }: { event: EventRow; onClose: (
       await resolve({ variables: { id: event.id, note: note.trim() || null } })
       toast.success(t('toast.events.resolved'))
       onDone()
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
 
   return (
@@ -183,11 +188,21 @@ function ResolveDialog({ event, onClose, onDone }: { event: EventRow; onClose: (
 
 function LinkCIDialog({ event, onClose, onDone }: { event: EventRow; onClose: () => void; onDone: () => void }) {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const searchId = useId()
   const aliasId  = useId()
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<CISearchRow | null>(null)
-  const [createAlias, setCreateAlias] = useState(true)
+  /**
+   * «Ricorda alias» solo per i generi che UN ALIAS PUÒ AVERE (revisione
+   * totale · G-EVT-2): la casella era spuntata per qualunque
+   * `resourceKind`, ma l'API crea l'alias solo per hostname, ip, fqdn ed
+   * external_id — con `name` non creava nulla, senza errore, e il toast
+   * diceva «collegato». Ora, quando l'alias non è possibile, la casella non
+   * c'è e una riga dice perché.
+   */
+  const aliasable = CI_ALIAS_KINDS.includes(event.resourceKind as CIAliasKind)
+  const [createAlias, setCreateAlias] = useState(aliasable)
   const [link, { loading }] = useMutation(LINK_EVENT_TO_CI)
 
   // Una richiesta per pausa di scrittura, non per tasto; finché il debounce
@@ -207,10 +222,10 @@ function LinkCIDialog({ event, onClose, onDone }: { event: EventRow; onClose: ()
   async function submit() {
     if (!selected) return
     try {
-      await link({ variables: { eventId: event.id, ciId: selected.id, createAlias } })
+      await link({ variables: { eventId: event.id, ciId: selected.id, createAlias: aliasable && createAlias } })
       toast.success(t('toast.events.linked', { ci: selected.name }))
       onDone()
-    } catch (err) { toast.error(t('toast.events.actionFailed', { error: errorMessage(err) })) }
+    } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }
   }
 
   return (
@@ -264,17 +279,23 @@ function LinkCIDialog({ event, onClose, onDone }: { event: EventRow; onClose: ()
                   }}
                 >
                   <span style={{ fontWeight: 500 }}>{ci.name}</span>
-                  <span style={{ color: 'var(--color-slate-light)' }}>{ci.type} · {ci.environment}</span>
+                  <span style={{ color: 'var(--color-slate-light)' }}>{ciLabels.subtitle(ci)}</span>
                 </button>
               </li>
             )
           })}
         </ul>
       )}
-      <label htmlFor={aliasId} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', cursor: 'pointer' }}>
-        <input id={aliasId} type="checkbox" checked={createAlias} onChange={(e) => setCreateAlias(e.target.checked)} disabled={loading} />
-        {t('events.actions.rememberAlias')}
-      </label>
+      {aliasable ? (
+        <label htmlFor={aliasId} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)', cursor: 'pointer' }}>
+          <input id={aliasId} type="checkbox" checked={createAlias} onChange={(e) => setCreateAlias(e.target.checked)} disabled={loading} />
+          {t('events.actions.rememberAlias')}
+        </label>
+      ) : (
+        <p style={{ marginTop: 14, fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)' }}>
+          {t('events.actions.aliasNotPossible', { kind: t(`monitoring.mapper.resourceKinds.${event.resourceKind}`) })}
+        </p>
+      )}
     </Modal>
   )
 }

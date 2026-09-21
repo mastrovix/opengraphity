@@ -1,13 +1,16 @@
 import { useState } from 'react'
+import { valueColorStyle } from '@/lib/valueColor'
 import { useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { PlusCircle } from 'lucide-react'
 import { GET_MY_TICKETS } from '@/graphql/queries'
+import { useTicketCategories } from '@/hooks/useTicketCategories'
 import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { TICKET_POLL_INTERVAL_MS } from '@/lib/apollo'
 import { fmtDate } from '@/lib/format'
 import { colors, palette, alpha } from '@/lib/tokens'
+import { usePortalAccess } from '@/hooks/usePortalAccess'
 
 const PAGE_SIZE = 15
 
@@ -28,28 +31,27 @@ const FILTER_CLASS: Record<FilterKey, string | null> = {
   closed:     'closed',
 }
 
-const PRIORITY_COLORS: Record<string, string> = {
-  high:   colors.danger,
-  medium: colors.warning,
-  low:    colors.success,
-}
-
 interface Ticket {
-  id: string; title: string; status: string; priority: string
+  id: string; number: string
+  /** `incident` o `service_request`: il portale apre entrambi (revisione totale · H-2). */
+  type: string
+  title: string; status: string; priority: string; priorityLabel: string; priorityColor: string | null
   /** Categoria ed etichetta del passo nel workflow del cliente (ondata 7 · D-15). */
   statusCategory: string | null; statusLabel: string | null
-  category: string; createdAt: string; updatedAt: string; assignedTeam: string | null
+  category: string | null; createdAt: string; updatedAt: string; assignedTeam: string | null
 }
 
 export function TicketListPage() {
-  const { t }                     = useTranslation()
+  const { t, i18n }               = useTranslation()
+  const { canSubmit } = usePortalAccess()
+  const { labelOf: categoryLabel } = useTicketCategories()
   const [filter, setFilter]       = useState<FilterKey>('all')
   const [page, setPage]           = useState(1)
 
   // The list polls for status changes made by the IT team; nothing else does.
   const { data, loading, error } = useQuery<{ myTickets: { items: Ticket[]; total: number } }>(
     GET_MY_TICKETS,
-    { variables: { status: FILTER_CLASS[filter], page, pageSize: PAGE_SIZE }, pollInterval: TICKET_POLL_INTERVAL_MS },
+    { variables: { status: FILTER_CLASS[filter], page, pageSize: PAGE_SIZE, language: i18n.resolvedLanguage ?? i18n.language }, pollInterval: TICKET_POLL_INTERVAL_MS },
   )
 
   const tickets   = data?.myTickets?.items ?? []
@@ -73,7 +75,7 @@ export function TicketListPage() {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h1 style={{ fontSize: 20, fontWeight: 600, color: colors.slateDark }}>{t('nav.tickets')}</h1>
-        <Link
+        {canSubmit && <Link
           to="/tickets/new"
           style={{
             display:         'inline-flex',
@@ -90,7 +92,7 @@ export function TicketListPage() {
         >
           <PlusCircle size={15} />
           {t('ticket.new')}
-        </Link>
+        </Link>}
       </div>
 
       {/* Filter tabs */}
@@ -130,12 +132,12 @@ export function TicketListPage() {
       ) : tickets.length === 0 ? (
         <div style={{ padding: '48px 0', textAlign: 'center', color: colors.slateLight }}>
           <p style={{ marginBottom: 16 }}>{t(`ticket.empty.${filter}`)}</p>
-          <Link
+          {canSubmit && <Link
             to="/tickets/new"
-            style={{ color: colors.brand, fontWeight: 500, fontSize: 10 }}
+            style={{ color: colors.brand, fontWeight: 500, fontSize: 12 }}
           >
             + {t('ticket.new')}
-          </Link>
+          </Link>}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -162,17 +164,20 @@ export function TicketListPage() {
                 width:           4,
                 height:          40,
                 borderRadius:    4,
-                backgroundColor: PRIORITY_COLORS[ticket.priority] ?? colors.slateLight,
+                backgroundColor: valueColorStyle(ticket.priorityColor).base,
                 flexShrink:      0,
               }} />
 
               {/* Main info */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 10, fontWeight: 500, color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 4 }}>
                   {ticket.title}
                 </div>
-                <div style={{ display: 'flex', gap: 12, fontSize: 10, color: colors.slateLight, flexWrap: 'wrap' }}>
-                  <span>{t(`ticket.category.${ticket.category}`, { defaultValue: ticket.category })}</span>
+                <div style={{ display: 'flex', gap: 12, fontSize: 12, color: colors.slateLight, flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 600 }}>{ticket.number}</span>
+                  {/* Di che ticket si tratta: incident o richiesta dal catalogo (H-2). */}
+                  <span style={{ padding: '1px 6px', borderRadius: 100, backgroundColor: colors.slateBg }}>{t(`ticket.kind.${ticket.type}`)}</span>
+                  {ticket.category && <span>{categoryLabel(ticket.category)}</span>}
                   <span>{t('ticket.openedOn', { date: fmtDate(ticket.createdAt) })}</span>
                   <span>{t('ticket.updatedOn', { date: fmtDate(ticket.updatedAt) })}</span>
                   {ticket.assignedTeam && <span>→ {ticket.assignedTeam}</span>}
@@ -187,10 +192,10 @@ export function TicketListPage() {
                   padding:         '1px 8px',
                   borderRadius:    100,
                   backgroundColor: colors.slateBg,
-                  color:           PRIORITY_COLORS[ticket.priority] ?? colors.slateLight,
+                  color:           valueColorStyle(ticket.priorityColor).text,
                   fontWeight:      600,
                 }}>
-                  {t(`ticket.priority.${ticket.priority}`, { defaultValue: ticket.priority })}
+                  {ticket.priorityLabel}
                 </span>
               </div>
             </Link>
@@ -216,7 +221,7 @@ export function TicketListPage() {
           >
             {t('ticket.prev')}
           </button>
-          <span style={{ padding: '8px 0', fontSize: 10, color: colors.slateLight }}>
+          <span style={{ padding: '8px 0', fontSize: 12, color: colors.slateLight }}>
             {page} / {totalPages}
           </span>
           <button

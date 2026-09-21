@@ -1,7 +1,8 @@
 import { GraphQLError } from 'graphql'
-import { ForbiddenError } from '../../lib/errors.js'
 import type { GraphQLContext } from '../../context.js'
 import { getLogs, type LogEntry } from '../../lib/logBuffer.js'
+import { righePersistite, fondi, MAX_RIGHE } from '../../lib/persistedLogs.js'
+import { requirePermission } from '../../lib/permissions.js'
 
 type LogsArgs = {
   limit?:         number
@@ -43,11 +44,28 @@ async function logs(
   { limit = 50, offset = 0, filters, sortField, sortDirection }: LogsArgs,
   ctx: GraphQLContext,
 ) {
-  if (ctx.role !== 'admin') {
-    throw new ForbiddenError('Forbidden: logs are only accessible to admins')
-  }
+  requirePermission(ctx, 'admin.audit')
 
-  let entries = getLogs() // already newest-first
+  /*
+   * LE DUE METÀ (20 set 2026).
+   *
+   * Prima qui c'era solo l'anello in memoria, e la pagina mostrava soltanto
+   * i log del SERVER di questo processo dall'ultimo riavvio. Gli errori dei
+   * browser degli utenti — che sono persistiti da sempre, 1.095 righe su
+   * `c-one` — non li leggeva nessuno: zero `MATCH (:LogEntry)` in tutto
+   * l'albero. Adesso la pagina mostra le due metà in una linea del tempo
+   * sola.
+   *
+   * I log del SERVER persistiti (`:ServerLogEntry`, ondata 3) NON entrano
+   * qui, ed è una scelta: quell'archivio non ha un tenant per costruzione e
+   * riguarda la piattaforma intera. Si legge da `/platform/server-logs`, con
+   * l'identità di piattaforma.
+   */
+  const { righe: persistite, totale: totalePersistite } = await righePersistite(ctx.tenantId)
+  const inMemoria = getLogs(ctx.tenantId)
+  let entries = fondi(inMemoria, persistite) // newest-first
+  /* La finestra taglia quando l'archivio è più grande di quanto se ne legga. */
+  const truncated = totalePersistite > persistite.length
 
   // Apply advanced filters. Malformed filters must error — silently ignoring
   // them would show the admin ALL logs while they believe the list is filtered.
@@ -77,7 +95,13 @@ async function logs(
   const total = entries.length
   const page  = entries.slice(offset, offset + limit)
 
-  return { entries: page, total }
+  /*
+   * `total` è quanto c'è DENTRO la finestra, non quanto c'è in archivio: i
+   * filtri girano in memoria su ciò che è stato letto. `truncated` dice che
+   * esiste dell'altro più indietro, così una lista che sembra completa non lo
+   * lascia credere.
+   */
+  return { entries: page, total, truncated, windowSize: MAX_RIGHE }
 }
 
 export const logsResolvers = {

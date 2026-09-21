@@ -3,10 +3,10 @@ import { gql } from '@apollo/client/core'
 // ── Portal: Tickets ───────────────────────────────────────────────────────────
 
 export const GET_MY_TICKETS = gql`
-  query MyTickets($status: String, $page: Int, $pageSize: Int) {
-    myTickets(status: $status, page: $page, pageSize: $pageSize) {
+  query MyTickets($status: String, $page: Int, $pageSize: Int, $language: String) {
+    myTickets(status: $status, page: $page, pageSize: $pageSize, language: $language) {
       items {
-        id type title status statusCategory statusLabel priority category
+        id number type title status statusCategory statusLabel priority priorityLabel priorityColor category
         createdAt updatedAt assignedTeam
       }
       total
@@ -14,21 +14,52 @@ export const GET_MY_TICKETS = gql`
   }
 `
 
+/**
+ * Il ticket di chi guarda, con le sue risposte al modulo del catalogo.
+ *
+ * `formAnswers` (revisione del 17 set 2026): chi compilava dodici campi non li
+ * rivedeva MAI — né per controllare, né per citarli al telefono. L'API manda
+ * solo le voci che il modulo offre agli utenti finali, con le domande della
+ * revisione con cui la richiesta è stata compilata.
+ */
 export const GET_MY_TICKET = gql`
-  query MyTicket($id: ID!) {
-    myTicket(id: $id) {
-      id type title description status statusCategory statusLabel priority category
+  query MyTicket($id: ID!, $language: String) {
+    myTicket(id: $id, language: $language) {
+      id number type title description status statusCategory statusLabel priority priorityLabel priorityColor category
       createdAt updatedAt assignedTeam
       comments {
         id body isInternal authorId authorName authorEmail createdAt
+        editedAt editedByName deletedAt deletedByName
       }
       attachments {
         id filename mimeType sizeBytes uploadedBy uploadedAt downloadUrl
       }
       history {
-        fromStep toStep label triggeredAt triggeredBy
+        fromStep toStep fromLabel toLabel label triggeredAt triggeredBy
+      }
+      customFields { name label fieldType value valueLabel(language: $language) }
+      formAnswers {
+        name label fieldType value values displayValue displayValues
+        references { id label }
+        files { id filename sizeBytes }
+        tableColumns { name label fieldType }
+        rows { cells { column value displayValue } }
       }
     }
+  }
+`
+
+/** Le categorie del ticket: il vocabolario del cliente con le sue etichette (giro del 14 set 2026). */
+export const GET_TICKET_CATEGORIES = gql`
+  query TicketCategories($language: String) {
+    ticketCategories(language: $language) { name label }
+  }
+`
+
+/** Le severità offerte nel portale, con le parole scelte dall'amministratore (verifica «Cosa resta cablato», ondata 1). */
+export const GET_PORTAL_SEVERITY_CHOICES = gql`
+  query PortalSeverityChoices($language: String) {
+    portalSeverityChoices(language: $language) { value label color }
   }
 `
 
@@ -63,9 +94,9 @@ export const GET_KB_ARTICLE_BY_SLUG = gql`
 `
 
 export const GET_KB_CATEGORIES = gql`
-  query KBCategories {
-    kbCategories {
-      name count
+  query KBCategories($language: String) {
+    kbCategories(language: $language) {
+      name label count
     }
   }
 `
@@ -75,7 +106,7 @@ export const GET_KB_CATEGORIES = gql`
 export const GET_ME = gql`
   query Me {
     me {
-      id name email role
+      id name email role permissions language
     }
   }
 `
@@ -100,5 +131,58 @@ export const GET_SERVICE_CATALOG = gql`
 export const GET_TENANT_LANGUAGE_SETTINGS = gql`
   query GetTenantLanguageSettings {
     tenantLanguageSettings { available defaultLanguage fallback }
+  }
+`
+
+/** I campi del cliente offerti all'utente finale aprendo un incident o una richiesta (verifica «Cosa resta cablato», ondata 4). */
+export const GET_PORTAL_CUSTOM_FIELDS = gql`
+  query PortalCustomFields($entityType: String!, $category: String, $language: String) {
+    portalCustomFields(entityType: $entityType, category: $category) {
+      name label fieldType required
+      options(language: $language) { value label }
+    }
+  }
+`
+
+/** Nome e logo dell'organizzazione nell'intestazione (verifica «Cosa resta cablato», ondata 6). */
+export const GET_TENANT_BRAND = gql`
+  query GetTenantBrand { tenantBrand { displayName logoUrl isDefault } }
+`
+
+/**
+ * Il modulo della voce di catalogo (moduli del catalogo, ondata 1).
+ *
+ * `endUser: true` non è un dettaglio: chiede all'API di offrire SOLO i campi
+ * che il modulo destina agli utenti finali. Il server poi rifiuta comunque una
+ * risposta a un campo non offerto — il browser decide cosa mostrare, il server
+ * decide cosa accettare.
+ */
+/**
+ * I CI fra cui scegliere in un campo «riferimento» del modulo (20 set 2026):
+ * non è una ricerca nella CMDB — il server risponde con i CI dei TIPI che
+ * quel campo dichiara, id ed etichetta.
+ */
+export const GET_PORTAL_REFERENCE_CHOICES = gql`
+  query GetPortalReferenceChoices($itemId: ID!, $field: String!, $search: String) {
+    portalReferenceChoices(itemId: $itemId, field: $field, search: $search) {
+      id label
+    }
+  }
+`
+
+export const GET_PORTAL_CATALOG_FORM = gql`
+  query GetPortalCatalogForm($itemId: ID!, $language: String) {
+    catalogFormToFill(itemId: $itemId, endUser: true) {
+      itemId
+      revision
+      definition
+      fields {
+        name fieldType label required vocabulary help formula refTypes
+        labels { language label }
+        helps { language label }
+        options(language: $language) { value label }
+        tableColumns(language: $language) { name label fieldType required options { value label } }
+      }
+    }
   }
 `

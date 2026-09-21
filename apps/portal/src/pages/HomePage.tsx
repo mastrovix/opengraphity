@@ -7,6 +7,7 @@ import { TicketStatusBadge } from '@/components/TicketStatusBadge'
 import { KBSearchBar } from '@/components/KBSearchBar'
 import { fmtRelative } from '@/lib/format'
 import { colors, palette, alpha } from '@/lib/tokens'
+import { usePortalAccess } from '@/hooks/usePortalAccess'
 
 interface Ticket {
   id: string; title: string; status: string; priority: string
@@ -17,13 +18,14 @@ interface Ticket {
 interface Stats { open: number; inProgress: number; resolved: number; total: number }
 
 export function HomePage() {
-  const { t }     = useTranslation()
+  const { t, i18n } = useTranslation()
+  const { canSubmit } = usePortalAccess()
   const navigate  = useNavigate()
 
   const { data: meData }     = useQuery<{ me: { name: string; email: string } | null }>(GET_ME)
   const { data: statsData }  = useQuery<{ myTicketStats: Stats }>(GET_MY_TICKET_STATS)
   const { data: ticketData } = useQuery<{ myTickets: { items: Ticket[]; total: number } }>(
-    GET_MY_TICKETS, { variables: { pageSize: 5 } },
+    GET_MY_TICKETS, { variables: { pageSize: 5, language: i18n.resolvedLanguage ?? i18n.language } },
   )
 
   const name    = meData?.me?.name ?? meData?.me?.email ?? '…'
@@ -49,7 +51,7 @@ export function HomePage() {
               minWidth:        64,
             }}>
               <div style={{ fontSize: 20, fontWeight: 700, color: colors.brand }}>{value}</div>
-              <div style={{ fontSize: 10, color: colors.slateLight, marginTop: 2 }}>{label}</div>
+              <div style={{ fontSize: 12, color: colors.slateLight, marginTop: 2 }}>{label}</div>
             </div>
           ))}
         </div>
@@ -67,7 +69,7 @@ export function HomePage() {
 
       {/* Quick action cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <button
+        {canSubmit && <button
           onClick={() => navigate('/tickets/new')}
           style={{
             display:         'flex',
@@ -86,10 +88,10 @@ export function HomePage() {
         >
           <PlusCircle size={32} style={{ color: colors.brand }} />
           <div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>{t('home.newTicket')}</div>
-            <div style={{ fontSize: 10, color: colors.slate, marginTop: 4 }}>{t('home.newTicketDesc')}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: colors.slateDark }}>{t('home.newTicket')}</div>
+            <div style={{ fontSize: 12, color: colors.slate, marginTop: 4 }}>{t('home.newTicketDesc')}</div>
           </div>
-        </button>
+        </button>}
 
         <button
           onClick={() => navigate('/kb')}
@@ -110,8 +112,8 @@ export function HomePage() {
         >
           <Search size={32} style={{ color: colors.slate }} />
           <div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>{t('home.searchKB')}</div>
-            <div style={{ fontSize: 10, color: colors.slate, marginTop: 4 }}>{t('home.searchKBDesc')}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: colors.slateDark }}>{t('home.searchKB')}</div>
+            <div style={{ fontSize: 12, color: colors.slate, marginTop: 4 }}>{t('home.searchKBDesc')}</div>
           </div>
         </button>
       </div>
@@ -119,16 +121,16 @@ export function HomePage() {
       {/* Recent tickets */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <h2 style={{ fontSize: 10, fontWeight: 600, color: colors.slateDark }}>{t('home.recentTickets')}</h2>
-          <Link to="/tickets" style={{ fontSize: 10, color: colors.brand }}>{t('home.seeAll')}</Link>
+          <h2 style={{ fontSize: 12, fontWeight: 600, color: colors.slateDark }}>{t('home.recentTickets')}</h2>
+          <Link to="/tickets" style={{ fontSize: 12, color: colors.brand }}>{t('home.seeAll')}</Link>
         </div>
 
         {tickets.length === 0 ? (
           <div style={{ padding: '32px 0', textAlign: 'center', color: colors.slateLight }}>
             <p style={{ marginBottom: 8 }}>{t('home.noTickets')}</p>
-            <Link to="/tickets/new" style={{ color: colors.brand, fontWeight: 500 }}>
+            {canSubmit && <Link to="/tickets/new" style={{ color: colors.brand, fontWeight: 500 }}>
               {t('home.needHelp')}
-            </Link>
+            </Link>}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -151,10 +153,10 @@ export function HomePage() {
                 onMouseLeave={e => { e.currentTarget.style.backgroundColor = palette.neutral.surface1 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10, fontWeight: 500, color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {ticket.title}
                   </div>
-                  <div style={{ fontSize: 10, color: colors.slateLight, marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: colors.slateLight, marginTop: 2 }}>
                     {fmtRelative(ticket.updatedAt, 'day')}
                   </div>
                 </div>

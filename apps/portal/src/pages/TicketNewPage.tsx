@@ -2,25 +2,27 @@ import { useState, useEffect, useRef } from 'react'
 import { useMutation, useLazyQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
-import { Monitor, Code, Key, Wifi, HelpCircle, Paperclip } from 'lucide-react'
+import { Monitor, Code, Key, Wifi, HelpCircle, ShieldAlert, Tag, Paperclip } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { CREATE_TICKET } from '@/graphql/mutations'
 import { GET_KB_ARTICLES } from '@/graphql/queries'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 import { notifyError } from '@/lib/notify'
 import { uploadAttachment } from '@/lib/attachments'
 import { colors, palette } from '@/lib/tokens'
+import { useTicketCategories } from '@/hooks/useTicketCategories'
+import { usePortalSeverityChoices } from '@/hooks/usePortalSeverityChoices'
+import { usePortalCustomFields, portalCustomFieldsInput, portalMissingCustomFields } from '@/hooks/usePortalCustomFields'
+import { PortalCustomFields } from '@/components/PortalCustomFields'
 
-const CATEGORIES = [
-  { key: 'hardware', icon: Monitor },
-  { key: 'software', icon: Code },
-  { key: 'access',   icon: Key },
-  { key: 'network',  icon: Wifi },
-  { key: 'other',    icon: HelpCircle },
-] as const
-
-type CategoryKey = typeof CATEGORIES[number]['key']
-
-const PRIORITIES = ['low', 'medium', 'high'] as const
+/**
+ * Icone per i valori spediti del vocabolario `category`. Le categorie vengono
+ * dal Dizionario del cliente (useTicketCategories): un valore che il cliente ha
+ * aggiunto ha l'icona generica, non manca.
+ */
+const CATEGORY_ICONS: Readonly<Record<string, LucideIcon>> = {
+  hardware: Monitor, software: Code, access: Key, network: Wifi, security: ShieldAlert, other: HelpCircle,
+}
 
 interface KBArticle { id: string; title: string; slug: string; category: string }
 
@@ -28,16 +30,22 @@ export function TicketNewPage() {
   const { t }      = useTranslation()
   const navigate   = useNavigate()
 
-  const [category,    setCategory]    = useState<CategoryKey | ''>('')
+  const { categories, error: categoriesError } = useTicketCategories()
+  const [category,    setCategory]    = useState<string>('')
   const [title,       setTitle]       = useState('')
   const [description, setDescription] = useState('')
-  const [priority,    setPriority]    = useState<'low' | 'medium' | 'high'>('medium')
+  // Nessuna severità preselezionata: la sceglie chi apre il ticket, fra quelle offerte dall'amministratore.
+  const { choices: severityChoices, error: severityError } = usePortalSeverityChoices()
+  const [priority,    setPriority]    = useState('')
   const [files,       setFiles]       = useState<File[]>([])
   const [uploading,   setUploading]   = useState(false)
   const [isDragging,  setIsDragging]  = useState(false)
   const fileInputRef                  = useRef<HTMLInputElement>(null)
   const debounceRef                   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  // I campi del cliente offerti nel portale (verifica «Cosa resta cablato», ondata 4).
+  const { fields: customFields } = usePortalCustomFields('incident', category)
+  const [customValues, setCustomValues] = useState<Record<string, string>>({})
 
   // The mutation creates an Incident (and attachments are uploaded with
   // entityType 'incident'), so the admin-configured field rules that apply
@@ -98,7 +106,7 @@ export function TicketNewPage() {
     setFiles(prev => prev.filter((_, i) => i !== idx))
   }
 
-  const canSubmit = category !== '' && title.trim().length > 0 && description.trim().length > 0 && !loading && !uploading
+  const canSubmit = category !== '' && priority !== '' && title.trim().length > 0 && description.trim().length > 0 && !loading && !uploading
 
   function handleSubmit() {
     if (!canSubmit) return
@@ -107,7 +115,7 @@ export function TicketNewPage() {
       notifyError(t('ticket.rulesError', { message: rulesError.message }))
       return
     }
-    const missing = validateFormFields(ticketFieldRules, ticketFormValues)
+    const missing = [...validateFormFields(ticketFieldRules, ticketFormValues), ...portalMissingCustomFields(customFields, customValues)]
     if (missing.length > 0) {
       const errs: Record<string, string> = {}
       missing.forEach((f) => { errs[f] = t('common.required') })
@@ -115,7 +123,8 @@ export function TicketNewPage() {
       return
     }
     setFieldErrors({})
-    void createTicket({ variables: { title: title.trim(), description: description.trim() || undefined, priority, category } })
+    // `canSubmit` garantisce una descrizione non vuota: nessun ramo «undefined».
+    void createTicket({ variables: { title: title.trim(), description: description.trim(), priority, category, customFields: portalCustomFieldsInput(customFields, customValues) } })
   }
 
   return (
@@ -125,17 +134,17 @@ export function TicketNewPage() {
       </h1>
       {Object.keys(fieldErrors).length > 0 && (
         <div role="alert" style={{ background: palette.danger.bg, border: `1px solid ${palette.danger.border}`, color: palette.danger.strong, padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
-          {t('common.required')}: {Object.keys(fieldErrors).join(', ')}
+          {t('common.required')}: {Object.keys(fieldErrors).map((k) => customFields.find((f) => f.name === k)?.label ?? k).join(', ')}
         </div>
       )}
 
       {/* Category selection */}
       <div style={{ marginBottom: 24 }}>
-        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
           {t('ticket.fields.category')} *
         </label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
-          {CATEGORIES.map(({ key, icon: Icon }) => (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 10 }}>
+          {categories.map(({ name: key, label }) => { const Icon = CATEGORY_ICONS[key] ?? Tag; return (
             <button
               key={key}
               onClick={() => setCategory(key)}
@@ -153,17 +162,20 @@ export function TicketNewPage() {
               }}
             >
               <Icon size={22} style={{ color: category === key ? colors.brand : colors.slate }} />
-              <span style={{ fontSize: 10, fontWeight: 500, color: category === key ? colors.brand : colors.slate }}>
-                {t(`ticket.category.${key}`)}
+              <span style={{ fontSize: 12, fontWeight: 500, color: category === key ? colors.brand : colors.slate }}>
+                {label}
               </span>
             </button>
-          ))}
+          ) })}
         </div>
+        {categoriesError && (
+          <p role="alert" style={{ marginTop: 8, fontSize: 12, color: palette.danger.strong }}>{categoriesError.message}</p>
+        )}
       </div>
 
       {/* Title */}
       <div style={{ marginBottom: 20 }}>
-        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
           {t('ticket.fields.title')} *
         </label>
         <input
@@ -172,7 +184,7 @@ export function TicketNewPage() {
           placeholder={t('ticket.fields.title')}
           style={{
             width: '100%', padding: '10px 12px',
-            border: `1.5px solid ${colors.border}`, borderRadius: 8, fontSize: 10, outline: 'none',
+            border: `1.5px solid ${colors.border}`, borderRadius: 8, fontSize: 12, outline: 'none',
           }}
           onFocus={e => { e.currentTarget.style.borderColor = colors.brand }}
           onBlur={e  => { e.currentTarget.style.borderColor = colors.border }}
@@ -188,7 +200,7 @@ export function TicketNewPage() {
           border:          `1px solid ${palette.warning.border}`,
           borderRadius:    8,
         }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: palette.warning.strong, marginBottom: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: palette.warning.strong, marginBottom: 10 }}>
             💡 {t('ticket.suggestedArticles')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -198,13 +210,13 @@ export function TicketNewPage() {
                 href={`/kb/${a.slug}`}
                 target="_blank"
                 rel="noreferrer"
-                style={{ fontSize: 10, color: colors.brand, textDecoration: 'underline' }}
+                style={{ fontSize: 12, color: colors.brand, textDecoration: 'underline' }}
               >
                 {a.title}
               </a>
             ))}
           </div>
-          <div style={{ fontSize: 10, color: palette.warning.strong, marginTop: 8 }}>
+          <div style={{ fontSize: 12, color: palette.warning.strong, marginTop: 8 }}>
             {t('ticket.foundAnswer')}
           </div>
         </div>
@@ -212,8 +224,12 @@ export function TicketNewPage() {
 
       {/* Description */}
       <div style={{ marginBottom: 20 }}>
-        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
-          {t('ticket.fields.description')}
+        {/* H-35: la descrizione E obbligatoria — senza, «Invia ticket» resta
+            grigio — ma l'etichetta non lo diceva, a differenza di categoria,
+            titolo e severita: chi compilava tutto il resto non capiva perche
+            il pulsante non si accendeva. */}
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+          {t('ticket.fields.description')} *
         </label>
         <textarea
           value={description}
@@ -222,7 +238,7 @@ export function TicketNewPage() {
           rows={6}
           style={{
             width: '100%', padding: '10px 12px',
-            border: `1.5px solid ${colors.border}`, borderRadius: 8, fontSize: 10,
+            border: `1.5px solid ${colors.border}`, borderRadius: 8, fontSize: 12,
             resize: 'vertical', outline: 'none', lineHeight: 1.6,
           }}
           onFocus={e => { e.currentTarget.style.borderColor = colors.brand }}
@@ -230,31 +246,48 @@ export function TicketNewPage() {
         />
       </div>
 
-      {/* Priority */}
+      {/* Campi del cliente */}
+      {customFields.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <PortalCustomFields
+            fields={customFields}
+            values={customValues}
+            errors={fieldErrors}
+            onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setFieldErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}
+            labelStyle={{ display: 'block', fontSize: 12, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}
+            inputStyle={{ width: '100%', padding: '10px 12px', border: `1.5px solid ${colors.border}`, borderRadius: 8, fontSize: 12, outline: 'none', background: colors.white, boxSizing: 'border-box' }}
+          />
+        </div>
+      )}
+
+      {/* Severità: la stessa parola della pagina Organizzazione («Severità del portale»), ed è il campo che il ticket salva */}
       <div style={{ marginBottom: 24 }}>
-        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
-          {t('ticket.fields.priority')}
-        </label>
-        <div style={{ display: 'flex', gap: 12 }}>
-          {PRIORITIES.map(p => (
-            <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 10, color: colors.slateDark }}>
+        <div id="ticket-severity-label" style={{ display: 'block', fontSize: 12, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+          {t('ticket.fields.severity')} *
+        </div>
+        <div role="radiogroup" aria-labelledby="ticket-severity-label" aria-required="true" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {severityChoices.map(c => (
+            <label key={c.value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: colors.slateDark }}>
               <input
                 type="radio"
                 name="priority"
-                value={p}
-                checked={priority === p}
-                onChange={() => setPriority(p)}
+                value={c.value}
+                checked={priority === c.value}
+                onChange={() => setPriority(c.value)}
                 style={{ accentColor: colors.brand }}
               />
-              {t(`ticket.priority.${p}`)}
+              {c.label}
             </label>
           ))}
         </div>
+        {severityError && (
+          <p role="alert" style={{ marginTop: 8, fontSize: 12, color: palette.danger.strong }}>{severityError.message}</p>
+        )}
       </div>
 
       {/* File drop zone */}
       <div style={{ marginBottom: 28 }}>
-        <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
           {t('ticket.fields.attachments')}
         </label>
         <div
@@ -273,15 +306,15 @@ export function TicketNewPage() {
           }}
         >
           <Paperclip size={20} style={{ color: colors.slateLight, marginBottom: 6 }} />
-          <div style={{ fontSize: 10, color: colors.slate }}>{t('ticket.dropFiles')}</div>
+          <div style={{ fontSize: 12, color: colors.slate }}>{t('ticket.dropFiles')}</div>
           <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleFileInput} />
         </div>
         {files.length > 0 && (
           <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {files.map((f, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: palette.neutral.surface1, borderRadius: 6, fontSize: 10 }}>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: palette.neutral.surface1, borderRadius: 6, fontSize: 12 }}>
                 <span style={{ color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                <button onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.danger, fontSize: 10, flexShrink: 0 }}>×</button>
+                <button onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.danger, fontSize: 12, flexShrink: 0 }}>×</button>
               </div>
             ))}
           </div>

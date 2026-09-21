@@ -28,6 +28,8 @@ const OPERATORS: Record<FilterOperator, true> = {
   is_empty: true, is_not_empty: true,
   after: true, before: true, between: true, today: true, last_7_days: true, last_30_days: true,
   in: true, not_in: true,
+  // Operatori di lista, per la selezione multipla (moduli del catalogo, ondata 4).
+  has_any: true, has_all: true, has_none: true, list_is_empty: true, list_is_not_empty: true,
 }
 
 const isOperator = (v: unknown): v is FilterOperator => typeof v === 'string' && Object.hasOwn(OPERATORS, v)

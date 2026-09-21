@@ -22,6 +22,8 @@ import { GraphQLError } from 'graphql'
 // Revisione 2 · D6.2: la lettura della mappa prende `suppress_upstream_hops`
 // dalla policy degli allarmi (cache in memoria): qui la policy è mockata, così
 // la mappa resta UNA sola query nel test.
+// Le note si compongono nella lingua del cliente: qui italiano, come le attese.
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 vi.mock('../events/policy.js', () => ({ getEventPolicy: vi.fn().mockResolvedValue({ suppress_upstream_hops: 1,
   // Ondata 7 · C-4: la SEMANTICA del ciclo di vita («ritirato», «in
   // manutenzione») è dato del cliente e vive sulla policy. Qui i valori
@@ -298,16 +300,23 @@ describe('syncServiceMap: pausa e modalità', () => {
   })
 
   it('mappa congelata (auto_sync false): la sincronizzazione manuale funziona lo stesso (è un\'azione esplicita)', async () => {
-    onCypher(diffCypher(stateRow({ props: { auto_sync: false } })))
+    onCypher([[/MATCH \(u:User \{id: \$actorId/, { name: 'Anna Rossi' }], ...diffCypher(stateRow({ props: { auto_sync: false } }))])
     const r = await syncServiceMap('t1', 'map-1', 'manual', 'adm-1', NOW)
     expect(r.changed).toBe(true)
-    expect(callMatching(APPLY_RE)!.params['hNote']).toBe('Sincronizzazione richiesta da adm-1: +1, −2, ~1 spostati')
+    // SV-8: nella cronologia il nome di chi l'ha chiesta, non il suo UUID
+    expect(callMatching(APPLY_RE)!.params['hNote']).toBe('Sincronizzazione richiesta da Anna Rossi: +1, −2, ~1 spostati')
     expect(callMatching(APPLY_RE)!.params['actorId']).toBe('adm-1')
   })
 
+  it('SV-8: un attore che non è un utente del tenant (API key, script) resta col suo id, e il log lo dice', async () => {
+    onCypher([[/MATCH \(u:User \{id: \$actorId/, null], ...diffCypher(stateRow({ props: { auto_sync: false } }))])
+    await syncServiceMap('t1', 'map-1', 'manual', 'key-7', NOW)
+    expect(callMatching(APPLY_RE)!.params['hNote']).toBe('Sincronizzazione richiesta da key-7: +1, −2, ~1 spostati')
+  })
+
   it('la nota distingue la sincronizzazione automatica da quella richiesta a mano', () => {
-    expect(serviceSyncNote('periodic', { added: 2, removed: 1, moved: 0 }, 'monitoring')).toBe('Sincronizzazione automatica: +2, −1, ~0 spostati')
-    expect(serviceSyncNote('manual', { added: 0, removed: 0, moved: 3 }, 'adm-1')).toBe('Sincronizzazione richiesta da adm-1: +0, −0, ~3 spostati')
+    expect(serviceSyncNote('it', 'periodic', { added: 2, removed: 1, moved: 0 }, 'monitoring')).toBe('Sincronizzazione automatica: +2, −1, ~0 spostati')
+    expect(serviceSyncNote('it', 'manual', { added: 0, removed: 0, moved: 3 }, 'adm-1')).toBe('Sincronizzazione richiesta da adm-1: +0, −0, ~3 spostati')
   })
 
   it('D6.3: i componenti dismessi NON vengono tolti dalla sincronizzazione automatica (li toglie una persona dal diff): contati e detti nella nota', () => {
@@ -322,11 +331,11 @@ describe('syncServiceMap: pausa e modalità', () => {
     expect(plan.removeIds).toEqual(['old-99'])
     expect(plan.retired).toBe(2)
     // la coda della nota arriva solo con una sincronizzazione che cambia qualcosa (niente voce ogni mezz'ora)
-    expect(serviceSyncNote('periodic', { added: 0, removed: 1, moved: 0, retired: 2 }, 'monitoring'))
+    expect(serviceSyncNote('it', 'periodic', { added: 0, removed: 1, moved: 0, retired: 2 }, 'monitoring'))
       .toBe('Sincronizzazione automatica: +0, −1, ~0 spostati; 2 componenti dismessi esclusi dal calcolo')
-    expect(serviceSyncNote('periodic', { added: 0, removed: 1, moved: 0, retired: 1 }, 'monitoring'))
+    expect(serviceSyncNote('it', 'periodic', { added: 0, removed: 1, moved: 0, retired: 1 }, 'monitoring'))
       .toContain('; 1 componente dismesso escluso dal calcolo')
-    expect(serviceSyncNote('periodic', { added: 0, removed: 1, moved: 0, retired: 0 }, 'monitoring')).not.toContain('dismess')
+    expect(serviceSyncNote('it', 'periodic', { added: 0, removed: 1, moved: 0, retired: 0 }, 'monitoring')).not.toContain('dismess')
   })
 })
 

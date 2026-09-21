@@ -51,6 +51,19 @@ const SENTENCE_KEY: Record<ServiceHealthTrigger, string> = {
   periodic:      'monitoring.services.history.trigger.periodic',
 }
 
+/**
+ * Le voci di CONFIGURAZIONE (esclusione, riammissione, sincronizzazione, regole,
+ * ambito) non sono transizioni di salute: l'API le scrive con `previousHealth`
+ * null e con salute e punteggio della mappa COM'ERANO al momento della modifica,
+ * prima della rivalutazione (che scrive la sua voce solo se la salute cambia).
+ * Giro UI del 15 set 2026 · U-3: la frase generica le leggeva come «health
+ * Degraded, was no previous health», e il punteggio sembrava quello nuovo.
+ */
+const CONFIG_SENTENCE_KEY: Partial<Record<ServiceHealthTrigger, string>> = {
+  rules_changed: 'monitoring.services.history.configTrigger.rules_changed',
+  map_changed:   'monitoring.services.history.configTrigger.map_changed',
+}
+
 /** Quante cause elencare sotto la frase prima di «+N». */
 const CAUSES_SHOWN = 3
 
@@ -70,6 +83,10 @@ function EntrySentence({ entry: e }: { entry: ServiceHealthEntry }) {
   const { t } = useTranslation()
   const key = SENTENCE_KEY[e.trigger]
   if (key === undefined) return <>{t('monitoring.services.history.trigger.unknown', { trigger: String(e.trigger) })}</>
+  const configKey = e.previousHealth === null ? CONFIG_SENTENCE_KEY[e.trigger] : undefined
+  if (configKey !== undefined) {
+    return <Trans i18nKey={configKey} values={{ score: e.impactScore }} components={{ health: <ServiceHealthBadge health={e.health} /> }} />
+  }
   const components = {
     health:   <ServiceHealthBadge health={e.health} />,
     previous: e.previousHealth !== null

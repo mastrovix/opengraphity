@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { screen, within, waitFor } from '@testing-library/react'
 import { CIHealthPage } from './CIHealthPage'
-import { GET_CI_HEALTH_OVERVIEW, GET_BASE_CI_TYPE, GET_TEAMS } from '@/graphql/queries'
-import { renderWithProviders, type GqlMock } from '@/test/utils'
+import { GET_CI_HEALTH_OVERVIEW, GET_BASE_CI_TYPE, GET_TEAMS, GET_EVENT_POLICY } from '@/graphql/queries'
+import { renderWithProviders, type GqlMock, attendiURL } from '@/test/utils'
+import { withVocabularyLabels, type VocabularyLabels } from '@/test/vocabularies'
 import { meMock, teamsMock } from '@/test/mocks/gql'
 import type { CIHealthOverview, CIHealthRow } from '@/types/events'
 
@@ -48,13 +49,24 @@ const baseTypeMock = (): GqlMock => ({
   maxUsageCount: Number.POSITIVE_INFINITY,
 })
 
+/**
+ * La Policy eventi: la pagina ne legge `highImpactDependents`, la soglia da
+ * cui il chip «Impatto» dice «un guasto qui si propaga»
+ * (revisione totale · G-MON-7, prima era il numero 5 nel sorgente).
+ */
+const policyMock = (highImpactDependents = 5): GqlMock => ({
+  request: { query: GET_EVENT_POLICY },
+  result: { data: { eventPolicy: { __typename: 'EventPolicy', highImpactDependents } } },
+  maxUsageCount: Number.POSITIVE_INFINITY,
+})
+
 const baseTypeErrorMock = (): GqlMock => ({ request: { query: GET_BASE_CI_TYPE }, error: new Error('metamodel down'), maxUsageCount: Number.POSITIVE_INFINITY })
 const teamsErrorMock = (): GqlMock => ({ request: { query: GET_TEAMS, variables: {} }, error: new Error('teams down'), maxUsageCount: Number.POSITIVE_INFINITY })
 
-function renderPage(role: string, opts: { overview?: Partial<CIHealthOverview>; seen?: Vars[]; route?: string; teams?: GqlMock; baseType?: GqlMock } = {}) {
-  return renderWithProviders(<CIHealthPage />, {
+function renderPage(role: string, opts: { overview?: Partial<CIHealthOverview>; seen?: Vars[]; route?: string; teams?: GqlMock; baseType?: GqlMock; labels?: VocabularyLabels; highImpactDependents?: number } = {}) {
+  return renderWithProviders(opts.labels ? withVocabularyLabels(<CIHealthPage />, opts.labels) : <CIHealthPage />, {
     route: opts.route ?? '/monitoring/health',
-    mocks: [meMock(role), overviewMock(opts.overview, opts.seen), opts.teams ?? teamsMock([{ id: 't1', name: 'DBA' }]), opts.baseType ?? baseTypeMock()],
+    mocks: [meMock(role), overviewMock(opts.overview, opts.seen), opts.teams ?? teamsMock([{ id: 't1', name: 'DBA' }]), opts.baseType ?? baseTypeMock(), policyMock(opts.highImpactDependents)],
   })
 }
 
@@ -64,6 +76,17 @@ const bodyRows = () => within(screen.getAllByRole('rowgroup')[1]!).getAllByRole(
 const location = () => screen.getByTestId('location').textContent
 
 describe('CIHealthPage', () => {
+  /** Secondo giro UI del 15 set 2026 · V-21: il filtro diceva «Production, Staging, Dr», valori umanizzati invece del Dizionario. */
+  it('ambienti del filtro e della riga con le etichette del Dizionario del cliente', async () => {
+    renderPage('operator', { labels: { environment: { production: 'Produzione', staging: 'Collaudo' } } })
+    await screen.findByRole('heading', { name: 'CI health' })
+    const select = screen.getByRole('combobox', { name: 'Environment' })
+    await waitFor(() => expect(within(select).getByRole('option', { name: 'Produzione' })).toHaveValue('production'))
+    expect(within(select).getByRole('option', { name: 'Collaudo' })).toHaveValue('staging')
+    expect(within(select).queryByRole('option', { name: 'Production' })).not.toBeInTheDocument()
+    expect(within(bodyRows()[0]!).getByText(/· Produzione/)).toBeInTheDocument()
+  })
+
   it('contatori del tenant nei quattro riquadri (impatto aggregato dal server, non dalla pagina) e righe con salute, allarmi, impatto, squadra, origine e mappa', async () => {
     renderPage('operator')
     expect(await screen.findByRole('heading', { name: 'CI health' })).toBeInTheDocument()
@@ -163,11 +186,12 @@ describe('CIHealthPage', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Team' }), 't1')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging', team: 't1' }))
     // La query parte già in fase di render (variabili viste dal mock prima del commit): la posizione va attesa, non letta al volo.
-    await waitFor(() => expect(location()).toBe('/monitoring/health?env=staging&team=t1'))
+    await attendiURL('/monitoring/health', { env: 'staging', team: 't1' })
     await user.type(screen.getByRole('textbox', { name: 'Search a CI by name' }), 'db')
     await waitFor(() => expect(seen.at(-1)!.filter).toEqual({ environment: 'staging', team: 't1', search: 'db' }))
-    await waitFor(() => expect(location()).toBe('/monitoring/health?env=staging&team=t1&q=db'))
-  })
+    await attendiURL('/monitoring/health', { env: 'staging', team: 't1', q: 'db' })
+  // Tre interazioni con 300 ms di debounce in mezzo: il tempo si dichiara.
+  }, 30_000)
 
   it('D·1.7 — l\'URL è la sorgente dei filtri e della pagina: ?health=degraded&type=server&env=staging&team=t1&q=db&page=2 → variabili e controlli allineati', async () => {
     const seen: Vars[] = []
@@ -189,7 +213,7 @@ describe('CIHealthPage', () => {
     renderPage('operator', { seen, route: '/monitoring/health?page=3' })
     await screen.findByRole('heading', { name: 'CI health' })
     await waitFor(() => expect(seen.some((v) => v.offset === 100)).toBe(true))
-    await waitFor(() => expect(location()).toBe('/monitoring/health'))
+    await attendiURL('/monitoring/health')
     await waitFor(() => expect(seen.at(-1)!.offset).toBe(0))
   })
 
@@ -198,7 +222,7 @@ describe('CIHealthPage', () => {
     const btn = await screen.findByRole('button', { name: 'View on the map' })
     expect(btn).toHaveAttribute('title', 'View db-01 on the map')
     await user.click(btn)
-    expect(location()).toBe('/topology?health=1&ciId=ci-1')
+    await attendiURL('/topology', { health: '1', ciId: 'ci-1' })
   })
 
   it('senza righe il pulsante "Vedi sulla mappa" è disabilitato con il motivo', async () => {

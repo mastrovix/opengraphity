@@ -82,6 +82,15 @@ export function issueText(t: TFunction, esiste: EsisteChiave, issue: IssueData):
     const altri = Number(params['others'] ?? 0)
     params['more'] = altri > 0 ? t('configurationIssues.andMore', { count: altri }) : ''
   }
+  // I ruoli dei passi mancanti arrivano come valori interni (`resolved`,
+  // `implementation`): si leggono con le etichette del designer, dove
+  // l'amministratore li va a impostare (revisione del 14 set 2026 · F17).
+  if (/^workflow_(optional_)?step_(categories|purposes)_missing$/.test(issue.kind) && typeof params['missing'] === 'string') {
+    const categories = issue.kind.endsWith('categories_missing')
+    params['missing'] = params['missing'].split(',').map((v) => v.trim()).filter(Boolean)
+      .map((v) => categories ? t(`workflow.categoryOption.${v}`) : t(`workflow.purposeOption.${v}`))
+      .join(', ')
+  }
   if (issue.kind === 'schema_degraded' && params['reason'] === undefined) {
     params['reason'] = t('configurationIssues.reasonUnavailable')
   }

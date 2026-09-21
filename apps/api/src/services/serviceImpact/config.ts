@@ -29,6 +29,9 @@
  */
 import { getSession, runQuery, runQueryOne, type Queryable } from '@opengraphity/neo4j'
 import { ValidationError } from '../../lib/errors.js'
+import { systemTextIn } from '../../lib/systemText.js'
+import { languageFor } from '../../lib/tenantLanguage.js'
+import type { Lingua } from '../../lib/enumValueLabels.js'
 import { logger } from '../../lib/logger.js'
 import {
   NODE_PROPAGATIONS, NODE_WEIGHT_MAX, NODE_WEIGHT_MIN, SERVICE_EXCLUSION_REASON_MANUAL, SERVICE_MAP_MAX_NODES,
@@ -37,7 +40,8 @@ import {
   type ServiceOpenIncidentFrom, type UnknownNodesMode,
 } from '../../lib/serviceVocabularies.js'
 import { toNumber, toStr, type Props } from '../events/shared.js'
-import { buildServiceMap, type ProposedNode } from './build.js'
+import { assertMaxDepth, assertRelationshipTypes, buildServiceMap, type ProposedNode } from './build.js'
+import { serviceRelationshipTypesForTenant } from '../../lib/ciMetamodelForTenant.js'
 import { evaluateImpact, nodeContributes } from './rules.js'
 import { isRetiredLifecycle, resolveCILifecycleSemantics } from '../../lib/ciLifecycle.js'
 import { evaluateServiceMap, loadServiceMapState, storedCausesOf, type EvaluateResult, type LoadedNode, type ServiceMapState } from './engine.js'
@@ -162,44 +166,38 @@ function assertIds(ids: readonly string[], allowed: ReadonlySet<string>, field: 
 
 // ── Note leggibili per la cronologia ─────────────────────────────────────────
 
-const RULE_LABELS: Readonly<Record<Exclude<keyof ServiceImpactRules, 'version'>, string>> = {
-  down_share_pct:     'soglia giù',
-  degraded_share_pct: 'soglia degradato',
-  min_nodes:          'minimo componenti',
-  unknown_nodes:      'componenti senza salute',
-  open_incident_from: 'apri incident da',
-  during_storm:       'durante una tempesta',
-}
-const UNKNOWN_NODES_LABELS: Readonly<Record<UnknownNodesMode, string>> = { ignore: 'ignorati', operational: 'operativi' }
-const OPEN_INCIDENT_LABELS: Readonly<Record<ServiceOpenIncidentFrom, string>> = { never: 'mai', down: 'giù', degraded: 'degradato' }
-const DURING_STORM_LABELS: Readonly<Record<DuringStormMode, string>> = { hold: 'sospendi la valutazione', evaluate: 'valuta comunque' }
+type RuleField = Exclude<keyof ServiceImpactRules, 'version'>
+const RULE_FIELDS: readonly RuleField[] = ['down_share_pct', 'degraded_share_pct', 'min_nodes', 'unknown_nodes', 'open_incident_from', 'during_storm']
 
-function ruleValueLabel(field: Exclude<keyof ServiceImpactRules, 'version'>, rules: ServiceImpactRules): string {
-  if (field === 'unknown_nodes') return UNKNOWN_NODES_LABELS[rules.unknown_nodes]
-  if (field === 'open_incident_from') return OPEN_INCIDENT_LABELS[rules.open_incident_from]
-  if (field === 'during_storm') return DURING_STORM_LABELS[rules.during_storm]
+function ruleValueLabel(lingua: Lingua, field: RuleField, rules: ServiceImpactRules): string {
+  if (field === 'unknown_nodes') return systemTextIn(lingua, `serviceMap.rules.unknown.${rules.unknown_nodes}`)
+  if (field === 'open_incident_from') return systemTextIn(lingua, `serviceMap.rules.open.${rules.open_incident_from}`)
+  if (field === 'during_storm') return systemTextIn(lingua, `serviceMap.rules.storm.${rules.during_storm}`)
   return String(rules[field])
 }
 
 /**
- * «Regole aggiornate: soglia giù 50 → 70, minimo componenti 1 → 2».
- * Nessun campo cambiato → ValidationError: una scrittura che non cambia nulla
- * alzerebbe la versione (facendo fallire i client che l'hanno già letta) e
- * lascerebbe una voce di cronologia senza contenuto.
+ * «Rules updated: down threshold 50 → 70, minimum components 1 → 2», nella
+ * lingua del cliente. Nessun campo cambiato → ValidationError: una scrittura
+ * che non cambia nulla alzerebbe la versione (facendo fallire i client che
+ * l'hanno già letta) e lascerebbe una voce di cronologia senza contenuto.
  */
-export function serviceRulesChangeNote(before: ServiceImpactRules, after: ServiceImpactRules): string {
-  const parts = (Object.keys(RULE_LABELS) as Exclude<keyof ServiceImpactRules, 'version'>[])
+export function serviceRulesChangeNote(lingua: Lingua, before: ServiceImpactRules, after: ServiceImpactRules): string {
+  const parts = RULE_FIELDS
     .filter((f) => before[f] !== after[f])
-    .map((f) => `${RULE_LABELS[f]} ${ruleValueLabel(f, before)} → ${ruleValueLabel(f, after)}`)
+    .map((f) => systemTextIn(lingua, 'serviceMap.rules.change', { field: systemTextIn(lingua, `serviceMap.rules.${f}`), from: ruleValueLabel(lingua, f, before), to: ruleValueLabel(lingua, f, after) }))
   if (parts.length === 0) throw new ValidationError('rules are identical to the current ones: nothing to save')
-  return `Regole aggiornate: ${parts.join(', ')}`
+  return systemTextIn(lingua, 'serviceMap.rules.changed', { changes: parts.join(', ') })
 }
 
-/** «3 componenti aggiornati: APP-003, DB-01, …». */
-export function serviceNodesChangeNote(names: readonly string[]): string {
+/** «3 components updated: APP-003, DB-01, …», nella lingua del cliente. */
+export function serviceNodesChangeNote(lingua: Lingua, names: readonly string[]): string {
   const shown = names.slice(0, 3)
   const rest = names.length - shown.length
-  return `${names.length} ${names.length === 1 ? 'componente aggiornato' : 'componenti aggiornati'}: ${shown.join(', ')}${rest > 0 ? `, e altri ${rest}` : ''}`
+  const list = rest > 0 ? systemTextIn(lingua, 'serviceMap.andOthers', { shown: shown.join(', '), rest }) : shown.join(', ')
+  return names.length === 1
+    ? systemTextIn(lingua, 'serviceMap.nodes.changedOne', { names: list })
+    : systemTextIn(lingua, 'serviceMap.nodes.changedMany', { count: names.length, names: list })
 }
 
 // ── Esclusioni (EXCLUDES) ────────────────────────────────────────────────────
@@ -508,6 +506,7 @@ export interface ConfigWriteInput {
 export async function updateServiceImpactRules(input: ConfigWriteInput & { rules: ServiceImpactRulesInput }): Promise<ConfigWriteResult> {
   const now = input.now ?? new Date().toISOString()
   assertExpectedVersion(input.expectedVersion)
+  const lingua = await languageFor(input.tenantId)
   const session = getSession(undefined, 'WRITE')
   let written: { version: number; status: ServiceMapStatus; note: string }
   try {
@@ -515,7 +514,7 @@ export async function updateServiceImpactRules(input: ConfigWriteInput & { rules
       const state = await loadServiceMapState(tx, input.tenantId, input.mapId, now)
       assertVersionMatches(state.props, input.mapId, input.expectedVersion)
       const rules = assertServiceImpactRulesInput(input.rules, state.nodes.length)
-      const note = serviceRulesChangeNote(state.rules, rules)
+      const note = serviceRulesChangeNote(lingua, state.rules, rules)
       const row = requireWriteRow(await runQueryOne<WriteRow>(tx, UPDATE_RULES_CYPHER, {
         mapId: input.mapId, tenantId: input.tenantId, expectedVersion: input.expectedVersion,
         rules: JSON.stringify(rules), now, actorId: input.actorId,
@@ -542,7 +541,7 @@ export async function updateServiceMapNodes(input: ConfigWriteInput & { nodes: r
       const byId = new Map(state.nodes.map((n) => [n.ciId, n]))
       const unknown = nodes.filter((n) => !byId.has(n.ciId)).map((n) => n.ciId)
       if (unknown.length) throw new ValidationError(`nodes: ${unknown.join(', ')} ${unknown.length === 1 ? 'is not a component' : 'are not components'} of ServiceMap ${input.mapId}`)
-      const note = serviceNodesChangeNote(nodes.map((n) => byId.get(n.ciId)!.name || n.ciId))
+      const note = serviceNodesChangeNote(await languageFor(input.tenantId), nodes.map((n) => byId.get(n.ciId)!.name || n.ciId))
       const row = requireWriteRow(await runQueryOne<WriteRow & { updated: unknown }>(tx, UPDATE_NODES_CYPHER, {
         mapId: input.mapId, tenantId: input.tenantId, expectedVersion: input.expectedVersion,
         nodes: nodes.map((n) => ({ ciId: n.ciId, propagate: n.propagate, weight: n.weight, critical: n.critical })),
@@ -598,7 +597,7 @@ export async function applyServiceMapProposal(input: ApplyProposalInput): Promis
       if (finalCount > SERVICE_MAP_MAX_NODES) {
         throw new ValidationError(`Applying the proposal would bring ServiceMap ${input.mapId} to ${finalCount} components, over the ${SERVICE_MAP_MAX_NODES} cap: exclude or remove some first`)
       }
-      const note = `Mappa aggiornata: +${add.length}, −${removeFromMap.length}, esclusi ${exclude.length}`
+      const note = systemTextIn(await languageFor(input.tenantId), 'serviceMap.proposalApplied', { added: add.length, removed: removeFromMap.length, excluded: exclude.length })
 
       const row = requireWriteRow(await runQueryOne<WriteRow & { added: unknown; excluded: unknown; removed: unknown; included: unknown }>(tx, APPLY_PROPOSAL_CYPHER, {
         mapId: input.mapId, tenantId: input.tenantId, expectedVersion: input.expectedVersion, now, actorId: input.actorId,
@@ -646,7 +645,8 @@ export async function setServiceMapAutoSync(input: ConfigWriteInput & { autoSync
       if (current === input.autoSync) {
         throw new ValidationError(`ServiceMap ${input.mapId} already has autoSync ${input.autoSync}: nothing to save`)
       }
-      const note = input.autoSync ? 'Aggiornamento automatico attivato' : 'Aggiornamento automatico disattivato'
+      // SV-7: erano scritte in italiano per ogni cliente.
+      const note = systemTextIn(await languageFor(input.tenantId), input.autoSync ? 'serviceMap.autoSync.enabled' : 'serviceMap.autoSync.disabled')
       const row = requireWriteRow(await runQueryOne<WriteRow>(tx, SET_AUTO_SYNC_CYPHER, {
         mapId: input.mapId, tenantId: input.tenantId, expectedVersion: input.expectedVersion,
         autoSync: input.autoSync, now, actorId: input.actorId,
@@ -657,6 +657,72 @@ export async function setServiceMapAutoSync(input: ConfigWriteInput & { autoSync
   } finally { await session.close() }
   log.info({ tenantId: input.tenantId, mapId: input.mapId, version: written.version, autoSync: input.autoSync }, 'Service map auto sync changed')
   return { mapId: input.mapId, version: written.version, status: written.status, note: written.note, evaluation: null }
+}
+
+/**
+ * «Nota» del cambio d'ambito, nella lingua del cliente: «Scope updated:
+ * relationships DEPENDS_ON, HOSTED_ON → DEPENDS_ON, depth 6 → 4». Nulla di
+ * cambiato → ValidationError, come per le regole.
+ */
+export function serviceScopeChangeNote(
+  lingua: Lingua, before: { relationshipTypes: readonly string[]; maxDepth: number }, after: { relationshipTypes: readonly string[]; maxDepth: number },
+): string {
+  const parts: string[] = []
+  const sameTypes = before.relationshipTypes.length === after.relationshipTypes.length && before.relationshipTypes.every((t) => after.relationshipTypes.includes(t))
+  if (!sameTypes) parts.push(systemTextIn(lingua, 'serviceMap.scope.types', { from: before.relationshipTypes.join(', '), to: after.relationshipTypes.join(', ') }))
+  if (before.maxDepth !== after.maxDepth) parts.push(systemTextIn(lingua, 'serviceMap.scope.depth', { from: before.maxDepth, to: after.maxDepth }))
+  if (parts.length === 0) throw new ValidationError('relationshipTypes and maxDepth are identical to the current ones: nothing to save')
+  return systemTextIn(lingua, 'serviceMap.scope.changed', { changes: parts.join(', ') })
+}
+
+export const UPDATE_SCOPE_CYPHER = `${VERSION_GUARD}
+  SET m.relationship_types = $relationshipTypes, m.max_depth = toInteger($maxDepth)
+  ${CONFIG_WRITE_TAIL}
+  RETURN m.version AS version, m.status AS status, m.auto_sync AS autoSync`
+
+/**
+ * Tipi di relazione e profondità di una mappa esistente (revisione del 15 set
+ * 2026 · SV-6). Prima si fissavano alla creazione e nessuna mutation li
+ * cambiava: una relazione aggiunta dal cliente dopo non veniva mai seguita, e
+ * una tolta bloccava la mappa. I tipi si validano contro quelli percorribili
+ * ADESSO dal cliente — così si può anche togliere un tipo che non c'è più.
+ *
+ * Dopo la scrittura una mappa viva (non in pausa) si sincronizza subito con il
+ * nuovo ambito, che a sua volta la rivaluta se i componenti cambiano; una
+ * mappa congelata mostrerà la differenza nella proposta.
+ */
+export async function updateServiceMapScope(input: ConfigWriteInput & { relationshipTypes: readonly string[]; maxDepth: number }): Promise<ConfigWriteResult> {
+  const now = input.now ?? new Date().toISOString()
+  assertExpectedVersion(input.expectedVersion)
+  if (!Array.isArray(input.relationshipTypes)) throw new ValidationError(`relationshipTypes must be a list. Got: ${JSON.stringify(input.relationshipTypes)}`)
+  const relationshipTypes = assertRelationshipTypes(input.relationshipTypes, await serviceRelationshipTypesForTenant(input.tenantId))
+  const maxDepth = assertMaxDepth(input.maxDepth)
+  const lingua = await languageFor(input.tenantId)
+  const session = getSession(undefined, 'WRITE')
+  let written: { version: number; status: ServiceMapStatus; note: string; autoSync: boolean }
+  try {
+    written = await session.executeWrite(async (tx) => {
+      const state = await loadServiceMapState(tx, input.tenantId, input.mapId, now)
+      assertVersionMatches(state.props, input.mapId, input.expectedVersion)
+      const current = state.props['relationship_types']
+      if (!Array.isArray(current)) throw new Error(`ServiceMap ${input.mapId} has no relationship_types — run the 20260910_1080_service_maps_bootstrap migration`)
+      const note = serviceScopeChangeNote(lingua, { relationshipTypes: current.map(toStr), maxDepth: toNumber(state.props['max_depth']) }, { relationshipTypes, maxDepth })
+      const row = requireWriteRow(await runQueryOne<WriteRow & { autoSync: unknown }>(tx, UPDATE_SCOPE_CYPHER, {
+        mapId: input.mapId, tenantId: input.tenantId, expectedVersion: input.expectedVersion,
+        relationshipTypes, maxDepth, now, actorId: input.actorId,
+        ...serviceConfigHistoryParams('map_changed', note, now),
+      }), input.mapId, input.expectedVersion)
+      return { version: toNumber(row.version), status: assertStatus(row.status, input.mapId), note, autoSync: assertAutoSync(row.autoSync, input.mapId) }
+    })
+  } finally { await session.close() }
+  log.info({ tenantId: input.tenantId, mapId: input.mapId, version: written.version, relationshipTypes, maxDepth }, 'Service map scope updated')
+  if (written.status === 'paused' || !written.autoSync) {
+    return { mapId: input.mapId, version: written.version, status: written.status, note: written.note, evaluation: null }
+  }
+  // Import dinamico: sync.ts importa questo file (il diff).
+  const { syncServiceMap } = await import('./sync.js')
+  const sync = await syncServiceMap(input.tenantId, input.mapId, 'manual', input.actorId, now)
+  return { mapId: input.mapId, version: sync.version, status: sync.status, note: written.note, evaluation: sync.evaluation }
 }
 
 /**
@@ -686,7 +752,7 @@ export async function removeServiceMapExclusion(input: ConfigWriteInput & { ciId
       const exclusions = await loadServiceMapExclusions(tx, input.tenantId, input.mapId)
       const excluded = exclusions.find((e) => e.id === input.ciId)
       if (!excluded) throw new ValidationError(`ciId: ${input.ciId} is not excluded from ServiceMap ${input.mapId}`)
-      const note = `Esclusione rimossa: ${excluded.name || excluded.id}`
+      const note = systemTextIn(await languageFor(input.tenantId), 'serviceMap.exclusionRemoved', { name: excluded.name || excluded.id })
       const row = requireWriteRow(await runQueryOne<WriteRow & { removed: unknown }>(tx, REMOVE_EXCLUSION_CYPHER, {
         mapId: input.mapId, tenantId: input.tenantId, expectedVersion: input.expectedVersion, ciId: input.ciId,
         now, actorId: input.actorId, ...serviceConfigHistoryParams('map_changed', note, now),

@@ -42,7 +42,9 @@ describe('20260911_1150_notification_channels_routable', () => {
       { id: 'r2', tenantId: 'acme',  eventType: 'service.incident_opened',  channels: ['in_app', 'slack', 'email'] },
       { id: 'r3', tenantId: 'acme',  eventType: 'sync.failed',              channels: ['in_app', 'slack'] },
       { id: 'r4', tenantId: 'acme',  eventType: 'incident.escalated',       channels: ['in_app', 'slack'] },   // formatter Slack: resta
-      { id: 'r5', tenantId: 'globex', eventType: 'change.approved',         channels: ['in_app', 'slack', 'teams'] }, // teams senza formatter per le change
+      // Revisione totale · E-18: le change hanno anche la card Teams, quindi
+      // questa regola è ora coerente e la migrazione non la tocca più.
+      { id: 'r5', tenantId: 'globex', eventType: 'change.approved',         channels: ['in_app', 'slack', 'teams'] },
       { id: 'r6', tenantId: 'globex', eventType: 'incident.created',        channels: null },                  // assente = in_app: non si tocca
     ])
     await notificationChannelsRoutable.up(s as never)
@@ -51,7 +53,6 @@ describe('20260911_1150_notification_channels_routable', () => {
       ['acme',   'r1', ['in_app']],
       ['acme',   'r2', ['in_app', 'email']],
       ['acme',   'r3', ['in_app']],
-      ['globex', 'r5', ['in_app', 'slack']],
     ])
     for (const w of s.writes) {
       expect(w.cypher).toContain('MATCH (r:NotificationRule {id: $id, tenant_id: $tenantId})')
@@ -59,9 +60,8 @@ describe('20260911_1150_notification_channels_routable', () => {
       expect(w.params['now']).toEqual(expect.any(String))
     }
     const log = vi.mocked(console.log).mock.calls.at(-1)![0] as string
-    expect(log).toContain('6 NotificationRule: unroutable channels removed 4, set to in_app (nothing routable left) 0, already routable 2')
+    expect(log).toContain('6 NotificationRule: unroutable channels removed 3, set to in_app (nothing routable left) 0, already routable 3')
     expect(log).toContain('acme/event.storm_started: -[slack] → [in_app]')
-    expect(log).toContain('globex/change.approved: -[teams] → [in_app, slack]')
   })
 
   it('regola con SOLI canali non instradabili → in_app, contata come "set to in_app"', async () => {

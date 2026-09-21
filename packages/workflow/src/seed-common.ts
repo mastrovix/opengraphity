@@ -30,6 +30,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type { Session } from 'neo4j-driver'
 import { getSession, toNumber } from '@opengraphity/neo4j'
 import type { WorkflowDefinition, WorkflowStepDef } from './types.js'
+import { serializeLocalizedLabels } from './labels.js'
 
 export type SeedableWorkflow = Omit<WorkflowDefinition, 'id' | 'tenantId'> & { category?: string | null }
 
@@ -112,14 +113,32 @@ export class CustomizedWorkflowError extends Error {
 }
 
 const STEP_METADATA_KEY_RE = /^[a-z][a-z0-9_]*$/
-const RESERVED_STEP_KEYS = new Set(['id', 'name', 'label', 'type', 'definition_id', 'tenant_id', 'enter_actions', 'exit_actions', 'created_at', 'updated_at'])
+const RESERVED_STEP_KEYS = new Set(['id', 'name', 'label', 'labels', 'type', 'definition_id', 'tenant_id', 'enter_actions', 'exit_actions', 'created_at', 'updated_at'])
+
+/**
+ * Le chiavi dei METADATI che i seed governano.
+ *
+ * In sovrascrittura, una chiave che il seed non porta più va TOLTA dal nodo
+ * (revisione totale · E-30): `SET s += st.metadata` aggiungeva e aggiornava,
+ * mai rimuoveva, quindi una `deadline` togliendola dal seed restava sul passo
+ * e il diff diceva «riallineato» mentre la scadenza personalizzata continuava
+ * a scattare. In Cypher una proprietà messa a `null` viene rimossa: è così
+ * che si azzerano le chiavi governate e assenti.
+ *
+ * L'elenco è CHIUSO di proposito: le proprietà scritte dal prodotto e non dai
+ * seed (per esempio `notify_rule`, `deadline_calendar_id`, `sub_workflow_id`)
+ * non si toccano — un seed non le conosce e non deve cancellarle.
+ */
+export const SEEDED_STEP_METADATA_KEYS = [
+  'step_order', 'is_initial', 'is_terminal', 'is_open', 'category', 'purpose', 'deadline',
+] as const
 
 /** Le chiavi dei metadati finiscono in un `SET s += map`: solo snake_case, mai le proprietà strutturali. */
 function assertStepMetadata(defName: string, stepName: string, metadata: WorkflowStepDef['metadata']): Record<string, string | number | boolean | null> {
   if (!metadata) return {}
   for (const key of Object.keys(metadata)) {
     if (!STEP_METADATA_KEY_RE.test(key) || RESERVED_STEP_KEYS.has(key)) {
-      throw new Error(`Seed "${defName}", step "${stepName}": chiave metadata non ammessa "${key}"`)
+      throw new Error(`Seed "${defName}", step "${stepName}": metadata key not allowed "${key}"`)
     }
   }
   return metadata
@@ -339,18 +358,29 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
         UNWIND $steps AS st
         MERGE (s:WorkflowStep {definition_id: $defId, name: st.name})
         ON CREATE SET s.id = $defId + '-' + st.id, s.tenant_id = $tenantId, s.created_at = $now
-        SET s.label = st.label, s.type = st.type,
+        SET s.label = st.label, s.labels = st.labels, s.type = st.type,
             s.enter_actions = st.enterActions, s.exit_actions = st.exitActions,
             s.updated_at = $now
+        // E-30: prima si TOLGONO le chiavi governate dai seed che questo seed
+        // non porta (in Cypher il null rimuove la proprietà), poi si scrivono
+        // quelle che porta. Solo in sovrascrittura: un MERGE normale non
+        // cancella niente.
+        SET s += st.clear
         SET s += st.metadata
         MERGE (wd)-[:HAS_STEP]->(s)
       `, {
         defId, tenantId, now,
-        steps: def.steps.map((s) => ({
-          id: s.id, name: s.name, label: s.label, type: s.type,
-          enterActions: JSON.stringify(s.enterActions), exitActions: JSON.stringify(s.exitActions),
-          metadata: assertStepMetadata(def.name, s.name, s.metadata),
-        })),
+        steps: def.steps.map((s) => {
+          const metadata = assertStepMetadata(def.name, s.name, s.metadata)
+          const clear = overwrite
+            ? Object.fromEntries(SEEDED_STEP_METADATA_KEYS.filter((k) => !(k in metadata)).map((k) => [k, null]))
+            : {}
+          return {
+            id: s.id, name: s.name, label: s.label, labels: serializeLocalizedLabels(s.labels), type: s.type,
+            enterActions: JSON.stringify(s.enterActions), exitActions: JSON.stringify(s.exitActions),
+            metadata, clear,
+          }
+        }),
       })
 
       // 4. Step non più nel seed: via solo se nessuna istanza li attraversa.
@@ -364,7 +394,7 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
         .filter((r) => toNumber(r.get('live')) > 0)
         .map((r) => r.get('name') as string)
       if (blocking.length > 0) {
-        throw new Error(`Seed "${def.name}": gli step ${blocking.join(', ')} non sono più nel seed ma hanno istanze in corso — migra prima quelle istanze`)
+        throw new Error(`Seed "${def.name}": steps ${blocking.join(', ')} are no longer in the seed but have running instances — migrate those instances first`)
       }
       if (removed.records.length > 0) {
         await tx.run(`
@@ -384,11 +414,11 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
         MATCH (from:WorkflowStep {definition_id: $defId, name: tr.fromStepName})
         MATCH (to:WorkflowStep   {definition_id: $defId, name: tr.toStepName})
         CREATE (from)-[:TRANSITIONS_TO {
-          id: $defId + '-' + tr.id, trigger: tr.trigger, label: tr.label, condition: tr.condition,
+          id: $defId + '-' + tr.id, trigger: tr.trigger, label: tr.label, labels: tr.labels, condition: tr.condition,
           requires_input: tr.requiresInput, input_field: tr.inputField
         }]->(to)
         RETURN count(*) AS n
-      `, { defId, transitions: def.transitions })
+      `, { defId, transitions: def.transitions.map((t) => ({ ...t, labels: serializeLocalizedLabels(t.labels) })) })
       // Una transizione verso uno step inesistente sarebbe un CREATE su MATCH
       // vuoto: nessun errore da Neo4j, workflow silenziosamente monco.
       const createdN = toNumber(created.records[0]?.get('n'))
@@ -396,7 +426,7 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
         const known = new Set(def.steps.map((s) => s.name))
         const bad = def.transitions.filter((t) => !known.has(t.fromStepName) || !known.has(t.toStepName))
           .map((t) => `${t.fromStepName}→${t.toStepName}`)
-        throw new Error(`Seed "${def.name}": create ${createdN} transizioni su ${def.transitions.length} — step inesistenti in: ${bad.join(', ') || '(vedi nomi step)'}`)
+        throw new Error(`Seed "${def.name}": created ${createdN} transitions out of ${def.transitions.length} — missing steps in: ${bad.join(', ') || '(see step names)'}`)
       }
 
       // 6. Auto-riparazione: istanze senza CURRENT_STEP ricollegate per nome.

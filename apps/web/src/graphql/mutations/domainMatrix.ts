@@ -25,6 +25,18 @@ export const UPDATE_PRE_APPROVED_CHANGE_TYPES = gql`
  * arrivare a 100: una scala con un buco lascerebbe dei punteggi senza fascia,
  * cioè un errore nel momento peggiore — l'apertura di una change.
  */
+export const UPDATE_CHANGE_ENVIRONMENT_WEIGHT = gql`
+  mutation UpdateChangeEnvironmentWeight($weight: Int!) {
+    updateChangeEnvironmentWeight(weight: $weight) { weight isDefault }
+  }
+`
+
+export const UPDATE_IMPACT_ANALYSIS_WEIGHTS = gql`
+  mutation UpdateImpactAnalysisWeights($input: ImpactAnalysisWeightsInput!) {
+    updateImpactAnalysisWeights(input: $input) { productionCI blastRadiusCI blastRadiusCap openIncident failedChange ongoingChange recentChangesDays recentIncidentsDays isDefault }
+  }
+`
+
 export const UPDATE_RISK_BAND_THRESHOLDS = gql`
   mutation UpdateRiskBandThresholds($entries: [RiskBandThresholdInput!]!) {
     updateRiskBandThresholds(entries: $entries) {
@@ -50,11 +62,29 @@ export const SET_TENANT_DEFAULT_LANGUAGE = gql`
   }
 `
 
+export const SET_TENANT_TIMEZONE = gql`
+  mutation SetTenantTimezone($timezone: String!) {
+    setTenantTimezone(timezone: $timezone) { timezone available }
+  }
+`
+
 export const PROVISION_TENANT_DATA = gql`
   mutation ProvisionTenantData {
     provisionTenantData {
       dashboardCreated notificationRulesCreated matricesCreated workflows
       remainingGaps { kind params { name value } }
     }
+  }
+`
+
+export const SET_PORTAL_SEVERITY_OPTIONS = gql`
+  mutation SetPortalSeverityOptions($options: [PortalSeverityOptionInput!]!) {
+    setPortalSeverityOptions(options: $options) { value labels { language label } }
+  }
+`
+
+export const SET_TENANT_INAPP_RETENTION = gql`
+  mutation SetTenantInAppRetention($days: Int!) {
+    setTenantInAppRetentionDays(days: $days)
   }
 `

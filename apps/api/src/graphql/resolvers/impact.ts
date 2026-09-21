@@ -1,5 +1,8 @@
 import { withSession, getSession, ciTypeFromLabels } from './ci-utils.js'
 import { calculateRiskScore } from '../../lib/riskScore.js'
+import { impactAnalysisWeights } from '../../lib/impactWeights.js'
+import { riskBandOf } from '../../lib/riskBands.js'
+import { ENV_RISK_SCALE, environmentRiskScore } from '../../lib/environmentRisk.js'
 import { getTerminalStepNames } from '../../lib/workflowHelpers.js'
 import type { GraphQLContext } from '../../context.js'
 import { ciLabelPredicateForTenant } from '../../lib/ciLabelsForTenant.js'
@@ -10,6 +13,9 @@ type Session = ReturnType<typeof getSession>
 
 export async function computeImpactAnalysis(session: Session, tenantId: string, ciIds: string[]) {
   const incidentTerminal = await getTerminalStepNames(session, tenantId, 'incident')
+  // Pesi e finestre del cliente (ondata 5 di «Nulla cablato»): prima scritti in riskScore.ts.
+  const weights = await impactAnalysisWeights(tenantId)
+  const DAY_MS = 24 * 60 * 60 * 1000
   // Le etichette dei CI vengono dal metamodello di QUESTO cliente: con la
   // lista fissa un CI di un tipo suo non era né origine né impattato, quindi
   // il blast radius si fermava prima di lui senza dirlo (A-9 / C-2).
@@ -43,7 +49,8 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
     id:          r.get('id') as string,
     name:        r.get('name') as string,
     type:        ciTypeFromLabels(tenantId, [r.get('label') as string]),
-    environment: (r.get('environment') ?? 'unknown') as string,
+    // B-25: un CI senza ambiente non è «unknown», è senza ambiente.
+    environment: (r.get('environment') ?? null) as string | null,
     distance:    toNumber(r.get('distance')),
   }))
 
@@ -59,8 +66,8 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
     ORDER BY i.created_at DESC
   `, { ciIds, tenantId, terminalSteps: incidentTerminal }))
 
-  // 2b. Recently resolved incidents (last 30 days)
-  const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  // 2b. Recently resolved incidents (the tenant's window)
+  const sinceIncidents = new Date(Date.now() - weights.recentIncidentsDays * DAY_MS).toISOString()
   const recentIncResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
     MATCH (i:Incident {tenant_id: $tenantId})-[:AFFECTED_BY]->(ci {id: ciId})
@@ -71,7 +78,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
            ci.name AS ciName, ci.id AS ciId,
            i.created_at AS createdAt, false AS isOpen
     ORDER BY i.created_at DESC
-  `, { ciIds, tenantId, since: since30, terminalSteps: incidentTerminal }))
+  `, { ciIds, tenantId, since: sinceIncidents, terminalSteps: incidentTerminal }))
 
   const openIncidents = [
     ...openResult.records,
@@ -80,7 +87,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
     id:        r.get('id') as string,
     number:    (r.get('number') ?? '') as string,
     title:     r.get('title') as string,
-    severity:  (r.get('severity') ?? 'medium') as string,
+    severity:  (r.get('severity') ?? null) as string | null,
     status:    r.get('status') as string,
     ciName:    r.get('ciName') as string,
     ciId:      r.get('ciId') as string,
@@ -90,8 +97,8 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
 
   const openIncidentsCount = openResult.records.length
 
-  // 3. Recent RFC-based changes on same CIs (last 60 days)
-  const since60 = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
+  // 3. Recent RFC-based changes on same CIs (the tenant's window)
+  const sinceChanges = new Date(Date.now() - weights.recentChangesDays * DAY_MS).toISOString()
   const changeResult = await session.executeRead((tx) => tx.run(`
     UNWIND $ciIds AS ciId
     MATCH (c:Change {tenant_id: $tenantId})-[:AFFECTS_CI]->(ci {id: ciId})
@@ -103,7 +110,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
            c.created_at AS createdAt
     ORDER BY c.created_at DESC
     LIMIT 20
-  `, { ciIds, tenantId, since: since60 }))
+  `, { ciIds, tenantId, since: sinceChanges }))
 
   const recentChanges = changeResult.records.map((r) => ({
     id:        r.get('id') as string,
@@ -131,16 +138,23 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
   const affectedEnvs = ciResult.records.map((r) => r.get('env') as string)
 
   // 5. Risk score
-  const productionCIs  = affectedEnvs.filter((e) => e === 'production').length
+  // «In produzione» = l'ambiente vale il punteggio più alto della matrice
+  // `environment_risk` del cliente (con quella di fabbrica: `production`).
+  // Prima era il letterale 'production', fuori dal vocabolario del cliente.
+  const topEnvironmentScore = Math.max(...ENV_RISK_SCALE.map(Number))
+  const envScores = await Promise.all(affectedEnvs.map((e) => environmentRiskScore(tenantId, e)))
+  const productionCIs  = envScores.filter((s) => s === topEnvironmentScore).length
   const blastRadiusCIs = blastRadius.length
 
-  const { score, level: riskLevel, details } = calculateRiskScore({
+  const { score, details } = calculateRiskScore({
     productionCIs,
     blastRadiusCIs,
     openIncidents: openIncidentsCount,
     failedChanges,
     ongoingChanges,
-  })
+  }, weights)
+  // Il livello è la fascia di rischio del cliente, non una scala propria.
+  const riskLevel = await riskBandOf(tenantId, score)
 
   return {
     riskScore: score,
@@ -154,7 +168,7 @@ export async function computeImpactAnalysis(session: Session, tenantId: string, 
       openIncidents: openIncidentsCount,
       failedChanges,
       ongoingChanges,
-      scoreDetails: details.length > 0 ? details.join(' | ') : 'Nessun fattore di rischio rilevato',
+      scoreDetails: details.length > 0 ? details.join(' | ') : 'No risk factor found',
     },
   }
 }

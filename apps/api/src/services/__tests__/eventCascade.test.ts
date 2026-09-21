@@ -7,6 +7,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// I testi scritti nei ticket si risolvono nella lingua del cliente (lib/systemText.ts): qui italiano.
+vi.mock('../../lib/tenantLanguage.js', () => ({ languageFor: vi.fn(async () => 'it'), languageForUser: vi.fn(async () => 'it') }))
 vi.mock('@opengraphity/neo4j', () => ({ getSession: vi.fn(), runQuery: vi.fn(), runQueryOne: vi.fn() }))
 vi.mock('../../lib/logger.js', () => {
   const child = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }
@@ -27,7 +29,7 @@ vi.mock('../events/incidentWorkflow.js', () => ({
 const cascade = await import('../events/cascade.js')
 const {
   deleteSourceAndResolveEvents, noteIncidentsBeforeCIDeletion, noteServiceMapDeletion,
-  findIncidentsLosingTheirOnlyCI, ciDeletedComment, serviceMapDeletedComment, SOURCE_DELETED_NOTE,
+  findIncidentsLosingTheirOnlyCI, ciDeletedComment, serviceMapDeletedComment,
 } = cascade
 const { getSession, runQuery, runQueryOne } = await import('@opengraphity/neo4j')
 const { recomputeCIHealth } = await import('../events/ciHealth.js')
@@ -72,7 +74,7 @@ describe('D4.1 — deleteInboundWebhook: la sorgente se ne va e i suoi allarmi r
     expect(q.cypher).toContain('DETACH DELETE w')
     // una voce di cronologia per evento: id NUOVO a ogni riga (un solo $historyId violerebbe il vincolo di unicità)
     expect(q.cypher).toContain('CREATE (e)-[:HAS_HISTORY]->(:EventHistoryEntry {id: randomUUID()')
-    expect(q.params).toMatchObject({ sourceId: 'hook-1', tenantId: 't1', actorId: 'adm-1', note: SOURCE_DELETED_NOTE, historyKind: 'resolved_manually', historyActorId: 'adm-1', historyNote: SOURCE_DELETED_NOTE })
+    expect(q.params).toMatchObject({ sourceId: 'hook-1', tenantId: 't1', actorId: 'adm-1', note: 'sorgente eliminata: nessun payload potrà più farlo rientrare', historyKind: 'resolved_manually', historyActorId: 'adm-1', historyNote: 'sorgente eliminata: nessun payload potrà più farlo rientrare' })
 
     // dopo il commit: prima la salute di ogni CI toccato (una volta sola, con tutti gli allarmi già risolti), poi gli incident
     expect(vi.mocked(recomputeCIHealth).mock.calls).toEqual([['t1', 'ci-1', 'adm-1'], ['t1', 'ci-2', 'adm-1']])
@@ -115,8 +117,8 @@ describe('D4.3 — commenti prima di una cancellazione a cascata', () => {
     expect(q.cypher).toMatch(/OPTIONAL MATCH \(i\)-\[:AFFECTED_BY\]->\(other:ConfigurationItem \{tenant_id: \$tenantId\}\)\s+WHERE other\.id <> \$ciId/)
     expect(q.cypher).toContain('WHERE others = 0')
     expect(q.params).toEqual({ tenantId: 't1', ciId: 'ci-1', terminalSteps: ['closed'] })
-    expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-1', expect.objectContaining({ tenantId: 't1', userId: 'monitoring' }), ciDeletedComment('db-01'))
-    expect(ciDeletedComment('db-01')).toContain('"db-01"')
+    expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-1', expect.objectContaining({ tenantId: 't1', userId: 'monitoring' }), ciDeletedComment('it', 'db-01'))
+    expect(ciDeletedComment('it', 'db-01')).toContain('"db-01"')
 
     vi.clearAllMocks()
     onCypher([[ONLY_CI_RE, []], [MAP_OF_CI_RE, null]])
@@ -127,8 +129,8 @@ describe('D4.3 — commenti prima di una cancellazione a cascata', () => {
   it('BusinessApplication con una mappa: gli incident di servizio ancora aperti ricevono la nota della mappa eliminata', async () => {
     onCypher([[ONLY_CI_RE, []], [MAP_OF_CI_RE, { id: 'map-1' }], [MAP_INCIDENTS_RE, [{ incidentId: 'inc-svc', serviceName: 'Fatturazione' }]]])
     await noteIncidentsBeforeCIDeletion('t1', 'ba-1', session as never)
-    expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-svc', expect.objectContaining({ tenantId: 't1' }), serviceMapDeletedComment('Fatturazione'))
-    expect(serviceMapDeletedComment('Fatturazione')).toMatch(/non è più monitorato/)
+    expect(incidentService.addIncidentComment).toHaveBeenCalledWith('inc-svc', expect.objectContaining({ tenantId: 't1' }), serviceMapDeletedComment('it', 'Fatturazione'))
+    expect(serviceMapDeletedComment('it', 'Fatturazione')).toMatch(/non è più monitorato/)
   })
 
   it('deleteServiceMap: un commento per incident aperto della mappa; nessun incident → nessun commento; un commento che fallisce non ferma la cancellazione', async () => {

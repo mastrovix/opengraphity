@@ -49,11 +49,25 @@ export function readOptionValue(name: string, argv: readonly string[] = defaultA
 }
 
 /**
- * Tenant obbligatorio da `--tenant=<slug>` o `--tenant <slug>`.
+ * Come si scrive il tenant sulla riga di comando. `--tenant` e la forma buona;
+ * `--tenant-id` e `--slug` esistono perche alcuni script storici (seed delle
+ * dashboard, catena dei CI) le leggevano a mano, e sono nei comandi che la
+ * documentazione e chi lavora hanno in mano (revisione totale · H-45): farle
+ * passare da qui rende uniforme il runner senza rompere niente.
+ */
+const TENANT_OPTIONS = ['--tenant', '--tenant-id', '--slug'] as const
+
+/**
+ * Tenant obbligatorio da `--tenant=<slug>` o `--tenant <slug>` (accetta anche
+ * `--tenant-id` e `--slug`, vedi TENANT_OPTIONS).
  * Fallisce (ScriptArgError) se assente, vuoto o con caratteri non ammessi.
  */
 export function resolveTenantArg(argv: readonly string[] = defaultArgv()): string {
-  const raw = readOptionValue('--tenant', argv)
+  let raw: string | undefined
+  for (const opt of TENANT_OPTIONS) {
+    raw = readOptionValue(opt, argv)
+    if (raw !== undefined) break
+  }
   if (raw === undefined || raw.trim() === '') {
     throw new ScriptArgError('Tenant mancante: passare --tenant=<slug> (es. --tenant=c-one). Nessun default.')
   }

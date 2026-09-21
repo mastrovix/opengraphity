@@ -29,7 +29,7 @@ export function createApiBase(opts: CreateApiBaseOptions): ApiBase {
     baseUrl,
     apiUrl(path: string): string {
       if (!path.startsWith('/')) {
-        throw new Error(`apiUrl: il path deve iniziare con "/" (ricevuto "${path}")`)
+        throw new Error(`apiUrl: the path must start with "/" (got "${path}")`)
       }
       return `${baseUrl}${path}`
     },

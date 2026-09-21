@@ -2,9 +2,9 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft } from 'lucide-react'
 import { Pill } from '@/components/ui/Pill'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
-import { colors, palette, lookupOrError } from '@/lib/tokens'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
 import { buttonStyleForCategory } from '@/lib/workflowStepStyle'
+import { useValueStyle } from '@/hooks/useValueStyle'
 
 interface WorkflowTransition {
   toStep:        string
@@ -20,15 +20,6 @@ interface Problem {
   title:    string
   priority: string
   status:   string
-}
-
-const PRIORITY_COLOR: Record<string, string> = {
-  critical: 'var(--color-trigger-sla-breach)', high: 'var(--color-brand)', medium: palette.warning.text, low: 'var(--color-success)',
-}
-// Sfondo del badge priorità: i token sono `var(--…)`, quindi niente suffisso
-// alfa esadecimale — si usa la tinta della stessa famiglia.
-const PRIORITY_BG: Record<string, string> = {
-  critical: palette.danger.tint, high: palette.info.tint, medium: palette.warning.tint, low: palette.success.tint,
 }
 
 // Every problem status renders with the same brand colours — a single value,
@@ -62,6 +53,8 @@ export function ProblemHeader({
   onTransitionClick,
 }: ProblemHeaderProps) {
   const { t } = useTranslation()
+  // F9: il colore della priorità dal Dizionario del cliente.
+  const priorityStyle = useValueStyle()('priority', problem.priority)
   const { byName: stepByName, labelFor } = useWorkflowSteps('problem')
   const { labelOf } = useDomainVocabularies()
   return (
@@ -77,7 +70,7 @@ export function ProblemHeader({
           («critical»): l'etichetta è dato del cliente e si scrive dal
           Dizionario. Finché non la conosciamo si mostra il valore, che è vero.
         */}
-        <Pill bg={PRIORITY_BG[problem.priority] ?? 'var(--color-border-light)'} color={lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', 'var(--color-slate)')} radius={4} style={{ fontSize: 'var(--font-size-body)', border: `1px solid ${lookupOrError(PRIORITY_COLOR, problem.priority, 'PRIORITY_COLOR', colors.border)}` }}>
+        <Pill bg={priorityStyle.bg} color={priorityStyle.color} radius={4} style={{ fontSize: 'var(--font-size-body)', border: `1px solid ${priorityStyle.accent}` }}>
           {labelOf('priority', problem.priority) ?? problem.priority}
         </Pill>
         {/*

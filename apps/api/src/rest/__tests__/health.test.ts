@@ -35,6 +35,10 @@ vi.mock('ioredis', () => ({
   },
 }))
 
+// F8: le migrazioni pendenti rendono la sonda «degraded».
+let pending: string[] = []
+vi.mock('../../lib/migrationState.js', () => ({ pendingMigrations: vi.fn(async () => pending) }))
+
 const { getSession } = await import('@opengraphity/neo4j')
 const { healthRouter } = await import('../health.js')
 
@@ -57,6 +61,7 @@ beforeEach(() => {
   neo.run.mockResolvedValue({ records: [] })
   redisState.connect.mockResolvedValue(undefined)
   redisState.ping.mockResolvedValue('PONG')
+  pending = []
 })
 
 interface HealthBody { status: string; timestamp: string; version: string; services: { neo4j: string; redis: string } }
@@ -71,6 +76,14 @@ describe('GET /health', () => {
     expect(neo.run).toHaveBeenCalledWith('RETURN 1')
     expect(neo.close).toHaveBeenCalled()
     expect(redisState.disconnect).toHaveBeenCalled()
+  })
+
+  /** Revisione del 14 set 2026 · F8: un deploy senza migrate non è «ok». */
+  it('migrazioni pendenti → 503 degraded con quante sono, anche con Neo4j e Redis in salute', async () => {
+    pending = ['20260924_1030_service_calendar']
+    const res = await fetch(base)
+    expect(res.status).toBe(503)
+    expect(await res.json()).toMatchObject({ status: 'degraded', services: { neo4j: 'ok', redis: 'ok' }, pendingMigrations: 1 })
   })
 
   it('Redis probe uses the queues connection options, lazyConnect and no retries', async () => {

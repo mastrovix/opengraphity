@@ -21,6 +21,7 @@ describe('domainMatrixFake resta uguale al vero', () => {
     for (const kind of Object.keys(DOMAIN_MATRIX_KINDS) as DomainMatrixKind[]) {
       expect(FAKE_KINDS[kind].inputs, kind).toEqual(DOMAIN_MATRIX_KINDS[kind].inputs)
       expect(FAKE_KINDS[kind].output, kind).toBe(DOMAIN_MATRIX_KINDS[kind].output)
+      expect((FAKE_KINDS[kind] as { scale?: readonly string[] }).scale, kind).toEqual((DOMAIN_MATRIX_KINDS[kind] as { scale?: readonly string[] }).scale)
     }
   })
 
@@ -40,7 +41,10 @@ describe('domainMatrixFake resta uguale al vero', () => {
 
   it('copre ogni vocabolario che le matrici dichiarano', () => {
     for (const spec of Object.values(DOMAIN_MATRIX_KINDS)) {
-      for (const name of [...spec.inputs, spec.output]) {
+      // Un'uscita a scala non è un vocabolario, e nemmeno un ingresso a scala (`inputScales`).
+      const scaled = 'inputScales' in spec ? Object.keys(spec.inputScales) : []
+      const inputs = spec.inputs.filter((i: string) => !scaled.includes(i))
+      for (const name of 'scale' in spec ? [...inputs] : [...inputs, spec.output]) {
         expect(FAKE_VOCABULARIES[name], `il doppio non conosce il vocabolario ${name}`).toBeDefined()
       }
     }

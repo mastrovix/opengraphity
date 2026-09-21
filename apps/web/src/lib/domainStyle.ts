@@ -24,6 +24,12 @@
  *     — è la stessa cosa che il form del CI segnala come «non più nel
  *     vocabolario».
  *
+ * Revisione del 14 set 2026 · F9: lo stile di un valore non è più una tabella
+ * del web (`SEVERITY_STYLE`, `CI_STATUS_STYLE`, `PRIORITY_COLOR`…): è il COLORE
+ * che il cliente assegna al valore nel Dizionario, accanto all'etichetta, scelto
+ * dalla palette chiusa `VALUE_COLORS`. «Senza stile» vuol dire «nessun colore
+ * scelto».
+ *
  * Il terzo caso esiste e va detto: **il vocabolario non è (ancora) noto** —
  * la query non è tornata, o quella palette non ne ha uno da consultare.
  * Allora non si può distinguere fra 1 e 2: si sceglie il neutro, perché
@@ -31,33 +37,44 @@
  * difetto di prima. La differenza si vede in console: `console.warn` invece di
  * `console.error`.
  */
-import { colors } from '@/lib/tokens'
+import type { ValueColor } from '@opengraphity/types'
+import { colors, palette } from '@/lib/tokens'
 
-export interface ValueStyle { bg: string; color: string }
+/** Sfondo e testo della pastiglia; `accent` per pallini e bordi. */
+export interface ValueStyle { bg: string; color: string; accent: string }
 
-/** Valore del vocabolario senza uno stile assegnato: normale, quindi neutro. */
-export const NEUTRAL_VALUE_STYLE: ValueStyle = { bg: colors.slateBg, color: 'var(--color-slate)' }
+/** Valore del vocabolario senza un colore assegnato: normale, quindi neutro. */
+export const NEUTRAL_VALUE_STYLE: ValueStyle = { bg: colors.slateBg, color: 'var(--color-slate)', accent: 'var(--color-slate-light)' }
 
 /** Valore FUORI dal vocabolario del cliente: un errore, e si vede. */
-export const BROKEN_VALUE_STYLE: ValueStyle = { bg: 'var(--color-danger)', color: colors.white }
+export const BROKEN_VALUE_STYLE: ValueStyle = { bg: 'var(--color-danger)', color: colors.white, accent: 'var(--color-danger)' }
+
+/** Lo stile di una famiglia della palette, per nome (il colore del Dizionario). */
+export function valueColorStyle(color: ValueColor): ValueStyle {
+  if (color === 'neutral') return NEUTRAL_VALUE_STYLE
+  const family = palette[color]
+  return { bg: family.tint, color: family.text, accent: family.base }
+}
 
 /**
- * `vocabulary` = i valori ammessi per questo cliente, oppure `null` quando non
- * si conoscono (query in corso, o palette senza vocabolario da consultare).
+ * Lo stile di un valore di vocabolario.
+ *
+ * `vocabulary` = il nome del vocabolario (compare nei messaggi di console);
+ * `values` = i valori ammessi per questo cliente, oppure `null` quando non si
+ * conoscono; `color` = il colore che il Dizionario assegna al valore, o `null`.
  */
-export function domainValueStyle<T extends ValueStyle>(
-  map: Readonly<Record<string, T>>,
+export function vocabularyValueStyle(
+  vocabulary: string,
   value: string,
-  mapName: string,
-  vocabulary: readonly string[] | null,
-): T | ValueStyle {
-  const hit = map[value]
-  if (hit) return hit
-  if (vocabulary === null) {
-    console.warn(`[${mapName}] "${value}" has no style and the vocabulary of this tenant is unavailable: neutral style`)
+  values: readonly string[] | null,
+  color: ValueColor | null,
+): ValueStyle {
+  if (color) return valueColorStyle(color)
+  if (values === null) {
+    console.warn(`[${vocabulary}] "${value}" has no color and the vocabulary of this tenant is unavailable: neutral style`)
     return NEUTRAL_VALUE_STYLE
   }
-  if (vocabulary.includes(value)) return NEUTRAL_VALUE_STYLE
-  console.error(`[${mapName}] "${value}" is not in the vocabulary of this tenant (${vocabulary.join(', ') || 'empty'})`)
+  if (values.includes(value)) return NEUTRAL_VALUE_STYLE
+  console.error(`[${vocabulary}] "${value}" is not in the vocabulary of this tenant (${values.join(', ') || 'empty'})`)
   return BROKEN_VALUE_STYLE
 }

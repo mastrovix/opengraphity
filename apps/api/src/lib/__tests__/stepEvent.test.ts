@@ -15,12 +15,15 @@ import {
   stepEnteredEventType, legacyStepEventType, isStepEnteredEventType, stepEnteredEntityType,
 } from '@opengraphity/types'
 import type { GraphQLContext } from '../../context.js'
+import { perms } from './testPermissions.js'
 
 const runQuery    = vi.fn()
 const runQueryOne = vi.fn()
 const audit       = vi.fn().mockResolvedValue(undefined)
 
-vi.mock('@opengraphity/neo4j', () => ({ runQuery, runQueryOne }))
+vi.mock('@opengraphity/neo4j', () => ({ runQuery, runQueryOne, toNumber: Number }))
+let tenantLanguage = 'en'
+vi.mock('../tenantLanguage.js', () => ({ languageFor: async () => tenantLanguage }))
 vi.mock('../audit.js', () => ({ audit }))
 vi.mock('../logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -30,7 +33,7 @@ const { loadStepFacts, workflowEventTypeRows, auditStepEntered } = await import(
 const { logger } = await import('../logger.js')
 
 const session = {} as never
-const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'u1', userEmail: 'u@test.io', role: 'admin' }
+const ctx: GraphQLContext = { tenantId: 'c-two', userId: 'u1', userEmail: 'u@test.io', role: 'admin', permissions: perms('admin') }
 
 beforeEach(() => vi.clearAllMocks())
 
@@ -63,6 +66,15 @@ describe('loadStepFacts — i fatti del passo, o un errore che li nomina', () =>
   it('etichetta assente → il nome del passo (non una stringa vuota)', async () => {
     runQueryOne.mockResolvedValue({ stepId: 'st-1', label: null, purpose: null, category: null })
     expect((await loadStepFacts(session, 'c-two', 'change', 'x')).step_label).toBe('x')
+  })
+
+  /** Giro del 14 set 2026 (#22): la notifica si compone nella lingua dell'organizzazione. */
+  it('l\'etichetta spedita arriva nella lingua dell\'organizzazione; senza traduzione resta quella di base', async () => {
+    runQueryOne.mockResolvedValue({ stepId: 'st-1', label: 'On Hold', labels: '{"it":"In Attesa"}', purpose: null, category: 'waiting' })
+    tenantLanguage = 'it'
+    expect((await loadStepFacts(session, 'c-two', 'incident', 'pending')).step_label).toBe('In Attesa')
+    tenantLanguage = 'en'
+    expect((await loadStepFacts(session, 'c-two', 'incident', 'pending')).step_label).toBe('On Hold')
   })
 
   it('passo inesistente nel workflow attivo → FAIL-LOUD con tenant, entità e passo', async () => {

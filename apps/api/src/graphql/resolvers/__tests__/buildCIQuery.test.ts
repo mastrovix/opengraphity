@@ -24,3 +24,28 @@ describe('allCIs — filtro avanzato', () => {
     expect(() => buildAdvancedWhere(JSON.stringify({ rules: [{ id: 'r3', field: 'secret', operator: 'is_empty', value: null, logic: 'AND' }] }), {}, ALL_CIS_ALLOWED_FIELDS, 'n')).toThrow(/not allowed/)
   })
 })
+
+/**
+ * IL FILTRO DI UN CAMPO `ref_ci` (19 set 2026) passa da qui: il costruttore è
+ * lo stesso delle liste CMDB, e l'insieme dei campi ammessi è quello che
+ * `allCIs` allarga con le proprietà non di sistema dei tipi cercati. Questi
+ * test pinnano le due metà di quella promessa — la proprietà del cliente si
+ * può filtrare, e una proprietà che nessun tipo ha viene RIFIUTATA (non
+ * ignorata, che vorrebbe dire una ricerca che offre tutto).
+ */
+describe('allCIs — filtro sulle proprietà del tipo di CI', () => {
+  const ammessi = new Set([...ALL_CIS_ALLOWED_FIELDS, 'manufacturer', 'criticality'])
+  const regola = (field: string, operator: string, value: unknown) =>
+    JSON.stringify({ rules: [{ id: 'r', field, operator, value, logic: 'AND' }] })
+
+  it('una proprietà del tipo entra nella WHERE con il suo valore', () => {
+    const params: Record<string, unknown> = {}
+    const where = buildAdvancedWhere(regola('manufacturer', 'equals', 'Dell'), params, ammessi, 'n')
+    expect(where).toMatch(/n\.manufacturer = \$\w+/)
+    expect(Object.values(params)).toContain('Dell')
+  })
+
+  it('una proprietà che nessun tipo cercato ha viene rifiutata', () => {
+    expect(() => buildAdvancedWhere(regola('rack_unit', 'equals', '3'), {}, ammessi, 'n')).toThrow(/not allowed/)
+  })
+})

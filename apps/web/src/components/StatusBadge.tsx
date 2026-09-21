@@ -21,6 +21,7 @@
  */
 import { colors } from '@/lib/tokens'
 import { useWorkflowSteps } from '@/hooks/useWorkflowSteps'
+import { useTranslation } from 'react-i18next'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 
 /** Il valore grezzo, leggibile: l'ultima spiaggia quando l'etichetta non si conosce. */
@@ -46,6 +47,34 @@ export function StatusBadge({ value, vocabulary = 'ci_status' }: { value: string
  * un'etichetta diversa.
  */
 export function TicketStatusBadge({ value, entityType }: { value: string; entityType: string }) {
-  const { labelFor } = useWorkflowSteps(entityType)
-  return <span style={{ color: colors.slate }} title={value}>{labelFor(value) || grezzo(value)}</span>
+  const { isKnownStep, labelFor, loading } = useWorkflowSteps(entityType)
+  const { t } = useTranslation()
+  // `isKnownStep` guarda TUTTE le definizioni attive dell'entità, non solo
+  // quella scelta: un tenant può averne più d'una (20 set 2026).
+  if (isKnownStep(value)) return <span style={{ color: colors.slate }} title={value}>{labelFor(value)}</span>
+  /*
+   * UNO STATO CHE IL PROCESSO NON HA PIÙ (20 set 2026, dal giro nel browser).
+   *
+   * Nella lista delle richieste alcune righe dicevano «Inviata» e altre
+   * «submitted»: lo stesso stato per chi guarda, due parole. La causa vera
+   * era che il web leggeva UNA definizione di workflow e il tenant ne ha due
+   * attive — ora `labelFor` guarda tutte (vedi `useWorkflowSteps`).
+   *
+   * Resta il caso dell'orfano VERO: un passo che nessuna definizione attiva
+   * dichiara più, e su cui un ticket è rimasto. Il prodotto mostrava il nome
+   * interno come se fosse un'etichetta; ora si vede che è un orfano, e il
+   * perché sta nel titolo.
+   *
+   * Mentre i passi si caricano non si accusa nessuno: `byName` è vuoto per un
+   * istante, e lampeggiare «orfano» su ogni riga sarebbe una bugia.
+   */
+  if (loading) return <span style={{ color: colors.slate }} title={value}>{grezzo(value)}</span>
+  return (
+    <span
+      style={{ color: 'var(--color-slate-light)', fontStyle: 'italic' }}
+      title={t('workflow.orphanStep', { step: value })}
+    >
+      {grezzo(value)}
+    </span>
+  )
 }

@@ -11,6 +11,8 @@ type AnyProcessor = (job: Job) => Promise<unknown>
 const processors = new Map<string, AnyProcessor>()
 const createWorker = vi.fn((name: string, processor: AnyProcessor, opts?: unknown) => { processors.set(name, processor); return { name, opts } })
 const queueAdd = vi.fn().mockResolvedValue(undefined)
+// Ondata 6 di «Nulla cablato»: le funzioni AI sono dell'organizzazione; qui tutte accese.
+vi.mock('../../lib/aiSettings.js', () => import('../../lib/__tests__/aiSettingsFake.js'))
 vi.mock('../../lib/bullmq.js', () => ({
   createWorker: (...a: unknown[]) => createWorker(...(a as [string, AnyProcessor, unknown])),
   getQueue: vi.fn(() => ({ add: queueAdd })),

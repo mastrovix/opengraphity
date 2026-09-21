@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next'
+import { useAIFeature } from '@/hooks/useAIFeature'
+import { AIDisabledNotice } from '@/components/ai/AIDisabledNotice'
 import i18n from '@/i18n/i18n'
 import { gql } from '@apollo/client'
 import { useLazyQuery } from '@apollo/client/react'
@@ -55,12 +57,17 @@ export function TriageSuggestionCard({
   onApply: (values: TriageValues) => void
 }) {
   const { t } = useTranslation()
+  const enabled = useAIFeature('triage')
   const [run, { data, loading, error }] = useLazyQuery<{ triageSuggestion: Suggestion }>(TRIAGE_SUGGESTION, {
     fetchPolicy: 'network-only',
   })
 
   const s = data?.triageSuggestion
   const conf = s ? lookupOrError(CONF_LABEL, s.confidence, 'CONF_LABEL', { labelKey: s.confidence, bg: 'var(--color-danger)', color: colors.white }) : null
+
+  // Funzione spenta dall'organizzazione (ondata 6 di «Nulla cablato»): lo si dice al posto del bottone.
+  if (enabled === false) return <div style={{ marginBottom: 20 }}><AIDisabledNotice feature="triage" /></div>
+  if (enabled === null) return null
 
   return (
     <div style={{ marginBottom: 20 }}>
@@ -100,7 +107,7 @@ export function TriageSuggestionCard({
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
             <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: colors.white, border: `1px solid ${colors.border}`, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              {t('pages.incidents.severity')}: <SeverityBadge value={s.severity} />
+              {t('pages.incidents.priority')}: <SeverityBadge value={s.severity} />
             </span>
             <span style={{ fontSize: 'var(--font-size-label)', padding: '3px 10px', borderRadius: 6, background: colors.white, border: `1px solid ${colors.border}` }}>
               {t('pages.kb.category')}: <strong>{s.category}</strong>

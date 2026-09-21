@@ -38,18 +38,33 @@ vi.mock('../../lib/workflowHelpers.js', () => ({
 }))
 
 vi.mock('../rules.js', () => ({
-  ANOMALY_RULES: [
-    {
-      key:    'test_rule',
-      title:  'Test Rule',
-      cypher: 'MATCH (n) RETURN n.id AS entityId, "server" AS entityType, "" AS entitySubtype, n.name AS entityName, "desc" AS description, "medium" AS severity',
-    },
-  ],
+  buildAnomalyRule: vi.fn((key: string, settings: { severity: string }) => ({
+    key,
+    title:  'Test Rule',
+    description: 'desc',
+    cypher: 'MATCH (n) RETURN n.id AS entityId, "server" AS entityType, "" AS entitySubtype, n.name AS entityName, "desc" AS description, {} AS params, $severity AS severity',
+    params: { severity: settings.severity, threshold: null, incidentSeverities: [] },
+  })),
 }))
+
+// Ondata 5 di «Nulla cablato»: le regole vengono dalla configurazione del
+// cliente. Una accesa e una spenta: la spenta non esegue query ma chiude le
+// sue anomalie aperte (una scrittura).
+vi.mock('../ruleConfig.js', () => {
+  const base = { severity: 'medium', ciTypes: [], relations: [], threshold: null, incidentSeverities: [], forbidden: [], isDefault: false, updatedAt: null }
+  return {
+    loadAnomalyRuleConfigs: vi.fn(async () => [
+      { ...base, ruleKey: 'orphan_ci', enabled: true },
+      { ...base, ruleKey: 'missing_owner', enabled: false },
+    ]),
+    anomalyRuleOptions: vi.fn(async () => ({ ciTypes: [], relations: [], incidentSeverities: [] })),
+    anomalyRuleProblem: vi.fn(() => null),
+  }
+})
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
-const { startAnomalyScanner, getAnomalyScannerQueue, enqueueTenantScan, anomalyScannerProcessor } = await import('../anomalyEngine.js')
+const { startAnomalyScanner, getAnomalyScannerQueue, enqueueTenantScan, anomalyScannerProcessor, entitySubtypeOf } = await import('../anomalyEngine.js')
 const { Worker } = await import('bullmq')
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -107,8 +122,9 @@ describe('enqueueTenantScan (C-18)', () => {
 describe('anomalyScannerProcessor (C-18)', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  // Per scanned tenant (no hits): autoResolveStale + persistScanStatus = 2 executeWrite
-  const WRITES_PER_TENANT = 2
+  // Per scanned tenant (no hits): autoResolveStale della regola accesa + chiusura
+  // di quella spenta + persistScanStatus = 3 executeWrite
+  const WRITES_PER_TENANT = 3
   const tenantsScanned = () => executeWrite.mock.calls.length / WRITES_PER_TENANT
 
   it('con tenantId scansiona SOLO quel tenant', async () => {
@@ -122,5 +138,27 @@ describe('anomalyScannerProcessor (C-18)', () => {
     await anomalyScannerProcessor({ name: 'scan', data: {} } as never)
     expect(tenantsScanned()).toBe(2)
     expect(executeRead.mock.calls.length).toBe(1 + 2)  // loadTenants + one rule query per tenant
+  })
+
+  it('una regola spenta non esegue query e chiude le sue anomalie aperte con il motivo', async () => {
+    const runs: Array<{ q: string; p: Record<string, unknown> }> = []
+    executeWrite.mockImplementation(async (fn: (tx: { run: (q: string, p: Record<string, unknown>) => Promise<{ records: unknown[] }> }) => unknown) =>
+      fn({ run: async (q: string, p: Record<string, unknown>) => { runs.push({ q, p }); return { records: [] } } }) as never)
+    await anomalyScannerProcessor({ name: 'scan-manual', data: { tenantId: 'tenant-a' } } as never)
+    const disabled = runs.find((r) => r.p['ruleKey'] === 'missing_owner')
+    expect(disabled?.p).toMatchObject({ reason: 'rule_disabled', currentEntityIds: [] })
+    expect(runs.find((r) => r.p['ruleKey'] === 'orphan_ci')?.p).toMatchObject({ reason: 'not_detected' })
+  })
+})
+
+/** Secondo giro UI del 15 set 2026 · V-3: «CI Senza Owner · Portale clienti · businessapplication». */
+describe('entitySubtypeOf', () => {
+  it('le label del CI diventano il nome del tipo; una stringa resta; altro è un errore', () => {
+    expect(entitySubtypeOf('t1', ['BusinessApplication'])).toBe('business_application')
+    expect(entitySubtypeOf('t1', ['DatabaseInstance', 'ConfigurationItem'])).toBe('database_instance')
+    expect(entitySubtypeOf('t1', [])).toBe('')
+    expect(entitySubtypeOf('t1', null)).toBe('')
+    expect(entitySubtypeOf('t1', 'team')).toBe('team')
+    expect(() => entitySubtypeOf('t1', 42)).toThrow(/unreadable entitySubtype/)
   })
 })

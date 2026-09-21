@@ -10,8 +10,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { DomainEvent } from '@opengraphity/types'
 
+// Revisione totale · E-3: la consegna è deduplicata per canale su Redis. Nei
+// test gli eventi riusano lo stesso id, quindi la deduplica va azzerata a
+// ogni caso: il contratto della deduplica è pinnato in deliveryDedup.test.ts.
+vi.mock('../deliveryDedup.js', () => ({
+  deliverOnce: async (_id: string | undefined, _ch: string, deliver: () => Promise<void> | void) => { await deliver(); return true },
+  alreadyDelivered: async () => false,
+  markDelivered: async () => {},
+  resetDeliveryDedup: () => {},
+}))
+
 let ruleRow: Record<string, unknown> | null = null
 
+vi.mock('../locale.js', () => ({ loadNotificationLocale: vi.fn(async () => ({ language: 'en', timeZone: 'UTC' })), invalidateNotificationLocale: vi.fn() }))
 vi.mock('@opengraphity/neo4j', () => ({
   getSession: () => ({
     executeRead: async (fn: (tx: { run: (c: string, p: Record<string, unknown>) => Promise<unknown> }) => Promise<unknown>) =>
@@ -33,7 +44,7 @@ vi.mock('../email.js', () => ({ sendEmail: vi.fn(async () => {}) }))
 const { NotificationDispatcher, invalidateRuleCache } = await import('../dispatcher.js')
 const { sseManager } = await import('../sse.js')
 
-const sent = vi.spyOn(sseManager, 'sendToTenant').mockImplementation(() => {})
+const sent = vi.spyOn(sseManager, 'deliverToTenant').mockResolvedValue(undefined)
 
 function event(type: string, payload: Record<string, unknown>): DomainEvent<unknown> {
   return { id: 'e1', type, tenant_id: 't1', timestamp: '2026-09-10T10:00:00.000Z', correlation_id: 'c', actor_id: 'monitoring', payload }
@@ -119,7 +130,12 @@ describe('notifiche dell\'Event Management (revisione 2, D3.2: mai un uuid come 
     await new NotificationDispatcher().process(event('event.storm_ended', {
       id: 'src-1', source_id: 'src-1', source_name: 'Zabbix prod', rate_per_minute: 0, incident_id: null, since: 'T', events: 412, duration_minutes: 9, entity_type: 'inbound_webhook', entity_id: 'src-1',
     }))
-    expect(sent.mock.calls[0]![1]).toMatchObject({ message: 'Zabbix prod — 412 allarmi in 9 min', entity_id: 'src-1', entity_type: 'inbound_webhook' })
+    // Revisione del 14 set 2026 · lingua: «allarmi in» era italiano per tutti.
+    // Il testo è inglese e il pannello compone la frase dalla chiave.
+    expect(sent.mock.calls[0]![1]).toMatchObject({
+      message: 'Zabbix prod — 412 alarms in 9 min', entity_id: 'src-1', entity_type: 'inbound_webhook',
+      message_key: 'inApp.storm.ended', message_params: { source: 'Zabbix prod', events: '412', minutes: '9' },
+    })
   })
 
   it('tempesta senza rate_per_minute numerico → errore esplicito', async () => {
@@ -132,13 +148,38 @@ describe('notifiche dell\'Event Management (revisione 2, D3.2: mai un uuid come 
 describe('email: il link viene dalla tabella entity_type → percorso condivisa (D3.2)', () => {
   it('service → /monitoring/services/:id; inbound_webhook → /monitoring/sources/:id; tipo senza pagina → nessun link', async () => {
     const { renderNotificationEmail } = await import('../dispatcher.js')
+const EN_UTC = { language: 'en' as const, timeZone: 'UTC' }
     const base = { id: 'n', type: 't', title: 'k', message: 'm', severity: 'info' as const, timestamp: 'T', read: false }
-    expect(renderNotificationEmail({ ...base, entity_type: 'service', entity_id: 'map-1' })).toContain('/monitoring/services/map-1"')
-    expect(renderNotificationEmail({ ...base, entity_type: 'inbound_webhook', entity_id: 'src-1' })).toContain('/monitoring/sources/src-1"')
-    expect(renderNotificationEmail({ ...base, entity_type: 'event', entity_id: 'ev-1' })).toContain('/events/ev-1"')
-    expect(renderNotificationEmail({ ...base, entity_type: 'ci', entity_id: 'ci-1' })).toContain('/cis/ci-1"')
-    expect(renderNotificationEmail({ ...base, entity_type: 'sync', entity_id: 'run-1' })).not.toContain('<a ')
+    expect(renderNotificationEmail({ ...base, entity_type: 'service', entity_id: 'map-1' }, EN_UTC)).toContain('/monitoring/services/map-1"')
+    expect(renderNotificationEmail({ ...base, entity_type: 'inbound_webhook', entity_id: 'src-1' }, EN_UTC)).toContain('/monitoring/sources/src-1"')
+    expect(renderNotificationEmail({ ...base, entity_type: 'event', entity_id: 'ev-1' }, EN_UTC)).toContain('/events/ev-1"')
+    expect(renderNotificationEmail({ ...base, entity_type: 'ci', entity_id: 'ci-1' }, EN_UTC)).toContain('/cis/ci-1"')
+    expect(renderNotificationEmail({ ...base, entity_type: 'sync', entity_id: 'run-1' }, EN_UTC)).not.toContain('<a ')
     // mai più `/${entity_type}s/${id}`: /services/map-1 era una rotta inesistente
-    expect(renderNotificationEmail({ ...base, entity_type: 'service', entity_id: 'map-1' })).not.toMatch(/href="[a-z]+:\/\/[^/"]+\/services\/map-1"/)
+    expect(renderNotificationEmail({ ...base, entity_type: 'service', entity_id: 'map-1' }, EN_UTC)).not.toMatch(/href="[a-z]+:\/\/[^/"]+\/services\/map-1"/)
+  })
+})
+
+/** Giro nel browser del 14 set 2026 (#18): il corpo di «SLA about to be breached» era «29». */
+describe('notifica SLA', () => {
+  const base = { entity_id: 'inc-1', entity_type: 'incident', number: 'INC00000012', title: 'Rete giù' }
+  beforeEach(() => { ruleRow = { id: 'r', enabled: true, severity_override: 'warning', title_key: 'notification.sla.warning.title', channels: ['in_app'], target: 'all' } })
+
+  it('preavviso: numero, titolo e minuti, con la chiave per il pannello', async () => {
+    await new NotificationDispatcher().process(event('sla.warning', { ...base, target: 'resolve', minutes_remaining: 29 }))
+    expect(sent.mock.calls[0]![1]).toMatchObject({
+      message: 'INC00000012 — Rete giù: 29 min left before the SLA deadline', entity_id: 'inc-1', entity_type: 'incident',
+      message_key: 'inApp.sla.warning', message_params: { number: 'INC00000012', title: 'Rete giù', minutes: '29' },
+    })
+  })
+
+  it('presa in carico scaduta: non «0 min», ma cosa è successo', async () => {
+    await new NotificationDispatcher().process(event('sla.warning', { ...base, target: 'response', minutes_remaining: 0 }))
+    expect(sent.mock.calls[0]![1]).toMatchObject({ message: 'INC00000012 — Rete giù: the response time has elapsed', message_key: 'inApp.sla.responseElapsed' })
+  })
+
+  it('un payload senza il ticket è un errore del produttore, non un corpo con i soli minuti', async () => {
+    await expect(new NotificationDispatcher().process(event('sla.warning', { entity_id: 'inc-1', entity_type: 'incident', minutes_remaining: 29, target: 'resolve' })))
+      .rejects.toThrow(/sla\.warning payload has no "number"/)
   })
 })

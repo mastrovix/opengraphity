@@ -39,8 +39,14 @@ export function knowledgeBaseSDL(): string {
     total: Int!
   }
 
+  """Una categoria della Knowledge Base: un valore del vocabolario kb_category del cliente."""
   type KBCategory {
     name:  String!
+    """L'etichetta nella lingua chiesta (o in quella del cliente)."""
+    label: String!
+    """Il colore del Dizionario (neutral, success, info, purple, warning, orange, danger), o null."""
+    color: String
+    """Articoli pubblicati in questa categoria (anche zero)."""
     count: Int!
   }
   `

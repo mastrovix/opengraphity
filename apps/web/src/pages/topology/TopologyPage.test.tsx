@@ -24,7 +24,7 @@ vi.mock('@/components/topology/TopologyGraph', () => ({
 }))
 
 const node = (over: Partial<TopologyNode> & { id: string; name: string }): TopologyNode => ({
-  type: 'server', status: 'active', environment: 'production', ownerGroup: null, incidentCount: 0, changeCount: 0, health: null, ...over,
+  type: 'server', status: 'active', inMaintenance: false, environment: 'production', ownerGroup: null, incidentCount: 0, changeCount: 0, health: null, ...over,
 })
 const NODES: TopologyNode[] = [
   node({ id: 'ci-1', name: 'db-01', health: 'down', incidentCount: 1 }),
@@ -86,7 +86,7 @@ describe('TopologyPage — salute', () => {
   it('senza ?ciId la query non parte: tela vuota con l\'invito, nessun contatore', async () => {
     const seen: TopoVars[] = []
     renderPage('/topology', seen)
-    expect(await screen.findByText('Explore the relationships between infrastructure CIs')).toBeInTheDocument()
+    expect(await screen.findByText('Choose a CI type and a CI in the bar above to see its relationships.')).toBeInTheDocument()
     expect(screen.queryByTestId('graph')).not.toBeInTheDocument()
     expect(seen).toHaveLength(0)
     expect(healthToggle()).not.toBeChecked()
@@ -145,6 +145,6 @@ describe('TopologyPage — salute', () => {
     expect(location()).toBe('/topology?health=1&ciId=ci-1')   // nessun effetto al montaggio lo ha tolto
     await user.selectOptions(screen.getByRole('combobox', { name: 'Type' }), 'application')
     expect(location()).toBe('/topology?health=1')
-    expect(await screen.findByText('Explore the relationships between infrastructure CIs')).toBeInTheDocument()
+    expect(await screen.findByText('Choose a CI type and a CI in the bar above to see its relationships.')).toBeInTheDocument()
   })
 })

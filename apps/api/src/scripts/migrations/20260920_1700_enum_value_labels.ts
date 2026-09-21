@@ -57,6 +57,14 @@ export const ENUM_VALUE_LABELS_IT: Readonly<Record<string, Readonly<Record<strin
     access: 'Accessi', security: 'Sicurezza', other: 'Altro',
   },
   certificate_type: { public: 'Pubblico', external: 'Esterno' },
+  /*
+   * SUPERATA dalla `20261005_1130_change_type_labels_technical`: il
+   * proprietario ha deciso che i tre tipi di change restano in inglese anche
+   * in italiano, come «Incident» e «Change» — si traduce cio che descrive,
+   * resta inglese cio che nomina. Qui la riga NON si corregge: questa lista e
+   * congelata al 20 set 2026 e dice cosa fu seminato quel giorno; e la 1130 a
+   * riportare l'italiano al tecnico, e solo dove nessuno l'ha rinominato.
+   */
   change_type:      { standard: 'Standard', normal: 'Normale', emergency: 'Emergenza' },
   ci_chain:         { Application: 'Applicativa', Infrastructure: 'Infrastrutturale' },
   ci_status: {

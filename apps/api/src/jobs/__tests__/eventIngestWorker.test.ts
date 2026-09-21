@@ -163,7 +163,7 @@ describe('onFailed — errori visibili sulla sorgente (A4)', () => {
     const [, cypher, params] = vi.mocked(runQueryOne).mock.calls[0]!
     expect(cypher).toContain('MATCH (w:InboundWebhook {id: $sourceId, tenant_id: $tenantId})')
     expect(cypher).toMatch(/SET w\.last_error = \$message,\s+w\.last_error_at = \$now,\s+w\.error_count = coalesce\(w\.error_count, 0\) \+ 1/)
-    expect(params).toMatchObject({ sourceId: 'hook-1', tenantId: 't1', message: 'ingest: neo4j down (impronta fp-hook-1-DiskFull, firing DiskFull su db-01)' })
+    expect(params).toMatchObject({ sourceId: 'hook-1', tenantId: 't1', message: 'ingest: neo4j down (fingerprint fp-hook-1-DiskFull, firing DiskFull on db-01)' })
     expect(Number.isNaN(Date.parse((params as Record<string, string>)['now']!))).toBe(false)
     expect(eventsIngestFailedTotal.inc).toHaveBeenCalledWith({ connector: 'zabbix' })
     expect(session.close).toHaveBeenCalled()

@@ -28,9 +28,10 @@ export function AssessmentTaskForm({ task, catalog, canEdit, onSubmitAnswer, onC
           <div key={q.id} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
               <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{q.text}</span>
-              <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)', whiteSpace: 'nowrap' }}>W:{entry.weight}</span>
+              <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 600, padding: '2px 6px', borderRadius: 4, backgroundColor: colors.slateBg, color: 'var(--color-slate)', whiteSpace: 'nowrap' }} title={t('pages.taskView.weightHint')}>{t('pages.taskView.weight', { weight: entry.weight })}</span>
             </div>
             <select
+              aria-label={q.text}
               disabled={!canEdit || task.status === TASK_STATUS.COMPLETED}
               value={selectedId ?? ''}
               onChange={(e) => { if (e.target.value) onSubmitAnswer(q.id, e.target.value) }}

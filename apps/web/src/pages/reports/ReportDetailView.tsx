@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
 import { ReportChartRenderer } from '@/components/ReportChartRenderer'
+import { CHART_TYPES } from '@/components/ReportChartConfig'
 import { ReportSectionBuilder, type ReportSectionInput } from '@/components/ReportSectionBuilder'
 import {
   type ReportTemplate, type ReportSection, type SectionResult, type View,
@@ -9,6 +10,13 @@ import {
 
 import { getReportIcon } from './reportIcons'
 import { colors } from '@/lib/tokens'
+import { useFieldValueLabel } from '@/hooks/useFieldValueLabel'
+
+/** Il tipo di grafico col suo nome (giro UI del 15 set 2026: si leggeva «bar»). */
+function chartTypeLabel(t: (key: string) => string, chartType: string): string {
+  const def = CHART_TYPES.find((c) => c.value === chartType)
+  return def ? t(def.labelKey) : chartType
+}
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -130,7 +138,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
               <div style={{ padding: '10px 16px', background: 'var(--color-slate-bg)', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontWeight: 600, fontSize: 'var(--font-size-body)', color: 'var(--color-slate-dark)' }}>{sec.title}</span>
-                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: colors.border, padding: '2px 6px', borderRadius: 4 }}>{sec.chartType}</span>
+                  <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate)', background: colors.border, padding: '2px 6px', borderRadius: 4 }}>{chartTypeLabel(t, sec.chartType)}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button type="button" onClick={() => startEditSection(sec)}
@@ -141,7 +149,7 @@ export function ReportDetailView(props: ReportDetailViewProps) {
               </div>
               <div style={{ padding: 16 }}>
                 {result ? (
-                  <ReportChartRenderer chartType={result.chartType} data={result.data} title={result.title} error={result.error} />
+                  <SectionChart section={sec} result={result} />
                 ) : (
                   <div style={{ textAlign: 'center', color: 'var(--color-slate-light)', fontSize: 'var(--font-size-card-title)', padding: 24 }}>
                     {t('pages.reports.clickRunToLoad')}
@@ -155,3 +163,25 @@ export function ReportDetailView(props: ReportDetailViewProps) {
     </div>
   )
 }
+
+/**
+ * Il grafico di una sezione, coi valori raggruppati come li chiama il cliente.
+ * Il tipo del nodo di raggruppamento viene dall'etichetta Neo4j dei ticket
+ * («ServiceRequest» → `service_request`) o dal nome del tipo CI.
+ */
+function SectionChart({ section, result }: { section: ReportSection; result: SectionResult }) {
+  const node = section.nodes.find((n) => n.id === section.groupByNodeId) ?? null
+  const entity = node ? node.entityType.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase() : null
+  const valueLabel = useFieldValueLabel(entity, section.groupByField)
+  /*
+   * `errorKey` ANCHE QUI (20 set 2026). Il renderer sa tradurre l'errore di
+   * una sezione da quando l'ANTEPRIMA mostrava «a table section needs at
+   * least one selected field on a result node (isResult = true)» in
+   * italiano — ma la pagina che ESEGUE il report, cioè quella che l'errore
+   * lo fa vedere davvero, la chiave non la passava: ogni errore di sezione
+   * arrivava in inglese e con l'id interno della sezione dentro. La
+   * correzione di allora era finita su un cammino solo.
+   */
+  return <ReportChartRenderer chartType={result.chartType} data={result.data} title={result.title} error={result.error} errorKey={result.errorKey} valueLabel={valueLabel} granularita={section.groupByGranularity} />
+}
+

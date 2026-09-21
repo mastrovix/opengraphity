@@ -35,28 +35,47 @@ const webGraphql = join(here, '../../../../web/src/graphql')
 // `fragments.ts` non è nell'elenco: un documento di soli fragment non valida
 // da solo (NoUnusedFragments); i fragment vengono validati inlined nei
 // documenti che li interpolano (vedi resolveInterpolations).
-const FILES = [
-  'queries/incident.ts', 'queries/problem.ts', 'queries/change.ts',
-  'queries/ci.ts', 'queries/workflow.ts',
-  'mutations/incident.ts', 'mutations/problem.ts', 'mutations/change.ts',
-  'mutations/workflow.ts',
-  // Metamodello dei CI (B0-1): validato contro schema base + metamodelSDL().
-  'mutations/ci.ts',
-  // ex queries/admin.ts
-  'queries/users.ts', 'queries/teams.ts', 'queries/reports.ts', 'queries/dashboard.ts',
-  'queries/anomaly.ts', 'queries/enum.ts', 'queries/notifications.ts', 'queries/queue.ts',
-  'queries/rules.ts', 'queries/automation.ts', 'queries/sla.ts', 'queries/collaboration.ts',
-  'queries/whatIf.ts', 'queries/catalog.ts',
-  // ex mutations/admin.ts
-  'mutations/serviceRequest.ts', 'mutations/teams.ts', 'mutations/reports.ts', 'mutations/dashboard.ts',
-  'mutations/notifications.ts', 'mutations/itil.ts', 'mutations/enum.ts', 'mutations/queue.ts',
-  'mutations/rules.ts', 'mutations/automation.ts', 'mutations/sla.ts', 'mutations/collaboration.ts',
-  'mutations/catalog.ts',
-  // Event Management (ondata 1)
-  'queries/events.ts', 'mutations/events.ts',
-  // Servizi monitorati (mappa del servizio e albero d'impatto)
-  'queries/services.ts', 'mutations/services.ts',
-]
+/**
+ * I FILE si contano dalla cartella, non a mano (revisione totale · F-41).
+ *
+ * Questo elenco era scritto a mano, e quattro file per dominio
+ * (`domainMatrix`, `organization`, `roles`, `slack`, `customFields`) non ci
+ * erano mai entrati: i loro documenti non erano coperti da nessun controllo.
+ * Un elenco a mano si dimentica; una cartella no. Le esclusioni restano, ma
+ * ognuna dichiara il suo perche.
+ */
+const ESCLUSI_PER_FILE: Readonly<Record<string, string>> = {
+  // Un documento di soli fragment non valida da solo (NoUnusedFragments): i
+  // fragment sono validati inlined nei documenti che li interpolano.
+  'fragments.ts': 'solo fragment',
+  // Barrel di re-export: nessun documento proprio.
+  'queries/index.ts':   're-export',
+  'mutations/index.ts': 're-export',
+  'queries.ts':         're-export',
+  'mutations.ts':       're-export',
+  'queries/admin.ts':   're-export (ex catch-all, spezzato per dominio)',
+  'mutations/admin.ts': 're-export (ex catch-all, spezzato per dominio)',
+}
+
+/** Tutti i .ts di graphql/ (ricorsivo), con il percorso relativo a quella cartella. */
+function documentFiles(): string[] {
+  const out: string[] = []
+  const visita = (dir: string, prefix: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.isDirectory()) {
+        if (entry.name === '__tests__') continue
+        visita(join(dir, entry.name), rel)
+      } else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts') && !ESCLUSI_PER_FILE[rel]) {
+        out.push(rel)
+      }
+    }
+  }
+  visita(webGraphql, '')
+  return out
+}
+
+const FILES = documentFiles()
 
 // Documenti admin esclusi ESPLICITAMENTE, con motivo. Ogni nuova esclusione
 // deve dichiarare il perché — mai un'allowlist "a prescindere".
@@ -352,6 +371,97 @@ describe('variabili delle chiamate del web ↔ input dello schema API', () => {
           }
         }
       }
+    }
+    expect(problems).toEqual([])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Parte 3 (revisione totale · F-41): i documenti gql INLINE, fuori da
+// `graphql/`.
+//
+// Ottantotto documenti vivono dentro le pagine e i componenti — `useSyncPage`,
+// `ApprovalsPage`, `GlobalSearch`, `NotificationPanel`, `LogsPage`, … — e
+// nessun controllo li guardava: validavano tutti, ma per caso, e il prossimo
+// campo sbagliato si sarebbe visto solo a runtime, dal cliente. Qui passano
+// dalla stessa validazione dei documenti di `graphql/`.
+//
+// Perimetro dichiarato: si valida quello che lo schema STATICO può giudicare.
+// Un documento che nomina un tipo generato per tenant (i tipi CI del
+// metamodello del cliente) non è un errore di contratto — è fuori da questo
+// schema — e viene contato a parte, non ignorato in silenzio.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('documenti gql inline del web ↔ schema API (F-41)', () => {
+  /** Documenti COSTRUITI a runtime dal metamodello del cliente: fuori perimetro, ma contati. */
+  const composti: string[] = []
+
+  /** Ogni `gql` dentro apps/web/src fuori da graphql/, con il suo nome. */
+  function inlineDocuments(): Array<{ file: string; name: string; doc: DocumentNode }> {
+    const out: Array<{ file: string; name: string; doc: DocumentNode }> = []
+    for (const file of walk(webSrc)) {
+      if (file.startsWith(webGraphql)) continue
+      if (/\.test\.tsx?$/.test(file)) continue
+      const source = readFileSync(file, 'utf8')
+      if (!source.includes('gql`')) continue
+      const local = collectTemplates(source)
+      // `const NOME = gql`…`` anche NON esportato: un documento inline non si esporta.
+      const re = /(?:const|let)\s+(\w+)\s*=\s*gql`([\s\S]*?)`/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(source)) !== null) {
+        const name = m[1]!
+        let doc: DocumentNode
+        try {
+          doc = parse(resolveInterpolations(m[2]!, local, name))
+        } catch (e) {
+          /**
+           * Un documento COMPOSTO a runtime (le pagine della CMDB mettono nel
+           * testo il nome PascalCase del tipo CI del cliente:
+           * `query { ${pascal}s { … } }`) non esiste finché non si conosce il
+           * tenant, e non si può validare qui. Non è un errore: si conta.
+           * Un documento che non si parsa per ALTRI motivi sì.
+           */
+          const msg = e instanceof Error ? e.message : String(e)
+          if (/interpolazione .* non risolvibile/.test(msg)) {
+            composti.push(`${file.replace(webSrc, 'web/src')} › ${name}`)
+            continue
+          }
+          throw new Error(`${file.replace(webSrc, 'web/src')} › ${name}: ${msg}`)
+        }
+        if (doc.definitions.some((d) => d.kind === 'OperationDefinition')) out.push({ file, name, doc })
+      }
+    }
+    return out
+  }
+
+  const inline = inlineDocuments()
+
+  it('ce ne sono, e il controllo li vede (se questo numero crolla, la regex è rotta)', () => {
+    expect(inline.length).toBeGreaterThan(40)
+  })
+
+  /**
+   * I documenti composti col metamodello del cliente restano pochi e
+   * dichiarati: se diventano molti, il contratto si sta spostando fuori da
+   * qualunque controllo.
+   */
+  it('i documenti composti a runtime sono pochi e nominati', () => {
+    expect(composti.length).toBeLessThan(10)
+  })
+
+  it('ogni documento inline valida contro lo schema statico', () => {
+    const problems: string[] = []
+    for (const { file, name, doc } of inline) {
+      const errors = validate(schema, doc, rules)
+      if (errors.length === 0) continue
+      /**
+       * Un tipo o un campo che lo schema statico non conosce perché è
+       * GENERATO per tenant (i tipi CI del cliente): fuori perimetro. Si
+       * riconosce dal messaggio di graphql-js, e si CONTA — non si nasconde.
+       */
+      const dinamici = errors.every((e) => /Unknown type|Cannot query field/.test(e.message) && /CI|Ci[A-Z]/.test(e.message))
+      if (dinamici) continue
+      problems.push(`${file.replace(webSrc, 'web/src')} › ${name}: ${errors.map((e) => e.message).join('; ')}`)
     }
     expect(problems).toEqual([])
   })

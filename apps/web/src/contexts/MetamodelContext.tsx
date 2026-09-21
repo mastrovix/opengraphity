@@ -1,6 +1,8 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@apollo/client/react'
+import { useTranslation } from 'react-i18next'
 import { GET_CI_TYPES } from '../graphql/queries'
+import { shippedLabel } from '@/lib/shippedLabel'
 
 export interface CIFieldDef {
   id: string
@@ -9,6 +11,8 @@ export interface CIFieldDef {
   fieldType: string
   required: boolean
   enumValues: string[]
+  /** Il vocabolario da cui vengono i valori (per le etichette), se il campo ne usa uno. */
+  enumTypeName?: string | null
   order: number
   isSystem: boolean
   validationScript: string | null
@@ -41,6 +45,12 @@ export interface CITypeDef {
   id: string
   name: string
   label: string
+  /**
+   * L'etichetta per lingua (20 set 2026): il tipo si legge nella lingua di
+   * chi guarda, e i tipi spediti col prodotto hanno l'italiano seminato da
+   * una migrazione. Vuoto = vale `label`.
+   */
+  labels?: { language: string; label: string }[]
   icon: string
   color: string
   active: boolean
@@ -68,7 +78,7 @@ interface MetamodelContextType {
   getCIType: (name: string) => CITypeDef | undefined
 }
 
-const MetamodelContext = createContext<MetamodelContextType>({
+export const MetamodelContext = createContext<MetamodelContextType>({
   ciTypes: [],
   loading: true,
   error: null,
@@ -77,7 +87,21 @@ const MetamodelContext = createContext<MetamodelContextType>({
 
 export function MetamodelProvider({ children }: { children: ReactNode }) {
   const { data, loading, error } = useQuery<{ ciTypes: CITypeDef[] }>(GET_CI_TYPES)
-  const ciTypes: CITypeDef[] = data?.ciTypes ?? []
+  const { i18n } = useTranslation()
+  // Le etichette spedite nella lingua di chi guarda (`shippedLabel`): chi legge
+  // il metamodello da qui (CMDB, dettaglio CI, filtri) le riceve già tradotte;
+  // i disegnatori leggono il nodo com'è, perché è quello che si modifica.
+  const ciTypes: CITypeDef[] = useMemo(() => (data?.ciTypes ?? []).map((ct) => ({
+    ...ct,
+    // Il NOME DEL TIPO nella lingua di chi guarda (20 set 2026): stessa
+    // regola di campi e relazioni — tradotto finché è quello spedito, e
+    // intoccato se il cliente l'ha rinominato. Le `labels` che il cliente
+    // scrive nel disegnatore vincono su tutto (`useCILabels`).
+    label:     shippedLabel('type', ct.name, ct.label),
+    fields:    ct.fields.map((f) => ({ ...f, label: shippedLabel('field', f.name, f.label) })),
+    relations: ct.relations.map((r) => ({ ...r, label: shippedLabel('relation', r.name, r.label) })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- la lingua cambia le etichette
+  })), [data, i18n.language])
 
   return (
     <MetamodelContext.Provider value={{

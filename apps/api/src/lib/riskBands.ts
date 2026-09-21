@@ -95,7 +95,7 @@ async function loadThresholds(tenantId: string): Promise<readonly RiskBandThresh
     const r = await session.executeRead((tx) =>
       tx.run('MATCH (t:Tenant {id: $tenantId}) RETURN t.risk_band_thresholds AS raw', { tenantId }),
     )
-    if (!r.records.length) throw new Error(`Tenant ${tenantId} inesistente: non si possono stabilire le fasce di rischio`)
+    if (!r.records.length) throw new Error(`Tenant ${tenantId} does not exist: the risk bands cannot be determined`)
     const raw = r.records[0].get('raw')
 
     const bands = await domainVocabulary(tenantId, 'risk_band')
@@ -127,21 +127,21 @@ function parseThresholds(raw: unknown, tenantId: string, bands: readonly string[
   let parsed: unknown = raw
   if (typeof raw === 'string') {
     try { parsed = JSON.parse(raw) }
-    catch (e) { throw new Error(`Tenant ${tenantId}: risk_band_thresholds non è JSON valido (${e instanceof Error ? e.message : String(e)})`) }
+    catch (e) { throw new Error(`Tenant ${tenantId}: risk_band_thresholds is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
   }
   if (!Array.isArray(parsed) || parsed.length === 0) {
-    throw new Error(`Tenant ${tenantId}: risk_band_thresholds deve essere una lista non vuota di {band, upTo}`)
+    throw new Error(`Tenant ${tenantId}: risk_band_thresholds must be a non-empty list of {band, upTo}`)
   }
   const out: RiskBandThreshold[] = []
   let previous = -1
   for (const entry of parsed) {
-    if (entry === null || typeof entry !== 'object') throw new Error(`Tenant ${tenantId}: fascia di rischio non è un oggetto`)
+    if (entry === null || typeof entry !== 'object') throw new Error(`Tenant ${tenantId}: a risk band is not an object`)
     const e = entry as Record<string, unknown>
     const band = e['band']
     const upTo = e['upTo']
-    if (typeof band !== 'string' || band === '') throw new Error(`Tenant ${tenantId}: fascia di rischio senza nome`)
-    if (typeof upTo !== 'number' || !Number.isInteger(upTo)) throw new Error(`Tenant ${tenantId}: soglia di "${band}" non è un intero`)
-    if (upTo <= previous) throw new Error(`Tenant ${tenantId}: le soglie devono crescere (${band} = ${String(upTo)} dopo ${String(previous)})`)
+    if (typeof band !== 'string' || band === '') throw new Error(`Tenant ${tenantId}: a risk band has no name`)
+    if (typeof upTo !== 'number' || !Number.isInteger(upTo)) throw new Error(`Tenant ${tenantId}: the threshold of "${band}" is not an integer`)
+    if (upTo <= previous) throw new Error(`Tenant ${tenantId}: thresholds must grow (${band} = ${String(upTo)} after ${String(previous)})`)
     if (!bands.includes(band)) {
       throw new ValidationError(
         `The risk bands of this tenant name "${band}", which is not (any more) in the "risk_band" dictionary `
@@ -155,8 +155,8 @@ function parseThresholds(raw: unknown, tenantId: string, bands: readonly string[
   const last = out[out.length - 1]!
   if (last.upTo < MAX_RISK_SCORE) {
     throw new Error(
-      `Tenant ${tenantId}: le fasce di rischio si fermano a ${String(last.upTo)} e un punteggio più alto non ` +
-      `avrebbe fascia. L'ultima deve arrivare a ${String(MAX_RISK_SCORE)}.`,
+      `Tenant ${tenantId}: the risk bands stop at ${String(last.upTo)} and a higher score ` +
+      `would have no band. The last one must reach ${String(MAX_RISK_SCORE)}.`,
     )
   }
   return out
@@ -172,7 +172,7 @@ function parseThresholds(raw: unknown, tenantId: string, bands: readonly string[
  */
 export async function riskBandOf(tenantId: string, aggregateRiskScore: number | null | undefined): Promise<string> {
   if (aggregateRiskScore == null) {
-    throw new Error('riskBandOf: il rischio non valutato non ha una fascia — usa la matrice change_priority_initial')
+    throw new Error('riskBandOf: an unassessed risk has no band — use the change_priority_initial matrix')
   }
   const thresholds = await riskBandThresholds(tenantId)
   const hit = thresholds.find((t) => aggregateRiskScore <= t.upTo)
@@ -181,8 +181,8 @@ export async function riskBandOf(tenantId: string, aggregateRiskScore: number | 
   // ripiegare sulla fascia più alta.
   if (!hit) {
     throw new Error(
-      `riskBandOf: punteggio ${String(aggregateRiskScore)} oltre l'ultima soglia ` +
-      `(${String(thresholds[thresholds.length - 1]!.upTo)}) del cliente ${tenantId}.`,
+      `riskBandOf: score ${String(aggregateRiskScore)} is beyond the last threshold ` +
+      `(${String(thresholds[thresholds.length - 1]!.upTo)}) of tenant ${tenantId}.`,
     )
   }
   return hit.band

@@ -7,11 +7,19 @@ import { useMutation, useQuery } from '@apollo/client/react'
 import { useTranslation } from 'react-i18next'
 import { X, Users } from 'lucide-react'
 import { toast } from 'sonner'
-import { GET_PROBLEMS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
+import { GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { CREATE_PROBLEM, ASSIGN_PROBLEM_TO_TEAM } from '@/graphql/mutations'
 import { colors, palette, alpha } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
+import { useValueStyle } from '@/hooks/useValueStyle'
+import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
+import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
+import { showError } from '@/lib/showError'
+import { useEnumValues } from '@/hooks/useEnumValues'
+import { useCILabels } from '@/hooks/useCILabels'
+import { CIExclusionHint } from '@/components/ticket/CIExclusionHint'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -29,18 +37,14 @@ const inputBase: React.CSSProperties = {
   fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", transition: 'border-color 150ms',
 }
 
-const PRIORITY_STYLES: Record<string, { bg: string; border: string; color: string }> = {
-  critical: { bg: 'var(--color-danger-bg)', border: 'var(--color-danger)', color: 'var(--color-trigger-sla-breach)' },
-  high:     { bg: colors.severity.high.bg, border: 'var(--color-brand)', color: 'var(--color-brand)' },
-  medium:   { bg: 'var(--color-warning-bg)', border: 'var(--color-warning)', color: palette.warning.text },
-  low:      { bg: 'var(--color-success-bg)', border: 'var(--color-success)', color: palette.success.text },
-}
-
 export function CreateProblemPage() {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const { labelOf } = useDomainVocabularies()
+  // F9: il colore della priorità derivata è quello del Dizionario.
+  const styleOf = useValueStyle()
   const navigate = useNavigate()
-  const ids = { title: useId(), description: useId(), ciSearch: useId(), teamSearch: useId() }
+  const ids = { title: useId(), description: useId(), category: useId(), ciSearch: useId(), teamSearch: useId(), levels: useId() }
 
   const [title,       setTitle]       = useState('')
   // Dalla matrice DEL CLIENTE, non da una copia nel web (revisione · C·N-3).
@@ -54,41 +58,54 @@ export function CreateProblemPage() {
   }, [matrix])
   const priority = derivePriority(matrix, impact, urgency) ?? ''
   const [description, setDescription] = useState('')
+  /**
+   * La categoria (vocabolario del cliente). Il problem non l'aveva affatto:
+   * il nodo non la scriveva, quindi le policy SLA per categoria non ne
+   * sceglievano mai uno e il workflow per categoria non era scegliibile da
+   * qui (revisione totale · B-3). Facoltativa, come nel vocabolario.
+   */
+  const [category, setCategory] = useState('')
+  const { values: categoryValues, loading: categoryLoading } = useEnumValues('problem', 'category')
   const [selectedTeam,     setSelectedTeam]     = useState<Team | null>(null)
   const [teamSearch,       setTeamSearch]       = useState('')
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false)
   const [ciSearch,    setCiSearch]    = useState('')
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
+  // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
+  const { defs: customDefs } = useCreationCustomFieldDefs('problem', category || undefined)
+  const [customValues, setCustomValues] = useState<Record<string, string>>({})
+  const [customErrors, setCustomErrors] = useState<Record<string, string>>({})
 
-  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
-    GET_ITIL_CI_RELATION_RULES,
-    { variables: { itilType: 'problem' }, fetchPolicy: 'network-only' },
-  )
-
-  const ciTypesFilter = ciRulesData?.itilCIRelationRules?.length
-    ? [...new Set(ciRulesData.itilCIRelationRules.map(r => r.ciType.toLowerCase()))]
-    : undefined
+  // CM-8: i tipi di CI esclusi per questo tipo di ticket non si propongono (l'API li rifiuta comunque).
+  const { excluded: excludedCITypes } = useTicketCIExclusions('problem')
 
   const { data: ciData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch, limit: 20, ciTypes: ciTypesFilter },
-    skip: ciSearch.length < 2 || ciRulesData === undefined,
+    variables: { search: ciSearch, limit: 20, excludeCiTypes: excludedCITypes },
+    skip: ciSearch.length < 2 || excludedCITypes === undefined,
     fetchPolicy: 'network-only',
   })
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
 
   const ciResults     = (ciData?.allCIs?.items ?? [])
     .filter(ci => !selectedCIs.find(s => s.id === ci.id))
-    .filter(ci => !ciTypesFilter || ciTypesFilter.includes(ci.type.toLowerCase()))
   const teams         = teamsData?.teams ?? []
   const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
   const canSubmit     = title.trim().length > 0 && description.trim().length > 0
 
   const [assignToTeam] = useMutation(ASSIGN_PROBLEM_TO_TEAM, {
-    onError: (err) => toast.error(t('toast.problem.teamAssignmentFailed', { error: err.message })),
+    onError: (err) => showError(err, t('toast.problem.teamAssignmentFailed', { error: err.message })),
   })
 
   const [createProblem, { loading }] = useMutation<{ createProblem: { id: string } }>(CREATE_PROBLEM, {
-    refetchQueries: [{ query: GET_PROBLEMS }],
+    /**
+     * Il refetch per NOME dell'operazione (revisione totale · F-14):
+     * `[{ query: GET_X }]` senza variabili rinfresca solo la voce di cache
+     * SENZA variabili, che nessuna lista usa (tutte passano limite, pagina e
+     * filtri) — quindi dopo una creazione l'elenco restava quello di prima.
+     * Col nome, Apollo rinfresca ogni query attiva con quel nome, qualunque
+     * siano le sue variabili.
+     */
+    refetchQueries: ['GetProblems'],
     onCompleted: async (data) => {
       if (selectedTeam) {
         await assignToTeam({ variables: { problemId: data.createProblem.id, teamId: selectedTeam.id } })
@@ -96,7 +113,7 @@ export function CreateProblemPage() {
       toast.success(t('toast.problem.created'))
       navigate('/problems', { state: { refresh: true } })
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
   const checkSlaCoverage = useSlaCoverageCheck()
@@ -109,13 +126,18 @@ export function CreateProblemPage() {
       toast.error(t('toast.incident.matrixIncomplete'))
       return
     }
+    const missing = missingCustomFields(customDefs, customValues)
+    if (missing.length > 0) {
+      setCustomErrors(Object.fromEntries(missing.map((m) => [m, t('forms.fieldRequired')])))
+      return
+    }
     // Prima di creare: una policy SLA copre questo problem? Se no, chi lo crea
     // lo sa adesso e decide (useSlaCoverageCheck).
     setCheckingSla(true)
     void checkSlaCoverage({
       entityType: 'problem',
       priority, priorityLabel: labelOf('priority', priority) ?? priority,
-      category: null, categoryLabel: null,
+      category: category || null, categoryLabel: category ? (labelOf('category', category) ?? category) : null,
       teamId: selectedTeam?.id ?? null, teamName: selectedTeam?.name ?? null,
     }).then((decisione) => {
       if (decisione === 'cancelled') return
@@ -125,14 +147,16 @@ export function CreateProblemPage() {
             title:           title.trim(),
             impact,
             urgency,
+            ...(category ? { category } : {}),
             description:     description.trim() || undefined,
             affectedCIs:     selectedCIs.map(ci => ci.id),
+            customFields:    customFieldsInput(customDefs, customValues),
             ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
           },
         },
       })
     }).catch((err: unknown) => {
-      toast.error(t('toast.problem.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
+      showError(err, t('toast.problem.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
     }).finally(() => setCheckingSla(false))
   }
 
@@ -178,16 +202,33 @@ export function CreateProblemPage() {
             />
           </div>
 
+          {/* CATEGORIA (facoltativa): sceglie il workflow del problem e le
+              policy SLA per categoria (revisione totale · B-3). */}
+          <div style={{ marginBottom: 20 }}>
+            <label htmlFor={ids.category} style={fieldLabel}>{t('pages.kb.category')}</label>
+            {categoryLoading ? (
+              <span style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)' }}>{t('common.loading')}</span>
+            ) : (
+              <select id={ids.category} value={category} onChange={e => setCategory(e.target.value)} style={inputBase}>
+                <option value="">{t('pages.createIncident.selectCategory')}</option>
+                {categoryValues.map(c => (
+                  <option key={c} value={c}>{labelOf('category', c) ?? c}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
           {/* IMPATTO × URGENZA → PRIORITÀ */}
           <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             {([['pages.domainMatrices.impact', 'impact', impact, setImpact, matrix?.impacts ?? []], ['pages.domainMatrices.urgency', 'urgency', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([labelKey, vocabolario, val, setVal, options]) => (
               <div key={labelKey}>
-                <div style={fieldLabel}>{t(labelKey)} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div id={`${ids.levels}-${vocabolario}`} style={fieldLabel}>{t(labelKey)} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
+                {/* Un gruppo col nome del campo e bottoni che dicono quale è scelto (aria-pressed). */}
+                <div role="group" aria-labelledby={`${ids.levels}-${vocabolario}`} style={{ display: 'flex', gap: 6 }}>
                   {options.map(o => {
                     const sel = val === o
                     return (
-                      <button key={o} type="button" onClick={() => setVal(o)}
+                      <button key={o} type="button" aria-pressed={sel} onClick={() => setVal(o)}
                         style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
                           border: `1.5px solid ${sel ? 'var(--color-brand)' : colors.border}`,
                           background: sel ? palette.info.light : 'var(--color-slate-bg)',
@@ -204,9 +245,9 @@ export function CreateProblemPage() {
             <div>
               <div style={fieldLabel}>{t('pages.createTicket.derivedPriority')}</div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 6,
-                border: `1.5px solid ${(PRIORITY_STYLES[priority]?.border ?? colors.border)}`,
-                background: PRIORITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
-                color: PRIORITY_STYLES[priority]?.color ?? 'var(--color-slate)', fontWeight: 600 }}>
+                border: `1.5px solid ${priority === '' ? colors.border : styleOf('priority', priority).accent}`,
+                background: priority === '' ? 'var(--color-slate-bg)' : styleOf('priority', priority).bg,
+                color: priority === '' ? 'var(--color-slate)' : styleOf('priority', priority).color, fontWeight: 600 }}>
                 <span>{priority === '' ? '—' : priorityCode(matrix?.priorities ?? [], priority)}</span>
                 {/* L'etichetta della priorità, non il valore. */}
                 <span style={{ textTransform: 'capitalize' }}>{priority === '' ? t('pages.domainMatrices.notFilledIn') : (labelOf('priority', priority) ?? priority)}</span>
@@ -238,6 +279,7 @@ export function CreateProblemPage() {
               <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>{t('common.optional')}</span>
             </label>
 
+            <CIExclusionHint excluded={excludedCITypes} />
             <div style={{ position: 'relative' }}>
               <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 'var(--font-size-card-title)', pointerEvents: 'none', color: 'var(--color-slate-light)' }}>
                 🔍
@@ -265,7 +307,7 @@ export function CreateProblemPage() {
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{ci.name}</span>
                       <span style={{ fontSize: 'var(--font-size-body)', padding: '1px 6px', borderRadius: 4, backgroundColor: 'var(--color-border-light)', color: 'var(--color-slate)' }}>
-                        {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
+                        {ciLabels.subtitle(ci)}
                       </span>
                     </button>
                   ))}
@@ -294,7 +336,7 @@ export function CreateProblemPage() {
           {/* TEAM */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.teamSearch} style={fieldLabel}>
-              Team{' '}
+              {t('detail.team')}{' '}
               <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>{t('common.optional')}</span>
             </label>
 
@@ -351,6 +393,20 @@ export function CreateProblemPage() {
               </div>
             )}
           </div>
+
+          {/* CAMPI DEL CLIENTE */}
+          {customDefs.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <CustomFieldsForm
+                defs={customDefs}
+                values={customValues}
+                errors={customErrors}
+                onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setCustomErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}
+                inputStyle={inputBase}
+                labelStyle={fieldLabel}
+              />
+            </div>
+          )}
 
           {/* Footer */}
           <div style={{ borderTop: `1px solid ${palette.neutral.borderLight}`, marginTop: 8, paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

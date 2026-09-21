@@ -8,7 +8,8 @@ import { toast } from 'sonner'
 import { CREATE_INCIDENT, ASSIGN_INCIDENT_TO_TEAM } from '@/graphql/mutations'
 import { derivePriority, priorityCode, impactUrgencyFromPriority } from '@/lib/priority'
 import { usePriorityMatrix } from '@/hooks/usePriorityMatrix'
-import { GET_INCIDENTS, GET_ALL_CIS, GET_TEAMS, GET_ITIL_CI_RELATION_RULES } from '@/graphql/queries'
+import { GET_ALL_CIS, GET_TEAMS } from '@/graphql/queries'
+import { useTicketCIExclusions } from '@/hooks/useTicketCIExclusions'
 import { useFormFieldRules, validateFormFields } from '@/hooks/useFormFieldRules'
 import { useEnumValues } from '@/hooks/useEnumValues'
 import { FieldWrapper } from '@/components/FieldWrapper'
@@ -16,6 +17,12 @@ import { TriageSuggestionCard } from '@/components/TriageSuggestionCard'
 import { colors, palette, alpha } from '@/lib/tokens'
 import { useDomainVocabularies } from '@/contexts/DomainVocabularyContext'
 import { useSlaCoverageCheck } from '@/hooks/useSlaCoverageCheck'
+import { useValueStyle } from '@/hooks/useValueStyle'
+import { CustomFieldsForm } from '@/components/ticket/customFields/CustomFieldsForm'
+import { customFieldsInput, missingCustomFields, useCreationCustomFieldDefs } from '@/components/ticket/customFields/customFields'
+import { showError } from '@/lib/showError'
+import { useCILabels } from '@/hooks/useCILabels'
+import { CIExclusionHint } from '@/components/ticket/CIExclusionHint'
 
 interface CIRef { id: string; name: string; type: string; environment?: string }
 interface Team  { id: string; name: string }
@@ -35,21 +42,17 @@ const inputBase: React.CSSProperties = {
   fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", transition: 'border-color 150ms',
 }
 
-const SEVERITY_STYLES: Record<string, { bg: string; border: string; color: string }> = {
-  critical: { bg: 'var(--color-danger-bg)', border: 'var(--color-danger)', color: 'var(--color-trigger-sla-breach)' },
-  high:     { bg: colors.severity.high.bg, border: 'var(--color-brand)', color: 'var(--color-brand)' },
-  medium:   { bg: 'var(--color-warning-bg)', border: 'var(--color-warning)', color: palette.warning.text },
-  low:      { bg: 'var(--color-success-bg)', border: 'var(--color-success)', color: palette.success.text },
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 // v2 — category field + validation feedback
 
 export function CreateIncidentPage() {
   const { t } = useTranslation()
+  const ciLabels = useCILabels()
   const { labelOf } = useDomainVocabularies()
+  // F9: il colore della priorità derivata è quello del Dizionario.
+  const styleOf = useValueStyle()
   const navigate = useNavigate()
-  const ids = { category: useId(), ciSearch: useId(), teamSearch: useId() }
+  const ids = { category: useId(), ciSearch: useId(), teamSearch: useId(), levels: useId() }
 
   const [title,       setTitle]       = useState('')
   const [category,    setCategory]    = useState('')
@@ -74,33 +77,29 @@ export function CreateIncidentPage() {
   const [selectedCIs, setSelectedCIs] = useState<CIRef[]>([])
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  const formValues = { title, severity: priority, category, description }
+  // Campi personalizzati del cliente (verifica «Cosa resta cablato», ondata 4).
+  const { defs: customDefs } = useCreationCustomFieldDefs('incident', category)
+  const [customValues, setCustomValues] = useState<Record<string, string>>({})
+  const formValues = { title, severity: priority, category, description, ...customValues }
   const { rules: fieldRules, error: fieldRulesError } = useFormFieldRules('incident', null, formValues)
   const { values: categoryValues, loading: categoryLoading } = useEnumValues('incident', 'category')
 
-  const { data: ciRulesData } = useQuery<{ itilCIRelationRules: { ciType: string }[] }>(
-    GET_ITIL_CI_RELATION_RULES,
-    { variables: { itilType: 'incident' }, fetchPolicy: 'network-only' },
-  )
-
-  const ciTypesFilter = ciRulesData?.itilCIRelationRules?.length
-    ? [...new Set(ciRulesData.itilCIRelationRules.map(r => r.ciType.toLowerCase()))]
-    : undefined
+  // CM-8: i tipi di CI esclusi per questo tipo di ticket non si propongono (l'API li rifiuta comunque).
+  const { excluded: excludedCITypes } = useTicketCIExclusions('incident')
 
   const { data: ciData } = useQuery<{ allCIs: { items: CIRef[] } }>(GET_ALL_CIS, {
-    variables: { search: ciSearch, limit: 20, ciTypes: ciTypesFilter },
-    skip: ciSearch.length < 2 || ciRulesData === undefined,
+    variables: { search: ciSearch, limit: 20, excludeCiTypes: excludedCITypes },
+    skip: ciSearch.length < 2 || excludedCITypes === undefined,
     fetchPolicy: 'network-only',
   })
   const { data: teamsData } = useQuery<{ teams: Team[] }>(GET_TEAMS)
 
   const ciResults     = (ciData?.allCIs?.items ?? [])
     .filter(ci => !selectedCIs.find(s => s.id === ci.id))
-    .filter(ci => !ciTypesFilter || ciTypesFilter.includes(ci.type.toLowerCase()))
   const teams         = teamsData?.teams ?? []
   const filteredTeams = teams.filter(t => t.name.toLowerCase().includes(teamSearch.toLowerCase()))
   const [assignToTeam] = useMutation(ASSIGN_INCIDENT_TO_TEAM, {
-    onError: (err) => toast.error(t('toast.incident.teamAssignmentFailed', { error: err.message })),
+    onError: (err) => showError(err, t('toast.incident.teamAssignmentFailed', { error: err.message })),
   })
 
   const checkSlaCoverage = useSlaCoverageCheck()
@@ -109,7 +108,15 @@ export function CreateIncidentPage() {
   const canSubmit = title.trim() !== '' && description.trim() !== '' && category !== '' && selectedCIs.length > 0
 
   const [createIncident, { loading }] = useMutation<{ createIncident: { id: string } }>(CREATE_INCIDENT, {
-    refetchQueries: [{ query: GET_INCIDENTS }],
+    /**
+     * Il refetch per NOME dell'operazione (revisione totale · F-14):
+     * `[{ query: GET_X }]` senza variabili rinfresca solo la voce di cache
+     * SENZA variabili, che nessuna lista usa (tutte passano limite, pagina e
+     * filtri) — quindi dopo una creazione l'elenco restava quello di prima.
+     * Col nome, Apollo rinfresca ogni query attiva con quel nome, qualunque
+     * siano le sue variabili.
+     */
+    refetchQueries: ['GetIncidents'],
     onCompleted: async (data) => {
       if (selectedTeam) {
         await assignToTeam({ variables: { id: data.createIncident.id, teamId: selectedTeam.id } })
@@ -117,7 +124,7 @@ export function CreateIncidentPage() {
       toast.success(t('toast.incident.created'))
       navigate('/incidents', { state: { refresh: true } })
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => showError(err),
   })
 
 
@@ -198,12 +205,13 @@ export function CreateIncidentPage() {
           <div style={{ marginBottom: 20, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
             {([['pages.domainMatrices.impact', 'impact', impact, setImpact, matrix?.impacts ?? []], ['pages.domainMatrices.urgency', 'urgency', urgency, setUrgency, matrix?.urgencies ?? []]] as const).map(([labelKey, vocabolario, val, setVal, options]) => (
               <div key={labelKey}>
-                <div style={fieldLabel}>{t(labelKey)} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div id={`${ids.levels}-${vocabolario}`} style={fieldLabel}>{t(labelKey)} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span></div>
+                {/* Un gruppo col nome del campo e bottoni che dicono quale è scelto (aria-pressed). */}
+                <div role="group" aria-labelledby={`${ids.levels}-${vocabolario}`} style={{ display: 'flex', gap: 6 }}>
                   {options.map(o => {
                     const sel = val === o
                     return (
-                      <button key={o} type="button" onClick={() => setVal(o)}
+                      <button key={o} type="button" aria-pressed={sel} onClick={() => setVal(o)}
                         style={{ padding: '7px 14px', borderRadius: 6, fontSize: 'var(--font-size-body)', cursor: 'pointer',
                           border: `1.5px solid ${sel ? 'var(--color-brand)' : colors.border}`,
                           background: sel ? palette.info.light : 'var(--color-slate-bg)',
@@ -220,9 +228,9 @@ export function CreateIncidentPage() {
             <div>
               <div style={fieldLabel}>{t('pages.createTicket.derivedPriority')}</div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 6,
-                border: `1.5px solid ${(SEVERITY_STYLES[priority]?.border ?? colors.border)}`,
-                background: SEVERITY_STYLES[priority]?.bg ?? 'var(--color-slate-bg)',
-                color: SEVERITY_STYLES[priority]?.color ?? 'var(--color-slate)', fontWeight: 600 }}>
+                border: `1.5px solid ${priority === '' ? colors.border : styleOf('priority', priority).accent}`,
+                background: priority === '' ? 'var(--color-slate-bg)' : styleOf('priority', priority).bg,
+                color: priority === '' ? 'var(--color-slate)' : styleOf('priority', priority).color, fontWeight: 600 }}>
                 <span>{priority === '' ? '—' : priorityCode(matrix?.priorities ?? [], priority)}</span>
                 <span style={{ textTransform: 'capitalize' }}>
                   {/* L'etichetta della priorità, non il valore: qui si leggeva «Medium». */}
@@ -281,6 +289,8 @@ export function CreateIncidentPage() {
               {t('attachments.affectedCIs')} <span style={{ color: 'var(--color-trigger-sla-breach)' }}>*</span>
             </label>
 
+            <CIExclusionHint excluded={excludedCITypes} />
+
             {/* Search input with icon */}
             <div style={{ position: 'relative' }}>
               <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 'var(--font-size-card-title)', pointerEvents: 'none', color: 'var(--color-slate-light)' }}>
@@ -310,7 +320,7 @@ export function CreateIncidentPage() {
                     >
                       <span style={{ fontSize: 'var(--font-size-card-title)', fontWeight: 500, color: 'var(--color-slate-dark)', flex: 1 }}>{ci.name}</span>
                       <span style={{ fontSize: 'var(--font-size-body)', padding: '1px 6px', borderRadius: 4, backgroundColor: 'var(--color-border-light)', color: 'var(--color-slate)' }}>
-                        {ci.type}{ci.environment ? ` · ${ci.environment}` : ''}
+                        {ciLabels.subtitle(ci)}
                       </span>
                     </button>
                   ))}
@@ -340,7 +350,7 @@ export function CreateIncidentPage() {
           {/* TEAM */}
           <div style={{ marginBottom: 20 }}>
             <label htmlFor={ids.teamSearch} style={fieldLabel}>
-              Team{' '}
+              {t('detail.team')}{' '}
               <span style={{ fontSize: 'var(--font-size-body)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--color-slate-light)' }}>{t('common.optional')}</span>
             </label>
 
@@ -401,6 +411,21 @@ export function CreateIncidentPage() {
             )}
           </div>
 
+          {/* CAMPI DEL CLIENTE */}
+          {customDefs.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <CustomFieldsForm
+                defs={customDefs}
+                values={customValues}
+                rules={fieldRules}
+                errors={fieldErrors}
+                onChange={(name, value) => { setCustomValues((v) => ({ ...v, [name]: value })); setFieldErrors((p) => { const n = { ...p }; delete n[name]; return n }) }}
+                inputStyle={inputBase}
+                labelStyle={fieldLabel}
+              />
+            </div>
+          )}
+
           {/* Footer */}
           <div style={{ borderTop: `1px solid ${palette.neutral.borderLight}`, marginTop: 8, paddingTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <button
@@ -418,7 +443,7 @@ export function CreateIncidentPage() {
               onClick={() => {
                 if (!canSubmit || loading || checkingSla) return
                 if (fieldRulesError) {
-                  toast.error(t('toast.incident.fieldRulesUnavailable', { error: fieldRulesError.message }))
+                  showError(fieldRulesError, t('toast.incident.fieldRulesUnavailable', { error: fieldRulesError.message }))
                   return
                 }
                 // La matrice è la sorgente di impatto, urgenza e priorità: se non
@@ -426,7 +451,7 @@ export function CreateIncidentPage() {
                 // valore — il server lo rifiuterebbe comunque, e il messaggio
                 // qui dice cosa fare.
                 if (matrixError) {
-                  toast.error(t('toast.incident.matrixUnavailable', { error: matrixError.message }))
+                  showError(matrixError, t('toast.incident.matrixUnavailable', { error: matrixError.message }))
                   return
                 }
                 if (priority === '') {
@@ -437,7 +462,7 @@ export function CreateIncidentPage() {
                 if (!title.trim()) errs['title'] = t('forms.fieldRequired')
                 if (!category) errs['category'] = t('forms.selectCategory')
                 if (!description.trim()) errs['description'] = t('forms.fieldRequired')
-                const missing = validateFormFields(fieldRules, formValues)
+                const missing = [...validateFormFields(fieldRules, formValues), ...missingCustomFields(customDefs, customValues, fieldRules)]
                 missing.forEach((f) => { if (!errs[f]) errs[f] = t('forms.fieldRequired') })
                 if (Object.keys(errs).length > 0) {
                   setFieldErrors(errs)
@@ -463,12 +488,13 @@ export function CreateIncidentPage() {
                         category: category || undefined,
                         description: description.trim() || undefined,
                         affectedCIIds: selectedCIs.map(ci => ci.id),
+                        customFields: customFieldsInput(customDefs, customValues),
                         ...(decisione === 'accepted' ? { acknowledgeNoSla: true } : {}),
                       },
                     },
                   })
                 }).catch((err: unknown) => {
-                  toast.error(t('toast.incident.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
+                  showError(err, t('toast.incident.slaCoverageUnavailable', { error: err instanceof Error ? err.message : String(err) }))
                 }).finally(() => setCheckingSla(false))
               }}
               style={{

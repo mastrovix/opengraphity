@@ -83,9 +83,10 @@ export function assertWritableCIPropertyKey(key: string, fieldName: string): str
   const prefix = RESERVED_CI_PROPERTY_PREFIXES.find((p) => key.startsWith(p))
   if (RESERVED_CI_PROPERTY_KEYS.has(key) || prefix) {
     throw new ValidationError(
-      `Il campo "${fieldName}" del metamodello scriverebbe la proprietà "${key}", che è gestita dal prodotto` +
-      (prefix ? ` (prefisso riservato "${prefix}")` : '') +
-      `: la scrittura è rifiutata. Rinomina il campo nel disegnatore dei tipi CI.`,
+      `Metamodel field "${fieldName}" would write property "${key}", which the product manages` +
+      (prefix ? ` (reserved prefix "${prefix}")` : '') +
+      `: the write is refused. Rename the field in the CI type designer.`,
+      { key: 'errors.ciType.reservedProperty', params: { field: fieldName, property: key } },
     )
   }
   return key

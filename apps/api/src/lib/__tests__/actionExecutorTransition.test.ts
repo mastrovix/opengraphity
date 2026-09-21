@@ -20,7 +20,7 @@ vi.mock('@opengraphity/events', () => ({ publish: vi.fn() }))
 
 const fakeSession = {
   executeRead: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work({
-    run: async () => ({ records: [{ get: () => 'wi-1' }] }),
+    run: async () => ({ records: [{ get: (k: string) => (k === 'labels' ? null : 'wi-1') }] }),
   })),
 }
 vi.mock('../../graphql/resolvers/ci-utils.js', () => ({
@@ -46,13 +46,13 @@ describe('transition_workflow — l\'esito del motore non si butta', () => {
   })
 
   it('bersaglio inesistente → azione FALLITA che nomina il passo e l\'errore del motore', async () => {
-    transition.mockResolvedValue({ success: false, error: 'Transizione verso "approved" non valida dallo step corrente' })
+    transition.mockResolvedValue({ success: false, error: 'Transition to "approved" is not valid from the current step' })
     const results = await executeActions([action], ctx)
     expect(results).toHaveLength(1)
     expect(results[0]!.success).toBe(false)
-    expect(results[0]!.error).toContain('la transizione verso "approved" non è avvenuta')
-    expect(results[0]!.error).toContain('non valida dallo step corrente')
-    expect(results[0]!.error).toContain('passo del workflow change')
+    expect(results[0]!.error).toContain('the transition to "approved" did not happen')
+    expect(results[0]!.error).toContain('is not valid from the current step')
+    expect(results[0]!.error).toContain('step of the change workflow')
   })
 
   it('un\'azione dopo una transizione fallita non viene eseguita (la catena si ferma, come per ogni errore)', async () => {
