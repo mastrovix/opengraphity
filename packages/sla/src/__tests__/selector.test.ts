@@ -74,3 +74,44 @@ describe('selectSLAForEntity — specificità per numero di criteri (E-1)', () =
     expect(policy?.name).toBe('P1 del team Rete')
   })
 })
+
+/**
+ * A CORRUPT POLICY FAILS LOUDLY INSTEAD OF PRODUCING A ZERO-MINUTE SLA.
+ *
+ * `Number(undefined)` is NaN and `Number(null)` is 0: either one, taken at
+ * face value, gives a deadline equal to the start instant — an SLA breached
+ * the moment the ticket is created, on every ticket that policy covers. The
+ * customer sees a wall of breaches and no cause, which is why each of these
+ * throws naming the policy.
+ */
+describe('selectSLAForEntity — a policy that cannot produce a deadline', () => {
+  beforeEach(() => { run.mockReset() })
+
+  it.each([undefined, null, 0, -30, 'sessanta', NaN])(
+    'response_minutes %s is refused, naming the policy and the value', async (response_minutes) => {
+      run.mockResolvedValue(rows({ ...base, response_minutes }, 'Europe/Rome'))
+      await expect(selectSLAForEntity('c-one', 'incident', 'high', null, null))
+        .rejects.toThrow(/SLA policy "Tutti" \(p1\) has invalid response_minutes/)
+    })
+
+  it.each([undefined, null, 0, -1, 'quattro'])(
+    'resolve_minutes %s is refused the same way', async (resolve_minutes) => {
+      run.mockResolvedValue(rows({ ...base, resolve_minutes }, 'Europe/Rome'))
+      await expect(selectSLAForEntity('c-one', 'incident', 'high', null, null))
+        .rejects.toThrow(/has invalid resolve_minutes/)
+    })
+
+  it.each([undefined, null, 0, -5, 1.5, 'trenta'])(
+    'warning_minutes %s is refused: the warning lead must be a whole number of minutes', async (warning_minutes) => {
+      // Unlike the other two this one must be an INTEGER: a fractional lead
+      // would schedule the warning at a sub-minute offset nobody configured.
+      run.mockResolvedValue(rows({ ...base, warning_minutes }, 'Europe/Rome'))
+      await expect(selectSLAForEntity('c-one', 'incident', 'high', null, null))
+        .rejects.toThrow(/has invalid warning_minutes/)
+    })
+
+  it('a policy with all three valid comes back', async () => {
+    run.mockResolvedValue(rows(base, 'Europe/Rome'))
+    await expect(selectSLAForEntity('c-one', 'incident', 'high', null, null)).resolves.toBeTruthy()
+  })
+})
