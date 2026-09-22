@@ -67,6 +67,8 @@ describe('resolveAnomaly', () => {
 
   it.each([...RESOLUTION_STATUSES])('%s → SET scoped per tenant con resolved_by dal contesto, cache stats invalidata', async (status) => {
     cache.set('anomaly-stats:tenant-1', { total: 1 }, 60)
+    // A tenant whose id starts the same keeps its stats.
+    cache.set('anomaly-stats:tenant-10', { total: 9 }, 60)
     vi.mocked(runQueryOne).mockResolvedValueOnce({ props: {
       id: 'an-1', rule_key: 'orphan_ci', title: 'CI orfano', severity: 'low', status, entity_id: 'ci-1', entity_type: 'server',
       detected_at: 'd', resolved_at: 'r', resolution_status: status, resolution_note: NOTE, resolved_by: 'op-1', tenant_id: 'tenant-1',
@@ -81,6 +83,7 @@ describe('resolveAnomaly', () => {
     expect(params).toMatchObject({ id: 'an-1', tenantId: 'tenant-1', resolutionStatus: status, note: NOTE, resolvedBy: 'op-1' })
     expect(out).toMatchObject({ id: 'an-1', status, resolutionStatus: status, resolvedBy: 'op-1', tenantId: 'tenant-1' })
     expect(cache.get('anomaly-stats:tenant-1')).toBeNull()
+    expect(cache.get('anomaly-stats:tenant-10')).toEqual({ total: 9 })
     expect(session.close).toHaveBeenCalledOnce()
   })
 

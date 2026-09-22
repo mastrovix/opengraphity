@@ -128,13 +128,18 @@ async function fetchSectionData(sections: ReportSectionDef[], tenantId: string, 
         error: tableRows ? null : 'Formato dati tabella inatteso',
       }
     }
-    return {
-      title: r.title, chartType: r.chartType,
-      rows: Array.isArray(parsed)
+    // A row without a label fails ITS section, not the whole export: until
+    // 23 Sep 2026 the throw escaped this map and one bad section (a group
+    // whose team was deleted) took the other sections of the document with it.
+    let rows: Array<{ name: string; value: number }> | null
+    try {
+      rows = Array.isArray(parsed)
         ? righeDiSerie(parsed as unknown[], r.chartType, { granularita: sezioni[i]?.groupByGranularity, lingua })
-        : null,
-      kpiValue: null, tableRows: null, error: null,
+        : null
+    } catch (e) {
+      return { title: r.title, chartType: r.chartType, rows: null, kpiValue: null, tableRows: null, error: e instanceof Error ? e.message : String(e) }
     }
+    return { title: r.title, chartType: r.chartType, rows, kpiValue: null, tableRows: null, error: null }
   })
 }
 
@@ -198,12 +203,9 @@ export function righeDiSerie(
   })
 }
 
-async function generatePDF(templateName: string, data: SectionData[], filePath: string, locale: NotificationLocale): Promise<void> {
-  const PDFDocument = (await import('pdfkit')).default
-  const doc = new PDFDocument({ margin: 50, size: 'A4' })
-  const stream = fs.createWriteStream(filePath)
-  doc.pipe(stream)
+type PdfDoc = PDFKit.PDFDocument
 
+function writePdfContent(doc: PdfDoc, templateName: string, data: SectionData[], locale: NotificationLocale): void {
   // Title
   doc.fontSize(20).fillColor('#1a2332').text(templateName, { align: 'center' })
   doc.moveDown(0.5)
@@ -233,7 +235,21 @@ async function generatePDF(templateName: string, data: SectionData[], filePath: 
     }
     doc.moveDown(1)
   }
+}
 
+/**
+ * The file is opened only once the content is built: pdfkit keeps the
+ * document in memory until it is piped. Until 23 Sep 2026 the file was
+ * opened first, so a failure while building (a language with no texts, say)
+ * left a half-written file behind with its descriptor open, and the partial
+ * file could be served as the report.
+ */
+async function generatePDF(templateName: string, data: SectionData[], filePath: string, locale: NotificationLocale): Promise<void> {
+  const PDFDocument = (await import('pdfkit')).default
+  const doc = new PDFDocument({ margin: 50, size: 'A4' })
+  writePdfContent(doc, templateName, data, locale)
+  const stream = fs.createWriteStream(filePath)
+  doc.pipe(stream)
   doc.end()
   await new Promise<void>((resolve, reject) => {
     stream.on('finish', resolve)

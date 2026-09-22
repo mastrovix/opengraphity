@@ -277,9 +277,33 @@ describe('exportReportExcel', () => {
     expect(executeReportSection).toHaveBeenCalledWith(expect.anything(), 'c-test', { language: undefined })
   })
 
-  it('a series row without any label fails the export instead of writing an empty cell', async () => {
-    givenTemplate('T', [sectionDef('a')], [result('Line', 'line', [{ value: 3 }])])
-    await expect(generateReportFile('excel', 'tpl-5', 'c-test')).rejects.toThrow(/row 0 of a "line" section has no label/)
+  it('a series row without any label fails ITS section, not the whole export', async () => {
+    // An empty cell would read as a real zero, so the section is printed as
+    // failed; the other sections still come out (until 23 Sep 2026 one bad
+    // row rejected the whole document).
+    givenTemplate('T', [sectionDef('a'), sectionDef('b')], [
+      result('Line', 'line', [{ value: 3 }]),
+      result('By team', 'bar', [{ name: 'Network', value: 4 }]),
+    ])
+    const { filePath } = await generateReportFile('excel', 'tpl-5', 'c-test')
+    const wb = await readWorkbook(filePath)
+    expect(String(wb.getWorksheet('Line')!.getCell('A2').value)).toMatch(/row 0 of a "line" section has no label/)
+    expect(wb.getWorksheet('By team')!.getCell('A3').value).toBe('Network')
+  })
+
+  it('a PDF whose content cannot be built leaves no half-written file behind', async () => {
+    // A language with no notification texts makes the document fail mid-way.
+    loadNotificationLocale.mockResolvedValue({ language: 'xx', timeZone: 'UTC' } as never)
+    givenTemplate('T', [sectionDef('a')], [result('Broken', 'bar', '', 'raw')])
+    const dir = path.join(h.reportDir, 'c-test')
+    const pdfs = () => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.pdf')) : [])
+    const before = pdfs()
+    const opened = vi.spyOn(fs, 'createWriteStream')
+    await expect(generateReportFile('pdf', 'tpl-7', 'c-test')).rejects.toThrow()
+    // The file is never opened, so there is nothing to clean up afterwards.
+    expect(opened).not.toHaveBeenCalled()
+    opened.mockRestore()
+    expect(pdfs()).toEqual(before)
   })
 
   it('an English daily period reads as a full English date', async () => {

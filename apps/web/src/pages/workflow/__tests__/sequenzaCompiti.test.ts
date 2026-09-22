@@ -45,4 +45,12 @@ describe('quali compiti si possono aspettare', () => {
     const compiti = [{ titolo: 'Ordina', dopo: '' }, { titolo: 'Configura', dopo: 'Ordina' }, { titolo: 'Fattura', dopo: '' }]
     expect(titoliOffribili(compiti, 'Configura').sort()).toEqual(['Fattura', 'Ordina'])
   })
+
+  it('a new task without a title yet is offered every titled sibling', () => {
+    // Siblings with an empty `dopo` start at once: they do not wait for the
+    // untitled one. Until 23 Sep 2026 they were all treated as "waiting for
+    // me" and the dropdown stayed empty until a title was typed.
+    const compiti = [{ titolo: 'A', dopo: '' }, { titolo: 'B', dopo: 'A' }, { titolo: '', dopo: '' }]
+    expect(titoliOffribili(compiti, '').sort()).toEqual(['A', 'B'])
+  })
 })

@@ -90,7 +90,7 @@ describe('testOutboundWebhook — SSRF di lettura', () => {
 
   it('URL pubblico → fetch con firma HMAC del body e tenant_id nel payload', async () => {
     vi.mocked(runQuery).mockResolvedValueOnce([{ props: { id: 'wh-1', url: 'https://hooks.example.com/x', method: 'POST', secret: 's3' } }] as never)
-    fetchSpy.mockResolvedValueOnce({ ok: true, status: 200, text: async () => 'pong' })
+    fetchSpy.mockResolvedValueOnce(new Response('pong', { status: 200 }))
 
     const out = await integrationsResolvers.Mutation.testOutboundWebhook(null, { id: 'wh-1' }, admin)
 

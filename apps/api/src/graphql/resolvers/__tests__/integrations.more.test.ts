@@ -188,6 +188,32 @@ describe('testOutboundWebhook — the result an admin reads', () => {
     expect(out).toMatchObject({ success: true, statusCode: 204, responseBody: '' })
   })
 
+  it("a real response's body is shown to the admin: the reason of a refusal is readable", async () => {
+    // Until 23 Sep 2026 the body was cancelled before being read, and a real
+    // fetch Response then always answered an empty body.
+    stored()
+    fetchSpy.mockResolvedValueOnce(new Response('{"error":"bad signature"}', { status: 400 }))
+    const out = await M.testOutboundWebhook(null, { id: 'w1' }, admin)
+    expect(out).toMatchObject({ success: false, statusCode: 400, responseBody: '{"error":"bad signature"}' })
+  })
+
+  it('a large body is cut to its first 500 characters and the rest is never downloaded', async () => {
+    stored()
+    let pulled = 0
+    let cancelled = false
+    const chunk = new TextEncoder().encode('x'.repeat(1024))
+    // An endless body: reading it whole would never finish.
+    const endless = new ReadableStream<Uint8Array>({
+      pull(c) { pulled++; c.enqueue(chunk) },
+      cancel() { cancelled = true },
+    })
+    fetchSpy.mockResolvedValueOnce(new Response(endless, { status: 200 }))
+    const out = await M.testOutboundWebhook(null, { id: 'w1' }, admin)
+    expect(out.responseBody).toBe('x'.repeat(500))
+    expect(cancelled).toBe(true)
+    expect(pulled).toBeLessThan(10)
+  })
+
   it('a network error is a failure carrying the message, not an exception on the page', async () => {
     stored()
     fetchSpy.mockRejectedValueOnce(new Error('ECONNREFUSED'))

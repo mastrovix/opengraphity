@@ -215,6 +215,7 @@ describe('relationships', () => {
         return t ? [{ id: t }] : []
       }
       if (c.includes('MERGE (a)-[r:')) return [{ isNew: opts.isNew ?? true }]
+      if (c.includes('AS ends')) return [{ n: opts.removed ?? 0, ends: ['ci-self', 'ci-db'] }]
       if (c.includes('DELETE r')) return [{ n: opts.removed ?? 0 }]
       return []
     })
@@ -251,6 +252,29 @@ describe('relationships', () => {
     // The relation type is normalised before it reaches the query text.
     expect(del.params).toEqual({ fromId: 'ci-self', sourceId: 'src-1', reported: [['DEPENDS_ON', 'ci-db', 'outgoing']] })
     expect(st.relationsRemoved).toBe(3)
+  })
+
+  it('an EMPTY list removes the last relations this source had created, and recomputes both ends', async () => {
+    // Until 23 Sep 2026 an empty list skipped the removal: a Lambda whose
+    // SubnetIds became empty stayed linked to its old subnet forever.
+    const s = relSession({ removed: 1 })
+    const st = stats()
+    await reconcileBatch([ci({ relationships: [] })], source, 'run-1', 'tenant-1', st)
+    const del = s.calls.find((x) => x.cypher.includes('DELETE r'))!
+    // Only relations carrying THIS source's marker, from THIS CI of this tenant.
+    expect(del.cypher).toContain('{discovery_external_id: $externalId, discovery_source_id: $sourceId, tenant_id: $tenantId}')
+    expect(del.cypher).toContain('WHERE r.discovery_source_id = $sourceId')
+    expect(del.params).toEqual({ externalId: 'ext-1', sourceId: 'src-1', tenantId: 'tenant-1' })
+    expect(st.relationsRemoved).toBe(1)
+    expect(notifyCIGraphChanged).toHaveBeenCalledWith('tenant-1', expect.arrayContaining(['ci-self', 'ci-db']), 'discovery.reconciled:src-1')
+  })
+
+  it('an empty list with nothing to remove recomputes no map', async () => {
+    relSession({ removed: 0 })
+    const st = stats()
+    await reconcileBatch([ci({ relationships: [] })], source, 'run-1', 'tenant-1', st)
+    expect(st.relationsRemoved).toBe(0)
+    expect(notifyCIGraphChanged).not.toHaveBeenCalledWith('tenant-1', expect.arrayContaining(['ci-db']), expect.anything())
   })
 
   it('a missing removal count reads as zero', async () => {

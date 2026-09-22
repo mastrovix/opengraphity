@@ -23,6 +23,17 @@ class MemoryCache {
     }
   }
 
+  /**
+   * The key `base` and every key below it (`base:...`), and nothing else.
+   * A raw prefix is not enough for a tenant: `invalidate('ci:t1')` also threw
+   * away `ci:t10`, `ci:t11`, ... — other customers' entries (23 Sep 2026).
+   */
+  invalidateScope(base: string): void {
+    for (const key of this.store.keys()) {
+      if (key === base || key.startsWith(`${base}:`)) this.store.delete(key)
+    }
+  }
+
   clear(): void {
     this.store.clear()
   }
@@ -57,7 +68,7 @@ export function metamodelCacheKey(prefix: MetamodelCachePrefix, tenantId: string
 
 /** Svuota per un tenant solo le famiglie derivate dal metamodello. */
 export function invalidateMetamodelDerivedCache(tenantId: string): void {
-  for (const prefix of METAMODEL_CACHE_PREFIXES) cache.invalidate(metamodelCacheKey(prefix, tenantId))
+  for (const prefix of METAMODEL_CACHE_PREFIXES) cache.invalidateScope(metamodelCacheKey(prefix, tenantId))
 }
 
 /**

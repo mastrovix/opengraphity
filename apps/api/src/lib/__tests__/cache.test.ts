@@ -49,7 +49,38 @@ describe('MemoryCache', () => {
   })
 })
 
+describe('MemoryCache.invalidateScope — one tenant, not every tenant whose id starts the same', () => {
+  it('removes the key and the keys below it, never a longer id that shares the prefix', () => {
+    cache.set('ci:t1', 1, 60)
+    cache.set('ci:t1:Server:{}', 2, 60)
+    cache.set('ci:t10', 3, 60)
+    cache.set('ci:t11:Server:{}', 4, 60)
+    cache.invalidateScope('ci:t1')
+    expect(cache.get('ci:t1')).toBeNull()
+    expect(cache.get('ci:t1:Server:{}')).toBeNull()
+    expect(cache.get('ci:t10')).toBe(3)
+    expect(cache.get('ci:t11:Server:{}')).toBe(4)
+  })
+})
+
 describe('metamodel-derived families', () => {
+  it("clearing tenant t1 keeps t10's and t11's entries (until 23 Sep 2026 it dropped them)", () => {
+    for (const p of METAMODEL_CACHE_PREFIXES) {
+      cache.set(metamodelCacheKey(p, 't1'), 'mine', 60)
+      cache.set(`${metamodelCacheKey(p, 't1')}:detail`, 'mine', 60)
+      cache.set(metamodelCacheKey(p, 't10'), 'other', 60)
+      cache.set(`${metamodelCacheKey(p, 't11')}:detail`, 'other', 60)
+    }
+    invalidateMetamodelDerivedCache('t1')
+    for (const p of METAMODEL_CACHE_PREFIXES) {
+      expect(cache.get(metamodelCacheKey(p, 't1'))).toBeNull()
+      expect(cache.get(`${metamodelCacheKey(p, 't1')}:detail`)).toBeNull()
+      expect(cache.get(metamodelCacheKey(p, 't10'))).toBe('other')
+      expect(cache.get(`${metamodelCacheKey(p, 't11')}:detail`)).toBe('other')
+    }
+  })
+
+
   it('keys are <prefix>:<tenant>', () => {
     expect(metamodelCacheKey('topology', 't1')).toBe('topology:t1')
     expect(METAMODEL_CACHE_PREFIXES).toEqual(['allowed_rel_types', 'topology', 'ci'])

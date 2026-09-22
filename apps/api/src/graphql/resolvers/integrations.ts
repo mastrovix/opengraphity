@@ -300,6 +300,34 @@ async function deleteOutboundWebhook(_: unknown, args: { id: string }, ctx: Grap
   return true
 }
 
+const RESPONSE_PREVIEW_CHARS = 500
+
+/**
+ * The first characters of a response, then the rest is dropped (C-29: holding
+ * a large body open would hold the connection). Until 23 Sep 2026 the body
+ * was cancelled FIRST and read afterwards, which always fails on a real
+ * fetch: the test answered an empty body for every webhook, so a
+ * `400 {"error":"bad signature"}` showed no reason at all.
+ */
+async function readBodyPrefix(res: Response, maxChars: number): Promise<string> {
+  if (!res.body) return ''
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let text = ''
+  try {
+    // Four bytes per character at most: enough bytes for maxChars in any encoding.
+    for (let bytes = 0; bytes < maxChars * 4;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      bytes += value.byteLength
+      text += decoder.decode(value, { stream: true })
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined)
+  }
+  return text.slice(0, maxChars)
+}
+
 async function testOutboundWebhook(_: unknown, args: { id: string }, ctx: GraphQLContext) {
   return withSession(async (s) => {
     const rows = await runQuery<{ props: Props }>(s, `MATCH (w:OutboundWebhook {id: $id, tenant_id: $t}) RETURN properties(w) AS props`, { id: args.id, t: ctx.tenantId })
@@ -316,11 +344,9 @@ async function testOutboundWebhook(_: unknown, args: { id: string }, ctx: GraphQ
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 10_000)
       const res = await fetch(w['url'] as string, { method: (w['method'] as string) ?? 'POST', headers, body, signal: controller.signal })
-      // C-29: il corpo non serve alla prova, e tenerlo aperto tratterrebbe la connessione.
-      await res.body?.cancel().catch(() => undefined)
+      const resBody = await readBodyPrefix(res, RESPONSE_PREVIEW_CHARS)
       clearTimeout(timer)
-      const resBody = await res.text().catch(() => '')
-      return { success: res.ok, statusCode: res.status, responseBody: resBody.slice(0, 500), error: null, duration: Date.now() - t0 }
+      return { success: res.ok, statusCode: res.status, responseBody: resBody, error: null, duration: Date.now() - t0 }
     } catch (err) {
       return { success: false, statusCode: null, responseBody: null, error: err instanceof Error ? err.message : String(err), duration: Date.now() - t0 }
     }

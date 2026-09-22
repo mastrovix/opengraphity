@@ -168,11 +168,37 @@ async function reconcileOne(
   }
 
   // ── 3. Sync relations ────────────────────────────────────────────────────
-  if (discovered.relationships && discovered.relationships.length > 0) {
-    const delta = await syncRelations(session, discovered, source, tenantId, touched)
-    stats.relationsCreated += delta.created
-    stats.relationsRemoved += delta.removed
-  }
+  /*
+   * An EMPTY list is a report too: "this CI has no relations now". Until 23
+   * Sep 2026 the sync ran only for a non-empty list, so when a source stopped
+   * reporting the LAST relation of a CI (a Lambda whose SubnetIds became
+   * empty) the removal pass never ran and that relation stayed forever,
+   * followed by service maps and alarm suppression. The empty case costs one
+   * write per CI and, as for the non-empty one, removes only relations that
+   * carry THIS source's marker: those written by hand are never touched.
+   */
+  const delta = discovered.relationships?.length
+    ? await syncRelations(session, discovered, source, tenantId, touched)
+    : await removeAllSourceRelations(session, discovered, source, tenantId, touched)
+  stats.relationsCreated += delta.created
+  stats.relationsRemoved += delta.removed
+}
+
+/** The source reports no relation for this CI: the ones it had created go away. */
+async function removeAllSourceRelations(
+  session: Session, ci: DiscoveredCI, source: SyncSourceConfig, tenantId: string, touched: Set<string>,
+): Promise<{ created: number; removed: number }> {
+  const res = await session.executeWrite(tx => tx.run(
+    `MATCH (a:ConfigurationItem {discovery_external_id: $externalId, discovery_source_id: $sourceId, tenant_id: $tenantId})-[r]-(b:ConfigurationItem)
+     WHERE r.discovery_source_id = $sourceId
+     DELETE r
+     RETURN count(r) AS n, collect(DISTINCT a.id) + collect(DISTINCT b.id) AS ends`,
+    { externalId: ci.external_id, sourceId: source.id, tenantId },
+  ))
+  const removed = toNum(res.records[0]?.get('n')) ?? 0
+  // Both ends of a removed relation: their maps must be recomputed.
+  if (removed > 0) for (const id of res.records[0]!.get('ends') as string[]) touched.add(id)
+  return { created: 0, removed }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
