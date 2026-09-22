@@ -448,7 +448,7 @@ describe('executeWorkflowTransition — gates before the engine moves the ticket
     vi.mocked(requestApprovalWouldBeSkipped).mockResolvedValueOnce(true)
     const e = await caught(run('fulfilled'))
     expect(e.extensions['i18n']).toMatchObject({ key: 'errors.request.approvalRequired' })
-    expect(requestApprovalWouldBeSkipped).toHaveBeenCalledWith(mockSession, 't-1', 'wi-1', 'fulfilled')
+    expect(requestApprovalWouldBeSkipped).toHaveBeenCalledWith(mockSession, 't-1', 'wi-1', 'fulfilled', { byPerson: true })
     expect(workflowEngine.transition).not.toHaveBeenCalled()
   })
 

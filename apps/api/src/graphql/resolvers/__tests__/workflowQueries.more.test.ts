@@ -107,7 +107,7 @@ describe('field resolvers with a workflow', () => {
     txRun.mockResolvedValueOnce({ records: [rec({ instanceId: 'wi7' })] })
     getAvailableTransitions.mockResolvedValueOnce([{ toStep: 'fulfil' }])
     await q.serviceRequestAvailableTransitionsField({ id: 'r1' }, null, ctx)
-    expect(requestApprovalWouldBeSkipped.mock.calls[0]!.slice(1)).toEqual(['t1', 'wi7', 'fulfil'])
+    expect(requestApprovalWouldBeSkipped.mock.calls[0]!.slice(1)).toEqual(['t1', 'wi7', 'fulfil', { byPerson: true }])
   })
 })
 

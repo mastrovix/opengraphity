@@ -254,7 +254,8 @@ export async function fireStepDeadline(c: StepDeadlineCandidate, now: Date): Pro
     }
     if (c.entityType === 'service_request') {
       const { requestApprovalWouldBeSkipped } = await import('./requestApproval.js')
-      if (await requestApprovalWouldBeSkipped(session, c.tenantId, c.instanceId, toStep)) {
+      // A deadline is not a person: it never counts as the approval decision.
+      if (await requestApprovalWouldBeSkipped(session, c.tenantId, c.instanceId, toStep, { byPerson: false })) {
         await recordOutcome(c, 'refused', 'request_approval', null, toStep, now)
         return 'refused'
       }

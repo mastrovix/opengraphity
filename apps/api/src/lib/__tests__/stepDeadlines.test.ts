@@ -175,6 +175,8 @@ describe('fireStepDeadline', () => {
     requestApprovalWouldBeSkipped.mockResolvedValue(true)
     await expect(fireStepDeadline(candidate({ entityType: 'service_request' }), NOW)).resolves.toBe('refused')
     expect(lastOutcome()).toMatchObject({ reason: 'request_approval' })
+    // A deadline is not a person: it never counts as the approval decision.
+    expect((requestApprovalWouldBeSkipped.mock.calls[0] as unknown[]).at(-1)).toEqual({ byPerson: false })
   })
 
   it('un valore uscito dal vocabolario → failed PRIMA di spostare', async () => {

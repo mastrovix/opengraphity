@@ -11,7 +11,7 @@ vi.mock('@opengraphity/neo4j', () => ({
   toNumber: (v: unknown) => Number(v ?? 0),
 }))
 const { requestApprovalWouldBeSkipped } = await import('../requestApproval.js')
-const salta = (r: Record<string, unknown> | null) => { riga = r; return requestApprovalWouldBeSkipped({} as never, 't1', 'wi-1', 'in_progress') }
+const salta = (r: Record<string, unknown> | null, byPerson = true) => { riga = r; return requestApprovalWouldBeSkipped({} as never, 't1', 'wi-1', 'in_progress', { byPerson }) }
 
 describe('requestApprovalWouldBeSkipped', () => {
   it('richiede approvazione, mai approvata, verso un passo di lavorazione → salterebbe', async () => {
@@ -36,5 +36,26 @@ describe('requestApprovalWouldBeSkipped', () => {
   it('conta solo le esecuzioni CONCLUSE del passo di approvazione (C-12)', async () => {
     await salta({ requires: true, approvedPassages: 0, targetPurpose: null, targetTerminal: false })
     expect(cypher).toContain('ex.exited_at IS NOT NULL')
+  })
+
+  /*
+   * 23 Sep 2026: a request waiting IN the approval step could never be
+   * approved. The passage being decided is still open, so it did not count,
+   * and "Approve" (approval → in progress) was filtered out and refused: the
+   * only way out was a rejection.
+   */
+  it('a person moving the request out of the approval step is the approval decision', async () => {
+    const waitingInApproval = { requires: true, approvedPassages: 0, currentPurpose: 'approval', targetPurpose: null, targetTerminal: false }
+    await expect(salta(waitingInApproval, true)).resolves.toBe(false)
+    expect(cypher).toContain('cur.purpose AS currentPurpose')
+  })
+
+  it('a deadline is not a person: the automatic move out of approval is still refused (C-12)', async () => {
+    const waitingInApproval = { requires: true, approvedPassages: 0, currentPurpose: 'approval', targetPurpose: null, targetTerminal: false }
+    await expect(salta(waitingInApproval, false)).resolves.toBe(true)
+  })
+
+  it('from any other step a person still cannot skip the approval', async () => {
+    await expect(salta({ requires: true, approvedPassages: 0, currentPurpose: null, targetPurpose: null, targetTerminal: false }, true)).resolves.toBe(true)
   })
 })

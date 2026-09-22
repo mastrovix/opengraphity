@@ -443,7 +443,7 @@ export async function serviceRequestAvailableTransitionsField(
     const transitions = await workflowEngine.getAvailableTransitions(session, instanceId)
     const allowed = []
     for (const tr of transitions) {
-      if (!(await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, tr.toStep))) allowed.push(tr)
+      if (!(await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, tr.toStep, { byPerson: true }))) allowed.push(tr)
     }
     return allowed
   })

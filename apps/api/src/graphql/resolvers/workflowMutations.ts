@@ -946,7 +946,7 @@ export async function executeWorkflowTransition(
       throw new GraphQLError('Changes are transitioned with executeChangeTransition (approval gate and phase side effects)', { extensions: { code: 'CONFLICT', i18n: { key: 'errors.workflow.changeUsesChangeTransition' } } })
     }
     if (entityDataResult.records[0].get('entityType') === 'service_request'
-        && await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, toStep)) {
+        && await requestApprovalWouldBeSkipped(session, ctx.tenantId, instanceId, toStep, { byPerson: true })) {
       throw new GraphQLError(
         'This request needs an approval: send it to approval first',
         { extensions: { code: 'CONFLICT', i18n: { key: 'errors.request.approvalRequired' } } },
