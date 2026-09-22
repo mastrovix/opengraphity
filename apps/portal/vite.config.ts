@@ -49,6 +49,12 @@ export default defineConfig({
          * I gruppi sono gli stessi di prima, dichiarati una volta sola qui
          * sopra: si cerca il primo pacchetto che compare nel percorso del
          * modulo, così aggiungerne uno resta una riga e non una condizione.
+         *
+         * La funzione è identica a quella di `apps/web` e di `apps/console`, e
+         * resta duplicata di proposito: il Dockerfile di questa app copia solo
+         * alcune cartelle nel contesto di build, e un file condiviso alla
+         * radice non ci sarebbe. Il perché sta per intero in
+         * `apps/web/vite.config.ts`.
          */
         manualChunks: (id: string) => {
           if (!id.includes('node_modules')) return undefined

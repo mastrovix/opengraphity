@@ -705,19 +705,25 @@ processo**:
 | `report-whitelist` (`lib/reportWhitelist.ts`) | 60 s |
 | `memory-cache` (`lib/cache.ts`) | per chiave (30 s la policy del ciclo di vita) |
 | `ci-type-labels` (`lib/ciTypeFromLabels.ts`) | nessuno **per costruzione**: non è una cache a domanda ma la proiezione dello schema, riscritta da `registerCITypes` a ogni rigenerazione — quindi la sua staleness è quella dello schema (5 min) |
+| `notification-rules` (`lib/notificationRuleCache.ts`) | 60 s |
+| `tenant-language` (`lib/tenantLanguage.ts`) | 30 s |
+| `event_policy` (`lib/eventPolicy.ts`) | 30 s (`EVENT_POLICY_CACHE_TTL_MS`) |
+| `automation:<prefisso>` (`lib/automationEngine.ts`) | 60 s — il nome porta il prefisso del motore, quindi è più di uno |
 
-**APERTO — la cache delle regole di notifica non è su questo canale.**
-`packages/notifications/src/dispatcher.ts` tiene le regole per
-(tenant, tipo di evento) con TTL di 60 s, e le mutation
-(`createNotificationRule`, `updateNotificationRule`) svuotano **solo la cache
-del processo che le ha servite**. Una regola cambiata dall'interfaccia continua
-quindi a valere nella versione precedente nei processi worker per al più 60
-secondi. Non è stata agganciata al canale del metamodello perché quel canale
-dice una cosa diversa — «il metamodello è cambiato» — e usarlo per le regole
-significherebbe far pubblicare a `createNotificationRule` un messaggio che non
-corrisponde al fatto (e far svuotare le regole a ogni modifica di un tipo CI).
-La strada giusta è un canale con una **famiglia di cache** nel messaggio: costo
-M, e finché non c'è la finestra di 60 secondi è questa.
+**CHIUSO (revisione E-20).** Questo paragrafo diceva «APERTO — la cache delle
+regole di notifica non è su questo canale», e non era più vero:
+`lib/notificationRuleCache.ts` registra il clearer `notification-rules` con
+`registerMetamodelCacheClearer`, quindi ogni processo — l'API e i worker —
+svuota la sua copia quando le regole cambiano. Corretto il 21 set 2026, dopo
+che l'agente dell'Autoanalisi l'ha segnalato indagando su `PRB00000003`.
+
+Il difetto che descriveva era vero e grave: il dispatcher vive nel container
+`events-worker`, e `invalidateRuleCache` chiamata dall'API svuotava solo la
+cache DELL'API, che non consegna niente. L'admin spegneva una regola e il
+worker continuava a notificare per un minuto, mentre la pagina diceva che era
+spenta. Resta qui perché un operatore che leggeva questa pagina credeva a una
+finestra di 60 secondi che non esiste più — e una pagina che dice il falso è
+peggio di una che non dice niente.
 
 ### Policy per tenant
 
