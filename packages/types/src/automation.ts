@@ -77,8 +77,13 @@ export const AUTOMATION_EVENT_ENTITIES: Readonly<Record<AutomationEventType, rea
 }
 
 export function automationEventSupported(eventType: string, entityType: string): boolean {
+  // `hasOwnProperty` e non una lettura secca: `AUTOMATION_EVENT_ENTITIES['toString']`
+  // risponde con la funzione del prototipo, che passa il `!!` e poi fa
+  // lanciare `.includes`. Un tipo di evento arriva dal dato di
+  // un'automazione, e un TypeError qui e' un 500 al posto di un «no».
+  if (!Object.prototype.hasOwnProperty.call(AUTOMATION_EVENT_ENTITIES, eventType)) return false
   const entities = AUTOMATION_EVENT_ENTITIES[eventType as AutomationEventType]
-  return !!entities && (entities as readonly string[]).includes(entityType)
+  return (entities as readonly string[]).includes(entityType)
 }
 
 /**
