@@ -82,7 +82,7 @@ export const PAVIMENTI = {
   'packages/neo4j':            { lines: 95, statements: 93, functions: 94, branches: 85 },  // 97.5/95.42/96.61/87.31
   'packages/sla':              { lines: 68, statements: 64, functions: 61, branches: 65 },  // 70.01/66.85/63.73/67.06
   'packages/notifications':    { lines: 79, statements: 78, functions: 78, branches: 72 },  // 81.56/80.1/80.11/74.65
-  'packages/events':           { lines: 51, statements: 47, functions: 53, branches: 32 },  // 53.3/49.01/55.55/34.14
+  'packages/events':           { lines: 97, statements: 96, functions: 95, branches: 93 },  // 99.52/98.03/97.77/95.6
   'packages/scripting':        { lines: 96, statements: 96, functions: 98, branches: 93 },  // 98.31/98.34/100/95.45
   'packages/discovery':        { lines: 95, statements: 95, functions: 98, branches: 92 },  // 97.02/97.39/100/94.56
   'packages/types':            { lines: 40, statements: 44, functions: 45, branches: 41 },  // 42.33/46.6/47/43.41
