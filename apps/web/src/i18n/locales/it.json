@@ -2528,7 +2528,6 @@
         "columnRequired": "Obbligatoria",
         "addColumn": "Aggiungi una colonna",
         "tableNoColumns": "Nessuna colonna: una tabella ne vuole almeno una.",
-        "tableInList": "Una tabella non può essere una colonna delle liste, un widget o una colonna di report: sono righe, non un valore.",
         "refTypes": "Quali tipi di CI",
         "refTypesHelp": "Nessuna spunta: tutta la CMDB. Spuntandone qualcuno, la ricerca offre solo quelli.",
         "refTypesNone": "Non c’è ancora nessun tipo di CI.",
@@ -4653,7 +4652,6 @@
       "promptTooLong": "La descrizione è troppo lunga (massimo {{max}} caratteri).",
       "badAnswer": "La risposta del modello non è leggibile. Riprova, magari con parole più semplici.",
       "noEntities": "Questa organizzazione non ha ancora niente su cui fare report.",
-      "nothingUsable": "La proposta non nomina nessuna entità di questa organizzazione: riprova dicendo di cosa vuoi il report.",
       "invalidProposal": "La proposta non sarebbe salvabile ({{message}}). È un difetto nostro: riprova, e se succede ancora segnalalo.",
       "truncated": "La risposta del modello si è interrotta a metà: la richiesta era troppo grande. Descrivi meno cose, o dividila in due."
     },
