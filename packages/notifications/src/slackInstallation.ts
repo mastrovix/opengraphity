@@ -80,7 +80,7 @@ function withSecrets(r: Row): SlackInstallationWithSecrets {
 
 /** Il workspace da cui arriva un comando: dice di quale organizzazione è. */
 export async function loadSlackInstallationByTeam(teamId: string): Promise<SlackInstallationWithSecrets | null> {
-  // tenant-ok: pre-auth, l'organizzazione è quella che ha collegato il workspace
+  // tenant-ok(pre-auth): pre-auth, l'organizzazione è quella che ha collegato il workspace
   const r = await readOne(`MATCH (s:SlackInstallation {team_id: $teamId}) ${RETURN}`, { teamId })
   return r ? withSecrets(r) : null
 }

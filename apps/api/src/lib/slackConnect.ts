@@ -117,7 +117,7 @@ async function saveInstallation(i: NewInstallation): Promise<SlackInstallation> 
   try {
     await session.executeWrite(async (tx) => {
       const other = await tx.run(
-        // tenant-ok: un workspace appartiene a una sola organizzazione, il controllo guarda le altre
+        // tenant-ok(unicita): un workspace appartiene a una sola organizzazione, il controllo guarda le altre
         'MATCH (s:SlackInstallation {team_id: $teamId}) WHERE s.tenant_id <> $tenantId RETURN s.tenant_id AS t LIMIT 1',
         { teamId: i.teamId, tenantId: i.tenantId },
       )

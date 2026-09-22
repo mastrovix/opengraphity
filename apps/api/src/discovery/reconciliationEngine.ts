@@ -570,7 +570,7 @@ async function syncRelations(
 
     if (rel.direction === 'outgoing') {
       const r = await session.executeWrite(tx => tx.run(
-        // tenant-ok: id dei CI riconciliati in questo run (stesso tenant della sorgente)
+        // tenant-ok(per-id): id dei CI riconciliati in questo run (stesso tenant della sorgente)
         `MATCH (a:ConfigurationItem {id: $fromId}), (b:ConfigurationItem {id: $toId})
          MERGE (a)-[r:${relType}]->(b)
          ON CREATE SET r.created_at = $now, r.discovery_source_id = $sourceId
@@ -582,7 +582,7 @@ async function syncRelations(
       if (r.records[0]?.get('isNew') === true) created++
     } else {
       const r = await session.executeWrite(tx => tx.run(
-        // tenant-ok: id dei CI riconciliati in questo run (stesso tenant della sorgente)
+        // tenant-ok(per-id): id dei CI riconciliati in questo run (stesso tenant della sorgente)
         `MATCH (a:ConfigurationItem {id: $toId}), (b:ConfigurationItem {id: $fromId})
          MERGE (a)-[r:${relType}]->(b)
          ON CREATE SET r.created_at = $now, r.discovery_source_id = $sourceId
@@ -604,7 +604,7 @@ async function syncRelations(
   // toccano solo le relazioni con il marcatore della sorgente: quelle scritte a
   // mano nella CMDB non si cancellano.
   const removeResult = await session.executeWrite(tx => tx.run(
-    // tenant-ok: id del CI riconciliato in questo run (stesso tenant della sorgente)
+    // tenant-ok(per-id): id del CI riconciliato in questo run (stesso tenant della sorgente)
     `MATCH (a:ConfigurationItem {id: $fromId})-[r]-(b:ConfigurationItem)
      WHERE r.discovery_source_id = $sourceId
        AND NOT [type(r), b.id, CASE WHEN startNode(r).id = $fromId THEN 'outgoing' ELSE 'incoming' END] IN $reported

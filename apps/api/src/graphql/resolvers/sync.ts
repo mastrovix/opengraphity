@@ -180,7 +180,7 @@ export const syncResolvers = {
 
         type Row = { p: Props; total: unknown }
         const rows = await runQuery<Row>(session,
-          // tenant-ok: `filters` parte da `n.tenant_id = $tenantId` (riga sopra)
+          // tenant-ok(where-scopato): `filters` parte da `n.tenant_id = $tenantId` (riga sopra)
           `MATCH (n:SyncConflict) WHERE ${filters.join(' AND ')}
            WITH count(n) AS total, collect(n) AS all
            UNWIND all AS n

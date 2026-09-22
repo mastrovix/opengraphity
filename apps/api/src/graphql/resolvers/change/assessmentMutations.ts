@@ -156,7 +156,7 @@ export async function completeAssessmentTask(_: unknown, args: { taskId: string 
       // con «Nessuna domanda di assessment assegnata al tipo di CI». Cioe
       // nessuna change che toccasse un CI di un tipo del cliente superava
       // l'assessment — provato dal vivo su un tipo «firewall».
-      // tenant-ok: i tipi base sono condivisi, quelli del cliente filtrati sul suo id
+      // tenant-ok(condivisi): i tipi base sono condivisi, quelli del cliente filtrati sul suo id
       OPTIONAL MATCH (ct:CITypeDefinition)
         WHERE ct.neo4j_label IN labels(ci)
           AND ct.active = true

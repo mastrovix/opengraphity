@@ -79,7 +79,7 @@ export interface FirmaDelFascicolo {
  * trovato in `proposal.platformSharedFault`.
  */
 export const FIRME_CYPHER = `
-  // tenant-ok: :ServerLogEntry è l'archivio di PIATTAFORMA e non porta un
+  // tenant-ok(piattaforma): :ServerLogEntry è l'archivio di PIATTAFORMA e non porta un
   // tenant per costruzione (decisione 3 di serverLogSink.ts). Chi legge è
   // l'amministratore del tenant di piattaforma, e la sbarra è nel resolver.
   MATCH (l:ServerLogEntry)

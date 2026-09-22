@@ -252,7 +252,7 @@ export async function enumValueBindings(
   session: Session | ManagedTransaction, tenantId: string, vocabularyName: string,
 ): Promise<EnumValueBinding[]> {
   const r = await run(session, `
-    // tenant-ok: qui NON si leggono i valori di un vocabolario (e quindi non
+    // tenant-ok(condivisi): qui NON si leggono i valori di un vocabolario (e quindi non
     // c'è nulla da isolare su \`e\`): si chiede quali CAMPI sono governati dal
     // vocabolario con questo NOME. Il proprietario del nodo agganciato è
     // irrilevante — e filtrarlo sarebbe dannoso, perché dal vivo i campi

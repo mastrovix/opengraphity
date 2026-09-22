@@ -340,8 +340,9 @@ export async function onboardTenant(
           // dato di un cliente, si CONTA se il metamodello comune esiste.
           // Filtrarli per tenant non troverebbe niente, e il tenant nascerebbe
           // senza CMDB con un messaggio che dice che è tutto a posto.
-          // tenant-ok
-          `MATCH (t:CITypeDefinition) WHERE t.scope = $scope AND t.active = true RETURN count(t) AS total`,
+          `MATCH (t:CITypeDefinition)
+           // tenant-ok(condivisi): i tipi spediti vivono su 'base'/'itil', senza tenant_id
+           WHERE t.scope = $scope AND t.active = true RETURN count(t) AS total`,
           { scope },
         ),
       )

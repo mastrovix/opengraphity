@@ -545,7 +545,7 @@ export async function syncStaleOrOldMaps(now: string = new Date().toISOString())
       const session = getSession()
       try {
         return await runQuery<MapRef>(session, `
-          // tenant-ok: passata di manutenzione su tutti i tenant; ogni mappa è poi sincronizzata nel suo tenant.
+          // tenant-ok(piattaforma): passata di manutenzione su tutti i tenant; ogni mappa è poi sincronizzata nel suo tenant.
           MATCH (m:ServiceMap)
           WHERE m.auto_sync = true AND m.status <> 'paused'
             AND (m.synced_at IS NULL OR m.synced_at < $cutoff) AND m.id > $cursor

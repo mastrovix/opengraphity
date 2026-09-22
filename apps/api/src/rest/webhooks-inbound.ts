@@ -103,7 +103,7 @@ router.post('/webhooks/inbound/:hookId', json({ limit: WEBHOOK_BODY_LIMIT }), as
     // 1. Load webhook config (+ il fuso del tenant: serve alla normalizzazione
     //    di Zabbix, che manda l'ora locale del server senza offset — M4).
     const row = await runQueryOne<{ props: Record<string, unknown>; timezone: string | null }>(session, `
-      // tenant-ok: lookup pre-auth, il tenant è quello del webhook (verificato dal token); il Tenant è il suo
+      // tenant-ok(pre-auth): lookup pre-auth, il tenant è quello del webhook (verificato dal token); il Tenant è il suo
       MATCH (w:InboundWebhook {id: $hookId, enabled: true})
       OPTIONAL MATCH (t:Tenant {id: w.tenant_id})
       RETURN properties(w) AS props, t.timezone AS timezone

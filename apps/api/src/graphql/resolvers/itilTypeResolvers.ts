@@ -491,7 +491,7 @@ export function buildITILMutations(requireMetamodelPermission: (ctx: GraphQLCont
             // Remove any existing USES_ENUM relation first (clean slate for enum reference)
             // Qui non si LEGGE il vocabolario: si stacca il legame vecchio del
             // campo, qualunque sia (anche uno sbagliato, da ripulire).
-            // tenant-ok: f è già vincolato a tenant_id = $tenantId dal MATCH sopra.
+            // tenant-ok(unicita): f è già vincolato a tenant_id = $tenantId dal MATCH sopra.
             OPTIONAL MATCH (f)-[oldRel:USES_ENUM]->(:EnumTypeDefinition)
             DELETE oldRel
             WITH f

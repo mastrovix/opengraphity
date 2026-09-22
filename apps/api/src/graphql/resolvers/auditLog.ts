@@ -66,7 +66,7 @@ export async function auditLog(
   try {
     const dataRes = await session.executeRead((tx) =>
       tx.run(`
-        // tenant-ok: il WHERE interpolato parte da a.tenant_id = $tenantId (conditions, riga 52)
+        // tenant-ok(where-scopato): il WHERE interpolato parte da a.tenant_id = $tenantId (conditions, riga 52)
         MATCH (a:AuditEntry)
         WHERE ${where}
         RETURN a.id         AS id,
@@ -87,7 +87,7 @@ export async function auditLog(
 
     const countRes = await session.executeRead((tx) =>
       tx.run(`
-        // tenant-ok: stesso $where della query di pagina, tenant per primo (conditions, riga 52)
+        // tenant-ok(where-scopato): stesso $where della query di pagina, tenant per primo (conditions, riga 52)
         MATCH (a:AuditEntry)
         WHERE ${where}
         RETURN count(a) AS total

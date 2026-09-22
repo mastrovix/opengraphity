@@ -132,7 +132,7 @@ async function addWorkflowStep(
     const res = await session.executeWrite(tx =>
       tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
-        // tenant-ok: passi della definizione appena scopata
+        // tenant-ok(traversal): passi della definizione appena scopata
         OPTIONAL MATCH (wd)-[:HAS_STEP]->(ex:WorkflowStep)
         WITH wd,
              coalesce(max(ex.step_order), 0) + 1     AS nextOrder,
