@@ -86,7 +86,7 @@ export const PAVIMENTI = {
   'packages/scripting':        { lines: 96, statements: 96, functions: 98, branches: 93 },  // 98.31/98.34/100/95.45
   'packages/discovery':        { lines: 95, statements: 95, functions: 98, branches: 92 },  // 97.02/97.39/100/94.56
   'packages/types':            { lines: 40, statements: 44, functions: 45, branches: 41 },  // 42.33/46.6/47/43.41
-  'packages/schema-generator': { lines: 67, statements: 65, functions: 55, branches: 52 },  // 69.95/67.63/57.37/54.97
+  'packages/schema-generator': { lines: 94, statements: 90, functions: 88, branches: 81 },  // 96.05/92.53/90.16/83.24
   'packages/web-core':         { lines: 40, statements: 39, functions: 33, branches: 23 },  // 42.32/41.46/35.0/25.23
 }
 
