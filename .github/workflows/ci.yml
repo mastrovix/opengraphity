@@ -65,6 +65,13 @@ jobs:
       - name: Check vocabolario dei log
         run: node scripts/genera-vocabolario-log.mjs --check
 
+      # Una funzione NUOVA non supera le 60 istruzioni, e quelle già lunghe
+      # possono solo rimpicciolire: è la misura di quanto c'è da tenere in
+      # testa per rivederle. Gira dalla radice perché usa l'AST di TypeScript,
+      # che la 7 non espone più (vedi il commento in testa allo script).
+      - name: Check funzioni lunghe
+        run: node scripts/check-funzioni-lunghe.mjs
+
       - name: Lint
         run: pnpm lint
 
