@@ -1824,6 +1824,34 @@ import('bullmq').then(async ({ Queue }) => {
 Il filtro sulle 32 cifre esadecimali e' quello che distingue una voce vecchia
 da uno scheduler nostro: i nostri hanno un nome che si legge.
 
+## Le change che hanno perso l'occasione riprendono a camminare
+
+Le transizioni automatiche si valutano dentro una mutation sulla change: una
+che si perde la sua occasione — un errore in quell'istante, un cammino che non
+chiamava il walker — restava ferma **per sempre**, con tutte le condizioni
+soddisfatte. Trovato su `CHG00000003` di `c-one`: ferma in analisi dal 7
+settembre coi tre task completati.
+
+Dal 22 set 2026 una passata la riprende, **ogni cinque minuti**, coda
+`workflow-jobs`, lavoro `ripresa_transizioni`.
+
+| | |
+|---|---|
+| quali change | esattamente quelle che la diagnostica elencava come «ferme con la strada aperta» — stessa funzione, nessun insieme parallelo |
+| quante per giro | 20 per cliente: muoverne 200 in un colpo farebbe partire 200 catene di azioni e notifiche insieme |
+| il varco | consultato dalla ricerca **e di nuovo** un istante prima di muovere: fra le due passa tempo e una finestra di rilascio può chiudersi |
+| chi risulta | `sistema:ripresa-automatica`, e si legge nella storia della change |
+
+Nei log: modulo `transizioni-riprese`. Scrive solo quando ha mosso o quando il
+varco ha rifiutato — una riga «zero» ogni cinque minuti insegna a non leggere
+i log.
+
+**Perché è legittimo farlo da soli**: l'arco è `trigger: 'automatic'`, cioè è
+il cliente ad aver disegnato «questo si muove da solo». Che non si muovesse era
+un difetto del prodotto, non una sua scelta. E il rilievo della diagnostica
+diceva già «il lavoro è già finito, manca solo il movimento», mandando una
+persona a fare da sveglia a una macchina.
+
 ## Autoanalisi: dal Problem alla modifica, senza gesti in mezzo
 
 L'Autoanalisi apre proposte sul tenant di piattaforma (`opengrafo`) quando il

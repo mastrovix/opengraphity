@@ -78,7 +78,7 @@ async function webhookRetryHeaders(d: WebhookRetryData): Promise<Record<string, 
 async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
   const { entityId, tenantId } = job.data
   // La passata delle scadenze gira ogni minuto: il suo log è il riepilogo, non questa riga.
-  if (job.name !== STEP_DEADLINES_JOB && job.name !== OLA_SWEEP_JOB) logger.info({ jobName: job.name, entityId, tenantId }, '[workflow-jobs] processing')
+  if (job.name !== STEP_DEADLINES_JOB && job.name !== OLA_SWEEP_JOB && job.name !== RIPRESA_JOB) logger.info({ jobName: job.name, entityId, tenantId }, '[workflow-jobs] processing')
 
   switch (job.name) {
     case STEP_DEADLINES_JOB: {
@@ -92,6 +92,11 @@ async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
       break
     }
 
+    case RIPRESA_JOB: {
+      const { riprendiTransizioni } = await import('../lib/riprendiTransizioni.js')
+      await riprendiTransizioni()
+      return
+    }
     case OLA_SWEEP_JOB: {
       // Secondo giro UI del 15 set 2026: gli avvisi OLA/UC sul tempo del team (lib/olaSweep.ts).
       const summary = await runOLASweep()
@@ -378,6 +383,15 @@ export const WORKFLOW_JOBS_QUEUE     = 'workflow-jobs'
 export const STEP_DEADLINES_JOB      = 'step_deadlines'
 export const STEP_DEADLINES_EVERY_MS = 60_000
 export const OLA_SWEEP_JOB = 'ola_sweep'
+/** La ripresa delle transizioni automatiche perdute (22 set 2026). */
+export const RIPRESA_JOB = 'ripresa_transizioni'
+/*
+ * Cinque minuti, non uno: qui non si insegue una scadenza ma si rimedia a
+ * un'occasione persa, e un'occasione persa lo resta anche per cinque minuti.
+ * Più raro significa anche meno letture inutili sui clienti che non hanno
+ * niente di fermo — che sono quasi tutti, quasi sempre.
+ */
+export const RIPRESA_EVERY_MS = 5 * 60_000
 export const OLA_SWEEP_EVERY_MS = 60_000
 
 export function startNotificationJobWorker(): Worker {
@@ -429,6 +443,27 @@ export async function scheduleOLASweep(): Promise<void> {
     },
   )
   logger.info({ everyMs: OLA_SWEEP_EVERY_MS }, '[workflow-jobs] OLA sweep scheduled')
+}
+
+/**
+ * La ripresa delle transizioni automatiche, ogni cinque minuti.
+ *
+ * Stesso schema delle altre due passate. Il perché sta in
+ * `lib/riprendiTransizioni.ts`: una change che perde la sua occasione restava
+ * ferma per sempre, e la diagnostica poteva solo chiedere a una persona di
+ * andarla a spingere.
+ */
+export async function scheduleRipresaTransizioni(): Promise<void> {
+  await getQueue(WORKFLOW_JOBS_QUEUE).upsertJobScheduler(
+    'workflow-ripresa-transizioni',
+    { every: RIPRESA_EVERY_MS },
+    {
+      name: RIPRESA_JOB,
+      data: { instanceId: '', entityId: '', tenantId: '', job: RIPRESA_JOB },
+      opts: { removeOnComplete: true, removeOnFail: 100 },
+    },
+  )
+  logger.info({ everyMs: RIPRESA_EVERY_MS }, '[workflow-jobs] automatic-transition resume scheduled')
 }
 
 export function startWorkflowJobWorker(): Worker<WorkflowJobData> {

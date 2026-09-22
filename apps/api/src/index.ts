@@ -45,7 +45,7 @@ registerSessionTracker((durationMs, query) => {
 import { startReportScheduler } from './jobs/reportScheduler.js'
 import { startAnomalyScanner } from './anomaly/anomalyEngine.js'
 import { startProposalScanner } from './jobs/proposalScanner.js'
-import { startWorkflowJobWorker, startNotificationJobWorker, scheduleStepDeadlineSweep, scheduleOLASweep } from './jobs/workflowJobWorker.js'
+import { startWorkflowJobWorker, startNotificationJobWorker, scheduleStepDeadlineSweep, scheduleOLASweep, scheduleRipresaTransizioni } from './jobs/workflowJobWorker.js'
 import { startWebhookDeliveryWorker } from './jobs/webhookDeliveryWorker.js'
 import { startAutoanalisiWorker } from './jobs/autoanalisiWorker.js'
 import { startEventIngestWorker } from './jobs/eventIngestWorker.js'
@@ -115,6 +115,7 @@ async function main() {
   const workflowWorker = startWorkflowJobWorker()
   await scheduleStepDeadlineSweep()
   await scheduleOLASweep()
+  await scheduleRipresaTransizioni()
 
   // Start notification job worker (escalation_check, digest, timer_wait)
   const notificationWorker = startNotificationJobWorker()

@@ -13,13 +13,27 @@
  * tre task completati e `all_assessments_complete` VERA. Sarebbe bastato
  * toccarla per sbloccarla, ma nessuno sapeva di doverlo fare.
  *
- * ## Si SEGNALA, non si ripara
- * Far avanzare le change da un controllo di diagnostica vorrebbe dire
- * transizioni che partono da sole, senza un attore e senza una mutation che le
- * abbia chieste: l'audit direbbe «sistema», e il varco delle approvazioni
- * verrebbe attraversato da un percorso in più — il difetto che la terza
- * revisione ha chiuso con fatica. Meglio dirlo a chi può aprire la change e
- * farla camminare.
+ * ## PRIMA si segnalava e basta. Adesso si ripara (22 set 2026)
+ * Questo file diceva: «far avanzare le change da un controllo di diagnostica
+ * vorrebbe dire transizioni che partono da sole, senza un attore e senza una
+ * mutation che le abbia chieste». L'obiezione era giusta e resta valida per un
+ * controllo di DIAGNOSTICA: una passata che ripara non è una diagnostica.
+ *
+ * Quello che è cambiato è che adesso esiste il posto giusto dove farlo —
+ * `lib/riprendiTransizioni.ts`, una passata periodica con un attore
+ * dichiarato — e due argomenti che allora non avevo messo a fuoco:
+ *
+ *  1. l'arco è `trigger: 'automatic'`. È il CLIENTE ad aver disegnato «questo
+ *     si muove da solo»: che non si muova è un difetto del prodotto, non una
+ *     scelta sua da rispettare;
+ *  2. il rilievo della diagnostica dice già «il lavoro è già finito, manca
+ *     solo il movimento» e manda una persona a spingere. Fare noi quel
+ *     movimento non è un'autorità nuova: è smettere di chiedere a una persona
+ *     di fare da sveglia.
+ *
+ * Il varco delle approvazioni NON viene aggirato: si consulta qui, e si
+ * riconsulta un istante prima di muovere (fra la passata e la mossa il tempo
+ * passa, e una finestra di rilascio può chiudersi).
  *
  * ## La condizione la valuta IL MOTORE
  * Si chiama `workflowEngine.evaluateCondition`, la stessa funzione della
@@ -43,7 +57,7 @@ import { runQuery } from '@opengraphity/neo4j'
  */
 export const MAX_CHANGE_DA_VALUTARE = 200
 
-interface Candidato {
+export interface CambioFermo {
   code:       string
   changeId:   string
   instanceId: string
@@ -59,8 +73,17 @@ interface Candidato {
  * change con due archi aperti è UN rilievo, e la sua condizione si valuta una
  * volta sola.
  */
-export async function changesStuckWithOpenPath(session: Session, tenantId: string): Promise<string[]> {
-  const candidati = await runQuery<Candidato>(session, `
+/**
+ * Le change che POTREBBERO muoversi adesso, con tutto quello che serve per
+ * farle muovere.
+ *
+ * Era `changesStuckWithOpenPath`, e restituiva i soli codici perché serviva
+ * solo a scrivere un rilievo. Ora serve anche a `riprendiTransizioni.ts`, che
+ * le fa camminare davvero: le due cose devono guardare lo STESSO insieme, se
+ * no la diagnostica racconta una cosa e il prodotto ne fa un'altra.
+ */
+export async function changeChePossonoMuoversi(session: Session, tenantId: string): Promise<CambioFermo[]> {
+  const candidati = await runQuery<CambioFermo>(session, `
     MATCH (c:Change {tenant_id: $tenantId})-[:HAS_WORKFLOW]->(wi:WorkflowInstance {tenant_id: $tenantId})
     WHERE coalesce(c.deleted, false) = false AND wi.status = 'active'
     MATCH (wi)-[:CURRENT_STEP]->(cur:WorkflowStep)-[tr:TRANSITIONS_TO {trigger: 'automatic'}]->(next:WorkflowStep)
@@ -108,6 +131,7 @@ export async function changesStuckWithOpenPath(session: Session, tenantId: strin
   const { automaticTransitionOutcome } = await import('../graphql/resolvers/change/windowGate.js')
 
   const ferme = new Set<string>()
+  const muovibili: CambioFermo[] = []
   for (const r of candidati) {
     if (ferme.has(r.code)) continue
     // Un arco automatico SENZA condizione doveva scattare all'istante: se la
@@ -146,7 +170,16 @@ export async function changesStuckWithOpenPath(session: Session, tenantId: strin
       currentStep: r.fromStep,
       toStep:      r.toStep,
     })
-    if (varco.allowed) ferme.add(r.code)
+    if (varco.allowed) { ferme.add(r.code); muovibili.push(r) }
   }
-  return [...ferme]
+  return muovibili
+}
+
+/**
+ * I soli CODICI, per il rilievo della diagnostica: una change con due archi
+ * aperti resta un rilievo solo.
+ */
+export async function changesStuckWithOpenPath(session: Session, tenantId: string): Promise<string[]> {
+  const muovibili = await changeChePossonoMuoversi(session, tenantId)
+  return [...new Set(muovibili.map((m) => m.code))]
 }

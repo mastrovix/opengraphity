@@ -111,6 +111,7 @@ const PIATTAFORMA = [
   'tenantOnboarding.ts', 'maintenance.worker.ts', 'seed-common.ts', 'autoanalisiWorker.ts',
   'reportScheduler.ts', 'olaSweep.ts', 'problemDossier.ts', 'stepDeadlines.ts',
   'tenantLifecycle.ts', 'eventRetention.ts', 'storm.ts', 'sync.ts',
+  'riprendiTransizioni.ts',
 ]
 
 const GENERI: Record<string, Genere> = {
