@@ -70,7 +70,11 @@ export interface WorkflowDefinition {
   transitions:     WFTransition[]
 }
 
-export type WorkflowKey = 'incident' | 'standard' | 'normal' | 'emergency'
+/**
+ * Quale disposizione della tela usare: è il TIPO DI ENTITÀ del workflow, non il
+ * suo nome. `none` per tutto ciò che OpenGrafo non semina — fila automatica.
+ */
+export type WorkflowKey = 'incident' | 'change' | 'service_request' | 'problem' | 'kb_article' | 'none'
 export type StepNodeData = { step: WFStep; accentColor: string }
 export type EdgeNodeData  = { transition: WFTransition; color: string }
 
