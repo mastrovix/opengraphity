@@ -205,6 +205,8 @@ let composte = 0
 let esempi = 0
 const formeComposte = new Map()
 const composteDettaglio = []
+/** I compositori che restano fuori solo perché non sono esportati: si dicono per nome. */
+const nonEsportate = new Set()
 const daRisolvere = []
 for (const dir of SCAN) {
   for (const file of walk(dir)) {
@@ -479,7 +481,12 @@ for (const c of daRisolvere) {
       chiamate.push({ file: compositori.get(chiamata[1]), fn: chiamata[1], args })
       continue
     }
-    if (chiamata) { resa = 'funzione non esportata dai sorgenti'; break }
+    if (chiamata) {
+      resa = 'funzione non esportata dai sorgenti'
+      // Il NOME serve: «8 funzioni non esportate» non dice quali esportare.
+      nonEsportate.add(`${chiamata[1]}  @ ${c.file}`)
+      break
+    }
 
     if (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(testo) && inPosizioneDiEtichetta(c.query, sp.inizio)) {
       pezzi.push({ tipo: 'testo', valore: ETICHETTA_FINTA })
@@ -616,4 +623,37 @@ if (totaleFuori > 0) {
    */
   console.log('  Perché restano fuori:')
   for (const [motivo, quante] of fuoriPerimetro) console.log(`    ${String(quante).padStart(4)}  ${motivo}`)
+  if (nonEsportate.size > 0) {
+    console.log('  Basterebbe ESPORTARLE per farle entrare nel perimetro:')
+    for (const f of [...nonEsportate].sort()) console.log(`    ${f}`)
+  }
+}
+
+/*
+ * IL CRICCHETTO: il buco può solo rimpicciolirsi (22 set 2026).
+ *
+ * Questo controllo diceva da sempre quante query restano fuori dal suo
+ * sguardo, e nessuno gliene chiedeva conto: il numero poteva crescere a ogni
+ * commit senza che niente diventasse rosso. Ed è il numero che conta davvero,
+ * perché una query fuori perimetro non riceve nemmeno il controllo del
+ * `tenant_id` — l'invariante più importante del prodotto.
+ *
+ * Adesso il tetto è scritto qui. Una query composta in più lo supera e questo
+ * controllo diventa rosso: chi la aggiunge sceglie fra renderla verificabile
+ * (un letterale, oppure un compositore ESPORTATO, che questo script sa
+ * chiamare) e alzare il tetto DICENDO perché.
+ *
+ * Il tetto si abbassa quando si guadagna terreno. Non si alza per far passare
+ * la giornata.
+ */
+const TETTO_FUORI_PERIMETRO = 266
+if (totaleFuori > TETTO_FUORI_PERIMETRO) {
+  console.error(`\ncheck-cypher: le query fuori perimetro sono ${totaleFuori}, il tetto è ${TETTO_FUORI_PERIMETRO}.`)
+  console.error('Una query che questo controllo non vede non riceve nemmeno la verifica del tenant_id.')
+  console.error('Rendila verificabile — scrivila come letterale, o ESPORTA il compositore che la costruisce —')
+  console.error('oppure alza il tetto in scripts/check-cypher.mjs spiegando perché.')
+  process.exit(1)
+}
+if (totaleFuori < TETTO_FUORI_PERIMETRO) {
+  console.log(`  (il tetto è ${TETTO_FUORI_PERIMETRO}: se ne sono guadagnate ${TETTO_FUORI_PERIMETRO - totaleFuori}, abbassalo)`)
 }
