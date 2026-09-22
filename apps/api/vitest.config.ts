@@ -70,7 +70,7 @@ export default defineConfig({
        */
       thresholds: {
         'src/lib/**':        { lines: 80, statements: 77, functions: 78, branches: 69 },  // 82.1/79.8/80.7/71.1
-        'src/graphql/**':      { lines: 61, statements: 59, functions: 53, branches: 53 },  // 64.0/61.8/55.5/55.6
+        'src/graphql/**':      { lines: 62, statements: 60, functions: 54, branches: 53 },  // 64.9/62.7/56.6/55.7
         'src/services/**':   { lines: 90, statements: 88, functions: 87, branches: 83 },  // 92.4/90.2/89.4/85.5
         'src/rest/**':         { lines: 77, statements: 76, functions: 74, branches: 67 },  // 79.2/78.4/76.6/69.9
         'src/discovery/**':  { lines: 94, statements: 91, functions: 90, branches: 82 },  // 96.8/93.6/92.6/84.5
