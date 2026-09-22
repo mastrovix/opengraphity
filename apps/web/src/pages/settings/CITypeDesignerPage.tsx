@@ -404,7 +404,7 @@ export function CITypeDesignerPage() {
                       <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                         <Trans i18nKey="citypeDesigner.validationScriptHint" components={{ code: <code /> }} />
                       </p>
-                      <textarea style={{ ...textareaS, minHeight: 100 }} value={settingsForm.validationScript}
+                      <textarea aria-label={t('citypeDesigner.validationScriptPlaceholder')} style={{ ...textareaS, minHeight: 100 }} value={settingsForm.validationScript}
                         onChange={(e) => setSettingsForm((p) => p && ({ ...p, validationScript: e.target.value }))}
                         placeholder={t('citypeDesigner.validationScriptPlaceholder')} />
                     </FormField>

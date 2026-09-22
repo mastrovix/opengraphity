@@ -39,7 +39,7 @@ export function ReopenModal({ onConfirm, onCancel }: {
       }
     >
       <p style={{ margin: '0 0 12px', fontSize: 'var(--font-size-body)', color: 'var(--color-slate)' }}>{t('pages.tasks.reopen.prompt')}</p>
-      <textarea
+      <textarea aria-label={t('pages.tasks.reopen.placeholder')}
         value={reason}
         onChange={e => setReason(e.target.value)}
         rows={3}

@@ -178,7 +178,7 @@ export function TicketNewPage() {
         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
           {t('ticket.fields.title')} *
         </label>
-        <input
+        <input aria-label={t('ticket.fields.title')}
           value={title}
           onChange={e => setTitle(e.target.value)}
           placeholder={t('ticket.fields.title')}
@@ -231,7 +231,7 @@ export function TicketNewPage() {
         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: colors.slate, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
           {t('ticket.fields.description')} *
         </label>
-        <textarea
+        <textarea aria-label={t('ticket.fields.description')}
           value={description}
           onChange={e => setDescription(e.target.value)}
           placeholder={t('ticket.fields.description')}

@@ -341,7 +341,7 @@ export function TeamDetailPage() {
                   <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px' }}>
                       <Search size={14} color="var(--color-slate-light)" />
-                      <input
+                      <input aria-label={t('pages.teamDetail.searchMember')}
                         // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management del dialogo di ricerca aperto dall'utente (Modal)
                         autoFocus
                         value={managerSearch}

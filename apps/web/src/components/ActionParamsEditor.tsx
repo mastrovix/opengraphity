@@ -184,18 +184,18 @@ export function ActionParamsEditor({ actionType, params, entityType, onChange, v
           <Select style={{ ...selectS, width: 140 }} aria-label={t('automation.params.notificationChannel')} value={params['channel'] ?? 'in_app'} onChange={e => onChange('channel', e.target.value)}>
             {AUTOMATION_NOTIFICATION_CHANNELS.map(c => <option key={c} value={c}>{t(CHANNEL_LABEL_KEY[c] ?? c)}</option>)}
           </Select>
-          <textarea style={{ ...textareaS, flex: 1, minWidth: 200 }} placeholder={t('automation.params.notificationMessage')} value={params['message'] ?? ''} onChange={e => onChange('message', e.target.value)} />
+          <textarea aria-label={t('automation.params.notificationMessage')} style={{ ...textareaS, flex: 1, minWidth: 200 }} placeholder={t('automation.params.notificationMessage')} value={params['message'] ?? ''} onChange={e => onChange('message', e.target.value)} />
         </div>
       )
 
     case 'create_comment':
       return (
-        <textarea style={{ ...textareaS, flex: 1 }} placeholder={t('automation.params.commentText')} value={params['text'] ?? ''} onChange={e => onChange('text', e.target.value)} />
+        <textarea aria-label={t('automation.params.commentText')} style={{ ...textareaS, flex: 1 }} placeholder={t('automation.params.commentText')} value={params['text'] ?? ''} onChange={e => onChange('text', e.target.value)} />
       )
 
     case 'execute_script':
       return (
-        <textarea style={{ ...monoS, flex: 1 }} placeholder="// JavaScript (isolated-vm, timeout 5s)..." value={params['code'] ?? ''} onChange={e => onChange('code', e.target.value)} />
+        <textarea aria-label={t('a11y.scriptCode')} style={{ ...monoS, flex: 1 }} placeholder="// JavaScript (isolated-vm, timeout 5s)..." value={params['code'] ?? ''} onChange={e => onChange('code', e.target.value)} />
       )
 
     case 'call_webhook':

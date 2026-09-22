@@ -136,6 +136,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
             {d.filters.map((f: FilterState, i: number) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
                 <select
+                  aria-label={t('a11y.reportFilterField')}
                   className="nodrag nopan"
                   onMouseDown={e => e.stopPropagation()}
                   value={f.field}
@@ -199,6 +200,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
                   if (fld?.fieldType === 'enum') {
                     return (
                       <select
+                        aria-label={t('a11y.reportFilterValue')}
                         className="nodrag nopan"
                         onMouseDown={e => e.stopPropagation()}
                         value={String(f.value)}
@@ -213,7 +215,7 @@ export const ReportEntityNode = memo(function ReportEntityNode({ data }: { id: s
                     )
                   }
                   return (
-                    <input
+                    <input aria-label={t('reportBuilder.valuePlaceholder')}
                       className="nodrag nopan"
                       onMouseDown={e => e.stopPropagation()}
                       value={String(f.value)}

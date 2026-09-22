@@ -480,7 +480,7 @@ export function ChangeDetailPage() {
             <>
               <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 'var(--font-size-label)', fontWeight: 500, color: 'var(--color-slate-light)', textTransform: 'uppercase' }}>{t('pages.changeDetail.depth')}</span>
-                <select value={impactDepth} onChange={e => setImpactDepth(Number(e.target.value))} style={{ padding: '4px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
+                <select aria-label={t('pages.changeDetail.depth')} value={impactDepth} onChange={e => setImpactDepth(Number(e.target.value))} style={{ padding: '4px 8px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)' }}>
                   {[1, 2, 3, 4, 5].map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>

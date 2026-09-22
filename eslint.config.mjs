@@ -111,11 +111,49 @@ export default tseslint.config(
      * una rete che non c'era. Se n'e' accorto eslint 10, che le direttive
      * verso regole sconosciute non le ignora piu'.
      *
-     * Qui si accendono le CINQUE che il codice gia' citava — le uniche di cui
+     * Si accesero prima le CINQUE che il codice gia' citava — le uniche di cui
      * qualcuno, scrivendo, aveva gia' riconosciuto il bisogno — cosi' quelle
-     * soppressioni tornano a voler dire qualcosa. I nove problemi veri che
-     * emergevano accendendole sono stati sistemati prima (elementi non nativi
-     * resi raggiungibili da tastiera), non zittiti.
+     * soppressioni tornavano a voler dire qualcosa. I nove problemi veri che
+     * emergevano accendendole sono stati sistemati, non zittiti.
+     *
+     * ## Le altre ventisette, accese il 22 set 2026
+     * `recommended` del plugin ne porta trentaquattro. Accendendole TUTTE per
+     * misurare, ventisette non segnalavano NIENTE: `alt-text`, `aria-props`,
+     * `aria-role`, `role-has-required-aria-props`, `interactive-supports-focus`,
+     * `no-noninteractive-tabindex`, `tabindex-no-positive` e le altre. Erano
+     * spente non perche' costassero, ma perche' nessuno le aveva accese. Ora
+     * `recommended` entra per intero e le eccezioni si dichiarano qui sotto.
+     *
+     * ## Le sette che restano spente, col motivo
+     *
+     * `label-has-for` (263 segnalazioni) — DEPRECATA dal plugin, che indica
+     * come sostituta `label-has-associated-control`: e' accesa qui sopra. Sta
+     * ancora dentro `recommended`, ed e' l'unica ragione per cui va spenta a
+     * mano: accendere una regola deprecata che duplica una attiva vuol dire
+     * duecentosessantatre errori per un parere gia' espresso.
+     *
+     * `control-has-associated-label` (163) — non capisce `<label htmlFor>`.
+     * Cinquantotto delle sue segnalazioni erano controlli legati a una label
+     * per `htmlFor`, cioe' corretti: un terzo di falsi positivi insegna a non
+     * credere alla regola. Il caso VERO che nascondeva — un controllo senza
+     * alcun nome — l'ha preso `scripts/check-etichette-controlli.mjs`, che
+     * guarda anche gli antenati e su questo repository trovava quarantadue
+     * controlli muti. Sistemati tutti e quarantadue.
+     *
+     * `prefer-tag-over-role` (100) — fuori da `recommended`, e chiede di
+     * sostituire `role="listbox"`/`"dialog"`/`"status"` con i tag nativi. Su
+     * una combobox costruita a mano `<select>` non e' equivalente, e la
+     * sostituzione sarebbe una riscrittura dei componenti, non
+     * un'accessibilita' guadagnata. Da decidere guardando i cento casi, non da
+     * qui.
+     *
+     * `no-onchange` (58) e `accessible-emoji` (8) — DEPRECATE e fuori da
+     * `recommended`. La prima diceva di preferire `onBlur` a `onChange`, che in
+     * React e' sbagliato: `onChange` di React e' l'evento `input` del DOM.
+     *
+     * `lang`, `no-aria-hidden-on-focusable` e `anchor-ambiguous-text` — fuori
+     * da `recommended` (l'ultima ci sta dentro ma spenta) e senza segnalazioni
+     * qui: accese insieme alle altre.
      *
      * `no-autofocus` resta la piu' citata (27 volte): portare il fuoco da
      * soli e' giusto quando si apre una finestra modale o un campo di
@@ -127,11 +165,22 @@ export default tseslint.config(
     // quel campo. Qui si guarda l'interfaccia che il cliente usa.
     ignores: ['**/*.test.tsx', 'apps/web/src/test/**', 'apps/portal/src/test/**'],
     rules: {
+      ...jsxA11y.flatConfigs.recommended.rules,
+      // Spente in `recommended`, ma senza segnalazioni qui: si accendono.
+      // `anchor-ambiguous-text` e' quella che vieta «clicca qui» come testo di
+      // un link — chi naviga saltando da link a link sente solo quello.
+      'jsx-a11y/lang': 'error',
+      'jsx-a11y/no-aria-hidden-on-focusable': 'error',
+      'jsx-a11y/anchor-ambiguous-text': 'error',
+      // Le cinque che il codice gia' citava: da 'warn' di recommended a 'error'.
       'jsx-a11y/no-autofocus': 'error',
       'jsx-a11y/click-events-have-key-events': 'error',
       'jsx-a11y/no-static-element-interactions': 'error',
       'jsx-a11y/no-noninteractive-element-interactions': 'error',
       'jsx-a11y/label-has-associated-control': 'error',
+      // Le due spente, col motivo per esteso qui sopra.
+      'jsx-a11y/label-has-for': 'off',
+      'jsx-a11y/control-has-associated-label': 'off',
     },
   },
 )

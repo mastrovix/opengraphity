@@ -38,7 +38,7 @@ export function KBSearchBar({ initialValue = '', onSearch, large = false }: Prop
           pointerEvents: 'none',
         }}
       />
-      <input
+      <input aria-label={t('home.search')}
         type="text"
         value={q}
         onChange={e => setQ(e.target.value)}

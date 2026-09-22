@@ -167,7 +167,7 @@ export function CreateIncidentPage() {
             error={fieldErrors['title']}
             style={{ marginBottom: 20 }}
           >
-            <input
+            <input aria-label={t('pages.createIncident.titlePlaceholder')}
               type="text"
               value={title}
               onChange={e => { setTitle(e.target.value); setFieldErrors((p) => { const n = { ...p }; delete n['title']; return n }) }}
@@ -250,7 +250,7 @@ export function CreateIncidentPage() {
             error={fieldErrors['description']}
             style={{ marginBottom: 20 }}
           >
-            <textarea
+            <textarea aria-label={t('pages.createIncident.descriptionPlaceholder')}
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder={t('pages.createIncident.descriptionPlaceholder')}

@@ -7624,5 +7624,14 @@
       "wrong_analysis": "I dati o la conclusione non tornano. Serve a capire che la proposta era rumore.",
       "valid_but_declined": "La proposta è giusta, ma non è quello che vogliamo fare."
     }
+  },
+  "a11y": {
+    "reportFilterField": "Campo del filtro",
+    "reportFilterValue": "Valore del filtro",
+    "chartGroupByNode": "Raggruppa per: nodo",
+    "chartGroupByField": "Raggruppa per: campo",
+    "questionCategoryFilter": "Filtra le domande per categoria",
+    "questionAssignCiType": "Assegna la domanda al tipo CI {{type}}",
+    "scriptCode": "Codice dello script"
   }
 }

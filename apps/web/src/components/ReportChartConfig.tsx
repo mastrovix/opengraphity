@@ -198,13 +198,13 @@ export function ReportChartConfig({
             <div>
               <div style={labelStyle}>{t('reportChart.groupBy')}</div>
               <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <select value={groupByNodeId} onChange={e => onGroupByNodeIdChange(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
+                <select aria-label={t('a11y.chartGroupByNode')} value={groupByNodeId} onChange={e => onGroupByNodeIdChange(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
                   <option value="">{t('reportChart.nodePlaceholder')}</option>
                   {resultNodes.map(([nid, nd]) => (
                     <option key={nid} value={nid}>{nd.label}</option>
                   ))}
                 </select>
-                <select value={groupByField} onChange={e => onGroupByFieldChange(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
+                <select aria-label={t('a11y.chartGroupByField')} value={groupByField} onChange={e => onGroupByFieldChange(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
                   <option value="">{t('reportChart.fieldOption')}</option>
                   {groupByNodeId && nodeDataMap[groupByNodeId]
                     ? nodeDataMap[groupByNodeId].fields

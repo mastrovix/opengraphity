@@ -47,7 +47,7 @@ export function AddCIModal({ changeId, existingCIIds, onClose, refetchAffected, 
     <Modal open onClose={onClose} title={t('pages.addCI.title')} width={560}>
         <div style={{ position: 'relative', marginBottom: 12 }}>
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-slate-light)' }} />
-          <input
+          <input aria-label={t('pages.createChange.searchCI')}
             type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder={t('pages.createChange.searchCI')}
             // eslint-disable-next-line jsx-a11y/no-autofocus -- focus management: campo di ricerca del modal aperto dall'utente

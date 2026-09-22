@@ -215,7 +215,7 @@ export function WorkflowToolbar({
             </div>
             <div>
               <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>{t('common.label')}</div>
-              <input value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder={t(stepType === 'standard' ? 'pages.workflowStep.labelPlaceholder' : 'pages.workflowStep.labelPlaceholderTimer')} style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
+              <input aria-label={t(stepType === 'standard' ? 'pages.workflowStep.labelPlaceholder' : 'pages.workflowStep.labelPlaceholderTimer')} value={stepLabel} onChange={e => setStepLabel(e.target.value)} placeholder={t(stepType === 'standard' ? 'pages.workflowStep.labelPlaceholder' : 'pages.workflowStep.labelPlaceholderTimer')} style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
             </div>
             {stepType === 'standard' && (
               <div style={{ fontSize: 'var(--font-size-table)', color: 'var(--color-slate-light)', lineHeight: 1.45 }}>
@@ -225,7 +225,7 @@ export function WorkflowToolbar({
             {stepType === 'timer_wait' && (
               <div>
                 <div style={{ fontSize: 'var(--font-size-table)', fontWeight: 600, color: 'var(--color-slate-light)', marginBottom: 4 }}>{t('pages.workflowStep.timerDelay')}</div>
-                <input type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder={t('workflow.timerMinutesPlaceholder')} style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
+                <input aria-label={t('workflow.timerMinutesPlaceholder')} type="number" min={1} value={timerMins} onChange={e => setTimerMins(e.target.value)} placeholder={t('workflow.timerMinutesPlaceholder')} style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--color-border)', borderRadius: 6, fontSize: 'var(--font-size-body)', boxSizing: 'border-box' }} />
               </div>
             )}
           </div>

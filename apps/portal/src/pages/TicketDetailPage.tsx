@@ -441,7 +441,7 @@ export function TicketDetailPage() {
           paddingBottom:   8,
         }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-            <textarea
+            <textarea aria-label={t('ticket.replyPlaceholder')}
               value={reply}
               onChange={e => setReply(e.target.value)}
               placeholder={t('ticket.replyPlaceholder')}
