@@ -19,10 +19,26 @@ const apiSrc = join(here, '../..')
 // L'elenco vive in `domainLabels.ts`, condiviso con `tenantOnCreate.test.ts`.
 import { DOMAIN_LABELS } from './domainLabels'
 
-// Tutta l'API (Ondata 1 della revisione a tappeto). Fuori: script operativi
-// (hanno guardie proprie: --tenant obbligatorio) e test.
-const SCOPE = ['.']
-const EXCLUDED_DIRS = new Set(['__tests__', 'scripts'])
+/*
+ * Tutta l'API (Ondata 1 della revisione a tappeto) E I PACCHETTI CONDIVISI
+ * (22 set 2026).
+ *
+ * I pacchetti erano fuori, e nessuno l'aveva deciso: era solo il punto da cui
+ * questo test guarda. Ma `packages/workflow`, `packages/sla` e
+ * `packages/notifications` toccano dati di un cliente come e più dell'API —
+ * il motore dei workflow, il calcolo degli SLA, le notifiche — e in tutti e
+ * tre ci sono query. Centoventicinque pattern `MATCH (x:Label)` che questo
+ * guardiano non guardava.
+ *
+ * Fuori restano gli script operativi, e quella è una decisione: hanno una
+ * guardia loro (`--tenant` obbligatorio), e non girano dentro una richiesta.
+ */
+const SCOPE = ['.', '../../../packages']
+// `node_modules` e `dist` vanno esclusi ESPLICITAMENTE ora che si guardano
+// anche i pacchetti: pnpm mette i collegamenti fra pacchetti dentro
+// `packages/x/node_modules`, e senza questo lo stesso file veniva
+// esaminato una volta per ogni pacchetto che lo importa.
+const EXCLUDED_DIRS = new Set(['__tests__', 'scripts', 'node_modules', 'dist'])
 
 function listFiles(p: string): string[] {
   const full = p.startsWith('/') ? p : join(apiSrc, p)
@@ -64,9 +80,19 @@ function scan(file: string): Offender[] {
   return scanText(readFileSync(file, 'utf8').split('\n'), relative(apiSrc, file))
 }
 
+/*
+ * Il Cypher DENTRO UN COMMENTO non gira (22 set 2026). Nei pacchetti ce n'è —
+ * gli esempi in prosa citano `MATCH (e:Event {status: $s})` per spiegare una
+ * paginazione — e segnalarlo manda a scopare una frase. Vale per tutti e tre
+ * gli scanner: il primo l'aveva e gli altri due no, e continuavano a
+ * segnalare le stesse righe.
+ */
+const inCommento = (r: string) => /^\s*(\/\/|\*|\/\*)/.test(r)
+
 function scanText(lines: string[], file = '<inline>'): Offender[] {
   const out: Offender[] = []
   lines.forEach((line, i) => {
+    if (inCommento(line)) return
     MATCH_RE.lastIndex = 0
     let m: RegExpExecArray | null
     while ((m = MATCH_RE.exec(line)) !== null) {
@@ -147,6 +173,7 @@ function scanMergeContent(content: string, displayName: string): Offender[] {
   while ((m = MERGE_RE.exec(content)) !== null) {
     if (m[3]!.includes('tenant_id')) continue
     const startLine = content.slice(0, m.index).split('\n').length - 1        // 0-based
+    if (inCommento(lines[startLine] ?? '')) continue
     const endLine = startLine + m[0].split('\n').length - 1
     const endCol = content.slice(0, m.index + m[0].length).split('\n').pop()!.length
     if ((lines[endLine] ?? '').slice(endCol).includes('tenant_id')) continue  // WHERE/SET inline dopo la mappa
@@ -191,6 +218,7 @@ function scanBareContent(content: string, displayName: string): Offender[] {
   const lines = content.split('\n')
   const out: Offender[] = []
   lines.forEach((line, i) => {
+    if (inCommento(line)) return
     BARE_MATCH_RE.lastIndex = 0
     let m: RegExpExecArray | null
     while ((m = BARE_MATCH_RE.exec(line)) !== null) {
