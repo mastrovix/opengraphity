@@ -77,7 +77,7 @@ export const PAVIMENTI = {
   // ── Gli altri: un pavimento solo, che è quello che avevano (nessuno) ──────
   'apps/web':                  { lines: 69, statements: 66, functions: 52, branches: 61 },  // 71.43/68.29/54.73/63.86
   'apps/portal':               { lines: 54, statements: 50, functions: 42, branches: 50 },  // 56.9/52.89/44.75/52.84
-  'apps/console':              { lines: 2, statements: 3, functions: 0, branches: 9 },  // 4.39/5.14/1.08/11.26
+  'apps/console':              { lines: 94, statements: 94, functions: 89, branches: 92 },  // 96.15/96.26/91.3/94.36
   'packages/workflow':         { lines: 98, statements: 97, functions: 96, branches: 97 },  // 100/99.82/98.79/99.34
   'packages/neo4j':            { lines: 95, statements: 93, functions: 94, branches: 85 },  // 97.5/95.42/96.61/87.31
   'packages/sla':              { lines: 96, statements: 93, functions: 96, branches: 88 },  // 98.37/95.36/98.9/90.36
