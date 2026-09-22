@@ -99,7 +99,7 @@ export function buildAdvancedWhere(
   catch (e) {
     // Corrupt filters must fail the query — returning '' would silently serve
     // the FULL unfiltered list while the user believes it is filtered.
-    throw new Error(`Invalid filters JSON: ${e instanceof Error ? e.message : String(e)}`)
+    throw new Error(`Invalid filters JSON: ${e instanceof Error ? e.message : String(e)}`, { cause: e })
   }
   if (!group.rules?.length) return ''
 

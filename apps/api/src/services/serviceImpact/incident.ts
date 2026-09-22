@@ -656,7 +656,7 @@ export function parseServiceIncidentProblem(raw: unknown, mapId: string): Servic
   if (raw == null) return null
   if (typeof raw !== 'string') throw new Error(`ServiceMap ${mapId} incident_problem is not a JSON string (got ${typeof raw})`)
   let parsed: unknown
-  try { parsed = JSON.parse(raw) } catch (e) { throw new Error(`ServiceMap ${mapId} incident_problem is corrupt JSON: ${e instanceof Error ? e.message : String(e)}`) }
+  try { parsed = JSON.parse(raw) } catch (e) { throw new Error(`ServiceMap ${mapId} incident_problem is corrupt JSON: ${e instanceof Error ? e.message : String(e)}`, { cause: e }) }
   const p = parsed as Partial<ServiceIncidentProblem>
   if (typeof p?.message !== 'string' || (p.key !== null && typeof p.key !== 'string') || typeof p.params !== 'object' || p.params === null) {
     throw new Error(`ServiceMap ${mapId} incident_problem has an unexpected shape`)

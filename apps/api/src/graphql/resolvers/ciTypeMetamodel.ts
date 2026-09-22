@@ -393,7 +393,7 @@ function parseChainFamilies(raw: unknown): string[] {
   if (typeof raw === 'string') {
     let parsed: unknown
     try { parsed = JSON.parse(raw) }
-    catch (e) { throw new Error(`Corrupt chain_families JSON: ${e instanceof Error ? e.message : String(e)}`) }
+    catch (e) { throw new Error(`Corrupt chain_families JSON: ${e instanceof Error ? e.message : String(e)}`, { cause: e }) }
     if (!Array.isArray(parsed)) throw new Error(`chain_families is not an array (got ${typeof parsed})`)
     return parsed as string[]
   }

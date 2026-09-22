@@ -125,7 +125,7 @@ export function parseConditions(raw: string | null | undefined): Condition[] {
   try {
     arr = JSON.parse(raw)
   } catch (e) {
-    throw new Error(`Corrupt conditions JSON: ${e instanceof Error ? e.message : String(e)}`)
+    throw new Error(`Corrupt conditions JSON: ${e instanceof Error ? e.message : String(e)}`, { cause: e })
   }
   if (!Array.isArray(arr)) {
     throw new Error(`Conditions payload is not an array (got ${typeof arr})`)

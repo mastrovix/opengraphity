@@ -86,7 +86,7 @@ export function parseStoredCauses(raw: unknown, what: string): ReturnType<typeof
   if (typeof raw !== 'string') throw new Error(`${what} is not a JSON string (got ${typeof raw}): it was not written by the service impact engine`)
   let parsed: unknown
   try { parsed = JSON.parse(raw) }
-  catch (e) { throw new Error(`${what} is corrupt JSON: ${e instanceof Error ? e.message : String(e)}`) }
+  catch (e) { throw new Error(`${what} is corrupt JSON: ${e instanceof Error ? e.message : String(e)}`, { cause: e }) }
   if (!Array.isArray(parsed)) throw new Error(`${what} is not a JSON array`)
   return (parsed as StoredCause[]).map(mapStoredCause)
 }

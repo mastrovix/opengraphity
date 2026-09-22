@@ -94,7 +94,7 @@ function parseJSON<T>(s: string | null | undefined, fallback: T, what: string): 
   if (!s) return fallback
   try { return JSON.parse(s) as T }
   catch (e) {
-    throw new Error(`JSON corrotto in "${what}": ${e instanceof Error ? e.message : String(e)}`)
+    throw new Error(`JSON corrotto in "${what}": ${e instanceof Error ? e.message : String(e)}`, { cause: e })
   }
 }
 

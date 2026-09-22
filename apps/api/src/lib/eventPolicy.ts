@@ -377,7 +377,7 @@ export function parseEventPolicy(raw: unknown, tenantId: string): EventPolicy {
   let parsed: unknown
   try { parsed = JSON.parse(raw) }
   catch (e) {
-    throw new Error(`Tenant ${tenantId} event_policy is corrupt JSON: ${e instanceof Error ? e.message : String(e)}`)
+    throw new Error(`Tenant ${tenantId} event_policy is corrupt JSON: ${e instanceof Error ? e.message : String(e)}`, { cause: e })
   }
   try { return assertEventPolicy(parsed, `Tenant ${tenantId} event_policy`) }
   catch (e) {
@@ -401,7 +401,7 @@ export function parseEventPolicy(raw: unknown, tenantId: string): EventPolicy {
       else if (missingV6.length) hints.push(` — missing ${missingV6.join(', ')}: run the ${EVENT_POLICY_V6_MIGRATION} migration`)
       else if (missingV7.length) hints.push(` — missing ${missingV7.join(', ')}: run the ${EVENT_POLICY_V7_MIGRATION} migration`)
     }
-    throw new Error(`Tenant ${tenantId} event_policy is invalid: ${e instanceof Error ? e.message : String(e)}${hints.join('')}`)
+    throw new Error(`Tenant ${tenantId} event_policy is invalid: ${e instanceof Error ? e.message : String(e)}${hints.join('')}`, { cause: e })
   }
 }
 

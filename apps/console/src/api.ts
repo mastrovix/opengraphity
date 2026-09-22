@@ -94,7 +94,7 @@ async function chiama<T>(path: string, init?: RequestInit): Promise<T> {
     await refreshToken(30)
   } catch (e: unknown) {
     // Senza questo, un rinnovo fallito arrivava alla pagina come oggetto nudo.
-    throw new Error(`Could not refresh the session: ${messaggio(e)}`)
+    throw new Error(`Could not refresh the session: ${messaggio(e)}`, { cause: e })
   }
   const res = await fetch(path, {
     ...init,

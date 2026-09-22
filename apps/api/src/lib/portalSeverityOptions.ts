@@ -51,7 +51,7 @@ function parseStored(raw: unknown, tenantId: string): PortalSeverityOption[] {
   let parsed: unknown = raw
   if (typeof raw === 'string') {
     try { parsed = JSON.parse(raw) } catch (e) {
-      throw new Error(`Tenant ${tenantId}: portal_severity_options is not valid JSON (${e instanceof Error ? e.message : String(e)})`)
+      throw new Error(`Tenant ${tenantId}: portal_severity_options is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e })
     }
   }
   if (!Array.isArray(parsed)) throw new Error(`Tenant ${tenantId}: portal_severity_options must be a list`)

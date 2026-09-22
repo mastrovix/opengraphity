@@ -228,7 +228,7 @@ async function exportKeycloak(opts: BackupOptions, session: Session, stagingDir:
   try {
     token = await kc.getAdminToken()
   } catch (err) {
-    throw new Error(`Keycloak unreachable or admin auth failed at ${kc.baseUrl}: ${(err as Error).message} — fix it or rerun with --skip-keycloak`)
+    throw new Error(`Keycloak unreachable or admin auth failed at ${kc.baseUrl}: ${(err as Error).message} — fix it or rerun with --skip-keycloak`, { cause: err })
   }
   await mkdir(join(stagingDir, KEYCLOAK_DIR), { recursive: true })
   for (const realm of realms) {

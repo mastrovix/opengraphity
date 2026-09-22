@@ -22,7 +22,7 @@ export const FIELD_SCOPE = `f.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']`
 function parseJsonArray(raw: string, what: string): unknown[] {
   let parsed: unknown
   try { parsed = JSON.parse(raw) } catch (e) {
-    throw new Error(`${what} is not valid JSON (${e instanceof Error ? e.message : String(e)}): ${raw.slice(0, 80)}`)
+    throw new Error(`${what} is not valid JSON (${e instanceof Error ? e.message : String(e)}): ${raw.slice(0, 80)}`, { cause: e })
   }
   if (!Array.isArray(parsed)) throw new Error(`${what} is not a JSON array: ${raw.slice(0, 80)}`)
   return parsed

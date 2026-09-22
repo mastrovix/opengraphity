@@ -49,7 +49,7 @@ export function parseDeploySteps(v: unknown): DeployStep[] {
   try {
     arr = JSON.parse(v)
   } catch (e) {
-    throw new Error(`Corrupt deploy steps JSON: ${e instanceof Error ? e.message : String(e)}`)
+    throw new Error(`Corrupt deploy steps JSON: ${e instanceof Error ? e.message : String(e)}`, { cause: e })
   }
   if (!Array.isArray(arr)) throw new Error(`Deploy steps payload is not an array (got ${typeof arr})`)
   return (arr as RawStep[])

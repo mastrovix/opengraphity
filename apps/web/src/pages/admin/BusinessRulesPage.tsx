@@ -117,7 +117,7 @@ function parseStored<T>(json: string | null | undefined, fallback: T, what: stri
   if (!json) return fallback
   try { return JSON.parse(json) as T }
   catch (e) {
-    throw new Error(`JSON corrotto in "${what}": ${e instanceof Error ? e.message : String(e)}`)
+    throw new Error(`JSON corrotto in "${what}": ${e instanceof Error ? e.message : String(e)}`, { cause: e })
   }
 }
 

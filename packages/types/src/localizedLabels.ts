@@ -13,7 +13,7 @@ export function parseLocalizedLabels(raw: unknown, where: string): LocalizedLabe
   let parsed: unknown = raw
   if (typeof raw === 'string') {
     try { parsed = JSON.parse(raw) } catch (e) {
-      throw new Error(`${where}: labels is not valid JSON (${e instanceof Error ? e.message : String(e)})`)
+      throw new Error(`${where}: labels is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e })
     }
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {

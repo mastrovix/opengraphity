@@ -44,7 +44,7 @@ export const eventManagementPolicyVersion: Migration = {
         if (typeof raw !== 'string') throw new Error(`Tenant ${tenantId} event_policy is not a JSON string (got ${typeof raw}); fix it before migrating`)
         let parsed: unknown
         try { parsed = JSON.parse(raw) }
-        catch (e) { throw new Error(`Tenant ${tenantId} event_policy is corrupt JSON (${e instanceof Error ? e.message : String(e)}); fix it before migrating`) }
+        catch (e) { throw new Error(`Tenant ${tenantId} event_policy is corrupt JSON (${e instanceof Error ? e.message : String(e)}); fix it before migrating`, { cause: e }) }
         if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(`Tenant ${tenantId} event_policy is not a JSON object; fix it before migrating`)
         const full = completeEventPolicy(parsed as Record<string, unknown>)
         if (full) { next = JSON.stringify(full); completed++ } else { next = null; unchanged++ }

@@ -166,7 +166,7 @@ async function loadSettings(tenantId: string): Promise<AISettings & { isDefault:
     if (row.raw == null) return { ...FACTORY_AI_SETTINGS, features: { ...FACTORY_AI_SETTINGS.features }, isDefault: true }
     let parsed: unknown
     try { parsed = JSON.parse(String(row.raw)) }
-    catch (e) { throw new Error(`Tenant ${tenantId}: ai_settings is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
+    catch (e) { throw new Error(`Tenant ${tenantId}: ai_settings is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e }) }
     return { ...assertAISettings(parsed, { tollerante: true }), isDefault: false }
   } finally {
     await session.close()

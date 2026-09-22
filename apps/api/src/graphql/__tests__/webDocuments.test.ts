@@ -426,7 +426,7 @@ describe('documenti gql inline del web ↔ schema API (F-41)', () => {
             composti.push(`${file.replace(webSrc, 'web/src')} › ${name}`)
             continue
           }
-          throw new Error(`${file.replace(webSrc, 'web/src')} › ${name}: ${msg}`)
+          throw new Error(`${file.replace(webSrc, 'web/src')} › ${name}: ${msg}`, { cause: e })
         }
         if (doc.definitions.some((d) => d.kind === 'OperationDefinition')) out.push({ file, name, doc })
       }

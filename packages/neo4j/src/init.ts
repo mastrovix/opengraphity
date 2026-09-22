@@ -767,7 +767,7 @@ async function runStatements(statements: SchemaStatement[], kind: string): Promi
         await session.run(stmt.cypher)
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err)
-        throw new Error(`${kind} failed: ${stmt.label}\n  ${stmt.cypher.trim()}\n  → ${reason}`)
+        throw new Error(`${kind} failed: ${stmt.label}\n  ${stmt.cypher.trim()}\n  → ${reason}`, { cause: err })
       }
       console.log(`[neo4j:init] ${kind} applied: ${stmt.label}`)
     }

@@ -86,7 +86,7 @@ export async function* readJsonl<T>(filePath: string): AsyncGenerator<T> {
     lineNo++
     if (!line.trim()) continue
     try { yield JSON.parse(line) as T }
-    catch (err) { throw new Error(`${basename(filePath)}:${lineNo}: invalid JSON (${(err as Error).message})`) }
+    catch (err) { throw new Error(`${basename(filePath)}:${lineNo}: invalid JSON (${(err as Error).message})`, { cause: err }) }
   }
 }
 

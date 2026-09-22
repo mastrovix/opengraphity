@@ -274,7 +274,7 @@ function parseEntries(raw: unknown, kind: DomainMatrixKind): DomainMatrixEntries
   let parsed: unknown = raw
   if (typeof raw === 'string') {
     try { parsed = JSON.parse(raw) }
-    catch (e) { throw new Error(`Matrix "${kind}": \`entries\` is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
+    catch (e) { throw new Error(`Matrix "${kind}": \`entries\` is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e }) }
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(`Matrix "${kind}": \`entries\` must be a key → value object`)
