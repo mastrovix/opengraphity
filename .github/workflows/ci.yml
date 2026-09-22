@@ -72,6 +72,9 @@ jobs:
       - name: Check funzioni lunghe
         run: node scripts/check-funzioni-lunghe.mjs
 
+      - name: Check token visivi (console ↔ portale)
+        run: node scripts/check-token-visivi.mjs
+
       - name: Lint
         run: pnpm lint
 
