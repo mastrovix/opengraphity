@@ -8,6 +8,7 @@ import { Button } from '@/components/Button'
 import { Modal } from '@/components/Modal'
 import { colors, palette } from '@/lib/tokens'
 import { formatDateTime } from '@/lib/datetime'
+import { keyActivate } from '@/lib/a11y'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -137,7 +138,7 @@ function TextareaFileField({ id, fieldName, value, onChange, required }: Textare
               tabIndex={0}
               aria-label={t('pages.sync.browse')}
               onClick={() => fileRef.current?.click()}
-              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click() } }}
+              onKeyDown={keyActivate(() => fileRef.current?.click())}
               onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = colors.brand }}
               onDragLeave={e => { e.currentTarget.style.borderColor = palette.neutral.borderStrong }}
               onDrop={handleDrop}

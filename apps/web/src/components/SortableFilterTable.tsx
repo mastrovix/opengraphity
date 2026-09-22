@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { SkeletonLine } from '@/components/SkeletonLoader'
 import { colors, palette } from '@/lib/tokens'
+import { keyActivate } from '@/lib/a11y'
 
 export interface ColumnDef<T> {
   key:      keyof T
@@ -325,7 +326,7 @@ export function SortableFilterTable<T extends object>({
                     // Clickable rows are reachable and activatable from the keyboard (E-14),
                     // unless the caller says the row already carries a Link (`focusableRows`).
                     tabIndex={onRowClick && focusableRows ? 0 : undefined}
-                    onKeyDown={onRowClick ? (e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onRowClick(row) } } : undefined}
+                    onKeyDown={onRowClick ? keyActivate(() => onRowClick(row)) : undefined}
                     /*
                       La striscia turchese al passaggio del mouse NON e un
                       bordo della riga. Lo era (`border-left: 8px transparent`),

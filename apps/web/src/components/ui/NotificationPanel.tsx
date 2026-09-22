@@ -7,6 +7,7 @@ import { notificationEntityPath } from '@opengraphity/types'
 import { useNotificationContext } from '@/contexts/NotificationContext'
 import type { InAppNotification } from '@/hooks/useNotifications'
 import { timeAgo } from '@/lib/datetime'
+import { keyActivate } from '@/lib/a11y'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,12 +57,9 @@ function NotificationItem({ notif, onClose }: { notif: InAppNotification; onClos
       onClick={handleClick}
       // F-36: anche la barra spaziatrice, come vuole il ruolo «button»
       // (`role="button"` + `tabIndex` senza Space non è raggiungibile da
-      // tastiera come un pulsante vero).
-      onKeyDown={(e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return
-        e.preventDefault()
-        handleClick()
-      }}
+      // tastiera come un pulsante vero). Dal 22 set 2026 lo fa `keyActivate`,
+      // che e' la stessa cosa piu' il guardrail sui controlli annidati.
+      onKeyDown={keyActivate(handleClick)}
       style={{
         display:         'flex',
         gap:             12,

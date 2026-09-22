@@ -28,6 +28,7 @@ import {
 import { larghezzaEffettiva, localizedText, type CatalogFormDefinition, type CatalogFormItem } from '@opengraphity/types'
 import { colors, fontWeight } from '@/lib/tokens'
 import type { FormFieldRow } from './FieldLibraryPanel'
+import { keyActivate } from '@/lib/a11y'
 
 /** Cosa è selezionato sulla tela. */
 export type Selezione =
@@ -194,7 +195,7 @@ function CampoSullaTela({
       aria-label={etichetta}
       data-drop={zona}
       onClick={onSeleziona}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSeleziona() } }}
+      onKeyDown={keyActivate(onSeleziona)}
       style={{
         gridColumn: piena ? '1 / -1' : 'auto',
         textAlign: 'left', cursor: 'pointer', background: 'none',
