@@ -461,3 +461,67 @@ describe('unknown action type', () => {
     expect(publishMock).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * THE FALLBACKS OF THE ACTIONS, one by one.
+ *
+ * Every `?? ''`, `?? 'POST'` and `...(x ? {…} : {})` below exists because
+ * that parameter CAN be missing: the designer saves an action with only the
+ * fields the administrator filled in. A fallback never executed is a fallback
+ * never tested — and how these actions fail when a field is missing is
+ * exactly what the customer sees.
+ */
+describe('fallbacks: parameters the designer may have left empty', () => {
+  it('a placeholder walking through a NON-object value does not resolve: it throws instead of sending "{…}"', async () => {
+    // `{title.something}`: `title` is a string, and descending into it makes
+    // no sense. Without this check the webhook would go out with the literal
+    // placeholder in the body, and the receiver would take it for data.
+    await expect(runAction(webhook({ payload_template: 'x={title.something}' }), instance, ctx()))
+      .rejects.toThrow(/\{title\.something\}/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('call_webhook with no payload_template, no method and no headers: empty body, POST, Content-Type only', async () => {
+    await runAction(action('call_webhook', { url: PUBLIC_URL }), instance, ctx())
+    const [, init] = fetchMock.mock.calls[0]!
+    expect(init.method).toBe('POST')
+    expect(init.body).toBe('')
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' })
+  })
+
+  it('a fetch rejection that is not an Error is still readable as the failure reason', async () => {
+    fetchMock.mockRejectedValueOnce('network gone')
+    await expect(runAction(webhook(), instance, ctx())).rejects.toThrow('call_webhook failed (network gone) — retry scheduled')
+  })
+
+  it('the retry job carries stepId and actionIndex ONLY when present, and the method falls back to POST', async () => {
+    // The worker re-reads the headers from the step: without stepId it
+    // cannot, and a key holding `undefined` does not survive BullMQ
+    // serialization — absent is better than fake.
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 502 })
+    await expect(runAction(action('call_webhook', { url: PUBLIC_URL }), instance, ctx())).rejects.toThrow(/retry scheduled/)
+    expect(retryQueues()[0]!.add.mock.calls[0]![1]).toEqual({
+      type: 'webhook_retry', url: PUBLIC_URL, method: 'POST', payload: '', attempt: 1, tenantId: 't1', entityId: 'inc-1',
+    })
+
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 502 })
+    await expect(runAction(webhook(), instance, ctx({ stepId: 'step-9', actionIndex: 2 }))).rejects.toThrow(/retry scheduled/)
+    expect(retryQueues()[1]!.add.mock.calls[0]![1]).toMatchObject({ stepId: 'step-9', actionIndex: 2 })
+  })
+
+  it('create_entity with no title_template creates with an empty title, and change_type is passed only when configured', async () => {
+    const createEntity = vi.fn(async () => 'chg-1')
+    await runAction(action('create_entity', { entity_type: 'change', change_type: 'standard' }), instance, ctx({ createEntity }))
+    expect(createEntity).toHaveBeenCalledWith('change', expect.objectContaining({ title: '', change_type: 'standard' }))
+
+    createEntity.mockClear()
+    await runAction(action('create_entity', { entity_type: 'problem' }), instance, ctx({ createEntity }))
+    expect(createEntity.mock.calls[0]![1]).not.toHaveProperty('change_type')
+  })
+
+  it('create_approval_request with no title_template passes an empty title to the caller', async () => {
+    const createApprovalRequest = vi.fn(async () => 'ap-1')
+    await runAction(action('create_approval_request', { approver_role: 'APPROVER' }), instance, ctx({ createApprovalRequest }))
+    expect(createApprovalRequest).toHaveBeenCalledWith(expect.objectContaining({ title: '' }))
+  })
+})

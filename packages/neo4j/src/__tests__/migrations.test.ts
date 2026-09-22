@@ -207,6 +207,42 @@ describe('runMigrations', () => {
   })
 })
 
+/**
+ * LA RILETTURA DOPO IL LOCK (22 set 2026).
+ *
+ * Fra il «quali mancano» e il «prendo il lucchetto» passa del tempo, e due
+ * processi che partono insieme leggevano ENTRAMBI la lista dei pendenti prima
+ * che il primo prendesse il lock: il secondo le applicava di nuovo tutte. Per
+ * questo `runMigrations` rilegge le applicate DOPO aver preso il lucchetto e
+ * salta quelle che nel frattempo ha fatto un altro — dicendolo, perché un
+ * «saltata» silenzioso in una migrazione è la cosa che poi nessuno sa spiegare.
+ */
+describe('una migrazione applicata da un ALTRO processo mentre aspettavo il lock', () => {
+  it('si salta, e il registro lo dice', async () => {
+    const prima = mig('20260908_1000_first')
+    const { session, state } = makeSession()
+    // Il lucchetto si prende con una query sulla SESSIONE: si intercetta
+    // quella, e nel frattempo un altro processo scrive il marcatore della
+    // prima migrazione.
+    const originale = session.run.bind(session)
+    session.run = ((cypher: string, params?: Record<string, unknown>) => {
+      if (String(cypher).includes('MigrationLock') && !state.applied.some((r) => r.id === prima.id)) {
+        state.applied.push({ id: prima.id, applied_at: 'x', checksum: migrationChecksum(prima) })
+      }
+      return originale(cypher as never, params as never)
+    }) as typeof session.run
+
+    const righe: string[] = []
+    const res = await runMigrations([prima, mig('20260908_1010_second')], {
+      session, log: (m) => righe.push(m), now: fixedNow, owner: 'test:1',
+    })
+
+    expect(res.skipped).toContain(prima.id)
+    expect(res.applied).toEqual(['20260908_1010_second'])
+    expect(righe.join('\n')).toContain('applied by another process while waiting for the lock')
+  })
+})
+
 describe('listMigrationStatus', () => {
   it('reports applied/pending, checksum drift and unknown markers', async () => {
     const a = mig('20260908_1000_a', async (s) => { await s.run('A') })

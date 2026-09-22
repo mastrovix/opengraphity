@@ -226,3 +226,154 @@ describe('la sessione avvolta', () => {
     await expect(closeDriver()).resolves.toBeUndefined()
   })
 })
+
+/**
+ * `convertIntegers` — quello che esce da una `run` avvolta (22 set 2026).
+ *
+ * Non è esportato: si esercita da dove lo esercita il prodotto, cioè una
+ * sessione avvolta. Deve scendere dentro liste, mappe e NODI — un nodo di
+ * Neo4j porta i suoi valori sotto `properties`, e se quel ramo smettesse di
+ * funzionare ogni conteggio letto da un nodo tornerebbe a essere un oggetto
+ * `{low, high}` invece di un numero. Il chiamante non se ne accorge finché non
+ * fa un'addizione.
+ */
+describe('la conversione dei valori che escono da una run', () => {
+  const intero = (n: number) => ({ low: n, high: 0, toNumber: () => n })
+
+  async function conValore(valore: unknown) {
+    vi.resetModules()
+    vi.doMock('neo4j-driver', () => {
+      const fake = {
+        driver: vi.fn(() => ({
+          verifyConnectivity: vi.fn().mockResolvedValue(undefined),
+          session: vi.fn(() => ({
+            run: vi.fn(async () => ({ records: [{ get: () => valore }] })),
+          })),
+          close: vi.fn(),
+        })),
+        auth: { basic: vi.fn(() => ({})) },
+        session: { READ: 'READ', WRITE: 'WRITE' },
+        isInt: (v: unknown) => typeof v === 'object' && v !== null && 'low' in (v as object) && 'toNumber' in (v as object),
+      }
+      return { default: fake, ...fake }
+    })
+    const { getSession } = await import('../driver.js')
+    const s = getSession() as unknown as { run: (q: string) => Promise<{ records: Array<{ get: () => unknown }> }> }
+    return (await s.run('RETURN x')).records[0]!.get()
+  }
+
+  it('un Integer da solo', async () => {
+    expect(await conValore(intero(42))).toBe(42)
+  })
+
+  it('un BigInt: anche quello diventa un numero', async () => {
+    expect(await conValore(7n)).toBe(7)
+  })
+
+  it('dentro una lista, anche annidata', async () => {
+    expect(await conValore([intero(1), [intero(2)]])).toEqual([1, [2]])
+  })
+
+  it('dentro una mappa, anche annidata', async () => {
+    expect(await conValore({ n: intero(3), dentro: { m: intero(4) } }))
+      .toEqual({ n: 3, dentro: { m: 4 } })
+  })
+
+  it('dentro le `properties` di un NODO, che è il caso che conta davvero', async () => {
+    const nodo = { identity: intero(9), labels: ['Incident'], properties: { conteggio: intero(5), nome: 'INC1' } }
+    const out = await conValore(nodo) as { properties: Record<string, unknown>; identity: unknown }
+    expect(out.properties).toEqual({ conteggio: 5, nome: 'INC1' })
+    expect(out.identity).toBe(9)
+  })
+
+  it('null, undefined e i valori normali passano intatti', async () => {
+    expect(await conValore(null)).toBeNull()
+    expect(await conValore(undefined)).toBeUndefined()
+    expect(await conValore('testo')).toBe('testo')
+    expect(await conValore(3.5)).toBe(3.5)
+    expect(await conValore(true)).toBe(true)
+  })
+
+  it('un risultato senza `records` non si tocca', async () => {
+    vi.resetModules()
+    vi.doMock('neo4j-driver', () => {
+      const fake = {
+        driver: vi.fn(() => ({
+          verifyConnectivity: vi.fn().mockResolvedValue(undefined),
+          session: vi.fn(() => ({ run: vi.fn(async () => ({ summary: { counters: 1 } })) })),
+          close: vi.fn(),
+        })),
+        auth: { basic: vi.fn(() => ({})) },
+        session: { READ: 'READ', WRITE: 'WRITE' },
+        isInt: () => false,
+      }
+      return { default: fake, ...fake }
+    })
+    const { getSession } = await import('../driver.js')
+    const s = getSession() as unknown as { run: (q: string) => Promise<unknown> }
+    expect(await s.run('CREATE (n)')).toEqual({ summary: { counters: 1 } })
+  })
+})
+
+/**
+ * LE VARIABILI D'AMBIENTE IN PRODUZIONE (22 set 2026).
+ *
+ * I valori di sviluppo esistono SOLO fuori produzione: in produzione una
+ * `NEO4J_*` mancante è un errore di configurazione — e per la password è un
+ * buco di sicurezza. Meglio non partire che collegarsi «per sbaglio» a
+ * localhost con le credenziali di esempio.
+ */
+describe('in produzione non si parte con i valori di sviluppo', () => {
+  it('una variabile mancante fa fallire il caricamento del modulo, e dice QUALE', async () => {
+    vi.resetModules()
+    vi.stubEnv('NODE_ENV', 'production')
+    // Le altre ci sono: manca solo la password, che e' quella che conta di piu'.
+    vi.stubEnv('NEO4J_URI', 'neo4j://db:7687')
+    vi.stubEnv('NEO4J_USER', 'neo4j')
+    vi.stubEnv('NEO4J_PASSWORD', '')
+    vi.doMock('neo4j-driver', () => {
+      const fake = {
+        driver: vi.fn(() => ({ verifyConnectivity: vi.fn().mockResolvedValue(undefined), session: vi.fn(), close: vi.fn() })),
+        auth: { basic: vi.fn(() => ({})) }, session: { READ: 'READ', WRITE: 'WRITE' }, isInt: () => false,
+      }
+      return { default: fake, ...fake }
+    })
+    await expect(import('../driver.js')).rejects.toThrow(/NEO4J_PASSWORD is not set in production/)
+    vi.unstubAllEnvs()
+  })
+})
+
+/**
+ * IL FALLIMENTO DELLA CONNESSIONE (22 set 2026).
+ *
+ * Un processo che non raggiunge Neo4j non deve venire su «sano» per poi
+ * fallire sparpagliato su ogni query successiva: esce, e l'orchestratore lo
+ * riavvia. Sotto un test runner no — uscire ucciderebbe il worker di vitest —
+ * e allora l'errore si scrive e ogni query fallisce per conto suo.
+ */
+describe('quando Neo4j non risponde', () => {
+  it('sotto test si SCRIVE e non si esce: uccidere il worker nasconderebbe il resto', async () => {
+    vi.resetModules()
+    // Il test prima ha lasciato `NODE_ENV=production`: qui si torna allo
+    // sviluppo, altrimenti il modulo non si carica affatto.
+    vi.unstubAllEnvs()
+    const errore = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const esci = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+    vi.doMock('neo4j-driver', () => {
+      const fake = {
+        driver: vi.fn(() => ({
+          verifyConnectivity: vi.fn().mockRejectedValue(new Error('ECONNREFUSED')),
+          session: vi.fn(), close: vi.fn(),
+        })),
+        auth: { basic: vi.fn(() => ({})) }, session: { READ: 'READ', WRITE: 'WRITE' }, isInt: () => false,
+      }
+      return { default: fake, ...fake }
+    })
+    await import('../driver.js')
+    // `verifyConnectivity` è una promessa: si aspetta il giro dopo.
+    await new Promise((r) => setImmediate(r))
+    expect(errore.mock.calls.flat().join(' ')).toContain('FATAL')
+    expect(esci).not.toHaveBeenCalled()
+    errore.mockRestore(); esci.mockRestore()
+  })
+})

@@ -144,6 +144,38 @@ describe('loadMetamodel', () => {
     expect(vm!.fields).toEqual([])
   })
 
+  it('i campi BASE vengono prima di quelli del tipo, e un doppione si tiene una volta sola', async () => {
+    // Stesso nome in entrambi: vince il primo dopo l'ordinamento, e il secondo
+    // sparisce — altrimenti lo schema avrebbe due campi omonimi e non si
+    // assemblerebbe affatto.
+    righe([{
+      t: tipo(),
+      baseFieldData: [{ props: campo({ id: 'b1', name: 'stato', order: 1 }), enumId: null, enumName: null, enumValues: null }],
+      typeFieldData: [
+        { props: campo({ id: 'f2', name: 'stato', order: 5 }), enumId: null, enumName: null, enumValues: null },
+        { props: campo({ id: 'f3', name: 'vendor', order: 3 }), enumId: null, enumName: null, enumValues: null },
+      ],
+      relations: [], systemRelations: [],
+    }])
+    const [vm] = await loadMetamodel('t1', scopeFinto() as never)
+    expect(vm!.fields.map((f) => [f.id, f.name])).toEqual([['b1', 'stato'], ['f3', 'vendor']])
+  })
+
+  it('le righe vuote di relazioni si buttano, e le relazioni escono ORDINATE', async () => {
+    righe([{
+      t: tipo(), typeFieldData: [], baseFieldData: [],
+      relations: [
+        null,
+        nodo({ id: 'r2', name: 'b', label: 'B', relationship_type: 'B_ON', target_type: 's', cardinality: 'many', direction: 'out', order: 5 }),
+        nodo({ id: 'r1', name: 'a', label: 'A', relationship_type: 'A_ON', target_type: 's', cardinality: 'many', direction: 'out', order: 1 }),
+      ],
+      systemRelations: [null],
+    }])
+    const [vm] = await loadMetamodel('t1', scopeFinto() as never)
+    expect(vm!.relations.map((r) => r.id)).toEqual(['r1', 'r2'])
+    expect(vm!.systemRelations).toEqual([])
+  })
+
   it('relazioni e relazioni di sistema escono coi nomi dello schema', async () => {
     righe([{
       t: tipo(),
@@ -204,5 +236,51 @@ describe('loadITILTypes', () => {
     const [inc] = await loadITILTypes('t1', scope as never)
     expect(inc!.name).toBe('incident')
     expect(inc!.fields[0]!.enumValues).toEqual(['bassa', 'alta'])
+  })
+})
+
+/**
+ * I DUE RICONOSCITORI, e il ramo che non deve mai scattare (22 set 2026).
+ *
+ * `isCIFieldType` è la porta documentata dell'API: il disegnatore offre solo i
+ * cinque tipi buoni, ma l'API è una via che usano script e integrazioni, e un
+ * tipo sconosciuto faceva fallire l'ASSEMBLAGGIO dello schema — cioè ogni
+ * query dell'intero tenant — con un motivo che non diceva nemmeno quale campo.
+ *
+ * `cloneReservedNames` è la copia che la verifica dei nomi fa prima di
+ * aggiungere i suoi: senza, sporcherebbe la cache del chiamante e il secondo
+ * tenant si vedrebbe rifiutare i nomi del primo.
+ */
+describe('i riconoscitori dei tipi di campo', () => {
+  it('i cinque buoni passano, tutto il resto no', async () => {
+    const { isCIFieldType, CI_FIELD_TYPES } = await import('../generator.js')
+    expect([...CI_FIELD_TYPES].sort()).toEqual(['boolean', 'date', 'enum', 'number', 'string'])
+    for (const t of CI_FIELD_TYPES) expect(isCIFieldType(t), t).toBe(true)
+    for (const storto of ['text', 'json', '', null, 42, undefined]) {
+      expect(isCIFieldType(storto), String(storto)).toBe(false)
+    }
+  })
+})
+
+describe('cloneReservedNames', () => {
+  it('è una COPIA: la verifica aggiunge i suoi nomi e non sporca la cache del chiamante', async () => {
+    const { cloneReservedNames, emptyReservedNames } = await import('../nameValidation.js')
+    const originale = emptyReservedNames()
+    originale.types.set('Incident', 'base')
+    originale.queryFields.set('incidents', 'base')
+    originale.mutationFields.set('createIncident', 'base')
+
+    const copia = cloneReservedNames(originale)
+    copia.types.set('VirtualMachine', 'tenant')
+    copia.queryFields.set('virtualMachines', 'tenant')
+    copia.mutationFields.set('createVirtualMachine', 'tenant')
+
+    // L'originale non si è mosso: il tenant dopo non eredita i nomi di questo.
+    expect([...originale.types.keys()]).toEqual(['Incident'])
+    expect([...originale.queryFields.keys()]).toEqual(['incidents'])
+    expect([...originale.mutationFields.keys()]).toEqual(['createIncident'])
+    // E la copia porta entrambi.
+    expect(copia.types.get('Incident')).toBe('base')
+    expect(copia.types.get('VirtualMachine')).toBe('tenant')
   })
 })
