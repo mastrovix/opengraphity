@@ -36,13 +36,17 @@ export function validateCronExpression(cron: string | null | undefined): void {
 
 export function validateUrl(url: string | null | undefined, fieldName = 'URL'): void {
   if (!url) return
+  // The protocol check used to live inside the try, so its own ValidationError
+  // was caught and replaced by "is not a valid URL": a user typing ftp://...
+  // was told the URL was malformed instead of that only http/https is allowed.
+  let parsed: URL
   try {
-    const parsed = new URL(url)
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      throw new ValidationError(`${fieldName} must use http or https protocol`, { key: 'errors.validation.urlProtocol', params: { field: fieldName } })
-    }
+    parsed = new URL(url)
   } catch {
     throw new ValidationError(`${fieldName} is not a valid URL`, { key: 'errors.validation.url', params: { field: fieldName } })
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new ValidationError(`${fieldName} must use http or https protocol`, { key: 'errors.validation.urlProtocol', params: { field: fieldName } })
   }
 }
 

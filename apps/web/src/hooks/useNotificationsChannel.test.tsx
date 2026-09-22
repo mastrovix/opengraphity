@@ -20,7 +20,7 @@ type Handlers = {
 const s = vi.hoisted(() => ({
   calls: [] as Handlers[],
   rejecters: [] as Array<(e: unknown) => void>,
-  query: vi.fn(), mutate: vi.fn(async () => ({ data: {} })),
+  query: vi.fn(), mutate: vi.fn(async (_o?: unknown) => ({ data: {} })),
   log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }))
 

@@ -1,0 +1,64 @@
+/**
+ * Workflow step badges and transition buttons are coloured by the step's
+ * CATEGORY, which tenants edit in the designer. If this lookup regresses, a
+ * "Resolve" button stops looking like the primary action, a failed step
+ * looks like a harmless draft, or — worse — a tenant's new category renders
+ * silently neutral and nobody notices the map is missing it.
+ */
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { styleForCategory, buttonStyleForCategory } from './workflowStepStyle'
+
+afterEach(() => { vi.restoreAllMocks() })
+
+describe('styleForCategory', () => {
+  it('gives each known category its own colours, distinct from the neutral fallback', () => {
+    const neutral = styleForCategory(null)
+    for (const category of ['active', 'waiting', 'escalated', 'resolved', 'failed']) {
+      const s = styleForCategory(category)
+      expect(s.bg).toBeTruthy()
+      expect(s.color).toBeTruthy()
+      expect(s).not.toEqual(neutral)
+    }
+    // resolved and published are the same outcome for the user: same colour.
+    expect(styleForCategory('published')).toEqual(styleForCategory('resolved'))
+    // failed must never look like success.
+    expect(styleForCategory('failed')).not.toEqual(styleForCategory('resolved'))
+  })
+
+  it('a step without a category is neutral and is not an error', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(styleForCategory(undefined)).toEqual(styleForCategory(''))
+    expect(styleForCategory(null)).toEqual(styleForCategory('draft'))
+    expect(err).not.toHaveBeenCalled()
+  })
+
+  it('an unknown category falls back to neutral but says so on the console (no silent fallback)', () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(styleForCategory('tenant_custom')).toEqual(styleForCategory(null))
+    expect(err).toHaveBeenCalledWith(expect.stringContaining('"tenant_custom"'))
+  })
+})
+
+describe('buttonStyleForCategory', () => {
+  it('outcome categories get a solid button whose border matches its background', () => {
+    for (const category of ['resolved', 'published', 'escalated', 'failed']) {
+      const s = buttonStyleForCategory(category)
+      expect(s.backgroundColor).toBe(s.borderColor)
+      expect(s.backgroundColor).not.toBe('var(--color-brand)')
+    }
+    // Escalating/failing is a warning action, resolving is a positive one.
+    expect(buttonStyleForCategory('failed').backgroundColor).not.toBe(buttonStyleForCategory('resolved').backgroundColor)
+  })
+
+  it('closing is a quiet, outlined button, not a loud solid one', () => {
+    expect(buttonStyleForCategory('closed')).toEqual({ backgroundColor: 'transparent', color: 'var(--text-primary)', borderColor: 'var(--border)' })
+  })
+
+  it('any other (or missing) category uses the brand primary style', () => {
+    const brand = { backgroundColor: 'var(--color-brand)', borderColor: 'var(--color-brand)' }
+    expect(buttonStyleForCategory('active')).toMatchObject(brand)
+    expect(buttonStyleForCategory(null)).toMatchObject(brand)
+    expect(buttonStyleForCategory(undefined)).toMatchObject(brand)
+    expect(buttonStyleForCategory('tenant_custom')).toMatchObject(brand)
+  })
+})

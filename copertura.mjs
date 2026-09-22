@@ -59,23 +59,23 @@ export const ESCLUSI_SEMPRE = [
 export const PAVIMENTI = {
   // ── L'API: per AREA, perché una media sola nasconderebbe il buco ──────────
   'apps/api': {
-    'src/lib/**':        { lines: 80, statements: 77, functions: 78, branches: 69 },  // 82.1/79.8/80.7/71.1
-    'src/graphql/**':    { lines: 65, statements: 63, functions: 57, branches: 56 },  // 67.6/65.4/59.6/58.2
-    'src/services/**':   { lines: 93, statements: 90, functions: 90, branches: 84 },  // 95.4/92.9/92.4/86.9
-    'src/rest/**':       { lines: 77, statements: 76, functions: 74, branches: 67 },  // 79.2/78.4/76.6/69.9
-    'src/discovery/**':  { lines: 94, statements: 91, functions: 90, branches: 82 },  // 96.8/93.6/92.6/84.5
-    'src/jobs/**':       { lines: 77, statements: 76, functions: 71, branches: 64 },  // 79.0/78.4/73.5/66.7
-    'src/middleware/**': { lines: 84, statements: 82, functions: 79, branches: 67 },  // 86.1/85.0/81.8/69.7
-    'src/anomaly/**':    { lines: 65, statements: 63, functions: 59, branches: 63 },  // 67.5/65.1/61.3/65.5
-    'src/auth/**':       { lines: 93, statements: 92, functions: 86, branches: 83 },  // 95.6/94.1/88.9/85.0
-    'src/consumers/**':  { lines: 88, statements: 82, functions: 90, branches: 72 },  // 90.4/84.8/92.3/74.1
-    'src/workers/**':    { lines: 82, statements: 81, functions: 98, branches: 64 },  // 84.0/83.0/100.0/66.7
-    'src/workflow/**':   { lines: 83, statements: 80, functions: 78, branches: 68 },  // 85.3/82.9/80.0/70.6
-    'src/*.ts':          { lines: 4, statements: 3, functions: 0, branches: 0 },      // 6.1/5.3/1.6/1.3
+    'src/lib/**':        { lines: 97, statements: 97, functions: 97, branches: 93 },  // 99.6/99.3/99.4/95.8
+    'src/graphql/**':    { lines: 97, statements: 97, functions: 97, branches: 93 },  // 99.9/99.7/99.7/95.8
+    'src/services/**':   { lines: 97, statements: 97, functions: 97, branches: 93 },  // 99.8/99.3/99.6/95.8
+    'src/rest/**':       { lines: 97, statements: 96, functions: 96, branches: 89 },  // 99.3/98.9/98.5/91.3
+    'src/discovery/**':  { lines: 97, statements: 97, functions: 97, branches: 91 },  // 99.9/99.6/99.5/93.1
+    'src/jobs/**':       { lines: 97, statements: 97, functions: 96, branches: 93 },  // 99.6/99.6/98.5/95.8
+    'src/middleware/**': { lines: 98, statements: 97, functions: 95, branches: 90 },  // 100.0/99.5/97.7/92.4
+    'src/anomaly/**':    { lines: 98, statements: 97, functions: 98, branches: 95 },  // 100.0/99.7/100.0/97.7
+    'src/auth/**':       { lines: 98, statements: 98, functions: 98, branches: 96 },  // 100.0/100.0/100.0/98.3
+    'src/consumers/**':  { lines: 98, statements: 98, functions: 98, branches: 90 },  // 100.0/100.0/100.0/92.9
+    'src/workers/**':    { lines: 98, statements: 98, functions: 98, branches: 98 },  // 100.0/100.0/100.0/100.0
+    'src/workflow/**':   { lines: 95, statements: 92, functions: 98, branches: 74 },  // 97.1/94.3/100.0/76.5
+    'src/*.ts':          { lines: 97, statements: 96, functions: 96, branches: 92 },  // 99.2/98.2/98.4/94.7
   },
 
   // ── Gli altri: un pavimento solo, che è quello che avevano (nessuno) ──────
-  'apps/web':                  { lines: 69, statements: 66, functions: 52, branches: 61 },  // 71.43/68.29/54.73/63.86
+  'apps/web':                  { lines: 97, statements: 96, functions: 96, branches: 92 },  // 99.49/98.58/98.96/94.67
   'apps/portal':               { lines: 95, statements: 93, functions: 91, branches: 85 },  // 97.37/95.74/93.54/87.52
   'apps/console':              { lines: 94, statements: 94, functions: 89, branches: 92 },  // 96.15/96.26/91.3/94.36
   'packages/workflow':         { lines: 98, statements: 97, functions: 96, branches: 97 },  // 100/99.82/98.79/99.34
