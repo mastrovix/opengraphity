@@ -119,7 +119,7 @@ describe('POST /api/report/stream — SSE for admin/operator', () => {
     ])
 
     expect(runReportConversation).toHaveBeenCalledWith(expect.objectContaining({
-      session, tenantId: 'tenant-1', question: 'How many incidents?', conversationId: null,
+      session, tenantId: 'tenant-1', userId: 'user-1', question: 'How many incidents?', conversationId: null,
     }))
     expect(streamReportAI).toHaveBeenCalledWith('tenant-1', [], 'How many incidents?', expect.any(Function), expect.any(Function))
     expect(getSession).toHaveBeenCalledWith(undefined, 'WRITE')

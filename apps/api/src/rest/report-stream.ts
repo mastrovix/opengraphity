@@ -14,7 +14,7 @@ router.post('/report/stream', authMiddleware, asyncHandler(handleReportStream))
 router.use(restErrorHandler)
 
 async function handleReportStream(req: Request, res: Response): Promise<void> {
-  const { tenantId, role, permissions } = req.user!
+  const { tenantId, userId, role, permissions } = req.user!
   const { question, conversationId: inputConvId } = req.body as {
     question?: string
     conversationId?: string | null
@@ -56,6 +56,7 @@ async function handleReportStream(req: Request, res: Response): Promise<void> {
     const { conversationId, message } = await runReportConversation({
       session,
       tenantId,
+      userId,
       question,
       conversationId: inputConvId,
       onConversationCreated: (id) => send('conversation', { conversationId: id }),
