@@ -79,13 +79,13 @@ export const PAVIMENTI = {
   'apps/portal':               { lines: 54, statements: 50, functions: 42, branches: 50 },  // 56.9/52.89/44.75/52.84
   'apps/console':              { lines: 2, statements: 3, functions: 0, branches: 9 },  // 4.39/5.14/1.08/11.26
   'packages/workflow':         { lines: 83, statements: 79, functions: 73, branches: 73 },  // 85.41/81.39/75.9/75.21
-  'packages/neo4j':            { lines: 81, statements: 79, functions: 81, branches: 66 },  // 83.92/81.09/83.05/68.78
+  'packages/neo4j':            { lines: 90, statements: 87, functions: 92, branches: 74 },  // 92.14/89.32/94.91/76.58
   'packages/sla':              { lines: 68, statements: 64, functions: 61, branches: 65 },  // 70.01/66.85/63.73/67.06
   'packages/notifications':    { lines: 79, statements: 78, functions: 78, branches: 72 },  // 81.56/80.1/80.11/74.65
   'packages/events':           { lines: 51, statements: 47, functions: 53, branches: 32 },  // 53.3/49.01/55.55/34.14
-  'packages/scripting':        { lines: 78, statements: 78, functions: 67, branches: 69 },  // 80.67/80.16/69.23/71.21
+  'packages/scripting':        { lines: 96, statements: 96, functions: 98, branches: 93 },  // 98.31/98.34/100/95.45
   'packages/discovery':        { lines: 86, statements: 85, functions: 90, branches: 82 },  // 88.11/87.82/92.85/84.78
-  'packages/types':            { lines: 4, statements: 4, functions: 2, branches: 2 },  // 6.68/6.55/4.0/4.19
+  'packages/types':            { lines: 4, statements: 4, functions: 2, branches: 2 },  // 6.68/6.55/4/4.19
   'packages/schema-generator': { lines: 67, statements: 65, functions: 55, branches: 52 },  // 69.95/67.63/57.37/54.97
   'packages/web-core':         { lines: 40, statements: 39, functions: 33, branches: 23 },  // 42.32/41.46/35.0/25.23
 }
