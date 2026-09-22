@@ -131,7 +131,7 @@ describe('KBSearchBar', () => {
 describe('PortalCustomFields', () => {
   it('senza campi non disegna niente: nessun riquadro vuoto', () => {
     const { container } = renderWithProviders(
-      <PortalCustomFields fields={[]} values={{}} onChange={vi.fn()} />, { mocks: [] })
+      <PortalCustomFields fields={[]} values={{}} onChange={vi.fn()} labelStyle={{}} inputStyle={{}} />, { mocks: [] })
     expect(within(container).queryByRole('textbox')).toBeNull()
   })
 
@@ -139,7 +139,7 @@ describe('PortalCustomFields', () => {
     const campi = [{ __typename: 'PortalCustomField', name: 'cc', label: 'Centro di costo', fieldType: 'text', required: true, options: [] }]
     const onChange = vi.fn()
     const { user } = renderWithProviders(
-      <PortalCustomFields fields={campi as never} values={{}} errors={{ cc: 'Obbligatorio' }} onChange={onChange} />, { mocks: [] })
+      <PortalCustomFields fields={campi as never} values={{}} errors={{ cc: 'Obbligatorio' }} onChange={onChange} labelStyle={{}} inputStyle={{}} />, { mocks: [] })
     const input = screen.getByLabelText(/Centro di costo/)
     expect(screen.getByText('Obbligatorio')).toBeInTheDocument()
     await user.type(input, 'IT-01')

@@ -16,11 +16,11 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const createKeycloak = vi.hoisted(() => vi.fn(() => ({ initKeycloak: vi.fn(), getKeycloak: vi.fn(), keycloak: { token: 'tok' } })))
-const createTokenRefresh = vi.hoisted(() => vi.fn(() => ({ refreshToken: vi.fn(), isSessionInvalid: vi.fn(), forceLogin: vi.fn(), startTokenRefreshLoop: vi.fn() })))
-const createApolloClient = vi.hoisted(() => vi.fn(() => ({ __client: true })))
+const createKeycloak = vi.hoisted(() => vi.fn((_opts: Record<string, unknown>) => ({ initKeycloak: vi.fn(), getKeycloak: vi.fn(), keycloak: { token: 'tok' } })))
+const createTokenRefresh = vi.hoisted(() => vi.fn((_opts: Record<string, unknown>) => ({ refreshToken: vi.fn(), isSessionInvalid: vi.fn(), forceLogin: vi.fn(), startTokenRefreshLoop: vi.fn() })))
+const createApolloClient = vi.hoisted(() => vi.fn((_opts: Record<string, unknown>) => ({ __client: true })))
 const mostraSchermataDiStop = vi.hoisted(() => vi.fn())
-const requireTenantSlug = vi.hoisted(() => vi.fn(() => 'c-one'))
+const requireTenantSlug = vi.hoisted(() => vi.fn((_opts: Record<string, unknown>) => 'c-one'))
 const notifyError = vi.hoisted(() => vi.fn())
 const notifyInfo = vi.hoisted(() => vi.fn())
 
