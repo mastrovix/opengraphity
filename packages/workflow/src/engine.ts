@@ -241,7 +241,10 @@ export class WorkflowEngine {
         // di ticket. Le etichette sono quelle dei tipi che hanno un workflow e
         // stanno in un posto solo (allowlist, non interpolazione libera).
         MATCH (entity:${entityLabel(entityType)} {id: $entityId, tenant_id: $tenantId})
-        MATCH (wd:WorkflowDefinition {id: $defId})-[:HAS_STEP]->(startStep:WorkflowStep {id: $stepId})
+        // Il tenant anche qui (22 set 2026): la definizione e il passo di
+        // partenza devono essere DI QUESTO cliente. Senza, un defId sbagliato
+        // creava un'istanza agganciata al workflow di un altro.
+        MATCH (wd:WorkflowDefinition {id: $defId, tenant_id: $tenantId})-[:HAS_STEP]->(startStep:WorkflowStep {id: $stepId, tenant_id: $tenantId})
         CREATE (wi:WorkflowInstance {
           id:            $instanceId,
           tenant_id:     $tenantId,
@@ -482,7 +485,11 @@ export class WorkflowEngine {
       const execId = uuidv4()
       await session.executeWrite(async (tx) => {
         const res = await tx.run(`
-          MATCH (wi:WorkflowInstance {id: $instanceId})
+          // Il tenant anche sull'istanza (22 set 2026): il motore riceve
+          // l'id dal chiamante e fin qui si fidava. I chiamanti la leggono
+          // scopata, ma la fiducia non e' una garanzia — e il tenant e' gia'
+          // qui, lo scrive l'esecuzione del passo poche righe sotto.
+          MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
           SET wi.updated_at = $now
           WITH wi
           MATCH (wi)-[r:CURRENT_STEP]->(cur:WorkflowStep {id: $currentStepId})
@@ -499,6 +506,7 @@ export class WorkflowEngine {
           // quindi un id omonimo in un'altra definizione faceva creare DUE
           // relazioni CURRENT_STEP, e la lettura successiva ne scegliva una a
           // caso. createInstance passava già dalla definizione; qui no.
+          // tenant-ok(traversal): wi qui sopra e' gia' scopata e il passo e' vincolato alla SUA definizione
           MATCH (nextStep:WorkflowStep {id: $nextStepId, definition_id: wi.definition_id})
           CREATE (wi)-[:CURRENT_STEP]->(nextStep)
           SET wi.current_step = $nextStepName,
@@ -696,11 +704,11 @@ export class WorkflowEngine {
           // payload è un'indicazione, non il bersaglio.
           const nextTransRes = await session.executeRead(tx =>
             tx.run(`
-              MATCH (step:WorkflowStep {id: $stepId})-[tr:TRANSITIONS_TO {trigger: 'automatic'}]->(nextStep:WorkflowStep)
+              MATCH (step:WorkflowStep {id: $stepId, tenant_id: $tenantId})-[tr:TRANSITIONS_TO {trigger: 'automatic'}]->(nextStep:WorkflowStep)
               RETURN nextStep.name AS toStep
               ORDER BY coalesce(nextStep.step_order, 999), nextStep.name
               LIMIT 1
-            `, { stepId: nextStepId }),
+            `, { stepId: nextStepId, tenantId: input.tenantId }),
           )
           const toStep = nextTransRes.records[0]?.get('toStep') as string | null
           if (toStep) {

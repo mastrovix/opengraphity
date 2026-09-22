@@ -314,7 +314,8 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
           metadata:     (r.get('props') as Record<string, unknown>) ?? {},
         }))
         const trRes = await tx.run(`
-          MATCH (from:WorkflowStep {definition_id: $defId})-[t:TRANSITIONS_TO]->(to:WorkflowStep {definition_id: $defId})
+          // tenant-ok(per-id): $defId viene dalla MERGE per tenant qui sopra
+        MATCH (from:WorkflowStep {definition_id: $defId})-[t:TRANSITIONS_TO]->(to:WorkflowStep {definition_id: $defId})
           RETURN from.name AS fromStepName, to.name AS toStepName, t.trigger AS trigger, t.label AS label,
                  t.condition AS condition, t.requires_input AS requiresInput, t.input_field AS inputField
         `, { defId })
@@ -354,6 +355,7 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
 
       // 3. Step: MERGE per (definition_id, name); i nodi esistenti restano.
       await tx.run(`
+        // tenant-ok(per-id): $defId viene dalla MERGE per tenant qui sopra.
         MATCH (wd:WorkflowDefinition {id: $defId})
         UNWIND $steps AS st
         MERGE (s:WorkflowStep {definition_id: $defId, name: st.name})
@@ -385,6 +387,7 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
 
       // 4. Step non più nel seed: via solo se nessuna istanza li attraversa.
       const removed = await tx.run(`
+        // tenant-ok(per-id): $defId viene dalla MERGE per tenant qui sopra.
         MATCH (wd:WorkflowDefinition {id: $defId})-[:HAS_STEP]->(s:WorkflowStep)
         WHERE NOT s.name IN $names
         OPTIONAL MATCH (wi:WorkflowInstance)-[:CURRENT_STEP]->(s)
@@ -398,7 +401,8 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
       }
       if (removed.records.length > 0) {
         await tx.run(`
-          MATCH (wd:WorkflowDefinition {id: $defId})-[:HAS_STEP]->(s:WorkflowStep)
+          // tenant-ok(per-id): $defId viene dalla MERGE per tenant qui sopra.
+        MATCH (wd:WorkflowDefinition {id: $defId})-[:HAS_STEP]->(s:WorkflowStep)
           WHERE NOT s.name IN $names
           DETACH DELETE s
         `, { defId, names: def.steps.map((s) => s.name) })
@@ -411,7 +415,9 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
       `, { defId })
       const created = await tx.run(`
         UNWIND $transitions AS tr
+        // tenant-ok(per-id): $defId viene dalla MERGE per tenant qui sopra.
         MATCH (from:WorkflowStep {definition_id: $defId, name: tr.fromStepName})
+        // tenant-ok(per-id): $defId viene dalla MERGE per tenant qui sopra.
         MATCH (to:WorkflowStep   {definition_id: $defId, name: tr.toStepName})
         CREATE (from)-[:TRANSITIONS_TO {
           id: $defId + '-' + tr.id, trigger: tr.trigger, label: tr.label, labels: tr.labels, condition: tr.condition,
@@ -431,8 +437,10 @@ export async function seedWorkflowDefinition(tenantId: string, def: SeedableWork
 
       // 6. Auto-riparazione: istanze senza CURRENT_STEP ricollegate per nome.
       const relink = await tx.run(`
+        // tenant-ok(per-id): $defId viene dalla MERGE per tenant qui sopra.
         MATCH (wi:WorkflowInstance {definition_id: $defId})
         WHERE NOT (wi)-[:CURRENT_STEP]->()
+        // tenant-ok(per-id): $defId viene dalla MERGE per tenant qui sopra.
         MATCH (s:WorkflowStep {definition_id: $defId, name: wi.current_step})
         MERGE (wi)-[:CURRENT_STEP]->(s)
         RETURN count(wi) AS n
