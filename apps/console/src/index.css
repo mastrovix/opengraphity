@@ -12,9 +12,16 @@
  * portale.
  *
  * I token sono copiati e non importati perché le due app non condividono un
- * foglio di stile: `packages/web-core` porta il codice, non il CSS. Copiarli è
- * un debito piccolo e dichiarato — se un giorno il brand cambia, cambia in due
- * posti, e questa riga dice dove.
+ * foglio di stile: `packages/web-core` porta il codice, non il CSS.
+ *
+ * Copiarli era un debito DICHIARATO — «se un giorno il brand cambia, cambia in
+ * due posti, e questa riga dice dove». Dichiarato con una frase, che è il tipo
+ * di dichiarazione che non impedisce niente: il giorno in cui il portale cambia
+ * e la console no, tutto compila e tutti i test passano. Dal 22 set 2026 il
+ * debito ha un guardiano — `scripts/check-token-visivi.mjs` — che pretende che
+ * ogni token condiviso abbia lo stesso valore nei due file, che ogni `var(--x)`
+ * usato qui sia definito qui, e che nessun `.tsx` della console scriva un
+ * colore a mano. Le divergenze volute si dichiarano là, col motivo.
  */
 :root {
   --brand:        #0EA5E9;
