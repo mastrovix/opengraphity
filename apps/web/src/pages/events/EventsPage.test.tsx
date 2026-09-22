@@ -200,16 +200,29 @@ describe('EventsPage — prestazioni (ondata 3)', () => {
 
 describe('EventsPage — correlazione automatica (ondata 3)', () => {
   const CHG = { id: 'chg1', code: 'CHG-0007', title: 'Freeze DB' }
+  /**
+   * L'istante della correlazione in attesa si calcola AL MOMENTO DEL TEST e
+   * non qui (22 set 2026): questa lista si costruisce al caricamento del
+   * modulo, e in CI fra il caricamento e il render passano secondi veri —
+   * il conto alla rovescia era gia sceso, e l'asserzione «fra 80 e 99»
+   * falliva con «Opens in 78 s». Quello che conta e che il conto parta dal
+   * ritardo della policy e scenda, non il secondo esatto.
+   */
+  const SEGNAPOSTO_ATTESA = '__attesa__'
   const CORRELATED: EventRow[] = [
     eventFixture({ id: 'c1', title: 'Opened by policy', correlation: 'opened', correlationAt: '2026-09-09T08:00:00Z', incident: { id: 'inc1', number: 'INC-0042', title: 'CPU', status: 'new' } }),
     eventFixture({ id: 'c2', title: 'Silenced by change', status: 'suppressed', correlation: 'suppressed', correlationAt: '2026-09-09T08:00:00Z', suppressedBy: CHG }),
-    eventFixture({ id: 'c3', title: 'Waiting for delay', correlation: 'delayed', correlationAt: new Date(Date.now() - 30_000).toISOString() }),
+    eventFixture({ id: 'c3', title: 'Waiting for delay', correlation: 'delayed', correlationAt: SEGNAPOSTO_ATTESA }),
     eventFixture({ id: 'c4', title: 'Orphan alarm', ci: null, correlation: 'skipped_orphan', correlationAt: '2026-09-09T08:00:00Z' }),
     eventFixture({ id: 'c5', title: 'Below threshold', severity: 'warning', correlation: 'skipped_severity', correlationAt: '2026-09-09T08:00:00Z' }),
   ]
 
   it('colonna Incident: link con icona "automatico", chip silenziato/in attesa/collega un CI/sotto soglia', async () => {
-    renderPage('operator', undefined, { events: CORRELATED })
+    const eventi = CORRELATED.map((e) =>
+      (e as { correlationAt?: string }).correlationAt === SEGNAPOSTO_ATTESA
+        ? { ...e, correlationAt: new Date(Date.now() - 30_000).toISOString() }
+        : e)
+    renderPage('operator', undefined, { events: eventi })
     expect(await screen.findByText('Opened by policy')).toBeInTheDocument()
     const rows = bodyRows()
 
@@ -222,7 +235,13 @@ describe('EventsPage — correlazione automatica (ondata 3)', () => {
 
     // in attesa: chip con countdown dal ritardo di policy (120 s − 30 s trascorsi)
     const waiting = within(rows[2]!).getByText('Waiting')
-    expect(waiting).toHaveAttribute('title', expect.stringMatching(/^Opens in (8\d|9\d) s$/))
+    const titolo = waiting.getAttribute('title')!
+    expect(titolo).toMatch(/^Opens in \d+ s$/)
+    // Fra 80 e 90: il ritardo di policy meno i 30 secondi trascorsi, con un
+    // margine per il tempo che il render si prende davvero.
+    const secondi = Number(/(\d+)/.exec(titolo)![1])
+    expect(secondi).toBeGreaterThan(80)
+    expect(secondi).toBeLessThanOrEqual(90)
 
     // orfano: chip ambra "Collega un CI"
     expect(within(rows[3]!).getByText('Link a CI')).toBeInTheDocument()
