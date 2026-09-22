@@ -141,3 +141,38 @@ describe('metamodelSDL', () => {
     expect(sdl).not.toContain('implements CIBase')
   })
 })
+
+/**
+ * IL TIPO DI CAMPO CHE NON ESISTE (22 set 2026).
+ *
+ * `graphqlFieldType` è l'ultima porta prima di interpolare un tipo nello SDL.
+ * Un tipo sconosciuto che arrivasse fin qui produrrebbe SDL invalido, e a
+ * quel punto non fallisce una query: **non si assembla lo schema**, cioè
+ * l'intero tenant smette di rispondere. Per questo lancia con il nome del
+ * tipo, invece di ripiegare su `String`: un ripiego nasconderebbe un campo
+ * scritto male finché qualcuno non si accorge che i suoi valori non si
+ * filtrano.
+ */
+describe('un fieldType sconosciuto si ferma qui', () => {
+  it('lancia nominando il tipo, invece di ripiegare su String', () => {
+    const rotto = ciType({ fields: [field({ name: 'strano', fieldType: 'json' as never })] })
+    expect(() => generateSDL([rotto])).toThrow(/unknown fieldType "json"/)
+  })
+
+  it('e i cinque buoni producono il tipo GraphQL giusto', () => {
+    const sdl = generateSDL([ciType({ fields: [
+      field({ name: 'a', fieldType: 'number' }),
+      field({ name: 'b', fieldType: 'boolean' }),
+      field({ name: 'c', fieldType: 'date' }),
+      field({ name: 'd', fieldType: 'string' }),
+      field({ name: 'e', fieldType: 'enum' }),
+    ] })])
+    expect(sdl).toContain('a: Float')
+    expect(sdl).toContain('b: Boolean')
+    // data, testo ed enum viaggiano tutti come String: la data in ISO, l'enum
+    // col suo valore — i vocabolari del cliente non diventano enum GraphQL.
+    expect(sdl).toContain('c: String')
+    expect(sdl).toContain('d: String')
+    expect(sdl).toContain('e: String')
+  })
+})

@@ -96,3 +96,56 @@ describe('TicketListPage — ticket senza categoria', () => {
     expect(document.body.textContent).not.toMatch(/\bnull\b|ticket\.category/)
   })
 })
+
+/**
+ * LE PAGINE.
+ *
+ * Compaiono solo quando ce n'e' piu' di una: due pulsanti spenti sotto tre
+ * ticket sono rumore. E i pulsanti si spengono ai due estremi, invece di
+ * chiedere al server una pagina che non esiste.
+ */
+describe('TicketListPage — la paginazione', () => {
+  /** La pagina ne chiede quindici per volta: i totali qui sotto sono multipli di quello. */
+  const PER_PAGINA = 15
+  const molti = (n: number) => Array.from({ length: n }, (_, i) => ticket(`t${i}`, 'in_progress'))
+  const paginato = (totale: number, seen: Record<string, unknown>[] = []): GqlMock => ({
+    request: { query: GET_MY_TICKETS, variables: (v) => { seen.push(v); return true } },
+    result: { data: { myTickets: { __typename: 'MyTicketsResult', items: molti(Math.min(totale, PER_PAGINA)), total: totale } } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  })
+
+  it('con una pagina sola non si mostra nessun comando', async () => {
+    renderWithProviders(<TicketListPage />, { mocks: [paginato(3)] })
+    await screen.findByText('Ticket t0')
+    expect(screen.queryByRole('button', { name: /next|prev/i })).toBeNull()
+  })
+
+  it('con piu\' pagine si avanza e si torna, e la posizione si legge', async () => {
+    const seen: Record<string, unknown>[] = []
+    const { user } = renderWithProviders(<TicketListPage />, { mocks: [paginato(PER_PAGINA * 3, seen)] })
+    await screen.findByText('Ticket t0')
+    const posizione = () => screen.getByText((_t, el) => el?.tagName === 'SPAN' && /^\d+ \/ \d+$/.test(el.textContent ?? ''))
+    expect(posizione().textContent).toBe('1 / 3')
+
+    await user.click(screen.getByRole('button', { name: /next/i }))
+    await waitFor(() => { expect(posizione().textContent).toBe('2 / 3') })
+    expect(seen.at(-1)).toMatchObject({ page: 2 })
+
+    await user.click(screen.getByRole('button', { name: /prev/i }))
+    await waitFor(() => { expect(posizione().textContent).toBe('1 / 3') })
+  })
+
+  it('ai due estremi i pulsanti sono spenti: non si chiede una pagina che non c\'e\'', async () => {
+    const { user } = renderWithProviders(<TicketListPage />, { mocks: [paginato(PER_PAGINA * 3)] })
+    await screen.findByText('Ticket t0')
+    expect((screen.getByRole('button', { name: /prev/i }) as HTMLButtonElement).disabled).toBe(true)
+
+    await user.click(screen.getByRole('button', { name: /next/i }))
+    await user.click(screen.getByRole('button', { name: /next/i }))
+    await waitFor(() => {
+      const posizione = screen.getByText((_t, el) => el?.tagName === 'SPAN' && /^\d+ \/ \d+$/.test(el.textContent ?? ''))
+      expect(posizione.textContent).toBe('3 / 3')
+    })
+    expect((screen.getByRole('button', { name: /next/i }) as HTMLButtonElement).disabled).toBe(true)
+  })
+})

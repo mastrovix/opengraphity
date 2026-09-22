@@ -316,3 +316,58 @@ describe('initSchema — migrations', () => {
     expect(runMigrationsMock).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * I CONTATORI SI SEMINANO UNA VOLTA SOLA (revisione totale · E-26).
+ *
+ * Sono cinque `max()` su TUTTI gli incident, problem, richieste, change e
+ * task: cinque scansioni complete del grafo, e giravano a ogni avvio. Servono
+ * una volta sola — da lì in poi il contatore lo alza l'applicazione, e l'import
+ * lo alza sopra ogni numero conservato. Un marcatore nel grafo lo ricorda.
+ *
+ * Il ramo che SALTA non era coperto da niente: se un giorno smettesse di
+ * saltare, la differenza si vedrebbe solo come un avvio lento su un grafo
+ * grande, cioè dove nessuno la collega a questo codice.
+ */
+describe('i contatori si seminano una volta sola', () => {
+  /** Il marcatore c'è già: la semina si deve saltare. */
+  function marcatorePresente() {
+    fake.state.duplicates.set('MATCH (s:SchemaSeed {id: $id})', [{ at: '2026-01-01T00:00:00Z' }])
+  }
+
+  it('col marcatore nel grafo NON si rifanno le cinque scansioni, e si dice perché', async () => {
+    marcatorePresente()
+    const righe: string[] = []
+    await initSchema({ log: (m) => righe.push(m) })
+    expect(cyphers().some((c) => c.includes('MERGE (c:Counter'))).toBe(false)
+    // E non si riscrive nemmeno il marcatore.
+    expect(cyphers().some((c) => c.startsWith('MERGE (s:SchemaSeed'))).toBe(false)
+    expect(righe.join('\n')).toContain('Counter seeds skipped')
+    expect(righe.join('\n')).toContain('reseedCounters')
+  })
+
+  it('`reseedCounters` le rifà lo stesso: è quello che serve dopo un ripristino', async () => {
+    marcatorePresente()
+    await initSchema({ log: () => undefined, reseedCounters: true })
+    expect(cyphers().some((c) => c.includes('MERGE (c:Counter'))).toBe(true)
+    expect(cyphers().some((c) => c.startsWith('MERGE (s:SchemaSeed'))).toBe(true)
+  })
+
+  it('senza marcatore si seminano e si SEGNA: il giro dopo salta', async () => {
+    await initSchema({ log: () => undefined })
+    const segna = cyphers('WRITE').filter((c) => c.startsWith('MERGE (s:SchemaSeed'))
+    expect(segna).toHaveLength(1)
+    // Il marcatore si scrive DOPO la semina, non prima: se la semina fallisce
+    // a metà, il giro dopo la rifà invece di crederla fatta.
+    const tutte = cyphers()
+    expect(tutte.indexOf(segna[0]!)).toBeGreaterThan(tutte.findIndex((c) => c.includes('MERGE (c:Counter')))
+  })
+
+  it('la sessione di lettura del marcatore si chiude comunque', async () => {
+    marcatorePresente()
+    const primaAperte = fake.state.opened
+    await initSchema({ log: () => undefined })
+    expect(fake.state.closed).toBe(fake.state.opened)
+    expect(fake.state.opened).toBeGreaterThan(primaAperte)
+  })
+})

@@ -19,6 +19,7 @@ import { useTicketCategories } from '@/hooks/useTicketCategories'
 import { usePortalCustomFields, portalCustomFieldsInput, portalMissingCustomFields } from '@/hooks/usePortalCustomFields'
 import { PortalCustomFields } from '@/components/PortalCustomFields'
 import { usePortalAccess } from '@/hooks/usePortalAccess'
+import { useFuocoSuDialogo } from '@/hooks/useFuocoSuDialogo'
 
 interface CatalogItem {
   id: string
@@ -121,6 +122,9 @@ export function ServiceCatalogPage() {
    * indovinare quale casella (revisione del 17 set 2026).
    */
   const [erroriModulo, setErroriModulo] = useState<Record<string, string>>({})
+
+  /** Il fuoco sul dialogo, una volta sola all'apertura: vedi l'hook. */
+  const dialogo = useFuocoSuDialogo(openItem?.id)
 
   /**
    * APRIRE (o chiudere) UNA VOCE COMINCIA DA ZERO.
@@ -339,7 +343,7 @@ export function ServiceCatalogPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="og-catalog-modal-title"
-            ref={(el) => { el?.focus() }}
+            ref={dialogo}
             tabIndex={-1}
             style={{ background: colors.white, borderRadius: 12, padding: 24, width: 460, maxWidth: '90vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', outline: 'none' }}
           >

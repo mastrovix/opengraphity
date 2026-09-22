@@ -90,8 +90,17 @@ function isBlockedV4Int(n: number): boolean {
 
 // ── IPv6 ─────────────────────────────────────────────────────────────────────
 
-/** Expands an IPv6 literal into 8 16-bit groups. Returns null if malformed. */
-function expandV6(ip: string): number[] | null {
+/**
+ * Expands an IPv6 literal into 8 16-bit groups. Returns null if malformed.
+ *
+ * Exported for its own tests: it is a hand-written address parser, and
+ * through `isBlockedIpAddress` it is only ever reached with literals
+ * `net.isIP` has already accepted — so its rejection paths, the ones that
+ * decide whether a malformed address fails open or closed, could not be
+ * exercised at all. It rides out through `index.ts`'s `export *`, but it is
+ * an internal detail: callers want `isBlockedIpAddress`.
+ */
+export function expandV6(ip: string): number[] | null {
   let s = ip
   // Embedded IPv4 tail (::ffff:127.0.0.1) → convert to two hex groups.
   const lastColon = s.lastIndexOf(':')

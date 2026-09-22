@@ -97,3 +97,41 @@ describe('BaseConsumer — exhausted events are counted and observable (D-33)', 
     await c.stop()
   })
 })
+
+/**
+ * BullMQ hands the 'failed' handler `undefined` for a job it could not even
+ * load (a corrupt payload, a job removed mid-flight). There is nothing left
+ * to retry, so it counts as exhausted — and every field of the log line and
+ * of the counted record has to survive a job that is not there, or the
+ * handler throws inside the worker's own error path and the failure is never
+ * recorded at all.
+ */
+describe('BaseConsumer — a failure with no job at all', () => {
+  it('counts it as exhausted and names what it can', async () => {
+    const c = new TestConsumer()
+    await c.start()
+    const seen: Array<{ eventType: string; eventId: string | undefined; attempts: number }> = []
+    const off = onEventFailed((i) => seen.push({ eventType: i.eventType, eventId: i.eventId, attempts: i.attempts }))
+
+    failedHandler!(undefined, new Error('job payload unreadable'))
+
+    expect(seen).toEqual([{ eventType: 'unknown', eventId: undefined, attempts: 0 }])
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Job failed: ? (attempt 0/1, EXHAUSTED — event lost)'))
+    off()
+    await c.stop()
+  })
+
+  it('a job whose data carries no event type falls back to the job name', async () => {
+    const c = new TestConsumer()
+    await c.start()
+    const seen: string[] = []
+    const off = onEventFailed((i) => seen.push(i.eventType))
+
+    failedHandler!({ name: 'incident.created', attemptsMade: 4, opts: { attempts: 4 }, data: undefined } as unknown as Job,
+      new Error('handler threw'))
+
+    expect(seen).toEqual(['incident.created'])
+    off()
+    await c.stop()
+  })
+})

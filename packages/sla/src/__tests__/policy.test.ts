@@ -117,3 +117,33 @@ describe('zonedTimeToUtc', () => {
     expect(() => zonedTimeToUtc(2026, 1, 1, 9, 0, 'Not/AZone')).toThrow()
   })
 })
+
+/**
+ * The two refusals of the deadline maths.
+ *
+ * Both are configuration errors reaching code that cannot carry on: a
+ * negative duration and a business-hours target with no calendar. Neither
+ * has a sensible fallback — "0 minutes" breaches instantly, and "24x7" turns
+ * an eight-business-hour target into an eight-clock-hour one.
+ */
+describe('calculateDeadline / businessMinutesBetween — the refusals', () => {
+  it('a duration that is not a finite non-negative number is refused, naming the value', async () => {
+    for (const minutes of [-1, NaN, Infinity, Number('x')]) {
+      expect(() => calculateDeadline(new Date('2026-03-28T09:00:00Z'), minutes, false, 'Europe/Rome', null))
+        .toThrow(/calculateDeadline: invalid minutes/)
+    }
+  })
+
+  it('counting service hours with no calendar is refused, and says where to configure one', async () => {
+    const { businessMinutesBetween } = await import('../policy.js')
+    expect(() => businessMinutesBetween(
+      new Date('2026-03-28T09:00:00Z'), new Date('2026-03-28T17:00:00Z'), true, 'Europe/Rome', null))
+      .toThrow('[sla:policy] business-hours interval without a service calendar: configure it in Settings → Organization')
+  })
+
+  it('an interval that ends before it starts is zero, not negative', async () => {
+    const { businessMinutesBetween } = await import('../policy.js')
+    expect(businessMinutesBetween(new Date('2026-03-28T17:00:00Z'), new Date('2026-03-28T09:00:00Z'), false, 'Europe/Rome', null)).toBe(0)
+    expect(businessMinutesBetween(new Date('2026-03-28T09:00:00Z'), new Date('2026-03-28T09:00:00Z'), true, 'Europe/Rome', null)).toBe(0)
+  })
+})

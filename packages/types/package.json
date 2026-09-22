@@ -12,6 +12,8 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "dev": "tsc --watch"
   },
   "devDependencies": {

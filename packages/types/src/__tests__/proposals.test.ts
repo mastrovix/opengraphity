@@ -62,8 +62,27 @@ describe('quando una proposta rifiutata può tornare', () => {
 })
 
 describe('il catalogo chiuso', () => {
-  it('l\'ondata 1 ne porta UNA, e il test lo dice ad alta voce', () => {
-    expect(PROPOSAL_ACTION_TYPES).toEqual(['portal_severities.remove_stale'])
+  /**
+   * IL CATALOGO È CHIUSO, e allungarlo deve costare una riga QUI.
+   *
+   * Questo test è nato con una voce sola e ha fatto il suo mestiere: le ondate
+   * dopo ne hanno aggiunte due, e lui è diventato rosso. Solo che nessuno lo
+   * ha visto, perché `packages/types` non aveva uno script `test` — la
+   * cartella `__tests__` c'era e non la lanciava nessuno (22 set 2026).
+   *
+   * Ogni voce nuova va aggiunta qui a mano, col suo perché a fianco: è il solo
+   * modo perché «una proposta può fare questa cosa nuova» sia una decisione e
+   * non una riga scivolata dentro.
+   */
+  it('porta TRE voci, e ognuna è stata una decisione', () => {
+    expect(PROPOSAL_ACTION_TYPES).toEqual([
+      // Ondata 1: toglie le severità del portale che non si usano più.
+      'portal_severities.remove_stale',
+      // Ondata 6: la prima che CREA qualcosa — un'automazione, spenta.
+      'automation.create_disabled',
+      // Ondata 6: l'unica in cui il modello scrive testo che le persone leggono.
+      'enum_value_labels.fill',
+    ])
   })
 
   it('SCRIPT, WEBHOOK E TRANSIZIONI non sono mai azioni di una proposta', () => {

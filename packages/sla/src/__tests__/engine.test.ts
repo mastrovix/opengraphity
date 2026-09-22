@@ -39,7 +39,7 @@ const calendarFor = vi.fn(async (_t: string, owner: { businessHours: boolean; ca
 vi.mock('../olaBreach.js', () => ({ getActiveOLAContractsFor, getTenantTimezone }))
 vi.mock('../calendar.js', () => ({ calendarFor }))
 
-const { SLAEngine } = await import('../engine.js')
+const { SLAEngine, createSLAEngine } = await import('../engine.js')
 
 function event<T>(type: string, payload: T, timestamp = '2026-05-01T10:00:00.000Z'): DomainEvent<T> {
   return { id: 'evt-1', type, tenant_id: 't1', timestamp, correlation_id: 'c', actor_id: 'u', payload } as DomainEvent<T>
@@ -429,5 +429,183 @@ describe('SLAEngine — coerenza fra i ticket', () => {
     getSLAStatus.mockResolvedValueOnce({ ...baseStatus, policy_id: 'pol-all' })
     await new SLAEngine().process(event('ticket.team_assigned', { entity_type: 'incident', entity_id: 'inc-1', team_id: 'x' }))
     expect(repolicySLA).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * THE BRANCHES OF THE EVENT SWITCH THAT NOTHING REACHED YET.
+ *
+ * Every domain event fans out to all five consumers, so the SLA engine is
+ * handed `ci.health_changed`, `event.received` and everything else. Two rules
+ * hold this together: what is not an SLA event is DROPPED before it costs a
+ * Redis round-trip, and what IS one must have a branch — `sla.resolve.start`
+ * and `sla.response.stop` had none for a while, so the designer offered those
+ * step actions, the seeds used them, and they changed nothing (WA-1).
+ */
+describe('SLAEngine — which events it takes, and which it drops', () => {
+  class Probe extends SLAEngine {
+    /** `handles` is protected: this exposes it, nothing else. */
+    takes(type: string): boolean {
+      return (this as unknown as { handles: (t: string) => boolean }).handles(type)
+    }
+  }
+
+  it.each([
+    'incident.created', 'incident.resolved', 'incident.assigned',
+    'request.created', 'request.completed',
+    'sla.resolve.pause', 'sla.resolve.resume', 'sla.resolve.start', 'sla.resolve.stop',
+    'sla.response.pause', 'sla.response.resume', 'sla.response.start', 'sla.response.stop',
+    'ticket.team_assigned', 'workflow.step_entered',
+  ])('%s is handled', (type) => {
+    expect(new Probe().takes(type)).toBe(true)
+  })
+
+  it.each(['ci.health_changed', 'event.received', 'ticket.updated', 'change.created', ''])(
+    '%s is dropped before the dedup, so the fan-out costs nothing', (type) => {
+      // It used to run an EXISTS and a SET on Redis for each of these, plus a
+      // "no SLA rule, skipping" log line: thousands of operations a minute
+      // during an alarm storm (E-33).
+      expect(new Probe().takes(type)).toBe(false)
+    })
+
+  it('an event that slips through anyway is logged and ignored, not an error', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await new SLAEngine().process(event('ci.health_changed', { id: 'ci-1' }))
+    expect(log).toHaveBeenCalledWith('[sla:engine] Event "ci.health_changed" — no SLA rule, skipping')
+    log.mockRestore()
+  })
+})
+
+describe('the step actions "start SLA" and "stop SLA" (WA-1)', () => {
+  beforeEach(() => { vi.spyOn(console, 'log').mockImplementation(() => {}) })
+
+  it('sla.resolve.start on a PAUSED SLA resumes it instead of starting a second one', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus, paused_at: '2026-05-01T09:00:00.000Z', paused_type: 'both' })
+    resumeSLA.mockResolvedValueOnce({ ...baseStatus, paused_type: 'both', response_met: false, breached: false })
+    await new SLAEngine().process(event('sla.resolve.start', { entity_id: 'inc-1', entity_type: 'incident' }))
+    expect(resumeSLA).toHaveBeenCalledOnce()
+    expect(createSLAStatus).not.toHaveBeenCalled()
+  })
+
+  it('on an SLA that is already running it does nothing: the clock is going', async () => {
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus })
+    await new SLAEngine().process(event('sla.response.start', { entity_id: 'inc-1', entity_type: 'incident' }))
+    expect(resumeSLA).not.toHaveBeenCalled()
+    expect(createSLAStatus).not.toHaveBeenCalled()
+  })
+
+  it('with NO SLA it picks a policy now and starts the clock at the event instant', async () => {
+    // The usual reason there is none: the policy depends on the team, and the
+    // team arrived after creation.
+    getSLAStatus.mockResolvedValueOnce(null)
+    getEntityPriority.mockResolvedValueOnce('high')
+    selectSLAForEntity.mockResolvedValueOnce(POLICY_GENERICA)
+    createSLAStatus.mockResolvedValueOnce({ ...baseStatus })
+    await new SLAEngine().process(event('sla.resolve.start', { entity_id: 'inc-1', entity_type: 'incident' }, '2026-05-01T10:00:00.000Z'))
+    expect(createSLAStatus).toHaveBeenCalledWith(expect.objectContaining({
+      entityId: 'inc-1', entityType: 'incident', severity: 'high',
+      startedAt: new Date('2026-05-01T10:00:00.000Z'),
+    }))
+  })
+
+  it('an unparseable event timestamp starts the clock NOW rather than at Invalid Date', async () => {
+    getSLAStatus.mockResolvedValueOnce(null)
+    getEntityPriority.mockResolvedValueOnce('high')
+    selectSLAForEntity.mockResolvedValueOnce(POLICY_GENERICA)
+    createSLAStatus.mockResolvedValueOnce({ ...baseStatus })
+    const before = Date.now()
+    await new SLAEngine().process(event('sla.resolve.start', { entity_id: 'inc-1', entity_type: 'incident' }, 'ieri'))
+    const startedAt = (createSLAStatus.mock.calls[0]![0] as { startedAt: Date }).startedAt
+    expect(startedAt.getTime()).toBeGreaterThanOrEqual(before - 1000)
+  })
+
+  it('an entity type that has no SLA is skipped without asking anything', async () => {
+    getSLAStatus.mockResolvedValueOnce(null)
+    await new SLAEngine().process(event('sla.resolve.start', { entity_id: 'chg-1', entity_type: 'change' }))
+    expect(getEntityPriority).not.toHaveBeenCalled()
+    expect(createSLAStatus).not.toHaveBeenCalled()
+  })
+
+  it('an event with no entity id at all fails loudly', async () => {
+    await expect(new SLAEngine().process(event('sla.resolve.start', { entity_type: 'incident' })))
+      .rejects.toThrow('sla.resolve.start event missing entity id')
+  })
+})
+
+describe('pausing the clock', () => {
+  beforeEach(() => { vi.spyOn(console, 'log').mockImplementation(() => {}) })
+
+  it.each([
+    ['sla.resolve.pause',  'resolve'],
+    ['sla.resolve.stop',   'resolve'],
+    ['sla.response.pause', 'response'],
+  ])('%s stops the %s clock and cancels ONLY its timers', async (type, slaType) => {
+    // A paused clock must not fire timers; the other clock keeps running, so
+    // cancelling everything would silently drop the target still in force.
+    pauseSLA.mockResolvedValueOnce({ ...baseStatus, paused_at: '2026-05-01T10:00:00.000Z', paused_type: slaType })
+    await new SLAEngine().process(event(type, { entity_id: 'inc-1' }))
+    expect(pauseSLA).toHaveBeenCalledWith('t1', 'inc-1', slaType, new Date('2026-05-01T10:00:00.000Z'))
+    expect(cancelSLAJobs).toHaveBeenCalledWith('inc-1', slaType)
+  })
+
+  it('nothing to pause cancels nothing: the timers belong to a clock still running', async () => {
+    pauseSLA.mockResolvedValueOnce(null)
+    await new SLAEngine().process(event('sla.resolve.pause', { entity_id: 'inc-1' }))
+    expect(cancelSLAJobs).not.toHaveBeenCalled()
+  })
+})
+
+describe('team assignment, conclusion instants, and the engine factory', () => {
+  beforeEach(() => { vi.spyOn(console, 'log').mockImplementation(() => {}) })
+
+  it('a team assigned to an entity type with no SLA is ignored without a read', async () => {
+    await new SLAEngine().process(event('ticket.team_assigned', { entity_type: 'change', entity_id: 'chg-1', team_id: 'team-1' }))
+    expect(getEntityPriority).not.toHaveBeenCalled()
+    expect(getSLAStatus).not.toHaveBeenCalled()
+  })
+
+  it('a ticket with no usable priority is left alone: there is no tier to pick', async () => {
+    // Re-selecting a policy without a priority would land on whatever tier
+    // comes first, which is not the one the customer agreed to.
+    for (const severity of [null, undefined, '', 42]) {
+      getEntityPriority.mockResolvedValueOnce(severity as unknown as string)
+      await new SLAEngine().process(event('ticket.team_assigned', { entity_type: 'incident', entity_id: 'inc-1', team_id: 'team-1' }))
+    }
+    expect(getSLAStatus).not.toHaveBeenCalled()
+  })
+
+  it('a ticket with NO SLA yet starts one, counting from its creation and not from the assignment', async () => {
+    // The usual case: the policy is scoped to a team, and the team arrived
+    // after the ticket. The clock still owes the customer the time since
+    // creation.
+    getEntityPriority.mockResolvedValueOnce('high')
+    getSLAStatus.mockResolvedValueOnce(null)
+    getEntityCreatedAt.mockResolvedValueOnce(new Date('2026-05-01T08:00:00.000Z'))
+    selectSLAForEntity.mockResolvedValueOnce(POLICY_GENERICA)
+    createSLAStatus.mockResolvedValueOnce({ ...baseStatus })
+    await new SLAEngine().process(event('ticket.team_assigned', { entity_type: 'incident', entity_id: 'inc-1', team_id: 'team-1' }))
+    expect(createSLAStatus).toHaveBeenCalledWith(expect.objectContaining({ startedAt: new Date('2026-05-01T08:00:00.000Z') }))
+  })
+
+  it('a resolution event with an unreadable instant fails loudly instead of writing NaN', async () => {
+    // `new Date("ieri")` is Invalid Date: stored as the resolution time it
+    // makes the whole compliance history unreadable.
+    getSLAStatus.mockResolvedValueOnce({ ...baseStatus })
+    await expect(new SLAEngine().process(event('incident.resolved', { entity_id: 'inc-1', resolved_at: 'ieri' })))
+      .rejects.toThrow(/resolved_at\/completed_at\/timestamp is not a valid instant/)
+  })
+
+  it('a resolution event with neither id nor entity_id fails loudly: a malformed event is not a no-op', async () => {
+    await expect(new SLAEngine().process(event('incident.resolved', { severity: 'high' })))
+      .rejects.toThrow('[sla:engine] incident.resolved payload has neither id nor entity_id')
+  })
+
+  it('createSLAEngine starts the timer worker BEFORE the consumer', async () => {
+    // The other way round, an event arriving in the first milliseconds would
+    // schedule timers on a worker nobody is running.
+    const { initScheduler } = await import('../scheduler.js')
+    const engine = await createSLAEngine()
+    expect(initScheduler).toHaveBeenCalled()
+    expect(engine).toBeInstanceOf(SLAEngine)
   })
 })

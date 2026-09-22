@@ -98,17 +98,19 @@ jobs:
       # dell'api giravano lo stesso, qui dove Neo4j non c'è, e fallivano con
       # «No routing servers available». Restava nascosto dietro altri rossi,
       # e si è visto solo quando tutto il resto è tornato verde.
-      - name: Test packages, web, portal
-        run: pnpm --recursive --if-present --filter "!@opengraphity/api" --filter "!opengraphity" test
+      # Con la COPERTURA, non solo i test: `copertura.mjs` porta il pavimento di
+      # ogni workspace, e un workspace che scende sotto il suo fa fallire qui.
+      - name: Test packages, web, portal (con copertura)
+        run: pnpm --recursive --if-present --filter "!@opengraphity/api" --filter "!opengraphity" test:coverage
 
       # apps/api/vitest.config.ts enforces the coverage floors on src/lib and
       # src/services: a regression fails this step
       - name: Test api (with coverage thresholds)
         run: pnpm --filter @opengraphity/api test:coverage
 
-      # Dopo la misura, non prima: legge il coverage-summary.json che quella
-      # scrive. Controlla che i pavimenti non siano invecchiati e che nessuna
-      # area di src/ sia rimasta senza.
+      # Dopo TUTTE le misure, non prima: legge i coverage-summary.json che
+      # quelle scrivono. Controlla che nessun pavimento sia invecchiato, che
+      # nessun workspace o area ne sia senza, e stampa la distanza dal 95%.
       - name: Check tetti di copertura
         run: node scripts/check-tetti-copertura.mjs
 

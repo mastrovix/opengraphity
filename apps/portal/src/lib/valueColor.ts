@@ -25,7 +25,12 @@ const FAMILIES: Readonly<Record<string, ValueColorStyle>> = {
 
 export function valueColorStyle(color: string | null | undefined): ValueColorStyle {
   if (color == null) return NEUTRAL
-  const family = FAMILIES[color]
+  // `hasOwnProperty` e non una lettura secca: `FAMILIES['toString']` risponde
+  // con la funzione del prototipo, che passa il `!family` e torna al posto di
+  // uno stile — chi la riceve legge `.base` e `.text` su una funzione, cioe'
+  // `undefined`, e la pastiglia esce senza colori. Il nome arriva dal
+  // Dizionario del cliente, quindi e' un dato come un altro.
+  const family = Object.prototype.hasOwnProperty.call(FAMILIES, color) ? FAMILIES[color] : undefined
   if (!family) {
     console.error(`[valueColor] unknown dictionary color "${color}"`)
     return NEUTRAL

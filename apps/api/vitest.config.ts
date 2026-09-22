@@ -1,4 +1,7 @@
 import { defineConfig, configDefaults } from 'vitest/config'
+// I numeri stanno in un posto solo: vedi `copertura.mjs` alla radice.
+// @ts-expect-error — modulo JS senza tipi, alla radice del monorepo
+import { ESCLUSI_SEMPRE, PAVIMENTI } from '../../copertura.mjs'
 
 export default defineConfig({
   test: {
@@ -39,58 +42,21 @@ export default defineConfig({
       // Every source file counts, not only the ones a test happens to import:
       // a new untested module lowers the ratio instead of being invisible.
       include: ['src/**/*.ts'],
-      exclude: ['**/__tests__/**', '**/*.test.ts', 'src/scripts/**', 'src/index.ts', 'src/worker.ts'],
-      /**
-       * I PAVIMENTI DI NON REGRESSIONE, UNO PER AREA (rifatti il 22 set 2026).
+      // `ESCLUSI_SEMPRE` vale per tutti i workspace; qui si aggiunge quello
+      // che e' solo dell'api: gli script di servizio e i due punti d'ingresso.
+      exclude: [...ESCLUSI_SEMPRE, 'src/scripts/**', 'src/index.ts', 'src/worker.ts'],
+      /*
+       * I PAVIMENTI stanno in `copertura.mjs` alla radice, con tutti gli altri
+       * workspace e con l'OBIETTIVO del 95% deciso dal proprietario. Erano
+       * qui, misurati l'8 settembre e mai piu' toccati: `src/services` aveva
+       * trentaquattro punti di gioco, e gli altri undici workspace non avevano
+       * pavimenti affatto. La domanda «a che punto siamo col 95%» si deve
+       * poter leggere in un file solo.
        *
-       * Sono PAVIMENTI, non bersagli: dicono «da qui non si scende», non «qui
-       * va bene». Si alzano quando la copertura sale, non si abbassano mai per
-       * far tornare verde una CI rossa.
-       *
-       * ## Perché erano da rifare
-       * Li aveva misurati il G-10 l'8 settembre e da allora nessuno li aveva
-       * toccati, mentre la copertura cresceva: `src/services/**` stava a 56 con
-       * un valore reale del 90, cioè TRENTAQUATTRO punti di gioco. Un pavimento
-       * con trentaquattro punti di gioco non e' un pavimento, e' un ricordo:
-       * si poteva cancellare meta' dei test di quell'area senza che la CI
-       * dicesse niente.
-       *
-       * E coprivano DUE aree su tredici. `src/graphql/**` — la piu' grande,
-       * novemilacinquecento statement — non ne aveva nessuno.
-       *
-       * ## Come si mantengono adesso
-       * `scripts/check-tetti-copertura.mjs` gira in CI dopo la misura e
-       * fallisce se un pavimento e' piu' di cinque punti sotto il valore vero,
-       * o se un'area di `src/` non ha il suo. Quindi non possono invecchiare
-       * un'altra volta in silenzio.
-       *
-       * Il numero in coda a ogni riga e' il valore del giorno in cui il
-       * pavimento e' stato messo: serve a leggere il gioco senza rifare la
-       * misura.
+       * Per AREA e non uno solo: qui una media nasconderebbe `src/services` al
+       * 93% accanto a `src/graphql` al 65%.
        */
-      thresholds: {
-        'src/lib/**':        { lines: 80, statements: 77, functions: 78, branches: 69 },  // 82.1/79.8/80.7/71.1
-        'src/graphql/**':      { lines: 65, statements: 63, functions: 57, branches: 56 },  // 67.6/65.4/59.6/58.2
-        'src/services/**':     { lines: 93, statements: 90, functions: 90, branches: 84 },  // 95.4/92.9/92.4/86.9
-        'src/rest/**':         { lines: 77, statements: 76, functions: 74, branches: 67 },  // 79.2/78.4/76.6/69.9
-        'src/discovery/**':  { lines: 94, statements: 91, functions: 90, branches: 82 },  // 96.8/93.6/92.6/84.5
-        'src/jobs/**':       { lines: 77, statements: 76, functions: 71, branches: 64 },  // 79.0/78.4/73.5/66.7
-        'src/middleware/**': { lines: 84, statements: 82, functions: 79, branches: 67 },  // 86.1/85.0/81.8/69.7
-        'src/anomaly/**':    { lines: 65, statements: 63, functions: 59, branches: 63 },  // 67.5/65.1/61.3/65.5
-        'src/auth/**':       { lines: 93, statements: 92, functions: 86, branches: 83 },  // 95.6/94.1/88.9/85.0
-        'src/consumers/**':  { lines: 88, statements: 82, functions: 90, branches: 72 },  // 90.4/84.8/92.3/74.1
-        'src/workers/**':    { lines: 82, statements: 81, functions: 98, branches: 64 },  // 84.0/83.0/100.0/66.7
-        'src/workflow/**':   { lines: 83, statements: 80, functions: 78, branches: 68 },  // 85.3/82.9/80.0/70.6
-        /*
-         * La radice: `server.ts` (centosettanta statement, ZERO coperti) e il
-         * pezzo di telemetria che si accende all'avvio. Nessun test li importa.
-         * Un pavimento a 4/3/0/0 non difende quasi niente — e' quello che c'e',
-         * e dirlo e' meglio che togliere questi file dalla misura come sono
-         * tolti `index.ts` e `worker.ts`: cosi' restano contati, e si vede il
-         * buco invece di nasconderlo.
-         */
-        'src/*.ts':          { lines: 4, statements: 3, functions: 0, branches: 0 },  // 6.1/5.3/1.6/1.3
-      },
+      thresholds: PAVIMENTI['apps/api'],
     },
   },
 })

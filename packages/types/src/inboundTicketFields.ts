@@ -45,7 +45,11 @@ export const INBOUND_AFFECTED_CI_FIELD = 'affectedCI'
 export type InboundTicketEntityType = keyof typeof INBOUND_TICKET_FIELDS
 
 export function isInboundTicketEntityType(value: unknown): value is InboundTicketEntityType {
-  return typeof value === 'string' && value in INBOUND_TICKET_FIELDS
+  // `hasOwnProperty` e non `in`: `'toString' in INBOUND_TICKET_FIELDS` e' vero,
+  // e `inboundTicketFieldsFor('toString')` restituirebbe la funzione del
+  // prototipo al posto di `null` — il chiamante la userebbe come elenco di
+  // bersagli. Il tipo arriva dalla configurazione di un webhook in ingresso.
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(INBOUND_TICKET_FIELDS, value)
 }
 
 /**

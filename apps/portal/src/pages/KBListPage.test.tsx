@@ -56,3 +56,41 @@ describe('KBListPage — conteggi e ricerca nella lingua di chi legge', () => {
     expect(screen.queryByText(/risultati per|Cancella/)).toBeNull()
   })
 })
+
+/**
+ * FILTRI E INDIRIZZO.
+ *
+ * La ricerca e la categoria stanno nell'URL: un articolo trovato si condivide
+ * col collega mandandogli il link, e il tasto «indietro» torna dove si era.
+ */
+describe('KBListPage — la categoria e l\'indirizzo', () => {
+  it('scegliere una categoria la scrive nell\'URL e lo dice in pagina', async () => {
+    const { user } = renderWithProviders(<KBListPage />, { mocks: [categories, articles] })
+    await user.click(await screen.findByRole('button', { name: /How-to guides/ }))
+    await waitFor(() => { expect(screen.getByTestId('location').textContent).toContain('category=how-to') })
+    // Si dice che si sta guardando UNA categoria, e si può tornare indietro (H-13).
+    expect(await screen.findByRole('button', { name: 'All categories' })).toBeInTheDocument()
+  })
+
+  it('togliere la categoria pulisce l\'indirizzo', async () => {
+    const { user } = renderWithProviders(<KBListPage />, { mocks: [categories, articles] })
+    await user.click(await screen.findByRole('button', { name: /How-to guides/ }))
+    await user.click(await screen.findByRole('button', { name: 'All categories' }))
+    await waitFor(() => { expect(screen.getByTestId('location').textContent).not.toContain('category=') })
+  })
+
+  it('una ricerca finisce nell\'URL, e cancellarla lo ripulisce', async () => {
+    const { user } = renderWithProviders(<KBListPage />, { mocks: [categories, articles] })
+    const box = await screen.findByRole('searchbox').catch(() => screen.getAllByRole('textbox')[0]!)
+    await user.type(box, 'vpn{Enter}')
+    await waitFor(() => { expect(screen.getByTestId('location').textContent).toContain('search=vpn') })
+    await user.click(await screen.findByRole('button', { name: 'Clear' }))
+    await waitFor(() => { expect(screen.getByTestId('location').textContent).not.toContain('search=') })
+  })
+
+  it('un indirizzo con una categoria dentro apre già filtrato', async () => {
+    // Il link che si manda al collega deve aprire quello che si vedeva.
+    renderWithProviders(<KBListPage />, { mocks: [categories, articles], route: '/kb?category=how-to' })
+    expect(await screen.findByRole('button', { name: 'All categories' })).toBeInTheDocument()
+  })
+})

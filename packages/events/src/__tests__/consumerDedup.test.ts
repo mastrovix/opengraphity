@@ -120,3 +120,78 @@ describe('BaseConsumer — idempotent processing (at-least-once delivery)', () =
     await c.stop()
   })
 })
+
+/**
+ * `handles()` — the filter that stops the fan-out from costing (E-33).
+ *
+ * Every event goes to all five queues, so the SLA engine was also receiving
+ * `event.received`, `ci.health_changed`, `ticket.updated`… and doing an
+ * EXISTS plus a SET on Redis for each one. During an alarm storm that was
+ * thousands of Redis operations a minute, and a log line per event burying
+ * everything else.
+ *
+ * The point of the filter is WHERE it sits: before the dedup, not after. A
+ * consumer that declares what it handles must cost nothing for the rest.
+ */
+describe('BaseConsumer — handles(): what does not concern me costs nothing', () => {
+  class PickyConsumer extends BaseConsumer<unknown> {
+    readonly process = vi.fn<(event: DomainEvent<unknown>) => Promise<void>>(async () => {})
+    constructor() { super('sla-service') }
+    protected override handles(type: string): boolean { return type.startsWith('incident.') }
+  }
+
+  it('an event outside the declared types is dropped BEFORE Redis: no EXISTS, no SET, no process()', async () => {
+    const c = new PickyConsumer()
+    await c.start()
+    await fake.state.processor!(job(evt('evt-1', 'ci.health_changed')))
+    expect(c.process).not.toHaveBeenCalled()
+    expect(fake.state.existsCalls).toEqual([])
+    expect(fake.state.setCalls).toEqual([])
+    await c.stop()
+  })
+
+  it('a declared event goes through the whole path as before', async () => {
+    const c = new PickyConsumer()
+    await c.start()
+    await fake.state.processor!(job(evt('evt-2', 'incident.created')))
+    expect(c.process).toHaveBeenCalledOnce()
+    expect(fake.state.existsCalls).toEqual(['evt:processed:sla-service:evt-2'])
+    await c.stop()
+  })
+
+  it('by default a consumer handles everything: the fan-out stays the rule', async () => {
+    // Only those who opt in filter. Making the filter the default would
+    // silently starve any consumer that forgot to declare its types.
+    const c = new TestConsumer()
+    await c.start()
+    await fake.state.processor!(job(evt('evt-3', 'anything.at.all')))
+    expect(c.process).toHaveBeenCalledOnce()
+    await c.stop()
+  })
+})
+
+/**
+ * The dedup marker is written AFTER success, and its failure is not the
+ * transition's failure: the side effects already happened. A missed marker
+ * risks a duplicate on the next redelivery — which is worse to cause by
+ * re-running process() than to accept and say out loud.
+ */
+describe('BaseConsumer — when Redis is only half there', () => {
+  it('a marker that cannot be written is logged, and the event still counts as processed', async () => {
+    const c = new TestConsumer()
+    await c.start()
+    const setError = new Error('READONLY replica')
+    vi.spyOn(fake.Redis.prototype, 'set').mockRejectedValueOnce(setError)
+    await expect(fake.state.processor!(job(evt('evt-9')))).resolves.toBeUndefined()
+    expect(c.process).toHaveBeenCalledOnce()
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('processed evt-9 but the dedup marker was NOT written:'), setError)
+    await c.stop()
+  })
+
+  it('stop() is safe on a consumer that was never started', async () => {
+    // The API calls stop() on every consumer while shutting down, including
+    // ones whose start() threw: a TypeError here would mask the real reason.
+    await expect(new TestConsumer().stop()).resolves.toBeUndefined()
+  })
+})
