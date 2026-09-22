@@ -27,6 +27,7 @@ import {
   type PortalSeverityOption, type PortalSeverityOptionInput,
 } from '../../lib/portalSeverityOptions.js'
 import { notifyWatchers } from './collaboration.js'
+import { logger } from '../../lib/logger.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -619,6 +620,7 @@ async function addTicketComment(
   void audit(ctx, 'portal.comment.added', comment.entityLabel, ticketId)
   // Chi segue il ticket (lo staff che ci lavora) deve sapere che l'utente ha scritto.
   void notifyWatchers(ctx.tenantId, comment.entityKind, ticketId, { kind: 'text', text: comment.body.slice(0, 100) }, ctx.userId)
+    .catch((err: unknown) => logger.error({ err, entityType: comment.entityKind, entityId: ticketId }, '[portal] watchers NOT notified of the comment'))
   return comment
 }
 

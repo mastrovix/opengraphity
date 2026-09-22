@@ -1291,15 +1291,28 @@ export interface FormTableWrite {
 export async function writeFormTables(
   session: Queryable, tenantId: string, entityId: string, tables: readonly FormTableWrite[],
 ): Promise<void> {
-  for (const t of tables) {
-    for (const [indice, riga] of t.rows.entries()) {
-      await runQuery(session, `
-        MATCH (s:ServiceRequest {id: $entityId, tenant_id: $tenantId})
-        CREATE (s)-[:FORM_TABLE_ROW {field: $field, row_index: $index}]->(r:FormTableRow {tenant_id: $tenantId})
-        SET r += $values`,
-      { entityId, tenantId, field: t.field, index: indice, values: riga })
-    }
-  }
+  /*
+   * UNA QUERY SOLA, non una per riga (revisione del 22 set 2026).
+   *
+   * Erano due cicli annidati con una `runQuery` dentro: tabelle × righe
+   * andate e ritorni a Neo4j per una sola compilazione, e un modulo con sei
+   * tabelle da cinquanta righe ne faceva trecento. La lettura qui sotto
+   * (`leggiRigheTabella`) il problema se l'era già posto e lo dice nel suo
+   * commento — «leggerne una per campo vorrebbe dire una query per tabella su
+   * ogni apertura di ticket» — ma la scrittura era rimasta indietro.
+   *
+   * L'atomicità c'era già e resta: chi chiama passa una transazione.
+   */
+  const righe = tables.flatMap((t) =>
+    t.rows.map((valori, indice) => ({ field: t.field, index: indice, values: valori })),
+  )
+  if (righe.length === 0) return
+  await runQuery(session, `
+    MATCH (s:ServiceRequest {id: $entityId, tenant_id: $tenantId})
+    UNWIND $righe AS riga
+    CREATE (s)-[:FORM_TABLE_ROW {field: riga.field, row_index: riga.index}]->(r:FormTableRow {tenant_id: $tenantId})
+    SET r += riga.values`,
+  { entityId, tenantId, righe })
 }
 
 /**

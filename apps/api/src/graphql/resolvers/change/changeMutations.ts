@@ -287,9 +287,28 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
      * stesso CI non crea niente di nuovo — ma i tre codici si prendevano
      * comunque, e la numerazione usciva coi buchi. Ora si contano prima.
      */
+    /*
+     * LA CHIAVE SI SCRIVE UNA VOLTA SOLA (revisione del 22 set 2026).
+     *
+     * Erano scritte DUE volte: qui in TypeScript per chiedere «quali mancano»,
+     * e più sotto in Cypher concatenando `$changeId + '-' + $ciId + '-…'` per
+     * la MERGE. E le due scritture erano DIVERSE: la chiave del piano di
+     * rilascio qui non aveva il suffisso `-deployplan` che la MERGE invece
+     * usa, quindi `chiaviDaCreare` non trovava MAI il task esistente e
+     * rispondeva sempre «serve un codice nuovo».
+     *
+     * Il risultato era esattamente il difetto che `chiaviDaCreare` era stata
+     * scritta per chiudere: rimettere lo stesso CI nella stessa change
+     * bruciava un numero a ogni giro, e la numerazione usciva coi buchi. Per
+     * gli assessment funzionava, per il piano no — in silenzio, perché un
+     * numero bruciato non lascia tracce.
+     *
+     * Ora la chiave nasce qui e ARRIVA alla MERGE come parametro: le due non
+     * possono più divergere, perché sono la stessa stringa.
+     */
     const chiaveOwner   = `${args.changeId}-${args.ciId}-owner`
     const chiaveSupport = `${args.changeId}-${args.ciId}-support`
-    const chiavePiano   = `${args.changeId}-${args.ciId}`
+    const chiavePiano   = `${args.changeId}-${args.ciId}-deployplan`
     const daCreare = new Set([
       ...await chiaviDaCreare(session, 'AssessmentTask', [chiaveOwner, chiaveSupport]),
       ...await chiaviDaCreare(session, 'DeployPlanTask', [chiavePiano]),
@@ -310,19 +329,19 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
       MATCH (ci)-[:SUPPORTED_BY]->(supportTeam:Team)
       MERGE (c)-[r_aci:AFFECTS_CI]->(ci)
       ON CREATE SET r_aci.ci_phase = 'assessment'
-      MERGE (ownerT:AssessmentTask {change_key: $changeId + '-' + $ciId + '-owner'})
+      MERGE (ownerT:AssessmentTask {change_key: $chiaveOwner})
         ON CREATE SET ownerT.id = randomUUID(), ownerT.code = $ownerCode, ownerT.tenant_id = $tenantId,
           ownerT.ci_id = $ciId, ownerT.responder_role = '${ASSESSMENT_ROLE.OWNER}',
           ownerT.status = '${TASK_STATUS.PENDING}', ownerT.score = null, ownerT.created_at = $now
       MERGE (c)-[:HAS_ASSESSMENT]->(ownerT)
       ${firstTeamCypher('ownerT', 'ownerTeam', '$now')}
-      MERGE (supportT:AssessmentTask {change_key: $changeId + '-' + $ciId + '-support'})
+      MERGE (supportT:AssessmentTask {change_key: $chiaveSupport})
         ON CREATE SET supportT.id = randomUUID(), supportT.code = $supportCode, supportT.tenant_id = $tenantId,
           supportT.ci_id = $ciId, supportT.responder_role = '${ASSESSMENT_ROLE.SUPPORT}',
           supportT.status = '${TASK_STATUS.PENDING}', supportT.score = null, supportT.created_at = $now
       MERGE (c)-[:HAS_ASSESSMENT]->(supportT)
       ${firstTeamCypher('supportT', 'supportTeam', '$now')}
-      MERGE (dp:DeployPlanTask {change_key: $changeId + '-' + $ciId + '-deployplan'})
+      MERGE (dp:DeployPlanTask {change_key: $chiavePiano})
         ON CREATE SET dp.id = randomUUID(), dp.code = $planCode, dp.tenant_id = $tenantId,
           dp.ci_id = $ciId, dp.status = '${TASK_STATUS.PENDING}',
           dp.steps = '[]',
@@ -331,6 +350,7 @@ export async function addCIToChange(_: unknown, args: { changeId: string; ciId: 
       ${firstTeamCypher('dp', 'supportTeam', '$now')}
       SET c.updated_at = $now
       `, { changeId: args.changeId, ciId: args.ciId, tenantId: ctx.tenantId, now,
+           chiaveOwner, chiaveSupport, chiavePiano,
            ownerCode, supportCode, planCode })
 
       await writeAudit(tx, args.changeId, ctx.tenantId, 'ci_added', ctx.userId, `CI ${ciName} added`, { key: 'ciAdded', params: { ci: ciName } })

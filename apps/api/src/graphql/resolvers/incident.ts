@@ -26,6 +26,7 @@ import { publishEvent } from '../../lib/publishEvent.js'
 import { listPage } from '../../lib/listLimit.js'
 import { serviceRelPatternForTenant } from '../../lib/ciMetamodelForTenant.js'
 import { orderByOrThrow } from '../../lib/sortField.js'
+import { logger } from '../../lib/logger.js'
 export type { IncidentEventPayload } from '../../services/incidentService.js'
 
 // ── Mapper ───────────────────────────────────────────────────────────────────
@@ -373,6 +374,7 @@ async function addIncidentComment(
     void audit(ctx, 'comment.added', 'Incident', args.id, { commentId: row.comment['id'], isInternal })
     // CO-3: stesse notifiche di ogni altro commento (osservatori, menzioni).
     void notifyCommentAudience(ctx, 'incident', args.id, args.text, isInternal)
+      .catch((err: unknown) => logger.error({ err, incidentId: args.id }, '[incident] comment audience NOT notified'))
     return mapComment(row.comment, row.author)
   }, true)
 }

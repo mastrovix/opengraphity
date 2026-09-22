@@ -25,6 +25,7 @@ import { writeTicketComment } from '../../lib/ticketComments.js'
 import { notifyCommentAudience } from '../../graphql/resolvers/comments.js'
 import { audit } from '../../lib/audit.js'
 import { parametro } from '../parametroDiRotta.js'
+import { logger } from '../../lib/logger.js'
 
 const router: ExpressRouter = Router()
 
@@ -164,6 +165,7 @@ router.post('/:id/comments', requirePermission('incidents:write'), asyncHandler(
   // Le stesse notifiche di ogni altro commento: osservatori (una nota interna
   // non esce dal perimetro dello staff, M-16) e menzioni.
   void notifyCommentAudience(ctx, 'incident', id, text, isInternal)
+    .catch((err: unknown) => logger.error({ err, incidentId: id }, '[rest] comment audience NOT notified'))
   res.status(201).json({ data: { id: written.comment['id'], text, isInternal } })
 }))
 

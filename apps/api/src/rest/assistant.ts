@@ -10,6 +10,7 @@ import { Router, type Router as ExpressRouter, type Request, type Response } fro
 import { authMiddleware } from '../middleware/auth.js'
 import { streamAssistantChat, type AssistantMessage } from '../services/assistantService.js'
 import { consumeMinuteRate } from '../lib/webhookRateLimit.js'
+import { logger } from '../lib/logger.js'
 
 const router: ExpressRouter = Router()
 
@@ -24,8 +25,27 @@ export function assistantRateKey(tenantId: string, userId: string): string {
   return `og:assistant:rate:${tenantId}:${userId}`
 }
 
+/*
+ * IL `.catch` NON È DECORAZIONE (revisione del 22 set 2026).
+ *
+ * `handleAssistantStream` ha due `await` che possono cadere per ragioni del
+ * tutto normali — Redis irraggiungibile nel limitatore, il modello che
+ * risponde male o non risponde — e nessuno dei due era coperto. Con un `void`
+ * nudo quella rejection non ha padrone, e su Node 24 una rejection senza
+ * padrone TERMINA IL PROCESSO: un singolo intoppo su questo endpoint buttava
+ * giù l'API per tutti.
+ *
+ * Qui si risponde a chi ha chiesto (se la risposta non è già partita: con
+ * l'SSE le intestazioni possono essere già andate, e allora si chiude e
+ * basta) e si scrive l'errore per intero.
+ */
 router.post('/assistant/stream', authMiddleware, (req: Request, res: Response) => {
-  void handleAssistantStream(req, res)
+  void handleAssistantStream(req, res).catch((err: unknown) => {
+    logger.error({ err, tenantId: req.user?.tenantId, userId: req.user?.userId },
+      '[assistant] the stream failed: answering the caller instead of taking the process down')
+    if (res.headersSent) { res.end(); return }
+    res.status(500).json({ error: 'assistant stream failed' })
+  })
 })
 
 async function handleAssistantStream(req: Request, res: Response): Promise<void> {

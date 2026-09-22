@@ -67,7 +67,19 @@ vi.mock('../../../lib/workflowHelpers.js', async (importOriginal) => {
   }
 })
 
-vi.mock('../collaboration.js', () => ({ notifyWatchers: vi.fn(), notifyMentions: vi.fn(), autoWatch: vi.fn() }))
+/*
+ * I finti RESTITUISCONO UNA PROMESSA, come le funzioni vere (22 set 2026).
+ *
+ * `vi.fn()` nudo torna `undefined`, e queste tre sono `async`: un finto che
+ * mente sul tipo di ritorno fa cadere chiunque ci attacchi un `.catch` —
+ * cioè proprio il `.catch` che impedisce a una notifica fallita di terminare
+ * il processo.
+ */
+vi.mock('../collaboration.js', () => ({
+  notifyWatchers: vi.fn().mockResolvedValue(undefined),
+  notifyMentions: vi.fn().mockResolvedValue(undefined),
+  autoWatch:      vi.fn().mockResolvedValue(undefined),
+}))
 
 vi.mock('../../../lib/publishEvent.js', () => ({
   publishEvent: vi.fn().mockResolvedValue(undefined),
