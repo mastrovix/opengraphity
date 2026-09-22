@@ -44,6 +44,19 @@ export default defineConfig({
          * I gruppi sono gli stessi di prima, dichiarati una volta sola qui
          * sotto: si cerca il primo pacchetto che compare nel percorso del
          * modulo, così aggiungerne uno resta una riga e non una condizione.
+         *
+         * ## PERCHE' QUESTA FUNZIONE E' DUPLICATA IN TRE CONFIGURAZIONI
+         * Identica in `apps/portal` e `apps/console`, e resta duplicata di
+         * proposito (verificato il 21 set 2026): `apps/portal/Dockerfile`
+         * copia nel contesto di build SOLO `pnpm-lock.yaml`,
+         * `pnpm-workspace.yaml`, `package.json`, `tsconfig.json` e le
+         * cartelle `packages/types`, `packages/web-core`, `apps/portal`. Un
+         * file condiviso alla radice non ci sarebbe, e l'immagine del portale
+         * non si costruirebbe piu'.
+         *
+         * Chi vuole comunque unificarla deve prima aggiungerlo a quel COPY.
+         * La tabella dei gruppi invece e' per app e non va unificata: i
+         * pacchetti sono diversi.
          */
         manualChunks: (id: string) => {
           if (!id.includes('node_modules')) return undefined
