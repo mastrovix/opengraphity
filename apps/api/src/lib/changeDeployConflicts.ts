@@ -126,7 +126,7 @@ export interface EsitoConflitti {
 export async function deployConflictsForChange(
   session: Session, tenantId: string, changeId: string,
 ): Promise<EsitoConflitti> {
-  // I MIEI piani. `tenant-ok`: il filtro di tenant è sulla change e sul piano.
+  // I MIEI piani. `tenant-ok(traversal)`: il filtro di tenant è sulla change e sul piano.
   const miei = await runQuery<{ ciId: string; steps: unknown }>(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})-[:HAS_DEPLOY_PLAN]->(dp:DeployPlanTask {tenant_id: $tenantId})
     WHERE dp.ci_id IS NOT NULL AND coalesce(dp.steps, '[]') <> '[]'

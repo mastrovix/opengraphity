@@ -86,7 +86,7 @@ export interface SweepSummary { candidates: number; moved: number; refused: numb
 /** I ticket fermi in un passo con scadenza, di tutti i clienti. */
 export async function stepDeadlineCandidates(session: Session, now: Date): Promise<StepDeadlineCandidate[]> {
   const rows = await runQuery<Record<string, unknown>>(session, `
-    // tenant-ok: la passata è di piattaforma; ogni riga porta il suo tenant e ogni scrittura lo scopa
+    // tenant-ok(piattaforma): la passata è di piattaforma; ogni riga porta il suo tenant e ogni scrittura lo scopa
     MATCH (s:WorkflowStep) WHERE s.deadline IS NOT NULL
     MATCH (wi:WorkflowInstance)-[:CURRENT_STEP]->(s)
     WHERE wi.tenant_id = s.tenant_id
@@ -230,7 +230,7 @@ export async function fireStepDeadline(c: StepDeadlineCandidate, now: Date): Pro
 
     const arc = await runQueryOne<{ name: string }>(session, `
       MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})-[:CURRENT_STEP]->(cur:WorkflowStep)
-      // tenant-ok: il passo di arrivo è un vicino del passo corrente dell'istanza scopata
+      // tenant-ok(traversal): il passo di arrivo è un vicino del passo corrente dell'istanza scopata
       MATCH (cur)-[:TRANSITIONS_TO]->(to:WorkflowStep {name: $toStep, definition_id: cur.definition_id})
       RETURN to.name AS name
     `, { instanceId: c.instanceId, tenantId: c.tenantId, toStep })

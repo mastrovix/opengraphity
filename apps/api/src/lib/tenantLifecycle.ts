@@ -123,7 +123,7 @@ export async function listTenants(session: Session): Promise<TenantRow[]> {
    */
   const admins = new Map<string, string[]>()
   try {
-    // tenant-ok: la console di piattaforma guarda TUTTI i tenant, per definizione.
+    // tenant-ok(piattaforma): la console di piattaforma guarda TUTTI i tenant, per definizione.
     const righeAdmin = await runQuery<{ tenantId: string; email: string }>(session, `
       MATCH (u:User)
       WHERE u.role = 'admin' AND coalesce(u.active, true) = true

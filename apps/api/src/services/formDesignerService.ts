@@ -100,7 +100,7 @@ async function leggiCatalogo(req: RichiestaDiProgetto): Promise<Catalogo> {
     const campi = await formFields(session, req.tenantId)
     const limiti = await catalogFormLimits(session, req.tenantId)
     const scripting = await getScriptingPlan(req.tenantId)
-    // `tenant-ok`: i tipi `base` sono spediti col prodotto, gli altri del cliente.
+    // `tenant-ok(condivisi)`: i tipi `base` sono spediti col prodotto, gli altri del cliente.
     const tipiCI = await runQuery<{ name: string }>(session, `
       MATCH (t:CITypeDefinition)
       WHERE (t.scope = 'base' OR (t.scope = 'tenant' AND t.tenant_id = $tenantId))

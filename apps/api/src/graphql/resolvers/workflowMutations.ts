@@ -130,9 +130,9 @@ async function publishNotifyRuleActions(
   const result = await session.executeRead((tx) =>
     tx.run(
       `MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
-       // tenant-ok: definizione e step seguono l'istanza appena scopata
+       // tenant-ok(traversal): definizione e step seguono l'istanza appena scopata
        MATCH (wd:WorkflowDefinition {id: wi.definition_id})
-       // tenant-ok: idem
+       // tenant-ok(traversal): idem
        MATCH (s:WorkflowStep {definition_id: wd.id, name: $stepName})
        RETURN s.enter_actions AS enterActions, s.label AS stepLabel`,
       { instanceId, stepName, tenantId },
@@ -484,7 +484,7 @@ async function assertApprovalPurposeSurvives(
   const res = await tx.run(`
     MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
     WHERE wd.entity_type = 'change'
-    // tenant-ok: i passi sono quelli della definizione già scopata sopra
+    // tenant-ok(traversal): i passi sono quelli della definizione già scopata sopra
     OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep {purpose: 'approval'})
     RETURN wd.id AS definitionId, count(s) AS approvalSteps
   `, { definitionId, tenantId })
@@ -544,7 +544,7 @@ async function countWindowPurposeSteps(
   const res = await tx.run(`
     MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
     WHERE wd.entity_type = 'change'
-    // tenant-ok: i passi sono quelli della definizione già scopata sopra
+    // tenant-ok(traversal): i passi sono quelli della definizione già scopata sopra
     OPTIONAL MATCH (wd)-[:HAS_STEP]->(s:WorkflowStep)
       WHERE s.purpose IN $windowPurposes
     RETURN wd.id AS definitionId, count(s) AS n
@@ -723,7 +723,7 @@ export async function updateWorkflowTransition(
         // segnato sulla definizione dello step di partenza — cioè un'altra
         // definizione dello stesso tenant si modificava per conto di questa.
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
-        // tenant-ok: lo step di partenza è della definizione appena scopata
+        // tenant-ok(traversal): lo step di partenza è della definizione appena scopata
         MATCH (src:WorkflowStep {definition_id: $definitionId})-[t:TRANSITIONS_TO {id: $transitionId}]->()
         ${MARK_CUSTOMIZED_BUMP}
         // Un'etichetta CAMBIATA nel disegnatore è del cliente: le traduzioni spedite non valgono più (#22).
@@ -805,7 +805,7 @@ export async function addWorkflowTransition(
        */
       const dup = await tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
-        // tenant-ok: step della definizione appena scopata
+        // tenant-ok(traversal): step della definizione appena scopata
         MATCH (from:WorkflowStep {definition_id: $definitionId, name: $fromStepName})
               -[tr:TRANSITIONS_TO {trigger: $trigger}]->
               (:WorkflowStep {definition_id: $definitionId, name: $toStepName})
@@ -818,9 +818,9 @@ export async function addWorkflowTransition(
       }
       return tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
-        // tenant-ok: step della definizione appena scopata
+        // tenant-ok(traversal): step della definizione appena scopata
         MATCH (from:WorkflowStep {definition_id: $definitionId, name: $fromStepName})
-        // tenant-ok: idem
+        // tenant-ok(traversal): idem
         MATCH (to:WorkflowStep   {definition_id: $definitionId, name: $toStepName})
         CREATE (from)-[tr:TRANSITIONS_TO {
           id: $id, trigger: $trigger, label: $label,
@@ -869,7 +869,7 @@ export async function removeWorkflowTransition(
     const result = await session.executeWrite(async (tx) => {
       const removed = await tx.run(`
         MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
-        // tenant-ok: step della definizione appena scopata
+        // tenant-ok(traversal): step della definizione appena scopata
         MATCH (:WorkflowStep {definition_id: $definitionId})-[tr:TRANSITIONS_TO {id: $transitionId}]->()
         ${MARK_CUSTOMIZED_BUMP}
         WITH wd, tr, tr.id AS deletedId
@@ -899,7 +899,7 @@ async function preflightStepMetadata(
 ): Promise<void> {
   const res = await session.executeRead((tx) => tx.run(`
     MATCH (wi:WorkflowInstance {id: $instanceId, tenant_id: $tenantId})
-    // tenant-ok: step della definizione dell'istanza scopata
+    // tenant-ok(traversal): step della definizione dell'istanza scopata
     MATCH (s:WorkflowStep {definition_id: wi.definition_id, name: $toStep})
     RETURN s.on_enter_fields AS fields, s.enter_actions AS enterActions
   `, { instanceId, toStep, tenantId }))
@@ -1362,7 +1362,7 @@ export async function saveWorkflowChanges(
         await tx.run(`
           MATCH (wd:WorkflowDefinition {id: $definitionId, tenant_id: $tenantId})
           UNWIND $transitions AS tr
-          // tenant-ok: wd già scopata sopra
+          // tenant-ok(traversal): wd già scopata sopra
           MATCH (src:WorkflowStep {definition_id: wd.id})-[t:TRANSITIONS_TO {id: tr.transitionId}]->()
           // Un'etichetta CAMBIATA nel disegnatore è del cliente: le traduzioni spedite non valgono più (#22).
           ${labelTranslationsCypher('t', 'coalesce(tr.label, t.label)')}

@@ -262,7 +262,7 @@ export async function enumTypes(
       tx.run(`
         // Il WHERE interpolato parte dal predicato di visibilita' (conditions, riga
         // 54): proprio tenant, oppure il tenant condiviso 'system'.
-        // tenant-ok: filtro di tenant sempre in testa a conditions.
+        // tenant-ok(where-scopato): filtro di tenant sempre in testa a conditions.
         MATCH (e:EnumTypeDefinition)
         WHERE ${conditions.join(' AND ')}
         RETURN e.id        AS id,
@@ -791,11 +791,11 @@ export async function deleteEnumType(
         // e vanno contati anche i campi condivisi che ci fossero agganciati (è
         // il caso che l'ondata 1 chiude): filtrare i campi per tenant farebbe
         // cancellare un vocabolario ancora in uso.
-        // tenant-ok: il vocabolario e è già vincolato a $tenantId dal MATCH sopra.
+        // tenant-ok(traversal): il vocabolario e è già vincolato a $tenantId dal MATCH sopra.
         OPTIONAL MATCH (f:CIFieldDefinition)-[:USES_ENUM]->(e)
         // Il vocabolario SPEDITO con lo stesso nome: cancellare la copia del
         // cliente lo rimette in gioco (vince per nome, lib/enumScope.ts).
-        // tenant-ok: shipped è vincolato al tenant condiviso per definizione.
+        // tenant-ok(condivisi): shipped è vincolato al tenant condiviso per definizione.
         OPTIONAL MATCH (shipped:EnumTypeDefinition {name: e.name, tenant_id: 'system'})
         RETURN e.is_system AS isSystem, e.name AS name, e.values AS values,
                count(f) AS usageCount, head(collect(shipped.values)) AS shippedValues

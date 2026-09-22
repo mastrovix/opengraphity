@@ -641,7 +641,7 @@ export async function evaluateStaleOrOldMaps(now: string = new Date().toISOStrin
       const session = getSession()
       try {
         return await runQuery<MapRef>(session, `
-          // tenant-ok: passata di manutenzione su tutti i tenant; ogni mappa è poi valutata nel suo tenant.
+          // tenant-ok(piattaforma): passata di manutenzione su tutti i tenant; ogni mappa è poi valutata nel suo tenant.
           MATCH (m:ServiceMap {status: 'active'})
           WHERE (m.evaluated_at IS NULL OR m.evaluated_at < $cutoff OR m.stale = true) AND m.id > $cursor
           RETURN m.tenant_id AS tenantId, m.id AS id
@@ -675,7 +675,7 @@ export async function refreshServiceGauges(): Promise<ServiceGaugesSnapshot> {
   const session = getSession()
   try {
     const rows = await runQuery<{ health: string | null; n: unknown; stale: unknown }>(session, `
-      // tenant-ok: metrica di processo su tutti i tenant (solo conteggi, nessuna scrittura)
+      // tenant-ok(piattaforma): metrica di processo su tutti i tenant (solo conteggi, nessuna scrittura)
       MATCH (m:ServiceMap)
       RETURN m.health AS health, count(m) AS n, sum(CASE WHEN m.stale = true THEN 1 ELSE 0 END) AS stale
     `)

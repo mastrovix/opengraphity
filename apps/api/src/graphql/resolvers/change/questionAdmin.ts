@@ -15,7 +15,7 @@ async function loadQuestionWithOptions(session: ReturnType<typeof import('../ci-
   `, { id, tenantId })
   if (!q) return null
   const opts = await runQuery<{ props: Props }>(session, `
-    // tenant-ok: q già caricata scopata sopra
+    // tenant-ok(per-id): q già caricata scopata sopra
     MATCH (q:AssessmentQuestion {id: $id})-[:HAS_OPTION]->(o:AnswerOption)
     RETURN properties(o) AS props ORDER BY o.sort_order
   `, { id })
@@ -142,7 +142,7 @@ export async function createAssessmentQuestion(
         // Conseguenza: una change che toccava un CI di un tipo creato dal
         // cliente non superava MAI l'assessment
         // («Nessuna domanda di assessment assegnata al tipo di CI»).
-        // tenant-ok: i tipi base sono condivisi, quelli del cliente sono filtrati sul suo id
+        // tenant-ok(condivisi): i tipi base sono condivisi, quelli del cliente sono filtrati sul suo id
         MATCH (ct:CITypeDefinition)
         WHERE (ct.scope = 'base' OR (ct.scope = 'tenant' AND ct.tenant_id = $tenantId))
           AND ct.active = true AND ct.name <> '__base__'
@@ -293,7 +293,7 @@ export async function setQuestionCore(_: unknown, args: { questionId: string; is
       // di `queries.ts`. La casella «Core» dell'interfaccia chiama questa.
       await session.executeWrite((tx) => tx.run(`
         MATCH (q:AssessmentQuestion {id: $id, tenant_id: $tenantId})
-        // tenant-ok: i tipi base sono condivisi, quelli del cliente filtrati sul suo id
+        // tenant-ok(condivisi): i tipi base sono condivisi, quelli del cliente filtrati sul suo id
         MATCH (ct:CITypeDefinition)
         WHERE (ct.scope = 'base' OR (ct.scope = 'tenant' AND ct.tenant_id = $tenantId))
           AND ct.active = true AND ct.name <> '__base__'

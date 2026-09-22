@@ -33,10 +33,10 @@ export async function purgeFormDrafts(olderThanIso: string): Promise<FormDraftPu
       effimere, la scadenza è la stessa per tutti e nessuno le guarda mai. Per
       questo la ricerca attraversa i tenant — come il backup notturno. I nodi
       cancellati sono solo quelli selezionati QUI, quindi non c'è modo di
-      toccare il dato di un'organizzazione che non sia scaduto. tenant-ok
+      toccare il dato di un'organizzazione che non sia scaduto. tenant-ok(piattaforma):
     */
     const candidati = await runQuery<{ id: string; storagePath: string | null; tenantId: string }>(session, `
-      MATCH (a:Attachment {entity_type: $draftType})  // tenant-ok: passata di piattaforma, vedi sopra
+      MATCH (a:Attachment {entity_type: $draftType})  // tenant-ok(piattaforma): passata di piattaforma, vedi sopra
       WHERE a.uploaded_at < $olderThan
       RETURN a.id AS id, a.storage_path AS storagePath, a.tenant_id AS tenantId
       LIMIT 5000`, { draftType: FORM_DRAFT_ENTITY_TYPE, olderThan: olderThanIso })
@@ -65,9 +65,9 @@ export async function purgeFormDrafts(olderThanIso: string): Promise<FormDraftPu
 
     let nodes = 0
     if (daCancellare.length > 0) {
-      // Gli id vengono dalla selezione qui sopra, già scaduta e già filtrata. tenant-ok
+      // Gli id vengono dalla selezione qui sopra, già scaduta e già filtrata. tenant-ok(per-id):
       const rows = await runQuery<{ n: number }>(session, `
-        MATCH (a:Attachment {entity_type: $draftType})  // tenant-ok: gli id vengono dalla selezione qui sopra
+        MATCH (a:Attachment {entity_type: $draftType})  // tenant-ok(per-id): gli id vengono dalla selezione qui sopra
         WHERE a.id IN $ids
         DETACH DELETE a
         RETURN count(a) AS n`, { draftType: FORM_DRAFT_ENTITY_TYPE, ids: daCancellare })

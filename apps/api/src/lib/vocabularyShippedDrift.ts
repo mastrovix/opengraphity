@@ -108,7 +108,7 @@ export async function vocabulariesCopiedWithoutChanges(session: Queryable, tenan
    * risultavano diverse per questo (18 set 2026), e la regola non trovava mai
    * niente: un controllo che non può accendersi è peggio di nessun controllo.
    */
-  // `tenant-ok`: la copia è del tenant, la spedita è del tenant condiviso 'system'.
+  // `tenant-ok(condivisi)`: la copia è del tenant, la spedita è del tenant condiviso 'system'.
   const rows = await runQuery<{
     id: string; name: string; label: string
     values: unknown; shippedValues: unknown

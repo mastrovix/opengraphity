@@ -66,7 +66,7 @@ export async function runOLASweep(now: Date = new Date()): Promise<OLASweepSumma
   const session = getSession(undefined, 'WRITE')
   try {
     const contracts = await runQuery<ContractRow>(session, `
-      // tenant-ok: passata di manutenzione su tutti i tenant; ogni contratto è poi letto e scritto nel suo tenant.
+      // tenant-ok(piattaforma): passata di manutenzione su tutti i tenant; ogni contratto è poi letto e scritto nel suo tenant.
       MATCH (o:OLAContract)
       WHERE coalesce(o.enabled, true) = true AND o.team_id IS NOT NULL
       RETURN o.id AS id, o.tenant_id AS tenantId, o.name AS name, o.type AS type, o.entity_type AS entityType, o.team_id AS teamId,

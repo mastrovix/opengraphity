@@ -168,7 +168,7 @@ async function assertTipiDiCI(session: Session, tenantId: string, fieldType: str
    * Sbagliare nodo qui non dava una query vuota per caso: dava «questi tipi
    * non esistono» su OGNI tipo, cioè un filtro impossibile da impostare
    * (trovato provandolo nel browser, 18 set 2026).
-   * `tenant-ok`: i tipi `base` sono condivisi per definizione.
+   * `tenant-ok(condivisi)`: i tipi `base` sono condivisi per definizione.
    */
   const noti = await runQuery<{ name: string }>(session, `
     MATCH (t:CITypeDefinition)
@@ -214,7 +214,7 @@ async function assertFiltroCI(
   if (!testo) return null
 
   const { ALL_CIS_ALLOWED_FIELDS, buildAdvancedWhere } = await import('./buildCIQuery.js')
-  // `tenant-ok`: i tipi `base` sono condivisi, quelli del cliente filtrati.
+  // `tenant-ok(condivisi)`: i tipi `base` sono condivisi, quelli del cliente filtrati.
   const campi = await runQuery<{ name: string }>(session, `
     MATCH (t:CITypeDefinition)-[:HAS_FIELD]->(f:CIFieldDefinition)
     WHERE (t.scope = 'base' OR (t.scope = 'tenant' AND t.tenant_id = $tenantId))

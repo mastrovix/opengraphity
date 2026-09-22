@@ -89,7 +89,7 @@ async function loadDueTemplates(now: Date): Promise<TemplateRow[]> {
       tx.run(`
         // Job di pianificazione: legge i template di TUTTI i tenant, e ognuno viene
         // poi eseguito nel proprio (loadTemplate scopa per tenant_id).
-        // tenant-ok: passata di manutenzione cross-tenant, sola lettura.
+        // tenant-ok(piattaforma): passata di manutenzione cross-tenant, sola lettura.
         MATCH (r:ReportTemplate)
         WHERE r.schedule_enabled = true AND r.schedule_cron IS NOT NULL
         // Il fuso del cliente viaggia con il template: il cron è orario di

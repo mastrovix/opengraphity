@@ -121,7 +121,7 @@ export async function purgeResolvedEvents(now: Date = new Date()): Promise<Purge
   const session = getSession()
   let tenantIds: string[]
   try {
-    // tenant-ok: job di manutenzione su tutti i tenant; ogni cancellazione è scopata sul suo tenant
+    // tenant-ok(piattaforma): job di manutenzione su tutti i tenant; ogni cancellazione è scopata sul suo tenant
     const rows = await runQuery<{ id: string }>(session, `
       MATCH (t:Tenant)
       WHERE t.id IS NOT NULL

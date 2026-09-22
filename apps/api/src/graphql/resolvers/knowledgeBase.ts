@@ -158,7 +158,7 @@ export async function kbArticles(
   const session = getSession(undefined, 'READ')
   try {
     const dataRes = await session.executeRead((tx) => tx.run(`
-      // tenant-ok: il WHERE interpolato parte da a.tenant_id = $tenantId (conditions, riga 128)
+      // tenant-ok(where-scopato): il WHERE interpolato parte da a.tenant_id = $tenantId (conditions, riga 128)
       MATCH (a:KBArticle)
       WHERE ${where}
       ${ARTICLE_RETURN_WITH_WI}
@@ -167,7 +167,7 @@ export async function kbArticles(
     `, params))
 
     const countRes = await session.executeRead((tx) => tx.run(`
-      // tenant-ok: stesso $where della query di pagina, tenant per primo (conditions, riga 128)
+      // tenant-ok(where-scopato): stesso $where della query di pagina, tenant per primo (conditions, riga 128)
       MATCH (a:KBArticle)
       WHERE ${where}
       RETURN count(a) AS total

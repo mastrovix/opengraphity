@@ -67,12 +67,12 @@ export const PURGA_SERVER_CYPHER = `
   CALL { WITH l DETACH DELETE l } IN TRANSACTIONS OF ${PURGE_BATCH_SIZE} ROWS
 `
 export const PURGA_BROWSER_CYPHER = `
-  // tenant-ok: la retention dei log è una durata di PIATTAFORMA, non di un
+  // tenant-ok(piattaforma): la retention dei log è una durata di PIATTAFORMA, non di un
   // cliente. Purgare per tenant vorrebbe dire o un giro per ciascuno (e il
   // fossile su 'system', che tenant vivo non è, resterebbe lì per sempre) o
   // una durata per cliente che nessuno ha chiesto. Il filtro è l'età, e vale
   // per tutti allo stesso modo.
-  MATCH (l:LogEntry) WHERE l.timestamp < $limite   // tenant-ok
+  MATCH (l:LogEntry) WHERE l.timestamp < $limite   // tenant-ok(piattaforma): la retention e una durata di piattaforma
   CALL { WITH l DETACH DELETE l } IN TRANSACTIONS OF ${PURGE_BATCH_SIZE} ROWS
 `
 
@@ -101,7 +101,7 @@ export async function purgaIRegistriDeiLog(adessoMs: number = Date.now()): Promi
 
   const daTogliere = {
     server:  await quanti('MATCH (l:ServerLogEntry) WHERE l.day < $limiteGiorno RETURN count(l) AS n', { limiteGiorno }),
-    // tenant-ok: vedi PURGA_BROWSER_CYPHER — l'età vale per tutti i tenant.
+    // tenant-ok(piattaforma): vedi PURGA_BROWSER_CYPHER — l'età vale per tutti i tenant.
     browser: await quanti('MATCH (l:LogEntry) WHERE l.timestamp < $limite RETURN count(l) AS n', { limite }),
   }
 

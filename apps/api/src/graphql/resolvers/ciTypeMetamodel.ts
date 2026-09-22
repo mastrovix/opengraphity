@@ -313,7 +313,7 @@ async function assertNoDuplicateRelationName(
 async function loadExistingCITypeNames(session: Session, tenantId: string): Promise<ExistingCIType[]> {
   const r = await session.executeRead((tx) =>
     tx.run(
-      // tenant-ok: i tipi spediti col prodotto vivono su 'system' e stanno
+      // tenant-ok(condivisi): i tipi spediti col prodotto vivono su 'system' e stanno
       // nello schema di OGNI cliente, quindi i loro nomi sono presi per tutti.
       `MATCH (t:CITypeDefinition)
        WHERE t.scope IN ['base', 'itil'] OR (t.scope = 'tenant' AND t.tenant_id = $tenantId)
@@ -336,7 +336,7 @@ async function loadFieldNamesFor(session: Session, typeId: string, tenantId: str
        WHERE t.tenant_id IN [$tenantId, '${SYSTEM_TENANT}']
        OPTIONAL MATCH (t)-[:HAS_FIELD]->(f:CIFieldDefinition)
          ${fieldScopeClause('f')}
-       // tenant-ok: __base__ è il tipo condiviso di sistema, i suoi campi li filtra fieldScopeClause come altrove
+       // tenant-ok(condivisi): __base__ è il tipo condiviso di sistema, i suoi campi li filtra fieldScopeClause come altrove
        OPTIONAL MATCH (base:CITypeDefinition {name: '__base__'})-[:HAS_FIELD]->(bf:CIFieldDefinition)
          ${fieldScopeClause('bf')}
        RETURN collect(DISTINCT f.name) + collect(DISTINCT bf.name) AS names`,
@@ -356,7 +356,7 @@ async function loadFieldNamesFor(session: Session, typeId: string, tenantId: str
  */
 async function assertEnumTypeLinkable(session: Session, enumTypeId: string, fieldName: string, tenantId: string): Promise<void> {
   const r = await session.executeRead((tx) =>
-    // tenant-ok: l'ambito lo giudica assertEnumLinkable, che distingue «di un
+    // tenant-ok(verificato-prima): l'ambito lo giudica assertEnumLinkable, che distingue «di un
     // altro cliente» da «non esiste» (leggere solo i propri darebbe lo stesso
     // messaggio ai due casi).
     tx.run(
@@ -633,7 +633,7 @@ export function buildCITypesResolver() {
            OPTIONAL MATCH (t)-[:HAS_SYSTEM_RELATION]->(sr:CISystemRelationDefinition)
            // A-5: un campo di un cliente agganciato al __base__ condiviso non
            // deve vedersi dagli altri — i CAMPI li filtra fieldScopeClause.
-           // tenant-ok: __base__ è il tipo condiviso di sistema
+           // tenant-ok(condivisi): __base__ è il tipo condiviso di sistema
            OPTIONAL MATCH (base:CITypeDefinition {name: '__base__'})-[:HAS_FIELD]->(bf:CIFieldDefinition)
              ${fieldScopeClause('bf')}
            OPTIONAL MATCH (bf)-[:USES_ENUM]->(bfEnum:EnumTypeDefinition)
@@ -1090,7 +1090,7 @@ export function buildMetamodelMutations() {
               WITH f
               // Un filtro di tenant anche qui sarebbe un fallback silenzioso:
               // il legame non si creerebbe e nessuno saprebbe perché.
-              // tenant-ok: l'ambito l'ha già imposto assertEnumTypeLinkable (nucleo assertEnumLinkable)
+              // tenant-ok(verificato-prima): l'ambito l'ha già imposto assertEnumTypeLinkable (nucleo assertEnumLinkable)
               MATCH (e:EnumTypeDefinition {id: $enumTypeId})
               WHERE $enumTypeId IS NOT NULL
               MERGE (f)-[:USES_ENUM]->(e)
@@ -1211,12 +1211,12 @@ export function buildMetamodelMutations() {
               // Il vocabolario agganciato si SOSTITUISCE: il legame vecchio va
               // via, altrimenti loadMetamodel ne troverebbe due e ne
               // sceglierebbe uno a caso.
-              // tenant-ok: l'ambito l'ha già imposto assertEnumTypeLinkable.
+              // tenant-ok(verificato-prima): l'ambito l'ha già imposto assertEnumTypeLinkable.
               MATCH (e:EnumTypeDefinition {id: $enumTypeId})
               WHERE $enumTypeId IS NOT NULL
               // Si stacca il legame vecchio del campo, non si legge un
               // vocabolario di nessuno.
-              // tenant-ok: il campo appartiene a un tipo già verificato come di questo cliente (assertTenantOwnedType)
+              // tenant-ok(verificato-prima): il campo appartiene a un tipo già verificato come di questo cliente (assertTenantOwnedType)
               OPTIONAL MATCH (f)-[old:USES_ENUM]->()
               DELETE old
               MERGE (f)-[:USES_ENUM]->(e)

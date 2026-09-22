@@ -48,7 +48,7 @@ export async function calculateChain(ciId: string, tenantId: string): Promise<st
       // stessa etichetta. Prima era un LIMIT 1 su una ricerca senza tenant:
       // due organizzazioni con la stessa neo4j_label e famiglie diverse
       // davano una catena a caso.
-      // tenant-ok: i tipi base sono condivisi, quelli del cliente filtrati sul suo id
+      // tenant-ok(condivisi): i tipi base sono condivisi, quelli del cliente filtrati sul suo id
       OPTIONAL MATCH (td:CITypeDefinition {neo4j_label: lbl})
         WHERE td.active = true
           AND (td.scope = 'base' OR (td.scope = 'tenant' AND td.tenant_id = $tenantId))
@@ -72,7 +72,7 @@ export async function calculateChain(ciId: string, tenantId: string): Promise<st
         WHERE upstream.tenant_id = ci.tenant_id
         WITH upstream, labels(upstream) AS uLabels
         UNWIND uLabels AS uLbl
-        // tenant-ok: tipo CI condiviso per label
+        // tenant-ok(condivisi): tipo CI condiviso per label
         OPTIONAL MATCH (utd:CITypeDefinition {neo4j_label: uLbl})
         WHERE utd.chain_families = '["Application"]'
           AND utd.active = true
@@ -129,7 +129,7 @@ export async function calculateAllChains(tenantId: string): Promise<{ total: num
       MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
       WITH ci, labels(ci) AS ciLabels
       UNWIND ciLabels AS lbl
-      // tenant-ok: i tipi base sono condivisi, quelli del cliente filtrati sul suo id
+      // tenant-ok(condivisi): i tipi base sono condivisi, quelli del cliente filtrati sul suo id
       OPTIONAL MATCH (td:CITypeDefinition {neo4j_label: lbl})
         WHERE td.active = true
           AND (td.scope = 'base' OR (td.scope = 'tenant' AND td.tenant_id = $tenantId))
@@ -153,7 +153,7 @@ export async function calculateAllChains(tenantId: string): Promise<{ total: num
       MATCH (ci:ConfigurationItem {tenant_id: $tenantId})
       WHERE ci.chain IS NULL
       OPTIONAL MATCH (up:ConfigurationItem {tenant_id: $tenantId})-[:${relPattern}*0..10]->(ci)
-      // tenant-ok: i tipi base sono condivisi, quelli del cliente filtrati sul suo id
+      // tenant-ok(condivisi): i tipi base sono condivisi, quelli del cliente filtrati sul suo id
       OPTIONAL MATCH (utd:CITypeDefinition)
         WHERE utd.neo4j_label IN labels(up)
           AND utd.chain_families = '["Application"]'

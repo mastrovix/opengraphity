@@ -28,13 +28,13 @@ export async function refreshEventGauges(now: string = new Date().toISOString())
   const session = getSession()
   try {
     const overdue = await runQueryOne<{ n: unknown }>(session, `
-      // tenant-ok: metrica di processo su tutti i tenant (solo conteggi, nessuna scrittura)
+      // tenant-ok(piattaforma): metrica di processo su tutti i tenant (solo conteggi, nessuna scrittura)
       MATCH (e:Event {status: 'firing'})
       WHERE ${OVERDUE_DELAYED_WHERE}
       RETURN count(e) AS n
     `, { delayedCutoff: params.delayedCutoff })
     const uncorrelated = await runQueryOne<{ n: unknown }>(session, `
-      // tenant-ok: metrica di processo su tutti i tenant (solo conteggi, nessuna scrittura)
+      // tenant-ok(piattaforma): metrica di processo su tutti i tenant (solo conteggi, nessuna scrittura)
       MATCH (e:Event {status: 'firing'})
       WHERE ${UNCORRELATED_WHERE}
       RETURN count(e) AS n
