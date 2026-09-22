@@ -584,6 +584,7 @@ async function addProblemComment(
     void audit(ctx, 'comment.added', 'Problem', args.problemId, { commentId: row.comment['id'], isInternal })
     // CO-3: stesse notifiche di ogni altro commento (osservatori, menzioni).
     void notifyCommentAudience(ctx, 'problem', args.problemId, args.text, isInternal)
+      .catch((err: unknown) => logger.error({ err, problemId: args.problemId }, '[problem] comment audience NOT notified'))
     return mapProblemComment(row.comment, row.author)
   }, true)
 }

@@ -47,8 +47,16 @@ async function entityReachable(target: AttachmentTarget, tenantId: string, userI
 // BEFORE the `file` part (the web client sends them in that order): the file
 // stream is only opened once the target has been validated and found.
 
+// Stessa ragione di `assistant.ts`: un `void` nudo su una funzione con degli
+// `await` è una rejection senza padrone, e su Node 24 quella termina il
+// processo. L'upload ha già un try/catch suo, ma la rete di sicurezza si mette
+// dove si lancia, non dove si spera.
 router.post('/attachments', authMiddleware, (req, res) => {
-  void handleUpload(req, res)
+  void handleUpload(req, res).catch((err: unknown) => {
+    logger.error({ err }, '[attachments] the upload failed outside its own handler')
+    if (res.headersSent) { res.end(); return }
+    res.status(500).json({ error: 'upload failed' })
+  })
 })
 
 async function handleUpload(req: Request, res: Response): Promise<void> {

@@ -390,20 +390,50 @@ async function createValidationAndDeploymentTasks(session: SessionOrTx, changeId
     RETURN ci.id AS ciId ORDER BY ci.name
   `, { changeId, tenantId })
   if (ciRows.length === 0) return
-  const codes = await getNextTaskCodes(session, tenantId, ciRows.length * 2)
-  const ciCodes = ciRows.map((r, i) => ({ ciId: r.ciId, valCode: codes[i * 2]!, depCode: codes[i * 2 + 1]! }))
+
+  /*
+   * I CODICI SI PRENDONO SOLO PER I TASK CHE NASCONO DAVVERO (revisione del
+   * 22 set 2026).
+   *
+   * Qui se ne prendevano `ciRows.length * 2` SEMPRE, e le MERGE più sotto
+   * sono sulla chiave naturale: rientrare nel passo non crea niente di nuovo,
+   * ma bruciava due codici per CI a ogni giro e la numerazione usciva coi
+   * buchi. È lo stesso difetto che `chiaviDaCreare` chiude per gli
+   * assessment; qui non era mai stato applicato.
+   *
+   * E la chiave si scrive UNA volta sola, in TypeScript, e viaggia nella riga
+   * dell'UNWIND: prima era scritta anche in Cypher (`$changeId + '-' + ci.id`)
+   * e due scritture della stessa cosa divergono — è esattamente così che la
+   * chiave del piano di rilascio aveva perso il suo suffisso.
+   */
+  const chiavi = ciRows.map((r) => ({
+    ciId:   r.ciId,
+    valKey: `${changeId}-${r.ciId}`,
+    depKey: `${changeId}-${r.ciId}-exec`,
+  }))
+  const daCreare = new Set([
+    ...await chiaviDaCreare(session, 'ValidationTest',  chiavi.map((c) => c.valKey)),
+    ...await chiaviDaCreare(session, 'DeploymentTask',  chiavi.map((c) => c.depKey)),
+  ])
+  const codes = await getNextTaskCodes(session, tenantId, daCreare.size)
+  let prossimo = 0
+  const codicePer = (chiave: string) => (daCreare.has(chiave) ? codes[prossimo++]! : null)
+  const ciCodes = chiavi.map((c) => ({
+    ciId: c.ciId, valKey: c.valKey, depKey: c.depKey,
+    valCode: codicePer(c.valKey), depCode: codicePer(c.depKey),
+  }))
   const now = new Date().toISOString()
   await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     UNWIND $ciCodes AS cc
     MATCH (c)-[:AFFECTS_CI]->(ci {id: cc.ciId})
-    MERGE (vt:ValidationTest {change_key: $changeId + '-' + ci.id})
+    MERGE (vt:ValidationTest {change_key: cc.valKey})
       ON CREATE SET vt.id = randomUUID(), vt.code = cc.valCode, vt.tenant_id = $tenantId,
         vt.ci_id = ci.id, vt.status = '${TASK_STATUS.PENDING}',
         vt.result = null, vt.tested_at = null, vt.created_at = $now
     MERGE (c)-[:HAS_VALIDATION]->(vt)
     WITH c, ci, cc
-    MERGE (dt:DeploymentTask {change_key: $changeId + '-' + ci.id + '-exec'})
+    MERGE (dt:DeploymentTask {change_key: cc.depKey})
       ON CREATE SET dt.id = randomUUID(), dt.code = cc.depCode, dt.tenant_id = $tenantId,
         dt.ci_id = ci.id, dt.status = '${TASK_STATUS.PENDING}',
         dt.created_at = $now
@@ -418,13 +448,20 @@ async function createReviewTasks(session: SessionOrTx, changeId: string, tenantI
     RETURN ci.id AS ciId ORDER BY ci.name
   `, { changeId, tenantId })
   if (ciRows.length === 0) return
-  const codes = await getNextTaskCodes(session, tenantId, ciRows.length)
-  const ciCodes = ciRows.map((r, i) => ({ ciId: r.ciId, code: codes[i]! }))
+  // Stessa regola degli altri task: la chiave si scrive una volta sola, in
+  // TypeScript, e i codici si prendono solo per quelli che nascono davvero.
+  const chiavi = ciRows.map((r) => ({ ciId: r.ciId, key: `${changeId}-${r.ciId}-review` }))
+  const daCreare = await chiaviDaCreare(session, 'ReviewTask', chiavi.map((c) => c.key))
+  const codes = await getNextTaskCodes(session, tenantId, daCreare.size)
+  let prossimo = 0
+  const ciCodes = chiavi.map((c) => ({
+    ciId: c.ciId, key: c.key, code: daCreare.has(c.key) ? codes[prossimo++]! : null,
+  }))
   const now = new Date().toISOString()
   await runWrite(session, `
     MATCH (c:Change {id: $changeId, tenant_id: $tenantId})
     UNWIND $ciCodes AS cc
-    MERGE (rv:ReviewTask {change_key: $changeId + '-' + cc.ciId + '-review'})
+    MERGE (rv:ReviewTask {change_key: cc.key})
       ON CREATE SET rv.id = randomUUID(), rv.code = cc.code, rv.tenant_id = $tenantId,
         rv.ci_id = cc.ciId, rv.status = '${TASK_STATUS.PENDING}', rv.created_at = $now
     MERGE (c)-[:HAS_REVIEW]->(rv)
