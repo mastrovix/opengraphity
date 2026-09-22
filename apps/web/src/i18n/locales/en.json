@@ -4269,7 +4269,8 @@
     },
     "kb": {
       "onlyFromConcluded": "The Knowledge Base draft is generated only from resolved or closed incidents: this one is in step \"{{step}}\". Concluding steps of the incident workflow: {{concluded}}.",
-      "onlyFromConcludedNone": "The Knowledge Base draft is generated only from resolved or closed incidents: this one is in step \"{{step}}\", and the incident workflow has no concluding step declared. Mark a step as terminal, or of category \"resolved\", in the designer."
+      "onlyFromConcludedNone": "The Knowledge Base draft is generated only from resolved or closed incidents: this one is in step \"{{step}}\", and the incident workflow has no concluding step declared. Mark a step as terminal, or of category \"resolved\", in the designer.",
+      "concurrentEdit": "This article was modified by someone else while you were writing (it is now at version {{version}}{{by, select, undefined{} other{, by {{by}}}}}). **Reload the page and apply your changes again**: saving now would wipe their work from the published page."
     },
     "comment": {
       "entityType": "This entity type cannot be commented on: {{entityType}}.",

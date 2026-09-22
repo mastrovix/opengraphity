@@ -10,6 +10,7 @@ import { logger } from '../../lib/logger.js'
 import { enqueueEmbedding } from '../../jobs/embeddingWorker.js'
 import { normalizeKbTags } from '../../services/embeddings.js'
 import { assertDomainValue } from '../../lib/domainMatrix.js'
+import { ValidationError } from '../../lib/errors.js'
 import { loadVocabularyEntries } from '../../lib/vocabularyEntries.js'
 import { languageFor } from '../../lib/tenantLanguage.js'
 import { LINGUE, labelFor, type Lingua } from '../../lib/enumValueLabels.js'
@@ -373,9 +374,27 @@ export async function createKBArticle(
   return created
 }
 
+/**
+ * LA MODIFICA CONCORRENTE SI DICE, NON SI SUBISCE (22 set 2026).
+ *
+ * L'articolo PORTA una `version` e una storia di versioni immutabili, ma
+ * questa mutation non guardava nessuna delle due: due redattori sulla stessa
+ * pagina, e il secondo salvataggio sovrascriveva il primo senza che nessuno
+ * lo sapesse. Il testo non andava perduto — resta nella storia — ma spariva
+ * da quello che i lettori vedono, e chi l'aveva scritto lo scopriva per caso.
+ *
+ * Il prodotto questo problema lo risolve già in tre posti — la policy degli
+ * eventi, le mappe dei servizi, le definizioni di workflow — tutti con lo
+ * stesso gesto: il client manda la versione che ha LETTO, e se non è più
+ * quella attuale il salvataggio è rifiutato. Qui mancava, ed era l'unica
+ * entità con una `version` a non averlo.
+ *
+ * `expectedVersion` resta OPZIONALE, come negli altri tre: un client che non
+ * la manda si comporta come prima. Chi la manda è protetto.
+ */
 export async function updateKBArticle(
   _: unknown,
-  args: { id: string; title?: string; body?: string; category?: string; tags?: string[] },
+  args: { id: string; title?: string; body?: string; category?: string; tags?: string[]; expectedVersion?: number | null },
   ctx: GraphQLContext,
 ): Promise<KBArticle> {
   if (args.category !== undefined) await assertDomainValue(ctx.tenantId, 'kb_category', args.category)
@@ -387,11 +406,39 @@ export async function updateKBArticle(
   try {
     const loadRes = await session.executeRead((tx) => tx.run(`
       MATCH (a:KBArticle {id: $id, tenant_id: $tenantId})
-      RETURN a.id AS id
+      RETURN a.id AS id, coalesce(a.version, 1) AS version, a.last_edited_at AS lastEditedAt,
+             coalesce(a.last_edited_by_name, a.author_name) AS lastEditedBy
     `, { id: args.id, tenantId: ctx.tenantId }))
 
     if (!loadRes.records.length) {
       throw new GraphQLError('Article not found', { extensions: { code: 'NOT_FOUND' } })
+    }
+
+    /*
+     * Il confronto si fa PRIMA di scrivere, e la lettura e la scrittura non
+     * sono nella stessa transazione: fra le due resta una finestra piccola in
+     * cui un terzo salvataggio può infilarsi. È lo stesso compromesso degli
+     * altri tre punti del prodotto, e la differenza che conta è fra «non se ne
+     * accorge nessuno» e «quasi sempre se ne accorge».
+     */
+    if (args.expectedVersion != null) {
+      const attuale = toNumber(loadRes.records[0]!.get('version'))
+      if (attuale !== args.expectedVersion) {
+        /*
+         * Nomi in inglese DENTRO il messaggio, e non per distrazione: il
+         * guardiano della lingua legge il testo degli errori, e in un
+         * template literal ci finiscono dentro anche i nomi interpolati. Un
+         * `${quando}` in mezzo a una frase la fa sembrare — giustamente —
+         * italiano rivolto a una persona.
+         */
+        const at = loadRes.records[0]!.get('lastEditedAt') as string | null
+        const by = loadRes.records[0]!.get('lastEditedBy') as string | null
+        const current = attuale
+        throw new ValidationError(
+          `KBArticle ${args.id} was modified by someone else (expected version ${args.expectedVersion}, current is ${current}${by ? `, by ${by}` : ''}${at ? ` at ${at}` : ''}): reload it and apply your changes again`,
+          { key: 'errors.kb.concurrentEdit', params: { version: String(current), by: by ?? '', at: at ?? '' } },
+        )
+      }
     }
 
     const now     = new Date().toISOString()

@@ -34,7 +34,7 @@ const GET_ARTICLES = gql`
     kbArticles(page: $page, pageSize: $pageSize, status: $status, category: $category, search: $search) {
       items {
         id title slug body category tags status authorName views helpfulCount
-        createdAt updatedAt publishedAt workflowInstanceId currentStep
+        createdAt updatedAt publishedAt workflowInstanceId currentStep version
       }
       total
     }
@@ -49,10 +49,16 @@ const CREATE_ARTICLE = gql`
   }
 `
 
+/*
+ * `expectedVersion`: la versione che questa pagina ha LETTO quando ha aperto
+ * l'articolo. Se nel frattempo qualcun altro l'ha modificato, il salvataggio
+ * viene rifiutato invece di sovrascriverlo in silenzio — e chi scriveva lo
+ * scopriva solo rileggendo la pagina pubblicata (22 set 2026).
+ */
 const UPDATE_ARTICLE = gql`
-  mutation UpdateKBArticle($id: ID!, $title: String, $body: String, $category: String, $tags: [String!]) {
-    updateKBArticle(id: $id, title: $title, body: $body, category: $category, tags: $tags) {
-      id title slug status workflowInstanceId currentStep
+  mutation UpdateKBArticle($id: ID!, $title: String, $body: String, $category: String, $tags: [String!], $expectedVersion: Int) {
+    updateKBArticle(id: $id, title: $title, body: $body, category: $category, tags: $tags, expectedVersion: $expectedVersion) {
+      id title slug status workflowInstanceId currentStep version
     }
   }
 `
@@ -150,6 +156,8 @@ interface KBArticle {
   status: string; authorName: string; views: number; helpfulCount: number
   createdAt: string; updatedAt: string; publishedAt: string | null
   workflowInstanceId: string | null; currentStep: string | null
+  /** La versione LETTA: si rimanda al salvataggio come `expectedVersion`. */
+  version: number
 }
 
 interface ArticleForm {
@@ -375,7 +383,7 @@ export function KBAdminPage() {
     if (!form.category) { toast.error(t('toast.kb.categoryRequired')); return }
     publishingRef.current = false
     if (editId) {
-      void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags } })
+      void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags, expectedVersion: editArticle?.version ?? null } })
     } else {
       void createArticle({ variables: { title: form.title, body: form.body, category: form.category, tags } })
     }
@@ -387,7 +395,7 @@ export function KBAdminPage() {
     if (!form.title.trim() || !form.body.trim()) { toast.error(t('toast.kb.titleBodyRequiredPublish')); return }
     if (!form.category) { toast.error(t('toast.kb.categoryRequired')); return }
     publishingRef.current = true
-    void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags } })
+    void updateArticle({ variables: { id: editId, title: form.title, body: form.body, category: form.category, tags, expectedVersion: editArticle?.version ?? null } })
   }
 
   const articles   = data?.kbArticles?.items ?? []

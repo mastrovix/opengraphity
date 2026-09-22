@@ -4269,7 +4269,8 @@
     },
     "kb": {
       "onlyFromConcluded": "La bozza per la Knowledge Base si genera solo da incident risolti o chiusi: questo è nel passo «{{step}}». Passi conclusivi del workflow incident: {{concluded}}.",
-      "onlyFromConcludedNone": "La bozza per la Knowledge Base si genera solo da incident risolti o chiusi: questo è nel passo «{{step}}», e il workflow degli incident non ha nessun passo conclusivo dichiarato. Marca un passo come terminale, o di categoria «risolto», nel disegnatore."
+      "onlyFromConcludedNone": "La bozza per la Knowledge Base si genera solo da incident risolti o chiusi: questo è nel passo «{{step}}», e il workflow degli incident non ha nessun passo conclusivo dichiarato. Marca un passo come terminale, o di categoria «risolto», nel disegnatore.",
+      "concurrentEdit": "Questo articolo è stato modificato da qualcun altro mentre lo stavi scrivendo (ora è alla versione {{version}}{{by, select, undefined{} other{, da {{by}}}}}). **Ricarica la pagina e riapplica le tue modifiche**: salvare adesso cancellerebbe il loro lavoro dalla pagina pubblicata."
     },
     "comment": {
       "entityType": "Su questo tipo di entità non si può commentare: {{entityType}}.",
