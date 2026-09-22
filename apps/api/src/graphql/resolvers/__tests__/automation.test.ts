@@ -63,6 +63,7 @@ async function fakeRunQuery(_s: unknown, cypher: string, params: Props = {}): Pr
       return cypher.includes('RETURN') ? [{ props: { ...node } }] : []
     }
     if (cypher.includes('AS entityType') && cypher.includes('n.entity_type')) return [{ entityType: node['entity_type'] }]
+    if (cypher.includes('AS timerDelay')) return [{ timerDelay: node['timer_delay_minutes'] ?? null, eventType: node['event_type'] }]
     if (cypher.includes('AS eventType')) return [{ eventType: node['event_type'], conditions: node['conditions'] ?? null }]
     if (cypher.includes('AS entityType')) return [{ entityType: node['entity_type'] }]
     if (cypher.includes('AS warning, p.resolve_minutes')) return [{ warning: node['warning_minutes'], resolve: node['resolve_minutes'] }]
@@ -363,6 +364,42 @@ describe('updateAutoTrigger', () => {
   })
 })
 
+describe('updateAutoTrigger — a timed trigger always keeps its delay', () => {
+  // A timed trigger with no delay fires at once or never. Until 23 Sep 2026
+  // only the create checked it: an update could make a trigger timed without
+  // a delay, or clear the delay of a timed one, and the page said «saved».
+  beforeEach(() => {
+    seed('AutoTrigger', { id: 'tm', tenant_id: 'tenant-a', name: 'Timer', entity_type: 'incident', event_type: 'on_timer', timer_delay_minutes: 30 })
+    seed('AutoTrigger', { id: 'up', tenant_id: 'tenant-a', name: 'Update', entity_type: 'incident', event_type: 'on_create', timer_delay_minutes: null })
+  })
+
+  it('refuses to clear or zero the delay of a timed trigger, and writes nothing', async () => {
+    for (const timerDelayMinutes of [null, 0]) {
+      await expect(Mutation.updateAutoTrigger(null, { id: 'tm', input: { timerDelayMinutes } }, ctxA))
+        .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.automation.timerDelayRequired' } } })
+    }
+    expect(find('AutoTrigger', 'tm', 'tenant-a')!['timer_delay_minutes']).toBe(30)
+  })
+
+  it('refuses to switch a trigger to timed when it has no delay, stored or sent', async () => {
+    await expect(Mutation.updateAutoTrigger(null, { id: 'up', input: { eventType: 'on_timer' } }, ctxA))
+      .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.automation.timerDelayRequired' } } })
+    expect(find('AutoTrigger', 'up', 'tenant-a')!['event_type']).toBe('on_create')
+  })
+
+  it('accepts the switch when the delay comes with it, and a new positive delay', async () => {
+    await expect(Mutation.updateAutoTrigger(null, { id: 'up', input: { eventType: 'on_timer', timerDelayMinutes: 15 } }, ctxA))
+      .resolves.toMatchObject({ eventType: 'on_timer', timerDelayMinutes: 15 })
+    await expect(Mutation.updateAutoTrigger(null, { id: 'tm', input: { timerDelayMinutes: 45 } }, ctxA))
+      .resolves.toMatchObject({ timerDelayMinutes: 45 })
+  })
+
+  it('a trigger that is not timed can drop its delay', async () => {
+    await expect(Mutation.updateAutoTrigger(null, { id: 'tm', input: { eventType: 'on_create', timerDelayMinutes: null } }, ctxA))
+      .resolves.toMatchObject({ eventType: 'on_create', timerDelayMinutes: null })
+  })
+})
+
 describe('deleteAutoTrigger', () => {
   it('deletes only within the caller tenant and invalidates the cache', async () => {
     seed('AutoTrigger', { id: 'a1', tenant_id: 'tenant-a', name: 'x' })
@@ -545,6 +582,16 @@ describe('updateSLAPolicy', () => {
     await expect(Mutation.updateSLAPolicy(null, { id: 'p1', input: { warningMinutes: 300 } }, ctxA)).rejects.toThrow(/\(240 min\)/)
     await expect(Mutation.updateSLAPolicy(null, { id: 'p1', input: { warningMinutes: 60, resolveMinutes: 120 } }, ctxA))
       .resolves.toMatchObject({ warningMinutes: 60, resolveMinutes: 120 })
+  })
+
+  it('the minutes can be changed but never emptied: an explicit null is refused and nothing is written', async () => {
+    // Before 23 Sep 2026 a null passed the warning check (it fell back to the
+    // stored value) and was then written: the policy lost its resolution time.
+    for (const field of ['responseMinutes', 'resolveMinutes', 'warningMinutes']) {
+      await expect(Mutation.updateSLAPolicy(null, { id: 'p1', input: { [field]: null } }, ctxA))
+        .rejects.toMatchObject({ extensions: { i18n: { key: 'errors.sla.minutesRequired', params: { field } } } })
+    }
+    expect(find('SLAPolicyNode', 'p1', 'tenant-a')).toMatchObject({ response_minutes: 60, resolve_minutes: 240, warning_minutes: 30 })
   })
 
   it('a category is checked against the stored entity type', async () => {

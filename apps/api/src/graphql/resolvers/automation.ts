@@ -290,6 +290,18 @@ function updatedOrNotFound(rows: { props: Props }[], label: 'AutoTrigger' | 'Bus
   return props
 }
 
+/**
+ * An on_timer trigger with no delay (or a delay of 0) would fire at once or
+ * never. Checked on create AND on update: until 23 Sep 2026 only the create
+ * checked it, so an update could switch a trigger to on_timer without a delay
+ * or clear the delay of an existing one.
+ */
+function assertTimerHasDelay(eventType: unknown, timerDelayMinutes: unknown): void {
+  if (eventType === 'on_timer' && (timerDelayMinutes == null || Number(timerDelayMinutes) <= 0)) {
+    throw new ValidationError('An on_timer trigger requires timerDelayMinutes > 0', { key: 'errors.automation.timerDelayRequired' })
+  }
+}
+
 function assertTimerDelay(value: unknown): number | null {
   if (value == null) return null
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
@@ -392,9 +404,7 @@ async function createAutoTrigger(_: unknown, args: { input: Props }, ctx: GraphQ
   const conditions        = assertConditionsJson(input['conditions'])
   const actions           = assertActionsJson(input['actions'])
   const timerDelayMinutes = assertTimerDelay(input['timerDelayMinutes'])
-  if (eventType === 'on_timer' && (timerDelayMinutes == null || timerDelayMinutes <= 0)) {
-    throw new ValidationError('An on_timer trigger requires timerDelayMinutes > 0')
-  }
+  assertTimerHasDelay(eventType, timerDelayMinutes)
   assertEventSupported(eventType, entityType)
   assertChangedOperatorEvent(conditions, eventType)
   await assertRolesExist(ctx.tenantId, roleKeysInActions(actions))
@@ -457,6 +467,19 @@ async function updateAutoTrigger(_: unknown, args: { id: string; input: Props },
   return withSession(async (session) => {
     if (args.input['eventType'] !== undefined) {
       assertEventSupported(params['eventType'] as string, await entityTypeOf(session, 'AutoTrigger', args.id, ctx.tenantId))
+    }
+    if (args.input['eventType'] !== undefined || args.input['timerDelayMinutes'] !== undefined) {
+      // Validated on the state AFTER the update: what is not sent stays as stored.
+      const stored = await runQuery<{ eventType: string; timerDelay: unknown }>(session, `
+        MATCH (t:AutoTrigger {id: $id, tenant_id: $tenantId})
+        RETURN t.timer_delay_minutes AS timerDelay, t.event_type AS eventType
+      `, { id: args.id, tenantId: ctx.tenantId })
+      if (stored[0]) {
+        assertTimerHasDelay(
+          args.input['eventType'] !== undefined ? params['eventType'] : stored[0].eventType,
+          args.input['timerDelayMinutes'] !== undefined ? params['timerDelayMinutes'] : stored[0].timerDelay,
+        )
+      }
     }
     if (args.input['eventType'] !== undefined || args.input['conditions'] !== undefined) {
       const stored = await storedEventAndConditions(session, 'AutoTrigger', args.id, ctx.tenantId)
@@ -757,7 +780,22 @@ async function createSLAPolicy(_: unknown, args: { input: Props }, ctx: GraphQLC
   }, true)
 }
 
+/**
+ * An explicit null on the minutes of a policy used to pass the warning check
+ * (which fell back to the stored value) and then be written as null: the
+ * policy lost its resolution time and read back a warning of 0. The minutes
+ * can be changed, never emptied.
+ */
+function assertMinutesNotCleared(input: Props): void {
+  for (const field of ['responseMinutes', 'resolveMinutes', 'warningMinutes']) {
+    if (input[field] === null) {
+      throw new ValidationError(`${field} cannot be emptied on an SLA policy`, { key: 'errors.sla.minutesRequired', params: { field } })
+    }
+  }
+}
+
 async function updateSLAPolicy(_: unknown, args: { id: string; input: Props }, ctx: GraphQLContext) {
+  assertMinutesNotCleared(args.input)
   if (args.input['timezone'] !== undefined) args.input = { ...args.input, timezone: policyTimezone(args.input['timezone']) }
   if (args.input['category'] != null && args.input['category'] !== '') {
     const current = await withSession((session) => runQuery<{ entityType: string }>(session,

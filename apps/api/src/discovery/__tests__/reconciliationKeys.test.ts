@@ -87,7 +87,9 @@ describe('reconcileBatch uses parameter maps, never keys in the query text', () 
       properties: { ip_address: '10.0.0.1', os: 'linux' }, tags: {}, relationships: [],
     }], source, 'run-1', 'tenant-1', stats())
 
-    expect(writes).toHaveLength(1)
+    // The CI, then the removal pass of an empty relationship list.
+    expect(writes).toHaveLength(2)
+    expect(writes[1]!.query).toContain('DELETE r')
     const q = writes[0]!.query
     expect(q).toBe(createCICypher('Server'))
     // Idempotency key = the same triple findExisting looks up and the

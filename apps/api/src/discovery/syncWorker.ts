@@ -135,11 +135,11 @@ async function processSyncJob(job: Job<SyncJobPayload>): Promise<void> {
   try {
     for await (const ci of connector.scan(source, creds)) {
       if (Date.now() > deadline) {
-        throw new Error(
-          `[sync] run ${runId} stopped after ${String(Math.round(RUN_TIMEOUT_MS / 60_000))} minutes: `
-          + `the "${source.connector_type}" provider is still sending data (or not answering). `
-          + `${String(seenExternalIds.size)} CIs were reconciled; the next run continues from the provider.`,
-        )
+        // What was read is written before stopping: until 23 Sep 2026 the last
+        // partial batch (up to BATCH_SIZE - 1 CIs) was dropped, and the message
+        // counted those CIs as reconciled anyway.
+        if (batch.length > 0) await reconcileBatch(batch, source, runId, tenantId, stats)
+        throw new Error(timeoutMessage(runId, source.connector_type, seenExternalIds.size))
       }
       seenExternalIds.add(ci.external_id)
       batch.push(ci)
@@ -185,6 +185,13 @@ async function processSyncJob(job: Job<SyncJobPayload>): Promise<void> {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Every CI counted here was read AND written: the partial batch is flushed before the stop. */
+function timeoutMessage(runId: string, connectorType: string, reconciled: number): string {
+  return `[sync] run ${runId} stopped after ${String(Math.round(RUN_TIMEOUT_MS / 60_000))} minutes: `
+    + `the "${connectorType}" provider is still sending data (or not answering). `
+    + `${String(reconciled)} CIs were reconciled; the next run continues from the provider.`
+}
 
 /**
  * Il nodo `SyncRun` dell'esecuzione. Il job manuale ne porta uno già creato

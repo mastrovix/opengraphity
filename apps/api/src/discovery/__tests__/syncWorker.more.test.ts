@@ -148,8 +148,11 @@ describe('processSyncJob — run timeout', () => {
     await expect(processor(makeJob({}))).rejects.toThrow(/stopped after 30 minutes: the "mock" provider is still sending data.*1 CIs were reconciled/)
     const failed = runStatusWrites().find((p) => p['status'] === 'failed')!
     expect(failed['errorMsg']).toMatch(/stopped after 30 minutes/)
-    // the run stops between two CIs: the partial batch is not flushed after the deadline
-    expect(reconcileBatch).not.toHaveBeenCalled()
+    // The run stops between two CIs, but what was read is written first: the
+    // CI counted as reconciled in the message really was (until 23 Sep 2026
+    // the partial batch was dropped and the count was of CIs merely read).
+    expect(reconcileBatch).toHaveBeenCalledTimes(1)
+    expect((reconcileBatch.mock.calls[0]![0] as Array<{ external_id: string }>).map((c) => c.external_id)).toEqual([ci(1).external_id])
   })
 })
 

@@ -67,7 +67,9 @@ describe('EventActions — re-evaluate', () => {
     apolloFinto.esiti['ReevaluateEvent'] = { data: { reevaluateEvent: { ...EVENT, correlation: null } } }
     const { user, onChanged } = renderActions()
     await user.click(screen.getByRole('button', { name: 'Re-evaluate now' }))
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Action failed: Incident created but empty response'))
+    // Its own words: a re-evaluation creates no incident, so it must not say
+    // «Incident created» (the shared text it used until 23 Sep 2026).
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Action failed: The server answered without the outcome of the re-evaluation'))
     expect(toast.success).not.toHaveBeenCalled()
     expect(onChanged).not.toHaveBeenCalled()
   })

@@ -3833,7 +3833,8 @@
       "entityTypeWithoutSla": "Le policy SLA valgono per {{allowed}}: «{{type}}» non ha uno SLA.",
       "categoryNotApplicable": "Un {{type}} non ha categoria: la sua policy SLA non può dipenderne.",
       "warningMinutes": "L'avviso deve essere un numero intero positivo di minuti.",
-      "warningLongerThanResolve": "L'avviso ({{warning}} min prima della scadenza) deve essere più breve del tempo di risoluzione ({{resolve}} min)."
+      "warningLongerThanResolve": "L'avviso ({{warning}} min prima della scadenza) deve essere più breve del tempo di risoluzione ({{resolve}} min).",
+      "minutesRequired": "{{field}} non si può svuotare: una policy SLA lo ha sempre."
     },
     "ola": {
       "typeOneOf": "Il tipo deve essere uno di: {{allowed}}.",
@@ -4099,7 +4100,8 @@
       "entityNotWritable": "Le automazioni non possono scrivere i campi di «{{entityType}}».",
       "fieldRequired": "{{field}} ({{type}}): il nome del campo è obbligatorio.",
       "actionsUnreadable": "Le azioni di questa automazione non si riescono a leggere: non può essere accesa finché non vengono corrette.",
-      "originActionsForbidden": "Un'automazione nata da una proposta di miglioramento non può contenere «{{actions}}»: può solo scrivere campi del ticket."
+      "originActionsForbidden": "Un'automazione nata da una proposta di miglioramento non può contenere «{{actions}}»: può solo scrivere campi del ticket.",
+      "timerDelayRequired": "Un'automazione a tempo ha bisogno di un ritardo di almeno un minuto."
     },
     "matrix": {
       "cellOutOfVocabulary": "Matrice «{{matrix}}», cella «{{cell}}»: «{{value}}» non è nel vocabolario «{{vocabulary}}» di questo cliente. Ammessi: {{allowed}}.",
@@ -5234,6 +5236,7 @@
       "linkCI": "Collega a CI",
       "openIncidentTitle": "Aprire un incident da questo allarme?",
       "emptyResponse": "Incident creato ma risposta vuota",
+      "reevaluateEmptyResponse": "Il server ha risposto senza l'esito della rivalutazione",
       "resolveTitle": "Risolvi allarme",
       "resolveNote": "Nota (facoltativa)",
       "linkCITitle": "Collega a un CI",

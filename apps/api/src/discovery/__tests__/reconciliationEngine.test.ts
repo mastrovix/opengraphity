@@ -106,7 +106,7 @@ describe('reconcileBatch', () => {
 
     await reconcileBatch(batch, testSource, 'run-1', 'tenant-1', stats)
 
-    expect(mockSession.executeWrite).toHaveBeenCalledOnce()
+    expect(mockSession.executeWrite).toHaveBeenCalledTimes(2)  // the CI + the relation removal pass
     // executeWrite is called with a callback — verify the CI was created (stats updated)
     expect(stats.ciCreated).toBe(1)
     expect(stats.ciUpdated).toBe(0)
@@ -126,7 +126,7 @@ describe('reconcileBatch', () => {
       properties: { os: 'linux' }, tags: {}, relationships: [],
     }], testSource, 'run-2', 'tenant-1', stats)
 
-    expect(mockSession.executeWrite).toHaveBeenCalledOnce()
+    expect(mockSession.executeWrite).toHaveBeenCalledTimes(2)
     expect(stats.ciCreated).toBe(0)
     expect(stats.ciUnchanged).toBe(1)
     expect(stats.ciUpdated).toBe(0)
@@ -181,8 +181,8 @@ describe('reconcileBatch', () => {
 
     await reconcileBatch(batch, testSource, 'run-1', 'tenant-1', stats)
 
-    // 2 write: UPDATE del CI + creazione SyncChangeRecord per lo storico sync
-    expect(mockSession.executeWrite).toHaveBeenCalledTimes(2)
+    // 3 writes: CI update + SyncChangeRecord for the sync history + removal of the source's relations (empty list)
+    expect(mockSession.executeWrite).toHaveBeenCalledTimes(3)
     expect(stats.ciConflicts).toBe(0)
     expect(mockSession.close).toHaveBeenCalledOnce()
   })

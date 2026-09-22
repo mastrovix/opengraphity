@@ -283,7 +283,10 @@ export function titoliCompitiOffribili(
   mio: string,
 ): string[] {
   const aspettaMe = new Set<string>()
-  let cresciuta = true
+  // A task without a title yet cannot be waited for (the wait names a title),
+  // and an empty `dopo` means "starts at once", not "after the untitled one":
+  // until 23 Sep 2026 a new untitled task was offered no sibling at all.
+  let cresciuta = mio !== ''
   while (cresciuta) {
     cresciuta = false
     for (const c of compiti) {

@@ -101,7 +101,9 @@ export function EventActions({ event, onChanged, size = 'xs', only, exclude, com
     try {
       const res = await reevaluate({ variables: { id: event.id } })
       const outcome = res.data?.reevaluateEvent.correlation
-      if (!outcome) throw new Error(t('events.actions.emptyResponse'))
+      // Its own text: the shared one says «Incident created», and a
+      // re-evaluation creates nothing (until 23 Sep 2026 it said so anyway).
+      if (!outcome) throw new Error(t('events.actions.reevaluateEmptyResponse'))
       toast.success(t('toast.events.reevaluated', { outcome: t(`events.correlation.short.${outcome}`) }))
       onChanged?.()
     } catch (err) { showError(err, t('toast.events.actionFailed', { error: errorMessage(err) })) }

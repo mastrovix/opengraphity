@@ -309,7 +309,7 @@ export const anomalyResolvers = {
           now,
         })
         if (!row) throw new NotFoundError('Anomaly')
-        cache.invalidate(`anomaly-stats:${ctx.tenantId}`)
+        cache.invalidateScope(`anomaly-stats:${ctx.tenantId}`)
         void audit(ctx, 'anomaly.resolved', 'Anomaly', args.id, { resolutionStatus })
         return mapAnomaly(row.props)
       } finally {
@@ -324,7 +324,7 @@ export const anomalyResolvers = {
     runAnomalyScanner: async (_: unknown, __: unknown, ctx: GraphQLContext) => {
       requirePermission(ctx, 'anomaly.scan')
       await enqueueTenantScan(ctx.tenantId)
-      cache.invalidate(`anomaly-stats:${ctx.tenantId}`)
+      cache.invalidateScope(`anomaly-stats:${ctx.tenantId}`)
       void audit(ctx, 'anomaly.scan_triggered', 'AnomalyScanner', ctx.tenantId)
       return true
     },

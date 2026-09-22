@@ -3833,7 +3833,8 @@
       "entityTypeWithoutSla": "SLA policies apply to {{allowed}}: «{{type}}» has no SLA.",
       "categoryNotApplicable": "A {{type}} has no category: its SLA policy cannot depend on one.",
       "warningMinutes": "The warning must be a positive whole number of minutes.",
-      "warningLongerThanResolve": "The warning ({{warning}} min before the deadline) must be shorter than the resolution time ({{resolve}} min)."
+      "warningLongerThanResolve": "The warning ({{warning}} min before the deadline) must be shorter than the resolution time ({{resolve}} min).",
+      "minutesRequired": "{{field}} cannot be emptied: an SLA policy always has it."
     },
     "ola": {
       "typeOneOf": "The type must be one of: {{allowed}}.",
@@ -4099,7 +4100,8 @@
       "entityNotWritable": "Automations cannot write fields of «{{entityType}}».",
       "fieldRequired": "{{field}} ({{type}}): the field name is required.",
       "actionsUnreadable": "The actions of this automation cannot be read: it cannot be enabled until they are fixed.",
-      "originActionsForbidden": "An automation created from an improvement proposal cannot contain “{{actions}}”: it may only write ticket fields."
+      "originActionsForbidden": "An automation created from an improvement proposal cannot contain “{{actions}}”: it may only write ticket fields.",
+      "timerDelayRequired": "A timed automation needs a delay of at least one minute."
     },
     "matrix": {
       "cellOutOfVocabulary": "Matrix \"{{matrix}}\", cell \"{{cell}}\": \"{{value}}\" is not in this tenant's \"{{vocabulary}}\" dictionary. Allowed: {{allowed}}.",
@@ -5234,6 +5236,7 @@
       "linkCI": "Link to CI",
       "openIncidentTitle": "Open an incident from this alarm?",
       "emptyResponse": "Incident created but empty response",
+      "reevaluateEmptyResponse": "The server answered without the outcome of the re-evaluation",
       "resolveTitle": "Resolve alarm",
       "resolveNote": "Note (optional)",
       "linkCITitle": "Link to a CI",
