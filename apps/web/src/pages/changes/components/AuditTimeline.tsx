@@ -41,7 +41,7 @@ const AUDIT_CAT_KEY: Record<AuditCategory, string> = {
  */
 function detailText(t: (key: string, opts?: Record<string, unknown>) => string, e: ChangeAuditEntryData): string {
   if (!e.detailKey) return e.detail ?? ''
-  let params: Record<string, unknown> = {}
+  let params: Record<string, unknown>
   try { params = e.detailParams ? JSON.parse(e.detailParams) as Record<string, unknown> : {} } catch { params = {} }
   // Il ruolo dell'assessment arriva come chiave (`owner`/`support`) o, nelle voci
   // più vecchie, già in inglese: si legge nella lingua di chi guarda. `count` è

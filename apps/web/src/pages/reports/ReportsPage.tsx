@@ -185,8 +185,9 @@ export default function ReportsPage() {
                 { id: `tmp-err-${Date.now()}`, role: 'assistant', content: t('pages.aiAnalysis.errorMessage', { message: errMsg }), createdAt: new Date().toISOString() },
               ])
               toast.error(errMsg)
-              lastEventWasError = false
-              currentEvent = ''
+              // Niente da azzerare: il `return` esce da processSSEChunk, e le due
+              // variabili nascono con ogni blocco. Le due assegnazioni che
+              // stavano qui non le leggeva nessuno.
               return
             }
             try {

@@ -46,7 +46,7 @@ export const deployPlanWindowEnvelope: Migration = {
     let senzaDate = 0
     for (const rec of rows.records) {
       const id = rec.get('id') as string
-      let inviluppo: { start: string; end: string } | null = null
+      let inviluppo: { start: string; end: string } | null
       try {
         inviluppo = planEnvelope(parseDeploySteps(rec.get('steps')))
       } catch {

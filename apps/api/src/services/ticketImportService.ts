@@ -877,7 +877,7 @@ export async function importKBArticles(
     // kb_article workflow is optional: the KB resolver itself treats instance
     // creation as best-effort. Without a definition we import articles with
     // the raw draft/published status and no workflow instance (per-row warning).
-    let steps: StepRow[] = []
+    let steps: StepRow[]
     try { steps = await getWorkflowSteps(session, ctx.tenantId, 'kb_article') }
     catch { steps = [] }
     const initialStep   = steps.find((s) => s.isInitial) ?? null

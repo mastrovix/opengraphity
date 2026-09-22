@@ -24,7 +24,7 @@ export const stepDeadlineCalendar: Migration = {
     let fixed = 0
     for (const r of rows.records) {
       const raw = r.get('deadline') as string
-      let calendarId: string | null = null
+      let calendarId: string | null
       try {
         const parsed = JSON.parse(raw) as { calendar_id?: string | null }
         calendarId = parsed.calendar_id ?? null

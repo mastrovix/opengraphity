@@ -193,7 +193,7 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
    * per un contributo nullo. Chi ha bisogno dei tipi ITIL li legge dal
    * resolver (`lib/itilTypes.ts`), che è l'implementazione viva.
    */
-  let ciTypes: Awaited<ReturnType<typeof loadMetamodel>> = []
+  let ciTypes: Awaited<ReturnType<typeof loadMetamodel>>
   try {
     ciTypes = await loadMetamodel(tenantId, ENUM_SCOPE)
   } catch (e) {

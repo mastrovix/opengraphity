@@ -63,12 +63,12 @@ export function resolveTemplate(template: string, ctx: Record<string, unknown>):
   // Solo `{a.b.c}`: le graffe di un body JSON (`{"id":"{incident.id}"}`) non sono placeholder.
   return template.replace(/\{([A-Za-z_][\w.]*)\}/g, (_match, path: string) => {
     const parts = path.trim().split('.')
-    let container: Record<string, unknown> | null = ctx
     let value: unknown = ctx
     let exists = true
     for (const part of parts) {
       if (value == null || typeof value !== 'object') { exists = false; break }
-      container = value as Record<string, unknown>
+      // Il contenitore vive quanto il giro: fuori di qui non lo legge nessuno.
+      const container = value as Record<string, unknown>
       if (!Object.prototype.hasOwnProperty.call(container, part)) { exists = false; break }
       value = container[part]
     }

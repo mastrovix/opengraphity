@@ -40,11 +40,11 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
 
   // ── Query 1: target CI + impacted CIs (single traversal) ──────────────
   type Row = { id: string; name: string; lbls: string[]; env: string | null; status: string | null; distance: unknown; pathNames: string[] }
-  let targetName = ''
-  let targetType = ''
-  let targetEnv: string | null = null
-  let targetStatus: string | null = null
-  let impactedRows: Row[] = []
+  let targetName: string
+  let targetType: string
+  let targetEnv: string | null
+  let targetStatus: string | null
+  let impactedRows: Row[]
 
   const s1 = getSession(undefined, 'READ')
   try {
@@ -125,7 +125,7 @@ async function whatIfAnalysis(_: unknown, args: WhatIfArgs, ctx: GraphQLContext)
   // un servizio dipendente (mostrato nel suo dettaglio) diceva «0 services».
   // La sorgente è la stessa del dettaglio del CI: le mappe che lo includono.
   type ServiceRow = { id: string; name: string; env: string | null; status: string | null; ciId: string }
-  let serviceRows: ServiceRow[] = []
+  let serviceRows: ServiceRow[]
   {
     const s4 = getSession(undefined, 'READ')
     try {

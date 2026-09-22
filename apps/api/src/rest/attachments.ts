@@ -125,7 +125,7 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
     mimeType     = info.mimeType
 
     // 1. Validate target and MIME synchronously, before touching the disk.
-    let campoDelModulo: string | null = null
+    let campoDelModulo: string | null
     try {
       target = validateAttachmentTarget(entityType, entityId)
       campoDelModulo = validateAttachmentFieldName(target.entityType, fieldName || undefined)

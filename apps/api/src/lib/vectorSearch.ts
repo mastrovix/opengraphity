@@ -65,7 +65,7 @@ export async function vectorSearchForTenant<T>(
   const { index, embedding, tenantId, limit, where, returns, extra, orderBy, params = {}, what } = opts
   const conditions = `node.tenant_id = $tenantId${where ? ` AND ${where}` : ''}`
   let k = Math.max(firstK(limit), limit)
-  let rows: T[] = []
+  let rows: T[]
   for (;;) {
     rows = await runQuery<T>(session, `
       CALL db.index.vector.queryNodes($index, $k, $embedding)

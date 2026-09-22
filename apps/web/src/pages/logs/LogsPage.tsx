@@ -68,7 +68,7 @@ function riassuntoDati(data: string | null): string {
 }
 
 function LogDataView({ data, notJsonLabel }: { data: string; notJsonLabel: string }) {
-  let pretty: string | null = null
+  let pretty: string | null
   try { pretty = JSON.stringify(JSON.parse(data), null, 2) } catch { pretty = null }
   const preStyle: React.CSSProperties = {
     margin:          0,
