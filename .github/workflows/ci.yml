@@ -100,6 +100,12 @@ jobs:
       - name: Test api (with coverage thresholds)
         run: pnpm --filter @opengraphity/api test:coverage
 
+      # Dopo la misura, non prima: legge il coverage-summary.json che quella
+      # scrive. Controlla che i pavimenti non siano invecchiati e che nessuna
+      # area di src/ sia rimasta senza.
+      - name: Check tetti di copertura
+        run: node scripts/check-tetti-copertura.mjs
+
       - name: Upload api coverage summary
         if: always()
         uses: actions/upload-artifact@v7
