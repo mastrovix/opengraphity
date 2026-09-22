@@ -6,7 +6,9 @@ import { copertura } from '../../copertura.mjs'
 export default defineConfig({
   test: {
     coverage: copertura('packages/web-core'),
-    environment: 'node',
-    include: ['src/**/*.test.ts'],
+    // jsdom e non node: il renderer dei moduli del catalogo vive qui, ed e'
+    // il motivo per cui questo pacchetto esiste — uno solo per web e portale.
+    environment: 'jsdom',
+    include: ['src/**/*.test.{ts,tsx}'],
   },
 })
