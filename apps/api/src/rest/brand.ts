@@ -45,6 +45,12 @@ router.post('/brand/logo', authMiddleware, (req, res) => {
   let tooLarge = false
   let received = false
   busboy.on('file', (field: string, stream: NodeJS.ReadableStream) => {
+    // Defect fixed (22 Sep 2026): the file stream had no 'error' listener. On a
+    // truncated body busboy destroys the open file stream with "Unexpected end
+    // of form"; with no listener that is an uncaught exception, i.e. one cut
+    // upload took down the whole API process. The 400 is answered by the
+    // busboy 'error' handler below, so here the error only needs a listener.
+    stream.on('error', () => undefined)
     if (field !== 'file') { stream.resume(); return }
     received = true
     stream.on('data', (c: Buffer) => chunks.push(c))

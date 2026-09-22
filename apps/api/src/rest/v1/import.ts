@@ -69,6 +69,13 @@ function readCsvUpload(req: Request): Promise<UploadOk | UploadError> {
     }
 
     busboy.on('file', (fieldname: string, fileStream: NodeJS.ReadableStream) => {
+      // A body cut off mid-file makes busboy destroy the file stream with
+      // "Unexpected end of form". Without a listener that 'error' was
+      // unhandled and took the whole API process down; the request itself
+      // is answered by the busboy 'error' handler below (400).
+      fileStream.on('error', (err: unknown) => {
+        settle({ ok: false, status: 400, message: err instanceof Error ? err.message : 'Malformed multipart request' })
+      })
       if (fieldname !== 'file') { fileStream.resume(); return }
       fileReceived = true
       fileStream.on('data', (chunk: Buffer) => { chunks.push(chunk) })

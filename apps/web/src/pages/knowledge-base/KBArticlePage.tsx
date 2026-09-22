@@ -67,8 +67,16 @@ export function KBArticlePage() {
     { variables: { category: article?.category ?? '' }, skip: !article?.category },
   )
 
+  /**
+   * The thank-you lives in `onCompleted`: it used to be chained on the
+   * promise (`void rateArticle(...).then(toast)`), and Apollo 4 rejects that
+   * promise even when `onError` is set — so a failed vote left an unhandled
+   * rejection behind (the chained promise had no handler), on top of the
+   * error notice. `onCompleted` runs only when the vote was recorded.
+   */
   const [rateArticle] = useMutation(RATE_ARTICLE, {
     onError: (e: { message: string }) => showError(e),
+    onCompleted: () => toast.success(t('pages.kb.thanks')),
   })
 
   const related = (relData?.kbArticles?.items ?? []).filter((a) => a.id !== article?.id).slice(0, 4)
@@ -149,14 +157,14 @@ export function KBArticlePage() {
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
             <button
               type="button"
-              onClick={() => void rateArticle({ variables: { id: article.id, helpful: true } }).then(() => toast.success(t('pages.kb.thanks')))}
+              onClick={() => void rateArticle({ variables: { id: article.id, helpful: true } })}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
             >
               <ThumbsUp size={14} color={colors.success} /> {t('pages.kb.yes')} ({article.helpfulCount})
             </button>
             <button
               type="button"
-              onClick={() => void rateArticle({ variables: { id: article.id, helpful: false } }).then(() => toast.success(t('pages.kb.thanks')))}
+              onClick={() => void rateArticle({ variables: { id: article.id, helpful: false } })}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: `1px solid ${colors.border}`, background: colors.white, cursor: 'pointer', fontSize: 'var(--font-size-body)' }}
             >
               <ThumbsDown size={14} color={colors.danger} /> {t('pages.kb.no')} ({article.notHelpfulCount})

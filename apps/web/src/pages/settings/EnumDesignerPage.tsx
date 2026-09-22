@@ -227,6 +227,26 @@ function OwnerBadge({ shipped }: { shipped: boolean }) {
 
 // ── EnumEditor ────────────────────────────────────────────────────────────────
 
+/**
+ * The WHOLE label list, every value in every language, built from the saved
+ * labels with one of them replaced: the mutation replaces the list in bulk,
+ * so sending only the edited label would delete all the others. Empty labels
+ * are left out ("read the value" is the absence of a label).
+ */
+function fullLabelList(
+  values: string[],
+  languages: string[],
+  saved: (value: string, language: string) => string,
+  edited: { value: string; language: string; label: string },
+): Array<{ value: string; language: string; label: string }> {
+  return values.flatMap((value) =>
+    languages.flatMap((language) => {
+      const label = value === edited.value && language === edited.language ? edited.label : saved(value, language)
+      return label.trim() === '' ? [] : [{ value, language, label }]
+    }),
+  )
+}
+
 function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomized }: {
   enumType:     EnumType
   /** Copia del cliente di un vocabolario spedito (U-17): l'originale non è più nell'elenco. */
@@ -505,7 +525,12 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
    */
   const salvaEtichetta = (v: string, lingua: string) => {
     const chiave = `${v}|${lingua}`
-    const nuova  = (labelDrafts[chiave] ?? '').trim()
+    // No draft means the field was not edited (just focused and left, or the
+    // draft was dropped with Escape): there is nothing to write. It used to be
+    // read as an EMPTY label, so tabbing through a field with a saved label
+    // deleted that label on the server.
+    const nuova = labelDrafts[chiave]?.trim()
+    if (nuova === undefined) return
     const scarta = () => setLabelDrafts((d) => { const n = { ...d }; delete n[chiave]; return n })
     if (nuova === etichettaSalvata(v, lingua)) { scarta(); return }
     // G-2: con valori aggiunti o rimossi e non salvati, scrivere le etichette
@@ -515,12 +540,7 @@ function EnumEditor({ enumType: e, customizedFromShipped, onDeleted, onCustomize
     if (dirty) { toast.error(t('pages.dictionary.saveValuesFirst')); return }
     // La lista INTERA, tutti i valori per tutte le lingue, dai valori SALVATI:
     // la mutation sostituisce in blocco, mandarne una sola cancellerebbe le altre.
-    const lista = e.values.flatMap((val) =>
-      lingue.flatMap(({ codice }) => {
-        const etichetta = val === v && codice === lingua ? nuova : etichettaSalvata(val, codice)
-        return etichetta.trim() === '' ? [] : [{ value: val, language: codice, label: etichetta }]
-      }),
-    )
+    const lista = fullLabelList(e.values, lingue.map((l) => l.codice), etichettaSalvata, { value: v, language: lingua, label: nuova })
     scarta()
     void updateLabels({ variables: { id: e.id, input: { valueLabels: lista } } })
   }

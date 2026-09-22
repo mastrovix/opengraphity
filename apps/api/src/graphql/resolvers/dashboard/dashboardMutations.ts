@@ -215,7 +215,7 @@ export async function deleteDashboard(
      * dashboard li lasciava nel grafo — invisibili, perché nessuno li trova
      * più, e per sempre.
      */
-    await session.executeWrite((tx) =>
+    const deleted = await session.executeWrite((tx) =>
       tx.run(
         `MATCH (d:DashboardConfig {id: $id, tenant_id: $tenantId, user_id: $userId})
          OPTIONAL MATCH (w:DashboardWidget {tenant_id: $tenantId, dashboard_id: d.id})
@@ -223,10 +223,18 @@ export async function deleteDashboard(
          WITH d, collect(DISTINCT w) AS widgets, collect(DISTINCT cw) AS customWidgets
          FOREACH (x IN widgets       | DETACH DELETE x)
          FOREACH (x IN customWidgets | DETACH DELETE x)
-         DETACH DELETE d`,
+         DETACH DELETE d
+         RETURN 1 AS ok`,
         { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId },
       ),
     )
+    /**
+     * Nothing matched → say so. Before, an id that was not the caller's own
+     * dashboard (someone else's, another tenant's, or already gone) deleted
+     * nothing and still returned `true`: the page showed «deleted», wrote a
+     * `dashboard.deleted` audit entry, and the dashboard was still there.
+     */
+    if (!deleted.records.length) throw new NotFoundError('Dashboard', args.id)
     void audit(ctx, 'dashboard.deleted', 'DashboardConfig', args.id)
     return true
   } finally {

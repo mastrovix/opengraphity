@@ -22,8 +22,13 @@ export function orderByOrThrow(
 ): string {
   const dir = sortDirection?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'
   if (sortField == null || sortField === '') return defaultOrderBy
-  const col = whitelist[sortField]
-  if (!col) {
+  // Own keys only: `whitelist[sortField]` used to resolve inherited members
+  // too, so `toString` / `constructor` / `__proto__` passed the check and a
+  // function source or "[object Object]" was interpolated into ORDER BY
+  // (a Cypher syntax error instead of the validation error that names the
+  // sortable fields).
+  const col = Object.prototype.hasOwnProperty.call(whitelist, sortField) ? whitelist[sortField] : undefined
+  if (typeof col !== 'string' || col === '') {
     throw new ValidationError(
       `${what}: "${sortField}" is not a sortable field. Sortable: ${Object.keys(whitelist).join(', ')}.`,
       { key: 'errors.sort.unknownField', params: { what, field: sortField, allowed: Object.keys(whitelist).join(', ') } },

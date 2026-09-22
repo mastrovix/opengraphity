@@ -277,6 +277,19 @@ async function storedEventAndConditions(session: Session, label: 'AutoTrigger' |
   return row
 }
 
+/**
+ * The node an UPDATE ... RETURN wrote, or «not found». Before, the callers read
+ * `rows[0]!.props`: renaming a trigger, rule or policy that had been deleted (or
+ * that belongs to another tenant) answered with a TypeError «Cannot read
+ * properties of undefined» — a 500 instead of the not-found every other path of
+ * this file gives.
+ */
+function updatedOrNotFound(rows: { props: Props }[], label: 'AutoTrigger' | 'BusinessRule' | 'SLAPolicyNode', id: string): Props {
+  const props = rows[0]?.props
+  if (!props) throw new ValidationError(`${label} ${id} not found`, { key: 'errors.notFound', params: { entity: label, id } })
+  return props
+}
+
 function assertTimerDelay(value: unknown): number | null {
   if (value == null) return null
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
@@ -485,7 +498,7 @@ async function updateAutoTrigger(_: unknown, args: { id: string; input: Props },
       RETURN properties(t) AS props
     `, params)
     invalidateTriggerCache(ctx.tenantId)
-    return mapTrigger(rows[0]!.props)
+    return mapTrigger(updatedOrNotFound(rows, 'AutoTrigger', args.id))
   }, true)
 }
 
@@ -600,7 +613,7 @@ async function updateBusinessRule(_: unknown, args: { id: string; input: Props }
       RETURN properties(r) AS props
     `, params)
     invalidateRulesCache(ctx.tenantId)
-    return mapRule(rows[0]!.props)
+    return mapRule(updatedOrNotFound(rows, 'BusinessRule', args.id))
   }, true)
 }
 
@@ -794,7 +807,7 @@ async function updateSLAPolicy(_: unknown, args: { id: string; input: Props }, c
       SET ${sets.join(', ')}
       RETURN properties(p) AS props
     `, params)
-    return mapSLAPolicy(rows[0]!.props)
+    return mapSLAPolicy(updatedOrNotFound(rows, 'SLAPolicyNode', args.id))
   }, true)
 }
 

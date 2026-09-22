@@ -20,7 +20,7 @@
  * che esistono e quelli che NASCEREBBERO accettando: è esattamente quello che
  * `saveCatalogForm` leggerà dal grafo dopo l'accettazione.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { GraphQLError } from 'graphql'
 
 // L'id del modello NON si scrive qui: `aiModel.test.ts` è un lint statico che
@@ -120,6 +120,11 @@ vi.mock('../../lib/formDesignProposal.js', async (importOriginal) => ({
 const { proponiModulo, propostaComeDefinizione, MAX_PROMPT_CHARS } = await import('../formDesignerService.js')
 
 const messagesCreate = vi.fn()
+
+// The first proposal loads the whole GraphQL schema (`nomiNonUsabili` imports
+// `schemaCache.js` lazily): seconds on a busy full-suite run. Load it once here,
+// with room, so no single test pays for it against the 5s test timeout.
+beforeAll(async () => { await import('../../lib/schemaCache.js') }, 60_000)
 
 const PROPOSTA = {
   voce: 'Nuovo PC', sezioni: [{ id: 'main', titleIt: 'Dati', titleEn: 'Data', columns: 1, items: [] }],

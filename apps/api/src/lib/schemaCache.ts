@@ -272,10 +272,24 @@ async function buildEntry(tenantId: string): Promise<SchemaCacheEntry> {
 
     // Nessun tipo colpevole isolato (la causa è nella parte spedita o negli
     // enum ITIL): si torna alla rete di prima, lo schema sicuro.
-    const schema = excluded.length
-      ? assemble(kept, baseSDL, itilEnumsSDL, reserved)
-      : assemble(ciTypes.filter((t) => t.scope !== 'tenant'), baseSDL, itilEnumsSDL, reserved)
-    registerCITypes(tenantId, excluded.length ? kept : ciTypes.filter((t) => t.scope !== 'tenant'))
+    //
+    // DEFECT FIXED (22 Sep 2026): when the cause was a SHIPPED type (scope
+    // base/itil, e.g. corrupt data left by a migration), both assemblies below
+    // include that very type and threw again: `getSchemaState` rejected and
+    // every GraphQL request of the tenant answered 500 — the exact state this
+    // net exists to prevent. If even the shipped part does not assemble, serve
+    // the bare base schema (no CI types), as for an unreadable metamodel.
+    let schema: GraphQLSchema
+    let registered: typeof ciTypes
+    try {
+      registered = excluded.length ? kept : ciTypes.filter((t) => t.scope !== 'tenant')
+      schema = assemble(registered, baseSDL, itilEnumsSDL, reserved)
+    } catch (shipped) {
+      logger.error({ tenantId, err: shipped }, 'Tenant schema: even the shipped types do not assemble, serving the bare base schema')
+      registered = []
+      schema = assemble([], baseSDL, itilEnumsSDL, reserved)
+    }
+    registerCITypes(tenantId, registered)
     graphqlSchemaBuildsTotal.inc({})
     const entry: SchemaCacheEntry = { schema, generatedAt: Date.now(), tenantId, degraded: true, reason }
     store(tenantId, startedAt, entry)
