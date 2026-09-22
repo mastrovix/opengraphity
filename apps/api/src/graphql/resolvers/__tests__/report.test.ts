@@ -4,7 +4,8 @@
  * Why these behaviours matter:
  *  - conversations hold questions about a customer's data and the answers the
  *    AI gave: every read, the message list and the delete are matched on the
- *    caller's tenant, or one customer could read or wipe another's history;
+ *    caller's tenant AND on the caller, or one person could read or wipe a
+ *    colleague's history (they were tenant-wide until 23 Sep 2026);
  *  - asking the assistant runs model-generated (guarded) Cypher, so it is
  *    reserved to roles with `report.ai` — a viewer must be refused before any
  *    session is opened or any AI call is made;
@@ -30,7 +31,7 @@ vi.mock('../../../services/reportConversation.js', () => ({ runReportConversatio
 
 const { reportResolvers } = await import('../report.js')
 
-const ctx = (...perms: string[]) => ({ tenantId: 't1', role: 'operator', permissions: new Set(perms) }) as never
+const ctx = (...perms: string[]) => ({ tenantId: 't1', userId: 'u1', role: 'operator', permissions: new Set(perms) }) as never
 const records = (...props: Record<string, unknown>[]) => ({ records: props.map((p) => ({ get: () => p })) })
 
 beforeEach(() => {
@@ -38,24 +39,26 @@ beforeEach(() => {
 })
 
 describe('Query.reportConversations', () => {
-  it('lists the tenant conversations mapped to camelCase', async () => {
+  it("lists the caller's own conversations, mapped to camelCase", async () => {
     txRun.mockResolvedValueOnce(records({ id: 'c1', title: 'Open P1', created_at: '2026-09-01', updated_at: '2026-09-02', extra: 'x' }))
     const out = await reportResolvers.Query.reportConversations(null, null, ctx())
     expect(out).toEqual([{ id: 'c1', title: 'Open P1', createdAt: '2026-09-01', updatedAt: '2026-09-02' }])
-    expect(txRun.mock.calls[0]![1]).toEqual({ tenantId: 't1' })
+    expect(txRun.mock.calls[0]![0]).toContain('user_id: $userId')
+    expect(txRun.mock.calls[0]![1]).toEqual({ tenantId: 't1', userId: 'u1' })
     expect(getSession).toHaveBeenCalledWith(undefined, 'READ')
     expect(close).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('Query.reportConversation', () => {
-  it('returns one conversation of the tenant', async () => {
+  it("returns one of the caller's conversations", async () => {
     txRun.mockResolvedValueOnce(records({ id: 'c1', title: 'T', created_at: 'a', updated_at: 'b' }))
     await expect(reportResolvers.Query.reportConversation(null, { id: 'c1' }, ctx())).resolves.toMatchObject({ id: 'c1', title: 'T' })
-    expect(txRun.mock.calls[0]![1]).toEqual({ id: 'c1', tenantId: 't1' })
+    expect(txRun.mock.calls[0]![0]).toContain('user_id: $userId')
+    expect(txRun.mock.calls[0]![1]).toEqual({ id: 'c1', tenantId: 't1', userId: 'u1' })
   })
 
-  it('returns null for an id that is not in the tenant', async () => {
+  it("returns null for an id that is not the caller's (another tenant or a colleague)", async () => {
     txRun.mockResolvedValueOnce(records())
     await expect(reportResolvers.Query.reportConversation(null, { id: 'other' }, ctx())).resolves.toBeNull()
   })
@@ -83,7 +86,7 @@ describe('Mutation.askReport', () => {
     callReportAI.mockResolvedValueOnce({ id: 'm1', role: 'assistant', content: '3' })
     const out = await reportResolvers.Mutation.askReport(null, { question: 'How many P1?', conversationId: 'c9' }, ctx('report.ai'))
     expect(out).toEqual({ conversationId: 'c9', message: { id: 'm1', role: 'assistant', content: '3' } })
-    expect(runReportConversation.mock.calls[0]![0]).toMatchObject({ tenantId: 't1', question: 'How many P1?', conversationId: 'c9' })
+    expect(runReportConversation.mock.calls[0]![0]).toMatchObject({ tenantId: 't1', userId: 'u1', question: 'How many P1?', conversationId: 'c9' })
     expect(callReportAI).toHaveBeenCalledWith('t1', [{ role: 'user', content: 'before' }], 'How many P1?')
     expect(getSession).toHaveBeenCalledWith(undefined, 'WRITE')
     expect(close).toHaveBeenCalledTimes(1)
@@ -97,19 +100,20 @@ describe('Mutation.askReport', () => {
 })
 
 describe('Mutation.deleteReportConversation', () => {
-  it('deletes the conversation and its messages only within the tenant', async () => {
+  it("deletes the conversation and its messages only if it is the caller's", async () => {
     txRun.mockResolvedValueOnce(records())
     await expect(reportResolvers.Mutation.deleteReportConversation(null, { id: 'c1' }, ctx())).resolves.toBe(true)
     const [cypher, params] = txRun.mock.calls[0]!
     expect(cypher).toContain('DETACH DELETE c, m')
     expect(cypher).toContain('tenant_id: $tenantId')
-    expect(params).toEqual({ id: 'c1', tenantId: 't1' })
+    expect(cypher).toContain('user_id: $userId')
+    expect(params).toEqual({ id: 'c1', tenantId: 't1', userId: 'u1' })
     expect(close).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('ReportConversation.messages', () => {
-  it('returns the tenant messages of the conversation, mapped', async () => {
+  it("returns the messages only of the caller's conversation, mapped", async () => {
     txRun.mockResolvedValueOnce(records(
       { id: 'm1', role: 'user', content: 'q', created_at: '1' },
       { id: 'm2', role: 'assistant', content: 'a', created_at: '2' },
@@ -119,6 +123,7 @@ describe('ReportConversation.messages', () => {
       { id: 'm1', role: 'user', content: 'q', createdAt: '1' },
       { id: 'm2', role: 'assistant', content: 'a', createdAt: '2' },
     ])
-    expect(txRun.mock.calls[0]![1]).toEqual({ id: 'c1', tenantId: 't1' })
+    expect(txRun.mock.calls[0]![0]).toContain('user_id: $userId')
+    expect(txRun.mock.calls[0]![1]).toEqual({ id: 'c1', tenantId: 't1', userId: 'u1' })
   })
 })

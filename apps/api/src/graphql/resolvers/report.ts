@@ -24,14 +24,20 @@ function mapMessage(p: Props) {
   }
 }
 
+/*
+ * Every query below matches on the ASKER as well as the tenant: a report
+ * conversation is private to the person who had it (see
+ * services/reportConversation.ts for why, and for what happens to the
+ * conversations saved before the owner was recorded).
+ */
 async function reportConversations(_: unknown, __: unknown, ctx: GraphQLContext) {
   const session = getSession(undefined, 'READ')
   try {
     const result = await session.executeRead((tx) =>
       tx.run(
-        `MATCH (c:ReportConversation {tenant_id: $tenantId})
+        `MATCH (c:ReportConversation {tenant_id: $tenantId, user_id: $userId})
          RETURN properties(c) AS props ORDER BY c.updated_at DESC`,
-        { tenantId: ctx.tenantId },
+        { tenantId: ctx.tenantId, userId: ctx.userId },
       ),
     )
     return result.records.map((r) => mapConversation(r.get('props') as Props))
@@ -45,9 +51,9 @@ async function reportConversation(_: unknown, args: { id: string }, ctx: GraphQL
   try {
     const result = await session.executeRead((tx) =>
       tx.run(
-        `MATCH (c:ReportConversation {id: $id, tenant_id: $tenantId})
+        `MATCH (c:ReportConversation {id: $id, tenant_id: $tenantId, user_id: $userId})
          RETURN properties(c) AS props`,
-        { id: args.id, tenantId: ctx.tenantId },
+        { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId },
       ),
     )
     if (!result.records.length) return null
@@ -72,6 +78,7 @@ async function askReport(
     const { conversationId, message } = await runReportConversation({
       session,
       tenantId:       ctx.tenantId,
+      userId:         ctx.userId,
       question:       args.question,
       conversationId: args.conversationId,
       ask: (history, question) => callReportAI(ctx.tenantId, history, question),
@@ -87,10 +94,10 @@ async function deleteReportConversation(_: unknown, args: { id: string }, ctx: G
   try {
     await session.executeWrite((tx) =>
       tx.run(
-        `MATCH (c:ReportConversation {id: $id, tenant_id: $tenantId})
+        `MATCH (c:ReportConversation {id: $id, tenant_id: $tenantId, user_id: $userId})
          OPTIONAL MATCH (c)-[:HAS_MESSAGE]->(m:ReportMessage)
          DETACH DELETE c, m`,
-        { id: args.id, tenantId: ctx.tenantId },
+        { id: args.id, tenantId: ctx.tenantId, userId: ctx.userId },
       ),
     )
     return true
@@ -105,9 +112,9 @@ async function reportConversationMessages(parent: { id: string }, _: unknown, ct
   try {
     const result = await session.executeRead((tx) =>
       tx.run(
-        `MATCH (c:ReportConversation {id: $id, tenant_id: $tenantId})-[:HAS_MESSAGE]->(m:ReportMessage)
+        `MATCH (c:ReportConversation {id: $id, tenant_id: $tenantId, user_id: $userId})-[:HAS_MESSAGE]->(m:ReportMessage)
          RETURN properties(m) AS props ORDER BY m.created_at ASC`,
-        { id: parent.id, tenantId: ctx.tenantId },
+        { id: parent.id, tenantId: ctx.tenantId, userId: ctx.userId },
       ),
     )
     return result.records.map((r) => mapMessage(r.get('props') as Props))

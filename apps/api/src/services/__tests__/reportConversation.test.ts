@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { loadRecentHistory, runReportConversation, saveMessage, HISTORY_LIMIT } from '../reportConversation.js'
+import { ensureConversation, loadRecentHistory, runReportConversation, saveMessage, HISTORY_LIMIT } from '../reportConversation.js'
 
 type Run = (q: string, p: Record<string, unknown>) => Promise<{ records: Array<{ get: (k: string) => unknown }> }>
 
@@ -25,30 +25,30 @@ describe('loadRecentHistory (C-10)', () => {
       { role: 'assistant', content: 'a3' }, { role: 'user', content: 'u3' },
       { role: 'assistant', content: 'a2' }, { role: 'user', content: 'u2' },
     ])
-    const history = await loadRecentHistory(s as never, 't1', 'c1', 'msg-new')
+    const history = await loadRecentHistory(s as never, 't1', 'u1', 'c1', 'msg-new')
 
     expect(history.map(m => m.content)).toEqual(['u2', 'a2', 'u3', 'a3'])
     const { q, p } = s.calls[0]!
-    expect(q).toContain('ReportConversation {id: $convId, tenant_id: $tenantId}')
+    expect(q).toContain('ReportConversation {id: $convId, tenant_id: $tenantId, user_id: $userId}')
     expect(q).toContain('WHERE m.id <> $excludeId')
     expect(q).toContain('ORDER BY m.created_at DESC')
     expect(q).toContain('LIMIT toInteger($limit)')
-    expect(p).toEqual({ convId: 'c1', tenantId: 't1', excludeId: 'msg-new', limit: HISTORY_LIMIT })
+    expect(p).toEqual({ convId: 'c1', tenantId: 't1', userId: 'u1', excludeId: 'msg-new', limit: HISTORY_LIMIT })
   })
 })
 
 describe('saveMessage', () => {
   it('throws when the conversation is not in the tenant (no silent "saved" of a dangling message)', async () => {
     const s = fakeSession(() => [])
-    await expect(saveMessage(s as never, 't1', 'ghost', 'user', 'ciao')).rejects.toThrow('ReportConversation ghost not found')
+    await expect(saveMessage(s as never, 't1', 'u1', 'ghost', 'user', 'ciao')).rejects.toThrow('ReportConversation ghost not found')
   })
 
   it('creates the message and bumps the conversation in the same statement', async () => {
     const s = fakeSession(() => [{ id: 'x' }])
-    const m = await saveMessage(s as never, 't1', 'c1', 'assistant', 'risposta')
+    const m = await saveMessage(s as never, 't1', 'u1', 'c1', 'assistant', 'risposta')
     expect(m).toMatchObject({ role: 'assistant', content: 'risposta' })
     expect(s.calls[0]!.q).toContain('SET c.updated_at = $now')
-    expect(s.calls[0]!.p).toMatchObject({ convId: 'c1', tenantId: 't1', role: 'assistant', content: 'risposta', id: m.id })
+    expect(s.calls[0]!.p).toMatchObject({ convId: 'c1', tenantId: 't1', userId: 'u1', role: 'assistant', content: 'risposta', id: m.id })
   })
 })
 
@@ -63,7 +63,7 @@ describe('runReportConversation — the shared turn used by GraphQL and SSE', ()
     const ask = vi.fn().mockResolvedValue('ecco la risposta')
 
     const out = await runReportConversation({
-      session: s as never, tenantId: 't1', question: 'quanti incidenti?', conversationId: null,
+      session: s as never, tenantId: 't1', userId: 'u1', question: 'quanti incidenti?', conversationId: null,
       ask, onConversationCreated: onCreated,
     })
 
@@ -85,10 +85,10 @@ describe('runReportConversation — the shared turn used by GraphQL and SSE', ()
   })
 
   it('existing conversation: no create, no notification', async () => {
-    const s = fakeSession((q) => (q.includes('CREATE (m:ReportMessage') ? [{ id: 'x' }] : []))
+    const s = fakeSession((q) => (q.includes('CREATE (m:ReportMessage') || q.includes('RETURN c.id AS id') ? [{ id: 'x' }] : []))
     const onCreated = vi.fn()
     const out = await runReportConversation({
-      session: s as never, tenantId: 't1', question: 'q', conversationId: 'c-existing',
+      session: s as never, tenantId: 't1', userId: 'u1', question: 'q', conversationId: 'c-existing',
       ask: async () => 'r', onConversationCreated: onCreated,
     })
     expect(out.conversationId).toBe('c-existing')
@@ -97,11 +97,56 @@ describe('runReportConversation — the shared turn used by GraphQL and SSE', ()
   })
 
   it('a failing ask propagates: no assistant message is saved', async () => {
-    const s = fakeSession((q) => (q.includes('CREATE (m:ReportMessage') ? [{ id: 'x' }] : []))
+    const s = fakeSession((q) => (q.includes('CREATE (m:ReportMessage') || q.includes('RETURN c.id AS id') ? [{ id: 'x' }] : []))
     await expect(runReportConversation({
-      session: s as never, tenantId: 't1', question: 'q', conversationId: 'c1',
+      session: s as never, tenantId: 't1', userId: 'u1', question: 'q', conversationId: 'c1',
       ask: async () => { throw new Error('overloaded') },
     })).rejects.toThrow('overloaded')
     expect(s.calls.filter(c => c.p['role'] === 'assistant')).toHaveLength(0)
+  })
+})
+
+/*
+ * A report conversation belongs to the person who started it. Before 23 Sep
+ * 2026 it was scoped to the tenant only: anyone in the tenant could list, read,
+ * continue and delete everybody else's — and a question asked of the AI can
+ * carry things the asker would not show a colleague.
+ */
+describe('ensureConversation — a conversation is private to its owner', () => {
+  it('a new conversation is stamped with the asker, so only they can find it again', async () => {
+    const s = fakeSession(() => [])
+    const out = await ensureConversation(s as never, 't1', 'u1', null, 'how many P1 this week?')
+    expect(out.created).toBe(true)
+    const create = s.calls.find(c => c.q.includes('CREATE (:ReportConversation'))!
+    expect(create.q).toContain('user_id: $userId')
+    expect(create.p).toMatchObject({ id: out.conversationId, tenantId: 't1', userId: 'u1' })
+  })
+
+  it("continuing someone else's conversation is 'not found' and writes nothing", async () => {
+    // The lookup is scoped to the asker: another user's id matches no row.
+    const s = fakeSession(() => [])
+    await expect(ensureConversation(s as never, 't1', 'intruder', 'c-of-alice', 'q'))
+      .rejects.toMatchObject({ extensions: { code: 'NOT_FOUND' } })
+    expect(s.calls).toHaveLength(1)
+    expect(s.calls[0]!.q).toContain('{id: $id, tenant_id: $tenantId, user_id: $userId}')
+    expect(s.calls[0]!.p).toEqual({ id: 'c-of-alice', tenantId: 't1', userId: 'intruder' })
+    expect(s.executeWrite).not.toHaveBeenCalled()
+  })
+
+  it('the full turn stops before saving the question or calling the AI', async () => {
+    // Without this, the intruder's question would be appended to Alice's
+    // conversation and Alice's history would be sent to the AI on their behalf.
+    const s = fakeSession(() => [])
+    const ask = vi.fn()
+    await expect(runReportConversation({
+      session: s as never, tenantId: 't1', userId: 'intruder', question: 'what did Alice ask?', conversationId: 'c-of-alice', ask,
+    })).rejects.toThrow('ReportConversation c-of-alice not found')
+    expect(ask).not.toHaveBeenCalled()
+    expect(s.calls.some(c => c.q.includes('CREATE (m:ReportMessage'))).toBe(false)
+  })
+
+  it('continuing your own conversation reuses it', async () => {
+    const s = fakeSession(() => [{ id: 'c1' }])
+    await expect(ensureConversation(s as never, 't1', 'u1', 'c1', 'q')).resolves.toEqual({ conversationId: 'c1', created: false })
   })
 })
