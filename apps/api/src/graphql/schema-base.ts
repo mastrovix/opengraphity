@@ -755,7 +755,7 @@ export function buildBaseSDL(): string {
     createKBArticle(title: String!, body: String!, category: String!, tags: [String!], status: String): KBArticle!
     # AI: bozza KB da incident risolto — crea un articolo in stato iniziale (draft)
     createKbDraftFromIncident(incidentId: ID!): KBArticle!
-    updateKBArticle(id: ID!, title: String, body: String, category: String, tags: [String!]): KBArticle!
+    updateKBArticle(id: ID!, title: String, body: String, category: String, tags: [String!], expectedVersion: Int): KBArticle!
     restoreKBArticleVersion(articleId: ID!, version: Int!): KBArticle!
     createOLAContract(input: CreateOLAContractInput!): OLAContract!
     updateOLAContract(id: ID!, input: UpdateOLAContractInput!): OLAContract!
