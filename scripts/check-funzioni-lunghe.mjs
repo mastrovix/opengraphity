@@ -69,9 +69,9 @@ const ANONIME_MASSIME = 9
  */
 const NOTE = new Map([
   ['apps/web/src/pages/settings/catalogForm/FormBuilderPanel.tsx#FormBuilderPanel', 266],
-  ['apps/api/src/services/ticketImportService.ts#importTickets', 235],
+  ['apps/api/src/services/ticketImportService.ts#importTickets', 193],
   ['apps/web/src/components/ReportSectionBuilder.tsx#ReportSectionBuilder', 204],
-  ['apps/web/src/pages/reports/ReportsPage.tsx#ReportsPage', 194],
+  ['apps/web/src/pages/reports/ReportsPage.tsx#ReportsPage', 192],
   ['apps/web/src/pages/incidents/IncidentDetailPage.tsx#IncidentDetailPage', 186],
   ['apps/web/src/pages/settings/EnumDesignerPage.tsx#EnumEditor', 179],
   ['apps/web/src/components/topology/TopologyGraph.tsx#TopologyGraph', 171],
