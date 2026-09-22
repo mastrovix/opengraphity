@@ -150,12 +150,39 @@ export default tseslint.config(
      * guarda anche gli antenati e su questo repository trovava quarantadue
      * controlli muti. Sistemati tutti e quarantadue.
      *
-     * `prefer-tag-over-role` (100) — fuori da `recommended`, e chiede di
-     * sostituire `role="listbox"`/`"dialog"`/`"status"` con i tag nativi. Su
-     * una combobox costruita a mano `<select>` non e' equivalente, e la
-     * sostituzione sarebbe una riscrittura dei componenti, non
-     * un'accessibilita' guadagnata. Da decidere guardando i cento casi, non da
-     * qui.
+     * `prefer-tag-over-role` (100) — fuori da `recommended`. Guardati tutti e
+     * cento, uno per uno, il 22 set 2026:
+     *
+     *   46  role="status"   -> vuole <output>. Ma `role="status"` da' GIA' la
+     *                         stessa semantica: il guadagno di accessibilita'
+     *                         e' zero, e <output> e' `display: inline`, quindi
+     *                         sposterebbe il layout in quarantasei punti.
+     *   17  role="group"    -> vuole <details>/<fieldset>/<optgroup>/<address>.
+     *                         Nessuno dei quattro e' un raggruppamento generico.
+     *    9  griglie          -> table/row/cell/columnheader: riscrivere la
+     *                         griglia, non aggiungere accessibilita'.
+     *    9  combobox         -> listbox/option/radio costruite a mano, dove
+     *                         <select> non fa la stessa cosa.
+     *    6  role="dialog"   -> <dialog> vuole `showModal()` imperativo, e i
+     *                         modali qui vivono nello stato di React.
+     *    5  role="img"      -> su un <svg> in linea `role="img"` E' la pratica
+     *                         corretta; <img alt=…> no.
+     *    5  role="button"   -> TRE sono `div` di proposito perche' contengono
+     *                         un <button> annidato, e un bottone dentro un
+     *                         bottone non e' HTML valido: il commento accanto
+     *                         lo dice da prima. Gli altri due conterrebbero
+     *                         <div>, che dentro un <button> non e' valido a
+     *                         sua volta.
+     *    3  presentation/region
+     *
+     * Cioe': su cento, zero difetti di accessibilita' e cento riscritture. La
+     * regola resta spenta, e questa e' la terza volta che se ne parla — le due
+     * prime senza questo censimento.
+     *
+     * Guardandoli pero' e' saltato fuori un difetto vero, che la regola non
+     * vedeva: cinque copie SCRITTE A MANO di «Invio o Spazio attiva», due
+     * delle quali senza il guardrail sui controlli annidati. Vedi
+     * `scripts/check-attiva-da-tastiera.mjs`.
      *
      * `no-onchange` (58) e `accessible-emoji` (8) — DEPRECATE e fuori da
      * `recommended`. La prima diceva di preferire `onBlur` a `onChange`, che in

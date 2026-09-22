@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { palette } from '@/lib/tokens'
+import { keyActivate } from '@/lib/a11y'
 
 export interface SimpleColumn<T> {
   key:     keyof T & string
@@ -44,7 +45,7 @@ export function SimpleTable<T extends { id: string }>({ columns, rows, onRowClic
             onClick={onRowClick ? () => onRowClick(row) : undefined}
             // Clickable rows are reachable and activatable from the keyboard (E-14).
             tabIndex={onRowClick ? 0 : undefined}
-            onKeyDown={onRowClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(row) } } : undefined}
+            onKeyDown={onRowClick ? keyActivate(() => onRowClick(row)) : undefined}
             className={onRowClick ? 'hover-bg' : undefined}
             style={{ cursor: onRowClick ? 'pointer' : undefined, borderBottom: `1px solid ${palette.neutral.borderLight}` }}
           >

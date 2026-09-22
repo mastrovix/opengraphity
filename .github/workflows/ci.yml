@@ -78,6 +78,9 @@ jobs:
       - name: Check etichette dei controlli
         run: node scripts/check-etichette-controlli.mjs
 
+      - name: Check «Invio o Spazio attiva»
+        run: node scripts/check-attiva-da-tastiera.mjs
+
       - name: Lint
         run: pnpm lint
 
