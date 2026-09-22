@@ -36,7 +36,7 @@
  * `--composte` elenca le forme di interpolazione per frequenza.
  * Richiede il Neo4j dello stack locale in piedi (container `infra-neo4j-1`).
  */
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync, writeFileSync, existsSync } from 'node:fs'
 import { join, resolve, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
@@ -433,6 +433,122 @@ for (const dir of SCAN) {
   }
 }
 
+
+// ── LE COSTANTI DEL MODULO ────────────────────────────────────────────────────
+/**
+ * UN PEZZO DI QUERY CHE VIVE IN UNA COSTANTE (22 set 2026).
+ *
+ * Duecentoquindici query restavano fuori perimetro per «identificatore in
+ * posizione non riconosciuta»: dentro il template c'era `${NOME}`, e il
+ * lettore non sapeva che cosa fosse. Guardandoli uno per uno, la maggior parte
+ * non erano variabili di giro ma COSTANTI del modulo — pezzi di Cypher scritti
+ * una volta e riusati:
+ *
+ *     const CHANGE_NOT_DELETED = 'coalesce(c.deleted, false) = false'
+ *     export const EVENT_ROW_RETURN = `RETURN ${EVENT_ROW_KEYS.join(', ')}`
+ *
+ * Sono esattamente ciò che si vuole verificare, ed erano l'unica cosa che
+ * impediva a quelle query di ricevere un EXPLAIN. Adesso si leggono: dal file
+ * stesso, e dal file da cui sono importate.
+ *
+ * ## Quello che NON si risolve, di proposito
+ * Una costante il cui valore contiene a sua volta un `${…}` che non si è
+ * saputo sciogliere: sostituirla darebbe a Neo4j un testo con dentro le graffe
+ * di JavaScript, cioè un errore inventato da noi su una query sana. E niente
+ * che non sia un `const` di primo livello: una variabile di giro (`where`,
+ * `whereClause`, `sets.join(', ')`) è costruita a tempo di esecuzione, e
+ * indovinarne il valore sarebbe verificare una query che nessuno esegue.
+ */
+
+/** Il valore di un letterale che comincia a `da`, o `null`. Gestisce ', " e i template. */
+function letteraleDa(testo, da) {
+  const apre = testo[da]
+  if (apre !== "'" && apre !== '"' && apre !== '`') return null
+  let out = ''
+  for (let i = da + 1; i < testo.length; i++) {
+    const ch = testo[i]
+    if (ch === '\\') { out += testo[i + 1] ?? ''; i++; continue }
+    if (ch === apre) return { valore: out, fine: i + 1 }
+    out += ch
+  }
+  return null
+}
+
+/** `const NOME = <letterale>` e `const NOME = { chiave: <letterale>, … }` di un file. */
+function costantiDelFile(file) {
+  const memo = costantiDelFile.memo ?? (costantiDelFile.memo = new Map())
+  if (memo.has(file)) return memo.get(file)
+  const fuori = new Map()
+  let testo
+  try { testo = readFileSync(file, 'utf8') } catch { memo.set(file, fuori); return fuori }
+
+  /*
+   * SENZA SPAZI DAVANTI: solo il PRIMO LIVELLO del modulo.
+   *
+   * La prima versione accettava un `const` a qualunque rientro, quindi
+   * prendeva anche quelli DENTRO le funzioni — `const where = ''`,
+   * `const whereClause = …` — che sono esattamente i valori di giro che qui
+   * non si vogliono indovinare. Il risultato si e' visto subito: query
+   * ricostruite come `MATCH (e:Event) WHERE` e `WHERE ( AND m.tenant_id = …`,
+   * cioe' errori inventati da noi su query sane.
+   */
+  for (const m of testo.matchAll(/(?:^|\n)(?:export\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*/g)) {
+    const nome = m[1]
+    const da = m.index + m[0].length
+    const lit = letteraleDa(testo, da)
+    if (lit) { fuori.set(nome, lit.valore); continue }
+    // Un oggetto di letterali: `{ A: 'x', B: 'y' }`, anche con `as const`.
+    if (testo[da] !== '{') continue
+    const chiude = testo.indexOf('}', da)
+    if (chiude < 0) continue
+    const corpo = testo.slice(da + 1, chiude)
+    if (corpo.includes('{')) continue
+    for (const c of corpo.matchAll(/([A-Za-z_][A-Za-z0-9_]*)\s*:\s*('[^']*'|"[^"]*"|`[^`$]*`)/g)) {
+      fuori.set(`${nome}.${c[1]}`, c[2].slice(1, -1))
+    }
+  }
+  memo.set(file, fuori)
+  return fuori
+}
+
+/** `import { A, B } from './x.js'` → nome importato → file sorgente vero. */
+function importazioniDelFile(file) {
+  const memo = importazioniDelFile.memo ?? (importazioniDelFile.memo = new Map())
+  if (memo.has(file)) return memo.get(file)
+  const fuori = new Map()
+  let testo
+  try { testo = readFileSync(file, 'utf8') } catch { memo.set(file, fuori); return fuori }
+  for (const m of testo.matchAll(/import\s*\{([^}]*)\}\s*from\s*'([^']+)'/g)) {
+    const da = m[2]
+    // Solo i moduli RELATIVI: un pacchetto del workspace passerebbe per il
+    // suo `dist`, che è generato e può essere vecchio.
+    if (!da.startsWith('.')) continue
+    const sorgente = resolve(dirname(file), da.replace(/\.js$/, '.ts'))
+    if (!existsSync(sorgente)) continue
+    for (const nome of m[1].split(',')) {
+      const pulito = nome.trim().split(/\s+as\s+/)[0]?.trim()
+      if (pulito) fuori.set(pulito, sorgente)
+    }
+  }
+  memo.set(file, fuori)
+  return fuori
+}
+
+/**
+ * Il valore di `${NOME}` o `${OGGETTO.CHIAVE}` visto da `file`, o `null`.
+ * Un solo salto: la costante sta nel file o nel file da cui è importata.
+ */
+function valoreDellaCostante(file, nome) {
+  const qui = costantiDelFile(file)
+  if (qui.has(nome)) return qui.get(nome)
+  const importate = importazioniDelFile(file)
+  const radice = nome.split('.')[0]
+  const altrove = importate.get(radice)
+  if (!altrove) return null
+  const la = costantiDelFile(altrove)
+  return la.has(nome) ? la.get(nome) : null
+}
+
 /** L'etichetta che si mette al posto di un `${…}` in posizione di etichetta. */
 const ETICHETTA_FINTA = 'Incident'
 
@@ -491,6 +607,18 @@ for (const c of daRisolvere) {
     if (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(testo) && inPosizioneDiEtichetta(c.query, sp.inizio)) {
       pezzi.push({ tipo: 'testo', valore: ETICHETTA_FINTA })
       continue
+    }
+
+    // Una costante del modulo (o importata da un file vicino): è un pezzo di
+    // query scritto una volta e riusato, ed è ciò che si vuole verificare.
+    if (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(testo)) {
+      const valore = valoreDellaCostante(c.file, testo)
+      // Se il valore porta a sua volta un `${…}` non si sostituisce: darebbe a
+      // Neo4j le graffe di JavaScript, cioè un errore inventato da noi.
+      if (valore != null && !valore.includes('${')) {
+        pezzi.push({ tipo: 'testo', valore })
+        continue
+      }
     }
     resa = /^[A-Za-z_][A-Za-z0-9_.]*$/.test(testo)
       ? 'identificatore in posizione non riconosciuta'
@@ -646,7 +774,7 @@ if (totaleFuori > 0) {
  * Il tetto si abbassa quando si guadagna terreno. Non si alza per far passare
  * la giornata.
  */
-const TETTO_FUORI_PERIMETRO = 266
+const TETTO_FUORI_PERIMETRO = 201
 if (totaleFuori > TETTO_FUORI_PERIMETRO) {
   console.error(`\ncheck-cypher: le query fuori perimetro sono ${totaleFuori}, il tetto è ${TETTO_FUORI_PERIMETRO}.`)
   console.error('Una query che questo controllo non vede non riceve nemmeno la verifica del tenant_id.')
