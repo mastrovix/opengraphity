@@ -55,7 +55,13 @@ describe('righe di tabella: scrittura e filtro parlano la stessa lingua', () => 
     await writeFormTables(session, 't1', 'req-1', [
       { field: 'persone_da_abilitare', rows: [{ persona: 'Ada Lovelace', giorni: 3 }] },
     ])
-    const scritte = Object.keys(scritture[0]!.params['values'] as Record<string, unknown>)
+    /*
+     * Una query sola con tutte le righe nell'UNWIND (22 set 2026): prima era
+     * una scrittura per riga. Quello che il test pretende non cambia — la
+     * proprietà scritta è quella che il filtro cerca — cambia dove leggerla.
+     */
+    const righe = scritture[0]!.params['righe'] as Array<{ field: string; index: number; values: Record<string, unknown> }>
+    const scritte = Object.keys(righe[0]!.values)
     expect(scritte).toEqual(['persona', 'giorni'])
 
     const filtri = formTableFilterFields([campoTabella])
@@ -84,14 +90,36 @@ describe('righe di tabella: scrittura e filtro parlano la stessa lingua', () => 
     }
   })
 
+  it('più tabelle finiscono nella STESSA query, ognuna col suo campo', async () => {
+    scritture.length = 0
+    await writeFormTables(session, 't1', 'req-1', [
+      { field: 'persone_da_abilitare', rows: [{ persona: 'Ada' }] },
+      { field: 'licenze',              rows: [{ nome: 'CAD' }, { nome: 'GIS' }] },
+    ])
+    expect(scritture).toHaveLength(1)
+    const righe = scritture[0]!.params['righe'] as Array<{ field: string; index: number }>
+    expect(righe.map((r) => [r.field, r.index])).toEqual([
+      ['persone_da_abilitare', 0], ['licenze', 0], ['licenze', 1],
+    ])
+  })
+
+  it('nessuna riga, nessuna query: non si scrive il vuoto', async () => {
+    scritture.length = 0
+    await writeFormTables(session, 't1', 'req-1', [{ field: 'licenze', rows: [] }])
+    expect(scritture).toHaveLength(0)
+  })
+
   it('la riga porta il tenant e l\'ordine in cui è stata scritta', async () => {
     scritture.length = 0
     await writeFormTables(session, 't1', 'req-1', [
       { field: 'persone_da_abilitare', rows: [{ persona: 'Ada' }, { persona: 'Grace' }] },
     ])
-    expect(scritture).toHaveLength(2)
-    expect(scritture[0]!.params['index']).toBe(0)
-    expect(scritture[1]!.params['index']).toBe(1)
+    // Una query sola, e l'ordine vive nelle righe che porta dentro.
+    expect(scritture).toHaveLength(1)
+    const righe = scritture[0]!.params['righe'] as Array<{ field: string; index: number; values: Record<string, unknown> }>
+    expect(righe.map((r) => r.index)).toEqual([0, 1])
+    expect(righe.map((r) => r.values['persona'])).toEqual(['Ada', 'Grace'])
+    expect(righe.every((r) => r.field === 'persone_da_abilitare')).toBe(true)
     expect(scritture[0]!.query).toContain('r:FormTableRow {tenant_id: $tenantId}')
     expect(scritture[0]!.params['tenantId']).toBe('t1')
   })
