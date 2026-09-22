@@ -348,7 +348,7 @@ function enumValuesOf(raw: string[] | string | null | undefined): string[] {
     // C-28: il messaggio dice che è un JSON corrotto, non un SyntaxError nudo.
     let parsed: unknown
     try { parsed = JSON.parse(raw) } catch (e) {
-      throw new Error(`enum values are not valid JSON (${e instanceof Error ? e.message : String(e)}): ${raw.slice(0, 80)}`)
+      throw new Error(`enum values are not valid JSON (${e instanceof Error ? e.message : String(e)}): ${raw.slice(0, 80)}`, { cause: e })
     }
     if (!Array.isArray(parsed)) throw new Error(`enum values are not a JSON array: ${raw.slice(0, 80)}`)
     return parsed as string[]

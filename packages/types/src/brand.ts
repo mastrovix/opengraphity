@@ -60,7 +60,7 @@ export function parseTenantBrand(raw: unknown, tenantId: string): TenantBrand & 
   if (raw == null) return { ...FACTORY_TENANT_BRAND, isDefault: true }
   let parsed: unknown
   try { parsed = JSON.parse(String(raw)) }
-  catch (e) { throw new Error(`Tenant ${tenantId}: brand is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
+  catch (e) { throw new Error(`Tenant ${tenantId}: brand is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e }) }
   const o = (parsed ?? {}) as Record<string, unknown>
   const logo = o['logo'] as Record<string, unknown> | null | undefined
   return {

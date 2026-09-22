@@ -217,7 +217,7 @@ function parseSettings(raw: unknown, tenantId: string, ruleKey: string): Anomaly
   try {
     return JSON.parse(String(raw)) as AnomalyRuleSettings
   } catch (e) {
-    throw new Error(`Tenant ${tenantId}: AnomalyRuleConfig ${ruleKey} is not valid JSON (${e instanceof Error ? e.message : String(e)})`)
+    throw new Error(`Tenant ${tenantId}: AnomalyRuleConfig ${ruleKey} is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e })
   }
 }
 

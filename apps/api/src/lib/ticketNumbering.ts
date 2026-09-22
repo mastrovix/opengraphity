@@ -109,7 +109,7 @@ async function loadNumbering(tenantId: string): Promise<TicketNumbering & { isDe
     if (raw == null) return { ...FACTORY_TICKET_NUMBERING, isDefault: true }
     let parsed: unknown
     try { parsed = JSON.parse(String(raw)) }
-    catch (e) { throw new Error(`Tenant ${tenantId}: ticket_numbering is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
+    catch (e) { throw new Error(`Tenant ${tenantId}: ticket_numbering is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e }) }
     return { ...assertTicketNumbering(parsed), isDefault: false }
   } finally {
     await session.close()

@@ -127,7 +127,7 @@ function parseThresholds(raw: unknown, tenantId: string, bands: readonly string[
   let parsed: unknown = raw
   if (typeof raw === 'string') {
     try { parsed = JSON.parse(raw) }
-    catch (e) { throw new Error(`Tenant ${tenantId}: risk_band_thresholds is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
+    catch (e) { throw new Error(`Tenant ${tenantId}: risk_band_thresholds is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e }) }
   }
   if (!Array.isArray(parsed) || parsed.length === 0) {
     throw new Error(`Tenant ${tenantId}: risk_band_thresholds must be a non-empty list of {band, upTo}`)

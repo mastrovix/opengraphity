@@ -88,7 +88,7 @@ async function loadPolicy(tenantId: string): Promise<AttachmentPolicy & { isDefa
     if (row.raw == null) return { ...FACTORY_ATTACHMENT_POLICY, extensions: [...FACTORY_ATTACHMENT_POLICY.extensions], isDefault: true }
     let parsed: unknown
     try { parsed = JSON.parse(String(row.raw)) }
-    catch (e) { throw new Error(`Tenant ${tenantId}: attachment_policy is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
+    catch (e) { throw new Error(`Tenant ${tenantId}: attachment_policy is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e }) }
     // Un tetto di piattaforma abbassato dopo il salvataggio vale subito: la
     // scelta del cliente non può superarlo, e l'errore dice perché.
     return { ...assertAttachmentPolicy(parsed), isDefault: false }

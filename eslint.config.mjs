@@ -43,26 +43,25 @@ export default tseslint.config(
       'no-console': 'error',
 
       /*
-       * LE DUE REGOLE NUOVE DI ESLINT 10, SPENTE QUI E ACCESE A PARTE.
+       * LE DUE REGOLE NUOVE DI ESLINT 10.
        *
-       * `recommended` della 10 ne porta due che la 8 non aveva, e insieme
-       * fanno 69 segnalazioni su codice che non e' cambiato:
+       * `recommended` della 10 ne porta due che la 8 non aveva, e all'arrivo
+       * facevano 69 segnalazioni su codice che non era cambiato. Restarono
+       * spente perche' accenderle NELLA migrazione avrebbe cambiato insieme
+       * il formato E le regole: davanti a un rosso non si sarebbe saputo da
+       * dove veniva.
        *
-       *   preserve-caught-error  47 — un `throw new Error(...)` dentro un
-       *                               `catch` senza `{ cause: err }`: la
-       *                               causa originale si perde
-       *   no-useless-assignment  22 — un valore assegnato e mai riletto
+       * `preserve-caught-error` e' accesa dal 22 set 2026, e le sue 47 sono
+       * sistemate: ogni `throw new Error(...)` dentro un `catch` porta
+       * `{ cause: err }`. Il messaggio conteneva gia' il TESTO della causa —
+       * si perdeva la causa come OGGETTO, cioe' la sua pila e i suoi campi,
+       * che in produzione sono quello che serve davvero.
        *
-       * Sono ENTRAMBE sensate, e la prima e' persino importante per chi
-       * legge un errore in produzione. Ma accenderle QUI vorrebbe dire che
-       * questa migrazione cambia insieme il formato E le regole — e allora
-       * non si potrebbe piu' verificare: davanti a un rosso non si saprebbe
-       * se viene dal codice o dal passaggio alla configurazione piatta.
-       *
-       * Quindi qui si traduce e basta. Accenderle e sistemare le 69 e' un
-       * lavoro suo, che si fa dopo e si legge da solo.
+       * `no-useless-assignment` resta spenta: 22 segnalazioni, e ognuna va
+       * guardata da sola perche' «assegnato e mai riletto» a volte e'
+       * un'inizializzazione voluta. E' lavoro suo, non un rinvio.
        */
-      'preserve-caught-error': 'off',
+      'preserve-caught-error': 'error',
       'no-useless-assignment': 'off',
     },
   },

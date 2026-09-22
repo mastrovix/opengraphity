@@ -64,7 +64,7 @@ export function reservedNamesFromSDL(...sdl: string[]): ReservedSchemaNames {
       // Non si ripara: se l'SDL di base non si legge, l'elenco riservato
       // sarebbe incompleto e la porta lascerebbe passare un nome che corrompe
       // lo schema in silenzio. Meglio fermarsi qui.
-      throw new Error(`reservedNamesFromSDL: SDL cannot be parsed (${e instanceof Error ? e.message : String(e)})`)
+      throw new Error(`reservedNamesFromSDL: SDL cannot be parsed (${e instanceof Error ? e.message : String(e)})`, { cause: e })
     }
     for (const def of doc.definitions) {
       if (!TYPE_KINDS.has(def.kind)) continue

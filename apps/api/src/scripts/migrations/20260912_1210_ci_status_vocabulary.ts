@@ -40,7 +40,7 @@ function parseValues(raw: unknown, what: string): string[] {
   if (typeof raw === 'string') {
     let parsed: unknown
     try { parsed = JSON.parse(raw) }
-    catch (e) { throw new Error(`${what} is corrupt JSON (${e instanceof Error ? e.message : String(e)}); fix it before migrating`) }
+    catch (e) { throw new Error(`${what} is corrupt JSON (${e instanceof Error ? e.message : String(e)}); fix it before migrating`, { cause: e }) }
     if (!Array.isArray(parsed) || parsed.some((v) => typeof v !== 'string')) throw new Error(`${what} is not a JSON list of strings; fix it before migrating`)
     return parsed as string[]
   }

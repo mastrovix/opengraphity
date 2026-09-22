@@ -54,7 +54,7 @@ export function resolveTenantTimezone(tenant: TenantRow): string {
       new Intl.DateTimeFormat('en-US', { timeZone: tenant.timezone })
       return tenant.timezone
     } catch (err) {
-      throw new Error(`Tenant ${tenant.id} has an invalid timezone "${tenant.timezone}": ${err instanceof Error ? err.message : String(err)}`)
+      throw new Error(`Tenant ${tenant.id} has an invalid timezone "${tenant.timezone}": ${err instanceof Error ? err.message : String(err)}`, { cause: err })
     }
   }
   throw new Error(

@@ -35,7 +35,7 @@ export const apiKeyExpiryRateLimit: Migration = {
       try {
         iso = normalizeApiKeyExpiry(r.get('expiresAt'), (r.get('timezone') as string | null) ?? null)
       } catch (err) {
-        throw new Error(`ApiKey ${id} (tenant ${String(r.get('tenantId'))}): expires_at ${JSON.stringify(r.get('expiresAt'))} cannot be converted — ${err instanceof Error ? err.message : String(err)}`)
+        throw new Error(`ApiKey ${id} (tenant ${String(r.get('tenantId'))}): expires_at ${JSON.stringify(r.get('expiresAt'))} cannot be converted — ${err instanceof Error ? err.message : String(err)}`, { cause: err })
       }
       await session.run('MATCH (k:ApiKey {id: $id}) SET k.expires_at = $iso', { id, iso })
       converted++

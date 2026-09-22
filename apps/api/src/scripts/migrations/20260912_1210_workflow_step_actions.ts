@@ -39,7 +39,7 @@ function parseActions(raw: unknown, what: string): ActionLike[] {
   if (typeof raw !== 'string') throw new Error(`${what} is not a JSON string (got ${typeof raw}); fix it before migrating`)
   let parsed: unknown
   try { parsed = JSON.parse(raw) }
-  catch (e) { throw new Error(`${what} is corrupt JSON (${e instanceof Error ? e.message : String(e)}); fix it before migrating`) }
+  catch (e) { throw new Error(`${what} is corrupt JSON (${e instanceof Error ? e.message : String(e)}); fix it before migrating`, { cause: e }) }
   if (!Array.isArray(parsed)) throw new Error(`${what} is not a JSON list; fix it before migrating`)
   return parsed as ActionLike[]
 }

@@ -130,7 +130,7 @@ export function normalizeKbTags(raw: unknown): string[] {
   if (typeof raw !== 'string') throw new Error(`[kb] tags has unexpected type ${typeof raw}`)
   let parsed: unknown
   try { parsed = JSON.parse(raw) }
-  catch (e) { throw new Error(`[kb] tags is not valid JSON: ${e instanceof Error ? e.message : String(e)}`) }
+  catch (e) { throw new Error(`[kb] tags is not valid JSON: ${e instanceof Error ? e.message : String(e)}`, { cause: e }) }
   if (!Array.isArray(parsed)) throw new Error('[kb] tags JSON must be an array')
   return parsed.map(String)
 }

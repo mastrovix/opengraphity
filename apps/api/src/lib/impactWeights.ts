@@ -98,7 +98,7 @@ async function loadWeights(tenantId: string): Promise<ImpactWeights> {
     if (raw == null) return { ...FACTORY_IMPACT_WEIGHTS, isDefault: true }
     let parsed: unknown
     try { parsed = JSON.parse(String(raw)) }
-    catch (e) { throw new Error(`Tenant ${tenantId}: impact_analysis_weights is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
+    catch (e) { throw new Error(`Tenant ${tenantId}: impact_analysis_weights is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e }) }
     return { ...assertImpactWeights(parsed, `Tenant ${tenantId}`), isDefault: false }
   } finally {
     await session.close()

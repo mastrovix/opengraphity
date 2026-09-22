@@ -234,6 +234,6 @@ function parseJSON<T>(raw: string | null | undefined, what: string): T {
   if (!raw) return {} as T
   try { return JSON.parse(raw) as T }
   catch (e) {
-    throw new Error(`Corrupt ${what} JSON in outbound webhook config: ${e instanceof Error ? e.message : String(e)}`)
+    throw new Error(`Corrupt ${what} JSON in outbound webhook config: ${e instanceof Error ? e.message : String(e)}`, { cause: e })
   }
 }

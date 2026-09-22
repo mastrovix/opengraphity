@@ -87,7 +87,7 @@ export const provisionTenantDataMigration: Migration = {
       }
       let parsed: unknown
       try { parsed = JSON.parse(raw) }
-      catch (e) { throw new Error(`EnumTypeDefinition ${String(record.get('tenantId'))}/${String(record.get('name'))}: values è una stringa che non è JSON (${e instanceof Error ? e.message : String(e)}); sistemalo prima di migrare`) }
+      catch (e) { throw new Error(`EnumTypeDefinition ${String(record.get('tenantId'))}/${String(record.get('name'))}: values è una stringa che non è JSON (${e instanceof Error ? e.message : String(e)}); sistemalo prima di migrare`, { cause: e }) }
       if (!Array.isArray(parsed) || parsed.some((v) => typeof v !== 'string')) {
         throw new Error(`EnumTypeDefinition ${String(record.get('tenantId'))}/${String(record.get('name'))}: values non è una lista di stringhe; sistemalo prima di migrare`)
       }

@@ -12,6 +12,30 @@ import { runStepDeadlineSweep } from '../lib/stepDeadlines.js'
 import { runOLASweep } from '../lib/olaSweep.js'
 import { AUTOMATION_ACTOR, type AutomationEntityType } from '@opengraphity/types'
 
+/*
+ * I NOMI DELLE CODE E DEI LAVORI, in testa al file: la tabella `PASSATE` qui
+ * sotto li usa, e in JavaScript un `const` non si può leggere prima di dove è
+ * dichiarato (22 set 2026 — questo file li teneva in fondo, e la tabella non
+ * compilava).
+ */
+export const NOTIFICATION_JOBS_QUEUE = 'notification-jobs'
+export const WORKFLOW_JOBS_QUEUE     = 'workflow-jobs'
+/** Il job ripetuto delle scadenze dei passi, ogni minuto. */
+export const STEP_DEADLINES_JOB      = 'step_deadlines'
+export const STEP_DEADLINES_EVERY_MS = 60_000
+export const OLA_SWEEP_JOB = 'ola_sweep'
+/** La ripresa delle transizioni automatiche perdute (22 set 2026). */
+export const RIPRESA_JOB = 'ripresa_transizioni'
+/*
+ * Cinque minuti, non uno: qui non si insegue una scadenza ma si rimedia a
+ * un'occasione persa, e un'occasione persa lo resta anche per cinque minuti.
+ * Più raro significa anche meno letture inutili sui clienti che non hanno
+ * niente di fermo — che sono quasi tutti, quasi sempre.
+ */
+export const RIPRESA_EVERY_MS = 5 * 60_000
+export const OLA_SWEEP_EVERY_MS = 60_000
+
+
 // ── Job data shape produced by packages/workflow/src/actions.ts ───────────────
 
 interface WorkflowJobData {
@@ -75,36 +99,46 @@ async function webhookRetryHeaders(d: WebhookRetryData): Promise<Record<string, 
 
 // ── Processor ─────────────────────────────────────────────────────────────────
 
+/**
+ * Le passate periodiche, per nome del lavoro. Ognuna scrive solo quando ha
+ * fatto qualcosa: una riga «zero» ogni minuto insegna a non leggere i log.
+ */
+const PASSATE: Record<string, (() => Promise<void>) | undefined> = {
+  [STEP_DEADLINES_JOB]: async () => {
+    // Verifica «Cosa resta cablato», ondata 3: le scadenze dei passi. La
+    // passata cerca i ticket fermi oltre la scadenza del loro passo e li
+    // sposta; l'esito resta sull'esecuzione del passo (lib/stepDeadlines.ts).
+    const summary = await runStepDeadlineSweep()
+    if (summary.moved + summary.refused + summary.failed > 0) logger.info(summary, '[workflow-jobs] step deadlines')
+  },
+  [OLA_SWEEP_JOB]: async () => {
+    // Secondo giro UI del 15 set 2026: gli avvisi OLA/UC sul tempo del team (lib/olaSweep.ts).
+    const summary = await runOLASweep()
+    if (summary.alerted + summary.failed > 0) logger.info(summary, '[workflow-jobs] OLA sweep')
+    if (summary.failed > 0) throw new Error(`OLA sweep: ${summary.failed} contract(s) could not be evaluated (see the log)`)
+  },
+  [RIPRESA_JOB]: async () => {
+    const { riprendiTransizioni } = await import('../lib/riprendiTransizioni.js')
+    await riprendiTransizioni()
+  },
+}
+
 async function processWorkflowJob(job: Job<WorkflowJobData>): Promise<void> {
   const { entityId, tenantId } = job.data
-  // La passata delle scadenze gira ogni minuto: il suo log è il riepilogo, non questa riga.
-  if (job.name !== STEP_DEADLINES_JOB && job.name !== OLA_SWEEP_JOB && job.name !== RIPRESA_JOB) logger.info({ jobName: job.name, entityId, tenantId }, '[workflow-jobs] processing')
+  // Le passate periodiche girano ogni minuto: il loro log è il riepilogo, non questa riga.
+  if (!PASSATE[job.name]) logger.info({ jobName: job.name, entityId, tenantId }, '[workflow-jobs] processing')
+
+  /*
+   * LE PASSATE PERIODICHE STANNO IN UNA TABELLA, non in tre `case` (22 set
+   * 2026). Sono tutte la stessa forma — «chiama la passata, scrivi solo se ha
+   * fatto qualcosa» — e tenerle qui faceva crescere questo dispatcher a ogni
+   * passata nuova: `check-funzioni-lunghe` l'ha vista superare le 60
+   * istruzioni proprio aggiungendo la terza.
+   */
+  const passata = PASSATE[job.name]
+  if (passata) { await passata(); return }
 
   switch (job.name) {
-    case STEP_DEADLINES_JOB: {
-      // Verifica «Cosa resta cablato», ondata 3: le scadenze dei passi. La
-      // passata cerca i ticket fermi oltre la scadenza del loro passo e li
-      // sposta; l'esito resta sull'esecuzione del passo (lib/stepDeadlines.ts).
-      const summary = await runStepDeadlineSweep()
-      if (summary.moved + summary.refused + summary.failed > 0) {
-        logger.info(summary, '[workflow-jobs] step deadlines')
-      }
-      break
-    }
-
-    case RIPRESA_JOB: {
-      const { riprendiTransizioni } = await import('../lib/riprendiTransizioni.js')
-      await riprendiTransizioni()
-      return
-    }
-    case OLA_SWEEP_JOB: {
-      // Secondo giro UI del 15 set 2026: gli avvisi OLA/UC sul tempo del team (lib/olaSweep.ts).
-      const summary = await runOLASweep()
-      if (summary.alerted + summary.failed > 0) logger.info(summary, '[workflow-jobs] OLA sweep')
-      if (summary.failed > 0) throw new Error(`OLA sweep: ${summary.failed} contract(s) could not be evaluated (see the log)`)
-      break
-    }
-
     case 'auto_close': {
       // I job `auto_close` messi in coda PRIMA dell'ondata 3 (72 ore di
       // ritardo) arrivano ancora per qualche giorno dopo l'aggiornamento. Non
@@ -377,22 +411,6 @@ async function processNotificationJob(job: Job): Promise<void> {
   }
 }
 
-export const NOTIFICATION_JOBS_QUEUE = 'notification-jobs'
-export const WORKFLOW_JOBS_QUEUE     = 'workflow-jobs'
-/** Il job ripetuto delle scadenze dei passi, ogni minuto. */
-export const STEP_DEADLINES_JOB      = 'step_deadlines'
-export const STEP_DEADLINES_EVERY_MS = 60_000
-export const OLA_SWEEP_JOB = 'ola_sweep'
-/** La ripresa delle transizioni automatiche perdute (22 set 2026). */
-export const RIPRESA_JOB = 'ripresa_transizioni'
-/*
- * Cinque minuti, non uno: qui non si insegue una scadenza ma si rimedia a
- * un'occasione persa, e un'occasione persa lo resta anche per cinque minuti.
- * Più raro significa anche meno letture inutili sui clienti che non hanno
- * niente di fermo — che sono quasi tutti, quasi sempre.
- */
-export const RIPRESA_EVERY_MS = 5 * 60_000
-export const OLA_SWEEP_EVERY_MS = 60_000
 
 export function startNotificationJobWorker(): Worker {
   getQueue(NOTIFICATION_JOBS_QUEUE)  // register the producer singleton (metrics + scheduleEscalationCheck)

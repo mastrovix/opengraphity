@@ -67,7 +67,7 @@ function parseValues(raw: unknown, name: string): string[] {
   if (typeof raw === 'string') {
     let parsed: unknown
     try { parsed = JSON.parse(raw) }
-    catch (e) { throw new Error(`Dictionary "${name}": values is not valid JSON (${e instanceof Error ? e.message : String(e)})`) }
+    catch (e) { throw new Error(`Dictionary "${name}": values is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e }) }
     if (!Array.isArray(parsed)) throw new Error(`Dictionary "${name}": values is not an array (${typeof parsed})`)
     return parsed as string[]
   }

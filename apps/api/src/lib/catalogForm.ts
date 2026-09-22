@@ -414,7 +414,7 @@ export function parseCatalogForm(raw: unknown, where: string): CatalogFormDefini
   let parsed: unknown = raw
   if (typeof raw === 'string') {
     try { parsed = JSON.parse(raw) } catch (e) {
-      throw new Error(`${where}: form is not valid JSON (${e instanceof Error ? e.message : String(e)})`)
+      throw new Error(`${where}: form is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e })
     }
   }
   const o = oggetto(parsed, where)
@@ -1192,7 +1192,7 @@ export function parseFormTable(raw: unknown, where: string): FormTableDefinition
   let parsed: unknown = raw
   if (typeof raw === 'string') {
     try { parsed = JSON.parse(raw) } catch (e) {
-      throw new Error(`${where}: table definition is not valid JSON (${e instanceof Error ? e.message : String(e)})`)
+      throw new Error(`${where}: table definition is not valid JSON (${e instanceof Error ? e.message : String(e)})`, { cause: e })
     }
   }
   const o = oggetto(parsed, where)

@@ -107,7 +107,7 @@ export function parseActions(raw: string | null | undefined): Action[] {
   try {
     arr = JSON.parse(raw)
   } catch (e) {
-    throw new Error(`Corrupt actions JSON: ${e instanceof Error ? e.message : String(e)}`)
+    throw new Error(`Corrupt actions JSON: ${e instanceof Error ? e.message : String(e)}`, { cause: e })
   }
   if (!Array.isArray(arr)) {
     throw new Error(`Actions payload is not an array (got ${typeof arr})`)

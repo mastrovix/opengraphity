@@ -307,7 +307,7 @@ export function parseServiceImpactRules(raw: unknown, mapId: string): ServiceImp
   if (typeof raw !== 'string') throw new Error(`ServiceMap ${mapId} rules is not a JSON string (got ${typeof raw})`)
   let parsed: unknown
   try { parsed = JSON.parse(raw) }
-  catch (e) { throw new Error(`ServiceMap ${mapId} rules is corrupt JSON: ${e instanceof Error ? e.message : String(e)}`) }
+  catch (e) { throw new Error(`ServiceMap ${mapId} rules is corrupt JSON: ${e instanceof Error ? e.message : String(e)}`, { cause: e }) }
   return assertServiceImpactRules(parsed, `ServiceMap ${mapId} rules`)
 }
 
