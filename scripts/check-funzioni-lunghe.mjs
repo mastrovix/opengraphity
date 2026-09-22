@@ -110,7 +110,7 @@ const NOTE = new Map([
   ['apps/web/src/components/CIDynamicForm.tsx#CIDynamicForm', 100],
   ['apps/web/src/pages/monitoring/NewSourceWizard.tsx#NewSourceWizard', 100],
   ['apps/web/src/pages/settings/catalogForm/FormBuilderPanel.tsx#afferra', 100],
-  ['apps/web/src/pages/workflow/useWorkflowDesigner.ts#useWorkflowDesigner', 99],
+  ['apps/web/src/pages/workflow/useWorkflowDesigner.ts#useWorkflowDesigner', 97],
   ['apps/web/src/pages/admin/QuestionAdminPage.tsx#QuestionAdminPage', 97],
   ['apps/web/src/pages/incidents/IncidentListPage.tsx#IncidentListPage', 92],
   ['apps/web/src/pages/monitoring/ServiceDetailPage.tsx#ServiceDetailPage', 88],
