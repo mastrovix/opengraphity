@@ -398,6 +398,128 @@ export function importServiceRequests(rows: CsvRow[], ctx: ServiceCtx, opts: Imp
   return importTickets('service_request', rows, ctx, opts)
 }
 
+/**
+ * IL CONTATORE DEL CLIENTE SALE SOPRA OGNI NUMERO IMPORTATO.
+ *
+ * Prima l'import generava i numeri da `max()+1` senza toccare il contatore dei
+ * ticket creati dall'app: il primo incident aperto dopo un import prendeva un
+ * numero gia' usato e falliva sul vincolo di unicita'. Ora il contatore sale
+ * almeno al numero piu' alto gia' presente o preservato dal file, e le righe
+ * senza numero ne prendono uno dal contatore, come dalla pagina.
+ *
+ * Il prefisso e' quello del cliente (ondata 6 di «Nulla cablato»).
+ *
+ * Era in mezzo a `importTickets` fra la pianificazione e la scrittura. E' un
+ * gesto solo, non produce niente che serva dopo, e da qui si legge per intero.
+ */
+async function alzaIlContatore(
+  session: Parameters<typeof runQueryOne>[0],
+  kind: TicketImportKind,
+  ctx: ServiceCtx,
+  spec: (typeof TICKET_IMPORT_SPECS)[TicketImportKind],
+  plans: readonly TicketPlan[],
+): Promise<void> {
+  const { prefix } = (await ticketNumbering(ctx.tenantId))[kind]
+  const numericOf = (n: string | null | undefined): number => {
+    if (!n || !n.startsWith(prefix)) return 0
+    const rest = n.slice(prefix.length)
+    return /^\d+$/.test(rest) ? Number(rest) : 0
+  }
+  const maxRow = await runQueryOne<{ maxNum: number | null }>(session, `
+    MATCH (n:${spec.label} {tenant_id: $tenantId})
+    WHERE n.number STARTS WITH $prefix
+    RETURN max(toInteger(substring(n.number, size($prefix)))) AS maxNum
+  `, { tenantId: ctx.tenantId, prefix })
+  const floor = Math.max(Number(maxRow?.maxNum ?? 0), ...plans.map((p) => numericOf(p.number)))
+  if (floor > 0) await raiseSequenceTo(session, ctx.tenantId, kind, floor)
+}
+
+/**
+ * I DATI DI RIFERIMENTO DI UN IMPORT, letti una volta sola.
+ *
+ * Erano le prime sessanta righe di `importTickets`, che ne contava
+ * duecentotrentacinque. Non e' un pezzo qualunque: e' una FASE — si legge
+ * tutto quello che serve a validare le righe (i passi del workflow, gli
+ * utenti per email, le squadre, i ticket gia' presenti, i vocabolari, i campi
+ * del cliente) e da li' in poi non si tocca piu' il database finche' non si
+ * scrive. Averla come funzione a se' rende visibile quella linea, che nel
+ * mezzo di duecento istruzioni non si vedeva.
+ *
+ * Le letture sono tutte QUI e non dentro il ciclo per riga: un import di
+ * mille righe farebbe mille interrogazioni per la stessa risposta.
+ */
+async function riferimentiPerImport(
+  session: Parameters<typeof getWorkflowSteps>[0],
+  kind: TicketImportKind,
+  rows: CsvRow[],
+  ctx: ServiceCtx,
+  spec: (typeof TICKET_IMPORT_SPECS)[TicketImportKind],
+) {
+  const steps = await getWorkflowSteps(session, ctx.tenantId, kind)
+  if (steps.length === 0) {
+    throw new ValidationError(`No active workflow definition for "${kind}" in tenant "${ctx.tenantId}"`, { key: 'errors.import.noWorkflow', params: { entityType: kind } })
+  }
+  const initialStep = steps.find((s) => s.isInitial)
+  if (!initialStep) {
+    throw new ValidationError(`The ${kind} workflow of tenant "${ctx.tenantId}" has no initial step`, { key: 'errors.import.noInitialStep', params: { entityType: kind } })
+  }
+  const stepByLowerName = new Map(steps.map((s) => [s.name.toLowerCase(), s.name]))
+  const csvColumns = new Set(rows.flatMap((r) => Object.keys(r)))
+
+  const emails = spec.assignable ? collectValues(rows, ['assignee_email']) : new Set<string>()
+  for (const r of rows) {
+    // comment author emails also need resolution
+    const raw = r['comments']
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as unknown
+        if (Array.isArray(parsed)) {
+          for (const c of parsed) {
+            const e = (c as { author_email?: unknown })?.author_email
+            if (typeof e === 'string' && e.trim()) emails.add(e.trim().toLowerCase())
+          }
+        }
+      } catch { /* reported as row error below */ }
+    }
+  }
+  const usersByEmail = await loadUsersByEmail(session, ctx.tenantId, [...emails])
+  const teamsByName  = spec.assignable ? await loadTeamsByName(session, ctx.tenantId, [...collectValues(rows, ['team_name'])]) : new Map<string, string>()
+
+  const externalIds = rows.map((r) => (r['external_id'] ?? '').trim()).filter(Boolean)
+  const existingRows = externalIds.length === 0 ? [] : await runQuery<ExistingNode>(session, `
+    MATCH (n:${spec.label} {tenant_id: $tenantId})
+    WHERE n.import_external_id IN $externalIds
+    RETURN n.id AS id, n.import_external_id AS externalId, n.number AS number
+  `, { tenantId: ctx.tenantId, externalIds })
+  const existingByExternalId = new Map(existingRows.map((r) => [r.externalId, r]))
+
+  // Numbers already taken in the tenant among those the CSV wants to preserve
+  const csvNumbers = [...collectValues(rows, ['number'], false)]
+  const numberRows = csvNumbers.length === 0 ? [] : await runQuery<{ number: string; externalId: string | null }>(session, `
+    MATCH (n:${spec.label} {tenant_id: $tenantId})
+    WHERE n.number IN $numbers
+    RETURN n.number AS number, n.import_external_id AS externalId
+  `, { tenantId: ctx.tenantId, numbers: csvNumbers })
+  const numberOwner = new Map(numberRows.map((r) => [r.number, r.externalId]))
+
+  // Severità (solo incident): un passaggio solo per valore distinto, PRIMA del
+  // ciclo per riga (il ciclo e' sincrono, e la matrice e' una lettura).
+  const severityByRaw = spec.severityMatrix ? await resolveImportSeverities(ctx.tenantId, rows) : new Map()
+  const vocabularies = new Map<string, readonly string[]>()
+  for (const v of spec.vocabularies) {
+    if (v.required || csvColumns.has(v.column)) vocabularies.set(v.column, await domainVocabulary(ctx.tenantId, v.vocabulary))
+  }
+
+  // Campi del cliente (ondata 4): una colonna per campo, col nome del campo.
+  const customDefs = await customFieldDefs(session, ctx.tenantId, kind)
+  const customColumns = customDefs.filter((d) => csvColumns.has(d.name))
+  return {
+    initialStep, stepByLowerName, csvColumns,
+    usersByEmail, teamsByName, existingByExternalId, numberOwner,
+    severityByRaw, vocabularies, customDefs, customColumns,
+  }
+}
+
 /** Il valore del vocabolario del cliente che corrisponde alla cella (maiuscole indifferenti), o null. */
 function vocabularyValue(allowed: readonly string[], raw: string): string | null {
   const lower = raw.toLowerCase()
@@ -420,64 +542,11 @@ export async function importTickets(
 
   return withSession(async (session) => {
     // ── Preload reference data (read-only, shared by dry-run and execute) ─────
-    const steps = await getWorkflowSteps(session, ctx.tenantId, kind)
-    if (steps.length === 0) {
-      throw new ValidationError(`No active workflow definition for "${kind}" in tenant "${ctx.tenantId}"`, { key: 'errors.import.noWorkflow', params: { entityType: kind } })
-    }
-    const initialStep = steps.find((s) => s.isInitial)
-    if (!initialStep) {
-      throw new ValidationError(`The ${kind} workflow of tenant "${ctx.tenantId}" has no initial step`, { key: 'errors.import.noInitialStep', params: { entityType: kind } })
-    }
-    const stepByLowerName = new Map(steps.map((s) => [s.name.toLowerCase(), s.name]))
-    const csvColumns = new Set(rows.flatMap((r) => Object.keys(r)))
-
-    const emails = spec.assignable ? collectValues(rows, ['assignee_email']) : new Set<string>()
-    for (const r of rows) {
-      // comment author emails also need resolution
-      const raw = r['comments']
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as unknown
-          if (Array.isArray(parsed)) {
-            for (const c of parsed) {
-              const e = (c as { author_email?: unknown })?.author_email
-              if (typeof e === 'string' && e.trim()) emails.add(e.trim().toLowerCase())
-            }
-          }
-        } catch { /* reported as row error below */ }
-      }
-    }
-    const usersByEmail = await loadUsersByEmail(session, ctx.tenantId, [...emails])
-    const teamsByName  = spec.assignable ? await loadTeamsByName(session, ctx.tenantId, [...collectValues(rows, ['team_name'])]) : new Map<string, string>()
-
-    const externalIds = rows.map((r) => (r['external_id'] ?? '').trim()).filter(Boolean)
-    const existingRows = externalIds.length === 0 ? [] : await runQuery<ExistingNode>(session, `
-      MATCH (n:${spec.label} {tenant_id: $tenantId})
-      WHERE n.import_external_id IN $externalIds
-      RETURN n.id AS id, n.import_external_id AS externalId, n.number AS number
-    `, { tenantId: ctx.tenantId, externalIds })
-    const existingByExternalId = new Map(existingRows.map((r) => [r.externalId, r]))
-
-    // Numbers already taken in the tenant among those the CSV wants to preserve
-    const csvNumbers = [...collectValues(rows, ['number'], false)]
-    const numberRows = csvNumbers.length === 0 ? [] : await runQuery<{ number: string; externalId: string | null }>(session, `
-      MATCH (n:${spec.label} {tenant_id: $tenantId})
-      WHERE n.number IN $numbers
-      RETURN n.number AS number, n.import_external_id AS externalId
-    `, { tenantId: ctx.tenantId, numbers: csvNumbers })
-    const numberOwner = new Map(numberRows.map((r) => [r.number, r.externalId]))
-
-    // Severità (solo incident): un passaggio solo per valore distinto, PRIMA del
-    // ciclo per riga (il ciclo e' sincrono, e la matrice e' una lettura).
-    const severityByRaw = spec.severityMatrix ? await resolveImportSeverities(ctx.tenantId, rows) : new Map()
-    const vocabularies = new Map<string, readonly string[]>()
-    for (const v of spec.vocabularies) {
-      if (v.required || csvColumns.has(v.column)) vocabularies.set(v.column, await domainVocabulary(ctx.tenantId, v.vocabulary))
-    }
-
-    // Campi del cliente (ondata 4): una colonna per campo, col nome del campo.
-    const customDefs = await customFieldDefs(session, ctx.tenantId, kind)
-    const customColumns = customDefs.filter((d) => csvColumns.has(d.name))
+    const {
+      initialStep, stepByLowerName, csvColumns,
+      usersByEmail, teamsByName, existingByExternalId, numberOwner,
+      severityByRaw, vocabularies, customDefs, customColumns,
+    } = await riferimentiPerImport(session, kind, rows, ctx, spec)
 
     // ── Per-row validation → plan ─────────────────────────────────────────────
     const plans: TicketPlan[] = []
@@ -689,25 +758,7 @@ export async function importTickets(
     }
 
     // ── Numbering: the tenant counter must stay ahead of every number ─────────
-    // Prima l'import generava i numeri da max()+1 senza toccare il contatore dei
-    // ticket creati dall'app: il primo incident aperto dopo un import prendeva
-    // un numero già usato e falliva sul vincolo di unicità. Ora il contatore sale
-    // almeno al numero più alto già presente o preservato dal file, e le righe
-    // senza numero ne prendono uno dal contatore, come dalla pagina.
-    // Il prefisso è quello del cliente (ondata 6 di «Nulla cablato»).
-    const { prefix } = (await ticketNumbering(ctx.tenantId))[kind]
-    const numericOf = (n: string | null | undefined): number => {
-      if (!n || !n.startsWith(prefix)) return 0
-      const rest = n.slice(prefix.length)
-      return /^\d+$/.test(rest) ? Number(rest) : 0
-    }
-    const maxRow = await runQueryOne<{ maxNum: number | null }>(session, `
-      MATCH (n:${spec.label} {tenant_id: $tenantId})
-      WHERE n.number STARTS WITH $prefix
-      RETURN max(toInteger(substring(n.number, size($prefix)))) AS maxNum
-    `, { tenantId: ctx.tenantId, prefix })
-    const floor = Math.max(Number(maxRow?.maxNum ?? 0), ...plans.map((p) => numericOf(p.number)))
-    if (floor > 0) await raiseSequenceTo(session, ctx.tenantId, kind, floor)
+    await alzaIlContatore(session, kind, ctx, spec, plans)
 
     // ── Execute: ONE transaction PER ROW ──────────────────────────────────────
     // Rationale: each row is an independent unit (ticket + relations +
