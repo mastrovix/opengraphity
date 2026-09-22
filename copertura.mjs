@@ -84,8 +84,8 @@ export const PAVIMENTI = {
   'packages/notifications':    { lines: 79, statements: 78, functions: 78, branches: 72 },  // 81.56/80.1/80.11/74.65
   'packages/events':           { lines: 51, statements: 47, functions: 53, branches: 32 },  // 53.3/49.01/55.55/34.14
   'packages/scripting':        { lines: 96, statements: 96, functions: 98, branches: 93 },  // 98.31/98.34/100/95.45
-  'packages/discovery':        { lines: 86, statements: 85, functions: 90, branches: 82 },  // 88.11/87.82/92.85/84.78
-  'packages/types':            { lines: 4, statements: 4, functions: 2, branches: 2 },  // 6.68/6.55/4/4.19
+  'packages/discovery':        { lines: 95, statements: 95, functions: 98, branches: 92 },  // 97.02/97.39/100/94.56
+  'packages/types':            { lines: 40, statements: 44, functions: 45, branches: 41 },  // 42.33/46.6/47/43.41
   'packages/schema-generator': { lines: 67, statements: 65, functions: 55, branches: 52 },  // 69.95/67.63/57.37/54.97
   'packages/web-core':         { lines: 40, statements: 39, functions: 33, branches: 23 },  // 42.32/41.46/35.0/25.23
 }
