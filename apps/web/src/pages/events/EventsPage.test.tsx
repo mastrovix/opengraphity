@@ -166,7 +166,9 @@ describe('EventsPage — prestazioni (ondata 3)', () => {
     const { user } = renderPage('viewer', undefined, {
       eventsMocks: [
         eventsMock(EVENTS,   undefined, { match: (v) => v.filter === null }),
-        eventsMock(FILTERED, undefined, { match: (v) => v.filter !== null, delay: 150 }),
+        // A wide delay: on a slow CI runner 150 ms elapsed before the "old rows
+        // still visible" check could run, and the test failed on a correct page.
+        eventsMock(FILTERED, undefined, { match: (v) => v.filter !== null, delay: 1_000 }),
       ],
     })
     expect(await screen.findByText('CPU high on web-01')).toBeInTheDocument()
@@ -178,7 +180,7 @@ describe('EventsPage — prestazioni (ondata 3)', () => {
     expect(screen.getByText('CPU high on web-01')).toBeInTheDocument()
     expect(screen.getByText('3 alarms')).toBeInTheDocument()
 
-    expect(await screen.findByText('Only critical one')).toBeInTheDocument()
+    expect(await screen.findByText('Only critical one', undefined, { timeout: 3_000 })).toBeInTheDocument()
     expect(screen.queryByText('CPU high on web-01')).not.toBeInTheDocument()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(screen.getByText('1 alarm')).toBeInTheDocument()   // plurale _one (D·6.1)
