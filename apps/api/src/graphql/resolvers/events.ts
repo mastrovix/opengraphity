@@ -961,7 +961,7 @@ async function findAliasOwner(session: Parameters<typeof runQueryOne>[0], tenant
 async function linkEventToCI(_: unknown, args: { eventId: string; ciId: string; createAlias?: boolean | null }, ctx: GraphQLContext) {
   const now = new Date().toISOString()
   const session = getSession(undefined, 'WRITE')
-  let previousCiId: string | null = null
+  let previousCiId: string | null
   let row: EventRow | null
   let aliasCreated = false
   try {

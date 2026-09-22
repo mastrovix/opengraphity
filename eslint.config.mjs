@@ -57,12 +57,22 @@ export default tseslint.config(
        * si perdeva la causa come OGGETTO, cioe' la sua pila e i suoi campi,
        * che in produzione sono quello che serve davvero.
        *
-       * `no-useless-assignment` resta spenta: 22 segnalazioni, e ognuna va
-       * guardata da sola perche' «assegnato e mai riletto» a volte e'
-       * un'inizializzazione voluta. E' lavoro suo, non un rinvio.
+       * `no-useless-assignment` e' accesa dal 22 set 2026, e le sue 22 sono
+       * sistemate. Erano quasi tutte lo stesso gesto: `let x = <valore finto>`
+       * seguito da un `try` che assegna subito quello vero. Il valore finto
+       * non lo leggeva nessuno, ma stava li' a dire «se va storto, x vale
+       * questo» — una promessa che il codice non manteneva, perche' ogni
+       * `catch` o usciva o assegnava a sua volta. Tolta l'inizializzazione, e'
+       * TypeScript a garantire che nessun cammino arrivi a leggere x senza
+       * averlo scritto: una garanzia vera al posto di una finta.
+       *
+       * Le due che non erano quel gesto: in `ReportsPage` due assegnazioni
+       * subito prima di un `return` che esce dalla funzione (nessuno le
+       * rileggeva), e in `actions.ts` un `container` di giro tenuto vivo fuori
+       * dal giro, ora `const` dentro il `for`.
        */
       'preserve-caught-error': 'error',
-      'no-useless-assignment': 'off',
+      'no-useless-assignment': 'error',
     },
   },
   {

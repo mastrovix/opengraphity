@@ -380,7 +380,7 @@ export async function svuota(): Promise<void> {
    * non quando non si è riusciti a chiedere.
    */
   if (lotto.length > 0) {
-    let permesso = false
+    let permesso: boolean
     try { permesso = consenso !== null && await consenso() } catch { permesso = false }
     if (!permesso) {
       stato.senzaConsenso += lotto.length

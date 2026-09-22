@@ -17,7 +17,7 @@ export const Mutation = {
   async duplicateReportTemplate(_: unknown, args: { id: string; name?: string | null }, ctx: GraphQLContext) {
     const newId = uuidv4()
     const now   = new Date().toISOString()
-    let sectionCount = 0
+    let sectionCount: number
     const session = getSession(undefined, 'WRITE')
     try {
       await assertReportTemplateAccess(session, args.id, ctx, 'read')

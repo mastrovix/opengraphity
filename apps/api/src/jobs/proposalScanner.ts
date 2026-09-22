@@ -197,7 +197,7 @@ export async function conIlLucchetto<T>(
 ): Promise<T | null> {
   const chiave = chiaveDelLucchetto(tenantId)
   const token = randomUUID()
-  let preso = false
+  let preso: boolean
   try {
     preso = (await getSharedRedis().set(chiave, token, 'EX', LUCCHETTO_SECONDI, 'NX')) === 'OK'
   } catch (err) {

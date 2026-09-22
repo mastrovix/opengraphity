@@ -1728,7 +1728,7 @@ async function assertRiferimentoEsiste(session: Session, tenantId: string, campo
     const rows = await runQuery<{ id: string }>(session, query, { id, tenantId })
     return rows.length > 0
   }
-  let esiste = false
+  let esiste: boolean
   switch (campo.fieldType) {
     case 'ref_ci':
       esiste = await trovato('MATCH (n:ConfigurationItem {id: $id, tenant_id: $tenantId}) RETURN n.id AS id LIMIT 1')
