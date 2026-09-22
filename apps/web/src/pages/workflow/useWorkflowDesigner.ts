@@ -10,49 +10,34 @@ import type {
   WFStep,
   WFTransition,
 } from './workflow-types'
-import {
-  INCIDENT_POSITIONS,
-  STANDARD_POSITIONS,
-  NORMAL_POSITIONS,
-  EMERGENCY_POSITIONS,
-  INCIDENT_HANDLES,
-  STANDARD_HANDLES,
-  NORMAL_HANDLES,
-  EMERGENCY_HANDLES,
-  INCIDENT_BACK,
-  CHANGE_BACK,
-  TRIGGER_COLOR,
-} from './WorkflowCanvas'
+import { DISPOSIZIONI, TRIGGER_COLOR } from './WorkflowCanvas'
 import { colors, lookupOrError } from '@/lib/tokens'
 
 const ACCENT_COLOR = colors.brand
 
 /**
- * Quale disposizione predefinita degli archi usare sulla tela. È una scelta
- * COSMETICA (da quale lato di un nodo esce una freccia), non una regola di
- * dominio.
+ * Quale disposizione della tela usare. È una scelta COSMETICA (dove nasce un
+ * passo, da quale lato esce una freccia), non una regola di dominio.
  *
  * B-25: la scelta si faceva annusando il NOME della definizione
  * (`name.includes('standard' | 'normal' | 'emergency')`), residuo di quando si
  * pensava a una definizione per tipo di change. Nessuna definizione spedita si
- * chiama così — quindi quei tre rami non si sono mai accesi e il risultato era
- * sempre `'standard'` — ma un cliente che chiamasse la sua definizione
- * «Emergenza normale» si vedeva cambiare la disposizione degli archi senza
- * capire perché. Ora decide il tipo di entità, che non si rinomina.
+ * chiama così — quindi quei tre rami non si sono mai accesi — ma un cliente che
+ * chiamasse la sua definizione «Emergenza normale» si vedeva cambiare la
+ * disposizione senza capire perché. Decide il tipo di entità, che non si
+ * rinomina.
  *
- * APERTO, e va deciso guardando la tela: `'normal'` e `'emergency'` non sono
- * più raggiungibili, e le loro tabelle (`NORMAL_HANDLES`/`NORMAL_POSITIONS`,
- * `EMERGENCY_*` in `WorkflowCanvas.tsx`) NON sono codice morto — sono le
- * disposizioni scritte per i passi che la definizione «Change RFC Process»
- * ha davvero (`draft → assessment → cab_approval → …`), mentre
- * `STANDARD_HANDLES` nomina passi (`draft → approved`) che quella definizione
- * non ha. Cioè: oggi la tela delle change non usa nessuna disposizione su
- * misura, e prima non la usava per la stessa ragione (il nome non conteneva
- * «normal»). Passare le change a `'normal'` è un cambiamento VISIBILE del
- * disegnatore: si fa vedendolo, non a scatola chiusa.
+ * CHIUSO il 22 set 2026: allora restava aperto che le tabelle non-incident
+ * nominassero passi inesistenti, quindi la tela di change, richieste, problem e
+ * KB cadeva sempre sulla fila automatica. Ora ogni workflow seminato ha la sua
+ * disposizione, e `disposizioniDellaTela.test.ts` pretende che combaci coi
+ * passi veri. Tutto il resto — i workflow che il cliente si disegna — prende
+ * `none`, che è la fila automatica DICHIARATA, non un buco.
  */
 export function defToWorkflowKey(def: WorkflowDefinition | null): WorkflowKey {
-  return def?.entityType === 'incident' || !def ? 'incident' : 'standard'
+  if (!def) return 'incident'
+  const chiave = def.entityType as WorkflowKey
+  return chiave in DISPOSIZIONI && chiave !== 'none' ? chiave : 'none'
 }
 
 export interface PendingStepChange {
@@ -116,17 +101,7 @@ export function useWorkflowDesigner(def: WorkflowDefinition | null) {
   useEffect(() => {
     if (!def) return
 
-    const positions = selectedWorkflow === 'incident' ? INCIDENT_POSITIONS
-      : selectedWorkflow === 'standard' ? STANDARD_POSITIONS
-      : selectedWorkflow === 'normal'   ? NORMAL_POSITIONS
-      : EMERGENCY_POSITIONS
-
-    const edgeHandles = selectedWorkflow === 'incident' ? INCIDENT_HANDLES
-      : selectedWorkflow === 'standard' ? STANDARD_HANDLES
-      : selectedWorkflow === 'normal'   ? NORMAL_HANDLES
-      : EMERGENCY_HANDLES
-
-    const backTransitions = selectedWorkflow === 'incident' ? INCIDENT_BACK : CHANGE_BACK
+    const { positions, handles: edgeHandles, back: backTransitions } = DISPOSIZIONI[selectedWorkflow]
 
     const accentColor = ACCENT_COLOR
 

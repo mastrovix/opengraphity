@@ -15,58 +15,57 @@ import {
 import type { NodeProps, EdgeProps, Node, Edge, OnNodesChange, OnEdgesChange } from '@xyflow/react'
 import { Pencil, Settings2 } from 'lucide-react'
 import { colors, lookupOrError, palette } from '@/lib/tokens'
-import type { StepNodeData, EdgeNodeData, WorkflowDefinition } from './workflow-types'
+import type { StepNodeData, EdgeNodeData, WorkflowDefinition, WorkflowKey } from './workflow-types'
 
-// ── Per-workflow positions ─────────────────────────────────────────────────────
+// ── LE DISPOSIZIONI DELLA TELA ────────────────────────────────────────────────
+//
+// Dove sta ogni passo e da quale lato esce ogni freccia, per i workflow che
+// OpenGrafo semina. È cosmetica: il dominio non dipende da queste tabelle, e un
+// workflow che non c'è (disegnato dal cliente, o un tipo di entità nuovo) prende
+// la fila automatica e gli archi destra→sinistra.
+//
+// ## Perché sono state riscritte (22 set 2026)
+// Le tabelle di prima — `STANDARD_*`, `NORMAL_*`, `EMERGENCY_*` — nominavano i
+// passi di quando si pensava a UNA DEFINIZIONE PER TIPO DI CHANGE:
+// `draft → assessment → cab_approval → validation → completed → failed`. Quella
+// forma non esiste più da nessuna parte. La definizione «Change RFC Process»
+// spedita oggi ha `assessment → approval → scheduled → deployment → review →
+// closed`: zero chiavi in comune. Quindi la tela delle change — e quella delle
+// richieste di servizio, dei problem, degli articoli KB — non usava NESSUNA
+// disposizione su misura: cadeva sempre sulla fila automatica.
+//
+// Il commento in `useWorkflowDesigner.ts` sosteneva il contrario («sono le
+// disposizioni scritte per i passi che quella definizione ha davvero»). Era
+// falso, ed è la ragione per cui il difetto è sopravvissuto a una revisione.
+//
+// ## La prova
+// `disposizioniDellaTela.test.ts` (apps/api) legge QUESTO file e le definizioni
+// seminate, e pretende che combacino in tutte e due i versi: nessuna chiave che
+// nomini un passo o una transizione inesistente, e nessun passo o transizione
+// senza la sua riga. Un rinominare un passo nel seed fa cadere il test.
+
+// ── Incident ──────────────────────────────────────────────────────────────────
+// Due definizioni: quella base e quella di sicurezza, che infila
+// `security_review` fra `assigned` e `in_progress`. La deviazione sta sopra la
+// fila, come l'escalation.
 
 export const INCIDENT_POSITIONS: Record<string, { x: number; y: number }> = {
-  new:         { x: 0,    y: 280 },
-  assigned:    { x: 280,  y: 280 },
-  in_progress: { x: 560,  y: 280 },
-  escalated:   { x: 840,  y: 0   },
-  pending:     { x: 560,  y: 560 },
-  resolved:    { x: 1120, y: 280 },
-  closed:      { x: 1400, y: 280 },
+  new:             { x: 0,    y: 280 },
+  assigned:        { x: 280,  y: 280 },
+  security_review: { x: 420,  y: 0   },
+  in_progress:     { x: 560,  y: 280 },
+  escalated:       { x: 840,  y: 0   },
+  pending:         { x: 560,  y: 560 },
+  resolved:        { x: 1120, y: 280 },
+  closed:          { x: 1400, y: 280 },
 }
-
-export const STANDARD_POSITIONS: Record<string, { x: number; y: number }> = {
-  draft:      { x: 0,    y: 280 },
-  approved:   { x: 280,  y: 280 },
-  scheduled:  { x: 560,  y: 280 },
-  validation: { x: 840,  y: 280 },
-  deployment: { x: 1120, y: 280 },
-  completed:  { x: 1400, y: 280 },
-  failed:     { x: 1120, y: 560 },
-}
-
-export const NORMAL_POSITIONS: Record<string, { x: number; y: number }> = {
-  draft:        { x: 0,    y: 280 },
-  assessment:   { x: 280,  y: 280 },
-  cab_approval: { x: 560,  y: 280 },
-  scheduled:    { x: 840,  y: 280 },
-  validation:   { x: 1120, y: 280 },
-  deployment:   { x: 1400, y: 280 },
-  completed:    { x: 1680, y: 280 },
-  failed:       { x: 1400, y: 560 },
-  rejected:     { x: 560,  y: 560 },
-}
-
-export const EMERGENCY_POSITIONS: Record<string, { x: number; y: number }> = {
-  draft:               { x: 0,    y: 280 },
-  emergency_approval:  { x: 280,  y: 280 },
-  validation:          { x: 560,  y: 280 },
-  deployment:          { x: 840,  y: 280 },
-  completed:           { x: 1120, y: 280 },
-  failed:              { x: 840,  y: 560 },
-  post_review:         { x: 1120, y: 560 },
-  rejected:            { x: 280,  y: 560 },
-}
-
-// ── Per-workflow edge handles ──────────────────────────────────────────────────
 
 export const INCIDENT_HANDLES: Record<string, { sourceHandle: string; targetHandle: string }> = {
   'new→assigned':                     { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
   'assigned→in_progress':             { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'assigned→security_review':         { sourceHandle: 'src-top',    targetHandle: 'tgt-left'   },
+  'security_review→in_progress':      { sourceHandle: 'src-right',  targetHandle: 'tgt-top'    },
+  'security_review→assigned':         { sourceHandle: 'src-left',   targetHandle: 'tgt-top'    },
   'resolved→closed':                  { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
   'in_progress→escalated→manual':     { sourceHandle: 'src-top',    targetHandle: 'tgt-left'   },
   'in_progress→escalated→sla_breach': { sourceHandle: 'src-top',    targetHandle: 'tgt-bottom' },
@@ -78,41 +77,147 @@ export const INCIDENT_HANDLES: Record<string, { sourceHandle: string; targetHand
   'resolved→in_progress':             { sourceHandle: 'src-left',   targetHandle: 'tgt-right'  },
 }
 
-export const STANDARD_HANDLES: Record<string, { sourceHandle: string; targetHandle: string }> = {
-  'draft→approved':        { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
-  'approved→scheduled':    { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
-  'scheduled→validation':  { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
-  'validation→deployment': { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
-  'deployment→completed':  { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
-  'deployment→failed':     { sourceHandle: 'src-bottom', targetHandle: 'tgt-top'  },
+export const INCIDENT_BACK = new Set([
+  'pending→in_progress', 'escalated→in_progress', 'resolved→in_progress', 'security_review→assigned',
+])
+
+// ── Change RFC Process ────────────────────────────────────────────────────────
+// Una fila sola: il rigetto è l'unico arco che torna indietro, e passa sotto.
+
+export const CHANGE_POSITIONS: Record<string, { x: number; y: number }> = {
+  assessment: { x: 0,    y: 280 },
+  approval:   { x: 280,  y: 280 },
+  scheduled:  { x: 560,  y: 280 },
+  deployment: { x: 840,  y: 280 },
+  review:     { x: 1120, y: 280 },
+  closed:     { x: 1400, y: 280 },
 }
 
-export const NORMAL_HANDLES: Record<string, { sourceHandle: string; targetHandle: string }> = {
-  'draft→assessment':         { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
-  'assessment→cab_approval':  { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
-  'assessment→rejected':      { sourceHandle: 'src-bottom', targetHandle: 'tgt-top'    },
-  'cab_approval→scheduled':   { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
-  'cab_approval→rejected':    { sourceHandle: 'src-bottom', targetHandle: 'tgt-left'   },
-  'scheduled→validation':     { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
-  'validation→deployment':    { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
-  'deployment→completed':     { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
-  'deployment→failed':        { sourceHandle: 'src-bottom', targetHandle: 'tgt-top'    },
-  'rejected→draft':           { sourceHandle: 'src-left',   targetHandle: 'tgt-bottom' },
+export const CHANGE_HANDLES: Record<string, { sourceHandle: string; targetHandle: string }> = {
+  'assessment→approval':  { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'approval→scheduled':   { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'approval→assessment':  { sourceHandle: 'src-bottom', targetHandle: 'tgt-bottom' },
+  'scheduled→deployment': { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'deployment→review':    { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'review→closed':        { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
 }
 
-export const EMERGENCY_HANDLES: Record<string, { sourceHandle: string; targetHandle: string }> = {
-  'draft→emergency_approval':      { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
-  'emergency_approval→validation': { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
-  'emergency_approval→rejected':   { sourceHandle: 'src-bottom', targetHandle: 'tgt-top'  },
-  'validation→deployment':         { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
-  'deployment→completed':          { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
-  'deployment→failed':             { sourceHandle: 'src-bottom', targetHandle: 'tgt-top'  },
-  'failed→post_review':            { sourceHandle: 'src-right',  targetHandle: 'tgt-left' },
-  'rejected→draft':                { sourceHandle: 'src-left',   targetHandle: 'tgt-bottom' },
+export const CHANGE_BACK = new Set(['approval→assessment'])
+
+// ── Service Request Fulfillment ───────────────────────────────────────────────
+// «Prendi in carico» scavalca l'approvazione: passa sopra. Il rifiuto è
+// terminale, sta sotto e non torna.
+
+export const SERVICE_REQUEST_POSITIONS: Record<string, { x: number; y: number }> = {
+  submitted:   { x: 0,    y: 280 },
+  approval:    { x: 280,  y: 280 },
+  in_progress: { x: 560,  y: 280 },
+  fulfilled:   { x: 840,  y: 280 },
+  closed:      { x: 1120, y: 280 },
+  // Non sotto `approval`: la' c'e' la legenda (vedi `PROBLEM_POSITIONS`).
+  rejected:    { x: 560,  y: 560 },
 }
 
-export const INCIDENT_BACK = new Set(['pending→in_progress', 'escalated→in_progress', 'resolved→in_progress'])
-export const CHANGE_BACK   = new Set(['rejected→draft'])
+export const SERVICE_REQUEST_HANDLES: Record<string, { sourceHandle: string; targetHandle: string }> = {
+  'submitted→approval':    { sourceHandle: 'src-right',  targetHandle: 'tgt-left'  },
+  'submitted→in_progress': { sourceHandle: 'src-top',    targetHandle: 'tgt-top'   },
+  'approval→in_progress':  { sourceHandle: 'src-right',  targetHandle: 'tgt-left'  },
+  'approval→rejected':     { sourceHandle: 'src-bottom', targetHandle: 'tgt-left'  },
+  'in_progress→fulfilled': { sourceHandle: 'src-right',  targetHandle: 'tgt-left'  },
+  'fulfilled→closed':      { sourceHandle: 'src-right',  targetHandle: 'tgt-left'  },
+}
+
+export const SERVICE_REQUEST_BACK = new Set<string>([])
+
+// ── Problem Management ────────────────────────────────────────────────────────
+// `under_investigation` è il perno: quasi tutto ci torna. Le vie di ritorno
+// passano sotto la fila, l'analisi posticipata e il rigetto stanno sulla riga
+// di sotto.
+
+export const PROBLEM_POSITIONS: Record<string, { x: number; y: number }> = {
+  new:                 { x: 0,    y: 280 },
+  under_investigation: { x: 280,  y: 280 },
+  known_error:         { x: 560,  y: 280 },
+  change_requested:    { x: 840,  y: 280 },
+  change_in_progress:  { x: 1120, y: 280 },
+  resolved:            { x: 1400, y: 280 },
+  closed:              { x: 1680, y: 280 },
+  // Non sotto `new` e `under_investigation`: l'angolo in basso a sinistra della
+  // tela e' occupato dalla LEGENDA, che e' un pannello fisso sullo schermo e
+  // non si sposta con la vista. Un passo messo li' resta nascosto finche' non
+  // si trascina la tela — visto aprendo il disegnatore, non deducibile dalle
+  // coordinate.
+  deferred:            { x: 560,  y: 560 },
+  rejected:            { x: 840,  y: 560 },
+}
+
+export const PROBLEM_HANDLES: Record<string, { sourceHandle: string; targetHandle: string }> = {
+  'new→under_investigation':                 { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'under_investigation→known_error':         { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'under_investigation→change_requested':    { sourceHandle: 'src-top',    targetHandle: 'tgt-top'    },
+  'under_investigation→rejected':            { sourceHandle: 'src-bottom', targetHandle: 'tgt-left'   },
+  'under_investigation→deferred':            { sourceHandle: 'src-bottom', targetHandle: 'tgt-top'    },
+  'deferred→under_investigation':            { sourceHandle: 'src-top',    targetHandle: 'tgt-bottom' },
+  'known_error→change_requested':            { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'known_error→resolved':                    { sourceHandle: 'src-top',    targetHandle: 'tgt-top'    },
+  'change_requested→change_in_progress':     { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'change_requested→under_investigation':    { sourceHandle: 'src-bottom', targetHandle: 'tgt-bottom' },
+  'change_in_progress→resolved':             { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'change_in_progress→under_investigation':  { sourceHandle: 'src-bottom', targetHandle: 'tgt-bottom' },
+  'resolved→closed':                         { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'resolved→under_investigation':            { sourceHandle: 'src-bottom', targetHandle: 'tgt-bottom' },
+}
+
+export const PROBLEM_BACK = new Set([
+  'deferred→under_investigation', 'change_requested→under_investigation',
+  'change_in_progress→under_investigation', 'resolved→under_investigation',
+])
+
+// ── KB Article Lifecycle ──────────────────────────────────────────────────────
+// Tre ritorni alla bozza (dalla revisione, dal pubblicato, dall'archiviato) e
+// una scorciatoia bozza→archiviato che passa sopra.
+
+export const KB_POSITIONS: Record<string, { x: number; y: number }> = {
+  draft:          { x: 0,   y: 280 },
+  pending_review: { x: 280, y: 280 },
+  published:      { x: 560, y: 280 },
+  archived:       { x: 840, y: 280 },
+}
+
+export const KB_HANDLES: Record<string, { sourceHandle: string; targetHandle: string }> = {
+  'draft→pending_review':     { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'draft→archived':           { sourceHandle: 'src-top',    targetHandle: 'tgt-top'    },
+  'pending_review→published': { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'pending_review→draft':     { sourceHandle: 'src-bottom', targetHandle: 'tgt-bottom' },
+  'published→archived':       { sourceHandle: 'src-right',  targetHandle: 'tgt-left'   },
+  'published→draft':          { sourceHandle: 'src-bottom', targetHandle: 'tgt-bottom' },
+  'archived→draft':           { sourceHandle: 'src-bottom', targetHandle: 'tgt-left'   },
+}
+
+export const KB_BACK = new Set(['pending_review→draft', 'published→draft', 'archived→draft'])
+
+// ── La tabella unica ──────────────────────────────────────────────────────────
+
+export interface Disposizione {
+  positions: Record<string, { x: number; y: number }>
+  handles:   Record<string, { sourceHandle: string; targetHandle: string }>
+  back:      Set<string>
+}
+
+/**
+ * `none` è la scelta esplicita per tutto ciò che OpenGrafo non semina: fila
+ * automatica, archi destra→sinistra, nessun arco all'indietro. Vuota di
+ * proposito — non è un buco, è il caso normale di un workflow che il cliente si
+ * è disegnato da solo.
+ */
+export const DISPOSIZIONI: Record<WorkflowKey, Disposizione> = {
+  incident:        { positions: INCIDENT_POSITIONS,        handles: INCIDENT_HANDLES,        back: INCIDENT_BACK },
+  change:          { positions: CHANGE_POSITIONS,          handles: CHANGE_HANDLES,          back: CHANGE_BACK },
+  service_request: { positions: SERVICE_REQUEST_POSITIONS, handles: SERVICE_REQUEST_HANDLES, back: SERVICE_REQUEST_BACK },
+  problem:         { positions: PROBLEM_POSITIONS,         handles: PROBLEM_HANDLES,         back: PROBLEM_BACK },
+  kb_article:      { positions: KB_POSITIONS,              handles: KB_HANDLES,              back: KB_BACK },
+  none:            { positions: {},                        handles: {},                      back: new Set<string>() },
+}
 
 // ── Step node visual ──────────────────────────────────────────────────────────
 
