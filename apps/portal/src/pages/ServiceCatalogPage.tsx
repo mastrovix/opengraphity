@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useApolloClient } from '@apollo/client/react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -121,6 +121,19 @@ export function ServiceCatalogPage() {
    * indovinare quale casella (revisione del 17 set 2026).
    */
   const [erroriModulo, setErroriModulo] = useState<Record<string, string>>({})
+
+  /**
+   * IL FUOCO SUL DIALOGO SI DA UNA VOLTA SOLA, ALL'APERTURA (22 set 2026).
+   *
+   * Era una ref in linea — `ref={(el) => { el?.focus() }}` — e una funzione
+   * nuova a ogni render vuol dire che React la richiama a ogni render: il
+   * fuoco tornava sul dialogo A OGNI TASTO. Scrivendo nei «Dettagli» restava
+   * la prima lettera e le altre finivano nel vuoto, e lo stesso in ogni
+   * campo del modulo. Trovato scrivendo il test di questa pagina: il valore
+   * atteso era «Keep me» e arrivava «K».
+   */
+  const dialogo = useRef<HTMLDivElement | null>(null)
+  useEffect(() => { dialogo.current?.focus() }, [openItem?.id])
 
   /**
    * APRIRE (o chiudere) UNA VOCE COMINCIA DA ZERO.
@@ -339,7 +352,7 @@ export function ServiceCatalogPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="og-catalog-modal-title"
-            ref={(el) => { el?.focus() }}
+            ref={dialogo}
             tabIndex={-1}
             style={{ background: colors.white, borderRadius: 12, padding: 24, width: 460, maxWidth: '90vw', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', outline: 'none' }}
           >

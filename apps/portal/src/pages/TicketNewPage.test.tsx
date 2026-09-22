@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 import { GET_FIELD_VISIBILITY_RULES, GET_FIELD_REQUIREMENT_RULES } from '@opengraphity/web-core'
 import { TicketNewPage } from './TicketNewPage'
 import { CREATE_TICKET } from '@/graphql/mutations'
@@ -230,3 +230,90 @@ describe('TicketNewPage — categorie dal Dizionario', () => {
   })
 })
 
+
+/**
+ * GLI ARTICOLI SUGGERITI E I FILE.
+ *
+ * Il suggerimento parte dal titolo dopo mezzo secondo di quiete: cercare a
+ * ogni tasto vuol dire una richiesta per lettera, e un titolo di tre
+ * caratteri non trova niente di utile.
+ */
+describe('TicketNewPage — articoli suggeriti', () => {
+  const kbCon = (items: unknown[]): GqlMock => ({
+    request: { query: GET_KB_ARTICLES, variables: () => true },
+    result: { data: { kbArticles: { __typename: 'KBArticlePage', items, total: items.length } } },
+    maxUsageCount: Number.POSITIVE_INFINITY,
+  })
+  const articolo = { __typename: 'KBArticle', id: 'a1', title: 'Reset the VPN', slug: 'reset-vpn', body: '', category: 'how-to', views: 1, helpfulCount: 0, notHelpfulCount: 0, createdAt: '2026-01-01T00:00:00Z', publishedAt: null }
+
+  it('un titolo troppo corto non cerca niente', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const { user } = renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: [...rulesMocks({ visibility: [], requirement: [] }), categoriesMock, severityMock, kbCon([articolo])] })
+      await user.type(await screen.findByPlaceholderText('Describe the problem in one sentence'), 'VP')
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(screen.queryByText('Reset the VPN')).toBeNull()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('da tre caratteri, dopo mezzo secondo di quiete, propone gli articoli — e si aprono a parte', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const { user } = renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: [...rulesMocks({ visibility: [], requirement: [] }), categoriesMock, severityMock, kbCon([articolo])] })
+      await user.type(await screen.findByPlaceholderText('Describe the problem in one sentence'), 'VPN')
+      await vi.advanceTimersByTimeAsync(1000)
+      const link = await screen.findByRole('link', { name: 'Reset the VPN' })
+      expect(link).toHaveAttribute('href', '/kb/reset-vpn')
+      // Si apre in una scheda nuova: il modulo che si sta compilando non si perde.
+      expect(link).toHaveAttribute('target', '_blank')
+    } finally { vi.useRealTimers() }
+  })
+})
+
+describe('TicketNewPage — i file prima dell\'invio', () => {
+  const base = () => [...rulesMocks({ visibility: [], requirement: [] }), categoriesMock, severityMock, kbMock]
+
+  it('un file scelto si vede in elenco e si può togliere prima di inviare', async () => {
+    const { user } = renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: base() })
+    await screen.findByRole('button', { name: 'Hardware' })
+    const input = document.querySelector('input[type=file]') as HTMLInputElement
+    await user.upload(input, new File(['x'], 'foto.png', { type: 'image/png' }))
+    expect(await screen.findByText('foto.png')).toBeInTheDocument()
+
+    // La × nomina il file che toglie: con tre allegati, tre pulsanti «×» non
+    // si distinguono con un lettore di schermo.
+    await user.click(screen.getByRole('button', { name: 'Remove foto.png' }))
+    await waitFor(() => { expect(screen.queryByText('foto.png')).toBeNull() })
+  })
+
+  it('si possono scegliere più file, uno dopo l\'altro', async () => {
+    const { user } = renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: base() })
+    await screen.findByRole('button', { name: 'Hardware' })
+    const input = document.querySelector('input[type=file]') as HTMLInputElement
+    await user.upload(input, new File(['x'], 'uno.png'))
+    await user.upload(input, new File(['y'], 'due.png'))
+    expect(await screen.findByText('uno.png')).toBeInTheDocument()
+    expect(screen.getByText('due.png')).toBeInTheDocument()
+  })
+})
+
+describe('TicketNewPage — trascinare un file', () => {
+  it('un file trascinato sopra si aggiunge, come se lo si fosse scelto', async () => {
+    // Il riquadro e' un bottone: il trascinamento e' una comodita' del mouse,
+    // e l'equivalente da tastiera e' il selettore che apre lo stesso input.
+    renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: [...rulesMocks({ visibility: [], requirement: [] }), categoriesMock, severityMock, kbMock] })
+    const zona = (await screen.findByText(/drop|trascina/i)).closest('button')!
+
+    fireEvent.dragOver(zona)
+    fireEvent.drop(zona, { dataTransfer: { files: [new File(['x'], 'trascinato.png', { type: 'image/png' })] } })
+    expect(await screen.findByText('trascinato.png')).toBeInTheDocument()
+  })
+
+  it('uscire dalla zona senza lasciare il file non aggiunge niente', async () => {
+    renderWithProviders(<TicketNewPage />, { ...ROUTE, mocks: [...rulesMocks({ visibility: [], requirement: [] }), categoriesMock, severityMock, kbMock] })
+    const zona = (await screen.findByText(/drop|trascina/i)).closest('button')!
+    fireEvent.dragOver(zona)
+    fireEvent.dragLeave(zona)
+    expect(screen.queryByText('trascinato.png')).toBeNull()
+  })
+})

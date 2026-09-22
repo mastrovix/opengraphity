@@ -330,7 +330,12 @@ export function TicketNewPage() {
             {files.map((f, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', backgroundColor: palette.neutral.surface1, borderRadius: 6, fontSize: 12 }}>
                 <span style={{ color: colors.slateDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                <button onClick={() => removeFile(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.danger, fontSize: 12, flexShrink: 0 }}>×</button>
+                {/* La × dice QUALE file toglie (22 set 2026): con tre
+                    allegati in elenco, tre pulsanti chiamati «×» non si
+                    distinguono con un lettore di schermo. Stessa forma della
+                    × del renderer dei moduli, in web-core. */}
+                <button type="button" onClick={() => removeFile(i)} aria-label={`${t('catalog.removeFile')} ${f.name}`}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.danger, fontSize: 12, flexShrink: 0 }}>×</button>
               </div>
             ))}
           </div>
