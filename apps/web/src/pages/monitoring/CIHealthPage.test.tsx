@@ -208,13 +208,6 @@ describe('CIHealthPage', () => {
     expect(location()).toContain('health=degraded')
   })
 
-  /**
-   * Tempo doppio (22 set 2026): questo test aspetta TRE cose in fila — la
-   * prima query, il rimbalzo dell'URL, la query rifatta — e ognuna e un giro
-   * di Apollo piu un render. In CI, con centottanta ambienti jsdom creati di
-   * fila, i cinque secondi di fabbrica non bastavano e il test cadeva per
-   * lentezza della macchina, non per un difetto.
-   */
   it('D·1.15 — il totale scende sotto la pagina corrente → la pagina torna all\'ultima disponibile (URL senza page, offset 0)', async () => {
     const seen: Vars[] = []
     renderPage('operator', { seen, route: '/monitoring/health?page=3' })
@@ -222,7 +215,7 @@ describe('CIHealthPage', () => {
     await waitFor(() => expect(seen.some((v) => v.offset === 100)).toBe(true))
     await attendiURL('/monitoring/health')
     await waitFor(() => expect(seen.at(-1)!.offset).toBe(0))
-  }, 20_000)
+  })
 
   it('D·1.3 — "Vedi sulla mappa" porta alla topologia con la salute evidenziata E il primo CI (il più grave) come partenza', async () => {
     const { user } = renderPage('viewer')
