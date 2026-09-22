@@ -2528,7 +2528,6 @@
         "columnRequired": "Required",
         "addColumn": "Add a column",
         "tableNoColumns": "No columns yet: a table needs at least one.",
-        "tableInList": "A table cannot be a list column, a widget or a report column: it is rows, not a value.",
         "refTypes": "Which CI types",
         "refTypesHelp": "Nothing ticked: the whole CMDB. Tick some and the search only offers those.",
         "refTypesNone": "No CI type is defined yet.",
@@ -4653,7 +4652,6 @@
       "promptTooLong": "The description is too long (max {{max}} characters).",
       "badAnswer": "The model answer cannot be read. Try again, perhaps in simpler words.",
       "noEntities": "This organization has nothing to report on yet.",
-      "nothingUsable": "The proposal names no entity of this organization: try again saying what the report is about.",
       "invalidProposal": "The proposal would not be saveable ({{message}}). That is a defect on our side: try again, and report it if it happens twice.",
       "truncated": "The model answer was cut off: the request was too big. Describe fewer things, or split it in two."
     },

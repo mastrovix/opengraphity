@@ -69,8 +69,8 @@ export default defineConfig({
        * misura.
        */
       thresholds: {
-        'src/lib/**':        { lines: 79, statements: 77, functions: 78, branches: 68 },  // 81.3/79.0/80.1/70.3
-        'src/graphql/**':    { lines: 58, statements: 56, functions: 49, branches: 52 },  // 60.8/58.7/51.4/54.1
+        'src/lib/**':        { lines: 80, statements: 77, functions: 78, branches: 69 },  // 82.1/79.8/80.7/71.1
+        'src/graphql/**':    { lines: 59, statements: 57, functions: 50, branches: 52 },  // 61.5/59.4/52.0/54.4
         'src/services/**':   { lines: 90, statements: 88, functions: 87, branches: 83 },  // 92.4/90.2/89.4/85.5
         'src/rest/**':       { lines: 72, statements: 70, functions: 69, branches: 64 },  // 74.1/72.7/71.1/66.5
         'src/discovery/**':  { lines: 94, statements: 91, functions: 90, branches: 82 },  // 96.8/93.6/92.6/84.5
