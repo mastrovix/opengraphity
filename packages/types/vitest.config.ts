@@ -5,7 +5,7 @@ import { copertura } from '../../copertura.mjs'
 
 export default defineConfig({
   test: {
-    coverage: copertura('packages/neo4j'),
+    coverage: copertura('packages/types'),
     globals: true,
     environment: 'node',
   },

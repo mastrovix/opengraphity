@@ -23,7 +23,7 @@
  * una frase — che è come compare un cognome. Vedi `sopravvive()` in
  * `serverLogScrub.ts` per la regola che li confronta.
  *
- * Parole: 37022 — da 1208 file.
+ * Parole: 37022 — da 1210 file.
  */
 
 /** Le parole che possono sopravvivere in un template di piattaforma, nella LORO forma. */

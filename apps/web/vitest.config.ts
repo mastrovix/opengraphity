@@ -1,5 +1,8 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vitest/config'
+// I numeri stanno in un posto solo: vedi `copertura.mjs` alla radice.
+// @ts-expect-error — modulo JS senza tipi, alla radice del monorepo
+import { copertura } from '../../copertura.mjs'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
@@ -15,6 +18,7 @@ export default defineConfig({
     },
   },
   test: {
+    coverage: copertura('apps/web'),
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,

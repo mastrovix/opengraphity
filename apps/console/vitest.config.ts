@@ -1,5 +1,8 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vitest/config'
+// I numeri stanno in un posto solo: vedi `copertura.mjs` alla radice.
+// @ts-expect-error — modulo JS senza tipi, alla radice del monorepo
+import { copertura } from '../../copertura.mjs'
 import path from 'path'
 
 /**
@@ -19,6 +22,7 @@ import path from 'path'
 export default defineConfig({
   resolve: { alias: { '@': path.resolve(__dirname, './src') } },
   test: {
+    coverage: copertura('apps/console'),
     environment: 'node',
     include: ['src/**/*.test.ts'],
   },
