@@ -78,7 +78,7 @@ export const PAVIMENTI = {
   'apps/web':                  { lines: 69, statements: 66, functions: 52, branches: 61 },  // 71.43/68.29/54.73/63.86
   'apps/portal':               { lines: 54, statements: 50, functions: 42, branches: 50 },  // 56.9/52.89/44.75/52.84
   'apps/console':              { lines: 2, statements: 3, functions: 0, branches: 9 },  // 4.39/5.14/1.08/11.26
-  'packages/workflow':         { lines: 83, statements: 79, functions: 73, branches: 73 },  // 85.41/81.39/75.9/75.21
+  'packages/workflow':         { lines: 85, statements: 81, functions: 77, branches: 73 },  // 87.91/83.54/79.51/75.86
   'packages/neo4j':            { lines: 90, statements: 87, functions: 92, branches: 74 },  // 92.14/89.32/94.91/76.58
   'packages/sla':              { lines: 68, statements: 64, functions: 61, branches: 65 },  // 70.01/66.85/63.73/67.06
   'packages/notifications':    { lines: 79, statements: 78, functions: 78, branches: 72 },  // 81.56/80.1/80.11/74.65
