@@ -346,7 +346,7 @@ export function ServiceCatalogPage() {
             <h3 id="og-catalog-modal-title" style={{ fontSize: 17, fontWeight: 600, color: colors.slateDark, marginBottom: 4 }}>{openItem.name}</h3>
             {openItem.requiresApproval && <p style={{ fontSize: 12, color: palette.warning.text, marginBottom: 12 }}>{t('catalog.approvalNotice')}</p>}
             <label style={{ fontSize: 12, fontWeight: 600, color: palette.neutral.textStrong, display: 'block', marginBottom: 6 }}>{t('catalog.details')}</label>
-            <textarea value={details} onChange={e => setDetails(e.target.value)} rows={4}
+            <textarea aria-label={t('catalog.details')} value={details} onChange={e => setDetails(e.target.value)} rows={4}
               placeholder={t('catalog.detailsPlaceholder')}
               style={{ width: '100%', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 10, fontSize: 13, resize: 'vertical', boxSizing: 'border-box' }} />
             {customFields.length > 0 && (

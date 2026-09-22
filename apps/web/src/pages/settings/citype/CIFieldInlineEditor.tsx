@@ -180,7 +180,7 @@ export function CIFieldInlineEditor({
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 <Trans i18nKey="citypeDesigner.field.validationHint" components={{ code: <code /> }} />
               </p>
-              <textarea style={{ ...textareaS, minHeight: 90 }} value={form.validationScript}
+              <textarea aria-label={t('citypeDesigner.field.validationPlaceholder')} style={{ ...textareaS, minHeight: 90 }} value={form.validationScript}
                 onChange={(e) => set('validationScript', e.target.value)}
                 placeholder={t('citypeDesigner.field.validationPlaceholder')} />
             </div>
@@ -190,7 +190,7 @@ export function CIFieldInlineEditor({
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 <Trans i18nKey="citypeDesigner.field.visibilityHint" components={{ code: <code /> }} />
               </p>
-              <textarea style={{ ...textareaS, minHeight: 90 }} value={form.visibilityScript}
+              <textarea aria-label={t('citypeDesigner.field.visibilityPlaceholder')} style={{ ...textareaS, minHeight: 90 }} value={form.visibilityScript}
                 onChange={(e) => set('visibilityScript', e.target.value)}
                 placeholder={t('citypeDesigner.field.visibilityPlaceholder')} />
             </div>
@@ -200,7 +200,7 @@ export function CIFieldInlineEditor({
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 <Trans i18nKey="citypeDesigner.field.defaultHint" components={{ code: <code /> }} />
               </p>
-              <textarea style={{ ...textareaS, minHeight: 90 }} value={form.defaultScript}
+              <textarea aria-label={t('citypeDesigner.field.defaultPlaceholder')} style={{ ...textareaS, minHeight: 90 }} value={form.defaultScript}
                 onChange={(e) => set('defaultScript', e.target.value)}
                 placeholder={t('citypeDesigner.field.defaultPlaceholder')} />
             </div>

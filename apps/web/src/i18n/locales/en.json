@@ -7624,5 +7624,14 @@
       "wrong_analysis": "The data or the conclusion do not add up. This is how we learn the proposal was noise.",
       "valid_but_declined": "The proposal is right, but it is not what we want to do."
     }
+  },
+  "a11y": {
+    "reportFilterField": "Filter field",
+    "reportFilterValue": "Filter value",
+    "chartGroupByNode": "Group by: node",
+    "chartGroupByField": "Group by: field",
+    "questionCategoryFilter": "Filter questions by category",
+    "questionAssignCiType": "Assign the question to CI type {{type}}",
+    "scriptCode": "Script code"
   }
 }

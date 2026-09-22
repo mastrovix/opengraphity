@@ -75,6 +75,9 @@ jobs:
       - name: Check token visivi (console ↔ portale)
         run: node scripts/check-token-visivi.mjs
 
+      - name: Check etichette dei controlli
+        run: node scripts/check-etichette-controlli.mjs
+
       - name: Lint
         run: pnpm lint
 

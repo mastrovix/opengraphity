@@ -134,7 +134,7 @@ function FieldEditor({
       <div className="og-pair" style={{ marginBottom: 12 }}>
         <div>
           <label style={labelS}>{t('itilDesigner.fieldName')}</label>
-          <input
+          <input aria-label={t('itilDesigner.fieldName')}
             style={{ ...inputS, background: isSystem || !!field.name ? colors.slateBg : colors.white }}
             value={form.name}
             disabled={isSystem || !!field.name}
@@ -144,7 +144,7 @@ function FieldEditor({
         </div>
         <div>
           <label style={labelS}>{t('itilDesigner.fieldLabel')}</label>
-          <input
+          <input aria-label={t('itilDesigner.fieldLabel')}
             style={inputS}
             value={form.label}
             onChange={(e) => set('label', e.target.value)}
@@ -238,7 +238,7 @@ function FieldEditor({
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 <Trans i18nKey="citypeDesigner.field.validationHint" components={{ code: <code /> }} />
               </p>
-              <textarea style={{ ...textareaS, minHeight: 90 }} value={form.validationScript}
+              <textarea aria-label={t('itilDesigner.fieldValidationPlaceholder')} style={{ ...textareaS, minHeight: 90 }} value={form.validationScript}
                 onChange={(e) => set('validationScript', e.target.value)}
                 placeholder={t('itilDesigner.fieldValidationPlaceholder')} />
             </div>
@@ -248,7 +248,7 @@ function FieldEditor({
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 <Trans i18nKey="citypeDesigner.field.visibilityHint" components={{ code: <code /> }} />
               </p>
-              <textarea style={{ ...textareaS, minHeight: 90 }} value={form.visibilityScript}
+              <textarea aria-label={t('itilDesigner.visibilityPlaceholder')} style={{ ...textareaS, minHeight: 90 }} value={form.visibilityScript}
                 onChange={(e) => set('visibilityScript', e.target.value)}
                 placeholder={t('itilDesigner.visibilityPlaceholder')} />
             </div>
@@ -258,7 +258,7 @@ function FieldEditor({
               <p style={{ fontSize: 'var(--font-size-body)', color: 'var(--color-slate-light)', margin: '0 0 6px' }}>
                 <Trans i18nKey="citypeDesigner.field.defaultHint" components={{ code: <code /> }} />
               </p>
-              <textarea style={{ ...textareaS, minHeight: 90 }} value={form.defaultScript}
+              <textarea aria-label={t('itilDesigner.defaultPlaceholder')} style={{ ...textareaS, minHeight: 90 }} value={form.defaultScript}
                 onChange={(e) => set('defaultScript', e.target.value)}
                 placeholder={t('itilDesigner.defaultPlaceholder')} />
             </div>

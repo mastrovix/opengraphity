@@ -152,7 +152,7 @@ function TextareaFileField({ id, fieldName, value, onChange, required }: Textare
           )}
           {/* Invisible required sentinel so browser validation fires when no file selected */}
           {required && (
-            <input type="text" value={value} required readOnly tabIndex={-1}
+            <input type="text" value={value} required readOnly tabIndex={-1} aria-hidden="true"
               style={{ opacity: 0, height: 0, padding: 0, border: 'none', position: 'absolute' }} />
           )}
         </div>

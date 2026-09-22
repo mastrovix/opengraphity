@@ -285,6 +285,7 @@ export function QuestionAdminPage() {
           </div>
 
           <select
+            aria-label={t('a11y.questionCategoryFilter')}
             value={filterCat}
             onChange={e => setFilterCat(e.target.value)}
             style={{ ...inputStyle, marginBottom: 12 }}
@@ -394,6 +395,7 @@ export function QuestionAdminPage() {
                       return (
                         <div key={ct.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${palette.neutral.borderLight}` }}>
                           <input
+                            aria-label={t('a11y.questionAssignCiType', { type: ct.name })}
                             type="checkbox"
                             checked={assigned}
                             disabled={assignmentBusy}

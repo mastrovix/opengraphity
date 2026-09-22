@@ -341,6 +341,7 @@ export function RuleRow({
       {/* Severity */}
       <td style={{ padding: '10px 12px', width: 120 }}>
         <select
+          aria-label={t('notificationRules.header.severity')}
           value={view.severityOverride}
           onChange={(e) => debounce({ severityOverride: e.target.value })}
           style={{ ...selectStyle, color: SEVERITY_COLOR[view.severityOverride] ?? 'var(--color-slate)', fontWeight: fontWeight.medium }}
@@ -379,7 +380,7 @@ export function RuleRow({
 
       {/* Target */}
       <td style={{ padding: '10px 12px', width: 160 }}>
-        <select value={view.target} onChange={(e) => debounce({ target: e.target.value })} style={{ ...selectStyle, color: 'var(--color-slate)' }}>
+        <select aria-label={t('notificationRules.header.target')} value={view.target} onChange={(e) => debounce({ target: e.target.value })} style={{ ...selectStyle, color: 'var(--color-slate)' }}>
           {targets.map(({ value, label, applicable }) => (
             <option key={value} value={value}>
               {applicable ? label : t('notificationRules.target.notApplicable', { target: label })}
