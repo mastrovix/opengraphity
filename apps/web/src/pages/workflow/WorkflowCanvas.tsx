@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { createContext, memo, useCallback, useContext, useState } from 'react'
+import { createContext, memo, useCallback, useContext, useRef, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -288,7 +288,13 @@ const WorkflowEdge = memo(function WorkflowEdge({
           onMouseLeave={() => setHovered(false)}
           onFocus={() => setHovered(true)}
           onBlur={() => setHovered(false)}
-          onClick={(e) => apriTransizione?.(id, e)}
+          /*
+            * `stopPropagation`: il clic non deve arrivare anche al riquadro
+            * sotto. L'etichetta e' disegnata in un portale dentro il
+            * contenitore di React Flow, e lasciarlo risalire significherebbe
+            * aprire il pannello e richiuderlo subito con un `onPaneClick`.
+            */
+          onClick={(e) => { e.stopPropagation(); apriTransizione?.(id, e) }}
           style={{
             position:      'absolute',
             transform:     `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
@@ -343,12 +349,24 @@ export function WorkflowCanvas({
   const { t } = useTranslation()
   const accentColor = ACCENT_COLOR
 
-  // L'etichetta di un arco e' fuori dall'SVG (vedi `ApriTransizione`): il suo
-  // clic va rimandato a mano alla stessa `onEdgeClick` dell'arco.
+  /*
+   * L'etichetta di un arco e' fuori dall'SVG (vedi `ApriTransizione`): il suo
+   * clic va rimandato a mano alla stessa `onEdgeClick` dell'arco.
+   *
+   * GLI ARCHI PASSANO DA UN REF, non dalle dipendenze (revisione del 21 set
+   * 2026). Con `[edges, onEdgeClick]` questa funzione cambiava identita' a
+   * ogni render del disegnatore — `edges` e' un array nuovo ogni volta — e
+   * con lei il valore del contesto: un componente che legge un contesto si
+   * ridisegna quando quel valore cambia ANCHE se e' `memo`, quindi ogni
+   * spostamento di un nodo ridisegnava tutte le etichette. Il ref tiene gli
+   * archi aggiornati senza toccare l'identita' della funzione.
+   */
+  const archiRef = useRef(edges)
+  archiRef.current = edges
   const apriTransizione = useCallback((id: string, e: React.MouseEvent) => {
-    const arco = edges.find((x) => x.id === id)
+    const arco = archiRef.current.find((x) => x.id === id)
     if (arco) onEdgeClick(e, arco)
-  }, [edges, onEdgeClick])
+  }, [onEdgeClick])
 
   return (
     <ApriTransizione.Provider value={apriTransizione}>

@@ -114,21 +114,29 @@ describe('chiediAnalisi', () => {
 })
 
 describe('statoDellAnalisi', () => {
-  const timeline = (eventi: unknown[]) => (url: string) =>
-    Promise.resolve(url.includes('/timeline') ? risposta(200, eventi) : risposta(200, { state: 'open' }))
+  /** Una cronologia in una pagina sola. */
+  const timeline = (eventi: unknown[]) => () => Promise.resolve(risposta(200, eventi))
+  const prUnita   = (n: number) => ({ event: 'cross-referenced', source: { issue: { number: n, pull_request: { merged_at: '2026-09-21T07:48:38Z' } } } })
+  const prAperta  = (n: number) => ({ event: 'cross-referenced', source: { issue: { number: n, pull_request: { merged_at: null } } } })
 
   it('trova la PR collegata e dice se è stata UNITA, non solo chiusa', async () => {
-    finto.mockImplementation(timeline([
-      { event: 'cross-referenced', source: { issue: { number: 26, pull_request: { merged_at: '2026-09-21T07:48:38Z' } } } },
-    ]))
-    expect(await statoDellAnalisi(CFG, 25)).toEqual({ issueChiusa: false, pr: 26, prUnita: true })
+    finto.mockImplementation(timeline([prUnita(26)]))
+    expect(await statoDellAnalisi(CFG, 25)).toEqual({ pr: 26, prUnita: true })
   })
 
   it('una PR chiusa senza unire non è una soluzione', async () => {
-    finto.mockImplementation(timeline([
-      { event: 'cross-referenced', source: { issue: { number: 26, pull_request: { merged_at: null } } } },
-    ]))
-    expect(await statoDellAnalisi(CFG, 25)).toEqual({ issueChiusa: false, pr: 26, prUnita: false })
+    finto.mockImplementation(timeline([prAperta(26)]))
+    expect(await statoDellAnalisi(CFG, 25)).toEqual({ pr: 26, prUnita: false })
+  })
+
+  it('UNA PR UNITA VINCE SU UN RIFERIMENTO SUCCESSIVO', async () => {
+    /*
+     * Il caso che la prima stesura sbagliava: prendeva l'ultimo evento, così
+     * bastava un «vedi anche» da un'altra PR dopo quella buona e il giro non
+     * si chiudeva più.
+     */
+    finto.mockImplementation(timeline([prUnita(26), prAperta(99)]))
+    expect(await statoDellAnalisi(CFG, 25)).toEqual({ pr: 26, prUnita: true })
   })
 
   it('una issue soltanto CITATA da un\'altra issue non è una PR', async () => {
@@ -136,11 +144,25 @@ describe('statoDellAnalisi', () => {
       { event: 'cross-referenced', source: { issue: { number: 99, pull_request: null } } },
       { event: 'labeled' },
     ]))
-    expect(await statoDellAnalisi(CFG, 25)).toEqual({ issueChiusa: false, pr: null, prUnita: null })
+    expect(await statoDellAnalisi(CFG, 25)).toEqual({ pr: null, prUnita: null })
   })
 
   it('senza nessun evento collegato non c\'è nessuna PR: niente indovinato', async () => {
     finto.mockImplementation(timeline([]))
-    expect(await statoDellAnalisi(CFG, 25)).toEqual({ issueChiusa: false, pr: null, prUnita: null })
+    expect(await statoDellAnalisi(CFG, 25)).toEqual({ pr: null, prUnita: null })
+  })
+
+  it('segue le PAGINE: la PR unita nella seconda pagina non si perde', async () => {
+    const piena = Array.from({ length: 100 }, () => ({ event: 'labeled' }))
+    finto.mockImplementationOnce(() => Promise.resolve(risposta(200, piena)))
+    finto.mockImplementationOnce(() => Promise.resolve(risposta(200, [prUnita(26)])))
+    expect(await statoDellAnalisi(CFG, 25)).toEqual({ pr: 26, prUnita: true })
+    expect(chiamate.map((c) => /[?&]page=(\d+)/.exec(c.url)?.[1])).toEqual(['1', '2'])
+  })
+
+  it('una cronologia sterminata lo DICE, invece di rispondere «nessuna PR»', async () => {
+    const piena = Array.from({ length: 100 }, () => ({ event: 'labeled' }))
+    finto.mockImplementation(() => Promise.resolve(risposta(200, piena)))
+    await expect(statoDellAnalisi(CFG, 25)).rejects.toThrow(/more than 300 timeline events/)
   })
 })

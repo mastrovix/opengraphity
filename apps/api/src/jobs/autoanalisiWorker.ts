@@ -58,16 +58,31 @@ export interface PortaIlFascicoloData {
   titolo:        string
 }
 
+/**
+ * Il dato di un lavoro di questa coda.
+ *
+ * Il controllo periodico non ha dati, e la prima stesura lo diceva alla coda
+ * con `{} as PortaIlFascicoloData` — una bugia al sistema dei tipi per far
+ * passare una cosa vera. L'unione la dice invece di nasconderla, e il
+ * processore la restringe guardando il nome del lavoro.
+ */
+export type AutoanalisiJobData = PortaIlFascicoloData | Record<string, never>
+
 // ── Il legame con GitHub, scritto sul Problem ────────────────────────────────
 
 /*
  * Il numero della issue sta SUL Problem, non in una tabella a parte: è da lì
  * che ogni controllo riparte, e un legame che vive altrove si perde la prima
  * volta che qualcuno guarda il Problem e non trova niente.
+ *
+ * `toInteger($issue)`: un numero JS arriva a Neo4j come FLOAT, e un numero di
+ * issue è un intero. Qui non cambiava il risultato — l'URL si scrive uguale —
+ * ma è la convenzione del repository, e un Float dove il dominio dice Intero è
+ * il genere di cosa che morde più in là (un confronto, un LIMIT).
  */
 const SCRIVI_ISSUE_CYPHER = `
   MATCH (p:Problem {id: $problemId, tenant_id: $tenantId})
-  SET p.autoanalisi_issue = $issue, p.autoanalisi_issue_at = $now
+  SET p.autoanalisi_issue = toInteger($issue), p.autoanalisi_issue_at = $now
 `
 
 /*
@@ -173,7 +188,7 @@ async function controlla(): Promise<void> {
       }
       const esito = await segnaRisolto(TENANT_DI_PIATTAFORMA, p.id, p.number, ATTORE)
       log.info(
-        { problem: p.number, issue: p.issue, pr: stato.pr, resolved: esito.avviata, step: esito.passo },
+        { problem: p.number, issue: p.issue, pr: stato.pr, resolved: esito.fatto, step: esito.passo, walked: esito.percorsi },
         'the change proposed for this problem was merged',
       )
     } catch (err) {
@@ -184,20 +199,20 @@ async function controlla(): Promise<void> {
 
 // ── Coda e worker ────────────────────────────────────────────────────────────
 
-export async function startAutoanalisiWorker(): Promise<Worker<PortaIlFascicoloData>> {
-  const worker = createWorker<PortaIlFascicoloData>(AUTOANALISI_QUEUE, async (job) => {
+export async function startAutoanalisiWorker(): Promise<Worker<AutoanalisiJobData>> {
+  const worker = createWorker<AutoanalisiJobData>(AUTOANALISI_QUEUE, async (job) => {
     if (job.name === 'controlla') { await controlla(); return }
-    await portaIlFascicolo(job.data)
+    await portaIlFascicolo(job.data as PortaIlFascicoloData)
   })
 
   /*
    * La ricorrenza si registra a ogni avvio, come le altre: `upsert` significa
    * che riavviare non ne crea una seconda, e non c'è stato da migrare.
    */
-  await getQueue<PortaIlFascicoloData>(AUTOANALISI_QUEUE).upsertJobScheduler(
+  await getQueue<AutoanalisiJobData>(AUTOANALISI_QUEUE).upsertJobScheduler(
     'autoanalisi-controlla',
     { every: INTERVALLO_CONTROLLO_MS },
-    { name: 'controlla', data: {} as PortaIlFascicoloData, opts: { removeOnComplete: true } },
+    { name: 'controlla', data: {}, opts: { removeOnComplete: true } },
   )
 
   log.info({ everyMs: INTERVALLO_CONTROLLO_MS, configured: configurazioneAutoanalisi() !== null }, 'autoanalisi worker started')

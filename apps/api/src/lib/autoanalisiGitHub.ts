@@ -155,12 +155,25 @@ export async function chiediAnalisi(
 }
 
 export interface StatoDellAnalisi {
-  /** La issue è chiusa? */
-  issueChiusa: boolean
   /** Il numero della PR collegata, se ce n'è una. */
   pr: number | null
   /** La PR è stata UNITA (non solo chiusa). `null` se non c'è nessuna PR. */
   prUnita: boolean | null
+}
+
+/**
+ * Quante pagine di cronologia si leggono al massimo.
+ *
+ * Tre da cento: se una issue dell'Autoanalisi supera i trecento eventi non è
+ * più una issue, è una discussione, e il collegamento alla PR va guardato a
+ * mano. Si dice e ci si ferma, invece di rispondere «nessuna PR» — che
+ * sarebbe la risposta sbagliata data con sicurezza.
+ */
+const MAX_PAGINE = 3
+
+interface EventoCollegato {
+  event?: unknown
+  source?: { issue?: { number?: unknown; pull_request?: { merged_at?: unknown } | null } }
 }
 
 /**
@@ -170,39 +183,48 @@ export interface StatoDellAnalisi {
  * internet in questa installazione, quindi un webhook in ingresso da GitHub
  * non arriverebbe mai. Chiedere funziona anche da dietro un firewall.
  *
- * La PR si trova dagli eventi di chiusura della issue (`cross-referenced` e
- * `connected` non bastano: una PR *citata* non è una PR che risolve). Si
- * guarda `timeline` e si prende l'ultimo evento che collega una PR.
+ * ## Quale PR conta
+ * Una PR UNITA vince su qualunque riferimento successivo. La prima stesura
+ * prendeva semplicemente l'ultimo evento `cross-referenced`: bastava che
+ * qualcuno citasse la issue da un'altra PR — un rimando, un «vedi anche» —
+ * dopo che quella buona era stata unita, e il giro non si sarebbe chiuso più.
+ * Fra le PR unite vince la più recente; se non ce n'è nessuna, si riporta
+ * l'ultima citata, che è quella di cui si sta aspettando l'esito.
+ *
+ * Una issue soltanto CITATA da un'altra issue non è una PR: `pull_request`
+ * nullo la esclude.
  */
 export async function statoDellAnalisi(
   cfg: ConfigurazioneAutoanalisi, issue: number,
 ): Promise<StatoDellAnalisi> {
-  const res = await fetch(`https://api.github.com/repos/${cfg.repo}/issues/${issue}/timeline?per_page=100`, {
-    headers: intestazioni(cfg.token),
-    signal:  AbortSignal.timeout(TIMEOUT_MS),
-  })
-  await assertRispostaBuona(res, `the state of issue #${issue} could not be read`)
-  const eventi = await res.json() as Array<{
-    event?: unknown
-    source?: { issue?: { number?: unknown; pull_request?: { merged_at?: unknown } | null } }
-  }>
+  const eventi: EventoCollegato[] = []
+  for (let pagina = 1; pagina <= MAX_PAGINE; pagina++) {
+    const res = await fetch(
+      `https://api.github.com/repos/${cfg.repo}/issues/${issue}/timeline?per_page=100&page=${pagina}`,
+      { headers: intestazioni(cfg.token), signal: AbortSignal.timeout(TIMEOUT_MS) },
+    )
+    await assertRispostaBuona(res, `the state of issue #${issue} could not be read`)
+    const blocco = await res.json() as EventoCollegato[]
+    eventi.push(...blocco)
+    if (blocco.length < 100) break
+    if (pagina === MAX_PAGINE) {
+      throw new Error(
+        `issue #${issue} has more than ${MAX_PAGINE * 100} timeline events: the linked pull request cannot be determined here, look at it by hand`,
+      )
+    }
+  }
 
-  let pr: number | null = null
-  let prUnita: boolean | null = null
+  let ultimaCitata: number | null = null
+  let ultimaUnita:  number | null = null
   for (const ev of eventi) {
     if (ev.event !== 'cross-referenced') continue
     const collegata = ev.source?.issue
     if (!collegata || typeof collegata.number !== 'number' || !collegata.pull_request) continue
-    pr = collegata.number
-    prUnita = typeof collegata.pull_request.merged_at === 'string'
+    ultimaCitata = collegata.number
+    if (typeof collegata.pull_request.merged_at === 'string') ultimaUnita = collegata.number
   }
 
-  const statoRes = await fetch(`https://api.github.com/repos/${cfg.repo}/issues/${issue}`, {
-    headers: intestazioni(cfg.token),
-    signal:  AbortSignal.timeout(TIMEOUT_MS),
-  })
-  await assertRispostaBuona(statoRes, `the state of issue #${issue} could not be read`)
-  const corpo = await statoRes.json() as { state?: unknown }
-
-  return { issueChiusa: corpo.state === 'closed', pr, prUnita }
+  if (ultimaUnita !== null) return { pr: ultimaUnita, prUnita: true }
+  if (ultimaCitata !== null) return { pr: ultimaCitata, prUnita: false }
+  return { pr: null, prUnita: null }
 }

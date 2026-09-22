@@ -469,7 +469,7 @@ async function openProblemFromProposal(
   })
   await audit(ctx, 'proposal.problem_opened', 'Proposal', row.id, {
     area: row.area, kind: row.kind, problemId: problem.id as string, problemNumber: problem.number as string,
-    investigationStarted: indagine.avviata, step: indagine.passo,
+    investigationStarted: indagine.fatto, step: indagine.passo, walked: indagine.percorsi.join(' → '),
   })
   logger.info(
     { module: 'proposals', tenantId: ctx.tenantId, proposal: row.id, problem: problem.number },
